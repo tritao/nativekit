@@ -28,6 +28,20 @@ Wrapping caller-owned windows is a separate capability because detaching safely
 requires backend-specific event and widget ownership. The GTK backend currently
 returns `NK_ERROR_UNSUPPORTED` and does not advertise `NK_CAP_WRAP_NATIVE_WINDOW`.
 
+## Mobile hosts
+
+Mobile applications attach a caller-owned native container with
+`nk_mobile_host_attach()` instead of creating a desktop top-level window. The
+returned host handle may be passed as the parent to `nk_webview_create()`.
+Destroying it first destroys its NativeKit-owned WebViews and then releases the
+backend reference; it never destroys the Activity, view controller, or native
+container.
+
+The host application forwards active, inactive, and background transitions with
+`nk_mobile_host_set_lifecycle()`. On Android, attach must run on the main thread
+and receives the current `JNIEnv*` and a `ViewGroup`. Those JNI values are used
+only during the call, and the backend retains its own global reference.
+
 ## Window ownership
 
 NativeKit supports multiple independent top-level windows. A new window may

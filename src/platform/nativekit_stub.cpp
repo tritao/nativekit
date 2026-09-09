@@ -19,14 +19,18 @@ nk_result unsupported() {
 } // namespace
 
 namespace nk::backend {
+#if !defined(NK_STUB_ANDROID)
 void pump_events() noexcept {}
 void shutdown() noexcept {}
+#endif
 } // namespace nk::backend
 
 extern "C" {
+#if !defined(NK_STUB_ANDROID)
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return 0;
 }
+#endif
 nk_result NK_CALL nk_window_create(const nk_window_options *, nk_handle *) {
     return unsupported();
 }
@@ -75,6 +79,7 @@ nk_result NK_CALL nk_window_get_native(nk_handle, nk_native_window *) {
 nk_result NK_CALL nk_window_wrap_native(const nk_native_window *, nk_handle *) {
     return unsupported();
 }
+#if !defined(NK_STUB_ANDROID)
 nk_result NK_CALL nk_webview_create(nk_handle, const nk_webview_options *, nk_handle *) {
     return unsupported();
 }
@@ -99,6 +104,7 @@ nk_result NK_CALL nk_webview_eval(nk_handle, const char *, nk_request_id *) {
 nk_result NK_CALL nk_webview_navigation_decide(nk_request_id, uint32_t) {
     return unsupported();
 }
+#endif
 nk_result NK_CALL nk_dialog_open_file(nk_handle, const nk_file_dialog_options *, nk_request_id *) {
     return unsupported();
 }

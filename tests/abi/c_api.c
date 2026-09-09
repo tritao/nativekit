@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_mobile.h"
 #include "nativekit_notification.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
@@ -16,6 +17,12 @@ int main(void) {
     assert(nk_api_version() == NK_API_VERSION);
     assert(nk_init(&options) == NK_OK);
     (void)nk_get_capabilities();
+    nk_mobile_host_options mobile = {0};
+    mobile.struct_size = sizeof(mobile);
+    mobile.kind = NK_MOBILE_HOST_ANDROID_VIEW_GROUP;
+    nk_handle mobile_host = NK_INVALID_HANDLE;
+    nk_result mobile_result = nk_mobile_host_attach(&mobile, &mobile_host);
+    assert(mobile_result == NK_ERROR_INVALID_ARGUMENT || mobile_result == NK_ERROR_UNSUPPORTED);
     nk_result notification_result = nk_notification_show(NULL, NULL);
     assert(notification_result == NK_ERROR_INVALID_ARGUMENT ||
            notification_result == NK_ERROR_UNSUPPORTED);

@@ -19,7 +19,8 @@ enum {
     NK_CAP_SYSTEM_APPEARANCE = UINT64_C(1) << 6,
     NK_CAP_EXPORT_NATIVE_WINDOW = UINT64_C(1) << 7,
     NK_CAP_WRAP_NATIVE_WINDOW = UINT64_C(1) << 8,
-    NK_CAP_NOTIFICATION = UINT64_C(1) << 9
+    NK_CAP_NOTIFICATION = UINT64_C(1) << 9,
+    NK_CAP_MOBILE_HOST = UINT64_C(1) << 10
 };
 
 typedef uint32_t nk_native_window_kind;

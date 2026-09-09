@@ -3,3 +3,8 @@
 /.cache/
 CMakeUserPresets.json
 compile_commands.json
+android/local.properties
+android/.gradle/
+android/build/
+android/*/build/
+android/*/.cxx/

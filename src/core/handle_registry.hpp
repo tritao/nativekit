@@ -9,7 +9,7 @@
 
 namespace nk::core {
 
-enum class ResourceType : std::uint8_t { none, window, webview };
+enum class ResourceType : std::uint8_t { none, window, webview, mobile_host };
 
 struct Resource {
     virtual ~Resource() = default;

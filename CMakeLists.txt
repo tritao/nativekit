@@ -23,6 +23,10 @@ option(NK_BUILD_EXAMPLES "Build NativeKit examples" ON)
 option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
 
+if(ANDROID)
+    set(NK_BUILD_SHARED ON)
+endif()
+
 find_program(NK_CLANG_FORMAT NAMES clang-format clang-format-20 clang-format-19
     clang-format-18 clang-format-17)
 file(GLOB_RECURSE NK_FORMAT_SOURCES CONFIGURE_DEPENDS
@@ -69,6 +73,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/error.cpp
     src/core/event_queue.cpp
     src/core/handle_registry.cpp
+    src/core/mobile.cpp
 )
 add_library(NativeKit::nativekit ALIAS nativekit)
 
@@ -84,7 +89,7 @@ if(NOT NK_BUILD_SHARED)
     target_compile_definitions(nativekit PUBLIC NK_STATIC)
 endif()
 
-if(UNIX AND NOT APPLE)
+if(UNIX AND NOT APPLE AND NOT ANDROID)
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
         pkg_check_modules(GTK3 QUIET IMPORTED_TARGET gtk+-3.0)
@@ -92,7 +97,13 @@ if(UNIX AND NOT APPLE)
     endif()
 endif()
 
-if(WIN32)
+if(ANDROID)
+    target_sources(nativekit PRIVATE
+        src/android/nativekit_android.cpp
+        src/platform/nativekit_stub.cpp)
+    target_compile_definitions(nativekit PRIVATE NK_BACKEND_ANDROID=1 NK_STUB_ANDROID=1)
+    target_link_libraries(nativekit PRIVATE android log)
+elseif(WIN32)
     if(NK_ENABLE_WEBVIEW2)
         include(FetchContent)
         FetchContent_Declare(nativekit_webview2
@@ -148,7 +159,7 @@ set_target_properties(nativekit PROPERTIES
     SOVERSION 0
 )
 
-if(UNIX AND NOT APPLE)
+if(UNIX AND NOT APPLE AND NOT ANDROID)
     target_link_options(nativekit PRIVATE
         "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/cmake/nativekit.exports"
     )

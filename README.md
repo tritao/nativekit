@@ -56,6 +56,12 @@ NSWindow/NSView descriptors. It uses the macOS user-notification service with
 explicit permission failures. Its WKWebView child backend supports navigation,
 HTML content, JavaScript evaluation, page messages, and lifecycle events.
 
+The experimental Android backend attaches to a caller-owned `ViewGroup` rather
+than creating an Activity. It provides child WebViews, JSON page messages,
+JavaScript evaluation, navigation policy, and explicit lifecycle forwarding.
+The Gradle library and host sample live under `android/`; an Android SDK and NDK
+are required to build them.
+
 ## Build
 
 ```sh
