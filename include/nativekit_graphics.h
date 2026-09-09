@@ -32,8 +32,12 @@ typedef struct nk_surface_options {
     int32_t y;
     int32_t width;
     int32_t height;
-    uint64_t reserved[2];
+    nk_handle share_surface;
+    uint32_t reserved;
+    uint64_t reserved2[2];
 } nk_surface_options;
+
+typedef void(NK_CALL *nk_graphics_proc)(void);
 
 typedef struct nk_surface_resize_event {
     int32_t width;
@@ -45,7 +49,8 @@ typedef struct nk_surface_resize_event {
 /*
  * Creates a GTK-backed graphics surface inside a NativeKit window. Context
  * configuration is fixed at creation. The initial implementation supports
- * OpenGL and OpenGL ES through GtkGLArea.
+ * OpenGL and OpenGL ES through GtkGLArea. A share_surface must remain alive
+ * until every surface sharing it has been destroyed.
  */
 NK_API nk_result NK_CALL nk_surface_create(nk_handle window,
                                            const nk_surface_options *options,
@@ -71,6 +76,10 @@ NK_API nk_result NK_CALL nk_surface_present(nk_handle surface);
 NK_API nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle surface,
                                                          int32_t *out_width,
                                                          int32_t *out_height);
+
+/* Resolves a function for the current surface context. */
+NK_API nk_result NK_CALL nk_surface_get_proc_address(nk_handle surface, const char *name,
+                                                     nk_graphics_proc *out_proc);
 
 #ifdef __cplusplus
 }

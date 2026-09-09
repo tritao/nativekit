@@ -124,7 +124,9 @@ The GTK backend implements OpenGL and OpenGL ES surfaces with `GtkGLArea`.
 Applications call `nk_surface_make_current()`, render, and then call
 `nk_surface_present()`. GTK owns the final framebuffer composition, so
 presentation schedules a `GtkGLArea` render instead of directly swapping a
-caller-owned native surface.
+caller-owned native surface. Contexts can reuse another surface's GTK context;
+the shared source must outlive its dependents. Procedure lookup resolves both
+core and extension entry points for the current GL implementation.
 
 A WebView created with `NK_WEBVIEW_NAVIGATION_POLICY` pauses each navigation
 proposal exposed by the native backend and emits

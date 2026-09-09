@@ -12,6 +12,10 @@
 #include <string.h>
 #include <unistd.h>
 
+typedef void (*clear_color_proc)(float, float, float, float);
+typedef void (*clear_proc)(unsigned int);
+typedef void (*read_pixels_proc)(int, int, int, int, unsigned int, unsigned int, void *);
+
 static nk_event wait_for_event(nk_event_kind kind, nk_handle source) {
     for (int attempt = 0; attempt < 500; ++attempt) {
         nk_event event = {0};
@@ -90,6 +94,28 @@ int main(void) {
         assert(nk_surface_get_framebuffer_size(surface, &framebuffer_width,
                                                &framebuffer_height) == NK_OK);
         assert(framebuffer_width > 0 && framebuffer_height > 0);
+        nk_graphics_proc generic_proc = NULL;
+        clear_color_proc clear_color = NULL;
+        clear_proc clear = NULL;
+        read_pixels_proc read_pixels = NULL;
+        assert(nk_surface_get_proc_address(surface, "glClearColor", &generic_proc) == NK_OK);
+        memcpy(&clear_color, &generic_proc, sizeof(clear_color));
+        assert(nk_surface_get_proc_address(surface, "glClear", &generic_proc) == NK_OK);
+        memcpy(&clear, &generic_proc, sizeof(clear));
+        assert(nk_surface_get_proc_address(surface, "glReadPixels", &generic_proc) == NK_OK);
+        memcpy(&read_pixels, &generic_proc, sizeof(read_pixels));
+        clear_color(1.0f, 0.0f, 0.0f, 1.0f);
+        clear(0x00004000u); /* GL_COLOR_BUFFER_BIT */
+        unsigned char pixel[4] = {0, 0, 0, 0};
+        read_pixels(0, 0, 1, 1, 0x1908u, 0x1401u, pixel); /* GL_RGBA, GL_UNSIGNED_BYTE */
+        assert(pixel[0] > 200 && pixel[1] < 20 && pixel[2] < 20);
+
+        nk_surface_options shared_options = surface_options;
+        shared_options.share_surface = surface;
+        nk_handle shared_surface = NK_INVALID_HANDLE;
+        assert(nk_surface_create(window, &shared_options, &shared_surface) == NK_OK);
+        assert(nk_surface_destroy(surface) == NK_ERROR_INVALID_REQUEST);
+        assert(nk_surface_destroy(shared_surface) == NK_OK);
         assert(nk_surface_set_bounds(surface, 0, 0, 300, 200) == NK_OK);
         assert(nk_surface_present(surface) == NK_OK);
         assert(nk_surface_destroy(surface) == NK_OK);

@@ -27,6 +27,8 @@
 #endif
 #include <webkit2/webkit2.h>
 
+#include <dlfcn.h>
+
 #include <algorithm>
 #include <array>
 #include <climits>
@@ -72,6 +74,12 @@ struct GtkSurfaceResource final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle parent = NK_INVALID_HANDLE;
     uint64_t generation = 0;
+    nk_graphics_api api = NK_GRAPHICS_OPENGL;
+    uint32_t major_version = 0;
+    uint32_t minor_version = 0;
+    uint32_t flags = 0;
+    uint32_t share_dependents = 0;
+    std::shared_ptr<GtkSurfaceResource> shared_surface;
 
     ~GtkSurfaceResource() override {
         if (widget)
@@ -435,6 +443,37 @@ gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer d
 }
 
 gboolean on_surface_render(GtkGLArea *, GdkGLContext *, gpointer) { return TRUE; }
+
+GdkGLContext *on_surface_create_context(GtkGLArea *area, gpointer data) {
+    auto *resource = static_cast<GtkSurfaceResource *>(data);
+    if (resource->shared_surface) {
+        GdkGLContext *shared =
+            gtk_gl_area_get_context(GTK_GL_AREA(resource->shared_surface->widget));
+        return shared ? GDK_GL_CONTEXT(g_object_ref(shared)) : nullptr;
+    }
+    GError *error = nullptr;
+    GdkWindow *native = gtk_widget_get_window(GTK_WIDGET(area));
+    GdkGLContext *context = native ? gdk_window_create_gl_context(native, &error) : nullptr;
+    if (context) {
+        gdk_gl_context_set_use_es(context, resource->api == NK_GRAPHICS_OPENGL_ES);
+        if (resource->major_version)
+            gdk_gl_context_set_required_version(context, resource->major_version,
+                                                resource->minor_version);
+        gdk_gl_context_set_debug_enabled(
+            context, (resource->flags & NK_SURFACE_DEBUG_CONTEXT) != 0);
+        gdk_gl_context_set_forward_compatible(
+            context, (resource->flags & NK_SURFACE_FORWARD_COMPATIBLE) != 0);
+        if (!gdk_gl_context_realize(context, &error)) {
+            g_object_unref(context);
+            context = nullptr;
+        }
+    }
+    if (error) {
+        gtk_gl_area_set_error(area, error);
+        g_error_free(error);
+    }
+    return context;
+}
 
 void on_surface_resize(GtkGLArea *area, gint width, gint height, gpointer data) {
     nk::core::callback_boundary([&] {
@@ -1427,8 +1466,8 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     for (const auto child : children)
         nk_webview_destroy(child);
     const auto surfaces = resource->surfaces;
-    for (const auto child : surfaces)
-        nk_surface_destroy(child);
+    for (auto child = surfaces.rbegin(); child != surfaces.rend(); ++child)
+        nk_surface_destroy(*child);
     g_signal_handlers_disconnect_by_data(resource->window, resource.get());
     gtk_widget_destroy(resource->window);
     resource->window = nullptr;
@@ -1692,16 +1731,30 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
              options->api != NK_GRAPHICS_OPENGL_ES))
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid graphics surface options");
         *out_surface = NK_INVALID_HANDLE;
-        if (options->flags & (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE))
-            return fail(NK_ERROR_UNSUPPORTED,
-                        "GTK cannot guarantee the requested context flags");
         auto parent = window(parent_handle);
         if (!parent)
             return invalid_handle("parent window");
+        auto shared = options->share_surface ? surface(options->share_surface) : nullptr;
+        if (options->share_surface && !shared)
+            return invalid_handle("shared graphics surface");
+        if (shared &&
+            (shared->api != options->api || shared->major_version != options->major_version ||
+             shared->minor_version != options->minor_version ||
+             shared->flags !=
+                 (options->flags &
+                  (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE))))
+            return fail(NK_ERROR_INVALID_ARGUMENT,
+                        "shared surfaces must use identical context options");
         parent->surfaces.reserve(parent->surfaces.size() + 1);
         auto resource = std::make_shared<GtkSurfaceResource>();
         resource->parent = parent_handle;
         resource->generation = nk::core::runtime_generation();
+        resource->api = options->api;
+        resource->major_version = options->major_version;
+        resource->minor_version = options->minor_version;
+        resource->flags =
+            options->flags & (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE);
+        resource->shared_surface = std::move(shared);
         resource->widget = gtk_gl_area_new();
         g_object_add_weak_pointer(G_OBJECT(resource->widget),
                                   reinterpret_cast<gpointer *>(&resource->widget));
@@ -1722,7 +1775,11 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             gtk_widget_destroy(resource->widget);
             return fail(NK_ERROR_OUT_OF_MEMORY, "graphics surface handle registry is full");
         }
+        if (resource->shared_surface)
+            ++resource->shared_surface->share_dependents;
         parent->surfaces.push_back(resource->handle);
+        g_signal_connect(resource->widget, "create-context",
+                         G_CALLBACK(on_surface_create_context), resource.get());
         g_signal_connect(resource->widget, "render", G_CALLBACK(on_surface_render), nullptr);
         g_signal_connect(resource->widget, "resize", G_CALLBACK(on_surface_resize),
                          resource.get());
@@ -1733,6 +1790,8 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
         if (const GError *error = gtk_gl_area_get_error(area)) {
             parent->surfaces.pop_back();
             nk::core::handles().erase(resource->handle, nk::core::ResourceType::surface);
+            if (resource->shared_surface)
+                --resource->shared_surface->share_dependents;
             return fail(NK_ERROR_UNSUPPORTED, error->message);
         }
         nk::core::QueuedEvent ready;
@@ -1750,6 +1809,9 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
     auto resource = surface(handle);
     if (!resource)
         return invalid_handle("graphics surface");
+    if (resource->share_dependents)
+        return fail(NK_ERROR_INVALID_REQUEST,
+                    "graphics surface is still shared by another surface");
     g_signal_handlers_disconnect_by_data(resource->widget, resource.get());
     gtk_widget_destroy(resource->widget);
     resource->widget = nullptr;
@@ -1757,6 +1819,8 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
         auto &surfaces = parent->surfaces;
         surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), handle), surfaces.end());
     }
+    if (resource->shared_surface)
+        --resource->shared_surface->share_dependents;
     nk::core::handles().erase(handle, nk::core::ResourceType::surface);
     return NK_OK;
 }
@@ -1824,6 +1888,48 @@ nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out
     const int scale = gtk_widget_get_scale_factor(resource->widget);
     *out_width = gtk_widget_get_allocated_width(resource->widget) * scale;
     *out_height = gtk_widget_get_allocated_height(resource->widget) * scale;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_get_proc_address(nk_handle handle, const char *name,
+                                              nk_graphics_proc *out_proc) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!name || !*name || !out_proc)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid graphics procedure query");
+    *out_proc = nullptr;
+    if (const auto result = nk_surface_make_current(handle); result != NK_OK)
+        return result;
+
+    static void *gl_library = dlopen("libGL.so.1", RTLD_LAZY | RTLD_LOCAL);
+    static void *gles_library = dlopen("libGLESv2.so.2", RTLD_LAZY | RTLD_LOCAL);
+    void *address = dlsym(RTLD_DEFAULT, name);
+    if (!address && gl_library)
+        address = dlsym(gl_library, name);
+    if (!address && gles_library)
+        address = dlsym(gles_library, name);
+    if (!address && gl_library) {
+        using GlxGetProcAddress = void *(*)(const unsigned char *);
+        GlxGetProcAddress resolver = nullptr;
+        void *symbol = dlsym(gl_library, "glXGetProcAddressARB");
+        static_assert(sizeof(resolver) == sizeof(symbol));
+        std::memcpy(&resolver, &symbol, sizeof(resolver));
+        if (resolver)
+            address = resolver(reinterpret_cast<const unsigned char *>(name));
+    }
+    if (!address && gles_library) {
+        using EglGetProcAddress = void *(*)(const char *);
+        EglGetProcAddress resolver = nullptr;
+        void *symbol = dlsym(gles_library, "eglGetProcAddress");
+        static_assert(sizeof(resolver) == sizeof(symbol));
+        std::memcpy(&resolver, &symbol, sizeof(resolver));
+        if (resolver)
+            address = resolver(name);
+    }
+    if (!address)
+        return fail(NK_ERROR_UNSUPPORTED, "graphics procedure is unavailable");
+    static_assert(sizeof(*out_proc) == sizeof(address));
+    std::memcpy(out_proc, &address, sizeof(address));
     return NK_OK;
 }
 
