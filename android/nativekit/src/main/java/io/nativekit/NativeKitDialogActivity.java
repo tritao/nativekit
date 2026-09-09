@@ -42,7 +42,7 @@ public final class NativeKitDialogActivity extends Activity {
         try {
             startActivityForResult(picker, PICK);
         } catch (RuntimeException error) {
-            complete(false, null, null);
+            complete(false, null, null, null, null);
         }
     }
 
@@ -97,6 +97,8 @@ public final class NativeKitDialogActivity extends Activity {
         if (code != PICK)
             return;
         ArrayList<String> uris = new ArrayList<>();
+        ArrayList<String> mimeTypes = new ArrayList<>();
+        ArrayList<String> displayNames = new ArrayList<>();
         ArrayList<Integer> resourceFlags = new ArrayList<>();
         if (resultCode == RESULT_OK && data != null) {
             ClipData clips = data.getClipData();
@@ -105,24 +107,31 @@ public final class NativeKitDialogActivity extends Activity {
                     Uri uri = clips.getItemAt(index).getUri();
                     resourceFlags.add(resourceFlags(data, uri));
                     uris.add(uri.toString());
+                    mimeTypes.add(NativeKitBridge.resourceMimeType(this, uri, data.getType()));
+                    displayNames.add(NativeKitBridge.resourceDisplayName(this, uri));
                 }
             } else {
                 Uri uri = data.getData();
                 if (uri != null) {
                     resourceFlags.add(resourceFlags(data, uri));
                     uris.add(uri.toString());
+                    mimeTypes.add(NativeKitBridge.resourceMimeType(this, uri, data.getType()));
+                    displayNames.add(NativeKitBridge.resourceDisplayName(this, uri));
                 }
             }
         }
         int[] flags = new int[resourceFlags.size()];
         for (int index = 0; index < resourceFlags.size(); ++index)
             flags[index] = resourceFlags.get(index);
-        complete(resultCode == RESULT_OK && !uris.isEmpty(), uris.toArray(new String[0]), flags);
+        complete(resultCode == RESULT_OK && !uris.isEmpty(), uris.toArray(new String[0]),
+                 mimeTypes.toArray(new String[0]), displayNames.toArray(new String[0]), flags);
     }
 
-    private void complete(boolean accepted, @Nullable String[] uris, @Nullable int[] flags) {
+    private void complete(boolean accepted, @Nullable String[] uris, @Nullable String[] mimeTypes,
+                          @Nullable String[] displayNames, @Nullable int[] flags) {
         active.remove(request);
-        NativeKitBridge.nativeOnFileDialog(request, kind, accepted, uris, flags);
+        NativeKitBridge.nativeOnFileDialog(request, kind, accepted, uris, mimeTypes, displayNames,
+                                           flags);
         finish();
     }
 

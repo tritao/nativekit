@@ -361,6 +361,9 @@ asynchronous and complete with `NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE`.
 Android forwards `content:` grants through intents and never exports `file:` URIs.
 Callers must keep the URI and respect its reported readable, writable, and
 persisted flags rather than attempting to derive a local path.
+Resource-producing Android APIs ask `ContentResolver` for the effective MIME
+type and `OpenableColumns.DISPLAY_NAME`. Providers may omit either value; the
+final URI path segment is used as a display-name fallback.
 
 URI contents are accessed through opaque resource-stream handles.
 `nk_resource_open()` runs on the UI thread and accepts explicit read, write,
@@ -372,6 +375,8 @@ seekable and whether its size is known. Unknown sizes are reported as
 
 Android opens both `content:` and local `file:` resources through
 `ContentResolver`, retaining the detached descriptor until the stream closes.
+When the provider exposes a regular descriptor, `nk_resource_stream_info_get()`
+also reports its current byte size with `NK_RESOURCE_STREAM_SIZE_KNOWN`.
 Desktop backends open RFC 8089 local `file:` URIs directly and reject other
 schemes. `NK_CAP_RESOURCE_IO` reports this support independently from system
 sharing support.

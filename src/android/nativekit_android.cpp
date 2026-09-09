@@ -927,15 +927,19 @@ nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources,
         return NK_ERROR_UNKNOWN;
     auto method = env->GetStaticMethodID(
         bridge, "setClipboardResources",
-        "(Landroid/view/ViewGroup;[Ljava/lang/String;[Ljava/lang/String;)Z");
+        "(Landroid/view/ViewGroup;[Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;)Z");
     auto uris = resource_strings(env, resources, resource_count, &nk_resource::uri);
+    auto mimes = resource_strings(env, resources, resource_count, &nk_resource::mime_type);
     auto names = resource_strings(env, resources, resource_count, &nk_resource::display_name);
     const auto accepted = method && env->CallStaticBooleanMethod(
-                                        bridge, method, host_resource->view_group, uris, names);
+                                        bridge, method, host_resource->view_group, uris, mimes,
+                                        names);
     if (names)
         env->DeleteLocalRef(names);
     if (uris)
         env->DeleteLocalRef(uris);
+    if (mimes)
+        env->DeleteLocalRef(mimes);
     env->DeleteLocalRef(bridge);
     if (!method || clear_java_exception(env, "Android resource clipboard write failed") ||
         !accepted)
@@ -964,14 +968,23 @@ nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
     if (!method || clear_java_exception(env, "Android resource clipboard read failed"))
         return NK_ERROR_UNKNOWN;
     std::vector<ResourceValue> resources;
-    const auto count = values ? env->GetArrayLength(values) : 0;
+    const auto value_count = values ? env->GetArrayLength(values) : 0;
+    const auto count = value_count / 3;
     resources.reserve(static_cast<std::size_t>(count));
     for (jsize index = 0; index < count; ++index) {
-        auto value = static_cast<jstring>(env->GetObjectArrayElement(values, index));
+        auto value = static_cast<jstring>(env->GetObjectArrayElement(values, index * 3));
+        auto mime = static_cast<jstring>(env->GetObjectArrayElement(values, index * 3 + 1));
+        auto name = static_cast<jstring>(env->GetObjectArrayElement(values, index * 3 + 2));
         ResourceValue resource;
         resource.uri = to_utf8(env, value);
+        resource.mime_type = to_utf8(env, mime);
+        resource.display_name = to_utf8(env, name);
         resource.flags = NK_RESOURCE_READABLE;
         resources.push_back(std::move(resource));
+        if (name)
+            env->DeleteLocalRef(name);
+        if (mime)
+            env->DeleteLocalRef(mime);
         if (value)
             env->DeleteLocalRef(value);
     }
@@ -1796,7 +1809,7 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnRenderProcessGo
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
     JNIEnv *env, jclass, jlong request, jint kind, jboolean accepted, jobjectArray values,
-    jintArray resource_flags) {
+    jobjectArray mime_types, jobjectArray display_names, jintArray resource_flags) {
     nk::core::callback_boundary([&] {
         const auto request_id = static_cast<nk_request_id>(request);
         const auto found = file_dialogs.find(request_id);
@@ -1823,12 +1836,28 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
             jint *flags = resource_flags ? env->GetIntArrayElements(resource_flags, nullptr)
                                          : nullptr;
             const auto flag_count = resource_flags ? env->GetArrayLength(resource_flags) : 0;
+            const auto mime_count = mime_types ? env->GetArrayLength(mime_types) : 0;
+            const auto name_count = display_names ? env->GetArrayLength(display_names) : 0;
             for (std::size_t index = 0; index < uris.size(); ++index) {
                 ResourceValue resource;
                 resource.uri = std::move(uris[index]);
+                auto mime = index < static_cast<std::size_t>(mime_count)
+                                ? static_cast<jstring>(env->GetObjectArrayElement(
+                                      mime_types, static_cast<jsize>(index)))
+                                : nullptr;
+                auto name = index < static_cast<std::size_t>(name_count)
+                                ? static_cast<jstring>(env->GetObjectArrayElement(
+                                      display_names, static_cast<jsize>(index)))
+                                : nullptr;
+                resource.mime_type = to_utf8(env, mime);
+                resource.display_name = to_utf8(env, name);
                 if (flags && index < static_cast<std::size_t>(flag_count))
                     resource.flags = static_cast<uint32_t>(flags[index]);
                 resources.push_back(std::move(resource));
+                if (name)
+                    env->DeleteLocalRef(name);
+                if (mime)
+                    env->DeleteLocalRef(mime);
             }
             if (flags)
                 env->ReleaseIntArrayElements(resource_flags, flags, JNI_ABORT);
@@ -1842,13 +1871,15 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnIncomingIntent(
     JNIEnv *env, jclass, jlong host_handle, jint kind, jstring text, jstring subject,
-    jobjectArray uris, jobjectArray mime_types, jintArray resource_flags) {
+    jobjectArray uris, jobjectArray mime_types, jobjectArray display_names,
+    jintArray resource_flags) {
     nk::core::callback_boundary([&] {
         const auto source = static_cast<nk_handle>(host_handle);
         if (!host(source) || (kind != 1 && kind != 2))
             return;
         const auto count = uris ? env->GetArrayLength(uris) : 0;
         const auto mime_count = mime_types ? env->GetArrayLength(mime_types) : 0;
+        const auto name_count = display_names ? env->GetArrayLength(display_names) : 0;
         const auto flag_count = resource_flags ? env->GetArrayLength(resource_flags) : 0;
         jint *flags = resource_flags ? env->GetIntArrayElements(resource_flags, nullptr) : nullptr;
         std::vector<ResourceValue> resources;
@@ -1858,15 +1889,21 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnIncomingIntent(
             auto mime = index < mime_count
                             ? static_cast<jstring>(env->GetObjectArrayElement(mime_types, index))
                             : nullptr;
+            auto name = index < name_count
+                            ? static_cast<jstring>(env->GetObjectArrayElement(display_names, index))
+                            : nullptr;
             ResourceValue resource;
             resource.uri = to_utf8(env, uri);
             resource.mime_type = to_utf8(env, mime);
+            resource.display_name = to_utf8(env, name);
             if (flags && index < flag_count)
                 resource.flags = static_cast<uint32_t>(flags[index]);
             if (!resource.uri.empty())
                 resources.push_back(std::move(resource));
             if (mime)
                 env->DeleteLocalRef(mime);
+            if (name)
+                env->DeleteLocalRef(name);
             if (uri)
                 env->DeleteLocalRef(uri);
         }

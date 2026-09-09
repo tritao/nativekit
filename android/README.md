@@ -36,7 +36,9 @@ After attaching, pass the Activity's initial intent to
 `onNewIntent()`. NativeKit queues `ACTION_VIEW` as `NK_EVENT_RESOURCE_OPENED`
 and `ACTION_SEND`/`ACTION_SEND_MULTIPLE` as `NK_EVENT_SHARE_RECEIVED`, preserving
 `content://` URIs and their read/write grants. Shares may include resources,
-text, and a subject.
+text, and a subject. Resource MIME types and display names are resolved through
+`ContentResolver`; providers that omit a display name fall back to the final URI
+path segment.
 Android currently implements URL opening and text clipboard operations; file
 clipboard operations remain unsupported. Open, save, and directory dialogs use
 the Storage Access Framework and return `content://` URIs.

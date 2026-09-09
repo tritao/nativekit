@@ -49,10 +49,14 @@ Java_io_nativekit_consumer_MainActivity_nativeResourceClipboardProbe(JNIEnv *, j
     output.struct_size = sizeof(output);
     const auto decoded = nk_resource_event_item(&event, 0, &output);
     const auto input_length = std::strlen(input.uri);
-    const bool matches = decoded == NK_OK && output.uri_length == input_length &&
-                         std::memcmp(output.uri, input.uri, input_length) == 0;
+    const bool uri_matches = decoded == NK_OK && output.uri_length == input_length &&
+                             std::memcmp(output.uri, input.uri, input_length) == 0;
+    const bool mime_matches = output.mime_type_length == 10 &&
+                              std::memcmp(output.mime_type, "text/plain", 10) == 0;
+    const bool name_matches = output.display_name_length == 4 &&
+                              std::memcmp(output.display_name, "test", 4) == 0;
     nk_event_release(&event);
-    return matches ? 0 : decoded != NK_OK ? 5 : 6;
+    return decoded != NK_OK ? 5 : !uri_matches ? 6 : !mime_matches ? 7 : !name_matches ? 8 : 0;
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -134,8 +138,10 @@ Java_io_nativekit_consumer_MainActivity_nativeIncomingShareProbe(JNIEnv *, jclas
         nk_resource_view resource{};
         resource.struct_size = sizeof(resource);
         if (nk_resource_event_item(&event, index, &resource) != NK_OK ||
-            !(resource.flags & NK_RESOURCE_READABLE) || resource.mime_type_length != 10 ||
-            std::memcmp(resource.mime_type, "text/plain", 10) != 0) {
+            !(resource.flags & NK_RESOURCE_READABLE) || resource.mime_type_length != 24 ||
+            std::memcmp(resource.mime_type, "application/octet-stream", 24) != 0 ||
+            resource.display_name_length != 3 ||
+            std::memcmp(resource.display_name, index == 0 ? "one" : "two", 3) != 0) {
             nk_event_release(&event);
             return 3;
         }
@@ -158,7 +164,11 @@ Java_io_nativekit_consumer_MainActivity_nativeIncomingViewProbe(JNIEnv *, jclass
     const auto decoded = nk_resource_event_item(&event, 0, &resource);
     const bool matches = decoded == NK_OK && resource.uri_length == sizeof(expected) - 1 &&
                          std::memcmp(resource.uri, expected, sizeof(expected) - 1) == 0 &&
-                         (resource.flags & NK_RESOURCE_READABLE);
+                         (resource.flags & NK_RESOURCE_READABLE) &&
+                         resource.mime_type_length == 24 &&
+                         std::memcmp(resource.mime_type, "application/octet-stream", 24) == 0 &&
+                         resource.display_name_length == 6 &&
+                         std::memcmp(resource.display_name, "viewed", 6) == 0;
     nk_event_release(&event);
     return matches ? 0 : 2;
 }

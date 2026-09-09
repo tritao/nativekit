@@ -6,11 +6,13 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.ParcelFileDescriptor;
+import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
@@ -205,6 +207,7 @@ final class NativeKitBridge {
             return false;
         String[] values = new String[uris.size()];
         String[] mimeTypes = new String[uris.size()];
+        String[] displayNames = new String[uris.size()];
         int[] resourceFlags = new int[uris.size()];
         int grants = intent.getFlags();
         int flags = (grants & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0 ? 1 : 0;
@@ -212,20 +215,51 @@ final class NativeKitBridge {
             flags |= 2;
         for (int index = 0; index < uris.size(); ++index) {
             values[index] = uris.get(index).toString();
-            mimeTypes[index] = intent.getType();
+            mimeTypes[index] = resourceMimeType(parent.getContext(), uris.get(index),
+                                                intent.getType());
+            displayNames[index] = resourceDisplayName(parent.getContext(), uris.get(index));
             resourceFlags[index] = flags;
         }
         CharSequence text = share ? intent.getCharSequenceExtra(Intent.EXTRA_TEXT) : null;
         CharSequence subject = share ? intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT) : null;
         nativeOnIncomingIntent(host, view ? 1 : 2, text == null ? null : text.toString(),
                                subject == null ? null : subject.toString(), values, mimeTypes,
-                               resourceFlags);
+                               displayNames, resourceFlags);
         return true;
     }
 
     private static void addUniqueUri(ArrayList<Uri> uris, @Nullable Uri uri) {
         if (uri != null && !uris.contains(uri))
             uris.add(uri);
+    }
+
+    @Nullable
+    static String resourceMimeType(Context context, Uri uri, @Nullable String fallback) {
+        try {
+            String value = context.getContentResolver().getType(uri);
+            return value == null || value.isEmpty() ? fallback : value;
+        } catch (RuntimeException ignored) {
+            return fallback;
+        }
+    }
+
+    @Nullable
+    static String resourceDisplayName(Context context, Uri uri) {
+        try (Cursor cursor = context.getContentResolver().query(
+                 uri, new String[] {OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (column >= 0 && !cursor.isNull(column)) {
+                    String value = cursor.getString(column);
+                    if (value != null && !value.isEmpty())
+                        return value;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // Providers are allowed to omit metadata or reject metadata queries.
+        }
+        String fallback = uri.getLastPathSegment();
+        return fallback == null || fallback.isEmpty() ? null : fallback;
     }
 
     static int openUrl(ViewGroup parent, String url) {
@@ -340,7 +374,7 @@ final class NativeKitBridge {
         return true;
     }
 
-    static boolean setClipboardResources(ViewGroup parent, String[] uriValues,
+    static boolean setClipboardResources(ViewGroup parent, String[] uriValues, String[] mimeTypes,
                                          String[] displayNames) {
         ClipboardManager clipboard = (ClipboardManager)parent.getContext().getSystemService(
             Context.CLIPBOARD_SERVICE);
@@ -349,9 +383,14 @@ final class NativeKitBridge {
         Uri first = Uri.parse(uriValues[0]);
         if (first.getScheme() == null || "file".equalsIgnoreCase(first.getScheme()))
             return false;
+        ArrayList<String> clipTypes = new ArrayList<>();
+        clipTypes.add("text/uri-list");
+        for (String mimeType : mimeTypes) {
+            if (mimeType != null && !mimeType.isEmpty() && !clipTypes.contains(mimeType))
+                clipTypes.add(mimeType);
+        }
         ClipData clip = new ClipData(displayNames.length == 0 ? "NativeKit" : displayNames[0],
-                                     new String[] {"text/uri-list"},
-                                     new ClipData.Item(first));
+                                     clipTypes.toArray(new String[0]), new ClipData.Item(first));
         for (int index = 1; index < uriValues.length; ++index) {
             Uri uri = Uri.parse(uriValues[index]);
             if (uri.getScheme() == null || "file".equalsIgnoreCase(uri.getScheme()))
@@ -371,13 +410,24 @@ final class NativeKitBridge {
         ClipData clip = clipboard.getPrimaryClip();
         if (clip == null)
             return null;
-        ArrayList<String> uris = new ArrayList<>();
+        String fallbackMimeType = null;
+        for (int index = 0; index < clip.getDescription().getMimeTypeCount(); ++index) {
+            String candidate = clip.getDescription().getMimeType(index);
+            if (!"text/uri-list".equals(candidate)) {
+                fallbackMimeType = candidate;
+                break;
+            }
+        }
+        ArrayList<String> resources = new ArrayList<>();
         for (int index = 0; index < clip.getItemCount(); ++index) {
             Uri uri = clip.getItemAt(index).getUri();
-            if (uri != null)
-                uris.add(uri.toString());
+            if (uri != null) {
+                resources.add(uri.toString());
+                resources.add(resourceMimeType(parent.getContext(), uri, fallbackMimeType));
+                resources.add(resourceDisplayName(parent.getContext(), uri));
+            }
         }
-        return uris.toArray(new String[0]);
+        return resources.toArray(new String[0]);
     }
 
     @Nullable
@@ -574,10 +624,13 @@ final class NativeKitBridge {
                                                 int insetLeft, int insetTop, int insetRight,
                                                 int insetBottom, int keyboardBottom);
     static native void nativeOnFileDialog(long request, int kind, boolean accepted,
-                                          @Nullable String[] uris, @Nullable int[] resourceFlags);
+                                          @Nullable String[] uris, @Nullable String[] mimeTypes,
+                                          @Nullable String[] displayNames,
+                                          @Nullable int[] resourceFlags);
     static native void nativeOnIncomingIntent(long host, int kind, @Nullable String text,
                                               @Nullable String subject, String[] uris,
-                                              String[] mimeTypes, int[] resourceFlags);
+                                              String[] mimeTypes, String[] displayNames,
+                                              int[] resourceFlags);
     static native void nativeOnNotificationDelivered(long request);
     static native void nativeOnNotificationFailed(long request, String message);
     static native void nativeOnNotificationActivated(long request);
