@@ -70,10 +70,27 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Run the minimal browser example with:
+Start with the embedded-page example. It demonstrates the complete lifecycle,
+responsive WebView bounds, and a JSON message from JavaScript to C:
+
+```sh
+./build/examples/nativekit_hello
+```
+
+The browser example adds capability detection, navigation policy, page titles,
+failure reporting, and an optional starting URL:
 
 ```sh
 ./build/examples/nativekit_browser https://example.com
+```
+
+For an interactive tour of the desktop API, run NativeKit Lab. Its HTML control
+panel exercises native dialogs, clipboard and drops, notifications, system
+queries, window ownership and state, shell integration, JavaScript evaluation,
+and a second browser window while showing asynchronous results in a live log:
+
+```sh
+./build/examples/nativekit_showcase
 ```
 
 Source formatting is defined by `.clang-format`. When ClangFormat is installed,
