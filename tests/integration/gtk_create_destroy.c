@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_graphics.h"
 #include "nativekit_input.h"
 #include "nativekit_notification.h"
 #include "nativekit_system.h"
@@ -34,7 +35,7 @@ int main(void) {
     const nk_capabilities expected = NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG |
                                      NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
                                      NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
-                                     NK_CAP_INPUT;
+                                     NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
@@ -73,6 +74,29 @@ int main(void) {
     double pointer_y = -1.0;
     assert(nk_pointer_get_position(window, &pointer_x, &pointer_y) == NK_OK);
     assert(pointer_x == 0.0 && pointer_y == 0.0);
+    nk_surface_options surface_options = {0};
+    surface_options.struct_size = sizeof(surface_options);
+    surface_options.flags = NK_SURFACE_HIDDEN | NK_SURFACE_DEPTH;
+    surface_options.api = NK_GRAPHICS_OPENGL;
+    surface_options.width = 320;
+    surface_options.height = 240;
+    nk_handle surface = NK_INVALID_HANDLE;
+    const nk_result surface_result = nk_surface_create(window, &surface_options, &surface);
+    if (surface_result == NK_OK) {
+        assert(surface != NK_INVALID_HANDLE);
+        assert(nk_surface_make_current(surface) == NK_OK);
+        int32_t framebuffer_width = 0;
+        int32_t framebuffer_height = 0;
+        assert(nk_surface_get_framebuffer_size(surface, &framebuffer_width,
+                                               &framebuffer_height) == NK_OK);
+        assert(framebuffer_width > 0 && framebuffer_height > 0);
+        assert(nk_surface_set_bounds(surface, 0, 0, 300, 200) == NK_OK);
+        assert(nk_surface_present(surface) == NK_OK);
+        assert(nk_surface_destroy(surface) == NK_OK);
+        assert(nk_surface_destroy(surface) == NK_ERROR_INVALID_HANDLE);
+    } else {
+        assert(surface_result == NK_ERROR_UNSUPPORTED);
+    }
     nk_window_size_limits limits = {0};
     limits.struct_size = sizeof(limits);
     limits.min_width = 320;

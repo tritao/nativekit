@@ -23,7 +23,8 @@ EventQueue::EventQueue(std::size_t capacity) : capacity_(capacity) {}
 
 nk_result EventQueue::push(QueuedEvent event) {
     std::lock_guard lock(mutex_);
-    if ((event.kind == NK_EVENT_WINDOW_RESIZE || event.kind == NK_EVENT_POINTER_MOVE) &&
+    if ((event.kind == NK_EVENT_WINDOW_RESIZE || event.kind == NK_EVENT_POINTER_MOVE ||
+         event.kind == NK_EVENT_SURFACE_RESIZE) &&
         !queue_.empty()) {
         auto &tail = queue_.back();
         if (tail.kind == event.kind && tail.source == event.source) {

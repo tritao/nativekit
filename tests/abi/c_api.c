@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_graphics.h"
 #include "nativekit_input.h"
 #include "nativekit_mobile.h"
 #include "nativekit_notification.h"
@@ -21,6 +22,15 @@ int main(void) {
     nk_input_action input_action = NK_INPUT_RELEASE;
     nk_result input_result = nk_key_get_state(NK_INVALID_HANDLE, NK_KEY_A, &input_action);
     assert(input_result == NK_ERROR_INVALID_HANDLE || input_result == NK_ERROR_UNSUPPORTED);
+    nk_surface_options surface_options = {0};
+    surface_options.struct_size = sizeof(surface_options);
+    surface_options.api = NK_GRAPHICS_OPENGL;
+    surface_options.width = 1;
+    surface_options.height = 1;
+    nk_handle surface = NK_INVALID_HANDLE;
+    nk_result surface_result =
+        nk_surface_create(NK_INVALID_HANDLE, &surface_options, &surface);
+    assert(surface_result == NK_ERROR_INVALID_HANDLE || surface_result == NK_ERROR_UNSUPPORTED);
     nk_mobile_host_options mobile = {0};
     mobile.struct_size = sizeof(mobile);
     mobile.kind = NK_MOBILE_HOST_ANDROID_VIEW_GROUP;

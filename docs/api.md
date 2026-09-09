@@ -97,6 +97,8 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_POINTER_BUTTON` | window | none | `nk_pointer_button_event` |
 | `NK_EVENT_POINTER_SCROLL` | window | none | `nk_pointer_scroll_event` |
 | `NK_EVENT_POINTER_ENTER` | window | none | empty; `flags` is one on enter and zero on leave |
+| `NK_EVENT_SURFACE_READY` | graphics surface | none | empty |
+| `NK_EVENT_SURFACE_RESIZE` | graphics surface | none | `nk_surface_resize_event` |
 
 A close event is a request: the window remains alive until the application calls
 `nk_window_destroy()`.
@@ -110,6 +112,15 @@ transitions are never coalesced.
 The GTK backend routes key events through a per-window input-method context, so
 dead-key composition, active keyboard layouts, and IME committed text are
 reported through `NK_EVENT_TEXT_INPUT`.
+
+## Graphics surfaces
+
+Graphics surfaces are separate resources attached to NativeKit-owned windows.
+The GTK backend implements OpenGL and OpenGL ES surfaces with `GtkGLArea`.
+Applications call `nk_surface_make_current()`, render, and then call
+`nk_surface_present()`. GTK owns the final framebuffer composition, so
+presentation schedules a `GtkGLArea` render instead of directly swapping a
+caller-owned native surface.
 
 A WebView created with `NK_WEBVIEW_NAVIGATION_POLICY` pauses each navigation
 proposal exposed by the native backend and emits

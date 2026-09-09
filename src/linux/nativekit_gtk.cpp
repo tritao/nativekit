@@ -6,6 +6,7 @@
 
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_graphics.h"
 #include "nativekit_input.h"
 #include "nativekit_notification.h"
 #include "nativekit_system.h"
@@ -49,6 +50,7 @@ struct GtkWindowResource final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle owner = NK_INVALID_HANDLE;
     std::vector<nk_handle> children;
+    std::vector<nk_handle> surfaces;
     std::vector<nk_handle> owned_windows;
     bool drops_enabled = false;
     uint64_t generation = 0;
@@ -62,6 +64,18 @@ struct GtkWindowResource final : nk::core::Resource {
             gtk_widget_destroy(window);
         if (im_context)
             g_object_unref(im_context);
+    }
+};
+
+struct GtkSurfaceResource final : nk::core::Resource {
+    GtkWidget *widget = nullptr;
+    nk_handle handle = NK_INVALID_HANDLE;
+    nk_handle parent = NK_INVALID_HANDLE;
+    uint64_t generation = 0;
+
+    ~GtkSurfaceResource() override {
+        if (widget)
+            gtk_widget_destroy(widget);
     }
 };
 
@@ -420,6 +434,23 @@ gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer d
     return FALSE;
 }
 
+gboolean on_surface_render(GtkGLArea *, GdkGLContext *, gpointer) { return TRUE; }
+
+void on_surface_resize(GtkGLArea *area, gint width, gint height, gpointer data) {
+    nk::core::callback_boundary([&] {
+        auto *resource = static_cast<GtkSurfaceResource *>(data);
+        if (!nk::core::is_runtime_generation(resource->generation))
+            return;
+        const int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
+        const nk_surface_resize_event payload{width, height, width * scale, height * scale};
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_SURFACE_RESIZE;
+        event.source = resource->handle;
+        event.data = bytes_of(payload);
+        nk::core::push_event(std::move(event));
+    });
+}
+
 gboolean on_window_delete(GtkWidget *, GdkEvent *, gpointer data) {
     const auto *resource = static_cast<GtkWindowResource *>(data);
     if (!nk::core::is_runtime_generation(resource->generation))
@@ -730,6 +761,11 @@ std::shared_ptr<GtkWindowResource> window(nk_handle handle) {
 std::shared_ptr<GtkWebViewResource> webview(nk_handle handle) {
     return std::dynamic_pointer_cast<GtkWebViewResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::webview));
+}
+
+std::shared_ptr<GtkSurfaceResource> surface(nk_handle handle) {
+    return std::dynamic_pointer_cast<GtkSurfaceResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::surface));
 }
 
 std::vector<std::byte> dialog_paths_payload(const std::vector<std::string> &paths, bool accepted) {
@@ -1287,7 +1323,8 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-           NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_INPUT;
+           NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_INPUT |
+           NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -1389,6 +1426,9 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     const auto children = resource->children;
     for (const auto child : children)
         nk_webview_destroy(child);
+    const auto surfaces = resource->surfaces;
+    for (const auto child : surfaces)
+        nk_surface_destroy(child);
     g_signal_handlers_disconnect_by_data(resource->window, resource.get());
     gtk_widget_destroy(resource->window);
     resource->window = nullptr;
@@ -1638,6 +1678,153 @@ nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native, nk_handl
     *out_window = NK_INVALID_HANDLE;
     return fail(NK_ERROR_UNSUPPORTED,
                 "wrapping caller-owned windows is not safe in the GTK backend yet");
+}
+
+nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_options *options,
+                                    nk_handle *out_surface) {
+    return nk::core::result_boundary("unexpected error while creating graphics surface",
+                                     [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!options || options->struct_size < sizeof(*options) || !out_surface ||
+            options->width <= 0 || options->height <= 0 ||
+            (options->api != NK_GRAPHICS_OPENGL &&
+             options->api != NK_GRAPHICS_OPENGL_ES))
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid graphics surface options");
+        *out_surface = NK_INVALID_HANDLE;
+        if (options->flags & (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE))
+            return fail(NK_ERROR_UNSUPPORTED,
+                        "GTK cannot guarantee the requested context flags");
+        auto parent = window(parent_handle);
+        if (!parent)
+            return invalid_handle("parent window");
+        parent->surfaces.reserve(parent->surfaces.size() + 1);
+        auto resource = std::make_shared<GtkSurfaceResource>();
+        resource->parent = parent_handle;
+        resource->generation = nk::core::runtime_generation();
+        resource->widget = gtk_gl_area_new();
+        g_object_add_weak_pointer(G_OBJECT(resource->widget),
+                                  reinterpret_cast<gpointer *>(&resource->widget));
+        auto *area = GTK_GL_AREA(resource->widget);
+        gtk_gl_area_set_auto_render(area, FALSE);
+        gtk_gl_area_set_use_es(area, options->api == NK_GRAPHICS_OPENGL_ES);
+        if (options->major_version)
+            gtk_gl_area_set_required_version(area, options->major_version,
+                                             options->minor_version);
+        gtk_gl_area_set_has_alpha(area, (options->flags & NK_SURFACE_ALPHA) != 0);
+        gtk_gl_area_set_has_depth_buffer(area, (options->flags & NK_SURFACE_DEPTH) != 0);
+        gtk_gl_area_set_has_stencil_buffer(area, (options->flags & NK_SURFACE_STENCIL) != 0);
+        gtk_widget_set_size_request(resource->widget, options->width, options->height);
+        gtk_fixed_put(GTK_FIXED(parent->container), resource->widget, options->x, options->y);
+        resource->handle =
+            nk::core::handles().insert(nk::core::ResourceType::surface, resource);
+        if (resource->handle == NK_INVALID_HANDLE) {
+            gtk_widget_destroy(resource->widget);
+            return fail(NK_ERROR_OUT_OF_MEMORY, "graphics surface handle registry is full");
+        }
+        parent->surfaces.push_back(resource->handle);
+        g_signal_connect(resource->widget, "render", G_CALLBACK(on_surface_render), nullptr);
+        g_signal_connect(resource->widget, "resize", G_CALLBACK(on_surface_resize),
+                         resource.get());
+        if ((options->flags & NK_SURFACE_HIDDEN) == 0)
+            gtk_widget_show(resource->widget);
+        gtk_widget_realize(resource->widget);
+        gtk_gl_area_make_current(area);
+        if (const GError *error = gtk_gl_area_get_error(area)) {
+            parent->surfaces.pop_back();
+            nk::core::handles().erase(resource->handle, nk::core::ResourceType::surface);
+            return fail(NK_ERROR_UNSUPPORTED, error->message);
+        }
+        nk::core::QueuedEvent ready;
+        ready.kind = NK_EVENT_SURFACE_READY;
+        ready.source = resource->handle;
+        nk::core::push_event(std::move(ready));
+        *out_surface = resource->handle;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return invalid_handle("graphics surface");
+    g_signal_handlers_disconnect_by_data(resource->widget, resource.get());
+    gtk_widget_destroy(resource->widget);
+    resource->widget = nullptr;
+    if (auto parent = window(resource->parent)) {
+        auto &surfaces = parent->surfaces;
+        surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), handle), surfaces.end());
+    }
+    nk::core::handles().erase(handle, nk::core::ResourceType::surface);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_show(nk_handle handle, uint32_t visible) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return invalid_handle("graphics surface");
+    visible ? gtk_widget_show(resource->widget) : gtk_widget_hide(resource->widget);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, int32_t width,
+                                        int32_t height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (width <= 0 || height <= 0)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "graphics surface dimensions must be positive");
+    auto resource = surface(handle);
+    if (!resource)
+        return invalid_handle("graphics surface");
+    auto parent = window(resource->parent);
+    if (!parent)
+        return invalid_handle("parent window");
+    gtk_fixed_move(GTK_FIXED(parent->container), resource->widget, x, y);
+    gtk_widget_set_size_request(resource->widget, width, height);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return invalid_handle("graphics surface");
+    auto *area = GTK_GL_AREA(resource->widget);
+    gtk_gl_area_make_current(area);
+    if (const GError *error = gtk_gl_area_get_error(area))
+        return fail(NK_ERROR_UNKNOWN, error->message);
+    gtk_gl_area_attach_buffers(area);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_present(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return invalid_handle("graphics surface");
+    gtk_gl_area_queue_render(GTK_GL_AREA(resource->widget));
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out_width,
+                                                  int32_t *out_height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_width || !out_height)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "framebuffer size outputs must not be null");
+    auto resource = surface(handle);
+    if (!resource)
+        return invalid_handle("graphics surface");
+    const int scale = gtk_widget_get_scale_factor(resource->widget);
+    *out_width = gtk_widget_get_allocated_width(resource->widget) * scale;
+    *out_height = gtk_widget_get_allocated_height(resource->widget) * scale;
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_options *options,

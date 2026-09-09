@@ -21,7 +21,9 @@ enum {
     NK_CAP_WRAP_NATIVE_WINDOW = UINT64_C(1) << 8,
     NK_CAP_NOTIFICATION = UINT64_C(1) << 9,
     NK_CAP_MOBILE_HOST = UINT64_C(1) << 10,
-    NK_CAP_INPUT = UINT64_C(1) << 11
+    NK_CAP_INPUT = UINT64_C(1) << 11,
+    NK_CAP_OPENGL_SURFACE = UINT64_C(1) << 12,
+    NK_CAP_OPENGL_ES_SURFACE = UINT64_C(1) << 13
 };
 
 typedef uint32_t nk_native_window_kind;
