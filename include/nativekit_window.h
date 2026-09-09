@@ -14,7 +14,9 @@ enum {
     NK_CAP_WEBVIEW = UINT64_C(1) << 1,
     NK_CAP_FILE_DIALOG = UINT64_C(1) << 2,
     NK_CAP_CLIPBOARD = UINT64_C(1) << 3,
-    NK_CAP_DRAG_DROP = UINT64_C(1) << 4
+    NK_CAP_DRAG_DROP = UINT64_C(1) << 4,
+    NK_CAP_SHELL = UINT64_C(1) << 5,
+    NK_CAP_SYSTEM_APPEARANCE = UINT64_C(1) << 6
 };
 
 enum {

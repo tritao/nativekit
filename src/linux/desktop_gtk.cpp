@@ -465,7 +465,8 @@ void shutdown() noexcept {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG;
+    return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG |
+           NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* out_window) {

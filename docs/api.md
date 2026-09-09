@@ -50,6 +50,16 @@ other kinds preserve their position relative to resize events.
 runtime failures—for example, a Linux build can include GTK support but be unable
 to connect to a display.
 
+## Shell and system strings
+
+Shell operations submit work to the desktop on the UI thread. Reveal first uses
+the freedesktop file-manager interface and falls back to opening the containing
+directory when that interface is unavailable.
+
+Standard directories and locale queries are initialization-independent and may
+be called from any thread. They use a two-call buffer convention: query the size
+including NUL, allocate, then call again. A short buffer is never partially filled.
+
 ## Dialog results
 
 Dialogs never run a nested blocking loop. Starting one returns a request ID and

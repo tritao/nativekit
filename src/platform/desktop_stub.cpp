@@ -1,6 +1,7 @@
 #include "nativekit_window.h"
 #include "nativekit_webview.h"
 #include "nativekit_dialog.h"
+#include "nativekit_system.h"
 
 #include "core/error.hpp"
 #include "core/runtime.hpp"
@@ -39,4 +40,10 @@ nk_result NK_CALL nk_dialog_save_file(nk_handle, const nk_file_dialog_options*, 
 nk_result NK_CALL nk_dialog_select_directory(nk_handle, const nk_file_dialog_options*, nk_request_id*) { return unsupported(); }
 nk_result NK_CALL nk_dialog_message(nk_handle, const nk_message_dialog_options*, nk_request_id*) { return unsupported(); }
 nk_result NK_CALL nk_dialog_cancel(nk_request_id) { return unsupported(); }
+nk_result NK_CALL nk_shell_open_url(const char*) { return unsupported(); }
+nk_result NK_CALL nk_shell_open_file(const char*) { return unsupported(); }
+nk_result NK_CALL nk_shell_reveal_file(const char*) { return unsupported(); }
+nk_result NK_CALL nk_system_directory(nk_system_directory_kind, char*, uint32_t*) { return unsupported(); }
+nk_result NK_CALL nk_system_locale(char*, uint32_t*) { return unsupported(); }
+nk_result NK_CALL nk_system_get_appearance(nk_system_appearance*) { return unsupported(); }
 }

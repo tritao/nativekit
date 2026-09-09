@@ -1,5 +1,6 @@
 #include "nativekit.h"
 #include "nativekit_dialog.h"
+#include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
 
@@ -12,8 +13,9 @@ int main(void) {
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
-    assert((nk_get_capabilities() & (NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG)) ==
-           (NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG));
+    const nk_capabilities expected = NK_CAP_WINDOW | NK_CAP_WEBVIEW |
+        NK_CAP_FILE_DIALOG | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE;
+    assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
 
@@ -28,6 +30,11 @@ int main(void) {
     float scale = 0.0f;
     assert(nk_window_get_scale(window, &scale) == NK_OK);
     assert(scale >= 1.0f);
+    nk_system_appearance appearance = {0};
+    appearance.struct_size = sizeof(appearance);
+    assert(nk_system_get_appearance(&appearance) == NK_OK);
+    assert(appearance.color_scheme == NK_COLOR_SCHEME_LIGHT ||
+           appearance.color_scheme == NK_COLOR_SCHEME_DARK);
 
     nk_webview_options webview_options = {0};
     webview_options.struct_size = sizeof(webview_options);

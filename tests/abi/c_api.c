@@ -2,6 +2,7 @@
 #include "nativekit_dialog.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
+#include "nativekit_system.h"
 
 #include <assert.h>
 #include <string.h>
@@ -31,6 +32,20 @@ int main(void) {
     assert(nk_dialog_event_path(&packed_event, 0, &decoded_path, &decoded_length) == NK_OK);
     assert(decoded_length == 3);
     assert(memcmp(decoded_path, "abc", 3) == 0);
+    uint32_t home_size = 0;
+    nk_result home_result = nk_system_directory(NK_DIRECTORY_HOME, NULL, &home_size);
+    assert(home_result == NK_ERROR_BUFFER_TOO_SMALL || home_result == NK_ERROR_UNSUPPORTED);
+    if (home_result == NK_ERROR_BUFFER_TOO_SMALL) {
+        assert(home_size > 1);
+        char home[4096];
+        uint32_t home_capacity = sizeof(home);
+        assert(nk_system_directory(NK_DIRECTORY_HOME, home, &home_capacity) == NK_OK);
+        assert(home[0] != '\0');
+    }
+    uint32_t locale_size = 0;
+    nk_result locale_result = nk_system_locale(NULL, &locale_size);
+    assert(locale_result == NK_ERROR_BUFFER_TOO_SMALL || locale_result == NK_ERROR_UNSUPPORTED);
+    if (locale_result == NK_ERROR_BUFFER_TOO_SMALL) assert(locale_size > 1);
     assert(nk_init(&options) == NK_ERROR_ALREADY_INITIALIZED);
     assert(strlen(nk_last_error()) > 0);
 

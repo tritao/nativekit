@@ -12,10 +12,12 @@
         "src/gtk/dirdlg.cpp",
         "src/gtk/filedlg.cpp",
         "src/gtk/msgdlg.cpp",
+        "src/gtk/settings.cpp",
         "src/gtk/webview_webkit2.cpp",
-        "src/gtk/window.cpp"
+        "src/gtk/window.cpp",
+        "src/common/stdpbase.cpp"
       ],
-      "notes": "Dialog lifecycle, event mapping, GTK signal selection, scale handling, and WebKit error categorization are adapted to NativeKit's C ABI and event queue."
+      "notes": "Dialog lifecycle, standard paths, appearance detection, event mapping, GTK signal selection, scale handling, and WebKit error categorization are adapted to NativeKit's C ABI and event queue."
     }
   }
 }
