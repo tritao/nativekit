@@ -10,7 +10,8 @@ it under Wine using a fresh temporary prefix. It covers DLL-independent C ABI
 loading, Win32 window creation, UTF-8 title conversion, visibility, bounds, DPI,
 native descriptor export, message pumping, asynchronous file and message dialog
 cancellation, known-folder and locale queries, appearance detection, shell input
-validation, destruction, and stale handles.
+validation, Unicode clipboard text/file round trips, synthesized shell file drops,
+destruction, and stale handles.
 
 Required commands are `x86_64-w64-mingw32-gcc`,
 `x86_64-w64-mingw32-g++`, `wine`, `wineserver`, `cmake`, `ninja`, and `xvfb-run`.

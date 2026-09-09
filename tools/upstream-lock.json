@@ -25,16 +25,18 @@
     },
     "src/windows/nativekit_win.cpp": {
       "sources": [
+        "src/msw/clipbrd.cpp",
         "src/msw/dirdlg.cpp",
         "src/msw/filedlg.cpp",
         "src/msw/msgdlg.cpp",
+        "src/msw/ole/dataobj.cpp",
         "src/msw/settings.cpp",
         "src/msw/stdpaths.cpp",
         "src/msw/toplevel.cpp",
         "src/msw/utilswin.cpp",
         "src/msw/window.cpp"
       ],
-      "notes": "Window class lifecycle, message handling, resize events, DPI behavior, COM file dialog options, native message dialogs, known folders, shell launching, and appearance detection are adapted to NativeKit's handles, requests, and event queue."
+      "notes": "Window class lifecycle, message handling, resize events, DPI behavior, COM file dialog options, native message dialogs, clipboard formats, shell file drops, known folders, shell launching, and appearance detection are adapted to NativeKit's handles, requests, and event queue."
     }
   }
 }

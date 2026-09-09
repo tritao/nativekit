@@ -1,12 +1,15 @@
 #include "nativekit.h"
+#include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
 #include "nativekit_system.h"
 #include "nativekit_window.h"
 
 #include <assert.h>
+#include <windows.h>
+#include <shellapi.h>
+#include <shlobj.h>
 #include <stdlib.h>
 #include <string.h>
-#include <windows.h>
 
 static nk_event wait_for_dialog(nk_request_id request) {
     for (int attempt = 0; attempt < 500; ++attempt) {
@@ -19,6 +22,21 @@ static nk_event wait_for_dialog(nk_request_id request) {
         Sleep(10);
     }
     assert(!"timed out waiting for dialog completion");
+    nk_event unreachable = {0};
+    return unreachable;
+}
+
+static nk_event wait_for_event(nk_event_kind kind, nk_request_id request) {
+    for (int attempt = 0; attempt < 500; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == kind && event.request_id == request)
+            return event;
+        nk_event_release(&event);
+        Sleep(10);
+    }
+    assert(!"timed out waiting for event");
     nk_event unreachable = {0};
     return unreachable;
 }
@@ -42,6 +60,8 @@ int main(void) {
     init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
     assert((nk_get_capabilities() & NK_CAP_WINDOW) != 0);
+    assert((nk_get_capabilities() & NK_CAP_CLIPBOARD) != 0);
+    assert((nk_get_capabilities() & NK_CAP_DRAG_DROP) != 0);
     assert((nk_get_capabilities() & NK_CAP_SHELL) != 0);
     assert((nk_get_capabilities() & NK_CAP_SYSTEM_APPEARANCE) != 0);
 
@@ -104,6 +124,62 @@ int main(void) {
         assert(nk_poll_event(&event) == NK_OK);
         nk_event_release(&event);
     }
+
+    const char clipboard_text[] = "NativeKit clipboard UTF-8 \xE2\x9C\x93";
+    assert(nk_clipboard_set_text(clipboard_text) == NK_OK);
+    nk_request_id text_request = NK_INVALID_REQUEST_ID;
+    assert(nk_clipboard_read_text(&text_request) == NK_OK);
+    nk_event text_event = wait_for_event(NK_EVENT_CLIPBOARD_TEXT_COMPLETE, text_request);
+    assert(text_event.result == NK_OK);
+    assert(text_event.data_size == strlen(clipboard_text));
+    assert(memcmp(text_event.data, clipboard_text, text_event.data_size) == 0);
+    nk_event_release(&text_event);
+
+    const char *clipboard_paths[] = {
+        "C:\\NativeKit clipboard one.txt",
+        "C:\\NativeKit clipboard \xE2\x9C\x93.txt"
+    };
+    assert(nk_clipboard_set_files(clipboard_paths, 2) == NK_OK);
+    nk_request_id files_request = NK_INVALID_REQUEST_ID;
+    assert(nk_clipboard_read_files(&files_request) == NK_OK);
+    nk_event files_event = wait_for_event(NK_EVENT_CLIPBOARD_FILES_COMPLETE, files_request);
+    assert(files_event.result == NK_OK);
+    assert(files_event.data_count == 2);
+    for (uint32_t index = 0; index < 2; ++index) {
+        const char *path = NULL;
+        uint32_t length = 0;
+        assert(nk_clipboard_event_file(&files_event, index, &path, &length) == NK_OK);
+        assert(length == strlen(clipboard_paths[index]));
+        assert(memcmp(path, clipboard_paths[index], length) == 0);
+    }
+    nk_event_release(&files_event);
+
+    assert(nk_window_set_drop_enabled(window, 1) == NK_OK);
+    const wchar_t dropped_path[] = L"C:\\NativeKit dropped.txt";
+    const size_t drop_size = sizeof(DROPFILES) + sizeof(dropped_path) + sizeof(wchar_t);
+    HGLOBAL drop_memory = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, drop_size);
+    assert(drop_memory != NULL);
+    DROPFILES *drop = (DROPFILES *)GlobalLock(drop_memory);
+    assert(drop != NULL);
+    drop->pFiles = sizeof(DROPFILES);
+    drop->pt.x = 17;
+    drop->pt.y = 23;
+    drop->fWide = TRUE;
+    memcpy((unsigned char *)drop + drop->pFiles, dropped_path, sizeof(dropped_path));
+    GlobalUnlock(drop_memory);
+    SendMessageW((HWND)native.window, WM_DROPFILES, (WPARAM)drop_memory, 0);
+    nk_event drop_event = wait_for_event(NK_EVENT_DROP_FILES, NK_INVALID_REQUEST_ID);
+    assert(drop_event.source == window);
+    assert(drop_event.data_count == 1);
+    const nk_drop_data *drop_header = (const nk_drop_data *)drop_event.data;
+    assert(drop_header->x == 17 && drop_header->y == 23);
+    const char *drop_path = NULL;
+    uint32_t drop_path_length = 0;
+    assert(nk_drop_event_item(&drop_event, 0, &drop_path, &drop_path_length) == NK_OK);
+    assert(drop_path_length == strlen("C:\\NativeKit dropped.txt"));
+    assert(memcmp(drop_path, "C:\\NativeKit dropped.txt", drop_path_length) == 0);
+    nk_event_release(&drop_event);
+    assert(nk_window_set_drop_enabled(window, 0) == NK_OK);
 
     nk_file_dialog_options file_options = {0};
     file_options.struct_size = sizeof(file_options);

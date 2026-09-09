@@ -36,7 +36,7 @@ NK_API nk_result NK_CALL nk_clipboard_set_files(
 NK_API nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request);
 NK_API nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request);
 
-/* Enables or disables UTF-8 text and local-file drops for a window. */
+/* Enables or disables the text and/or local-file drop formats supported by the backend. */
 NK_API nk_result NK_CALL nk_window_set_drop_enabled(nk_handle window, uint32_t enabled);
 
 /* Returned UTF-8 views remain owned by the event until nk_event_release(). */

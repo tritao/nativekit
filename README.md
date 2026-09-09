@@ -21,7 +21,8 @@ Windows smoke tests can be cross-built and run in an isolated Wine prefix with
 `tools/test-wine.sh`; see `docs/testing.md` for prerequisites and limitations.
 The Windows backend currently provides Win32-owned windows, asynchronous COM
 file/save/directory and native message dialogs, shell integration, standard
-directories, locale, and desktop appearance.
+directories, locale, desktop appearance, clipboard text/files, and file drops.
+Windows text drops are deferred until the backend has an OLE drop target.
 
 The current Linux backend provides NativeKit-owned GTK 3 windows, WebKitGTK
 WebViews, asynchronous native dialogs, shell launching, standard directories,

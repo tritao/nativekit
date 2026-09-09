@@ -64,6 +64,7 @@ std::unordered_map<nk_request_id, std::shared_ptr<WinDialogContext>> dialogs;
 struct WinWindowResource final : nk::core::Resource {
     HWND window = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
+    bool drops_enabled = false;
     ~WinWindowResource() override {
         if (window && IsWindow(window)) DestroyWindow(window);
     }
@@ -112,6 +113,85 @@ std::vector<std::byte> bytes_of(const T& value) {
     return {first, first + sizeof(value)};
 }
 
+std::vector<std::byte> text_bytes(const std::string& value) {
+    const auto* first = reinterpret_cast<const std::byte*>(value.data());
+    return {first, first + value.size()};
+}
+
+template<typename Header>
+std::vector<std::byte> string_list_payload(Header header,
+                                           const std::vector<std::string>& strings,
+                                           uint32_t Header::*offset_member) {
+    header.*offset_member = sizeof(Header);
+    std::size_t total = sizeof(Header);
+    for (const auto& value : strings) total += value.size() + 1;
+    std::vector<std::byte> result(total);
+    std::memcpy(result.data(), &header, sizeof(header));
+    std::size_t cursor = sizeof(Header);
+    for (const auto& value : strings) {
+        std::memcpy(result.data() + cursor, value.c_str(), value.size() + 1);
+        cursor += value.size() + 1;
+    }
+    return result;
+}
+
+bool open_clipboard() {
+    for (int attempt = 0; attempt < 10; ++attempt) {
+        if (OpenClipboard(nullptr)) return true;
+        Sleep(5);
+    }
+    return false;
+}
+
+struct ClipboardCloseGuard {
+    ~ClipboardCloseGuard() { CloseClipboard(); }
+};
+
+struct GlobalUnlockGuard {
+    HGLOBAL memory;
+    ~GlobalUnlockGuard() { GlobalUnlock(memory); }
+};
+
+std::wstring absolute_path(const char* path) {
+    const auto native = wide(path);
+    if (native.empty()) return {};
+    const DWORD size = GetFullPathNameW(native.c_str(), 0, nullptr, nullptr);
+    if (!size) return {};
+    std::wstring result(size, L'\0');
+    const DWORD written = GetFullPathNameW(native.c_str(), size, result.data(), nullptr);
+    if (!written || written >= size) return {};
+    result.resize(written);
+    return result;
+}
+
+void emit_drop_files(WinWindowResource& resource, HDROP drop) noexcept {
+    try {
+        POINT point{};
+        DragQueryPoint(drop, &point);
+        const UINT count = DragQueryFileW(drop, 0xffffffffu, nullptr, 0);
+        std::vector<std::string> paths;
+        paths.reserve(count);
+        for (UINT index = 0; index < count; ++index) {
+            const UINT length = DragQueryFileW(drop, index, nullptr, 0);
+            std::wstring path(static_cast<std::size_t>(length) + 1, L'\0');
+            if (DragQueryFileW(drop, index, path.data(), length + 1)) {
+                path.resize(length);
+                paths.push_back(utf8(path.c_str()));
+            }
+        }
+        if (!paths.empty()) {
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_DROP_FILES;
+            event.source = resource.handle;
+            event.data_count = static_cast<uint32_t>(paths.size());
+            nk_drop_data header{point.x, point.y, static_cast<uint32_t>(paths.size()), 0};
+            event.data = string_list_payload(header, paths, &nk_drop_data::strings_offset);
+            nk::core::push_event(std::move(event));
+        }
+    } catch (...) {}
+    DragFinish(drop);
+}
+
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     auto* resource = reinterpret_cast<WinWindowResource*>(
         GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -121,6 +201,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(resource));
     }
     if (resource && resource->handle != NK_INVALID_HANDLE) {
+        if (message == WM_DROPFILES && resource->drops_enabled) {
+            emit_drop_files(*resource, reinterpret_cast<HDROP>(wparam));
+            return 0;
+        }
         if (message == WM_CLOSE) {
             nk::core::QueuedEvent event;
             event.kind = NK_EVENT_WINDOW_CLOSE;
@@ -552,7 +636,8 @@ void shutdown() noexcept {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_SHELL |
+    return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
+           NK_CAP_DRAG_DROP | NK_CAP_SHELL |
            NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW;
 }
 
@@ -736,11 +821,175 @@ nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
     request_dialog_close(found->second);
     return NK_OK;
 }
-nk_result NK_CALL nk_clipboard_set_text(const char*) { return unsupported(); }
-nk_result NK_CALL nk_clipboard_set_files(const char* const*, uint32_t) { return unsupported(); }
-nk_result NK_CALL nk_clipboard_read_text(nk_request_id*) { return unsupported(); }
-nk_result NK_CALL nk_clipboard_read_files(nk_request_id*) { return unsupported(); }
-nk_result NK_CALL nk_window_set_drop_enabled(nk_handle, uint32_t) { return unsupported(); }
+
+nk_result NK_CALL nk_clipboard_set_text(const char* text) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (!text) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard text must not be null");
+    const auto value = wide(text);
+    if (*text && value.empty()) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard text is not valid UTF-8");
+    const std::size_t bytes = (value.size() + 1) * sizeof(wchar_t);
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+    if (!memory) return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate clipboard text");
+    void* destination = GlobalLock(memory);
+    if (!destination) {
+        GlobalFree(memory);
+        return fail(NK_ERROR_UNKNOWN, "could not lock clipboard text");
+    }
+    std::memcpy(destination, value.c_str(), bytes);
+    GlobalUnlock(memory);
+    if (!open_clipboard()) {
+        GlobalFree(memory);
+        return fail(NK_ERROR_UNKNOWN, "clipboard is busy");
+    }
+    EmptyClipboard();
+    if (!SetClipboardData(CF_UNICODETEXT, memory)) {
+        CloseClipboard();
+        GlobalFree(memory);
+        return fail(NK_ERROR_UNKNOWN, "Windows rejected clipboard text");
+    }
+    CloseClipboard();
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_clipboard_set_files(const char* const* paths, uint32_t path_count) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!paths || path_count == 0)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard file list must not be empty");
+        std::vector<std::wstring> native_paths;
+        native_paths.reserve(path_count);
+        std::size_t character_count = 1;
+        for (uint32_t index = 0; index < path_count; ++index) {
+            if (!paths[index] || !*paths[index])
+                return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard path must not be empty");
+            auto path = absolute_path(paths[index]);
+            if (path.empty())
+                return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard path is not valid UTF-8");
+            if (path.size() >= std::numeric_limits<std::size_t>::max() - character_count)
+                return fail(NK_ERROR_OUT_OF_MEMORY, "clipboard file list is too large");
+            character_count += path.size() + 1;
+            native_paths.push_back(std::move(path));
+        }
+        if (character_count > (std::numeric_limits<std::size_t>::max() - sizeof(DROPFILES)) /
+                                  sizeof(wchar_t))
+            return fail(NK_ERROR_OUT_OF_MEMORY, "clipboard file list is too large");
+        const std::size_t size = sizeof(DROPFILES) + character_count * sizeof(wchar_t);
+        HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, size);
+        if (!memory) return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate clipboard files");
+        auto* drop = static_cast<DROPFILES*>(GlobalLock(memory));
+        if (!drop) {
+            GlobalFree(memory);
+            return fail(NK_ERROR_UNKNOWN, "could not lock clipboard files");
+        }
+        drop->pFiles = sizeof(DROPFILES);
+        drop->fWide = TRUE;
+        auto* cursor = reinterpret_cast<wchar_t*>(reinterpret_cast<std::byte*>(drop) + drop->pFiles);
+        for (const auto& path : native_paths) {
+            std::memcpy(cursor, path.c_str(), (path.size() + 1) * sizeof(wchar_t));
+            cursor += path.size() + 1;
+        }
+        *cursor = L'\0';
+        GlobalUnlock(memory);
+        if (!open_clipboard()) {
+            GlobalFree(memory);
+            return fail(NK_ERROR_UNKNOWN, "clipboard is busy");
+        }
+        EmptyClipboard();
+        if (!SetClipboardData(CF_HDROP, memory)) {
+            CloseClipboard();
+            GlobalFree(memory);
+            return fail(NK_ERROR_UNKNOWN, "Windows rejected clipboard files");
+        }
+        CloseClipboard();
+        return NK_OK;
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while writing clipboard files");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while writing clipboard files");
+    }
+}
+
+nk_result NK_CALL nk_clipboard_read_text(nk_request_id* out_request) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+        *out_request = NK_INVALID_REQUEST_ID;
+        std::string text;
+        if (IsClipboardFormatAvailable(CF_UNICODETEXT)) {
+            if (!open_clipboard()) return fail(NK_ERROR_UNKNOWN, "clipboard is busy");
+            ClipboardCloseGuard close;
+            HANDLE memory = GetClipboardData(CF_UNICODETEXT);
+            const auto* value = memory ? static_cast<const wchar_t*>(GlobalLock(memory)) : nullptr;
+            if (!memory || !value) return fail(NK_ERROR_UNKNOWN, "could not read clipboard text");
+            GlobalUnlockGuard unlock{static_cast<HGLOBAL>(memory)};
+            text = utf8(value);
+        }
+        const auto request = nk::core::next_request_id();
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_CLIPBOARD_TEXT_COMPLETE;
+        event.request_id = request;
+        event.data = text_bytes(text);
+        const auto result = nk::core::push_event(std::move(event));
+        if (result != NK_OK) return fail(result, "could not queue clipboard text result");
+        *out_request = request;
+        return NK_OK;
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading clipboard text");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading clipboard text");
+    }
+}
+
+nk_result NK_CALL nk_clipboard_read_files(nk_request_id* out_request) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+        *out_request = NK_INVALID_REQUEST_ID;
+        std::vector<std::string> paths;
+        if (IsClipboardFormatAvailable(CF_HDROP)) {
+            if (!open_clipboard()) return fail(NK_ERROR_UNKNOWN, "clipboard is busy");
+            ClipboardCloseGuard close;
+            HDROP drop = static_cast<HDROP>(GetClipboardData(CF_HDROP));
+            if (drop) {
+                const UINT count = DragQueryFileW(drop, 0xffffffffu, nullptr, 0);
+                paths.reserve(count);
+                for (UINT index = 0; index < count; ++index) {
+                    const UINT length = DragQueryFileW(drop, index, nullptr, 0);
+                    std::wstring path(static_cast<std::size_t>(length) + 1, L'\0');
+                    if (DragQueryFileW(drop, index, path.data(), length + 1)) {
+                        path.resize(length);
+                        paths.push_back(utf8(path.c_str()));
+                    }
+                }
+            }
+            if (!drop) return fail(NK_ERROR_UNKNOWN, "could not read clipboard files");
+        }
+        const auto request = nk::core::next_request_id();
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_CLIPBOARD_FILES_COMPLETE;
+        event.request_id = request;
+        event.data_count = static_cast<uint32_t>(paths.size());
+        nk_clipboard_files header{static_cast<uint32_t>(paths.size()), 0};
+        event.data = string_list_payload(header, paths, &nk_clipboard_files::strings_offset);
+        const auto result = nk::core::push_event(std::move(event));
+        if (result != NK_OK) return fail(result, "could not queue clipboard file result");
+        *out_request = request;
+        return NK_OK;
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading clipboard files");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading clipboard files");
+    }
+}
+
+nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, uint32_t enabled) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    auto resource = get_window(handle);
+    if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    resource->drops_enabled = enabled != 0;
+    DragAcceptFiles(resource->window, enabled != 0);
+    return NK_OK;
+}
 nk_result NK_CALL nk_shell_open_url(const char* url) {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     return shell_open(url, true);
