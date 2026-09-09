@@ -31,6 +31,17 @@ typedef struct nk_window_options {
     uint64_t reserved[2];
 } nk_window_options;
 
+/* Payload of NK_EVENT_WINDOW_RESIZE. Dimensions are logical pixels. */
+typedef struct nk_window_resize_event {
+    int32_t width;
+    int32_t height;
+} nk_window_resize_event;
+
+/* Payload of NK_EVENT_WINDOW_SCALE_CHANGED. */
+typedef struct nk_window_scale_event {
+    float scale;
+} nk_window_scale_event;
+
 /* Returns process-wide capabilities of the compiled platform backend. */
 NK_API nk_capabilities NK_CALL nk_get_capabilities(void);
 
@@ -53,6 +64,9 @@ NK_API nk_result NK_CALL nk_window_set_title(nk_handle window, const char *title
 /* Moves and resizes a top-level window in logical pixels. UI thread only. */
 NK_API nk_result NK_CALL nk_window_set_bounds(
     nk_handle window, int32_t x, int32_t y, int32_t width, int32_t height);
+
+/* Writes the current logical-to-device-pixel scale. UI thread only. */
+NK_API nk_result NK_CALL nk_window_get_scale(nk_handle window, float *out_scale);
 
 #ifdef __cplusplus
 }

@@ -11,6 +11,13 @@ EventQueue::EventQueue(std::size_t capacity) : capacity_(capacity) {}
 
 nk_result EventQueue::push(QueuedEvent event) {
     std::lock_guard lock(mutex_);
+    if (event.kind == NK_EVENT_WINDOW_RESIZE && !queue_.empty()) {
+        auto& tail = queue_.back();
+        if (tail.kind == event.kind && tail.source == event.source) {
+            tail = std::move(event);
+            return NK_OK;
+        }
+    }
     if (queue_.size() >= capacity_) return NK_ERROR_QUEUE_FULL;
     queue_.push_back(std::move(event));
     return NK_OK;

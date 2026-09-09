@@ -86,6 +86,12 @@ install(TARGETS nativekit EXPORT NativeKitTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY licenses/ DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendor/wxWidgets/docs/licence.txt")
+    install(FILES vendor/wxWidgets/COPYING.LIB
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit
+        RENAME LGPL-2.0.txt)
+endif()
 configure_package_config_file(
     cmake/NativeKitConfig.cmake.in
     ${CMAKE_CURRENT_BINARY_DIR}/NativeKitConfig.cmake

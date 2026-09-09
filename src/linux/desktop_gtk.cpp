@@ -1,3 +1,10 @@
+/*
+ * Platform behavior in this file is informed by wxWidgets
+ * src/gtk/webview_webkit2.cpp and src/gtk/window.cpp at the revision recorded
+ * in tools/upstream-lock.json. Adaptations are licensed under the wxWindows
+ * Library Licence 3.1; see licenses/wxWidgets.txt.
+ */
+
 #include "nativekit_window.h"
 #include "nativekit_webview.h"
 
@@ -75,6 +82,12 @@ std::vector<std::byte> bytes(const char* text) {
     return {first, first + size};
 }
 
+template<typename T>
+std::vector<std::byte> bytes_of(const T& value) {
+    const auto* first = reinterpret_cast<const std::byte*>(&value);
+    return {first, first + sizeof(value)};
+}
+
 gboolean on_window_delete(GtkWidget*, GdkEvent*, gpointer data) {
     const auto* resource = static_cast<GtkWindowResource*>(data);
     nk::core::QueuedEvent event;
@@ -82,6 +95,80 @@ gboolean on_window_delete(GtkWidget*, GdkEvent*, gpointer data) {
     event.source = resource->handle;
     nk::core::push_event(std::move(event));
     return TRUE;
+}
+
+gboolean on_window_configure(GtkWidget*, GdkEventConfigure* configure, gpointer data) {
+    try {
+        const auto* resource = static_cast<GtkWindowResource*>(data);
+        const nk_window_resize_event payload{configure->width, configure->height};
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WINDOW_RESIZE;
+        event.source = resource->handle;
+        event.data = bytes_of(payload);
+        nk::core::push_event(std::move(event));
+    } catch (...) {}
+    return FALSE;
+}
+
+void on_window_scale(GtkWidget* widget, GParamSpec*, gpointer data) {
+    try {
+        const auto* resource = static_cast<GtkWindowResource*>(data);
+        const nk_window_scale_event payload{
+            static_cast<float>(gtk_widget_get_scale_factor(widget))};
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WINDOW_SCALE_CHANGED;
+        event.source = resource->handle;
+        event.data = bytes_of(payload);
+        nk::core::push_event(std::move(event));
+    } catch (...) {}
+}
+
+uint32_t navigation_error_category(const GError* error) {
+    if (error->domain == WEBKIT_NETWORK_ERROR) {
+        switch (error->code) {
+            case WEBKIT_NETWORK_ERROR_UNKNOWN_PROTOCOL:
+                return NK_NAVIGATION_ERROR_REQUEST;
+            case WEBKIT_NETWORK_ERROR_CANCELLED:
+                return NK_NAVIGATION_ERROR_CANCELLED;
+            case WEBKIT_NETWORK_ERROR_FILE_DOES_NOT_EXIST:
+                return NK_NAVIGATION_ERROR_NOT_FOUND;
+            case WEBKIT_NETWORK_ERROR_TRANSPORT:
+                return NK_NAVIGATION_ERROR_CONNECTION;
+            default:
+                break;
+        }
+    } else if (error->domain == WEBKIT_POLICY_ERROR) {
+        return error->code == WEBKIT_POLICY_ERROR_CANNOT_USE_RESTRICTED_PORT
+            ? NK_NAVIGATION_ERROR_SECURITY : NK_NAVIGATION_ERROR_REQUEST;
+    }
+    return NK_NAVIGATION_ERROR_OTHER;
+}
+
+gboolean on_webview_load_failed(WebKitWebView*, WebKitLoadEvent, const char*,
+                                GError* error, gpointer data) {
+    try {
+        const auto* resource = static_cast<GtkWebViewResource*>(data);
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WEBVIEW_NAVIGATION_FAILED;
+        event.source = resource->handle;
+        event.result = NK_ERROR_UNKNOWN;
+        event.flags = navigation_error_category(error);
+        event.data = bytes(error->message);
+        nk::core::push_event(std::move(event));
+    } catch (...) {}
+    return FALSE;
+}
+
+void on_webview_process_terminated(WebKitWebView*,
+                                   WebKitWebProcessTerminationReason reason,
+                                   gpointer data) {
+    const auto* resource = static_cast<GtkWebViewResource*>(data);
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_WEBVIEW_PROCESS_TERMINATED;
+    event.source = resource->handle;
+    event.result = NK_ERROR_UNKNOWN;
+    event.flags = static_cast<uint32_t>(reason);
+    nk::core::push_event(std::move(event));
 }
 
 void on_webview_load(WebKitWebView* view, WebKitLoadEvent load_event, gpointer data) {
@@ -214,6 +301,8 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* 
             return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
         }
         g_signal_connect(resource->window, "delete-event", G_CALLBACK(on_window_delete), resource.get());
+        g_signal_connect(resource->window, "configure-event", G_CALLBACK(on_window_configure), resource.get());
+        g_signal_connect(resource->window, "notify::scale-factor", G_CALLBACK(on_window_scale), resource.get());
         if ((options->flags & NK_WINDOW_HIDDEN) == 0) gtk_widget_show_all(resource->window);
         *out_window = resource->handle;
         return NK_OK;
@@ -263,6 +352,15 @@ nk_result NK_CALL nk_window_set_bounds(nk_handle handle, int32_t x, int32_t y, i
     return NK_OK;
 }
 
+nk_result NK_CALL nk_window_get_scale(nk_handle handle, float* out_scale) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (!out_scale) return fail(NK_ERROR_INVALID_ARGUMENT, "scale output must not be null");
+    auto resource = window(handle);
+    if (!resource) return invalid_handle("window");
+    *out_scale = static_cast<float>(gtk_widget_get_scale_factor(resource->window));
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_options* options, nk_handle* out_webview) {
     try {
         if (const auto result = enter_ui(); result != NK_OK) return result;
@@ -292,7 +390,10 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
         }
         parent->children.push_back(resource->handle);
         g_signal_connect(resource->widget, "load-changed", G_CALLBACK(on_webview_load), resource.get());
+        g_signal_connect(resource->widget, "load-failed", G_CALLBACK(on_webview_load_failed), resource.get());
         g_signal_connect(resource->widget, "notify::title", G_CALLBACK(on_webview_title), resource.get());
+        g_signal_connect(resource->widget, "web-process-terminated",
+                         G_CALLBACK(on_webview_process_terminated), resource.get());
         g_signal_connect(resource->content_manager, "script-message-received::nativekit",
                          G_CALLBACK(on_webview_message), resource.get());
         auto* settings = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(resource->widget));

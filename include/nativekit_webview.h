@@ -12,6 +12,17 @@ enum {
     NK_WEBVIEW_HIDDEN = 1u << 1
 };
 
+/* Values stored in nk_event.flags for NK_EVENT_WEBVIEW_NAVIGATION_FAILED. */
+enum {
+    NK_NAVIGATION_ERROR_OTHER = 0,
+    NK_NAVIGATION_ERROR_REQUEST = 1,
+    NK_NAVIGATION_ERROR_AUTH = 2,
+    NK_NAVIGATION_ERROR_SECURITY = 3,
+    NK_NAVIGATION_ERROR_NOT_FOUND = 4,
+    NK_NAVIGATION_ERROR_CONNECTION = 5,
+    NK_NAVIGATION_ERROR_CANCELLED = 6
+};
+
 typedef struct nk_webview_options {
     uint32_t struct_size;
     uint32_t flags;

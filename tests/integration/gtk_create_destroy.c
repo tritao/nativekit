@@ -24,6 +24,9 @@ int main(void) {
     window_options.title = "NativeKit integration test";
     nk_handle window = NK_INVALID_HANDLE;
     assert(nk_window_create(&window_options, &window) == NK_OK);
+    float scale = 0.0f;
+    assert(nk_window_get_scale(window, &scale) == NK_OK);
+    assert(scale >= 1.0f);
 
     nk_webview_options webview_options = {0};
     webview_options.struct_size = sizeof(webview_options);

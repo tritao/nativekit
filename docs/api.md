@@ -29,13 +29,20 @@ and consumers must not assume one exists. Current payloads are:
 | Event | Source | Request | Data |
 |---|---|---|---|
 | `NK_EVENT_WINDOW_CLOSE` | window | none | empty |
+| `NK_EVENT_WINDOW_RESIZE` | window | none | `nk_window_resize_event` |
+| `NK_EVENT_WINDOW_SCALE_CHANGED` | window | none | `nk_window_scale_event` |
 | `NK_EVENT_WEBVIEW_NAVIGATED` | WebView | none | resulting URL |
 | `NK_EVENT_WEBVIEW_TITLE_CHANGED` | WebView | none | page title |
 | `NK_EVENT_WEBVIEW_MESSAGE` | WebView | none | JavaScript value converted to text |
 | `NK_EVENT_WEBVIEW_EVAL_COMPLETE` | WebView | evaluation ID | result or error text |
+| `NK_EVENT_WEBVIEW_NAVIGATION_FAILED` | WebView | none | error text; category in `flags` |
+| `NK_EVENT_WEBVIEW_PROCESS_TERMINATED` | WebView | none | empty; backend reason in `flags` |
 
 A close event is a request: the window remains alive until the application calls
 `nk_window_destroy()`.
+
+Consecutive pending resize events for the same window are coalesced. Events of
+other kinds preserve their position relative to resize events.
 
 ## Capability queries
 

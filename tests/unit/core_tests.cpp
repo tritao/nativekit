@@ -1,5 +1,6 @@
 #include "core/event_queue.hpp"
 #include "core/handle_registry.hpp"
+#include "nativekit_window.h"
 
 #include <cassert>
 #include <cstddef>
@@ -36,6 +37,23 @@ int main() {
     assert(event.kind == NK_EVENT_WEBVIEW_MESSAGE);
     assert(event.data_size == 5);
     assert(std::memcmp(event.data, "hello", 5) == 0);
+    nk_event_release(&event);
+
+    nk::core::EventQueue resize_queue(1);
+    nk::core::QueuedEvent first_resize;
+    first_resize.kind = NK_EVENT_WINDOW_RESIZE;
+    first_resize.source = first;
+    nk::core::QueuedEvent latest_resize = first_resize;
+    const nk_window_resize_event latest_size{800, 600};
+    const auto* size_begin = reinterpret_cast<const std::byte*>(&latest_size);
+    latest_resize.data.assign(size_begin, size_begin + sizeof(latest_size));
+    assert(resize_queue.push(std::move(first_resize)) == NK_OK);
+    assert(resize_queue.push(std::move(latest_resize)) == NK_OK);
+    event = {};
+    event.struct_size = sizeof(event);
+    assert(resize_queue.poll(event) == NK_OK);
+    assert(event.data_size == sizeof(latest_size));
+    assert(std::memcmp(event.data, &latest_size, sizeof(latest_size)) == 0);
     nk_event_release(&event);
     return 0;
 }

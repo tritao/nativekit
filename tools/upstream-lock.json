@@ -6,5 +6,13 @@
     "describe": "v3.3.3.1-481-g37a02f38b1",
     "version": "3.3.4-development"
   },
-  "derived_files": {}
+  "derived_files": {
+    "src/linux/desktop_gtk.cpp": {
+      "sources": [
+        "src/gtk/webview_webkit2.cpp",
+        "src/gtk/window.cpp"
+      ],
+      "notes": "Event mapping, GTK signal selection, scale handling, and WebKit error categorization are adapted to NativeKit's C ABI and event queue."
+    }
+  }
 }
