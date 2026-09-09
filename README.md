@@ -39,7 +39,8 @@ the same ABI and report these capabilities as unsupported.
 The initial macOS backend provides Cocoa-owned windows, asynchronous native file
 and message panels, workspace shell integration, standard directories, locale,
 appearance, pasteboard text and file transfer, file/text drops, and native
-NSWindow/NSView descriptors. WKWebView is the next macOS implementation slice.
+NSWindow/NSView descriptors. Its WKWebView child backend supports navigation,
+HTML content, JavaScript evaluation, page messages, and lifecycle events.
 
 ## Build
 

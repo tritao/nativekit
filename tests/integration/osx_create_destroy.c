@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_system.h"
+#include "nativekit_webview.h"
 #include "nativekit_window.h"
 
 #include <assert.h>
@@ -45,6 +46,7 @@ int main(void) {
     assert((nk_get_capabilities() & NK_CAP_CLIPBOARD) != 0);
     assert((nk_get_capabilities() & NK_CAP_DRAG_DROP) != 0);
     assert((nk_get_capabilities() & NK_CAP_SHELL) != 0);
+    assert((nk_get_capabilities() & NK_CAP_WEBVIEW) != 0);
 
     verify_system_string(NK_DIRECTORY_HOME);
     verify_system_string(NK_DIRECTORY_DESKTOP);
@@ -107,6 +109,45 @@ int main(void) {
     nk_event_release(&files_event);
     assert(nk_window_set_drop_enabled(window, 1) == NK_OK);
     assert(nk_window_set_drop_enabled(window, 0) == NK_OK);
+
+    nk_webview_options web_options = {0};
+    web_options.struct_size = sizeof(web_options);
+    web_options.flags = NK_WEBVIEW_HIDDEN;
+    web_options.x = 10;
+    web_options.y = 20;
+    web_options.width = 400;
+    web_options.height = 300;
+    nk_handle webview = NK_INVALID_HANDLE;
+    assert(nk_webview_create(window, &web_options, &webview) == NK_OK);
+    nk_event ready_event = wait_for_event(NK_EVENT_WEBVIEW_READY, NK_INVALID_REQUEST_ID);
+    assert(ready_event.source == webview);
+    nk_event_release(&ready_event);
+    assert(nk_webview_set_bounds(webview, 15, 25, 420, 320) == NK_OK);
+    assert(nk_webview_show(webview, 1) == NK_OK);
+    assert(nk_webview_set_html(webview,
+        "<html><head><title>NativeKit WebView</title></head><body>ready</body></html>",
+        "https://nativekit.invalid/") == NK_OK);
+    nk_event navigated_event = wait_for_event(
+        NK_EVENT_WEBVIEW_NAVIGATED, NK_INVALID_REQUEST_ID);
+    assert(navigated_event.source == webview);
+    nk_event_release(&navigated_event);
+    nk_request_id eval_request = NK_INVALID_REQUEST_ID;
+    assert(nk_webview_eval(webview, "6 * 7", &eval_request) == NK_OK);
+    nk_event eval_event = wait_for_event(NK_EVENT_WEBVIEW_EVAL_COMPLETE, eval_request);
+    assert(eval_event.source == webview && eval_event.result == NK_OK);
+    assert(eval_event.data_size == 2 && memcmp(eval_event.data, "42", 2) == 0);
+    nk_event_release(&eval_event);
+    nk_request_id message_request = NK_INVALID_REQUEST_ID;
+    assert(nk_webview_eval(webview,
+        "window.webkit.messageHandlers.nativekit.postMessage('hello'); true",
+        &message_request) == NK_OK);
+    nk_event message_event = wait_for_event(NK_EVENT_WEBVIEW_MESSAGE, NK_INVALID_REQUEST_ID);
+    assert(message_event.source == webview);
+    assert(message_event.data_size == 5 && memcmp(message_event.data, "hello", 5) == 0);
+    nk_event_release(&message_event);
+    assert(nk_webview_destroy(webview) == NK_OK);
+    assert(nk_webview_destroy(webview) == NK_ERROR_INVALID_HANDLE);
+
     nk_system_appearance appearance = {0};
     appearance.struct_size = sizeof(appearance);
     assert(nk_system_get_appearance(&appearance) == NK_OK);

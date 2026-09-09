@@ -5,6 +5,7 @@
  */
 
 #import <Cocoa/Cocoa.h>
+#import <WebKit/WebKit.h>
 
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
@@ -15,6 +16,7 @@
 #include "core/error.hpp"
 #include "core/runtime.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstring>
 #include <limits>
@@ -35,6 +37,10 @@
 @property(nonatomic, assign) void* resource;
 @end
 
+@interface NKWebViewDelegate : NSObject <WKNavigationDelegate, WKScriptMessageHandler>
+@property(nonatomic, assign) void* resource;
+@end
+
 namespace {
 
 struct MacWindowResource final : nk::core::Resource {
@@ -42,12 +48,32 @@ struct MacWindowResource final : nk::core::Resource {
     __strong NKContentView* content = nil;
     __strong NKWindowDelegate* delegate = nil;
     nk_handle handle = NK_INVALID_HANDLE;
+    std::vector<nk_handle> children;
     ~MacWindowResource() override {
         if (window) {
             content.resource = nullptr;
             window.delegate = nil;
             [window orderOut:nil];
             [window close];
+        }
+    }
+};
+
+struct MacWebViewResource final : nk::core::Resource {
+    __strong WKWebView* view = nil;
+    __strong WKUserContentController* content_controller = nil;
+    __strong NKWebViewDelegate* delegate = nil;
+    nk_handle handle = NK_INVALID_HANDLE;
+    nk_handle parent = NK_INVALID_HANDLE;
+    bool observing_title = false;
+    ~MacWebViewResource() override {
+        if (view) {
+            if (observing_title) [view removeObserver:delegate forKeyPath:@"title"];
+            view.navigationDelegate = nil;
+            [content_controller removeScriptMessageHandlerForName:@"nativekit"];
+            delegate.resource = nullptr;
+            [view stopLoading];
+            [view removeFromSuperview];
         }
     }
 };
@@ -173,7 +199,7 @@ bool emit_drop(MacWindowResource& resource, id<NSDraggingInfo> information) noex
         event.data_count = static_cast<uint32_t>(items.size());
         nk_drop_data header{
             static_cast<int32_t>(point.x),
-            static_cast<int32_t>(resource.content.bounds.size.height - point.y),
+            static_cast<int32_t>(point.y),
             static_cast<uint32_t>(items.size()), 0};
         event.data = string_list_payload(header, items, &nk_drop_data::strings_offset);
         return nk::core::push_event(std::move(event)) == NK_OK;
@@ -185,6 +211,52 @@ bool emit_drop(MacWindowResource& resource, id<NSDraggingInfo> information) noex
 std::shared_ptr<MacWindowResource> window(nk_handle handle) {
     return std::dynamic_pointer_cast<MacWindowResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::window));
+}
+
+std::shared_ptr<MacWebViewResource> webview(nk_handle handle) {
+    return std::dynamic_pointer_cast<MacWebViewResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::webview));
+}
+
+void emit_webview_text(nk_event_kind kind, nk_handle source, NSString* text,
+                       nk_result result = NK_OK, uint32_t flags = 0,
+                       nk_request_id request = NK_INVALID_REQUEST_ID) noexcept {
+    try {
+        if (!webview(source)) return;
+        nk::core::QueuedEvent event;
+        event.kind = kind;
+        event.source = source;
+        event.result = result;
+        event.flags = flags;
+        event.request_id = request;
+        event.data = text_bytes(utf8(text));
+        nk::core::push_event(std::move(event));
+    } catch (...) {}
+}
+
+uint32_t navigation_error_category(NSError* error) {
+    if (![error.domain isEqualToString:NSURLErrorDomain]) return NK_NAVIGATION_ERROR_OTHER;
+    switch (error.code) {
+        case NSURLErrorCancelled: return NK_NAVIGATION_ERROR_CANCELLED;
+        case NSURLErrorBadURL:
+        case NSURLErrorUnsupportedURL: return NK_NAVIGATION_ERROR_REQUEST;
+        case NSURLErrorUserAuthenticationRequired:
+        case NSURLErrorUserCancelledAuthentication: return NK_NAVIGATION_ERROR_AUTH;
+        case NSURLErrorServerCertificateHasBadDate:
+        case NSURLErrorServerCertificateUntrusted:
+        case NSURLErrorServerCertificateHasUnknownRoot:
+        case NSURLErrorServerCertificateNotYetValid:
+        case NSURLErrorSecureConnectionFailed: return NK_NAVIGATION_ERROR_SECURITY;
+        case NSURLErrorFileDoesNotExist:
+        case NSURLErrorResourceUnavailable: return NK_NAVIGATION_ERROR_NOT_FOUND;
+        case NSURLErrorTimedOut:
+        case NSURLErrorCannotFindHost:
+        case NSURLErrorCannotConnectToHost:
+        case NSURLErrorNetworkConnectionLost:
+        case NSURLErrorDNSLookupFailed:
+        case NSURLErrorNotConnectedToInternet: return NK_NAVIGATION_ERROR_CONNECTION;
+        default: return NK_NAVIGATION_ERROR_OTHER;
+    }
 }
 
 std::vector<std::byte> dialog_paths_payload(const std::vector<std::string>& paths,
@@ -407,6 +479,7 @@ nk_result unsupported() {
 @end
 
 @implementation NKContentView
+- (BOOL)isFlipped { return YES; }
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
     NSPasteboard* pasteboard = sender.draggingPasteboard;
     return pasteboard_file_urls(pasteboard).count ||
@@ -420,6 +493,56 @@ nk_result unsupported() {
 - (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
     auto* resource = static_cast<MacWindowResource*>(_resource);
     return resource && emit_drop(*resource, sender);
+}
+@end
+
+@implementation NKWebViewDelegate
+- (void)webView:(WKWebView*)view didFinishNavigation:(WKNavigation*)navigation {
+    (void)navigation;
+    auto* resource = static_cast<MacWebViewResource*>(_resource);
+    if (resource)
+        emit_webview_text(NK_EVENT_WEBVIEW_NAVIGATED, resource->handle,
+                          view.URL.absoluteString);
+}
+- (void)webView:(WKWebView*)view didFailNavigation:(WKNavigation*)navigation
+      withError:(NSError*)error {
+    (void)view;
+    (void)navigation;
+    auto* resource = static_cast<MacWebViewResource*>(_resource);
+    if (resource)
+        emit_webview_text(NK_EVENT_WEBVIEW_NAVIGATION_FAILED, resource->handle,
+                          error.localizedDescription, NK_ERROR_UNKNOWN,
+                          navigation_error_category(error));
+}
+- (void)webView:(WKWebView*)view didFailProvisionalNavigation:(WKNavigation*)navigation
+      withError:(NSError*)error {
+    [self webView:view didFailNavigation:navigation withError:error];
+}
+- (void)webViewWebContentProcessDidTerminate:(WKWebView*)view {
+    auto* resource = static_cast<MacWebViewResource*>(_resource);
+    if (resource)
+        emit_webview_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, resource->handle,
+                          @"WebKit content process terminated", NK_ERROR_UNKNOWN);
+    (void)view;
+}
+- (void)userContentController:(WKUserContentController*)controller
+      didReceiveScriptMessage:(WKScriptMessage*)message {
+    (void)controller;
+    auto* resource = static_cast<MacWebViewResource*>(_resource);
+    if (!resource) return;
+    NSString* value = [message.body isKindOfClass:[NSString class]]
+        ? (NSString*)message.body : [message.body description];
+    emit_webview_text(NK_EVENT_WEBVIEW_MESSAGE, resource->handle, value);
+}
+- (void)observeValueForKeyPath:(NSString*)keyPath ofObject:(id)object
+                        change:(NSDictionary<NSKeyValueChangeKey,id>*)change
+                       context:(void*)context {
+    (void)change;
+    (void)context;
+    auto* resource = static_cast<MacWebViewResource*>(_resource);
+    if (resource && [keyPath isEqualToString:@"title"])
+        emit_webview_text(NK_EVENT_WEBVIEW_TITLE_CHANGED, resource->handle,
+                          ((WKWebView*)object).title);
 }
 @end
 
@@ -452,7 +575,7 @@ void shutdown() noexcept {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
+    return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_WEBVIEW |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL |
            NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW;
 }
@@ -505,6 +628,8 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     auto resource = window(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    const auto children = resource->children;
+    for (const auto child : children) nk_webview_destroy(child);
     cancel_dialogs_for_parent(resource->window);
     resource->content.resource = nullptr;
     resource->delegate.resource = nullptr;
@@ -571,13 +696,162 @@ nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window* out_n
 }
 
 nk_result NK_CALL nk_window_wrap_native(const nk_native_window*, nk_handle*) { return unsupported(); }
-nk_result NK_CALL nk_webview_create(nk_handle, const nk_webview_options*, nk_handle*) { return unsupported(); }
-nk_result NK_CALL nk_webview_destroy(nk_handle) { return unsupported(); }
-nk_result NK_CALL nk_webview_show(nk_handle, uint32_t) { return unsupported(); }
-nk_result NK_CALL nk_webview_set_bounds(nk_handle, int32_t, int32_t, int32_t, int32_t) { return unsupported(); }
-nk_result NK_CALL nk_webview_navigate(nk_handle, const char*) { return unsupported(); }
-nk_result NK_CALL nk_webview_set_html(nk_handle, const char*, const char*) { return unsupported(); }
-nk_result NK_CALL nk_webview_eval(nk_handle, const char*, nk_request_id*) { return unsupported(); }
+nk_result NK_CALL nk_webview_create(nk_handle parent_handle,
+                                    const nk_webview_options* options,
+                                    nk_handle* out_webview) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!options || options->struct_size < sizeof(*options) || !out_webview ||
+            options->width <= 0 || options->height <= 0)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid WebView options");
+        if (!valid_utf8(options->initial_url))
+            return fail(NK_ERROR_INVALID_ARGUMENT, "initial URL is not valid UTF-8");
+        *out_webview = NK_INVALID_HANDLE;
+        auto parent = window(parent_handle);
+        if (!parent) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale parent window handle");
+        parent->children.reserve(parent->children.size() + 1);
+        NSURL* initial_url = nil;
+        if (options->initial_url) {
+            initial_url = [NSURL URLWithString:string(options->initial_url)];
+            if (!initial_url) return fail(NK_ERROR_INVALID_ARGUMENT, "initial URL is invalid");
+        }
+
+        auto resource = std::make_shared<MacWebViewResource>();
+        resource->parent = parent_handle;
+        resource->content_controller = [WKUserContentController new];
+        resource->delegate = [NKWebViewDelegate new];
+        [resource->content_controller addScriptMessageHandler:resource->delegate
+                                                         name:@"nativekit"];
+        WKWebViewConfiguration* configuration = [WKWebViewConfiguration new];
+        configuration.userContentController = resource->content_controller;
+        resource->view = [[WKWebView alloc]
+            initWithFrame:NSMakeRect(options->x, options->y, options->width, options->height)
+            configuration:configuration];
+        if (!resource->view) return fail(NK_ERROR_UNKNOWN, "could not create WKWebView");
+        resource->view.autoresizingMask = NSViewMaxXMargin | NSViewMaxYMargin;
+        resource->view.navigationDelegate = resource->delegate;
+        resource->handle = nk::core::handles().insert(
+            nk::core::ResourceType::webview, resource);
+        if (!resource->handle)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "WebView handle registry is full");
+        resource->delegate.resource = resource.get();
+        [resource->view addObserver:resource->delegate forKeyPath:@"title"
+                           options:NSKeyValueObservingOptionNew context:nullptr];
+        resource->observing_title = true;
+        if (@available(macOS 13.3, *))
+            resource->view.inspectable = (options->flags & NK_WEBVIEW_DEVTOOLS) != 0;
+        resource->view.hidden = (options->flags & NK_WEBVIEW_HIDDEN) != 0;
+        [parent->content addSubview:resource->view];
+        parent->children.push_back(resource->handle);
+        *out_webview = resource->handle;
+
+        emit_webview_text(NK_EVENT_WEBVIEW_READY, resource->handle, nil);
+        if (initial_url)
+            [resource->view loadRequest:[NSURLRequest requestWithURL:initial_url]];
+        return NK_OK;
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while creating WebView");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while creating WebView");
+    }
+}
+
+nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    auto resource = webview(handle);
+    if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    auto parent = window(resource->parent);
+    if (parent) {
+        auto& children = parent->children;
+        children.erase(std::remove(children.begin(), children.end(), handle), children.end());
+    }
+    if (resource->observing_title) {
+        [resource->view removeObserver:resource->delegate forKeyPath:@"title"];
+        resource->observing_title = false;
+    }
+    resource->view.navigationDelegate = nil;
+    [resource->content_controller removeScriptMessageHandlerForName:@"nativekit"];
+    resource->delegate.resource = nullptr;
+    [resource->view stopLoading];
+    [resource->view removeFromSuperview];
+    resource->view = nil;
+    nk::core::handles().erase(handle, nk::core::ResourceType::webview);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_show(nk_handle handle, uint32_t visible) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    auto resource = webview(handle);
+    if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    resource->view.hidden = !visible;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_set_bounds(nk_handle handle, int32_t x, int32_t y,
+                                        int32_t width, int32_t height) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (width <= 0 || height <= 0)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "WebView dimensions must be positive");
+    auto resource = webview(handle);
+    if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    resource->view.frame = NSMakeRect(x, y, width, height);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_navigate(nk_handle handle, const char* url) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    auto resource = webview(handle);
+    if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    NSString* value = string(url);
+    NSURL* target = value ? [NSURL URLWithString:value] : nil;
+    if (!target) return fail(NK_ERROR_INVALID_ARGUMENT, "URL is null, invalid UTF-8, or malformed");
+    [resource->view loadRequest:[NSURLRequest requestWithURL:target]];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char* html,
+                                      const char* base_url) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    auto resource = webview(handle);
+    if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    NSString* document = string(html);
+    NSString* base = string(base_url);
+    if (!document || (base_url && !base))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "HTML or base URL is invalid UTF-8");
+    NSURL* base_target = base.length ? [NSURL URLWithString:base] : nil;
+    if (base.length && !base_target)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "base URL is malformed");
+    [resource->view loadHTMLString:document baseURL:base_target];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
+                                  nk_request_id* out_request) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "evaluation request output is null");
+        *out_request = NK_INVALID_REQUEST_ID;
+        auto resource = webview(handle);
+        if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+        NSString* source = string(script);
+        if (!source) return fail(NK_ERROR_INVALID_ARGUMENT, "script is null or invalid UTF-8");
+        const auto request = nk::core::next_request_id();
+        [resource->view evaluateJavaScript:source completionHandler:^(id value, NSError* error) {
+            if (error)
+                emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
+                                  error.localizedDescription, NK_ERROR_UNKNOWN, 0, request);
+            else
+                emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
+                                  value ? [value description] : @"", NK_OK, 0, request);
+        }];
+        *out_request = request;
+        return NK_OK;
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while evaluating JavaScript");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while evaluating JavaScript");
+    }
+}
 
 nk_result NK_CALL nk_dialog_open_file(nk_handle parent,
                                       const nk_file_dialog_options* options,

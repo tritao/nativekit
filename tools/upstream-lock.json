@@ -56,9 +56,10 @@
         "src/osx/cocoa/utils.mm",
         "src/osx/core/stdpaths.mm",
         "src/osx/dnd_osx.cpp",
-        "src/osx/toplevel_osx.cpp"
+        "src/osx/toplevel_osx.cpp",
+        "src/osx/webview_webkit.mm"
       ],
-      "notes": "Cocoa application pumping, window delegate behavior, native panels, pasteboard formats, drop target negotiation, workspace integration, system paths, and appearance queries are adapted to NativeKit's handles, requests, and event queue."
+      "notes": "Cocoa application pumping, window delegate behavior, native panels, pasteboard formats, drop target negotiation, WKWebView navigation and script messaging, workspace integration, system paths, and appearance queries are adapted to NativeKit's handles, requests, and event queue."
     }
   }
 }
