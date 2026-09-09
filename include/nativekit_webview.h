@@ -46,7 +46,10 @@ typedef struct nk_webview_options {
 
 /*
  * Creates a native child WebView inside `parent`. Bounds are logical pixels;
- * width and height must be positive. `initial_url` is nullable UTF-8.
+ * width and height must be positive. `initial_url` is nullable UTF-8. Creation
+ * may finish asynchronously; NK_EVENT_WEBVIEW_READY reports when the native
+ * controller can display content. Operations issued before readiness are
+ * retained in call order by asynchronous backends.
  */
 NK_API nk_result NK_CALL nk_webview_create(
     nk_handle parent,

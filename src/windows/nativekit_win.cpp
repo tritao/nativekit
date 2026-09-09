@@ -117,6 +117,16 @@ HMODULE webview2_loader = nullptr;
 CreateWebViewEnvironment create_webview_environment = nullptr;
 GetWebViewVersion get_webview_version = nullptr;
 bool webview_com_initialized = false;
+std::atomic<uint32_t> pending_webview_creations{0};
+
+enum class WebViewCommandKind { navigate, html, evaluate };
+
+struct WebViewCommand {
+    WebViewCommandKind kind;
+    std::wstring value;
+    std::wstring auxiliary;
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+};
 
 struct WinWebViewResource final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
@@ -125,7 +135,10 @@ struct WinWebViewResource final : nk::core::Resource {
     bool visible = true;
     bool devtools = false;
     bool failed = false;
+    bool ready = false;
+    std::atomic<bool> creation_pending{false};
     std::wstring initial_url;
+    std::vector<WebViewCommand> pending;
     ComPtr<ICoreWebView2Environment> environment;
     ComPtr<ICoreWebView2Controller> controller;
     ComPtr<ICoreWebView2> webview;
@@ -282,6 +295,10 @@ void emit_drop_files(WinWindowResource& resource, HDROP drop) noexcept {
     DragFinish(drop);
 }
 
+#if defined(NK_HAS_WEBVIEW2)
+void update_child_bounds(WinWindowResource& parent) noexcept;
+#endif
+
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     auto* resource = reinterpret_cast<WinWindowResource*>(
         GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -329,6 +346,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                          suggested->right - suggested->left,
                          suggested->bottom - suggested->top,
                          SWP_NOACTIVATE | SWP_NOZORDER);
+#if defined(NK_HAS_WEBVIEW2)
+            update_child_bounds(*resource);
+#endif
             return 0;
         }
     }
@@ -352,6 +372,15 @@ bool ensure_window_class() {
 std::shared_ptr<WinWindowResource> get_window(nk_handle handle) {
     return std::dynamic_pointer_cast<WinWindowResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::window));
+}
+
+UINT query_window_dpi(HWND window) {
+    using Function = UINT(WINAPI*)(HWND);
+    const FARPROC address = GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow");
+    Function function = nullptr;
+    static_assert(sizeof(function) == sizeof(address));
+    std::memcpy(&function, &address, sizeof(function));
+    return function ? function(window) : 96;
 }
 
 #if defined(NK_HAS_WEBVIEW2)
@@ -461,6 +490,39 @@ std::wstring decode_json_string(const wchar_t* value) {
     return result;
 }
 
+RECT physical_bounds(const WinWebViewResource& resource) {
+    const auto parent = get_window(resource.parent);
+    const int dpi = parent ? static_cast<int>(query_window_dpi(parent->window)) : 96;
+    return {MulDiv(resource.bounds.left, dpi, 96),
+            MulDiv(resource.bounds.top, dpi, 96),
+            MulDiv(resource.bounds.right, dpi, 96),
+            MulDiv(resource.bounds.bottom, dpi, 96)};
+}
+
+LONG coordinate_end(int32_t origin, int32_t extent) {
+    const int64_t value = static_cast<int64_t>(origin) + extent;
+    if (value > std::numeric_limits<LONG>::max()) return std::numeric_limits<LONG>::max();
+    if (value < std::numeric_limits<LONG>::min()) return std::numeric_limits<LONG>::min();
+    return static_cast<LONG>(value);
+}
+
+void apply_webview_bounds(const std::shared_ptr<WinWebViewResource>& resource) {
+    if (resource->controller) resource->controller->put_Bounds(physical_bounds(*resource));
+}
+
+void update_child_bounds(WinWindowResource& parent) noexcept {
+    for (const auto handle : parent.children) {
+        const auto child = get_webview(handle);
+        if (child) apply_webview_bounds(child);
+    }
+}
+
+std::wstring html_document(std::wstring html, const std::wstring& base_url) {
+    if (!base_url.empty())
+        html = L"<head><base href=\"" + html_attribute(base_url) + L"\"></head>" + html;
+    return html;
+}
+
 void emit_webview_text(nk_event_kind kind, nk_handle source, const wchar_t* value,
                        nk_result result = NK_OK, uint32_t flags = 0,
                        nk_request_id request = NK_INVALID_REQUEST_ID) noexcept {
@@ -474,6 +536,64 @@ void emit_webview_text(nk_event_kind kind, nk_handle source, const wchar_t* valu
         event.data = text_bytes(utf8(value));
         nk::core::push_event(std::move(event));
     } catch (...) {}
+}
+
+HRESULT execute_script(const std::shared_ptr<WinWebViewResource>& resource,
+                       const std::wstring& script, nk_request_id request) {
+    const auto wrapped = L"String(eval(" + javascript_literal(script) + L"))";
+    auto completion = make_callback<ICoreWebView2ExecuteScriptCompletedHandler,
+                                    &IID_ICoreWebView2ExecuteScriptCompletedHandler,
+                                    HRESULT, LPCWSTR>(
+        [handle = resource->handle, request](HRESULT error, LPCWSTR result) -> HRESULT {
+            try {
+                const auto decoded = decode_json_string(result);
+                emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
+                                  decoded.c_str(), SUCCEEDED(error) ? NK_OK : NK_ERROR_UNKNOWN,
+                                  0, request);
+            } catch (...) {
+                emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
+                                  L"could not decode JavaScript result",
+                                  NK_ERROR_OUT_OF_MEMORY, 0, request);
+            }
+            return S_OK;
+        });
+    return resource->webview->ExecuteScript(wrapped.c_str(), completion.Get());
+}
+
+void flush_webview_commands(const std::shared_ptr<WinWebViewResource>& resource) {
+    auto commands = std::move(resource->pending);
+    resource->pending.clear();
+    for (const auto& command : commands) {
+        HRESULT result = E_FAIL;
+        if (command.kind == WebViewCommandKind::navigate)
+            result = resource->webview->Navigate(command.value.c_str());
+        else if (command.kind == WebViewCommandKind::html)
+            result = resource->webview->NavigateToString(
+                html_document(command.value, command.auxiliary).c_str());
+        else
+            result = execute_script(resource, command.value, command.request);
+        if (FAILED(result) && command.kind == WebViewCommandKind::evaluate)
+            emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, resource->handle,
+                              L"could not evaluate JavaScript", NK_ERROR_UNKNOWN,
+                              0, command.request);
+    }
+}
+
+void fail_webview(const std::shared_ptr<WinWebViewResource>& resource,
+                  const wchar_t* message) noexcept {
+    resource->failed = true;
+    for (const auto& command : resource->pending) {
+        if (command.kind == WebViewCommandKind::evaluate)
+            emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, resource->handle,
+                              message, NK_ERROR_UNKNOWN, 0, command.request);
+    }
+    resource->pending.clear();
+    emit_webview_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, resource->handle,
+                      message, NK_ERROR_UNKNOWN);
+}
+
+void complete_webview_creation(const std::shared_ptr<WinWebViewResource>& resource) noexcept {
+    if (resource->creation_pending.exchange(false)) --pending_webview_creations;
 }
 
 void configure_webview(const std::shared_ptr<WinWebViewResource>& resource) {
@@ -545,12 +665,17 @@ void configure_webview(const std::shared_ptr<WinWebViewResource>& resource) {
     resource->webview->AddScriptToExecuteOnDocumentCreated(
         LR"JS((()=>{if(!window.webkit)window.webkit={};if(!window.webkit.messageHandlers)window.webkit.messageHandlers={};window.webkit.messageHandlers.nativekit={postMessage:v=>window.chrome.webview.postMessage(String(v))};})();)JS",
         nullptr);
-    resource->controller->put_Bounds(resource->bounds);
+    apply_webview_bounds(resource);
     resource->controller->put_IsVisible(resource->visible ? TRUE : FALSE);
+    resource->ready = true;
+    emit_webview_text(NK_EVENT_WEBVIEW_READY, resource->handle, nullptr);
     if (!resource->initial_url.empty()) resource->webview->Navigate(resource->initial_url.c_str());
+    flush_webview_commands(resource);
 }
 
 void begin_webview_creation(const std::shared_ptr<WinWebViewResource>& resource) {
+    ++pending_webview_creations;
+    resource->creation_pending = true;
     auto environment_handler = make_callback<
         ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler,
         &IID_ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler,
@@ -558,9 +683,8 @@ void begin_webview_creation(const std::shared_ptr<WinWebViewResource>& resource)
         [resource](HRESULT error, ICoreWebView2Environment* environment) -> HRESULT {
             try {
             if (FAILED(error) || !environment || !get_webview(resource->handle)) {
-                resource->failed = true;
-                emit_webview_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, resource->handle,
-                                  L"WebView2 environment creation failed", NK_ERROR_UNKNOWN);
+                fail_webview(resource, L"WebView2 environment creation failed");
+                complete_webview_creation(resource);
                 return S_OK;
             }
             resource->environment = environment;
@@ -570,49 +694,44 @@ void begin_webview_creation(const std::shared_ptr<WinWebViewResource>& resource)
                 HRESULT, ICoreWebView2Controller*>(
                 [resource](HRESULT controller_error,
                            ICoreWebView2Controller* controller) -> HRESULT {
+                    struct Completion {
+                        std::shared_ptr<WinWebViewResource> resource;
+                        ~Completion() { complete_webview_creation(resource); }
+                    } completion{resource};
                     if (FAILED(controller_error) || !controller || !get_webview(resource->handle)) {
-                        resource->failed = true;
-                        emit_webview_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, resource->handle,
-                                          L"WebView2 controller creation failed", NK_ERROR_UNKNOWN);
+                        fail_webview(resource, L"WebView2 controller creation failed");
                         return S_OK;
                     }
                     resource->controller = controller;
                     if (FAILED(controller->get_CoreWebView2(&resource->webview))) {
-                        resource->failed = true;
-                        emit_webview_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, resource->handle,
-                                          L"WebView2 instance creation failed", NK_ERROR_UNKNOWN);
+                        fail_webview(resource, L"WebView2 instance creation failed");
                         return S_OK;
                     }
                     try {
                         configure_webview(resource);
                     } catch (...) {
-                        resource->failed = true;
-                        emit_webview_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, resource->handle,
-                                          L"WebView2 event setup failed", NK_ERROR_OUT_OF_MEMORY);
+                        fail_webview(resource, L"WebView2 event setup failed");
                     }
                     return S_OK;
                 });
             const auto parent = get_window(resource->parent);
             if (!parent || FAILED(environment->CreateCoreWebView2Controller(
                                parent->window, controller_handler.Get()))) {
-                resource->failed = true;
-                emit_webview_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, resource->handle,
-                                  L"WebView2 controller request failed", NK_ERROR_UNKNOWN);
+                fail_webview(resource, L"WebView2 controller request failed");
+                complete_webview_creation(resource);
             }
             return S_OK;
             } catch (...) {
-                resource->failed = true;
-                emit_webview_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, resource->handle,
-                                  L"WebView2 controller setup failed", NK_ERROR_OUT_OF_MEMORY);
+                fail_webview(resource, L"WebView2 controller setup failed");
+                complete_webview_creation(resource);
                 return E_OUTOFMEMORY;
             }
         });
     const HRESULT result = create_webview_environment(
         nullptr, nullptr, nullptr, environment_handler.Get());
     if (FAILED(result)) {
-        resource->failed = true;
-        emit_webview_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, resource->handle,
-                          L"WebView2 environment request failed", NK_ERROR_UNKNOWN);
+        complete_webview_creation(resource);
+        fail_webview(resource, L"WebView2 environment request failed");
     }
 }
 #endif
@@ -740,13 +859,13 @@ void run_file_dialog(const std::shared_ptr<WinDialogContext>& context) noexcept 
         }
     }
     const bool canceled = status == HRESULT_FROM_WIN32(ERROR_CANCELLED) || context->canceled;
+    context->complete = true;
     try {
         emit_file_completion(*context, std::move(paths), accepted && !canceled,
                              (SUCCEEDED(status) || canceled) ? NK_OK : NK_ERROR_UNKNOWN);
     } catch (...) {}
     release(dialog);
     if (SUCCEEDED(initialized)) CoUninitialize();
-    context->complete = true;
 }
 
 UINT message_box_type(const WinDialogContext& context) {
@@ -772,6 +891,7 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext>& context) noexce
     else if (response == IDOK) button = NK_MESSAGE_RESULT_OK;
     else if (response == IDYES) button = NK_MESSAGE_RESULT_YES;
     else if (response == IDNO) button = NK_MESSAGE_RESULT_NO;
+    context->complete = true;
     try {
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_DIALOG_COMPLETE;
@@ -781,7 +901,6 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext>& context) noexce
         event.data = bytes_of(nk_dialog_message_result{button});
         nk::core::push_event(std::move(event));
     } catch (...) {}
-    context->complete = true;
 }
 
 BOOL CALLBACK close_thread_window(HWND window, LPARAM) {
@@ -984,14 +1103,21 @@ void shutdown() noexcept {
     nk::core::handles().clear();
     pump_events();
 #if defined(NK_HAS_WEBVIEW2)
-    if (webview_com_initialized) {
-        CoUninitialize();
-        webview_com_initialized = false;
+    const ULONGLONG deadline = GetTickCount64() + 10000;
+    while (pending_webview_creations && GetTickCount64() < deadline) {
+        pump_events();
+        Sleep(1);
     }
-    create_webview_environment = nullptr;
-    get_webview_version = nullptr;
-    if (webview2_loader) FreeLibrary(webview2_loader);
-    webview2_loader = nullptr;
+    if (!pending_webview_creations) {
+        if (webview_com_initialized) {
+            CoUninitialize();
+            webview_com_initialized = false;
+        }
+        create_webview_environment = nullptr;
+        get_webview_version = nullptr;
+        if (webview2_loader) FreeLibrary(webview2_loader);
+        webview2_loader = nullptr;
+    }
 #endif
 }
 }
@@ -1090,13 +1216,7 @@ nk_result NK_CALL nk_window_get_scale(nk_handle handle, float* out_scale) {
     if (!out_scale) return fail(NK_ERROR_INVALID_ARGUMENT, "scale output must not be null");
     auto resource = get_window(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    using GetDpiForWindowFunction = UINT(WINAPI*)(HWND);
-    const FARPROC address = GetProcAddress(
-        GetModuleHandleW(L"user32.dll"), "GetDpiForWindow");
-    GetDpiForWindowFunction function = nullptr;
-    static_assert(sizeof(function) == sizeof(address));
-    std::memcpy(&function, &address, sizeof(function));
-    *out_scale = static_cast<float>(function ? function(resource->window) : 96) / 96.0f;
+    *out_scale = static_cast<float>(query_window_dpi(resource->window)) / 96.0f;
     return NK_OK;
 }
 
@@ -1139,7 +1259,8 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle,
         auto resource = std::make_shared<WinWebViewResource>();
         resource->parent = parent_handle;
         resource->bounds = {options->x, options->y,
-                            options->x + options->width, options->y + options->height};
+                            coordinate_end(options->x, options->width),
+                            coordinate_end(options->y, options->height)};
         resource->visible = (options->flags & NK_WEBVIEW_HIDDEN) == 0;
         resource->devtools = (options->flags & NK_WEBVIEW_DEVTOOLS) != 0;
         if (!copy_wide(options->initial_url, resource->initial_url))
@@ -1198,12 +1319,13 @@ nk_result NK_CALL nk_webview_set_bounds(nk_handle handle, int32_t x, int32_t y,
         return fail(NK_ERROR_INVALID_ARGUMENT, "WebView dimensions must be positive");
     auto resource = get_webview(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
-    resource->bounds = {x, y, x + width, y + height};
-    if (resource->controller) resource->controller->put_Bounds(resource->bounds);
+    resource->bounds = {x, y, coordinate_end(x, width), coordinate_end(y, height)};
+    apply_webview_bounds(resource);
     return resource->failed ? fail(NK_ERROR_UNKNOWN, "WebView2 initialization failed") : NK_OK;
 }
 
 nk_result NK_CALL nk_webview_navigate(nk_handle handle, const char* url) {
+    try {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     if (!url) return fail(NK_ERROR_INVALID_ARGUMENT, "URL must not be null");
     auto resource = get_webview(handle);
@@ -1212,30 +1334,45 @@ nk_result NK_CALL nk_webview_navigate(nk_handle handle, const char* url) {
     if (*url && value.empty()) return fail(NK_ERROR_INVALID_ARGUMENT, "URL is not valid UTF-8");
     if (!resource->webview) {
         if (resource->failed) return fail(NK_ERROR_UNKNOWN, "WebView2 initialization failed");
-        resource->initial_url = value;
+        resource->pending.push_back(
+            WebViewCommand{WebViewCommandKind::navigate, value, {}, NK_INVALID_REQUEST_ID});
         return NK_OK;
     }
     return SUCCEEDED(resource->webview->Navigate(value.c_str())) ? NK_OK
         : fail(NK_ERROR_UNKNOWN, "WebView2 navigation request failed");
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while queuing navigation");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while navigating WebView");
+    }
 }
 
 nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char* html, const char* base_url) {
+    try {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     if (!html) return fail(NK_ERROR_INVALID_ARGUMENT, "HTML must not be null");
     auto resource = get_webview(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
     auto value = wide(html);
     if (*html && value.empty()) return fail(NK_ERROR_INVALID_ARGUMENT, "HTML is not valid UTF-8");
-    if (base_url && *base_url) {
-        const auto base = wide(base_url);
-        if (base.empty()) return fail(NK_ERROR_INVALID_ARGUMENT, "base URL is not valid UTF-8");
-        value = L"<head><base href=\"" + html_attribute(base) + L"\"></head>" + value;
+    std::wstring base;
+    if (!copy_wide(base_url, base))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "base URL is not valid UTF-8");
+    if (!resource->webview) {
+        if (resource->failed) return fail(NK_ERROR_UNKNOWN, "WebView2 initialization failed");
+        resource->pending.push_back(
+            WebViewCommand{WebViewCommandKind::html, std::move(value), std::move(base),
+                           NK_INVALID_REQUEST_ID});
+        return NK_OK;
     }
-    if (!resource->webview)
-        return fail(resource->failed ? NK_ERROR_UNKNOWN : NK_ERROR_NOT_INITIALIZED,
-                    resource->failed ? "WebView2 initialization failed" : "WebView2 is still initializing");
-    return SUCCEEDED(resource->webview->NavigateToString(value.c_str())) ? NK_OK
+    const auto document = html_document(std::move(value), base);
+    return SUCCEEDED(resource->webview->NavigateToString(document.c_str())) ? NK_OK
         : fail(NK_ERROR_UNKNOWN, "WebView2 HTML navigation failed");
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while queuing HTML");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while setting WebView HTML");
+    }
 }
 
 nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
@@ -1247,31 +1384,18 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
         *out_request = NK_INVALID_REQUEST_ID;
         auto resource = get_webview(handle);
         if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
-        if (!resource->webview)
-            return fail(resource->failed ? NK_ERROR_UNKNOWN : NK_ERROR_NOT_INITIALIZED,
-                        resource->failed ? "WebView2 initialization failed" : "WebView2 is still initializing");
         const auto value = wide(script);
         if (*script && value.empty())
             return fail(NK_ERROR_INVALID_ARGUMENT, "JavaScript is not valid UTF-8");
         const auto request = nk::core::next_request_id();
-        const auto wrapped = L"String(eval(" + javascript_literal(value) + L"))";
-        auto completion = make_callback<ICoreWebView2ExecuteScriptCompletedHandler,
-                                        &IID_ICoreWebView2ExecuteScriptCompletedHandler,
-                                        HRESULT, LPCWSTR>(
-            [handle, request](HRESULT error, LPCWSTR result) -> HRESULT {
-                try {
-                    const auto decoded = decode_json_string(result);
-                    emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
-                                      decoded.c_str(), SUCCEEDED(error) ? NK_OK : NK_ERROR_UNKNOWN,
-                                      0, request);
-                } catch (...) {
-                    emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
-                                      L"could not decode JavaScript result",
-                                      NK_ERROR_OUT_OF_MEMORY, 0, request);
-                }
-                return S_OK;
-            });
-        const HRESULT result = resource->webview->ExecuteScript(wrapped.c_str(), completion.Get());
+        if (!resource->webview) {
+            if (resource->failed) return fail(NK_ERROR_UNKNOWN, "WebView2 initialization failed");
+            resource->pending.push_back(
+                WebViewCommand{WebViewCommandKind::evaluate, value, {}, request});
+            *out_request = request;
+            return NK_OK;
+        }
+        const HRESULT result = execute_script(resource, value, request);
         if (FAILED(result)) return fail(NK_ERROR_UNKNOWN, "could not evaluate JavaScript");
         *out_request = request;
         return NK_OK;

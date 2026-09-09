@@ -822,6 +822,10 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
                          G_CALLBACK(on_webview_message), resource.get());
         auto* settings = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(resource->widget));
         webkit_settings_set_enable_developer_extras(settings, (options->flags & NK_WEBVIEW_DEVTOOLS) != 0);
+        nk::core::QueuedEvent ready;
+        ready.kind = NK_EVENT_WEBVIEW_READY;
+        ready.source = resource->handle;
+        nk::core::push_event(std::move(ready));
         if (options->initial_url) webkit_web_view_load_uri(WEBKIT_WEB_VIEW(resource->widget), options->initial_url);
         if ((options->flags & NK_WEBVIEW_HIDDEN) == 0) gtk_widget_show(resource->widget);
         *out_webview = resource->handle;

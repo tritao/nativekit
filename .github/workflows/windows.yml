@@ -7,13 +7,24 @@ on:
 jobs:
   native-windows:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            test: true
+          - architecture: Win32
+            test: true
+          - architecture: ARM64
+            test: false
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Configure
-        run: cmake -S . -B build -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=OFF -DNK_BUILD_TESTS=ON
+        run: cmake -S . -B build -A ${{ matrix.architecture }} -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=OFF -DNK_BUILD_TESTS=ON
       - name: Build
         run: cmake --build build --config Debug
       - name: Test
+        if: matrix.test
         run: ctest --test-dir build -C Debug --output-on-failure

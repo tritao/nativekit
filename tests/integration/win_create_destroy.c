@@ -187,25 +187,52 @@ int main(void) {
     webview_options.flags = NK_WEBVIEW_HIDDEN;
     webview_options.width = 320;
     webview_options.height = 240;
-    webview_options.initial_url = "about:blank";
     nk_handle webview = NK_INVALID_HANDLE;
     if (nk_get_capabilities() & NK_CAP_WEBVIEW) {
         assert(nk_webview_create(window, &webview_options, &webview) == NK_OK);
-        nk_event navigated = wait_for_event(NK_EVENT_WEBVIEW_NAVIGATED,
-                                            NK_INVALID_REQUEST_ID);
-        assert(navigated.source == webview);
-        nk_event_release(&navigated);
-        assert(nk_webview_set_bounds(webview, 4, 5, 300, 200) == NK_OK);
-        assert(nk_webview_show(webview, 1) == NK_OK);
+        const char webview_html[] =
+            "<title>NativeKit title event</title>"
+            "<script>window.webkit.messageHandlers.nativekit.postMessage('nativekit-message')</script>";
+        assert(nk_webview_set_html(webview, webview_html, "https://nativekit.invalid/") == NK_OK);
         nk_request_id eval_request = NK_INVALID_REQUEST_ID;
         assert(nk_webview_eval(webview, "6 * 7", &eval_request) == NK_OK);
-        nk_event evaluated = wait_for_event(NK_EVENT_WEBVIEW_EVAL_COMPLETE,
-                                            eval_request);
-        assert(evaluated.source == webview);
-        assert(evaluated.result == NK_OK);
-        assert(evaluated.data_size == 2);
-        assert(memcmp(evaluated.data, "42", 2) == 0);
-        nk_event_release(&evaluated);
+
+        int saw_ready = 0;
+        int saw_navigation = 0;
+        int saw_title = 0;
+        int saw_message = 0;
+        int saw_evaluation = 0;
+        for (int attempt = 0; attempt < 1000 &&
+             !(saw_ready && saw_navigation && saw_title && saw_message && saw_evaluation);
+             ++attempt) {
+            nk_event event = {0};
+            event.struct_size = sizeof(event);
+            assert(nk_poll_event(&event) == NK_OK);
+            if (event.source == webview && event.kind == NK_EVENT_WEBVIEW_READY)
+                saw_ready = 1;
+            else if (event.source == webview && event.kind == NK_EVENT_WEBVIEW_NAVIGATED)
+                saw_navigation = 1;
+            else if (event.source == webview && event.kind == NK_EVENT_WEBVIEW_TITLE_CHANGED &&
+                     event.data_size == strlen("NativeKit title event") &&
+                     memcmp(event.data, "NativeKit title event", event.data_size) == 0)
+                saw_title = 1;
+            else if (event.source == webview && event.kind == NK_EVENT_WEBVIEW_MESSAGE &&
+                     event.data_size == strlen("nativekit-message") &&
+                     memcmp(event.data, "nativekit-message", event.data_size) == 0)
+                saw_message = 1;
+            else if (event.source == webview && event.kind == NK_EVENT_WEBVIEW_EVAL_COMPLETE &&
+                     event.request_id == eval_request) {
+                assert(event.result == NK_OK);
+                assert(event.data_size == 2);
+                assert(memcmp(event.data, "42", 2) == 0);
+                saw_evaluation = 1;
+            }
+            nk_event_release(&event);
+            Sleep(10);
+        }
+        assert(saw_ready && saw_navigation && saw_title && saw_message && saw_evaluation);
+        assert(nk_webview_set_bounds(webview, 4, 5, 300, 200) == NK_OK);
+        assert(nk_webview_show(webview, 1) == NK_OK);
         assert(nk_webview_destroy(webview) == NK_OK);
         assert(nk_webview_destroy(webview) == NK_ERROR_INVALID_HANDLE);
     } else {
@@ -248,7 +275,21 @@ int main(void) {
     assert(message_result->button == NK_MESSAGE_RESULT_CANCEL);
     nk_event_release(&message_event);
 
-    assert(nk_window_destroy(window) == NK_OK);
+    if (nk_get_capabilities() & NK_CAP_WEBVIEW) {
+        nk_handle pending_webview = NK_INVALID_HANDLE;
+        assert(nk_webview_create(window, &webview_options, &pending_webview) == NK_OK);
+        assert(nk_window_destroy(window) == NK_OK);
+        assert(nk_webview_destroy(pending_webview) == NK_ERROR_INVALID_HANDLE);
+        for (int index = 0; index < 100; ++index) {
+            nk_event event = {0};
+            event.struct_size = sizeof(event);
+            assert(nk_poll_event(&event) == NK_OK);
+            nk_event_release(&event);
+            Sleep(1);
+        }
+    } else {
+        assert(nk_window_destroy(window) == NK_OK);
+    }
     assert(nk_window_destroy(window) == NK_ERROR_INVALID_HANDLE);
     nk_shutdown();
     return 0;

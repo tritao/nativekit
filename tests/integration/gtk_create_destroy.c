@@ -101,6 +101,16 @@ int main(void) {
     webview_options.height = 480;
     nk_handle webview = NK_INVALID_HANDLE;
     assert(nk_webview_create(window, &webview_options, &webview) == NK_OK);
+    int received_ready = 0;
+    for (int attempt = 0; attempt < 100 && !received_ready; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_WEBVIEW_READY && event.source == webview)
+            received_ready = 1;
+        nk_event_release(&event);
+    }
+    assert(received_ready);
     assert(nk_webview_set_html(
                webview,
                "<title>NativeKit</title><script>"

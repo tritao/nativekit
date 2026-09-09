@@ -27,6 +27,10 @@ the pinned Microsoft WebView2 SDK by default; use `-DNK_ENABLE_WEBVIEW2=OFF` for
 an offline Windows build without WebView support. Windows text drops are deferred
 until the backend has an OLE drop target.
 
+WebView creation may be asynchronous. Consumers can wait for
+`NK_EVENT_WEBVIEW_READY`; navigation, HTML, and evaluation calls made before that
+event are retained in call order.
+
 The current Linux backend provides NativeKit-owned GTK 3 windows, WebKitGTK
 WebViews, asynchronous native dialogs, shell launching, standard directories,
 locale, desktop appearance, clipboard, and file/text drops. Builds without GTK 3 and WebKitGTK 4.1 retain
