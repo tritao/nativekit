@@ -1,0 +1,108 @@
+#include "nativekit.h"
+
+#include "core/error.hpp"
+#include "core/event_queue.hpp"
+
+#include <cstddef>
+#include <memory>
+#include <mutex>
+#include <new>
+#include <thread>
+
+namespace {
+std::mutex state_mutex;
+std::unique_ptr<nk::core::EventQueue> event_queue;
+std::thread::id ui_thread;
+constexpr std::uint32_t default_queue_capacity = 1024;
+
+bool valid_event_struct(const nk_event* event) {
+    return event && event->struct_size >= sizeof(nk_event);
+}
+}
+
+extern "C" {
+
+uint32_t NK_CALL nk_api_version(void) { return NK_API_VERSION; }
+
+nk_result NK_CALL nk_init(const nk_init_options* options) {
+    try {
+        nk::core::clear_error();
+        if (!options || options->struct_size < sizeof(nk_init_options)) {
+            nk::core::set_error("nk_init_options is missing or too small");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        if (options->api_version != NK_API_VERSION) {
+            nk::core::set_error("unsupported NativeKit API version");
+            return NK_ERROR_UNSUPPORTED;
+        }
+        std::lock_guard lock(state_mutex);
+        if (event_queue) {
+            nk::core::set_error("NativeKit is already initialized");
+            return NK_ERROR_ALREADY_INITIALIZED;
+        }
+        const auto capacity = options->event_queue_capacity == 0
+            ? default_queue_capacity : options->event_queue_capacity;
+        event_queue = std::make_unique<nk::core::EventQueue>(capacity);
+        ui_thread = std::this_thread::get_id();
+        return NK_OK;
+    } catch (const std::bad_alloc&) {
+        nk::core::set_error("out of memory while initializing NativeKit");
+        return NK_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        nk::core::set_error("unexpected exception while initializing NativeKit");
+        return NK_ERROR_UNKNOWN;
+    }
+}
+
+void NK_CALL nk_shutdown(void) {
+    try {
+        std::lock_guard lock(state_mutex);
+        event_queue.reset();
+        ui_thread = {};
+        nk::core::clear_error();
+    } catch (...) {
+        nk::core::set_error("unexpected exception while shutting down NativeKit");
+    }
+}
+
+const char* NK_CALL nk_last_error(void) { return nk::core::last_error(); }
+
+nk_result NK_CALL nk_poll_event(nk_event* event) {
+    try {
+        nk::core::clear_error();
+        if (!valid_event_struct(event)) {
+            nk::core::set_error("nk_event is missing or too small");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        if (event->data) {
+            nk::core::set_error("nk_event contains unreleased data");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        std::lock_guard lock(state_mutex);
+        if (!event_queue) {
+            nk::core::set_error("NativeKit is not initialized");
+            return NK_ERROR_NOT_INITIALIZED;
+        }
+        if (std::this_thread::get_id() != ui_thread) {
+            nk::core::set_error("nk_poll_event must be called on the initialization thread");
+            return NK_ERROR_WRONG_THREAD;
+        }
+        return event_queue->poll(*event);
+    } catch (const std::bad_alloc&) {
+        nk::core::set_error("out of memory while polling an event");
+        return NK_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        nk::core::set_error("unexpected exception while polling an event");
+        return NK_ERROR_UNKNOWN;
+    }
+}
+
+void NK_CALL nk_event_release(nk_event* event) {
+    if (!event) return;
+    delete[] static_cast<const std::byte*>(event->data);
+    const auto size = event->struct_size;
+    *event = {};
+    event->struct_size = size;
+}
+
+}

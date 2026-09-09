@@ -1,0 +1,7 @@
+NATIVEKIT_0 {
+    global:
+        nk_*;
+    local:
+        *;
+};
+

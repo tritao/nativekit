@@ -1,0 +1,9 @@
+{
+  "wxwidgets": {
+    "repository": "https://github.com/wxWidgets/wxWidgets.git",
+    "commit": "670835aec7e54b9e9d5a50d6a1aea1e8ba0bcdb2",
+    "tag": "v3.3.3",
+    "version": "3.3.3"
+  },
+  "derived_files": {}
+}
