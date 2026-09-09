@@ -41,6 +41,6 @@ xvfb-run -a bash -c '
     wine "$2"
     wine "$3"
 ' bash \
-    "$build_dir/tests/nativekit_c_abi.exe" \
-    "$build_dir/tests/nativekit_core_tests.exe" \
-    "$build_dir/tests/nativekit_win_integration.exe"
+    "$build_dir/bin/nativekit_c_abi.exe" \
+    "$build_dir/bin/nativekit_core_tests.exe" \
+    "$build_dir/bin/nativekit_win_integration.exe"
