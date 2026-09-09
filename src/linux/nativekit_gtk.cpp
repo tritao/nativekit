@@ -319,8 +319,10 @@ nk_key key_from_gdk(guint value) {
         return NK_KEY_A + value - GDK_KEY_A;
     if (value >= GDK_KEY_0 && value <= GDK_KEY_9)
         return NK_KEY_0 + value - GDK_KEY_0;
-    if (value >= GDK_KEY_F1 && value <= GDK_KEY_F12)
+    if (value >= GDK_KEY_F1 && value <= GDK_KEY_F25)
         return NK_KEY_F1 + value - GDK_KEY_F1;
+    if (value >= GDK_KEY_KP_0 && value <= GDK_KEY_KP_9)
+        return NK_KEY_KP_0 + value - GDK_KEY_KP_0;
     switch (value) {
     case GDK_KEY_space: return NK_KEY_SPACE;
     case GDK_KEY_apostrophe: return NK_KEY_APOSTROPHE;
@@ -335,8 +337,14 @@ nk_key key_from_gdk(guint value) {
     case GDK_KEY_bracketright: return NK_KEY_RIGHT_BRACKET;
     case GDK_KEY_grave: return NK_KEY_GRAVE_ACCENT;
     case GDK_KEY_Escape: return NK_KEY_ESCAPE;
-    case GDK_KEY_Return:
-    case GDK_KEY_KP_Enter: return NK_KEY_ENTER;
+    case GDK_KEY_Return: return NK_KEY_ENTER;
+    case GDK_KEY_KP_Enter: return NK_KEY_KP_ENTER;
+    case GDK_KEY_KP_Decimal: return NK_KEY_KP_DECIMAL;
+    case GDK_KEY_KP_Divide: return NK_KEY_KP_DIVIDE;
+    case GDK_KEY_KP_Multiply: return NK_KEY_KP_MULTIPLY;
+    case GDK_KEY_KP_Subtract: return NK_KEY_KP_SUBTRACT;
+    case GDK_KEY_KP_Add: return NK_KEY_KP_ADD;
+    case GDK_KEY_KP_Equal: return NK_KEY_KP_EQUAL;
     case GDK_KEY_Tab:
     case GDK_KEY_ISO_Left_Tab: return NK_KEY_TAB;
     case GDK_KEY_BackSpace: return NK_KEY_BACKSPACE;
