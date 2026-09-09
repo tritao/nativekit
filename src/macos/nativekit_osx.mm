@@ -31,14 +31,20 @@
 @property(nonatomic, assign) void* resource;
 @end
 
+@interface NKContentView : NSView <NSDraggingDestination>
+@property(nonatomic, assign) void* resource;
+@end
+
 namespace {
 
 struct MacWindowResource final : nk::core::Resource {
     __strong NSWindow* window = nil;
+    __strong NKContentView* content = nil;
     __strong NKWindowDelegate* delegate = nil;
     nk_handle handle = NK_INVALID_HANDLE;
     ~MacWindowResource() override {
         if (window) {
+            content.resource = nullptr;
             window.delegate = nil;
             [window orderOut:nil];
             [window close];
@@ -108,6 +114,72 @@ template<typename T>
 std::vector<std::byte> bytes_of(const T& value) {
     const auto* first = reinterpret_cast<const std::byte*>(&value);
     return {first, first + sizeof(value)};
+}
+
+std::vector<std::byte> text_bytes(const std::string& value) {
+    const auto* first = reinterpret_cast<const std::byte*>(value.data());
+    return {first, first + value.size()};
+}
+
+template<typename Header>
+std::vector<std::byte> string_list_payload(Header header,
+                                           const std::vector<std::string>& strings,
+                                           uint32_t Header::*offset_member) {
+    header.*offset_member = sizeof(Header);
+    std::size_t total = sizeof(Header);
+    for (const auto& value : strings) total += value.size() + 1;
+    std::vector<std::byte> result(total);
+    std::memcpy(result.data(), &header, sizeof(header));
+    std::size_t cursor = sizeof(Header);
+    for (const auto& value : strings) {
+        std::memcpy(result.data() + cursor, value.c_str(), value.size() + 1);
+        cursor += value.size() + 1;
+    }
+    return result;
+}
+
+NSArray<NSURL*>* pasteboard_file_urls(NSPasteboard* pasteboard) {
+    NSDictionary* options = @{NSPasteboardURLReadingFileURLsOnlyKey: @YES};
+    NSArray* values = [pasteboard readObjectsForClasses:@[[NSURL class]] options:options];
+    NSMutableArray<NSURL*>* files = [NSMutableArray array];
+    for (NSURL* value in values)
+        if (value.fileURL) [files addObject:value];
+    return files;
+}
+
+bool emit_drop(MacWindowResource& resource, id<NSDraggingInfo> information) noexcept {
+    try {
+        NSPasteboard* pasteboard = information.draggingPasteboard;
+        NSArray<NSURL*>* urls = pasteboard_file_urls(pasteboard);
+        std::vector<std::string> items;
+        nk_event_kind kind = NK_EVENT_DROP_FILES;
+        if (urls.count) {
+            for (NSURL* url in urls) {
+                const bool scoped = [url startAccessingSecurityScopedResource];
+                items.push_back(utf8(url.path));
+                if (scoped) [url stopAccessingSecurityScopedResource];
+            }
+        } else {
+            NSString* text = [pasteboard stringForType:NSPasteboardTypeString];
+            if (!text) return false;
+            kind = NK_EVENT_DROP_TEXT;
+            items.push_back(utf8(text));
+        }
+        const NSPoint point = [resource.content convertPoint:information.draggingLocation
+                                                   fromView:nil];
+        nk::core::QueuedEvent event;
+        event.kind = kind;
+        event.source = resource.handle;
+        event.data_count = static_cast<uint32_t>(items.size());
+        nk_drop_data header{
+            static_cast<int32_t>(point.x),
+            static_cast<int32_t>(resource.content.bounds.size.height - point.y),
+            static_cast<uint32_t>(items.size()), 0};
+        event.data = string_list_payload(header, items, &nk_drop_data::strings_offset);
+        return nk::core::push_event(std::move(event)) == NK_OK;
+    } catch (...) {
+        return false;
+    }
 }
 
 std::shared_ptr<MacWindowResource> window(nk_handle handle) {
@@ -334,6 +406,23 @@ nk_result unsupported() {
 }
 @end
 
+@implementation NKContentView
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+    NSPasteboard* pasteboard = sender.draggingPasteboard;
+    return pasteboard_file_urls(pasteboard).count ||
+           [pasteboard availableTypeFromArray:@[NSPasteboardTypeString]]
+        ? NSDragOperationCopy : NSDragOperationNone;
+}
+- (BOOL)prepareForDragOperation:(id<NSDraggingInfo>)sender {
+    (void)sender;
+    return _resource != nullptr;
+}
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+    auto* resource = static_cast<MacWindowResource*>(_resource);
+    return resource && emit_drop(*resource, sender);
+}
+@end
+
 namespace nk::backend {
 void pump_events() noexcept {
     @autoreleasepool {
@@ -363,7 +452,8 @@ void shutdown() noexcept {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_SHELL |
+    return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
+           NK_CAP_DRAG_DROP | NK_CAP_SHELL |
            NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW;
 }
 
@@ -390,6 +480,11 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options,
         if (!resource->window) return fail(NK_ERROR_UNKNOWN, "could not create Cocoa window");
         resource->window.title = string(options->title) ?: @"";
         resource->window.releasedWhenClosed = NO;
+        resource->content = [[NKContentView alloc]
+            initWithFrame:NSMakeRect(0, 0, options->width, options->height)];
+        resource->content.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        resource->content.resource = resource.get();
+        resource->window.contentView = resource->content;
         resource->delegate = [NKWindowDelegate new];
         resource->delegate.resource = resource.get();
         resource->window.delegate = resource->delegate;
@@ -411,6 +506,7 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     auto resource = window(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
     cancel_dialogs_for_parent(resource->window);
+    resource->content.resource = nullptr;
     resource->delegate.resource = nullptr;
     resource->window.delegate = nil;
     [resource->window orderOut:nil];
@@ -470,7 +566,7 @@ nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window* out_n
     out_native->struct_size = size;
     out_native->kind = NK_NATIVE_WINDOW_COCOA;
     out_native->window = reinterpret_cast<uintptr_t>((__bridge void*)resource->window);
-    out_native->view = reinterpret_cast<uintptr_t>((__bridge void*)resource->window.contentView);
+    out_native->view = reinterpret_cast<uintptr_t>((__bridge void*)resource->content);
     return NK_OK;
 }
 
@@ -632,10 +728,104 @@ nk_result NK_CALL nk_system_get_appearance(nk_system_appearance* appearance) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_clipboard_set_text(const char*) { return unsupported(); }
-nk_result NK_CALL nk_clipboard_set_files(const char* const*, uint32_t) { return unsupported(); }
-nk_result NK_CALL nk_clipboard_read_text(nk_request_id*) { return unsupported(); }
-nk_result NK_CALL nk_clipboard_read_files(nk_request_id*) { return unsupported(); }
-nk_result NK_CALL nk_window_set_drop_enabled(nk_handle, uint32_t) { return unsupported(); }
+nk_result NK_CALL nk_clipboard_set_text(const char* text) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (!text) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard text must not be null");
+    NSString* value = string(text);
+    if (!value) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard text is not valid UTF-8");
+    NSPasteboard* pasteboard = NSPasteboard.generalPasteboard;
+    [pasteboard clearContents];
+    return [pasteboard setString:value forType:NSPasteboardTypeString] ? NK_OK
+        : fail(NK_ERROR_UNKNOWN, "macOS rejected clipboard text");
+}
+
+nk_result NK_CALL nk_clipboard_set_files(const char* const* paths, uint32_t path_count) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!paths || !path_count)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard file list must not be empty");
+        NSMutableArray<NSURL*>* urls = [NSMutableArray arrayWithCapacity:path_count];
+        for (uint32_t index = 0; index < path_count; ++index) {
+            NSString* path = string(paths[index]);
+            if (!path.length)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard path is empty or invalid UTF-8");
+            if (![path isAbsolutePath])
+                path = [NSFileManager.defaultManager.currentDirectoryPath
+                    stringByAppendingPathComponent:path];
+            [urls addObject:[NSURL fileURLWithPath:path.stringByStandardizingPath]];
+        }
+        NSPasteboard* pasteboard = NSPasteboard.generalPasteboard;
+        [pasteboard clearContents];
+        return [pasteboard writeObjects:urls] ? NK_OK
+            : fail(NK_ERROR_UNKNOWN, "macOS rejected clipboard files");
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while writing clipboard files");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while writing clipboard files");
+    }
+}
+
+nk_result NK_CALL nk_clipboard_read_text(nk_request_id* out_request) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+        *out_request = NK_INVALID_REQUEST_ID;
+        const auto request = nk::core::next_request_id();
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_CLIPBOARD_TEXT_COMPLETE;
+        event.request_id = request;
+        event.data = text_bytes(utf8(
+            [NSPasteboard.generalPasteboard stringForType:NSPasteboardTypeString]));
+        const auto result = nk::core::push_event(std::move(event));
+        if (result != NK_OK) return fail(result, "could not queue clipboard text result");
+        *out_request = request;
+        return NK_OK;
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading clipboard text");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading clipboard text");
+    }
+}
+
+nk_result NK_CALL nk_clipboard_read_files(nk_request_id* out_request) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+        *out_request = NK_INVALID_REQUEST_ID;
+        std::vector<std::string> paths;
+        for (NSURL* url in pasteboard_file_urls(NSPasteboard.generalPasteboard)) {
+            const bool scoped = [url startAccessingSecurityScopedResource];
+            paths.push_back(utf8(url.path));
+            if (scoped) [url stopAccessingSecurityScopedResource];
+        }
+        const auto request = nk::core::next_request_id();
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_CLIPBOARD_FILES_COMPLETE;
+        event.request_id = request;
+        event.data_count = static_cast<uint32_t>(paths.size());
+        nk_clipboard_files header{static_cast<uint32_t>(paths.size()), 0};
+        event.data = string_list_payload(header, paths, &nk_clipboard_files::strings_offset);
+        const auto result = nk::core::push_event(std::move(event));
+        if (result != NK_OK) return fail(result, "could not queue clipboard file result");
+        *out_request = request;
+        return NK_OK;
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading clipboard files");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading clipboard files");
+    }
+}
+
+nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, uint32_t enabled) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    auto resource = window(handle);
+    if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    if (enabled)
+        [resource->content registerForDraggedTypes:@[NSPasteboardTypeFileURL,
+                                                     NSPasteboardTypeString]];
+    else
+        [resource->content unregisterDraggedTypes];
+    return NK_OK;
+}
 
 }

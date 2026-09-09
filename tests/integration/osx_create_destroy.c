@@ -1,10 +1,26 @@
 #include "nativekit.h"
+#include "nativekit_clipboard.h"
 #include "nativekit_system.h"
 #include "nativekit_window.h"
 
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+static nk_event wait_for_event(nk_event_kind kind, nk_request_id request) {
+    for (int attempt = 0; attempt < 500; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == kind && event.request_id == request) return event;
+        nk_event_release(&event);
+        usleep(10000);
+    }
+    assert(!"timed out waiting for event");
+    nk_event unreachable = {0};
+    return unreachable;
+}
 
 static void verify_system_string(nk_system_directory_kind kind) {
     uint32_t size = 0;
@@ -26,6 +42,8 @@ int main(void) {
     assert(nk_init(&init) == NK_OK);
     assert((nk_get_capabilities() & NK_CAP_WINDOW) != 0);
     assert((nk_get_capabilities() & NK_CAP_FILE_DIALOG) != 0);
+    assert((nk_get_capabilities() & NK_CAP_CLIPBOARD) != 0);
+    assert((nk_get_capabilities() & NK_CAP_DRAG_DROP) != 0);
     assert((nk_get_capabilities() & NK_CAP_SHELL) != 0);
 
     verify_system_string(NK_DIRECTORY_HOME);
@@ -59,6 +77,36 @@ int main(void) {
     assert(nk_window_get_native(window, &native) == NK_OK);
     assert(native.kind == NK_NATIVE_WINDOW_COCOA);
     assert(native.window != 0 && native.view != 0);
+
+    const char clipboard_text[] = "NativeKit pasteboard UTF-8 \xE2\x9C\x93";
+    assert(nk_clipboard_set_text(clipboard_text) == NK_OK);
+    nk_request_id text_request = NK_INVALID_REQUEST_ID;
+    assert(nk_clipboard_read_text(&text_request) == NK_OK);
+    nk_event text_event = wait_for_event(NK_EVENT_CLIPBOARD_TEXT_COMPLETE, text_request);
+    assert(text_event.data_size == strlen(clipboard_text));
+    assert(memcmp(text_event.data, clipboard_text, text_event.data_size) == 0);
+    nk_event_release(&text_event);
+
+    const char *clipboard_paths[] = {
+        "/tmp/nativekit-pasteboard-a",
+        "/tmp/nativekit-pasteboard-\xE2\x9C\x93"
+    };
+    assert(nk_clipboard_set_files(clipboard_paths, 2) == NK_OK);
+    nk_request_id files_request = NK_INVALID_REQUEST_ID;
+    assert(nk_clipboard_read_files(&files_request) == NK_OK);
+    nk_event files_event = wait_for_event(NK_EVENT_CLIPBOARD_FILES_COMPLETE, files_request);
+    assert(files_event.data_count == 2);
+    for (uint32_t index = 0; index < 2; ++index) {
+        const char *path = NULL;
+        uint32_t length = 0;
+        assert(nk_clipboard_event_file(&files_event, index, &path, &length) == NK_OK);
+        assert(length >= strlen(clipboard_paths[index]));
+        assert(memcmp(path + length - strlen(clipboard_paths[index]),
+                      clipboard_paths[index], strlen(clipboard_paths[index])) == 0);
+    }
+    nk_event_release(&files_event);
+    assert(nk_window_set_drop_enabled(window, 1) == NK_OK);
+    assert(nk_window_set_drop_enabled(window, 0) == NK_OK);
     nk_system_appearance appearance = {0};
     appearance.struct_size = sizeof(appearance);
     assert(nk_system_get_appearance(&appearance) == NK_OK);

@@ -38,8 +38,8 @@ the same ABI and report these capabilities as unsupported.
 
 The initial macOS backend provides Cocoa-owned windows, asynchronous native file
 and message panels, workspace shell integration, standard directories, locale,
-appearance, and native NSWindow/NSView descriptors. Pasteboard, drops, and
-WKWebView are the next macOS implementation slices.
+appearance, pasteboard text and file transfer, file/text drops, and native
+NSWindow/NSView descriptors. WKWebView is the next macOS implementation slice.
 
 ## Build
 

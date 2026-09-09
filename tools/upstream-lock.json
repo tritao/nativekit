@@ -46,15 +46,19 @@
     },
     "src/macos/nativekit_osx.mm": {
       "sources": [
+        "src/osx/carbon/clipbrd.cpp",
+        "src/osx/carbon/dataobj.cpp",
         "src/osx/cocoa/dirdlg.mm",
+        "src/osx/cocoa/dnd.mm",
         "src/osx/cocoa/filedlg.mm",
         "src/osx/cocoa/msgdlg.mm",
         "src/osx/cocoa/settings.mm",
         "src/osx/cocoa/utils.mm",
         "src/osx/core/stdpaths.mm",
+        "src/osx/dnd_osx.cpp",
         "src/osx/toplevel_osx.cpp"
       ],
-      "notes": "Cocoa application pumping, window delegate behavior, native panels, workspace integration, system paths, and appearance queries are adapted to NativeKit's handles, requests, and event queue."
+      "notes": "Cocoa application pumping, window delegate behavior, native panels, pasteboard formats, drop target negotiation, workspace integration, system paths, and appearance queries are adapted to NativeKit's handles, requests, and event queue."
     }
   }
 }

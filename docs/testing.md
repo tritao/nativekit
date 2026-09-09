@@ -31,6 +31,7 @@ integration, and browser behavior.
 ## macOS native tests
 
 The macOS workflow builds and runs the C ABI, core tests, and Cocoa window/system
-integration test on Intel and Apple Silicon runners. Dialogs are compiled but not
-opened automatically because unattended native panels are not a reliable CI
-interaction surface.
+integration test on Intel and Apple Silicon runners. The integration test checks
+pasteboard text and file round trips and drop registration. Dialogs and real drag
+sessions are compiled but not opened automatically because unattended native UI
+is not a reliable CI interaction surface.
