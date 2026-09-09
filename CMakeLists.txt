@@ -76,6 +76,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/handle_registry.cpp
     src/core/input.cpp
     src/core/mobile.cpp
+    src/core/window_extensions.cpp
 )
 add_library(NativeKit::nativekit ALIAS nativekit)
 

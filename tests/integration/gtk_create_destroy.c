@@ -40,7 +40,8 @@ int main(void) {
                                      NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
                                      NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
                                      NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE | NK_CAP_CURSOR |
-                                     NK_CAP_POINTER_CAPTURE;
+                                     NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
+                                     NK_CAP_WINDOW_STYLING;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
@@ -70,6 +71,41 @@ int main(void) {
     nk_window_state state = {0};
     state.struct_size = sizeof(state);
     assert(nk_window_get_state(window, &state) == NK_OK);
+    int32_t window_x = 0;
+    int32_t window_y = 0;
+    assert(nk_window_get_position(window, &window_x, &window_y) == NK_OK);
+    int32_t window_width = 0;
+    int32_t window_height = 0;
+    assert(nk_window_get_size(window, &window_width, &window_height) == NK_OK);
+    assert(window_width == 640 && window_height == 480);
+    int32_t window_fb_width = 0;
+    int32_t window_fb_height = 0;
+    assert(nk_window_get_framebuffer_size(window, &window_fb_width, &window_fb_height) == NK_OK);
+    assert(window_fb_width >= window_width && window_fb_height >= window_height);
+    nk_window_content_scale content_scale = {0};
+    content_scale.struct_size = sizeof(content_scale);
+    assert(nk_window_get_content_scale(window, &content_scale) == NK_OK);
+    assert(content_scale.x >= 1.0f && content_scale.y >= 1.0f);
+    nk_window_frame_extents frame_extents = {0};
+    frame_extents.struct_size = sizeof(frame_extents);
+    assert(nk_window_get_frame_extents(window, &frame_extents) == NK_OK);
+    assert(frame_extents.left >= 0 && frame_extents.top >= 0 &&
+           frame_extents.right >= 0 && frame_extents.bottom >= 0);
+    uint32_t hovered = 1;
+    assert(nk_window_get_hovered(window, &hovered) == NK_OK);
+    assert(hovered == 0);
+    assert(nk_window_set_aspect_ratio(window, 16, 9) == NK_OK);
+    assert(nk_window_set_aspect_ratio(window, 0, 0) == NK_OK);
+    assert(nk_window_set_resizable(window, 0) == NK_OK);
+    assert(nk_window_set_resizable(window, 1) == NK_OK);
+    assert(nk_window_set_decorated(window, 0) == NK_OK);
+    assert(nk_window_set_decorated(window, 1) == NK_OK);
+    assert(nk_window_set_floating(window, 1) == NK_OK);
+    assert(nk_window_set_floating(window, 0) == NK_OK);
+    assert(nk_window_set_opacity(window, 0.75f) == NK_OK);
+    assert(nk_window_set_opacity(window, 1.0f) == NK_OK);
+    assert(nk_window_set_mouse_passthrough(window, 1) == NK_OK);
+    assert(nk_window_set_mouse_passthrough(window, 0) == NK_OK);
     nk_input_action input_action = NK_INPUT_PRESS;
     assert(nk_key_get_state(window, NK_KEY_A, &input_action) == NK_OK);
     assert(input_action == NK_INPUT_RELEASE);

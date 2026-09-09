@@ -97,6 +97,8 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_POINTER_BUTTON` | window | none | `nk_pointer_button_event` |
 | `NK_EVENT_POINTER_SCROLL` | window | none | `nk_pointer_scroll_event` |
 | `NK_EVENT_POINTER_ENTER` | window | none | empty; `flags` is one on enter and zero on leave |
+| `NK_EVENT_WINDOW_MOVE` | window | none | `nk_window_move_event` |
+| `NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE` | window | none | `nk_window_framebuffer_resize_event` |
 | `NK_EVENT_SURFACE_READY` | graphics surface | none | empty |
 | `NK_EVENT_SURFACE_RESIZE` | graphics surface | none | `nk_surface_resize_event` |
 
@@ -122,6 +124,14 @@ Destroying a cursor handle does not invalidate a cursor already selected by a
 window. GTK supports normal, hidden, and captured pointer modes. Disabled
 relative-pointer mode and raw motion are reported as unsupported because GTK 3
 cannot provide consistent behavior across X11 and Wayland.
+
+Window content sizes use logical pixels while framebuffer sizes use device
+pixels. Content scale is available per axis. Move, logical resize, and
+framebuffer resize events are coalesced independently. Global position and frame
+extents are unavailable on Wayland and return `NK_ERROR_UNSUPPORTED`.
+
+GTK windows support runtime resizability, decorations, keep-above behavior,
+opacity, pointer passthrough, aspect-ratio constraints, and hover queries.
 
 ## Graphics surfaces
 
@@ -202,6 +212,10 @@ completion arrives through `NK_EVENT_DIALOG_COMPLETE`. File and directory result
 begin with `nk_dialog_paths`, followed by a table of 32-bit offsets and NUL-terminated
 UTF-8 paths. Consumers should use `nk_dialog_event_path()` instead of parsing this
 layout directly. Cancellation is a successful completion with `accepted == 0`.
+
+Android uses the Storage Access Framework for open, save, and directory dialogs.
+Accepted entries are persistable `content://` URIs rather than filesystem paths;
+the packed event representation and decoder are otherwise unchanged.
 
 ## Notifications
 

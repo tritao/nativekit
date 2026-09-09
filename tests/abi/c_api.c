@@ -19,6 +19,12 @@ int main(void) {
     assert(nk_api_version() == NK_API_VERSION);
     assert(nk_init(&options) == NK_OK);
     (void)nk_get_capabilities();
+    int32_t window_width = 0;
+    int32_t window_height = 0;
+    nk_result geometry_result =
+        nk_window_get_size(NK_INVALID_HANDLE, &window_width, &window_height);
+    assert(geometry_result == NK_ERROR_INVALID_HANDLE ||
+           geometry_result == NK_ERROR_UNSUPPORTED);
     nk_input_action input_action = NK_INPUT_RELEASE;
     nk_result input_result = nk_key_get_state(NK_INVALID_HANDLE, NK_KEY_A, &input_action);
     assert(input_result == NK_ERROR_INVALID_HANDLE || input_result == NK_ERROR_UNSUPPORTED);

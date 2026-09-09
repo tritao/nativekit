@@ -45,6 +45,42 @@
 
 namespace {
 
+// GtkFixed normally derives its preferred size from its children. NativeKit
+// children have explicit pixel bounds, so doing that turns those bounds into a
+// top-level window minimum. Keep GtkFixed's positioning behavior while making
+// the container itself freely shrinkable.
+struct NkFixed {
+    GtkFixed parent;
+};
+
+struct NkFixedClass {
+    GtkFixedClass parent_class;
+};
+
+G_DEFINE_TYPE(NkFixed, nk_fixed, GTK_TYPE_FIXED)
+
+void nk_fixed_get_preferred_width(GtkWidget *, gint *minimum, gint *natural) {
+    *minimum = 1;
+    *natural = 1;
+}
+
+void nk_fixed_get_preferred_height(GtkWidget *, gint *minimum, gint *natural) {
+    *minimum = 1;
+    *natural = 1;
+}
+
+void nk_fixed_class_init(NkFixedClass *klass) {
+    auto *widget_class = GTK_WIDGET_CLASS(klass);
+    widget_class->get_preferred_width = nk_fixed_get_preferred_width;
+    widget_class->get_preferred_height = nk_fixed_get_preferred_height;
+}
+
+void nk_fixed_init(NkFixed *) {}
+
+GtkWidget *nk_fixed_new() {
+    return GTK_WIDGET(g_object_new(nk_fixed_get_type(), nullptr));
+}
+
 struct GtkCursorResource final : nk::core::Resource {
     GdkCursor *cursor = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
@@ -73,6 +109,18 @@ struct GtkWindowResource final : nk::core::Resource {
     nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
     std::shared_ptr<GtkCursorResource> cursor;
     bool pointer_grabbed = false;
+    bool hovered = false;
+    bool geometry_known = false;
+    int32_t x = 0;
+    int32_t y = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+    int32_t min_width = 0;
+    int32_t min_height = 0;
+    int32_t max_width = 0;
+    int32_t max_height = 0;
+    int32_t aspect_numerator = 0;
+    int32_t aspect_denominator = 0;
 
     ~GtkWindowResource() override {
         if (pointer_grabbed && window) {
@@ -451,10 +499,11 @@ gboolean on_pointer_scroll(GtkWidget *, GdkEventScroll *scroll, gpointer data) {
 
 gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer data) {
     auto *resource = static_cast<GtkWindowResource *>(data);
+    resource->hovered = crossing->type == GDK_ENTER_NOTIFY;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_POINTER_ENTER;
     event.source = resource->handle;
-    event.flags = crossing->type == GDK_ENTER_NOTIFY ? 1u : 0u;
+    event.flags = resource->hovered ? 1u : 0u;
     nk::core::push_event(std::move(event));
     return FALSE;
 }
@@ -520,15 +569,46 @@ gboolean on_window_delete(GtkWidget *, GdkEvent *, gpointer data) {
 
 gboolean on_window_configure(GtkWidget *, GdkEventConfigure *configure, gpointer data) {
     nk::core::callback_boundary([&] {
-        const auto *resource = static_cast<GtkWindowResource *>(data);
+        auto *resource = static_cast<GtkWindowResource *>(data);
         if (!nk::core::is_runtime_generation(resource->generation))
             return;
-        const nk_window_resize_event payload{configure->width, configure->height};
-        nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_WINDOW_RESIZE;
-        event.source = resource->handle;
-        event.data = bytes_of(payload);
-        nk::core::push_event(std::move(event));
+        if (!resource->geometry_known || resource->width != configure->width ||
+            resource->height != configure->height) {
+            resource->width = configure->width;
+            resource->height = configure->height;
+            const nk_window_resize_event payload{configure->width, configure->height};
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_WINDOW_RESIZE;
+            event.source = resource->handle;
+            event.data = bytes_of(payload);
+            nk::core::push_event(std::move(event));
+            const int scale = gtk_widget_get_scale_factor(resource->window);
+            const nk_window_framebuffer_resize_event framebuffer{
+                configure->width * scale, configure->height * scale};
+            nk::core::QueuedEvent framebuffer_event;
+            framebuffer_event.kind = NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE;
+            framebuffer_event.source = resource->handle;
+            framebuffer_event.data = bytes_of(framebuffer);
+            nk::core::push_event(std::move(framebuffer_event));
+        }
+        bool position_available = true;
+#ifdef GDK_WINDOWING_WAYLAND
+        position_available =
+            !GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(resource->window));
+#endif
+        if (position_available &&
+            (!resource->geometry_known || resource->x != configure->x ||
+             resource->y != configure->y)) {
+            resource->x = configure->x;
+            resource->y = configure->y;
+            const nk_window_move_event payload{configure->x, configure->y};
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_WINDOW_MOVE;
+            event.source = resource->handle;
+            event.data = bytes_of(payload);
+            nk::core::push_event(std::move(event));
+        }
+        resource->geometry_known = true;
     });
     return FALSE;
 }
@@ -545,6 +625,15 @@ void on_window_scale(GtkWidget *widget, GParamSpec *, gpointer data) {
         event.source = resource->handle;
         event.data = bytes_of(payload);
         nk::core::push_event(std::move(event));
+        const int scale = gtk_widget_get_scale_factor(widget);
+        const nk_window_framebuffer_resize_event framebuffer{
+            gtk_widget_get_allocated_width(widget) * scale,
+            gtk_widget_get_allocated_height(widget) * scale};
+        nk::core::QueuedEvent framebuffer_event;
+        framebuffer_event.kind = NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE;
+        framebuffer_event.source = resource->handle;
+        framebuffer_event.data = bytes_of(framebuffer);
+        nk::core::push_event(std::move(framebuffer_event));
     });
 }
 
@@ -812,6 +901,27 @@ void cancel_evaluations(nk_handle source) noexcept {
 std::shared_ptr<GtkWindowResource> window(nk_handle handle) {
     return std::dynamic_pointer_cast<GtkWindowResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::window));
+}
+
+void apply_geometry_hints(const GtkWindowResource &resource) {
+    GdkGeometry geometry{};
+    // GtkFixed propagates child size requests as its preferred size. Keep a
+    // minimal explicit hint even when the caller did not request a limit so a
+    // WebView or surface does not become an accidental window minimum.
+    geometry.min_width = std::max(resource.min_width, 1);
+    geometry.min_height = std::max(resource.min_height, 1);
+    geometry.max_width = resource.max_width ? resource.max_width : G_MAXINT;
+    geometry.max_height = resource.max_height ? resource.max_height : G_MAXINT;
+    GdkWindowHints hints = GDK_HINT_MIN_SIZE;
+    if (resource.max_width || resource.max_height)
+        hints = static_cast<GdkWindowHints>(hints | GDK_HINT_MAX_SIZE);
+    if (resource.aspect_numerator) {
+        geometry.min_aspect =
+            static_cast<double>(resource.aspect_numerator) / resource.aspect_denominator;
+        geometry.max_aspect = geometry.min_aspect;
+        hints = static_cast<GdkWindowHints>(hints | GDK_HINT_ASPECT);
+    }
+    gtk_window_set_geometry_hints(GTK_WINDOW(resource.window), nullptr, &geometry, hints);
 }
 
 std::shared_ptr<GtkWebViewResource> webview(nk_handle handle) {
@@ -1186,7 +1296,8 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
     }
     if (options->suggested_name && kind == NK_DIALOG_SAVE_FILE)
         gtk_file_chooser_set_current_name(interface, options->suggested_name);
-    add_filters(interface, options);
+    if (kind != NK_DIALOG_SELECT_DIRECTORY)
+        add_filters(interface, options);
     dialogs.emplace(context->request, context.get());
     g_signal_connect(chooser, "response", G_CALLBACK(on_dialog_response), context.get());
     gtk_native_dialog_show(GTK_NATIVE_DIALOG(chooser));
@@ -1450,7 +1561,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_INPUT |
            NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
-           NK_CAP_POINTER_CAPTURE;
+           NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -1477,9 +1588,10 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         resource->im_context = gtk_im_multicontext_new();
         g_object_add_weak_pointer(G_OBJECT(resource->window),
                                   reinterpret_cast<gpointer *>(&resource->window));
-        resource->container = gtk_fixed_new();
+        resource->container = nk_fixed_new();
         gtk_container_add(GTK_CONTAINER(resource->window), resource->container);
         gtk_window_set_default_size(GTK_WINDOW(resource->window), options->width, options->height);
+        apply_geometry_hints(*resource);
         gtk_window_set_resizable(GTK_WINDOW(resource->window),
                                  (options->flags & NK_WINDOW_RESIZABLE) != 0);
         gtk_window_set_decorated(GTK_WINDOW(resource->window),
@@ -1615,6 +1727,110 @@ nk_result NK_CALL nk_window_get_scale(nk_handle handle, float *out_scale) {
     if (!resource)
         return invalid_handle("window");
     *out_scale = static_cast<float>(gtk_widget_get_scale_factor(resource->window));
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_content_scale(nk_handle handle,
+                                              nk_window_content_scale *out_scale) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_scale || out_scale->struct_size < sizeof(*out_scale))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "content scale output is missing or too small");
+    auto resource = window(handle);
+    if (!resource)
+        return invalid_handle("window");
+    const float scale = static_cast<float>(gtk_widget_get_scale_factor(resource->window));
+    const auto size = out_scale->struct_size;
+    *out_scale = {};
+    out_scale->struct_size = size;
+    out_scale->x = scale;
+    out_scale->y = scale;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_position(nk_handle handle, int32_t *out_x, int32_t *out_y) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_x || !out_y)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "window position outputs must not be null");
+    auto resource = window(handle);
+    if (!resource)
+        return invalid_handle("window");
+#ifdef GDK_WINDOWING_WAYLAND
+    if (GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(resource->window)))
+        return fail(NK_ERROR_UNSUPPORTED, "Wayland does not expose global window positions");
+#endif
+    gint x = 0;
+    gint y = 0;
+    gtk_window_get_position(GTK_WINDOW(resource->window), &x, &y);
+    *out_x = x;
+    *out_y = y;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_size(nk_handle handle, int32_t *out_width,
+                                     int32_t *out_height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_width || !out_height)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "window size outputs must not be null");
+    auto resource = window(handle);
+    if (!resource)
+        return invalid_handle("window");
+    gtk_window_get_size(GTK_WINDOW(resource->window), out_width, out_height);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_framebuffer_size(nk_handle handle, int32_t *out_width,
+                                                 int32_t *out_height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_width || !out_height)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "framebuffer size outputs must not be null");
+    auto resource = window(handle);
+    if (!resource)
+        return invalid_handle("window");
+    gint width = 0;
+    gint height = 0;
+    gtk_window_get_size(GTK_WINDOW(resource->window), &width, &height);
+    const int scale = gtk_widget_get_scale_factor(resource->window);
+    *out_width = width * scale;
+    *out_height = height * scale;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_frame_extents(nk_handle handle,
+                                              nk_window_frame_extents *out_extents) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_extents || out_extents->struct_size < sizeof(*out_extents))
+        return fail(NK_ERROR_INVALID_ARGUMENT,
+                    "window frame extents output is missing or too small");
+    auto resource = window(handle);
+    if (!resource)
+        return invalid_handle("window");
+#ifdef GDK_WINDOWING_WAYLAND
+    if (GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(resource->window)))
+        return fail(NK_ERROR_UNSUPPORTED, "Wayland does not expose window frame extents");
+#endif
+    gtk_widget_realize(resource->window);
+    GdkWindow *native = gtk_widget_get_window(resource->window);
+    if (!native)
+        return fail(NK_ERROR_UNKNOWN, "GTK window has no native surface");
+    GdkRectangle frame{};
+    gdk_window_get_frame_extents(native, &frame);
+    gint origin_x = 0;
+    gint origin_y = 0;
+    gdk_window_get_origin(native, &origin_x, &origin_y);
+    const int width = gdk_window_get_width(native);
+    const int height = gdk_window_get_height(native);
+    const auto size = out_extents->struct_size;
+    *out_extents = {};
+    out_extents->struct_size = size;
+    out_extents->left = std::max(0, origin_x - frame.x);
+    out_extents->top = std::max(0, origin_y - frame.y);
+    out_extents->right = std::max(0, frame.width - width - out_extents->left);
+    out_extents->bottom = std::max(0, frame.height - height - out_extents->top);
     return NK_OK;
 }
 
@@ -1870,17 +2086,94 @@ nk_result NK_CALL nk_window_set_size_limits(nk_handle h, const nk_window_size_li
     auto w = window(h);
     if (!w)
         return invalid_handle("window");
-    GdkGeometry geometry{};
-    geometry.min_width = limits->min_width;
-    geometry.min_height = limits->min_height;
-    geometry.max_width = limits->max_width;
-    geometry.max_height = limits->max_height;
-    GdkWindowHints hints = static_cast<GdkWindowHints>(0);
-    if (limits->min_width || limits->min_height)
-        hints = static_cast<GdkWindowHints>(hints | GDK_HINT_MIN_SIZE);
-    if (limits->max_width || limits->max_height)
-        hints = static_cast<GdkWindowHints>(hints | GDK_HINT_MAX_SIZE);
-    gtk_window_set_geometry_hints(GTK_WINDOW(w->window), nullptr, &geometry, hints);
+    w->min_width = limits->min_width;
+    w->min_height = limits->min_height;
+    w->max_width = limits->max_width;
+    w->max_height = limits->max_height;
+    apply_geometry_hints(*w);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle h, int32_t numerator,
+                                             int32_t denominator) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if ((numerator == 0) != (denominator == 0) || numerator < 0 || denominator < 0)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window aspect ratio");
+    auto resource = window(h);
+    if (!resource)
+        return invalid_handle("window");
+    resource->aspect_numerator = numerator;
+    resource->aspect_denominator = denominator;
+    apply_geometry_hints(*resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_resizable(nk_handle h, uint32_t enabled) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = window(h);
+    if (!resource)
+        return invalid_handle("window");
+    gtk_window_set_resizable(GTK_WINDOW(resource->window), enabled != 0);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = window(h);
+    if (!resource)
+        return invalid_handle("window");
+    gtk_window_set_decorated(GTK_WINDOW(resource->window), enabled != 0);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_floating(nk_handle h, uint32_t enabled) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = window(h);
+    if (!resource)
+        return invalid_handle("window");
+    gtk_window_set_keep_above(GTK_WINDOW(resource->window), enabled != 0);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_opacity(nk_handle h, float opacity) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!(opacity >= 0.0f && opacity <= 1.0f))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "window opacity must be between zero and one");
+    auto resource = window(h);
+    if (!resource)
+        return invalid_handle("window");
+    gtk_widget_set_opacity(resource->window, opacity);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_mouse_passthrough(nk_handle h, uint32_t enabled) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = window(h);
+    if (!resource)
+        return invalid_handle("window");
+    gtk_widget_realize(resource->window);
+    GdkWindow *native = gtk_widget_get_window(resource->window);
+    if (!native)
+        return fail(NK_ERROR_UNKNOWN, "GTK window has no native surface");
+    gdk_window_set_pass_through(native, enabled != 0);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_hovered(nk_handle h, uint32_t *out_hovered) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_hovered)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "hover output must not be null");
+    auto resource = window(h);
+    if (!resource)
+        return invalid_handle("window");
+    *out_hovered = resource->hovered ? 1u : 0u;
     return NK_OK;
 }
 
