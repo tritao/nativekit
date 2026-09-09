@@ -13,6 +13,24 @@ enum {
     NK_RESOURCE_PERSISTED = 1u << 2
 };
 
+enum {
+    NK_RESOURCE_OPEN_READ = 1u << 0,
+    NK_RESOURCE_OPEN_WRITE = 1u << 1,
+    NK_RESOURCE_OPEN_CREATE = 1u << 2,
+    NK_RESOURCE_OPEN_TRUNCATE = 1u << 3
+};
+
+enum {
+    NK_RESOURCE_STREAM_READABLE = 1u << 0,
+    NK_RESOURCE_STREAM_WRITABLE = 1u << 1,
+    NK_RESOURCE_STREAM_SEEKABLE = 1u << 2,
+    NK_RESOURCE_STREAM_SIZE_KNOWN = 1u << 3
+};
+
+typedef uint32_t nk_seek_origin;
+
+enum { NK_SEEK_START = 0, NK_SEEK_CURRENT = 1, NK_SEEK_END = 2 };
+
 typedef struct nk_resource {
     uint32_t struct_size;
     uint32_t flags;
@@ -61,6 +79,13 @@ typedef struct nk_resource_view {
     uint64_t reserved[2];
 } nk_resource_view;
 
+typedef struct nk_resource_stream_info {
+    uint32_t struct_size;
+    uint32_t flags;
+    uint64_t size;
+    uint64_t reserved[2];
+} nk_resource_stream_info;
+
 /* URI inputs are copied before return. These functions are UI-thread-only. */
 NK_API nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource);
 NK_API nk_result NK_CALL nk_share(const nk_share_options *options);
@@ -81,6 +106,23 @@ NK_API nk_result NK_CALL nk_dialog_select_resource_directory(
 /* Returned views remain owned by the event until nk_event_release(). */
 NK_API nk_result NK_CALL nk_resource_event_item(const nk_event *event, uint32_t index,
                                                 nk_resource_view *out_resource);
+
+/*
+ * Opens a URI-backed stream on the UI thread. Stream operations copy bytes
+ * synchronously and may be called from worker threads. A successful read may
+ * return fewer bytes than requested; zero bytes means end of stream.
+ */
+NK_API nk_result NK_CALL nk_resource_open(const nk_resource *resource, uint32_t flags,
+                                          nk_handle *out_stream);
+NK_API nk_result NK_CALL nk_resource_stream_info_get(nk_handle stream,
+                                                     nk_resource_stream_info *out_info);
+NK_API nk_result NK_CALL nk_resource_read(nk_handle stream, void *buffer, uint64_t size,
+                                          uint64_t *out_read);
+NK_API nk_result NK_CALL nk_resource_write(nk_handle stream, const void *buffer, uint64_t size,
+                                           uint64_t *out_written);
+NK_API nk_result NK_CALL nk_resource_seek(nk_handle stream, int64_t offset,
+                                          nk_seek_origin origin, uint64_t *out_position);
+NK_API nk_result NK_CALL nk_resource_close(nk_handle stream);
 
 #ifdef __cplusplus
 }

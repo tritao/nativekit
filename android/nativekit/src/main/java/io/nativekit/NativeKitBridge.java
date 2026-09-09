@@ -10,6 +10,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.ParcelFileDescriptor;
 import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
@@ -205,6 +206,25 @@ final class NativeKitBridge {
             parent.getContext().startActivity(intent);
             return 0;
         } catch (RuntimeException error) {
+            return -1;
+        }
+    }
+
+    static int openResourceFd(ViewGroup parent, String uriValue, int flags) {
+        Uri uri = Uri.parse(uriValue);
+        if (uri.getScheme() == null || uri.getScheme().isEmpty())
+            return -1;
+        boolean read = (flags & 1) != 0;
+        boolean write = (flags & 2) != 0;
+        boolean truncate = (flags & 8) != 0;
+        String mode = read && write ? (truncate ? "rwt" : "rw")
+                                   : write ? (truncate ? "wt" : "rw")
+                                           : "r";
+        try {
+            ParcelFileDescriptor descriptor = parent.getContext().getContentResolver()
+                                                  .openFileDescriptor(uri, mode);
+            return descriptor == null ? -1 : descriptor.detachFd();
+        } catch (RuntimeException | java.io.FileNotFoundException error) {
             return -1;
         }
     }

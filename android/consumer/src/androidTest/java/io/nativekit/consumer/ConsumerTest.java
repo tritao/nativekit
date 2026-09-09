@@ -17,6 +17,7 @@ public final class ConsumerTest {
                 assertEquals(1, activity.apiVersion());
                 assertNotEquals(0, activity.webViewHandle());
                 assertEquals(0, activity.resourceClipboardProbe());
+                assertEquals(0, activity.resourceStreamProbe());
             });
         }
     }

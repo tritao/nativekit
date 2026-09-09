@@ -27,6 +27,8 @@ public final class MainActivity extends Activity {
 
     public int resourceClipboardProbe() { return nativeResourceClipboardProbe(); }
 
+    public int resourceStreamProbe() { return nativeResourceStreamProbe(); }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -50,4 +52,5 @@ public final class MainActivity extends Activity {
 
     private static native long nativeProbe(long host);
     private static native int nativeResourceClipboardProbe();
+    private static native int nativeResourceStreamProbe();
 }

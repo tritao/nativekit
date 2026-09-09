@@ -85,6 +85,10 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
 )
 add_library(NativeKit::nativekit ALIAS nativekit)
 
+if(NOT ANDROID)
+    target_sources(nativekit PRIVATE src/platform/nativekit_resource_io.cpp)
+endif()
+
 target_compile_features(nativekit PRIVATE cxx_std_17)
 target_include_directories(nativekit
     PUBLIC

@@ -54,3 +54,45 @@ Java_io_nativekit_consumer_MainActivity_nativeResourceClipboardProbe(JNIEnv *, j
     nk_event_release(&event);
     return matches ? 0 : decoded != NK_OK ? 5 : 6;
 }
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeResourceStreamProbe(JNIEnv *, jclass) {
+    nk_resource resource{};
+    resource.struct_size = sizeof(resource);
+    resource.uri = "content://io.nativekit.consumer.resources/probe";
+    nk_handle stream = NK_INVALID_HANDLE;
+    const uint32_t mode = NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE |
+                          NK_RESOURCE_OPEN_CREATE | NK_RESOURCE_OPEN_TRUNCATE;
+    if (nk_resource_open(&resource, mode, &stream) != NK_OK)
+        return 1;
+    const char message[] = "NativeKit content stream";
+    uint64_t written = 0;
+    if (nk_resource_write(stream, message, sizeof(message) - 1, &written) != NK_OK ||
+        written != sizeof(message) - 1) {
+        nk_resource_close(stream);
+        return 2;
+    }
+    uint64_t position = 0;
+    if (nk_resource_seek(stream, 0, NK_SEEK_START, &position) != NK_OK || position != 0) {
+        nk_resource_close(stream);
+        return 3;
+    }
+    char result[sizeof(message)]{};
+    uint64_t read = 0;
+    if (nk_resource_read(stream, result, sizeof(message) - 1, &read) != NK_OK ||
+        read != sizeof(message) - 1 || std::memcmp(result, message, read) != 0) {
+        nk_resource_close(stream);
+        return 4;
+    }
+    nk_resource_stream_info info{};
+    info.struct_size = sizeof(info);
+    if (nk_resource_stream_info_get(stream, &info) != NK_OK ||
+        !(info.flags & NK_RESOURCE_STREAM_SEEKABLE) ||
+        !(info.flags & NK_RESOURCE_STREAM_SIZE_KNOWN) || info.size != sizeof(message) - 1) {
+        nk_resource_close(stream);
+        return 5;
+    }
+    if (nk_resource_close(stream) != NK_OK || nk_resource_close(stream) != NK_ERROR_INVALID_HANDLE)
+        return 6;
+    return 0;
+}

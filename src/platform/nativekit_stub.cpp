@@ -29,7 +29,7 @@ void shutdown() noexcept {}
 extern "C" {
 #if !defined(NK_STUB_ANDROID)
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return 0;
+    return NK_CAP_RESOURCE_IO;
 }
 #endif
 nk_result NK_CALL nk_window_create(const nk_window_options *, nk_handle *) {

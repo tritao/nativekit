@@ -5,6 +5,7 @@
 #include "nativekit_input.h"
 #include "nativekit_monitor.h"
 #include "nativekit_notification.h"
+#include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -43,12 +44,44 @@ int main(void) {
                                      NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE | NK_CAP_CURSOR |
                                      NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
                                      NK_CAP_WINDOW_STYLING | NK_CAP_MONITOR |
-                                     NK_CAP_MONITOR_FULLSCREEN;
+                                     NK_CAP_MONITOR_FULLSCREEN | NK_CAP_RESOURCE_IO;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_notification_show(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_notification_close(NK_INVALID_REQUEST_ID) == NK_ERROR_INVALID_REQUEST);
+
+    const char resource_uri[] = "file:///tmp/nativekit-resource-stream-test.bin";
+    nk_resource file_resource = {0};
+    file_resource.struct_size = sizeof(file_resource);
+    file_resource.uri = resource_uri;
+    nk_handle resource_stream = NK_INVALID_HANDLE;
+    assert(nk_resource_open(&file_resource,
+                            NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE |
+                                NK_RESOURCE_OPEN_CREATE | NK_RESOURCE_OPEN_TRUNCATE,
+                            &resource_stream) == NK_OK);
+    const char resource_data[] = "NativeKit resource stream";
+    uint64_t transferred = 0;
+    assert(nk_resource_write(resource_stream, resource_data, sizeof(resource_data) - 1,
+                             &transferred) == NK_OK);
+    assert(transferred == sizeof(resource_data) - 1);
+    uint64_t position = UINT64_MAX;
+    assert(nk_resource_seek(resource_stream, 0, NK_SEEK_START, &position) == NK_OK);
+    assert(position == 0);
+    char resource_result[sizeof(resource_data)] = {0};
+    assert(nk_resource_read(resource_stream, resource_result, sizeof(resource_data) - 1,
+                            &transferred) == NK_OK);
+    assert(transferred == sizeof(resource_data) - 1);
+    assert(memcmp(resource_result, resource_data, sizeof(resource_data) - 1) == 0);
+    nk_resource_stream_info resource_info = {0};
+    resource_info.struct_size = sizeof(resource_info);
+    assert(nk_resource_stream_info_get(resource_stream, &resource_info) == NK_OK);
+    assert((resource_info.flags & NK_RESOURCE_STREAM_SEEKABLE) != 0);
+    assert((resource_info.flags & NK_RESOURCE_STREAM_SIZE_KNOWN) != 0);
+    assert(resource_info.size == sizeof(resource_data) - 1);
+    assert(nk_resource_close(resource_stream) == NK_OK);
+    assert(nk_resource_close(resource_stream) == NK_ERROR_INVALID_HANDLE);
+    unlink("/tmp/nativekit-resource-stream-test.bin");
 
     nk_window_options window_options = {0};
     window_options.struct_size = sizeof(window_options);

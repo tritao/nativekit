@@ -13,12 +13,17 @@
 
 #include <jni.h>
 
+#include <errno.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -59,6 +64,17 @@ struct ResourceValue {
     std::string uri;
     std::string mime_type;
     std::string display_name;
+};
+
+struct AndroidResourceStream final : nk::core::Resource {
+    ~AndroidResourceStream() override {
+        if (fd >= 0)
+            ::close(fd);
+    }
+
+    std::mutex mutex;
+    int fd = -1;
+    uint32_t flags = 0;
 };
 
 std::unordered_map<nk_request_id, DialogRequest> file_dialogs;
@@ -205,6 +221,11 @@ std::shared_ptr<AndroidHost> host(nk_handle handle) {
 std::shared_ptr<AndroidWebView> webview(nk_handle handle) {
     return std::dynamic_pointer_cast<AndroidWebView>(
         nk::core::handles().get(handle, nk::core::ResourceType::webview));
+}
+
+std::shared_ptr<AndroidResourceStream> resource_stream(nk_handle handle) {
+    return std::dynamic_pointer_cast<AndroidResourceStream>(
+        nk::core::handles().get(handle, nk::core::ResourceType::resource_stream));
 }
 
 std::shared_ptr<AndroidHost> context_host() {
@@ -557,7 +578,7 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
            NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
-           NK_CAP_RESOURCE_SHARING;
+           NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO;
 }
 
 nk_result NK_CALL nk_shell_open_url(const char *url) {
@@ -897,6 +918,179 @@ nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
     if (queued != NK_OK)
         return queued;
     *out_request = request;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_resource_open(const nk_resource *resource, uint32_t flags,
+                                   nk_handle *out_stream) {
+    return nk::core::result_boundary("unexpected error while opening Android resource",
+                                     [&]() -> nk_result {
+        if (const auto thread = require_thread(); thread != NK_OK)
+            return thread;
+        if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+            !*resource->uri || !out_stream ||
+            (flags & (NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE)) == 0 ||
+            (flags & ~(NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE | NK_RESOURCE_OPEN_CREATE |
+                       NK_RESOURCE_OPEN_TRUNCATE)) != 0 ||
+            ((flags & (NK_RESOURCE_OPEN_CREATE | NK_RESOURCE_OPEN_TRUNCATE)) != 0 &&
+             (flags & NK_RESOURCE_OPEN_WRITE) == 0)) {
+            nk::core::set_error("resource open arguments are invalid");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        auto host_resource = context_host();
+        if (!host_resource) {
+            nk::core::set_error("Android resource opening requires an attached mobile host");
+            return NK_ERROR_UNSUPPORTED;
+        }
+        auto *env = environment();
+        auto *bridge = env ? bridge_class(env) : nullptr;
+        if (!env || !bridge)
+            return NK_ERROR_UNKNOWN;
+        auto method = env->GetStaticMethodID(
+            bridge, "openResourceFd", "(Landroid/view/ViewGroup;Ljava/lang/String;I)I");
+        auto uri = from_utf8(env, resource->uri);
+        const auto fd = method ? env->CallStaticIntMethod(bridge, method,
+                                                          host_resource->view_group, uri,
+                                                          static_cast<jint>(flags))
+                               : -1;
+        if (uri)
+            env->DeleteLocalRef(uri);
+        env->DeleteLocalRef(bridge);
+        if (!method || clear_java_exception(env, "Android resource provider open failed") ||
+            fd < 0) {
+            nk::core::set_error("Android could not open the resource URI");
+            return NK_ERROR_UNKNOWN;
+        }
+        auto stream = std::make_shared<AndroidResourceStream>();
+        stream->fd = fd;
+        if (flags & NK_RESOURCE_OPEN_READ)
+            stream->flags |= NK_RESOURCE_STREAM_READABLE;
+        if (flags & NK_RESOURCE_OPEN_WRITE)
+            stream->flags |= NK_RESOURCE_STREAM_WRITABLE;
+        if (::lseek(fd, 0, SEEK_CUR) >= 0)
+            stream->flags |= NK_RESOURCE_STREAM_SEEKABLE;
+        const auto handle =
+            nk::core::handles().insert(nk::core::ResourceType::resource_stream, stream);
+        if (!handle) {
+            nk::core::set_error("could not allocate Android resource stream handle");
+            return NK_ERROR_OUT_OF_MEMORY;
+        }
+        *out_stream = handle;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_resource_stream_info_get(nk_handle handle,
+                                              nk_resource_stream_info *out_info) {
+    if (!out_info || out_info->struct_size < sizeof(nk_resource_stream_info)) {
+        nk::core::set_error("resource stream info output is invalid");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto stream = resource_stream(handle);
+    if (!stream) {
+        nk::core::set_error("invalid Android resource stream handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    std::lock_guard lock(stream->mutex);
+    struct stat status {};
+    out_info->flags = stream->flags;
+    out_info->size = UINT64_MAX;
+    if (::fstat(stream->fd, &status) == 0 && S_ISREG(status.st_mode) && status.st_size >= 0) {
+        out_info->size = static_cast<uint64_t>(status.st_size);
+        out_info->flags |= NK_RESOURCE_STREAM_SIZE_KNOWN;
+    }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_resource_read(nk_handle handle, void *buffer, uint64_t size,
+                                   uint64_t *out_read) {
+    if ((!buffer && size) || !out_read || size > static_cast<uint64_t>(SSIZE_MAX)) {
+        nk::core::set_error("resource read arguments are invalid");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto stream = resource_stream(handle);
+    if (!stream) {
+        nk::core::set_error("invalid Android resource stream handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    if (!(stream->flags & NK_RESOURCE_STREAM_READABLE)) {
+        nk::core::set_error("Android resource stream is not readable");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    std::lock_guard lock(stream->mutex);
+    ssize_t count = 0;
+    do {
+        count = ::read(stream->fd, buffer, static_cast<std::size_t>(size));
+    } while (count < 0 && errno == EINTR);
+    if (count < 0) {
+        nk::core::set_error("Android resource read failed");
+        return NK_ERROR_UNKNOWN;
+    }
+    *out_read = static_cast<uint64_t>(count);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_resource_write(nk_handle handle, const void *buffer, uint64_t size,
+                                    uint64_t *out_written) {
+    if ((!buffer && size) || !out_written || size > static_cast<uint64_t>(SSIZE_MAX)) {
+        nk::core::set_error("resource write arguments are invalid");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto stream = resource_stream(handle);
+    if (!stream) {
+        nk::core::set_error("invalid Android resource stream handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    if (!(stream->flags & NK_RESOURCE_STREAM_WRITABLE)) {
+        nk::core::set_error("Android resource stream is not writable");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    std::lock_guard lock(stream->mutex);
+    ssize_t count = 0;
+    do {
+        count = ::write(stream->fd, buffer, static_cast<std::size_t>(size));
+    } while (count < 0 && errno == EINTR);
+    if (count < 0) {
+        nk::core::set_error("Android resource write failed");
+        return NK_ERROR_UNKNOWN;
+    }
+    *out_written = static_cast<uint64_t>(count);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_resource_seek(nk_handle handle, int64_t offset, nk_seek_origin origin,
+                                   uint64_t *out_position) {
+    if (!out_position || origin > NK_SEEK_END) {
+        nk::core::set_error("resource seek arguments are invalid");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto stream = resource_stream(handle);
+    if (!stream) {
+        nk::core::set_error("invalid Android resource stream handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    if (!(stream->flags & NK_RESOURCE_STREAM_SEEKABLE)) {
+        nk::core::set_error("Android resource stream is not seekable");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    const int whence = origin == NK_SEEK_START ? SEEK_SET
+                       : origin == NK_SEEK_CURRENT ? SEEK_CUR
+                                                   : SEEK_END;
+    std::lock_guard lock(stream->mutex);
+    const auto position = ::lseek(stream->fd, static_cast<off_t>(offset), whence);
+    if (position < 0) {
+        nk::core::set_error("Android resource seek failed");
+        return errno == ESPIPE ? NK_ERROR_UNSUPPORTED : NK_ERROR_UNKNOWN;
+    }
+    *out_position = static_cast<uint64_t>(position);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_resource_close(nk_handle handle) {
+    if (!nk::core::handles().erase(handle, nk::core::ResourceType::resource_stream)) {
+        nk::core::set_error("invalid Android resource stream handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
     return NK_OK;
 }
 

@@ -119,6 +119,17 @@ int main(void) {
     assert(memcmp(resource_view.uri, "content://provider/x", 20) == 0);
     assert(resource_view.mime_type_length == 10);
     assert(resource_view.display_name_length == 7);
+    nk_resource_stream_info stream_info = {0};
+    stream_info.struct_size = sizeof(stream_info);
+    assert(nk_resource_stream_info_get(NK_INVALID_HANDLE, &stream_info) ==
+           NK_ERROR_INVALID_HANDLE);
+    assert(nk_resource_read(NK_INVALID_HANDLE, NULL, 0, &stream_info.size) ==
+           NK_ERROR_INVALID_HANDLE);
+    assert(nk_resource_write(NK_INVALID_HANDLE, NULL, 0, &stream_info.size) ==
+           NK_ERROR_INVALID_HANDLE);
+    assert(nk_resource_seek(NK_INVALID_HANDLE, 0, NK_SEEK_START, &stream_info.size) ==
+           NK_ERROR_INVALID_HANDLE);
+    assert(nk_resource_close(NK_INVALID_HANDLE) == NK_ERROR_INVALID_HANDLE);
     struct {
         nk_dialog_paths header;
         uint32_t offset;

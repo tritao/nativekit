@@ -301,6 +301,20 @@ Android forwards `content:` grants through intents and never exports `file:` URI
 Callers must keep the URI and respect its reported readable, writable, and
 persisted flags rather than attempting to derive a local path.
 
+URI contents are accessed through opaque resource-stream handles.
+`nk_resource_open()` runs on the UI thread and accepts explicit read, write,
+create, and truncate flags. Reads, writes, seeks, information queries, and close
+may run on worker threads. Reads and writes may transfer fewer bytes than
+requested; callers repeat them until complete. A stream advertises whether it is
+seekable and whether its size is known. Unknown sizes are reported as
+`UINT64_MAX`.
+
+Android opens both `content:` and local `file:` resources through
+`ContentResolver`, retaining the detached descriptor until the stream closes.
+Desktop backends open RFC 8089 local `file:` URIs directly and reject other
+schemes. `NK_CAP_RESOURCE_IO` reports this support independently from system
+sharing support.
+
 ## Notifications
 
 Notification submission is asynchronous. `nk_notification_show()` copies its
