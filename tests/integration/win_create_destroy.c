@@ -328,7 +328,14 @@ int main(void) {
     if (nk_get_capabilities() & NK_CAP_WEBVIEW) {
         nk_handle pending_webview = NK_INVALID_HANDLE;
         assert(nk_webview_create(window, &webview_options, &pending_webview) == NK_OK);
+        nk_request_id destroyed_eval_request = NK_INVALID_REQUEST_ID;
+        assert(nk_webview_eval(pending_webview, "42", &destroyed_eval_request) == NK_OK);
         assert(nk_window_destroy(window) == NK_OK);
+        nk_event destroyed_eval = wait_for_event(
+            NK_EVENT_WEBVIEW_EVAL_COMPLETE, destroyed_eval_request);
+        assert(destroyed_eval.source == pending_webview);
+        assert(destroyed_eval.result == NK_ERROR_INVALID_REQUEST);
+        nk_event_release(&destroyed_eval);
         assert(nk_webview_destroy(pending_webview) == NK_ERROR_INVALID_HANDLE);
         for (int index = 0; index < 100; ++index) {
             nk_event event = {0};

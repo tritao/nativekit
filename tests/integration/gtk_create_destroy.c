@@ -262,7 +262,13 @@ int main(void) {
     assert(received_message_dialog);
 
     /* Destroying a parent invalidates all of its borrowed child handles. */
+    nk_request_id destroyed_eval_request = NK_INVALID_REQUEST_ID;
+    assert(nk_webview_eval(webview, "42", &destroyed_eval_request) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);
+    nk_event destroyed_eval = wait_for_event(NK_EVENT_WEBVIEW_EVAL_COMPLETE, webview);
+    assert(destroyed_eval.request_id == destroyed_eval_request);
+    assert(destroyed_eval.result == NK_ERROR_INVALID_REQUEST);
+    nk_event_release(&destroyed_eval);
     assert(nk_webview_destroy(webview) == NK_ERROR_INVALID_HANDLE);
     assert(nk_window_destroy(window) == NK_ERROR_INVALID_HANDLE);
 

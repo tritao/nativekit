@@ -30,6 +30,11 @@ int main() {
     queued.data.assign(begin, begin + sizeof(payload) - 1);
     assert(queue.push(std::move(queued)) == NK_OK);
     assert(queue.push({}) == NK_ERROR_QUEUE_FULL);
+    nk::core::QueuedEvent terminal;
+    terminal.kind = NK_EVENT_WEBVIEW_EVAL_COMPLETE;
+    terminal.request_id = 42;
+    terminal.result = NK_ERROR_INVALID_REQUEST;
+    assert(queue.push(std::move(terminal)) == NK_OK);
 
     nk_event event{};
     event.struct_size = sizeof(event);
@@ -37,6 +42,12 @@ int main() {
     assert(event.kind == NK_EVENT_WEBVIEW_MESSAGE);
     assert(event.data_size == 5);
     assert(std::memcmp(event.data, "hello", 5) == 0);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    assert(queue.poll(event) == NK_OK);
+    assert(event.kind == NK_EVENT_WEBVIEW_EVAL_COMPLETE);
+    assert(event.request_id == 42);
+    assert(event.result == NK_ERROR_INVALID_REQUEST);
     nk_event_release(&event);
 
     nk::core::EventQueue resize_queue(1);

@@ -157,6 +157,7 @@ struct WinNavigationDecision {
 };
 
 std::unordered_map<nk_request_id, WinNavigationDecision> navigation_decisions;
+std::unordered_map<nk_request_id, nk_handle> evaluations;
 #endif
 
 struct WinWindowResource final : nk::core::Resource {
@@ -560,6 +561,9 @@ HRESULT execute_script(const std::shared_ptr<WinWebViewResource>& resource,
                                     HRESULT, LPCWSTR>(
         [handle = resource->handle, request](HRESULT error, LPCWSTR result) -> HRESULT {
             try {
+                const auto pending = evaluations.find(request);
+                if (pending == evaluations.end() || pending->second != handle) return S_OK;
+                evaluations.erase(pending);
                 if (FAILED(error)) {
                     emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
                                       L"JavaScript evaluation failed", NK_ERROR_UNKNOWN,
@@ -589,12 +593,19 @@ void flush_webview_commands(const std::shared_ptr<WinWebViewResource>& resource)
         else if (command.kind == WebViewCommandKind::html)
             result = resource->webview->NavigateToString(
                 html_document(command.value, command.auxiliary).c_str());
-        else
-            result = execute_script(resource, command.value, command.request);
-        if (FAILED(result) && command.kind == WebViewCommandKind::evaluate)
+        else {
+            try {
+                result = execute_script(resource, command.value, command.request);
+            } catch (...) {
+                result = E_OUTOFMEMORY;
+            }
+        }
+        if (FAILED(result) && command.kind == WebViewCommandKind::evaluate) {
+            evaluations.erase(command.request);
             emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, resource->handle,
                               L"could not evaluate JavaScript", NK_ERROR_UNKNOWN,
                               0, command.request);
+        }
     }
 }
 
@@ -602,13 +613,31 @@ void fail_webview(const std::shared_ptr<WinWebViewResource>& resource,
                   const wchar_t* message) noexcept {
     resource->failed = true;
     for (const auto& command : resource->pending) {
-        if (command.kind == WebViewCommandKind::evaluate)
+        if (command.kind == WebViewCommandKind::evaluate) {
+            evaluations.erase(command.request);
             emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, resource->handle,
                               message, NK_ERROR_UNKNOWN, 0, command.request);
+        }
     }
     resource->pending.clear();
     emit_webview_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, resource->handle,
                       message, NK_ERROR_UNKNOWN);
+}
+
+void cancel_evaluations(nk_handle source) noexcept {
+    for (auto item = evaluations.begin(); item != evaluations.end();) {
+        if (source && item->second != source) {
+            ++item;
+            continue;
+        }
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WEBVIEW_EVAL_COMPLETE;
+        event.source = item->second;
+        event.request_id = item->first;
+        event.result = NK_ERROR_INVALID_REQUEST;
+        nk::core::push_event(std::move(event));
+        item = evaluations.erase(item);
+    }
 }
 
 void complete_webview_creation(const std::shared_ptr<WinWebViewResource>& resource) noexcept {
@@ -1173,6 +1202,7 @@ void shutdown() noexcept {
     }
 #if defined(NK_HAS_WEBVIEW2)
     navigation_decisions.clear();
+    cancel_evaluations(NK_INVALID_HANDLE);
 #endif
     nk::core::handles().clear();
     pump_events();
@@ -1366,6 +1396,7 @@ nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     auto resource = get_webview(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    cancel_evaluations(handle);
     for (auto item = navigation_decisions.begin(); item != navigation_decisions.end();) {
         if (item->second.source == handle) item = navigation_decisions.erase(item);
         else ++item;
@@ -1457,6 +1488,7 @@ nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char* html, const 
 
 nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
                                   nk_request_id* out_request) {
+    nk_request_id request = NK_INVALID_REQUEST_ID;
     try {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!script || !out_request)
@@ -1467,7 +1499,8 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
         const auto value = wide(script);
         if (*script && value.empty())
             return fail(NK_ERROR_INVALID_ARGUMENT, "JavaScript is not valid UTF-8");
-        const auto request = nk::core::next_request_id();
+        request = nk::core::next_request_id();
+        evaluations.emplace(request, handle);
         if (!resource->webview) {
             if (resource->failed) return fail(NK_ERROR_UNKNOWN, "WebView2 initialization failed");
             resource->pending.push_back(
@@ -1476,12 +1509,17 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
             return NK_OK;
         }
         const HRESULT result = execute_script(resource, value, request);
-        if (FAILED(result)) return fail(NK_ERROR_UNKNOWN, "could not evaluate JavaScript");
+        if (FAILED(result)) {
+            evaluations.erase(request);
+            return fail(NK_ERROR_UNKNOWN, "could not evaluate JavaScript");
+        }
         *out_request = request;
         return NK_OK;
     } catch (const std::bad_alloc&) {
+        if (request) evaluations.erase(request);
         return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while evaluating JavaScript");
     } catch (...) {
+        if (request) evaluations.erase(request);
         return fail(NK_ERROR_UNKNOWN, "unexpected error while evaluating JavaScript");
     }
 }

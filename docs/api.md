@@ -69,6 +69,13 @@ and `null` preserve their JSON types. Values that JSON cannot represent complete
 with a failing event result when the native engine exposes the serialization
 failure.
 
+Every successfully started WebView evaluation has exactly one terminal event.
+Destroying its WebView, directly or through parent-window destruction, completes
+the request with `NK_ERROR_INVALID_REQUEST`. Native callbacks arriving after
+that cancellation are ignored. Terminal request events may temporarily exceed
+the configured event-queue capacity so they cannot be lost behind ordinary
+notifications.
+
 Consecutive pending resize events for the same window are coalesced. Events of
 other kinds preserve their position relative to resize events.
 

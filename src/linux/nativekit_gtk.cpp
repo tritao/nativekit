@@ -23,6 +23,7 @@
 #endif
 #include <webkit2/webkit2.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstring>
 #include <limits>
@@ -93,6 +94,7 @@ bool gtk_initialized = false;
 bool clipboard_owned = false;
 std::unordered_map<nk_request_id, DialogContext*> dialogs;
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
+std::unordered_map<nk_request_id, nk_handle> evaluations;
 
 nk_result fail(nk_result result, std::string_view message) {
     nk::core::set_error(message);
@@ -327,6 +329,9 @@ void cancel_navigation_decisions(nk_handle source) {
 
 void on_eval_complete(GObject* object, GAsyncResult* result, gpointer data) {
     std::unique_ptr<EvalContext> context(static_cast<EvalContext*>(data));
+    const auto pending = evaluations.find(context->request);
+    if (pending == evaluations.end() || pending->second != context->source) return;
+    evaluations.erase(pending);
     if (!nk::core::handles().get(context->source, nk::core::ResourceType::webview)) return;
     GError* error = nullptr;
     JSCValue* value = webkit_web_view_evaluate_javascript_finish(
@@ -351,6 +356,22 @@ void on_eval_complete(GObject* object, GAsyncResult* result, gpointer data) {
     g_free(string);
     if (error) g_error_free(error);
     if (value) g_object_unref(value);
+}
+
+void cancel_evaluations(nk_handle source) noexcept {
+    for (auto item = evaluations.begin(); item != evaluations.end();) {
+        if (source && item->second != source) {
+            ++item;
+            continue;
+        }
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WEBVIEW_EVAL_COMPLETE;
+        event.source = item->second;
+        event.request_id = item->first;
+        event.result = NK_ERROR_INVALID_REQUEST;
+        nk::core::push_event(std::move(event));
+        item = evaluations.erase(item);
+    }
 }
 
 std::shared_ptr<GtkWindowResource> window(nk_handle handle) {
@@ -722,6 +743,7 @@ void shutdown() noexcept {
         g_object_unref(item->second.decision);
         navigation_decisions.erase(item);
     }
+    cancel_evaluations(NK_INVALID_HANDLE);
     if (gtk_initialized && clipboard_owned) {
         GtkClipboard* clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
         gtk_clipboard_set_can_store(clipboard, nullptr, 0);
@@ -784,7 +806,8 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     auto resource = window(handle);
     if (!resource) return invalid_handle("window");
     cancel_dialogs_for_parent(handle, true);
-    for (const auto child : resource->children) nk::core::handles().erase(child, nk::core::ResourceType::webview);
+    const auto children = resource->children;
+    for (const auto child : children) nk_webview_destroy(child);
     g_signal_handlers_disconnect_by_data(resource->window, resource.get());
     gtk_widget_destroy(resource->window);
     resource->window = nullptr;
@@ -934,10 +957,15 @@ nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
     auto resource = webview(handle);
     if (!resource) return invalid_handle("WebView");
     cancel_navigation_decisions(handle);
+    cancel_evaluations(handle);
     g_signal_handlers_disconnect_by_data(resource->widget, resource.get());
     g_signal_handlers_disconnect_by_data(resource->content_manager, resource.get());
     gtk_widget_destroy(resource->widget);
     resource->widget = nullptr;
+    if (auto parent = window(resource->parent)) {
+        auto& children = parent->children;
+        children.erase(std::remove(children.begin(), children.end(), handle), children.end());
+    }
     nk::core::handles().erase(handle, nk::core::ResourceType::webview);
     return NK_OK;
 }
@@ -992,6 +1020,7 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script, nk_reque
             "(()=>{const v=(0,eval)(" + javascript_literal(script) +
             ");const j=JSON.stringify(v);if(j===undefined)throw new TypeError("
             "'JavaScript result is not JSON-serializable');return j;})()";
+        evaluations.emplace(request, handle);
         webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(resource->widget), source.c_str(), -1,
                                             nullptr, nullptr, nullptr, on_eval_complete,
                                             context.release());

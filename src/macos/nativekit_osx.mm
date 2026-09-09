@@ -95,6 +95,7 @@ struct DialogContext {
 std::mutex dialogs_mutex;
 std::unordered_map<nk_request_id, std::shared_ptr<DialogContext>> dialogs;
 std::unordered_map<nk_request_id, MacNavigationDecision> navigation_decisions;
+std::unordered_map<nk_request_id, nk_handle> evaluations;
 
 void cancel_dialog_context(const std::shared_ptr<DialogContext>& context) {
     if ([context->dialog isKindOfClass:[NSSavePanel class]])
@@ -270,6 +271,22 @@ void cancel_navigation_decisions(nk_handle source) {
         } else {
             ++item;
         }
+    }
+}
+
+void cancel_evaluations(nk_handle source) noexcept {
+    for (auto item = evaluations.begin(); item != evaluations.end();) {
+        if (source && item->second != source) {
+            ++item;
+            continue;
+        }
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WEBVIEW_EVAL_COMPLETE;
+        event.source = item->second;
+        event.request_id = item->first;
+        event.result = NK_ERROR_INVALID_REQUEST;
+        nk::core::push_event(std::move(event));
+        item = evaluations.erase(item);
     }
 }
 
@@ -637,6 +654,7 @@ void shutdown() noexcept {
     for (const auto& item : navigation_decisions)
         item.second.handler(WKNavigationActionPolicyCancel);
     navigation_decisions.clear();
+    cancel_evaluations(NK_INVALID_HANDLE);
     pump_events();
     dialogs.clear();
     nk::core::handles().clear();
@@ -834,6 +852,7 @@ nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
     auto resource = webview(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
     cancel_navigation_decisions(handle);
+    cancel_evaluations(handle);
     auto parent = window(resource->parent);
     if (parent) {
         auto& children = parent->children;
@@ -912,7 +931,11 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
         NSString* wrapped = javascript_json_wrapper(source);
         if (!wrapped) return fail(NK_ERROR_OUT_OF_MEMORY, "could not encode JavaScript source");
         const auto request = nk::core::next_request_id();
+        evaluations.emplace(request, handle);
         [resource->view evaluateJavaScript:wrapped completionHandler:^(id value, NSError* error) {
+            const auto pending = evaluations.find(request);
+            if (pending == evaluations.end() || pending->second != handle) return;
+            evaluations.erase(pending);
             if (error)
                 emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
                                   error.localizedDescription, NK_ERROR_UNKNOWN, 0, request);

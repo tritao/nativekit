@@ -35,5 +35,7 @@ The macOS workflow builds and runs the C ABI, core tests, and Cocoa window/syste
 integration test on Intel and Apple Silicon runners. The integration test checks
 pasteboard text and file round trips, drop registration, and WKWebView creation,
 HTML navigation, navigation-policy decisions, JavaScript evaluation, and page
-messages. Dialogs and real drag sessions are compiled but not opened automatically
-because unattended native UI is not a reliable CI interaction surface.
+messages. Parent destruction with a pending evaluation verifies deterministic
+cancellation and suppression of late callbacks. Dialogs and real drag sessions
+are compiled but not opened automatically because unattended native UI is not a
+reliable CI interaction surface.

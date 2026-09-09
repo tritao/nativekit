@@ -7,6 +7,16 @@
 
 namespace nk::core {
 
+namespace {
+bool is_terminal_request_event(const QueuedEvent& event) {
+    if (event.request_id == NK_INVALID_REQUEST_ID) return false;
+    return event.kind == NK_EVENT_DIALOG_COMPLETE ||
+           event.kind == NK_EVENT_WEBVIEW_EVAL_COMPLETE ||
+           event.kind == NK_EVENT_CLIPBOARD_TEXT_COMPLETE ||
+           event.kind == NK_EVENT_CLIPBOARD_FILES_COMPLETE;
+}
+}
+
 EventQueue::EventQueue(std::size_t capacity) : capacity_(capacity) {}
 
 nk_result EventQueue::push(QueuedEvent event) {
@@ -18,7 +28,8 @@ nk_result EventQueue::push(QueuedEvent event) {
             return NK_OK;
         }
     }
-    if (queue_.size() >= capacity_) return NK_ERROR_QUEUE_FULL;
+    if (queue_.size() >= capacity_ && !is_terminal_request_event(event))
+        return NK_ERROR_QUEUE_FULL;
     queue_.push_back(std::move(event));
     return NK_OK;
 }

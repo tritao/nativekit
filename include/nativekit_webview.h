@@ -70,10 +70,13 @@ NK_API nk_result NK_CALL nk_webview_set_html(
 /*
  * Starts JavaScript evaluation. Completion is reported as
  * NK_EVENT_WEBVIEW_EVAL_COMPLETE with the returned request ID. Event data is
- * UTF-8 JSON for the result, or an error message when the event result is not
- * NK_OK. Top-level `undefined`, functions, and symbols, plus BigInt values and
- * cyclic objects, are not JSON-serializable and complete with an error. Normal
- * JSON.stringify rules apply to unsupported values nested in arrays or objects.
+ * UTF-8 JSON for the result, or usually an error message when the event result
+ * is not NK_OK. Cancellation events have empty data. Top-level `undefined`,
+ * functions, and symbols, plus BigInt values and cyclic objects, are not
+ * JSON-serializable and complete with an error. Normal JSON.stringify rules
+ * apply to unsupported values nested in arrays or objects.
+ * Destroying the WebView before completion emits exactly one final event with
+ * NK_ERROR_INVALID_REQUEST, allowing consumers to settle pending futures.
  */
 NK_API nk_result NK_CALL nk_webview_eval(
     nk_handle webview, const char *script, nk_request_id *out_request);
