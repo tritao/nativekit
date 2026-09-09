@@ -1,6 +1,7 @@
 #include "nativekit_mobile.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_notification.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -11,6 +12,7 @@
 
 #include <jni.h>
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -46,6 +48,7 @@ std::unordered_map<nk_handle, std::shared_ptr<AndroidWebView>> webviews;
 std::unordered_map<nk_request_id, nk_handle> evaluations;
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
 std::unordered_map<nk_request_id, uint32_t> file_dialogs;
+std::unordered_map<nk_request_id, bool> notifications;
 
 std::vector<std::byte> bytes(const char *value) {
     if (!value)
@@ -351,6 +354,7 @@ void shutdown() noexcept {
     evaluations.clear();
     navigation_decisions.clear();
     file_dialogs.clear();
+    notifications.clear();
 }
 
 nk_result mobile_host_attach(const nk_mobile_host_options &options, nk_handle &out_host) {
@@ -449,7 +453,7 @@ extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
-           NK_CAP_SHELL;
+           NK_CAP_SHELL | NK_CAP_NOTIFICATION;
 }
 
 nk_result NK_CALL nk_shell_open_url(const char *url) {
@@ -599,6 +603,78 @@ nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
     event.request_id = request;
     event.data = dialog_payload(false, {});
     return nk::core::push_event(std::move(event));
+}
+
+nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
+                                       nk_request_id *out_request) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    if (!options || options->struct_size < sizeof(nk_notification_options) || !out_request ||
+        !options->title || !*options->title) {
+        nk::core::set_error("invalid notification options");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto host_resource = context_host();
+    if (!host_resource) {
+        nk::core::set_error("Android notifications require an attached mobile host");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!env || !bridge)
+        return NK_ERROR_UNKNOWN;
+    auto method = env->GetStaticMethodID(
+        bridge, "showNotification",
+        "(Landroid/view/ViewGroup;JILjava/lang/String;Ljava/lang/String;I)Z");
+    auto title = from_utf8(env, options->title);
+    auto body = from_utf8(env, options->body);
+    const auto request = nk::core::next_request_id();
+    notifications.emplace(request, false);
+    const auto timeout = options->timeout_ms > static_cast<uint32_t>(INT_MAX)
+                             ? INT_MAX
+                             : static_cast<jint>(options->timeout_ms);
+    const auto started =
+        method && env->CallStaticBooleanMethod(
+                      bridge, method, host_resource->view_group, static_cast<jlong>(request),
+                      static_cast<jint>(options->flags), title, body, timeout);
+    if (body)
+        env->DeleteLocalRef(body);
+    if (title)
+        env->DeleteLocalRef(title);
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android notification launch failed") || !started) {
+        notifications.erase(request);
+        nk::core::set_error("Android could not start notification delivery");
+        return NK_ERROR_UNKNOWN;
+    }
+    *out_request = request;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_notification_close(nk_request_id request) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    const auto found = notifications.find(request);
+    if (!request || found == notifications.end()) {
+        nk::core::set_error("invalid or completed Android notification request");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    notifications.erase(found);
+    if (auto host_resource = context_host()) {
+        auto *env = environment();
+        auto *bridge = env ? bridge_class(env) : nullptr;
+        if (bridge) {
+            auto method =
+                env->GetStaticMethodID(bridge, "closeNotification", "(Landroid/view/ViewGroup;J)V");
+            if (method)
+                env->CallStaticVoidMethod(bridge, method, host_resource->view_group,
+                                          static_cast<jlong>(request));
+            env->DeleteLocalRef(bridge);
+            clear_java_exception(env, "Android notification close failed");
+        }
+    }
+    emit_text(NK_EVENT_NOTIFICATION_DISMISSED, NK_INVALID_HANDLE, nullptr, NK_OK, request);
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_webview_create(nk_handle parent, const nk_webview_options *options,
@@ -927,6 +1003,24 @@ JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeCancelDialog(JNIEnv
     return nk_dialog_cancel(static_cast<nk_request_id>(request));
 }
 
+JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeShowNotification(JNIEnv *env, jclass,
+                                                                               jstring title,
+                                                                               jstring body) {
+    const auto title_value = to_utf8(env, title);
+    const auto body_value = to_utf8(env, body);
+    nk_notification_options options{};
+    options.struct_size = sizeof(options);
+    options.title = title ? title_value.c_str() : nullptr;
+    options.body = body ? body_value.c_str() : nullptr;
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    return nk_notification_show(&options, &request) == NK_OK ? static_cast<jlong>(request) : 0;
+}
+
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeCloseNotification(JNIEnv *, jclass,
+                                                                               jlong request) {
+    return nk_notification_close(static_cast<nk_request_id>(request));
+}
+
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitHost_nativeDestroy(JNIEnv *, jclass,
                                                                      jlong handle) {
     nk_mobile_host_destroy(static_cast<nk_handle>(handle));
@@ -1046,6 +1140,50 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
         event.request_id = request_id;
         event.data = dialog_payload(accepted == JNI_TRUE, uris);
         nk::core::push_event(std::move(event));
+    });
+}
+
+JNIEXPORT void JNICALL
+Java_io_nativekit_NativeKitBridge_nativeOnNotificationDelivered(JNIEnv *, jclass, jlong request) {
+    nk::core::callback_boundary([&] {
+        const auto request_id = static_cast<nk_request_id>(request);
+        const auto found = notifications.find(request_id);
+        if (found == notifications.end())
+            return;
+        found->second = true;
+        emit_text(NK_EVENT_NOTIFICATION_DELIVERED, NK_INVALID_HANDLE, nullptr, NK_OK, request_id);
+    });
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnNotificationFailed(
+    JNIEnv *env, jclass, jlong request, jstring message) {
+    nk::core::callback_boundary([&] {
+        const auto request_id = static_cast<nk_request_id>(request);
+        if (notifications.erase(request_id) == 0)
+            return;
+        const auto text = to_utf8(env, message);
+        emit_text(NK_EVENT_NOTIFICATION_FAILED, NK_INVALID_HANDLE, text.c_str(), NK_ERROR_UNKNOWN,
+                  request_id);
+    });
+}
+
+JNIEXPORT void JNICALL
+Java_io_nativekit_NativeKitBridge_nativeOnNotificationActivated(JNIEnv *, jclass, jlong request) {
+    nk::core::callback_boundary([&] {
+        const auto request_id = static_cast<nk_request_id>(request);
+        if (notifications.find(request_id) == notifications.end())
+            return;
+        emit_text(NK_EVENT_NOTIFICATION_ACTIVATED, NK_INVALID_HANDLE, nullptr, NK_OK, request_id);
+    });
+}
+
+JNIEXPORT void JNICALL
+Java_io_nativekit_NativeKitBridge_nativeOnNotificationDismissed(JNIEnv *, jclass, jlong request) {
+    nk::core::callback_boundary([&] {
+        const auto request_id = static_cast<nk_request_id>(request);
+        if (notifications.erase(request_id) == 0)
+            return;
+        emit_text(NK_EVENT_NOTIFICATION_DISMISSED, NK_INVALID_HANDLE, nullptr, NK_OK, request_id);
     });
 }
 

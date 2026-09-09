@@ -243,3 +243,8 @@ Notification availability is still subject to runtime policy. The Linux desktop
 must provide `org.freedesktop.Notifications`, macOS may request user permission,
 and Windows must expose a notification area. These failures remain observable
 instead of being treated as successful delivery.
+
+Android creates a default notification channel and requests notification
+permission through an internal proxy activity when required. Taps and user
+dismissals are routed through an internal receiver while the NativeKit runtime
+is alive; permission denial produces `NK_EVENT_NOTIFICATION_FAILED`.

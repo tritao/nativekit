@@ -1,8 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application>
         <activity
             android:name="io.nativekit.NativeKitDialogActivity"
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <activity
+            android:name="io.nativekit.NativeKitNotificationActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <receiver
+            android:name="io.nativekit.NativeKitNotificationReceiver"
+            android:exported="false" />
     </application>
 </manifest>

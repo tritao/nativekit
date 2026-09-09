@@ -27,3 +27,5 @@ poll through the stable C ABI; Java/Kotlin hosts can use `NativeKitHost.pollEven
 Android currently implements URL opening and text clipboard operations; file
 clipboard operations remain unsupported. Open, save, and directory dialogs use
 the Storage Access Framework and return `content://` URIs.
+Notifications use a library-owned channel, permission proxy, and receiver, so
+the embedding Activity does not need to forward permission or intent callbacks.

@@ -82,6 +82,18 @@ public final class NativeKitHost implements AutoCloseable {
         return nativeCancelDialog(request);
     }
 
+    public long showNotification(String title, String body) {
+        if (handle == 0 || title == null)
+            throw new IllegalArgumentException("host must be open and title must not be null");
+        return nativeShowNotification(title, body);
+    }
+
+    public int closeNotification(long request) {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeCloseNotification(request);
+    }
+
     private void setLifecycle(int state) {
         if (handle != 0) {
             nativeSetLifecycle(handle, state);
@@ -109,5 +121,7 @@ public final class NativeKitHost implements AutoCloseable {
     private static native long nativeStartFileDialog(long host, int kind, String title,
                                                      String suggestedName);
     private static native int nativeCancelDialog(long request);
+    private static native long nativeShowNotification(String title, String body);
+    private static native int nativeCloseNotification(long request);
     private static native void nativeDestroy(long handle);
 }

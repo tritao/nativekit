@@ -235,6 +235,26 @@ final class NativeKitBridge {
         return cancelledDialogs.remove(request);
     }
 
+    static boolean showNotification(ViewGroup parent, long request, int flags, String title,
+                                    String body, int timeoutMs) {
+        Intent intent = new Intent(parent.getContext(), NativeKitNotificationActivity.class);
+        intent.putExtra(NativeKitNotificationActivity.EXTRA_REQUEST, request);
+        intent.putExtra(NativeKitNotificationActivity.EXTRA_FLAGS, flags);
+        intent.putExtra(NativeKitNotificationActivity.EXTRA_TITLE, title);
+        intent.putExtra(NativeKitNotificationActivity.EXTRA_BODY, body);
+        intent.putExtra(NativeKitNotificationActivity.EXTRA_TIMEOUT, timeoutMs);
+        try {
+            parent.getContext().startActivity(intent);
+            return true;
+        } catch (RuntimeException error) {
+            return false;
+        }
+    }
+
+    static void closeNotification(ViewGroup parent, long request) {
+        NativeKitNotificationActivity.cancel(parent.getContext(), request);
+    }
+
     static void observeHost(ViewGroup parent, long handle) {
         observedHosts.put(handle, parent);
         View.OnLayoutChangeListener listener = (view, left, top, right, bottom, oldLeft, oldTop,
@@ -324,4 +344,8 @@ final class NativeKitBridge {
                                                 int insetBottom, int keyboardBottom);
     static native void nativeOnFileDialog(long request, int kind, boolean accepted,
                                           @Nullable String[] uris);
+    static native void nativeOnNotificationDelivered(long request);
+    static native void nativeOnNotificationFailed(long request, String message);
+    static native void nativeOnNotificationActivated(long request);
+    static native void nativeOnNotificationDismissed(long request);
 }

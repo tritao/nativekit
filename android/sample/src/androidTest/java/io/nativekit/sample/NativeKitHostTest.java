@@ -6,8 +6,13 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import android.content.pm.ActivityInfo;
+import android.Manifest;
+import android.content.ComponentName;
+import android.content.Intent;
+import android.os.Build;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
 import io.nativekit.NativeKitEvent;
 import java.net.URLEncoder;
 import java.nio.ByteBuffer;
@@ -26,6 +31,9 @@ public final class NativeKitHostTest {
     private static final int EVENT_WEBVIEW_PROCESS_TERMINATED = 205;
     private static final int EVENT_CLIPBOARD_TEXT_COMPLETE = 400;
     private static final int EVENT_DIALOG_COMPLETE = 100;
+    private static final int EVENT_NOTIFICATION_DELIVERED = 500;
+    private static final int EVENT_NOTIFICATION_ACTIVATED = 501;
+    private static final int EVENT_NOTIFICATION_DISMISSED = 502;
     private static final int EVENT_HOST_GEOMETRY_CHANGED = 600;
 
     @Test
@@ -111,6 +119,34 @@ public final class NativeKitHostTest {
             assertDialogCanStartAndCancel(scenario, 2);
             assertDialogCanStartAndCancel(scenario, 3);
 
+            if (Build.VERSION.SDK_INT >= 33) {
+                InstrumentationRegistry.getInstrumentation().getUiAutomation()
+                    .grantRuntimePermission("io.nativekit.sample",
+                                            Manifest.permission.POST_NOTIFICATIONS);
+            }
+            long[] notificationRequest = new long[1];
+            scenario.onActivity(activity -> notificationRequest[0] =
+                                    activity.host.showNotification("NativeKit", message));
+            assertNotEquals(0, notificationRequest[0]);
+            NativeKitEvent delivered = awaitEvent(scenario, EVENT_NOTIFICATION_DELIVERED);
+            assertEquals(notificationRequest[0], delivered.requestId);
+            sendNotificationAction(scenario, "io.nativekit.NOTIFICATION_ACTIVATE",
+                                   notificationRequest[0]);
+            NativeKitEvent activated = awaitEvent(scenario, EVENT_NOTIFICATION_ACTIVATED);
+            assertEquals(notificationRequest[0], activated.requestId);
+            sendNotificationAction(scenario, "io.nativekit.NOTIFICATION_DISMISS",
+                                   notificationRequest[0]);
+            NativeKitEvent userDismissed = awaitEvent(scenario, EVENT_NOTIFICATION_DISMISSED);
+            assertEquals(notificationRequest[0], userDismissed.requestId);
+
+            scenario.onActivity(activity -> notificationRequest[0] =
+                                    activity.host.showNotification("NativeKit close", message));
+            awaitEvent(scenario, EVENT_NOTIFICATION_DELIVERED);
+            scenario.onActivity(activity ->
+                assertEquals(0, activity.host.closeNotification(notificationRequest[0])));
+            NativeKitEvent dismissed = awaitEvent(scenario, EVENT_NOTIFICATION_DISMISSED);
+            assertEquals(notificationRequest[0], dismissed.requestId);
+
             scenario.onActivity(activity -> {
                 assertEquals(-2, activity.host.openUrl("not a URL"));
                 assertEquals(0, activity.host.openUrl("nativekit-test://opened"));
@@ -162,6 +198,17 @@ public final class NativeKitHostTest {
         assertNotNull(dialog.data);
         assertEquals(0, geometryData(dialog).getInt(0));
         assertEquals(0, geometryData(dialog).getInt(4));
+    }
+
+    private static void sendNotificationAction(ActivityScenario<NativeKitTestActivity> scenario,
+                                               String action, long request) {
+        scenario.onActivity(activity -> {
+            Intent intent = new Intent(action);
+            intent.setComponent(
+                new ComponentName(activity, "io.nativekit.NativeKitNotificationReceiver"));
+            intent.putExtra("nativekit.notification.request", request);
+            activity.sendBroadcast(intent);
+        });
     }
 
     private static NativeKitEvent awaitEventForSource(
