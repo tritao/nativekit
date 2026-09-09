@@ -97,7 +97,8 @@ elseif(APPLE)
     target_compile_options(nativekit PRIVATE
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
-    target_link_libraries(nativekit PRIVATE "-framework Cocoa" "-framework WebKit")
+    target_link_libraries(nativekit PRIVATE "-framework Cocoa" "-framework WebKit"
+        "-framework UserNotifications")
 elseif(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
     target_sources(nativekit PRIVATE src/linux/nativekit_gtk.cpp)

@@ -22,7 +22,8 @@ Windows smoke tests can be cross-built and run in an isolated Wine prefix with
 The Windows backend currently provides Win32-owned windows, asynchronous COM
 file/save/directory and native message dialogs, shell integration, standard
 directories, locale, desktop appearance, clipboard text/files, and file drops.
-It also provides WebView2 when the Evergreen runtime is installed. CMake fetches
+It also provides notification-area messages and WebView2 when the Evergreen
+runtime is installed. CMake fetches
 the pinned Microsoft WebView2 SDK by default; use `-DNK_ENABLE_WEBVIEW2=OFF` for
 an offline Windows build without WebView support. Windows text drops are deferred
 until the backend has an OLE drop target.
@@ -40,13 +41,15 @@ JSON on every backend, preserving value types across language boundaries.
 
 The current Linux backend provides NativeKit-owned GTK 3 windows, WebKitGTK
 WebViews, asynchronous native dialogs, shell launching, standard directories,
-locale, desktop appearance, clipboard, and file/text drops. Builds without GTK 3 and WebKitGTK 4.1 retain
+locale, desktop appearance, clipboard, file/text drops, and freedesktop
+notifications. Builds without GTK 3 and WebKitGTK 4.1 retain
 the same ABI and report these capabilities as unsupported.
 
 The initial macOS backend provides Cocoa-owned windows, asynchronous native file
 and message panels, workspace shell integration, standard directories, locale,
 appearance, pasteboard text and file transfer, file/text drops, and native
-NSWindow/NSView descriptors. Its WKWebView child backend supports navigation,
+NSWindow/NSView descriptors. It uses the macOS user-notification service with
+explicit permission failures. Its WKWebView child backend supports navigation,
 HTML content, JavaScript evaluation, page messages, and lifecycle events.
 
 ## Build

@@ -3,6 +3,7 @@
 #include "nativekit_dialog.h"
 #include "nativekit_system.h"
 #include "nativekit_clipboard.h"
+#include "nativekit_notification.h"
 
 #include "core/error.hpp"
 #include "core/runtime.hpp"
@@ -55,4 +56,6 @@ nk_result NK_CALL nk_clipboard_set_files(const char* const*, uint32_t) { return 
 nk_result NK_CALL nk_clipboard_read_text(nk_request_id*) { return unsupported(); }
 nk_result NK_CALL nk_clipboard_read_files(nk_request_id*) { return unsupported(); }
 nk_result NK_CALL nk_window_set_drop_enabled(nk_handle, uint32_t) { return unsupported(); }
+nk_result NK_CALL nk_notification_show(const nk_notification_options*, nk_request_id*) { return unsupported(); }
+nk_result NK_CALL nk_notification_close(nk_request_id) { return unsupported(); }
 }

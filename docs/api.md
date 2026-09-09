@@ -50,6 +50,10 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_WEBVIEW_NAVIGATION_FAILED` | WebView | none | error text; category in `flags` |
 | `NK_EVENT_WEBVIEW_PROCESS_TERMINATED` | WebView | none | empty; backend reason in `flags` |
 | `NK_EVENT_WEBVIEW_NAVIGATION_REQUEST` | WebView | navigation ID | proposed URL |
+| `NK_EVENT_NOTIFICATION_DELIVERED` | none | notification ID | empty |
+| `NK_EVENT_NOTIFICATION_ACTIVATED` | none | notification ID | optional platform action identifier |
+| `NK_EVENT_NOTIFICATION_DISMISSED` | none | notification ID | empty; platform reason may be in `flags` |
+| `NK_EVENT_NOTIFICATION_FAILED` | none | notification ID | diagnostic text |
 
 A close event is a request: the window remains alive until the application calls
 `nk_window_destroy()`.
@@ -118,3 +122,15 @@ completion arrives through `NK_EVENT_DIALOG_COMPLETE`. File and directory result
 begin with `nk_dialog_paths`, followed by a table of 32-bit offsets and NUL-terminated
 UTF-8 paths. Consumers should use `nk_dialog_event_path()` instead of parsing this
 layout directly. Cancellation is a successful completion with `accepted == 0`.
+
+## Notifications
+
+Notification submission is asynchronous. `nk_notification_show()` copies its
+inputs and returns a request ID; `DELIVERED` or `FAILED` reports whether the
+desktop accepted it. Activation and dismissal may arrive later. Explicitly
+closing a live request removes the native notification and emits `DISMISSED`.
+
+Notification availability is still subject to runtime policy. The Linux desktop
+must provide `org.freedesktop.Notifications`, macOS may request user permission,
+and Windows must expose a notification area. These failures remain observable
+instead of being treated as successful delivery.

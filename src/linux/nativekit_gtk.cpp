@@ -7,6 +7,7 @@
 #include "nativekit_window.h"
 #include "nativekit_webview.h"
 #include "nativekit_dialog.h"
+#include "nativekit_notification.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_system.h"
 
@@ -25,6 +26,7 @@
 #include <webkit2/webkit2.h>
 
 #include <algorithm>
+#include <climits>
 #include <cstddef>
 #include <cstring>
 #include <limits>
@@ -96,11 +98,27 @@ struct NavigationDecision {
     WebKitPolicyDecision* decision;
 };
 
+struct NotificationRequest {
+    uint32_t server_id = 0;
+    bool canceled = false;
+    uint64_t generation = 0;
+};
+
+struct NotificationContext {
+    nk_request_id request;
+    uint64_t generation;
+};
+
 bool gtk_initialized = false;
 bool clipboard_owned = false;
 std::unordered_map<nk_request_id, DialogContext*> dialogs;
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
 std::unordered_map<nk_request_id, nk_handle> evaluations;
+std::unordered_map<nk_request_id, NotificationRequest> notifications;
+std::unordered_map<uint32_t, nk_request_id> notification_ids;
+GDBusConnection* notification_bus = nullptr;
+guint notification_action_subscription = 0;
+guint notification_closed_subscription = 0;
 
 nk_result fail(nk_result result, std::string_view message) {
     nk::core::set_error(message);
@@ -752,11 +770,135 @@ const char* system_directory_path(nk_system_directory_kind kind) {
     }
 }
 
+void emit_notification(nk_event_kind kind, nk_request_id request,
+                       nk_result result = NK_OK, const char* text = nullptr) noexcept {
+    nk::core::callback_boundary([&] {
+        nk::core::QueuedEvent event;
+        event.kind = kind;
+        event.request_id = request;
+        event.result = result;
+        if (text) event.data = bytes(text);
+        nk::core::push_event(std::move(event));
+    });
+}
+
+void close_server_notification(uint32_t server_id) {
+    if (!notification_bus || !server_id) return;
+    g_dbus_connection_call(
+        notification_bus, "org.freedesktop.Notifications",
+        "/org/freedesktop/Notifications", "org.freedesktop.Notifications",
+        "CloseNotification", g_variant_new("(u)", server_id), nullptr,
+        G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr, nullptr);
+}
+
+void on_notification_signal(GDBusConnection*, const gchar*, const gchar*,
+                            const gchar*, const gchar* signal, GVariant* parameters,
+                            gpointer) {
+    nk::core::callback_boundary([&] {
+        uint32_t server_id = 0;
+        if (std::strcmp(signal, "ActionInvoked") == 0) {
+            const char* action = nullptr;
+            g_variant_get(parameters, "(u&s)", &server_id, &action);
+            const auto found = notification_ids.find(server_id);
+            if (found != notification_ids.end())
+                emit_notification(NK_EVENT_NOTIFICATION_ACTIVATED, found->second,
+                                  NK_OK, action);
+            return;
+        }
+        uint32_t reason = 0;
+        g_variant_get(parameters, "(uu)", &server_id, &reason);
+        const auto found = notification_ids.find(server_id);
+        if (found == notification_ids.end()) return;
+        const auto request = found->second;
+        notification_ids.erase(found);
+        notifications.erase(request);
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_NOTIFICATION_DISMISSED;
+        event.request_id = request;
+        event.flags = reason;
+        nk::core::push_event(std::move(event));
+    });
+}
+
+bool ensure_notification_bus() {
+    if (notification_bus) return true;
+    GError* error = nullptr;
+    notification_bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
+    if (!notification_bus) {
+        nk::core::set_error(error && error->message
+            ? error->message : "desktop notification service is unavailable");
+        if (error) g_error_free(error);
+        return false;
+    }
+    notification_action_subscription = g_dbus_connection_signal_subscribe(
+        notification_bus, "org.freedesktop.Notifications",
+        "org.freedesktop.Notifications", "ActionInvoked",
+        "/org/freedesktop/Notifications", nullptr, G_DBUS_SIGNAL_FLAGS_NONE,
+        on_notification_signal, nullptr, nullptr);
+    notification_closed_subscription = g_dbus_connection_signal_subscribe(
+        notification_bus, "org.freedesktop.Notifications",
+        "org.freedesktop.Notifications", "NotificationClosed",
+        "/org/freedesktop/Notifications", nullptr, G_DBUS_SIGNAL_FLAGS_NONE,
+        on_notification_signal, nullptr, nullptr);
+    return true;
+}
+
+void on_notification_shown(GObject* object, GAsyncResult* result, gpointer data) {
+    std::unique_ptr<NotificationContext> context(static_cast<NotificationContext*>(data));
+    GError* error = nullptr;
+    GVariant* reply = g_dbus_connection_call_finish(
+        G_DBUS_CONNECTION(object), result, &error);
+    uint32_t server_id = 0;
+    bool completed = false;
+    nk::core::callback_boundary([&] {
+        const auto found = notifications.find(context->request);
+        if (found == notifications.end() ||
+            !nk::core::is_runtime_generation(context->generation)) return;
+        if (!reply) {
+            emit_notification(NK_EVENT_NOTIFICATION_FAILED, context->request,
+                              NK_ERROR_UNKNOWN,
+                              error && error->message ? error->message
+                                                      : "notification delivery failed");
+            notifications.erase(found);
+            completed = true;
+            return;
+        }
+        g_variant_get(reply, "(u)", &server_id);
+        if (!server_id) {
+            emit_notification(NK_EVENT_NOTIFICATION_FAILED, context->request,
+                              NK_ERROR_UNKNOWN,
+                              "notification service returned an invalid identifier");
+            notifications.erase(found);
+            completed = true;
+            return;
+        }
+        if (found->second.canceled) {
+            close_server_notification(server_id);
+            notifications.erase(found);
+            completed = true;
+            return;
+        }
+        found->second.server_id = server_id;
+        notification_ids.emplace(server_id, context->request);
+        emit_notification(NK_EVENT_NOTIFICATION_DELIVERED, context->request);
+        completed = true;
+    });
+    if (!completed) {
+        if (server_id) close_server_notification(server_id);
+        notifications.erase(context->request);
+        if (nk::core::is_runtime_generation(context->generation))
+            emit_notification(NK_EVENT_NOTIFICATION_FAILED, context->request,
+                              NK_ERROR_OUT_OF_MEMORY,
+                              "could not retain desktop notification state");
+    }
+    if (reply) g_variant_unref(reply);
+    if (error) g_error_free(error);
+}
+
 }
 
 namespace nk::backend {
 void pump_events() noexcept {
-    if (!gtk_initialized) return;
     while (g_main_context_iteration(nullptr, FALSE)) {}
 }
 
@@ -769,6 +911,24 @@ void shutdown() noexcept {
         navigation_decisions.erase(item);
     }
     cancel_evaluations(NK_INVALID_HANDLE);
+    for (const auto& [request, notification] : notifications) {
+        (void)request;
+        close_server_notification(notification.server_id);
+    }
+    notifications.clear();
+    notification_ids.clear();
+    if (notification_bus) {
+        if (notification_action_subscription)
+            g_dbus_connection_signal_unsubscribe(
+                notification_bus, notification_action_subscription);
+        if (notification_closed_subscription)
+            g_dbus_connection_signal_unsubscribe(
+                notification_bus, notification_closed_subscription);
+        g_object_unref(notification_bus);
+        notification_bus = nullptr;
+        notification_action_subscription = 0;
+        notification_closed_subscription = 0;
+    }
     if (gtk_initialized && clipboard_owned) {
         GtkClipboard* clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
         gtk_clipboard_set_can_store(clipboard, nullptr, 0);
@@ -786,7 +946,8 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG |
            NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
-           NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW;
+           NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW |
+           NK_CAP_NOTIFICATION;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* out_window) {
@@ -1334,6 +1495,69 @@ nk_result NK_CALL nk_system_get_appearance(nk_system_appearance* appearance) {
                                 std::strstr(normalized, "high-contrast");
     g_free(normalized);
     g_free(theme);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_notification_show(const nk_notification_options* options,
+                                       nk_request_id* out_request) {
+    return nk::core::result_boundary("unexpected error while showing notification",
+                                     [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!options || options->struct_size < sizeof(*options) || !out_request ||
+            !options->title || !*options->title)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid notification options");
+        if (!g_utf8_validate(options->title, -1, nullptr) ||
+            (options->body && !g_utf8_validate(options->body, -1, nullptr)) ||
+            (options->icon && !g_utf8_validate(options->icon, -1, nullptr)))
+            return fail(NK_ERROR_INVALID_ARGUMENT,
+                        "notification text is not valid UTF-8");
+        *out_request = NK_INVALID_REQUEST_ID;
+        if (!ensure_notification_bus()) return NK_ERROR_UNSUPPORTED;
+        const auto request = nk::core::next_request_id();
+        const auto generation = nk::core::runtime_generation();
+        auto context = std::make_unique<NotificationContext>(
+            NotificationContext{request, generation});
+        notifications.emplace(request, NotificationRequest{0, false, generation});
+        GVariantBuilder actions;
+        g_variant_builder_init(&actions, G_VARIANT_TYPE("as"));
+        GVariantBuilder hints;
+        g_variant_builder_init(&hints, G_VARIANT_TYPE("a{sv}"));
+        if (options->flags & NK_NOTIFICATION_SILENT)
+            g_variant_builder_add(&hints, "{sv}", "suppress-sound",
+                                  g_variant_new_boolean(TRUE));
+        const int timeout = options->timeout_ms > static_cast<uint32_t>(INT_MAX)
+            ? INT_MAX : static_cast<int>(options->timeout_ms);
+        g_dbus_connection_call(
+            notification_bus, "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications", "org.freedesktop.Notifications",
+            "Notify", g_variant_new("(susss@as@a{sv}i)", "NativeKit", 0u,
+                options->icon ? options->icon : "", options->title,
+                options->body ? options->body : "", g_variant_builder_end(&actions),
+                g_variant_builder_end(&hints), timeout), G_VARIANT_TYPE("(u)"),
+            G_DBUS_CALL_FLAGS_NONE, -1, nullptr, on_notification_shown,
+            context.release());
+        *out_request = request;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_notification_close(nk_request_id request) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    const auto found = notifications.find(request);
+    if (!request || found == notifications.end())
+        return fail(NK_ERROR_INVALID_REQUEST,
+                    "invalid or completed notification request");
+    if (found->second.canceled)
+        return fail(NK_ERROR_INVALID_REQUEST,
+                    "notification request is already closing");
+    if (found->second.server_id) {
+        close_server_notification(found->second.server_id);
+        notification_ids.erase(found->second.server_id);
+        notifications.erase(found);
+    } else {
+        found->second.canceled = true;
+    }
+    emit_notification(NK_EVENT_NOTIFICATION_DISMISSED, request);
     return NK_OK;
 }
 

@@ -1,5 +1,6 @@
 #include "nativekit.h"
 #include "nativekit_clipboard.h"
+#include "nativekit_notification.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -47,6 +48,9 @@ int main(void) {
     assert((nk_get_capabilities() & NK_CAP_DRAG_DROP) != 0);
     assert((nk_get_capabilities() & NK_CAP_SHELL) != 0);
     assert((nk_get_capabilities() & NK_CAP_WEBVIEW) != 0);
+    assert((nk_get_capabilities() & NK_CAP_NOTIFICATION) != 0);
+    assert(nk_notification_show(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_notification_close(NK_INVALID_REQUEST_ID) == NK_ERROR_INVALID_REQUEST);
 
     verify_system_string(NK_DIRECTORY_HOME);
     verify_system_string(NK_DIRECTORY_DESKTOP);

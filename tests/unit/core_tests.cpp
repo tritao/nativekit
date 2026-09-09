@@ -54,6 +54,10 @@ int main() {
     terminal.request_id = 42;
     terminal.result = NK_ERROR_INVALID_REQUEST;
     assert(queue.push(std::move(terminal)) == NK_OK);
+    nk::core::QueuedEvent notification_terminal;
+    notification_terminal.kind = NK_EVENT_NOTIFICATION_FAILED;
+    notification_terminal.request_id = 43;
+    assert(queue.push(std::move(notification_terminal)) == NK_OK);
 
     nk_event event{};
     event.struct_size = sizeof(event);

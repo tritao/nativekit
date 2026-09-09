@@ -13,7 +13,9 @@ bool is_terminal_request_event(const QueuedEvent& event) {
     return event.kind == NK_EVENT_DIALOG_COMPLETE ||
            event.kind == NK_EVENT_WEBVIEW_EVAL_COMPLETE ||
            event.kind == NK_EVENT_CLIPBOARD_TEXT_COMPLETE ||
-           event.kind == NK_EVENT_CLIPBOARD_FILES_COMPLETE;
+           event.kind == NK_EVENT_CLIPBOARD_FILES_COMPLETE ||
+           event.kind == NK_EVENT_NOTIFICATION_DELIVERED ||
+           event.kind == NK_EVENT_NOTIFICATION_FAILED;
 }
 }
 

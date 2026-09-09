@@ -6,6 +6,10 @@ initialization, while the GTK integration test leaves an asynchronous clipboard
 read outstanding across shutdown and verifies that it cannot enter the next
 runtime generation.
 
+On Linux, `linux_notification_failure` runs in an isolated D-Bus session with
+no notification daemon. It verifies that an accepted asynchronous request
+produces a queue-guaranteed `NK_EVENT_NOTIFICATION_FAILED` instead of hanging.
+
 `NK_ENABLE_SANITIZERS=ON` enables AddressSanitizer and UndefinedBehaviorSanitizer.
 Leak detection remains enabled for the core tests. It is disabled only for the
 GTK integration process because GTK, Pango, and Fontconfig retain

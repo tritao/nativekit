@@ -1,5 +1,6 @@
 #include "nativekit.h"
 #include "nativekit_dialog.h"
+#include "nativekit_notification.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
@@ -30,10 +31,12 @@ int main(void) {
     assert(nk_init(&init) == NK_OK);
     const nk_capabilities expected = NK_CAP_WINDOW | NK_CAP_WEBVIEW |
         NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP |
-        NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE;
+        NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_notification_show(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_notification_close(NK_INVALID_REQUEST_ID) == NK_ERROR_INVALID_REQUEST);
 
     nk_window_options window_options = {0};
     window_options.struct_size = sizeof(window_options);

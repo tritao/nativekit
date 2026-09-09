@@ -26,6 +26,18 @@ if(NK_BACKEND_GTK_AVAILABLE)
         add_test(NAME gtk_create_destroy
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_integration>)
     endif()
+    find_program(DBUS_RUN_SESSION dbus-run-session)
+    if(DBUS_RUN_SESSION)
+        add_executable(nativekit_linux_notification_failure
+            integration/linux_notification_failure.c)
+        target_link_libraries(nativekit_linux_notification_failure
+            PRIVATE NativeKit::nativekit)
+        set_target_properties(nativekit_linux_notification_failure
+            PROPERTIES LINKER_LANGUAGE CXX)
+        add_test(NAME linux_notification_failure
+            COMMAND ${DBUS_RUN_SESSION} --
+                $<TARGET_FILE:nativekit_linux_notification_failure>)
+    endif()
 endif()
 
 if(WIN32)
@@ -64,6 +76,9 @@ if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     set(sanitized_test_targets nativekit_c_abi nativekit_core_tests)
     if(TARGET nativekit_gtk_integration)
         list(APPEND sanitized_test_targets nativekit_gtk_integration)
+    endif()
+    if(TARGET nativekit_linux_notification_failure)
+        list(APPEND sanitized_test_targets nativekit_linux_notification_failure)
     endif()
     foreach(target ${sanitized_test_targets})
         target_compile_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)

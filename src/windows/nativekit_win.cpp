@@ -6,6 +6,7 @@
 
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_notification.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -33,6 +34,7 @@
 #include <atomic>
 #include <algorithm>
 #include <cstddef>
+#include <cwchar>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -50,7 +52,18 @@
 namespace {
 
 constexpr wchar_t window_class_name[] = L"NativeKitWindow";
+constexpr UINT notification_message = WM_APP + 42;
 ATOM window_class = 0;
+HWND notification_window = nullptr;
+
+struct WinNotification {
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    UINT id = 0;
+};
+
+std::unordered_map<nk_request_id, WinNotification> notifications;
+std::unordered_map<UINT, nk_request_id> notification_ids;
+std::atomic<UINT> next_notification_id{1};
 
 struct WinDialogContext {
     nk_request_id request = NK_INVALID_REQUEST_ID;
@@ -317,7 +330,43 @@ void emit_drop_files(WinWindowResource& resource, HDROP drop) noexcept {
 void update_child_bounds(WinWindowResource& parent) noexcept;
 #endif
 
+void emit_notification(nk_event_kind kind, nk_request_id request,
+                       uint32_t flags = 0) noexcept {
+    nk::core::callback_boundary([&] {
+        nk::core::QueuedEvent event;
+        event.kind = kind;
+        event.request_id = request;
+        event.flags = flags;
+        nk::core::push_event(std::move(event));
+    });
+}
+
+void remove_notification(nk_request_id request) noexcept {
+    const auto found = notifications.find(request);
+    if (found == notifications.end()) return;
+    NOTIFYICONDATAW icon{};
+    icon.cbSize = sizeof(icon);
+    icon.hWnd = notification_window;
+    icon.uID = found->second.id;
+    Shell_NotifyIconW(NIM_DELETE, &icon);
+    notification_ids.erase(found->second.id);
+    notifications.erase(found);
+}
+
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (window == notification_window && message == notification_message) {
+        const auto found = notification_ids.find(static_cast<UINT>(wparam));
+        if (found == notification_ids.end()) return 0;
+        const auto request = found->second;
+        const UINT event = LOWORD(lparam);
+        if (event == NIN_BALLOONUSERCLICK) {
+            emit_notification(NK_EVENT_NOTIFICATION_ACTIVATED, request);
+        } else if (event == NIN_BALLOONTIMEOUT || event == NIN_BALLOONHIDE) {
+            remove_notification(request);
+            emit_notification(NK_EVENT_NOTIFICATION_DISMISSED, request, event);
+        }
+        return 0;
+    }
     auto* resource = reinterpret_cast<WinWindowResource*>(
         GetWindowLongPtrW(window, GWLP_USERDATA));
     if (message == WM_NCCREATE) {
@@ -385,6 +434,22 @@ bool ensure_window_class() {
     definition.lpszClassName = window_class_name;
     window_class = RegisterClassExW(&definition);
     return window_class != 0 || GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+}
+
+bool ensure_notification_window() {
+    if (notification_window) return true;
+    if (!ensure_window_class()) return false;
+    notification_window = CreateWindowExW(
+        0, window_class_name, L"NativeKit notifications", 0,
+        0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), nullptr);
+    return notification_window != nullptr;
+}
+
+template<std::size_t Size>
+void copy_notification_text(wchar_t (&destination)[Size], const std::wstring& source) {
+    const auto count = std::min(source.size(), Size - 1);
+    std::wmemcpy(destination, source.data(), count);
+    destination[count] = L'\0';
 }
 
 std::shared_ptr<WinWindowResource> get_window(nk_handle handle) {
@@ -1208,6 +1273,11 @@ void pump_events() noexcept {
 }
 
 void shutdown() noexcept {
+    while (!notifications.empty()) remove_notification(notifications.begin()->first);
+    if (notification_window) {
+        DestroyWindow(notification_window);
+        notification_window = nullptr;
+    }
     std::vector<std::shared_ptr<WinDialogContext>> pending;
     {
         std::lock_guard lock(dialogs_mutex);
@@ -1256,7 +1326,8 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     nk_capabilities capabilities = NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL |
-           NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW;
+           NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW |
+           NK_CAP_NOTIFICATION;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available()) capabilities |= NK_CAP_WEBVIEW;
 #endif
@@ -1901,6 +1972,78 @@ nk_result NK_CALL nk_system_get_appearance(nk_system_appearance* appearance) {
     if (SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(high_contrast),
                               &high_contrast, 0))
         appearance->high_contrast = (high_contrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_notification_show(const nk_notification_options* options,
+                                       nk_request_id* out_request) {
+    return nk::core::result_boundary("unexpected error while showing notification",
+                                     [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!options || options->struct_size < sizeof(*options) || !out_request ||
+            !options->title || !*options->title)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid notification options");
+        *out_request = NK_INVALID_REQUEST_ID;
+        const auto title = wide(options->title);
+        const auto body = wide(options->body);
+        const auto icon_path = wide(options->icon);
+        if (title.empty() || (options->body && *options->body && body.empty()) ||
+            (options->icon && *options->icon && icon_path.empty()))
+            return fail(NK_ERROR_INVALID_ARGUMENT,
+                        "notification text is not valid UTF-8");
+        if (!ensure_notification_window())
+            return fail(NK_ERROR_UNSUPPORTED,
+                        "Windows notification host is unavailable");
+        UINT id = next_notification_id.fetch_add(1, std::memory_order_relaxed);
+        if (!id) id = next_notification_id.fetch_add(1, std::memory_order_relaxed);
+        const auto request = nk::core::next_request_id();
+        NOTIFYICONDATAW icon{};
+        icon.cbSize = sizeof(icon);
+        icon.hWnd = notification_window;
+        icon.uID = id;
+        icon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_INFO;
+        icon.uCallbackMessage = notification_message;
+        HICON loaded_icon = nullptr;
+        if (!icon_path.empty())
+            loaded_icon = static_cast<HICON>(LoadImageW(
+                nullptr, icon_path.c_str(), IMAGE_ICON, 0, 0,
+                LR_LOADFROMFILE | LR_DEFAULTSIZE));
+        icon.hIcon = loaded_icon ? loaded_icon : LoadIconW(nullptr, IDI_APPLICATION);
+        copy_notification_text(icon.szTip, title);
+        copy_notification_text(icon.szInfoTitle, title);
+        copy_notification_text(icon.szInfo, body);
+        icon.dwInfoFlags = NIIF_INFO;
+        if (options->flags & NK_NOTIFICATION_SILENT)
+            icon.dwInfoFlags |= NIIF_NOSOUND;
+        icon.uTimeout = options->timeout_ms;
+        notifications.emplace(request, WinNotification{request, id});
+        try {
+            notification_ids.emplace(id, request);
+        } catch (...) {
+            notifications.erase(request);
+            throw;
+        }
+        if (!Shell_NotifyIconW(NIM_ADD, &icon)) {
+            notification_ids.erase(id);
+            notifications.erase(request);
+            if (loaded_icon) DestroyIcon(loaded_icon);
+            return fail(NK_ERROR_UNSUPPORTED,
+                        "Windows notification area rejected the notification");
+        }
+        if (loaded_icon) DestroyIcon(loaded_icon);
+        *out_request = request;
+        emit_notification(NK_EVENT_NOTIFICATION_DELIVERED, request);
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_notification_close(nk_request_id request) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (!request || notifications.find(request) == notifications.end())
+        return fail(NK_ERROR_INVALID_REQUEST,
+                    "invalid or completed notification request");
+    remove_notification(request);
+    emit_notification(NK_EVENT_NOTIFICATION_DISMISSED, request);
     return NK_OK;
 }
 

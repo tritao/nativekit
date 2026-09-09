@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_dialog.h"
 #include "nativekit_clipboard.h"
+#include "nativekit_notification.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
 #include "nativekit_system.h"
@@ -15,6 +16,9 @@ int main(void) {
     assert(nk_api_version() == NK_API_VERSION);
     assert(nk_init(&options) == NK_OK);
     (void)nk_get_capabilities();
+    nk_result notification_result = nk_notification_show(NULL, NULL);
+    assert(notification_result == NK_ERROR_INVALID_ARGUMENT ||
+           notification_result == NK_ERROR_UNSUPPORTED);
     assert(nk_dialog_event_path(NULL, 0, NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     struct {
         nk_dialog_paths header;
