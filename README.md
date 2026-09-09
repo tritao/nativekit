@@ -93,6 +93,13 @@ and a second browser window while showing asynchronous results in a live log:
 ./build/examples/nativekit_showcase
 ```
 
+The OpenGL example loads graphics entry points through NativeKit, creates a
+3.3 context, and renders a responsive triangle with an animated background:
+
+```sh
+./build/examples/nativekit_opengl
+```
+
 Source formatting is defined by `.clang-format`. When ClangFormat is installed,
 CMake provides targets to apply it or verify that no changes are needed:
 
