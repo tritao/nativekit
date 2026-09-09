@@ -1,7 +1,24 @@
 #include "nativekit.h"
+#include "nativekit_dialog.h"
 #include "nativekit_window.h"
 
 #include <assert.h>
+#include <windows.h>
+
+static nk_event wait_for_dialog(nk_request_id request) {
+    for (int attempt = 0; attempt < 500; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_DIALOG_COMPLETE && event.request_id == request)
+            return event;
+        nk_event_release(&event);
+        Sleep(10);
+    }
+    assert(!"timed out waiting for dialog completion");
+    nk_event unreachable = {0};
+    return unreachable;
+}
 
 int main(void) {
     nk_init_options init = {0};
@@ -38,6 +55,42 @@ int main(void) {
         assert(nk_poll_event(&event) == NK_OK);
         nk_event_release(&event);
     }
+
+    nk_file_dialog_options file_options = {0};
+    file_options.struct_size = sizeof(file_options);
+    file_options.title = "NativeKit cancellation test";
+    nk_request_id file_request = NK_INVALID_REQUEST_ID;
+    assert(nk_dialog_open_file(window, &file_options, &file_request) == NK_OK);
+    assert(nk_dialog_cancel(file_request) == NK_OK);
+    nk_event file_event = wait_for_dialog(file_request);
+    assert(file_event.flags == NK_DIALOG_OPEN_FILE);
+    assert(file_event.result == NK_OK);
+    assert(file_event.data_size >= sizeof(nk_dialog_paths));
+    const nk_dialog_paths *paths = (const nk_dialog_paths *)file_event.data;
+    assert(paths->accepted == 0);
+    assert(paths->path_count == 0);
+    nk_event_release(&file_event);
+    assert(nk_dialog_cancel(file_request) == NK_ERROR_INVALID_REQUEST);
+
+    nk_message_dialog_options message_options = {0};
+    message_options.struct_size = sizeof(message_options);
+    message_options.kind = NK_MESSAGE_QUESTION;
+    message_options.buttons = NK_MESSAGE_BUTTON_YES | NK_MESSAGE_BUTTON_NO |
+                              NK_MESSAGE_BUTTON_CANCEL;
+    message_options.title = "NativeKit cancellation test";
+    message_options.message = "This dialog should be canceled automatically.";
+    nk_request_id message_request = NK_INVALID_REQUEST_ID;
+    assert(nk_dialog_message(window, &message_options, &message_request) == NK_OK);
+    assert(nk_dialog_cancel(message_request) == NK_OK);
+    nk_event message_event = wait_for_dialog(message_request);
+    assert(message_event.flags == NK_DIALOG_MESSAGE);
+    assert(message_event.result == NK_OK);
+    assert(message_event.data_size == sizeof(nk_dialog_message_result));
+    const nk_dialog_message_result *message_result =
+        (const nk_dialog_message_result *)message_event.data;
+    assert(message_result->button == NK_MESSAGE_RESULT_CANCEL);
+    nk_event_release(&message_event);
+
     assert(nk_window_destroy(window) == NK_OK);
     assert(nk_window_destroy(window) == NK_ERROR_INVALID_HANDLE);
     nk_shutdown();

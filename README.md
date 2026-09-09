@@ -19,6 +19,8 @@ For an existing checkout, use `git submodule update --init --recursive`.
 
 Windows smoke tests can be cross-built and run in an isolated Wine prefix with
 `tools/test-wine.sh`; see `docs/testing.md` for prerequisites and limitations.
+The Windows backend currently provides Win32-owned windows and asynchronous COM
+file, save, directory, and native message dialogs.
 
 The current Linux backend provides NativeKit-owned GTK 3 windows, WebKitGTK
 WebViews, asynchronous native dialogs, shell launching, standard directories,

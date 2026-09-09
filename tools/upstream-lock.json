@@ -25,10 +25,13 @@
     },
     "src/windows/nativekit_win.cpp": {
       "sources": [
+        "src/msw/dirdlg.cpp",
+        "src/msw/filedlg.cpp",
+        "src/msw/msgdlg.cpp",
         "src/msw/toplevel.cpp",
         "src/msw/window.cpp"
       ],
-      "notes": "Window class lifecycle, message handling, resize events, and DPI behavior are adapted to NativeKit's handles and event queue."
+      "notes": "Window class lifecycle, message handling, resize events, DPI behavior, COM file dialog options, and native message dialog behavior are adapted to NativeKit's handles, requests, and event queue."
     }
   }
 }
