@@ -29,6 +29,16 @@ int main(void) {
     window_options.title = "NativeKit integration test";
     nk_handle window = NK_INVALID_HANDLE;
     assert(nk_window_create(&window_options, &window) == NK_OK);
+    nk_native_window native = {0};
+    native.struct_size = sizeof(native);
+    assert(nk_window_get_native(window, &native) == NK_OK);
+    assert(native.kind == NK_NATIVE_WINDOW_X11);
+    assert(native.display != 0);
+    assert(native.window != 0);
+    assert(native.flags == 0);
+    nk_handle wrapped = NK_INVALID_HANDLE;
+    assert(nk_window_wrap_native(&native, &wrapped) == NK_ERROR_UNSUPPORTED);
+    assert(wrapped == NK_INVALID_HANDLE);
     float scale = 0.0f;
     assert(nk_window_get_scale(window, &scale) == NK_OK);
     assert(scale >= 1.0f);

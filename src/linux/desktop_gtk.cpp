@@ -13,6 +13,13 @@
 #include "core/runtime.hpp"
 
 #include <gtk/gtk.h>
+#include <gdk/gdkconfig.h>
+#ifdef GDK_WINDOWING_WAYLAND
+#  include <gdk/gdkwayland.h>
+#endif
+#ifdef GDK_WINDOWING_X11
+#  include <gdk/gdkx.h>
+#endif
 #include <webkit2/webkit2.h>
 
 #include <cstddef>
@@ -588,7 +595,7 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG |
            NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
-           NK_CAP_SYSTEM_APPEARANCE;
+           NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* out_window) {
@@ -675,6 +682,51 @@ nk_result NK_CALL nk_window_get_scale(nk_handle handle, float* out_scale) {
     if (!resource) return invalid_handle("window");
     *out_scale = static_cast<float>(gtk_widget_get_scale_factor(resource->window));
     return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window* out_native) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (!out_native || out_native->struct_size < sizeof(*out_native))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "native window output is missing or too small");
+    auto resource = window(handle);
+    if (!resource) return invalid_handle("window");
+    gtk_widget_realize(resource->window);
+    GdkWindow* native = gtk_widget_get_window(resource->window);
+    if (!native) return fail(NK_ERROR_UNKNOWN, "GTK window has no native surface");
+    const auto size = out_native->struct_size;
+    *out_native = {};
+    out_native->struct_size = size;
+    GdkDisplay* display = gdk_window_get_display(native);
+#ifdef GDK_WINDOWING_X11
+    if (GDK_IS_X11_WINDOW(native)) {
+        out_native->kind = NK_NATIVE_WINDOW_X11;
+        out_native->display = reinterpret_cast<uintptr_t>(
+            gdk_x11_display_get_xdisplay(display));
+        out_native->window = static_cast<uintptr_t>(gdk_x11_window_get_xid(native));
+        return NK_OK;
+    }
+#endif
+#ifdef GDK_WINDOWING_WAYLAND
+    if (GDK_IS_WAYLAND_WINDOW(native)) {
+        out_native->kind = NK_NATIVE_WINDOW_WAYLAND;
+        out_native->display = reinterpret_cast<uintptr_t>(
+            gdk_wayland_display_get_wl_display(display));
+        out_native->window = reinterpret_cast<uintptr_t>(
+            gdk_wayland_window_get_wl_surface(native));
+        return NK_OK;
+    }
+#endif
+    return fail(NK_ERROR_UNSUPPORTED, "GTK display backend is not interoperable");
+}
+
+nk_result NK_CALL nk_window_wrap_native(const nk_native_window* native,
+                                        nk_handle* out_window) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (!native || native->struct_size < sizeof(*native) || !out_window || !native->window)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid native window descriptor");
+    *out_window = NK_INVALID_HANDLE;
+    return fail(NK_ERROR_UNSUPPORTED,
+                "wrapping caller-owned windows is not safe in the GTK backend yet");
 }
 
 nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_options* options, nk_handle* out_webview) {

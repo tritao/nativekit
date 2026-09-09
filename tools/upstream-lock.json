@@ -16,6 +16,7 @@
         "src/gtk/filedlg.cpp",
         "src/gtk/msgdlg.cpp",
         "src/gtk/settings.cpp",
+        "src/gtk/toplevel.cpp",
         "src/gtk/webview_webkit2.cpp",
         "src/gtk/window.cpp",
         "src/common/stdpbase.cpp"

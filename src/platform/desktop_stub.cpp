@@ -29,6 +29,8 @@ nk_result NK_CALL nk_window_show(nk_handle, uint32_t) { return unsupported(); }
 nk_result NK_CALL nk_window_set_title(nk_handle, const char*) { return unsupported(); }
 nk_result NK_CALL nk_window_set_bounds(nk_handle, int32_t, int32_t, int32_t, int32_t) { return unsupported(); }
 nk_result NK_CALL nk_window_get_scale(nk_handle, float*) { return unsupported(); }
+nk_result NK_CALL nk_window_get_native(nk_handle, nk_native_window*) { return unsupported(); }
+nk_result NK_CALL nk_window_wrap_native(const nk_native_window*, nk_handle*) { return unsupported(); }
 nk_result NK_CALL nk_webview_create(nk_handle, const nk_webview_options*, nk_handle*) { return unsupported(); }
 nk_result NK_CALL nk_webview_destroy(nk_handle) { return unsupported(); }
 nk_result NK_CALL nk_webview_show(nk_handle, uint32_t) { return unsupported(); }

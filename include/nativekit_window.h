@@ -16,8 +16,31 @@ enum {
     NK_CAP_CLIPBOARD = UINT64_C(1) << 3,
     NK_CAP_DRAG_DROP = UINT64_C(1) << 4,
     NK_CAP_SHELL = UINT64_C(1) << 5,
-    NK_CAP_SYSTEM_APPEARANCE = UINT64_C(1) << 6
+    NK_CAP_SYSTEM_APPEARANCE = UINT64_C(1) << 6,
+    NK_CAP_EXPORT_NATIVE_WINDOW = UINT64_C(1) << 7,
+    NK_CAP_WRAP_NATIVE_WINDOW = UINT64_C(1) << 8
 };
+
+typedef uint32_t nk_native_window_kind;
+
+enum {
+    NK_NATIVE_WINDOW_UNKNOWN = 0,
+    NK_NATIVE_WINDOW_WIN32 = 1,
+    NK_NATIVE_WINDOW_COCOA = 2,
+    NK_NATIVE_WINDOW_X11 = 3,
+    NK_NATIVE_WINDOW_WAYLAND = 4
+};
+
+typedef struct nk_native_window {
+    uint32_t struct_size;
+    nk_native_window_kind kind;
+    uint32_t flags; /* Reserved for platform-neutral interop guarantees. */
+    uint32_t reserved;
+    uintptr_t display;
+    uintptr_t window;
+    uintptr_t view;
+    uintptr_t reserved2[3];
+} nk_native_window;
 
 enum {
     NK_WINDOW_RESIZABLE = 1u << 0,
@@ -69,6 +92,22 @@ NK_API nk_result NK_CALL nk_window_set_bounds(
 
 /* Writes the current logical-to-device-pixel scale. UI thread only. */
 NK_API nk_result NK_CALL nk_window_get_scale(nk_handle window, float *out_scale);
+
+/*
+ * Returns a borrowed platform descriptor. Its pointer-sized values are valid
+ * only while the NativeKit window is alive and must never be freed by callers.
+ * This is an explicit interoperability escape hatch, not a portable resource.
+ */
+NK_API nk_result NK_CALL nk_window_get_native(
+    nk_handle window, nk_native_window *out_native);
+
+/*
+ * Attaches NativeKit to a caller-owned native window. Destroying the returned
+ * handle only detaches NativeKit. Backends return NK_ERROR_UNSUPPORTED until
+ * they can guarantee correct event and ownership behavior for the given kind.
+ */
+NK_API nk_result NK_CALL nk_window_wrap_native(
+    const nk_native_window *native, nk_handle *out_window);
 
 #ifdef __cplusplus
 }

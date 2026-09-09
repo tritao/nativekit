@@ -16,6 +16,18 @@ a slot and generation, so a handle becomes invalid as soon as its resource is
 destroyed and cannot accidentally identify a later occupant of the same slot.
 Destroying a window also invalidates all child WebView handles.
 
+## Native-window interoperability
+
+`nk_window_get_native()` is the only intentional escape from opaque handles. It
+returns a borrowed descriptor containing pointer-sized platform values. NativeKit
+retains ownership, and all values become invalid when the window is destroyed.
+On GTK the descriptor identifies either an X11 display/window pair or a Wayland
+display/surface pair.
+
+Wrapping caller-owned windows is a separate capability because detaching safely
+requires backend-specific event and widget ownership. The GTK backend currently
+returns `NK_ERROR_UNSUPPORTED` and does not advertise `NK_CAP_WRAP_NATIVE_WINDOW`.
+
 ## Events and payloads
 
 `nk_poll_event()` returns events in FIFO order. An empty queue is not an error: it
