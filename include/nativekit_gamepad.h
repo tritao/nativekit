@@ -62,6 +62,9 @@ NK_API nk_result NK_CALL nk_gamepad_add_mappings(const char *database,
 NK_API nk_result NK_CALL nk_gamepad_is_mapped(nk_handle joystick, uint32_t *out_mapped);
 NK_API nk_result NK_CALL
 nk_gamepad_get_mapping_source(nk_handle joystick, nk_gamepad_mapping_source *out_source);
+/* Returns the pinned SDL_GameControllerDB Git revision used for built-ins. */
+NK_API nk_result NK_CALL nk_gamepad_get_builtin_database_revision(char *buffer,
+                                                                  uint32_t *inout_size);
 NK_API nk_result NK_CALL nk_gamepad_get_name(nk_handle joystick, char *buffer,
                                              uint32_t *inout_size);
 NK_API nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick,

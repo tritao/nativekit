@@ -48,6 +48,10 @@ int main(void) {
 #if defined(__linux__) && !defined(__ANDROID__)
     assert(mappings_added == 1);
 #endif
+    uint32_t mapping_revision_size = 0;
+    assert(nk_gamepad_get_builtin_database_revision(NULL, &mapping_revision_size) ==
+           NK_ERROR_BUFFER_TOO_SMALL);
+    assert(mapping_revision_size == 41);
     nk_result mapped_result = nk_gamepad_is_mapped(NK_INVALID_HANDLE, &mapped);
     assert(mapped_result == NK_ERROR_INVALID_HANDLE || mapped_result == NK_ERROR_UNSUPPORTED);
     int32_t window_width = 0;

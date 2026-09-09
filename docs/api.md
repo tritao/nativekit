@@ -187,6 +187,13 @@ for the same GUID take precedence. `nk_gamepad_get_mapping_source()` reports
 whether the active entry came from NativeKit's built-in database or an
 application update.
 
+NativeKit ships a compact Linux subset of the community-maintained
+SDL_GameControllerDB. The complete pinned source and zlib license are retained
+under `vendor/SDL_GameControllerDB`; `scripts/update_gamepad_db.py` refreshes the
+snapshot and generated table reproducibly. Applications can query the exact
+40-character upstream revision with
+`nk_gamepad_get_builtin_database_revision()`.
+
 ## Graphics surfaces
 
 Graphics surfaces are separate resources attached to NativeKit-owned windows.

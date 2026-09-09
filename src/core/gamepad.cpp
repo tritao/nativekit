@@ -3,6 +3,7 @@
 #include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/gamepad_mapping.hpp"
+#include "core/gamepad_mappings_generated.hpp"
 #include "core/runtime.hpp"
 #include "nativekit_joystick.h"
 
@@ -28,14 +29,8 @@ std::vector<StoredMapping> mappings;
 std::once_flag builtin_once;
 
 void load_builtins() {
-    static constexpr const char *builtin_mappings[] = {
-        "030000005e0400008e02000014010000,Xbox 360 Controller,"
-        "a:b0,b:b1,x:b2,y:b3,back:b6,guide:b8,start:b7,leftstick:b9,rightstick:b10,"
-        "leftshoulder:b4,rightshoulder:b5,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,"
-        "leftx:a0,lefty:a1,rightx:a3,righty:a4,lefttrigger:a2,righttrigger:a5,platform:Linux,",
-    };
     std::lock_guard lock(mappings_mutex);
-    for (const auto *text : builtin_mappings) {
+    for (const auto *text : nk_builtin_gamepad_mappings) {
         Mapping mapping;
         if (nk::core::gamepad::parse_mapping(text, mapping))
             mappings.push_back({std::move(mapping), NK_GAMEPAD_MAPPING_BUILT_IN});
@@ -250,6 +245,16 @@ nk_gamepad_get_mapping_source(nk_handle joystick, nk_gamepad_mapping_source *out
                                              return result;
                                          *out_source = mapping.source;
                                          return NK_OK;
+                                     });
+}
+
+nk_result NK_CALL nk_gamepad_get_builtin_database_revision(char *buffer,
+                                                           uint32_t *inout_size) {
+    return nk::core::result_boundary("unexpected error while reading gamepad database revision",
+                                     [&]() -> nk_result {
+                                         nk::core::clear_error();
+                                         return copy_string(nk_builtin_gamepad_database_revision,
+                                                            buffer, inout_size);
                                      });
 }
 

@@ -1,6 +1,7 @@
 #include "core/boundary.hpp"
 #include "core/event_queue.hpp"
 #include "core/gamepad_mapping.hpp"
+#include "core/gamepad_mappings_generated.hpp"
 #include "core/handle_registry.hpp"
 #include "nativekit_window.h"
 
@@ -53,6 +54,23 @@ int main() {
     assert(!nk::core::gamepad::parse_mapping("not-a-guid,Pad,a:b0", mapping));
     assert(!nk::core::gamepad::parse_mapping(
         "03000000112200003344000055660000,Pad,a:q0", mapping));
+    bool has_xbox = false;
+    bool has_playstation = false;
+    bool has_switch = false;
+    bool has_steam = false;
+    std::size_t builtin_count = 0;
+    for (const auto *text : nk_builtin_gamepad_mappings) {
+        nk::core::gamepad::Mapping builtin;
+        assert(nk::core::gamepad::parse_mapping(text, builtin));
+        assert(builtin.platform == "Linux");
+        has_xbox = has_xbox || builtin.name.find("Xbox") != std::string::npos;
+        has_playstation = has_playstation || builtin.name.find("PlayStation") != std::string::npos;
+        has_switch = has_switch || builtin.name.find("Switch") != std::string::npos;
+        has_steam = has_steam || builtin.name.find("Steam") != std::string::npos;
+        ++builtin_count;
+    }
+    assert(builtin_count > 700);
+    assert(has_xbox && has_playstation && has_switch && has_steam);
 
     nk::core::HandleRegistry handles;
     const auto first = handles.insert(nk::core::ResourceType::window, std::make_shared<Dummy>());
