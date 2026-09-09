@@ -5,6 +5,10 @@ with a small, stable C ABI. It is intended to provide windows, dialogs, shell
 integration, clipboard and drag/drop, WebViews, and small system queries without
 exposing a C++ application framework to consumers.
 
+Multiple top-level windows may form a small ownership tree for utility,
+borderless, and modal windows. This is a lifetime and native-stacking model, not
+a portable widget hierarchy; NativeKit does not introduce frames or panels.
+
 wxWidgets is vendored as a Git submodule at `vendor/wxWidgets`, tracking its
 upstream `master` branch. The parent repository always pins an exact commit;
 `tools/upstream-lock.json` records the same revision for provenance reporting.

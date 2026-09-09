@@ -28,6 +28,18 @@ Wrapping caller-owned windows is a separate capability because detaching safely
 requires backend-specific event and widget ownership. The GTK backend currently
 returns `NK_ERROR_UNSUPPORTED` and does not advertise `NK_CAP_WRAP_NATIVE_WINDOW`.
 
+## Window ownership
+
+NativeKit supports multiple independent top-level windows. A new window may
+optionally name an existing window as its owner. Utility, borderless, and modal
+windows remain top-level native windows; they are not generic child widgets.
+
+Ownership controls native stacking and modality and transfers lifetime:
+destroying an owner recursively destroys its owned windows and invalidates their
+handles. A modal window must have an owner. Because owners must already exist at
+creation time, the ownership graph cannot contain cycles. WebViews remain the
+only portable native child surface in the initial API.
+
 ## Events and payloads
 
 `nk_poll_event()` returns events in FIFO order. An empty queue is not an error: it

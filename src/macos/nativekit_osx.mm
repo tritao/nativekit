@@ -55,7 +55,12 @@ struct MacWindowResource final : nk::core::Resource {
     __strong NKContentView* content = nil;
     __strong NKWindowDelegate* delegate = nil;
     nk_handle handle = NK_INVALID_HANDLE;
+    nk_handle owner = NK_INVALID_HANDLE;
+    bool modal = false;
+    bool sheet_active = false;
+    bool child_attached = false;
     std::vector<nk_handle> children;
+    std::vector<nk_handle> owned_windows;
     ~MacWindowResource() override {
         if (window) {
             content.resource = nullptr;
@@ -782,17 +787,27 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options,
     return nk::core::result_boundary("unexpected error while creating window", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!options || options->struct_size < sizeof(*options) || !out_window ||
-            options->width <= 0 || options->height <= 0)
+            options->width <= 0 || options->height <= 0 ||
+            options->kind > NK_WINDOW_UTILITY ||
+            ((options->flags & NK_WINDOW_MODAL) && !options->owner))
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window options");
         if (!valid_utf8(options->title))
             return fail(NK_ERROR_INVALID_ARGUMENT, "window title is not valid UTF-8");
         *out_window = NK_INVALID_HANDLE;
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+        auto owner = options->owner ? window(options->owner) : nullptr;
+        if (options->owner && !owner)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale owner window handle");
+        if (owner) owner->owned_windows.reserve(owner->owned_windows.size() + 1);
         auto resource = std::make_shared<MacWindowResource>();
-        NSWindowStyleMask style = NSWindowStyleMaskTitled |
+        resource->owner = options->owner;
+        resource->modal = (options->flags & NK_WINDOW_MODAL) != 0;
+        NSWindowStyleMask style = (options->flags & NK_WINDOW_BORDERLESS)
+            ? NSWindowStyleMaskBorderless : NSWindowStyleMaskTitled |
                                   NSWindowStyleMaskClosable |
                                   NSWindowStyleMaskMiniaturizable;
+        if (options->kind == NK_WINDOW_UTILITY) style |= NSWindowStyleMaskUtilityWindow;
         if (options->flags & NK_WINDOW_RESIZABLE) style |= NSWindowStyleMaskResizable;
         resource->window = [[NSWindow alloc]
             initWithContentRect:NSMakeRect(0, 0, options->width, options->height)
@@ -807,13 +822,23 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options,
         resource->window.contentView = resource->content;
         resource->delegate = [NKWindowDelegate new];
         resource->delegate.resource = resource.get();
-        resource->navigation_policy =
-            (options->flags & NK_WEBVIEW_NAVIGATION_POLICY) != 0;
         resource->window.delegate = resource->delegate;
         resource->handle = nk::core::handles().insert(nk::core::ResourceType::window, resource);
         if (!resource->handle) return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
+        if (owner) owner->owned_windows.push_back(resource->handle);
         [resource->window center];
-        if (!(options->flags & NK_WINDOW_HIDDEN)) [resource->window makeKeyAndOrderFront:nil];
+        if (!(options->flags & NK_WINDOW_HIDDEN)) {
+            if (resource->modal && owner) {
+                [owner->window beginSheet:resource->window completionHandler:nil];
+                resource->sheet_active = true;
+            } else {
+                if (owner) {
+                    [owner->window addChildWindow:resource->window ordered:NSWindowAbove];
+                    resource->child_attached = true;
+                }
+                [resource->window makeKeyAndOrderFront:nil];
+            }
+        }
         *out_window = resource->handle;
         return NK_OK;
     });
@@ -823,9 +848,18 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     auto resource = window(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    const auto owned_windows = resource->owned_windows;
+    for (const auto owned : owned_windows) nk_window_destroy(owned);
     const auto children = resource->children;
     for (const auto child : children) nk_webview_destroy(child);
     cancel_dialogs_for_parent(resource->window);
+    if (auto owner = window(resource->owner)) {
+        if (resource->sheet_active) [owner->window endSheet:resource->window];
+        else if (resource->child_attached)
+            [owner->window removeChildWindow:resource->window];
+        auto& owned = owner->owned_windows;
+        owned.erase(std::remove(owned.begin(), owned.end(), handle), owned.end());
+    }
     resource->content.resource = nullptr;
     resource->delegate.resource = nullptr;
     resource->window.delegate = nil;
@@ -840,7 +874,30 @@ nk_result NK_CALL nk_window_show(nk_handle handle, uint32_t visible) {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     auto resource = window(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    visible ? [resource->window makeKeyAndOrderFront:nil] : [resource->window orderOut:nil];
+    auto owner = window(resource->owner);
+    if (visible) {
+        if (resource->modal && owner && !resource->sheet_active) {
+            [owner->window beginSheet:resource->window completionHandler:nil];
+            resource->sheet_active = true;
+        } else {
+            if (owner && !resource->modal && !resource->child_attached) {
+                [owner->window addChildWindow:resource->window ordered:NSWindowAbove];
+                resource->child_attached = true;
+            }
+            [resource->window makeKeyAndOrderFront:nil];
+        }
+    } else {
+        if (resource->sheet_active && owner) {
+            [owner->window endSheet:resource->window];
+            resource->sheet_active = false;
+        } else {
+            if (owner && resource->child_attached) {
+                [owner->window removeChildWindow:resource->window];
+                resource->child_attached = false;
+            }
+            [resource->window orderOut:nil];
+        }
+    }
     return NK_OK;
 }
 

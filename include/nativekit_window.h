@@ -45,7 +45,16 @@ typedef struct nk_native_window {
 
 enum {
     NK_WINDOW_RESIZABLE = 1u << 0,
-    NK_WINDOW_HIDDEN = 1u << 1
+    NK_WINDOW_HIDDEN = 1u << 1,
+    NK_WINDOW_BORDERLESS = 1u << 2,
+    NK_WINDOW_MODAL = 1u << 3
+};
+
+typedef uint32_t nk_window_kind;
+
+enum {
+    NK_WINDOW_NORMAL = 0,
+    NK_WINDOW_UTILITY = 1
 };
 
 typedef struct nk_window_options {
@@ -54,7 +63,9 @@ typedef struct nk_window_options {
     int32_t width;
     int32_t height;
     const char *title;
-    uint64_t reserved[2];
+    nk_handle owner;
+    nk_window_kind kind;
+    uint64_t reserved;
 } nk_window_options;
 
 /* Payload of NK_EVENT_WINDOW_RESIZE. Dimensions are logical pixels. */
@@ -74,7 +85,10 @@ NK_API nk_capabilities NK_CALL nk_get_capabilities(void);
 /*
  * Creates a NativeKit-owned top-level window on the UI thread. Dimensions are
  * logical pixels and must be positive. `title` is nullable UTF-8. On success,
- * `out_window` receives a non-zero generation-checked handle.
+ * `out_window` receives a non-zero generation-checked handle. `owner` may name
+ * an existing top-level window; owned windows are destroyed recursively with
+ * their owner. Modal windows require an owner. Window ownership is deliberately
+ * shallow and does not introduce a general-purpose widget hierarchy.
  */
 NK_API nk_result NK_CALL nk_window_create(
     const nk_window_options *options,

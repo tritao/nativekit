@@ -44,7 +44,9 @@ struct GtkWindowResource final : nk::core::Resource {
     GtkWidget* window = nullptr;
     GtkWidget* container = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
+    nk_handle owner = NK_INVALID_HANDLE;
     std::vector<nk_handle> children;
+    std::vector<nk_handle> owned_windows;
     bool drops_enabled = false;
     uint64_t generation = 0;
 
@@ -954,12 +956,18 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* 
     return nk::core::result_boundary("unexpected error while creating window", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!options || options->struct_size < sizeof(*options) || !out_window ||
-            options->width <= 0 || options->height <= 0) {
+            options->width <= 0 || options->height <= 0 ||
+            options->kind > NK_WINDOW_UTILITY ||
+            ((options->flags & NK_WINDOW_MODAL) && !options->owner)) {
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window options");
         }
         *out_window = NK_INVALID_HANDLE;
         if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
+        auto owner = options->owner ? window(options->owner) : nullptr;
+        if (options->owner && !owner) return invalid_handle("owner window");
+        if (owner) owner->owned_windows.reserve(owner->owned_windows.size() + 1);
         auto resource = std::make_shared<GtkWindowResource>();
+        resource->owner = options->owner;
         resource->generation = nk::core::runtime_generation();
         resource->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         g_object_add_weak_pointer(G_OBJECT(resource->window),
@@ -969,12 +977,23 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* 
         gtk_window_set_default_size(GTK_WINDOW(resource->window), options->width, options->height);
         gtk_window_set_resizable(GTK_WINDOW(resource->window),
                                  (options->flags & NK_WINDOW_RESIZABLE) != 0);
+        gtk_window_set_decorated(GTK_WINDOW(resource->window),
+                                 (options->flags & NK_WINDOW_BORDERLESS) == 0);
+        gtk_window_set_modal(GTK_WINDOW(resource->window),
+                             (options->flags & NK_WINDOW_MODAL) != 0);
+        if (options->kind == NK_WINDOW_UTILITY)
+            gtk_window_set_type_hint(GTK_WINDOW(resource->window),
+                                     GDK_WINDOW_TYPE_HINT_UTILITY);
+        if (owner)
+            gtk_window_set_transient_for(GTK_WINDOW(resource->window),
+                                         GTK_WINDOW(owner->window));
         gtk_window_set_title(GTK_WINDOW(resource->window), options->title ? options->title : "");
         resource->handle = nk::core::handles().insert(nk::core::ResourceType::window, resource);
         if (resource->handle == NK_INVALID_HANDLE) {
             gtk_widget_destroy(resource->window);
             return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
         }
+        if (owner) owner->owned_windows.push_back(resource->handle);
         g_signal_connect(resource->window, "delete-event", G_CALLBACK(on_window_delete), resource.get());
         g_signal_connect(resource->window, "configure-event", G_CALLBACK(on_window_configure), resource.get());
         g_signal_connect(resource->window, "notify::scale-factor", G_CALLBACK(on_window_scale), resource.get());
@@ -988,6 +1007,8 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     auto resource = window(handle);
     if (!resource) return invalid_handle("window");
+    const auto owned_windows = resource->owned_windows;
+    for (const auto owned : owned_windows) nk_window_destroy(owned);
     cancel_dialogs_for_parent(handle, true);
     const auto children = resource->children;
     for (const auto child : children) nk_webview_destroy(child);
@@ -995,6 +1016,10 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     gtk_widget_destroy(resource->window);
     resource->window = nullptr;
     resource->container = nullptr;
+    if (auto owner = window(resource->owner)) {
+        auto& owned = owner->owned_windows;
+        owned.erase(std::remove(owned.begin(), owned.end(), handle), owned.end());
+    }
     nk::core::handles().erase(handle, nk::core::ResourceType::window);
     return NK_OK;
 }

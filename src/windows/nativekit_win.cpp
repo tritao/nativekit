@@ -182,8 +182,13 @@ std::unordered_map<nk_request_id, nk_handle> evaluations;
 struct WinWindowResource final : nk::core::Resource {
     HWND window = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
+    nk_handle owner = NK_INVALID_HANDLE;
+    bool modal = false;
+    bool modal_active = false;
+    uint32_t active_modal_children = 0;
     bool drops_enabled = false;
     std::vector<nk_handle> children;
+    std::vector<nk_handle> owned_windows;
     ~WinWindowResource() override {
         if (window && IsWindow(window)) DestroyWindow(window);
     }
@@ -1338,27 +1343,47 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* 
     try {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!options || options->struct_size < sizeof(*options) || !out_window ||
-            options->width <= 0 || options->height <= 0)
+            options->width <= 0 || options->height <= 0 ||
+            options->kind > NK_WINDOW_UTILITY ||
+            ((options->flags & NK_WINDOW_MODAL) && !options->owner))
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window options");
         *out_window = NK_INVALID_HANDLE;
         if (!ensure_window_class()) return fail(NK_ERROR_UNKNOWN, "could not register Win32 window class");
+        auto owner = options->owner ? get_window(options->owner) : nullptr;
+        if (options->owner && !owner)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale owner window handle");
+        if (owner) owner->owned_windows.reserve(owner->owned_windows.size() + 1);
         auto resource = std::make_shared<WinWindowResource>();
+        resource->owner = options->owner;
+        resource->modal = (options->flags & NK_WINDOW_MODAL) != 0;
         const auto title = wide(options->title);
-        DWORD style = WS_OVERLAPPEDWINDOW;
+        DWORD style = (options->flags & NK_WINDOW_BORDERLESS)
+            ? WS_POPUP : WS_OVERLAPPEDWINDOW;
+        DWORD extended_style = options->kind == NK_WINDOW_UTILITY
+            ? WS_EX_TOOLWINDOW : 0;
         if (!(options->flags & NK_WINDOW_RESIZABLE))
             style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
         RECT bounds{0, 0, options->width, options->height};
-        AdjustWindowRectEx(&bounds, style, FALSE, 0);
+        AdjustWindowRectEx(&bounds, style, FALSE, extended_style);
         resource->window = CreateWindowExW(
-            0, window_class_name, title.c_str(), style,
+            extended_style, window_class_name, title.c_str(), style,
             CW_USEDEFAULT, CW_USEDEFAULT, bounds.right - bounds.left,
-            bounds.bottom - bounds.top, nullptr, nullptr, GetModuleHandleW(nullptr),
+            bounds.bottom - bounds.top, owner ? owner->window : nullptr,
+            nullptr, GetModuleHandleW(nullptr),
             resource.get());
         if (!resource->window) return fail(NK_ERROR_UNKNOWN, "could not create Win32 window");
         resource->handle = nk::core::handles().insert(nk::core::ResourceType::window, resource);
         if (resource->handle == NK_INVALID_HANDLE)
             return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
-        if (!(options->flags & NK_WINDOW_HIDDEN)) ShowWindow(resource->window, SW_SHOW);
+        if (owner) owner->owned_windows.push_back(resource->handle);
+        if (!(options->flags & NK_WINDOW_HIDDEN)) {
+            if (resource->modal && owner) {
+                if (owner->active_modal_children++ == 0)
+                    EnableWindow(owner->window, FALSE);
+                resource->modal_active = true;
+            }
+            ShowWindow(resource->window, SW_SHOW);
+        }
         *out_window = resource->handle;
         return NK_OK;
     } catch (const std::bad_alloc&) {
@@ -1372,12 +1397,21 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     auto resource = get_window(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    const auto owned_windows = resource->owned_windows;
+    for (const auto owned : owned_windows) nk_window_destroy(owned);
     const auto children = resource->children;
     for (const auto child : children) nk_webview_destroy(child);
     cancel_dialogs_for_parent(resource->window);
     SetWindowLongPtrW(resource->window, GWLP_USERDATA, 0);
     DestroyWindow(resource->window);
     resource->window = nullptr;
+    if (auto owner = get_window(resource->owner)) {
+        if (resource->modal_active && owner->active_modal_children &&
+            --owner->active_modal_children == 0)
+            EnableWindow(owner->window, TRUE);
+        auto& owned = owner->owned_windows;
+        owned.erase(std::remove(owned.begin(), owned.end(), handle), owned.end());
+    }
     nk::core::handles().erase(handle, nk::core::ResourceType::window);
     return NK_OK;
 }
@@ -1386,6 +1420,17 @@ nk_result NK_CALL nk_window_show(nk_handle handle, uint32_t visible) {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     auto resource = get_window(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    if (auto owner = get_window(resource->owner); resource->modal && owner) {
+        if (visible && !resource->modal_active) {
+            if (owner->active_modal_children++ == 0)
+                EnableWindow(owner->window, FALSE);
+            resource->modal_active = true;
+        } else if (!visible && resource->modal_active) {
+            if (owner->active_modal_children && --owner->active_modal_children == 0)
+                EnableWindow(owner->window, TRUE);
+            resource->modal_active = false;
+        }
+    }
     ShowWindow(resource->window, visible ? SW_SHOW : SW_HIDE);
     return NK_OK;
 }

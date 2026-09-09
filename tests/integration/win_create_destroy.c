@@ -206,6 +206,12 @@ int main(void) {
     webview_options.width = 320;
     webview_options.height = 240;
     nk_handle webview = NK_INVALID_HANDLE;
+    nk_window_options owned_options = options;
+    owned_options.flags = NK_WINDOW_HIDDEN | NK_WINDOW_BORDERLESS | NK_WINDOW_MODAL;
+    owned_options.owner = window;
+    owned_options.kind = NK_WINDOW_UTILITY;
+    nk_handle owned_window = NK_INVALID_HANDLE;
+    assert(nk_window_create(&owned_options, &owned_window) == NK_OK);
     if (nk_get_capabilities() & NK_CAP_WEBVIEW) {
         assert(nk_webview_create(window, &webview_options, &webview) == NK_OK);
         const char webview_html[] =
@@ -351,6 +357,7 @@ int main(void) {
     } else {
         assert(nk_window_destroy(window) == NK_OK);
     }
+    assert(nk_window_destroy(owned_window) == NK_ERROR_INVALID_HANDLE);
     assert(nk_window_destroy(window) == NK_ERROR_INVALID_HANDLE);
     nk_shutdown();
     return 0;

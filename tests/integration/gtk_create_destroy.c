@@ -265,6 +265,12 @@ int main(void) {
     assert(received_message_dialog);
 
     /* Destroying a parent invalidates all of its borrowed child handles. */
+    nk_window_options owned_options = window_options;
+    owned_options.flags = NK_WINDOW_HIDDEN | NK_WINDOW_BORDERLESS | NK_WINDOW_MODAL;
+    owned_options.owner = window;
+    owned_options.kind = NK_WINDOW_UTILITY;
+    nk_handle owned_window = NK_INVALID_HANDLE;
+    assert(nk_window_create(&owned_options, &owned_window) == NK_OK);
     nk_request_id destroyed_eval_request = NK_INVALID_REQUEST_ID;
     assert(nk_webview_eval(webview, "42", &destroyed_eval_request) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);
@@ -273,6 +279,7 @@ int main(void) {
     assert(destroyed_eval.result == NK_ERROR_INVALID_REQUEST);
     nk_event_release(&destroyed_eval);
     assert(nk_webview_destroy(webview) == NK_ERROR_INVALID_HANDLE);
+    assert(nk_window_destroy(owned_window) == NK_ERROR_INVALID_HANDLE);
     assert(nk_window_destroy(window) == NK_ERROR_INVALID_HANDLE);
 
     nk_request_id stale_clipboard_request = NK_INVALID_REQUEST_ID;

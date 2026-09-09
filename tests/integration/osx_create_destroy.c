@@ -197,6 +197,12 @@ int main(void) {
     assert(appearance.color_scheme == NK_COLOR_SCHEME_LIGHT ||
            appearance.color_scheme == NK_COLOR_SCHEME_DARK);
     web_options.flags = NK_WEBVIEW_HIDDEN;
+    nk_window_options owned_options = options;
+    owned_options.flags = NK_WINDOW_HIDDEN | NK_WINDOW_BORDERLESS | NK_WINDOW_MODAL;
+    owned_options.owner = window;
+    owned_options.kind = NK_WINDOW_UTILITY;
+    nk_handle owned_window = NK_INVALID_HANDLE;
+    assert(nk_window_create(&owned_options, &owned_window) == NK_OK);
     nk_handle destroyed_webview = NK_INVALID_HANDLE;
     assert(nk_webview_create(window, &web_options, &destroyed_webview) == NK_OK);
     nk_event destroyed_ready = wait_for_event(
@@ -212,6 +218,7 @@ int main(void) {
     assert(destroyed_eval.result == NK_ERROR_INVALID_REQUEST);
     nk_event_release(&destroyed_eval);
     assert(nk_webview_destroy(destroyed_webview) == NK_ERROR_INVALID_HANDLE);
+    assert(nk_window_destroy(owned_window) == NK_ERROR_INVALID_HANDLE);
     assert(nk_window_destroy(window) == NK_ERROR_INVALID_HANDLE);
     nk_shutdown();
     return 0;
