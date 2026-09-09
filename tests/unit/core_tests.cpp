@@ -1,3 +1,4 @@
+#include "core/boundary.hpp"
 #include "core/event_queue.hpp"
 #include "core/handle_registry.hpp"
 #include "nativekit_window.h"
@@ -6,12 +7,26 @@
 #include <cstddef>
 #include <cstring>
 #include <memory>
+#include <stdexcept>
 
 namespace {
 struct Dummy final : nk::core::Resource {};
 }
 
 int main() {
+    assert(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
+        throw std::bad_alloc{};
+    }) == NK_ERROR_OUT_OF_MEMORY);
+    assert(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
+        throw std::runtime_error("test");
+    }) == NK_ERROR_UNKNOWN);
+    bool callback_returned = false;
+    nk::core::callback_boundary([&] {
+        callback_returned = true;
+        throw std::runtime_error("test");
+    });
+    assert(callback_returned);
+
     nk::core::HandleRegistry handles;
     const auto first = handles.insert(nk::core::ResourceType::window, std::make_shared<Dummy>());
     assert(first != NK_INVALID_HANDLE);

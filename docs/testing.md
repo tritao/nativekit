@@ -6,6 +6,11 @@ initialization, while the GTK integration test leaves an asynchronous clipboard
 read outstanding across shutdown and verifies that it cannot enter the next
 runtime generation.
 
+`NK_ENABLE_SANITIZERS=ON` enables AddressSanitizer and UndefinedBehaviorSanitizer.
+Leak detection remains enabled for the core tests. It is disabled only for the
+GTK integration process because GTK, Pango, and Fontconfig retain
+process-lifetime caches outside NativeKit's ownership.
+
 ## Windows compatibility smoke tests
 
 `tools/test-wine.sh` cross-builds a static Windows test suite with MinGW and runs

@@ -5,6 +5,7 @@ add_test(NAME c_abi COMMAND nativekit_c_abi)
 
 add_executable(nativekit_core_tests
     unit/core_tests.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/error.cpp
     ${PROJECT_SOURCE_DIR}/src/core/event_queue.cpp
     ${PROJECT_SOURCE_DIR}/src/core/handle_registry.cpp
 )
@@ -64,4 +65,10 @@ if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         target_compile_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
         target_link_options(${target} PRIVATE -fsanitize=address,undefined)
     endforeach()
+    if(TARGET nativekit_gtk_integration)
+        # GTK/Pango/Fontconfig retain process-lifetime caches that LSan reports;
+        # keep address/undefined checks here and leak checks in the core tests.
+        set_tests_properties(gtk_create_destroy PROPERTIES
+            ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+    endif()
 endif()

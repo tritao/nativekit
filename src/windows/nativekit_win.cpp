@@ -11,6 +11,7 @@
 #include "nativekit_window.h"
 
 #include "core/error.hpp"
+#include "core/boundary.hpp"
 #include "core/runtime.hpp"
 
 #define UNICODE
@@ -334,7 +335,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             return 0;
         }
         if (message == WM_SIZE) {
-            try {
+            nk::core::callback_boundary([&] {
                 const nk_window_resize_event size{
                     static_cast<int32_t>(LOWORD(lparam)),
                     static_cast<int32_t>(HIWORD(lparam))};
@@ -343,10 +344,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 event.source = resource->handle;
                 event.data = bytes_of(size);
                 nk::core::push_event(std::move(event));
-            } catch (...) {}
+            });
         }
         if (message == WM_DPICHANGED) {
-            try {
+            nk::core::callback_boundary([&] {
                 const nk_window_scale_event scale{
                     static_cast<float>(HIWORD(wparam)) / 96.0f};
                 nk::core::QueuedEvent event;
@@ -354,7 +355,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 event.source = resource->handle;
                 event.data = bytes_of(scale);
                 nk::core::push_event(std::move(event));
-            } catch (...) {}
+            });
             const auto* suggested = reinterpret_cast<const RECT*>(lparam);
             SetWindowPos(window, nullptr, suggested->left, suggested->top,
                          suggested->right - suggested->left,
@@ -1312,13 +1313,16 @@ nk_result NK_CALL nk_window_show(nk_handle handle, uint32_t visible) {
 }
 
 nk_result NK_CALL nk_window_set_title(nk_handle handle, const char* title) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
-    auto resource = get_window(handle);
-    if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    const auto value = wide(title);
-    if (title && *title && value.empty()) return fail(NK_ERROR_INVALID_ARGUMENT, "title is not valid UTF-8");
-    return SetWindowTextW(resource->window, value.c_str()) ? NK_OK
-        : fail(NK_ERROR_UNKNOWN, "could not set window title");
+    return nk::core::result_boundary("unexpected error while setting window title", [&] {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        auto resource = get_window(handle);
+        if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+        const auto value = wide(title);
+        if (title && *title && value.empty())
+            return fail(NK_ERROR_INVALID_ARGUMENT, "title is not valid UTF-8");
+        return SetWindowTextW(resource->window, value.c_str()) ? NK_OK
+            : fail(NK_ERROR_UNKNOWN, "could not set window title");
+    });
 }
 
 nk_result NK_CALL nk_window_set_bounds(nk_handle handle, int32_t x, int32_t y,
@@ -1810,54 +1814,65 @@ nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, uint32_t enabled)
     return NK_OK;
 }
 nk_result NK_CALL nk_shell_open_url(const char* url) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
-    return shell_open(url, true);
+    return nk::core::result_boundary("unexpected error while opening URL", [&] {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        return shell_open(url, true);
+    });
 }
 
 nk_result NK_CALL nk_shell_open_file(const char* path) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
-    return shell_open(path, false);
+    return nk::core::result_boundary("unexpected error while opening file", [&] {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        return shell_open(path, false);
+    });
 }
 
 nk_result NK_CALL nk_shell_reveal_file(const char* path) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
-    if (!path || !*path) return fail(NK_ERROR_INVALID_ARGUMENT, "path must not be empty");
-    const auto native = wide(path);
-    if (native.empty()) return fail(NK_ERROR_INVALID_ARGUMENT, "path is not valid UTF-8");
-    PIDLIST_ABSOLUTE item = ILCreateFromPathW(native.c_str());
-    if (!item) return fail(NK_ERROR_INVALID_ARGUMENT, "Windows could not resolve the file path");
-    PIDLIST_ABSOLUTE folder = ILCloneFull(item);
-    if (!folder) {
+    return nk::core::result_boundary("unexpected error while revealing file", [&] {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!path || !*path) return fail(NK_ERROR_INVALID_ARGUMENT, "path must not be empty");
+        const auto native = wide(path);
+        if (native.empty()) return fail(NK_ERROR_INVALID_ARGUMENT, "path is not valid UTF-8");
+        PIDLIST_ABSOLUTE item = ILCreateFromPathW(native.c_str());
+        if (!item) return fail(NK_ERROR_INVALID_ARGUMENT, "Windows could not resolve the file path");
+        PIDLIST_ABSOLUTE folder = ILCloneFull(item);
+        if (!folder) {
+            ILFree(item);
+            return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate shell item identifier");
+        }
+        PCUITEMID_CHILD child = ILFindLastID(item);
+        ILRemoveLastID(folder);
+        const HRESULT status = SHOpenFolderAndSelectItems(folder, 1, &child, 0);
+        ILFree(folder);
         ILFree(item);
-        return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate shell item identifier");
-    }
-    PCUITEMID_CHILD child = ILFindLastID(item);
-    ILRemoveLastID(folder);
-    const HRESULT status = SHOpenFolderAndSelectItems(folder, 1, &child, 0);
-    ILFree(folder);
-    ILFree(item);
-    return SUCCEEDED(status) ? NK_OK : fail(NK_ERROR_UNKNOWN, "Windows could not reveal the file");
+        return SUCCEEDED(status) ? NK_OK
+            : fail(NK_ERROR_UNKNOWN, "Windows could not reveal the file");
+    });
 }
 
 nk_result NK_CALL nk_system_directory(nk_system_directory_kind kind,
                                       char* buffer, uint32_t* inout_size) {
-    nk::core::clear_error();
-    std::string path;
-    const auto result = get_system_directory(kind, path);
-    return result == NK_OK ? copy_utf8_output(path, buffer, inout_size) : result;
+    return nk::core::result_boundary("unexpected error while reading system directory", [&] {
+        nk::core::clear_error();
+        std::string path;
+        const auto result = get_system_directory(kind, path);
+        return result == NK_OK ? copy_utf8_output(path, buffer, inout_size) : result;
+    });
 }
 
 nk_result NK_CALL nk_system_locale(char* buffer, uint32_t* inout_size) {
-    nk::core::clear_error();
-    const int size = GetUserDefaultLocaleName(nullptr, 0);
-    if (!size) return fail(NK_ERROR_UNSUPPORTED, "system locale is unavailable");
-    std::wstring locale(static_cast<std::size_t>(size), L'\0');
-    if (!GetUserDefaultLocaleName(locale.data(), size))
-        return fail(NK_ERROR_UNKNOWN, "could not read system locale");
-    locale.resize(static_cast<std::size_t>(size - 1));
-    const auto value = utf8(locale.c_str());
-    if (value.empty()) return fail(NK_ERROR_UNKNOWN, "could not encode system locale");
-    return copy_utf8_output(value, buffer, inout_size);
+    return nk::core::result_boundary("unexpected error while reading system locale", [&] {
+        nk::core::clear_error();
+        const int size = GetUserDefaultLocaleName(nullptr, 0);
+        if (!size) return fail(NK_ERROR_UNSUPPORTED, "system locale is unavailable");
+        std::wstring locale(static_cast<std::size_t>(size), L'\0');
+        if (!GetUserDefaultLocaleName(locale.data(), size))
+            return fail(NK_ERROR_UNKNOWN, "could not read system locale");
+        locale.resize(static_cast<std::size_t>(size - 1));
+        const auto value = utf8(locale.c_str());
+        if (value.empty()) return fail(NK_ERROR_UNKNOWN, "could not encode system locale");
+        return copy_utf8_output(value, buffer, inout_size);
+    });
 }
 
 nk_result NK_CALL nk_system_get_appearance(nk_system_appearance* appearance) {
