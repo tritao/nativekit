@@ -30,6 +30,11 @@ int main(void) {
     nk_result joystick_result = nk_joystick_list(NULL, &joystick_count);
     assert(joystick_result == NK_ERROR_BUFFER_TOO_SMALL ||
            joystick_result == NK_ERROR_UNSUPPORTED || joystick_result == NK_OK);
+    uint32_t joystick_diagnostic_size = 0;
+    nk_result joystick_diagnostic_result =
+        nk_joystick_get_diagnostics(NULL, &joystick_diagnostic_size);
+    assert(joystick_diagnostic_result == NK_ERROR_BUFFER_TOO_SMALL ||
+           joystick_diagnostic_result == NK_ERROR_UNSUPPORTED);
     uint32_t mapped = 0;
     assert(nk_gamepad_add_mapping(
                "03000000112200003344000055660000,ABI Gamepad,a:b0,leftx:a0,") == NK_OK);

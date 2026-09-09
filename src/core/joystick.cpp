@@ -21,5 +21,6 @@ nk_result NK_CALL nk_joystick_get_buttons(nk_handle, uint8_t *, uint32_t *) {
 nk_result NK_CALL nk_joystick_get_hats(nk_handle, uint8_t *, uint32_t *) {
     return unsupported();
 }
+nk_result NK_CALL nk_joystick_get_diagnostics(char *, uint32_t *) { return unsupported(); }
 }
 #endif

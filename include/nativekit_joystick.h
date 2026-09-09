@@ -36,6 +36,12 @@ NK_API nk_result NK_CALL nk_joystick_get_buttons(nk_handle joystick, uint8_t *bu
                                                  uint32_t *inout_count);
 NK_API nk_result NK_CALL nk_joystick_get_hats(nk_handle joystick, uint8_t *hats,
                                               uint32_t *inout_count);
+/*
+ * Returns a transport warning, such as a missing /dev/input directory,
+ * insufficient device permissions, or unavailable inotify monitoring. An
+ * empty string means that no transport problem has been observed.
+ */
+NK_API nk_result NK_CALL nk_joystick_get_diagnostics(char *buffer, uint32_t *inout_size);
 
 #ifdef __cplusplus
 }

@@ -162,6 +162,12 @@ SDL-compatible GUID queries use the usual two-call buffer-size pattern.
 Controller mappings and standardized gamepad names are intentionally separate
 from this transport layer.
 
+If the evdev reader falls behind, Linux reports `SYN_DROPPED`; NativeKit ignores
+the incomplete packet and resynchronizes all axes, buttons, and hats from kernel
+state at the next report boundary. `nk_joystick_get_diagnostics()` exposes the
+first transport warning observed since initialization, including missing
+`/dev/input`, device permission failures, and unavailable hotplug monitoring.
+
 ## Standard gamepads
 
 Include `nativekit_gamepad.h` to translate a raw joystick into the conventional

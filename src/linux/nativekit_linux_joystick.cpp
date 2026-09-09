@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <unistd.h>
@@ -57,12 +58,23 @@ struct Joystick final : nk::core::Resource {
     std::vector<std::uint8_t> buttons;
     std::array<std::array<int, 2>, 4> hat_values{};
     std::vector<std::uint8_t> hats;
+    bool dropped = false;
 };
 
 int notify_fd = -1;
 int notify_watch = -1;
 bool initialized = false;
 std::unordered_map<std::string, std::shared_ptr<Joystick>> devices;
+std::string transport_diagnostic;
+
+void record_diagnostic(const std::string &message) {
+    if (transport_diagnostic.empty())
+        transport_diagnostic = message;
+}
+
+void record_system_diagnostic(const std::string &operation, int error) {
+    record_diagnostic(operation + ": " + std::strerror(error));
+}
 
 bool event_name(const char *name) {
     if (!name || std::strncmp(name, "event", 5) != 0 || name[5] == '\0')
@@ -145,8 +157,11 @@ void add_device(const std::string &path) {
     if (devices.find(path) != devices.end())
         return;
     const int fd = open(path.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-    if (fd < 0)
+    if (fd < 0) {
+        if (errno == EACCES || errno == EPERM)
+            record_system_diagnostic("cannot read joystick " + path, errno);
         return;
+    }
 
     std::array<unsigned long, bit_words(EV_CNT)> ev_bits{};
     std::array<unsigned long, bit_words(KEY_CNT)> key_bits{};
@@ -219,29 +234,58 @@ void add_device(const std::string &path) {
 
 void scan_devices() {
     DIR *directory = opendir("/dev/input");
-    if (!directory)
+    if (!directory) {
+        record_system_diagnostic("cannot scan /dev/input", errno);
         return;
-    while (const auto *entry = readdir(directory))
-        if (event_name(entry->d_name))
-            add_device(std::string("/dev/input/") + entry->d_name);
+    }
+    std::unordered_set<std::string> present;
+    while (const auto *entry = readdir(directory)) {
+        if (!event_name(entry->d_name))
+            continue;
+        std::string path = std::string("/dev/input/") + entry->d_name;
+        present.insert(path);
+        add_device(path);
+    }
     closedir(directory);
+    std::vector<std::string> removed;
+    for (const auto &[path, device] : devices) {
+        (void)device;
+        if (present.find(path) == present.end())
+            removed.push_back(path);
+    }
+    for (const auto &path : removed)
+        remove_device(path);
 }
 
 void initialize() {
     if (initialized)
         return;
     initialized = true;
+    transport_diagnostic.clear();
     scan_devices();
     notify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-    if (notify_fd >= 0)
+    if (notify_fd >= 0) {
         notify_watch = inotify_add_watch(notify_fd, "/dev/input",
                                          IN_CREATE | IN_ATTRIB | IN_DELETE | IN_MOVED_TO |
                                              IN_MOVED_FROM);
+        if (notify_watch < 0)
+            record_system_diagnostic("cannot monitor /dev/input", errno);
+    } else {
+        record_system_diagnostic("cannot initialize joystick hotplug monitoring", errno);
+    }
 }
 
 void poll_hotplug() {
     if (notify_fd < 0)
         return;
+    if (notify_watch < 0) {
+        notify_watch = inotify_add_watch(notify_fd, "/dev/input",
+                                         IN_CREATE | IN_ATTRIB | IN_DELETE | IN_MOVED_TO |
+                                             IN_MOVED_FROM);
+        if (notify_watch < 0)
+            return;
+        scan_devices();
+    }
     alignas(inotify_event) std::array<char, 4096> buffer{};
     for (;;) {
         const auto count = read(notify_fd, buffer.data(), buffer.size());
@@ -249,7 +293,13 @@ void poll_hotplug() {
             break;
         for (std::size_t offset = 0; offset < static_cast<std::size_t>(count);) {
             const auto *event = reinterpret_cast<const inotify_event *>(buffer.data() + offset);
-            if (event->len && event_name(event->name)) {
+            if (event->mask & IN_Q_OVERFLOW) {
+                record_diagnostic("joystick hotplug queue overflowed; rescanning devices");
+                scan_devices();
+            } else if (event->mask & IN_IGNORED) {
+                record_diagnostic("joystick hotplug monitoring stopped");
+                notify_watch = -1;
+            } else if (event->len && event_name(event->name)) {
                 const std::string path = std::string("/dev/input/") + event->name;
                 if (event->mask & (IN_DELETE | IN_MOVED_FROM))
                     remove_device(path);
@@ -259,6 +309,37 @@ void poll_hotplug() {
             offset += sizeof(inotify_event) + event->len;
         }
     }
+}
+
+bool resynchronize(Joystick &device) {
+    for (int code = 0; code < ABS_CNT; ++code) {
+        const bool mapped_axis = device.axis_map[static_cast<std::size_t>(code)] >= 0;
+        const bool mapped_hat = code >= ABS_HAT0X && code <= ABS_HAT3Y &&
+                                static_cast<std::size_t>((code - ABS_HAT0X) / 2) <
+                                    device.hats.size();
+        if (!mapped_axis && !mapped_hat)
+            continue;
+        input_absinfo info{};
+        if (ioctl(device.fd, EVIOCGABS(code), &info) < 0)
+            return false;
+        if (mapped_hat) {
+            update_hat(device, code, info.value);
+        } else {
+            const auto axis = static_cast<std::size_t>(device.axis_map[code]);
+            device.axes[axis].info = info;
+            device.axes[axis].value = normalize_axis(info.value, info);
+        }
+    }
+
+    std::array<unsigned long, bit_words(KEY_CNT)> key_state{};
+    if (ioctl(device.fd, EVIOCGKEY(sizeof(key_state)), key_state.data()) < 0)
+        return false;
+    for (int code = BTN_MISC; code < KEY_CNT; ++code) {
+        const int button = device.button_map[static_cast<std::size_t>(code)];
+        if (button >= 0)
+            device.buttons[static_cast<std::size_t>(button)] = bit_set(key_state, code) ? 1 : 0;
+    }
+    return true;
 }
 
 void poll_device(const std::shared_ptr<Joystick> &device) {
@@ -275,6 +356,25 @@ void poll_device(const std::shared_ptr<Joystick> &device) {
         const auto count = static_cast<std::size_t>(bytes) / sizeof(input_event);
         for (std::size_t i = 0; i < count; ++i) {
             const auto &event = events[i];
+            if (event.type == EV_SYN && event.code == SYN_DROPPED) {
+                device->dropped = true;
+                continue;
+            }
+            if (device->dropped) {
+                if (event.type == EV_SYN && event.code == SYN_REPORT) {
+                    device->dropped = false;
+                    if (!resynchronize(*device)) {
+                        const int error = errno;
+                        if (error == ENODEV)
+                            remove_device(device->path);
+                        else
+                            record_system_diagnostic("cannot resynchronize " + device->path,
+                                                     error);
+                        return;
+                    }
+                }
+                continue;
+            }
             if (event.type == EV_ABS && event.code < ABS_CNT) {
                 if (event.code >= ABS_HAT0X && event.code <= ABS_HAT3Y &&
                     static_cast<std::size_t>((event.code - ABS_HAT0X) / 2) <
@@ -387,6 +487,7 @@ void shutdown() noexcept {
         notify_fd = -1;
         notify_watch = -1;
         initialized = false;
+        transport_diagnostic.clear();
     } catch (...) {
     }
 }
@@ -475,6 +576,14 @@ nk_result NK_CALL nk_joystick_get_hats(nk_handle handle, uint8_t *hats, uint32_t
             return NK_ERROR_INVALID_HANDLE;
         }
         return copy_array(device->hats, hats, count);
+    });
+}
+
+nk_result NK_CALL nk_joystick_get_diagnostics(char *buffer, uint32_t *inout_size) {
+    return boundary([&]() -> nk_result {
+        if (const auto result = validate_call(); result != NK_OK)
+            return result;
+        return copy_string(transport_diagnostic, buffer, inout_size);
     });
 }
 }
