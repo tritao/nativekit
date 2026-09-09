@@ -22,6 +22,13 @@ int main(void) {
     nk_input_action input_action = NK_INPUT_RELEASE;
     nk_result input_result = nk_key_get_state(NK_INVALID_HANDLE, NK_KEY_A, &input_action);
     assert(input_result == NK_ERROR_INVALID_HANDLE || input_result == NK_ERROR_UNSUPPORTED);
+    nk_handle cursor = NK_INVALID_HANDLE;
+    nk_result cursor_result = nk_cursor_create_standard(NK_CURSOR_ARROW, &cursor);
+    if (cursor_result == NK_OK)
+        assert(nk_cursor_destroy(cursor) == NK_OK);
+    else
+        assert(cursor_result == NK_ERROR_UNSUPPORTED);
+    (void)nk_raw_pointer_motion_supported();
     nk_surface_options surface_options = {0};
     surface_options.struct_size = sizeof(surface_options);
     surface_options.api = NK_GRAPHICS_OPENGL;

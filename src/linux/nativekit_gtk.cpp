@@ -45,6 +45,16 @@
 
 namespace {
 
+struct GtkCursorResource final : nk::core::Resource {
+    GdkCursor *cursor = nullptr;
+    nk_handle handle = NK_INVALID_HANDLE;
+
+    ~GtkCursorResource() override {
+        if (cursor)
+            g_object_unref(cursor);
+    }
+};
+
 struct GtkWindowResource final : nk::core::Resource {
     GtkWidget *window = nullptr;
     GtkWidget *container = nullptr;
@@ -60,8 +70,15 @@ struct GtkWindowResource final : nk::core::Resource {
     std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> buttons{};
     double pointer_x = 0.0;
     double pointer_y = 0.0;
+    nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
+    std::shared_ptr<GtkCursorResource> cursor;
+    bool pointer_grabbed = false;
 
     ~GtkWindowResource() override {
+        if (pointer_grabbed && window) {
+            if (GdkDisplay *display = gtk_widget_get_display(window))
+                gdk_seat_ungrab(gdk_display_get_default_seat(display));
+        }
         if (window)
             gtk_widget_destroy(window);
         if (im_context)
@@ -807,6 +824,75 @@ std::shared_ptr<GtkSurfaceResource> surface(nk_handle handle) {
         nk::core::handles().get(handle, nk::core::ResourceType::surface));
 }
 
+std::shared_ptr<GtkCursorResource> cursor(nk_handle handle) {
+    return std::dynamic_pointer_cast<GtkCursorResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::cursor));
+}
+
+GdkCursor *blank_cursor(GdkDisplay *display) {
+    static GdkDisplay *cached_display = nullptr;
+    static GdkCursor *cached_cursor = nullptr;
+    if (cached_display != display) {
+        if (cached_cursor)
+            g_object_unref(cached_cursor);
+        cached_display = display;
+        cached_cursor = gdk_cursor_new_from_name(display, "none");
+        if (!cached_cursor)
+            cached_cursor = gdk_cursor_new_for_display(display, GDK_BLANK_CURSOR);
+    }
+    return cached_cursor;
+}
+
+GdkCursor *effective_cursor(const GtkWindowResource &resource, GdkDisplay *display) {
+    if (resource.cursor_mode == NK_CURSOR_MODE_HIDDEN)
+        return blank_cursor(display);
+    return resource.cursor ? resource.cursor->cursor : nullptr;
+}
+
+nk_result apply_cursor(GtkWindowResource &resource) {
+    gtk_widget_realize(resource.window);
+    GdkWindow *native = gtk_widget_get_window(resource.window);
+    if (!native)
+        return fail(NK_ERROR_UNKNOWN, "GTK window is not realized");
+    GdkDisplay *display = gdk_window_get_display(native);
+    gdk_window_set_cursor(native, effective_cursor(resource, display));
+    return NK_OK;
+}
+
+nk_result apply_cursor_mode(GtkWindowResource &resource, nk_cursor_mode mode) {
+    if (mode > NK_CURSOR_MODE_DISABLED)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid cursor mode");
+    if (mode == NK_CURSOR_MODE_DISABLED)
+        return fail(NK_ERROR_UNSUPPORTED,
+                    "GTK does not provide portable disabled relative pointer motion");
+    gtk_widget_realize(resource.window);
+    GdkWindow *native = gtk_widget_get_window(resource.window);
+    if (!native)
+        return fail(NK_ERROR_UNKNOWN, "GTK window is not realized");
+    GdkDisplay *display = gdk_window_get_display(native);
+    GdkSeat *seat = gdk_display_get_default_seat(display);
+    if (resource.pointer_grabbed) {
+        gdk_seat_ungrab(seat);
+        resource.pointer_grabbed = false;
+    }
+    const auto previous = resource.cursor_mode;
+    resource.cursor_mode = mode;
+    GdkCursor *native_cursor = effective_cursor(resource, display);
+    if (mode == NK_CURSOR_MODE_CAPTURED) {
+        const auto status =
+            gdk_seat_grab(seat, native, GDK_SEAT_CAPABILITY_POINTER, TRUE, native_cursor, nullptr,
+                          nullptr, nullptr);
+        if (status != GDK_GRAB_SUCCESS) {
+            resource.cursor_mode = previous;
+            gdk_window_set_cursor(native, effective_cursor(resource, display));
+            return fail(NK_ERROR_UNSUPPORTED, "GTK could not capture the pointer");
+        }
+        resource.pointer_grabbed = true;
+    }
+    gdk_window_set_cursor(native, native_cursor);
+    return NK_OK;
+}
+
 std::vector<std::byte> dialog_paths_payload(const std::vector<std::string> &paths, bool accepted) {
     const auto offsets_offset = sizeof(nk_dialog_paths);
     const auto strings_offset = offsets_offset + paths.size() * sizeof(uint32_t);
@@ -1363,7 +1449,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_INPUT |
-           NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE;
+           NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
+           NK_CAP_POINTER_CAPTURE;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -1468,6 +1555,11 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     const auto surfaces = resource->surfaces;
     for (auto child = surfaces.rbegin(); child != surfaces.rend(); ++child)
         nk_surface_destroy(*child);
+    if (resource->pointer_grabbed) {
+        GdkDisplay *display = gtk_widget_get_display(resource->window);
+        gdk_seat_ungrab(gdk_display_get_default_seat(display));
+        resource->pointer_grabbed = false;
+    }
     g_signal_handlers_disconnect_by_data(resource->window, resource.get());
     gtk_widget_destroy(resource->window);
     resource->window = nullptr;
@@ -1590,6 +1682,125 @@ nk_result NK_CALL nk_pointer_get_position(nk_handle handle, double *out_x, doubl
     *out_y = resource->pointer_y;
     return NK_OK;
 }
+
+nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_handle *out_cursor) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_cursor)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "cursor output must not be null");
+    *out_cursor = NK_INVALID_HANDLE;
+    const char *name = nullptr;
+    switch (shape) {
+    case NK_CURSOR_ARROW: name = "default"; break;
+    case NK_CURSOR_IBEAM: name = "text"; break;
+    case NK_CURSOR_CROSSHAIR: name = "crosshair"; break;
+    case NK_CURSOR_HAND: name = "pointer"; break;
+    case NK_CURSOR_HORIZONTAL_RESIZE: name = "ew-resize"; break;
+    case NK_CURSOR_VERTICAL_RESIZE: name = "ns-resize"; break;
+    case NK_CURSOR_NWSE_RESIZE: name = "nwse-resize"; break;
+    case NK_CURSOR_NESW_RESIZE: name = "nesw-resize"; break;
+    case NK_CURSOR_MOVE: name = "move"; break;
+    case NK_CURSOR_NOT_ALLOWED: name = "not-allowed"; break;
+    default: return fail(NK_ERROR_INVALID_ARGUMENT, "invalid standard cursor shape");
+    }
+    if (!ensure_gtk())
+        return NK_ERROR_UNSUPPORTED;
+    auto resource = std::make_shared<GtkCursorResource>();
+    resource->cursor = gdk_cursor_new_from_name(gdk_display_get_default(), name);
+    if (!resource->cursor)
+        return fail(NK_ERROR_UNSUPPORTED, "cursor shape is unavailable");
+    resource->handle =
+        nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
+    if (resource->handle == NK_INVALID_HANDLE)
+        return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
+    *out_cursor = resource->handle;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image, nk_handle *out_cursor) {
+    return nk::core::result_boundary("unexpected error while creating cursor", [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!image || image->struct_size < sizeof(*image) || !out_cursor || !image->rgba ||
+            image->width <= 0 || image->height <= 0 || image->width > INT_MAX / 4 ||
+            image->stride < image->width * 4 || image->hotspot_x < 0 || image->hotspot_y < 0 ||
+            image->hotspot_x >= image->width || image->hotspot_y >= image->height)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid custom cursor image");
+        *out_cursor = NK_INVALID_HANDLE;
+        if (!ensure_gtk())
+            return NK_ERROR_UNSUPPORTED;
+        GdkPixbuf *pixbuf =
+            gdk_pixbuf_new(GDK_COLORSPACE_RGB, TRUE, 8, image->width, image->height);
+        if (!pixbuf)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate custom cursor pixels");
+        const auto *source = static_cast<const guchar *>(image->rgba);
+        guchar *destination = gdk_pixbuf_get_pixels(pixbuf);
+        const int destination_stride = gdk_pixbuf_get_rowstride(pixbuf);
+        for (int y = 0; y < image->height; ++y)
+            std::memcpy(destination + y * destination_stride, source + y * image->stride,
+                        static_cast<std::size_t>(image->width) * 4);
+        auto resource = std::make_shared<GtkCursorResource>();
+        resource->cursor =
+            gdk_cursor_new_from_pixbuf(gdk_display_get_default(), pixbuf, image->hotspot_x,
+                                       image->hotspot_y);
+        g_object_unref(pixbuf);
+        if (!resource->cursor)
+            return fail(NK_ERROR_UNSUPPORTED, "GTK could not create the custom cursor");
+        resource->handle =
+            nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
+        if (resource->handle == NK_INVALID_HANDLE)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
+        *out_cursor = resource->handle;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_cursor_destroy(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!cursor(handle))
+        return invalid_handle("cursor");
+    nk::core::handles().erase(handle, nk::core::ResourceType::cursor);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_cursor(nk_handle window_handle, nk_handle cursor_handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = window(window_handle);
+    if (!resource)
+        return invalid_handle("window");
+    auto selected = cursor_handle ? cursor(cursor_handle) : nullptr;
+    if (cursor_handle && !selected)
+        return invalid_handle("cursor");
+    resource->cursor = std::move(selected);
+    return resource->cursor_mode == NK_CURSOR_MODE_CAPTURED
+               ? apply_cursor_mode(*resource, resource->cursor_mode)
+               : apply_cursor(*resource);
+}
+
+nk_result NK_CALL nk_window_set_cursor_mode(nk_handle handle, nk_cursor_mode mode) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = window(handle);
+    if (!resource)
+        return invalid_handle("window");
+    return apply_cursor_mode(*resource, mode);
+}
+
+nk_result NK_CALL nk_window_get_cursor_mode(nk_handle handle, nk_cursor_mode *out_mode) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_mode)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "cursor mode output must not be null");
+    auto resource = window(handle);
+    if (!resource)
+        return invalid_handle("window");
+    *out_mode = resource->cursor_mode;
+    return NK_OK;
+}
+
+uint32_t NK_CALL nk_raw_pointer_motion_supported(void) { return 0; }
 
 nk_result NK_CALL nk_window_minimize(nk_handle h) {
     if (const auto r = enter_ui(); r != NK_OK)

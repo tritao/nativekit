@@ -39,7 +39,8 @@ int main(void) {
     const nk_capabilities expected = NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG |
                                      NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
                                      NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
-                                     NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE;
+                                     NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE | NK_CAP_CURSOR |
+                                     NK_CAP_POINTER_CAPTURE;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
@@ -78,6 +79,43 @@ int main(void) {
     double pointer_y = -1.0;
     assert(nk_pointer_get_position(window, &pointer_x, &pointer_y) == NK_OK);
     assert(pointer_x == 0.0 && pointer_y == 0.0);
+    nk_handle cursor = NK_INVALID_HANDLE;
+    assert(nk_cursor_create_standard(NK_CURSOR_HAND, &cursor) == NK_OK);
+    assert(nk_window_set_cursor(window, cursor) == NK_OK);
+    assert(nk_cursor_destroy(cursor) == NK_OK);
+    nk_cursor_mode cursor_mode = NK_CURSOR_MODE_DISABLED;
+    assert(nk_window_get_cursor_mode(window, &cursor_mode) == NK_OK);
+    assert(cursor_mode == NK_CURSOR_MODE_NORMAL);
+    assert(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_HIDDEN) == NK_OK);
+    assert(nk_window_get_cursor_mode(window, &cursor_mode) == NK_OK);
+    assert(cursor_mode == NK_CURSOR_MODE_HIDDEN);
+    assert(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_DISABLED) ==
+           NK_ERROR_UNSUPPORTED);
+    assert(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_NORMAL) == NK_OK);
+    assert(nk_window_show(window, 1) == NK_OK);
+    const nk_result capture_result =
+        nk_window_set_cursor_mode(window, NK_CURSOR_MODE_CAPTURED);
+    if (capture_result == NK_OK) {
+        assert(nk_window_get_cursor_mode(window, &cursor_mode) == NK_OK);
+        assert(cursor_mode == NK_CURSOR_MODE_CAPTURED);
+        assert(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_NORMAL) == NK_OK);
+    } else {
+        assert(capture_result == NK_ERROR_UNSUPPORTED);
+    }
+    assert(nk_window_show(window, 0) == NK_OK);
+    const unsigned char cursor_pixels[16] = {
+        255, 255, 255, 255, 0, 0, 0, 255,
+        0,   0,   0,   255, 255, 255, 255, 255};
+    nk_cursor_image cursor_image = {0};
+    cursor_image.struct_size = sizeof(cursor_image);
+    cursor_image.width = 2;
+    cursor_image.height = 2;
+    cursor_image.stride = 8;
+    cursor_image.rgba = cursor_pixels;
+    assert(nk_cursor_create_custom(&cursor_image, &cursor) == NK_OK);
+    assert(nk_window_set_cursor(window, cursor) == NK_OK);
+    assert(nk_cursor_destroy(cursor) == NK_OK);
+    assert(nk_raw_pointer_motion_supported() == 0);
     nk_surface_options surface_options = {0};
     surface_options.struct_size = sizeof(surface_options);
     surface_options.flags = NK_SURFACE_HIDDEN | NK_SURFACE_DEPTH;

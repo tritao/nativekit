@@ -23,7 +23,9 @@ enum {
     NK_CAP_MOBILE_HOST = UINT64_C(1) << 10,
     NK_CAP_INPUT = UINT64_C(1) << 11,
     NK_CAP_OPENGL_SURFACE = UINT64_C(1) << 12,
-    NK_CAP_OPENGL_ES_SURFACE = UINT64_C(1) << 13
+    NK_CAP_OPENGL_ES_SURFACE = UINT64_C(1) << 13,
+    NK_CAP_CURSOR = UINT64_C(1) << 14,
+    NK_CAP_POINTER_CAPTURE = UINT64_C(1) << 15
 };
 
 typedef uint32_t nk_native_window_kind;

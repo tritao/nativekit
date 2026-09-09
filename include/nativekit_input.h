@@ -145,6 +145,39 @@ typedef struct nk_pointer_scroll_event {
     double y;
 } nk_pointer_scroll_event;
 
+typedef uint32_t nk_cursor_shape;
+enum {
+    NK_CURSOR_ARROW = 1,
+    NK_CURSOR_IBEAM = 2,
+    NK_CURSOR_CROSSHAIR = 3,
+    NK_CURSOR_HAND = 4,
+    NK_CURSOR_HORIZONTAL_RESIZE = 5,
+    NK_CURSOR_VERTICAL_RESIZE = 6,
+    NK_CURSOR_NWSE_RESIZE = 7,
+    NK_CURSOR_NESW_RESIZE = 8,
+    NK_CURSOR_MOVE = 9,
+    NK_CURSOR_NOT_ALLOWED = 10
+};
+
+typedef struct nk_cursor_image {
+    uint32_t struct_size;
+    int32_t width;
+    int32_t height;
+    int32_t stride;
+    int32_t hotspot_x;
+    int32_t hotspot_y;
+    const void *rgba;
+    uint64_t reserved[2];
+} nk_cursor_image;
+
+typedef uint32_t nk_cursor_mode;
+enum {
+    NK_CURSOR_MODE_NORMAL = 0,
+    NK_CURSOR_MODE_HIDDEN = 1,
+    NK_CURSOR_MODE_CAPTURED = 2,
+    NK_CURSOR_MODE_DISABLED = 3
+};
+
 /* State queries are UI-thread-only. */
 NK_API nk_result NK_CALL nk_key_get_state(nk_handle window, nk_key key,
                                            nk_input_action *out_action);
@@ -152,6 +185,19 @@ NK_API nk_result NK_CALL nk_pointer_button_get_state(nk_handle window,
                                                       nk_pointer_button button,
                                                       nk_input_action *out_action);
 NK_API nk_result NK_CALL nk_pointer_get_position(nk_handle window, double *out_x, double *out_y);
+
+NK_API nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape,
+                                                   nk_handle *out_cursor);
+/* Pixel data is copied before return and must be RGBA8, top row first. */
+NK_API nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image,
+                                                 nk_handle *out_cursor);
+NK_API nk_result NK_CALL nk_cursor_destroy(nk_handle cursor);
+/* An invalid cursor handle restores the platform default cursor. */
+NK_API nk_result NK_CALL nk_window_set_cursor(nk_handle window, nk_handle cursor);
+NK_API nk_result NK_CALL nk_window_set_cursor_mode(nk_handle window, nk_cursor_mode mode);
+NK_API nk_result NK_CALL nk_window_get_cursor_mode(nk_handle window,
+                                                   nk_cursor_mode *out_mode);
+NK_API uint32_t NK_CALL nk_raw_pointer_motion_supported(void);
 
 #ifdef __cplusplus
 }

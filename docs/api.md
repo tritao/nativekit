@@ -117,6 +117,12 @@ The GTK backend routes key events through a per-window input-method context, so
 dead-key composition, active keyboard layouts, and IME committed text are
 reported through `NK_EVENT_TEXT_INPUT`.
 
+Cursor resources may be standard platform shapes or copied RGBA8 images.
+Destroying a cursor handle does not invalidate a cursor already selected by a
+window. GTK supports normal, hidden, and captured pointer modes. Disabled
+relative-pointer mode and raw motion are reported as unsupported because GTK 3
+cannot provide consistent behavior across X11 and Wayland.
+
 ## Graphics surfaces
 
 Graphics surfaces are separate resources attached to NativeKit-owned windows.

@@ -27,6 +27,21 @@ nk_result NK_CALL nk_pointer_button_get_state(nk_handle, nk_pointer_button, nk_i
 nk_result NK_CALL nk_pointer_get_position(nk_handle, double *, double *) {
     return unsupported_input();
 }
+nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape, nk_handle *) {
+    return unsupported_input();
+}
+nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *, nk_handle *) {
+    return unsupported_input();
+}
+nk_result NK_CALL nk_cursor_destroy(nk_handle) { return unsupported_input(); }
+nk_result NK_CALL nk_window_set_cursor(nk_handle, nk_handle) { return unsupported_input(); }
+nk_result NK_CALL nk_window_set_cursor_mode(nk_handle, nk_cursor_mode) {
+    return unsupported_input();
+}
+nk_result NK_CALL nk_window_get_cursor_mode(nk_handle, nk_cursor_mode *) {
+    return unsupported_input();
+}
+uint32_t NK_CALL nk_raw_pointer_motion_supported(void) { return 0; }
 
 }
 #endif
