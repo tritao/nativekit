@@ -31,11 +31,13 @@ struct GtkWindowResource final : nk::core::Resource {
 
 struct GtkWebViewResource final : nk::core::Resource {
     GtkWidget* widget = nullptr;
+    WebKitUserContentManager* content_manager = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle parent = NK_INVALID_HANDLE;
 
     ~GtkWebViewResource() override {
         if (widget) gtk_widget_destroy(widget);
+        if (content_manager) g_object_unref(content_manager);
     }
 };
 
@@ -103,6 +105,24 @@ void on_webview_title(WebKitWebView* view, GParamSpec*, gpointer data) {
         event.data = bytes(webkit_web_view_get_title(view));
         nk::core::push_event(std::move(event));
     } catch (...) {}
+}
+
+void on_webview_message(WebKitUserContentManager*, WebKitJavascriptResult* result,
+                        gpointer data) {
+    char* string = nullptr;
+    try {
+        const auto* resource = static_cast<GtkWebViewResource*>(data);
+        JSCValue* value = webkit_javascript_result_get_js_value(result);
+        string = jsc_value_to_string(value);
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WEBVIEW_MESSAGE;
+        event.source = resource->handle;
+        event.data = bytes(string);
+        nk::core::push_event(std::move(event));
+    } catch (...) {
+        /* WebKit callbacks must never allow a C++ exception to escape. */
+    }
+    g_free(string);
 }
 
 void on_eval_complete(GObject* object, GAsyncResult* result, gpointer data) {
@@ -254,7 +274,12 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
         auto parent = window(parent_handle);
         if (!parent) return invalid_handle("parent window");
         auto resource = std::make_shared<GtkWebViewResource>();
-        resource->widget = webkit_web_view_new();
+        resource->content_manager = webkit_user_content_manager_new();
+        if (!webkit_user_content_manager_register_script_message_handler(
+                resource->content_manager, "nativekit")) {
+            return fail(NK_ERROR_UNKNOWN, "could not register the NativeKit JavaScript bridge");
+        }
+        resource->widget = webkit_web_view_new_with_user_content_manager(resource->content_manager);
         g_object_add_weak_pointer(G_OBJECT(resource->widget),
                                   reinterpret_cast<gpointer*>(&resource->widget));
         resource->parent = parent_handle;
@@ -268,6 +293,8 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
         parent->children.push_back(resource->handle);
         g_signal_connect(resource->widget, "load-changed", G_CALLBACK(on_webview_load), resource.get());
         g_signal_connect(resource->widget, "notify::title", G_CALLBACK(on_webview_title), resource.get());
+        g_signal_connect(resource->content_manager, "script-message-received::nativekit",
+                         G_CALLBACK(on_webview_message), resource.get());
         auto* settings = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(resource->widget));
         webkit_settings_set_enable_developer_extras(settings, (options->flags & NK_WEBVIEW_DEVTOOLS) != 0);
         if (options->initial_url) webkit_web_view_load_uri(WEBKIT_WEB_VIEW(resource->widget), options->initial_url);
@@ -286,6 +313,7 @@ nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
     auto resource = webview(handle);
     if (!resource) return invalid_handle("WebView");
     g_signal_handlers_disconnect_by_data(resource->widget, resource.get());
+    g_signal_handlers_disconnect_by_data(resource->content_manager, resource.get());
     gtk_widget_destroy(resource->widget);
     resource->widget = nullptr;
     nk::core::handles().erase(handle, nk::core::ResourceType::webview);

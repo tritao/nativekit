@@ -31,6 +31,7 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_WINDOW_CLOSE` | window | none | empty |
 | `NK_EVENT_WEBVIEW_NAVIGATED` | WebView | none | resulting URL |
 | `NK_EVENT_WEBVIEW_TITLE_CHANGED` | WebView | none | page title |
+| `NK_EVENT_WEBVIEW_MESSAGE` | WebView | none | JavaScript value converted to text |
 | `NK_EVENT_WEBVIEW_EVAL_COMPLETE` | WebView | evaluation ID | result or error text |
 
 A close event is a request: the window remains alive until the application calls
@@ -41,4 +42,3 @@ A close event is a request: the window remains alive until the application calls
 `nk_get_capabilities()` describes the compiled backend. Callers must still handle
 runtime failures—for example, a Linux build can include GTK support but be unable
 to connect to a display.
-

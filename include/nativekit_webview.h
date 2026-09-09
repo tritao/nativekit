@@ -24,6 +24,16 @@ typedef struct nk_webview_options {
 } nk_webview_options;
 
 /*
+ * Pages may send a value to NativeKit with:
+ *
+ *   window.webkit.messageHandlers.nativekit.postMessage(value)
+ *
+ * The value's JavaScript string representation is delivered as UTF-8 in an
+ * NK_EVENT_WEBVIEW_MESSAGE event. This bridge name is stable across backends;
+ * backends that cannot provide it omit NK_CAP_WEBVIEW from their capabilities.
+ */
+
+/*
  * Creates a native child WebView inside `parent`. Bounds are logical pixels;
  * width and height must be positive. `initial_url` is nullable UTF-8.
  */
