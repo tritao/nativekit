@@ -103,6 +103,10 @@ and consumers must not assume one exists. Current payloads are:
 A close event is a request: the window remains alive until the application calls
 `nk_window_destroy()`.
 
+`NK_EVENT_WEBVIEW_PROCESS_TERMINATED` is terminal for its source WebView. The
+backend invalidates that handle before publishing the event, cancels outstanding
+operations, and leaves the parent alive so the application can create a replacement.
+
 Keyboard events report a normalized key and the platform scancode separately.
 Text input is delivered as Unicode code points and is distinct from physical key
 transitions. Pointer coordinates are logical pixels relative to the window

@@ -84,6 +84,7 @@ final class NativeKitBridge {
 
             @Override
             public boolean onRenderProcessGone(WebView webView, RenderProcessGoneDetail detail) {
+                detachAfterRendererGone(webView);
                 nativeOnRenderProcessGone(handle, detail.didCrash());
                 return true;
             }
@@ -114,6 +115,15 @@ final class NativeKitBridge {
         }
         view.stopLoading();
         view.destroy();
+    }
+
+    private static void detachAfterRendererGone(WebView view) {
+        ViewGroup parent = (ViewGroup)view.getParent();
+        if (parent != null) {
+            parent.removeView(view);
+        }
+        // Android forbids calling any method on the WebView, including destroy(), after this
+        // callback. The native side invalidates the handle and ignores delayed callbacks.
     }
 
     static void show(WebView view, boolean visible) {

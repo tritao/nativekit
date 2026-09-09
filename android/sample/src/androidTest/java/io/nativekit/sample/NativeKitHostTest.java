@@ -23,6 +23,7 @@ public final class NativeKitHostTest {
     private static final int EVENT_WEBVIEW_NAVIGATED = 200;
     private static final int EVENT_WEBVIEW_MESSAGE = 201;
     private static final int EVENT_WEBVIEW_NAVIGATION_FAILED = 204;
+    private static final int EVENT_WEBVIEW_PROCESS_TERMINATED = 205;
     private static final int EVENT_HOST_GEOMETRY_CHANGED = 600;
 
     @Test
@@ -79,6 +80,20 @@ public final class NativeKitHostTest {
             NativeKitEvent failure = awaitEvent(scenario, EVENT_WEBVIEW_NAVIGATION_FAILED);
             assertTrue(failure.flags >= 0 && failure.flags <= 6);
             assertNotNull(failure.text());
+
+            long[] crashedWebView = new long[1];
+            scenario.onActivity(activity -> crashedWebView[0] =
+                                    activity.host.createWebView(16, 16, "chrome://crash"));
+            NativeKitEvent terminated =
+                awaitEventForSource(scenario, EVENT_WEBVIEW_PROCESS_TERMINATED, crashedWebView[0]);
+            assertEquals(1, terminated.flags);
+
+            long[] recoveredWebView = new long[1];
+            scenario.onActivity(activity -> recoveredWebView[0] = activity.host.createWebView(
+                                    16, 16, "data:text/html,<title>recovered</title>"));
+            NativeKitEvent recovered =
+                awaitEventForSource(scenario, EVENT_WEBVIEW_NAVIGATED, recoveredWebView[0]);
+            assertEquals(recoveredWebView[0], recovered.source);
         }
     }
 
@@ -105,6 +120,24 @@ public final class NativeKitHostTest {
     private static NativeKitEvent awaitEvent(ActivityScenario<NativeKitTestActivity> scenario,
                                               int kind) throws Exception {
         return find(awaitEvents(scenario, kind), kind);
+    }
+
+    private static NativeKitEvent awaitEventForSource(
+        ActivityScenario<NativeKitTestActivity> scenario, int kind, long source) throws Exception {
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (System.currentTimeMillis() < deadline) {
+            List<NativeKitEvent> events = new ArrayList<>();
+            scenario.onActivity(activity -> {
+                NativeKitEvent event;
+                while ((event = activity.host.pollEvent()) != null)
+                    events.add(event);
+            });
+            for (NativeKitEvent event : events)
+                if (event.kind == kind && event.source == source)
+                    return event;
+            Thread.sleep(50);
+        }
+        throw new AssertionError("timed out waiting for event " + kind + " from " + source);
     }
 
     private static void awaitLandscapeGeometry(ActivityScenario<NativeKitTestActivity> scenario)

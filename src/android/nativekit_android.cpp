@@ -229,6 +229,19 @@ nk_result destroy_webview(nk_handle handle) {
     return NK_OK;
 }
 
+bool abandon_webview(nk_handle handle) {
+    const auto found = webviews.find(handle);
+    if (found == webviews.end())
+        return false;
+    if (auto *env = environment(); env && found->second->view)
+        env->DeleteGlobalRef(found->second->view);
+    found->second->view = nullptr;
+    cancel_webview_requests(handle);
+    webviews.erase(found);
+    nk::core::handles().erase(handle, nk::core::ResourceType::webview);
+    return true;
+}
+
 } // namespace
 
 namespace nk::backend {
@@ -642,6 +655,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnMessage(JNIEnv 
                                                                          jlong handle,
                                                                          jstring json) {
     nk::core::callback_boundary([&] {
+        if (!webview(static_cast<nk_handle>(handle)))
+            return;
         const auto value = to_utf8(env, json);
         emit_text(NK_EVENT_WEBVIEW_MESSAGE, static_cast<nk_handle>(handle), value.c_str(),
                   json ? NK_OK : NK_ERROR_UNKNOWN);
@@ -653,6 +668,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnNavigated(JNIEn
                                                                            jstring url,
                                                                            jstring title) {
     nk::core::callback_boundary([&] {
+        if (!webview(static_cast<nk_handle>(handle)))
+            return;
         const auto url_value = to_utf8(env, url);
         emit_text(NK_EVENT_WEBVIEW_NAVIGATED, static_cast<nk_handle>(handle), url_value.c_str());
         const auto title_value = to_utf8(env, title);
@@ -702,6 +719,8 @@ JNIEXPORT jboolean JNICALL Java_io_nativekit_NativeKitBridge_nativeOnNavigationR
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnNavigationFailed(
     JNIEnv *env, jclass, jlong handle, jint category, jstring message) {
     nk::core::callback_boundary([&] {
+        if (!webview(static_cast<nk_handle>(handle)))
+            return;
         const auto stable_category =
             category >= NK_NAVIGATION_ERROR_OTHER && category <= NK_NAVIGATION_ERROR_CANCELLED
                 ? static_cast<uint32_t>(category)
@@ -715,8 +734,11 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnNavigationFaile
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnRenderProcessGone(
     JNIEnv *, jclass, jlong handle, jboolean crashed) {
     nk::core::callback_boundary([&] {
-        emit_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, static_cast<nk_handle>(handle), nullptr,
-                  NK_ERROR_UNKNOWN, NK_INVALID_REQUEST_ID, crashed ? 1u : 0u);
+        const auto source = static_cast<nk_handle>(handle);
+        if (!abandon_webview(source))
+            return;
+        emit_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, source, nullptr, NK_ERROR_UNKNOWN,
+                  NK_INVALID_REQUEST_ID, crashed ? 1u : 0u);
     });
 }
 
