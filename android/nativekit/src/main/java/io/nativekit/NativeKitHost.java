@@ -1,5 +1,6 @@
 package io.nativekit;
 
+import android.content.Intent;
 import android.view.ViewGroup;
 
 /** Lifecycle adapter for a caller-owned Android NativeKit host. */
@@ -35,6 +36,13 @@ public final class NativeKitHost implements AutoCloseable {
     public void inactive() { setLifecycle(2); }
 
     public void background() { setLifecycle(3); }
+
+    /** Queues URI/text content from a VIEW or SEND intent. */
+    public int dispatchIntent(Intent intent) {
+        if (handle == 0 || intent == null)
+            throw new IllegalArgumentException("host must be open and intent must not be null");
+        return nativeDispatchIntent(handle, intent);
+    }
 
     /** Returns the next queued event, or {@code null} when the queue is empty. */
     public NativeKitEvent pollEvent() {
@@ -133,6 +141,7 @@ public final class NativeKitHost implements AutoCloseable {
     private static native long nativeCreateWebView(long host, int width, int height,
                                                    String initialUrl);
     private static native void nativeSetLifecycle(long handle, int state);
+    private static native int nativeDispatchIntent(long handle, Intent intent);
     private static native NativeKitEvent nativePollEvent();
     private static native int nativeOpenUrl(String url);
     private static native int nativeSetClipboardText(String text);

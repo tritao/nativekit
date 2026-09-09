@@ -96,3 +96,69 @@ Java_io_nativekit_consumer_MainActivity_nativeResourceStreamProbe(JNIEnv *, jcla
         return 6;
     return 0;
 }
+
+namespace {
+bool poll_kind(nk_event_kind kind, nk_event &event) {
+    event.struct_size = sizeof(event);
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        if (nk_poll_event(&event) != NK_OK)
+            return false;
+        if (event.kind == kind)
+            return true;
+        if (event.kind == NK_EVENT_NONE)
+            return false;
+        nk_event_release(&event);
+        event.struct_size = sizeof(event);
+    }
+    return false;
+}
+} // namespace
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeIncomingShareProbe(JNIEnv *, jclass) {
+    nk_event event{};
+    if (!poll_kind(NK_EVENT_SHARE_RECEIVED, event))
+        return 1;
+    const char *text = nullptr;
+    const char *subject = nullptr;
+    uint32_t text_length = 0;
+    uint32_t subject_length = 0;
+    if (nk_share_event_text(&event, &text, &text_length) != NK_OK || text_length != 11 ||
+        std::memcmp(text, "shared text", text_length) != 0 ||
+        nk_share_event_subject(&event, &subject, &subject_length) != NK_OK ||
+        subject_length != 14 || std::memcmp(subject, "shared subject", subject_length) != 0) {
+        nk_event_release(&event);
+        return 2;
+    }
+    for (uint32_t index = 0; index < 2; ++index) {
+        nk_resource_view resource{};
+        resource.struct_size = sizeof(resource);
+        if (nk_resource_event_item(&event, index, &resource) != NK_OK ||
+            !(resource.flags & NK_RESOURCE_READABLE) || resource.mime_type_length != 10 ||
+            std::memcmp(resource.mime_type, "text/plain", 10) != 0) {
+            nk_event_release(&event);
+            return 3;
+        }
+    }
+    nk_resource_view extra{};
+    extra.struct_size = sizeof(extra);
+    const bool exactly_two = nk_resource_event_item(&event, 2, &extra) == NK_ERROR_INVALID_ARGUMENT;
+    nk_event_release(&event);
+    return exactly_two ? 0 : 4;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeIncomingViewProbe(JNIEnv *, jclass) {
+    nk_event event{};
+    if (!poll_kind(NK_EVENT_RESOURCE_OPENED, event))
+        return 1;
+    nk_resource_view resource{};
+    resource.struct_size = sizeof(resource);
+    const char expected[] = "content://io.nativekit.consumer.resources/viewed";
+    const auto decoded = nk_resource_event_item(&event, 0, &resource);
+    const bool matches = decoded == NK_OK && resource.uri_length == sizeof(expected) - 1 &&
+                         std::memcmp(resource.uri, expected, sizeof(expected) - 1) == 0 &&
+                         (resource.flags & NK_RESOURCE_READABLE);
+    nk_event_release(&event);
+    return matches ? 0 : 2;
+}

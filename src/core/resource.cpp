@@ -30,25 +30,42 @@ extern "C" nk_result NK_CALL nk_resource_event_item(const nk_event *event, uint3
                                                       nk_resource_view *out_resource) {
     nk::core::clear_error();
     if (!event || (event->kind != NK_EVENT_DIALOG_COMPLETE &&
-                   event->kind != NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE) ||
+                   event->kind != NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE &&
+                   event->kind != NK_EVENT_RESOURCE_OPENED &&
+                   event->kind != NK_EVENT_SHARE_RECEIVED) ||
         !out_resource || out_resource->struct_size < sizeof(nk_resource_view) ||
         !event->data || event->data_size < sizeof(nk_resource_list) ||
         event->data_size > std::numeric_limits<std::size_t>::max()) {
         nk::core::set_error("invalid resource event arguments");
         return NK_ERROR_INVALID_ARGUMENT;
     }
-    nk_resource_list list{};
-    std::memcpy(&list, event->data, sizeof(list));
     const auto size = static_cast<std::size_t>(event->data_size);
+    std::size_t list_offset = 0;
+    if (event->kind == NK_EVENT_SHARE_RECEIVED) {
+        if (size < sizeof(nk_received_share)) {
+            nk::core::set_error("malformed received-share payload");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        nk_received_share share{};
+        std::memcpy(&share, event->data, sizeof(share));
+        list_offset = share.resources_offset;
+    }
+    if (list_offset > size || sizeof(nk_resource_list) > size - list_offset) {
+        nk::core::set_error("malformed resource-list offset");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    nk_resource_list list{};
+    const auto *bytes = static_cast<const unsigned char *>(event->data);
+    std::memcpy(&list, bytes + list_offset, sizeof(list));
     const auto table_size = static_cast<std::size_t>(list.item_count) * sizeof(nk_resource_item);
-    if (index >= list.item_count || list.items_offset < sizeof(nk_resource_list) ||
+    if (index >= list.item_count ||
+        list.items_offset < list_offset + sizeof(nk_resource_list) ||
         list.items_offset > size || table_size > size - list.items_offset ||
         list.strings_offset < list.items_offset + table_size || list.strings_offset > size) {
         nk::core::set_error("malformed resource event payload");
         return NK_ERROR_INVALID_ARGUMENT;
     }
     nk_resource_item item{};
-    const auto *bytes = static_cast<const unsigned char *>(event->data);
     std::memcpy(&item, bytes + list.items_offset + index * sizeof(item), sizeof(item));
     nk_resource_view result{};
     result.struct_size = out_resource->struct_size;
@@ -65,4 +82,38 @@ extern "C" nk_result NK_CALL nk_resource_event_item(const nk_event *event, uint3
     }
     *out_resource = result;
     return NK_OK;
+}
+
+namespace {
+nk_result share_string(const nk_event *event, bool subject, const char **out,
+                       uint32_t *out_length) {
+    nk::core::clear_error();
+    if (!event || event->kind != NK_EVENT_SHARE_RECEIVED || !event->data || !out ||
+        !out_length || event->data_size < sizeof(nk_received_share) ||
+        event->data_size > std::numeric_limits<std::size_t>::max()) {
+        nk::core::set_error("invalid received-share event arguments");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    nk_received_share share{};
+    std::memcpy(&share, event->data, sizeof(share));
+    const auto offset = subject ? share.subject_offset : share.text_offset;
+    const auto *bytes = static_cast<const unsigned char *>(event->data);
+    if (!string_view(bytes, static_cast<std::size_t>(event->data_size), offset,
+                     sizeof(nk_received_share), out, out_length)) {
+        nk::core::set_error("malformed received-share string");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    return NK_OK;
+}
+} // namespace
+
+extern "C" nk_result NK_CALL nk_share_event_text(const nk_event *event, const char **out_text,
+                                                  uint32_t *out_length) {
+    return share_string(event, false, out_text, out_length);
+}
+
+extern "C" nk_result NK_CALL nk_share_event_subject(const nk_event *event,
+                                                     const char **out_subject,
+                                                     uint32_t *out_length) {
+    return share_string(event, true, out_subject, out_length);
 }

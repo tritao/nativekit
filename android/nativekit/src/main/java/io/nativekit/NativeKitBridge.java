@@ -177,6 +177,57 @@ final class NativeKitBridge {
         }
     }
 
+    static boolean dispatchIntent(ViewGroup parent, long host, Intent intent) {
+        String action = intent.getAction();
+        boolean view = Intent.ACTION_VIEW.equals(action);
+        boolean share = Intent.ACTION_SEND.equals(action) || Intent.ACTION_SEND_MULTIPLE.equals(action);
+        if (!view && !share)
+            return false;
+        ArrayList<Uri> uris = new ArrayList<>();
+        if (view && intent.getData() != null)
+            addUniqueUri(uris, intent.getData());
+        ClipData clips = intent.getClipData();
+        if (clips != null) {
+            for (int index = 0; index < clips.getItemCount(); ++index)
+                addUniqueUri(uris, clips.getItemAt(index).getUri());
+        }
+        if (share) {
+            if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+                ArrayList<Uri> streams = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+                if (streams != null)
+                    for (Uri uri : streams)
+                        addUniqueUri(uris, uri);
+            } else {
+                addUniqueUri(uris, intent.getParcelableExtra(Intent.EXTRA_STREAM));
+            }
+        }
+        if (view && uris.isEmpty())
+            return false;
+        String[] values = new String[uris.size()];
+        String[] mimeTypes = new String[uris.size()];
+        int[] resourceFlags = new int[uris.size()];
+        int grants = intent.getFlags();
+        int flags = (grants & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0 ? 1 : 0;
+        if ((grants & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0)
+            flags |= 2;
+        for (int index = 0; index < uris.size(); ++index) {
+            values[index] = uris.get(index).toString();
+            mimeTypes[index] = intent.getType();
+            resourceFlags[index] = flags;
+        }
+        CharSequence text = share ? intent.getCharSequenceExtra(Intent.EXTRA_TEXT) : null;
+        CharSequence subject = share ? intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT) : null;
+        nativeOnIncomingIntent(host, view ? 1 : 2, text == null ? null : text.toString(),
+                               subject == null ? null : subject.toString(), values, mimeTypes,
+                               resourceFlags);
+        return true;
+    }
+
+    private static void addUniqueUri(ArrayList<Uri> uris, @Nullable Uri uri) {
+        if (uri != null && !uris.contains(uri))
+            uris.add(uri);
+    }
+
     static int openUrl(ViewGroup parent, String url) {
         Uri uri = Uri.parse(url);
         if (uri.getScheme() == null || uri.getScheme().isEmpty())
@@ -524,6 +575,9 @@ final class NativeKitBridge {
                                                 int insetBottom, int keyboardBottom);
     static native void nativeOnFileDialog(long request, int kind, boolean accepted,
                                           @Nullable String[] uris, @Nullable int[] resourceFlags);
+    static native void nativeOnIncomingIntent(long host, int kind, @Nullable String text,
+                                              @Nullable String subject, String[] uris,
+                                              String[] mimeTypes, int[] resourceFlags);
     static native void nativeOnNotificationDelivered(long request);
     static native void nativeOnNotificationFailed(long request, String message);
     static native void nativeOnNotificationActivated(long request);

@@ -9,6 +9,7 @@ namespace nk::backend {
 nk_result mobile_host_attach(const nk_mobile_host_options &options, nk_handle &out_host);
 nk_result mobile_host_destroy(nk_handle host);
 nk_result mobile_host_set_lifecycle(nk_handle host, nk_mobile_lifecycle_state state);
+nk_result mobile_host_dispatch_event(nk_handle host, const nk_mobile_host_event &event);
 #endif
 } // namespace nk::backend
 
@@ -69,5 +70,24 @@ nk_result NK_CALL nk_mobile_host_set_lifecycle(nk_handle host, nk_mobile_lifecyc
         return unsupported();
 #endif
                                      });
+}
+
+nk_result NK_CALL nk_mobile_host_dispatch_event(nk_handle host,
+                                                const nk_mobile_host_event *event) {
+    return nk::core::result_boundary("unexpected error while dispatching a mobile host event",
+                                     [&]() -> nk_result {
+        if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+            return thread;
+        if (!event || event->struct_size < sizeof(nk_mobile_host_event)) {
+            nk::core::set_error("mobile host event is missing or too small");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+#if defined(__ANDROID__)
+        return nk::backend::mobile_host_dispatch_event(host, *event);
+#else
+        (void)host;
+        return unsupported();
+#endif
+    });
 }
 }

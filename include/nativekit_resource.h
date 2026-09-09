@@ -86,6 +86,14 @@ typedef struct nk_resource_stream_info {
     uint64_t reserved[2];
 } nk_resource_stream_info;
 
+/* Header at the start of NK_EVENT_SHARE_RECEIVED data. */
+typedef struct nk_received_share {
+    uint32_t resources_offset;
+    uint32_t text_offset;
+    uint32_t subject_offset;
+    uint32_t reserved;
+} nk_received_share;
+
 /* URI inputs are copied before return. These functions are UI-thread-only. */
 NK_API nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource);
 NK_API nk_result NK_CALL nk_share(const nk_share_options *options);
@@ -106,6 +114,10 @@ NK_API nk_result NK_CALL nk_dialog_select_resource_directory(
 /* Returned views remain owned by the event until nk_event_release(). */
 NK_API nk_result NK_CALL nk_resource_event_item(const nk_event *event, uint32_t index,
                                                 nk_resource_view *out_resource);
+NK_API nk_result NK_CALL nk_share_event_text(const nk_event *event, const char **out_text,
+                                             uint32_t *out_length);
+NK_API nk_result NK_CALL nk_share_event_subject(const nk_event *event, const char **out_subject,
+                                                uint32_t *out_length);
 
 /*
  * Opens a URI-backed stream on the UI thread. Stream operations copy bytes

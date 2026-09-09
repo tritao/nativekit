@@ -31,6 +31,12 @@ Build Tools 35.0.0, and NDK 30.0.16248370. Set `sdk.dir` in an untracked
 
 The native API must be called on the Android main thread. Embedding runtimes may
 poll through the stable C ABI; Java/Kotlin hosts can use `NativeKitHost.pollEvent()`.
+After attaching, pass the Activity's initial intent to
+`NativeKitHost.dispatchIntent(getIntent())`, then forward replacements from
+`onNewIntent()`. NativeKit queues `ACTION_VIEW` as `NK_EVENT_RESOURCE_OPENED`
+and `ACTION_SEND`/`ACTION_SEND_MULTIPLE` as `NK_EVENT_SHARE_RECEIVED`, preserving
+`content://` URIs and their read/write grants. Shares may include resources,
+text, and a subject.
 Android currently implements URL opening and text clipboard operations; file
 clipboard operations remain unsupported. Open, save, and directory dialogs use
 the Storage Access Framework and return `content://` URIs.

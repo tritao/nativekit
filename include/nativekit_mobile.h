@@ -9,6 +9,7 @@ extern "C" {
 
 typedef uint32_t nk_mobile_host_kind;
 typedef uint32_t nk_mobile_lifecycle_state;
+typedef uint32_t nk_mobile_host_event_kind;
 
 enum { NK_MOBILE_HOST_ANDROID_VIEW_GROUP = 1, NK_MOBILE_HOST_UIKIT_VIEW = 2 };
 
@@ -17,6 +18,8 @@ enum {
     NK_MOBILE_LIFECYCLE_INACTIVE = 2,
     NK_MOBILE_LIFECYCLE_BACKGROUND = 3
 };
+
+enum { NK_MOBILE_HOST_EVENT_ANDROID_INTENT = 1 };
 
 typedef struct nk_mobile_host_options {
     uint32_t struct_size;
@@ -40,6 +43,14 @@ typedef struct nk_mobile_host_geometry {
     uint64_t reserved[2];
 } nk_mobile_host_geometry;
 
+typedef struct nk_mobile_host_event {
+    uint32_t struct_size;
+    nk_mobile_host_event_kind kind;
+    uintptr_t platform_context;
+    uintptr_t native_event;
+    uint64_t reserved[2];
+} nk_mobile_host_event;
+
 /*
  * Attaches NativeKit to a caller-owned mobile container. The caller retains
  * ownership and must keep the container alive until nk_mobile_host_destroy().
@@ -57,6 +68,14 @@ NK_API nk_result NK_CALL nk_mobile_host_destroy(nk_handle host);
 /* Mirrors the lifecycle state owned by the host Activity or view controller. */
 NK_API nk_result NK_CALL nk_mobile_host_set_lifecycle(nk_handle host,
                                                       nk_mobile_lifecycle_state state);
+
+/*
+ * Forwards a platform-owned host event while it is valid. Android supplies the
+ * current JNIEnv* and an Intent jobject. Recognized content is copied into the
+ * NativeKit event queue before this function returns.
+ */
+NK_API nk_result NK_CALL nk_mobile_host_dispatch_event(nk_handle host,
+                                                       const nk_mobile_host_event *event);
 
 #ifdef __cplusplus
 }

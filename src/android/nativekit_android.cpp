@@ -349,6 +349,47 @@ std::vector<std::byte> resource_payload(bool accepted,
     return result;
 }
 
+std::vector<std::byte> received_share_payload(const std::string &text,
+                                              const std::string &subject,
+                                              const std::vector<ResourceValue> &resources) {
+    auto packed_resources = resource_payload(false, resources);
+    const auto prefix = sizeof(nk_received_share);
+    nk_resource_list list{};
+    std::memcpy(&list, packed_resources.data(), sizeof(list));
+    list.items_offset += prefix;
+    list.strings_offset += prefix;
+    std::memcpy(packed_resources.data(), &list, sizeof(list));
+    for (uint32_t index = 0; index < list.item_count; ++index) {
+        nk_resource_item item{};
+        const auto offset = sizeof(nk_resource_list) + index * sizeof(item);
+        std::memcpy(&item, packed_resources.data() + offset, sizeof(item));
+        item.uri_offset += prefix;
+        if (item.mime_type_offset)
+            item.mime_type_offset += prefix;
+        if (item.display_name_offset)
+            item.display_name_offset += prefix;
+        std::memcpy(packed_resources.data() + offset, &item, sizeof(item));
+    }
+    std::vector<std::byte> result(prefix + packed_resources.size() +
+                                  (text.empty() ? 0 : text.size() + 1) +
+                                  (subject.empty() ? 0 : subject.size() + 1));
+    nk_received_share share{};
+    share.resources_offset = prefix;
+    std::memcpy(result.data() + prefix, packed_resources.data(), packed_resources.size());
+    auto cursor = prefix + packed_resources.size();
+    if (!text.empty()) {
+        share.text_offset = static_cast<uint32_t>(cursor);
+        std::memcpy(result.data() + cursor, text.c_str(), text.size() + 1);
+        cursor += text.size() + 1;
+    }
+    if (!subject.empty()) {
+        share.subject_offset = static_cast<uint32_t>(cursor);
+        std::memcpy(result.data() + cursor, subject.c_str(), subject.size() + 1);
+    }
+    std::memcpy(result.data(), &share, sizeof(share));
+    return result;
+}
+
 nk_result start_file_dialog(uint32_t kind, bool resources, nk_handle parent,
                             const nk_file_dialog_options *options, nk_request_id *out_request) {
     if (const auto thread = require_thread(); thread != NK_OK)
@@ -569,6 +610,33 @@ nk_result mobile_host_set_lifecycle(nk_handle handle, nk_mobile_lifecycle_state 
     env->CallStaticVoidMethod(bridge, method, resource->view_group, static_cast<jint>(state));
     env->DeleteLocalRef(bridge);
     return clear_java_exception(env, "Android lifecycle update failed") ? NK_ERROR_UNKNOWN : NK_OK;
+}
+
+nk_result mobile_host_dispatch_event(nk_handle handle, const nk_mobile_host_event &event) {
+    auto resource = host(handle);
+    if (!resource) {
+        nk::core::set_error("invalid Android mobile host handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    if (event.kind != NK_MOBILE_HOST_EVENT_ANDROID_INTENT || !event.platform_context ||
+        !event.native_event) {
+        nk::core::set_error("Android host event requires a JNIEnv and Intent");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto *env = reinterpret_cast<JNIEnv *>(event.platform_context);
+    auto intent = reinterpret_cast<jobject>(event.native_event);
+    auto *bridge = bridge_class(env);
+    if (!bridge)
+        return NK_ERROR_UNKNOWN;
+    auto method = env->GetStaticMethodID(
+        bridge, "dispatchIntent", "(Landroid/view/ViewGroup;JLandroid/content/Intent;)Z");
+    const auto handled = method && env->CallStaticBooleanMethod(
+                                       bridge, method, resource->view_group,
+                                       static_cast<jlong>(handle), intent);
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android intent dispatch failed"))
+        return NK_ERROR_UNKNOWN;
+    return handled ? NK_OK : NK_ERROR_UNSUPPORTED;
 }
 
 } // namespace nk::backend
@@ -1496,6 +1564,17 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitHost_nativeSetLifecycle(JNIEnv
                                  static_cast<nk_mobile_lifecycle_state>(state));
 }
 
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeDispatchIntent(JNIEnv *env, jclass,
+                                                                             jlong handle,
+                                                                             jobject intent) {
+    nk_mobile_host_event event{};
+    event.struct_size = sizeof(event);
+    event.kind = NK_MOBILE_HOST_EVENT_ANDROID_INTENT;
+    event.platform_context = reinterpret_cast<uintptr_t>(env);
+    event.native_event = reinterpret_cast<uintptr_t>(intent);
+    return nk_mobile_host_dispatch_event(static_cast<nk_handle>(handle), &event);
+}
+
 JNIEXPORT jobject JNICALL Java_io_nativekit_NativeKitHost_nativePollEvent(JNIEnv *env, jclass) {
     jobject result = nullptr;
     nk::core::callback_boundary([&] {
@@ -1756,6 +1835,54 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
             event.data = resource_payload(accepted == JNI_TRUE, resources);
         } else {
             event.data = dialog_payload(accepted == JNI_TRUE, uris);
+        }
+        nk::core::push_event(std::move(event));
+    });
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnIncomingIntent(
+    JNIEnv *env, jclass, jlong host_handle, jint kind, jstring text, jstring subject,
+    jobjectArray uris, jobjectArray mime_types, jintArray resource_flags) {
+    nk::core::callback_boundary([&] {
+        const auto source = static_cast<nk_handle>(host_handle);
+        if (!host(source) || (kind != 1 && kind != 2))
+            return;
+        const auto count = uris ? env->GetArrayLength(uris) : 0;
+        const auto mime_count = mime_types ? env->GetArrayLength(mime_types) : 0;
+        const auto flag_count = resource_flags ? env->GetArrayLength(resource_flags) : 0;
+        jint *flags = resource_flags ? env->GetIntArrayElements(resource_flags, nullptr) : nullptr;
+        std::vector<ResourceValue> resources;
+        resources.reserve(static_cast<std::size_t>(count));
+        for (jsize index = 0; index < count; ++index) {
+            auto uri = static_cast<jstring>(env->GetObjectArrayElement(uris, index));
+            auto mime = index < mime_count
+                            ? static_cast<jstring>(env->GetObjectArrayElement(mime_types, index))
+                            : nullptr;
+            ResourceValue resource;
+            resource.uri = to_utf8(env, uri);
+            resource.mime_type = to_utf8(env, mime);
+            if (flags && index < flag_count)
+                resource.flags = static_cast<uint32_t>(flags[index]);
+            if (!resource.uri.empty())
+                resources.push_back(std::move(resource));
+            if (mime)
+                env->DeleteLocalRef(mime);
+            if (uri)
+                env->DeleteLocalRef(uri);
+        }
+        if (flags)
+            env->ReleaseIntArrayElements(resource_flags, flags, JNI_ABORT);
+        nk::core::QueuedEvent event;
+        event.kind = kind == 1 ? NK_EVENT_RESOURCE_OPENED : NK_EVENT_SHARE_RECEIVED;
+        event.source = source;
+        if (kind == 1) {
+            if (resources.empty())
+                return;
+            event.data = resource_payload(false, resources);
+        } else {
+            const auto text_value = to_utf8(env, text);
+            const auto subject_value = to_utf8(env, subject);
+            event.data = received_share_payload(text_value, subject_value, resources);
         }
         nk::core::push_event(std::move(event));
     });

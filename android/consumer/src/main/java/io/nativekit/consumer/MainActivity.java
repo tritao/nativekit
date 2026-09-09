@@ -1,6 +1,7 @@
 package io.nativekit.consumer;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.os.Bundle;
 import android.widget.FrameLayout;
 import io.nativekit.NativeKitHost;
@@ -18,6 +19,7 @@ public final class MainActivity extends Activity {
         FrameLayout content = new FrameLayout(this);
         setContentView(content);
         nativeKit = new NativeKitHost(content);
+        nativeKit.dispatchIntent(getIntent());
         probe = nativeProbe(nativeKit.handle());
     }
 
@@ -28,6 +30,20 @@ public final class MainActivity extends Activity {
     public int resourceClipboardProbe() { return nativeResourceClipboardProbe(); }
 
     public int resourceStreamProbe() { return nativeResourceStreamProbe(); }
+
+    public int incomingShareProbe() { return nativeIncomingShareProbe(); }
+
+    public int incomingViewProbe() { return nativeIncomingViewProbe(); }
+
+    public int dispatchIntentForTest(Intent intent) { return nativeKit.dispatchIntent(intent); }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (nativeKit != null)
+            nativeKit.dispatchIntent(intent);
+    }
 
     @Override
     protected void onResume() {
@@ -53,4 +69,6 @@ public final class MainActivity extends Activity {
     private static native long nativeProbe(long host);
     private static native int nativeResourceClipboardProbe();
     private static native int nativeResourceStreamProbe();
+    private static native int nativeIncomingShareProbe();
+    private static native int nativeIncomingViewProbe();
 }

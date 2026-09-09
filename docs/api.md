@@ -42,6 +42,13 @@ The host application forwards active, inactive, and background transitions with
 and receives the current `JNIEnv*` and a `ViewGroup`. Those JNI values are used
 only during the call, and the backend retains its own global reference.
 
+Android hosts also forward Activity intents with
+`nk_mobile_host_dispatch_event()`. The Java `NativeKitHost.dispatchIntent()`
+wrapper supplies the JNI details: call it for the Activity's initial
+`getIntent()` after attaching the host and again from `onNewIntent()`. Recognized
+`ACTION_VIEW`, `ACTION_SEND`, and `ACTION_SEND_MULTIPLE` intents become queued
+resource or sharing events. Unrecognized actions return `NK_ERROR_UNSUPPORTED`.
+
 Container size, display scale, system-bar safe insets, and software-keyboard
 inset changes produce `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED`. Geometry and
 WebView bounds use logical pixels on mobile just as they do on desktop.
@@ -92,6 +99,8 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_NOTIFICATION_FAILED` | none | notification ID | diagnostic text |
 | `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED` | mobile host | none | `nk_mobile_host_geometry` |
 | `NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE` | none | clipboard read ID | `nk_resource_list` |
+| `NK_EVENT_RESOURCE_OPENED` | mobile host | none | `nk_resource_list` |
+| `NK_EVENT_SHARE_RECEIVED` | mobile host | none | `nk_received_share` followed by its resource list and strings |
 | `NK_EVENT_KEY` | window | none | `nk_key_event` |
 | `NK_EVENT_TEXT_INPUT` | window | none | `nk_text_input_event` |
 | `NK_EVENT_POINTER_MOVE` | window | none | `nk_pointer_move_event` |
@@ -246,6 +255,14 @@ to the app files directory; cache and temporary storage map to the cache
 directory; documents and downloads use their app-specific external directories.
 Desktop is unsupported. Locale and appearance follow the attached host's current
 configuration, including per-app locale and day/night changes.
+
+Incoming Android resources retain their `content://` URI identity. Decode
+individual resources in either incoming event with `nk_resource_event_item()`;
+do not treat the URI as a filesystem path. A share may contain zero or more
+resources plus optional UTF-8 text and subject, available through
+`nk_share_event_text()` and `nk_share_event_subject()`. Missing optional strings
+are returned as empty strings. URI grant flags describe the access conveyed by
+the Intent, and streams are opened through `nk_resource_open_stream()`.
 
 Every successfully started WebView evaluation has exactly one terminal event.
 Destroying its WebView, directly or through parent-window destruction, completes
