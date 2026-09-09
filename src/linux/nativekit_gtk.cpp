@@ -8,6 +8,7 @@
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
+#include "linux/joystick.hpp"
 #include "nativekit_monitor.h"
 #include "nativekit_notification.h"
 #include "nativekit_system.h"
@@ -1614,11 +1615,13 @@ void on_notification_shown(GObject *object, GAsyncResult *result, gpointer data)
 
 namespace nk::backend {
 void pump_events() noexcept {
+    nk::linux_joystick::pump();
     while (g_main_context_iteration(nullptr, FALSE)) {
     }
 }
 
 void shutdown() noexcept {
+    nk::linux_joystick::shutdown();
     while (!dialogs.empty())
         cancel_dialog(dialogs.begin()->second, false);
     while (!navigation_decisions.empty()) {
@@ -1676,7 +1679,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_INPUT |
            NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
            NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
-           NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN;
+           NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {

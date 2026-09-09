@@ -16,7 +16,8 @@ enum class ResourceType : std::uint8_t {
     mobile_host,
     surface,
     cursor,
-    monitor
+    monitor,
+    joystick
 };
 
 struct Resource {

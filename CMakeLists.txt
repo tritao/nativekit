@@ -75,6 +75,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/graphics.cpp
     src/core/handle_registry.cpp
     src/core/input.cpp
+    src/core/joystick.cpp
     src/core/mobile.cpp
     src/core/monitor.cpp
     src/core/window_extensions.cpp
@@ -150,7 +151,9 @@ elseif(APPLE)
         "-framework UserNotifications")
 elseif(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
-    target_sources(nativekit PRIVATE src/linux/nativekit_gtk.cpp)
+    target_sources(nativekit PRIVATE
+        src/linux/nativekit_gtk.cpp
+        src/linux/nativekit_linux_joystick.cpp)
     target_link_libraries(nativekit PRIVATE PkgConfig::GTK3 PkgConfig::WEBKITGTK
         ${CMAKE_DL_LIBS})
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_GTK=1)

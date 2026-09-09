@@ -3,6 +3,7 @@
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
+#include "nativekit_joystick.h"
 #include "nativekit_mobile.h"
 #include "nativekit_monitor.h"
 #include "nativekit_notification.h"
@@ -24,6 +25,10 @@ int main(void) {
     nk_result monitor_result = nk_monitor_list(NULL, &monitor_count);
     assert(monitor_result == NK_ERROR_BUFFER_TOO_SMALL ||
            monitor_result == NK_ERROR_UNSUPPORTED || monitor_result == NK_OK);
+    uint32_t joystick_count = 0;
+    nk_result joystick_result = nk_joystick_list(NULL, &joystick_count);
+    assert(joystick_result == NK_ERROR_BUFFER_TOO_SMALL ||
+           joystick_result == NK_ERROR_UNSUPPORTED || joystick_result == NK_OK);
     int32_t window_width = 0;
     int32_t window_height = 0;
     nk_result geometry_result =
@@ -110,9 +115,16 @@ int main(void) {
 
     nk_event event = {0};
     event.struct_size = sizeof(event);
-    assert(nk_poll_event(&event) == NK_OK);
-    assert(event.kind == NK_EVENT_NONE);
-    nk_event_release(&event);
+    for (;;) {
+        assert(nk_poll_event(&event) == NK_OK);
+        assert(event.kind == NK_EVENT_NONE || event.kind == NK_EVENT_JOYSTICK_CONNECTED ||
+               event.kind == NK_EVENT_JOYSTICK_DISCONNECTED);
+        nk_event_kind kind = event.kind;
+        nk_event_release(&event);
+        event.struct_size = sizeof(event);
+        if (kind == NK_EVENT_NONE)
+            break;
+    }
 
     nk_shutdown();
     assert(nk_poll_event(&event) == NK_ERROR_NOT_INITIALIZED);

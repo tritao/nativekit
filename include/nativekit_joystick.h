@@ -1,0 +1,44 @@
+#ifndef NATIVEKIT_JOYSTICK_H
+#define NATIVEKIT_JOYSTICK_H
+
+#include "nativekit.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+enum {
+    NK_JOYSTICK_HAT_CENTERED = 0,
+    NK_JOYSTICK_HAT_UP = 1,
+    NK_JOYSTICK_HAT_RIGHT = 2,
+    NK_JOYSTICK_HAT_DOWN = 4,
+    NK_JOYSTICK_HAT_LEFT = 8
+};
+
+/*
+ * Writes connected joystick handles. Pass NULL to query the required count.
+ * Hotplug is reported with NK_EVENT_JOYSTICK_CONNECTED and
+ * NK_EVENT_JOYSTICK_DISCONNECTED.
+ */
+NK_API nk_result NK_CALL nk_joystick_list(nk_handle *joysticks, uint32_t *inout_count);
+NK_API nk_result NK_CALL nk_joystick_get_name(nk_handle joystick, char *buffer,
+                                              uint32_t *inout_size);
+/* Returns a 32-character SDL-compatible device GUID plus a trailing NUL. */
+NK_API nk_result NK_CALL nk_joystick_get_guid(nk_handle joystick, char *buffer,
+                                              uint32_t *inout_size);
+/*
+ * Each state function accepts NULL to query its element count. Axis values are
+ * normalized to [-1, 1], buttons are 0 or 1, and hats use NK_JOYSTICK_HAT_*.
+ */
+NK_API nk_result NK_CALL nk_joystick_get_axes(nk_handle joystick, float *axes,
+                                              uint32_t *inout_count);
+NK_API nk_result NK_CALL nk_joystick_get_buttons(nk_handle joystick, uint8_t *buttons,
+                                                 uint32_t *inout_count);
+NK_API nk_result NK_CALL nk_joystick_get_hats(nk_handle joystick, uint8_t *hats,
+                                              uint32_t *inout_count);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

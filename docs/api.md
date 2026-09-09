@@ -148,6 +148,20 @@ mode switching is not supported.
 specific monitor. Passing `NK_INVALID_HANDLE` leaves fullscreen and lets the
 window manager restore the previous windowed placement.
 
+## Linux joysticks
+
+Include `nativekit_joystick.h` for raw joystick access. The GTK/Linux backend
+discovers evdev devices under `/dev/input`, tracks hotplug with inotify, and
+exposes generation-checked handles through `nk_joystick_list()`. Connection and
+removal produce `NK_EVENT_JOYSTICK_CONNECTED` and
+`NK_EVENT_JOYSTICK_DISCONNECTED`.
+
+The axes, buttons, and hats calls return current raw state. Axes are normalized
+to `[-1, 1]`, and hats use the `NK_JOYSTICK_HAT_*` bit flags. Name and
+SDL-compatible GUID queries use the usual two-call buffer-size pattern.
+Controller mappings and standardized gamepad names are intentionally separate
+from this transport layer.
+
 ## Graphics surfaces
 
 Graphics surfaces are separate resources attached to NativeKit-owned windows.
