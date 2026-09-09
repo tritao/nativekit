@@ -600,6 +600,39 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitHost_nativeSetLifecycle(JNIEnv
                                  static_cast<nk_mobile_lifecycle_state>(state));
 }
 
+JNIEXPORT jobject JNICALL Java_io_nativekit_NativeKitHost_nativePollEvent(JNIEnv *env, jclass) {
+    jobject result = nullptr;
+    nk::core::callback_boundary([&] {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        if (nk_poll_event(&event) != NK_OK || event.kind == NK_EVENT_NONE)
+            return;
+
+        auto event_class = env->FindClass("io/nativekit/NativeKitEvent");
+        auto constructor =
+            event_class ? env->GetMethodID(event_class, "<init>", "(IJIJI[B)V") : nullptr;
+        jbyteArray data = nullptr;
+        if (event.data && event.data_size) {
+            data = env->NewByteArray(static_cast<jsize>(event.data_size));
+            if (data)
+                env->SetByteArrayRegion(data, 0, static_cast<jsize>(event.data_size),
+                                        static_cast<const jbyte *>(event.data));
+        }
+        if (constructor) {
+            result = env->NewObject(
+                event_class, constructor, static_cast<jint>(event.kind),
+                static_cast<jlong>(event.source), static_cast<jint>(event.flags),
+                static_cast<jlong>(event.request_id), static_cast<jint>(event.result), data);
+        }
+        if (data)
+            env->DeleteLocalRef(data);
+        if (event_class)
+            env->DeleteLocalRef(event_class);
+        nk_event_release(&event);
+    });
+    return result;
+}
+
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitHost_nativeDestroy(JNIEnv *, jclass,
                                                                      jlong handle) {
     nk_mobile_host_destroy(static_cast<nk_handle>(handle));

@@ -36,6 +36,14 @@ public final class NativeKitHost implements AutoCloseable {
 
     public void background() { setLifecycle(3); }
 
+    /** Returns the next queued event, or {@code null} when the queue is empty. */
+    public NativeKitEvent pollEvent() {
+        if (handle == 0) {
+            throw new IllegalStateException("host is closed");
+        }
+        return nativePollEvent();
+    }
+
     private void setLifecycle(int state) {
         if (handle != 0) {
             nativeSetLifecycle(handle, state);
@@ -56,5 +64,6 @@ public final class NativeKitHost implements AutoCloseable {
     private static native long nativeCreateWebView(long host, int width, int height,
                                                    String initialUrl);
     private static native void nativeSetLifecycle(long handle, int state);
+    private static native NativeKitEvent nativePollEvent();
     private static native void nativeDestroy(long handle);
 }

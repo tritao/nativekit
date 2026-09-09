@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="io.nativekit.sample.NativeKitTestActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified" />
+    </application>
+</manifest>

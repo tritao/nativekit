@@ -200,7 +200,7 @@ final class NativeKitBridge {
         return value instanceof Long ? (Long)value : 0;
     }
 
-    private static int navigationErrorCategory(int errorCode) {
+    static int navigationErrorCategory(int errorCode) {
         switch (errorCode) {
             case WebViewClient.ERROR_UNSUPPORTED_AUTH_SCHEME:
             case WebViewClient.ERROR_AUTHENTICATION:
