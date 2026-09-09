@@ -206,7 +206,7 @@ int main(void) {
         assert(nk_webview_create(window, &webview_options, &webview) == NK_OK);
         const char webview_html[] =
             "<title>NativeKit title event</title>"
-            "<script>window.webkit.messageHandlers.nativekit.postMessage('nativekit-message')</script>";
+            "<script>window.webkit.messageHandlers.nativekit.postMessage({answer:[42,true,'hello',null]})</script>";
         assert(nk_webview_set_html(webview, webview_html, "https://nativekit.invalid/") == NK_OK);
         nk_request_id eval_request = NK_INVALID_REQUEST_ID;
         assert(nk_webview_eval(webview, "6 * 7", &eval_request) == NK_OK);
@@ -231,8 +231,10 @@ int main(void) {
                      memcmp(event.data, "NativeKit title event", event.data_size) == 0)
                 saw_title = 1;
             else if (event.source == webview && event.kind == NK_EVENT_WEBVIEW_MESSAGE &&
-                     event.data_size == strlen("nativekit-message") &&
-                     memcmp(event.data, "nativekit-message", event.data_size) == 0)
+                     event.result == NK_OK &&
+                     event.data_size == strlen("{\"answer\":[42,true,\"hello\",null]}") &&
+                     memcmp(event.data, "{\"answer\":[42,true,\"hello\",null]}",
+                            event.data_size) == 0)
                 saw_message = 1;
             else if (event.source == webview && event.kind == NK_EVENT_WEBVIEW_EVAL_COMPLETE &&
                      event.request_id == eval_request) {
@@ -245,6 +247,12 @@ int main(void) {
             Sleep(10);
         }
         assert(saw_ready && saw_navigation && saw_title && saw_message && saw_evaluation);
+        nk_request_id invalid_json_request = NK_INVALID_REQUEST_ID;
+        assert(nk_webview_eval(webview, "undefined", &invalid_json_request) == NK_OK);
+        nk_event invalid_json = wait_for_event(
+            NK_EVENT_WEBVIEW_EVAL_COMPLETE, invalid_json_request);
+        assert(invalid_json.source == webview && invalid_json.result != NK_OK);
+        nk_event_release(&invalid_json);
         assert(nk_webview_set_bounds(webview, 4, 5, 300, 200) == NK_OK);
         assert(nk_webview_show(webview, 1) == NK_OK);
         assert(nk_webview_destroy(webview) == NK_OK);

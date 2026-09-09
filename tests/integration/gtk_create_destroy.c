@@ -128,7 +128,7 @@ int main(void) {
     assert(nk_webview_set_html(
                webview,
                "<title>NativeKit</title><script>"
-               "window.webkit.messageHandlers.nativekit.postMessage('hello');"
+               "window.webkit.messageHandlers.nativekit.postMessage({answer:[42,true,'hello',null]});"
                "</script>",
                NULL) == NK_OK);
 
@@ -139,8 +139,10 @@ int main(void) {
         assert(nk_poll_event(&event) == NK_OK);
         if (event.kind == NK_EVENT_WEBVIEW_MESSAGE) {
             assert(event.source == webview);
-            assert(event.data_size == 5);
-            assert(memcmp(event.data, "hello", 5) == 0);
+            const char expected[] = "{\"answer\":[42,true,\"hello\",null]}";
+            assert(event.result == NK_OK);
+            assert(event.data_size == strlen(expected));
+            assert(memcmp(event.data, expected, event.data_size) == 0);
             received_message = 1;
         }
         nk_event_release(&event);
@@ -168,6 +170,12 @@ int main(void) {
         if (!received_result) usleep(10000);
     }
     assert(received_result);
+    nk_request_id invalid_json_request = NK_INVALID_REQUEST_ID;
+    assert(nk_webview_eval(webview, "undefined", &invalid_json_request) == NK_OK);
+    nk_event invalid_json = wait_for_event(NK_EVENT_WEBVIEW_EVAL_COMPLETE, webview);
+    assert(invalid_json.request_id == invalid_json_request);
+    assert(invalid_json.result != NK_OK);
+    nk_event_release(&invalid_json);
 
     nk_webview_options policy_options = webview_options;
     policy_options.flags |= NK_WEBVIEW_NAVIGATION_POLICY;

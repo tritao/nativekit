@@ -120,6 +120,29 @@ std::vector<std::byte> bytes(const char* text) {
     return {first, first + size};
 }
 
+std::string javascript_literal(std::string_view value) {
+    constexpr char hex[] = "0123456789abcdef";
+    std::string result{"\""};
+    result.reserve(value.size() + 2);
+    for (const unsigned char character : value) {
+        if (character == '"' || character == '\\') {
+            result += '\\';
+            result += static_cast<char>(character);
+        } else if (character == '\n') result += "\\n";
+        else if (character == '\r') result += "\\r";
+        else if (character == '\t') result += "\\t";
+        else if (character < 0x20) {
+            result += "\\u00";
+            result += hex[(character >> 4) & 0xf];
+            result += hex[character & 0xf];
+        } else {
+            result += static_cast<char>(character);
+        }
+    }
+    result += '"';
+    return result;
+}
+
 template<typename T>
 std::vector<std::byte> bytes_of(const T& value) {
     const auto* first = reinterpret_cast<const std::byte*>(&value);
@@ -238,11 +261,16 @@ void on_webview_message(WebKitUserContentManager*, WebKitJavascriptResult* resul
     try {
         const auto* resource = static_cast<GtkWebViewResource*>(data);
         JSCValue* value = webkit_javascript_result_get_js_value(result);
-        string = jsc_value_to_string(value);
+        string = jsc_value_to_json(value, 0);
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_MESSAGE;
         event.source = resource->handle;
-        event.data = bytes(string);
+        if (string) {
+            event.data = bytes(string);
+        } else {
+            event.result = NK_ERROR_UNKNOWN;
+            event.data = bytes("JavaScript message is not JSON-serializable");
+        }
         nk::core::push_event(std::move(event));
     } catch (...) {
         /* WebKit callbacks must never allow a C++ exception to escape. */
@@ -960,7 +988,11 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script, nk_reque
         if (!resource) return invalid_handle("WebView");
         const auto request = nk::core::next_request_id();
         auto context = std::make_unique<EvalContext>(EvalContext{handle, request});
-        webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(resource->widget), script, -1,
+        const auto source =
+            "(()=>{const v=(0,eval)(" + javascript_literal(script) +
+            ");const j=JSON.stringify(v);if(j===undefined)throw new TypeError("
+            "'JavaScript result is not JSON-serializable');return j;})()";
+        webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(resource->widget), source.c_str(), -1,
                                             nullptr, nullptr, nullptr, on_eval_complete,
                                             context.release());
         *out_request = request;

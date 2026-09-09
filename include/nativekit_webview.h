@@ -40,9 +40,10 @@ typedef struct nk_webview_options {
  *
  *   window.webkit.messageHandlers.nativekit.postMessage(value)
  *
- * The value's JavaScript string representation is delivered as UTF-8 in an
- * NK_EVENT_WEBVIEW_MESSAGE event. This bridge name is stable across backends;
- * backends that cannot provide it omit NK_CAP_WEBVIEW from their capabilities.
+ * The value is serialized as JSON and delivered as UTF-8 in an
+ * NK_EVENT_WEBVIEW_MESSAGE event. Strings therefore include JSON quotes.
+ * Values unsupported by JSON are rejected by the page bridge or produce an
+ * event with a failing result. This bridge name is stable across backends.
  */
 
 /*
@@ -69,8 +70,10 @@ NK_API nk_result NK_CALL nk_webview_set_html(
 /*
  * Starts JavaScript evaluation. Completion is reported as
  * NK_EVENT_WEBVIEW_EVAL_COMPLETE with the returned request ID. Event data is
- * the UTF-8 string representation of the result, or an error message when the
- * event result is not NK_OK.
+ * UTF-8 JSON for the result, or an error message when the event result is not
+ * NK_OK. Top-level `undefined`, functions, and symbols, plus BigInt values and
+ * cyclic objects, are not JSON-serializable and complete with an error. Normal
+ * JSON.stringify rules apply to unsupported values nested in arrays or objects.
  */
 NK_API nk_result NK_CALL nk_webview_eval(
     nk_handle webview, const char *script, nk_request_id *out_request);

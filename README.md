@@ -35,6 +35,9 @@ Navigation policy is opt-in with `NK_WEBVIEW_NAVIGATION_POLICY`. Proposed
 navigations become request-ID events that callers explicitly allow or
 cancel with `nk_webview_navigation_decide()`.
 
+JavaScript evaluation results and page-to-native messages are compact UTF-8
+JSON on every backend, preserving value types across language boundaries.
+
 The current Linux backend provides NativeKit-owned GTK 3 windows, WebKitGTK
 WebViews, asynchronous native dialogs, shell launching, standard directories,
 locale, desktop appearance, clipboard, and file/text drops. Builds without GTK 3 and WebKitGTK 4.1 retain

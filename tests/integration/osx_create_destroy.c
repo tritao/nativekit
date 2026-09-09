@@ -137,13 +137,22 @@ int main(void) {
     assert(eval_event.source == webview && eval_event.result == NK_OK);
     assert(eval_event.data_size == 2 && memcmp(eval_event.data, "42", 2) == 0);
     nk_event_release(&eval_event);
+    nk_request_id invalid_json_request = NK_INVALID_REQUEST_ID;
+    assert(nk_webview_eval(webview, "undefined", &invalid_json_request) == NK_OK);
+    nk_event invalid_json = wait_for_event(
+        NK_EVENT_WEBVIEW_EVAL_COMPLETE, invalid_json_request);
+    assert(invalid_json.source == webview && invalid_json.result != NK_OK);
+    nk_event_release(&invalid_json);
     nk_request_id message_request = NK_INVALID_REQUEST_ID;
     assert(nk_webview_eval(webview,
-        "window.webkit.messageHandlers.nativekit.postMessage('hello'); true",
+        "window.webkit.messageHandlers.nativekit.postMessage({answer:[42,true,'hello',null]}); true",
         &message_request) == NK_OK);
     nk_event message_event = wait_for_event(NK_EVENT_WEBVIEW_MESSAGE, NK_INVALID_REQUEST_ID);
     assert(message_event.source == webview);
-    assert(message_event.data_size == 5 && memcmp(message_event.data, "hello", 5) == 0);
+    const char expected_message[] = "{\"answer\":[42,true,\"hello\",null]}";
+    assert(message_event.result == NK_OK);
+    assert(message_event.data_size == strlen(expected_message));
+    assert(memcmp(message_event.data, expected_message, message_event.data_size) == 0);
     nk_event_release(&message_event);
     assert(nk_webview_destroy(webview) == NK_OK);
     assert(nk_webview_destroy(webview) == NK_ERROR_INVALID_HANDLE);

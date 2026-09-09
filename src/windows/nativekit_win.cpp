@@ -551,16 +551,24 @@ void emit_webview_text(nk_event_kind kind, nk_handle source, const wchar_t* valu
 
 HRESULT execute_script(const std::shared_ptr<WinWebViewResource>& resource,
                        const std::wstring& script, nk_request_id request) {
-    const auto wrapped = L"String(eval(" + javascript_literal(script) + L"))";
+    const auto wrapped =
+        L"(()=>{const v=(0,eval)(" + javascript_literal(script) +
+        L");const j=JSON.stringify(v);if(j===undefined)throw new TypeError("
+        L"'JavaScript result is not JSON-serializable');return j;})()";
     auto completion = make_callback<ICoreWebView2ExecuteScriptCompletedHandler,
                                     &IID_ICoreWebView2ExecuteScriptCompletedHandler,
                                     HRESULT, LPCWSTR>(
         [handle = resource->handle, request](HRESULT error, LPCWSTR result) -> HRESULT {
             try {
-                const auto decoded = decode_json_string(result);
-                emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
-                                  decoded.c_str(), SUCCEEDED(error) ? NK_OK : NK_ERROR_UNKNOWN,
-                                  0, request);
+                if (FAILED(error)) {
+                    emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
+                                      L"JavaScript evaluation failed", NK_ERROR_UNKNOWN,
+                                      0, request);
+                } else {
+                    const auto decoded = decode_json_string(result);
+                    emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
+                                      decoded.c_str(), NK_OK, 0, request);
+                }
             } catch (...) {
                 emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
                                   L"could not decode JavaScript result",
@@ -703,8 +711,7 @@ void configure_webview(const std::shared_ptr<WinWebViewResource>& resource) {
         [resource](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
             if (!get_webview(resource->handle)) return S_OK;
             LPWSTR value = nullptr;
-            if (FAILED(args->TryGetWebMessageAsString(&value)))
-                args->get_WebMessageAsJson(&value);
+            args->get_WebMessageAsJson(&value);
             emit_webview_text(NK_EVENT_WEBVIEW_MESSAGE, resource->handle, value);
             CoTaskMemFree(value);
             return S_OK;
@@ -727,7 +734,7 @@ void configure_webview(const std::shared_ptr<WinWebViewResource>& resource) {
     if (SUCCEEDED(resource->webview->get_Settings(&settings)))
         settings->put_AreDevToolsEnabled(resource->devtools ? TRUE : FALSE);
     resource->webview->AddScriptToExecuteOnDocumentCreated(
-        LR"JS((()=>{if(!window.webkit)window.webkit={};if(!window.webkit.messageHandlers)window.webkit.messageHandlers={};window.webkit.messageHandlers.nativekit={postMessage:v=>window.chrome.webview.postMessage(String(v))};})();)JS",
+        LR"JS((()=>{if(!window.webkit)window.webkit={};if(!window.webkit.messageHandlers)window.webkit.messageHandlers={};window.webkit.messageHandlers.nativekit={postMessage:v=>window.chrome.webview.postMessage(v)};})();)JS",
         nullptr);
     apply_webview_bounds(resource);
     resource->controller->put_IsVisible(resource->visible ? TRUE : FALSE);

@@ -143,6 +143,27 @@ std::string utf8(NSString* value) {
     return bytes ? std::string(bytes) : std::string();
 }
 
+NSString* javascript_json_wrapper(NSString* source) {
+    NSError* error = nil;
+    NSData* encoded = [NSJSONSerialization dataWithJSONObject:@[source]
+                                                       options:0 error:&error];
+    if (!encoded || error) return nil;
+    NSString* array = [[NSString alloc] initWithData:encoded encoding:NSUTF8StringEncoding];
+    NSString* literal = [array substringWithRange:NSMakeRange(1, array.length - 2)];
+    return [NSString stringWithFormat:
+        @"(()=>{const v=(0,eval)(%@);const j=JSON.stringify(v);"
+         "if(j===undefined)throw new TypeError('JavaScript result is not JSON-serializable');"
+         "return j;})()", literal];
+}
+
+NSString* json_text(id value) {
+    NSError* error = nil;
+    NSData* encoded = [NSJSONSerialization dataWithJSONObject:value
+        options:NSJSONWritingFragmentsAllowed error:&error];
+    if (!encoded || error) return nil;
+    return [[NSString alloc] initWithData:encoded encoding:NSUTF8StringEncoding];
+}
+
 template<typename T>
 std::vector<std::byte> bytes_of(const T& value) {
     const auto* first = reinterpret_cast<const std::byte*>(&value);
@@ -576,9 +597,10 @@ nk_result unsupported() {
     (void)controller;
     auto* resource = static_cast<MacWebViewResource*>(_resource);
     if (!resource) return;
-    NSString* value = [message.body isKindOfClass:[NSString class]]
-        ? (NSString*)message.body : [message.body description];
-    emit_webview_text(NK_EVENT_WEBVIEW_MESSAGE, resource->handle, value);
+    NSString* value = json_text(message.body);
+    emit_webview_text(NK_EVENT_WEBVIEW_MESSAGE, resource->handle,
+                      value ?: @"JavaScript message is not JSON-serializable",
+                      value ? NK_OK : NK_ERROR_UNKNOWN);
 }
 - (void)observeValueForKeyPath:(NSString*)keyPath ofObject:(id)object
                         change:(NSDictionary<NSKeyValueChangeKey,id>*)change
@@ -887,14 +909,17 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
         if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
         NSString* source = string(script);
         if (!source) return fail(NK_ERROR_INVALID_ARGUMENT, "script is null or invalid UTF-8");
+        NSString* wrapped = javascript_json_wrapper(source);
+        if (!wrapped) return fail(NK_ERROR_OUT_OF_MEMORY, "could not encode JavaScript source");
         const auto request = nk::core::next_request_id();
-        [resource->view evaluateJavaScript:source completionHandler:^(id value, NSError* error) {
+        [resource->view evaluateJavaScript:wrapped completionHandler:^(id value, NSError* error) {
             if (error)
                 emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
                                   error.localizedDescription, NK_ERROR_UNKNOWN, 0, request);
             else
                 emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
-                                  value ? [value description] : @"", NK_OK, 0, request);
+                                  [value isKindOfClass:[NSString class]] ? value : @"",
+                                  NK_OK, 0, request);
         }];
         *out_request = request;
         return NK_OK;
