@@ -18,6 +18,7 @@ endif()
 
 add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/api.cpp
+    src/core/dialog.cpp
     src/core/error.cpp
     src/core/event_queue.cpp
     src/core/handle_registry.cpp
@@ -88,7 +89,7 @@ install(TARGETS nativekit EXPORT NativeKitTargets
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY licenses/ DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendor/wxWidgets/docs/licence.txt")
-    install(FILES vendor/wxWidgets/COPYING.LIB
+    install(FILES vendor/wxWidgets/docs/lgpl.txt
         DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit
         RENAME LGPL-2.0.txt)
 endif()

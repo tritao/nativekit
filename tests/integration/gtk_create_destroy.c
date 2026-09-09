@@ -1,4 +1,5 @@
 #include "nativekit.h"
+#include "nativekit_dialog.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
 
@@ -11,8 +12,8 @@ int main(void) {
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
-    assert((nk_get_capabilities() & (NK_CAP_WINDOW | NK_CAP_WEBVIEW)) ==
-           (NK_CAP_WINDOW | NK_CAP_WEBVIEW));
+    assert((nk_get_capabilities() & (NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG)) ==
+           (NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG));
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
 
@@ -78,6 +79,63 @@ int main(void) {
         if (!received_result) usleep(10000);
     }
     assert(received_result);
+
+    nk_file_dialog_options file_options = {0};
+    file_options.struct_size = sizeof(file_options);
+    file_options.title = "NativeKit cancellation test";
+    nk_request_id dialog_request = NK_INVALID_REQUEST_ID;
+    assert(nk_dialog_open_file(window, &file_options, &dialog_request) == NK_OK);
+    assert(dialog_request != NK_INVALID_REQUEST_ID);
+    assert(nk_dialog_cancel(dialog_request) == NK_OK);
+    assert(nk_dialog_cancel(dialog_request) == NK_ERROR_INVALID_REQUEST);
+    int received_dialog = 0;
+    for (int attempt = 0; attempt < 100 && !received_dialog; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_DIALOG_COMPLETE &&
+            event.request_id == dialog_request) {
+            assert(event.flags == NK_DIALOG_OPEN_FILE);
+            assert(event.data_size >= sizeof(nk_dialog_paths));
+            const nk_dialog_paths *paths = (const nk_dialog_paths *)event.data;
+            assert(paths->accepted == 0);
+            assert(paths->path_count == 0);
+            const char *path = NULL;
+            uint32_t path_length = 0;
+            assert(nk_dialog_event_path(&event, 0, &path, &path_length) ==
+                   NK_ERROR_INVALID_ARGUMENT);
+            received_dialog = 1;
+        }
+        nk_event_release(&event);
+    }
+    assert(received_dialog);
+
+    nk_message_dialog_options message_options = {0};
+    message_options.struct_size = sizeof(message_options);
+    message_options.kind = NK_MESSAGE_QUESTION;
+    message_options.buttons = NK_MESSAGE_BUTTON_YES | NK_MESSAGE_BUTTON_NO;
+    message_options.title = "NativeKit message test";
+    message_options.message = "Cancel this dialog";
+    nk_request_id message_request = NK_INVALID_REQUEST_ID;
+    assert(nk_dialog_message(window, &message_options, &message_request) == NK_OK);
+    assert(nk_dialog_cancel(message_request) == NK_OK);
+    int received_message_dialog = 0;
+    for (int attempt = 0; attempt < 100 && !received_message_dialog; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_DIALOG_COMPLETE &&
+            event.request_id == message_request) {
+            assert(event.flags == NK_DIALOG_MESSAGE);
+            assert(event.data_size == sizeof(nk_dialog_message_result));
+            const nk_dialog_message_result *result =
+                (const nk_dialog_message_result *)event.data;
+            assert(result->button == NK_MESSAGE_RESULT_CANCEL);
+            received_message_dialog = 1;
+        }
+        nk_event_release(&event);
+    }
+    assert(received_message_dialog);
 
     /* Destroying a parent invalidates all of its borrowed child handles. */
     assert(nk_window_destroy(window) == NK_OK);

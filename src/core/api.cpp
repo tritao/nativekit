@@ -5,6 +5,7 @@
 #include "core/runtime.hpp"
 
 #include <cstddef>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -16,6 +17,7 @@ std::mutex state_mutex;
 std::unique_ptr<nk::core::EventQueue> event_queue;
 std::thread::id ui_thread;
 nk::core::HandleRegistry handle_registry;
+std::atomic<nk_request_id> next_request{1};
 constexpr std::uint32_t default_queue_capacity = 1024;
 
 bool valid_event_struct(const nk_event* event) {
@@ -48,6 +50,13 @@ nk_result push_event(QueuedEvent event) noexcept {
     } catch (...) {
         return NK_ERROR_OUT_OF_MEMORY;
     }
+}
+
+nk_request_id next_request_id() noexcept {
+    auto request = next_request.fetch_add(1, std::memory_order_relaxed);
+    if (request == NK_INVALID_REQUEST_ID)
+        request = next_request.fetch_add(1, std::memory_order_relaxed);
+    return request;
 }
 
 }

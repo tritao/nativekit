@@ -49,3 +49,11 @@ other kinds preserve their position relative to resize events.
 `nk_get_capabilities()` describes the compiled backend. Callers must still handle
 runtime failures—for example, a Linux build can include GTK support but be unable
 to connect to a display.
+
+## Dialog results
+
+Dialogs never run a nested blocking loop. Starting one returns a request ID and
+completion arrives through `NK_EVENT_DIALOG_COMPLETE`. File and directory results
+begin with `nk_dialog_paths`, followed by a table of 32-bit offsets and NUL-terminated
+UTF-8 paths. Consumers should use `nk_dialog_event_path()` instead of parsing this
+layout directly. Cancellation is a successful completion with `accepted == 0`.

@@ -1,5 +1,6 @@
 #include "nativekit_window.h"
 #include "nativekit_webview.h"
+#include "nativekit_dialog.h"
 
 #include "core/error.hpp"
 #include "core/runtime.hpp"
@@ -33,4 +34,9 @@ nk_result NK_CALL nk_webview_set_bounds(nk_handle, int32_t, int32_t, int32_t, in
 nk_result NK_CALL nk_webview_navigate(nk_handle, const char*) { return unsupported(); }
 nk_result NK_CALL nk_webview_set_html(nk_handle, const char*, const char*) { return unsupported(); }
 nk_result NK_CALL nk_webview_eval(nk_handle, const char*, nk_request_id*) { return unsupported(); }
+nk_result NK_CALL nk_dialog_open_file(nk_handle, const nk_file_dialog_options*, nk_request_id*) { return unsupported(); }
+nk_result NK_CALL nk_dialog_save_file(nk_handle, const nk_file_dialog_options*, nk_request_id*) { return unsupported(); }
+nk_result NK_CALL nk_dialog_select_directory(nk_handle, const nk_file_dialog_options*, nk_request_id*) { return unsupported(); }
+nk_result NK_CALL nk_dialog_message(nk_handle, const nk_message_dialog_options*, nk_request_id*) { return unsupported(); }
+nk_result NK_CALL nk_dialog_cancel(nk_request_id) { return unsupported(); }
 }
