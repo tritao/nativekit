@@ -76,6 +76,11 @@ that cancellation are ignored. Terminal request events may temporarily exceed
 the configured event-queue capacity so they cannot be lost behind ordinary
 notifications.
 
+Each successful `nk_init()` starts a distinct internal runtime generation.
+Asynchronous platform contexts capture that generation, and callbacks from an
+earlier generation are discarded after shutdown or reinitialization. Runtime
+generations are internal and do not alter the public handle or request-ID ABI.
+
 Consecutive pending resize events for the same window are coalesced. Events of
 other kinds preserve their position relative to resize events.
 

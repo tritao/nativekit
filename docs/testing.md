@@ -1,7 +1,10 @@
 # Testing
 
 The normal CTest suite covers the core ABI and the host platform backend. Linux
-GUI tests run under Xvfb when available.
+GUI tests run under Xvfb when available. The public ABI test exercises repeated
+initialization, while the GTK integration test leaves an asynchronous clipboard
+read outstanding across shutdown and verifies that it cannot enter the next
+runtime generation.
 
 ## Windows compatibility smoke tests
 

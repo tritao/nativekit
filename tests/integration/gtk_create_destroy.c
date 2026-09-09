@@ -272,6 +272,18 @@ int main(void) {
     assert(nk_webview_destroy(webview) == NK_ERROR_INVALID_HANDLE);
     assert(nk_window_destroy(window) == NK_ERROR_INVALID_HANDLE);
 
+    nk_request_id stale_clipboard_request = NK_INVALID_REQUEST_ID;
+    assert(nk_clipboard_read_text(&stale_clipboard_request) == NK_OK);
+    nk_shutdown();
+    assert(nk_init(&init) == NK_OK);
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        nk_event stale = {0};
+        stale.struct_size = sizeof(stale);
+        assert(nk_poll_event(&stale) == NK_OK);
+        assert(stale.kind == NK_EVENT_NONE);
+        nk_event_release(&stale);
+        usleep(10000);
+    }
     nk_shutdown();
     return 0;
 }

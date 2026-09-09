@@ -67,6 +67,7 @@ struct MacWebViewResource final : nk::core::Resource {
     nk_handle parent = NK_INVALID_HANDLE;
     bool observing_title = false;
     bool navigation_policy = false;
+    uint64_t generation = 0;
     ~MacWebViewResource() override {
         if (view) {
             if (observing_title) [view removeObserver:delegate forKeyPath:@"title"];
@@ -90,6 +91,7 @@ struct DialogContext {
     __strong NSWindow* parent = nil;
     __strong id dialog = nil;
     std::vector<uint32_t> message_results;
+    uint64_t generation = 0;
 };
 
 std::mutex dialogs_mutex;
@@ -251,7 +253,8 @@ void emit_webview_text(nk_event_kind kind, nk_handle source, NSString* text,
                        nk_result result = NK_OK, uint32_t flags = 0,
                        nk_request_id request = NK_INVALID_REQUEST_ID) noexcept {
     try {
-        if (!webview(source)) return;
+        auto resource = webview(source);
+        if (!resource || !nk::core::is_runtime_generation(resource->generation)) return;
         nk::core::QueuedEvent event;
         event.kind = kind;
         event.source = source;
@@ -348,6 +351,7 @@ void finish_file_dialog(nk_request_id request, NSInteger response,
             context = found->second;
             dialogs.erase(found);
         }
+        if (!nk::core::is_runtime_generation(context->generation)) return;
         const bool accepted = response == NSModalResponseOK;
         std::vector<std::string> paths;
         if (accepted) {
@@ -373,6 +377,7 @@ void finish_message_dialog(nk_request_id request, NSInteger response) noexcept {
             context = found->second;
             dialogs.erase(found);
         }
+        if (!nk::core::is_runtime_generation(context->generation)) return;
         uint32_t result = NK_MESSAGE_RESULT_CANCEL;
         const NSInteger index = response - NSAlertFirstButtonReturn;
         if (index >= 0 && static_cast<std::size_t>(index) < context->message_results.size())
@@ -427,6 +432,7 @@ nk_result start_file_dialog(nk_handle parent_handle,
     }
     auto context = std::make_shared<DialogContext>();
     context->request = nk::core::next_request_id();
+    context->generation = nk::core::runtime_generation();
     context->kind = kind;
     context->parent = parent ? parent->window : nil;
     NSSavePanel* panel = nil;
@@ -809,6 +815,7 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle,
 
         auto resource = std::make_shared<MacWebViewResource>();
         resource->parent = parent_handle;
+        resource->generation = nk::core::runtime_generation();
         resource->content_controller = [WKUserContentController new];
         resource->delegate = [NKWebViewDelegate new];
         [resource->content_controller addScriptMessageHandler:resource->delegate
@@ -931,8 +938,10 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
         NSString* wrapped = javascript_json_wrapper(source);
         if (!wrapped) return fail(NK_ERROR_OUT_OF_MEMORY, "could not encode JavaScript source");
         const auto request = nk::core::next_request_id();
+        const auto generation = nk::core::runtime_generation();
         evaluations.emplace(request, handle);
         [resource->view evaluateJavaScript:wrapped completionHandler:^(id value, NSError* error) {
+            if (!nk::core::is_runtime_generation(generation)) return;
             const auto pending = evaluations.find(request);
             if (pending == evaluations.end() || pending->second != handle) return;
             evaluations.erase(pending);
@@ -997,6 +1006,7 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
             return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale parent window handle");
         auto context = std::make_shared<DialogContext>();
         context->request = nk::core::next_request_id();
+        context->generation = nk::core::runtime_generation();
         context->kind = NK_DIALOG_MESSAGE;
         context->parent = parent ? parent->window : nil;
         NSAlert* alert = [NSAlert new];

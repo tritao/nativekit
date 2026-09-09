@@ -72,5 +72,9 @@ int main(void) {
 
     nk_shutdown();
     assert(nk_poll_event(&event) == NK_ERROR_NOT_INITIALIZED);
+    assert(nk_init(&options) == NK_OK);
+    assert(nk_poll_event(&event) == NK_OK);
+    assert(event.kind == NK_EVENT_NONE);
+    nk_shutdown();
     return 0;
 }

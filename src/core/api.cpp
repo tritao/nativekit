@@ -18,6 +18,8 @@ std::unique_ptr<nk::core::EventQueue> event_queue;
 std::thread::id ui_thread;
 nk::core::HandleRegistry handle_registry;
 std::atomic<nk_request_id> next_request{1};
+std::atomic<std::uint64_t> generation_counter{0};
+std::atomic<std::uint64_t> active_generation{0};
 constexpr std::uint32_t default_queue_capacity = 1024;
 
 bool valid_event_struct(const nk_event* event) {
@@ -59,6 +61,14 @@ nk_request_id next_request_id() noexcept {
     return request;
 }
 
+std::uint64_t runtime_generation() noexcept {
+    return active_generation.load(std::memory_order_acquire);
+}
+
+bool is_runtime_generation(std::uint64_t generation) noexcept {
+    return generation != 0 && generation == runtime_generation();
+}
+
 }
 
 extern "C" {
@@ -85,6 +95,10 @@ nk_result NK_CALL nk_init(const nk_init_options* options) {
             ? default_queue_capacity : options->event_queue_capacity;
         event_queue = std::make_unique<nk::core::EventQueue>(capacity);
         ui_thread = std::this_thread::get_id();
+        auto generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (generation == 0)
+            generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
+        active_generation.store(generation, std::memory_order_release);
         return NK_OK;
     } catch (const std::bad_alloc&) {
         nk::core::set_error("out of memory while initializing NativeKit");
@@ -102,6 +116,7 @@ void NK_CALL nk_shutdown(void) {
         handle_registry.clear();
         event_queue.reset();
         ui_thread = {};
+        active_generation.store(0, std::memory_order_release);
         nk::core::clear_error();
     } catch (...) {
         nk::core::set_error("unexpected exception while shutting down NativeKit");

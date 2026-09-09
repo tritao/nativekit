@@ -43,6 +43,7 @@ struct GtkWindowResource final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
     std::vector<nk_handle> children;
     bool drops_enabled = false;
+    uint64_t generation = 0;
 
     ~GtkWindowResource() override {
         if (window) gtk_widget_destroy(window);
@@ -55,6 +56,7 @@ struct GtkWebViewResource final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle parent = NK_INVALID_HANDLE;
     bool navigation_policy = false;
+    uint64_t generation = 0;
 
     ~GtkWebViewResource() override {
         if (widget) gtk_widget_destroy(widget);
@@ -65,6 +67,7 @@ struct GtkWebViewResource final : nk::core::Resource {
 struct EvalContext {
     nk_handle source;
     nk_request_id request;
+    uint64_t generation;
 };
 
 struct DialogContext {
@@ -73,11 +76,13 @@ struct DialogContext {
     nk_handle parent = NK_INVALID_HANDLE;
     uint32_t kind = 0;
     bool native_dialog = false;
+    uint64_t generation = 0;
 };
 
 struct ClipboardRequest {
     nk_request_id request;
     nk_event_kind event_kind;
+    uint64_t generation;
 };
 
 struct ClipboardFileOwner {
@@ -153,6 +158,7 @@ std::vector<std::byte> bytes_of(const T& value) {
 
 gboolean on_window_delete(GtkWidget*, GdkEvent*, gpointer data) {
     const auto* resource = static_cast<GtkWindowResource*>(data);
+    if (!nk::core::is_runtime_generation(resource->generation)) return TRUE;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_WINDOW_CLOSE;
     event.source = resource->handle;
@@ -163,6 +169,7 @@ gboolean on_window_delete(GtkWidget*, GdkEvent*, gpointer data) {
 gboolean on_window_configure(GtkWidget*, GdkEventConfigure* configure, gpointer data) {
     try {
         const auto* resource = static_cast<GtkWindowResource*>(data);
+        if (!nk::core::is_runtime_generation(resource->generation)) return FALSE;
         const nk_window_resize_event payload{configure->width, configure->height};
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WINDOW_RESIZE;
@@ -176,6 +183,7 @@ gboolean on_window_configure(GtkWidget*, GdkEventConfigure* configure, gpointer 
 void on_window_scale(GtkWidget* widget, GParamSpec*, gpointer data) {
     try {
         const auto* resource = static_cast<GtkWindowResource*>(data);
+        if (!nk::core::is_runtime_generation(resource->generation)) return;
         const nk_window_scale_event payload{
             static_cast<float>(gtk_widget_get_scale_factor(widget))};
         nk::core::QueuedEvent event;
@@ -211,6 +219,7 @@ gboolean on_webview_load_failed(WebKitWebView*, WebKitLoadEvent, const char*,
                                 GError* error, gpointer data) {
     try {
         const auto* resource = static_cast<GtkWebViewResource*>(data);
+        if (!nk::core::is_runtime_generation(resource->generation)) return FALSE;
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_NAVIGATION_FAILED;
         event.source = resource->handle;
@@ -226,6 +235,7 @@ void on_webview_process_terminated(WebKitWebView*,
                                    WebKitWebProcessTerminationReason reason,
                                    gpointer data) {
     const auto* resource = static_cast<GtkWebViewResource*>(data);
+    if (!nk::core::is_runtime_generation(resource->generation)) return;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_WEBVIEW_PROCESS_TERMINATED;
     event.source = resource->handle;
@@ -238,6 +248,7 @@ void on_webview_load(WebKitWebView* view, WebKitLoadEvent load_event, gpointer d
     if (load_event != WEBKIT_LOAD_FINISHED) return;
     try {
         const auto* resource = static_cast<GtkWebViewResource*>(data);
+        if (!nk::core::is_runtime_generation(resource->generation)) return;
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_NAVIGATED;
         event.source = resource->handle;
@@ -249,6 +260,7 @@ void on_webview_load(WebKitWebView* view, WebKitLoadEvent load_event, gpointer d
 void on_webview_title(WebKitWebView* view, GParamSpec*, gpointer data) {
     try {
         const auto* resource = static_cast<GtkWebViewResource*>(data);
+        if (!nk::core::is_runtime_generation(resource->generation)) return;
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_TITLE_CHANGED;
         event.source = resource->handle;
@@ -262,6 +274,7 @@ void on_webview_message(WebKitUserContentManager*, WebKitJavascriptResult* resul
     char* string = nullptr;
     try {
         const auto* resource = static_cast<GtkWebViewResource*>(data);
+        if (!nk::core::is_runtime_generation(resource->generation)) return;
         JSCValue* value = webkit_javascript_result_get_js_value(result);
         string = jsc_value_to_json(value, 0);
         nk::core::QueuedEvent event;
@@ -283,6 +296,7 @@ void on_webview_message(WebKitUserContentManager*, WebKitJavascriptResult* resul
 gboolean on_webview_policy(WebKitWebView*, WebKitPolicyDecision* decision,
                            WebKitPolicyDecisionType type, gpointer data) {
     auto* resource = static_cast<GtkWebViewResource*>(data);
+    if (!nk::core::is_runtime_generation(resource->generation)) return FALSE;
     if (!resource->navigation_policy || type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION)
         return FALSE;
     try {
@@ -329,6 +343,7 @@ void cancel_navigation_decisions(nk_handle source) {
 
 void on_eval_complete(GObject* object, GAsyncResult* result, gpointer data) {
     std::unique_ptr<EvalContext> context(static_cast<EvalContext*>(data));
+    if (!nk::core::is_runtime_generation(context->generation)) return;
     const auto pending = evaluations.find(context->request);
     if (pending == evaluations.end() || pending->second != context->source) return;
     evaluations.erase(pending);
@@ -427,6 +442,7 @@ std::vector<std::byte> string_list_payload(Header header,
 
 void on_clipboard_text(GtkClipboard*, const gchar* text, gpointer data) {
     std::unique_ptr<ClipboardRequest> request(static_cast<ClipboardRequest*>(data));
+    if (!nk::core::is_runtime_generation(request->generation)) return;
     try {
         nk::core::QueuedEvent event;
         event.kind = request->event_kind;
@@ -438,6 +454,7 @@ void on_clipboard_text(GtkClipboard*, const gchar* text, gpointer data) {
 
 void on_clipboard_uris(GtkClipboard*, gchar** uris, gpointer data) {
     std::unique_ptr<ClipboardRequest> request(static_cast<ClipboardRequest*>(data));
+    if (!nk::core::is_runtime_generation(request->generation)) return;
     try {
         std::vector<std::string> paths;
         for (gchar** uri = uris; uri && *uri; ++uri) {
@@ -554,6 +571,10 @@ uint32_t message_result(int response) {
 
 void on_dialog_response(GObject*, int response, gpointer data) {
     auto* context = static_cast<DialogContext*>(data);
+    if (!nk::core::is_runtime_generation(context->generation)) {
+        dispose_dialog(context);
+        return;
+    }
     try {
         if (context->kind == NK_DIALOG_MESSAGE) {
             nk::core::QueuedEvent event;
@@ -639,6 +660,7 @@ nk_result start_file_dialog(nk_handle parent_handle,
     auto context = std::make_unique<DialogContext>();
     context->object = G_OBJECT(chooser);
     context->request = nk::core::next_request_id();
+    context->generation = nk::core::runtime_generation();
     context->parent = parent_handle;
     context->kind = kind;
     context->native_dialog = true;
@@ -774,6 +796,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* 
         *out_window = NK_INVALID_HANDLE;
         if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
         auto resource = std::make_shared<GtkWindowResource>();
+        resource->generation = nk::core::runtime_generation();
         resource->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         g_object_add_weak_pointer(G_OBJECT(resource->window),
                                   reinterpret_cast<gpointer*>(&resource->window));
@@ -907,6 +930,7 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
         auto parent = window(parent_handle);
         if (!parent) return invalid_handle("parent window");
         auto resource = std::make_shared<GtkWebViewResource>();
+        resource->generation = nk::core::runtime_generation();
         resource->content_manager = webkit_user_content_manager_new();
         if (!webkit_user_content_manager_register_script_message_handler(
                 resource->content_manager, "nativekit")) {
@@ -1015,7 +1039,8 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script, nk_reque
         auto resource = webview(handle);
         if (!resource) return invalid_handle("WebView");
         const auto request = nk::core::next_request_id();
-        auto context = std::make_unique<EvalContext>(EvalContext{handle, request});
+        auto context = std::make_unique<EvalContext>(EvalContext{
+            handle, request, nk::core::runtime_generation()});
         const auto source =
             "(()=>{const v=(0,eval)(" + javascript_literal(script) +
             ");const j=JSON.stringify(v);if(j===undefined)throw new TypeError("
@@ -1119,6 +1144,7 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
         auto context = std::make_unique<DialogContext>();
         context->object = G_OBJECT(dialog);
         context->request = nk::core::next_request_id();
+        context->generation = nk::core::runtime_generation();
         context->parent = parent_handle;
         context->kind = NK_DIALOG_MESSAGE;
         dialogs.emplace(context->request, context.get());
@@ -1197,6 +1223,7 @@ nk_result NK_CALL nk_clipboard_read_text(nk_request_id* out_request) {
         auto request = std::make_unique<ClipboardRequest>();
         request->request = nk::core::next_request_id();
         request->event_kind = NK_EVENT_CLIPBOARD_TEXT_COMPLETE;
+        request->generation = nk::core::runtime_generation();
         *out_request = request->request;
         gtk_clipboard_request_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
                                    on_clipboard_text, request.release());
@@ -1216,6 +1243,7 @@ nk_result NK_CALL nk_clipboard_read_files(nk_request_id* out_request) {
         auto request = std::make_unique<ClipboardRequest>();
         request->request = nk::core::next_request_id();
         request->event_kind = NK_EVENT_CLIPBOARD_FILES_COMPLETE;
+        request->generation = nk::core::runtime_generation();
         *out_request = request->request;
         gtk_clipboard_request_uris(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
                                    on_clipboard_uris, request.release());

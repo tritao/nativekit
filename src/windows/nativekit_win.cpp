@@ -64,6 +64,7 @@ struct WinDialogContext {
     std::atomic<bool> canceled{false};
     std::atomic<bool> complete{false};
     std::thread worker;
+    uint64_t generation = 0;
 };
 
 std::mutex dialogs_mutex;
@@ -139,6 +140,7 @@ struct WinWebViewResource final : nk::core::Resource {
     bool ready = false;
     bool navigation_policy = false;
     std::atomic<bool> creation_pending{false};
+    uint64_t generation = 0;
     std::wstring initial_url;
     std::wstring policy_bypass_url;
     std::unordered_set<uint64_t> policy_cancelled_navigation_ids;
@@ -559,8 +561,10 @@ HRESULT execute_script(const std::shared_ptr<WinWebViewResource>& resource,
     auto completion = make_callback<ICoreWebView2ExecuteScriptCompletedHandler,
                                     &IID_ICoreWebView2ExecuteScriptCompletedHandler,
                                     HRESULT, LPCWSTR>(
-        [handle = resource->handle, request](HRESULT error, LPCWSTR result) -> HRESULT {
+        [handle = resource->handle, request,
+         generation = resource->generation](HRESULT error, LPCWSTR result) -> HRESULT {
             try {
+                if (!nk::core::is_runtime_generation(generation)) return S_OK;
                 const auto pending = evaluations.find(request);
                 if (pending == evaluations.end() || pending->second != handle) return S_OK;
                 evaluations.erase(pending);
@@ -650,7 +654,8 @@ void configure_webview(const std::shared_ptr<WinWebViewResource>& resource) {
                                   &IID_ICoreWebView2NavigationStartingEventHandler,
                                   ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs*>(
         [resource](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
-            if (!resource->navigation_policy || !get_webview(resource->handle)) return S_OK;
+            if (!nk::core::is_runtime_generation(resource->generation) ||
+                !resource->navigation_policy || !get_webview(resource->handle)) return S_OK;
             LPWSTR raw_url = nullptr;
             if (FAILED(args->get_Uri(&raw_url))) return S_OK;
             std::wstring url = raw_url ? raw_url : L"";
@@ -700,7 +705,8 @@ void configure_webview(const std::shared_ptr<WinWebViewResource>& resource) {
                                     ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs*>(
         [resource](ICoreWebView2* sender,
                    ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
-            if (!get_webview(resource->handle)) return S_OK;
+            if (!nk::core::is_runtime_generation(resource->generation) ||
+                !get_webview(resource->handle)) return S_OK;
             UINT64 navigation_id = 0;
             if (SUCCEEDED(args->get_NavigationId(&navigation_id)) &&
                 resource->policy_cancelled_navigation_ids.erase(navigation_id))
@@ -726,7 +732,8 @@ void configure_webview(const std::shared_ptr<WinWebViewResource>& resource) {
                                &IID_ICoreWebView2DocumentTitleChangedEventHandler,
                                ICoreWebView2*, IUnknown*>(
         [resource](ICoreWebView2* sender, IUnknown*) -> HRESULT {
-            if (!get_webview(resource->handle)) return S_OK;
+            if (!nk::core::is_runtime_generation(resource->generation) ||
+                !get_webview(resource->handle)) return S_OK;
             LPWSTR value = nullptr;
             sender->get_DocumentTitle(&value);
             emit_webview_text(NK_EVENT_WEBVIEW_TITLE_CHANGED, resource->handle, value);
@@ -738,7 +745,8 @@ void configure_webview(const std::shared_ptr<WinWebViewResource>& resource) {
                                  &IID_ICoreWebView2WebMessageReceivedEventHandler,
                                  ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs*>(
         [resource](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
-            if (!get_webview(resource->handle)) return S_OK;
+            if (!nk::core::is_runtime_generation(resource->generation) ||
+                !get_webview(resource->handle)) return S_OK;
             LPWSTR value = nullptr;
             args->get_WebMessageAsJson(&value);
             emit_webview_text(NK_EVENT_WEBVIEW_MESSAGE, resource->handle, value);
@@ -750,7 +758,8 @@ void configure_webview(const std::shared_ptr<WinWebViewResource>& resource) {
                                  &IID_ICoreWebView2ProcessFailedEventHandler,
                                  ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs*>(
         [resource](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT {
-            if (!get_webview(resource->handle)) return S_OK;
+            if (!nk::core::is_runtime_generation(resource->generation) ||
+                !get_webview(resource->handle)) return S_OK;
             COREWEBVIEW2_PROCESS_FAILED_KIND kind = COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED;
             args->get_ProcessFailedKind(&kind);
             emit_webview_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, resource->handle,
@@ -782,6 +791,10 @@ void begin_webview_creation(const std::shared_ptr<WinWebViewResource>& resource)
         HRESULT, ICoreWebView2Environment*>(
         [resource](HRESULT error, ICoreWebView2Environment* environment) -> HRESULT {
             try {
+            if (!nk::core::is_runtime_generation(resource->generation)) {
+                complete_webview_creation(resource);
+                return S_OK;
+            }
             if (FAILED(error) || !environment || !get_webview(resource->handle)) {
                 fail_webview(resource, L"WebView2 environment creation failed");
                 complete_webview_creation(resource);
@@ -798,6 +811,7 @@ void begin_webview_creation(const std::shared_ptr<WinWebViewResource>& resource)
                         std::shared_ptr<WinWebViewResource> resource;
                         ~Completion() { complete_webview_creation(resource); }
                     } completion{resource};
+                    if (!nk::core::is_runtime_generation(resource->generation)) return S_OK;
                     if (FAILED(controller_error) || !controller || !get_webview(resource->handle)) {
                         fail_webview(resource, L"WebView2 controller creation failed");
                         return S_OK;
@@ -867,6 +881,7 @@ void release(T*& value) {
 void emit_file_completion(const WinDialogContext& context,
                           std::vector<std::string> paths, bool accepted,
                           nk_result result = NK_OK) {
+    if (!nk::core::is_runtime_generation(context.generation)) return;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_DIALOG_COMPLETE;
     event.request_id = context.request;
@@ -960,6 +975,7 @@ void run_file_dialog(const std::shared_ptr<WinDialogContext>& context) noexcept 
     }
     const bool canceled = status == HRESULT_FROM_WIN32(ERROR_CANCELLED) || context->canceled;
     context->complete = true;
+    if (!nk::core::is_runtime_generation(context->generation)) return;
     try {
         emit_file_completion(*context, std::move(paths), accepted && !canceled,
                              (SUCCEEDED(status) || canceled) ? NK_OK : NK_ERROR_UNKNOWN);
@@ -1053,6 +1069,7 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
         context->parent = parent->window;
     }
     context->request = nk::core::next_request_id();
+    context->generation = nk::core::runtime_generation();
     context->kind = kind;
     context->flags = options->flags;
     if (!copy_wide(options->title, context->title) ||
@@ -1362,6 +1379,7 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle,
         }
         auto resource = std::make_shared<WinWebViewResource>();
         resource->parent = parent_handle;
+        resource->generation = nk::core::runtime_generation();
         resource->bounds = {options->x, options->y,
                             coordinate_end(options->x, options->width),
                             coordinate_end(options->y, options->height)};
@@ -1586,6 +1604,7 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
             context->parent = parent->window;
         }
         context->request = nk::core::next_request_id();
+        context->generation = nk::core::runtime_generation();
         context->kind = NK_DIALOG_MESSAGE;
         if (!copy_wide(options->title, context->title) ||
             !copy_wide(options->message, context->message))
