@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_input.h"
 #include "nativekit_mobile.h"
 #include "nativekit_notification.h"
 #include "nativekit_system.h"
@@ -17,6 +18,9 @@ int main(void) {
     assert(nk_api_version() == NK_API_VERSION);
     assert(nk_init(&options) == NK_OK);
     (void)nk_get_capabilities();
+    nk_input_action input_action = NK_INPUT_RELEASE;
+    nk_result input_result = nk_key_get_state(NK_INVALID_HANDLE, NK_KEY_A, &input_action);
+    assert(input_result == NK_ERROR_INVALID_HANDLE || input_result == NK_ERROR_UNSUPPORTED);
     nk_mobile_host_options mobile = {0};
     mobile.struct_size = sizeof(mobile);
     mobile.kind = NK_MOBILE_HOST_ANDROID_VIEW_GROUP;

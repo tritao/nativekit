@@ -6,6 +6,7 @@
 
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_input.h"
 #include "nativekit_notification.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
@@ -26,6 +27,7 @@
 #include <webkit2/webkit2.h>
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cstddef>
 #include <cstring>
@@ -43,16 +45,23 @@ namespace {
 struct GtkWindowResource final : nk::core::Resource {
     GtkWidget *window = nullptr;
     GtkWidget *container = nullptr;
+    GtkIMContext *im_context = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle owner = NK_INVALID_HANDLE;
     std::vector<nk_handle> children;
     std::vector<nk_handle> owned_windows;
     bool drops_enabled = false;
     uint64_t generation = 0;
+    std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
+    std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> buttons{};
+    double pointer_x = 0.0;
+    double pointer_y = 0.0;
 
     ~GtkWindowResource() override {
         if (window)
             gtk_widget_destroy(window);
+        if (im_context)
+            g_object_unref(im_context);
     }
 };
 
@@ -185,6 +194,232 @@ template <typename T> std::vector<std::byte> bytes_of(const T &value) {
     return {first, first + sizeof(value)};
 }
 
+nk_modifiers modifiers(GdkModifierType state) {
+    nk_modifiers result = 0;
+    if (state & GDK_SHIFT_MASK)
+        result |= NK_MOD_SHIFT;
+    if (state & GDK_CONTROL_MASK)
+        result |= NK_MOD_CONTROL;
+    if (state & GDK_MOD1_MASK)
+        result |= NK_MOD_ALT;
+    if (state & GDK_SUPER_MASK)
+        result |= NK_MOD_SUPER;
+    if (state & GDK_LOCK_MASK)
+        result |= NK_MOD_CAPS_LOCK;
+    return result;
+}
+
+nk_key key_from_gdk(guint value) {
+    if (value >= GDK_KEY_a && value <= GDK_KEY_z)
+        return NK_KEY_A + value - GDK_KEY_a;
+    if (value >= GDK_KEY_A && value <= GDK_KEY_Z)
+        return NK_KEY_A + value - GDK_KEY_A;
+    if (value >= GDK_KEY_0 && value <= GDK_KEY_9)
+        return NK_KEY_0 + value - GDK_KEY_0;
+    if (value >= GDK_KEY_F1 && value <= GDK_KEY_F12)
+        return NK_KEY_F1 + value - GDK_KEY_F1;
+    switch (value) {
+    case GDK_KEY_space: return NK_KEY_SPACE;
+    case GDK_KEY_apostrophe: return NK_KEY_APOSTROPHE;
+    case GDK_KEY_comma: return NK_KEY_COMMA;
+    case GDK_KEY_minus: return NK_KEY_MINUS;
+    case GDK_KEY_period: return NK_KEY_PERIOD;
+    case GDK_KEY_slash: return NK_KEY_SLASH;
+    case GDK_KEY_semicolon: return NK_KEY_SEMICOLON;
+    case GDK_KEY_equal: return NK_KEY_EQUAL;
+    case GDK_KEY_bracketleft: return NK_KEY_LEFT_BRACKET;
+    case GDK_KEY_backslash: return NK_KEY_BACKSLASH;
+    case GDK_KEY_bracketright: return NK_KEY_RIGHT_BRACKET;
+    case GDK_KEY_grave: return NK_KEY_GRAVE_ACCENT;
+    case GDK_KEY_Escape: return NK_KEY_ESCAPE;
+    case GDK_KEY_Return:
+    case GDK_KEY_KP_Enter: return NK_KEY_ENTER;
+    case GDK_KEY_Tab:
+    case GDK_KEY_ISO_Left_Tab: return NK_KEY_TAB;
+    case GDK_KEY_BackSpace: return NK_KEY_BACKSPACE;
+    case GDK_KEY_Insert: return NK_KEY_INSERT;
+    case GDK_KEY_Delete: return NK_KEY_DELETE;
+    case GDK_KEY_Right: return NK_KEY_RIGHT;
+    case GDK_KEY_Left: return NK_KEY_LEFT;
+    case GDK_KEY_Down: return NK_KEY_DOWN;
+    case GDK_KEY_Up: return NK_KEY_UP;
+    case GDK_KEY_Page_Up: return NK_KEY_PAGE_UP;
+    case GDK_KEY_Page_Down: return NK_KEY_PAGE_DOWN;
+    case GDK_KEY_Home: return NK_KEY_HOME;
+    case GDK_KEY_End: return NK_KEY_END;
+    case GDK_KEY_Caps_Lock: return NK_KEY_CAPS_LOCK;
+    case GDK_KEY_Scroll_Lock: return NK_KEY_SCROLL_LOCK;
+    case GDK_KEY_Num_Lock: return NK_KEY_NUM_LOCK;
+    case GDK_KEY_Print: return NK_KEY_PRINT_SCREEN;
+    case GDK_KEY_Pause: return NK_KEY_PAUSE;
+    case GDK_KEY_Shift_L: return NK_KEY_LEFT_SHIFT;
+    case GDK_KEY_Control_L: return NK_KEY_LEFT_CONTROL;
+    case GDK_KEY_Alt_L: return NK_KEY_LEFT_ALT;
+    case GDK_KEY_Super_L: return NK_KEY_LEFT_SUPER;
+    case GDK_KEY_Shift_R: return NK_KEY_RIGHT_SHIFT;
+    case GDK_KEY_Control_R: return NK_KEY_RIGHT_CONTROL;
+    case GDK_KEY_Alt_R: return NK_KEY_RIGHT_ALT;
+    case GDK_KEY_Super_R: return NK_KEY_RIGHT_SUPER;
+    case GDK_KEY_Menu: return NK_KEY_MENU;
+    default: return NK_KEY_UNKNOWN;
+    }
+}
+
+nk_pointer_button button_from_gdk(guint button) {
+    switch (button) {
+    case 1: return NK_POINTER_BUTTON_LEFT;
+    case 2: return NK_POINTER_BUTTON_MIDDLE;
+    case 3: return NK_POINTER_BUTTON_RIGHT;
+    case 8: return NK_POINTER_BUTTON_4;
+    case 9: return NK_POINTER_BUTTON_5;
+    default:
+        return button > 0 && button <= NK_POINTER_BUTTON_LAST + 1 ? button - 1
+                                                                  : UINT32_MAX;
+    }
+}
+
+void on_text_commit(GtkIMContext *, gchar *text, gpointer data) {
+    nk::core::callback_boundary([&] {
+        auto *resource = static_cast<GtkWindowResource *>(data);
+        if (!nk::core::is_runtime_generation(resource->generation))
+            return;
+        const gchar *cursor = text;
+        while (cursor && *cursor) {
+            const gunichar codepoint = g_utf8_get_char_validated(cursor, -1);
+            if (codepoint == static_cast<gunichar>(-1) ||
+                codepoint == static_cast<gunichar>(-2))
+                return;
+            const nk_text_input_event payload{codepoint, 0};
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_TEXT_INPUT;
+            event.source = resource->handle;
+            event.data = bytes_of(payload);
+            nk::core::push_event(std::move(event));
+            cursor = g_utf8_next_char(cursor);
+        }
+    });
+}
+
+void on_window_realize(GtkWidget *widget, gpointer data) {
+    auto *resource = static_cast<GtkWindowResource *>(data);
+    if (resource->im_context)
+        gtk_im_context_set_client_window(resource->im_context, gtk_widget_get_window(widget));
+}
+
+gboolean on_input_focus(GtkWidget *, GdkEventFocus *focus, gpointer data) {
+    auto *resource = static_cast<GtkWindowResource *>(data);
+    if (resource->im_context) {
+        if (focus->in)
+            gtk_im_context_focus_in(resource->im_context);
+        else {
+            gtk_im_context_focus_out(resource->im_context);
+            gtk_im_context_reset(resource->im_context);
+        }
+    }
+    return FALSE;
+}
+
+gboolean on_key(GtkWidget *, GdkEventKey *key_event, gpointer data) {
+    gboolean im_handled = FALSE;
+    nk::core::callback_boundary([&] {
+        auto *resource = static_cast<GtkWindowResource *>(data);
+        if (!nk::core::is_runtime_generation(resource->generation))
+            return;
+        const nk_key key = key_from_gdk(key_event->keyval);
+        nk_input_action action = key_event->type == GDK_KEY_RELEASE ? NK_INPUT_RELEASE
+                                                                    : NK_INPUT_PRESS;
+        if (key != NK_KEY_UNKNOWN) {
+            if (action == NK_INPUT_PRESS && resource->keys[key] == NK_INPUT_PRESS)
+                action = NK_INPUT_REPEAT;
+            resource->keys[key] = action == NK_INPUT_RELEASE ? NK_INPUT_RELEASE : NK_INPUT_PRESS;
+        }
+        const nk_key_event payload{key, key_event->hardware_keycode, action,
+                                   modifiers(static_cast<GdkModifierType>(key_event->state))};
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_KEY;
+        event.source = resource->handle;
+        event.data = bytes_of(payload);
+        nk::core::push_event(std::move(event));
+        if (resource->im_context)
+            im_handled = gtk_im_context_filter_keypress(resource->im_context, key_event);
+    });
+    return im_handled;
+}
+
+gboolean on_pointer_move(GtkWidget *, GdkEventMotion *motion, gpointer data) {
+    nk::core::callback_boundary([&] {
+        auto *resource = static_cast<GtkWindowResource *>(data);
+        resource->pointer_x = motion->x;
+        resource->pointer_y = motion->y;
+        const nk_pointer_move_event payload{motion->x, motion->y};
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_POINTER_MOVE;
+        event.source = resource->handle;
+        event.data = bytes_of(payload);
+        nk::core::push_event(std::move(event));
+    });
+    return FALSE;
+}
+
+gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer data) {
+    nk::core::callback_boundary([&] {
+        auto *resource = static_cast<GtkWindowResource *>(data);
+        const auto button = button_from_gdk(button_event->button);
+        if (button == UINT32_MAX)
+            return;
+        const nk_input_action action = button_event->type == GDK_BUTTON_RELEASE
+                                           ? NK_INPUT_RELEASE
+                                           : NK_INPUT_PRESS;
+        resource->buttons[button] = action;
+        resource->pointer_x = button_event->x;
+        resource->pointer_y = button_event->y;
+        const nk_pointer_button_event payload{
+            button, action, modifiers(static_cast<GdkModifierType>(button_event->state)), 0,
+            button_event->x, button_event->y};
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_POINTER_BUTTON;
+        event.source = resource->handle;
+        event.data = bytes_of(payload);
+        nk::core::push_event(std::move(event));
+    });
+    return FALSE;
+}
+
+gboolean on_pointer_scroll(GtkWidget *, GdkEventScroll *scroll, gpointer data) {
+    nk::core::callback_boundary([&] {
+        auto *resource = static_cast<GtkWindowResource *>(data);
+        double x = 0.0;
+        double y = 0.0;
+        if (scroll->direction == GDK_SCROLL_SMOOTH)
+            gdk_event_get_scroll_deltas(reinterpret_cast<GdkEvent *>(scroll), &x, &y);
+        else if (scroll->direction == GDK_SCROLL_UP)
+            y = -1.0;
+        else if (scroll->direction == GDK_SCROLL_DOWN)
+            y = 1.0;
+        else if (scroll->direction == GDK_SCROLL_LEFT)
+            x = -1.0;
+        else if (scroll->direction == GDK_SCROLL_RIGHT)
+            x = 1.0;
+        const nk_pointer_scroll_event payload{x, y};
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_POINTER_SCROLL;
+        event.source = resource->handle;
+        event.data = bytes_of(payload);
+        nk::core::push_event(std::move(event));
+    });
+    return FALSE;
+}
+
+gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer data) {
+    auto *resource = static_cast<GtkWindowResource *>(data);
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_POINTER_ENTER;
+    event.source = resource->handle;
+    event.flags = crossing->type == GDK_ENTER_NOTIFY ? 1u : 0u;
+    nk::core::push_event(std::move(event));
+    return FALSE;
+}
+
 gboolean on_window_delete(GtkWidget *, GdkEvent *, gpointer data) {
     const auto *resource = static_cast<GtkWindowResource *>(data);
     if (!nk::core::is_runtime_generation(resource->generation))
@@ -228,9 +463,37 @@ void on_window_scale(GtkWidget *widget, GParamSpec *, gpointer data) {
 
 gboolean on_window_state(GtkWidget *, GdkEventWindowState *state, gpointer data) {
     nk::core::callback_boundary([&] {
-        const auto *resource = static_cast<GtkWindowResource *>(data);
+        auto *resource = static_cast<GtkWindowResource *>(data);
         if (!nk::core::is_runtime_generation(resource->generation))
             return;
+        if ((state->changed_mask & GDK_WINDOW_STATE_FOCUSED) &&
+            !(state->new_window_state & GDK_WINDOW_STATE_FOCUSED)) {
+            for (nk_key key = 1; key <= NK_KEY_LAST; ++key) {
+                if (resource->keys[key] != NK_INPUT_PRESS)
+                    continue;
+                resource->keys[key] = NK_INPUT_RELEASE;
+                const nk_key_event released{key, 0, NK_INPUT_RELEASE, 0};
+                nk::core::QueuedEvent release_event;
+                release_event.kind = NK_EVENT_KEY;
+                release_event.source = resource->handle;
+                release_event.flags = 1u; /* Synthetic focus-loss release. */
+                release_event.data = bytes_of(released);
+                nk::core::push_event(std::move(release_event));
+            }
+            for (nk_pointer_button button = 0; button <= NK_POINTER_BUTTON_LAST; ++button) {
+                if (resource->buttons[button] != NK_INPUT_PRESS)
+                    continue;
+                resource->buttons[button] = NK_INPUT_RELEASE;
+                const nk_pointer_button_event released{button, NK_INPUT_RELEASE, 0, 0,
+                                                       resource->pointer_x, resource->pointer_y};
+                nk::core::QueuedEvent release_event;
+                release_event.kind = NK_EVENT_POINTER_BUTTON;
+                release_event.source = resource->handle;
+                release_event.flags = 1u;
+                release_event.data = bytes_of(released);
+                nk::core::push_event(std::move(release_event));
+            }
+        }
         nk_window_state payload{sizeof(payload), 0, {0, 0}};
         if (!(state->new_window_state & GDK_WINDOW_STATE_WITHDRAWN))
             payload.flags |= NK_WINDOW_STATE_VISIBLE;
@@ -1024,7 +1287,7 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-           NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION;
+           NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_INPUT;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -1048,6 +1311,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         resource->owner = options->owner;
         resource->generation = nk::core::runtime_generation();
         resource->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+        resource->im_context = gtk_im_multicontext_new();
         g_object_add_weak_pointer(G_OBJECT(resource->window),
                                   reinterpret_cast<gpointer *>(&resource->window));
         resource->container = gtk_fixed_new();
@@ -1077,6 +1341,33 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         g_signal_connect(resource->window, "notify::scale-factor", G_CALLBACK(on_window_scale),
                          resource.get());
         g_signal_connect(resource->window, "window-state-event", G_CALLBACK(on_window_state),
+                         resource.get());
+        g_signal_connect(resource->window, "realize", G_CALLBACK(on_window_realize),
+                         resource.get());
+        g_signal_connect(resource->window, "focus-in-event", G_CALLBACK(on_input_focus),
+                         resource.get());
+        g_signal_connect(resource->window, "focus-out-event", G_CALLBACK(on_input_focus),
+                         resource.get());
+        g_signal_connect(resource->im_context, "commit", G_CALLBACK(on_text_commit),
+                         resource.get());
+        gtk_widget_add_events(resource->window,
+                              GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK |
+                                  GDK_POINTER_MOTION_MASK | GDK_BUTTON_PRESS_MASK |
+                                  GDK_BUTTON_RELEASE_MASK | GDK_SCROLL_MASK |
+                                  GDK_ENTER_NOTIFY_MASK | GDK_LEAVE_NOTIFY_MASK);
+        g_signal_connect(resource->window, "key-press-event", G_CALLBACK(on_key), resource.get());
+        g_signal_connect(resource->window, "key-release-event", G_CALLBACK(on_key), resource.get());
+        g_signal_connect(resource->window, "motion-notify-event", G_CALLBACK(on_pointer_move),
+                         resource.get());
+        g_signal_connect(resource->window, "button-press-event", G_CALLBACK(on_pointer_button),
+                         resource.get());
+        g_signal_connect(resource->window, "button-release-event", G_CALLBACK(on_pointer_button),
+                         resource.get());
+        g_signal_connect(resource->window, "scroll-event", G_CALLBACK(on_pointer_scroll),
+                         resource.get());
+        g_signal_connect(resource->window, "enter-notify-event", G_CALLBACK(on_pointer_crossing),
+                         resource.get());
+        g_signal_connect(resource->window, "leave-notify-event", G_CALLBACK(on_pointer_crossing),
                          resource.get());
         if ((options->flags & NK_WINDOW_HIDDEN) == 0)
             gtk_widget_show_all(resource->window);
@@ -1180,6 +1471,44 @@ nk_result NK_CALL nk_window_get_state(nk_handle handle, nk_window_state *out) {
         if (state & GDK_WINDOW_STATE_FULLSCREEN)
             out->flags |= NK_WINDOW_STATE_FULLSCREEN;
     }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_key_get_state(nk_handle handle, nk_key key, nk_input_action *out_action) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_action || key == NK_KEY_UNKNOWN || key > NK_KEY_LAST)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid key state query");
+    auto resource = window(handle);
+    if (!resource)
+        return invalid_handle("window");
+    *out_action = resource->keys[key];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_pointer_button_get_state(nk_handle handle, nk_pointer_button button,
+                                               nk_input_action *out_action) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_action || button > NK_POINTER_BUTTON_LAST)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid pointer button state query");
+    auto resource = window(handle);
+    if (!resource)
+        return invalid_handle("window");
+    *out_action = resource->buttons[button];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_pointer_get_position(nk_handle handle, double *out_x, double *out_y) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_x || !out_y)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "pointer position outputs must not be null");
+    auto resource = window(handle);
+    if (!resource)
+        return invalid_handle("window");
+    *out_x = resource->pointer_x;
+    *out_y = resource->pointer_y;
     return NK_OK;
 }
 

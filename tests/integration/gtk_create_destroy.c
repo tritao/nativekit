@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_input.h"
 #include "nativekit_notification.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
@@ -32,7 +33,8 @@ int main(void) {
     assert(nk_init(&init) == NK_OK);
     const nk_capabilities expected = NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG |
                                      NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
-                                     NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION;
+                                     NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
+                                     NK_CAP_INPUT;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
@@ -62,6 +64,15 @@ int main(void) {
     nk_window_state state = {0};
     state.struct_size = sizeof(state);
     assert(nk_window_get_state(window, &state) == NK_OK);
+    nk_input_action input_action = NK_INPUT_PRESS;
+    assert(nk_key_get_state(window, NK_KEY_A, &input_action) == NK_OK);
+    assert(input_action == NK_INPUT_RELEASE);
+    assert(nk_pointer_button_get_state(window, NK_POINTER_BUTTON_LEFT, &input_action) == NK_OK);
+    assert(input_action == NK_INPUT_RELEASE);
+    double pointer_x = -1.0;
+    double pointer_y = -1.0;
+    assert(nk_pointer_get_position(window, &pointer_x, &pointer_y) == NK_OK);
+    assert(pointer_x == 0.0 && pointer_y == 0.0);
     nk_window_size_limits limits = {0};
     limits.struct_size = sizeof(limits);
     limits.min_width = 320;

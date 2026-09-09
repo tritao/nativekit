@@ -73,6 +73,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/error.cpp
     src/core/event_queue.cpp
     src/core/handle_registry.cpp
+    src/core/input.cpp
     src/core/mobile.cpp
 )
 add_library(NativeKit::nativekit ALIAS nativekit)

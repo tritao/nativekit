@@ -88,5 +88,18 @@ int main() {
     assert(event.data_size == sizeof(latest_size));
     assert(std::memcmp(event.data, &latest_size, sizeof(latest_size)) == 0);
     nk_event_release(&event);
+
+    nk::core::EventQueue motion_queue(1);
+    nk::core::QueuedEvent first_motion;
+    first_motion.kind = NK_EVENT_POINTER_MOVE;
+    first_motion.source = first;
+    nk::core::QueuedEvent latest_motion = first_motion;
+    assert(motion_queue.push(std::move(first_motion)) == NK_OK);
+    assert(motion_queue.push(std::move(latest_motion)) == NK_OK);
+    event = {};
+    event.struct_size = sizeof(event);
+    assert(motion_queue.poll(event) == NK_OK);
+    assert(event.kind == NK_EVENT_POINTER_MOVE);
+    nk_event_release(&event);
     return 0;
 }

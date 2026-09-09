@@ -91,9 +91,25 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_NOTIFICATION_DISMISSED` | none | notification ID | empty; platform reason may be in `flags` |
 | `NK_EVENT_NOTIFICATION_FAILED` | none | notification ID | diagnostic text |
 | `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED` | mobile host | none | `nk_mobile_host_geometry` |
+| `NK_EVENT_KEY` | window | none | `nk_key_event` |
+| `NK_EVENT_TEXT_INPUT` | window | none | `nk_text_input_event` |
+| `NK_EVENT_POINTER_MOVE` | window | none | `nk_pointer_move_event` |
+| `NK_EVENT_POINTER_BUTTON` | window | none | `nk_pointer_button_event` |
+| `NK_EVENT_POINTER_SCROLL` | window | none | `nk_pointer_scroll_event` |
+| `NK_EVENT_POINTER_ENTER` | window | none | empty; `flags` is one on enter and zero on leave |
 
 A close event is a request: the window remains alive until the application calls
 `nk_window_destroy()`.
+
+Keyboard events report a normalized key and the platform scancode separately.
+Text input is delivered as Unicode code points and is distinct from physical key
+transitions. Pointer coordinates are logical pixels relative to the window
+content. Consecutive pointer-move events may be coalesced; key and button
+transitions are never coalesced.
+
+The GTK backend routes key events through a per-window input-method context, so
+dead-key composition, active keyboard layouts, and IME committed text are
+reported through `NK_EVENT_TEXT_INPUT`.
 
 A WebView created with `NK_WEBVIEW_NAVIGATION_POLICY` pauses each navigation
 proposal exposed by the native backend and emits
