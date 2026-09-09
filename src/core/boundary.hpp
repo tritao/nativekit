@@ -31,4 +31,13 @@ void callback_boundary(Function&& function) noexcept {
     }
 }
 
+template<typename Result, typename Function>
+Result callback_boundary_or(Result fallback, Function&& function) noexcept {
+    try {
+        return std::forward<Function>(function)();
+    } catch (...) {
+        return fallback;
+    }
+}
+
 } // namespace nk::core

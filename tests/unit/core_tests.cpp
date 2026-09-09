@@ -26,6 +26,10 @@ int main() {
         throw std::runtime_error("test");
     });
     assert(callback_returned);
+    assert(!nk::core::callback_boundary_or(false, []() -> bool {
+        throw std::runtime_error("test");
+    }));
+    assert(nk::core::callback_boundary_or(false, [] { return true; }));
 
     nk::core::HandleRegistry handles;
     const auto first = handles.insert(nk::core::ResourceType::window, std::make_shared<Dummy>());

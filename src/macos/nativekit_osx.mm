@@ -13,6 +13,7 @@
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
 
+#include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/runtime.hpp"
 
@@ -205,7 +206,7 @@ NSArray<NSURL*>* pasteboard_file_urls(NSPasteboard* pasteboard) {
 }
 
 bool emit_drop(MacWindowResource& resource, id<NSDraggingInfo> information) noexcept {
-    try {
+    return nk::core::callback_boundary_or(false, [&]() -> bool {
         NSPasteboard* pasteboard = information.draggingPasteboard;
         NSArray<NSURL*>* urls = pasteboard_file_urls(pasteboard);
         std::vector<std::string> items;
@@ -234,9 +235,7 @@ bool emit_drop(MacWindowResource& resource, id<NSDraggingInfo> information) noex
             static_cast<uint32_t>(items.size()), 0};
         event.data = string_list_payload(header, items, &nk_drop_data::strings_offset);
         return nk::core::push_event(std::move(event)) == NK_OK;
-    } catch (...) {
-        return false;
-    }
+    });
 }
 
 std::shared_ptr<MacWindowResource> window(nk_handle handle) {
@@ -252,7 +251,7 @@ std::shared_ptr<MacWebViewResource> webview(nk_handle handle) {
 void emit_webview_text(nk_event_kind kind, nk_handle source, NSString* text,
                        nk_result result = NK_OK, uint32_t flags = 0,
                        nk_request_id request = NK_INVALID_REQUEST_ID) noexcept {
-    try {
+    nk::core::callback_boundary([&] {
         auto resource = webview(source);
         if (!resource || !nk::core::is_runtime_generation(resource->generation)) return;
         nk::core::QueuedEvent event;
@@ -263,7 +262,7 @@ void emit_webview_text(nk_event_kind kind, nk_handle source, NSString* text,
         event.request_id = request;
         event.data = text_bytes(utf8(text));
         nk::core::push_event(std::move(event));
-    } catch (...) {}
+    });
 }
 
 void cancel_navigation_decisions(nk_handle source) {
@@ -342,7 +341,7 @@ std::vector<std::byte> dialog_paths_payload(const std::vector<std::string>& path
 
 void finish_file_dialog(nk_request_id request, NSInteger response,
                         NSArray<NSURL*>* urls) noexcept {
-    try {
+    nk::core::callback_boundary([&] {
         std::shared_ptr<DialogContext> context;
         {
             std::lock_guard lock(dialogs_mutex);
@@ -364,11 +363,11 @@ void finish_file_dialog(nk_request_id request, NSInteger response,
         event.data_count = static_cast<uint32_t>(paths.size());
         event.data = dialog_paths_payload(paths, accepted);
         nk::core::push_event(std::move(event));
-    } catch (...) {}
+    });
 }
 
 void finish_message_dialog(nk_request_id request, NSInteger response) noexcept {
-    try {
+    nk::core::callback_boundary([&] {
         std::shared_ptr<DialogContext> context;
         {
             std::lock_guard lock(dialogs_mutex);
@@ -388,7 +387,7 @@ void finish_message_dialog(nk_request_id request, NSInteger response) noexcept {
         event.flags = NK_DIALOG_MESSAGE;
         event.data = bytes_of(nk_dialog_message_result{result});
         nk::core::push_event(std::move(event));
-    } catch (...) {}
+    });
 }
 
 void configure_file_panel(NSSavePanel* panel, const nk_file_dialog_options* options) {
@@ -569,8 +568,11 @@ nk_result unsupported() {
         decisionHandler(WKNavigationActionPolicyAllow);
         return;
     }
-    try {
-        const auto request = nk::core::next_request_id();
+    bool completed = false;
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    bool inserted = false;
+    nk::core::callback_boundary([&] {
+        request = nk::core::next_request_id();
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_NAVIGATION_REQUEST;
         event.source = resource->handle;
@@ -578,12 +580,18 @@ nk_result unsupported() {
         event.data = text_bytes(utf8(action.request.URL.absoluteString));
         navigation_decisions.emplace(
             request, MacNavigationDecision{resource->handle, [decisionHandler copy]});
+        inserted = true;
         if (nk::core::push_event(std::move(event)) != NK_OK) {
             navigation_decisions.erase(request);
+            inserted = false;
             decisionHandler(WKNavigationActionPolicyAllow);
+            completed = true;
             return;
         }
-    } catch (...) {
+        completed = true;
+    });
+    if (!completed) {
+        if (inserted) navigation_decisions.erase(request);
         decisionHandler(WKNavigationActionPolicyAllow);
     }
 }
@@ -677,7 +685,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
 
 nk_result NK_CALL nk_window_create(const nk_window_options* options,
                                    nk_handle* out_window) {
-    try {
+    return nk::core::result_boundary("unexpected error while creating window", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!options || options->struct_size < sizeof(*options) || !out_window ||
             options->width <= 0 || options->height <= 0)
@@ -714,11 +722,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options,
         if (!(options->flags & NK_WINDOW_HIDDEN)) [resource->window makeKeyAndOrderFront:nil];
         *out_window = resource->handle;
         return NK_OK;
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while creating window");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while creating window");
-    }
+    });
 }
 
 nk_result NK_CALL nk_window_destroy(nk_handle handle) {
@@ -796,7 +800,7 @@ nk_result NK_CALL nk_window_wrap_native(const nk_native_window*, nk_handle*) { r
 nk_result NK_CALL nk_webview_create(nk_handle parent_handle,
                                     const nk_webview_options* options,
                                     nk_handle* out_webview) {
-    try {
+    return nk::core::result_boundary("unexpected error while creating WebView", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!options || options->struct_size < sizeof(*options) || !out_webview ||
             options->width <= 0 || options->height <= 0)
@@ -847,11 +851,7 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle,
         if (initial_url)
             [resource->view loadRequest:[NSURLRequest requestWithURL:initial_url]];
         return NK_OK;
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while creating WebView");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while creating WebView");
-    }
+    });
 }
 
 nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
@@ -927,7 +927,7 @@ nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char* html,
 
 nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
                                   nk_request_id* out_request) {
-    try {
+    return nk::core::result_boundary("unexpected error while evaluating JavaScript", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "evaluation request output is null");
         *out_request = NK_INVALID_REQUEST_ID;
@@ -955,11 +955,7 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
         }];
         *out_request = request;
         return NK_OK;
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while evaluating JavaScript");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while evaluating JavaScript");
-    }
+    });
 }
 
 nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t allow) {
@@ -976,26 +972,29 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t a
 nk_result NK_CALL nk_dialog_open_file(nk_handle parent,
                                       const nk_file_dialog_options* options,
                                       nk_request_id* request) {
-    try { return start_file_dialog(parent, options, request, NK_DIALOG_OPEN_FILE); }
-    catch (...) { return fail(NK_ERROR_OUT_OF_MEMORY, "could not start open dialog"); }
+    return nk::core::result_boundary("unexpected error while opening file dialog", [&]() -> nk_result {
+        return start_file_dialog(parent, options, request, NK_DIALOG_OPEN_FILE);
+    });
 }
 nk_result NK_CALL nk_dialog_save_file(nk_handle parent,
                                       const nk_file_dialog_options* options,
                                       nk_request_id* request) {
-    try { return start_file_dialog(parent, options, request, NK_DIALOG_SAVE_FILE); }
-    catch (...) { return fail(NK_ERROR_OUT_OF_MEMORY, "could not start save dialog"); }
+    return nk::core::result_boundary("unexpected error while opening save dialog", [&]() -> nk_result {
+        return start_file_dialog(parent, options, request, NK_DIALOG_SAVE_FILE);
+    });
 }
 nk_result NK_CALL nk_dialog_select_directory(nk_handle parent,
                                              const nk_file_dialog_options* options,
                                              nk_request_id* request) {
-    try { return start_file_dialog(parent, options, request, NK_DIALOG_SELECT_DIRECTORY); }
-    catch (...) { return fail(NK_ERROR_OUT_OF_MEMORY, "could not start directory dialog"); }
+    return nk::core::result_boundary("unexpected error while opening directory dialog", [&]() -> nk_result {
+        return start_file_dialog(parent, options, request, NK_DIALOG_SELECT_DIRECTORY);
+    });
 }
 
 nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
                                     const nk_message_dialog_options* options,
                                     nk_request_id* out_request) {
-    try {
+    return nk::core::result_boundary("unexpected error while opening message dialog", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!options || options->struct_size < sizeof(*options) || !options->message || !out_request)
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid message dialog options");
@@ -1046,9 +1045,7 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
         }
         *out_request = request;
         return NK_OK;
-    } catch (...) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "could not start message dialog");
-    }
+    });
 }
 
 nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
@@ -1135,7 +1132,7 @@ nk_result NK_CALL nk_clipboard_set_text(const char* text) {
 }
 
 nk_result NK_CALL nk_clipboard_set_files(const char* const* paths, uint32_t path_count) {
-    try {
+    return nk::core::result_boundary("unexpected error while writing clipboard files", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!paths || !path_count)
             return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard file list must not be empty");
@@ -1153,15 +1150,11 @@ nk_result NK_CALL nk_clipboard_set_files(const char* const* paths, uint32_t path
         [pasteboard clearContents];
         return [pasteboard writeObjects:urls] ? NK_OK
             : fail(NK_ERROR_UNKNOWN, "macOS rejected clipboard files");
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while writing clipboard files");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while writing clipboard files");
-    }
+    });
 }
 
 nk_result NK_CALL nk_clipboard_read_text(nk_request_id* out_request) {
-    try {
+    return nk::core::result_boundary("unexpected error while reading clipboard text", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
         *out_request = NK_INVALID_REQUEST_ID;
@@ -1175,15 +1168,11 @@ nk_result NK_CALL nk_clipboard_read_text(nk_request_id* out_request) {
         if (result != NK_OK) return fail(result, "could not queue clipboard text result");
         *out_request = request;
         return NK_OK;
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading clipboard text");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading clipboard text");
-    }
+    });
 }
 
 nk_result NK_CALL nk_clipboard_read_files(nk_request_id* out_request) {
-    try {
+    return nk::core::result_boundary("unexpected error while reading clipboard files", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
         *out_request = NK_INVALID_REQUEST_ID;
@@ -1204,11 +1193,7 @@ nk_result NK_CALL nk_clipboard_read_files(nk_request_id* out_request) {
         if (result != NK_OK) return fail(result, "could not queue clipboard file result");
         *out_request = request;
         return NK_OK;
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading clipboard files");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading clipboard files");
-    }
+    });
 }
 
 nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, uint32_t enabled) {

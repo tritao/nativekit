@@ -10,6 +10,7 @@
 #include "nativekit_clipboard.h"
 #include "nativekit_system.h"
 
+#include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/runtime.hpp"
 
@@ -167,21 +168,21 @@ gboolean on_window_delete(GtkWidget*, GdkEvent*, gpointer data) {
 }
 
 gboolean on_window_configure(GtkWidget*, GdkEventConfigure* configure, gpointer data) {
-    try {
+    nk::core::callback_boundary([&] {
         const auto* resource = static_cast<GtkWindowResource*>(data);
-        if (!nk::core::is_runtime_generation(resource->generation)) return FALSE;
+        if (!nk::core::is_runtime_generation(resource->generation)) return;
         const nk_window_resize_event payload{configure->width, configure->height};
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WINDOW_RESIZE;
         event.source = resource->handle;
         event.data = bytes_of(payload);
         nk::core::push_event(std::move(event));
-    } catch (...) {}
+    });
     return FALSE;
 }
 
 void on_window_scale(GtkWidget* widget, GParamSpec*, gpointer data) {
-    try {
+    nk::core::callback_boundary([&] {
         const auto* resource = static_cast<GtkWindowResource*>(data);
         if (!nk::core::is_runtime_generation(resource->generation)) return;
         const nk_window_scale_event payload{
@@ -191,7 +192,7 @@ void on_window_scale(GtkWidget* widget, GParamSpec*, gpointer data) {
         event.source = resource->handle;
         event.data = bytes_of(payload);
         nk::core::push_event(std::move(event));
-    } catch (...) {}
+    });
 }
 
 uint32_t navigation_error_category(const GError* error) {
@@ -217,9 +218,9 @@ uint32_t navigation_error_category(const GError* error) {
 
 gboolean on_webview_load_failed(WebKitWebView*, WebKitLoadEvent, const char*,
                                 GError* error, gpointer data) {
-    try {
+    nk::core::callback_boundary([&] {
         const auto* resource = static_cast<GtkWebViewResource*>(data);
-        if (!nk::core::is_runtime_generation(resource->generation)) return FALSE;
+        if (!nk::core::is_runtime_generation(resource->generation)) return;
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_NAVIGATION_FAILED;
         event.source = resource->handle;
@@ -227,7 +228,7 @@ gboolean on_webview_load_failed(WebKitWebView*, WebKitLoadEvent, const char*,
         event.flags = navigation_error_category(error);
         event.data = bytes(error->message);
         nk::core::push_event(std::move(event));
-    } catch (...) {}
+    });
     return FALSE;
 }
 
@@ -246,7 +247,7 @@ void on_webview_process_terminated(WebKitWebView*,
 
 void on_webview_load(WebKitWebView* view, WebKitLoadEvent load_event, gpointer data) {
     if (load_event != WEBKIT_LOAD_FINISHED) return;
-    try {
+    nk::core::callback_boundary([&] {
         const auto* resource = static_cast<GtkWebViewResource*>(data);
         if (!nk::core::is_runtime_generation(resource->generation)) return;
         nk::core::QueuedEvent event;
@@ -254,11 +255,11 @@ void on_webview_load(WebKitWebView* view, WebKitLoadEvent load_event, gpointer d
         event.source = resource->handle;
         event.data = bytes(webkit_web_view_get_uri(view));
         nk::core::push_event(std::move(event));
-    } catch (...) {}
+    });
 }
 
 void on_webview_title(WebKitWebView* view, GParamSpec*, gpointer data) {
-    try {
+    nk::core::callback_boundary([&] {
         const auto* resource = static_cast<GtkWebViewResource*>(data);
         if (!nk::core::is_runtime_generation(resource->generation)) return;
         nk::core::QueuedEvent event;
@@ -266,13 +267,13 @@ void on_webview_title(WebKitWebView* view, GParamSpec*, gpointer data) {
         event.source = resource->handle;
         event.data = bytes(webkit_web_view_get_title(view));
         nk::core::push_event(std::move(event));
-    } catch (...) {}
+    });
 }
 
 void on_webview_message(WebKitUserContentManager*, WebKitJavascriptResult* result,
                         gpointer data) {
     char* string = nullptr;
-    try {
+    nk::core::callback_boundary([&] {
         const auto* resource = static_cast<GtkWebViewResource*>(data);
         if (!nk::core::is_runtime_generation(resource->generation)) return;
         JSCValue* value = webkit_javascript_result_get_js_value(result);
@@ -287,9 +288,7 @@ void on_webview_message(WebKitUserContentManager*, WebKitJavascriptResult* resul
             event.data = bytes("JavaScript message is not JSON-serializable");
         }
         nk::core::push_event(std::move(event));
-    } catch (...) {
-        /* WebKit callbacks must never allow a C++ exception to escape. */
-    }
+    });
     g_free(string);
 }
 
@@ -299,34 +298,39 @@ gboolean on_webview_policy(WebKitWebView*, WebKitPolicyDecision* decision,
     if (!nk::core::is_runtime_generation(resource->generation)) return FALSE;
     if (!resource->navigation_policy || type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION)
         return FALSE;
-    try {
+    bool completed = false;
+    nk_request_id request_id = NK_INVALID_REQUEST_ID;
+    WebKitPolicyDecision* retained = nullptr;
+    bool inserted = false;
+    nk::core::callback_boundary([&] {
         auto* navigation = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
         auto* action = webkit_navigation_policy_decision_get_navigation_action(navigation);
         auto* request = webkit_navigation_action_get_request(action);
-        const auto request_id = nk::core::next_request_id();
+        request_id = nk::core::next_request_id();
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_NAVIGATION_REQUEST;
         event.source = resource->handle;
         event.request_id = request_id;
         event.data = bytes(webkit_uri_request_get_uri(request));
-        auto* retained = WEBKIT_POLICY_DECISION(g_object_ref(decision));
-        try {
-            navigation_decisions.emplace(
-                request_id, NavigationDecision{resource->handle, retained});
-        } catch (...) {
-            g_object_unref(retained);
-            throw;
-        }
+        retained = WEBKIT_POLICY_DECISION(g_object_ref(decision));
+        navigation_decisions.emplace(
+            request_id, NavigationDecision{resource->handle, retained});
+        inserted = true;
         if (nk::core::push_event(std::move(event)) != NK_OK) {
             navigation_decisions.erase(request_id);
+            inserted = false;
             webkit_policy_decision_use(decision);
-            g_object_unref(decision);
+            g_object_unref(retained);
+            retained = nullptr;
         }
-        return TRUE;
-    } catch (...) {
+        completed = true;
+    });
+    if (!completed) {
+        if (inserted) navigation_decisions.erase(request_id);
+        if (retained) g_object_unref(retained);
         webkit_policy_decision_use(decision);
-        return TRUE;
     }
+    return TRUE;
 }
 
 void cancel_navigation_decisions(nk_handle source) {
@@ -352,7 +356,7 @@ void on_eval_complete(GObject* object, GAsyncResult* result, gpointer data) {
     JSCValue* value = webkit_web_view_evaluate_javascript_finish(
         WEBKIT_WEB_VIEW(object), result, &error);
     char* string = nullptr;
-    try {
+    nk::core::callback_boundary([&] {
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_EVAL_COMPLETE;
         event.source = context->source;
@@ -365,9 +369,7 @@ void on_eval_complete(GObject* object, GAsyncResult* result, gpointer data) {
             event.data = bytes(string);
         }
         nk::core::push_event(std::move(event));
-    } catch (...) {
-        /* GLib callbacks must never allow a C++ exception to escape. */
-    }
+    });
     g_free(string);
     if (error) g_error_free(error);
     if (value) g_object_unref(value);
@@ -443,19 +445,19 @@ std::vector<std::byte> string_list_payload(Header header,
 void on_clipboard_text(GtkClipboard*, const gchar* text, gpointer data) {
     std::unique_ptr<ClipboardRequest> request(static_cast<ClipboardRequest*>(data));
     if (!nk::core::is_runtime_generation(request->generation)) return;
-    try {
+    nk::core::callback_boundary([&] {
         nk::core::QueuedEvent event;
         event.kind = request->event_kind;
         event.request_id = request->request;
         event.data = bytes(text);
         nk::core::push_event(std::move(event));
-    } catch (...) {}
+    });
 }
 
 void on_clipboard_uris(GtkClipboard*, gchar** uris, gpointer data) {
     std::unique_ptr<ClipboardRequest> request(static_cast<ClipboardRequest*>(data));
     if (!nk::core::is_runtime_generation(request->generation)) return;
-    try {
+    nk::core::callback_boundary([&] {
         std::vector<std::string> paths;
         for (gchar** uri = uris; uri && *uri; ++uri) {
             char* path = g_filename_from_uri(*uri, nullptr, nullptr);
@@ -471,7 +473,7 @@ void on_clipboard_uris(GtkClipboard*, gchar** uris, gpointer data) {
         nk_clipboard_files header{static_cast<uint32_t>(paths.size()), 0};
         event.data = string_list_payload(header, paths, &nk_clipboard_files::strings_offset);
         nk::core::push_event(std::move(event));
-    } catch (...) {}
+    });
 }
 
 void provide_clipboard_files(GtkClipboard*, GtkSelectionData* selection,
@@ -490,7 +492,8 @@ enum { drop_target_uri = 1, drop_target_text = 2 };
 void on_drag_data_received(GtkWidget*, GdkDragContext* context, gint x, gint y,
                            GtkSelectionData* selection, guint info, guint time,
                            gpointer data) {
-    try {
+    bool completed = false;
+    nk::core::callback_boundary([&] {
         const auto* resource = static_cast<GtkWindowResource*>(data);
         std::vector<std::string> items;
         nk_event_kind kind = NK_EVENT_DROP_TEXT;
@@ -522,9 +525,9 @@ void on_drag_data_received(GtkWidget*, GdkDragContext* context, gint x, gint y,
             nk::core::push_event(std::move(event));
         }
         gtk_drag_finish(context, !items.empty(), FALSE, time);
-    } catch (...) {
-        gtk_drag_finish(context, FALSE, FALSE, time);
-    }
+        completed = true;
+    });
+    if (!completed) gtk_drag_finish(context, FALSE, FALSE, time);
 }
 
 void dispose_dialog(DialogContext* context) {
@@ -575,7 +578,7 @@ void on_dialog_response(GObject*, int response, gpointer data) {
         dispose_dialog(context);
         return;
     }
-    try {
+    nk::core::callback_boundary([&] {
         if (context->kind == NK_DIALOG_MESSAGE) {
             nk::core::QueuedEvent event;
             event.kind = NK_EVENT_DIALOG_COMPLETE;
@@ -587,13 +590,13 @@ void on_dialog_response(GObject*, int response, gpointer data) {
         } else {
             emit_file_dialog_completion(context, response);
         }
-    } catch (...) {}
+    });
     dispose_dialog(context);
 }
 
 void cancel_dialog(DialogContext* context, bool emit_event) {
     if (emit_event) {
-        try {
+        nk::core::callback_boundary([&] {
             if (context->kind == NK_DIALOG_MESSAGE) {
                 nk::core::QueuedEvent event;
                 event.kind = NK_EVENT_DIALOG_COMPLETE;
@@ -605,7 +608,7 @@ void cancel_dialog(DialogContext* context, bool emit_event) {
             } else {
                 emit_file_dialog_completion(context, GTK_RESPONSE_CANCEL);
             }
-        } catch (...) {}
+        });
     }
     dispose_dialog(context);
 }
@@ -787,7 +790,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* out_window) {
-    try {
+    return nk::core::result_boundary("unexpected error while creating window", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!options || options->struct_size < sizeof(*options) || !out_window ||
             options->width <= 0 || options->height <= 0) {
@@ -817,11 +820,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* 
         if ((options->flags & NK_WINDOW_HIDDEN) == 0) gtk_widget_show_all(resource->window);
         *out_window = resource->handle;
         return NK_OK;
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while creating window");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while creating window");
-    }
+    });
 }
 
 nk_result NK_CALL nk_window_destroy(nk_handle handle) {
@@ -920,7 +919,7 @@ nk_result NK_CALL nk_window_wrap_native(const nk_native_window* native,
 }
 
 nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_options* options, nk_handle* out_webview) {
-    try {
+    return nk::core::result_boundary("unexpected error while creating WebView", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!options || options->struct_size < sizeof(*options) || !out_webview ||
             options->width <= 0 || options->height <= 0) {
@@ -969,11 +968,7 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
         if ((options->flags & NK_WEBVIEW_HIDDEN) == 0) gtk_widget_show(resource->widget);
         *out_webview = resource->handle;
         return NK_OK;
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while creating WebView");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while creating WebView");
-    }
+    });
 }
 
 nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
@@ -1033,7 +1028,7 @@ nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char* html, const 
 }
 
 nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script, nk_request_id* out_request) {
-    try {
+    return nk::core::result_boundary("unexpected error while evaluating JavaScript", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!script || !out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "invalid JavaScript evaluation arguments");
         auto resource = webview(handle);
@@ -1051,11 +1046,7 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script, nk_reque
                                             context.release());
         *out_request = request;
         return NK_OK;
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while evaluating JavaScript");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while evaluating JavaScript");
-    }
+    });
 }
 
 nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t allow) {
@@ -1073,43 +1064,31 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t a
 nk_result NK_CALL nk_dialog_open_file(nk_handle parent,
                                       const nk_file_dialog_options* options,
                                       nk_request_id* out_request) {
-    try {
+    return nk::core::result_boundary("unexpected error while opening file dialog", [&]() -> nk_result {
         return start_file_dialog(parent, options, out_request, NK_DIALOG_OPEN_FILE);
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while opening file dialog");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while opening file dialog");
-    }
+    });
 }
 
 nk_result NK_CALL nk_dialog_save_file(nk_handle parent,
                                       const nk_file_dialog_options* options,
                                       nk_request_id* out_request) {
-    try {
+    return nk::core::result_boundary("unexpected error while opening save dialog", [&]() -> nk_result {
         return start_file_dialog(parent, options, out_request, NK_DIALOG_SAVE_FILE);
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while opening save dialog");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while opening save dialog");
-    }
+    });
 }
 
 nk_result NK_CALL nk_dialog_select_directory(nk_handle parent,
                                              const nk_file_dialog_options* options,
                                              nk_request_id* out_request) {
-    try {
+    return nk::core::result_boundary("unexpected error while opening directory dialog", [&]() -> nk_result {
         return start_file_dialog(parent, options, out_request, NK_DIALOG_SELECT_DIRECTORY);
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while opening directory dialog");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while opening directory dialog");
-    }
+    });
 }
 
 nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
                                     const nk_message_dialog_options* options,
                                     nk_request_id* out_request) {
-    try {
+    return nk::core::result_boundary("unexpected error while opening message dialog", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!options || options->struct_size < sizeof(*options) || !out_request || !options->message)
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid message dialog options");
@@ -1154,11 +1133,7 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
         dialog_owner.release();
         context.release();
         return NK_OK;
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while opening message dialog");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while opening message dialog");
-    }
+    });
 }
 
 nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
@@ -1180,7 +1155,7 @@ nk_result NK_CALL nk_clipboard_set_text(const char* text) {
 }
 
 nk_result NK_CALL nk_clipboard_set_files(const char* const* paths, uint32_t path_count) {
-    try {
+    return nk::core::result_boundary("unexpected error while writing clipboard files", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!paths || path_count == 0)
             return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard file list must not be empty");
@@ -1208,15 +1183,11 @@ nk_result NK_CALL nk_clipboard_set_files(const char* const* paths, uint32_t path
         owner.release();
         clipboard_owned = true;
         return NK_OK;
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while writing clipboard files");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while writing clipboard files");
-    }
+    });
 }
 
 nk_result NK_CALL nk_clipboard_read_text(nk_request_id* out_request) {
-    try {
+    return nk::core::result_boundary("unexpected error while reading clipboard text", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
         if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
@@ -1228,15 +1199,11 @@ nk_result NK_CALL nk_clipboard_read_text(nk_request_id* out_request) {
         gtk_clipboard_request_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
                                    on_clipboard_text, request.release());
         return NK_OK;
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading clipboard text");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading clipboard text");
-    }
+    });
 }
 
 nk_result NK_CALL nk_clipboard_read_files(nk_request_id* out_request) {
-    try {
+    return nk::core::result_boundary("unexpected error while reading clipboard files", [&]() -> nk_result {
         if (const auto result = enter_ui(); result != NK_OK) return result;
         if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
         if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
@@ -1248,11 +1215,7 @@ nk_result NK_CALL nk_clipboard_read_files(nk_request_id* out_request) {
         gtk_clipboard_request_uris(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
                                    on_clipboard_uris, request.release());
         return NK_OK;
-    } catch (const std::bad_alloc&) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading clipboard files");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading clipboard files");
-    }
+    });
 }
 
 nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, uint32_t enabled) {
