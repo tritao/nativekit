@@ -99,6 +99,8 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_POINTER_ENTER` | window | none | empty; `flags` is one on enter and zero on leave |
 | `NK_EVENT_WINDOW_MOVE` | window | none | `nk_window_move_event` |
 | `NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE` | window | none | `nk_window_framebuffer_resize_event` |
+| `NK_EVENT_MONITOR_CONNECTED` | monitor | none | empty |
+| `NK_EVENT_MONITOR_DISCONNECTED` | invalidated monitor | none | empty |
 | `NK_EVENT_SURFACE_READY` | graphics surface | none | empty |
 | `NK_EVENT_SURFACE_RESIZE` | graphics surface | none | `nk_surface_resize_event` |
 
@@ -132,6 +134,19 @@ extents are unavailable on Wayland and return `NK_ERROR_UNSUPPORTED`.
 
 GTK windows support runtime resizability, decorations, keep-above behavior,
 opacity, pointer passthrough, aspect-ratio constraints, and hover queries.
+
+## Monitors and fullscreen
+
+Monitor handles remain stable while their GDK monitor is connected. A
+disconnect event carries the handle that has just been invalidated. Geometry
+and work areas use logical screen coordinates; current video-mode dimensions
+use device pixels and refresh rates use hertz. GTK 3 exposes only the current
+compositor mode, so mode enumeration currently returns one entry and exclusive
+mode switching is not supported.
+
+`nk_window_set_fullscreen_monitor()` requests borderless fullscreen on a
+specific monitor. Passing `NK_INVALID_HANDLE` leaves fullscreen and lets the
+window manager restore the previous windowed placement.
 
 ## Graphics surfaces
 

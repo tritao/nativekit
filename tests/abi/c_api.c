@@ -4,6 +4,7 @@
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
 #include "nativekit_mobile.h"
+#include "nativekit_monitor.h"
 #include "nativekit_notification.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
@@ -19,6 +20,10 @@ int main(void) {
     assert(nk_api_version() == NK_API_VERSION);
     assert(nk_init(&options) == NK_OK);
     (void)nk_get_capabilities();
+    uint32_t monitor_count = 0;
+    nk_result monitor_result = nk_monitor_list(NULL, &monitor_count);
+    assert(monitor_result == NK_ERROR_BUFFER_TOO_SMALL ||
+           monitor_result == NK_ERROR_UNSUPPORTED || monitor_result == NK_OK);
     int32_t window_width = 0;
     int32_t window_height = 0;
     nk_result geometry_result =

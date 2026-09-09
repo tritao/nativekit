@@ -3,6 +3,7 @@
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
+#include "nativekit_monitor.h"
 #include "nativekit_notification.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
@@ -41,7 +42,8 @@ int main(void) {
                                      NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
                                      NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE | NK_CAP_CURSOR |
                                      NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
-                                     NK_CAP_WINDOW_STYLING;
+                                     NK_CAP_WINDOW_STYLING | NK_CAP_MONITOR |
+                                     NK_CAP_MONITOR_FULLSCREEN;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
@@ -106,6 +108,45 @@ int main(void) {
     assert(nk_window_set_opacity(window, 1.0f) == NK_OK);
     assert(nk_window_set_mouse_passthrough(window, 1) == NK_OK);
     assert(nk_window_set_mouse_passthrough(window, 0) == NK_OK);
+    uint32_t monitor_count = 0;
+    assert(nk_monitor_list(NULL, &monitor_count) == NK_ERROR_BUFFER_TOO_SMALL);
+    assert(monitor_count > 0);
+    nk_handle monitors[16] = {0};
+    assert(monitor_count <= 16);
+    uint32_t monitor_capacity = 16;
+    assert(nk_monitor_list(monitors, &monitor_capacity) == NK_OK);
+    assert(monitor_capacity == monitor_count);
+    nk_handle primary_monitor = NK_INVALID_HANDLE;
+    assert(nk_monitor_get_primary(&primary_monitor) == NK_OK);
+    assert(primary_monitor != NK_INVALID_HANDLE);
+    uint32_t monitor_name_size = 0;
+    assert(nk_monitor_get_name(primary_monitor, NULL, &monitor_name_size) ==
+           NK_ERROR_BUFFER_TOO_SMALL);
+    assert(monitor_name_size > 1);
+    char monitor_name[256] = {0};
+    uint32_t monitor_name_capacity = sizeof(monitor_name);
+    assert(nk_monitor_get_name(primary_monitor, monitor_name, &monitor_name_capacity) == NK_OK);
+    assert(monitor_name[0] != '\0');
+    nk_monitor_geometry monitor_geometry = {0};
+    monitor_geometry.struct_size = sizeof(monitor_geometry);
+    assert(nk_monitor_get_geometry(primary_monitor, &monitor_geometry) == NK_OK);
+    assert(monitor_geometry.width > 0 && monitor_geometry.height > 0);
+    assert(monitor_geometry.work_width > 0 && monitor_geometry.work_height > 0);
+    assert(monitor_geometry.scale_x >= 1.0f && monitor_geometry.scale_y >= 1.0f);
+    nk_video_mode video_mode = {0};
+    video_mode.struct_size = sizeof(video_mode);
+    assert(nk_monitor_get_current_mode(primary_monitor, &video_mode) == NK_OK);
+    assert(video_mode.width > 0 && video_mode.height > 0);
+    uint32_t mode_count = 0;
+    assert(nk_monitor_get_modes(primary_monitor, NULL, &mode_count) ==
+           NK_ERROR_BUFFER_TOO_SMALL);
+    assert(mode_count == 1);
+    nk_video_mode modes[1] = {{0}};
+    modes[0].struct_size = sizeof(modes[0]);
+    assert(nk_monitor_get_modes(primary_monitor, modes, &mode_count) == NK_OK);
+    assert(modes[0].width == video_mode.width && modes[0].height == video_mode.height);
+    assert(nk_window_set_fullscreen_monitor(window, primary_monitor) == NK_OK);
+    assert(nk_window_set_fullscreen_monitor(window, NK_INVALID_HANDLE) == NK_OK);
     nk_input_action input_action = NK_INPUT_PRESS;
     assert(nk_key_get_state(window, NK_KEY_A, &input_action) == NK_OK);
     assert(input_action == NK_INPUT_RELEASE);

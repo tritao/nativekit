@@ -8,6 +8,7 @@
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
+#include "nativekit_monitor.h"
 #include "nativekit_notification.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
@@ -88,6 +89,17 @@ struct GtkCursorResource final : nk::core::Resource {
     ~GtkCursorResource() override {
         if (cursor)
             g_object_unref(cursor);
+    }
+};
+
+struct GtkMonitorResource final : nk::core::Resource {
+    GdkMonitor *monitor = nullptr;
+    nk_handle handle = NK_INVALID_HANDLE;
+    std::string name;
+
+    ~GtkMonitorResource() override {
+        if (monitor)
+            g_object_unref(monitor);
     }
 };
 
@@ -212,6 +224,10 @@ struct NotificationContext {
 
 bool gtk_initialized = false;
 bool clipboard_owned = false;
+GdkDisplay *monitor_display = nullptr;
+gulong monitor_added_signal = 0;
+gulong monitor_removed_signal = 0;
+std::unordered_map<GdkMonitor *, nk_handle> monitor_handles;
 std::unordered_map<nk_request_id, DialogContext *> dialogs;
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
 std::unordered_map<nk_request_id, nk_handle> evaluations;
@@ -939,6 +955,86 @@ std::shared_ptr<GtkCursorResource> cursor(nk_handle handle) {
         nk::core::handles().get(handle, nk::core::ResourceType::cursor));
 }
 
+std::shared_ptr<GtkMonitorResource> monitor(nk_handle handle) {
+    return std::dynamic_pointer_cast<GtkMonitorResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::monitor));
+}
+
+std::string monitor_name(GdkMonitor *native) {
+    const char *manufacturer = gdk_monitor_get_manufacturer(native);
+    const char *model = gdk_monitor_get_model(native);
+    if (manufacturer && *manufacturer && model && *model)
+        return std::string(manufacturer) + " " + model;
+    if (model && *model)
+        return model;
+    if (manufacturer && *manufacturer)
+        return manufacturer;
+    return "Unknown monitor";
+}
+
+nk_handle register_monitor(GdkMonitor *native) {
+    const auto found = monitor_handles.find(native);
+    if (found != monitor_handles.end())
+        return found->second;
+    auto resource = std::make_shared<GtkMonitorResource>();
+    resource->monitor = GDK_MONITOR(g_object_ref(native));
+    resource->name = monitor_name(native);
+    resource->handle =
+        nk::core::handles().insert(nk::core::ResourceType::monitor, resource);
+    if (resource->handle != NK_INVALID_HANDLE)
+        monitor_handles.emplace(native, resource->handle);
+    return resource->handle;
+}
+
+void on_monitor_added(GdkDisplay *, GdkMonitor *native, gpointer) {
+    nk::core::callback_boundary([&] {
+        const nk_handle handle = register_monitor(native);
+        if (handle == NK_INVALID_HANDLE)
+            return;
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_MONITOR_CONNECTED;
+        event.source = handle;
+        nk::core::push_event(std::move(event));
+    });
+}
+
+void on_monitor_removed(GdkDisplay *, GdkMonitor *native, gpointer) {
+    nk::core::callback_boundary([&] {
+        const auto found = monitor_handles.find(native);
+        if (found == monitor_handles.end())
+            return;
+        const nk_handle handle = found->second;
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_MONITOR_DISCONNECTED;
+        event.source = handle;
+        nk::core::push_event(std::move(event));
+        monitor_handles.erase(found);
+        nk::core::handles().erase(handle, nk::core::ResourceType::monitor);
+    });
+}
+
+nk_result ensure_monitors() {
+    if (!ensure_gtk())
+        return NK_ERROR_UNSUPPORTED;
+    if (monitor_display)
+        return NK_OK;
+    monitor_display = gdk_display_get_default();
+    if (!monitor_display)
+        return fail(NK_ERROR_UNSUPPORTED, "GTK has no display for monitor enumeration");
+    const int count = gdk_display_get_n_monitors(monitor_display);
+    for (int index = 0; index < count; ++index) {
+        if (register_monitor(gdk_display_get_monitor(monitor_display, index)) ==
+            NK_INVALID_HANDLE)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "monitor handle registry is full");
+    }
+    monitor_added_signal =
+        g_signal_connect(monitor_display, "monitor-added", G_CALLBACK(on_monitor_added), nullptr);
+    monitor_removed_signal =
+        g_signal_connect(monitor_display, "monitor-removed", G_CALLBACK(on_monitor_removed),
+                         nullptr);
+    return NK_OK;
+}
+
 GdkCursor *blank_cursor(GdkDisplay *display) {
     static GdkDisplay *cached_display = nullptr;
     static GdkCursor *cached_cursor = nullptr;
@@ -1549,6 +1645,16 @@ void shutdown() noexcept {
         gtk_clipboard_clear(clipboard);
         clipboard_owned = false;
     }
+    if (monitor_display) {
+        if (monitor_added_signal)
+            g_signal_handler_disconnect(monitor_display, monitor_added_signal);
+        if (monitor_removed_signal)
+            g_signal_handler_disconnect(monitor_display, monitor_removed_signal);
+        monitor_handles.clear();
+        monitor_display = nullptr;
+        monitor_added_signal = 0;
+        monitor_removed_signal = 0;
+    }
     nk::core::handles().clear();
     pump_events();
 }
@@ -1561,7 +1667,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_INPUT |
            NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
-           NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING;
+           NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
+           NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -1576,6 +1683,8 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         *out_window = NK_INVALID_HANDLE;
         if (!ensure_gtk())
             return NK_ERROR_UNSUPPORTED;
+        if (const auto result = ensure_monitors(); result != NK_OK)
+            return result;
         auto owner = options->owner ? window(options->owner) : nullptr;
         if (options->owner && !owner)
             return invalid_handle("owner window");
@@ -2174,6 +2283,169 @@ nk_result NK_CALL nk_window_get_hovered(nk_handle h, uint32_t *out_hovered) {
     if (!resource)
         return invalid_handle("window");
     *out_hovered = resource->hovered ? 1u : 0u;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_monitor_list(nk_handle *monitors, uint32_t *inout_count) {
+    return nk::core::result_boundary("unexpected error while enumerating monitors",
+                                     [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!inout_count)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "monitor count must not be null");
+        if (const auto result = ensure_monitors(); result != NK_OK)
+            return result;
+        const uint32_t required =
+            static_cast<uint32_t>(gdk_display_get_n_monitors(monitor_display));
+        const uint32_t capacity = *inout_count;
+        *inout_count = required;
+        if (!monitors || capacity < required)
+            return required ? fail(NK_ERROR_BUFFER_TOO_SMALL,
+                                   "monitor handle buffer is too small")
+                            : NK_OK;
+        for (uint32_t index = 0; index < required; ++index) {
+            GdkMonitor *native =
+                gdk_display_get_monitor(monitor_display, static_cast<int>(index));
+            const auto found = monitor_handles.find(native);
+            if (found == monitor_handles.end())
+                return fail(NK_ERROR_UNKNOWN, "monitor registry is inconsistent");
+            monitors[index] = found->second;
+        }
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_monitor_get_primary(nk_handle *out_monitor) {
+    return nk::core::result_boundary("unexpected error while finding primary monitor",
+                                     [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!out_monitor)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "monitor output must not be null");
+        *out_monitor = NK_INVALID_HANDLE;
+        if (const auto result = ensure_monitors(); result != NK_OK)
+            return result;
+        GdkMonitor *native = gdk_display_get_primary_monitor(monitor_display);
+        if (!native && gdk_display_get_n_monitors(monitor_display) > 0)
+            native = gdk_display_get_monitor(monitor_display, 0);
+        if (!native)
+            return fail(NK_ERROR_UNSUPPORTED, "GTK reports no connected monitors");
+        const auto found = monitor_handles.find(native);
+        if (found == monitor_handles.end())
+            return fail(NK_ERROR_UNKNOWN, "primary monitor is not registered");
+        *out_monitor = found->second;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_monitor_get_name(nk_handle handle, char *buffer, uint32_t *inout_size) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = monitor(handle);
+    if (!resource)
+        return invalid_handle("monitor");
+    return copy_utf8(resource->name.c_str(), buffer, inout_size);
+}
+
+nk_result NK_CALL nk_monitor_get_geometry(nk_handle handle,
+                                          nk_monitor_geometry *out_geometry) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_geometry || out_geometry->struct_size < sizeof(*out_geometry))
+        return fail(NK_ERROR_INVALID_ARGUMENT,
+                    "monitor geometry output is missing or too small");
+    auto resource = monitor(handle);
+    if (!resource)
+        return invalid_handle("monitor");
+    GdkRectangle geometry{};
+    GdkRectangle workarea{};
+    gdk_monitor_get_geometry(resource->monitor, &geometry);
+    gdk_monitor_get_workarea(resource->monitor, &workarea);
+    const auto size = out_geometry->struct_size;
+    *out_geometry = {};
+    out_geometry->struct_size = size;
+    out_geometry->x = geometry.x;
+    out_geometry->y = geometry.y;
+    out_geometry->width = geometry.width;
+    out_geometry->height = geometry.height;
+    out_geometry->work_x = workarea.x;
+    out_geometry->work_y = workarea.y;
+    out_geometry->work_width = workarea.width;
+    out_geometry->work_height = workarea.height;
+    out_geometry->width_mm = gdk_monitor_get_width_mm(resource->monitor);
+    out_geometry->height_mm = gdk_monitor_get_height_mm(resource->monitor);
+    const float scale = static_cast<float>(gdk_monitor_get_scale_factor(resource->monitor));
+    out_geometry->scale_x = scale;
+    out_geometry->scale_y = scale;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_monitor_get_current_mode(nk_handle handle, nk_video_mode *out_mode) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_mode || out_mode->struct_size < sizeof(*out_mode))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "video mode output is missing or too small");
+    auto resource = monitor(handle);
+    if (!resource)
+        return invalid_handle("monitor");
+    GdkRectangle geometry{};
+    gdk_monitor_get_geometry(resource->monitor, &geometry);
+    const int scale = gdk_monitor_get_scale_factor(resource->monitor);
+    const auto size = out_mode->struct_size;
+    *out_mode = {};
+    out_mode->struct_size = size;
+    out_mode->width = geometry.width * scale;
+    out_mode->height = geometry.height * scale;
+    const int refresh_rate = gdk_monitor_get_refresh_rate(resource->monitor);
+    out_mode->refresh_rate = refresh_rate > 0 ? refresh_rate / 1000.0 : 0.0;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_monitor_get_modes(nk_handle handle, nk_video_mode *modes,
+                                       uint32_t *inout_count) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!inout_count)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "video mode count must not be null");
+    if (!monitor(handle))
+        return invalid_handle("monitor");
+    const uint32_t capacity = *inout_count;
+    *inout_count = 1;
+    if (!modes || capacity < 1)
+        return fail(NK_ERROR_BUFFER_TOO_SMALL, "video mode buffer is too small");
+    return nk_monitor_get_current_mode(handle, &modes[0]);
+}
+
+nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle window_handle,
+                                                   nk_handle monitor_handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto window_resource = window(window_handle);
+    if (!window_resource)
+        return invalid_handle("window");
+    if (monitor_handle == NK_INVALID_HANDLE) {
+        gtk_window_unfullscreen(GTK_WINDOW(window_resource->window));
+        return NK_OK;
+    }
+    auto monitor_resource = monitor(monitor_handle);
+    if (!monitor_resource)
+        return invalid_handle("monitor");
+    gtk_widget_realize(window_resource->window);
+    GdkWindow *native = gtk_widget_get_window(window_resource->window);
+    if (!native)
+        return fail(NK_ERROR_UNKNOWN, "GTK window has no native surface");
+    GdkDisplay *display = gdk_window_get_display(native);
+    int monitor_index = -1;
+    const int monitor_count = gdk_display_get_n_monitors(display);
+    for (int index = 0; index < monitor_count; ++index) {
+        if (gdk_display_get_monitor(display, index) == monitor_resource->monitor) {
+            monitor_index = index;
+            break;
+        }
+    }
+    if (monitor_index < 0)
+        return fail(NK_ERROR_INVALID_HANDLE, "monitor is not connected to this display");
+    gdk_window_fullscreen_on_monitor(native, monitor_index);
     return NK_OK;
 }
 
