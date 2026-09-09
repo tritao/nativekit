@@ -34,6 +34,9 @@ target_include_directories(nativekit
     PRIVATE src
 )
 target_compile_definitions(nativekit PRIVATE NK_BUILDING_LIBRARY)
+if(NOT NK_BUILD_SHARED)
+    target_compile_definitions(nativekit PUBLIC NK_STATIC)
+endif()
 
 if(UNIX AND NOT APPLE)
     find_package(PkgConfig QUIET)
@@ -43,7 +46,10 @@ if(UNIX AND NOT APPLE)
     endif()
 endif()
 
-if(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
+if(WIN32)
+    target_sources(nativekit PRIVATE src/windows/nativekit_win.cpp)
+    target_link_libraries(nativekit PRIVATE user32 shell32 ole32)
+elseif(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
     target_sources(nativekit PRIVATE src/linux/nativekit_gtk.cpp)
     target_link_libraries(nativekit PRIVATE PkgConfig::GTK3 PkgConfig::WEBKITGTK)

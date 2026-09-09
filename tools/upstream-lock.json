@@ -22,6 +22,13 @@
         "src/common/stdpbase.cpp"
       ],
       "notes": "Clipboard and drop target negotiation, dialog lifecycle, standard paths, appearance detection, event mapping, GTK signal selection, scale handling, and WebKit error categorization are adapted to NativeKit's C ABI and event queue."
+    },
+    "src/windows/nativekit_win.cpp": {
+      "sources": [
+        "src/msw/toplevel.cpp",
+        "src/msw/window.cpp"
+      ],
+      "notes": "Window class lifecycle, message handling, resize events, and DPI behavior are adapted to NativeKit's handles and event queue."
     }
   }
 }

@@ -23,6 +23,24 @@ if(NK_BACKEND_GTK_AVAILABLE)
     endif()
 endif()
 
+if(WIN32)
+    add_executable(nativekit_win_integration integration/win_create_destroy.c)
+    target_link_libraries(nativekit_win_integration PRIVATE NativeKit::nativekit)
+    set_target_properties(nativekit_win_integration PROPERTIES LINKER_LANGUAGE CXX)
+    add_test(NAME win_create_destroy COMMAND nativekit_win_integration)
+    set_tests_properties(win_create_destroy PROPERTIES LABELS "windows")
+endif()
+
+if(MINGW)
+    foreach(target nativekit_c_abi nativekit_core_tests nativekit_win_integration)
+        if(TARGET ${target})
+            # Keep Wine smoke tests and redistributed test binaries independent
+            # of the compiler runtime DLLs installed with a particular MinGW.
+            target_link_options(${target} PRIVATE -static -static-libgcc -static-libstdc++)
+        endif()
+    endforeach()
+endif()
+
 if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     set(sanitized_test_targets nativekit_c_abi nativekit_core_tests)
     if(TARGET nativekit_gtk_integration)

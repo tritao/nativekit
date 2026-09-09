@@ -17,6 +17,9 @@ git clone --recurse-submodules <nativekit-url>
 
 For an existing checkout, use `git submodule update --init --recursive`.
 
+Windows smoke tests can be cross-built and run in an isolated Wine prefix with
+`tools/test-wine.sh`; see `docs/testing.md` for prerequisites and limitations.
+
 The current Linux backend provides NativeKit-owned GTK 3 windows, WebKitGTK
 WebViews, asynchronous native dialogs, shell launching, standard directories,
 locale, desktop appearance, clipboard, and file/text drops. Builds without GTK 3 and WebKitGTK 4.1 retain
