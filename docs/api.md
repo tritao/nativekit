@@ -102,6 +102,13 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE` | window | none | `nk_window_framebuffer_resize_event` |
 | `NK_EVENT_MONITOR_CONNECTED` | monitor | none | empty |
 | `NK_EVENT_MONITOR_DISCONNECTED` | invalidated monitor | none | empty |
+| `NK_EVENT_JOYSTICK_CONNECTED` | joystick | none | empty |
+| `NK_EVENT_JOYSTICK_DISCONNECTED` | invalidated joystick | none | empty |
+| `NK_EVENT_JOYSTICK_AXIS` | joystick | none | `nk_joystick_axis_event` |
+| `NK_EVENT_JOYSTICK_BUTTON` | joystick | none | `nk_joystick_button_event` |
+| `NK_EVENT_JOYSTICK_HAT` | joystick | none | `nk_joystick_hat_event` |
+| `NK_EVENT_GAMEPAD_AXIS` | mapped joystick | none | `nk_gamepad_axis_event` |
+| `NK_EVENT_GAMEPAD_BUTTON` | mapped joystick | none | `nk_gamepad_button_event` |
 | `NK_EVENT_SURFACE_READY` | graphics surface | none | empty |
 | `NK_EVENT_SURFACE_RESIZE` | graphics surface | none | `nk_surface_resize_event` |
 
@@ -193,6 +200,16 @@ under `vendor/SDL_GameControllerDB`; `scripts/update_gamepad_db.py` refreshes th
 snapshot and generated table reproducibly. Applications can query the exact
 40-character upstream revision with
 `nk_gamepad_get_builtin_database_revision()`.
+
+Raw input changes produce `NK_EVENT_JOYSTICK_AXIS`, `BUTTON`, and `HAT` events.
+Mapped devices additionally produce canonical `NK_EVENT_GAMEPAD_AXIS` and
+`BUTTON` events after each complete evdev report. Axis events for the same
+device and axis coalesce when adjacent; button and hat ordering is preserved.
+Input delivery is independent of GTK window focus.
+
+`nk_gamepad_set_options()` configures radial stick dead zones, trigger dead
+zones, and optional `[0, 1]` trigger output. The same normalization applies to
+state queries and generated gamepad events.
 
 ## Graphics surfaces
 

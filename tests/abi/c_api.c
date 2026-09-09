@@ -52,6 +52,16 @@ int main(void) {
     assert(nk_gamepad_get_builtin_database_revision(NULL, &mapping_revision_size) ==
            NK_ERROR_BUFFER_TOO_SMALL);
     assert(mapping_revision_size == 41);
+    nk_gamepad_options gamepad_options = {0};
+    gamepad_options.struct_size = sizeof(gamepad_options);
+    gamepad_options.stick_dead_zone = 0.2f;
+    gamepad_options.trigger_dead_zone = 0.1f;
+    gamepad_options.flags = NK_GAMEPAD_TRIGGER_ZERO_TO_ONE;
+    assert(nk_gamepad_set_options(&gamepad_options) == NK_OK);
+    nk_gamepad_options returned_gamepad_options = {0};
+    returned_gamepad_options.struct_size = sizeof(returned_gamepad_options);
+    assert(nk_gamepad_get_options(&returned_gamepad_options) == NK_OK);
+    assert(returned_gamepad_options.stick_dead_zone == 0.2f);
     nk_result mapped_result = nk_gamepad_is_mapped(NK_INVALID_HANDLE, &mapped);
     assert(mapped_result == NK_ERROR_INVALID_HANDLE || mapped_result == NK_ERROR_UNSUPPORTED);
     int32_t window_width = 0;

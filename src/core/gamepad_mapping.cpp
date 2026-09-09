@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <limits>
 #include <unordered_map>
@@ -204,6 +205,35 @@ bool apply_mapping(const Mapping &mapping, const std::vector<float> &axes,
         state.axes[index] = valid ? value : 0.f;
     }
     return true;
+}
+
+void normalize_state(nk_gamepad_state &state, float stick_dead_zone,
+                     float trigger_dead_zone, nk_gamepad_flags flags) {
+    const auto normalize_stick = [stick_dead_zone](float &x, float &y) {
+        const float magnitude = std::sqrt(x * x + y * y);
+        if (magnitude <= stick_dead_zone) {
+            x = 0.f;
+            y = 0.f;
+            return;
+        }
+        const float scaled =
+            std::min((magnitude - stick_dead_zone) / (1.f - stick_dead_zone), 1.f);
+        x = x / magnitude * scaled;
+        y = y / magnitude * scaled;
+    };
+    normalize_stick(state.axes[NK_GAMEPAD_AXIS_LEFT_X],
+                    state.axes[NK_GAMEPAD_AXIS_LEFT_Y]);
+    normalize_stick(state.axes[NK_GAMEPAD_AXIS_RIGHT_X],
+                    state.axes[NK_GAMEPAD_AXIS_RIGHT_Y]);
+    for (const auto axis : {NK_GAMEPAD_AXIS_LEFT_TRIGGER, NK_GAMEPAD_AXIS_RIGHT_TRIGGER}) {
+        float value = std::clamp((state.axes[axis] + 1.f) * 0.5f, 0.f, 1.f);
+        if (value <= trigger_dead_zone)
+            value = 0.f;
+        else
+            value = (value - trigger_dead_zone) / (1.f - trigger_dead_zone);
+        state.axes[axis] =
+            (flags & NK_GAMEPAD_TRIGGER_ZERO_TO_ONE) ? value : value * 2.f - 1.f;
+    }
 }
 
 } // namespace nk::core::gamepad

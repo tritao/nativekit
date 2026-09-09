@@ -4,6 +4,7 @@
 #include "core/error.hpp"
 #include "core/gamepad_mapping.hpp"
 #include "core/gamepad_mappings_generated.hpp"
+#include "core/gamepad_events.hpp"
 #include "core/runtime.hpp"
 #include "nativekit_joystick.h"
 
@@ -14,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -27,6 +29,8 @@ struct StoredMapping {
 std::mutex mappings_mutex;
 std::vector<StoredMapping> mappings;
 std::once_flag builtin_once;
+nk_gamepad_options gamepad_options{sizeof(nk_gamepad_options), 0.f, 0.f, 0, 0, {0, 0}};
+std::unordered_map<nk_handle, nk_gamepad_state> event_states;
 
 void load_builtins() {
     std::lock_guard lock(mappings_mutex);
@@ -137,6 +141,16 @@ nk_result copy_string(const std::string &source, char *buffer, std::uint32_t *in
     *inout_size = required;
     return NK_OK;
 }
+
+template <typename Payload>
+void emit_state_event(nk_event_kind kind, nk_handle source, const Payload &payload) {
+    nk::core::QueuedEvent event;
+    event.kind = kind;
+    event.source = source;
+    const auto *begin = reinterpret_cast<const std::byte *>(&payload);
+    event.data.assign(begin, begin + sizeof(payload));
+    nk::core::push_event(std::move(event));
+}
 } // namespace
 
 extern "C" {
@@ -165,6 +179,7 @@ nk_result NK_CALL nk_gamepad_add_mapping(const char *text) {
                                          ensure_builtins();
                                          std::lock_guard lock(mappings_mutex);
                                          store_application_mapping(std::move(mapping));
+                                         event_states.clear();
                                          return NK_OK;
                                      });
 }
@@ -208,6 +223,7 @@ nk_result NK_CALL nk_gamepad_add_mappings(const char *database, uint32_t *out_ad
                                          std::lock_guard lock(mappings_mutex);
                                          for (auto &mapping : parsed)
                                              store_application_mapping(std::move(mapping));
+                                         event_states.clear();
                                          *out_added = static_cast<std::uint32_t>(parsed.size());
                                          return NK_OK;
                                      });
@@ -311,7 +327,97 @@ nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick, nk_gamepad_state *out
                                                  "gamepad mapping references unavailable input");
                                              return NK_ERROR_UNSUPPORTED;
                                          }
+                                         nk::core::gamepad::normalize_state(
+                                             *out_state, gamepad_options.stick_dead_zone,
+                                             gamepad_options.trigger_dead_zone,
+                                             gamepad_options.flags);
+                                         return NK_OK;
+                                     });
+}
+
+nk_result NK_CALL nk_gamepad_set_options(const nk_gamepad_options *options) {
+    return nk::core::result_boundary("unexpected error while setting gamepad options",
+                                     [&]() -> nk_result {
+                                         nk::core::clear_error();
+                                         if (const auto result = nk::core::require_ui_thread();
+                                             result != NK_OK)
+                                             return result;
+                                         if (!options ||
+                                             options->struct_size < sizeof(nk_gamepad_options) ||
+                                             options->stick_dead_zone < 0.f ||
+                                             options->stick_dead_zone >= 1.f ||
+                                             options->trigger_dead_zone < 0.f ||
+                                             options->trigger_dead_zone >= 1.f ||
+                                             (options->flags & ~NK_GAMEPAD_TRIGGER_ZERO_TO_ONE)) {
+                                             nk::core::set_error("invalid gamepad options");
+                                             return NK_ERROR_INVALID_ARGUMENT;
+                                         }
+                                         gamepad_options = *options;
+                                         event_states.clear();
+                                         return NK_OK;
+                                     });
+}
+
+nk_result NK_CALL nk_gamepad_get_options(nk_gamepad_options *out_options) {
+    return nk::core::result_boundary("unexpected error while reading gamepad options",
+                                     [&]() -> nk_result {
+                                         nk::core::clear_error();
+                                         if (const auto result = nk::core::require_ui_thread();
+                                             result != NK_OK)
+                                             return result;
+                                         if (!out_options || out_options->struct_size <
+                                                                 sizeof(nk_gamepad_options)) {
+                                             nk::core::set_error(
+                                                 "nk_gamepad_options is missing or too small");
+                                             return NK_ERROR_INVALID_ARGUMENT;
+                                         }
+                                         const auto size = out_options->struct_size;
+                                         *out_options = gamepad_options;
+                                         out_options->struct_size = size;
                                          return NK_OK;
                                      });
 }
 }
+
+namespace nk::core::gamepad_events {
+void update(nk_handle joystick, bool emit_changes) noexcept {
+    try {
+        nk_gamepad_state current{};
+        current.struct_size = sizeof(current);
+        if (nk_gamepad_get_state(joystick, &current) != NK_OK) {
+            event_states.erase(joystick);
+            nk::core::clear_error();
+            return;
+        }
+        const auto found = event_states.find(joystick);
+        if (found == event_states.end()) {
+            event_states.emplace(joystick, current);
+            return;
+        }
+        if (emit_changes) {
+            for (std::uint32_t index = 0; index < NK_GAMEPAD_BUTTON_COUNT; ++index) {
+                if (found->second.buttons[index] == current.buttons[index])
+                    continue;
+                const nk_gamepad_button_event payload{index, current.buttons[index]};
+                emit_state_event(NK_EVENT_GAMEPAD_BUTTON, joystick, payload);
+            }
+            for (std::uint32_t index = 0; index < NK_GAMEPAD_AXIS_COUNT; ++index) {
+                if (found->second.axes[index] == current.axes[index])
+                    continue;
+                const nk_gamepad_axis_event payload{index, current.axes[index]};
+                emit_state_event(NK_EVENT_GAMEPAD_AXIS, joystick, payload);
+            }
+        }
+        found->second = current;
+    } catch (...) {
+    }
+}
+
+void disconnect(nk_handle joystick) noexcept {
+    event_states.erase(joystick);
+}
+
+void reset() noexcept {
+    event_states.clear();
+}
+} // namespace nk::core::gamepad_events

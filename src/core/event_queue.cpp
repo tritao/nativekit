@@ -17,19 +17,36 @@ bool is_terminal_request_event(const QueuedEvent &event) {
            event.kind == NK_EVENT_NOTIFICATION_DELIVERED ||
            event.kind == NK_EVENT_NOTIFICATION_FAILED;
 }
+
+bool is_coalescible(nk_event_kind kind) {
+    return kind == NK_EVENT_WINDOW_RESIZE || kind == NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE ||
+           kind == NK_EVENT_WINDOW_MOVE || kind == NK_EVENT_POINTER_MOVE ||
+           kind == NK_EVENT_SURFACE_RESIZE || kind == NK_EVENT_JOYSTICK_AXIS ||
+           kind == NK_EVENT_GAMEPAD_AXIS;
+}
+
+bool same_coalescing_target(const QueuedEvent &first, const QueuedEvent &second) {
+    if (first.kind != second.kind || first.source != second.source)
+        return false;
+    if (first.kind != NK_EVENT_JOYSTICK_AXIS && first.kind != NK_EVENT_GAMEPAD_AXIS)
+        return true;
+    if (first.data.size() < sizeof(std::uint32_t) || second.data.size() < sizeof(std::uint32_t))
+        return false;
+    std::uint32_t first_axis = 0;
+    std::uint32_t second_axis = 0;
+    std::memcpy(&first_axis, first.data.data(), sizeof(first_axis));
+    std::memcpy(&second_axis, second.data.data(), sizeof(second_axis));
+    return first_axis == second_axis;
+}
 } // namespace
 
 EventQueue::EventQueue(std::size_t capacity) : capacity_(capacity) {}
 
 nk_result EventQueue::push(QueuedEvent event) {
     std::lock_guard lock(mutex_);
-    if ((event.kind == NK_EVENT_WINDOW_RESIZE ||
-         event.kind == NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE ||
-         event.kind == NK_EVENT_WINDOW_MOVE || event.kind == NK_EVENT_POINTER_MOVE ||
-         event.kind == NK_EVENT_SURFACE_RESIZE) &&
-        !queue_.empty()) {
+    if (is_coalescible(event.kind) && !queue_.empty()) {
         auto &tail = queue_.back();
-        if (tail.kind == event.kind && tail.source == event.source) {
+        if (same_coalescing_target(tail, event)) {
             tail = std::move(event);
             return NK_OK;
         }

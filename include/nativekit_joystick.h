@@ -15,6 +15,21 @@ enum {
     NK_JOYSTICK_HAT_LEFT = 8
 };
 
+typedef struct nk_joystick_axis_event {
+    uint32_t axis;
+    float value;
+} nk_joystick_axis_event;
+
+typedef struct nk_joystick_button_event {
+    uint32_t button;
+    uint32_t pressed;
+} nk_joystick_button_event;
+
+typedef struct nk_joystick_hat_event {
+    uint32_t hat;
+    uint32_t value;
+} nk_joystick_hat_event;
+
 /*
  * Writes connected joystick handles. Pass NULL to query the required count.
  * Hotplug is reported with NK_EVENT_JOYSTICK_CONNECTED and

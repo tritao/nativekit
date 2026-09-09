@@ -1,4 +1,5 @@
 #include "nativekit.h"
+#include "nativekit_gamepad.h"
 #include "nativekit_joystick.h"
 
 #include <assert.h>
@@ -101,6 +102,39 @@ static void verify_state(nk_handle joystick, float expected_axis, uint8_t expect
     assert(hats[0] == expected_hat);
 }
 
+static void verify_change_events(nk_handle joystick) {
+    int raw_axis = 0;
+    int raw_button = 0;
+    int raw_hat = 0;
+    int mapped_axis = 0;
+    int mapped_button = 0;
+    for (;;) {
+        nk_event event;
+        memset(&event, 0, sizeof(event));
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_NONE) {
+            nk_event_release(&event);
+            break;
+        }
+        if (event.source == joystick) {
+            raw_axis += event.kind == NK_EVENT_JOYSTICK_AXIS;
+            raw_button += event.kind == NK_EVENT_JOYSTICK_BUTTON;
+            raw_hat += event.kind == NK_EVENT_JOYSTICK_HAT;
+            mapped_axis += event.kind == NK_EVENT_GAMEPAD_AXIS;
+            mapped_button += event.kind == NK_EVENT_GAMEPAD_BUTTON;
+        }
+        nk_event_release(&event);
+    }
+    if (joystick == NK_INVALID_HANDLE)
+        return;
+    assert(raw_axis == 1);
+    assert(raw_button == 1);
+    assert(raw_hat == 1);
+    assert(mapped_axis >= 1);
+    assert(mapped_button >= 2);
+}
+
 int main(void) {
     const int fd = open_uinput();
     if (fd < 0)
@@ -118,12 +152,25 @@ int main(void) {
 
     const nk_handle joystick = wait_for_device();
     assert(joystick != NK_INVALID_HANDLE);
+    char guid[33];
+    uint32_t guid_size = sizeof(guid);
+    assert(nk_joystick_get_guid(joystick, guid, &guid_size) == NK_OK);
+    assert(strcmp(guid, "03000000091200004b4e000001000000") == 0);
+    assert(nk_gamepad_add_mapping(
+               "03000000091200004b4e000001000000,NativeKit Virtual Gamepad,a:b0,"
+               "dpup:h0.1,dpright:h0.2,leftx:a0,platform:Linux,") == NK_OK);
+    send_event(fd, EV_SYN, SYN_REPORT, 0);
+    float baseline[1];
+    uint32_t baseline_count = 1;
+    assert(nk_joystick_get_axes(joystick, baseline, &baseline_count) == NK_OK);
+    verify_change_events(NK_INVALID_HANDLE);
 
     send_event(fd, EV_ABS, ABS_X, 32767);
     send_event(fd, EV_KEY, BTN_GAMEPAD, 1);
     send_event(fd, EV_ABS, ABS_HAT0Y, -1);
     send_event(fd, EV_SYN, SYN_REPORT, 0);
     verify_state(joystick, 1.f, 1, NK_JOYSTICK_HAT_UP);
+    verify_change_events(joystick);
 
     send_event(fd, EV_SYN, SYN_DROPPED, 0);
     send_event(fd, EV_ABS, ABS_X, -32768);

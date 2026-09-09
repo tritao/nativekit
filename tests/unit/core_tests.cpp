@@ -3,6 +3,7 @@
 #include "core/gamepad_mapping.hpp"
 #include "core/gamepad_mappings_generated.hpp"
 #include "core/handle_registry.hpp"
+#include "nativekit_joystick.h"
 #include "nativekit_window.h"
 
 #include <cassert>
@@ -51,6 +52,20 @@ int main() {
     assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_Y] == -0.25f);
     assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] == 0.f);
     assert(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_TRIGGER] == -1.f);
+    gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_X] = 0.1f;
+    gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_Y] = 0.f;
+    gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_X] = 0.6f;
+    gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_Y] = 0.f;
+    gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] = 0.f;
+    gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_TRIGGER] = -1.f;
+    nk::core::gamepad::normalize_state(gamepad_state, 0.2f, 0.1f,
+                                       NK_GAMEPAD_TRIGGER_ZERO_TO_ONE);
+    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_X] == 0.f);
+    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_X] > 0.499f);
+    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_X] < 0.501f);
+    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] > 0.44f);
+    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] < 0.45f);
+    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_TRIGGER] == 0.f);
     assert(!nk::core::gamepad::parse_mapping("not-a-guid,Pad,a:b0", mapping));
     assert(!nk::core::gamepad::parse_mapping(
         "03000000112200003344000055660000,Pad,a:q0", mapping));
@@ -142,6 +157,31 @@ int main() {
     event.struct_size = sizeof(event);
     assert(motion_queue.poll(event) == NK_OK);
     assert(event.kind == NK_EVENT_POINTER_MOVE);
+    nk_event_release(&event);
+
+    nk::core::EventQueue axis_queue(3);
+    const nk_joystick_axis_event axis_zero{0, 0.25f};
+    const nk_joystick_axis_event axis_zero_latest{0, 0.75f};
+    const nk_joystick_axis_event axis_one{1, -0.5f};
+    auto queue_axis = [&](const nk_joystick_axis_event &payload) {
+        nk::core::QueuedEvent item;
+        item.kind = NK_EVENT_JOYSTICK_AXIS;
+        item.source = first;
+        const auto *payload_begin = reinterpret_cast<const std::byte *>(&payload);
+        item.data.assign(payload_begin, payload_begin + sizeof(payload));
+        assert(axis_queue.push(std::move(item)) == NK_OK);
+    };
+    queue_axis(axis_zero);
+    queue_axis(axis_zero_latest);
+    queue_axis(axis_one);
+    event = {};
+    event.struct_size = sizeof(event);
+    assert(axis_queue.poll(event) == NK_OK);
+    assert(static_cast<const nk_joystick_axis_event *>(event.data)->value == 0.75f);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    assert(axis_queue.poll(event) == NK_OK);
+    assert(static_cast<const nk_joystick_axis_event *>(event.data)->axis == 1);
     nk_event_release(&event);
     return 0;
 }

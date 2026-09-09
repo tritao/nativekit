@@ -45,6 +45,28 @@ typedef struct nk_gamepad_state {
     uint64_t reserved[4];
 } nk_gamepad_state;
 
+typedef struct nk_gamepad_axis_event {
+    nk_gamepad_axis axis;
+    float value;
+} nk_gamepad_axis_event;
+
+typedef struct nk_gamepad_button_event {
+    nk_gamepad_button button;
+    uint32_t pressed;
+} nk_gamepad_button_event;
+
+typedef uint32_t nk_gamepad_flags;
+enum { NK_GAMEPAD_TRIGGER_ZERO_TO_ONE = 1u << 0 };
+
+typedef struct nk_gamepad_options {
+    uint32_t struct_size;
+    float stick_dead_zone;
+    float trigger_dead_zone;
+    nk_gamepad_flags flags;
+    uint32_t reserved;
+    uint64_t reserved2[2];
+} nk_gamepad_options;
+
 typedef uint32_t nk_gamepad_mapping_source;
 enum {
     NK_GAMEPAD_MAPPING_BUILT_IN = 1,
@@ -69,6 +91,9 @@ NK_API nk_result NK_CALL nk_gamepad_get_name(nk_handle joystick, char *buffer,
                                              uint32_t *inout_size);
 NK_API nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick,
                                               nk_gamepad_state *out_state);
+/* Sets process-wide normalization used by state queries and gamepad events. */
+NK_API nk_result NK_CALL nk_gamepad_set_options(const nk_gamepad_options *options);
+NK_API nk_result NK_CALL nk_gamepad_get_options(nk_gamepad_options *out_options);
 
 #ifdef __cplusplus
 }

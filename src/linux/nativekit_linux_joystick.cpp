@@ -1,6 +1,7 @@
 #include "nativekit_joystick.h"
 
 #include "core/error.hpp"
+#include "core/gamepad_events.hpp"
 #include "core/runtime.hpp"
 #include "linux/joystick.hpp"
 
@@ -64,6 +65,7 @@ struct Joystick final : nk::core::Resource {
 int notify_fd = -1;
 int notify_watch = -1;
 bool initialized = false;
+bool pumping = false;
 std::unordered_map<std::string, std::shared_ptr<Joystick>> devices;
 std::string transport_diagnostic;
 
@@ -136,21 +138,61 @@ void emit(nk_event_kind kind, nk_handle handle) {
     nk::core::push_event(std::move(event));
 }
 
+template <typename Payload>
+void emit_input(nk_event_kind kind, nk_handle handle, const Payload &payload) {
+    nk::core::QueuedEvent event;
+    event.kind = kind;
+    event.source = handle;
+    const auto *begin = reinterpret_cast<const std::byte *>(&payload);
+    event.data.assign(begin, begin + sizeof(payload));
+    nk::core::push_event(std::move(event));
+}
+
 void remove_device(const std::string &path) {
     const auto found = devices.find(path);
     if (found == devices.end())
         return;
     const auto handle = found->second->handle;
     emit(NK_EVENT_JOYSTICK_DISCONNECTED, handle);
+    nk::core::gamepad_events::disconnect(handle);
     nk::core::handles().erase(handle, nk::core::ResourceType::joystick);
     devices.erase(found);
 }
 
-void update_hat(Joystick &device, int code, int value) {
+void update_hat(Joystick &device, int code, int value, bool emit_change = false) {
     const int offset = code - ABS_HAT0X;
     const auto hat = static_cast<std::size_t>(offset / 2);
     device.hat_values[hat][static_cast<std::size_t>(offset % 2)] = value;
+    const auto previous = device.hats[hat];
     device.hats[hat] = compose_hat(device.hat_values[hat]);
+    if (emit_change && previous != device.hats[hat]) {
+        const nk_joystick_hat_event payload{static_cast<std::uint32_t>(hat), device.hats[hat]};
+        emit_input(NK_EVENT_JOYSTICK_HAT, device.handle, payload);
+    }
+}
+
+void update_axis(Joystick &device, std::size_t axis, int value, bool emit_change = true) {
+    auto &state = device.axes[axis];
+    const float normalized = normalize_axis(value, state.info);
+    if (state.value == normalized)
+        return;
+    state.value = normalized;
+    if (emit_change) {
+        const nk_joystick_axis_event payload{static_cast<std::uint32_t>(axis), normalized};
+        emit_input(NK_EVENT_JOYSTICK_AXIS, device.handle, payload);
+    }
+}
+
+void update_button(Joystick &device, std::size_t button, bool pressed,
+                   bool emit_change = true) {
+    const std::uint8_t value = pressed ? 1 : 0;
+    if (device.buttons[button] == value)
+        return;
+    device.buttons[button] = value;
+    if (emit_change) {
+        const nk_joystick_button_event payload{static_cast<std::uint32_t>(button), value};
+        emit_input(NK_EVENT_JOYSTICK_BUTTON, device.handle, payload);
+    }
 }
 
 void add_device(const std::string &path) {
@@ -230,6 +272,7 @@ void add_device(const std::string &path) {
         nk::core::handles().insert(nk::core::ResourceType::joystick, device);
     devices.emplace(path, device);
     emit(NK_EVENT_JOYSTICK_CONNECTED, device->handle);
+    nk::core::gamepad_events::update(device->handle, false);
 }
 
 void scan_devices() {
@@ -312,6 +355,7 @@ void poll_hotplug() {
 }
 
 bool resynchronize(Joystick &device) {
+    const auto previous_hats = device.hats;
     for (int code = 0; code < ABS_CNT; ++code) {
         const bool mapped_axis = device.axis_map[static_cast<std::size_t>(code)] >= 0;
         const bool mapped_hat = code >= ABS_HAT0X && code <= ABS_HAT3Y &&
@@ -327,8 +371,14 @@ bool resynchronize(Joystick &device) {
         } else {
             const auto axis = static_cast<std::size_t>(device.axis_map[code]);
             device.axes[axis].info = info;
-            device.axes[axis].value = normalize_axis(info.value, info);
+            update_axis(device, axis, info.value);
         }
+    }
+    for (std::size_t hat = 0; hat < device.hats.size(); ++hat) {
+        if (previous_hats[hat] == device.hats[hat])
+            continue;
+        const nk_joystick_hat_event payload{static_cast<std::uint32_t>(hat), device.hats[hat]};
+        emit_input(NK_EVENT_JOYSTICK_HAT, device.handle, payload);
     }
 
     std::array<unsigned long, bit_words(KEY_CNT)> key_state{};
@@ -337,7 +387,7 @@ bool resynchronize(Joystick &device) {
     for (int code = BTN_MISC; code < KEY_CNT; ++code) {
         const int button = device.button_map[static_cast<std::size_t>(code)];
         if (button >= 0)
-            device.buttons[static_cast<std::size_t>(button)] = bit_set(key_state, code) ? 1 : 0;
+            update_button(device, static_cast<std::size_t>(button), bit_set(key_state, code));
     }
     return true;
 }
@@ -372,24 +422,28 @@ void poll_device(const std::shared_ptr<Joystick> &device) {
                                                      error);
                         return;
                     }
+                    nk::core::gamepad_events::update(device->handle, true);
                 }
+                continue;
+            }
+            if (event.type == EV_SYN && event.code == SYN_REPORT) {
+                nk::core::gamepad_events::update(device->handle, true);
                 continue;
             }
             if (event.type == EV_ABS && event.code < ABS_CNT) {
                 if (event.code >= ABS_HAT0X && event.code <= ABS_HAT3Y &&
                     static_cast<std::size_t>((event.code - ABS_HAT0X) / 2) <
                         device->hats.size()) {
-                    update_hat(*device, event.code, event.value);
+                    update_hat(*device, event.code, event.value, true);
                 } else {
                     const int axis = device->axis_map[event.code];
                     if (axis >= 0)
-                        device->axes[static_cast<std::size_t>(axis)].value = normalize_axis(
-                            event.value, device->axes[static_cast<std::size_t>(axis)].info);
+                        update_axis(*device, static_cast<std::size_t>(axis), event.value);
                 }
             } else if (event.type == EV_KEY && event.code < KEY_CNT) {
                 const int button = device->button_map[event.code];
                 if (button >= 0)
-                    device->buttons[static_cast<std::size_t>(button)] = event.value ? 1 : 0;
+                    update_button(*device, static_cast<std::size_t>(button), event.value != 0);
             }
         }
         if (static_cast<std::size_t>(bytes) < sizeof(events))
@@ -457,6 +511,9 @@ template <typename Function> nk_result boundary(Function &&function) noexcept {
 
 namespace nk::linux_joystick {
 void pump() noexcept {
+    if (pumping)
+        return;
+    pumping = true;
     try {
         initialize();
         poll_hotplug();
@@ -471,6 +528,7 @@ void pump() noexcept {
                 poll_device(device);
     } catch (...) {
     }
+    pumping = false;
 }
 
 void shutdown() noexcept {
@@ -480,6 +538,7 @@ void shutdown() noexcept {
             nk::core::handles().erase(device->handle, nk::core::ResourceType::joystick);
         }
         devices.clear();
+        nk::core::gamepad_events::reset();
         if (notify_watch >= 0 && notify_fd >= 0)
             inotify_rm_watch(notify_fd, notify_watch);
         if (notify_fd >= 0)
