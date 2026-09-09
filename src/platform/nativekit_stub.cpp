@@ -53,6 +53,12 @@ nk_result NK_CALL nk_window_get_scale(nk_handle, float *) {
 nk_result NK_CALL nk_window_get_state(nk_handle, nk_window_state *) {
     return unsupported();
 }
+nk_result NK_CALL nk_window_is_focused(nk_handle, uint32_t *) {
+    return unsupported();
+}
+nk_result NK_CALL nk_window_is_visible(nk_handle, uint32_t *) {
+    return unsupported();
+}
 nk_result NK_CALL nk_window_minimize(nk_handle) {
     return unsupported();
 }

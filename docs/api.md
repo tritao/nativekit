@@ -68,7 +68,13 @@ only portable native child surface in the initial API.
 Window state is queried as a versioned value and changes are emitted as
 `NK_EVENT_WINDOW_STATE_CHANGED`. Minimize, maximize, restore, activation,
 fullscreen, attention, and logical-pixel size constraints are explicit
-operations; they do not introduce a command or widget hierarchy.
+operations; they do not introduce a command or widget hierarchy. Focus and
+visibility also have direct boolean queries. State-changing requests are
+asynchronous: success means the request was submitted, while the observed state
+and its transition event reflect what the window manager or compositor actually
+applied. Repeated native notifications that do not change the observed flags do
+not produce duplicate state events. On GTK, an attention request is tracked by
+`NK_WINDOW_STATE_ATTENTION_REQUESTED` until the window becomes active.
 
 ## Events and payloads
 

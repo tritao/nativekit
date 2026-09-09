@@ -123,7 +123,9 @@ enum {
     NK_WINDOW_STATE_ACTIVE = 1u << 1,
     NK_WINDOW_STATE_MINIMIZED = 1u << 2,
     NK_WINDOW_STATE_MAXIMIZED = 1u << 3,
-    NK_WINDOW_STATE_FULLSCREEN = 1u << 4
+    NK_WINDOW_STATE_FULLSCREEN = 1u << 4,
+    /* The application has requested compositor attention and focus has not returned. */
+    NK_WINDOW_STATE_ATTENTION_REQUESTED = 1u << 5
 };
 
 typedef struct nk_window_state {
@@ -179,6 +181,8 @@ NK_API nk_result NK_CALL nk_window_get_framebuffer_size(nk_handle window,
 NK_API nk_result NK_CALL nk_window_get_frame_extents(nk_handle window,
                                                      nk_window_frame_extents *out_extents);
 NK_API nk_result NK_CALL nk_window_get_state(nk_handle window, nk_window_state *out_state);
+NK_API nk_result NK_CALL nk_window_is_focused(nk_handle window, uint32_t *out_focused);
+NK_API nk_result NK_CALL nk_window_is_visible(nk_handle window, uint32_t *out_visible);
 NK_API nk_result NK_CALL nk_window_minimize(nk_handle window);
 NK_API nk_result NK_CALL nk_window_maximize(nk_handle window);
 NK_API nk_result NK_CALL nk_window_restore(nk_handle window);

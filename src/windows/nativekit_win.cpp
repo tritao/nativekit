@@ -1650,6 +1650,26 @@ nk_result NK_CALL nk_window_get_state(nk_handle h, nk_window_state *out) {
         out->flags |= NK_WINDOW_STATE_FULLSCREEN;
     return NK_OK;
 }
+
+nk_result NK_CALL nk_window_is_focused(nk_handle h, uint32_t *out_focused) {
+    if (!out_focused)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "focus output must not be null");
+    nk_window_state state{sizeof(state), 0, {0, 0}};
+    const auto result = nk_window_get_state(h, &state);
+    if (result == NK_OK)
+        *out_focused = (state.flags & NK_WINDOW_STATE_ACTIVE) ? 1u : 0u;
+    return result;
+}
+
+nk_result NK_CALL nk_window_is_visible(nk_handle h, uint32_t *out_visible) {
+    if (!out_visible)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "visibility output must not be null");
+    nk_window_state state{sizeof(state), 0, {0, 0}};
+    const auto result = nk_window_get_state(h, &state);
+    if (result == NK_OK)
+        *out_visible = (state.flags & NK_WINDOW_STATE_VISIBLE) ? 1u : 0u;
+    return result;
+}
 nk_result NK_CALL nk_window_minimize(nk_handle h) {
     if (const auto r = enter_ui(); r != NK_OK)
         return r;

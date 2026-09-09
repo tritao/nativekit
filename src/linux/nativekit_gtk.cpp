@@ -124,6 +124,7 @@ struct GtkWindowResource final : nk::core::Resource {
     std::shared_ptr<GtkCursorResource> cursor;
     bool pointer_grabbed = false;
     bool hovered = false;
+    uint32_t state_flags = 0;
     bool geometry_known = false;
     int32_t x = 0;
     int32_t y = 0;
@@ -297,6 +298,37 @@ std::string javascript_literal(std::string_view value) {
 template <typename T> std::vector<std::byte> bytes_of(const T &value) {
     const auto *first = reinterpret_cast<const std::byte *>(&value);
     return {first, first + sizeof(value)};
+}
+
+void update_window_state(GtkWindowResource &resource, uint32_t flags) {
+    if (resource.state_flags == flags)
+        return;
+    resource.state_flags = flags;
+    const nk_window_state payload{sizeof(payload), flags, {0, 0}};
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_WINDOW_STATE_CHANGED;
+    event.source = resource.handle;
+    event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
+void on_window_map(GtkWidget *, gpointer data) {
+    nk::core::callback_boundary([&] {
+        auto &resource = *static_cast<GtkWindowResource *>(data);
+        if (!nk::core::is_runtime_generation(resource.generation))
+            return;
+        update_window_state(resource, resource.state_flags | NK_WINDOW_STATE_VISIBLE);
+    });
+}
+
+void on_window_unmap(GtkWidget *, gpointer data) {
+    nk::core::callback_boundary([&] {
+        auto &resource = *static_cast<GtkWindowResource *>(data);
+        if (!nk::core::is_runtime_generation(resource.generation))
+            return;
+        update_window_state(resource, resource.state_flags &
+                                          ~(NK_WINDOW_STATE_VISIBLE | NK_WINDOW_STATE_ACTIVE));
+    });
 }
 
 nk_modifiers modifiers(GdkModifierType state) {
@@ -696,22 +728,21 @@ gboolean on_window_state(GtkWidget *, GdkEventWindowState *state, gpointer data)
                 nk::core::push_event(std::move(release_event));
             }
         }
-        nk_window_state payload{sizeof(payload), 0, {0, 0}};
-        if (!(state->new_window_state & GDK_WINDOW_STATE_WITHDRAWN))
-            payload.flags |= NK_WINDOW_STATE_VISIBLE;
+        uint32_t flags = resource->state_flags &
+                         (NK_WINDOW_STATE_VISIBLE | NK_WINDOW_STATE_ATTENTION_REQUESTED);
         if (state->new_window_state & GDK_WINDOW_STATE_FOCUSED)
-            payload.flags |= NK_WINDOW_STATE_ACTIVE;
+            flags |= NK_WINDOW_STATE_ACTIVE;
         if (state->new_window_state & GDK_WINDOW_STATE_ICONIFIED)
-            payload.flags |= NK_WINDOW_STATE_MINIMIZED;
+            flags |= NK_WINDOW_STATE_MINIMIZED;
         if (state->new_window_state & GDK_WINDOW_STATE_MAXIMIZED)
-            payload.flags |= NK_WINDOW_STATE_MAXIMIZED;
+            flags |= NK_WINDOW_STATE_MAXIMIZED;
         if (state->new_window_state & GDK_WINDOW_STATE_FULLSCREEN)
-            payload.flags |= NK_WINDOW_STATE_FULLSCREEN;
-        nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_WINDOW_STATE_CHANGED;
-        event.source = resource->handle;
-        event.data = bytes_of(payload);
-        nk::core::push_event(std::move(event));
+            flags |= NK_WINDOW_STATE_FULLSCREEN;
+        if (flags & NK_WINDOW_STATE_ACTIVE) {
+            flags &= ~NK_WINDOW_STATE_ATTENTION_REQUESTED;
+            gtk_window_set_urgency_hint(GTK_WINDOW(resource->window), FALSE);
+        }
+        update_window_state(*resource, flags);
     });
     return FALSE;
 }
@@ -1739,6 +1770,10 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
                          resource.get());
         g_signal_connect(resource->window, "window-state-event", G_CALLBACK(on_window_state),
                          resource.get());
+        g_signal_connect(resource->window, "map", G_CALLBACK(on_window_map),
+                         resource.get());
+        g_signal_connect(resource->window, "unmap", G_CALLBACK(on_window_unmap),
+                         resource.get());
         g_signal_connect(resource->window, "realize", G_CALLBACK(on_window_realize),
                          resource.get());
         g_signal_connect(resource->window, "focus-in-event", G_CALLBACK(on_input_focus),
@@ -1967,20 +2002,28 @@ nk_result NK_CALL nk_window_get_state(nk_handle handle, nk_window_state *out) {
     const auto size = out->struct_size;
     *out = {};
     out->struct_size = size;
-    if (gtk_widget_get_visible(resource->window))
-        out->flags |= NK_WINDOW_STATE_VISIBLE;
-    if (gtk_window_is_active(GTK_WINDOW(resource->window)))
-        out->flags |= NK_WINDOW_STATE_ACTIVE;
-    if (GdkWindow *native = gtk_widget_get_window(resource->window)) {
-        const auto state = gdk_window_get_state(native);
-        if (state & GDK_WINDOW_STATE_ICONIFIED)
-            out->flags |= NK_WINDOW_STATE_MINIMIZED;
-        if (state & GDK_WINDOW_STATE_MAXIMIZED)
-            out->flags |= NK_WINDOW_STATE_MAXIMIZED;
-        if (state & GDK_WINDOW_STATE_FULLSCREEN)
-            out->flags |= NK_WINDOW_STATE_FULLSCREEN;
-    }
+    out->flags = resource->state_flags;
     return NK_OK;
+}
+
+nk_result NK_CALL nk_window_is_focused(nk_handle handle, uint32_t *out_focused) {
+    if (!out_focused)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "focus output must not be null");
+    nk_window_state state{sizeof(state), 0, {0, 0}};
+    const auto result = nk_window_get_state(handle, &state);
+    if (result == NK_OK)
+        *out_focused = (state.flags & NK_WINDOW_STATE_ACTIVE) ? 1u : 0u;
+    return result;
+}
+
+nk_result NK_CALL nk_window_is_visible(nk_handle handle, uint32_t *out_visible) {
+    if (!out_visible)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "visibility output must not be null");
+    nk_window_state state{sizeof(state), 0, {0, 0}};
+    const auto result = nk_window_get_state(handle, &state);
+    if (result == NK_OK)
+        *out_visible = (state.flags & NK_WINDOW_STATE_VISIBLE) ? 1u : 0u;
+    return result;
 }
 
 nk_result NK_CALL nk_key_get_state(nk_handle handle, nk_key key, nk_input_action *out_action) {
@@ -2194,7 +2237,11 @@ nk_result NK_CALL nk_window_request_attention(nk_handle h) {
     auto w = window(h);
     if (!w)
         return invalid_handle("window");
-    gtk_window_set_urgency_hint(GTK_WINDOW(w->window), TRUE);
+    if ((w->state_flags & (NK_WINDOW_STATE_ACTIVE | NK_WINDOW_STATE_VISIBLE)) !=
+        (NK_WINDOW_STATE_ACTIVE | NK_WINDOW_STATE_VISIBLE)) {
+        gtk_window_set_urgency_hint(GTK_WINDOW(w->window), TRUE);
+        update_window_state(*w, w->state_flags | NK_WINDOW_STATE_ATTENTION_REQUESTED);
+    }
     return NK_OK;
 }
 nk_result NK_CALL nk_window_set_size_limits(nk_handle h, const nk_window_size_limits *limits) {

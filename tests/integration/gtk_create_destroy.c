@@ -34,6 +34,16 @@ static nk_event wait_for_event(nk_event_kind kind, nk_handle source) {
     return unreachable;
 }
 
+static nk_event wait_for_window_state(nk_handle window, uint32_t mask, uint32_t expected) {
+    for (;;) {
+        nk_event event = wait_for_event(NK_EVENT_WINDOW_STATE_CHANGED, window);
+        assert(event.data_size == sizeof(nk_window_state));
+        if ((((const nk_window_state *)event.data)->flags & mask) == expected)
+            return event;
+        nk_event_release(&event);
+    }
+}
+
 int main(void) {
     nk_init_options init = {0};
     init.struct_size = sizeof(init);
@@ -119,6 +129,12 @@ int main(void) {
     nk_window_state state = {0};
     state.struct_size = sizeof(state);
     assert(nk_window_get_state(window, &state) == NK_OK);
+    assert(state.flags == 0);
+    uint32_t focused = 1;
+    uint32_t visible = 1;
+    assert(nk_window_is_focused(window, &focused) == NK_OK);
+    assert(nk_window_is_visible(window, &visible) == NK_OK);
+    assert(focused == 0 && visible == 0);
     int32_t window_x = 0;
     int32_t window_y = 0;
     assert(nk_window_get_position(window, &window_x, &window_y) == NK_OK);
@@ -216,6 +232,14 @@ int main(void) {
            NK_ERROR_UNSUPPORTED);
     assert(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_NORMAL) == NK_OK);
     assert(nk_window_show(window, 1) == NK_OK);
+    assert(nk_window_show(window, 1) == NK_OK);
+    nk_event shown = wait_for_window_state(window, NK_WINDOW_STATE_VISIBLE,
+                                           NK_WINDOW_STATE_VISIBLE);
+    assert(shown.data_size == sizeof(nk_window_state));
+    assert((((const nk_window_state *)shown.data)->flags & NK_WINDOW_STATE_VISIBLE) != 0);
+    nk_event_release(&shown);
+    assert(nk_window_is_visible(window, &visible) == NK_OK);
+    assert(visible == 1);
     const nk_result capture_result =
         nk_window_set_cursor_mode(window, NK_CURSOR_MODE_CAPTURED);
     if (capture_result == NK_OK) {
@@ -226,6 +250,13 @@ int main(void) {
         assert(capture_result == NK_ERROR_UNSUPPORTED);
     }
     assert(nk_window_show(window, 0) == NK_OK);
+    assert(nk_window_show(window, 0) == NK_OK);
+    nk_event hidden = wait_for_window_state(window, NK_WINDOW_STATE_VISIBLE, 0);
+    assert(hidden.data_size == sizeof(nk_window_state));
+    assert((((const nk_window_state *)hidden.data)->flags & NK_WINDOW_STATE_VISIBLE) == 0);
+    nk_event_release(&hidden);
+    assert(nk_window_is_visible(window, &visible) == NK_OK);
+    assert(visible == 0);
     const unsigned char cursor_pixels[16] = {
         255, 255, 255, 255, 0, 0, 0, 255,
         0,   0,   0,   255, 255, 255, 255, 255};
@@ -290,6 +321,15 @@ int main(void) {
     limits.min_height = 240;
     assert(nk_window_set_size_limits(window, &limits) == NK_OK);
     assert(nk_window_request_attention(window) == NK_OK);
+    nk_event attention = wait_for_window_state(window, NK_WINDOW_STATE_ATTENTION_REQUESTED,
+                                               NK_WINDOW_STATE_ATTENTION_REQUESTED);
+    assert(attention.data_size == sizeof(nk_window_state));
+    assert((((const nk_window_state *)attention.data)->flags &
+            NK_WINDOW_STATE_ATTENTION_REQUESTED) != 0);
+    nk_event_release(&attention);
+    state.struct_size = sizeof(state);
+    assert(nk_window_get_state(window, &state) == NK_OK);
+    assert((state.flags & NK_WINDOW_STATE_ATTENTION_REQUESTED) != 0);
     assert(scale >= 1.0f);
     nk_system_appearance appearance = {0};
     appearance.struct_size = sizeof(appearance);
