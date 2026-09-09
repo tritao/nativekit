@@ -48,7 +48,7 @@ endif()
 
 if(WIN32)
     target_sources(nativekit PRIVATE src/windows/nativekit_win.cpp)
-    target_link_libraries(nativekit PRIVATE user32 shell32 ole32)
+    target_link_libraries(nativekit PRIVATE user32 shell32 ole32 advapi32)
 elseif(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
     target_sources(nativekit PRIVATE src/linux/nativekit_gtk.cpp)

@@ -28,10 +28,13 @@
         "src/msw/dirdlg.cpp",
         "src/msw/filedlg.cpp",
         "src/msw/msgdlg.cpp",
+        "src/msw/settings.cpp",
+        "src/msw/stdpaths.cpp",
         "src/msw/toplevel.cpp",
+        "src/msw/utilswin.cpp",
         "src/msw/window.cpp"
       ],
-      "notes": "Window class lifecycle, message handling, resize events, DPI behavior, COM file dialog options, and native message dialog behavior are adapted to NativeKit's handles, requests, and event queue."
+      "notes": "Window class lifecycle, message handling, resize events, DPI behavior, COM file dialog options, native message dialogs, known folders, shell launching, and appearance detection are adapted to NativeKit's handles, requests, and event queue."
     }
   }
 }

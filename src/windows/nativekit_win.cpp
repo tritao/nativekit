@@ -18,12 +18,14 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shobjidl.h>
+#include <shlobj.h>
 #include <shellapi.h>
 
 #include <atomic>
 #include <cstddef>
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <mutex>
 #include <new>
 #include <string>
@@ -436,6 +438,82 @@ nk_result unsupported() {
     return fail(NK_ERROR_UNSUPPORTED, "this Windows service is not implemented yet");
 }
 
+nk_result copy_utf8_output(const std::string& value, char* buffer, uint32_t* inout_size) {
+    if (!inout_size) return fail(NK_ERROR_INVALID_ARGUMENT, "output size must not be null");
+    if (value.size() >= std::numeric_limits<uint32_t>::max())
+        return fail(NK_ERROR_UNKNOWN, "system string is too large");
+    const auto required = static_cast<uint32_t>(value.size() + 1);
+    const auto capacity = *inout_size;
+    *inout_size = required;
+    if (!buffer || capacity < required)
+        return fail(NK_ERROR_BUFFER_TOO_SMALL, "output buffer is too small");
+    std::memcpy(buffer, value.c_str(), required);
+    return NK_OK;
+}
+
+bool valid_uri_scheme(const char* value) {
+    if (!value || !((*value >= 'A' && *value <= 'Z') ||
+                    (*value >= 'a' && *value <= 'z'))) return false;
+    for (++value; *value && *value != ':'; ++value) {
+        const bool valid = (*value >= 'A' && *value <= 'Z') ||
+                           (*value >= 'a' && *value <= 'z') ||
+                           (*value >= '0' && *value <= '9') ||
+                           *value == '+' || *value == '-' || *value == '.';
+        if (!valid) return false;
+    }
+    return *value == ':';
+}
+
+nk_result shell_open(const char* value, bool require_scheme) {
+    if (!value || !*value || (require_scheme && !valid_uri_scheme(value)))
+        return fail(NK_ERROR_INVALID_ARGUMENT,
+                    require_scheme ? "URL must contain a valid URI scheme" : "path must not be empty");
+    const auto native = wide(value);
+    if (native.empty()) return fail(NK_ERROR_INVALID_ARGUMENT, "value is not valid UTF-8");
+    const auto result = reinterpret_cast<INT_PTR>(
+        ShellExecuteW(nullptr, L"open", native.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+    return result > 32 ? NK_OK : fail(NK_ERROR_UNKNOWN, "Windows could not open the value");
+}
+
+const KNOWNFOLDERID* directory_id(nk_system_directory_kind kind) {
+    switch (kind) {
+        case NK_DIRECTORY_HOME: return &FOLDERID_Profile;
+        case NK_DIRECTORY_DESKTOP: return &FOLDERID_Desktop;
+        case NK_DIRECTORY_DOCUMENTS: return &FOLDERID_Documents;
+        case NK_DIRECTORY_DOWNLOADS: return &FOLDERID_Downloads;
+        case NK_DIRECTORY_CACHE: return &FOLDERID_LocalAppData;
+        case NK_DIRECTORY_CONFIG: return &FOLDERID_RoamingAppData;
+        case NK_DIRECTORY_DATA: return &FOLDERID_LocalAppData;
+        default: return nullptr;
+    }
+}
+
+nk_result get_system_directory(nk_system_directory_kind kind, std::string& output) {
+    if (kind == NK_DIRECTORY_TEMP) {
+        const DWORD size = GetTempPathW(0, nullptr);
+        if (!size) return fail(NK_ERROR_UNSUPPORTED, "temporary directory is unavailable");
+        std::wstring path(size, L'\0');
+        const DWORD written = GetTempPathW(size, path.data());
+        if (!written || written >= size)
+            return fail(NK_ERROR_UNKNOWN, "could not read temporary directory");
+        path.resize(written);
+        while (path.size() > 1 && (path.back() == L'\\' || path.back() == L'/')) path.pop_back();
+        output = utf8(path.c_str());
+        return output.empty() ? fail(NK_ERROR_UNKNOWN, "could not encode temporary directory") : NK_OK;
+    }
+    const auto* id = directory_id(kind);
+    if (!id) return fail(NK_ERROR_UNSUPPORTED, "unknown system directory");
+    PWSTR path = nullptr;
+    const HRESULT result = SHGetKnownFolderPath(*id, KF_FLAG_DEFAULT, nullptr, &path);
+    if (FAILED(result) || !path) {
+        CoTaskMemFree(path);
+        return fail(NK_ERROR_UNSUPPORTED, "system directory is unavailable");
+    }
+    output = utf8(path);
+    CoTaskMemFree(path);
+    return output.empty() ? fail(NK_ERROR_UNKNOWN, "could not encode system directory") : NK_OK;
+}
+
 }
 
 namespace nk::backend {
@@ -474,7 +552,8 @@ void shutdown() noexcept {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_EXPORT_NATIVE_WINDOW;
+    return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_SHELL |
+           NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* out_window) {
@@ -662,11 +741,79 @@ nk_result NK_CALL nk_clipboard_set_files(const char* const*, uint32_t) { return 
 nk_result NK_CALL nk_clipboard_read_text(nk_request_id*) { return unsupported(); }
 nk_result NK_CALL nk_clipboard_read_files(nk_request_id*) { return unsupported(); }
 nk_result NK_CALL nk_window_set_drop_enabled(nk_handle, uint32_t) { return unsupported(); }
-nk_result NK_CALL nk_shell_open_url(const char*) { return unsupported(); }
-nk_result NK_CALL nk_shell_open_file(const char*) { return unsupported(); }
-nk_result NK_CALL nk_shell_reveal_file(const char*) { return unsupported(); }
-nk_result NK_CALL nk_system_directory(nk_system_directory_kind, char*, uint32_t*) { return unsupported(); }
-nk_result NK_CALL nk_system_locale(char*, uint32_t*) { return unsupported(); }
-nk_result NK_CALL nk_system_get_appearance(nk_system_appearance*) { return unsupported(); }
+nk_result NK_CALL nk_shell_open_url(const char* url) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    return shell_open(url, true);
+}
+
+nk_result NK_CALL nk_shell_open_file(const char* path) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    return shell_open(path, false);
+}
+
+nk_result NK_CALL nk_shell_reveal_file(const char* path) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (!path || !*path) return fail(NK_ERROR_INVALID_ARGUMENT, "path must not be empty");
+    const auto native = wide(path);
+    if (native.empty()) return fail(NK_ERROR_INVALID_ARGUMENT, "path is not valid UTF-8");
+    PIDLIST_ABSOLUTE item = ILCreateFromPathW(native.c_str());
+    if (!item) return fail(NK_ERROR_INVALID_ARGUMENT, "Windows could not resolve the file path");
+    PIDLIST_ABSOLUTE folder = ILCloneFull(item);
+    if (!folder) {
+        ILFree(item);
+        return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate shell item identifier");
+    }
+    PCUITEMID_CHILD child = ILFindLastID(item);
+    ILRemoveLastID(folder);
+    const HRESULT status = SHOpenFolderAndSelectItems(folder, 1, &child, 0);
+    ILFree(folder);
+    ILFree(item);
+    return SUCCEEDED(status) ? NK_OK : fail(NK_ERROR_UNKNOWN, "Windows could not reveal the file");
+}
+
+nk_result NK_CALL nk_system_directory(nk_system_directory_kind kind,
+                                      char* buffer, uint32_t* inout_size) {
+    nk::core::clear_error();
+    std::string path;
+    const auto result = get_system_directory(kind, path);
+    return result == NK_OK ? copy_utf8_output(path, buffer, inout_size) : result;
+}
+
+nk_result NK_CALL nk_system_locale(char* buffer, uint32_t* inout_size) {
+    nk::core::clear_error();
+    const int size = GetUserDefaultLocaleName(nullptr, 0);
+    if (!size) return fail(NK_ERROR_UNSUPPORTED, "system locale is unavailable");
+    std::wstring locale(static_cast<std::size_t>(size), L'\0');
+    if (!GetUserDefaultLocaleName(locale.data(), size))
+        return fail(NK_ERROR_UNKNOWN, "could not read system locale");
+    locale.resize(static_cast<std::size_t>(size - 1));
+    const auto value = utf8(locale.c_str());
+    if (value.empty()) return fail(NK_ERROR_UNKNOWN, "could not encode system locale");
+    return copy_utf8_output(value, buffer, inout_size);
+}
+
+nk_result NK_CALL nk_system_get_appearance(nk_system_appearance* appearance) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (!appearance || appearance->struct_size < sizeof(*appearance))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "appearance output is missing or too small");
+    const auto struct_size = appearance->struct_size;
+    *appearance = {};
+    appearance->struct_size = struct_size;
+    DWORD light_theme = 1;
+    DWORD light_theme_size = sizeof(light_theme);
+    const LSTATUS registry = RegGetValueW(
+        HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr,
+        &light_theme, &light_theme_size);
+    appearance->color_scheme = registry == ERROR_SUCCESS && light_theme == 0
+        ? NK_COLOR_SCHEME_DARK : NK_COLOR_SCHEME_LIGHT;
+    HIGHCONTRASTW high_contrast{};
+    high_contrast.cbSize = sizeof(high_contrast);
+    if (SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(high_contrast),
+                              &high_contrast, 0))
+        appearance->high_contrast = (high_contrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
+    return NK_OK;
+}
 
 }

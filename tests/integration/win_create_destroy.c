@@ -1,8 +1,11 @@
 #include "nativekit.h"
 #include "nativekit_dialog.h"
+#include "nativekit_system.h"
 #include "nativekit_window.h"
 
 #include <assert.h>
+#include <stdlib.h>
+#include <string.h>
 #include <windows.h>
 
 static nk_event wait_for_dialog(nk_request_id request) {
@@ -20,12 +23,58 @@ static nk_event wait_for_dialog(nk_request_id request) {
     return unreachable;
 }
 
+static void verify_system_string(nk_system_directory_kind kind) {
+    uint32_t size = 0;
+    assert(nk_system_directory(kind, NULL, &size) == NK_ERROR_BUFFER_TOO_SMALL);
+    assert(size > 1);
+    char *value = (char *)malloc(size);
+    assert(value != NULL);
+    uint32_t capacity = size;
+    assert(nk_system_directory(kind, value, &capacity) == NK_OK);
+    assert(capacity == size);
+    assert(strlen(value) + 1 == size);
+    free(value);
+}
+
 int main(void) {
     nk_init_options init = {0};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
     assert((nk_get_capabilities() & NK_CAP_WINDOW) != 0);
+    assert((nk_get_capabilities() & NK_CAP_SHELL) != 0);
+    assert((nk_get_capabilities() & NK_CAP_SYSTEM_APPEARANCE) != 0);
+
+    verify_system_string(NK_DIRECTORY_HOME);
+    verify_system_string(NK_DIRECTORY_DESKTOP);
+    verify_system_string(NK_DIRECTORY_DOCUMENTS);
+    verify_system_string(NK_DIRECTORY_DOWNLOADS);
+    verify_system_string(NK_DIRECTORY_CACHE);
+    verify_system_string(NK_DIRECTORY_CONFIG);
+    verify_system_string(NK_DIRECTORY_DATA);
+    verify_system_string(NK_DIRECTORY_TEMP);
+    uint32_t invalid_size = 0;
+    assert(nk_system_directory(9999, NULL, &invalid_size) == NK_ERROR_UNSUPPORTED);
+
+    uint32_t locale_size = 0;
+    assert(nk_system_locale(NULL, &locale_size) == NK_ERROR_BUFFER_TOO_SMALL);
+    assert(locale_size > 1);
+    char *locale = (char *)malloc(locale_size);
+    assert(locale != NULL);
+    uint32_t locale_capacity = locale_size;
+    assert(nk_system_locale(locale, &locale_capacity) == NK_OK);
+    assert(strlen(locale) + 1 == locale_size);
+    free(locale);
+
+    nk_system_appearance appearance = {0};
+    appearance.struct_size = sizeof(appearance);
+    assert(nk_system_get_appearance(&appearance) == NK_OK);
+    assert(appearance.color_scheme == NK_COLOR_SCHEME_LIGHT ||
+           appearance.color_scheme == NK_COLOR_SCHEME_DARK);
+    assert(nk_shell_open_url(NULL) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_shell_open_url("not a URL") == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_shell_open_file("") == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_shell_reveal_file(NULL) == NK_ERROR_INVALID_ARGUMENT);
 
     nk_window_options options = {0};
     options.struct_size = sizeof(options);
