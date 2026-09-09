@@ -36,6 +36,11 @@ WebViews, asynchronous native dialogs, shell launching, standard directories,
 locale, desktop appearance, clipboard, and file/text drops. Builds without GTK 3 and WebKitGTK 4.1 retain
 the same ABI and report these capabilities as unsupported.
 
+The initial macOS backend provides Cocoa-owned windows, asynchronous native file
+and message panels, workspace shell integration, standard directories, locale,
+appearance, and native NSWindow/NSView descriptors. Pasteboard, drops, and
+WKWebView are the next macOS implementation slices.
+
 ## Build
 
 ```sh

@@ -27,3 +27,10 @@ native messages, JavaScript evaluation, and destruction during initialization
 when the Evergreen runtime is present; ARM64 is cross-compiled. Native testing
 remains authoritative for COM, accessibility, per-monitor DPI, system
 integration, and browser behavior.
+
+## macOS native tests
+
+The macOS workflow builds and runs the C ABI, core tests, and Cocoa window/system
+integration test on Intel and Apple Silicon runners. Dialogs are compiled but not
+opened automatically because unattended native panels are not a reliable CI
+interaction surface.

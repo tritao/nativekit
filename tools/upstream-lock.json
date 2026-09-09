@@ -43,6 +43,18 @@
         "src/msw/window.cpp"
       ],
       "notes": "Window class lifecycle, message handling, resize events, DPI behavior, COM file dialog options, native message dialogs, clipboard formats, shell file drops, known folders, shell launching, appearance detection, and WebView2 lifecycle/event behavior are adapted to NativeKit's handles, requests, and event queue."
+    },
+    "src/macos/nativekit_osx.mm": {
+      "sources": [
+        "src/osx/cocoa/dirdlg.mm",
+        "src/osx/cocoa/filedlg.mm",
+        "src/osx/cocoa/msgdlg.mm",
+        "src/osx/cocoa/settings.mm",
+        "src/osx/cocoa/utils.mm",
+        "src/osx/core/stdpaths.mm",
+        "src/osx/toplevel_osx.cpp"
+      ],
+      "notes": "Cocoa application pumping, window delegate behavior, native panels, workspace integration, system paths, and appearance queries are adapted to NativeKit's handles, requests, and event queue."
     }
   }
 }

@@ -1,0 +1,23 @@
+name: macOS
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  native-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15-intel, macos-15]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Configure
+        run: cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=OFF -DNK_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

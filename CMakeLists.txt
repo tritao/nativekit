@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.21)
 
 project(nativekit VERSION 0.1.0 LANGUAGES C CXX)
 
+if(APPLE)
+    enable_language(OBJCXX)
+endif()
+
 include(GNUInstallDirs)
 include(CTest)
 include(CMakePackageConfigHelpers)
@@ -78,6 +82,15 @@ if(WIN32)
     endif()
     target_sources(nativekit PRIVATE src/windows/nativekit_win.cpp)
     target_link_libraries(nativekit PRIVATE user32 shell32 ole32 advapi32)
+elseif(APPLE)
+    target_sources(nativekit PRIVATE src/macos/nativekit_osx.mm)
+    set_target_properties(nativekit PROPERTIES
+        OBJCXX_STANDARD 17
+        OBJCXX_STANDARD_REQUIRED YES)
+    target_compile_options(nativekit PRIVATE
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
+    target_link_libraries(nativekit PRIVATE "-framework Cocoa")
 elseif(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
     target_sources(nativekit PRIVATE src/linux/nativekit_gtk.cpp)
