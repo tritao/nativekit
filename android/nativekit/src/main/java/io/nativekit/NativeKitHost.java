@@ -62,6 +62,26 @@ public final class NativeKitHost implements AutoCloseable {
         return nativeReadClipboardText();
     }
 
+    public long openFileDialog(String title) { return startFileDialog(1, title, null); }
+
+    public long saveFileDialog(String title, String suggestedName) {
+        return startFileDialog(2, title, suggestedName);
+    }
+
+    public long selectDirectoryDialog(String title) { return startFileDialog(3, title, null); }
+
+    private long startFileDialog(int kind, String title, String suggestedName) {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeStartFileDialog(handle, kind, title, suggestedName);
+    }
+
+    public int cancelDialog(long request) {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeCancelDialog(request);
+    }
+
     private void setLifecycle(int state) {
         if (handle != 0) {
             nativeSetLifecycle(handle, state);
@@ -86,5 +106,8 @@ public final class NativeKitHost implements AutoCloseable {
     private static native int nativeOpenUrl(String url);
     private static native int nativeSetClipboardText(String text);
     private static native long nativeReadClipboardText();
+    private static native long nativeStartFileDialog(long host, int kind, String title,
+                                                     String suggestedName);
+    private static native int nativeCancelDialog(long request);
     private static native void nativeDestroy(long handle);
 }

@@ -23,6 +23,8 @@ import androidx.webkit.WebViewFeature;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 
 /** Package-private JNI implementation. Public consumers use NativeKitHost. */
 final class NativeKitBridge {
@@ -36,6 +38,7 @@ final class NativeKitBridge {
     private static final int NK_NAVIGATION_ERROR_CONNECTION = 5;
 
     private static final Map<Long, ViewGroup> observedHosts = new HashMap<>();
+    private static final Set<Long> cancelledDialogs = new HashSet<>();
 
     private NativeKitBridge() {}
 
@@ -204,6 +207,34 @@ final class NativeKitBridge {
         return text == null ? null : text.toString();
     }
 
+    static boolean startFileDialog(ViewGroup parent, long request, int kind, int flags,
+                                   @Nullable String title, @Nullable String suggestedName,
+                                   @Nullable String[] patterns) {
+        Context context = parent.getContext();
+        Intent intent = new Intent(context, NativeKitDialogActivity.class);
+        intent.putExtra(NativeKitDialogActivity.EXTRA_REQUEST, request);
+        intent.putExtra(NativeKitDialogActivity.EXTRA_KIND, kind);
+        intent.putExtra(NativeKitDialogActivity.EXTRA_FLAGS, flags);
+        intent.putExtra(NativeKitDialogActivity.EXTRA_TITLE, title);
+        intent.putExtra(NativeKitDialogActivity.EXTRA_SUGGESTED_NAME, suggestedName);
+        intent.putExtra(NativeKitDialogActivity.EXTRA_PATTERNS, patterns);
+        try {
+            context.startActivity(intent);
+            return true;
+        } catch (RuntimeException error) {
+            return false;
+        }
+    }
+
+    static void cancelFileDialog(long request) {
+        if (!NativeKitDialogActivity.cancel(request))
+            cancelledDialogs.add(request);
+    }
+
+    static boolean takeDialogCancellation(long request) {
+        return cancelledDialogs.remove(request);
+    }
+
     static void observeHost(ViewGroup parent, long handle) {
         observedHosts.put(handle, parent);
         View.OnLayoutChangeListener listener = (view, left, top, right, bottom, oldLeft, oldTop,
@@ -291,4 +322,6 @@ final class NativeKitBridge {
     private static native void nativeOnGeometry(long handle, int width, int height, float scale,
                                                 int insetLeft, int insetTop, int insetRight,
                                                 int insetBottom, int keyboardBottom);
+    static native void nativeOnFileDialog(long request, int kind, boolean accepted,
+                                          @Nullable String[] uris);
 }

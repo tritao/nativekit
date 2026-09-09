@@ -25,6 +25,7 @@ public final class NativeKitHostTest {
     private static final int EVENT_WEBVIEW_NAVIGATION_FAILED = 204;
     private static final int EVENT_WEBVIEW_PROCESS_TERMINATED = 205;
     private static final int EVENT_CLIPBOARD_TEXT_COMPLETE = 400;
+    private static final int EVENT_DIALOG_COMPLETE = 100;
     private static final int EVENT_HOST_GEOMETRY_CHANGED = 600;
 
     @Test
@@ -106,6 +107,10 @@ public final class NativeKitHostTest {
             assertEquals(clipboardRequest[0], clipboard.requestId);
             assertEquals(message, clipboard.text());
 
+            assertDialogCanStartAndCancel(scenario, 1);
+            assertDialogCanStartAndCancel(scenario, 2);
+            assertDialogCanStartAndCancel(scenario, 3);
+
             scenario.onActivity(activity -> {
                 assertEquals(-2, activity.host.openUrl("not a URL"));
                 assertEquals(0, activity.host.openUrl("nativekit-test://opened"));
@@ -136,6 +141,27 @@ public final class NativeKitHostTest {
     private static NativeKitEvent awaitEvent(ActivityScenario<NativeKitTestActivity> scenario,
                                               int kind) throws Exception {
         return find(awaitEvents(scenario, kind), kind);
+    }
+
+    private static void assertDialogCanStartAndCancel(
+        ActivityScenario<NativeKitTestActivity> scenario, int kind) throws Exception {
+        long[] request = new long[1];
+        scenario.onActivity(activity -> {
+            if (kind == 1)
+                request[0] = activity.host.openFileDialog("Choose a document");
+            else if (kind == 2)
+                request[0] = activity.host.saveFileDialog("Save a document", "nativekit.txt");
+            else
+                request[0] = activity.host.selectDirectoryDialog("Choose a directory");
+            assertNotEquals(0, request[0]);
+            assertEquals(0, activity.host.cancelDialog(request[0]));
+        });
+        NativeKitEvent dialog = awaitEvent(scenario, EVENT_DIALOG_COMPLETE);
+        assertEquals(request[0], dialog.requestId);
+        assertEquals(kind, dialog.flags);
+        assertNotNull(dialog.data);
+        assertEquals(0, geometryData(dialog).getInt(0));
+        assertEquals(0, geometryData(dialog).getInt(4));
     }
 
     private static NativeKitEvent awaitEventForSource(

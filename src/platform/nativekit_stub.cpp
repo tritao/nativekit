@@ -105,6 +105,7 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id, uint32_t) {
     return unsupported();
 }
 #endif
+#if !defined(NK_STUB_ANDROID)
 nk_result NK_CALL nk_dialog_open_file(nk_handle, const nk_file_dialog_options *, nk_request_id *) {
     return unsupported();
 }
@@ -115,12 +116,15 @@ nk_result NK_CALL nk_dialog_select_directory(nk_handle, const nk_file_dialog_opt
                                              nk_request_id *) {
     return unsupported();
 }
+#endif
 nk_result NK_CALL nk_dialog_message(nk_handle, const nk_message_dialog_options *, nk_request_id *) {
     return unsupported();
 }
+#if !defined(NK_STUB_ANDROID)
 nk_result NK_CALL nk_dialog_cancel(nk_request_id) {
     return unsupported();
 }
+#endif
 #if !defined(NK_STUB_ANDROID)
 nk_result NK_CALL nk_shell_open_url(const char *) {
     return unsupported();

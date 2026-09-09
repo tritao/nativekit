@@ -1,5 +1,6 @@
 #include "nativekit_mobile.h"
 #include "nativekit_clipboard.h"
+#include "nativekit_dialog.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -12,6 +13,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -43,6 +45,7 @@ std::unordered_map<nk_handle, std::shared_ptr<AndroidHost>> hosts;
 std::unordered_map<nk_handle, std::shared_ptr<AndroidWebView>> webviews;
 std::unordered_map<nk_request_id, nk_handle> evaluations;
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
+std::unordered_map<nk_request_id, uint32_t> file_dialogs;
 
 std::vector<std::byte> bytes(const char *value) {
     if (!value)
@@ -215,6 +218,85 @@ void cancel_webview_requests(nk_handle source) {
     }
 }
 
+std::vector<std::byte> dialog_payload(bool accepted, const std::vector<std::string> &uris) {
+    const auto offsets_offset = sizeof(nk_dialog_paths);
+    const auto strings_offset = offsets_offset + uris.size() * sizeof(uint32_t);
+    std::size_t size = strings_offset;
+    for (const auto &uri : uris)
+        size += uri.size() + 1;
+    std::vector<std::byte> result(size);
+    const nk_dialog_paths header{accepted ? 1u : 0u, static_cast<uint32_t>(uris.size()),
+                                 static_cast<uint32_t>(offsets_offset),
+                                 static_cast<uint32_t>(strings_offset)};
+    std::memcpy(result.data(), &header, sizeof(header));
+    std::size_t cursor = strings_offset;
+    for (std::size_t index = 0; index < uris.size(); ++index) {
+        const auto offset = static_cast<uint32_t>(cursor);
+        std::memcpy(result.data() + offsets_offset + index * sizeof(offset), &offset,
+                    sizeof(offset));
+        std::memcpy(result.data() + cursor, uris[index].c_str(), uris[index].size() + 1);
+        cursor += uris[index].size() + 1;
+    }
+    return result;
+}
+
+nk_result start_file_dialog(uint32_t kind, nk_handle parent, const nk_file_dialog_options *options,
+                            nk_request_id *out_request) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    if (!options || options->struct_size < sizeof(nk_file_dialog_options) || !out_request ||
+        (options->filter_count && !options->filters)) {
+        nk::core::set_error("file dialog options or output is missing or invalid");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto host_resource = parent ? host(parent) : context_host();
+    if (!host_resource) {
+        nk::core::set_error("Android file dialogs require an attached mobile host");
+        return parent ? NK_ERROR_INVALID_HANDLE : NK_ERROR_UNSUPPORTED;
+    }
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!env || !bridge)
+        return NK_ERROR_UNKNOWN;
+    auto method = env->GetStaticMethodID(
+        bridge, "startFileDialog",
+        "(Landroid/view/ViewGroup;JIILjava/lang/String;Ljava/lang/String;[Ljava/lang/String;)Z");
+    auto title = from_utf8(env, options->title);
+    auto suggested_name = from_utf8(env, options->suggested_name);
+    auto string_class = env->FindClass("java/lang/String");
+    auto patterns = string_class ? env->NewObjectArray(static_cast<jsize>(options->filter_count),
+                                                       string_class, nullptr)
+                                 : nullptr;
+    for (uint32_t index = 0; patterns && index < options->filter_count; ++index) {
+        auto pattern = from_utf8(env, options->filters[index].patterns);
+        env->SetObjectArrayElement(patterns, static_cast<jsize>(index), pattern);
+        if (pattern)
+            env->DeleteLocalRef(pattern);
+    }
+    const auto request = nk::core::next_request_id();
+    const auto started =
+        method && env->CallStaticBooleanMethod(bridge, method, host_resource->view_group,
+                                               static_cast<jlong>(request), static_cast<jint>(kind),
+                                               static_cast<jint>(options->flags), title,
+                                               suggested_name, patterns);
+    if (patterns)
+        env->DeleteLocalRef(patterns);
+    if (string_class)
+        env->DeleteLocalRef(string_class);
+    if (suggested_name)
+        env->DeleteLocalRef(suggested_name);
+    if (title)
+        env->DeleteLocalRef(title);
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android file dialog launch failed") || !started) {
+        nk::core::set_error("Android could not launch the system document picker");
+        return NK_ERROR_UNKNOWN;
+    }
+    file_dialogs.emplace(request, kind);
+    *out_request = request;
+    return NK_OK;
+}
+
 nk_result destroy_webview(nk_handle handle) {
     const auto found = webviews.find(handle);
     if (found == webviews.end()) {
@@ -268,6 +350,7 @@ void shutdown() noexcept {
     hosts.clear();
     evaluations.clear();
     navigation_decisions.clear();
+    file_dialogs.clear();
 }
 
 nk_result mobile_host_attach(const nk_mobile_host_options &options, nk_handle &out_host) {
@@ -365,7 +448,8 @@ nk_result mobile_host_set_lifecycle(nk_handle handle, nk_mobile_lifecycle_state 
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_SHELL;
+    return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
+           NK_CAP_SHELL;
 }
 
 nk_result NK_CALL nk_shell_open_url(const char *url) {
@@ -472,6 +556,49 @@ nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request) {
         return queued;
     *out_request = request;
     return NK_OK;
+}
+
+nk_result NK_CALL nk_dialog_open_file(nk_handle parent, const nk_file_dialog_options *options,
+                                      nk_request_id *out_request) {
+    return start_file_dialog(NK_DIALOG_OPEN_FILE, parent, options, out_request);
+}
+
+nk_result NK_CALL nk_dialog_save_file(nk_handle parent, const nk_file_dialog_options *options,
+                                      nk_request_id *out_request) {
+    return start_file_dialog(NK_DIALOG_SAVE_FILE, parent, options, out_request);
+}
+
+nk_result NK_CALL nk_dialog_select_directory(nk_handle parent,
+                                             const nk_file_dialog_options *options,
+                                             nk_request_id *out_request) {
+    return start_file_dialog(NK_DIALOG_SELECT_DIRECTORY, parent, options, out_request);
+}
+
+nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    const auto found = file_dialogs.find(request);
+    if (found == file_dialogs.end()) {
+        nk::core::set_error("invalid Android file dialog request");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    const auto kind = found->second;
+    file_dialogs.erase(found);
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (bridge) {
+        auto method = env->GetStaticMethodID(bridge, "cancelFileDialog", "(J)V");
+        if (method)
+            env->CallStaticVoidMethod(bridge, method, static_cast<jlong>(request));
+        env->DeleteLocalRef(bridge);
+        clear_java_exception(env, "Android file dialog cancellation failed");
+    }
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_DIALOG_COMPLETE;
+    event.flags = kind;
+    event.request_id = request;
+    event.data = dialog_payload(false, {});
+    return nk::core::push_event(std::move(event));
 }
 
 nk_result NK_CALL nk_webview_create(nk_handle parent, const nk_webview_options *options,
@@ -775,6 +902,31 @@ JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeReadClipboardText(
     return nk_clipboard_read_text(&request) == NK_OK ? static_cast<jlong>(request) : 0;
 }
 
+JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeStartFileDialog(
+    JNIEnv *env, jclass, jlong host_handle, jint kind, jstring title, jstring suggested_name) {
+    const auto title_value = to_utf8(env, title);
+    const auto name_value = to_utf8(env, suggested_name);
+    nk_file_dialog_options options{};
+    options.struct_size = sizeof(options);
+    options.title = title ? title_value.c_str() : nullptr;
+    options.suggested_name = suggested_name ? name_value.c_str() : nullptr;
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    nk_result result = NK_ERROR_INVALID_ARGUMENT;
+    if (kind == NK_DIALOG_OPEN_FILE)
+        result = nk_dialog_open_file(static_cast<nk_handle>(host_handle), &options, &request);
+    else if (kind == NK_DIALOG_SAVE_FILE)
+        result = nk_dialog_save_file(static_cast<nk_handle>(host_handle), &options, &request);
+    else if (kind == NK_DIALOG_SELECT_DIRECTORY)
+        result =
+            nk_dialog_select_directory(static_cast<nk_handle>(host_handle), &options, &request);
+    return result == NK_OK ? static_cast<jlong>(request) : 0;
+}
+
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeCancelDialog(JNIEnv *, jclass,
+                                                                          jlong request) {
+    return nk_dialog_cancel(static_cast<nk_request_id>(request));
+}
+
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitHost_nativeDestroy(JNIEnv *, jclass,
                                                                      jlong handle) {
     nk_mobile_host_destroy(static_cast<nk_handle>(handle));
@@ -868,6 +1020,32 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnRenderProcessGo
             return;
         emit_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, source, nullptr, NK_ERROR_UNKNOWN,
                   NK_INVALID_REQUEST_ID, crashed ? 1u : 0u);
+    });
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
+    JNIEnv *env, jclass, jlong request, jint kind, jboolean accepted, jobjectArray values) {
+    nk::core::callback_boundary([&] {
+        const auto request_id = static_cast<nk_request_id>(request);
+        const auto found = file_dialogs.find(request_id);
+        if (found == file_dialogs.end() || found->second != static_cast<uint32_t>(kind))
+            return;
+        file_dialogs.erase(found);
+        std::vector<std::string> uris;
+        const auto count = values ? env->GetArrayLength(values) : 0;
+        uris.reserve(static_cast<std::size_t>(count));
+        for (jsize index = 0; index < count; ++index) {
+            auto value = static_cast<jstring>(env->GetObjectArrayElement(values, index));
+            uris.push_back(to_utf8(env, value));
+            if (value)
+                env->DeleteLocalRef(value);
+        }
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_DIALOG_COMPLETE;
+        event.flags = static_cast<uint32_t>(kind);
+        event.request_id = request_id;
+        event.data = dialog_payload(accepted == JNI_TRUE, uris);
+        nk::core::push_event(std::move(event));
     });
 }
 
