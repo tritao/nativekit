@@ -7,7 +7,7 @@
     "version": "3.3.4-development"
   },
   "derived_files": {
-    "src/linux/desktop_gtk.cpp": {
+    "src/linux/nativekit_gtk.cpp": {
       "sources": [
         "src/gtk/dirdlg.cpp",
         "src/gtk/clipbrd.cpp",

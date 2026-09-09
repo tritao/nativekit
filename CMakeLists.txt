@@ -45,11 +45,11 @@ endif()
 
 if(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
-    target_sources(nativekit PRIVATE src/linux/desktop_gtk.cpp src/linux/system_gtk.cpp)
+    target_sources(nativekit PRIVATE src/linux/nativekit_gtk.cpp)
     target_link_libraries(nativekit PRIVATE PkgConfig::GTK3 PkgConfig::WEBKITGTK)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_GTK=1)
 else()
-    target_sources(nativekit PRIVATE src/platform/desktop_stub.cpp)
+    target_sources(nativekit PRIVATE src/platform/nativekit_stub.cpp)
 endif()
 set_target_properties(nativekit PROPERTIES
     CXX_VISIBILITY_PRESET hidden
