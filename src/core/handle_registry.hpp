@@ -16,13 +16,13 @@ struct Resource {
 };
 
 class HandleRegistry {
-public:
+  public:
     nk_handle insert(ResourceType type, std::shared_ptr<Resource> resource);
     std::shared_ptr<Resource> get(nk_handle handle, ResourceType type) const;
     bool erase(nk_handle handle, ResourceType type);
     void clear();
 
-private:
+  private:
     struct Slot {
         std::uint16_t generation = 1;
         ResourceType type = ResourceType::none;
@@ -41,5 +41,4 @@ private:
     std::vector<Slot> slots_;
 };
 
-}
-
+} // namespace nk::core

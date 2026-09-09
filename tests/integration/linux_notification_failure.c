@@ -31,7 +31,8 @@ int main(void) {
             failed = 1;
         }
         nk_event_release(&event);
-        if (!failed) usleep(10000);
+        if (!failed)
+            usleep(10000);
     }
     assert(failed);
     assert(nk_notification_close(request) == NK_ERROR_INVALID_REQUEST);

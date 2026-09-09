@@ -1,7 +1,7 @@
 #include "nativekit.h"
+#include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
 #include "nativekit_notification.h"
-#include "nativekit_clipboard.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -15,7 +15,8 @@ static nk_event wait_for_event(nk_event_kind kind, nk_handle source) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == kind && event.source == source) return event;
+        if (event.kind == kind && event.source == source)
+            return event;
         nk_event_release(&event);
         usleep(10000);
     }
@@ -29,9 +30,9 @@ int main(void) {
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
-    const nk_capabilities expected = NK_CAP_WINDOW | NK_CAP_WEBVIEW |
-        NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP |
-        NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION;
+    const nk_capabilities expected = NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG |
+                                     NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
+                                     NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
@@ -58,10 +59,13 @@ int main(void) {
     assert(wrapped == NK_INVALID_HANDLE);
     float scale = 0.0f;
     assert(nk_window_get_scale(window, &scale) == NK_OK);
-    nk_window_state state = {0}; state.struct_size = sizeof(state);
+    nk_window_state state = {0};
+    state.struct_size = sizeof(state);
     assert(nk_window_get_state(window, &state) == NK_OK);
-    nk_window_size_limits limits = {0}; limits.struct_size = sizeof(limits);
-    limits.min_width = 320; limits.min_height = 240;
+    nk_window_size_limits limits = {0};
+    limits.struct_size = sizeof(limits);
+    limits.min_width = 320;
+    limits.min_height = 240;
     assert(nk_window_set_size_limits(window, &limits) == NK_OK);
     assert(nk_window_request_attention(window) == NK_OK);
     assert(scale >= 1.0f);
@@ -89,7 +93,8 @@ int main(void) {
             received_clipboard_text = 1;
         }
         nk_event_release(&event);
-        if (!received_clipboard_text) usleep(10000);
+        if (!received_clipboard_text)
+            usleep(10000);
     }
     assert(received_clipboard_text);
 
@@ -113,7 +118,8 @@ int main(void) {
             received_clipboard_files = 1;
         }
         nk_event_release(&event);
-        if (!received_clipboard_files) usleep(10000);
+        if (!received_clipboard_files)
+            usleep(10000);
     }
     assert(received_clipboard_files);
 
@@ -134,12 +140,13 @@ int main(void) {
         nk_event_release(&event);
     }
     assert(received_ready);
-    assert(nk_webview_set_html(
-               webview,
-               "<title>NativeKit</title><script>"
-               "window.webkit.messageHandlers.nativekit.postMessage({answer:[42,true,'hello',null]});"
-               "</script>",
-               NULL) == NK_OK);
+    assert(
+        nk_webview_set_html(
+            webview,
+            "<title>NativeKit</title><script>"
+            "window.webkit.messageHandlers.nativekit.postMessage({answer:[42,true,'hello',null]});"
+            "</script>",
+            NULL) == NK_OK);
 
     int received_message = 0;
     for (int attempt = 0; attempt < 500 && !received_message; ++attempt) {
@@ -155,7 +162,8 @@ int main(void) {
             received_message = 1;
         }
         nk_event_release(&event);
-        if (!received_message) usleep(10000);
+        if (!received_message)
+            usleep(10000);
     }
     assert(received_message);
 
@@ -176,7 +184,8 @@ int main(void) {
             received_result = 1;
         }
         nk_event_release(&event);
-        if (!received_result) usleep(10000);
+        if (!received_result)
+            usleep(10000);
     }
     assert(received_result);
     nk_request_id invalid_json_request = NK_INVALID_REQUEST_ID;
@@ -194,20 +203,18 @@ int main(void) {
     nk_event_release(&policy_ready);
     const char policy_url[] = "data:text/html,NativeKit-policy";
     assert(nk_webview_navigate(policy_webview, policy_url) == NK_OK);
-    nk_event policy_request = wait_for_event(
-        NK_EVENT_WEBVIEW_NAVIGATION_REQUEST, policy_webview);
+    nk_event policy_request = wait_for_event(NK_EVENT_WEBVIEW_NAVIGATION_REQUEST, policy_webview);
     assert(policy_request.request_id != NK_INVALID_REQUEST_ID);
     assert(policy_request.data_size == strlen(policy_url));
     assert(memcmp(policy_request.data, policy_url, policy_request.data_size) == 0);
     assert(nk_webview_navigation_decide(policy_request.request_id, 1) == NK_OK);
-    assert(nk_webview_navigation_decide(policy_request.request_id, 1) ==
-           NK_ERROR_INVALID_REQUEST);
+    assert(nk_webview_navigation_decide(policy_request.request_id, 1) == NK_ERROR_INVALID_REQUEST);
     nk_event_release(&policy_request);
     nk_event policy_navigated = wait_for_event(NK_EVENT_WEBVIEW_NAVIGATED, policy_webview);
     nk_event_release(&policy_navigated);
     assert(nk_webview_navigate(policy_webview, "data:text/html,cancel") == NK_OK);
-    nk_event cancelled_request = wait_for_event(
-        NK_EVENT_WEBVIEW_NAVIGATION_REQUEST, policy_webview);
+    nk_event cancelled_request =
+        wait_for_event(NK_EVENT_WEBVIEW_NAVIGATION_REQUEST, policy_webview);
     const nk_request_id cancelled_id = cancelled_request.request_id;
     nk_event_release(&cancelled_request);
     assert(nk_webview_destroy(policy_webview) == NK_OK);
@@ -226,8 +233,7 @@ int main(void) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == NK_EVENT_DIALOG_COMPLETE &&
-            event.request_id == dialog_request) {
+        if (event.kind == NK_EVENT_DIALOG_COMPLETE && event.request_id == dialog_request) {
             assert(event.flags == NK_DIALOG_OPEN_FILE);
             assert(event.data_size >= sizeof(nk_dialog_paths));
             const nk_dialog_paths *paths = (const nk_dialog_paths *)event.data;
@@ -257,12 +263,10 @@ int main(void) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == NK_EVENT_DIALOG_COMPLETE &&
-            event.request_id == message_request) {
+        if (event.kind == NK_EVENT_DIALOG_COMPLETE && event.request_id == message_request) {
             assert(event.flags == NK_DIALOG_MESSAGE);
             assert(event.data_size == sizeof(nk_dialog_message_result));
-            const nk_dialog_message_result *result =
-                (const nk_dialog_message_result *)event.data;
+            const nk_dialog_message_result *result = (const nk_dialog_message_result *)event.data;
             assert(result->button == NK_MESSAGE_RESULT_CANCEL);
             received_message_dialog = 1;
         }

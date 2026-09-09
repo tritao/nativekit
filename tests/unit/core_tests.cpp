@@ -11,24 +11,23 @@
 
 namespace {
 struct Dummy final : nk::core::Resource {};
-}
+} // namespace
 
 int main() {
     assert(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
-        throw std::bad_alloc{};
-    }) == NK_ERROR_OUT_OF_MEMORY);
+               throw std::bad_alloc{};
+           }) == NK_ERROR_OUT_OF_MEMORY);
     assert(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
-        throw std::runtime_error("test");
-    }) == NK_ERROR_UNKNOWN);
+               throw std::runtime_error("test");
+           }) == NK_ERROR_UNKNOWN);
     bool callback_returned = false;
     nk::core::callback_boundary([&] {
         callback_returned = true;
         throw std::runtime_error("test");
     });
     assert(callback_returned);
-    assert(!nk::core::callback_boundary_or(false, []() -> bool {
-        throw std::runtime_error("test");
-    }));
+    assert(
+        !nk::core::callback_boundary_or(false, []() -> bool { throw std::runtime_error("test"); }));
     assert(nk::core::callback_boundary_or(false, [] { return true; }));
 
     nk::core::HandleRegistry handles;
@@ -45,7 +44,7 @@ int main() {
     nk::core::QueuedEvent queued;
     queued.kind = NK_EVENT_WEBVIEW_MESSAGE;
     const char payload[] = "hello";
-    const auto* begin = reinterpret_cast<const std::byte*>(payload);
+    const auto *begin = reinterpret_cast<const std::byte *>(payload);
     queued.data.assign(begin, begin + sizeof(payload) - 1);
     assert(queue.push(std::move(queued)) == NK_OK);
     assert(queue.push({}) == NK_ERROR_QUEUE_FULL);
@@ -79,7 +78,7 @@ int main() {
     first_resize.source = first;
     nk::core::QueuedEvent latest_resize = first_resize;
     const nk_window_resize_event latest_size{800, 600};
-    const auto* size_begin = reinterpret_cast<const std::byte*>(&latest_size);
+    const auto *size_begin = reinterpret_cast<const std::byte *>(&latest_size);
     latest_resize.data.assign(size_begin, size_begin + sizeof(latest_size));
     assert(resize_queue.push(std::move(first_resize)) == NK_OK);
     assert(resize_queue.push(std::move(latest_resize)) == NK_OK);

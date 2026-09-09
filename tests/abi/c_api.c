@@ -1,10 +1,10 @@
 #include "nativekit.h"
-#include "nativekit_dialog.h"
 #include "nativekit_clipboard.h"
+#include "nativekit_dialog.h"
 #include "nativekit_notification.h"
+#include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
-#include "nativekit_system.h"
 
 #include <assert.h>
 #include <string.h>
@@ -24,9 +24,9 @@ int main(void) {
         nk_dialog_paths header;
         uint32_t offset;
         char path[4];
-    } packed = {{1, 1, sizeof(nk_dialog_paths),
-                 sizeof(nk_dialog_paths) + sizeof(uint32_t)},
-                sizeof(nk_dialog_paths) + sizeof(uint32_t), "abc"};
+    } packed = {{1, 1, sizeof(nk_dialog_paths), sizeof(nk_dialog_paths) + sizeof(uint32_t)},
+                sizeof(nk_dialog_paths) + sizeof(uint32_t),
+                "abc"};
     nk_event packed_event = {0};
     packed_event.struct_size = sizeof(packed_event);
     packed_event.kind = NK_EVENT_DIALOG_COMPLETE;
@@ -50,7 +50,8 @@ int main(void) {
     uint32_t locale_size = 0;
     nk_result locale_result = nk_system_locale(NULL, &locale_size);
     assert(locale_result == NK_ERROR_BUFFER_TOO_SMALL || locale_result == NK_ERROR_UNSUPPORTED);
-    if (locale_result == NK_ERROR_BUFFER_TOO_SMALL) assert(locale_size > 1);
+    if (locale_result == NK_ERROR_BUFFER_TOO_SMALL)
+        assert(locale_size > 1);
     struct {
         nk_clipboard_files header;
         char path[10];
@@ -62,8 +63,8 @@ int main(void) {
     clipboard_event.data_size = sizeof(clipboard_data);
     const char *clipboard_path = NULL;
     uint32_t clipboard_path_length = 0;
-    assert(nk_clipboard_event_file(&clipboard_event, 0, &clipboard_path,
-                                   &clipboard_path_length) == NK_OK);
+    assert(nk_clipboard_event_file(&clipboard_event, 0, &clipboard_path, &clipboard_path_length) ==
+           NK_OK);
     assert(clipboard_path_length == 9);
     assert(nk_init(&options) == NK_ERROR_ALREADY_INITIALIZED);
     assert(strlen(nk_last_error()) > 0);

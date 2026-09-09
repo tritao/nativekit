@@ -48,7 +48,8 @@ int main(int argc, char **argv) {
             fprintf(stderr, "event: %s\n", nk_last_error());
             break;
         }
-        if (event.kind == NK_EVENT_WINDOW_CLOSE) running = 0;
+        if (event.kind == NK_EVENT_WINDOW_CLOSE)
+            running = 0;
         if (event.kind == NK_EVENT_WEBVIEW_TITLE_CHANGED && event.data) {
             printf("title: %.*s\n", (int)event.data_size, (const char *)event.data);
         }

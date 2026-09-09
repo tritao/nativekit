@@ -7,9 +7,7 @@
 extern "C" {
 #endif
 
-enum {
-    NK_NOTIFICATION_SILENT = 1u << 0
-};
+enum { NK_NOTIFICATION_SILENT = 1u << 0 };
 
 typedef struct nk_notification_options {
     uint32_t struct_size;
@@ -28,8 +26,8 @@ typedef struct nk_notification_options {
  * failure is reported with the same request ID through the event queue.
  * `icon` is an optional platform-resolved icon name or absolute file path.
  */
-NK_API nk_result NK_CALL nk_notification_show(
-    const nk_notification_options *options, nk_request_id *out_request);
+NK_API nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
+                                              nk_request_id *out_request);
 
 /* Removes a delivered notification. A successful close emits DISMISSED. */
 NK_API nk_result NK_CALL nk_notification_close(nk_request_id request);

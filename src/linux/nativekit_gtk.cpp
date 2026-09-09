@@ -4,12 +4,12 @@
  * licensed under the wxWindows Library Licence 3.1; see licenses/wxWidgets.txt.
  */
 
-#include "nativekit_window.h"
-#include "nativekit_webview.h"
+#include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
 #include "nativekit_notification.h"
-#include "nativekit_clipboard.h"
 #include "nativekit_system.h"
+#include "nativekit_webview.h"
+#include "nativekit_window.h"
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
@@ -18,10 +18,10 @@
 #include <gtk/gtk.h>
 #include <gdk/gdkconfig.h>
 #ifdef GDK_WINDOWING_WAYLAND
-#  include <gdk/gdkwayland.h>
+#include <gdk/gdkwayland.h>
 #endif
 #ifdef GDK_WINDOWING_X11
-#  include <gdk/gdkx.h>
+#include <gdk/gdkx.h>
 #endif
 #include <webkit2/webkit2.h>
 
@@ -32,8 +32,8 @@
 #include <limits>
 #include <memory>
 #include <new>
-#include <string_view>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -41,8 +41,8 @@
 namespace {
 
 struct GtkWindowResource final : nk::core::Resource {
-    GtkWidget* window = nullptr;
-    GtkWidget* container = nullptr;
+    GtkWidget *window = nullptr;
+    GtkWidget *container = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle owner = NK_INVALID_HANDLE;
     std::vector<nk_handle> children;
@@ -51,21 +51,24 @@ struct GtkWindowResource final : nk::core::Resource {
     uint64_t generation = 0;
 
     ~GtkWindowResource() override {
-        if (window) gtk_widget_destroy(window);
+        if (window)
+            gtk_widget_destroy(window);
     }
 };
 
 struct GtkWebViewResource final : nk::core::Resource {
-    GtkWidget* widget = nullptr;
-    WebKitUserContentManager* content_manager = nullptr;
+    GtkWidget *widget = nullptr;
+    WebKitUserContentManager *content_manager = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle parent = NK_INVALID_HANDLE;
     bool navigation_policy = false;
     uint64_t generation = 0;
 
     ~GtkWebViewResource() override {
-        if (widget) gtk_widget_destroy(widget);
-        if (content_manager) g_object_unref(content_manager);
+        if (widget)
+            gtk_widget_destroy(widget);
+        if (content_manager)
+            g_object_unref(content_manager);
     }
 };
 
@@ -76,7 +79,7 @@ struct EvalContext {
 };
 
 struct DialogContext {
-    GObject* object = nullptr;
+    GObject *object = nullptr;
     nk_request_id request = NK_INVALID_REQUEST_ID;
     nk_handle parent = NK_INVALID_HANDLE;
     uint32_t kind = 0;
@@ -92,12 +95,12 @@ struct ClipboardRequest {
 
 struct ClipboardFileOwner {
     std::vector<std::string> uris;
-    std::vector<char*> pointers;
+    std::vector<char *> pointers;
 };
 
 struct NavigationDecision {
     nk_handle source;
-    WebKitPolicyDecision* decision;
+    WebKitPolicyDecision *decision;
 };
 
 struct NotificationRequest {
@@ -113,12 +116,12 @@ struct NotificationContext {
 
 bool gtk_initialized = false;
 bool clipboard_owned = false;
-std::unordered_map<nk_request_id, DialogContext*> dialogs;
+std::unordered_map<nk_request_id, DialogContext *> dialogs;
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
 std::unordered_map<nk_request_id, nk_handle> evaluations;
 std::unordered_map<nk_request_id, NotificationRequest> notifications;
 std::unordered_map<uint32_t, nk_request_id> notification_ids;
-GDBusConnection* notification_bus = nullptr;
+GDBusConnection *notification_bus = nullptr;
 guint notification_action_subscription = 0;
 guint notification_closed_subscription = 0;
 
@@ -133,18 +136,21 @@ nk_result enter_ui() {
 }
 
 bool ensure_gtk() {
-    if (gtk_initialized) return true;
+    if (gtk_initialized)
+        return true;
     int argc = 0;
-    char** argv = nullptr;
+    char **argv = nullptr;
     gtk_initialized = gtk_init_check(&argc, &argv) != FALSE;
-    if (!gtk_initialized) nk::core::set_error("GTK could not connect to a display");
+    if (!gtk_initialized)
+        nk::core::set_error("GTK could not connect to a display");
     return gtk_initialized;
 }
 
-std::vector<std::byte> bytes(const char* text) {
-    if (!text) return {};
+std::vector<std::byte> bytes(const char *text) {
+    if (!text)
+        return {};
     const auto size = std::strlen(text);
-    const auto* first = reinterpret_cast<const std::byte*>(text);
+    const auto *first = reinterpret_cast<const std::byte *>(text);
     return {first, first + size};
 }
 
@@ -156,9 +162,12 @@ std::string javascript_literal(std::string_view value) {
         if (character == '"' || character == '\\') {
             result += '\\';
             result += static_cast<char>(character);
-        } else if (character == '\n') result += "\\n";
-        else if (character == '\r') result += "\\r";
-        else if (character == '\t') result += "\\t";
+        } else if (character == '\n')
+            result += "\\n";
+        else if (character == '\r')
+            result += "\\r";
+        else if (character == '\t')
+            result += "\\t";
         else if (character < 0x20) {
             result += "\\u00";
             result += hex[(character >> 4) & 0xf];
@@ -171,15 +180,15 @@ std::string javascript_literal(std::string_view value) {
     return result;
 }
 
-template<typename T>
-std::vector<std::byte> bytes_of(const T& value) {
-    const auto* first = reinterpret_cast<const std::byte*>(&value);
+template <typename T> std::vector<std::byte> bytes_of(const T &value) {
+    const auto *first = reinterpret_cast<const std::byte *>(&value);
     return {first, first + sizeof(value)};
 }
 
-gboolean on_window_delete(GtkWidget*, GdkEvent*, gpointer data) {
-    const auto* resource = static_cast<GtkWindowResource*>(data);
-    if (!nk::core::is_runtime_generation(resource->generation)) return TRUE;
+gboolean on_window_delete(GtkWidget *, GdkEvent *, gpointer data) {
+    const auto *resource = static_cast<GtkWindowResource *>(data);
+    if (!nk::core::is_runtime_generation(resource->generation))
+        return TRUE;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_WINDOW_CLOSE;
     event.source = resource->handle;
@@ -187,10 +196,11 @@ gboolean on_window_delete(GtkWidget*, GdkEvent*, gpointer data) {
     return TRUE;
 }
 
-gboolean on_window_configure(GtkWidget*, GdkEventConfigure* configure, gpointer data) {
+gboolean on_window_configure(GtkWidget *, GdkEventConfigure *configure, gpointer data) {
     nk::core::callback_boundary([&] {
-        const auto* resource = static_cast<GtkWindowResource*>(data);
-        if (!nk::core::is_runtime_generation(resource->generation)) return;
+        const auto *resource = static_cast<GtkWindowResource *>(data);
+        if (!nk::core::is_runtime_generation(resource->generation))
+            return;
         const nk_window_resize_event payload{configure->width, configure->height};
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WINDOW_RESIZE;
@@ -201,10 +211,11 @@ gboolean on_window_configure(GtkWidget*, GdkEventConfigure* configure, gpointer 
     return FALSE;
 }
 
-void on_window_scale(GtkWidget* widget, GParamSpec*, gpointer data) {
+void on_window_scale(GtkWidget *widget, GParamSpec *, gpointer data) {
     nk::core::callback_boundary([&] {
-        const auto* resource = static_cast<GtkWindowResource*>(data);
-        if (!nk::core::is_runtime_generation(resource->generation)) return;
+        const auto *resource = static_cast<GtkWindowResource *>(data);
+        if (!nk::core::is_runtime_generation(resource->generation))
+            return;
         const nk_window_scale_event payload{
             static_cast<float>(gtk_widget_get_scale_factor(widget))};
         nk::core::QueuedEvent event;
@@ -215,10 +226,11 @@ void on_window_scale(GtkWidget* widget, GParamSpec*, gpointer data) {
     });
 }
 
-gboolean on_window_state(GtkWidget*, GdkEventWindowState* state, gpointer data) {
+gboolean on_window_state(GtkWidget *, GdkEventWindowState *state, gpointer data) {
     nk::core::callback_boundary([&] {
-        const auto* resource = static_cast<GtkWindowResource*>(data);
-        if (!nk::core::is_runtime_generation(resource->generation)) return;
+        const auto *resource = static_cast<GtkWindowResource *>(data);
+        if (!nk::core::is_runtime_generation(resource->generation))
+            return;
         nk_window_state payload{sizeof(payload), 0, {0, 0}};
         if (!(state->new_window_state & GDK_WINDOW_STATE_WITHDRAWN))
             payload.flags |= NK_WINDOW_STATE_VISIBLE;
@@ -239,32 +251,34 @@ gboolean on_window_state(GtkWidget*, GdkEventWindowState* state, gpointer data) 
     return FALSE;
 }
 
-uint32_t navigation_error_category(const GError* error) {
+uint32_t navigation_error_category(const GError *error) {
     if (error->domain == WEBKIT_NETWORK_ERROR) {
         switch (error->code) {
-            case WEBKIT_NETWORK_ERROR_UNKNOWN_PROTOCOL:
-                return NK_NAVIGATION_ERROR_REQUEST;
-            case WEBKIT_NETWORK_ERROR_CANCELLED:
-                return NK_NAVIGATION_ERROR_CANCELLED;
-            case WEBKIT_NETWORK_ERROR_FILE_DOES_NOT_EXIST:
-                return NK_NAVIGATION_ERROR_NOT_FOUND;
-            case WEBKIT_NETWORK_ERROR_TRANSPORT:
-                return NK_NAVIGATION_ERROR_CONNECTION;
-            default:
-                break;
+        case WEBKIT_NETWORK_ERROR_UNKNOWN_PROTOCOL:
+            return NK_NAVIGATION_ERROR_REQUEST;
+        case WEBKIT_NETWORK_ERROR_CANCELLED:
+            return NK_NAVIGATION_ERROR_CANCELLED;
+        case WEBKIT_NETWORK_ERROR_FILE_DOES_NOT_EXIST:
+            return NK_NAVIGATION_ERROR_NOT_FOUND;
+        case WEBKIT_NETWORK_ERROR_TRANSPORT:
+            return NK_NAVIGATION_ERROR_CONNECTION;
+        default:
+            break;
         }
     } else if (error->domain == WEBKIT_POLICY_ERROR) {
         return error->code == WEBKIT_POLICY_ERROR_CANNOT_USE_RESTRICTED_PORT
-            ? NK_NAVIGATION_ERROR_SECURITY : NK_NAVIGATION_ERROR_REQUEST;
+                   ? NK_NAVIGATION_ERROR_SECURITY
+                   : NK_NAVIGATION_ERROR_REQUEST;
     }
     return NK_NAVIGATION_ERROR_OTHER;
 }
 
-gboolean on_webview_load_failed(WebKitWebView*, WebKitLoadEvent, const char*,
-                                GError* error, gpointer data) {
+gboolean on_webview_load_failed(WebKitWebView *, WebKitLoadEvent, const char *, GError *error,
+                                gpointer data) {
     nk::core::callback_boundary([&] {
-        const auto* resource = static_cast<GtkWebViewResource*>(data);
-        if (!nk::core::is_runtime_generation(resource->generation)) return;
+        const auto *resource = static_cast<GtkWebViewResource *>(data);
+        if (!nk::core::is_runtime_generation(resource->generation))
+            return;
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_NAVIGATION_FAILED;
         event.source = resource->handle;
@@ -276,11 +290,11 @@ gboolean on_webview_load_failed(WebKitWebView*, WebKitLoadEvent, const char*,
     return FALSE;
 }
 
-void on_webview_process_terminated(WebKitWebView*,
-                                   WebKitWebProcessTerminationReason reason,
+void on_webview_process_terminated(WebKitWebView *, WebKitWebProcessTerminationReason reason,
                                    gpointer data) {
-    const auto* resource = static_cast<GtkWebViewResource*>(data);
-    if (!nk::core::is_runtime_generation(resource->generation)) return;
+    const auto *resource = static_cast<GtkWebViewResource *>(data);
+    if (!nk::core::is_runtime_generation(resource->generation))
+        return;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_WEBVIEW_PROCESS_TERMINATED;
     event.source = resource->handle;
@@ -289,11 +303,13 @@ void on_webview_process_terminated(WebKitWebView*,
     nk::core::push_event(std::move(event));
 }
 
-void on_webview_load(WebKitWebView* view, WebKitLoadEvent load_event, gpointer data) {
-    if (load_event != WEBKIT_LOAD_FINISHED) return;
+void on_webview_load(WebKitWebView *view, WebKitLoadEvent load_event, gpointer data) {
+    if (load_event != WEBKIT_LOAD_FINISHED)
+        return;
     nk::core::callback_boundary([&] {
-        const auto* resource = static_cast<GtkWebViewResource*>(data);
-        if (!nk::core::is_runtime_generation(resource->generation)) return;
+        const auto *resource = static_cast<GtkWebViewResource *>(data);
+        if (!nk::core::is_runtime_generation(resource->generation))
+            return;
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_NAVIGATED;
         event.source = resource->handle;
@@ -302,10 +318,11 @@ void on_webview_load(WebKitWebView* view, WebKitLoadEvent load_event, gpointer d
     });
 }
 
-void on_webview_title(WebKitWebView* view, GParamSpec*, gpointer data) {
+void on_webview_title(WebKitWebView *view, GParamSpec *, gpointer data) {
     nk::core::callback_boundary([&] {
-        const auto* resource = static_cast<GtkWebViewResource*>(data);
-        if (!nk::core::is_runtime_generation(resource->generation)) return;
+        const auto *resource = static_cast<GtkWebViewResource *>(data);
+        if (!nk::core::is_runtime_generation(resource->generation))
+            return;
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_TITLE_CHANGED;
         event.source = resource->handle;
@@ -314,13 +331,13 @@ void on_webview_title(WebKitWebView* view, GParamSpec*, gpointer data) {
     });
 }
 
-void on_webview_message(WebKitUserContentManager*, WebKitJavascriptResult* result,
-                        gpointer data) {
-    char* string = nullptr;
+void on_webview_message(WebKitUserContentManager *, WebKitJavascriptResult *result, gpointer data) {
+    char *string = nullptr;
     nk::core::callback_boundary([&] {
-        const auto* resource = static_cast<GtkWebViewResource*>(data);
-        if (!nk::core::is_runtime_generation(resource->generation)) return;
-        JSCValue* value = webkit_javascript_result_get_js_value(result);
+        const auto *resource = static_cast<GtkWebViewResource *>(data);
+        if (!nk::core::is_runtime_generation(resource->generation))
+            return;
+        JSCValue *value = webkit_javascript_result_get_js_value(result);
         string = jsc_value_to_json(value, 0);
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_MESSAGE;
@@ -336,20 +353,21 @@ void on_webview_message(WebKitUserContentManager*, WebKitJavascriptResult* resul
     g_free(string);
 }
 
-gboolean on_webview_policy(WebKitWebView*, WebKitPolicyDecision* decision,
+gboolean on_webview_policy(WebKitWebView *, WebKitPolicyDecision *decision,
                            WebKitPolicyDecisionType type, gpointer data) {
-    auto* resource = static_cast<GtkWebViewResource*>(data);
-    if (!nk::core::is_runtime_generation(resource->generation)) return FALSE;
+    auto *resource = static_cast<GtkWebViewResource *>(data);
+    if (!nk::core::is_runtime_generation(resource->generation))
+        return FALSE;
     if (!resource->navigation_policy || type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION)
         return FALSE;
     bool completed = false;
     nk_request_id request_id = NK_INVALID_REQUEST_ID;
-    WebKitPolicyDecision* retained = nullptr;
+    WebKitPolicyDecision *retained = nullptr;
     bool inserted = false;
     nk::core::callback_boundary([&] {
-        auto* navigation = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
-        auto* action = webkit_navigation_policy_decision_get_navigation_action(navigation);
-        auto* request = webkit_navigation_action_get_request(action);
+        auto *navigation = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
+        auto *action = webkit_navigation_policy_decision_get_navigation_action(navigation);
+        auto *request = webkit_navigation_action_get_request(action);
         request_id = nk::core::next_request_id();
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_NAVIGATION_REQUEST;
@@ -357,8 +375,7 @@ gboolean on_webview_policy(WebKitWebView*, WebKitPolicyDecision* decision,
         event.request_id = request_id;
         event.data = bytes(webkit_uri_request_get_uri(request));
         retained = WEBKIT_POLICY_DECISION(g_object_ref(decision));
-        navigation_decisions.emplace(
-            request_id, NavigationDecision{resource->handle, retained});
+        navigation_decisions.emplace(request_id, NavigationDecision{resource->handle, retained});
         inserted = true;
         if (nk::core::push_event(std::move(event)) != NK_OK) {
             navigation_decisions.erase(request_id);
@@ -370,8 +387,10 @@ gboolean on_webview_policy(WebKitWebView*, WebKitPolicyDecision* decision,
         completed = true;
     });
     if (!completed) {
-        if (inserted) navigation_decisions.erase(request_id);
-        if (retained) g_object_unref(retained);
+        if (inserted)
+            navigation_decisions.erase(request_id);
+        if (retained)
+            g_object_unref(retained);
         webkit_policy_decision_use(decision);
     }
     return TRUE;
@@ -389,17 +408,20 @@ void cancel_navigation_decisions(nk_handle source) {
     }
 }
 
-void on_eval_complete(GObject* object, GAsyncResult* result, gpointer data) {
-    std::unique_ptr<EvalContext> context(static_cast<EvalContext*>(data));
-    if (!nk::core::is_runtime_generation(context->generation)) return;
+void on_eval_complete(GObject *object, GAsyncResult *result, gpointer data) {
+    std::unique_ptr<EvalContext> context(static_cast<EvalContext *>(data));
+    if (!nk::core::is_runtime_generation(context->generation))
+        return;
     const auto pending = evaluations.find(context->request);
-    if (pending == evaluations.end() || pending->second != context->source) return;
+    if (pending == evaluations.end() || pending->second != context->source)
+        return;
     evaluations.erase(pending);
-    if (!nk::core::handles().get(context->source, nk::core::ResourceType::webview)) return;
-    GError* error = nullptr;
-    JSCValue* value = webkit_web_view_evaluate_javascript_finish(
-        WEBKIT_WEB_VIEW(object), result, &error);
-    char* string = nullptr;
+    if (!nk::core::handles().get(context->source, nk::core::ResourceType::webview))
+        return;
+    GError *error = nullptr;
+    JSCValue *value =
+        webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(object), result, &error);
+    char *string = nullptr;
     nk::core::callback_boundary([&] {
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_EVAL_COMPLETE;
@@ -415,8 +437,10 @@ void on_eval_complete(GObject* object, GAsyncResult* result, gpointer data) {
         nk::core::push_event(std::move(event));
     });
     g_free(string);
-    if (error) g_error_free(error);
-    if (value) g_object_unref(value);
+    if (error)
+        g_error_free(error);
+    if (value)
+        g_object_unref(value);
 }
 
 void cancel_evaluations(nk_handle source) noexcept {
@@ -445,50 +469,49 @@ std::shared_ptr<GtkWebViewResource> webview(nk_handle handle) {
         nk::core::handles().get(handle, nk::core::ResourceType::webview));
 }
 
-std::vector<std::byte> dialog_paths_payload(const std::vector<std::string>& paths,
-                                            bool accepted) {
+std::vector<std::byte> dialog_paths_payload(const std::vector<std::string> &paths, bool accepted) {
     const auto offsets_offset = sizeof(nk_dialog_paths);
     const auto strings_offset = offsets_offset + paths.size() * sizeof(uint32_t);
     std::size_t total = strings_offset;
-    for (const auto& path : paths) total += path.size() + 1;
+    for (const auto &path : paths)
+        total += path.size() + 1;
     std::vector<std::byte> result(total);
-    const nk_dialog_paths header{
-        accepted ? 1u : 0u,
-        static_cast<uint32_t>(paths.size()),
-        static_cast<uint32_t>(offsets_offset),
-        static_cast<uint32_t>(strings_offset)};
+    const nk_dialog_paths header{accepted ? 1u : 0u, static_cast<uint32_t>(paths.size()),
+                                 static_cast<uint32_t>(offsets_offset),
+                                 static_cast<uint32_t>(strings_offset)};
     std::memcpy(result.data(), &header, sizeof(header));
     std::size_t cursor = strings_offset;
     for (std::size_t index = 0; index < paths.size(); ++index) {
         const auto offset = static_cast<uint32_t>(cursor);
-        std::memcpy(result.data() + offsets_offset + index * sizeof(offset),
-                    &offset, sizeof(offset));
+        std::memcpy(result.data() + offsets_offset + index * sizeof(offset), &offset,
+                    sizeof(offset));
         std::memcpy(result.data() + cursor, paths[index].c_str(), paths[index].size() + 1);
         cursor += paths[index].size() + 1;
     }
     return result;
 }
 
-template<typename Header>
-std::vector<std::byte> string_list_payload(Header header,
-                                           const std::vector<std::string>& strings,
+template <typename Header>
+std::vector<std::byte> string_list_payload(Header header, const std::vector<std::string> &strings,
                                            uint32_t Header::*offset_member) {
     header.*offset_member = sizeof(Header);
     std::size_t total = sizeof(Header);
-    for (const auto& string : strings) total += string.size() + 1;
+    for (const auto &string : strings)
+        total += string.size() + 1;
     std::vector<std::byte> result(total);
     std::memcpy(result.data(), &header, sizeof(header));
     std::size_t cursor = sizeof(Header);
-    for (const auto& string : strings) {
+    for (const auto &string : strings) {
         std::memcpy(result.data() + cursor, string.c_str(), string.size() + 1);
         cursor += string.size() + 1;
     }
     return result;
 }
 
-void on_clipboard_text(GtkClipboard*, const gchar* text, gpointer data) {
-    std::unique_ptr<ClipboardRequest> request(static_cast<ClipboardRequest*>(data));
-    if (!nk::core::is_runtime_generation(request->generation)) return;
+void on_clipboard_text(GtkClipboard *, const gchar *text, gpointer data) {
+    std::unique_ptr<ClipboardRequest> request(static_cast<ClipboardRequest *>(data));
+    if (!nk::core::is_runtime_generation(request->generation))
+        return;
     nk::core::callback_boundary([&] {
         nk::core::QueuedEvent event;
         event.kind = request->event_kind;
@@ -498,13 +521,14 @@ void on_clipboard_text(GtkClipboard*, const gchar* text, gpointer data) {
     });
 }
 
-void on_clipboard_uris(GtkClipboard*, gchar** uris, gpointer data) {
-    std::unique_ptr<ClipboardRequest> request(static_cast<ClipboardRequest*>(data));
-    if (!nk::core::is_runtime_generation(request->generation)) return;
+void on_clipboard_uris(GtkClipboard *, gchar **uris, gpointer data) {
+    std::unique_ptr<ClipboardRequest> request(static_cast<ClipboardRequest *>(data));
+    if (!nk::core::is_runtime_generation(request->generation))
+        return;
     nk::core::callback_boundary([&] {
         std::vector<std::string> paths;
-        for (gchar** uri = uris; uri && *uri; ++uri) {
-            char* path = g_filename_from_uri(*uri, nullptr, nullptr);
+        for (gchar **uri = uris; uri && *uri; ++uri) {
+            char *path = g_filename_from_uri(*uri, nullptr, nullptr);
             if (path) {
                 paths.emplace_back(path);
                 g_free(path);
@@ -520,32 +544,30 @@ void on_clipboard_uris(GtkClipboard*, gchar** uris, gpointer data) {
     });
 }
 
-void provide_clipboard_files(GtkClipboard*, GtkSelectionData* selection,
-                             guint, gpointer data) {
-    auto* owner = static_cast<ClipboardFileOwner*>(data);
+void provide_clipboard_files(GtkClipboard *, GtkSelectionData *selection, guint, gpointer data) {
+    auto *owner = static_cast<ClipboardFileOwner *>(data);
     gtk_selection_data_set_uris(selection, owner->pointers.data());
 }
 
-void clear_clipboard_files(GtkClipboard*, gpointer data) {
+void clear_clipboard_files(GtkClipboard *, gpointer data) {
     clipboard_owned = false;
-    delete static_cast<ClipboardFileOwner*>(data);
+    delete static_cast<ClipboardFileOwner *>(data);
 }
 
 enum { drop_target_uri = 1, drop_target_text = 2 };
 
-void on_drag_data_received(GtkWidget*, GdkDragContext* context, gint x, gint y,
-                           GtkSelectionData* selection, guint info, guint time,
-                           gpointer data) {
+void on_drag_data_received(GtkWidget *, GdkDragContext *context, gint x, gint y,
+                           GtkSelectionData *selection, guint info, guint time, gpointer data) {
     bool completed = false;
     nk::core::callback_boundary([&] {
-        const auto* resource = static_cast<GtkWindowResource*>(data);
+        const auto *resource = static_cast<GtkWindowResource *>(data);
         std::vector<std::string> items;
         nk_event_kind kind = NK_EVENT_DROP_TEXT;
         if (info == drop_target_uri) {
             kind = NK_EVENT_DROP_FILES;
-            gchar** uris = gtk_selection_data_get_uris(selection);
-            for (gchar** uri = uris; uri && *uri; ++uri) {
-                char* path = g_filename_from_uri(*uri, nullptr, nullptr);
+            gchar **uris = gtk_selection_data_get_uris(selection);
+            for (gchar **uri = uris; uri && *uri; ++uri) {
+                char *path = g_filename_from_uri(*uri, nullptr, nullptr);
                 if (path) {
                     items.emplace_back(path);
                     g_free(path);
@@ -553,7 +575,7 @@ void on_drag_data_received(GtkWidget*, GdkDragContext* context, gint x, gint y,
             }
             g_strfreev(uris);
         } else {
-            gchar* text = reinterpret_cast<gchar*>(gtk_selection_data_get_text(selection));
+            gchar *text = reinterpret_cast<gchar *>(gtk_selection_data_get_text(selection));
             if (text) {
                 items.emplace_back(text);
                 g_free(text);
@@ -571,10 +593,11 @@ void on_drag_data_received(GtkWidget*, GdkDragContext* context, gint x, gint y,
         gtk_drag_finish(context, !items.empty(), FALSE, time);
         completed = true;
     });
-    if (!completed) gtk_drag_finish(context, FALSE, FALSE, time);
+    if (!completed)
+        gtk_drag_finish(context, FALSE, FALSE, time);
 }
 
-void dispose_dialog(DialogContext* context) {
+void dispose_dialog(DialogContext *context) {
     dialogs.erase(context->request);
     g_signal_handlers_disconnect_by_data(context->object, context);
     if (context->native_dialog)
@@ -585,13 +608,13 @@ void dispose_dialog(DialogContext* context) {
     delete context;
 }
 
-void emit_file_dialog_completion(DialogContext* context, int response) {
+void emit_file_dialog_completion(DialogContext *context, int response) {
     const bool accepted = response == GTK_RESPONSE_ACCEPT || response == GTK_RESPONSE_OK;
     std::vector<std::string> paths;
     if (accepted) {
-        GSList* filenames = gtk_file_chooser_get_filenames(GTK_FILE_CHOOSER(context->object));
-        for (GSList* item = filenames; item; item = item->next) {
-            paths.emplace_back(static_cast<const char*>(item->data));
+        GSList *filenames = gtk_file_chooser_get_filenames(GTK_FILE_CHOOSER(context->object));
+        for (GSList *item = filenames; item; item = item->next) {
+            paths.emplace_back(static_cast<const char *>(item->data));
             g_free(item->data);
         }
         g_slist_free(filenames);
@@ -607,17 +630,22 @@ void emit_file_dialog_completion(DialogContext* context, int response) {
 
 uint32_t message_result(int response) {
     switch (response) {
-        case GTK_RESPONSE_OK: return NK_MESSAGE_RESULT_OK;
-        case GTK_RESPONSE_YES: return NK_MESSAGE_RESULT_YES;
-        case GTK_RESPONSE_NO: return NK_MESSAGE_RESULT_NO;
-        case GTK_RESPONSE_CANCEL:
-        case GTK_RESPONSE_DELETE_EVENT: return NK_MESSAGE_RESULT_CANCEL;
-        default: return NK_MESSAGE_RESULT_NONE;
+    case GTK_RESPONSE_OK:
+        return NK_MESSAGE_RESULT_OK;
+    case GTK_RESPONSE_YES:
+        return NK_MESSAGE_RESULT_YES;
+    case GTK_RESPONSE_NO:
+        return NK_MESSAGE_RESULT_NO;
+    case GTK_RESPONSE_CANCEL:
+    case GTK_RESPONSE_DELETE_EVENT:
+        return NK_MESSAGE_RESULT_CANCEL;
+    default:
+        return NK_MESSAGE_RESULT_NONE;
     }
 }
 
-void on_dialog_response(GObject*, int response, gpointer data) {
-    auto* context = static_cast<DialogContext*>(data);
+void on_dialog_response(GObject *, int response, gpointer data) {
+    auto *context = static_cast<DialogContext *>(data);
     if (!nk::core::is_runtime_generation(context->generation)) {
         dispose_dialog(context);
         return;
@@ -638,7 +666,7 @@ void on_dialog_response(GObject*, int response, gpointer data) {
     dispose_dialog(context);
 }
 
-void cancel_dialog(DialogContext* context, bool emit_event) {
+void cancel_dialog(DialogContext *context, bool emit_event) {
     if (emit_event) {
         nk::core::callback_boundary([&] {
             if (context->kind == NK_DIALOG_MESSAGE) {
@@ -659,31 +687,36 @@ void cancel_dialog(DialogContext* context, bool emit_event) {
 
 void cancel_dialogs_for_parent(nk_handle parent, bool emit_event) {
     std::vector<nk_request_id> requests;
-    for (const auto& [request, dialog] : dialogs) {
-        if (dialog->parent == parent) requests.push_back(request);
+    for (const auto &[request, dialog] : dialogs) {
+        if (dialog->parent == parent)
+            requests.push_back(request);
     }
-    for (const auto request : requests) cancel_dialog(dialogs.at(request), emit_event);
+    for (const auto request : requests)
+        cancel_dialog(dialogs.at(request), emit_event);
 }
 
-void add_filters(GtkFileChooser* chooser, const nk_file_dialog_options* options) {
+void add_filters(GtkFileChooser *chooser, const nk_file_dialog_options *options) {
     for (uint32_t index = 0; index < options->filter_count; ++index) {
-        const auto& definition = options->filters[index];
-        if (!definition.patterns) continue;
-        GtkFileFilter* filter = gtk_file_filter_new();
-        if (definition.name) gtk_file_filter_set_name(filter, definition.name);
-        char** patterns = g_strsplit(definition.patterns, ";", -1);
-        for (char** pattern = patterns; pattern && *pattern; ++pattern) {
-            if (**pattern) gtk_file_filter_add_pattern(filter, *pattern);
+        const auto &definition = options->filters[index];
+        if (!definition.patterns)
+            continue;
+        GtkFileFilter *filter = gtk_file_filter_new();
+        if (definition.name)
+            gtk_file_filter_set_name(filter, definition.name);
+        char **patterns = g_strsplit(definition.patterns, ";", -1);
+        for (char **pattern = patterns; pattern && *pattern; ++pattern) {
+            if (**pattern)
+                gtk_file_filter_add_pattern(filter, *pattern);
         }
         g_strfreev(patterns);
         gtk_file_chooser_add_filter(chooser, filter);
     }
 }
 
-nk_result start_file_dialog(nk_handle parent_handle,
-                            const nk_file_dialog_options* options,
-                            nk_request_id* out_request, uint32_t kind) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_options *options,
+                            nk_request_id *out_request, uint32_t kind) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     if (!options || options->struct_size < sizeof(*options) || !out_request ||
         (options->filter_count && !options->filters)) {
         return fail(NK_ERROR_INVALID_ARGUMENT, "invalid file dialog options");
@@ -691,19 +724,23 @@ nk_result start_file_dialog(nk_handle parent_handle,
     std::shared_ptr<GtkWindowResource> parent;
     if (parent_handle != NK_INVALID_HANDLE) {
         parent = window(parent_handle);
-        if (!parent) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale parent window handle");
+        if (!parent)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale parent window handle");
     }
-    if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
+    if (!ensure_gtk())
+        return NK_ERROR_UNSUPPORTED;
     GtkFileChooserAction action = GTK_FILE_CHOOSER_ACTION_OPEN;
-    if (kind == NK_DIALOG_SAVE_FILE) action = GTK_FILE_CHOOSER_ACTION_SAVE;
-    if (kind == NK_DIALOG_SELECT_DIRECTORY) action = GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER;
-    GtkFileChooserNative* chooser = gtk_file_chooser_native_new(
-        options->title ? options->title : "",
-        parent ? GTK_WINDOW(parent->window) : nullptr,
-        action, nullptr, nullptr);
-    if (!chooser) return fail(NK_ERROR_UNKNOWN, "could not create native file dialog");
-    std::unique_ptr<GObject, decltype(&g_object_unref)> chooser_owner(
-        G_OBJECT(chooser), &g_object_unref);
+    if (kind == NK_DIALOG_SAVE_FILE)
+        action = GTK_FILE_CHOOSER_ACTION_SAVE;
+    if (kind == NK_DIALOG_SELECT_DIRECTORY)
+        action = GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER;
+    GtkFileChooserNative *chooser = gtk_file_chooser_native_new(
+        options->title ? options->title : "", parent ? GTK_WINDOW(parent->window) : nullptr, action,
+        nullptr, nullptr);
+    if (!chooser)
+        return fail(NK_ERROR_UNKNOWN, "could not create native file dialog");
+    std::unique_ptr<GObject, decltype(&g_object_unref)> chooser_owner(G_OBJECT(chooser),
+                                                                      &g_object_unref);
     auto context = std::make_unique<DialogContext>();
     context->object = G_OBJECT(chooser);
     context->request = nk::core::next_request_id();
@@ -711,13 +748,12 @@ nk_result start_file_dialog(nk_handle parent_handle,
     context->parent = parent_handle;
     context->kind = kind;
     context->native_dialog = true;
-    auto* interface = GTK_FILE_CHOOSER(chooser);
+    auto *interface = GTK_FILE_CHOOSER(chooser);
     gtk_file_chooser_set_select_multiple(
         interface, kind == NK_DIALOG_OPEN_FILE && (options->flags & NK_DIALOG_ALLOW_MULTIPLE));
     gtk_file_chooser_set_do_overwrite_confirmation(
         interface, (options->flags & NK_DIALOG_CONFIRM_OVERWRITE) != 0);
-    gtk_file_chooser_set_show_hidden(
-        interface, (options->flags & NK_DIALOG_SHOW_HIDDEN) != 0);
+    gtk_file_chooser_set_show_hidden(interface, (options->flags & NK_DIALOG_SHOW_HIDDEN) != 0);
     if (options->initial_path) {
         if (g_file_test(options->initial_path, G_FILE_TEST_IS_DIR))
             gtk_file_chooser_set_current_folder(interface, options->initial_path);
@@ -736,13 +772,13 @@ nk_result start_file_dialog(nk_handle parent_handle,
     return NK_OK;
 }
 
-nk_result invalid_handle(const char* type) {
+nk_result invalid_handle(const char *type) {
     (void)type;
     nk::core::set_error("invalid or stale resource handle");
     return NK_ERROR_INVALID_HANDLE;
 }
 
-nk_result copy_utf8(const char* value, char* buffer, uint32_t* inout_size) {
+nk_result copy_utf8(const char *value, char *buffer, uint32_t *inout_size) {
     if (!value || !inout_size)
         return fail(NK_ERROR_INVALID_ARGUMENT, "invalid string output arguments");
     const auto length = std::strlen(value);
@@ -757,24 +793,28 @@ nk_result copy_utf8(const char* value, char* buffer, uint32_t* inout_size) {
     return NK_OK;
 }
 
-nk_result launch_uri(const char* uri) {
-    GError* error = nullptr;
-    if (g_app_info_launch_default_for_uri(uri, nullptr, &error)) return NK_OK;
-    nk::core::set_error(error && error->message
-        ? error->message : "desktop could not launch the URI");
-    if (error) g_error_free(error);
+nk_result launch_uri(const char *uri) {
+    GError *error = nullptr;
+    if (g_app_info_launch_default_for_uri(uri, nullptr, &error))
+        return NK_OK;
+    nk::core::set_error(error && error->message ? error->message
+                                                : "desktop could not launch the URI");
+    if (error)
+        g_error_free(error);
     return NK_ERROR_UNKNOWN;
 }
 
-nk_result open_path(const char* path) {
-    if (!path || !*path) return fail(NK_ERROR_INVALID_ARGUMENT, "path must not be empty");
-    char* absolute = g_canonicalize_filename(path, nullptr);
-    GError* error = nullptr;
-    char* uri = g_filename_to_uri(absolute, nullptr, &error);
+nk_result open_path(const char *path) {
+    if (!path || !*path)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "path must not be empty");
+    char *absolute = g_canonicalize_filename(path, nullptr);
+    GError *error = nullptr;
+    char *uri = g_filename_to_uri(absolute, nullptr, &error);
     g_free(absolute);
     if (!uri) {
         nk::core::set_error(error && error->message ? error->message : "invalid file path");
-        if (error) g_error_free(error);
+        if (error)
+            g_error_free(error);
         return NK_ERROR_INVALID_ARGUMENT;
     }
     const auto result = launch_uri(uri);
@@ -782,59 +822,68 @@ nk_result open_path(const char* path) {
     return result;
 }
 
-const char* system_directory_path(nk_system_directory_kind kind) {
+const char *system_directory_path(nk_system_directory_kind kind) {
     switch (kind) {
-        case NK_DIRECTORY_HOME: return g_get_home_dir();
-        case NK_DIRECTORY_DESKTOP: return g_get_user_special_dir(G_USER_DIRECTORY_DESKTOP);
-        case NK_DIRECTORY_DOCUMENTS: return g_get_user_special_dir(G_USER_DIRECTORY_DOCUMENTS);
-        case NK_DIRECTORY_DOWNLOADS: return g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD);
-        case NK_DIRECTORY_CACHE: return g_get_user_cache_dir();
-        case NK_DIRECTORY_CONFIG: return g_get_user_config_dir();
-        case NK_DIRECTORY_DATA: return g_get_user_data_dir();
-        case NK_DIRECTORY_TEMP: return g_get_tmp_dir();
-        default: return nullptr;
+    case NK_DIRECTORY_HOME:
+        return g_get_home_dir();
+    case NK_DIRECTORY_DESKTOP:
+        return g_get_user_special_dir(G_USER_DIRECTORY_DESKTOP);
+    case NK_DIRECTORY_DOCUMENTS:
+        return g_get_user_special_dir(G_USER_DIRECTORY_DOCUMENTS);
+    case NK_DIRECTORY_DOWNLOADS:
+        return g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD);
+    case NK_DIRECTORY_CACHE:
+        return g_get_user_cache_dir();
+    case NK_DIRECTORY_CONFIG:
+        return g_get_user_config_dir();
+    case NK_DIRECTORY_DATA:
+        return g_get_user_data_dir();
+    case NK_DIRECTORY_TEMP:
+        return g_get_tmp_dir();
+    default:
+        return nullptr;
     }
 }
 
-void emit_notification(nk_event_kind kind, nk_request_id request,
-                       nk_result result = NK_OK, const char* text = nullptr) noexcept {
+void emit_notification(nk_event_kind kind, nk_request_id request, nk_result result = NK_OK,
+                       const char *text = nullptr) noexcept {
     nk::core::callback_boundary([&] {
         nk::core::QueuedEvent event;
         event.kind = kind;
         event.request_id = request;
         event.result = result;
-        if (text) event.data = bytes(text);
+        if (text)
+            event.data = bytes(text);
         nk::core::push_event(std::move(event));
     });
 }
 
 void close_server_notification(uint32_t server_id) {
-    if (!notification_bus || !server_id) return;
-    g_dbus_connection_call(
-        notification_bus, "org.freedesktop.Notifications",
-        "/org/freedesktop/Notifications", "org.freedesktop.Notifications",
-        "CloseNotification", g_variant_new("(u)", server_id), nullptr,
-        G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr, nullptr);
+    if (!notification_bus || !server_id)
+        return;
+    g_dbus_connection_call(notification_bus, "org.freedesktop.Notifications",
+                           "/org/freedesktop/Notifications", "org.freedesktop.Notifications",
+                           "CloseNotification", g_variant_new("(u)", server_id), nullptr,
+                           G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr, nullptr);
 }
 
-void on_notification_signal(GDBusConnection*, const gchar*, const gchar*,
-                            const gchar*, const gchar* signal, GVariant* parameters,
-                            gpointer) {
+void on_notification_signal(GDBusConnection *, const gchar *, const gchar *, const gchar *,
+                            const gchar *signal, GVariant *parameters, gpointer) {
     nk::core::callback_boundary([&] {
         uint32_t server_id = 0;
         if (std::strcmp(signal, "ActionInvoked") == 0) {
-            const char* action = nullptr;
+            const char *action = nullptr;
             g_variant_get(parameters, "(u&s)", &server_id, &action);
             const auto found = notification_ids.find(server_id);
             if (found != notification_ids.end())
-                emit_notification(NK_EVENT_NOTIFICATION_ACTIVATED, found->second,
-                                  NK_OK, action);
+                emit_notification(NK_EVENT_NOTIFICATION_ACTIVATED, found->second, NK_OK, action);
             return;
         }
         uint32_t reason = 0;
         g_variant_get(parameters, "(uu)", &server_id, &reason);
         const auto found = notification_ids.find(server_id);
-        if (found == notification_ids.end()) return;
+        if (found == notification_ids.end())
+            return;
         const auto request = found->second;
         notification_ids.erase(found);
         notifications.erase(request);
@@ -847,42 +896,41 @@ void on_notification_signal(GDBusConnection*, const gchar*, const gchar*,
 }
 
 bool ensure_notification_bus() {
-    if (notification_bus) return true;
-    GError* error = nullptr;
+    if (notification_bus)
+        return true;
+    GError *error = nullptr;
     notification_bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
     if (!notification_bus) {
         nk::core::set_error(error && error->message
-            ? error->message : "desktop notification service is unavailable");
-        if (error) g_error_free(error);
+                                ? error->message
+                                : "desktop notification service is unavailable");
+        if (error)
+            g_error_free(error);
         return false;
     }
     notification_action_subscription = g_dbus_connection_signal_subscribe(
-        notification_bus, "org.freedesktop.Notifications",
-        "org.freedesktop.Notifications", "ActionInvoked",
-        "/org/freedesktop/Notifications", nullptr, G_DBUS_SIGNAL_FLAGS_NONE,
+        notification_bus, "org.freedesktop.Notifications", "org.freedesktop.Notifications",
+        "ActionInvoked", "/org/freedesktop/Notifications", nullptr, G_DBUS_SIGNAL_FLAGS_NONE,
         on_notification_signal, nullptr, nullptr);
     notification_closed_subscription = g_dbus_connection_signal_subscribe(
-        notification_bus, "org.freedesktop.Notifications",
-        "org.freedesktop.Notifications", "NotificationClosed",
-        "/org/freedesktop/Notifications", nullptr, G_DBUS_SIGNAL_FLAGS_NONE,
+        notification_bus, "org.freedesktop.Notifications", "org.freedesktop.Notifications",
+        "NotificationClosed", "/org/freedesktop/Notifications", nullptr, G_DBUS_SIGNAL_FLAGS_NONE,
         on_notification_signal, nullptr, nullptr);
     return true;
 }
 
-void on_notification_shown(GObject* object, GAsyncResult* result, gpointer data) {
-    std::unique_ptr<NotificationContext> context(static_cast<NotificationContext*>(data));
-    GError* error = nullptr;
-    GVariant* reply = g_dbus_connection_call_finish(
-        G_DBUS_CONNECTION(object), result, &error);
+void on_notification_shown(GObject *object, GAsyncResult *result, gpointer data) {
+    std::unique_ptr<NotificationContext> context(static_cast<NotificationContext *>(data));
+    GError *error = nullptr;
+    GVariant *reply = g_dbus_connection_call_finish(G_DBUS_CONNECTION(object), result, &error);
     uint32_t server_id = 0;
     bool completed = false;
     nk::core::callback_boundary([&] {
         const auto found = notifications.find(context->request);
-        if (found == notifications.end() ||
-            !nk::core::is_runtime_generation(context->generation)) return;
+        if (found == notifications.end() || !nk::core::is_runtime_generation(context->generation))
+            return;
         if (!reply) {
-            emit_notification(NK_EVENT_NOTIFICATION_FAILED, context->request,
-                              NK_ERROR_UNKNOWN,
+            emit_notification(NK_EVENT_NOTIFICATION_FAILED, context->request, NK_ERROR_UNKNOWN,
                               error && error->message ? error->message
                                                       : "notification delivery failed");
             notifications.erase(found);
@@ -891,8 +939,7 @@ void on_notification_shown(GObject* object, GAsyncResult* result, gpointer data)
         }
         g_variant_get(reply, "(u)", &server_id);
         if (!server_id) {
-            emit_notification(NK_EVENT_NOTIFICATION_FAILED, context->request,
-                              NK_ERROR_UNKNOWN,
+            emit_notification(NK_EVENT_NOTIFICATION_FAILED, context->request, NK_ERROR_UNKNOWN,
                               "notification service returned an invalid identifier");
             notifications.erase(found);
             completed = true;
@@ -910,26 +957,31 @@ void on_notification_shown(GObject* object, GAsyncResult* result, gpointer data)
         completed = true;
     });
     if (!completed) {
-        if (server_id) close_server_notification(server_id);
+        if (server_id)
+            close_server_notification(server_id);
         notifications.erase(context->request);
         if (nk::core::is_runtime_generation(context->generation))
             emit_notification(NK_EVENT_NOTIFICATION_FAILED, context->request,
                               NK_ERROR_OUT_OF_MEMORY,
                               "could not retain desktop notification state");
     }
-    if (reply) g_variant_unref(reply);
-    if (error) g_error_free(error);
+    if (reply)
+        g_variant_unref(reply);
+    if (error)
+        g_error_free(error);
 }
 
-}
+} // namespace
 
 namespace nk::backend {
 void pump_events() noexcept {
-    while (g_main_context_iteration(nullptr, FALSE)) {}
+    while (g_main_context_iteration(nullptr, FALSE)) {
+    }
 }
 
 void shutdown() noexcept {
-    while (!dialogs.empty()) cancel_dialog(dialogs.begin()->second, false);
+    while (!dialogs.empty())
+        cancel_dialog(dialogs.begin()->second, false);
     while (!navigation_decisions.empty()) {
         auto item = navigation_decisions.begin();
         webkit_policy_decision_ignore(item->second.decision);
@@ -937,7 +989,7 @@ void shutdown() noexcept {
         navigation_decisions.erase(item);
     }
     cancel_evaluations(NK_INVALID_HANDLE);
-    for (const auto& [request, notification] : notifications) {
+    for (const auto &[request, notification] : notifications) {
         (void)request;
         close_server_notification(notification.server_id);
     }
@@ -945,18 +997,18 @@ void shutdown() noexcept {
     notification_ids.clear();
     if (notification_bus) {
         if (notification_action_subscription)
-            g_dbus_connection_signal_unsubscribe(
-                notification_bus, notification_action_subscription);
+            g_dbus_connection_signal_unsubscribe(notification_bus,
+                                                 notification_action_subscription);
         if (notification_closed_subscription)
-            g_dbus_connection_signal_unsubscribe(
-                notification_bus, notification_closed_subscription);
+            g_dbus_connection_signal_unsubscribe(notification_bus,
+                                                 notification_closed_subscription);
         g_object_unref(notification_bus);
         notification_bus = nullptr;
         notification_action_subscription = 0;
         notification_closed_subscription = 0;
     }
     if (gtk_initialized && clipboard_owned) {
-        GtkClipboard* clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+        GtkClipboard *clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
         gtk_clipboard_set_can_store(clipboard, nullptr, 0);
         gtk_clipboard_store(clipboard);
         gtk_clipboard_clear(clipboard);
@@ -965,37 +1017,39 @@ void shutdown() noexcept {
     nk::core::handles().clear();
     pump_events();
 }
-}
+} // namespace nk::backend
 
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG |
-           NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
-           NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW |
-           NK_CAP_NOTIFICATION;
+    return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
+           NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
+           NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION;
 }
 
-nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* out_window) {
+nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
     return nk::core::result_boundary("unexpected error while creating window", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
         if (!options || options->struct_size < sizeof(*options) || !out_window ||
-            options->width <= 0 || options->height <= 0 ||
-            options->kind > NK_WINDOW_UTILITY ||
+            options->width <= 0 || options->height <= 0 || options->kind > NK_WINDOW_UTILITY ||
             ((options->flags & NK_WINDOW_MODAL) && !options->owner)) {
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window options");
         }
         *out_window = NK_INVALID_HANDLE;
-        if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
+        if (!ensure_gtk())
+            return NK_ERROR_UNSUPPORTED;
         auto owner = options->owner ? window(options->owner) : nullptr;
-        if (options->owner && !owner) return invalid_handle("owner window");
-        if (owner) owner->owned_windows.reserve(owner->owned_windows.size() + 1);
+        if (options->owner && !owner)
+            return invalid_handle("owner window");
+        if (owner)
+            owner->owned_windows.reserve(owner->owned_windows.size() + 1);
         auto resource = std::make_shared<GtkWindowResource>();
         resource->owner = options->owner;
         resource->generation = nk::core::runtime_generation();
         resource->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         g_object_add_weak_pointer(G_OBJECT(resource->window),
-                                  reinterpret_cast<gpointer*>(&resource->window));
+                                  reinterpret_cast<gpointer *>(&resource->window));
         resource->container = gtk_fixed_new();
         gtk_container_add(GTK_CONTAINER(resource->window), resource->container);
         gtk_window_set_default_size(GTK_WINDOW(resource->window), options->width, options->height);
@@ -1003,46 +1057,53 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* 
                                  (options->flags & NK_WINDOW_RESIZABLE) != 0);
         gtk_window_set_decorated(GTK_WINDOW(resource->window),
                                  (options->flags & NK_WINDOW_BORDERLESS) == 0);
-        gtk_window_set_modal(GTK_WINDOW(resource->window),
-                             (options->flags & NK_WINDOW_MODAL) != 0);
+        gtk_window_set_modal(GTK_WINDOW(resource->window), (options->flags & NK_WINDOW_MODAL) != 0);
         if (options->kind == NK_WINDOW_UTILITY)
-            gtk_window_set_type_hint(GTK_WINDOW(resource->window),
-                                     GDK_WINDOW_TYPE_HINT_UTILITY);
+            gtk_window_set_type_hint(GTK_WINDOW(resource->window), GDK_WINDOW_TYPE_HINT_UTILITY);
         if (owner)
-            gtk_window_set_transient_for(GTK_WINDOW(resource->window),
-                                         GTK_WINDOW(owner->window));
+            gtk_window_set_transient_for(GTK_WINDOW(resource->window), GTK_WINDOW(owner->window));
         gtk_window_set_title(GTK_WINDOW(resource->window), options->title ? options->title : "");
         resource->handle = nk::core::handles().insert(nk::core::ResourceType::window, resource);
         if (resource->handle == NK_INVALID_HANDLE) {
             gtk_widget_destroy(resource->window);
             return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
         }
-        if (owner) owner->owned_windows.push_back(resource->handle);
-        g_signal_connect(resource->window, "delete-event", G_CALLBACK(on_window_delete), resource.get());
-        g_signal_connect(resource->window, "configure-event", G_CALLBACK(on_window_configure), resource.get());
-        g_signal_connect(resource->window, "notify::scale-factor", G_CALLBACK(on_window_scale), resource.get());
-        g_signal_connect(resource->window, "window-state-event", G_CALLBACK(on_window_state), resource.get());
-        if ((options->flags & NK_WINDOW_HIDDEN) == 0) gtk_widget_show_all(resource->window);
+        if (owner)
+            owner->owned_windows.push_back(resource->handle);
+        g_signal_connect(resource->window, "delete-event", G_CALLBACK(on_window_delete),
+                         resource.get());
+        g_signal_connect(resource->window, "configure-event", G_CALLBACK(on_window_configure),
+                         resource.get());
+        g_signal_connect(resource->window, "notify::scale-factor", G_CALLBACK(on_window_scale),
+                         resource.get());
+        g_signal_connect(resource->window, "window-state-event", G_CALLBACK(on_window_state),
+                         resource.get());
+        if ((options->flags & NK_WINDOW_HIDDEN) == 0)
+            gtk_widget_show_all(resource->window);
         *out_window = resource->handle;
         return NK_OK;
     });
 }
 
 nk_result NK_CALL nk_window_destroy(nk_handle handle) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     auto resource = window(handle);
-    if (!resource) return invalid_handle("window");
+    if (!resource)
+        return invalid_handle("window");
     const auto owned_windows = resource->owned_windows;
-    for (const auto owned : owned_windows) nk_window_destroy(owned);
+    for (const auto owned : owned_windows)
+        nk_window_destroy(owned);
     cancel_dialogs_for_parent(handle, true);
     const auto children = resource->children;
-    for (const auto child : children) nk_webview_destroy(child);
+    for (const auto child : children)
+        nk_webview_destroy(child);
     g_signal_handlers_disconnect_by_data(resource->window, resource.get());
     gtk_widget_destroy(resource->window);
     resource->window = nullptr;
     resource->container = nullptr;
     if (auto owner = window(resource->owner)) {
-        auto& owned = owner->owned_windows;
+        auto &owned = owner->owned_windows;
         owned.erase(std::remove(owned.begin(), owned.end(), handle), owned.end());
     }
     nk::core::handles().erase(handle, nk::core::ResourceType::window);
@@ -1050,93 +1111,180 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
 }
 
 nk_result NK_CALL nk_window_show(nk_handle handle, uint32_t visible) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     auto resource = window(handle);
-    if (!resource) return invalid_handle("window");
+    if (!resource)
+        return invalid_handle("window");
     visible ? gtk_widget_show_all(resource->window) : gtk_widget_hide(resource->window);
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_set_title(nk_handle handle, const char* title) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+nk_result NK_CALL nk_window_set_title(nk_handle handle, const char *title) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     auto resource = window(handle);
-    if (!resource) return invalid_handle("window");
+    if (!resource)
+        return invalid_handle("window");
     gtk_window_set_title(GTK_WINDOW(resource->window), title ? title : "");
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_set_bounds(nk_handle handle, int32_t x, int32_t y, int32_t width, int32_t height) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
-    if (width <= 0 || height <= 0) return fail(NK_ERROR_INVALID_ARGUMENT, "window dimensions must be positive");
+nk_result NK_CALL nk_window_set_bounds(nk_handle handle, int32_t x, int32_t y, int32_t width,
+                                       int32_t height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (width <= 0 || height <= 0)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "window dimensions must be positive");
     auto resource = window(handle);
-    if (!resource) return invalid_handle("window");
+    if (!resource)
+        return invalid_handle("window");
     gtk_window_move(GTK_WINDOW(resource->window), x, y);
     gtk_window_resize(GTK_WINDOW(resource->window), width, height);
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_get_scale(nk_handle handle, float* out_scale) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
-    if (!out_scale) return fail(NK_ERROR_INVALID_ARGUMENT, "scale output must not be null");
+nk_result NK_CALL nk_window_get_scale(nk_handle handle, float *out_scale) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_scale)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "scale output must not be null");
     auto resource = window(handle);
-    if (!resource) return invalid_handle("window");
+    if (!resource)
+        return invalid_handle("window");
     *out_scale = static_cast<float>(gtk_widget_get_scale_factor(resource->window));
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_get_state(nk_handle handle, nk_window_state* out) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+nk_result NK_CALL nk_window_get_state(nk_handle handle, nk_window_state *out) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     if (!out || out->struct_size < sizeof(*out))
         return fail(NK_ERROR_INVALID_ARGUMENT, "window state output is missing or too small");
     auto resource = window(handle);
-    if (!resource) return invalid_handle("window");
+    if (!resource)
+        return invalid_handle("window");
     const auto size = out->struct_size;
     *out = {};
     out->struct_size = size;
-    if (gtk_widget_get_visible(resource->window)) out->flags |= NK_WINDOW_STATE_VISIBLE;
-    if (gtk_window_is_active(GTK_WINDOW(resource->window))) out->flags |= NK_WINDOW_STATE_ACTIVE;
-    if (GdkWindow* native = gtk_widget_get_window(resource->window)) {
+    if (gtk_widget_get_visible(resource->window))
+        out->flags |= NK_WINDOW_STATE_VISIBLE;
+    if (gtk_window_is_active(GTK_WINDOW(resource->window)))
+        out->flags |= NK_WINDOW_STATE_ACTIVE;
+    if (GdkWindow *native = gtk_widget_get_window(resource->window)) {
         const auto state = gdk_window_get_state(native);
-        if (state & GDK_WINDOW_STATE_ICONIFIED) out->flags |= NK_WINDOW_STATE_MINIMIZED;
-        if (state & GDK_WINDOW_STATE_MAXIMIZED) out->flags |= NK_WINDOW_STATE_MAXIMIZED;
-        if (state & GDK_WINDOW_STATE_FULLSCREEN) out->flags |= NK_WINDOW_STATE_FULLSCREEN;
+        if (state & GDK_WINDOW_STATE_ICONIFIED)
+            out->flags |= NK_WINDOW_STATE_MINIMIZED;
+        if (state & GDK_WINDOW_STATE_MAXIMIZED)
+            out->flags |= NK_WINDOW_STATE_MAXIMIZED;
+        if (state & GDK_WINDOW_STATE_FULLSCREEN)
+            out->flags |= NK_WINDOW_STATE_FULLSCREEN;
     }
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_minimize(nk_handle h) { if (const auto r=enter_ui();r!=NK_OK)return r; auto w=window(h);if(!w)return invalid_handle("window");gtk_window_iconify(GTK_WINDOW(w->window));return NK_OK; }
-nk_result NK_CALL nk_window_maximize(nk_handle h) { if (const auto r=enter_ui();r!=NK_OK)return r; auto w=window(h);if(!w)return invalid_handle("window");gtk_window_maximize(GTK_WINDOW(w->window));return NK_OK; }
-nk_result NK_CALL nk_window_restore(nk_handle h) { if (const auto r=enter_ui();r!=NK_OK)return r; auto w=window(h);if(!w)return invalid_handle("window");gtk_window_deiconify(GTK_WINDOW(w->window));gtk_window_unmaximize(GTK_WINDOW(w->window));gtk_window_unfullscreen(GTK_WINDOW(w->window));return NK_OK; }
-nk_result NK_CALL nk_window_activate(nk_handle h) { if (const auto r=enter_ui();r!=NK_OK)return r; auto w=window(h);if(!w)return invalid_handle("window");gtk_window_present(GTK_WINDOW(w->window));return NK_OK; }
-nk_result NK_CALL nk_window_set_fullscreen(nk_handle h,uint32_t enabled) { if (const auto r=enter_ui();r!=NK_OK)return r;auto w=window(h);if(!w)return invalid_handle("window");enabled?gtk_window_fullscreen(GTK_WINDOW(w->window)):gtk_window_unfullscreen(GTK_WINDOW(w->window));return NK_OK; }
-nk_result NK_CALL nk_window_request_attention(nk_handle h) { if (const auto r=enter_ui();r!=NK_OK)return r;auto w=window(h);if(!w)return invalid_handle("window");gtk_window_set_urgency_hint(GTK_WINDOW(w->window),TRUE);return NK_OK; }
-nk_result NK_CALL nk_window_set_size_limits(nk_handle h,const nk_window_size_limits* limits) {
-    if (const auto r=enter_ui();r!=NK_OK)return r;
-    if(!limits||limits->struct_size<sizeof(*limits)||limits->min_width<0||limits->min_height<0||limits->max_width<0||limits->max_height<0||(limits->max_width&&limits->max_width<limits->min_width)||(limits->max_height&&limits->max_height<limits->min_height))return fail(NK_ERROR_INVALID_ARGUMENT,"invalid window size limits");
-    auto w=window(h);if(!w)return invalid_handle("window");
-    GdkGeometry geometry{}; geometry.min_width=limits->min_width;geometry.min_height=limits->min_height;geometry.max_width=limits->max_width;geometry.max_height=limits->max_height;
-    GdkWindowHints hints=static_cast<GdkWindowHints>(0);if(limits->min_width||limits->min_height)hints=static_cast<GdkWindowHints>(hints|GDK_HINT_MIN_SIZE);if(limits->max_width||limits->max_height)hints=static_cast<GdkWindowHints>(hints|GDK_HINT_MAX_SIZE);
-    gtk_window_set_geometry_hints(GTK_WINDOW(w->window),nullptr,&geometry,hints);return NK_OK;
+nk_result NK_CALL nk_window_minimize(nk_handle h) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = window(h);
+    if (!w)
+        return invalid_handle("window");
+    gtk_window_iconify(GTK_WINDOW(w->window));
+    return NK_OK;
+}
+nk_result NK_CALL nk_window_maximize(nk_handle h) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = window(h);
+    if (!w)
+        return invalid_handle("window");
+    gtk_window_maximize(GTK_WINDOW(w->window));
+    return NK_OK;
+}
+nk_result NK_CALL nk_window_restore(nk_handle h) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = window(h);
+    if (!w)
+        return invalid_handle("window");
+    gtk_window_deiconify(GTK_WINDOW(w->window));
+    gtk_window_unmaximize(GTK_WINDOW(w->window));
+    gtk_window_unfullscreen(GTK_WINDOW(w->window));
+    return NK_OK;
+}
+nk_result NK_CALL nk_window_activate(nk_handle h) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = window(h);
+    if (!w)
+        return invalid_handle("window");
+    gtk_window_present(GTK_WINDOW(w->window));
+    return NK_OK;
+}
+nk_result NK_CALL nk_window_set_fullscreen(nk_handle h, uint32_t enabled) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = window(h);
+    if (!w)
+        return invalid_handle("window");
+    enabled ? gtk_window_fullscreen(GTK_WINDOW(w->window))
+            : gtk_window_unfullscreen(GTK_WINDOW(w->window));
+    return NK_OK;
+}
+nk_result NK_CALL nk_window_request_attention(nk_handle h) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = window(h);
+    if (!w)
+        return invalid_handle("window");
+    gtk_window_set_urgency_hint(GTK_WINDOW(w->window), TRUE);
+    return NK_OK;
+}
+nk_result NK_CALL nk_window_set_size_limits(nk_handle h, const nk_window_size_limits *limits) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!limits || limits->struct_size < sizeof(*limits) || limits->min_width < 0 ||
+        limits->min_height < 0 || limits->max_width < 0 || limits->max_height < 0 ||
+        (limits->max_width && limits->max_width < limits->min_width) ||
+        (limits->max_height && limits->max_height < limits->min_height))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window size limits");
+    auto w = window(h);
+    if (!w)
+        return invalid_handle("window");
+    GdkGeometry geometry{};
+    geometry.min_width = limits->min_width;
+    geometry.min_height = limits->min_height;
+    geometry.max_width = limits->max_width;
+    geometry.max_height = limits->max_height;
+    GdkWindowHints hints = static_cast<GdkWindowHints>(0);
+    if (limits->min_width || limits->min_height)
+        hints = static_cast<GdkWindowHints>(hints | GDK_HINT_MIN_SIZE);
+    if (limits->max_width || limits->max_height)
+        hints = static_cast<GdkWindowHints>(hints | GDK_HINT_MAX_SIZE);
+    gtk_window_set_geometry_hints(GTK_WINDOW(w->window), nullptr, &geometry, hints);
+    return NK_OK;
 }
 
-nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window* out_native) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window *out_native) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     if (!out_native || out_native->struct_size < sizeof(*out_native))
         return fail(NK_ERROR_INVALID_ARGUMENT, "native window output is missing or too small");
     auto resource = window(handle);
-    if (!resource) return invalid_handle("window");
+    if (!resource)
+        return invalid_handle("window");
     gtk_widget_realize(resource->window);
-    GdkWindow* native = gtk_widget_get_window(resource->window);
-    if (!native) return fail(NK_ERROR_UNKNOWN, "GTK window has no native surface");
+    GdkWindow *native = gtk_widget_get_window(resource->window);
+    if (!native)
+        return fail(NK_ERROR_UNKNOWN, "GTK window has no native surface");
     const auto size = out_native->struct_size;
     *out_native = {};
     out_native->struct_size = size;
-    GdkDisplay* display = gdk_window_get_display(native);
+    GdkDisplay *display = gdk_window_get_display(native);
 #ifdef GDK_WINDOWING_X11
     if (GDK_IS_X11_WINDOW(native)) {
         out_native->kind = NK_NATIVE_WINDOW_X11;
-        out_native->display = reinterpret_cast<uintptr_t>(
-            gdk_x11_display_get_xdisplay(display));
+        out_native->display = reinterpret_cast<uintptr_t>(gdk_x11_display_get_xdisplay(display));
         out_native->window = static_cast<uintptr_t>(gdk_x11_window_get_xid(native));
         return NK_OK;
     }
@@ -1144,19 +1292,18 @@ nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window* out_n
 #ifdef GDK_WINDOWING_WAYLAND
     if (GDK_IS_WAYLAND_WINDOW(native)) {
         out_native->kind = NK_NATIVE_WINDOW_WAYLAND;
-        out_native->display = reinterpret_cast<uintptr_t>(
-            gdk_wayland_display_get_wl_display(display));
-        out_native->window = reinterpret_cast<uintptr_t>(
-            gdk_wayland_window_get_wl_surface(native));
+        out_native->display =
+            reinterpret_cast<uintptr_t>(gdk_wayland_display_get_wl_display(display));
+        out_native->window = reinterpret_cast<uintptr_t>(gdk_wayland_window_get_wl_surface(native));
         return NK_OK;
     }
 #endif
     return fail(NK_ERROR_UNSUPPORTED, "GTK display backend is not interoperable");
 }
 
-nk_result NK_CALL nk_window_wrap_native(const nk_native_window* native,
-                                        nk_handle* out_window) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native, nk_handle *out_window) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     if (!native || native->struct_size < sizeof(*native) || !out_window || !native->window)
         return fail(NK_ERROR_INVALID_ARGUMENT, "invalid native window descriptor");
     *out_window = NK_INVALID_HANDLE;
@@ -1164,29 +1311,31 @@ nk_result NK_CALL nk_window_wrap_native(const nk_native_window* native,
                 "wrapping caller-owned windows is not safe in the GTK backend yet");
 }
 
-nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_options* options, nk_handle* out_webview) {
+nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_options *options,
+                                    nk_handle *out_webview) {
     return nk::core::result_boundary("unexpected error while creating WebView", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
         if (!options || options->struct_size < sizeof(*options) || !out_webview ||
             options->width <= 0 || options->height <= 0) {
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid WebView options");
         }
         *out_webview = NK_INVALID_HANDLE;
         auto parent = window(parent_handle);
-        if (!parent) return invalid_handle("parent window");
+        if (!parent)
+            return invalid_handle("parent window");
         auto resource = std::make_shared<GtkWebViewResource>();
         resource->generation = nk::core::runtime_generation();
         resource->content_manager = webkit_user_content_manager_new();
-        if (!webkit_user_content_manager_register_script_message_handler(
-                resource->content_manager, "nativekit")) {
+        if (!webkit_user_content_manager_register_script_message_handler(resource->content_manager,
+                                                                         "nativekit")) {
             return fail(NK_ERROR_UNKNOWN, "could not register the NativeKit JavaScript bridge");
         }
         resource->widget = webkit_web_view_new_with_user_content_manager(resource->content_manager);
         g_object_add_weak_pointer(G_OBJECT(resource->widget),
-                                  reinterpret_cast<gpointer*>(&resource->widget));
+                                  reinterpret_cast<gpointer *>(&resource->widget));
         resource->parent = parent_handle;
-        resource->navigation_policy =
-            (options->flags & NK_WEBVIEW_NAVIGATION_POLICY) != 0;
+        resource->navigation_policy = (options->flags & NK_WEBVIEW_NAVIGATION_POLICY) != 0;
         gtk_widget_set_size_request(resource->widget, options->width, options->height);
         gtk_fixed_put(GTK_FIXED(parent->container), resource->widget, options->x, options->y);
         resource->handle = nk::core::handles().insert(nk::core::ResourceType::webview, resource);
@@ -1195,32 +1344,40 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
             return fail(NK_ERROR_OUT_OF_MEMORY, "WebView handle registry is full");
         }
         parent->children.push_back(resource->handle);
-        g_signal_connect(resource->widget, "load-changed", G_CALLBACK(on_webview_load), resource.get());
-        g_signal_connect(resource->widget, "load-failed", G_CALLBACK(on_webview_load_failed), resource.get());
-        g_signal_connect(resource->widget, "notify::title", G_CALLBACK(on_webview_title), resource.get());
+        g_signal_connect(resource->widget, "load-changed", G_CALLBACK(on_webview_load),
+                         resource.get());
+        g_signal_connect(resource->widget, "load-failed", G_CALLBACK(on_webview_load_failed),
+                         resource.get());
+        g_signal_connect(resource->widget, "notify::title", G_CALLBACK(on_webview_title),
+                         resource.get());
         g_signal_connect(resource->widget, "web-process-terminated",
                          G_CALLBACK(on_webview_process_terminated), resource.get());
         g_signal_connect(resource->content_manager, "script-message-received::nativekit",
                          G_CALLBACK(on_webview_message), resource.get());
-        g_signal_connect(resource->widget, "decide-policy",
-                         G_CALLBACK(on_webview_policy), resource.get());
-        auto* settings = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(resource->widget));
-        webkit_settings_set_enable_developer_extras(settings, (options->flags & NK_WEBVIEW_DEVTOOLS) != 0);
+        g_signal_connect(resource->widget, "decide-policy", G_CALLBACK(on_webview_policy),
+                         resource.get());
+        auto *settings = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(resource->widget));
+        webkit_settings_set_enable_developer_extras(settings,
+                                                    (options->flags & NK_WEBVIEW_DEVTOOLS) != 0);
         nk::core::QueuedEvent ready;
         ready.kind = NK_EVENT_WEBVIEW_READY;
         ready.source = resource->handle;
         nk::core::push_event(std::move(ready));
-        if (options->initial_url) webkit_web_view_load_uri(WEBKIT_WEB_VIEW(resource->widget), options->initial_url);
-        if ((options->flags & NK_WEBVIEW_HIDDEN) == 0) gtk_widget_show(resource->widget);
+        if (options->initial_url)
+            webkit_web_view_load_uri(WEBKIT_WEB_VIEW(resource->widget), options->initial_url);
+        if ((options->flags & NK_WEBVIEW_HIDDEN) == 0)
+            gtk_widget_show(resource->widget);
         *out_webview = resource->handle;
         return NK_OK;
     });
 }
 
 nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     auto resource = webview(handle);
-    if (!resource) return invalid_handle("WebView");
+    if (!resource)
+        return invalid_handle("WebView");
     cancel_navigation_decisions(handle);
     cancel_evaluations(handle);
     g_signal_handlers_disconnect_by_data(resource->widget, resource.get());
@@ -1228,7 +1385,7 @@ nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
     gtk_widget_destroy(resource->widget);
     resource->widget = nullptr;
     if (auto parent = window(resource->parent)) {
-        auto& children = parent->children;
+        auto &children = parent->children;
         children.erase(std::remove(children.begin(), children.end(), handle), children.end());
     }
     nk::core::handles().erase(handle, nk::core::ResourceType::webview);
@@ -1236,154 +1393,183 @@ nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
 }
 
 nk_result NK_CALL nk_webview_show(nk_handle handle, uint32_t visible) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     auto resource = webview(handle);
-    if (!resource) return invalid_handle("WebView");
+    if (!resource)
+        return invalid_handle("WebView");
     visible ? gtk_widget_show(resource->widget) : gtk_widget_hide(resource->widget);
     return NK_OK;
 }
 
-nk_result NK_CALL nk_webview_set_bounds(nk_handle handle, int32_t x, int32_t y, int32_t width, int32_t height) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
-    if (width <= 0 || height <= 0) return fail(NK_ERROR_INVALID_ARGUMENT, "WebView dimensions must be positive");
+nk_result NK_CALL nk_webview_set_bounds(nk_handle handle, int32_t x, int32_t y, int32_t width,
+                                        int32_t height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (width <= 0 || height <= 0)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "WebView dimensions must be positive");
     auto resource = webview(handle);
-    if (!resource) return invalid_handle("WebView");
+    if (!resource)
+        return invalid_handle("WebView");
     auto parent = window(resource->parent);
-    if (!parent) return invalid_handle("parent window");
+    if (!parent)
+        return invalid_handle("parent window");
     gtk_fixed_move(GTK_FIXED(parent->container), resource->widget, x, y);
     gtk_widget_set_size_request(resource->widget, width, height);
     return NK_OK;
 }
 
-nk_result NK_CALL nk_webview_navigate(nk_handle handle, const char* url) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
-    if (!url) return fail(NK_ERROR_INVALID_ARGUMENT, "URL must not be null");
+nk_result NK_CALL nk_webview_navigate(nk_handle handle, const char *url) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!url)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "URL must not be null");
     auto resource = webview(handle);
-    if (!resource) return invalid_handle("WebView");
+    if (!resource)
+        return invalid_handle("WebView");
     webkit_web_view_load_uri(WEBKIT_WEB_VIEW(resource->widget), url);
     return NK_OK;
 }
 
-nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char* html, const char* base_url) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
-    if (!html) return fail(NK_ERROR_INVALID_ARGUMENT, "HTML must not be null");
+nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char *html, const char *base_url) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!html)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "HTML must not be null");
     auto resource = webview(handle);
-    if (!resource) return invalid_handle("WebView");
+    if (!resource)
+        return invalid_handle("WebView");
     webkit_web_view_load_html(WEBKIT_WEB_VIEW(resource->widget), html, base_url);
     return NK_OK;
 }
 
-nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script, nk_request_id* out_request) {
-    return nk::core::result_boundary("unexpected error while evaluating JavaScript", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK) return result;
-        if (!script || !out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "invalid JavaScript evaluation arguments");
-        auto resource = webview(handle);
-        if (!resource) return invalid_handle("WebView");
-        const auto request = nk::core::next_request_id();
-        auto context = std::make_unique<EvalContext>(EvalContext{
-            handle, request, nk::core::runtime_generation()});
-        const auto source =
-            "(()=>{const v=(0,eval)(" + javascript_literal(script) +
-            ");const j=JSON.stringify(v);if(j===undefined)throw new TypeError("
-            "'JavaScript result is not JSON-serializable');return j;})()";
-        evaluations.emplace(request, handle);
-        webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(resource->widget), source.c_str(), -1,
-                                            nullptr, nullptr, nullptr, on_eval_complete,
-                                            context.release());
-        *out_request = request;
-        return NK_OK;
-    });
+nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
+                                  nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while evaluating JavaScript", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!script || !out_request)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid JavaScript evaluation arguments");
+            auto resource = webview(handle);
+            if (!resource)
+                return invalid_handle("WebView");
+            const auto request = nk::core::next_request_id();
+            auto context = std::make_unique<EvalContext>(
+                EvalContext{handle, request, nk::core::runtime_generation()});
+            const auto source = "(()=>{const v=(0,eval)(" + javascript_literal(script) +
+                                ");const j=JSON.stringify(v);if(j===undefined)throw new TypeError("
+                                "'JavaScript result is not JSON-serializable');return j;})()";
+            evaluations.emplace(request, handle);
+            webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(resource->widget), source.c_str(),
+                                                -1, nullptr, nullptr, nullptr, on_eval_complete,
+                                                context.release());
+            *out_request = request;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t allow) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     const auto item = navigation_decisions.find(request);
     if (item == navigation_decisions.end())
         return fail(NK_ERROR_INVALID_REQUEST, "invalid or completed navigation request");
-    auto* decision = item->second.decision;
+    auto *decision = item->second.decision;
     navigation_decisions.erase(item);
     allow ? webkit_policy_decision_use(decision) : webkit_policy_decision_ignore(decision);
     g_object_unref(decision);
     return NK_OK;
 }
 
-nk_result NK_CALL nk_dialog_open_file(nk_handle parent,
-                                      const nk_file_dialog_options* options,
-                                      nk_request_id* out_request) {
-    return nk::core::result_boundary("unexpected error while opening file dialog", [&]() -> nk_result {
-        return start_file_dialog(parent, options, out_request, NK_DIALOG_OPEN_FILE);
-    });
+nk_result NK_CALL nk_dialog_open_file(nk_handle parent, const nk_file_dialog_options *options,
+                                      nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening file dialog", [&]() -> nk_result {
+            return start_file_dialog(parent, options, out_request, NK_DIALOG_OPEN_FILE);
+        });
 }
 
-nk_result NK_CALL nk_dialog_save_file(nk_handle parent,
-                                      const nk_file_dialog_options* options,
-                                      nk_request_id* out_request) {
-    return nk::core::result_boundary("unexpected error while opening save dialog", [&]() -> nk_result {
-        return start_file_dialog(parent, options, out_request, NK_DIALOG_SAVE_FILE);
-    });
+nk_result NK_CALL nk_dialog_save_file(nk_handle parent, const nk_file_dialog_options *options,
+                                      nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening save dialog", [&]() -> nk_result {
+            return start_file_dialog(parent, options, out_request, NK_DIALOG_SAVE_FILE);
+        });
 }
 
 nk_result NK_CALL nk_dialog_select_directory(nk_handle parent,
-                                             const nk_file_dialog_options* options,
-                                             nk_request_id* out_request) {
-    return nk::core::result_boundary("unexpected error while opening directory dialog", [&]() -> nk_result {
-        return start_file_dialog(parent, options, out_request, NK_DIALOG_SELECT_DIRECTORY);
-    });
+                                             const nk_file_dialog_options *options,
+                                             nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening directory dialog", [&]() -> nk_result {
+            return start_file_dialog(parent, options, out_request, NK_DIALOG_SELECT_DIRECTORY);
+        });
 }
 
 nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
-                                    const nk_message_dialog_options* options,
-                                    nk_request_id* out_request) {
-    return nk::core::result_boundary("unexpected error while opening message dialog", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK) return result;
-        if (!options || options->struct_size < sizeof(*options) || !out_request || !options->message)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid message dialog options");
-        std::shared_ptr<GtkWindowResource> parent;
-        if (parent_handle != NK_INVALID_HANDLE) {
-            parent = window(parent_handle);
-            if (!parent) return invalid_handle("parent window");
-        }
-        if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
-        GtkMessageType type = GTK_MESSAGE_INFO;
-        if (options->kind == NK_MESSAGE_WARNING) type = GTK_MESSAGE_WARNING;
-        if (options->kind == NK_MESSAGE_ERROR) type = GTK_MESSAGE_ERROR;
-        if (options->kind == NK_MESSAGE_QUESTION) type = GTK_MESSAGE_QUESTION;
-        GtkWidget* dialog = gtk_message_dialog_new(
-            parent ? GTK_WINDOW(parent->window) : nullptr,
-            static_cast<GtkDialogFlags>(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT),
-            type, GTK_BUTTONS_NONE, "%s", options->message);
-        g_object_ref_sink(dialog);
-        if (options->title) gtk_window_set_title(GTK_WINDOW(dialog), options->title);
-        const uint32_t buttons = options->buttons
-            ? options->buttons : static_cast<uint32_t>(NK_MESSAGE_BUTTON_OK);
-        if (buttons & NK_MESSAGE_BUTTON_OK)
-            gtk_dialog_add_button(GTK_DIALOG(dialog), "_OK", GTK_RESPONSE_OK);
-        if (buttons & NK_MESSAGE_BUTTON_CANCEL)
-            gtk_dialog_add_button(GTK_DIALOG(dialog), "_Cancel", GTK_RESPONSE_CANCEL);
-        if (buttons & NK_MESSAGE_BUTTON_YES)
-            gtk_dialog_add_button(GTK_DIALOG(dialog), "_Yes", GTK_RESPONSE_YES);
-        if (buttons & NK_MESSAGE_BUTTON_NO)
-            gtk_dialog_add_button(GTK_DIALOG(dialog), "_No", GTK_RESPONSE_NO);
-        std::unique_ptr<GObject, decltype(&g_object_unref)> dialog_owner(
-            G_OBJECT(dialog), &g_object_unref);
-        auto context = std::make_unique<DialogContext>();
-        context->object = G_OBJECT(dialog);
-        context->request = nk::core::next_request_id();
-        context->generation = nk::core::runtime_generation();
-        context->parent = parent_handle;
-        context->kind = NK_DIALOG_MESSAGE;
-        dialogs.emplace(context->request, context.get());
-        g_signal_connect(dialog, "response", G_CALLBACK(on_dialog_response), context.get());
-        gtk_widget_show(dialog);
-        *out_request = context->request;
-        dialog_owner.release();
-        context.release();
-        return NK_OK;
-    });
+                                    const nk_message_dialog_options *options,
+                                    nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening message dialog", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!options || options->struct_size < sizeof(*options) || !out_request ||
+                !options->message)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid message dialog options");
+            std::shared_ptr<GtkWindowResource> parent;
+            if (parent_handle != NK_INVALID_HANDLE) {
+                parent = window(parent_handle);
+                if (!parent)
+                    return invalid_handle("parent window");
+            }
+            if (!ensure_gtk())
+                return NK_ERROR_UNSUPPORTED;
+            GtkMessageType type = GTK_MESSAGE_INFO;
+            if (options->kind == NK_MESSAGE_WARNING)
+                type = GTK_MESSAGE_WARNING;
+            if (options->kind == NK_MESSAGE_ERROR)
+                type = GTK_MESSAGE_ERROR;
+            if (options->kind == NK_MESSAGE_QUESTION)
+                type = GTK_MESSAGE_QUESTION;
+            GtkWidget *dialog = gtk_message_dialog_new(
+                parent ? GTK_WINDOW(parent->window) : nullptr,
+                static_cast<GtkDialogFlags>(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT),
+                type, GTK_BUTTONS_NONE, "%s", options->message);
+            g_object_ref_sink(dialog);
+            if (options->title)
+                gtk_window_set_title(GTK_WINDOW(dialog), options->title);
+            const uint32_t buttons =
+                options->buttons ? options->buttons : static_cast<uint32_t>(NK_MESSAGE_BUTTON_OK);
+            if (buttons & NK_MESSAGE_BUTTON_OK)
+                gtk_dialog_add_button(GTK_DIALOG(dialog), "_OK", GTK_RESPONSE_OK);
+            if (buttons & NK_MESSAGE_BUTTON_CANCEL)
+                gtk_dialog_add_button(GTK_DIALOG(dialog), "_Cancel", GTK_RESPONSE_CANCEL);
+            if (buttons & NK_MESSAGE_BUTTON_YES)
+                gtk_dialog_add_button(GTK_DIALOG(dialog), "_Yes", GTK_RESPONSE_YES);
+            if (buttons & NK_MESSAGE_BUTTON_NO)
+                gtk_dialog_add_button(GTK_DIALOG(dialog), "_No", GTK_RESPONSE_NO);
+            std::unique_ptr<GObject, decltype(&g_object_unref)> dialog_owner(G_OBJECT(dialog),
+                                                                             &g_object_unref);
+            auto context = std::make_unique<DialogContext>();
+            context->object = G_OBJECT(dialog);
+            context->request = nk::core::next_request_id();
+            context->generation = nk::core::runtime_generation();
+            context->parent = parent_handle;
+            context->kind = NK_DIALOG_MESSAGE;
+            dialogs.emplace(context->request, context.get());
+            g_signal_connect(dialog, "response", G_CALLBACK(on_dialog_response), context.get());
+            gtk_widget_show(dialog);
+            *out_request = context->request;
+            dialog_owner.release();
+            context.release();
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     const auto found = dialogs.find(request);
     if (request == NK_INVALID_REQUEST_ID || found == dialogs.end())
         return fail(NK_ERROR_INVALID_REQUEST, "invalid or completed dialog request");
@@ -1391,93 +1577,109 @@ nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_clipboard_set_text(const char* text) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
-    if (!text) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard text must not be null");
-    if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
+nk_result NK_CALL nk_clipboard_set_text(const char *text) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!text)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard text must not be null");
+    if (!ensure_gtk())
+        return NK_ERROR_UNSUPPORTED;
     gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), text, -1);
     clipboard_owned = true;
     return NK_OK;
 }
 
-nk_result NK_CALL nk_clipboard_set_files(const char* const* paths, uint32_t path_count) {
-    return nk::core::result_boundary("unexpected error while writing clipboard files", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK) return result;
-        if (!paths || path_count == 0)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard file list must not be empty");
-        if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
-        auto owner = std::make_unique<ClipboardFileOwner>();
-        owner->uris.reserve(path_count);
-        for (uint32_t index = 0; index < path_count; ++index) {
-            if (!paths[index] || !*paths[index])
-                return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard path must not be empty");
-            char* absolute = g_canonicalize_filename(paths[index], nullptr);
-            char* uri = g_filename_to_uri(absolute, nullptr, nullptr);
-            g_free(absolute);
-            if (!uri) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard path is invalid");
-            owner->uris.emplace_back(uri);
-            g_free(uri);
-        }
-        owner->pointers.reserve(owner->uris.size() + 1);
-        for (auto& uri : owner->uris) owner->pointers.push_back(uri.data());
-        owner->pointers.push_back(nullptr);
-        GtkTargetEntry target{const_cast<gchar*>("text/uri-list"), 0, 0};
-        if (!gtk_clipboard_set_with_data(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
-                                         &target, 1, provide_clipboard_files,
-                                         clear_clipboard_files, owner.get()))
-            return fail(NK_ERROR_UNKNOWN, "desktop rejected clipboard file ownership");
-        owner.release();
-        clipboard_owned = true;
-        return NK_OK;
-    });
+nk_result NK_CALL nk_clipboard_set_files(const char *const *paths, uint32_t path_count) {
+    return nk::core::result_boundary(
+        "unexpected error while writing clipboard files", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!paths || path_count == 0)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard file list must not be empty");
+            if (!ensure_gtk())
+                return NK_ERROR_UNSUPPORTED;
+            auto owner = std::make_unique<ClipboardFileOwner>();
+            owner->uris.reserve(path_count);
+            for (uint32_t index = 0; index < path_count; ++index) {
+                if (!paths[index] || !*paths[index])
+                    return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard path must not be empty");
+                char *absolute = g_canonicalize_filename(paths[index], nullptr);
+                char *uri = g_filename_to_uri(absolute, nullptr, nullptr);
+                g_free(absolute);
+                if (!uri)
+                    return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard path is invalid");
+                owner->uris.emplace_back(uri);
+                g_free(uri);
+            }
+            owner->pointers.reserve(owner->uris.size() + 1);
+            for (auto &uri : owner->uris)
+                owner->pointers.push_back(uri.data());
+            owner->pointers.push_back(nullptr);
+            GtkTargetEntry target{const_cast<gchar *>("text/uri-list"), 0, 0};
+            if (!gtk_clipboard_set_with_data(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), &target, 1,
+                                             provide_clipboard_files, clear_clipboard_files,
+                                             owner.get()))
+                return fail(NK_ERROR_UNKNOWN, "desktop rejected clipboard file ownership");
+            owner.release();
+            clipboard_owned = true;
+            return NK_OK;
+        });
 }
 
-nk_result NK_CALL nk_clipboard_read_text(nk_request_id* out_request) {
-    return nk::core::result_boundary("unexpected error while reading clipboard text", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK) return result;
-        if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
-        if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
-        auto request = std::make_unique<ClipboardRequest>();
-        request->request = nk::core::next_request_id();
-        request->event_kind = NK_EVENT_CLIPBOARD_TEXT_COMPLETE;
-        request->generation = nk::core::runtime_generation();
-        *out_request = request->request;
-        gtk_clipboard_request_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
-                                   on_clipboard_text, request.release());
-        return NK_OK;
-    });
+nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while reading clipboard text", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!out_request)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+            if (!ensure_gtk())
+                return NK_ERROR_UNSUPPORTED;
+            auto request = std::make_unique<ClipboardRequest>();
+            request->request = nk::core::next_request_id();
+            request->event_kind = NK_EVENT_CLIPBOARD_TEXT_COMPLETE;
+            request->generation = nk::core::runtime_generation();
+            *out_request = request->request;
+            gtk_clipboard_request_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
+                                       on_clipboard_text, request.release());
+            return NK_OK;
+        });
 }
 
-nk_result NK_CALL nk_clipboard_read_files(nk_request_id* out_request) {
-    return nk::core::result_boundary("unexpected error while reading clipboard files", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK) return result;
-        if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
-        if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
-        auto request = std::make_unique<ClipboardRequest>();
-        request->request = nk::core::next_request_id();
-        request->event_kind = NK_EVENT_CLIPBOARD_FILES_COMPLETE;
-        request->generation = nk::core::runtime_generation();
-        *out_request = request->request;
-        gtk_clipboard_request_uris(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
-                                   on_clipboard_uris, request.release());
-        return NK_OK;
-    });
+nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while reading clipboard files", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!out_request)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+            if (!ensure_gtk())
+                return NK_ERROR_UNSUPPORTED;
+            auto request = std::make_unique<ClipboardRequest>();
+            request->request = nk::core::next_request_id();
+            request->event_kind = NK_EVENT_CLIPBOARD_FILES_COMPLETE;
+            request->generation = nk::core::runtime_generation();
+            *out_request = request->request;
+            gtk_clipboard_request_uris(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
+                                       on_clipboard_uris, request.release());
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, uint32_t enabled) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     auto resource = window(handle);
-    if (!resource) return invalid_handle("window");
-    if (!!enabled == resource->drops_enabled) return NK_OK;
+    if (!resource)
+        return invalid_handle("window");
+    if (!!enabled == resource->drops_enabled)
+        return NK_OK;
     if (enabled) {
-        GtkTargetEntry targets[] = {
-            {const_cast<gchar*>("text/uri-list"), 0, drop_target_uri},
-            {const_cast<gchar*>("UTF8_STRING"), 0, drop_target_text}
-        };
-        gtk_drag_dest_set(resource->window, GTK_DEST_DEFAULT_ALL,
-                          targets, 2, GDK_ACTION_COPY);
-        g_signal_connect(resource->window, "drag-data-received",
-                         G_CALLBACK(on_drag_data_received), resource.get());
+        GtkTargetEntry targets[] = {{const_cast<gchar *>("text/uri-list"), 0, drop_target_uri},
+                                    {const_cast<gchar *>("UTF8_STRING"), 0, drop_target_text}};
+        gtk_drag_dest_set(resource->window, GTK_DEST_DEFAULT_ALL, targets, 2, GDK_ACTION_COPY);
+        g_signal_connect(resource->window, "drag-data-received", G_CALLBACK(on_drag_data_received),
+                         resource.get());
     } else {
         g_signal_handlers_disconnect_by_func(
             resource->window, reinterpret_cast<gpointer>(on_drag_data_received), resource.get());
@@ -1487,46 +1689,52 @@ nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, uint32_t enabled)
     return NK_OK;
 }
 
-nk_result NK_CALL nk_shell_open_url(const char* url) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+nk_result NK_CALL nk_shell_open_url(const char *url) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     if (!url || !*url)
         return fail(NK_ERROR_INVALID_ARGUMENT, "URL must contain a URI scheme");
-    char* scheme = g_uri_parse_scheme(url);
-    if (!scheme) return fail(NK_ERROR_INVALID_ARGUMENT, "URL must contain a URI scheme");
+    char *scheme = g_uri_parse_scheme(url);
+    if (!scheme)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "URL must contain a URI scheme");
     g_free(scheme);
     return launch_uri(url);
 }
 
-nk_result NK_CALL nk_shell_open_file(const char* path) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+nk_result NK_CALL nk_shell_open_file(const char *path) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     return open_path(path);
 }
 
-nk_result NK_CALL nk_shell_reveal_file(const char* path) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
-    if (!path || !*path) return fail(NK_ERROR_INVALID_ARGUMENT, "path must not be empty");
-    char* absolute = g_canonicalize_filename(path, nullptr);
-    GError* error = nullptr;
-    char* uri = g_filename_to_uri(absolute, nullptr, &error);
+nk_result NK_CALL nk_shell_reveal_file(const char *path) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!path || !*path)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "path must not be empty");
+    char *absolute = g_canonicalize_filename(path, nullptr);
+    GError *error = nullptr;
+    char *uri = g_filename_to_uri(absolute, nullptr, &error);
     if (!uri) {
         g_free(absolute);
         nk::core::set_error(error && error->message ? error->message : "invalid file path");
-        if (error) g_error_free(error);
+        if (error)
+            g_error_free(error);
         return NK_ERROR_INVALID_ARGUMENT;
     }
-    GDBusConnection* bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, nullptr);
+    GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, nullptr);
     bool revealed = false;
     if (bus) {
         GVariantBuilder uris;
         g_variant_builder_init(&uris, G_VARIANT_TYPE("as"));
         g_variant_builder_add(&uris, "s", uri);
-        GVariant* reply = g_dbus_connection_call_sync(
+        GVariant *reply = g_dbus_connection_call_sync(
             bus, "org.freedesktop.FileManager1", "/org/freedesktop/FileManager1",
-            "org.freedesktop.FileManager1", "ShowItems",
-            g_variant_new("(ass)", &uris, ""), nullptr,
+            "org.freedesktop.FileManager1", "ShowItems", g_variant_new("(ass)", &uris, ""), nullptr,
             G_DBUS_CALL_FLAGS_NONE, 1000, nullptr, nullptr);
         revealed = reply != nullptr;
-        if (reply) g_variant_unref(reply);
+        if (reply)
+            g_variant_unref(reply);
         g_object_unref(bus);
     }
     g_free(uri);
@@ -1534,107 +1742,110 @@ nk_result NK_CALL nk_shell_reveal_file(const char* path) {
         g_free(absolute);
         return NK_OK;
     }
-    char* parent = g_path_get_dirname(absolute);
+    char *parent = g_path_get_dirname(absolute);
     g_free(absolute);
     const auto fallback = open_path(parent);
     g_free(parent);
     return fallback;
 }
 
-nk_result NK_CALL nk_system_directory(nk_system_directory_kind kind,
-                                      char* buffer, uint32_t* inout_size) {
+nk_result NK_CALL nk_system_directory(nk_system_directory_kind kind, char *buffer,
+                                      uint32_t *inout_size) {
     nk::core::clear_error();
-    const char* value = system_directory_path(kind);
-    if (!value) return fail(NK_ERROR_UNSUPPORTED, "system directory is unavailable");
+    const char *value = system_directory_path(kind);
+    if (!value)
+        return fail(NK_ERROR_UNSUPPORTED, "system directory is unavailable");
     return copy_utf8(value, buffer, inout_size);
 }
 
-nk_result NK_CALL nk_system_locale(char* buffer, uint32_t* inout_size) {
+nk_result NK_CALL nk_system_locale(char *buffer, uint32_t *inout_size) {
     nk::core::clear_error();
-    const char* const* languages = g_get_language_names();
+    const char *const *languages = g_get_language_names();
     if (!languages || !languages[0])
         return fail(NK_ERROR_UNSUPPORTED, "system locale is unavailable");
     return copy_utf8(languages[0], buffer, inout_size);
 }
 
-nk_result NK_CALL nk_system_get_appearance(nk_system_appearance* appearance) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     if (!appearance || appearance->struct_size < sizeof(*appearance))
         return fail(NK_ERROR_INVALID_ARGUMENT, "appearance output is missing or too small");
     int argc = 0;
-    char** argv = nullptr;
+    char **argv = nullptr;
     if (!gtk_init_check(&argc, &argv))
         return fail(NK_ERROR_UNSUPPORTED, "GTK could not connect to a display");
-    GtkSettings* settings = gtk_settings_get_default();
-    if (!settings) return fail(NK_ERROR_UNSUPPORTED, "desktop appearance is unavailable");
+    GtkSettings *settings = gtk_settings_get_default();
+    if (!settings)
+        return fail(NK_ERROR_UNSUPPORTED, "desktop appearance is unavailable");
     gboolean prefer_dark = FALSE;
-    char* theme = nullptr;
-    g_object_get(settings,
-                 "gtk-application-prefer-dark-theme", &prefer_dark,
-                 "gtk-theme-name", &theme,
-                 nullptr);
-    char* normalized = g_ascii_strdown(theme ? theme : "", -1);
+    char *theme = nullptr;
+    g_object_get(settings, "gtk-application-prefer-dark-theme", &prefer_dark, "gtk-theme-name",
+                 &theme, nullptr);
+    char *normalized = g_ascii_strdown(theme ? theme : "", -1);
     appearance->color_scheme = prefer_dark || std::strstr(normalized, "dark")
-        ? NK_COLOR_SCHEME_DARK : NK_COLOR_SCHEME_LIGHT;
-    appearance->high_contrast = std::strstr(normalized, "highcontrast") ||
-                                std::strstr(normalized, "high-contrast");
+                                   ? NK_COLOR_SCHEME_DARK
+                                   : NK_COLOR_SCHEME_LIGHT;
+    appearance->high_contrast =
+        std::strstr(normalized, "highcontrast") || std::strstr(normalized, "high-contrast");
     g_free(normalized);
     g_free(theme);
     return NK_OK;
 }
 
-nk_result NK_CALL nk_notification_show(const nk_notification_options* options,
-                                       nk_request_id* out_request) {
-    return nk::core::result_boundary("unexpected error while showing notification",
-                                     [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK) return result;
-        if (!options || options->struct_size < sizeof(*options) || !out_request ||
-            !options->title || !*options->title)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid notification options");
-        if (!g_utf8_validate(options->title, -1, nullptr) ||
-            (options->body && !g_utf8_validate(options->body, -1, nullptr)) ||
-            (options->icon && !g_utf8_validate(options->icon, -1, nullptr)))
-            return fail(NK_ERROR_INVALID_ARGUMENT,
-                        "notification text is not valid UTF-8");
-        *out_request = NK_INVALID_REQUEST_ID;
-        if (!ensure_notification_bus()) return NK_ERROR_UNSUPPORTED;
-        const auto request = nk::core::next_request_id();
-        const auto generation = nk::core::runtime_generation();
-        auto context = std::make_unique<NotificationContext>(
-            NotificationContext{request, generation});
-        notifications.emplace(request, NotificationRequest{0, false, generation});
-        GVariantBuilder actions;
-        g_variant_builder_init(&actions, G_VARIANT_TYPE("as"));
-        GVariantBuilder hints;
-        g_variant_builder_init(&hints, G_VARIANT_TYPE("a{sv}"));
-        if (options->flags & NK_NOTIFICATION_SILENT)
-            g_variant_builder_add(&hints, "{sv}", "suppress-sound",
-                                  g_variant_new_boolean(TRUE));
-        const int timeout = options->timeout_ms > static_cast<uint32_t>(INT_MAX)
-            ? INT_MAX : static_cast<int>(options->timeout_ms);
-        g_dbus_connection_call(
-            notification_bus, "org.freedesktop.Notifications",
-            "/org/freedesktop/Notifications", "org.freedesktop.Notifications",
-            "Notify", g_variant_new("(susss@as@a{sv}i)", "NativeKit", 0u,
-                options->icon ? options->icon : "", options->title,
-                options->body ? options->body : "", g_variant_builder_end(&actions),
-                g_variant_builder_end(&hints), timeout), G_VARIANT_TYPE("(u)"),
-            G_DBUS_CALL_FLAGS_NONE, -1, nullptr, on_notification_shown,
-            context.release());
-        *out_request = request;
-        return NK_OK;
-    });
+nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
+                                       nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while showing notification", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!options || options->struct_size < sizeof(*options) || !out_request ||
+                !options->title || !*options->title)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid notification options");
+            if (!g_utf8_validate(options->title, -1, nullptr) ||
+                (options->body && !g_utf8_validate(options->body, -1, nullptr)) ||
+                (options->icon && !g_utf8_validate(options->icon, -1, nullptr)))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "notification text is not valid UTF-8");
+            *out_request = NK_INVALID_REQUEST_ID;
+            if (!ensure_notification_bus())
+                return NK_ERROR_UNSUPPORTED;
+            const auto request = nk::core::next_request_id();
+            const auto generation = nk::core::runtime_generation();
+            auto context =
+                std::make_unique<NotificationContext>(NotificationContext{request, generation});
+            notifications.emplace(request, NotificationRequest{0, false, generation});
+            GVariantBuilder actions;
+            g_variant_builder_init(&actions, G_VARIANT_TYPE("as"));
+            GVariantBuilder hints;
+            g_variant_builder_init(&hints, G_VARIANT_TYPE("a{sv}"));
+            if (options->flags & NK_NOTIFICATION_SILENT)
+                g_variant_builder_add(&hints, "{sv}", "suppress-sound",
+                                      g_variant_new_boolean(TRUE));
+            const int timeout = options->timeout_ms > static_cast<uint32_t>(INT_MAX)
+                                    ? INT_MAX
+                                    : static_cast<int>(options->timeout_ms);
+            g_dbus_connection_call(
+                notification_bus, "org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+                "org.freedesktop.Notifications", "Notify",
+                g_variant_new("(susss@as@a{sv}i)", "NativeKit", 0u,
+                              options->icon ? options->icon : "", options->title,
+                              options->body ? options->body : "", g_variant_builder_end(&actions),
+                              g_variant_builder_end(&hints), timeout),
+                G_VARIANT_TYPE("(u)"), G_DBUS_CALL_FLAGS_NONE, -1, nullptr, on_notification_shown,
+                context.release());
+            *out_request = request;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_notification_close(nk_request_id request) {
-    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
     const auto found = notifications.find(request);
     if (!request || found == notifications.end())
-        return fail(NK_ERROR_INVALID_REQUEST,
-                    "invalid or completed notification request");
+        return fail(NK_ERROR_INVALID_REQUEST, "invalid or completed notification request");
     if (found->second.canceled)
-        return fail(NK_ERROR_INVALID_REQUEST,
-                    "notification request is already closing");
+        return fail(NK_ERROR_INVALID_REQUEST, "notification request is already closing");
     if (found->second.server_id) {
         close_server_notification(found->second.server_id);
         notification_ids.erase(found->second.server_id);
@@ -1645,5 +1856,4 @@ nk_result NK_CALL nk_notification_close(nk_request_id request) {
     emit_notification(NK_EVENT_NOTIFICATION_DISMISSED, request);
     return NK_OK;
 }
-
 }

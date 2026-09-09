@@ -53,19 +53,17 @@ typedef struct nk_webview_options {
  * controller can display content. Operations issued before readiness are
  * retained in call order by asynchronous backends.
  */
-NK_API nk_result NK_CALL nk_webview_create(
-    nk_handle parent,
-    const nk_webview_options *options,
-    nk_handle *out_webview);
+NK_API nk_result NK_CALL nk_webview_create(nk_handle parent, const nk_webview_options *options,
+                                           nk_handle *out_webview);
 NK_API nk_result NK_CALL nk_webview_destroy(nk_handle webview);
 
 /* All WebView operations are UI-thread-only and copy string input. */
 NK_API nk_result NK_CALL nk_webview_show(nk_handle webview, uint32_t visible);
-NK_API nk_result NK_CALL nk_webview_set_bounds(
-    nk_handle webview, int32_t x, int32_t y, int32_t width, int32_t height);
+NK_API nk_result NK_CALL nk_webview_set_bounds(nk_handle webview, int32_t x, int32_t y,
+                                               int32_t width, int32_t height);
 NK_API nk_result NK_CALL nk_webview_navigate(nk_handle webview, const char *url);
-NK_API nk_result NK_CALL nk_webview_set_html(
-    nk_handle webview, const char *html, const char *base_url);
+NK_API nk_result NK_CALL nk_webview_set_html(nk_handle webview, const char *html,
+                                             const char *base_url);
 
 /*
  * Starts JavaScript evaluation. Completion is reported as
@@ -78,8 +76,8 @@ NK_API nk_result NK_CALL nk_webview_set_html(
  * Destroying the WebView before completion emits exactly one final event with
  * NK_ERROR_INVALID_REQUEST, allowing consumers to settle pending futures.
  */
-NK_API nk_result NK_CALL nk_webview_eval(
-    nk_handle webview, const char *script, nk_request_id *out_request);
+NK_API nk_result NK_CALL nk_webview_eval(nk_handle webview, const char *script,
+                                         nk_request_id *out_request);
 
 /*
  * Resolves an NK_EVENT_WEBVIEW_NAVIGATION_REQUEST. Navigation-policy events
@@ -87,8 +85,7 @@ NK_API nk_result NK_CALL nk_webview_eval(
  * Event data is the proposed URL. Pending requests are cancelled when their
  * WebView is destroyed; each request may be resolved exactly once.
  */
-NK_API nk_result NK_CALL nk_webview_navigation_decide(
-    nk_request_id request, uint32_t allow);
+NK_API nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t allow);
 
 #ifdef __cplusplus
 }

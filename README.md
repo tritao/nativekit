@@ -70,6 +70,14 @@ Run the minimal browser example with:
 ./build/examples/nativekit_browser https://example.com
 ```
 
+Source formatting is defined by `.clang-format`. When ClangFormat is installed,
+CMake provides targets to apply it or verify that no changes are needed:
+
+```sh
+cmake --build build --target format
+cmake --build build --target format-check
+```
+
 UI APIs will be main-thread-only. Event payloads returned by `nk_poll_event`
 must be released using `nk_event_release`.
 

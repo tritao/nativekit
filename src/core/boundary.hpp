@@ -9,11 +9,11 @@
 
 namespace nk::core {
 
-template<typename Function>
-nk_result result_boundary(std::string_view operation, Function&& function) noexcept {
+template <typename Function>
+nk_result result_boundary(std::string_view operation, Function &&function) noexcept {
     try {
         return std::forward<Function>(function)();
-    } catch (const std::bad_alloc&) {
+    } catch (const std::bad_alloc &) {
         set_error("out of memory at NativeKit C boundary");
         return NK_ERROR_OUT_OF_MEMORY;
     } catch (...) {
@@ -22,8 +22,7 @@ nk_result result_boundary(std::string_view operation, Function&& function) noexc
     }
 }
 
-template<typename Function>
-void callback_boundary(Function&& function) noexcept {
+template <typename Function> void callback_boundary(Function &&function) noexcept {
     try {
         std::forward<Function>(function)();
     } catch (...) {
@@ -31,8 +30,8 @@ void callback_boundary(Function&& function) noexcept {
     }
 }
 
-template<typename Result, typename Function>
-Result callback_boundary_or(Result fallback, Function&& function) noexcept {
+template <typename Result, typename Function>
+Result callback_boundary_or(Result fallback, Function &&function) noexcept {
     try {
         return std::forward<Function>(function)();
     } catch (...) {

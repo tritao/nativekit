@@ -5,17 +5,17 @@
 #include <stdint.h>
 
 #if defined(_WIN32)
-#  if defined(NK_STATIC)
-#    define NK_API
-#  elif defined(NK_BUILDING_LIBRARY)
-#    define NK_API __declspec(dllexport)
-#  else
-#    define NK_API __declspec(dllimport)
-#  endif
-#  define NK_CALL __cdecl
+#if defined(NK_STATIC)
+#define NK_API
+#elif defined(NK_BUILDING_LIBRARY)
+#define NK_API __declspec(dllexport)
 #else
-#  define NK_API __attribute__((visibility("default")))
-#  define NK_CALL
+#define NK_API __declspec(dllimport)
+#endif
+#define NK_CALL __cdecl
+#else
+#define NK_API __attribute__((visibility("default")))
+#define NK_CALL
 #endif
 
 #ifdef __cplusplus

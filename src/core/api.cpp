@@ -4,8 +4,8 @@
 #include "core/event_queue.hpp"
 #include "core/runtime.hpp"
 
-#include <cstddef>
 #include <atomic>
+#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -22,10 +22,10 @@ std::atomic<std::uint64_t> generation_counter{0};
 std::atomic<std::uint64_t> active_generation{0};
 constexpr std::uint32_t default_queue_capacity = 1024;
 
-bool valid_event_struct(const nk_event* event) {
+bool valid_event_struct(const nk_event *event) {
     return event && event->struct_size >= sizeof(nk_event);
 }
-}
+} // namespace
 
 namespace nk::core {
 
@@ -42,12 +42,15 @@ nk_result require_ui_thread() noexcept {
     return NK_OK;
 }
 
-HandleRegistry& handles() noexcept { return handle_registry; }
+HandleRegistry &handles() noexcept {
+    return handle_registry;
+}
 
 nk_result push_event(QueuedEvent event) noexcept {
     try {
         std::lock_guard lock(state_mutex);
-        if (!event_queue) return NK_ERROR_NOT_INITIALIZED;
+        if (!event_queue)
+            return NK_ERROR_NOT_INITIALIZED;
         return event_queue->push(std::move(event));
     } catch (...) {
         return NK_ERROR_OUT_OF_MEMORY;
@@ -69,13 +72,15 @@ bool is_runtime_generation(std::uint64_t generation) noexcept {
     return generation != 0 && generation == runtime_generation();
 }
 
-}
+} // namespace nk::core
 
 extern "C" {
 
-uint32_t NK_CALL nk_api_version(void) { return NK_API_VERSION; }
+uint32_t NK_CALL nk_api_version(void) {
+    return NK_API_VERSION;
+}
 
-nk_result NK_CALL nk_init(const nk_init_options* options) {
+nk_result NK_CALL nk_init(const nk_init_options *options) {
     try {
         nk::core::clear_error();
         if (!options || options->struct_size < sizeof(nk_init_options)) {
@@ -91,8 +96,8 @@ nk_result NK_CALL nk_init(const nk_init_options* options) {
             nk::core::set_error("NativeKit is already initialized");
             return NK_ERROR_ALREADY_INITIALIZED;
         }
-        const auto capacity = options->event_queue_capacity == 0
-            ? default_queue_capacity : options->event_queue_capacity;
+        const auto capacity = options->event_queue_capacity == 0 ? default_queue_capacity
+                                                                 : options->event_queue_capacity;
         event_queue = std::make_unique<nk::core::EventQueue>(capacity);
         ui_thread = std::this_thread::get_id();
         auto generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -100,7 +105,7 @@ nk_result NK_CALL nk_init(const nk_init_options* options) {
             generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
         active_generation.store(generation, std::memory_order_release);
         return NK_OK;
-    } catch (const std::bad_alloc&) {
+    } catch (const std::bad_alloc &) {
         nk::core::set_error("out of memory while initializing NativeKit");
         return NK_ERROR_OUT_OF_MEMORY;
     } catch (...) {
@@ -123,9 +128,11 @@ void NK_CALL nk_shutdown(void) {
     }
 }
 
-const char* NK_CALL nk_last_error(void) { return nk::core::last_error(); }
+const char *NK_CALL nk_last_error(void) {
+    return nk::core::last_error();
+}
 
-nk_result NK_CALL nk_poll_event(nk_event* event) {
+nk_result NK_CALL nk_poll_event(nk_event *event) {
     try {
         nk::core::clear_error();
         if (!valid_event_struct(event)) {
@@ -137,11 +144,12 @@ nk_result NK_CALL nk_poll_event(nk_event* event) {
             return NK_ERROR_INVALID_ARGUMENT;
         }
         const auto thread_result = nk::core::require_ui_thread();
-        if (thread_result != NK_OK) return thread_result;
+        if (thread_result != NK_OK)
+            return thread_result;
         nk::backend::pump_events();
         std::lock_guard lock(state_mutex);
         return event_queue->poll(*event);
-    } catch (const std::bad_alloc&) {
+    } catch (const std::bad_alloc &) {
         nk::core::set_error("out of memory while polling an event");
         return NK_ERROR_OUT_OF_MEMORY;
     } catch (...) {
@@ -150,12 +158,12 @@ nk_result NK_CALL nk_poll_event(nk_event* event) {
     }
 }
 
-void NK_CALL nk_event_release(nk_event* event) {
-    if (!event) return;
-    delete[] static_cast<const std::byte*>(event->data);
+void NK_CALL nk_event_release(nk_event *event) {
+    if (!event)
+        return;
+    delete[] static_cast<const std::byte *>(event->data);
     const auto size = event->struct_size;
     *event = {};
     event->struct_size = size;
 }
-
 }

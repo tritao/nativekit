@@ -21,17 +21,16 @@ struct QueuedEvent {
 };
 
 class EventQueue {
-public:
+  public:
     explicit EventQueue(std::size_t capacity);
     nk_result push(QueuedEvent event);
-    nk_result poll(nk_event& output);
+    nk_result poll(nk_event &output);
     void clear();
 
-private:
+  private:
     std::size_t capacity_;
     std::mutex mutex_;
     std::deque<QueuedEvent> queue_;
 };
 
-}
-
+} // namespace nk::core

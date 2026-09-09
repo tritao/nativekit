@@ -23,6 +23,40 @@ option(NK_BUILD_EXAMPLES "Build NativeKit examples" ON)
 option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
 
+find_program(NK_CLANG_FORMAT NAMES clang-format clang-format-20 clang-format-19
+    clang-format-18 clang-format-17)
+file(GLOB_RECURSE NK_FORMAT_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/examples/*.[ch]"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.[ch]"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.[ch]"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cxx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hxx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.m"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.mm"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.[ch]"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cxx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.hh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.hxx"
+)
+
+if(NK_CLANG_FORMAT)
+    add_custom_target(format
+        COMMAND ${NK_CLANG_FORMAT} -i ${NK_FORMAT_SOURCES}
+        COMMENT "Formatting NativeKit sources"
+        VERBATIM)
+    add_custom_target(format-check
+        COMMAND ${NK_CLANG_FORMAT} --dry-run --Werror ${NK_FORMAT_SOURCES}
+        COMMENT "Checking NativeKit source formatting"
+        VERBATIM)
+endif()
+
 set(NK_LIBRARY_TYPE STATIC)
 if(NK_BUILD_SHARED)
     set(NK_LIBRARY_TYPE SHARED)

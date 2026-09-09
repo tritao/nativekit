@@ -25,8 +25,7 @@ typedef struct nk_drop_data {
 NK_API nk_result NK_CALL nk_clipboard_set_text(const char *text);
 
 /* Copies local paths into the clipboard as a URI list. UI thread only. */
-NK_API nk_result NK_CALL nk_clipboard_set_files(
-    const char *const *paths, uint32_t path_count);
+NK_API nk_result NK_CALL nk_clipboard_set_files(const char *const *paths, uint32_t path_count);
 
 /*
  * Starts an asynchronous clipboard read. Completion is delivered through the
@@ -40,12 +39,10 @@ NK_API nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request);
 NK_API nk_result NK_CALL nk_window_set_drop_enabled(nk_handle window, uint32_t enabled);
 
 /* Returned UTF-8 views remain owned by the event until nk_event_release(). */
-NK_API nk_result NK_CALL nk_clipboard_event_file(
-    const nk_event *event, uint32_t index,
-    const char **out_path, uint32_t *out_length);
-NK_API nk_result NK_CALL nk_drop_event_item(
-    const nk_event *event, uint32_t index,
-    const char **out_item, uint32_t *out_length);
+NK_API nk_result NK_CALL nk_clipboard_event_file(const nk_event *event, uint32_t index,
+                                                 const char **out_path, uint32_t *out_length);
+NK_API nk_result NK_CALL nk_drop_event_item(const nk_event *event, uint32_t index,
+                                            const char **out_item, uint32_t *out_length);
 
 #ifdef __cplusplus
 }
