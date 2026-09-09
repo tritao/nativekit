@@ -136,6 +136,7 @@ nk_result NK_CALL nk_shell_open_file(const char *) {
 nk_result NK_CALL nk_shell_reveal_file(const char *) {
     return unsupported();
 }
+#if !defined(NK_STUB_ANDROID)
 nk_result NK_CALL nk_system_directory(nk_system_directory_kind, char *, uint32_t *) {
     return unsupported();
 }
@@ -145,6 +146,7 @@ nk_result NK_CALL nk_system_locale(char *, uint32_t *) {
 nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *) {
     return unsupported();
 }
+#endif
 #if !defined(NK_STUB_ANDROID)
 nk_result NK_CALL nk_clipboard_set_text(const char *) {
     return unsupported();

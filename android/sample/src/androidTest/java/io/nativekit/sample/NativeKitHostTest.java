@@ -7,14 +7,18 @@ import static org.junit.Assert.assertTrue;
 
 import android.content.pm.ActivityInfo;
 import android.Manifest;
+import android.app.LocaleManager;
+import android.app.UiModeManager;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Build;
+import android.os.LocaleList;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import io.nativekit.NativeKitEvent;
 import java.net.URLEncoder;
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -148,6 +152,38 @@ public final class NativeKitHostTest {
             assertEquals(notificationRequest[0], dismissed.requestId);
 
             scenario.onActivity(activity -> {
+                int[] directories = {1, 3, 4, 5, 6, 7, 8};
+                for (int kind : directories) {
+                    String path = activity.host.systemDirectory(kind);
+                    assertNotNull(path);
+                    assertTrue(new File(path).isAbsolute());
+                }
+                assertEquals(null, activity.host.systemDirectory(2));
+                assertTrue(!activity.host.systemLocale().isEmpty());
+                int scheme = activity.host.systemAppearance() & 0xff;
+                assertTrue(scheme >= 0 && scheme <= 2);
+            });
+            if (Build.VERSION.SDK_INT >= 31) {
+                scenario.onActivity(activity ->
+                    activity.getSystemService(UiModeManager.class).setApplicationNightMode(
+                        UiModeManager.MODE_NIGHT_YES));
+                awaitColorScheme(scenario, 2);
+                scenario.onActivity(activity ->
+                    activity.getSystemService(UiModeManager.class).setApplicationNightMode(
+                        UiModeManager.MODE_NIGHT_NO));
+                awaitColorScheme(scenario, 1);
+            }
+            if (Build.VERSION.SDK_INT >= 33) {
+                scenario.onActivity(activity -> activity.getSystemService(LocaleManager.class)
+                                                    .setApplicationLocales(
+                                                        LocaleList.forLanguageTags("pt-PT")));
+                awaitLocale(scenario, "pt-PT");
+                scenario.onActivity(activity -> activity.getSystemService(LocaleManager.class)
+                                                    .setApplicationLocales(
+                                                        LocaleList.getEmptyLocaleList()));
+            }
+
+            scenario.onActivity(activity -> {
                 assertEquals(-2, activity.host.openUrl("not a URL"));
                 assertEquals(0, activity.host.openUrl("nativekit-test://opened"));
             });
@@ -209,6 +245,34 @@ public final class NativeKitHostTest {
             intent.putExtra("nativekit.notification.request", request);
             activity.sendBroadcast(intent);
         });
+    }
+
+    private static void awaitColorScheme(ActivityScenario<NativeKitTestActivity> scenario,
+                                         int expected) throws Exception {
+        awaitCondition(scenario, activity -> (activity.host.systemAppearance() & 0xff) == expected,
+                       "color scheme " + expected);
+    }
+
+    private static void awaitLocale(ActivityScenario<NativeKitTestActivity> scenario,
+                                    String expected) throws Exception {
+        awaitCondition(scenario, activity -> activity.host.systemLocale().equals(expected),
+                       "locale " + expected);
+    }
+
+    private interface ActivityCondition { boolean test(NativeKitTestActivity activity); }
+
+    private static void awaitCondition(ActivityScenario<NativeKitTestActivity> scenario,
+                                       ActivityCondition condition, String description)
+        throws Exception {
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (System.currentTimeMillis() < deadline) {
+            boolean[] matched = {false};
+            scenario.onActivity(activity -> matched[0] = condition.test(activity));
+            if (matched[0])
+                return;
+            Thread.sleep(50);
+        }
+        throw new AssertionError("timed out waiting for " + description);
     }
 
     private static NativeKitEvent awaitEventForSource(

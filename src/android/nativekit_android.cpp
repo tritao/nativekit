@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -300,6 +301,24 @@ nk_result start_file_dialog(uint32_t kind, nk_handle parent, const nk_file_dialo
     return NK_OK;
 }
 
+nk_result copy_string_result(const std::string &value, char *buffer, uint32_t *inout_size) {
+    if (!inout_size) {
+        nk::core::set_error("string buffer size is null");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    if (value.size() >= std::numeric_limits<uint32_t>::max())
+        return NK_ERROR_OUT_OF_MEMORY;
+    const auto required = static_cast<uint32_t>(value.size() + 1);
+    const auto capacity = *inout_size;
+    *inout_size = required;
+    if (!buffer || capacity < required) {
+        nk::core::set_error("string buffer is too small");
+        return NK_ERROR_BUFFER_TOO_SMALL;
+    }
+    std::memcpy(buffer, value.c_str(), required);
+    return NK_OK;
+}
+
 nk_result destroy_webview(nk_handle handle) {
     const auto found = webviews.find(handle);
     if (found == webviews.end()) {
@@ -453,7 +472,7 @@ extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
-           NK_CAP_SHELL | NK_CAP_NOTIFICATION;
+           NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION;
 }
 
 nk_result NK_CALL nk_shell_open_url(const char *url) {
@@ -488,6 +507,82 @@ nk_result NK_CALL nk_shell_open_url(const char *url) {
                                 ? "URL is invalid"
                                 : "no Android activity could open the URL");
     return result;
+}
+
+nk_result NK_CALL nk_system_directory(nk_system_directory_kind kind, char *buffer,
+                                      uint32_t *inout_size) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto host_resource = context_host();
+    if (!host_resource)
+        return NK_ERROR_UNSUPPORTED;
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!env || !bridge)
+        return NK_ERROR_UNKNOWN;
+    auto method = env->GetStaticMethodID(bridge, "systemDirectory",
+                                         "(Landroid/view/ViewGroup;I)Ljava/lang/String;");
+    auto value = method ? static_cast<jstring>(env->CallStaticObjectMethod(
+                              bridge, method, host_resource->view_group, static_cast<jint>(kind)))
+                        : nullptr;
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android directory lookup failed"))
+        return NK_ERROR_UNKNOWN;
+    if (!value) {
+        nk::core::set_error("system directory is unavailable on Android");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    const auto text = to_utf8(env, value);
+    env->DeleteLocalRef(value);
+    return copy_string_result(text, buffer, inout_size);
+}
+
+nk_result NK_CALL nk_system_locale(char *buffer, uint32_t *inout_size) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto host_resource = context_host();
+    if (!host_resource)
+        return NK_ERROR_UNSUPPORTED;
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!env || !bridge)
+        return NK_ERROR_UNKNOWN;
+    auto method = env->GetStaticMethodID(bridge, "systemLocale",
+                                         "(Landroid/view/ViewGroup;)Ljava/lang/String;");
+    auto value = method ? static_cast<jstring>(env->CallStaticObjectMethod(
+                              bridge, method, host_resource->view_group))
+                        : nullptr;
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android locale lookup failed") || !value)
+        return NK_ERROR_UNKNOWN;
+    const auto text = to_utf8(env, value);
+    env->DeleteLocalRef(value);
+    return copy_string_result(text, buffer, inout_size);
+}
+
+nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    if (!appearance || appearance->struct_size < sizeof(nk_system_appearance)) {
+        nk::core::set_error("appearance output is missing or too small");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto host_resource = context_host();
+    if (!host_resource)
+        return NK_ERROR_UNSUPPORTED;
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!env || !bridge)
+        return NK_ERROR_UNKNOWN;
+    auto method = env->GetStaticMethodID(bridge, "systemAppearance", "(Landroid/view/ViewGroup;)I");
+    const auto value =
+        method ? env->CallStaticIntMethod(bridge, method, host_resource->view_group) : 0;
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android appearance lookup failed"))
+        return NK_ERROR_UNKNOWN;
+    appearance->color_scheme = static_cast<uint32_t>(value & 0xff);
+    appearance->high_contrast = (value & 0x100) != 0;
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_clipboard_set_text(const char *text) {
@@ -1019,6 +1114,36 @@ JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeShowNotification(J
 JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeCloseNotification(JNIEnv *, jclass,
                                                                                jlong request) {
     return nk_notification_close(static_cast<nk_request_id>(request));
+}
+
+JNIEXPORT jstring JNICALL Java_io_nativekit_NativeKitHost_nativeSystemDirectory(JNIEnv *env, jclass,
+                                                                                jint kind) {
+    uint32_t size = 0;
+    if (nk_system_directory(static_cast<nk_system_directory_kind>(kind), nullptr, &size) !=
+            NK_ERROR_BUFFER_TOO_SMALL ||
+        size == 0)
+        return nullptr;
+    std::vector<char> value(size);
+    return nk_system_directory(static_cast<nk_system_directory_kind>(kind), value.data(), &size) ==
+                   NK_OK
+               ? from_utf8(env, value.data())
+               : nullptr;
+}
+
+JNIEXPORT jstring JNICALL Java_io_nativekit_NativeKitHost_nativeSystemLocale(JNIEnv *env, jclass) {
+    uint32_t size = 0;
+    if (nk_system_locale(nullptr, &size) != NK_ERROR_BUFFER_TOO_SMALL || size == 0)
+        return nullptr;
+    std::vector<char> value(size);
+    return nk_system_locale(value.data(), &size) == NK_OK ? from_utf8(env, value.data()) : nullptr;
+}
+
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeSystemAppearance(JNIEnv *, jclass) {
+    nk_system_appearance appearance{};
+    appearance.struct_size = sizeof(appearance);
+    if (nk_system_get_appearance(&appearance) != NK_OK)
+        return -1;
+    return static_cast<jint>(appearance.color_scheme | (appearance.high_contrast ? 0x100 : 0));
 }
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitHost_nativeDestroy(JNIEnv *, jclass,

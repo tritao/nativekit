@@ -94,6 +94,25 @@ public final class NativeKitHost implements AutoCloseable {
         return nativeCloseNotification(request);
     }
 
+    public String systemDirectory(int kind) {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeSystemDirectory(kind);
+    }
+
+    public String systemLocale() {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeSystemLocale();
+    }
+
+    /** Low byte is the NativeKit color scheme; bit 8 indicates high contrast. */
+    public int systemAppearance() {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeSystemAppearance();
+    }
+
     private void setLifecycle(int state) {
         if (handle != 0) {
             nativeSetLifecycle(handle, state);
@@ -123,5 +142,8 @@ public final class NativeKitHost implements AutoCloseable {
     private static native int nativeCancelDialog(long request);
     private static native long nativeShowNotification(String title, String body);
     private static native int nativeCloseNotification(long request);
+    private static native String nativeSystemDirectory(int kind);
+    private static native String nativeSystemLocale();
+    private static native int nativeSystemAppearance();
     private static native void nativeDestroy(long handle);
 }

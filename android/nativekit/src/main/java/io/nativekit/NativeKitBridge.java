@@ -5,8 +5,12 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.RenderProcessGoneDetail;
@@ -25,6 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.Locale;
 
 /** Package-private JNI implementation. Public consumers use NativeKitHost. */
 final class NativeKitBridge {
@@ -253,6 +258,51 @@ final class NativeKitBridge {
 
     static void closeNotification(ViewGroup parent, long request) {
         NativeKitNotificationActivity.cancel(parent.getContext(), request);
+    }
+
+    @Nullable
+    static String systemDirectory(ViewGroup parent, int kind) {
+        Context context = parent.getContext();
+        switch (kind) {
+            case 1:
+            case 6:
+            case 7:
+                return context.getFilesDir().getAbsolutePath();
+            case 3:
+                return externalDirectory(context, Environment.DIRECTORY_DOCUMENTS);
+            case 4:
+                return externalDirectory(context, Environment.DIRECTORY_DOWNLOADS);
+            case 5:
+            case 8:
+                return context.getCacheDir().getAbsolutePath();
+            default:
+                return null;
+        }
+    }
+
+    private static String externalDirectory(Context context, String kind) {
+        java.io.File directory = context.getExternalFilesDir(kind);
+        return directory == null ? context.getFilesDir().getAbsolutePath()
+                                 : directory.getAbsolutePath();
+    }
+
+    static String systemLocale(ViewGroup parent) {
+        Configuration configuration = parent.getResources().getConfiguration();
+        Locale locale = Build.VERSION.SDK_INT >= 24 && !configuration.getLocales().isEmpty()
+            ? configuration.getLocales().get(0)
+            : configuration.locale;
+        return locale.toLanguageTag();
+    }
+
+    static int systemAppearance(ViewGroup parent) {
+        int night = parent.getResources().getConfiguration().uiMode &
+            Configuration.UI_MODE_NIGHT_MASK;
+        int scheme = night == Configuration.UI_MODE_NIGHT_YES ? 2
+                     : night == Configuration.UI_MODE_NIGHT_NO ? 1
+                                                               : 0;
+        boolean highContrast = Settings.Secure.getInt(parent.getContext().getContentResolver(),
+                                                      "high_text_contrast_enabled", 0) != 0;
+        return scheme | (highContrast ? 0x100 : 0);
     }
 
     static void observeHost(ViewGroup parent, long handle) {

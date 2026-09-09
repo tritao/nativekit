@@ -29,3 +29,5 @@ clipboard operations remain unsupported. Open, save, and directory dialogs use
 the Storage Access Framework and return `content://` URIs.
 Notifications use a library-owned channel, permission proxy, and receiver, so
 the embedding Activity does not need to forward permission or intent callbacks.
+System directory results are app-scoped paths; locale and appearance reflect the
+attached host's current Android configuration.
