@@ -7,11 +7,25 @@ android {
     compileSdk = 36
     ndkVersion = "30.0.16248370"
 
+    buildFeatures {
+        prefabPublishing = true
+    }
+
+    prefab {
+        create("nativekit") {
+            headers = "../../include"
+        }
+    }
+
     defaultConfig {
         minSdk = 23
         externalNativeBuild {
             cmake {
-                arguments += listOf("-DNK_BUILD_TESTS=OFF", "-DNK_BUILD_EXAMPLES=OFF")
+                arguments += listOf(
+                    "-DANDROID_STL=c++_shared",
+                    "-DNK_BUILD_TESTS=OFF",
+                    "-DNK_BUILD_EXAMPLES=OFF",
+                )
             }
         }
     }

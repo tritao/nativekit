@@ -18,6 +18,13 @@ end-to-end host/WebView instrumentation test with:
 ./gradlew :nativekit:testDebugUnitTest :sample:connectedDebugAndroidTest
 ```
 
+`consumer` is a standalone NativeKit integration application. It uses a direct Gradle
+project dependency and consumes the C ABI through Prefab without Maven:
+
+```sh
+./gradlew :consumer:assembleDebug :consumer:connectedDebugAndroidTest
+```
+
 This checkout was validated with JDK 21, Gradle 8.13, SDK Platform 36,
 Build Tools 35.0.0, and NDK 30.0.16248370. Set `sdk.dir` in an untracked
 `local.properties` or export `ANDROID_HOME` for your local installation.
