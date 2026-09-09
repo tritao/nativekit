@@ -1,0 +1,19 @@
+name: Windows
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  native-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Configure
+        run: cmake -S . -B build -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=OFF -DNK_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build --config Debug
+      - name: Test
+        run: ctest --test-dir build -C Debug --output-on-failure

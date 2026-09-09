@@ -22,7 +22,10 @@ Windows smoke tests can be cross-built and run in an isolated Wine prefix with
 The Windows backend currently provides Win32-owned windows, asynchronous COM
 file/save/directory and native message dialogs, shell integration, standard
 directories, locale, desktop appearance, clipboard text/files, and file drops.
-Windows text drops are deferred until the backend has an OLE drop target.
+It also provides WebView2 when the Evergreen runtime is installed. CMake fetches
+the pinned Microsoft WebView2 SDK by default; use `-DNK_ENABLE_WEBVIEW2=OFF` for
+an offline Windows build without WebView support. Windows text drops are deferred
+until the backend has an OLE drop target.
 
 The current Linux backend provides NativeKit-owned GTK 3 windows, WebKitGTK
 WebViews, asynchronous native dialogs, shell launching, standard directories,

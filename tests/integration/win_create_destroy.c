@@ -2,6 +2,7 @@
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
 #include "nativekit_system.h"
+#include "nativekit_webview.h"
 #include "nativekit_window.h"
 
 #include <assert.h>
@@ -12,7 +13,7 @@
 #include <string.h>
 
 static nk_event wait_for_dialog(nk_request_id request) {
-    for (int attempt = 0; attempt < 500; ++attempt) {
+    for (int attempt = 0; attempt < 1000; ++attempt) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
@@ -27,7 +28,7 @@ static nk_event wait_for_dialog(nk_request_id request) {
 }
 
 static nk_event wait_for_event(nk_event_kind kind, nk_request_id request) {
-    for (int attempt = 0; attempt < 500; ++attempt) {
+    for (int attempt = 0; attempt < 1000; ++attempt) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
@@ -180,6 +181,37 @@ int main(void) {
     assert(memcmp(drop_path, "C:\\NativeKit dropped.txt", drop_path_length) == 0);
     nk_event_release(&drop_event);
     assert(nk_window_set_drop_enabled(window, 0) == NK_OK);
+
+    nk_webview_options webview_options = {0};
+    webview_options.struct_size = sizeof(webview_options);
+    webview_options.flags = NK_WEBVIEW_HIDDEN;
+    webview_options.width = 320;
+    webview_options.height = 240;
+    webview_options.initial_url = "about:blank";
+    nk_handle webview = NK_INVALID_HANDLE;
+    if (nk_get_capabilities() & NK_CAP_WEBVIEW) {
+        assert(nk_webview_create(window, &webview_options, &webview) == NK_OK);
+        nk_event navigated = wait_for_event(NK_EVENT_WEBVIEW_NAVIGATED,
+                                            NK_INVALID_REQUEST_ID);
+        assert(navigated.source == webview);
+        nk_event_release(&navigated);
+        assert(nk_webview_set_bounds(webview, 4, 5, 300, 200) == NK_OK);
+        assert(nk_webview_show(webview, 1) == NK_OK);
+        nk_request_id eval_request = NK_INVALID_REQUEST_ID;
+        assert(nk_webview_eval(webview, "6 * 7", &eval_request) == NK_OK);
+        nk_event evaluated = wait_for_event(NK_EVENT_WEBVIEW_EVAL_COMPLETE,
+                                            eval_request);
+        assert(evaluated.source == webview);
+        assert(evaluated.result == NK_OK);
+        assert(evaluated.data_size == 2);
+        assert(memcmp(evaluated.data, "42", 2) == 0);
+        nk_event_release(&evaluated);
+        assert(nk_webview_destroy(webview) == NK_OK);
+        assert(nk_webview_destroy(webview) == NK_ERROR_INVALID_HANDLE);
+    } else {
+        assert(nk_webview_create(window, &webview_options, &webview) ==
+               NK_ERROR_UNSUPPORTED);
+    }
 
     nk_file_dialog_options file_options = {0};
     file_options.struct_size = sizeof(file_options);

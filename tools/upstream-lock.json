@@ -6,6 +6,11 @@
     "describe": "v3.3.3.1-481-g37a02f38b1",
     "version": "3.3.4-development"
   },
+  "webview2": {
+    "package": "Microsoft.Web.WebView2",
+    "version": "1.0.4191.47",
+    "sha256": "f492bbf547d0da329553b6727435b677579b1e9f91cc9e4a1ad029366d5f23d0"
+  },
   "derived_files": {
     "src/linux/nativekit_gtk.cpp": {
       "sources": [
@@ -34,9 +39,10 @@
         "src/msw/stdpaths.cpp",
         "src/msw/toplevel.cpp",
         "src/msw/utilswin.cpp",
+        "src/msw/webview_edge.cpp",
         "src/msw/window.cpp"
       ],
-      "notes": "Window class lifecycle, message handling, resize events, DPI behavior, COM file dialog options, native message dialogs, clipboard formats, shell file drops, known folders, shell launching, and appearance detection are adapted to NativeKit's handles, requests, and event queue."
+      "notes": "Window class lifecycle, message handling, resize events, DPI behavior, COM file dialog options, native message dialogs, clipboard formats, shell file drops, known folders, shell launching, appearance detection, and WebView2 lifecycle/event behavior are adapted to NativeKit's handles, requests, and event queue."
     }
   }
 }

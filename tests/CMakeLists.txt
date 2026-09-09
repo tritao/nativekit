@@ -29,6 +29,12 @@ if(WIN32)
     set_target_properties(nativekit_win_integration PROPERTIES LINKER_LANGUAGE CXX)
     add_test(NAME win_create_destroy COMMAND nativekit_win_integration)
     set_tests_properties(win_create_destroy PROPERTIES LABELS "windows")
+    if(NK_WEBVIEW2_LOADER_DLL)
+        add_custom_command(TARGET nativekit_win_integration POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${NK_WEBVIEW2_LOADER_DLL}"
+                "$<TARGET_FILE_DIR:nativekit_win_integration>")
+    endif()
 endif()
 
 if(MINGW)

@@ -21,5 +21,7 @@ tools/test-wine.sh
 ```
 
 The Wine suite is a compatibility layer, not authoritative Windows validation.
-Native Windows CI remains required for COM, accessibility, per-monitor DPI,
-system integration, and WebView behavior.
+It validates WebView2's runtime-unavailable behavior. The native Windows workflow
+exercises WebView creation, navigation, and JavaScript evaluation when the
+Evergreen runtime is present; native testing remains authoritative for COM,
+accessibility, per-monitor DPI, system integration, and browser behavior.
