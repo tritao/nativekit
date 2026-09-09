@@ -17,6 +17,9 @@
 #define UNICODE
 #define _UNICODE
 #define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#  define NOMINMAX
+#endif
 #include <windows.h>
 #include <shobjidl.h>
 #include <shlobj.h>
@@ -569,7 +572,11 @@ HRESULT execute_script(const std::shared_ptr<WinWebViewResource>& resource,
                 const auto pending = evaluations.find(request);
                 if (pending == evaluations.end() || pending->second != handle) return S_OK;
                 evaluations.erase(pending);
-                if (FAILED(error)) {
+                // ExecuteScript reports JavaScript exceptions as a successful
+                // COM call whose result is the unquoted JSON literal null.  A
+                // script that evaluates to JavaScript null is returned by our
+                // wrapper as the JSON string "null", so it remains distinct.
+                if (FAILED(error) || !result || std::wstring_view(result) == L"null") {
                     emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
                                       L"JavaScript evaluation failed", NK_ERROR_UNKNOWN,
                                       0, request);
@@ -1863,13 +1870,11 @@ nk_result NK_CALL nk_system_directory(nk_system_directory_kind kind,
 nk_result NK_CALL nk_system_locale(char* buffer, uint32_t* inout_size) {
     return nk::core::result_boundary("unexpected error while reading system locale", [&] {
         nk::core::clear_error();
-        const int size = GetUserDefaultLocaleName(nullptr, 0);
-        if (!size) return fail(NK_ERROR_UNSUPPORTED, "system locale is unavailable");
-        std::wstring locale(static_cast<std::size_t>(size), L'\0');
-        if (!GetUserDefaultLocaleName(locale.data(), size))
+        wchar_t locale[LOCALE_NAME_MAX_LENGTH]{};
+        const int size = GetUserDefaultLocaleName(locale, LOCALE_NAME_MAX_LENGTH);
+        if (!size)
             return fail(NK_ERROR_UNKNOWN, "could not read system locale");
-        locale.resize(static_cast<std::size_t>(size - 1));
-        const auto value = utf8(locale.c_str());
+        const auto value = utf8(locale);
         if (value.empty()) return fail(NK_ERROR_UNKNOWN, "could not encode system locale");
         return copy_utf8_output(value, buffer, inout_size);
     });

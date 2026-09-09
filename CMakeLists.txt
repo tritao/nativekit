@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.21)
 
 project(nativekit VERSION 0.1.0 LANGUAGES C CXX)
 
+# Keep Windows DLLs and the executables that load them together.  Targets are
+# declared from several subdirectories, whose default runtime directories would
+# otherwise differ and make shared-build tests fail before reaching main().
+if(WIN32)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+endif()
+
 if(APPLE)
     enable_language(OBJCXX)
 endif()

@@ -9,8 +9,12 @@ add_executable(nativekit_core_tests
     ${PROJECT_SOURCE_DIR}/src/core/event_queue.cpp
     ${PROJECT_SOURCE_DIR}/src/core/handle_registry.cpp
 )
+target_compile_features(nativekit_core_tests PRIVATE cxx_std_17)
 target_include_directories(nativekit_core_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(nativekit_core_tests PRIVATE NativeKit::nativekit)
+if(MSVC)
+    target_compile_options(nativekit_core_tests PRIVATE /EHsc)
+endif()
 add_test(NAME core COMMAND nativekit_core_tests)
 
 if(NK_BACKEND_GTK_AVAILABLE)
