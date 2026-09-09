@@ -2,6 +2,7 @@
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
+#include "nativekit_gamepad.h"
 #include "nativekit_input.h"
 #include "nativekit_joystick.h"
 #include "nativekit_mobile.h"
@@ -29,6 +30,11 @@ int main(void) {
     nk_result joystick_result = nk_joystick_list(NULL, &joystick_count);
     assert(joystick_result == NK_ERROR_BUFFER_TOO_SMALL ||
            joystick_result == NK_ERROR_UNSUPPORTED || joystick_result == NK_OK);
+    uint32_t mapped = 0;
+    assert(nk_gamepad_add_mapping(
+               "03000000112200003344000055660000,ABI Gamepad,a:b0,leftx:a0,") == NK_OK);
+    nk_result mapped_result = nk_gamepad_is_mapped(NK_INVALID_HANDLE, &mapped);
+    assert(mapped_result == NK_ERROR_INVALID_HANDLE || mapped_result == NK_ERROR_UNSUPPORTED);
     int32_t window_width = 0;
     int32_t window_height = 0;
     nk_result geometry_result =

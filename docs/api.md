@@ -162,6 +162,18 @@ SDL-compatible GUID queries use the usual two-call buffer-size pattern.
 Controller mappings and standardized gamepad names are intentionally separate
 from this transport layer.
 
+## Standard gamepads
+
+Include `nativekit_gamepad.h` to translate a raw joystick into the conventional
+A/B/X/Y, shoulder, stick, trigger, and D-pad layout. NativeKit matches
+SDL-compatible joystick GUIDs against SDL/GLFW controller mapping strings.
+`nk_gamepad_add_mapping()` installs or replaces a mapping for the current
+process; application mappings take precedence over the small built-in set.
+
+Use `nk_gamepad_is_mapped()` before requesting the mapped name or state. The
+mapping parser supports button, axis, half-axis, inverted-axis, and hat inputs.
+Unmapped devices return `NK_ERROR_UNSUPPORTED` from name and state queries.
+
 ## Graphics surfaces
 
 Graphics surfaces are separate resources attached to NativeKit-owned windows.

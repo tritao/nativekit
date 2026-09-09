@@ -73,6 +73,8 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/error.cpp
     src/core/event_queue.cpp
     src/core/graphics.cpp
+    src/core/gamepad.cpp
+    src/core/gamepad_mapping.cpp
     src/core/handle_registry.cpp
     src/core/input.cpp
     src/core/joystick.cpp

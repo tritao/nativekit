@@ -7,6 +7,7 @@ add_executable(nativekit_core_tests
     unit/core_tests.cpp
     ${PROJECT_SOURCE_DIR}/src/core/error.cpp
     ${PROJECT_SOURCE_DIR}/src/core/event_queue.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/gamepad_mapping.cpp
     ${PROJECT_SOURCE_DIR}/src/core/handle_registry.cpp
 )
 target_compile_features(nativekit_core_tests PRIVATE cxx_std_17)
