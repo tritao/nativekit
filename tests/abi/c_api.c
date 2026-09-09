@@ -118,6 +118,16 @@ int main(void) {
     nk_resource_view invalid_resource = {0};
     invalid_resource.struct_size = sizeof(invalid_resource);
     assert(nk_resource_event_item(NULL, 0, &invalid_resource) == NK_ERROR_INVALID_ARGUMENT);
+    uint32_t persisted_flags = 0;
+    assert(nk_resource_get_persisted_access(NULL, &persisted_flags) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_resource_set_persisted_access(NULL, 0, &persisted_flags) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    nk_resource local_resource = {0};
+    local_resource.struct_size = sizeof(local_resource);
+    local_resource.uri = "file:///tmp/nativekit-persisted-access";
+    assert(nk_resource_get_persisted_access(&local_resource, &persisted_flags) ==
+           NK_ERROR_UNSUPPORTED);
     typedef struct resource_test_payload {
         nk_resource_list header;
         nk_resource_item item;

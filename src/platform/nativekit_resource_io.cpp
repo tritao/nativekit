@@ -79,6 +79,28 @@ std::shared_ptr<FileResourceStream> stream(nk_handle handle) {
 } // namespace
 
 extern "C" {
+nk_result NK_CALL nk_resource_set_persisted_access(const nk_resource *resource,
+                                                   uint32_t access_flags,
+                                                   uint32_t *out_flags) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+        !*resource->uri || !out_flags ||
+        (access_flags & ~(NK_RESOURCE_READABLE | NK_RESOURCE_WRITABLE)) != 0)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "persisted resource access arguments are invalid");
+    return fail(NK_ERROR_UNSUPPORTED, "persisted URI access is unavailable on this platform");
+}
+
+nk_result NK_CALL nk_resource_get_persisted_access(const nk_resource *resource,
+                                                   uint32_t *out_flags) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+        !*resource->uri || !out_flags)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "persisted resource access arguments are invalid");
+    return fail(NK_ERROR_UNSUPPORTED, "persisted URI access is unavailable on this platform");
+}
+
 nk_result NK_CALL nk_resource_open(const nk_resource *resource, uint32_t flags,
                                    nk_handle *out_stream) {
     return nk::core::result_boundary("unexpected error while opening resource", [&]() -> nk_result {

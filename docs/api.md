@@ -365,6 +365,15 @@ Resource-producing Android APIs ask `ContentResolver` for the effective MIME
 type and `OpenableColumns.DISPLAY_NAME`. Providers may omit either value; the
 final URI path segment is used as a display-name fallback.
 
+Persistable Android grants are process-independent resources with a finite
+system quota. `nk_resource_get_persisted_access()` reports the access currently
+retained for a `content:` URI. `nk_resource_set_persisted_access()` idempotently
+sets the desired readable/writable mask; passing zero releases all retained
+access. Its output is the actual mask and includes `NK_RESOURCE_PERSISTED` when
+any access remains. Acquiring access succeeds only while Android has supplied a
+persistable transient grant, such as a Storage Access Framework result. Other
+platforms report this operation as unsupported.
+
 URI contents are accessed through opaque resource-stream handles.
 `nk_resource_open()` runs on the UI thread and accepts explicit read, write,
 create, and truncate flags. Reads, writes, seeks, information queries, and close

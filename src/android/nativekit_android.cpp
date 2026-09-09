@@ -1061,6 +1061,90 @@ nk_result NK_CALL nk_resource_open(const nk_resource *resource, uint32_t flags,
     });
 }
 
+nk_result NK_CALL nk_resource_get_persisted_access(const nk_resource *resource,
+                                                   uint32_t *out_flags) {
+    return nk::core::result_boundary("unexpected error while querying persisted URI access",
+                                     [&]() -> nk_result {
+        if (const auto thread = require_thread(); thread != NK_OK)
+            return thread;
+        if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+            !*resource->uri || !out_flags) {
+            nk::core::set_error("persisted resource access arguments are invalid");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        auto host_resource = context_host();
+        if (!host_resource)
+            return NK_ERROR_UNSUPPORTED;
+        auto *env = environment();
+        auto *bridge = env ? bridge_class(env) : nullptr;
+        if (!env || !bridge)
+            return NK_ERROR_UNKNOWN;
+        auto method = env->GetStaticMethodID(
+            bridge, "persistedResourceAccess", "(Landroid/view/ViewGroup;Ljava/lang/String;)I");
+        auto uri = from_utf8(env, resource->uri);
+        const auto flags = method ? env->CallStaticIntMethod(
+                                        bridge, method, host_resource->view_group, uri)
+                                  : NK_ERROR_UNKNOWN;
+        if (uri)
+            env->DeleteLocalRef(uri);
+        env->DeleteLocalRef(bridge);
+        if (!method || clear_java_exception(env, "Android persisted URI query failed"))
+            return NK_ERROR_UNKNOWN;
+        if (flags < 0) {
+            nk::core::set_error(flags == NK_ERROR_UNSUPPORTED
+                                    ? "Android URI access cannot be persisted"
+                                    : "Android persisted URI query failed");
+            return flags;
+        }
+        *out_flags = static_cast<uint32_t>(flags);
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_resource_set_persisted_access(const nk_resource *resource,
+                                                   uint32_t access_flags,
+                                                   uint32_t *out_flags) {
+    return nk::core::result_boundary("unexpected error while updating persisted URI access",
+                                     [&]() -> nk_result {
+        if (const auto thread = require_thread(); thread != NK_OK)
+            return thread;
+        if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+            !*resource->uri || !out_flags ||
+            (access_flags & ~(NK_RESOURCE_READABLE | NK_RESOURCE_WRITABLE)) != 0) {
+            nk::core::set_error("persisted resource access arguments are invalid");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        auto host_resource = context_host();
+        if (!host_resource)
+            return NK_ERROR_UNSUPPORTED;
+        auto *env = environment();
+        auto *bridge = env ? bridge_class(env) : nullptr;
+        if (!env || !bridge)
+            return NK_ERROR_UNKNOWN;
+        auto method = env->GetStaticMethodID(
+            bridge, "setPersistedResourceAccess",
+            "(Landroid/view/ViewGroup;Ljava/lang/String;I)I");
+        auto uri = from_utf8(env, resource->uri);
+        const auto flags = method ? env->CallStaticIntMethod(
+                                        bridge, method, host_resource->view_group, uri,
+                                        static_cast<jint>(access_flags))
+                                  : NK_ERROR_UNKNOWN;
+        if (uri)
+            env->DeleteLocalRef(uri);
+        env->DeleteLocalRef(bridge);
+        if (!method || clear_java_exception(env, "Android persisted URI update failed"))
+            return NK_ERROR_UNKNOWN;
+        if (flags < 0) {
+            nk::core::set_error(flags == NK_ERROR_UNSUPPORTED
+                                    ? "Android URI access cannot be persisted"
+                                    : "Android persisted URI update failed");
+            return flags;
+        }
+        *out_flags = static_cast<uint32_t>(flags);
+        return NK_OK;
+    });
+}
+
 nk_result NK_CALL nk_resource_stream_info_get(nk_handle handle,
                                               nk_resource_stream_info *out_info) {
     if (!out_info || out_info->struct_size < sizeof(nk_resource_stream_info)) {

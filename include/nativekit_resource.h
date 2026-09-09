@@ -120,6 +120,18 @@ NK_API nk_result NK_CALL nk_share_event_subject(const nk_event *event, const cha
                                                 uint32_t *out_length);
 
 /*
+ * Controls durable URI access on platforms that support it. access_flags is a
+ * combination of NK_RESOURCE_READABLE and NK_RESOURCE_WRITABLE; zero releases
+ * all persisted access. out_flags receives the actual resource flags retained.
+ * These functions are UI-thread-only.
+ */
+NK_API nk_result NK_CALL nk_resource_set_persisted_access(const nk_resource *resource,
+                                                          uint32_t access_flags,
+                                                          uint32_t *out_flags);
+NK_API nk_result NK_CALL nk_resource_get_persisted_access(const nk_resource *resource,
+                                                          uint32_t *out_flags);
+
+/*
  * Opens a URI-backed stream on the UI thread. Stream operations copy bytes
  * synchronously and may be called from worker threads. A successful read may
  * return fewer bytes than requested; zero bytes means end of stream.

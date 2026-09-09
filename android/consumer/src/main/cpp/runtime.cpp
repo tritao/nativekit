@@ -101,6 +101,23 @@ Java_io_nativekit_consumer_MainActivity_nativeResourceStreamProbe(JNIEnv *, jcla
     return 0;
 }
 
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativePersistedResourceProbe(JNIEnv *, jclass) {
+    nk_resource resource{};
+    resource.struct_size = sizeof(resource);
+    resource.uri = "content://io.nativekit.consumer.resources/not-persisted";
+    uint32_t flags = UINT32_MAX;
+    if (nk_resource_get_persisted_access(&resource, &flags) != NK_OK || flags != 0)
+        return 1;
+    flags = UINT32_MAX;
+    if (nk_resource_set_persisted_access(&resource, 0, &flags) != NK_OK || flags != 0)
+        return 2;
+    if (nk_resource_set_persisted_access(&resource, NK_RESOURCE_PERSISTED, &flags) !=
+        NK_ERROR_INVALID_ARGUMENT)
+        return 3;
+    return 0;
+}
+
 namespace {
 bool poll_kind(nk_event_kind kind, nk_event &event) {
     event.struct_size = sizeof(event);

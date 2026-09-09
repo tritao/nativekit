@@ -5,6 +5,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.UriPermission;
 import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -312,6 +313,59 @@ final class NativeKitBridge {
         } catch (RuntimeException | java.io.FileNotFoundException error) {
             return -1;
         }
+    }
+
+    static int persistedResourceAccess(ViewGroup parent, String uriValue) {
+        Uri uri = Uri.parse(uriValue);
+        if (uri.getScheme() == null || !"content".equalsIgnoreCase(uri.getScheme()))
+            return -2;
+        try {
+            for (UriPermission permission :
+                 parent.getContext().getContentResolver().getPersistedUriPermissions()) {
+                if (!uri.equals(permission.getUri()))
+                    continue;
+                int flags = permission.isReadPermission() ? 1 : 0;
+                if (permission.isWritePermission())
+                    flags |= 2;
+                return flags == 0 ? 0 : flags | 4;
+            }
+            return 0;
+        } catch (RuntimeException error) {
+            return -1;
+        }
+    }
+
+    static int setPersistedResourceAccess(ViewGroup parent, String uriValue, int desired) {
+        int current = persistedResourceAccess(parent, uriValue);
+        if (current < 0)
+            return current;
+        Uri uri = Uri.parse(uriValue);
+        int currentAccess = current & 3;
+        try {
+            int acquire = desired & ~currentAccess;
+            if (acquire != 0)
+                parent.getContext().getContentResolver().takePersistableUriPermission(
+                    uri, androidGrantFlags(acquire));
+            current = persistedResourceAccess(parent, uriValue);
+            if (current < 0)
+                return current;
+            int release = (current & 3) & ~desired;
+            if (release != 0)
+                parent.getContext().getContentResolver().releasePersistableUriPermission(
+                    uri, androidGrantFlags(release));
+            return persistedResourceAccess(parent, uriValue);
+        } catch (SecurityException error) {
+            return -4;
+        } catch (RuntimeException error) {
+            return -1;
+        }
+    }
+
+    private static int androidGrantFlags(int access) {
+        int flags = (access & 1) != 0 ? Intent.FLAG_GRANT_READ_URI_PERMISSION : 0;
+        if ((access & 2) != 0)
+            flags |= Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+        return flags;
     }
 
     static int share(ViewGroup parent, @Nullable String title, @Nullable String text,

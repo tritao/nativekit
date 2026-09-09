@@ -31,6 +31,8 @@ public final class MainActivity extends Activity {
 
     public int resourceStreamProbe() { return nativeResourceStreamProbe(); }
 
+    public int persistedResourceProbe() { return nativePersistedResourceProbe(); }
+
     public int incomingShareProbe() { return nativeIncomingShareProbe(); }
 
     public int incomingViewProbe() { return nativeIncomingViewProbe(); }
@@ -69,6 +71,7 @@ public final class MainActivity extends Activity {
     private static native long nativeProbe(long host);
     private static native int nativeResourceClipboardProbe();
     private static native int nativeResourceStreamProbe();
+    private static native int nativePersistedResourceProbe();
     private static native int nativeIncomingShareProbe();
     private static native int nativeIncomingViewProbe();
 }

@@ -35,6 +35,7 @@ public final class ConsumerTest {
                 assertEquals(0, activity.incomingShareProbe());
                 assertEquals(0, activity.resourceClipboardProbe());
                 assertEquals(0, activity.resourceStreamProbe());
+                assertEquals(0, activity.persistedResourceProbe());
                 Intent view = new Intent(Intent.ACTION_VIEW);
                 view.setDataAndType(
                     Uri.parse("content://io.nativekit.consumer.resources/viewed"),

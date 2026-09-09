@@ -39,6 +39,9 @@ and `ACTION_SEND`/`ACTION_SEND_MULTIPLE` as `NK_EVENT_SHARE_RECEIVED`, preservin
 text, and a subject. Resource MIME types and display names are resolved through
 `ContentResolver`; providers that omit a display name fall back to the final URI
 path segment.
+Persistable Storage Access Framework grants can be inspected with
+`nk_resource_get_persisted_access()` and updated or released with
+`nk_resource_set_persisted_access()`.
 Android currently implements URL opening and text clipboard operations; file
 clipboard operations remain unsupported. Open, save, and directory dialogs use
 the Storage Access Framework and return `content://` URIs.
