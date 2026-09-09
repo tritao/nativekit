@@ -7,6 +7,7 @@
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
+#include "nativekit_vulkan.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
 
@@ -44,7 +45,8 @@ int main(void) {
                                      NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE | NK_CAP_CURSOR |
                                      NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
                                      NK_CAP_WINDOW_STYLING | NK_CAP_MONITOR |
-                                     NK_CAP_MONITOR_FULLSCREEN | NK_CAP_RESOURCE_IO;
+                                     NK_CAP_MONITOR_FULLSCREEN | NK_CAP_RESOURCE_IO |
+                                     NK_CAP_VULKAN_SURFACE;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
@@ -91,6 +93,17 @@ int main(void) {
     window_options.title = "NativeKit integration test";
     nk_handle window = NK_INVALID_HANDLE;
     assert(nk_window_create(&window_options, &window) == NK_OK);
+    if (nk_vulkan_supported()) {
+        uint32_t extension_count = 0;
+        assert(nk_vulkan_get_required_instance_extensions(window, NULL, &extension_count) ==
+               NK_ERROR_BUFFER_TOO_SMALL);
+        assert(extension_count == 2);
+        const char *extensions[2] = {0};
+        assert(nk_vulkan_get_required_instance_extensions(window, extensions,
+                                                           &extension_count) == NK_OK);
+        assert(strcmp(extensions[0], "VK_KHR_surface") == 0);
+        assert(strcmp(extensions[1], "VK_KHR_xlib_surface") == 0);
+    }
     nk_native_window native = {0};
     native.struct_size = sizeof(native);
     assert(nk_window_get_native(window, &native) == NK_OK);

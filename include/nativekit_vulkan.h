@@ -1,0 +1,36 @@
+#ifndef NATIVEKIT_VULKAN_H
+#define NATIVEKIT_VULKAN_H
+
+#include "nativekit.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef uint64_t nk_vulkan_surface;
+#define NK_INVALID_VULKAN_SURFACE ((nk_vulkan_surface)0)
+
+/* Returns one when a Vulkan loader and vkGetInstanceProcAddr are available. */
+NK_API uint32_t NK_CALL nk_vulkan_supported(void);
+/*
+ * Returns the instance extensions required by the window's native display.
+ * The returned string pointers have process lifetime. Pass NULL to query count.
+ */
+NK_API nk_result NK_CALL nk_vulkan_get_required_instance_extensions(
+    nk_handle window, const char **extensions, uint32_t *inout_count);
+/*
+ * Creates a VkSurfaceKHR. `instance` is a VkInstance cast to void*. `allocator`
+ * may point to VkAllocationCallbacks. The application owns the returned surface
+ * and must destroy it before destroying the VkInstance.
+ */
+NK_API nk_result NK_CALL nk_vulkan_create_surface(nk_handle window, void *instance,
+                                                  const void *allocator,
+                                                  nk_vulkan_surface *out_surface);
+NK_API nk_result NK_CALL nk_vulkan_destroy_surface(void *instance, nk_vulkan_surface surface,
+                                                   const void *allocator);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

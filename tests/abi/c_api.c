@@ -10,6 +10,7 @@
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
+#include "nativekit_vulkan.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
 
@@ -24,6 +25,16 @@ int main(void) {
     assert(nk_api_version() == NK_API_VERSION);
     assert(nk_init(&options) == NK_OK);
     (void)nk_get_capabilities();
+    (void)nk_vulkan_supported();
+    uint32_t vulkan_extension_count = 0;
+    nk_result vulkan_extensions = nk_vulkan_get_required_instance_extensions(
+        NK_INVALID_HANDLE, NULL, &vulkan_extension_count);
+    assert(vulkan_extensions == NK_ERROR_INVALID_HANDLE ||
+           vulkan_extensions == NK_ERROR_UNSUPPORTED);
+    nk_result vulkan_surface =
+        nk_vulkan_create_surface(NK_INVALID_HANDLE, NULL, NULL, NULL);
+    assert(vulkan_surface == NK_ERROR_INVALID_ARGUMENT ||
+           vulkan_surface == NK_ERROR_UNSUPPORTED);
     uint32_t monitor_count = 0;
     nk_result monitor_result = nk_monitor_list(NULL, &monitor_count);
     assert(monitor_result == NK_ERROR_BUFFER_TOO_SMALL ||

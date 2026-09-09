@@ -81,6 +81,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/mobile.cpp
     src/core/monitor.cpp
     src/core/resource.cpp
+    src/core/vulkan.cpp
     src/core/window_extensions.cpp
 )
 add_library(NativeKit::nativekit ALIAS nativekit)

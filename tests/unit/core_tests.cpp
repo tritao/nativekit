@@ -3,6 +3,7 @@
 #include "core/gamepad_mapping.hpp"
 #include "core/gamepad_mappings_generated.hpp"
 #include "core/handle_registry.hpp"
+#include "core/vulkan_internal.hpp"
 #include "nativekit_joystick.h"
 #include "nativekit_window.h"
 
@@ -17,6 +18,11 @@ struct Dummy final : nk::core::Resource {};
 } // namespace
 
 int main() {
+    assert(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_X11),
+                       "VK_KHR_xlib_surface") == 0);
+    assert(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_WAYLAND),
+                       "VK_KHR_wayland_surface") == 0);
+    assert(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_COCOA) == nullptr);
     assert(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
                throw std::bad_alloc{};
            }) == NK_ERROR_OUT_OF_MEMORY);

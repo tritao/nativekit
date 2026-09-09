@@ -231,6 +231,20 @@ caller-owned native surface. Contexts can reuse another surface's GTK context;
 the shared source must outlive its dependents. Procedure lookup resolves both
 core and extension entry points for the current GL implementation.
 
+## Vulkan surfaces
+
+Include `nativekit_vulkan.h` for Vulkan presentation. NativeKit loads
+`libvulkan.so.1` at runtime, so neither the Vulkan SDK nor loader is a build-time
+dependency. Given a window, the extension query returns `VK_KHR_surface` plus
+the active GTK display extension: `VK_KHR_xlib_surface` or
+`VK_KHR_wayland_surface`.
+
+`nk_vulkan_create_surface()` accepts a `VkInstance` cast to `void *` and returns
+the bits of a `VkSurfaceKHR`. The application owns that surface and must call
+`nk_vulkan_destroy_surface()` before destroying its Vulkan instance. Both calls
+accept an optional `VkAllocationCallbacks` pointer and require the relevant
+instance extensions to have been enabled.
+
 A WebView created with `NK_WEBVIEW_NAVIGATION_POLICY` pauses each navigation
 proposal exposed by the native backend and emits
 `NK_EVENT_WEBVIEW_NAVIGATION_REQUEST`. Resolve it once with
