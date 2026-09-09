@@ -10,6 +10,9 @@
     "src/linux/desktop_gtk.cpp": {
       "sources": [
         "src/gtk/dirdlg.cpp",
+        "src/gtk/clipbrd.cpp",
+        "src/gtk/dataobj.cpp",
+        "src/gtk/dnd.cpp",
         "src/gtk/filedlg.cpp",
         "src/gtk/msgdlg.cpp",
         "src/gtk/settings.cpp",
@@ -17,7 +20,7 @@
         "src/gtk/window.cpp",
         "src/common/stdpbase.cpp"
       ],
-      "notes": "Dialog lifecycle, standard paths, appearance detection, event mapping, GTK signal selection, scale handling, and WebKit error categorization are adapted to NativeKit's C ABI and event queue."
+      "notes": "Clipboard and drop target negotiation, dialog lifecycle, standard paths, appearance detection, event mapping, GTK signal selection, scale handling, and WebKit error categorization are adapted to NativeKit's C ABI and event queue."
     }
   }
 }

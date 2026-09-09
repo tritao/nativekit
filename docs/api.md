@@ -60,6 +60,17 @@ Standard directories and locale queries are initialization-independent and may
 be called from any thread. They use a two-call buffer convention: query the size
 including NUL, allocate, then call again. A short buffer is never partially filled.
 
+## Clipboard and drops
+
+Clipboard writes copy their input synchronously. Reads remain asynchronous because
+the selection owner may be another process, particularly under Wayland. File-list
+results use `nk_clipboard_files` followed by NUL-terminated UTF-8 paths and are
+decoded with `nk_clipboard_event_file()`.
+
+Windows opt into drops explicitly. Drop event data starts with `nk_drop_data`,
+including logical window coordinates, followed by strings decoded through
+`nk_drop_event_item()`. Only local file URIs are emitted as file drops.
+
 ## Dialog results
 
 Dialogs never run a nested blocking loop. Starting one returns a request ID and

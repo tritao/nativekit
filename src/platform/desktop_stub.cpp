@@ -2,6 +2,7 @@
 #include "nativekit_webview.h"
 #include "nativekit_dialog.h"
 #include "nativekit_system.h"
+#include "nativekit_clipboard.h"
 
 #include "core/error.hpp"
 #include "core/runtime.hpp"
@@ -46,4 +47,9 @@ nk_result NK_CALL nk_shell_reveal_file(const char*) { return unsupported(); }
 nk_result NK_CALL nk_system_directory(nk_system_directory_kind, char*, uint32_t*) { return unsupported(); }
 nk_result NK_CALL nk_system_locale(char*, uint32_t*) { return unsupported(); }
 nk_result NK_CALL nk_system_get_appearance(nk_system_appearance*) { return unsupported(); }
+nk_result NK_CALL nk_clipboard_set_text(const char*) { return unsupported(); }
+nk_result NK_CALL nk_clipboard_set_files(const char* const*, uint32_t) { return unsupported(); }
+nk_result NK_CALL nk_clipboard_read_text(nk_request_id*) { return unsupported(); }
+nk_result NK_CALL nk_clipboard_read_files(nk_request_id*) { return unsupported(); }
+nk_result NK_CALL nk_window_set_drop_enabled(nk_handle, uint32_t) { return unsupported(); }
 }

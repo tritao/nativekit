@@ -1,5 +1,6 @@
 #include "nativekit.h"
 #include "nativekit_dialog.h"
+#include "nativekit_clipboard.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -14,7 +15,8 @@ int main(void) {
     init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
     const nk_capabilities expected = NK_CAP_WINDOW | NK_CAP_WEBVIEW |
-        NK_CAP_FILE_DIALOG | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE;
+        NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP |
+        NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
@@ -35,6 +37,52 @@ int main(void) {
     assert(nk_system_get_appearance(&appearance) == NK_OK);
     assert(appearance.color_scheme == NK_COLOR_SCHEME_LIGHT ||
            appearance.color_scheme == NK_COLOR_SCHEME_DARK);
+    assert(nk_window_set_drop_enabled(window, 1) == NK_OK);
+    assert(nk_window_set_drop_enabled(window, 1) == NK_OK);
+    assert(nk_window_set_drop_enabled(window, 0) == NK_OK);
+
+    assert(nk_clipboard_set_text("clipboard text") == NK_OK);
+    nk_request_id clipboard_text_request = NK_INVALID_REQUEST_ID;
+    assert(nk_clipboard_read_text(&clipboard_text_request) == NK_OK);
+    int received_clipboard_text = 0;
+    for (int attempt = 0; attempt < 100 && !received_clipboard_text; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_CLIPBOARD_TEXT_COMPLETE &&
+            event.request_id == clipboard_text_request) {
+            assert(event.data_size == 14);
+            assert(memcmp(event.data, "clipboard text", 14) == 0);
+            received_clipboard_text = 1;
+        }
+        nk_event_release(&event);
+        if (!received_clipboard_text) usleep(10000);
+    }
+    assert(received_clipboard_text);
+
+    const char *clipboard_files[] = {"/tmp/nativekit-a", "/tmp/nativekit-b"};
+    assert(nk_clipboard_set_files(clipboard_files, 2) == NK_OK);
+    nk_request_id clipboard_files_request = NK_INVALID_REQUEST_ID;
+    assert(nk_clipboard_read_files(&clipboard_files_request) == NK_OK);
+    int received_clipboard_files = 0;
+    for (int attempt = 0; attempt < 100 && !received_clipboard_files; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_CLIPBOARD_FILES_COMPLETE &&
+            event.request_id == clipboard_files_request) {
+            assert(event.data_count == 2);
+            const char *path = NULL;
+            uint32_t length = 0;
+            assert(nk_clipboard_event_file(&event, 1, &path, &length) == NK_OK);
+            assert(length == 16);
+            assert(memcmp(path, "/tmp/nativekit-b", 16) == 0);
+            received_clipboard_files = 1;
+        }
+        nk_event_release(&event);
+        if (!received_clipboard_files) usleep(10000);
+    }
+    assert(received_clipboard_files);
 
     nk_webview_options webview_options = {0};
     webview_options.struct_size = sizeof(webview_options);

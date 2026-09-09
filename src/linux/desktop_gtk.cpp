@@ -1,13 +1,13 @@
 /*
- * Platform behavior in this file is informed by wxWidgets
- * src/gtk/webview_webkit2.cpp and src/gtk/window.cpp at the revision recorded
- * in tools/upstream-lock.json. Adaptations are licensed under the wxWindows
- * Library Licence 3.1; see licenses/wxWidgets.txt.
+ * Platform behavior in this file is informed by the wxWidgets GTK donor files
+ * enumerated in tools/upstream-lock.json at its pinned revision. Adaptations are
+ * licensed under the wxWindows Library Licence 3.1; see licenses/wxWidgets.txt.
  */
 
 #include "nativekit_window.h"
 #include "nativekit_webview.h"
 #include "nativekit_dialog.h"
+#include "nativekit_clipboard.h"
 
 #include "core/error.hpp"
 #include "core/runtime.hpp"
@@ -32,6 +32,7 @@ struct GtkWindowResource final : nk::core::Resource {
     GtkWidget* container = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
     std::vector<nk_handle> children;
+    bool drops_enabled = false;
 
     ~GtkWindowResource() override {
         if (window) gtk_widget_destroy(window);
@@ -63,7 +64,18 @@ struct DialogContext {
     bool native_dialog = false;
 };
 
+struct ClipboardRequest {
+    nk_request_id request;
+    nk_event_kind event_kind;
+};
+
+struct ClipboardFileOwner {
+    std::vector<std::string> uris;
+    std::vector<char*> pointers;
+};
+
 bool gtk_initialized = false;
+bool clipboard_owned = false;
 std::unordered_map<nk_request_id, DialogContext*> dialogs;
 
 nk_result fail(nk_result result, std::string_view message) {
@@ -284,6 +296,108 @@ std::vector<std::byte> dialog_paths_payload(const std::vector<std::string>& path
     return result;
 }
 
+template<typename Header>
+std::vector<std::byte> string_list_payload(Header header,
+                                           const std::vector<std::string>& strings,
+                                           uint32_t Header::*offset_member) {
+    header.*offset_member = sizeof(Header);
+    std::size_t total = sizeof(Header);
+    for (const auto& string : strings) total += string.size() + 1;
+    std::vector<std::byte> result(total);
+    std::memcpy(result.data(), &header, sizeof(header));
+    std::size_t cursor = sizeof(Header);
+    for (const auto& string : strings) {
+        std::memcpy(result.data() + cursor, string.c_str(), string.size() + 1);
+        cursor += string.size() + 1;
+    }
+    return result;
+}
+
+void on_clipboard_text(GtkClipboard*, const gchar* text, gpointer data) {
+    std::unique_ptr<ClipboardRequest> request(static_cast<ClipboardRequest*>(data));
+    try {
+        nk::core::QueuedEvent event;
+        event.kind = request->event_kind;
+        event.request_id = request->request;
+        event.data = bytes(text);
+        nk::core::push_event(std::move(event));
+    } catch (...) {}
+}
+
+void on_clipboard_uris(GtkClipboard*, gchar** uris, gpointer data) {
+    std::unique_ptr<ClipboardRequest> request(static_cast<ClipboardRequest*>(data));
+    try {
+        std::vector<std::string> paths;
+        for (gchar** uri = uris; uri && *uri; ++uri) {
+            char* path = g_filename_from_uri(*uri, nullptr, nullptr);
+            if (path) {
+                paths.emplace_back(path);
+                g_free(path);
+            }
+        }
+        nk::core::QueuedEvent event;
+        event.kind = request->event_kind;
+        event.request_id = request->request;
+        event.data_count = static_cast<uint32_t>(paths.size());
+        nk_clipboard_files header{static_cast<uint32_t>(paths.size()), 0};
+        event.data = string_list_payload(header, paths, &nk_clipboard_files::strings_offset);
+        nk::core::push_event(std::move(event));
+    } catch (...) {}
+}
+
+void provide_clipboard_files(GtkClipboard*, GtkSelectionData* selection,
+                             guint, gpointer data) {
+    auto* owner = static_cast<ClipboardFileOwner*>(data);
+    gtk_selection_data_set_uris(selection, owner->pointers.data());
+}
+
+void clear_clipboard_files(GtkClipboard*, gpointer data) {
+    clipboard_owned = false;
+    delete static_cast<ClipboardFileOwner*>(data);
+}
+
+enum { drop_target_uri = 1, drop_target_text = 2 };
+
+void on_drag_data_received(GtkWidget*, GdkDragContext* context, gint x, gint y,
+                           GtkSelectionData* selection, guint info, guint time,
+                           gpointer data) {
+    try {
+        const auto* resource = static_cast<GtkWindowResource*>(data);
+        std::vector<std::string> items;
+        nk_event_kind kind = NK_EVENT_DROP_TEXT;
+        if (info == drop_target_uri) {
+            kind = NK_EVENT_DROP_FILES;
+            gchar** uris = gtk_selection_data_get_uris(selection);
+            for (gchar** uri = uris; uri && *uri; ++uri) {
+                char* path = g_filename_from_uri(*uri, nullptr, nullptr);
+                if (path) {
+                    items.emplace_back(path);
+                    g_free(path);
+                }
+            }
+            g_strfreev(uris);
+        } else {
+            gchar* text = reinterpret_cast<gchar*>(gtk_selection_data_get_text(selection));
+            if (text) {
+                items.emplace_back(text);
+                g_free(text);
+            }
+        }
+        if (!items.empty()) {
+            nk::core::QueuedEvent event;
+            event.kind = kind;
+            event.source = resource->handle;
+            event.data_count = static_cast<uint32_t>(items.size());
+            nk_drop_data header{x, y, static_cast<uint32_t>(items.size()), 0};
+            event.data = string_list_payload(header, items, &nk_drop_data::strings_offset);
+            nk::core::push_event(std::move(event));
+        }
+        gtk_drag_finish(context, !items.empty(), FALSE, time);
+    } catch (...) {
+        gtk_drag_finish(context, FALSE, FALSE, time);
+    }
+}
+
 void dispose_dialog(DialogContext* context) {
     dialogs.erase(context->request);
     g_signal_handlers_disconnect_by_data(context->object, context);
@@ -457,6 +571,13 @@ void pump_events() noexcept {
 
 void shutdown() noexcept {
     while (!dialogs.empty()) cancel_dialog(dialogs.begin()->second, false);
+    if (gtk_initialized && clipboard_owned) {
+        GtkClipboard* clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+        gtk_clipboard_set_can_store(clipboard, nullptr, 0);
+        gtk_clipboard_store(clipboard);
+        gtk_clipboard_clear(clipboard);
+        clipboard_owned = false;
+    }
     nk::core::handles().clear();
     pump_events();
 }
@@ -466,7 +587,8 @@ extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG |
-           NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE;
+           NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
+           NK_CAP_SYSTEM_APPEARANCE;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* out_window) {
@@ -769,6 +891,112 @@ nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
     if (request == NK_INVALID_REQUEST_ID || found == dialogs.end())
         return fail(NK_ERROR_INVALID_REQUEST, "invalid or completed dialog request");
     cancel_dialog(found->second, true);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_clipboard_set_text(const char* text) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (!text) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard text must not be null");
+    if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
+    gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), text, -1);
+    clipboard_owned = true;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_clipboard_set_files(const char* const* paths, uint32_t path_count) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!paths || path_count == 0)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard file list must not be empty");
+        if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
+        auto owner = std::make_unique<ClipboardFileOwner>();
+        owner->uris.reserve(path_count);
+        for (uint32_t index = 0; index < path_count; ++index) {
+            if (!paths[index] || !*paths[index])
+                return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard path must not be empty");
+            char* absolute = g_canonicalize_filename(paths[index], nullptr);
+            char* uri = g_filename_to_uri(absolute, nullptr, nullptr);
+            g_free(absolute);
+            if (!uri) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard path is invalid");
+            owner->uris.emplace_back(uri);
+            g_free(uri);
+        }
+        owner->pointers.reserve(owner->uris.size() + 1);
+        for (auto& uri : owner->uris) owner->pointers.push_back(uri.data());
+        owner->pointers.push_back(nullptr);
+        GtkTargetEntry target{const_cast<gchar*>("text/uri-list"), 0, 0};
+        if (!gtk_clipboard_set_with_data(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
+                                         &target, 1, provide_clipboard_files,
+                                         clear_clipboard_files, owner.get()))
+            return fail(NK_ERROR_UNKNOWN, "desktop rejected clipboard file ownership");
+        owner.release();
+        clipboard_owned = true;
+        return NK_OK;
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while writing clipboard files");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while writing clipboard files");
+    }
+}
+
+nk_result NK_CALL nk_clipboard_read_text(nk_request_id* out_request) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+        if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
+        auto request = std::make_unique<ClipboardRequest>();
+        request->request = nk::core::next_request_id();
+        request->event_kind = NK_EVENT_CLIPBOARD_TEXT_COMPLETE;
+        *out_request = request->request;
+        gtk_clipboard_request_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
+                                   on_clipboard_text, request.release());
+        return NK_OK;
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading clipboard text");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading clipboard text");
+    }
+}
+
+nk_result NK_CALL nk_clipboard_read_files(nk_request_id* out_request) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK) return result;
+        if (!out_request) return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+        if (!ensure_gtk()) return NK_ERROR_UNSUPPORTED;
+        auto request = std::make_unique<ClipboardRequest>();
+        request->request = nk::core::next_request_id();
+        request->event_kind = NK_EVENT_CLIPBOARD_FILES_COMPLETE;
+        *out_request = request->request;
+        gtk_clipboard_request_uris(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
+                                   on_clipboard_uris, request.release());
+        return NK_OK;
+    } catch (const std::bad_alloc&) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading clipboard files");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading clipboard files");
+    }
+}
+
+nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, uint32_t enabled) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    auto resource = window(handle);
+    if (!resource) return invalid_handle("window");
+    if (!!enabled == resource->drops_enabled) return NK_OK;
+    if (enabled) {
+        GtkTargetEntry targets[] = {
+            {const_cast<gchar*>("text/uri-list"), 0, drop_target_uri},
+            {const_cast<gchar*>("UTF8_STRING"), 0, drop_target_text}
+        };
+        gtk_drag_dest_set(resource->window, GTK_DEST_DEFAULT_ALL,
+                          targets, 2, GDK_ACTION_COPY);
+        g_signal_connect(resource->window, "drag-data-received",
+                         G_CALLBACK(on_drag_data_received), resource.get());
+    } else {
+        g_signal_handlers_disconnect_by_func(
+            resource->window, reinterpret_cast<gpointer>(on_drag_data_received), resource.get());
+        gtk_drag_dest_unset(resource->window);
+    }
+    resource->drops_enabled = enabled != 0;
     return NK_OK;
 }
 

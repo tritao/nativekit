@@ -18,6 +18,7 @@ endif()
 
 add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/api.cpp
+    src/core/clipboard.cpp
     src/core/dialog.cpp
     src/core/error.cpp
     src/core/event_queue.cpp

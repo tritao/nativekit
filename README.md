@@ -19,7 +19,7 @@ For an existing checkout, use `git submodule update --init --recursive`.
 
 The current Linux backend provides NativeKit-owned GTK 3 windows, WebKitGTK
 WebViews, asynchronous native dialogs, shell launching, standard directories,
-locale, and desktop appearance. Builds without GTK 3 and WebKitGTK 4.1 retain
+locale, desktop appearance, clipboard, and file/text drops. Builds without GTK 3 and WebKitGTK 4.1 retain
 the same ABI and report these capabilities as unsupported.
 
 ## Build
