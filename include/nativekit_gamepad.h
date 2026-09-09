@@ -45,9 +45,23 @@ typedef struct nk_gamepad_state {
     uint64_t reserved[4];
 } nk_gamepad_state;
 
+typedef uint32_t nk_gamepad_mapping_source;
+enum {
+    NK_GAMEPAD_MAPPING_BUILT_IN = 1,
+    NK_GAMEPAD_MAPPING_APPLICATION = 2
+};
+
 /* Adds or replaces one SDL/GLFW controller mapping for its 32-character GUID. */
 NK_API nk_result NK_CALL nk_gamepad_add_mapping(const char *mapping);
+/*
+ * Adds newline-separated mappings, ignoring blank lines, comments, and entries
+ * for other platforms. The update is atomic if any applicable line is invalid.
+ */
+NK_API nk_result NK_CALL nk_gamepad_add_mappings(const char *database,
+                                                 uint32_t *out_added);
 NK_API nk_result NK_CALL nk_gamepad_is_mapped(nk_handle joystick, uint32_t *out_mapped);
+NK_API nk_result NK_CALL
+nk_gamepad_get_mapping_source(nk_handle joystick, nk_gamepad_mapping_source *out_source);
 NK_API nk_result NK_CALL nk_gamepad_get_name(nk_handle joystick, char *buffer,
                                              uint32_t *inout_size);
 NK_API nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick,

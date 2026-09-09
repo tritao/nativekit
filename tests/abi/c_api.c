@@ -40,6 +40,14 @@ int main(void) {
     uint32_t mapped = 0;
     assert(nk_gamepad_add_mapping(
                "03000000112200003344000055660000,ABI Gamepad,a:b0,leftx:a0,") == NK_OK);
+    uint32_t mappings_added = 0;
+    assert(nk_gamepad_add_mappings(
+               "# mappings\n"
+               "03000000112200003344000055660001,ABI Bulk,a:b0,platform:Linux,\n",
+               &mappings_added) == NK_OK);
+#if defined(__linux__) && !defined(__ANDROID__)
+    assert(mappings_added == 1);
+#endif
     nk_result mapped_result = nk_gamepad_is_mapped(NK_INVALID_HANDLE, &mapped);
     assert(mapped_result == NK_ERROR_INVALID_HANDLE || mapped_result == NK_ERROR_UNSUPPORTED);
     int32_t window_width = 0;

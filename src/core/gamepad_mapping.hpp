@@ -23,6 +23,7 @@ struct Binding {
 struct Mapping {
     std::string guid;
     std::string name;
+    std::string platform;
     std::array<Binding, NK_GAMEPAD_BUTTON_COUNT> buttons{};
     std::array<Binding, NK_GAMEPAD_AXIS_COUNT> axes{};
 };

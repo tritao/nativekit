@@ -37,6 +37,7 @@ int main() {
         "leftx:a0,lefty:a0~,lefttrigger:+a2,righttrigger:b1,platform:Linux,",
         mapping));
     assert(mapping.name == "Test Pad");
+    assert(mapping.platform == "Linux");
     nk_gamepad_state gamepad_state{};
     gamepad_state.struct_size = sizeof(gamepad_state);
     assert(nk::core::gamepad::apply_mapping(mapping, {0.25f, 0.75f, 0.5f}, {1, 0}, {1},

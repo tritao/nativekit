@@ -181,6 +181,12 @@ Use `nk_gamepad_is_mapped()` before requesting the mapped name or state. The
 mapping parser supports button, axis, half-axis, inverted-axis, and hat inputs.
 Unmapped devices return `NK_ERROR_UNSUPPORTED` from name and state queries.
 
+`nk_gamepad_add_mappings()` ingests a newline-separated SDL database atomically,
+skipping comments, blank lines, and mappings for other platforms. Later entries
+for the same GUID take precedence. `nk_gamepad_get_mapping_source()` reports
+whether the active entry came from NativeKit's built-in database or an
+application update.
+
 ## Graphics surfaces
 
 Graphics surfaces are separate resources attached to NativeKit-owned windows.

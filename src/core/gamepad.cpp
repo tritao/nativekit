@@ -12,13 +12,19 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
 using nk::core::gamepad::Mapping;
 
+struct StoredMapping {
+    Mapping mapping;
+    nk_gamepad_mapping_source source = NK_GAMEPAD_MAPPING_BUILT_IN;
+};
+
 std::mutex mappings_mutex;
-std::vector<Mapping> mappings;
+std::vector<StoredMapping> mappings;
 std::once_flag builtin_once;
 
 void load_builtins() {
@@ -32,7 +38,7 @@ void load_builtins() {
     for (const auto *text : builtin_mappings) {
         Mapping mapping;
         if (nk::core::gamepad::parse_mapping(text, mapping))
-            mappings.push_back(std::move(mapping));
+            mappings.push_back({std::move(mapping), NK_GAMEPAD_MAPPING_BUILT_IN});
     }
 }
 
@@ -52,21 +58,40 @@ nk_result read_guid(nk_handle joystick, std::string &guid) {
     return result;
 }
 
-std::optional<Mapping> find_mapping(std::string guid) {
+const char *current_platform() {
+#if defined(__ANDROID__)
+    return "Android";
+#elif defined(_WIN32)
+    return "Windows";
+#elif defined(__APPLE__)
+    return "Mac OS X";
+#elif defined(__linux__)
+    return "Linux";
+#else
+    return "";
+#endif
+}
+
+bool applicable(const Mapping &mapping) {
+    return mapping.platform.empty() || mapping.platform == current_platform();
+}
+
+std::optional<StoredMapping> find_mapping(std::string guid) {
     std::transform(guid.begin(), guid.end(), guid.begin(), [](char value) {
         return static_cast<char>(std::tolower(static_cast<unsigned char>(value)));
     });
     ensure_builtins();
     std::lock_guard lock(mappings_mutex);
-    const auto found = std::find_if(mappings.rbegin(), mappings.rend(), [&](const Mapping &item) {
-        return item.guid == guid;
-    });
+    const auto found =
+        std::find_if(mappings.rbegin(), mappings.rend(), [&](const StoredMapping &item) {
+            return item.mapping.guid == guid;
+        });
     if (found == mappings.rend())
         return std::nullopt;
     return *found;
 }
 
-nk_result mapping_for(nk_handle joystick, Mapping &mapping) {
+nk_result mapping_for(nk_handle joystick, StoredMapping &mapping) {
     std::string guid;
     if (const auto result = read_guid(joystick, guid); result != NK_OK)
         return result;
@@ -77,6 +102,18 @@ nk_result mapping_for(nk_handle joystick, Mapping &mapping) {
     }
     mapping = *found;
     return NK_OK;
+}
+
+void store_application_mapping(Mapping mapping) {
+    const auto found = std::find_if(mappings.rbegin(), mappings.rend(),
+                                    [&](const StoredMapping &item) {
+                                        return item.mapping.guid == mapping.guid;
+                                    });
+    StoredMapping stored{std::move(mapping), NK_GAMEPAD_MAPPING_APPLICATION};
+    if (found == mappings.rend())
+        mappings.push_back(std::move(stored));
+    else
+        *found = std::move(stored);
 }
 
 template <typename T, typename Function>
@@ -125,17 +162,58 @@ nk_result NK_CALL nk_gamepad_add_mapping(const char *text) {
                                              nk::core::set_error("invalid gamepad mapping");
                                              return NK_ERROR_INVALID_ARGUMENT;
                                          }
+                                         if (!applicable(mapping)) {
+                                             nk::core::set_error(
+                                                 "gamepad mapping targets another platform");
+                                             return NK_ERROR_UNSUPPORTED;
+                                         }
                                          ensure_builtins();
                                          std::lock_guard lock(mappings_mutex);
-                                         const auto found = std::find_if(
-                                             mappings.rbegin(), mappings.rend(),
-                                             [&](const Mapping &item) {
-                                                 return item.guid == mapping.guid;
-                                             });
-                                         if (found == mappings.rend())
-                                             mappings.push_back(std::move(mapping));
-                                         else
-                                             *found = std::move(mapping);
+                                         store_application_mapping(std::move(mapping));
+                                         return NK_OK;
+                                     });
+}
+
+nk_result NK_CALL nk_gamepad_add_mappings(const char *database, uint32_t *out_added) {
+    return nk::core::result_boundary("unexpected error while adding gamepad mappings",
+                                     [&]() -> nk_result {
+                                         nk::core::clear_error();
+                                         if (const auto result = nk::core::require_ui_thread();
+                                             result != NK_OK)
+                                             return result;
+                                         if (!database || !out_added) {
+                                             nk::core::set_error(
+                                                 "database and out_added are required");
+                                             return NK_ERROR_INVALID_ARGUMENT;
+                                         }
+                                         std::vector<Mapping> parsed;
+                                         std::string_view input(database);
+                                         std::size_t position = 0;
+                                         while (position < input.size()) {
+                                             auto end = input.find('\n', position);
+                                             if (end == std::string_view::npos)
+                                                 end = input.size();
+                                             auto line = input.substr(position, end - position);
+                                             if (!line.empty() && line.back() == '\r')
+                                                 line.remove_suffix(1);
+                                             if (!line.empty() && line.front() != '#') {
+                                                 Mapping mapping;
+                                                 if (!nk::core::gamepad::parse_mapping(line,
+                                                                                       mapping)) {
+                                                     nk::core::set_error(
+                                                         "invalid line in gamepad mapping database");
+                                                     return NK_ERROR_INVALID_ARGUMENT;
+                                                 }
+                                                 if (applicable(mapping))
+                                                     parsed.push_back(std::move(mapping));
+                                             }
+                                             position = end + 1;
+                                         }
+                                         ensure_builtins();
+                                         std::lock_guard lock(mappings_mutex);
+                                         for (auto &mapping : parsed)
+                                             store_application_mapping(std::move(mapping));
+                                         *out_added = static_cast<std::uint32_t>(parsed.size());
                                          return NK_OK;
                                      });
 }
@@ -157,16 +235,35 @@ nk_result NK_CALL nk_gamepad_is_mapped(nk_handle joystick, uint32_t *out_mapped)
                                      });
 }
 
+nk_result NK_CALL
+nk_gamepad_get_mapping_source(nk_handle joystick, nk_gamepad_mapping_source *out_source) {
+    return nk::core::result_boundary("unexpected error while reading gamepad mapping source",
+                                     [&]() -> nk_result {
+                                         nk::core::clear_error();
+                                         if (!out_source) {
+                                             nk::core::set_error("out_source is required");
+                                             return NK_ERROR_INVALID_ARGUMENT;
+                                         }
+                                         StoredMapping mapping;
+                                         if (const auto result = mapping_for(joystick, mapping);
+                                             result != NK_OK)
+                                             return result;
+                                         *out_source = mapping.source;
+                                         return NK_OK;
+                                     });
+}
+
 nk_result NK_CALL nk_gamepad_get_name(nk_handle joystick, char *buffer,
                                       uint32_t *inout_size) {
     return nk::core::result_boundary("unexpected error while reading a gamepad name",
                                      [&]() -> nk_result {
                                          nk::core::clear_error();
-                                         Mapping mapping;
+                                         StoredMapping mapping;
                                          if (const auto result = mapping_for(joystick, mapping);
                                              result != NK_OK)
                                              return result;
-                                         return copy_string(mapping.name, buffer, inout_size);
+                                         return copy_string(mapping.mapping.name, buffer,
+                                                            inout_size);
                                      });
 }
 
@@ -180,7 +277,7 @@ nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick, nk_gamepad_state *out
                                                  "nk_gamepad_state is missing or too small");
                                              return NK_ERROR_INVALID_ARGUMENT;
                                          }
-                                         Mapping mapping;
+                                         StoredMapping mapping;
                                          if (const auto result = mapping_for(joystick, mapping);
                                              result != NK_OK)
                                              return result;
@@ -203,7 +300,8 @@ nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick, nk_gamepad_state *out
                                          *out_state = {};
                                          out_state->struct_size = size;
                                          if (!nk::core::gamepad::apply_mapping(
-                                                 mapping, axes, buttons, hats, *out_state)) {
+                                                 mapping.mapping, axes, buttons, hats,
+                                                 *out_state)) {
                                              nk::core::set_error(
                                                  "gamepad mapping references unavailable input");
                                              return NK_ERROR_UNSUPPORTED;

@@ -153,7 +153,12 @@ bool parse_mapping(std::string_view text, Mapping &mapping) {
             return false;
         const auto key = field.substr(0, colon);
         const auto value = field.substr(colon + 1);
-        if (key == "platform" || key == "type" || key == "crc") {
+        if (key == "platform") {
+            parsed.platform = std::string(value);
+            position = end + 1;
+            continue;
+        }
+        if (key == "type" || key == "crc") {
             position = end + 1;
             continue;
         }
