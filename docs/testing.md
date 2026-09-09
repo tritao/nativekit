@@ -23,8 +23,9 @@ tools/test-wine.sh
 The Wine suite is a compatibility layer, not authoritative Windows validation.
 It validates WebView2's runtime-unavailable behavior. The x64 and x86 native
 Windows jobs exercise queued creation, readiness, navigation, title changes,
-native messages, JavaScript evaluation, and destruction during initialization
-when the Evergreen runtime is present; ARM64 is cross-compiled. Native testing
+navigation-policy decisions, native messages, JavaScript evaluation, and
+destruction during initialization when the Evergreen runtime is present; ARM64
+is cross-compiled. Native testing
 remains authoritative for COM, accessibility, per-monitor DPI, system
 integration, and browser behavior.
 
@@ -33,6 +34,6 @@ integration, and browser behavior.
 The macOS workflow builds and runs the C ABI, core tests, and Cocoa window/system
 integration test on Intel and Apple Silicon runners. The integration test checks
 pasteboard text and file round trips, drop registration, and WKWebView creation,
-HTML navigation, JavaScript evaluation, and page messages. Dialogs and real drag
-sessions are compiled but not opened automatically because unattended native UI
-is not a reliable CI interaction surface.
+HTML navigation, navigation-policy decisions, JavaScript evaluation, and page
+messages. Dialogs and real drag sessions are compiled but not opened automatically
+because unattended native UI is not a reliable CI interaction surface.

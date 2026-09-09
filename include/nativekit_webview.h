@@ -9,7 +9,8 @@ extern "C" {
 
 enum {
     NK_WEBVIEW_DEVTOOLS = 1u << 0,
-    NK_WEBVIEW_HIDDEN = 1u << 1
+    NK_WEBVIEW_HIDDEN = 1u << 1,
+    NK_WEBVIEW_NAVIGATION_POLICY = 1u << 2
 };
 
 /* Values stored in nk_event.flags for NK_EVENT_WEBVIEW_NAVIGATION_FAILED. */
@@ -73,6 +74,15 @@ NK_API nk_result NK_CALL nk_webview_set_html(
  */
 NK_API nk_result NK_CALL nk_webview_eval(
     nk_handle webview, const char *script, nk_request_id *out_request);
+
+/*
+ * Resolves an NK_EVENT_WEBVIEW_NAVIGATION_REQUEST. Navigation-policy events
+ * are emitted only for WebViews created with NK_WEBVIEW_NAVIGATION_POLICY.
+ * Event data is the proposed URL. Pending requests are cancelled when their
+ * WebView is destroyed; each request may be resolved exactly once.
+ */
+NK_API nk_result NK_CALL nk_webview_navigation_decide(
+    nk_request_id request, uint32_t allow);
 
 #ifdef __cplusplus
 }

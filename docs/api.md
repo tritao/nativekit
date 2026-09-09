@@ -49,9 +49,19 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_WEBVIEW_EVAL_COMPLETE` | WebView | evaluation ID | result or error text |
 | `NK_EVENT_WEBVIEW_NAVIGATION_FAILED` | WebView | none | error text; category in `flags` |
 | `NK_EVENT_WEBVIEW_PROCESS_TERMINATED` | WebView | none | empty; backend reason in `flags` |
+| `NK_EVENT_WEBVIEW_NAVIGATION_REQUEST` | WebView | navigation ID | proposed URL |
 
 A close event is a request: the window remains alive until the application calls
 `nk_window_destroy()`.
+
+A WebView created with `NK_WEBVIEW_NAVIGATION_POLICY` pauses each navigation
+proposal exposed by the native backend and emits
+`NK_EVENT_WEBVIEW_NAVIGATION_REQUEST`. Resolve it once with
+`nk_webview_navigation_decide()`. Destroying the WebView cancels its
+pending requests. When the event queue is full, navigation is allowed so the
+native engine cannot be left indefinitely suspended. WebView2 has no navigation
+deferral API, so its Windows backend cancels and replays an allowed URL; replayed
+form submissions therefore become ordinary URL navigations.
 
 Consecutive pending resize events for the same window are coalesced. Events of
 other kinds preserve their position relative to resize events.

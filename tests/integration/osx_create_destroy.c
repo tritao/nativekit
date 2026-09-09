@@ -148,6 +148,36 @@ int main(void) {
     assert(nk_webview_destroy(webview) == NK_OK);
     assert(nk_webview_destroy(webview) == NK_ERROR_INVALID_HANDLE);
 
+    web_options.flags = NK_WEBVIEW_HIDDEN | NK_WEBVIEW_NAVIGATION_POLICY;
+    nk_handle policy_webview = NK_INVALID_HANDLE;
+    assert(nk_webview_create(window, &web_options, &policy_webview) == NK_OK);
+    nk_event policy_ready = wait_for_event(
+        NK_EVENT_WEBVIEW_READY, NK_INVALID_REQUEST_ID);
+    assert(policy_ready.source == policy_webview);
+    nk_event_release(&policy_ready);
+    const char policy_url[] = "data:text/html,NativeKit-policy";
+    assert(nk_webview_navigate(policy_webview, policy_url) == NK_OK);
+    nk_event policy_request = wait_for_event(
+        NK_EVENT_WEBVIEW_NAVIGATION_REQUEST, NK_INVALID_REQUEST_ID);
+    assert(policy_request.source == policy_webview);
+    assert(policy_request.data_size == strlen(policy_url));
+    assert(memcmp(policy_request.data, policy_url, policy_request.data_size) == 0);
+    assert(nk_webview_navigation_decide(policy_request.request_id, 1) == NK_OK);
+    assert(nk_webview_navigation_decide(policy_request.request_id, 1) ==
+           NK_ERROR_INVALID_REQUEST);
+    nk_event_release(&policy_request);
+    nk_event policy_navigated = wait_for_event(
+        NK_EVENT_WEBVIEW_NAVIGATED, NK_INVALID_REQUEST_ID);
+    assert(policy_navigated.source == policy_webview);
+    nk_event_release(&policy_navigated);
+    assert(nk_webview_navigate(policy_webview, "data:text/html,cancel") == NK_OK);
+    nk_event cancelled_request = wait_for_event(
+        NK_EVENT_WEBVIEW_NAVIGATION_REQUEST, NK_INVALID_REQUEST_ID);
+    const nk_request_id cancelled_id = cancelled_request.request_id;
+    nk_event_release(&cancelled_request);
+    assert(nk_webview_destroy(policy_webview) == NK_OK);
+    assert(nk_webview_navigation_decide(cancelled_id, 1) == NK_ERROR_INVALID_REQUEST);
+
     nk_system_appearance appearance = {0};
     appearance.struct_size = sizeof(appearance);
     assert(nk_system_get_appearance(&appearance) == NK_OK);

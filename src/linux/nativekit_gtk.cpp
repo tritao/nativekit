@@ -53,6 +53,7 @@ struct GtkWebViewResource final : nk::core::Resource {
     WebKitUserContentManager* content_manager = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle parent = NK_INVALID_HANDLE;
+    bool navigation_policy = false;
 
     ~GtkWebViewResource() override {
         if (widget) gtk_widget_destroy(widget);
@@ -83,9 +84,15 @@ struct ClipboardFileOwner {
     std::vector<char*> pointers;
 };
 
+struct NavigationDecision {
+    nk_handle source;
+    WebKitPolicyDecision* decision;
+};
+
 bool gtk_initialized = false;
 bool clipboard_owned = false;
 std::unordered_map<nk_request_id, DialogContext*> dialogs;
+std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
 
 nk_result fail(nk_result result, std::string_view message) {
     nk::core::set_error(message);
@@ -241,6 +248,53 @@ void on_webview_message(WebKitUserContentManager*, WebKitJavascriptResult* resul
         /* WebKit callbacks must never allow a C++ exception to escape. */
     }
     g_free(string);
+}
+
+gboolean on_webview_policy(WebKitWebView*, WebKitPolicyDecision* decision,
+                           WebKitPolicyDecisionType type, gpointer data) {
+    auto* resource = static_cast<GtkWebViewResource*>(data);
+    if (!resource->navigation_policy || type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION)
+        return FALSE;
+    try {
+        auto* navigation = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
+        auto* action = webkit_navigation_policy_decision_get_navigation_action(navigation);
+        auto* request = webkit_navigation_action_get_request(action);
+        const auto request_id = nk::core::next_request_id();
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WEBVIEW_NAVIGATION_REQUEST;
+        event.source = resource->handle;
+        event.request_id = request_id;
+        event.data = bytes(webkit_uri_request_get_uri(request));
+        auto* retained = WEBKIT_POLICY_DECISION(g_object_ref(decision));
+        try {
+            navigation_decisions.emplace(
+                request_id, NavigationDecision{resource->handle, retained});
+        } catch (...) {
+            g_object_unref(retained);
+            throw;
+        }
+        if (nk::core::push_event(std::move(event)) != NK_OK) {
+            navigation_decisions.erase(request_id);
+            webkit_policy_decision_use(decision);
+            g_object_unref(decision);
+        }
+        return TRUE;
+    } catch (...) {
+        webkit_policy_decision_use(decision);
+        return TRUE;
+    }
+}
+
+void cancel_navigation_decisions(nk_handle source) {
+    for (auto item = navigation_decisions.begin(); item != navigation_decisions.end();) {
+        if (item->second.source == source) {
+            webkit_policy_decision_ignore(item->second.decision);
+            g_object_unref(item->second.decision);
+            item = navigation_decisions.erase(item);
+        } else {
+            ++item;
+        }
+    }
 }
 
 void on_eval_complete(GObject* object, GAsyncResult* result, gpointer data) {
@@ -634,6 +688,12 @@ void pump_events() noexcept {
 
 void shutdown() noexcept {
     while (!dialogs.empty()) cancel_dialog(dialogs.begin()->second, false);
+    while (!navigation_decisions.empty()) {
+        auto item = navigation_decisions.begin();
+        webkit_policy_decision_ignore(item->second.decision);
+        g_object_unref(item->second.decision);
+        navigation_decisions.erase(item);
+    }
     if (gtk_initialized && clipboard_owned) {
         GtkClipboard* clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
         gtk_clipboard_set_can_store(clipboard, nullptr, 0);
@@ -805,6 +865,8 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
         g_object_add_weak_pointer(G_OBJECT(resource->widget),
                                   reinterpret_cast<gpointer*>(&resource->widget));
         resource->parent = parent_handle;
+        resource->navigation_policy =
+            (options->flags & NK_WEBVIEW_NAVIGATION_POLICY) != 0;
         gtk_widget_set_size_request(resource->widget, options->width, options->height);
         gtk_fixed_put(GTK_FIXED(parent->container), resource->widget, options->x, options->y);
         resource->handle = nk::core::handles().insert(nk::core::ResourceType::webview, resource);
@@ -820,6 +882,8 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
                          G_CALLBACK(on_webview_process_terminated), resource.get());
         g_signal_connect(resource->content_manager, "script-message-received::nativekit",
                          G_CALLBACK(on_webview_message), resource.get());
+        g_signal_connect(resource->widget, "decide-policy",
+                         G_CALLBACK(on_webview_policy), resource.get());
         auto* settings = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(resource->widget));
         webkit_settings_set_enable_developer_extras(settings, (options->flags & NK_WEBVIEW_DEVTOOLS) != 0);
         nk::core::QueuedEvent ready;
@@ -841,6 +905,7 @@ nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     auto resource = webview(handle);
     if (!resource) return invalid_handle("WebView");
+    cancel_navigation_decisions(handle);
     g_signal_handlers_disconnect_by_data(resource->widget, resource.get());
     g_signal_handlers_disconnect_by_data(resource->content_manager, resource.get());
     gtk_widget_destroy(resource->widget);
@@ -905,6 +970,18 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script, nk_reque
     } catch (...) {
         return fail(NK_ERROR_UNKNOWN, "unexpected error while evaluating JavaScript");
     }
+}
+
+nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t allow) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    const auto item = navigation_decisions.find(request);
+    if (item == navigation_decisions.end())
+        return fail(NK_ERROR_INVALID_REQUEST, "invalid or completed navigation request");
+    auto* decision = item->second.decision;
+    navigation_decisions.erase(item);
+    allow ? webkit_policy_decision_use(decision) : webkit_policy_decision_ignore(decision);
+    g_object_unref(decision);
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_dialog_open_file(nk_handle parent,

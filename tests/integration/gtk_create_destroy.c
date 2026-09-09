@@ -9,6 +9,20 @@
 #include <string.h>
 #include <unistd.h>
 
+static nk_event wait_for_event(nk_event_kind kind, nk_handle source) {
+    for (int attempt = 0; attempt < 500; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == kind && event.source == source) return event;
+        nk_event_release(&event);
+        usleep(10000);
+    }
+    assert(!"timed out waiting for event");
+    nk_event unreachable = {0};
+    return unreachable;
+}
+
 int main(void) {
     nk_init_options init = {0};
     init.struct_size = sizeof(init);
@@ -154,6 +168,33 @@ int main(void) {
         if (!received_result) usleep(10000);
     }
     assert(received_result);
+
+    nk_webview_options policy_options = webview_options;
+    policy_options.flags |= NK_WEBVIEW_NAVIGATION_POLICY;
+    nk_handle policy_webview = NK_INVALID_HANDLE;
+    assert(nk_webview_create(window, &policy_options, &policy_webview) == NK_OK);
+    nk_event policy_ready = wait_for_event(NK_EVENT_WEBVIEW_READY, policy_webview);
+    nk_event_release(&policy_ready);
+    const char policy_url[] = "data:text/html,NativeKit-policy";
+    assert(nk_webview_navigate(policy_webview, policy_url) == NK_OK);
+    nk_event policy_request = wait_for_event(
+        NK_EVENT_WEBVIEW_NAVIGATION_REQUEST, policy_webview);
+    assert(policy_request.request_id != NK_INVALID_REQUEST_ID);
+    assert(policy_request.data_size == strlen(policy_url));
+    assert(memcmp(policy_request.data, policy_url, policy_request.data_size) == 0);
+    assert(nk_webview_navigation_decide(policy_request.request_id, 1) == NK_OK);
+    assert(nk_webview_navigation_decide(policy_request.request_id, 1) ==
+           NK_ERROR_INVALID_REQUEST);
+    nk_event_release(&policy_request);
+    nk_event policy_navigated = wait_for_event(NK_EVENT_WEBVIEW_NAVIGATED, policy_webview);
+    nk_event_release(&policy_navigated);
+    assert(nk_webview_navigate(policy_webview, "data:text/html,cancel") == NK_OK);
+    nk_event cancelled_request = wait_for_event(
+        NK_EVENT_WEBVIEW_NAVIGATION_REQUEST, policy_webview);
+    const nk_request_id cancelled_id = cancelled_request.request_id;
+    nk_event_release(&cancelled_request);
+    assert(nk_webview_destroy(policy_webview) == NK_OK);
+    assert(nk_webview_navigation_decide(cancelled_id, 1) == NK_ERROR_INVALID_REQUEST);
 
     nk_file_dialog_options file_options = {0};
     file_options.struct_size = sizeof(file_options);

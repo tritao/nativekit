@@ -39,6 +39,7 @@
 #include <string_view>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -136,8 +137,11 @@ struct WinWebViewResource final : nk::core::Resource {
     bool devtools = false;
     bool failed = false;
     bool ready = false;
+    bool navigation_policy = false;
     std::atomic<bool> creation_pending{false};
     std::wstring initial_url;
+    std::wstring policy_bypass_url;
+    std::unordered_set<uint64_t> policy_cancelled_navigation_ids;
     std::vector<WebViewCommand> pending;
     ComPtr<ICoreWebView2Environment> environment;
     ComPtr<ICoreWebView2Controller> controller;
@@ -146,6 +150,13 @@ struct WinWebViewResource final : nk::core::Resource {
         if (controller) controller->Close();
     }
 };
+
+struct WinNavigationDecision {
+    nk_handle source;
+    std::wstring url;
+};
+
+std::unordered_map<nk_request_id, WinNavigationDecision> navigation_decisions;
 #endif
 
 struct WinWindowResource final : nk::core::Resource {
@@ -598,12 +609,65 @@ void complete_webview_creation(const std::shared_ptr<WinWebViewResource>& resour
 
 void configure_webview(const std::shared_ptr<WinWebViewResource>& resource) {
     EventRegistrationToken token{};
+    auto starting = make_callback<ICoreWebView2NavigationStartingEventHandler,
+                                  &IID_ICoreWebView2NavigationStartingEventHandler,
+                                  ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs*>(
+        [resource](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
+            if (!resource->navigation_policy || !get_webview(resource->handle)) return S_OK;
+            LPWSTR raw_url = nullptr;
+            if (FAILED(args->get_Uri(&raw_url))) return S_OK;
+            std::wstring url = raw_url ? raw_url : L"";
+            CoTaskMemFree(raw_url);
+            if (!resource->policy_bypass_url.empty() && resource->policy_bypass_url == url) {
+                resource->policy_bypass_url.clear();
+                return S_OK;
+            }
+            nk_request_id pending_request = NK_INVALID_REQUEST_ID;
+            UINT64 pending_navigation = 0;
+            bool tracked_navigation = false;
+            try {
+                pending_request = nk::core::next_request_id();
+                nk::core::QueuedEvent event;
+                event.kind = NK_EVENT_WEBVIEW_NAVIGATION_REQUEST;
+                event.source = resource->handle;
+                event.request_id = pending_request;
+                event.data = text_bytes(utf8(url.c_str()));
+                navigation_decisions.emplace(pending_request,
+                    WinNavigationDecision{resource->handle, url});
+                tracked_navigation = SUCCEEDED(args->get_NavigationId(&pending_navigation));
+                if (tracked_navigation)
+                    resource->policy_cancelled_navigation_ids.insert(pending_navigation);
+                if (FAILED(args->put_Cancel(TRUE))) {
+                    navigation_decisions.erase(pending_request);
+                    if (tracked_navigation)
+                        resource->policy_cancelled_navigation_ids.erase(pending_navigation);
+                    return S_OK;
+                }
+                if (nk::core::push_event(std::move(event)) != NK_OK) {
+                    navigation_decisions.erase(pending_request);
+                    if (tracked_navigation)
+                        resource->policy_cancelled_navigation_ids.erase(pending_navigation);
+                    args->put_Cancel(FALSE);
+                }
+            } catch (...) {
+                if (pending_request) navigation_decisions.erase(pending_request);
+                if (tracked_navigation)
+                    resource->policy_cancelled_navigation_ids.erase(pending_navigation);
+                return S_OK;
+            }
+            return S_OK;
+        });
+    resource->webview->add_NavigationStarting(starting.Get(), &token);
     auto navigation = make_callback<ICoreWebView2NavigationCompletedEventHandler,
                                     &IID_ICoreWebView2NavigationCompletedEventHandler,
                                     ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs*>(
         [resource](ICoreWebView2* sender,
                    ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
             if (!get_webview(resource->handle)) return S_OK;
+            UINT64 navigation_id = 0;
+            if (SUCCEEDED(args->get_NavigationId(&navigation_id)) &&
+                resource->policy_cancelled_navigation_ids.erase(navigation_id))
+                return S_OK;
             BOOL successful = FALSE;
             args->get_IsSuccess(&successful);
             LPWSTR source = nullptr;
@@ -1100,6 +1164,9 @@ void shutdown() noexcept {
         }
         if (context->worker.joinable()) context->worker.join();
     }
+#if defined(NK_HAS_WEBVIEW2)
+    navigation_decisions.clear();
+#endif
     nk::core::handles().clear();
     pump_events();
 #if defined(NK_HAS_WEBVIEW2)
@@ -1263,6 +1330,8 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle,
                             coordinate_end(options->y, options->height)};
         resource->visible = (options->flags & NK_WEBVIEW_HIDDEN) == 0;
         resource->devtools = (options->flags & NK_WEBVIEW_DEVTOOLS) != 0;
+        resource->navigation_policy =
+            (options->flags & NK_WEBVIEW_NAVIGATION_POLICY) != 0;
         if (!copy_wide(options->initial_url, resource->initial_url))
             return fail(NK_ERROR_INVALID_ARGUMENT, "initial URL is not valid UTF-8");
         resource->handle = nk::core::handles().insert(
@@ -1290,6 +1359,10 @@ nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     auto resource = get_webview(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    for (auto item = navigation_decisions.begin(); item != navigation_decisions.end();) {
+        if (item->second.source == handle) item = navigation_decisions.erase(item);
+        else ++item;
+    }
     if (resource->controller) resource->controller->Close();
     resource->webview.Reset();
     resource->controller.Reset();
@@ -1405,6 +1478,26 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
         return fail(NK_ERROR_UNKNOWN, "unexpected error while evaluating JavaScript");
     }
 }
+
+nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t allow) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    const auto item = navigation_decisions.find(request);
+    if (item == navigation_decisions.end())
+        return fail(NK_ERROR_INVALID_REQUEST, "invalid or completed navigation request");
+    const auto decision = std::move(item->second);
+    navigation_decisions.erase(item);
+    auto resource = get_webview(decision.source);
+    if (!resource || !resource->webview)
+        return fail(NK_ERROR_INVALID_REQUEST, "navigation WebView is no longer available");
+    if (allow) {
+        resource->policy_bypass_url = decision.url;
+        if (FAILED(resource->webview->Navigate(decision.url.c_str()))) {
+            resource->policy_bypass_url.clear();
+            return fail(NK_ERROR_UNKNOWN, "could not resume WebView navigation");
+        }
+    }
+    return NK_OK;
+}
 #else
 nk_result NK_CALL nk_webview_create(nk_handle, const nk_webview_options*, nk_handle*) { return unsupported(); }
 nk_result NK_CALL nk_webview_destroy(nk_handle) { return unsupported(); }
@@ -1413,6 +1506,7 @@ nk_result NK_CALL nk_webview_set_bounds(nk_handle, int32_t, int32_t, int32_t, in
 nk_result NK_CALL nk_webview_navigate(nk_handle, const char*) { return unsupported(); }
 nk_result NK_CALL nk_webview_set_html(nk_handle, const char*, const char*) { return unsupported(); }
 nk_result NK_CALL nk_webview_eval(nk_handle, const char*, nk_request_id*) { return unsupported(); }
+nk_result NK_CALL nk_webview_navigation_decide(nk_request_id, uint32_t) { return unsupported(); }
 #endif
 nk_result NK_CALL nk_dialog_open_file(nk_handle parent, const nk_file_dialog_options* options,
                                       nk_request_id* out_request) {

@@ -42,6 +42,20 @@ static nk_event wait_for_event(nk_event_kind kind, nk_request_id request) {
     return unreachable;
 }
 
+static nk_event wait_for_kind(nk_event_kind kind) {
+    for (int attempt = 0; attempt < 1000; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == kind) return event;
+        nk_event_release(&event);
+        Sleep(10);
+    }
+    assert(!"timed out waiting for event kind");
+    nk_event unreachable = {0};
+    return unreachable;
+}
+
 static void verify_system_string(nk_system_directory_kind kind) {
     uint32_t size = 0;
     assert(nk_system_directory(kind, NULL, &size) == NK_ERROR_BUFFER_TOO_SMALL);
@@ -235,6 +249,34 @@ int main(void) {
         assert(nk_webview_show(webview, 1) == NK_OK);
         assert(nk_webview_destroy(webview) == NK_OK);
         assert(nk_webview_destroy(webview) == NK_ERROR_INVALID_HANDLE);
+
+        webview_options.flags = NK_WEBVIEW_HIDDEN | NK_WEBVIEW_NAVIGATION_POLICY;
+        nk_handle policy_webview = NK_INVALID_HANDLE;
+        assert(nk_webview_create(window, &webview_options, &policy_webview) == NK_OK);
+        nk_event policy_ready = wait_for_event(
+            NK_EVENT_WEBVIEW_READY, NK_INVALID_REQUEST_ID);
+        assert(policy_ready.source == policy_webview);
+        nk_event_release(&policy_ready);
+        const char policy_url[] = "data:text/html,NativeKit-policy";
+        assert(nk_webview_navigate(policy_webview, policy_url) == NK_OK);
+        nk_event policy_request = wait_for_kind(NK_EVENT_WEBVIEW_NAVIGATION_REQUEST);
+        assert(policy_request.source == policy_webview);
+        assert(policy_request.data_size == strlen(policy_url));
+        assert(memcmp(policy_request.data, policy_url, policy_request.data_size) == 0);
+        assert(nk_webview_navigation_decide(policy_request.request_id, 1) == NK_OK);
+        assert(nk_webview_navigation_decide(policy_request.request_id, 1) ==
+               NK_ERROR_INVALID_REQUEST);
+        nk_event_release(&policy_request);
+        nk_event policy_navigated = wait_for_event(
+            NK_EVENT_WEBVIEW_NAVIGATED, NK_INVALID_REQUEST_ID);
+        assert(policy_navigated.source == policy_webview);
+        nk_event_release(&policy_navigated);
+        assert(nk_webview_navigate(policy_webview, "data:text/html,cancel") == NK_OK);
+        nk_event cancelled_request = wait_for_kind(NK_EVENT_WEBVIEW_NAVIGATION_REQUEST);
+        const nk_request_id cancelled_id = cancelled_request.request_id;
+        nk_event_release(&cancelled_request);
+        assert(nk_webview_destroy(policy_webview) == NK_OK);
+        assert(nk_webview_navigation_decide(cancelled_id, 1) == NK_ERROR_INVALID_REQUEST);
     } else {
         assert(nk_webview_create(window, &webview_options, &webview) ==
                NK_ERROR_UNSUPPORTED);

@@ -66,6 +66,7 @@ struct MacWebViewResource final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle parent = NK_INVALID_HANDLE;
     bool observing_title = false;
+    bool navigation_policy = false;
     ~MacWebViewResource() override {
         if (view) {
             if (observing_title) [view removeObserver:delegate forKeyPath:@"title"];
@@ -78,6 +79,11 @@ struct MacWebViewResource final : nk::core::Resource {
     }
 };
 
+struct MacNavigationDecision {
+    nk_handle source = NK_INVALID_HANDLE;
+    __strong void (^handler)(WKNavigationActionPolicy) = nil;
+};
+
 struct DialogContext {
     nk_request_id request = NK_INVALID_REQUEST_ID;
     uint32_t kind = 0;
@@ -88,6 +94,7 @@ struct DialogContext {
 
 std::mutex dialogs_mutex;
 std::unordered_map<nk_request_id, std::shared_ptr<DialogContext>> dialogs;
+std::unordered_map<nk_request_id, MacNavigationDecision> navigation_decisions;
 
 void cancel_dialog_context(const std::shared_ptr<DialogContext>& context) {
     if ([context->dialog isKindOfClass:[NSSavePanel class]])
@@ -232,6 +239,17 @@ void emit_webview_text(nk_event_kind kind, nk_handle source, NSString* text,
         event.data = text_bytes(utf8(text));
         nk::core::push_event(std::move(event));
     } catch (...) {}
+}
+
+void cancel_navigation_decisions(nk_handle source) {
+    for (auto item = navigation_decisions.begin(); item != navigation_decisions.end();) {
+        if (item->second.source == source) {
+            item->second.handler(WKNavigationActionPolicyCancel);
+            item = navigation_decisions.erase(item);
+        } else {
+            ++item;
+        }
+    }
 }
 
 uint32_t navigation_error_category(NSError* error) {
@@ -497,6 +515,34 @@ nk_result unsupported() {
 @end
 
 @implementation NKWebViewDelegate
+- (void)webView:(WKWebView*)view
+      decidePolicyForNavigationAction:(WKNavigationAction*)action
+                      decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    (void)view;
+    auto* resource = static_cast<MacWebViewResource*>(_resource);
+    if (!resource || !resource->navigation_policy ||
+        (action.targetFrame && !action.targetFrame.mainFrame)) {
+        decisionHandler(WKNavigationActionPolicyAllow);
+        return;
+    }
+    try {
+        const auto request = nk::core::next_request_id();
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WEBVIEW_NAVIGATION_REQUEST;
+        event.source = resource->handle;
+        event.request_id = request;
+        event.data = text_bytes(utf8(action.request.URL.absoluteString));
+        navigation_decisions.emplace(
+            request, MacNavigationDecision{resource->handle, [decisionHandler copy]});
+        if (nk::core::push_event(std::move(event)) != NK_OK) {
+            navigation_decisions.erase(request);
+            decisionHandler(WKNavigationActionPolicyAllow);
+            return;
+        }
+    } catch (...) {
+        decisionHandler(WKNavigationActionPolicyAllow);
+    }
+}
 - (void)webView:(WKWebView*)view didFinishNavigation:(WKNavigation*)navigation {
     (void)navigation;
     auto* resource = static_cast<MacWebViewResource*>(_resource);
@@ -566,6 +612,9 @@ void shutdown() noexcept {
         for (const auto& item : dialogs) pending.push_back(item.second);
     }
     for (const auto& context : pending) cancel_dialog_context(context);
+    for (const auto& item : navigation_decisions)
+        item.second.handler(WKNavigationActionPolicyCancel);
+    navigation_decisions.clear();
     pump_events();
     dialogs.clear();
     nk::core::handles().clear();
@@ -610,6 +659,8 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options,
         resource->window.contentView = resource->content;
         resource->delegate = [NKWindowDelegate new];
         resource->delegate.resource = resource.get();
+        resource->navigation_policy =
+            (options->flags & NK_WEBVIEW_NAVIGATION_POLICY) != 0;
         resource->window.delegate = resource->delegate;
         resource->handle = nk::core::handles().insert(nk::core::ResourceType::window, resource);
         if (!resource->handle) return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
@@ -760,6 +811,7 @@ nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK) return result;
     auto resource = webview(handle);
     if (!resource) return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    cancel_navigation_decisions(handle);
     auto parent = window(resource->parent);
     if (parent) {
         auto& children = parent->children;
@@ -851,6 +903,17 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char* script,
     } catch (...) {
         return fail(NK_ERROR_UNKNOWN, "unexpected error while evaluating JavaScript");
     }
+}
+
+nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t allow) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    const auto item = navigation_decisions.find(request);
+    if (item == navigation_decisions.end())
+        return fail(NK_ERROR_INVALID_REQUEST, "invalid or completed navigation request");
+    auto handler = item->second.handler;
+    navigation_decisions.erase(item);
+    handler(allow ? WKNavigationActionPolicyAllow : WKNavigationActionPolicyCancel);
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_dialog_open_file(nk_handle parent,

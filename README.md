@@ -31,6 +31,10 @@ WebView creation may be asynchronous. Consumers can wait for
 `NK_EVENT_WEBVIEW_READY`; navigation, HTML, and evaluation calls made before that
 event are retained in call order.
 
+Navigation policy is opt-in with `NK_WEBVIEW_NAVIGATION_POLICY`. Proposed
+navigations become request-ID events that callers explicitly allow or
+cancel with `nk_webview_navigation_decide()`.
+
 The current Linux backend provides NativeKit-owned GTK 3 windows, WebKitGTK
 WebViews, asynchronous native dialogs, shell launching, standard directories,
 locale, desktop appearance, clipboard, and file/text drops. Builds without GTK 3 and WebKitGTK 4.1 retain
