@@ -8,11 +8,13 @@
 #include "nativekit_mobile.h"
 #include "nativekit_monitor.h"
 #include "nativekit_notification.h"
+#include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
 
 #include <assert.h>
+#include <stddef.h>
 #include <string.h>
 
 int main(void) {
@@ -75,6 +77,36 @@ int main(void) {
     assert(notification_result == NK_ERROR_INVALID_ARGUMENT ||
            notification_result == NK_ERROR_UNSUPPORTED);
     assert(nk_dialog_event_path(NULL, 0, NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
+    nk_resource_view invalid_resource = {0};
+    invalid_resource.struct_size = sizeof(invalid_resource);
+    assert(nk_resource_event_item(NULL, 0, &invalid_resource) == NK_ERROR_INVALID_ARGUMENT);
+    typedef struct resource_test_payload {
+        nk_resource_list header;
+        nk_resource_item item;
+        char uri[21];
+        char mime[11];
+        char name[8];
+    } resource_test_payload;
+    resource_test_payload resource_data = {
+        {0, 1, offsetof(resource_test_payload, item), offsetof(resource_test_payload, uri)},
+        {NK_RESOURCE_READABLE, offsetof(resource_test_payload, uri),
+         offsetof(resource_test_payload, mime), offsetof(resource_test_payload, name)},
+        "content://provider/x",
+        "text/plain",
+        "Example"};
+    nk_event resource_event = {0};
+    resource_event.struct_size = sizeof(resource_event);
+    resource_event.kind = NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE;
+    resource_event.data = &resource_data;
+    resource_event.data_size = sizeof(resource_data);
+    nk_resource_view resource_view = {0};
+    resource_view.struct_size = sizeof(resource_view);
+    assert(nk_resource_event_item(&resource_event, 0, &resource_view) == NK_OK);
+    assert(resource_view.flags == NK_RESOURCE_READABLE);
+    assert(resource_view.uri_length == 20);
+    assert(memcmp(resource_view.uri, "content://provider/x", 20) == 0);
+    assert(resource_view.mime_type_length == 10);
+    assert(resource_view.display_name_length == 7);
     struct {
         nk_dialog_paths header;
         uint32_t offset;

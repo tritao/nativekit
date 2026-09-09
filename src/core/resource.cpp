@@ -1,0 +1,68 @@
+#include "nativekit_resource.h"
+
+#include "core/error.hpp"
+
+#include <cstddef>
+#include <cstring>
+#include <limits>
+
+namespace {
+bool string_view(const unsigned char *bytes, std::size_t size, uint32_t offset, uint32_t minimum,
+                 const char **out, uint32_t *out_length) {
+    if (offset == 0) {
+        *out = nullptr;
+        *out_length = 0;
+        return true;
+    }
+    if (offset < minimum || offset >= size)
+        return false;
+    const auto *value = reinterpret_cast<const char *>(bytes + offset);
+    const auto *end = static_cast<const char *>(std::memchr(value, '\0', size - offset));
+    if (!end || static_cast<std::size_t>(end - value) > std::numeric_limits<uint32_t>::max())
+        return false;
+    *out = value;
+    *out_length = static_cast<uint32_t>(end - value);
+    return true;
+}
+} // namespace
+
+extern "C" nk_result NK_CALL nk_resource_event_item(const nk_event *event, uint32_t index,
+                                                      nk_resource_view *out_resource) {
+    nk::core::clear_error();
+    if (!event || (event->kind != NK_EVENT_DIALOG_COMPLETE &&
+                   event->kind != NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE) ||
+        !out_resource || out_resource->struct_size < sizeof(nk_resource_view) ||
+        !event->data || event->data_size < sizeof(nk_resource_list) ||
+        event->data_size > std::numeric_limits<std::size_t>::max()) {
+        nk::core::set_error("invalid resource event arguments");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    nk_resource_list list{};
+    std::memcpy(&list, event->data, sizeof(list));
+    const auto size = static_cast<std::size_t>(event->data_size);
+    const auto table_size = static_cast<std::size_t>(list.item_count) * sizeof(nk_resource_item);
+    if (index >= list.item_count || list.items_offset < sizeof(nk_resource_list) ||
+        list.items_offset > size || table_size > size - list.items_offset ||
+        list.strings_offset < list.items_offset + table_size || list.strings_offset > size) {
+        nk::core::set_error("malformed resource event payload");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    nk_resource_item item{};
+    const auto *bytes = static_cast<const unsigned char *>(event->data);
+    std::memcpy(&item, bytes + list.items_offset + index * sizeof(item), sizeof(item));
+    nk_resource_view result{};
+    result.struct_size = out_resource->struct_size;
+    result.flags = item.flags;
+    if (!string_view(bytes, size, item.uri_offset, list.strings_offset, &result.uri,
+                     &result.uri_length) ||
+        !result.uri || result.uri_length == 0 ||
+        !string_view(bytes, size, item.mime_type_offset, list.strings_offset, &result.mime_type,
+                     &result.mime_type_length) ||
+        !string_view(bytes, size, item.display_name_offset, list.strings_offset,
+                     &result.display_name, &result.display_name_length)) {
+        nk::core::set_error("malformed resource event string");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    *out_resource = result;
+    return NK_OK;
+}

@@ -1,6 +1,7 @@
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
 #include "nativekit_notification.h"
+#include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -136,6 +137,33 @@ nk_result NK_CALL nk_shell_open_file(const char *) {
 nk_result NK_CALL nk_shell_reveal_file(const char *) {
     return unsupported();
 }
+#if !defined(NK_STUB_ANDROID)
+nk_result NK_CALL nk_shell_open_resource(const nk_resource *) {
+    return unsupported();
+}
+nk_result NK_CALL nk_share(const nk_share_options *) {
+    return unsupported();
+}
+nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *, uint32_t) {
+    return unsupported();
+}
+nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *) {
+    return unsupported();
+}
+nk_result NK_CALL nk_dialog_open_resource(nk_handle, const nk_file_dialog_options *,
+                                          nk_request_id *) {
+    return unsupported();
+}
+nk_result NK_CALL nk_dialog_save_resource(nk_handle, const nk_file_dialog_options *,
+                                          nk_request_id *) {
+    return unsupported();
+}
+nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle,
+                                                      const nk_file_dialog_options *,
+                                                      nk_request_id *) {
+    return unsupported();
+}
+#endif
 #if !defined(NK_STUB_ANDROID)
 nk_result NK_CALL nk_system_directory(nk_system_directory_kind, char *, uint32_t *) {
     return unsupported();

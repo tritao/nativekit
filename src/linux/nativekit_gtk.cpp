@@ -11,6 +11,7 @@
 #include "linux/joystick.hpp"
 #include "nativekit_monitor.h"
 #include "nativekit_notification.h"
+#include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -3108,6 +3109,45 @@ nk_result NK_CALL nk_shell_open_url(const char *url) {
         return fail(NK_ERROR_INVALID_ARGUMENT, "URL must contain a URI scheme");
     g_free(scheme);
     return launch_uri(url);
+}
+
+nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+        !*resource->uri)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "resource URI must not be empty");
+    return launch_uri(resource->uri);
+}
+
+nk_result NK_CALL nk_share(const nk_share_options *) {
+    return fail(NK_ERROR_UNSUPPORTED, "resource sharing is not implemented by the GTK backend");
+}
+
+nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *, uint32_t) {
+    return fail(NK_ERROR_UNSUPPORTED,
+                "resource clipboard is not implemented by the GTK backend");
+}
+
+nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *) {
+    return fail(NK_ERROR_UNSUPPORTED,
+                "resource clipboard is not implemented by the GTK backend");
+}
+
+nk_result NK_CALL nk_dialog_open_resource(nk_handle, const nk_file_dialog_options *,
+                                          nk_request_id *) {
+    return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the GTK backend");
+}
+
+nk_result NK_CALL nk_dialog_save_resource(nk_handle, const nk_file_dialog_options *,
+                                          nk_request_id *) {
+    return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the GTK backend");
+}
+
+nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle,
+                                                      const nk_file_dialog_options *,
+                                                      nk_request_id *) {
+    return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the GTK backend");
 }
 
 nk_result NK_CALL nk_shell_open_file(const char *path) {

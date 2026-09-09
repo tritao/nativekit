@@ -42,7 +42,7 @@ public final class NativeKitDialogActivity extends Activity {
         try {
             startActivityForResult(picker, PICK);
         } catch (RuntimeException error) {
-            complete(false, null);
+            complete(false, null, null);
         }
     }
 
@@ -97,39 +97,48 @@ public final class NativeKitDialogActivity extends Activity {
         if (code != PICK)
             return;
         ArrayList<String> uris = new ArrayList<>();
+        ArrayList<Integer> resourceFlags = new ArrayList<>();
         if (resultCode == RESULT_OK && data != null) {
             ClipData clips = data.getClipData();
             if (clips != null) {
                 for (int index = 0; index < clips.getItemCount(); ++index) {
                     Uri uri = clips.getItemAt(index).getUri();
-                    persistGrant(data, uri);
+                    resourceFlags.add(resourceFlags(data, uri));
                     uris.add(uri.toString());
                 }
             } else {
                 Uri uri = data.getData();
                 if (uri != null) {
-                    persistGrant(data, uri);
+                    resourceFlags.add(resourceFlags(data, uri));
                     uris.add(uri.toString());
                 }
             }
         }
-        complete(resultCode == RESULT_OK && !uris.isEmpty(), uris.toArray(new String[0]));
+        int[] flags = new int[resourceFlags.size()];
+        for (int index = 0; index < resourceFlags.size(); ++index)
+            flags[index] = resourceFlags.get(index);
+        complete(resultCode == RESULT_OK && !uris.isEmpty(), uris.toArray(new String[0]), flags);
     }
 
-    private void complete(boolean accepted, @Nullable String[] uris) {
+    private void complete(boolean accepted, @Nullable String[] uris, @Nullable int[] flags) {
         active.remove(request);
-        NativeKitBridge.nativeOnFileDialog(request, kind, accepted, uris);
+        NativeKitBridge.nativeOnFileDialog(request, kind, accepted, uris, flags);
         finish();
     }
 
-    private void persistGrant(Intent result, Uri uri) {
-        int flags = result.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION |
-                                         Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+    private int resourceFlags(Intent result, Uri uri) {
+        int grants = result.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                                          Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        int flags = (grants & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0 ? 1 : 0;
+        if ((grants & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0)
+            flags |= 2;
         try {
-            getContentResolver().takePersistableUriPermission(uri, flags);
+            getContentResolver().takePersistableUriPermission(uri, grants);
+            flags |= 4;
         } catch (SecurityException ignored) {
             // Some document providers grant access without supporting persistable permissions.
         }
+        return flags;
     }
 
     static boolean cancel(long request) {

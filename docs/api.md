@@ -91,6 +91,7 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_NOTIFICATION_DISMISSED` | none | notification ID | empty; platform reason may be in `flags` |
 | `NK_EVENT_NOTIFICATION_FAILED` | none | notification ID | diagnostic text |
 | `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED` | mobile host | none | `nk_mobile_host_geometry` |
+| `NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE` | none | clipboard read ID | `nk_resource_list` |
 | `NK_EVENT_KEY` | window | none | `nk_key_event` |
 | `NK_EVENT_TEXT_INPUT` | window | none | `nk_text_input_event` |
 | `NK_EVENT_POINTER_MOVE` | window | none | `nk_pointer_move_event` |
@@ -267,8 +268,25 @@ UTF-8 paths. Consumers should use `nk_dialog_event_path()` instead of parsing th
 layout directly. Cancellation is a successful completion with `accepted == 0`.
 
 Android uses the Storage Access Framework for open, save, and directory dialogs.
-Accepted entries are persistable `content://` URIs rather than filesystem paths;
-the packed event representation and decoder are otherwise unchanged.
+Its path-based dialog entry points are unsupported because document-provider
+results are not filesystem paths. Use the resource dialog variants, which return
+the original `content:` URI and access flags through `nk_resource_event_item()`.
+
+## URI resources and sharing
+
+`nk_resource` carries an absolute URI plus optional MIME type and display name.
+It deliberately does not expose a filesystem path. Resource-bearing dialog and
+clipboard events use `nk_resource_list`; decode individual items with
+`nk_resource_event_item()` while the event remains alive.
+
+`nk_shell_open_resource()` views one URI. `nk_share()` hands optional text and
+resource URIs to the platform share UI; success means the share UI was launched,
+not that a recipient consumed the content. Resource clipboard reads remain
+asynchronous and complete with `NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE`.
+
+Android forwards `content:` grants through intents and never exports `file:` URIs.
+Callers must keep the URI and respect its reported readable, writable, and
+persisted flags rather than attempting to derive a local path.
 
 ## Notifications
 

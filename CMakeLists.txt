@@ -80,6 +80,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/joystick.cpp
     src/core/mobile.cpp
     src/core/monitor.cpp
+    src/core/resource.cpp
     src/core/window_extensions.cpp
 )
 add_library(NativeKit::nativekit ALIAS nativekit)

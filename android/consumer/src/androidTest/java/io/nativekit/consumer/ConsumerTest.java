@@ -16,6 +16,7 @@ public final class ConsumerTest {
             scenario.onActivity(activity -> {
                 assertEquals(1, activity.apiVersion());
                 assertNotEquals(0, activity.webViewHandle());
+                assertEquals(0, activity.resourceClipboardProbe());
             });
         }
     }

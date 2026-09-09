@@ -24,6 +24,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -190,6 +191,75 @@ final class NativeKitBridge {
         }
     }
 
+    static int openResource(ViewGroup parent, String uriValue, @Nullable String mimeType) {
+        Uri uri = Uri.parse(uriValue);
+        if (uri.getScheme() == null || uri.getScheme().isEmpty() ||
+            "file".equalsIgnoreCase(uri.getScheme()))
+            return -2;
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(uri, mimeType);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        if (intent.resolveActivity(parent.getContext().getPackageManager()) == null)
+            return -4;
+        try {
+            parent.getContext().startActivity(intent);
+            return 0;
+        } catch (RuntimeException error) {
+            return -1;
+        }
+    }
+
+    static int share(ViewGroup parent, @Nullable String title, @Nullable String text,
+                     String[] uriValues, String[] mimeTypes, String[] displayNames) {
+        ArrayList<Uri> uris = new ArrayList<>();
+        for (String value : uriValues) {
+            Uri uri = Uri.parse(value);
+            if (uri.getScheme() == null || uri.getScheme().isEmpty() ||
+                "file".equalsIgnoreCase(uri.getScheme()))
+                return -2;
+            uris.add(uri);
+        }
+        Intent intent = new Intent(uris.size() > 1 ? Intent.ACTION_SEND_MULTIPLE
+                                                   : Intent.ACTION_SEND);
+        if (text != null)
+            intent.putExtra(Intent.EXTRA_TEXT, text);
+        String type = commonMimeType(mimeTypes);
+        intent.setType(type);
+        if (uris.size() == 1)
+            intent.putExtra(Intent.EXTRA_STREAM, uris.get(0));
+        else if (!uris.isEmpty())
+            intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
+        if (!uris.isEmpty()) {
+            ClipData clip = new ClipData(displayNames.length == 0 ? "NativeKit"
+                                                                  : displayNames[0],
+                                             new String[] {type},
+                                             new ClipData.Item(uris.get(0)));
+            for (int index = 1; index < uris.size(); ++index)
+                clip.addItem(new ClipData.Item(uris.get(index)));
+            intent.setClipData(clip);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        }
+        try {
+            parent.getContext().startActivity(Intent.createChooser(intent, title));
+            return 0;
+        } catch (RuntimeException error) {
+            return -1;
+        }
+    }
+
+    private static String commonMimeType(String[] mimeTypes) {
+        String result = null;
+        for (String value : mimeTypes) {
+            if (value == null || value.isEmpty())
+                return "*/*";
+            if (result == null)
+                result = value;
+            else if (!result.equals(value))
+                return "*/*";
+        }
+        return result == null ? "text/plain" : result;
+    }
+
     static boolean setClipboardText(ViewGroup parent, String text) {
         ClipboardManager clipboard = (ClipboardManager)parent.getContext().getSystemService(
             Context.CLIPBOARD_SERVICE);
@@ -197,6 +267,46 @@ final class NativeKitBridge {
             return false;
         clipboard.setPrimaryClip(ClipData.newPlainText("NativeKit", text));
         return true;
+    }
+
+    static boolean setClipboardResources(ViewGroup parent, String[] uriValues,
+                                         String[] displayNames) {
+        ClipboardManager clipboard = (ClipboardManager)parent.getContext().getSystemService(
+            Context.CLIPBOARD_SERVICE);
+        if (clipboard == null || uriValues.length == 0)
+            return false;
+        Uri first = Uri.parse(uriValues[0]);
+        if (first.getScheme() == null || "file".equalsIgnoreCase(first.getScheme()))
+            return false;
+        ClipData clip = new ClipData(displayNames.length == 0 ? "NativeKit" : displayNames[0],
+                                     new String[] {"text/uri-list"},
+                                     new ClipData.Item(first));
+        for (int index = 1; index < uriValues.length; ++index) {
+            Uri uri = Uri.parse(uriValues[index]);
+            if (uri.getScheme() == null || "file".equalsIgnoreCase(uri.getScheme()))
+                return false;
+            clip.addItem(new ClipData.Item(uri));
+        }
+        clipboard.setPrimaryClip(clip);
+        return true;
+    }
+
+    @Nullable
+    static String[] clipboardResources(ViewGroup parent) {
+        ClipboardManager clipboard = (ClipboardManager)parent.getContext().getSystemService(
+            Context.CLIPBOARD_SERVICE);
+        if (clipboard == null || !clipboard.hasPrimaryClip())
+            return null;
+        ClipData clip = clipboard.getPrimaryClip();
+        if (clip == null)
+            return null;
+        ArrayList<String> uris = new ArrayList<>();
+        for (int index = 0; index < clip.getItemCount(); ++index) {
+            Uri uri = clip.getItemAt(index).getUri();
+            if (uri != null)
+                uris.add(uri.toString());
+        }
+        return uris.toArray(new String[0]);
     }
 
     @Nullable
@@ -393,7 +503,7 @@ final class NativeKitBridge {
                                                 int insetLeft, int insetTop, int insetRight,
                                                 int insetBottom, int keyboardBottom);
     static native void nativeOnFileDialog(long request, int kind, boolean accepted,
-                                          @Nullable String[] uris);
+                                          @Nullable String[] uris, @Nullable int[] resourceFlags);
     static native void nativeOnNotificationDelivered(long request);
     static native void nativeOnNotificationFailed(long request, String message);
     static native void nativeOnNotificationActivated(long request);

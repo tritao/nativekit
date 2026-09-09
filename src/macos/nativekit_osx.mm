@@ -11,6 +11,7 @@
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
 #include "nativekit_notification.h"
+#include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -1486,6 +1487,36 @@ nk_result NK_CALL nk_shell_open_url(const char *url) {
     return [NSWorkspace.sharedWorkspace openURL:native]
                ? NK_OK
                : fail(NK_ERROR_UNKNOWN, "macOS could not open URL");
+}
+
+nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource) {
+    if (!resource || resource->struct_size < sizeof(nk_resource))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "resource descriptor is invalid");
+    return nk_shell_open_url(resource->uri);
+}
+
+nk_result NK_CALL nk_share(const nk_share_options *) {
+    return fail(NK_ERROR_UNSUPPORTED, "resource sharing is not implemented by the macOS backend");
+}
+
+nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *, uint32_t) {
+    return fail(NK_ERROR_UNSUPPORTED, "resource clipboard is not implemented by the macOS backend");
+}
+
+nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *) {
+    return fail(NK_ERROR_UNSUPPORTED, "resource clipboard is not implemented by the macOS backend");
+}
+
+nk_result NK_CALL nk_dialog_open_resource(nk_handle, const nk_file_dialog_options *, nk_request_id *) {
+    return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the macOS backend");
+}
+
+nk_result NK_CALL nk_dialog_save_resource(nk_handle, const nk_file_dialog_options *, nk_request_id *) {
+    return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the macOS backend");
+}
+
+nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle, const nk_file_dialog_options *, nk_request_id *) {
+    return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the macOS backend");
 }
 
 nk_result NK_CALL nk_shell_open_file(const char *path) {

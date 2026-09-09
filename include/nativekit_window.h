@@ -30,7 +30,8 @@ enum {
     NK_CAP_WINDOW_STYLING = UINT64_C(1) << 17,
     NK_CAP_MONITOR = UINT64_C(1) << 18,
     NK_CAP_MONITOR_FULLSCREEN = UINT64_C(1) << 19,
-    NK_CAP_JOYSTICK = UINT64_C(1) << 20
+    NK_CAP_JOYSTICK = UINT64_C(1) << 20,
+    NK_CAP_RESOURCE_SHARING = UINT64_C(1) << 21
 };
 
 typedef uint32_t nk_native_window_kind;

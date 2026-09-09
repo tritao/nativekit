@@ -25,6 +25,8 @@ public final class MainActivity extends Activity {
 
     public long webViewHandle() { return probe & 0xffffffffL; }
 
+    public int resourceClipboardProbe() { return nativeResourceClipboardProbe(); }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -47,4 +49,5 @@ public final class MainActivity extends Activity {
     }
 
     private static native long nativeProbe(long host);
+    private static native int nativeResourceClipboardProbe();
 }
