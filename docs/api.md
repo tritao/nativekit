@@ -1,0 +1,44 @@
+# NativeKit API contracts
+
+NativeKit's public headers are the normative API reference. This document
+collects contracts that span more than one function.
+
+## Threading
+
+The thread that successfully calls `nk_init()` becomes the UI thread. Window,
+WebView, dialog, and event APIs must be called from that thread. A call made on
+another thread returns `NK_ERROR_WRONG_THREAD`. `nk_last_error()` is thread-local.
+
+## Handles
+
+Handles identify resources without exposing native or C++ pointers. They contain
+a slot and generation, so a handle becomes invalid as soon as its resource is
+destroyed and cannot accidentally identify a later occupant of the same slot.
+Destroying a window also invalidates all child WebView handles.
+
+## Events and payloads
+
+`nk_poll_event()` returns events in FIFO order. An empty queue is not an error: it
+returns `NK_OK` with kind `NK_EVENT_NONE`. Every successfully returned event must
+be passed to `nk_event_release()`. The release preserves `struct_size`, allowing
+the same structure to be polled again.
+
+Text event payloads use UTF-8 bytes in `data`; `data_size` excludes a trailing NUL
+and consumers must not assume one exists. Current payloads are:
+
+| Event | Source | Request | Data |
+|---|---|---|---|
+| `NK_EVENT_WINDOW_CLOSE` | window | none | empty |
+| `NK_EVENT_WEBVIEW_NAVIGATED` | WebView | none | resulting URL |
+| `NK_EVENT_WEBVIEW_TITLE_CHANGED` | WebView | none | page title |
+| `NK_EVENT_WEBVIEW_EVAL_COMPLETE` | WebView | evaluation ID | result or error text |
+
+A close event is a request: the window remains alive until the application calls
+`nk_window_destroy()`.
+
+## Capability queries
+
+`nk_get_capabilities()` describes the compiled backend. Callers must still handle
+runtime failures—for example, a Linux build can include GTK support but be unable
+to connect to a display.
+

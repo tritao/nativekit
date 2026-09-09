@@ -80,13 +80,31 @@ typedef struct nk_event {
     uint64_t reserved[2];
 } nk_event;
 
+/* Returns the ABI version implemented by the loaded NativeKit library. */
 NK_API uint32_t NK_CALL nk_api_version(void);
+
+/*
+ * Initializes NativeKit on the calling thread. That thread becomes the UI
+ * thread until nk_shutdown(). Exactly one initialization may be active.
+ */
 NK_API nk_result NK_CALL nk_init(const nk_init_options *options);
+
+/* Destroys all remaining resources. Call on the UI thread. */
 NK_API void NK_CALL nk_shutdown(void);
+
+/*
+ * Returns a thread-local UTF-8 diagnostic for the most recent failing call.
+ * The pointer remains valid until the next NativeKit call on this thread.
+ */
 NK_API const char *NK_CALL nk_last_error(void);
 
-/* Returns NK_OK with NK_EVENT_NONE when no event is available. */
+/*
+ * Polls one event on the UI thread. Returns NK_OK with NK_EVENT_NONE when the
+ * queue is empty. `event` must be zero-initialized with struct_size set.
+ */
 NK_API nk_result NK_CALL nk_poll_event(nk_event *event);
+
+/* Releases an event returned by nk_poll_event; safe for an empty event. */
 NK_API void NK_CALL nk_event_release(nk_event *event);
 
 #ifdef __cplusplus

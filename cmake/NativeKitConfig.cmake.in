@@ -1,5 +1,11 @@
 @PACKAGE_INIT@
 
+include(CMakeFindDependencyMacro)
+if("@NK_BACKEND_GTK_AVAILABLE@")
+    find_dependency(PkgConfig)
+    pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
+    pkg_check_modules(WEBKITGTK REQUIRED IMPORTED_TARGET webkit2gtk-4.1)
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/NativeKitTargets.cmake")
 check_required_components(NativeKit)
-

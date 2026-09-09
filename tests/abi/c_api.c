@@ -1,4 +1,6 @@
 #include "nativekit.h"
+#include "nativekit_webview.h"
+#include "nativekit_window.h"
 
 #include <assert.h>
 #include <string.h>
@@ -9,6 +11,7 @@ int main(void) {
     options.api_version = NK_API_VERSION;
     assert(nk_api_version() == NK_API_VERSION);
     assert(nk_init(&options) == NK_OK);
+    (void)nk_get_capabilities();
     assert(nk_init(&options) == NK_ERROR_ALREADY_INITIALIZED);
     assert(strlen(nk_last_error()) > 0);
 
