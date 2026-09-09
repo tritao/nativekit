@@ -84,6 +84,11 @@ nk_result EventQueue::poll(nk_event &output) {
     return NK_OK;
 }
 
+bool EventQueue::empty() {
+    std::lock_guard lock(mutex_);
+    return queue_.empty();
+}
+
 void EventQueue::clear() {
     std::lock_guard lock(mutex_);
     queue_.clear();

@@ -10,6 +10,7 @@
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
+#include "nativekit_time.h"
 #include "nativekit_vulkan.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -19,6 +20,8 @@
 #include <string.h>
 
 int main(void) {
+    assert(nk_time_now_ns() > 0);
+    assert(nk_time_seconds() > 0.0);
     nk_init_options options = {0};
     options.struct_size = sizeof(options);
     options.api_version = NK_API_VERSION;

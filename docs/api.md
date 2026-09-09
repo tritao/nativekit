@@ -299,6 +299,19 @@ other kinds preserve their position relative to resize events.
 runtime failures—for example, a Linux build can include GTK support but be unable
 to connect to a display.
 
+## Time and event waits
+
+`nativekit_time.h` exposes monotonic nanosecond and floating-point second clocks;
+their unspecified epoch is stable for the process and does not depend on
+`nk_init()`. Use differences between readings rather than interpreting them as
+wall-clock timestamps.
+
+`nk_wait_events()` blocks the UI thread until NativeKit queues an event or
+another thread calls `nk_wake_events()`. The timeout variant uses a monotonic
+deadline and returns `NK_OK` on either an event, explicit wake, or timeout; call
+`nk_poll_event()` afterwards to distinguish an event from an empty wake. GTK is
+pumped in bounded blocking slices, and already-queued events return immediately.
+
 ## Shell and system strings
 
 Shell operations submit work to the desktop on the UI thread. Reveal first uses

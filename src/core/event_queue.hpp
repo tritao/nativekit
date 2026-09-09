@@ -25,6 +25,7 @@ class EventQueue {
     explicit EventQueue(std::size_t capacity);
     nk_result push(QueuedEvent event);
     nk_result poll(nk_event &output);
+    bool empty();
     void clear();
 
   private:

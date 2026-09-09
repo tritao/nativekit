@@ -5,6 +5,7 @@
 #include "core/runtime.hpp"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstddef>
 #include <memory>
 #include <mutex>
@@ -20,6 +21,9 @@ nk::core::HandleRegistry handle_registry;
 std::atomic<nk_request_id> next_request{1};
 std::atomic<std::uint64_t> generation_counter{0};
 std::atomic<std::uint64_t> active_generation{0};
+std::atomic<std::uint64_t> event_wake_sequence{0};
+std::mutex event_wake_mutex;
+std::condition_variable event_wake_condition;
 constexpr std::uint32_t default_queue_capacity = 1024;
 
 bool valid_event_struct(const nk_event *event) {
@@ -48,10 +52,15 @@ HandleRegistry &handles() noexcept {
 
 nk_result push_event(QueuedEvent event) noexcept {
     try {
-        std::lock_guard lock(state_mutex);
-        if (!event_queue)
-            return NK_ERROR_NOT_INITIALIZED;
-        return event_queue->push(std::move(event));
+        nk_result result = NK_ERROR_NOT_INITIALIZED;
+        {
+            std::lock_guard lock(state_mutex);
+            if (event_queue)
+                result = event_queue->push(std::move(event));
+        }
+        if (result == NK_OK)
+            event_wake_condition.notify_all();
+        return result;
     } catch (...) {
         return NK_ERROR_OUT_OF_MEMORY;
     }
@@ -70,6 +79,28 @@ std::uint64_t runtime_generation() noexcept {
 
 bool is_runtime_generation(std::uint64_t generation) noexcept {
     return generation != 0 && generation == runtime_generation();
+}
+
+bool events_pending() noexcept {
+    std::lock_guard lock(state_mutex);
+    return event_queue && !event_queue->empty();
+}
+
+std::uint64_t wake_sequence() noexcept {
+    return event_wake_sequence.load(std::memory_order_acquire);
+}
+
+bool wait_for_wake(std::uint64_t sequence, std::chrono::milliseconds timeout) noexcept {
+    std::unique_lock lock(event_wake_mutex);
+    return event_wake_condition.wait_for(lock, timeout, [sequence] {
+        return event_wake_sequence.load(std::memory_order_acquire) != sequence ||
+               events_pending();
+    });
+}
+
+void wake_events() noexcept {
+    event_wake_sequence.fetch_add(1, std::memory_order_release);
+    event_wake_condition.notify_all();
 }
 
 } // namespace nk::core
