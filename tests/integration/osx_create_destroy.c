@@ -77,6 +77,11 @@ int main(void) {
     assert(nk_window_set_bounds(window, 20, 20, 800, 600) == NK_OK);
     float scale = 0.0f;
     assert(nk_window_get_scale(window, &scale) == NK_OK);
+    nk_window_state state = {0}; state.struct_size = sizeof(state);
+    assert(nk_window_get_state(window, &state) == NK_OK);
+    nk_window_size_limits limits = {0}; limits.struct_size = sizeof(limits);
+    limits.min_width = 320; limits.min_height = 240;
+    assert(nk_window_set_size_limits(window, &limits) == NK_OK);
     assert(scale >= 1.0f);
     nk_native_window native = {0};
     native.struct_size = sizeof(native);

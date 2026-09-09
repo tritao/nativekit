@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdlib>
+#include <cfloat>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -551,6 +552,21 @@ bool has_notification(nk_request_id request, uint64_t generation) {
     return found != notifications.end() && found->second == generation;
 }
 
+void emit_window_state(MacWindowResource& resource) noexcept {
+    nk::core::callback_boundary([&] {
+        nk_window_state state{sizeof(state), 0, {0, 0}};
+        if (resource.window.visible) state.flags |= NK_WINDOW_STATE_VISIBLE;
+        if (resource.window.keyWindow) state.flags |= NK_WINDOW_STATE_ACTIVE;
+        if (resource.window.miniaturized) state.flags |= NK_WINDOW_STATE_MINIMIZED;
+        if (resource.window.zoomed) state.flags |= NK_WINDOW_STATE_MAXIMIZED;
+        if (resource.window.styleMask & NSWindowStyleMaskFullScreen)
+            state.flags |= NK_WINDOW_STATE_FULLSCREEN;
+        nk::core::QueuedEvent event; event.kind = NK_EVENT_WINDOW_STATE_CHANGED;
+        event.source = resource.handle; event.data = bytes_of(state);
+        nk::core::push_event(std::move(event));
+    });
+}
+
 } // namespace
 
 @implementation NKNotificationDelegate
@@ -605,7 +621,12 @@ bool has_notification(nk_request_id request, uint64_t generation) {
     event.data = bytes_of(nk_window_resize_event{
         static_cast<int32_t>(size.width), static_cast<int32_t>(size.height)});
     nk::core::push_event(std::move(event));
+    emit_window_state(*resource);
 }
+- (void)windowDidMiniaturize:(NSNotification*)notification { (void)notification; auto* r=static_cast<MacWindowResource*>(_resource);if(r)emit_window_state(*r); }
+- (void)windowDidDeminiaturize:(NSNotification*)notification { (void)notification; auto* r=static_cast<MacWindowResource*>(_resource);if(r)emit_window_state(*r); }
+- (void)windowDidBecomeKey:(NSNotification*)notification { (void)notification; auto* r=static_cast<MacWindowResource*>(_resource);if(r)emit_window_state(*r); }
+- (void)windowDidResignKey:(NSNotification*)notification { (void)notification; auto* r=static_cast<MacWindowResource*>(_resource);if(r)emit_window_state(*r); }
 - (void)windowDidChangeBackingProperties:(NSNotification*)notification {
     (void)notification;
     auto* resource = static_cast<MacWindowResource*>(_resource);
@@ -931,6 +952,15 @@ nk_result NK_CALL nk_window_get_scale(nk_handle handle, float* out_scale) {
     *out_scale = static_cast<float>(resource->window.backingScaleFactor);
     return NK_OK;
 }
+
+nk_result NK_CALL nk_window_get_state(nk_handle h,nk_window_state* out){if(const auto r=enter_ui();r!=NK_OK)return r;if(!out||out->struct_size<sizeof(*out))return fail(NK_ERROR_INVALID_ARGUMENT,"window state output is missing or too small");auto w=window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");auto size=out->struct_size;*out={};out->struct_size=size;if(w->window.visible)out->flags|=NK_WINDOW_STATE_VISIBLE;if(w->window.keyWindow)out->flags|=NK_WINDOW_STATE_ACTIVE;if(w->window.miniaturized)out->flags|=NK_WINDOW_STATE_MINIMIZED;if(w->window.zoomed)out->flags|=NK_WINDOW_STATE_MAXIMIZED;if(w->window.styleMask&NSWindowStyleMaskFullScreen)out->flags|=NK_WINDOW_STATE_FULLSCREEN;return NK_OK;}
+nk_result NK_CALL nk_window_minimize(nk_handle h){if(const auto r=enter_ui();r!=NK_OK)return r;auto w=window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");[w->window miniaturize:nil];return NK_OK;}
+nk_result NK_CALL nk_window_maximize(nk_handle h){if(const auto r=enter_ui();r!=NK_OK)return r;auto w=window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");if(!w->window.zoomed)[w->window zoom:nil];return NK_OK;}
+nk_result NK_CALL nk_window_restore(nk_handle h){if(const auto r=enter_ui();r!=NK_OK)return r;auto w=window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");if(w->window.miniaturized)[w->window deminiaturize:nil];if(w->window.zoomed)[w->window zoom:nil];return NK_OK;}
+nk_result NK_CALL nk_window_activate(nk_handle h){if(const auto r=enter_ui();r!=NK_OK)return r;auto w=window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");[NSApp activateIgnoringOtherApps:YES];[w->window makeKeyAndOrderFront:nil];return NK_OK;}
+nk_result NK_CALL nk_window_set_fullscreen(nk_handle h,uint32_t enabled){if(const auto r=enter_ui();r!=NK_OK)return r;auto w=window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");bool current=(w->window.styleMask&NSWindowStyleMaskFullScreen)!=0;if(current!=!!enabled)[w->window toggleFullScreen:nil];return NK_OK;}
+nk_result NK_CALL nk_window_request_attention(nk_handle h){if(const auto r=enter_ui();r!=NK_OK)return r;if(!window(h))return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");[NSApp requestUserAttention:NSCriticalRequest];return NK_OK;}
+nk_result NK_CALL nk_window_set_size_limits(nk_handle h,const nk_window_size_limits* l){if(const auto r=enter_ui();r!=NK_OK)return r;if(!l||l->struct_size<sizeof(*l)||l->min_width<0||l->min_height<0||l->max_width<0||l->max_height<0||(l->max_width&&l->max_width<l->min_width)||(l->max_height&&l->max_height<l->min_height))return fail(NK_ERROR_INVALID_ARGUMENT,"invalid window size limits");auto w=window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");w->window.contentMinSize=NSMakeSize(l->min_width,l->min_height);w->window.contentMaxSize=NSMakeSize(l->max_width?l->max_width:FLT_MAX,l->max_height?l->max_height:FLT_MAX);return NK_OK;}
 
 nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window* out_native) {
     if (const auto result = enter_ui(); result != NK_OK) return result;

@@ -215,6 +215,30 @@ void on_window_scale(GtkWidget* widget, GParamSpec*, gpointer data) {
     });
 }
 
+gboolean on_window_state(GtkWidget*, GdkEventWindowState* state, gpointer data) {
+    nk::core::callback_boundary([&] {
+        const auto* resource = static_cast<GtkWindowResource*>(data);
+        if (!nk::core::is_runtime_generation(resource->generation)) return;
+        nk_window_state payload{sizeof(payload), 0, {0, 0}};
+        if (!(state->new_window_state & GDK_WINDOW_STATE_WITHDRAWN))
+            payload.flags |= NK_WINDOW_STATE_VISIBLE;
+        if (state->new_window_state & GDK_WINDOW_STATE_FOCUSED)
+            payload.flags |= NK_WINDOW_STATE_ACTIVE;
+        if (state->new_window_state & GDK_WINDOW_STATE_ICONIFIED)
+            payload.flags |= NK_WINDOW_STATE_MINIMIZED;
+        if (state->new_window_state & GDK_WINDOW_STATE_MAXIMIZED)
+            payload.flags |= NK_WINDOW_STATE_MAXIMIZED;
+        if (state->new_window_state & GDK_WINDOW_STATE_FULLSCREEN)
+            payload.flags |= NK_WINDOW_STATE_FULLSCREEN;
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WINDOW_STATE_CHANGED;
+        event.source = resource->handle;
+        event.data = bytes_of(payload);
+        nk::core::push_event(std::move(event));
+    });
+    return FALSE;
+}
+
 uint32_t navigation_error_category(const GError* error) {
     if (error->domain == WEBKIT_NETWORK_ERROR) {
         switch (error->code) {
@@ -997,6 +1021,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options* options, nk_handle* 
         g_signal_connect(resource->window, "delete-event", G_CALLBACK(on_window_delete), resource.get());
         g_signal_connect(resource->window, "configure-event", G_CALLBACK(on_window_configure), resource.get());
         g_signal_connect(resource->window, "notify::scale-factor", G_CALLBACK(on_window_scale), resource.get());
+        g_signal_connect(resource->window, "window-state-event", G_CALLBACK(on_window_state), resource.get());
         if ((options->flags & NK_WINDOW_HIDDEN) == 0) gtk_widget_show_all(resource->window);
         *out_window = resource->handle;
         return NK_OK;
@@ -1057,6 +1082,41 @@ nk_result NK_CALL nk_window_get_scale(nk_handle handle, float* out_scale) {
     if (!resource) return invalid_handle("window");
     *out_scale = static_cast<float>(gtk_widget_get_scale_factor(resource->window));
     return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_state(nk_handle handle, nk_window_state* out) {
+    if (const auto result = enter_ui(); result != NK_OK) return result;
+    if (!out || out->struct_size < sizeof(*out))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "window state output is missing or too small");
+    auto resource = window(handle);
+    if (!resource) return invalid_handle("window");
+    const auto size = out->struct_size;
+    *out = {};
+    out->struct_size = size;
+    if (gtk_widget_get_visible(resource->window)) out->flags |= NK_WINDOW_STATE_VISIBLE;
+    if (gtk_window_is_active(GTK_WINDOW(resource->window))) out->flags |= NK_WINDOW_STATE_ACTIVE;
+    if (GdkWindow* native = gtk_widget_get_window(resource->window)) {
+        const auto state = gdk_window_get_state(native);
+        if (state & GDK_WINDOW_STATE_ICONIFIED) out->flags |= NK_WINDOW_STATE_MINIMIZED;
+        if (state & GDK_WINDOW_STATE_MAXIMIZED) out->flags |= NK_WINDOW_STATE_MAXIMIZED;
+        if (state & GDK_WINDOW_STATE_FULLSCREEN) out->flags |= NK_WINDOW_STATE_FULLSCREEN;
+    }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_minimize(nk_handle h) { if (const auto r=enter_ui();r!=NK_OK)return r; auto w=window(h);if(!w)return invalid_handle("window");gtk_window_iconify(GTK_WINDOW(w->window));return NK_OK; }
+nk_result NK_CALL nk_window_maximize(nk_handle h) { if (const auto r=enter_ui();r!=NK_OK)return r; auto w=window(h);if(!w)return invalid_handle("window");gtk_window_maximize(GTK_WINDOW(w->window));return NK_OK; }
+nk_result NK_CALL nk_window_restore(nk_handle h) { if (const auto r=enter_ui();r!=NK_OK)return r; auto w=window(h);if(!w)return invalid_handle("window");gtk_window_deiconify(GTK_WINDOW(w->window));gtk_window_unmaximize(GTK_WINDOW(w->window));gtk_window_unfullscreen(GTK_WINDOW(w->window));return NK_OK; }
+nk_result NK_CALL nk_window_activate(nk_handle h) { if (const auto r=enter_ui();r!=NK_OK)return r; auto w=window(h);if(!w)return invalid_handle("window");gtk_window_present(GTK_WINDOW(w->window));return NK_OK; }
+nk_result NK_CALL nk_window_set_fullscreen(nk_handle h,uint32_t enabled) { if (const auto r=enter_ui();r!=NK_OK)return r;auto w=window(h);if(!w)return invalid_handle("window");enabled?gtk_window_fullscreen(GTK_WINDOW(w->window)):gtk_window_unfullscreen(GTK_WINDOW(w->window));return NK_OK; }
+nk_result NK_CALL nk_window_request_attention(nk_handle h) { if (const auto r=enter_ui();r!=NK_OK)return r;auto w=window(h);if(!w)return invalid_handle("window");gtk_window_set_urgency_hint(GTK_WINDOW(w->window),TRUE);return NK_OK; }
+nk_result NK_CALL nk_window_set_size_limits(nk_handle h,const nk_window_size_limits* limits) {
+    if (const auto r=enter_ui();r!=NK_OK)return r;
+    if(!limits||limits->struct_size<sizeof(*limits)||limits->min_width<0||limits->min_height<0||limits->max_width<0||limits->max_height<0||(limits->max_width&&limits->max_width<limits->min_width)||(limits->max_height&&limits->max_height<limits->min_height))return fail(NK_ERROR_INVALID_ARGUMENT,"invalid window size limits");
+    auto w=window(h);if(!w)return invalid_handle("window");
+    GdkGeometry geometry{}; geometry.min_width=limits->min_width;geometry.min_height=limits->min_height;geometry.max_width=limits->max_width;geometry.max_height=limits->max_height;
+    GdkWindowHints hints=static_cast<GdkWindowHints>(0);if(limits->min_width||limits->min_height)hints=static_cast<GdkWindowHints>(hints|GDK_HINT_MIN_SIZE);if(limits->max_width||limits->max_height)hints=static_cast<GdkWindowHints>(hints|GDK_HINT_MAX_SIZE);
+    gtk_window_set_geometry_hints(GTK_WINDOW(w->window),nullptr,&geometry,hints);return NK_OK;
 }
 
 nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window* out_native) {

@@ -186,6 +186,10 @@ struct WinWindowResource final : nk::core::Resource {
     bool modal = false;
     bool modal_active = false;
     uint32_t active_modal_children = 0;
+    bool fullscreen = false;
+    WINDOWPLACEMENT placement{};
+    LONG_PTR windowed_style = 0;
+    int32_t min_width = 0, min_height = 0, max_width = 0, max_height = 0;
     bool drops_enabled = false;
     std::vector<nk_handle> children;
     std::vector<nk_handle> owned_windows;
@@ -380,6 +384,14 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(resource));
     }
     if (resource && resource->handle != NK_INVALID_HANDLE) {
+        if (message == WM_GETMINMAXINFO) {
+            auto* info = reinterpret_cast<MINMAXINFO*>(lparam);
+            if (resource->min_width) info->ptMinTrackSize.x = resource->min_width;
+            if (resource->min_height) info->ptMinTrackSize.y = resource->min_height;
+            if (resource->max_width) info->ptMaxTrackSize.x = resource->max_width;
+            if (resource->max_height) info->ptMaxTrackSize.y = resource->max_height;
+            return 0;
+        }
         if (message == WM_DROPFILES && resource->drops_enabled) {
             emit_drop_files(*resource, reinterpret_cast<HDROP>(wparam));
             return 0;
@@ -401,6 +413,17 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 event.source = resource->handle;
                 event.data = bytes_of(size);
                 nk::core::push_event(std::move(event));
+            });
+            nk::core::callback_boundary([&] {
+                nk_window_state state{sizeof(state), 0, {0, 0}};
+                if (IsWindowVisible(window)) state.flags |= NK_WINDOW_STATE_VISIBLE;
+                if (GetForegroundWindow() == window) state.flags |= NK_WINDOW_STATE_ACTIVE;
+                if (IsIconic(window)) state.flags |= NK_WINDOW_STATE_MINIMIZED;
+                if (IsZoomed(window)) state.flags |= NK_WINDOW_STATE_MAXIMIZED;
+                if (resource->fullscreen) state.flags |= NK_WINDOW_STATE_FULLSCREEN;
+                nk::core::QueuedEvent event;
+                event.kind = NK_EVENT_WINDOW_STATE_CHANGED; event.source = resource->handle;
+                event.data = bytes_of(state); nk::core::push_event(std::move(event));
             });
         }
         if (message == WM_DPICHANGED) {
@@ -1467,6 +1490,15 @@ nk_result NK_CALL nk_window_get_scale(nk_handle handle, float* out_scale) {
     *out_scale = static_cast<float>(query_window_dpi(resource->window)) / 96.0f;
     return NK_OK;
 }
+
+nk_result NK_CALL nk_window_get_state(nk_handle h,nk_window_state* out){if(const auto r=enter_ui();r!=NK_OK)return r;if(!out||out->struct_size<sizeof(*out))return fail(NK_ERROR_INVALID_ARGUMENT,"window state output is missing or too small");auto w=get_window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");auto size=out->struct_size;*out={};out->struct_size=size;if(IsWindowVisible(w->window))out->flags|=NK_WINDOW_STATE_VISIBLE;if(GetForegroundWindow()==w->window)out->flags|=NK_WINDOW_STATE_ACTIVE;if(IsIconic(w->window))out->flags|=NK_WINDOW_STATE_MINIMIZED;if(IsZoomed(w->window))out->flags|=NK_WINDOW_STATE_MAXIMIZED;if(w->fullscreen)out->flags|=NK_WINDOW_STATE_FULLSCREEN;return NK_OK;}
+nk_result NK_CALL nk_window_minimize(nk_handle h){if(const auto r=enter_ui();r!=NK_OK)return r;auto w=get_window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");ShowWindow(w->window,SW_MINIMIZE);return NK_OK;}
+nk_result NK_CALL nk_window_maximize(nk_handle h){if(const auto r=enter_ui();r!=NK_OK)return r;auto w=get_window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");ShowWindow(w->window,SW_MAXIMIZE);return NK_OK;}
+nk_result NK_CALL nk_window_restore(nk_handle h){if(const auto r=enter_ui();r!=NK_OK)return r;auto w=get_window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");if(w->fullscreen)nk_window_set_fullscreen(h,0);ShowWindow(w->window,SW_RESTORE);return NK_OK;}
+nk_result NK_CALL nk_window_activate(nk_handle h){if(const auto r=enter_ui();r!=NK_OK)return r;auto w=get_window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");ShowWindow(w->window,SW_SHOW);return SetForegroundWindow(w->window)?NK_OK:fail(NK_ERROR_UNKNOWN,"Windows denied window activation");}
+nk_result NK_CALL nk_window_set_fullscreen(nk_handle h,uint32_t enabled){if(const auto r=enter_ui();r!=NK_OK)return r;auto w=get_window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");if(!!enabled==w->fullscreen)return NK_OK;if(enabled){w->placement.length=sizeof(w->placement);GetWindowPlacement(w->window,&w->placement);w->windowed_style=GetWindowLongPtrW(w->window,GWL_STYLE);MONITORINFO monitor{};monitor.cbSize=sizeof(monitor);GetMonitorInfoW(MonitorFromWindow(w->window,MONITOR_DEFAULTTONEAREST),&monitor);SetWindowLongPtrW(w->window,GWL_STYLE,w->windowed_style&~WS_OVERLAPPEDWINDOW);SetWindowPos(w->window,HWND_TOP,monitor.rcMonitor.left,monitor.rcMonitor.top,monitor.rcMonitor.right-monitor.rcMonitor.left,monitor.rcMonitor.bottom-monitor.rcMonitor.top,SWP_FRAMECHANGED|SWP_NOOWNERZORDER);w->fullscreen=true;}else{SetWindowLongPtrW(w->window,GWL_STYLE,w->windowed_style);SetWindowPlacement(w->window,&w->placement);SetWindowPos(w->window,nullptr,0,0,0,0,SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_NOOWNERZORDER);w->fullscreen=false;}return NK_OK;}
+nk_result NK_CALL nk_window_request_attention(nk_handle h){if(const auto r=enter_ui();r!=NK_OK)return r;auto w=get_window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");FLASHWINFO info{sizeof(info),w->window,FLASHW_TRAY|FLASHW_TIMERNOFG,3,0};return FlashWindowEx(&info)?NK_OK:fail(NK_ERROR_UNKNOWN,"could not request window attention");}
+nk_result NK_CALL nk_window_set_size_limits(nk_handle h,const nk_window_size_limits* l){if(const auto r=enter_ui();r!=NK_OK)return r;if(!l||l->struct_size<sizeof(*l)||l->min_width<0||l->min_height<0||l->max_width<0||l->max_height<0||(l->max_width&&l->max_width<l->min_width)||(l->max_height&&l->max_height<l->min_height))return fail(NK_ERROR_INVALID_ARGUMENT,"invalid window size limits");auto w=get_window(h);if(!w)return fail(NK_ERROR_INVALID_HANDLE,"invalid or stale window handle");w->min_width=l->min_width;w->min_height=l->min_height;w->max_width=l->max_width;w->max_height=l->max_height;SetWindowPos(w->window,nullptr,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_FRAMECHANGED);return NK_OK;}
 
 nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window* out_native) {
     if (const auto result = enter_ui(); result != NK_OK) return result;

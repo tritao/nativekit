@@ -40,6 +40,11 @@ handles. A modal window must have an owner. Because owners must already exist at
 creation time, the ownership graph cannot contain cycles. WebViews remain the
 only portable native child surface in the initial API.
 
+Window state is queried as a versioned value and changes are emitted as
+`NK_EVENT_WINDOW_STATE_CHANGED`. Minimize, maximize, restore, activation,
+fullscreen, attention, and logical-pixel size constraints are explicit
+operations; they do not introduce a command or widget hierarchy.
+
 ## Events and payloads
 
 `nk_poll_event()` returns events in FIFO order. An empty queue is not an error: it
@@ -55,6 +60,7 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_WINDOW_CLOSE` | window | none | empty |
 | `NK_EVENT_WINDOW_RESIZE` | window | none | `nk_window_resize_event` |
 | `NK_EVENT_WINDOW_SCALE_CHANGED` | window | none | `nk_window_scale_event` |
+| `NK_EVENT_WINDOW_STATE_CHANGED` | window | none | `nk_window_state` |
 | `NK_EVENT_WEBVIEW_NAVIGATED` | WebView | none | resulting URL |
 | `NK_EVENT_WEBVIEW_TITLE_CHANGED` | WebView | none | page title |
 | `NK_EVENT_WEBVIEW_MESSAGE` | WebView | none | JSON value or serialization error text |

@@ -79,6 +79,29 @@ typedef struct nk_window_scale_event {
     float scale;
 } nk_window_scale_event;
 
+enum {
+    NK_WINDOW_STATE_VISIBLE = 1u << 0,
+    NK_WINDOW_STATE_ACTIVE = 1u << 1,
+    NK_WINDOW_STATE_MINIMIZED = 1u << 2,
+    NK_WINDOW_STATE_MAXIMIZED = 1u << 3,
+    NK_WINDOW_STATE_FULLSCREEN = 1u << 4
+};
+
+typedef struct nk_window_state {
+    uint32_t struct_size;
+    uint32_t flags;
+    uint64_t reserved[2];
+} nk_window_state;
+
+typedef struct nk_window_size_limits {
+    uint32_t struct_size;
+    int32_t min_width;
+    int32_t min_height;
+    int32_t max_width;
+    int32_t max_height;
+    uint64_t reserved[2];
+} nk_window_size_limits;
+
 /* Returns process-wide capabilities of the compiled platform backend. */
 NK_API nk_capabilities NK_CALL nk_get_capabilities(void);
 
@@ -107,6 +130,17 @@ NK_API nk_result NK_CALL nk_window_set_bounds(
 
 /* Writes the current logical-to-device-pixel scale. UI thread only. */
 NK_API nk_result NK_CALL nk_window_get_scale(nk_handle window, float *out_scale);
+NK_API nk_result NK_CALL nk_window_get_state(
+    nk_handle window, nk_window_state *out_state);
+NK_API nk_result NK_CALL nk_window_minimize(nk_handle window);
+NK_API nk_result NK_CALL nk_window_maximize(nk_handle window);
+NK_API nk_result NK_CALL nk_window_restore(nk_handle window);
+NK_API nk_result NK_CALL nk_window_activate(nk_handle window);
+NK_API nk_result NK_CALL nk_window_set_fullscreen(nk_handle window, uint32_t enabled);
+NK_API nk_result NK_CALL nk_window_request_attention(nk_handle window);
+/* Zero disables the corresponding constraint; maxima must not be below minima. */
+NK_API nk_result NK_CALL nk_window_set_size_limits(
+    nk_handle window, const nk_window_size_limits *limits);
 
 /*
  * Returns a borrowed platform descriptor. Its pointer-sized values are valid
