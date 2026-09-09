@@ -1,3 +1,4 @@
 <resources>
     <item name="nativekit_handle" type="id" />
+    <item name="nativekit_layout_listener" type="id" />
 </resources>

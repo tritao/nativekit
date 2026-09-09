@@ -42,6 +42,10 @@ The host application forwards active, inactive, and background transitions with
 and receives the current `JNIEnv*` and a `ViewGroup`. Those JNI values are used
 only during the call, and the backend retains its own global reference.
 
+Container size, display scale, system-bar safe insets, and software-keyboard
+inset changes produce `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED`. Geometry and
+WebView bounds use logical pixels on mobile just as they do on desktop.
+
 ## Window ownership
 
 NativeKit supports multiple independent top-level windows. A new window may
@@ -86,6 +90,7 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_NOTIFICATION_ACTIVATED` | none | notification ID | optional platform action identifier |
 | `NK_EVENT_NOTIFICATION_DISMISSED` | none | notification ID | empty; platform reason may be in `flags` |
 | `NK_EVENT_NOTIFICATION_FAILED` | none | notification ID | diagnostic text |
+| `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED` | mobile host | none | `nk_mobile_host_geometry` |
 
 A close event is a request: the window remains alive until the application calls
 `nk_window_destroy()`.

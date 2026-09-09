@@ -49,6 +49,75 @@ std::vector<std::byte> bytes(const char *value) {
     return {first, first + std::char_traits<char>::length(value)};
 }
 
+template <typename T> std::vector<std::byte> bytes_of(const T &value) {
+    const auto *first = reinterpret_cast<const std::byte *>(&value);
+    return {first, first + sizeof(value)};
+}
+
+std::string to_utf8(JNIEnv *env, jstring value) {
+    if (!value)
+        return {};
+    const auto length = env->GetStringLength(value);
+    const auto *characters = env->GetStringChars(value, nullptr);
+    if (!characters)
+        return {};
+    std::string result;
+    result.reserve(static_cast<std::size_t>(length));
+    for (jsize index = 0; index < length; ++index) {
+        std::uint32_t codepoint = characters[index];
+        if (codepoint >= 0xd800 && codepoint <= 0xdbff && index + 1 < length) {
+            const std::uint32_t low = characters[index + 1];
+            if (low >= 0xdc00 && low <= 0xdfff) {
+                codepoint = UINT32_C(0x10000) + ((codepoint - 0xd800) << 10) + (low - 0xdc00);
+                ++index;
+            }
+        }
+        if (codepoint <= 0x7f) {
+            result.push_back(static_cast<char>(codepoint));
+        } else if (codepoint <= 0x7ff) {
+            result.push_back(static_cast<char>(0xc0 | (codepoint >> 6)));
+            result.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+        } else if (codepoint <= 0xffff) {
+            result.push_back(static_cast<char>(0xe0 | (codepoint >> 12)));
+            result.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
+            result.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+        } else {
+            result.push_back(static_cast<char>(0xf0 | (codepoint >> 18)));
+            result.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3f)));
+            result.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
+            result.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+        }
+    }
+    env->ReleaseStringChars(value, characters);
+    return result;
+}
+
+jstring from_utf8(JNIEnv *env, const char *value) {
+    if (!value)
+        return nullptr;
+    const auto length = std::char_traits<char>::length(value);
+    auto array = env->NewByteArray(static_cast<jsize>(length));
+    if (!array)
+        return nullptr;
+    env->SetByteArrayRegion(array, 0, static_cast<jsize>(length),
+                            reinterpret_cast<const jbyte *>(value));
+    auto string_class = env->FindClass("java/lang/String");
+    auto constructor = string_class
+                           ? env->GetMethodID(string_class, "<init>", "([BLjava/lang/String;)V")
+                           : nullptr;
+    auto encoding = env->NewStringUTF("UTF-8");
+    auto result =
+        constructor
+            ? static_cast<jstring>(env->NewObject(string_class, constructor, array, encoding))
+            : nullptr;
+    if (encoding)
+        env->DeleteLocalRef(encoding);
+    if (string_class)
+        env->DeleteLocalRef(string_class);
+    env->DeleteLocalRef(array);
+    return result;
+}
+
 JNIEnv *environment() {
     if (!java_vm)
         return nullptr;
@@ -316,7 +385,7 @@ nk_result NK_CALL nk_webview_create(nk_handle parent, const nk_webview_options *
             auto method = env->GetStaticMethodID(
                 bridge, "create",
                 "(Landroid/view/ViewGroup;JIIIIILjava/lang/String;)Landroid/webkit/WebView;");
-            auto url = options->initial_url ? env->NewStringUTF(options->initial_url) : nullptr;
+            auto url = from_utf8(env, options->initial_url);
             jobject view =
                 method
                     ? env->CallStaticObjectMethod(
@@ -397,7 +466,7 @@ nk_result NK_CALL nk_webview_navigate(nk_handle handle, const char *url) {
     if (!resource || !url)
         return !resource ? NK_ERROR_INVALID_HANDLE : NK_ERROR_INVALID_ARGUMENT;
     auto *env = environment();
-    auto value = env->NewStringUTF(url);
+    auto value = from_utf8(env, url);
     jvalue arguments[3]{};
     arguments[0].l = resource->view;
     arguments[1].l = value;
@@ -416,8 +485,8 @@ nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char *html, const 
     if (!resource || !html)
         return !resource ? NK_ERROR_INVALID_HANDLE : NK_ERROR_INVALID_ARGUMENT;
     auto *env = environment();
-    auto html_value = env->NewStringUTF(html);
-    auto base_value = base_url ? env->NewStringUTF(base_url) : nullptr;
+    auto html_value = from_utf8(env, html);
+    auto base_value = from_utf8(env, base_url);
     jvalue arguments[3]{};
     arguments[0].l = resource->view;
     arguments[1].l = html_value;
@@ -441,7 +510,7 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
         return !resource ? NK_ERROR_INVALID_HANDLE : NK_ERROR_INVALID_ARGUMENT;
     const auto request = nk::core::next_request_id();
     auto *env = environment();
-    auto value = env->NewStringUTF(script);
+    auto value = from_utf8(env, script);
     jvalue arguments[3]{};
     arguments[0].l = resource->view;
     arguments[1].j = static_cast<jlong>(request);
@@ -473,7 +542,7 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t a
     if (!resource)
         return NK_ERROR_INVALID_HANDLE;
     auto *env = environment();
-    auto value = env->NewStringUTF(decision.url.c_str());
+    auto value = from_utf8(env, decision.url.c_str());
     jvalue arguments[3]{};
     arguments[0].l = resource->view;
     arguments[1].l = value;
@@ -513,16 +582,14 @@ JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeCreateWebView(JNIE
                                                                             jlong host_handle,
                                                                             jint width, jint height,
                                                                             jstring initial_url) {
-    const char *url = initial_url ? env->GetStringUTFChars(initial_url, nullptr) : nullptr;
+    const auto url = to_utf8(env, initial_url);
     nk_webview_options options{};
     options.struct_size = sizeof(options);
     options.width = width;
     options.height = height;
-    options.initial_url = url;
+    options.initial_url = initial_url ? url.c_str() : nullptr;
     nk_handle result = NK_INVALID_HANDLE;
     const auto status = nk_webview_create(static_cast<nk_handle>(host_handle), &options, &result);
-    if (url)
-        env->ReleaseStringUTFChars(initial_url, url);
     return status == NK_OK ? static_cast<jlong>(result) : 0;
 }
 
@@ -542,11 +609,9 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnMessage(JNIEnv 
                                                                          jlong handle,
                                                                          jstring json) {
     nk::core::callback_boundary([&] {
-        const char *value = json ? env->GetStringUTFChars(json, nullptr) : nullptr;
-        emit_text(NK_EVENT_WEBVIEW_MESSAGE, static_cast<nk_handle>(handle), value,
+        const auto value = to_utf8(env, json);
+        emit_text(NK_EVENT_WEBVIEW_MESSAGE, static_cast<nk_handle>(handle), value.c_str(),
                   json ? NK_OK : NK_ERROR_UNKNOWN);
-        if (value)
-            env->ReleaseStringUTFChars(json, value);
     });
 }
 
@@ -555,14 +620,11 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnNavigated(JNIEn
                                                                            jstring url,
                                                                            jstring title) {
     nk::core::callback_boundary([&] {
-        const char *url_value = url ? env->GetStringUTFChars(url, nullptr) : nullptr;
-        emit_text(NK_EVENT_WEBVIEW_NAVIGATED, static_cast<nk_handle>(handle), url_value);
-        if (url_value)
-            env->ReleaseStringUTFChars(url, url_value);
-        const char *title_value = title ? env->GetStringUTFChars(title, nullptr) : nullptr;
-        emit_text(NK_EVENT_WEBVIEW_TITLE_CHANGED, static_cast<nk_handle>(handle), title_value);
-        if (title_value)
-            env->ReleaseStringUTFChars(title, title_value);
+        const auto url_value = to_utf8(env, url);
+        emit_text(NK_EVENT_WEBVIEW_NAVIGATED, static_cast<nk_handle>(handle), url_value.c_str());
+        const auto title_value = to_utf8(env, title);
+        emit_text(NK_EVENT_WEBVIEW_TITLE_CHANGED, static_cast<nk_handle>(handle),
+                  title_value.c_str());
     });
 }
 
@@ -574,11 +636,9 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnEvaluation(
             return;
         evaluations.erase(found);
         jstring text = error ? error : result;
-        const char *value = text ? env->GetStringUTFChars(text, nullptr) : nullptr;
-        emit_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, static_cast<nk_handle>(handle), value,
+        const auto value = to_utf8(env, text);
+        emit_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, static_cast<nk_handle>(handle), value.c_str(),
                   error ? NK_ERROR_UNKNOWN : NK_OK, static_cast<nk_request_id>(request));
-        if (value)
-            env->ReleaseStringUTFChars(text, value);
     });
 }
 
@@ -589,23 +649,66 @@ JNIEXPORT jboolean JNICALL Java_io_nativekit_NativeKitBridge_nativeOnNavigationR
         auto resource = webview(static_cast<nk_handle>(handle));
         if (!resource || !resource->navigation_policy)
             return;
-        const char *value = env->GetStringUTFChars(url, nullptr);
+        const auto value = to_utf8(env, url);
         const auto request = nk::core::next_request_id();
-        navigation_decisions.emplace(
-            request, NavigationDecision{static_cast<nk_handle>(handle), value ? value : ""});
+        navigation_decisions.emplace(request,
+                                     NavigationDecision{static_cast<nk_handle>(handle), value});
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_NAVIGATION_REQUEST;
         event.source = static_cast<nk_handle>(handle);
         event.request_id = request;
-        event.data = bytes(value);
+        event.data = bytes(value.c_str());
         if (nk::core::push_event(std::move(event)) != NK_OK)
             navigation_decisions.erase(request);
         else
             retained = true;
-        if (value)
-            env->ReleaseStringUTFChars(url, value);
     });
     return retained ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnNavigationFailed(
+    JNIEnv *env, jclass, jlong handle, jint category, jstring message) {
+    nk::core::callback_boundary([&] {
+        const auto stable_category =
+            category >= NK_NAVIGATION_ERROR_OTHER && category <= NK_NAVIGATION_ERROR_CANCELLED
+                ? static_cast<uint32_t>(category)
+                : static_cast<uint32_t>(NK_NAVIGATION_ERROR_OTHER);
+        const auto value = to_utf8(env, message);
+        emit_text(NK_EVENT_WEBVIEW_NAVIGATION_FAILED, static_cast<nk_handle>(handle), value.c_str(),
+                  NK_ERROR_UNKNOWN, NK_INVALID_REQUEST_ID, stable_category);
+    });
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnRenderProcessGone(
+    JNIEnv *, jclass, jlong handle, jboolean crashed) {
+    nk::core::callback_boundary([&] {
+        emit_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, static_cast<nk_handle>(handle), nullptr,
+                  NK_ERROR_UNKNOWN, NK_INVALID_REQUEST_ID, crashed ? 1u : 0u);
+    });
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGeometry(
+    JNIEnv *, jclass, jlong handle, jint width, jint height, jfloat scale, jint inset_left,
+    jint inset_top, jint inset_right, jint inset_bottom, jint keyboard_bottom) {
+    nk::core::callback_boundary([&] {
+        if (!host(static_cast<nk_handle>(handle)))
+            return;
+        const nk_mobile_host_geometry geometry{sizeof(nk_mobile_host_geometry),
+                                               width,
+                                               height,
+                                               scale,
+                                               inset_left,
+                                               inset_top,
+                                               inset_right,
+                                               inset_bottom,
+                                               keyboard_bottom,
+                                               {0, 0}};
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED;
+        event.source = static_cast<nk_handle>(handle);
+        event.data = bytes_of(geometry);
+        nk::core::push_event(std::move(event));
+    });
 }
 
 } // extern "C"

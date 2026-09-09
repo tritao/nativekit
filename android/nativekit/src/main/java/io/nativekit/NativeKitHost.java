@@ -17,6 +17,7 @@ public final class NativeKitHost implements AutoCloseable {
         if (handle == 0) {
             throw new IllegalStateException("NativeKit could not attach to the container");
         }
+        NativeKitBridge.observeHost(container, handle);
     }
 
     public long handle() { return handle; }
@@ -44,6 +45,7 @@ public final class NativeKitHost implements AutoCloseable {
     @Override
     public void close() {
         if (handle != 0) {
+            NativeKitBridge.unobserveHost(handle);
             nativeDestroy(handle);
             handle = 0;
         }

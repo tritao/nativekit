@@ -26,6 +26,20 @@ typedef struct nk_mobile_host_options {
     uint64_t reserved[2];
 } nk_mobile_host_options;
 
+/* Payload of NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED, in logical pixels. */
+typedef struct nk_mobile_host_geometry {
+    uint32_t struct_size;
+    int32_t width;
+    int32_t height;
+    float scale;
+    int32_t inset_left;
+    int32_t inset_top;
+    int32_t inset_right;
+    int32_t inset_bottom;
+    int32_t keyboard_bottom;
+    uint64_t reserved[2];
+} nk_mobile_host_geometry;
+
 /*
  * Attaches NativeKit to a caller-owned mobile container. The caller retains
  * ownership and must keep the container alive until nk_mobile_host_destroy().
