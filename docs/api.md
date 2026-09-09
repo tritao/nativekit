@@ -143,6 +143,10 @@ and `null` preserve their JSON types. Values that JSON cannot represent complete
 with a failing event result when the native engine exposes the serialization
 failure.
 
+On Android, shell URL and clipboard operations use the `Context` of an attached
+mobile host. Text clipboard reads retain the cross-platform asynchronous event
+contract even though Android provides the value synchronously.
+
 Every successfully started WebView evaluation has exactly one terminal event.
 Destroying its WebView, directly or through parent-window destruction, completes
 the request with `NK_ERROR_INVALID_REQUEST`. Native callbacks arriving after

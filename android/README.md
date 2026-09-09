@@ -24,3 +24,5 @@ Build Tools 35.0.0, and NDK 30.0.16248370. Set `sdk.dir` in an untracked
 
 The native API must be called on the Android main thread. Embedding runtimes may
 poll through the stable C ABI; Java/Kotlin hosts can use `NativeKitHost.pollEvent()`.
+Android currently implements URL opening and text clipboard operations; file
+clipboard operations remain unsupported.

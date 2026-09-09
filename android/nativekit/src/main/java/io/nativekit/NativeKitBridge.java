@@ -1,7 +1,12 @@
 package io.nativekit;
 
 import android.annotation.SuppressLint;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
+import android.net.Uri;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.RenderProcessGoneDetail;
@@ -160,6 +165,43 @@ final class NativeKitBridge {
                 }
             }
         }
+    }
+
+    static int openUrl(ViewGroup parent, String url) {
+        Uri uri = Uri.parse(url);
+        if (uri.getScheme() == null || uri.getScheme().isEmpty())
+            return -2;
+        Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+        if (intent.resolveActivity(parent.getContext().getPackageManager()) == null)
+            return -4;
+        try {
+            parent.getContext().startActivity(intent);
+            return 0;
+        } catch (RuntimeException error) {
+            return -1;
+        }
+    }
+
+    static boolean setClipboardText(ViewGroup parent, String text) {
+        ClipboardManager clipboard = (ClipboardManager)parent.getContext().getSystemService(
+            Context.CLIPBOARD_SERVICE);
+        if (clipboard == null)
+            return false;
+        clipboard.setPrimaryClip(ClipData.newPlainText("NativeKit", text));
+        return true;
+    }
+
+    @Nullable
+    static String clipboardText(ViewGroup parent) {
+        ClipboardManager clipboard = (ClipboardManager)parent.getContext().getSystemService(
+            Context.CLIPBOARD_SERVICE);
+        if (clipboard == null || !clipboard.hasPrimaryClip())
+            return null;
+        ClipData clip = clipboard.getPrimaryClip();
+        if (clip == null || clip.getItemCount() == 0)
+            return null;
+        CharSequence text = clip.getItemAt(0).coerceToText(parent.getContext());
+        return text == null ? null : text.toString();
     }
 
     static void observeHost(ViewGroup parent, long handle) {

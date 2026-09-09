@@ -21,7 +21,7 @@ typedef struct nk_drop_data {
     uint32_t strings_offset;
 } nk_drop_data;
 
-/* Copies UTF-8 text into the desktop clipboard. UI thread only. */
+/* Copies UTF-8 text into the system clipboard. UI thread only. */
 NK_API nk_result NK_CALL nk_clipboard_set_text(const char *text);
 
 /* Copies local paths into the clipboard as a URI list. UI thread only. */

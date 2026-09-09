@@ -4,5 +4,15 @@
             android:name="io.nativekit.sample.NativeKitTestActivity"
             android:exported="false"
             android:screenOrientation="unspecified" />
+        <activity
+            android:name="io.nativekit.sample.NativeKitUrlActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="nativekit-test" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

@@ -44,6 +44,24 @@ public final class NativeKitHost implements AutoCloseable {
         return nativePollEvent();
     }
 
+    public int openUrl(String url) {
+        if (handle == 0 || url == null)
+            throw new IllegalArgumentException("host must be open and URL must not be null");
+        return nativeOpenUrl(url);
+    }
+
+    public int setClipboardText(String text) {
+        if (handle == 0 || text == null)
+            throw new IllegalArgumentException("host must be open and text must not be null");
+        return nativeSetClipboardText(text);
+    }
+
+    public long readClipboardText() {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeReadClipboardText();
+    }
+
     private void setLifecycle(int state) {
         if (handle != 0) {
             nativeSetLifecycle(handle, state);
@@ -65,5 +83,8 @@ public final class NativeKitHost implements AutoCloseable {
                                                    String initialUrl);
     private static native void nativeSetLifecycle(long handle, int state);
     private static native NativeKitEvent nativePollEvent();
+    private static native int nativeOpenUrl(String url);
+    private static native int nativeSetClipboardText(String text);
+    private static native long nativeReadClipboardText();
     private static native void nativeDestroy(long handle);
 }

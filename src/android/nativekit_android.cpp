@@ -1,4 +1,6 @@
 #include "nativekit_mobile.h"
+#include "nativekit_clipboard.h"
+#include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
 
@@ -150,6 +152,10 @@ std::shared_ptr<AndroidHost> host(nk_handle handle) {
 std::shared_ptr<AndroidWebView> webview(nk_handle handle) {
     return std::dynamic_pointer_cast<AndroidWebView>(
         nk::core::handles().get(handle, nk::core::ResourceType::webview));
+}
+
+std::shared_ptr<AndroidHost> context_host() {
+    return hosts.empty() ? nullptr : hosts.begin()->second;
 }
 
 nk_result require_thread() {
@@ -359,7 +365,113 @@ nk_result mobile_host_set_lifecycle(nk_handle handle, nk_mobile_lifecycle_state 
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW;
+    return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_SHELL;
+}
+
+nk_result NK_CALL nk_shell_open_url(const char *url) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    if (!url || !*url) {
+        nk::core::set_error("URL must not be empty");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto host_resource = context_host();
+    if (!host_resource) {
+        nk::core::set_error("Android URL opening requires an attached mobile host");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!env || !bridge)
+        return NK_ERROR_UNKNOWN;
+    auto method =
+        env->GetStaticMethodID(bridge, "openUrl", "(Landroid/view/ViewGroup;Ljava/lang/String;)I");
+    auto value = from_utf8(env, url);
+    const auto result =
+        method ? env->CallStaticIntMethod(bridge, method, host_resource->view_group, value)
+               : static_cast<jint>(NK_ERROR_UNKNOWN);
+    if (value)
+        env->DeleteLocalRef(value);
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android URL opening failed"))
+        return NK_ERROR_UNKNOWN;
+    if (result != NK_OK)
+        nk::core::set_error(result == NK_ERROR_INVALID_ARGUMENT
+                                ? "URL is invalid"
+                                : "no Android activity could open the URL");
+    return result;
+}
+
+nk_result NK_CALL nk_clipboard_set_text(const char *text) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    if (!text) {
+        nk::core::set_error("clipboard text must not be null");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto host_resource = context_host();
+    if (!host_resource) {
+        nk::core::set_error("Android clipboard access requires an attached mobile host");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!env || !bridge)
+        return NK_ERROR_UNKNOWN;
+    auto method = env->GetStaticMethodID(bridge, "setClipboardText",
+                                         "(Landroid/view/ViewGroup;Ljava/lang/String;)Z");
+    auto value = from_utf8(env, text);
+    const auto accepted =
+        method && env->CallStaticBooleanMethod(bridge, method, host_resource->view_group, value);
+    if (value)
+        env->DeleteLocalRef(value);
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android clipboard write failed") || !accepted) {
+        nk::core::set_error("Android rejected clipboard text");
+        return NK_ERROR_UNKNOWN;
+    }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    if (!out_request) {
+        nk::core::set_error("clipboard request output is null");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto host_resource = context_host();
+    if (!host_resource) {
+        nk::core::set_error("Android clipboard access requires an attached mobile host");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!env || !bridge)
+        return NK_ERROR_UNKNOWN;
+    auto method = env->GetStaticMethodID(bridge, "clipboardText",
+                                         "(Landroid/view/ViewGroup;)Ljava/lang/String;");
+    auto value = method ? static_cast<jstring>(env->CallStaticObjectMethod(
+                              bridge, method, host_resource->view_group))
+                        : nullptr;
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android clipboard read failed"))
+        return NK_ERROR_UNKNOWN;
+    const bool has_value = value != nullptr;
+    const auto text = to_utf8(env, value);
+    if (value)
+        env->DeleteLocalRef(value);
+    const auto request = nk::core::next_request_id();
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_CLIPBOARD_TEXT_COMPLETE;
+    event.request_id = request;
+    if (has_value)
+        event.data = bytes(text.c_str());
+    const auto queued = nk::core::push_event(std::move(event));
+    if (queued != NK_OK)
+        return queued;
+    *out_request = request;
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_webview_create(nk_handle parent, const nk_webview_options *options,
@@ -644,6 +756,23 @@ JNIEXPORT jobject JNICALL Java_io_nativekit_NativeKitHost_nativePollEvent(JNIEnv
         nk_event_release(&event);
     });
     return result;
+}
+
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeOpenUrl(JNIEnv *env, jclass,
+                                                                     jstring url) {
+    const auto value = to_utf8(env, url);
+    return nk_shell_open_url(url ? value.c_str() : nullptr);
+}
+
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeSetClipboardText(JNIEnv *env, jclass,
+                                                                              jstring text) {
+    const auto value = to_utf8(env, text);
+    return nk_clipboard_set_text(text ? value.c_str() : nullptr);
+}
+
+JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeReadClipboardText(JNIEnv *, jclass) {
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    return nk_clipboard_read_text(&request) == NK_OK ? static_cast<jlong>(request) : 0;
 }
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitHost_nativeDestroy(JNIEnv *, jclass,

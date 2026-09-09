@@ -24,6 +24,7 @@ public final class NativeKitHostTest {
     private static final int EVENT_WEBVIEW_MESSAGE = 201;
     private static final int EVENT_WEBVIEW_NAVIGATION_FAILED = 204;
     private static final int EVENT_WEBVIEW_PROCESS_TERMINATED = 205;
+    private static final int EVENT_CLIPBOARD_TEXT_COMPLETE = 400;
     private static final int EVENT_HOST_GEOMETRY_CHANGED = 600;
 
     @Test
@@ -94,6 +95,21 @@ public final class NativeKitHostTest {
             NativeKitEvent recovered =
                 awaitEventForSource(scenario, EVENT_WEBVIEW_NAVIGATED, recoveredWebView[0]);
             assertEquals(recoveredWebView[0], recovered.source);
+
+            long[] clipboardRequest = new long[1];
+            scenario.onActivity(activity -> {
+                assertEquals(0, activity.host.setClipboardText(message));
+                clipboardRequest[0] = activity.host.readClipboardText();
+            });
+            assertNotEquals(0, clipboardRequest[0]);
+            NativeKitEvent clipboard = awaitEvent(scenario, EVENT_CLIPBOARD_TEXT_COMPLETE);
+            assertEquals(clipboardRequest[0], clipboard.requestId);
+            assertEquals(message, clipboard.text());
+
+            scenario.onActivity(activity -> {
+                assertEquals(-2, activity.host.openUrl("not a URL"));
+                assertEquals(0, activity.host.openUrl("nativekit-test://opened"));
+            });
         }
     }
 
