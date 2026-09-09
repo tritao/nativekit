@@ -25,6 +25,11 @@ if(NK_BACKEND_GTK_AVAILABLE)
         set_target_properties(nativekit_gtk_integration PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_create_destroy
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_integration>)
+        add_executable(nativekit_gtk_webview_resize integration/gtk_webview_resize.c)
+        target_link_libraries(nativekit_gtk_webview_resize PRIVATE NativeKit::nativekit)
+        set_target_properties(nativekit_gtk_webview_resize PROPERTIES LINKER_LANGUAGE CXX)
+        add_test(NAME gtk_webview_resize
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_webview_resize>)
     endif()
     find_program(DBUS_RUN_SESSION dbus-run-session)
     if(DBUS_RUN_SESSION)
@@ -77,6 +82,9 @@ if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     if(TARGET nativekit_gtk_integration)
         list(APPEND sanitized_test_targets nativekit_gtk_integration)
     endif()
+    if(TARGET nativekit_gtk_webview_resize)
+        list(APPEND sanitized_test_targets nativekit_gtk_webview_resize)
+    endif()
     if(TARGET nativekit_linux_notification_failure)
         list(APPEND sanitized_test_targets nativekit_linux_notification_failure)
     endif()
@@ -88,6 +96,10 @@ if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         # GTK/Pango/Fontconfig retain process-lifetime caches that LSan reports;
         # keep address/undefined checks here and leak checks in the core tests.
         set_tests_properties(gtk_create_destroy PROPERTIES
+            ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+    endif()
+    if(TARGET nativekit_gtk_webview_resize)
+        set_tests_properties(gtk_webview_resize PROPERTIES
             ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
     endif()
 endif()

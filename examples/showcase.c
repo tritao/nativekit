@@ -184,9 +184,12 @@ static void start_file_dialog(app *state, uint32_t kind) {
     nk_file_dialog_options options = {0};
     options.struct_size = sizeof(options);
     options.title = "NativeKit Lab";
-    options.suggested_name = "nativekit-demo.txt";
-    options.filters = filters;
-    options.filter_count = 2;
+    if (kind != NK_DIALOG_SELECT_DIRECTORY) {
+        options.filters = filters;
+        options.filter_count = 2;
+    }
+    if (kind == NK_DIALOG_SAVE_FILE)
+        options.suggested_name = "nativekit-demo.txt";
     nk_request_id request = NK_INVALID_REQUEST_ID;
     nk_result result = NK_ERROR_INVALID_ARGUMENT;
     if (kind == NK_DIALOG_OPEN_FILE) {
