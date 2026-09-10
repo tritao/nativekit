@@ -4,13 +4,12 @@ set -euo pipefail
 module_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 repo_dir=$(cd "$module_dir/../.." && pwd)
 
-dependencies=(budouxc harfbuzz libunibreak nanovg nanovg-sokol sheenbidi skribidi sokol)
+dependencies=(budouxc harfbuzz libunibreak nanovg sheenbidi skribidi sokol)
 licenses=(
     budouxc/LICENSE
     harfbuzz/COPYING
     libunibreak/LICENCE
     nanovg/LICENSE.txt
-    nanovg-sokol/LICENSE
     sheenbidi/LICENSE
     skribidi/LICENSE
     sokol/LICENSE

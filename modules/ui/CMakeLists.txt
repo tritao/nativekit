@@ -153,29 +153,6 @@ if(NK_BUILD_EXAMPLES)
         endif()
     endif()
 
-    if(TARGET nkui_nanovg)
-    add_executable(nativekit_ui_skribidi_nanovg examples/skribidi_nanovg.c)
-    target_include_directories(nativekit_ui_skribidi_nanovg PRIVATE
-        "${NK_VENDOR_DIR}/nanovg-sokol/src/nanovg_sokol"
-        "${NK_VENDOR_DIR}/sokol")
-    target_compile_definitions(nativekit_ui_skribidi_nanovg PRIVATE
-        NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
-    target_link_libraries(nativekit_ui_skribidi_nanovg PRIVATE
-        NativeKit::nativekit nkui_skribidi nkui_nanovg OpenGL::GL)
-    set_target_properties(nativekit_ui_skribidi_nanovg PROPERTIES LINKER_LANGUAGE CXX)
-    if(NK_BUILD_TESTS)
-        find_program(NKUI_XVFB_RUN xvfb-run)
-        if(NKUI_XVFB_RUN)
-            add_test(NAME nativekit_ui_skribidi_nanovg_smoke
-                COMMAND ${NKUI_XVFB_RUN} -a
-                    $<TARGET_FILE:nativekit_ui_skribidi_nanovg> --smoke-test)
-            set_tests_properties(nativekit_ui_skribidi_nanovg_smoke PROPERTIES
-                LABELS "graphics;ui"
-                TIMEOUT 15
-                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
-        endif()
-    endif()
-    endif()
 endif()
 
 install(TARGETS nativekit_ui EXPORT NativeKitTargets
@@ -189,9 +166,6 @@ install(FILES
 install(FILES
     "${NK_VENDOR_DIR}/nanovg/LICENSE.txt"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit/UI/NanoVG)
-install(FILES
-    "${NK_VENDOR_DIR}/nanovg-sokol/LICENSE"
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit/UI/NanoVG-Sokol)
 install(FILES "${NK_VENDOR_DIR}/sokol/LICENSE"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit/UI/Sokol)
 install(FILES "${NK_VENDOR_DIR}/harfbuzz/COPYING"

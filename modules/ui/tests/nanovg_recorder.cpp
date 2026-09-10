@@ -31,7 +31,7 @@ int main() {
         return 3;
     const unsigned char pixels[8] = {1, 2, 3, 4, 5, 6, 7, 8};
     const int image = nvgCreateImageRGBA(vg, 2, 1, 0, pixels);
-    if (!image || recorder.textures().size() < 2 || recorder.textures().back().id != image ||
+    if (!image || recorder.textures().size() != 1 || recorder.textures().back().id != image ||
         recorder.textures().back().pixels.size() != 8 || recorder.textures().back().pixels[7] != 8)
         return 4;
     const unsigned char updated[8] = {9, 10, 11, 12, 13, 14, 15, 16};
@@ -40,7 +40,7 @@ int main() {
         recorder.textures().back().pixels[7] != 16)
         return 5;
     nvgDeleteImage(vg, image);
-    if (recorder.textures().size() != 1)
+    if (!recorder.textures().empty())
         return 6;
     recorder.reset();
     const auto reset = recorder.stats();

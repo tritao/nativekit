@@ -191,8 +191,8 @@ a DAG internally, but the public API must not expose pass scheduling mechanics.
 2. Document which existing files are evaluation code and which are intended to
    become permanent adapters.
 3. Add dependency revision and license checks to CI.
-4. Keep the current `skribidi_nanovg` example as a reference until its
-   replacement passes equivalent smoke tests.
+4. Keep the public NativeKit renderer smoke test as the reference for the
+   replacement path and text pipeline.
 
 Exit criteria:
 
@@ -228,8 +228,7 @@ Exit criteria:
 ## Phase 2: NanoVG recording backend
 
 1. Keep upstream NanoVG path construction and tessellation.
-2. Replace `nanovg_sokol.h` execution callbacks with a NativeKit recording
-   backend.
+2. Replace renderer callbacks with a NativeKit recording adapter.
 3. Have `renderFill`, `renderStroke`, and `renderTriangles` copy prepared
    geometry, paint uniforms, scissor state, image references, and blend state
    into the frame arena.
@@ -248,7 +247,7 @@ Tests:
 
 - rectangles, rounded rectangles, concave paths, holes, strokes, gradients,
   image paints, transforms, and rectangular scissors;
-- prepared geometry compared with the existing NanoVG-Sokol output;
+- prepared geometry compared with the NativeKit Sokol output;
 - golden images on the initial OpenGL backend;
 - proof that the recorder contains no Sokol calls or handles.
 
@@ -358,10 +357,9 @@ Exit criteria:
 7. Record statistics for passes, draws, pipeline changes, binding changes,
    uploads, transient bytes, and GPU-resource counts.
 
-The existing NanoVG-Sokol fork remains a comparison backend during migration.
-Once the NativeKit backend covers the required operations, remove it from the
-runtime path. Retain only useful tests or shader references with compatible
-licensing and provenance.
+The NativeKit backend is the only runtime backend. NanoVG is used only for
+path construction and tessellation, and its renderer callback adapter remains
+limited to compatibility tests while direct preparation is migrated in.
 
 Exit criteria:
 
@@ -473,17 +471,19 @@ need for explicit graph control.
 
 Migrate in reversible steps:
 
-1. Preserve the current `skribidi_nanovg` smoke test as the visual reference.
+1. Preserve the NativeKit public-renderer and showcase smoke tests as visual
+   references.
 2. Land the display-list arena and validation with no rendering changes.
 3. Land the NanoVG recording backend and replay its prepared paths through the
    NativeKit Sokol backend.
 4. Continue rendering text through the existing path temporarily.
 5. Add direct alpha glyph batches and compare output.
-6. Switch the example to direct glyph batches.
+6. Keep the public renderer on direct glyph batches.
 7. Add R8 atlas ownership and the whole-atlas upload fallback.
 8. Add the isolated opacity-layer vertical slice.
 9. Remove glyph-as-NanoVG-image-pattern code.
-10. Retire direct NanoVG-Sokol execution after golden and stress tests agree.
+10. Keep direct NanoVG-Sokol execution retired; use NativeKit's backend for
+    golden and stress tests.
 
 Each step should remain buildable and independently testable. Do not combine the
 display-list format, NanoVG recorder, glyph renderer, compositor, and public Haxe

@@ -20,11 +20,11 @@ All third-party integrations must sit behind private adapters. The public C ABI
 will use opaque handles, fixed-width values, versioned structures, and validated
 batched transactions. It must not expose Clay, Skribidi, NanoVG, or Sokol types.
 
-The module now has a validated semantic display list, a NanoVG recording
-adapter, direct Skribidi glyph batches, a NativeKit compositor, and a
-NativeKit-owned Sokol backend. The `skribidi_nanovg` program remains only as a
-legacy visual reference; public rendering uses opaque NativeKit UI resources
-and `nkui_renderer_render`.
+The module now has a validated semantic display list, a reusable NanoVG path
+preparation adapter, direct Skribidi glyph batches, a NativeKit compositor, and
+a NativeKit-owned Sokol backend. Public rendering uses opaque NativeKit UI
+resources and `nkui_renderer_render`; NanoVG does not own text or GPU
+submission.
 
 Build it with:
 

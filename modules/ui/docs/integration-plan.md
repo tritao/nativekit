@@ -3,7 +3,7 @@
 ## Boundaries
 
 The public `nkui_*` ABI describes retained UI nodes, styles, transactions, and
-semantic events. Clay, Skribidi, NanoVG, NanoVG-Sokol, and Sokol remain private.
+semantic events. Clay, Skribidi, NanoVG, and Sokol remain private.
 Haxeon owns components, state, reconciliation, and resolved style policy.
 
 Internally, a frame flows through these stages:
@@ -17,21 +17,18 @@ validated tree transaction
     -> Sokol pass on a NativeKit surface
 ```
 
-## Stage 1: isolate and prove NanoVG-Sokol
+## Stage 1: isolate and prove NanoVG path preparation
 
-1. Build the private `nkui_nanovg` target from the NanoVG and NativeKit fork
-   submodules, using the same pinned `sokol_gfx.h` as NativeKit Sokol.
-2. Keep the fork's explicit blend-state cache key compatible with current
-   Sokol rather than packing four blend factors into 16 bits.
-3. Preserve the fork's corrected texture lifetime conditionals before enabling
-   borrowed image handles.
-4. Render rectangles, rounded rectangles, paths, clipping, gradients, and
-   images inside an already-open Sokol pass. NanoVG must not own the window,
-   surface, event loop, or presentation.
+1. Build the private NanoVG core with path preparation enabled and text disabled.
+2. Translate NanoVG values at the NativeKit preparation boundary; no NanoVG
+   type crosses NativeKit's persistent prepared representation.
+3. Prepare rectangles, rounded rectangles, concave paths, holes, strokes,
+   gradients, image paints, and transforms without a frame or renderer.
+4. Replay prepared operations through the NativeKit compositor and Sokol backend.
 5. Add image-based golden tests and a 30-frame NativeKit smoke test.
 
-NanoVG's Fontstash API is not used by NativeKit UI. Keeping it enabled during
-the first bring-up is acceptable, but no UI text behavior may depend on it.
+NanoVG's Fontstash API is not built by NativeKit UI. Skribidi remains the text
+authority, and ordinary images bypass NanoVG entirely.
 
 ## Stage 2: integrate Skribidi as the text authority
 
