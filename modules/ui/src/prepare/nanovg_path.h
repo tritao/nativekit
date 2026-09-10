@@ -1,7 +1,7 @@
 #ifndef NATIVEKIT_UI_NANOVG_PATH_H
 #define NATIVEKIT_UI_NANOVG_PATH_H
 
-#include "nanovg_recorder.h"
+#include "prepared_path.h"
 
 #include <array>
 #include <cstdint>
