@@ -18,7 +18,8 @@ int main() {
         adapter.atlas_texture_count() == 0)
         return 3;
     for (const auto &batch : glyphs.batches)
-        if (batch.mode != GlyphMode::Alpha || !batch.vertex_count || !batch.index_count)
+        if (!batch.atlas.value || batch.mode != GlyphMode::Alpha || !batch.vertex_count ||
+            !batch.index_count)
             return 4;
     const auto first_query = adapter.pending_atlas_uploads();
     const auto second_query = adapter.pending_atlas_uploads();

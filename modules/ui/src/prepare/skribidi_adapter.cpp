@@ -139,10 +139,13 @@ bool SkribidiAdapter::prepare_glyphs(float origin_x, float origin_y, float pixel
                 if (quad.flags & SKB_QUAD_IS_EMPTY)
                     continue;
                 const GlyphMode actual_mode = quad_mode(quad, mode);
-                if (output.batches.empty() ||
-                    output.batches.back().atlas_texture != quad.texture_idx ||
+                const AtlasTextureId atlas_id{static_cast<uint32_t>(
+                    skb_image_atlas_get_texture_user_data(state_->atlas, quad.texture_idx))};
+                if (!atlas_id.value)
+                    return false;
+                if (output.batches.empty() || output.batches.back().atlas.value != atlas_id.value ||
                     output.batches.back().mode != actual_mode) {
-                    output.batches.push_back({quad.texture_idx, actual_mode,
+                    output.batches.push_back({atlas_id, actual_mode,
                                               static_cast<uint32_t>(output.vertices.size()), 0,
                                               static_cast<uint32_t>(output.indices.size()), 0});
                 }

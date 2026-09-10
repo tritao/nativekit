@@ -23,8 +23,12 @@ struct GlyphVertex {
     uint8_t alpha;
 };
 
+struct AtlasTextureId {
+    uint32_t value = 0;
+};
+
 struct GlyphBatch {
-    uint8_t atlas_texture = 0;
+    AtlasTextureId atlas;
     GlyphMode mode = GlyphMode::Alpha;
     uint32_t first_vertex = 0;
     uint32_t vertex_count = 0;
@@ -36,10 +40,6 @@ struct PreparedGlyphs {
     std::vector<GlyphVertex> vertices;
     std::vector<uint32_t> indices;
     std::vector<GlyphBatch> batches;
-};
-
-struct AtlasTextureId {
-    uint32_t value = 0;
 };
 
 struct AtlasUpload {

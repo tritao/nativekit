@@ -6,7 +6,8 @@ add_library(nativekit_ui SHARED
     src/compositor/compositor.cpp
     src/display_list/display_list.cpp
     src/prepare/nanovg_recorder.cpp
-    src/prepare/skribidi_adapter.cpp)
+    src/prepare/skribidi_adapter.cpp
+    src/render/sokol_backend.cpp)
 add_library(NativeKit::ui ALIAS nativekit_ui)
 target_compile_features(nativekit_ui PRIVATE cxx_std_17)
 target_include_directories(nativekit_ui
@@ -14,7 +15,9 @@ target_include_directories(nativekit_ui
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE src)
-target_link_libraries(nativekit_ui PRIVATE NativeKit::nativekit nkui_skribidi nkui_nanovg_core)
+target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/sokol")
+target_link_libraries(nativekit_ui PRIVATE NativeKit::nativekit nkui_skribidi nkui_nanovg_core
+    nativekit_sokol_runtime)
 target_compile_definitions(nativekit_ui PRIVATE NKUI_BUILDING_LIBRARY)
 set_target_properties(nativekit_ui PROPERTIES
     EXPORT_NAME ui
@@ -52,6 +55,16 @@ if(NK_BUILD_TESTS)
         src/display_list/display_list.cpp)
     target_include_directories(nativekit_ui_compositor_test PRIVATE src)
     add_test(NAME nativekit_ui_compositor COMMAND nativekit_ui_compositor_test)
+    add_executable(nativekit_ui_sokol_backend_mesh_test
+        tests/sokol_backend_mesh.cpp
+        src/prepare/nanovg_recorder.cpp
+        src/prepare/skribidi_adapter.cpp
+        src/render/sokol_backend.cpp)
+    target_include_directories(nativekit_ui_sokol_backend_mesh_test PRIVATE
+        src "${NK_VENDOR_DIR}/sokol")
+    target_link_libraries(nativekit_ui_sokol_backend_mesh_test PRIVATE
+        nkui_nanovg_core nkui_skribidi nativekit_sokol_runtime)
+    add_test(NAME nativekit_ui_sokol_backend_mesh COMMAND nativekit_ui_sokol_backend_mesh_test)
 endif()
 
 if(NK_BUILD_EXAMPLES AND TARGET nkui_nanovg)
