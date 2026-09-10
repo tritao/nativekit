@@ -3,6 +3,7 @@ import NativeKit.NativeKitConstants;
 import NativeKitEventValue;
 import NativeKitEventValue.NativeKitResource;
 import NativeKitEventContext;
+import NativeKitWindowEvents;
 
 /** Owns one polled NativeKit event and releases its native payload exactly once. */
 class NativeKitEvent {
@@ -51,6 +52,9 @@ class NativeKitEvent {
 	/** Decodes known text and packed-string event formats without releasing this event. */
 	public function decode():NativeKitEventValue {
 		var context = snapshot(), data = context.data;
+		var window = NativeKitWindowEvents.decode(context);
+		if (window != null)
+			return window;
 		return switch kind {
 			case NativeKitConstants.NK_EVENT_NONE: None;
 			case NativeKitConstants.NK_EVENT_CLIPBOARD_TEXT_COMPLETE: ClipboardText(request, result, data.toString());
