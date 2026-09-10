@@ -36,6 +36,7 @@ cmake --build "$test_root/build"
         "$repo_dir/tests/haxeon/Smoke.hx" \
         "$repo_dir/bindings/haxe/NativeKitEvent.hx" \
         "$repo_dir/bindings/haxe/NativeKitEventValue.hx" \
+        "$repo_dir/bindings/haxe/NativeKitEventContext.hx" \
         "$repo_dir/bindings/haxe/NativeKitRequests.hx"
 )
 

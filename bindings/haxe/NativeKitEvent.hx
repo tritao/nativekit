@@ -2,6 +2,7 @@ import NativeKit;
 import NativeKit.NativeKitConstants;
 import NativeKitEventValue;
 import NativeKitEventValue.NativeKitResource;
+import NativeKitEventContext;
 
 /** Owns one polled NativeKit event and releases its native payload exactly once. */
 class NativeKitEvent {
@@ -43,9 +44,13 @@ class NativeKitEvent {
 		return event.get_data_bytes();
 	}
 
+	/** Creates a managed decoder snapshot which remains valid after release. */
+	public function snapshot():NativeKitEventContext
+		return new NativeKitEventContext(kind, source, request, result, flags, dataCount, payload());
+
 	/** Decodes known text and packed-string event formats without releasing this event. */
 	public function decode():NativeKitEventValue {
-		var data = payload();
+		var context = snapshot(), data = context.data;
 		return switch kind {
 			case NativeKitConstants.NK_EVENT_NONE: None;
 			case NativeKitConstants.NK_EVENT_CLIPBOARD_TEXT_COMPLETE: ClipboardText(request, result, data.toString());

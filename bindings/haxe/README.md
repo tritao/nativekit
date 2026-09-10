@@ -19,6 +19,7 @@ can parse them.
 inspecting it manually, or prefer `take()`, which decodes and releases it in one
 operation. Release is idempotent. Any `Bytes` returned by `payload()` and all
 values returned by `decode()` are copies and remain valid after release.
+`snapshot()` returns the immutable managed context used by domain decoders.
 
 Known WebView, notification, dialog, clipboard, and drop payloads project to typed
 `NativeKitEventValue` cases. Unknown kinds project to `Raw`, preserving metadata
