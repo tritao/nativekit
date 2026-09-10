@@ -1,4 +1,5 @@
 import NativeKit;
+import NativeKitEvent;
 
 class Smoke {
 	static function main():Int {
@@ -12,32 +13,36 @@ class Smoke {
 		if (NativeKit.nk_init(options) != 0)
 			return 2;
 
-		var event = new nk_event();
-		event.set_struct_size(64);
-		var polled = NativeKit.nk_poll_event(event);
-		var eventOk = polled.status == 0 && polled.event.get_kind() == 0;
-		NativeKit.nk_event_release(polled.event);
+		var empty = NativeKitEvent.poll();
+		var eventOk = switch empty.take() {
+			case None: empty.isReleased() && !empty.release();
+			case _: false;
+		};
+		try {
+			empty.payload();
+			eventOk = false;
+		} catch (_:Dynamic) {}
+		try {
+			NativeKitEvent.decodeClipboardFiles(haxe.io.Bytes.alloc(4), 0);
+			eventOk = false;
+		} catch (_:Dynamic) {}
 		var payloadOk = true;
 		if (NativeKit.nk_clipboard_set_text("nativekit ffi") == 0) {
 			var request = NativeKit.nk_clipboard_read_text();
 			payloadOk = request.status == 0;
 			var completed = false;
 			for (_ in 0...1000) {
-				var next = new nk_event();
-				next.set_struct_size(64);
-				var result = NativeKit.nk_poll_event(next);
-				if (result.status != 0) {
-					payloadOk = false;
-					break;
-				}
-				if (result.event.get_kind() == 400) {
-					var payload = result.event.get_data_bytes();
-					payloadOk = payload.length == 13 && payload.get(0) == 110 && payload.get(12) == 105;
-					NativeKit.nk_event_release(result.event);
+				var next = NativeKitEvent.poll();
+				if (next.kind == 400) {
+					payloadOk = switch next.take() {
+						case ClipboardText(completedRequest, completedResult, text):
+							completedResult == 0 && text == "nativekit ffi";
+						case _: false;
+					};
 					completed = true;
 					break;
 				}
-				NativeKit.nk_event_release(result.event);
+				next.release();
 			}
 			payloadOk = payloadOk && completed;
 		}
