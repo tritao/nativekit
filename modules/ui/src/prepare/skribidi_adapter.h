@@ -13,6 +13,12 @@ enum class GlyphMode : uint8_t {
     Color,
 };
 
+enum class AtlasTextureFormat : uint8_t {
+    R8Mask = 0,
+    R8Sdf,
+    Rgba8Premultiplied,
+};
+
 enum class FontFamily : uint8_t {
     Default = 0,
     Emoji = 1,
@@ -35,6 +41,7 @@ struct AtlasTextureId {
 
 struct GlyphBatch {
     AtlasTextureId atlas;
+    uint32_t atlas_generation = 0;
     GlyphMode mode = GlyphMode::Alpha;
     uint32_t first_vertex = 0;
     uint32_t vertex_count = 0;
@@ -72,6 +79,7 @@ struct TextRect {
 struct AtlasUpload {
     AtlasTextureId texture;
     uint8_t texture_index = 0;
+    AtlasTextureFormat format = AtlasTextureFormat::R8Mask;
     uint8_t bytes_per_pixel = 0;
     int32_t texture_width = 0;
     int32_t texture_height = 0;
@@ -83,6 +91,7 @@ struct AtlasUpload {
     const uint8_t *pixels = nullptr;
     bool dirty = false;
     uint32_t generation = 0;
+    uint64_t dirty_epoch = 0;
 };
 
 class SkribidiAdapter {
@@ -109,7 +118,7 @@ class SkribidiAdapter {
     uint32_t atlas_texture_count() const;
     std::vector<AtlasUpload> pending_atlas_uploads() const;
     std::vector<AtlasUpload> atlas_uploads(bool include_clean) const;
-    bool acknowledge_atlas_upload(AtlasTextureId texture);
+    bool acknowledge_atlas_upload(AtlasTextureId texture, uint64_t dirty_epoch);
 
     struct State;
 

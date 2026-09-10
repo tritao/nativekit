@@ -42,7 +42,8 @@ int main() {
         if (!upload.texture.value || !upload.pixels ||
             (upload.bytes_per_pixel != 1 && upload.bytes_per_pixel != 4) || upload.width <= 0 ||
             upload.height <= 0 || upload.row_pitch <= 0 ||
-            !upload.generation || !adapter.acknowledge_atlas_upload(upload.texture))
+            !upload.generation || !upload.dirty_epoch ||
+            !adapter.acknowledge_atlas_upload(upload.texture, upload.dirty_epoch))
             return 9;
     if (!adapter.pending_atlas_uploads().empty())
         return 10;

@@ -19,7 +19,6 @@ struct SkribidiAdapter::State {
     skb_layout_t *layout = nullptr;
     uint16_t next_texture_slot = 1;
     uint16_t texture_namespace = 1;
-    std::vector<uint32_t> texture_generations;
     std::string cached_text;
     float cached_width = 0.0f;
     float cached_font_size = 0.0f;
@@ -40,6 +39,18 @@ GlyphMode quad_mode(const skb_quad_t &quad, GlyphMode requested) {
     if (quad.flags & SKB_QUAD_IS_SDF)
         return GlyphMode::Sdf;
     return requested == GlyphMode::Color ? GlyphMode::Alpha : requested;
+}
+
+AtlasTextureFormat atlas_format(skb_image_atlas_texture_format_t format) {
+    switch (format) {
+    case SKB_IMAGE_ATLAS_FORMAT_R8_SDF:
+        return AtlasTextureFormat::R8Sdf;
+    case SKB_IMAGE_ATLAS_FORMAT_RGBA8_PREMULTIPLIED:
+        return AtlasTextureFormat::Rgba8Premultiplied;
+    case SKB_IMAGE_ATLAS_FORMAT_R8_MASK:
+    default:
+        return AtlasTextureFormat::R8Mask;
+    }
 }
 
 void append_quad(const skb_quad_t &quad, const skb_image_t &atlas, PreparedGlyphs &output) {
@@ -87,9 +98,11 @@ bool append_render_glyph(const skb_layout_render_glyph_t *glyph, void *context) 
     if (!atlas_id.value)
         return false;
     if (render.output->batches.empty() || render.output->batches.back().atlas.value != atlas_id.value ||
+        render.output->batches.back().atlas_generation != quad.texture_generation ||
         render.output->batches.back().mode != actual_mode) {
         render.output->batches.push_back(
-            {atlas_id, actual_mode, static_cast<uint32_t>(render.output->vertices.size()), 0,
+            {atlas_id, quad.texture_generation, actual_mode,
+             static_cast<uint32_t>(render.output->vertices.size()), 0,
              static_cast<uint32_t>(render.output->indices.size()), 0});
     }
     const skb_image_t *atlas =
@@ -108,9 +121,6 @@ void atlas_texture_created(skb_image_atlas_t *atlas, uint8_t texture_index, void
     const uint32_t id = (uint32_t(1) << 28) | (uint32_t(state.texture_namespace & 0x0FFF) << 16) |
                         state.next_texture_slot++;
     skb_image_atlas_set_texture_user_data(atlas, texture_index, id);
-    if (state.texture_generations.size() <= texture_index)
-        state.texture_generations.resize(texture_index + 1, 0);
-    state.texture_generations[texture_index] = 1;
 }
 
 } // namespace
@@ -271,43 +281,36 @@ std::vector<AtlasUpload> SkribidiAdapter::atlas_uploads(bool include_clean) cons
         return uploads;
     const int count = skb_image_atlas_get_texture_count(state_->atlas);
     for (int index = 0; index < count; ++index) {
-        const skb_rect2i_t dirty = skb_image_atlas_get_texture_dirty_bounds(state_->atlas, index);
+        const auto snapshot = skb_image_atlas_peek_texture_dirty(state_->atlas, index);
+        const skb_rect2i_t dirty = snapshot.dirty;
         const bool is_dirty = !skb_rect2i_is_empty(dirty);
         if (!is_dirty && !include_clean)
             continue;
-        const skb_image_t *image = skb_image_atlas_get_texture(state_->atlas, index);
         const AtlasTextureId texture{
             static_cast<uint32_t>(skb_image_atlas_get_texture_user_data(state_->atlas, index))};
-        if (!image || !texture.value)
+        if (!snapshot.pixels || !texture.value)
             continue;
-        const uint32_t generation = index < state_->texture_generations.size()
-                                        ? state_->texture_generations[index]
-                                        : 1;
-        uploads.push_back({texture, static_cast<uint8_t>(index), image->bpp, image->width,
-                           image->height, image->stride_bytes, is_dirty ? dirty.x : 0,
-                           is_dirty ? dirty.y : 0, is_dirty ? dirty.width : image->width,
-                           is_dirty ? dirty.height : image->height, image->buffer, is_dirty,
-                           generation});
+        const uint8_t bytes_per_pixel = snapshot.format == SKB_IMAGE_ATLAS_FORMAT_RGBA8_PREMULTIPLIED
+                                             ? 4
+                                             : 1;
+        uploads.push_back({texture, static_cast<uint8_t>(index), atlas_format(snapshot.format),
+                           bytes_per_pixel, snapshot.width, snapshot.height, snapshot.stride_bytes,
+                           is_dirty ? dirty.x : 0, is_dirty ? dirty.y : 0,
+                           is_dirty ? dirty.width : snapshot.width,
+                           is_dirty ? dirty.height : snapshot.height, snapshot.pixels, is_dirty,
+                           snapshot.texture_generation, snapshot.epoch});
     }
     return uploads;
 }
 
-bool SkribidiAdapter::acknowledge_atlas_upload(AtlasTextureId texture) {
-    if (!state_->atlas || !texture.value)
+bool SkribidiAdapter::acknowledge_atlas_upload(AtlasTextureId texture, uint64_t dirty_epoch) {
+    if (!state_->atlas || !texture.value || !dirty_epoch)
         return false;
     const int count = skb_image_atlas_get_texture_count(state_->atlas);
     for (int index = 0; index < count; ++index) {
         if (skb_image_atlas_get_texture_user_data(state_->atlas, index) != texture.value)
             continue;
-        const skb_rect2i_t dirty =
-            skb_image_atlas_get_and_reset_texture_dirty_bounds(state_->atlas, index);
-        if (skb_rect2i_is_empty(dirty))
-            return false;
-        if (index < state_->texture_generations.size()) {
-            auto &generation = state_->texture_generations[index];
-            generation = generation == UINT32_MAX ? 1 : generation + 1;
-        }
-        return true;
+        return skb_image_atlas_ack_texture_dirty(state_->atlas, index, dirty_epoch);
     }
     return false;
 }

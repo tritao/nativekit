@@ -22,6 +22,7 @@ struct SokolBackend::State {
         sg_view view{};
         int width = 0;
         int height = 0;
+        AtlasTextureFormat format = AtlasTextureFormat::R8Mask;
         uint8_t bytes_per_pixel = 0;
         uint32_t generation = 0;
         std::vector<uint8_t> pixels;
@@ -127,6 +128,32 @@ struct PathMesh {
 bool fail(SokolBackend::State &state, const char *message) {
     state.error = message;
     return false;
+}
+
+bool create_atlas_image(SokolBackend::State::AtlasImage &atlas, const AtlasUpload &upload) {
+    sg_image_desc desc{};
+    desc.width = upload.texture_width;
+    desc.height = upload.texture_height;
+    desc.pixel_format = upload.format == AtlasTextureFormat::Rgba8Premultiplied
+                            ? SG_PIXELFORMAT_RGBA8
+                            : SG_PIXELFORMAT_R8;
+    desc.usage.dynamic_update = true;
+    atlas.image = sg_make_image(&desc);
+    sg_view_desc view_desc{};
+    view_desc.texture.image = atlas.image;
+    atlas.view = sg_make_view(&view_desc);
+    if (sg_query_image_state(atlas.image) != SG_RESOURCESTATE_VALID ||
+        sg_query_view_state(atlas.view) != SG_RESOURCESTATE_VALID)
+        return false;
+    atlas.width = upload.texture_width;
+    atlas.height = upload.texture_height;
+    atlas.format = upload.format;
+    atlas.bytes_per_pixel = upload.bytes_per_pixel;
+    atlas.generation = upload.generation;
+    atlas.pixels.assign(static_cast<size_t>(upload.texture_width) * upload.texture_height *
+                            upload.bytes_per_pixel,
+                        0);
+    return true;
 }
 
 void copy_atlas_pixels(SokolBackend::State::AtlasImage &target, const AtlasUpload &upload,
@@ -1006,30 +1033,25 @@ bool SokolBackend::draw_paths(const NanoVGRecorder &recorder) {
 bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) {
     for (const auto &upload : adapter.atlas_uploads(include_clean)) {
         auto found = state_->atlases.find(upload.texture.value);
-        bool created = false;
+        bool full_upload = !upload.dirty;
         if (found == state_->atlases.end()) {
-            sg_image_desc desc{};
-            desc.width = upload.texture_width;
-            desc.height = upload.texture_height;
-            desc.pixel_format =
-                upload.bytes_per_pixel == 1 ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
-            desc.usage.dynamic_update = true;
-            const sg_image image = sg_make_image(&desc);
-            sg_view_desc view_desc{};
-            view_desc.texture.image = image;
-            const sg_view view = sg_make_view(&view_desc);
-            if (sg_query_image_state(image) != SG_RESOURCESTATE_VALID ||
-                sg_query_view_state(view) != SG_RESOURCESTATE_VALID)
+            State::AtlasImage atlas;
+            if (!create_atlas_image(atlas, upload))
                 return fail(*state_, "atlas image creation failed");
-            State::AtlasImage atlas{image, view, upload.texture_width, upload.texture_height,
-                                    upload.bytes_per_pixel, upload.generation, {}};
-            atlas.pixels.resize(static_cast<size_t>(upload.texture_width) * upload.texture_height *
-                                upload.bytes_per_pixel);
             found = state_->atlases.emplace(upload.texture.value, std::move(atlas)).first;
-            created = true;
             state_->stats.gpu_resources += 2;
+            full_upload = true;
+        } else if (found->second.width != upload.texture_width ||
+                   found->second.height != upload.texture_height ||
+                   found->second.format != upload.format ||
+                   found->second.bytes_per_pixel != upload.bytes_per_pixel) {
+            sg_destroy_view(found->second.view);
+            sg_destroy_image(found->second.image);
+            if (!create_atlas_image(found->second, upload))
+                return fail(*state_, "atlas image replacement failed");
+            full_upload = true;
         }
-        copy_atlas_pixels(found->second, upload, created || !upload.dirty);
+        copy_atlas_pixels(found->second, upload, full_upload);
         // Sokol currently exposes whole-image updates only; keep this fallback correct while
         // retaining the dirty rectangle in the CPU mirror for a future subregion primitive.
         const sg_image_data data = {
@@ -1038,7 +1060,7 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
         found->second.generation = upload.generation;
         ++state_->stats.image_uploads;
         state_->stats.uploaded_bytes += found->second.pixels.size();
-        if (upload.dirty && !adapter.acknowledge_atlas_upload(upload.texture))
+        if (upload.dirty && !adapter.acknowledge_atlas_upload(upload.texture, upload.dirty_epoch))
             return fail(*state_, "atlas upload acknowledgement failed");
     }
     return true;
@@ -1057,7 +1079,11 @@ bool SokolBackend::draw_glyphs_transformed(const PreparedGlyphs &glyphs, const f
         const auto atlas = state_->atlases.find(batch.atlas.value);
         if (atlas == state_->atlases.end())
             return fail(*state_, "glyph atlas was not uploaded");
-        if ((batch.mode == GlyphMode::Color) != (atlas->second.bytes_per_pixel == 4))
+        if (batch.atlas_generation != atlas->second.generation)
+            return fail(*state_, "glyph atlas generation is stale");
+        const bool color_format = atlas->second.format == AtlasTextureFormat::Rgba8Premultiplied;
+        if ((batch.mode == GlyphMode::Color) != color_format ||
+            (batch.mode == GlyphMode::Sdf) != (atlas->second.format == AtlasTextureFormat::R8Sdf))
             return fail(*state_, "glyph mode does not match atlas format");
         const sg_pipeline pipeline = batch.mode == GlyphMode::Color ? state_->color_glyph_pipeline
                                      : batch.mode == GlyphMode::Sdf ? state_->sdf_glyph_pipeline
