@@ -29,6 +29,8 @@ set_target_properties(nativekit_ui PROPERTIES
     SOVERSION 0)
 
 if(NK_BUILD_TESTS)
+    add_test(NAME nativekit_ui_dependencies
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-dependencies.sh")
     add_executable(nativekit_ui_abi_test tests/abi.c)
     target_link_libraries(nativekit_ui_abi_test PRIVATE NativeKit::ui)
     add_test(NAME nativekit_ui_abi COMMAND nativekit_ui_abi_test)
@@ -146,3 +148,13 @@ install(FILES
 install(FILES
     "${NK_VENDOR_DIR}/nanovg-sokol/LICENSE"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit/UI/NanoVG-Sokol)
+install(FILES "${NK_VENDOR_DIR}/sokol/LICENSE"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit/UI/Sokol)
+install(FILES "${NK_VENDOR_DIR}/harfbuzz/COPYING"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit/UI/HarfBuzz)
+install(FILES "${NK_VENDOR_DIR}/sheenbidi/LICENSE"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit/UI/SheenBidi)
+install(FILES "${NK_VENDOR_DIR}/libunibreak/LICENCE"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit/UI/libunibreak)
+install(FILES "${NK_VENDOR_DIR}/budouxc/LICENSE"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit/UI/BudouX-C)
