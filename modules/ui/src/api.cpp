@@ -10,6 +10,7 @@
 #include "render/render_plan_executor.h"
 #include "render/sokol_backend.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
@@ -39,6 +40,7 @@ namespace {
 
 struct DisplayListSlot {
     std::unique_ptr<nkui::DisplayList> list;
+    std::vector<nkui::ResourceId> resources;
     uint16_t generation = 1;
 };
 
@@ -50,6 +52,8 @@ struct FontEntry {
 struct ResourceSlot {
     nkui::ResourceKind kind{};
     uint16_t generation = 1;
+    bool externally_alive = true;
+    uint32_t display_refs = 0;
     std::vector<FontEntry> fonts;
     std::unique_ptr<nkui::SkribidiAdapter> text;
     nkui::PreparedGlyphs text_glyphs;
@@ -117,6 +121,20 @@ DisplayListSlot *resolve(nkui_display_list handle) {
 }
 
 ResourceSlot *resolve(nkui_resource handle, nkui::ResourceKind expected) {
+    const nkui::ResourceId id{handle.id};
+    if (!nkui::is_resource_id(id, expected))
+        return nullptr;
+    const uint16_t slot = static_cast<uint16_t>(handle.id);
+    const uint16_t generation = static_cast<uint16_t>((handle.id >> 16) & 0x0FFF);
+    if (!slot || slot > resources.size())
+        return nullptr;
+    auto &entry = resources[slot - 1];
+    return entry.kind == expected && entry.generation == generation && entry.externally_alive
+               ? &entry
+               : nullptr;
+}
+
+ResourceSlot *resolve_retained(nkui_resource handle, nkui::ResourceKind expected) {
     const nkui::ResourceId id{handle.id};
     if (!nkui::is_resource_id(id, expected))
         return nullptr;
@@ -252,6 +270,8 @@ nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
         auto &entry = resources[index];
         if (entry.kind == nkui::ResourceKind{}) {
             entry.kind = kind;
+            entry.externally_alive = true;
+            entry.display_refs = 0;
             out->id =
                 nkui::make_resource_id(kind, entry.generation, static_cast<uint16_t>(index + 1))
                     .value;
@@ -264,6 +284,8 @@ nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
     try {
         resources.emplace_back();
         resources.back().kind = kind;
+        resources.back().externally_alive = true;
+        resources.back().display_refs = 0;
     } catch (...) {
         return NKUI_ERROR_OUT_OF_MEMORY;
     }
@@ -283,8 +305,73 @@ void release_resource_slot(ResourceSlot &slot) {
     slot.image_width = 0;
     slot.image_height = 0;
     slot.image_format = NKUI_IMAGE_FORMAT_INVALID;
+    slot.externally_alive = false;
+    slot.display_refs = 0;
     slot.kind = {};
     slot.generation = static_cast<uint16_t>((slot.generation % 0x0FFF) + 1);
+}
+
+bool retain_display_resource(nkui::ResourceId id) {
+    const auto kind = static_cast<nkui::ResourceKind>(id.value >> 28);
+    if (kind == nkui::ResourceKind::RenderTarget)
+        return true;
+    auto *slot = resolve(nkui_resource{id.value}, kind);
+    if (!slot)
+        return false;
+    ++slot->display_refs;
+    return true;
+}
+
+void release_display_resource(nkui::ResourceId id) {
+    const auto kind = static_cast<nkui::ResourceKind>(id.value >> 28);
+    if (kind == nkui::ResourceKind::RenderTarget)
+        return;
+    auto *slot = resolve_retained(nkui_resource{id.value}, kind);
+    if (!slot || !slot->display_refs)
+        return;
+    --slot->display_refs;
+    if (!slot->externally_alive && !slot->display_refs)
+        release_resource_slot(*slot);
+}
+
+void release_display_resources(DisplayListSlot &list) {
+    for (const auto id : list.resources)
+        release_display_resource(id);
+    list.resources.clear();
+}
+
+bool collect_display_resources(const uint8_t *data, size_t size,
+                               std::vector<nkui::ResourceId> &out) {
+    size_t offset = 0;
+    while (offset < size) {
+        nkui::CommandHeader header{};
+        std::memcpy(&header, data + offset, sizeof(header));
+        const auto append = [&](nkui::ResourceId id) {
+            const auto found = std::find_if(out.begin(), out.end(),
+                                            [id](nkui::ResourceId value) {
+                                                return value.value == id.value;
+                                            });
+            if (found == out.end())
+                out.push_back(id);
+        };
+        switch (header.opcode) {
+        case nkui::CommandOpcode::SetPaint:
+            append(reinterpret_cast<const nkui::SetPaintCommand *>(data + offset)->paint);
+            break;
+        case nkui::CommandOpcode::DrawPath:
+            append(reinterpret_cast<const nkui::DrawResourceCommand *>(data + offset)->resource);
+            break;
+        case nkui::CommandOpcode::DrawImage:
+        case nkui::CommandOpcode::DrawTextLayout:
+        case nkui::CommandOpcode::DrawRenderTarget:
+            append(reinterpret_cast<const nkui::DrawRectResourceCommand *>(data + offset)->resource);
+            break;
+        default:
+            break;
+        }
+        offset += header.size;
+    }
+    return true;
 }
 
 } // namespace
@@ -308,7 +395,7 @@ extern "C" nkui_result nkui_display_list_create(nkui_display_list *out_list) {
         }
         if (lists.size() >= UINT16_MAX)
             return NKUI_ERROR_OUT_OF_MEMORY;
-        lists.push_back({std::make_unique<nkui::DisplayList>(), 1});
+        lists.push_back({std::make_unique<nkui::DisplayList>(), {}, 1});
         out_list->id = make_handle(1, static_cast<uint16_t>(lists.size()));
         return NKUI_OK;
     } catch (...) {
@@ -317,10 +404,11 @@ extern "C" nkui_result nkui_display_list_create(nkui_display_list *out_list) {
 }
 
 extern "C" nkui_result nkui_display_list_destroy(nkui_display_list list) {
-    std::lock_guard<std::mutex> lock(lists_mutex);
+    std::scoped_lock lock(lists_mutex, resources_mutex);
     auto *slot = resolve(list);
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
+    release_display_resources(*slot);
     slot->list.reset();
     if (++slot->generation == 0)
         slot->generation = 1;
@@ -328,10 +416,11 @@ extern "C" nkui_result nkui_display_list_destroy(nkui_display_list list) {
 }
 
 extern "C" nkui_result nkui_display_list_reset(nkui_display_list list) {
-    std::lock_guard<std::mutex> lock(lists_mutex);
+    std::scoped_lock lock(lists_mutex, resources_mutex);
     auto *slot = resolve(list);
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
+    release_display_resources(*slot);
     slot->list->reset();
     return NKUI_OK;
 }
@@ -340,12 +429,34 @@ extern "C" nkui_result nkui_display_list_submit(nkui_display_list list, const ui
                                                 uint32_t command_bytes) {
     if (!nkui::validate_display_list(commands, command_bytes))
         return NKUI_ERROR_INVALID_TRANSACTION;
-    std::lock_guard<std::mutex> lock(lists_mutex);
+    std::scoped_lock lock(lists_mutex, resources_mutex);
     auto *slot = resolve(list);
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
-    return slot->list->assign_validated(commands, command_bytes) ? NKUI_OK
-                                                                 : NKUI_ERROR_OUT_OF_MEMORY;
+    std::vector<nkui::ResourceId> retained;
+    try {
+        collect_display_resources(commands, command_bytes, retained);
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    size_t retained_count = 0;
+    for (const auto id : retained) {
+        if (retain_display_resource(id)) {
+            ++retained_count;
+            continue;
+        }
+        for (size_t index = 0; index < retained_count; ++index)
+            release_display_resource(retained[index]);
+        return NKUI_ERROR_INVALID_HANDLE;
+    }
+    if (!slot->list->assign_validated(commands, command_bytes)) {
+        for (const auto id : retained)
+            release_display_resource(id);
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    release_display_resources(*slot);
+    slot->resources = std::move(retained);
+    return NKUI_OK;
 }
 
 extern "C" nkui_result nkui_display_list_get_info(nkui_display_list list,
@@ -474,9 +585,12 @@ extern "C" nkui_result nkui_resource_destroy(nkui_resource resource) {
     if (!slot_index || slot_index > resources.size())
         return NKUI_ERROR_INVALID_HANDLE;
     auto &slot = resources[slot_index - 1];
-    if (slot.kind == nkui::ResourceKind{} || slot.generation != generation)
+    if (slot.kind == nkui::ResourceKind{} || slot.generation != generation ||
+        !slot.externally_alive)
         return NKUI_ERROR_INVALID_HANDLE;
-    release_resource_slot(slot);
+    slot.externally_alive = false;
+    if (!slot.display_refs)
+        release_resource_slot(slot);
     return NKUI_OK;
 }
 
@@ -668,10 +782,12 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
             command.scissor_height *= frame_info->pixel_scale;
             if (command.kind == nkui::RenderCommandKind::Path) {
                 auto *path =
-                    resolve(nkui_resource{command.resource.value}, nkui::ResourceKind::Path);
-                auto *paint = command.paint.value ? resolve(nkui_resource{command.paint.value},
-                                                            nkui::ResourceKind::Paint)
-                                                  : nullptr;
+                    resolve_retained(nkui_resource{command.resource.value},
+                                     nkui::ResourceKind::Path);
+                auto *paint = command.paint.value
+                                  ? resolve_retained(nkui_resource{command.paint.value},
+                                                     nkui::ResourceKind::Paint)
+                                  : nullptr;
                 if (!path || (command.paint.value && !paint) || !prepared_slot) {
                     valid = false;
                     break;
@@ -693,7 +809,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                 valid = frame_resources.bind_path(prepared_id, *cached->recorder, 0);
             } else if (command.kind == nkui::RenderCommandKind::Image) {
                 auto *image =
-                    resolve(nkui_resource{command.resource.value}, nkui::ResourceKind::Image);
+                    resolve_retained(nkui_resource{command.resource.value},
+                                     nkui::ResourceKind::Image);
                 if (!image || !prepared_slot) {
                     valid = false;
                     break;
@@ -741,7 +858,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                                                   recorder.operations().size() - 1);
             } else if (command.kind == nkui::RenderCommandKind::GlyphBatch) {
                 auto *layout =
-                    resolve(nkui_resource{command.resource.value}, nkui::ResourceKind::TextLayout);
+                    resolve_retained(nkui_resource{command.resource.value},
+                                     nkui::ResourceKind::TextLayout);
                 if (!layout || !layout->text) {
                     valid = false;
                     break;

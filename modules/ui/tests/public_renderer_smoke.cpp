@@ -97,6 +97,9 @@ int main() {
                                          sizeof(nkui_command_header)});
     if (nkui_display_list_submit(list, commands.data(), commands.size()) != NKUI_OK)
         return 5;
+    if (nkui_resource_destroy(text) != NKUI_OK || nkui_resource_destroy(image) != NKUI_OK ||
+        nkui_resource_destroy(paint) != NKUI_OK || nkui_resource_destroy(path) != NKUI_OK)
+        return 5;
 
     int result = 0;
     bool ready = false;
