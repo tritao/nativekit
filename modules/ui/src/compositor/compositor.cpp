@@ -51,6 +51,16 @@ RenderPass &continue_pass(RenderPlan &plan, ResourceId target) {
     return plan.passes.back();
 }
 
+void add_dependency(RenderPlan &plan, ResourceId producer, ResourceId consumer) {
+    const auto found = std::find_if(plan.dependencies.begin(), plan.dependencies.end(),
+                                    [producer, consumer](const RenderDependency &dependency) {
+                                        return dependency.producer.value == producer.value &&
+                                               dependency.consumer.value == consumer.value;
+                                    });
+    if (found == plan.dependencies.end())
+        plan.dependencies.push_back({producer, consumer});
+}
+
 void apply_state(RenderCommand &command, const CanvasState &state) {
     command.opacity *= state.alpha;
     command.transform = state.transform;
@@ -172,7 +182,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             pass->commands.push_back({RenderCommandKind::CompositeTarget, value.resource, value.x,
                                       value.y, value.width, value.height});
             apply_state(pass->commands.back(), state);
-            plan.dependencies.push_back({value.resource, current_target});
+            add_dependency(plan, value.resource, current_target);
             break;
         }
         case CommandOpcode::BeginLayer: {
@@ -201,7 +211,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 pass->commands.back().scissor_y = state.y;
                 pass->commands.back().scissor_width = state.width;
                 pass->commands.back().scissor_height = state.height;
-                plan.dependencies.push_back({layer.layer_target, current_target});
+                add_dependency(plan, layer.layer_target, current_target);
             }
             break;
         }

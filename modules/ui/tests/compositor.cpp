@@ -40,6 +40,29 @@ int main() {
         plan.passes[1].target.value != first_transient.value)
         return 7;
 
+    DisplayList nested;
+    if (!nested.begin_layer(0.8f) || !nested.draw_path(path) || !nested.begin_layer(0.4f) ||
+        !nested.draw_path(path) || !nested.end_layer() || !nested.draw_path(path) ||
+        !nested.end_layer() || !nested.draw_path(path) || !compositor.compile(nested, main_target,
+                                                                                 plan, &error))
+        return 8;
+    if (plan.passes.size() != 5 || plan.dependencies.size() != 2 ||
+        plan.passes[0].target.value != main_target.value ||
+        plan.passes[1].target.value == plan.passes[2].target.value ||
+        plan.passes[1].commands.size() != 1 ||
+        plan.passes[2].commands.size() != 1 ||
+        plan.passes[3].commands.size() != 2 || plan.passes[4].commands.size() != 2 ||
+        !plan.passes[3].load_existing || !plan.passes[4].load_existing)
+        return 9;
+
+    DisplayList duplicate_surface;
+    const auto external = make_resource_id(ResourceKind::RenderTarget, 1, 12);
+    if (!duplicate_surface.draw_render_target(external, 0.0f, 0.0f, 10.0f, 10.0f) ||
+        !duplicate_surface.draw_render_target(external, 20.0f, 0.0f, 10.0f, 10.0f) ||
+        !compositor.compile(duplicate_surface, main_target, plan, &error) ||
+        plan.dependencies.size() != 1)
+        return 10;
+
     DisplayList stateful;
     const auto paint = make_resource_id(ResourceKind::Paint, 1, 1);
     const float transform[6] = {2.0f, 0.0f, 0.0f, 3.0f, 5.0f, 7.0f};
@@ -48,7 +71,7 @@ int main() {
         !stateful.push_state() || !stateful.clip_rect(3.0f, 4.0f, 2.0f, 3.0f) ||
         !stateful.set_global_alpha(0.25f) || !stateful.draw_path(path) || !stateful.pop_state() ||
         !stateful.draw_path(path) || !compositor.compile(stateful, main_target, plan, &error))
-        return 8;
+        return 11;
     const auto &inner = plan.passes[0].commands[0];
     const auto &outer = plan.passes[0].commands[1];
     if (!inner.has_scissor || inner.scissor_x != 11.0f || inner.scissor_y != 19.0f ||
@@ -57,6 +80,6 @@ int main() {
         outer.scissor_width != 20.0f || outer.scissor_height != 60.0f || outer.opacity != 0.5f ||
         outer.paint.value != paint.value || outer.transform[0] != 2.0f ||
         outer.transform[3] != 3.0f || outer.transform[4] != 5.0f || outer.transform[5] != 7.0f)
-        return 9;
+        return 12;
     return 0;
 }
