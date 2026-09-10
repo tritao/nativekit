@@ -6,15 +6,22 @@ foreach(dependency IN ITEMS sokol nanovg nanovg-sokol)
 endforeach()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID)
-    add_library(nkui_nanovg STATIC
-        "${NK_VENDOR_DIR}/nanovg/src/nanovg.c"
-        src/render/nanovg_sokol.c)
+    add_library(nkui_nanovg_core STATIC
+        "${NK_VENDOR_DIR}/nanovg/src/nanovg.c")
+    target_include_directories(nkui_nanovg_core
+        PUBLIC "${NK_VENDOR_DIR}/nanovg/src"
+    )
+    set_target_properties(nkui_nanovg_core PROPERTIES
+        POSITION_INDEPENDENT_CODE YES
+        C_VISIBILITY_PRESET hidden)
+
+    add_library(nkui_nanovg STATIC src/render/nanovg_sokol.c)
     target_include_directories(nkui_nanovg
         PUBLIC "${NK_VENDOR_DIR}/nanovg/src"
         PRIVATE
             "${NK_VENDOR_DIR}/nanovg-sokol/src/nanovg_sokol"
             "${NK_VENDOR_DIR}/sokol")
-    target_link_libraries(nkui_nanovg PUBLIC nativekit_sokol_runtime)
+    target_link_libraries(nkui_nanovg PUBLIC nkui_nanovg_core nativekit_sokol_runtime)
     set_target_properties(nkui_nanovg PROPERTIES
         POSITION_INDEPENDENT_CODE YES
         C_VISIBILITY_PRESET hidden)
