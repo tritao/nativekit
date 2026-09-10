@@ -89,9 +89,10 @@ bool SkribidiAdapter::valid() const {
     return state_->fonts && state_->temporary && state_->rasterizer && state_->atlas;
 }
 
-bool SkribidiAdapter::add_font(const char *path) {
-    return path &&
-           skb_font_collection_add_font(state_->fonts, path, SKB_FONT_FAMILY_DEFAULT, nullptr);
+bool SkribidiAdapter::add_font(const char *path, FontFamily family) {
+    const uint8_t skb_family =
+        family == FontFamily::Emoji ? SKB_FONT_FAMILY_EMOJI : SKB_FONT_FAMILY_DEFAULT;
+    return path && skb_font_collection_add_font(state_->fonts, path, skb_family, nullptr);
 }
 
 bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size) {

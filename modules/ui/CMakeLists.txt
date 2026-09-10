@@ -90,7 +90,8 @@ if(NK_BUILD_TESTS)
         target_include_directories(nativekit_ui_sokol_backend_smoke_test PRIVATE
             src "${NK_VENDOR_DIR}/sokol")
         target_compile_definitions(nativekit_ui_sokol_backend_smoke_test PRIVATE
-            NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+            NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf"
+            NKUI_TEST_COLOR_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/NotoColorEmoji-Regular.ttf")
         target_link_libraries(nativekit_ui_sokol_backend_smoke_test PRIVATE
             NativeKit::nativekit nkui_nanovg_core nkui_skribidi nativekit_sokol_runtime
             OpenGL::GL)

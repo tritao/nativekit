@@ -12,6 +12,11 @@ enum class GlyphMode : uint8_t {
     Color,
 };
 
+enum class FontFamily : uint8_t {
+    Default = 0,
+    Emoji = 1,
+};
+
 struct GlyphVertex {
     float x;
     float y;
@@ -64,7 +69,7 @@ class SkribidiAdapter {
     SkribidiAdapter &operator=(const SkribidiAdapter &) = delete;
 
     bool valid() const;
-    bool add_font(const char *path);
+    bool add_font(const char *path, FontFamily family = FontFamily::Default);
     bool layout_utf8(const char *text, float width, float font_size);
     bool prepare_glyphs(float origin_x, float origin_y, float pixel_scale, GlyphMode mode,
                         PreparedGlyphs &output);

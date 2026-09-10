@@ -34,8 +34,12 @@ struct SokolBackend::State {
     sg_pipeline solid_pipeline{};
     sg_pipeline fill_stencil_pipeline{};
     sg_pipeline fill_cover_pipeline{};
-    sg_shader glyph_shader{};
-    sg_pipeline glyph_pipeline{};
+    sg_shader alpha_glyph_shader{};
+    sg_pipeline alpha_glyph_pipeline{};
+    sg_shader sdf_glyph_shader{};
+    sg_pipeline sdf_glyph_pipeline{};
+    sg_shader color_glyph_shader{};
+    sg_pipeline color_glyph_pipeline{};
     sg_shader composite_shader{};
     sg_pipeline composite_pipeline{};
     sg_sampler sampler{};
@@ -89,7 +93,7 @@ sg_shader make_solid_shader() {
     return sg_make_shader(&desc);
 }
 
-sg_shader make_glyph_shader() {
+sg_shader make_glyph_shader(GlyphMode mode) {
     sg_shader_desc desc{};
     desc.vertex_func.source =
         "#version 330\n"
@@ -98,10 +102,22 @@ sg_shader make_glyph_shader() {
         "out vec2 uv; out vec4 color; void main(){uv=uv0;color=color0;"
         "vec2 p=vec2(position.x/viewport.x*2.0-1.0,1.0-position.y/viewport.y*2.0);"
         "gl_Position=vec4(p,0,1);}";
-    desc.fragment_func.source =
-        "#version 330\n"
-        "uniform sampler2D tex; in vec2 uv; in vec4 color; out vec4 frag_color;"
-        "void main(){float a=texture(tex,uv).r;frag_color=vec4(color.rgb,color.a*a);}";
+    if (mode == GlyphMode::Color)
+        desc.fragment_func.source =
+            "#version 330\n"
+            "uniform sampler2D tex; in vec2 uv; in vec4 color; out vec4 frag_color;"
+            "void main(){frag_color=texture(tex,uv)*color;}";
+    else if (mode == GlyphMode::Sdf)
+        desc.fragment_func.source =
+            "#version 330\n"
+            "uniform sampler2D tex; in vec2 uv; in vec4 color; out vec4 frag_color;"
+            "void main(){float d=texture(tex,uv).r;float w=max(fwidth(d),0.001);"
+            "float a=smoothstep(0.5-w,0.5+w,d);frag_color=vec4(color.rgb,color.a*a);}";
+    else
+        desc.fragment_func.source =
+            "#version 330\n"
+            "uniform sampler2D tex; in vec2 uv; in vec4 color; out vec4 frag_color;"
+            "void main(){float a=texture(tex,uv).r;frag_color=vec4(color.rgb,color.a*a);}";
     desc.uniform_blocks[0].stage = SG_SHADERSTAGE_VERTEX;
     desc.uniform_blocks[0].size = 8;
     desc.uniform_blocks[0].glsl_uniforms[0].type = SG_UNIFORMTYPE_FLOAT2;
@@ -383,8 +399,12 @@ SokolBackend::~SokolBackend() {
         sg_destroy_buffer(state_->composite_vertices);
         sg_destroy_buffer(state_->glyph_vertices);
         sg_destroy_buffer(state_->solid_vertices);
-        sg_destroy_pipeline(state_->glyph_pipeline);
-        sg_destroy_shader(state_->glyph_shader);
+        sg_destroy_pipeline(state_->color_glyph_pipeline);
+        sg_destroy_shader(state_->color_glyph_shader);
+        sg_destroy_pipeline(state_->sdf_glyph_pipeline);
+        sg_destroy_shader(state_->sdf_glyph_shader);
+        sg_destroy_pipeline(state_->alpha_glyph_pipeline);
+        sg_destroy_shader(state_->alpha_glyph_shader);
         sg_destroy_pipeline(state_->composite_pipeline);
         sg_destroy_shader(state_->composite_shader);
         sg_destroy_pipeline(state_->solid_pipeline);
@@ -405,12 +425,16 @@ bool SokolBackend::initialize() {
     if (!sg_isvalid())
         return fail(*state_, "sg_setup failed");
     state_->solid_shader = make_solid_shader();
-    state_->glyph_shader = make_glyph_shader();
+    state_->alpha_glyph_shader = make_glyph_shader(GlyphMode::Alpha);
+    state_->sdf_glyph_shader = make_glyph_shader(GlyphMode::Sdf);
+    state_->color_glyph_shader = make_glyph_shader(GlyphMode::Color);
     state_->composite_shader = make_composite_shader();
     state_->solid_pipeline = make_solid_pipeline(state_->solid_shader);
     state_->fill_stencil_pipeline = make_fill_stencil_pipeline(state_->solid_shader);
     state_->fill_cover_pipeline = make_fill_cover_pipeline(state_->solid_shader);
-    state_->glyph_pipeline = make_glyph_pipeline(state_->glyph_shader);
+    state_->alpha_glyph_pipeline = make_glyph_pipeline(state_->alpha_glyph_shader);
+    state_->sdf_glyph_pipeline = make_glyph_pipeline(state_->sdf_glyph_shader);
+    state_->color_glyph_pipeline = make_glyph_pipeline(state_->color_glyph_shader);
     state_->composite_pipeline = make_composite_pipeline(state_->composite_shader);
     sg_sampler_desc sampler_desc{};
     sampler_desc.min_filter = SG_FILTER_NEAREST;
@@ -426,7 +450,9 @@ bool SokolBackend::initialize() {
         sg_query_pipeline_state(state_->solid_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->fill_stencil_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->fill_cover_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_pipeline_state(state_->glyph_pipeline) == SG_RESOURCESTATE_VALID &&
+        sg_query_pipeline_state(state_->alpha_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
+        sg_query_pipeline_state(state_->sdf_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
+        sg_query_pipeline_state(state_->color_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->composite_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_sampler_state(state_->sampler) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->solid_vertices) == SG_RESOURCESTATE_VALID &&
@@ -434,7 +460,7 @@ bool SokolBackend::initialize() {
         sg_query_buffer_state(state_->composite_vertices) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->indices) == SG_RESOURCESTATE_VALID;
     if (state_->initialized)
-        state_->stats.gpu_resources = 15;
+        state_->stats.gpu_resources = 19;
     return state_->initialized || fail(*state_, "Sokol UI resource creation failed");
 }
 
@@ -606,11 +632,14 @@ bool SokolBackend::draw_glyphs(const PreparedGlyphs &glyphs, float opacity) {
     if (!state_->in_pass || opacity < 0.0f || opacity > 1.0f)
         return fail(*state_, "invalid glyph draw");
     for (const auto &batch : glyphs.batches) {
-        if (batch.mode != GlyphMode::Alpha)
-            return fail(*state_, "glyph mode is not implemented");
         const auto atlas = state_->atlases.find(batch.atlas.value);
         if (atlas == state_->atlases.end())
             return fail(*state_, "glyph atlas was not uploaded");
+        if ((batch.mode == GlyphMode::Color) != (atlas->second.bytes_per_pixel == 4))
+            return fail(*state_, "glyph mode does not match atlas format");
+        const sg_pipeline pipeline = batch.mode == GlyphMode::Color ? state_->color_glyph_pipeline
+                                     : batch.mode == GlyphMode::Sdf ? state_->sdf_glyph_pipeline
+                                                                    : state_->alpha_glyph_pipeline;
         std::vector<GlyphVertex> vertices(glyphs.vertices.begin() + batch.first_vertex,
                                           glyphs.vertices.begin() + batch.first_vertex +
                                               batch.vertex_count);
@@ -620,8 +649,8 @@ bool SokolBackend::draw_glyphs(const PreparedGlyphs &glyphs, float opacity) {
         indices.reserve(batch.index_count);
         for (uint32_t index = 0; index < batch.index_count; ++index)
             indices.push_back(glyphs.indices[batch.first_index + index] - batch.first_vertex);
-        if (!draw_mesh(*state_, state_->glyph_pipeline, vertices, indices, nullptr, 0,
-                       atlas->second.view, state_->sampler, state_->glyph_vertices))
+        if (!draw_mesh(*state_, pipeline, vertices, indices, nullptr, 0, atlas->second.view,
+                       state_->sampler, state_->glyph_vertices))
             return false;
     }
     return true;

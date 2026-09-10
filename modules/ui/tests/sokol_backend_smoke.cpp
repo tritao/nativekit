@@ -20,6 +20,9 @@ using namespace nkui;
 #ifndef NKUI_TEST_FONT_PATH
 #error NKUI_TEST_FONT_PATH is required
 #endif
+#ifndef NKUI_TEST_COLOR_FONT_PATH
+#error NKUI_TEST_COLOR_FONT_PATH is required
+#endif
 
 int main() {
     nk_init_options init{};
@@ -57,10 +60,14 @@ int main() {
     SkribidiAdapter text_adapter;
     PreparedGlyphs title_glyphs;
     PreparedGlyphs layer_glyphs;
+    PreparedGlyphs color_glyphs;
     if (!text_adapter.valid() || !text_adapter.add_font(NKUI_TEST_FONT_PATH) ||
+        !text_adapter.add_font(NKUI_TEST_COLOR_FONT_PATH, FontFamily::Emoji) ||
         !text_adapter.layout_utf8("NativeKit direct text", 280.0f, 24.0f) ||
         !text_adapter.prepare_glyphs(20.0f, 35.0f, 1.0f, GlyphMode::Alpha, title_glyphs) ||
-        !text_adapter.prepare_glyphs(58.0f, 105.0f, 1.0f, GlyphMode::Alpha, layer_glyphs))
+        !text_adapter.prepare_glyphs(58.0f, 105.0f, 1.0f, GlyphMode::Sdf, layer_glyphs) ||
+        !text_adapter.layout_utf8("😀", 80.0f, 32.0f) ||
+        !text_adapter.prepare_glyphs(250.0f, 55.0f, 1.0f, GlyphMode::Color, color_glyphs))
         result = 9;
     const ResourceId main_target = make_resource_id(ResourceKind::RenderTarget, 1, 1);
     const ResourceId background = make_resource_id(ResourceKind::Path, 1, 1);
@@ -68,9 +75,11 @@ int main() {
     const ResourceId foreground = make_resource_id(ResourceKind::Path, 1, 3);
     const ResourceId title = make_resource_id(ResourceKind::TextLayout, 1, 1);
     const ResourceId layer_text = make_resource_id(ResourceKind::TextLayout, 1, 2);
+    const ResourceId color_text = make_resource_id(ResourceKind::TextLayout, 1, 3);
     DisplayList display_list;
     display_list.draw_path(background);
     display_list.draw_text_layout(title, 20.0f, 35.0f);
+    display_list.draw_text_layout(color_text, 250.0f, 55.0f);
     display_list.begin_layer(0.6f);
     display_list.draw_path(layer_path);
     display_list.draw_text_layout(layer_text, 58.0f, 105.0f);
@@ -135,6 +144,7 @@ int main() {
             !resources.bind_path(foreground, recorder, 2) ||
             !resources.bind_text(title, title_glyphs) ||
             !resources.bind_text(layer_text, layer_glyphs) ||
+            !resources.bind_text(color_text, color_glyphs) ||
             !backend->upload_atlases(text_adapter) ||
             !execute_render_plan(*backend, plan, resources,
                                  {main_target, width, height, static_cast<uint32_t>(framebuffer)}))
@@ -153,7 +163,7 @@ int main() {
     }
     if (!result && backend->stats().passes != 90)
         result = 7;
-    if (!result && (backend->stats().draws != 210 || backend->stats().image_uploads == 0))
+    if (!result && (backend->stats().draws != 240 || backend->stats().image_uploads < 2))
         result = 10;
     if (ready)
         nk_surface_make_current(surface);
