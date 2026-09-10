@@ -11,8 +11,6 @@
 #include "render/render_plan_executor.h"
 #include "render/sokol_backend.h"
 
-#include "nanovg.h"
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -94,9 +92,7 @@ struct PreparedPathCacheEntry {
 
 struct RendererSlot {
     std::unique_ptr<nkui::SokolBackend> backend;
-    std::unique_ptr<nkui::NanoVGRecorder> recorder;
     nkui::Compositor compositor;
-    std::unordered_map<uint32_t, int> images;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
     uint16_t generation = 1;
 };
@@ -184,11 +180,6 @@ bool append_path(nkui::NanoVGPath &path, const std::vector<nkui_path_element> &e
         }
     }
     return !path.empty();
-}
-
-void set_nanovg_transform(NVGcontext *context, const std::array<float, 6> &matrix) {
-    nvgResetTransform(context);
-    nvgTransform(context, matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
 }
 
 uint32_t float_bits(float value) {
@@ -704,12 +695,6 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
             auto &slot = renderers[index];
             if (!slot.backend) {
                 slot.backend = std::make_unique<nkui::SokolBackend>();
-                slot.recorder = std::make_unique<nkui::NanoVGRecorder>();
-                if (!slot.recorder->valid()) {
-                    slot.backend.reset();
-                    slot.recorder.reset();
-                    return NKUI_ERROR_RENDERING;
-                }
                 out_renderer->id = make_handle(slot.generation, static_cast<uint16_t>(index + 1));
                 return NKUI_OK;
             }
@@ -719,11 +704,6 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
         renderers.emplace_back();
         auto &slot = renderers.back();
         slot.backend = std::make_unique<nkui::SokolBackend>();
-        slot.recorder = std::make_unique<nkui::NanoVGRecorder>();
-        if (!slot.recorder->valid()) {
-            renderers.pop_back();
-            return NKUI_ERROR_RENDERING;
-        }
         out_renderer->id = make_handle(1, static_cast<uint16_t>(renderers.size()));
         return NKUI_OK;
     } catch (...) {
@@ -737,8 +717,6 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
     slot->backend.reset();
-    slot->recorder.reset();
-    slot->images.clear();
     slot->paths.clear();
     slot->generation = static_cast<uint16_t>(slot->generation + 1);
     if (!slot->generation)
@@ -772,13 +750,9 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
     if (!renderer_slot->compositor.compile(*list_slot->list, main_target, plan))
         return NKUI_ERROR_INVALID_TRANSACTION;
 
-    auto &recorder = *renderer_slot->recorder;
-    recorder.reset();
-    NVGcontext *vg = recorder.context();
-    nvgBeginFrame(vg, static_cast<float>(width), static_cast<float>(height),
-                  frame_info->pixel_scale);
     nkui::FrameResources frame_resources;
     std::vector<std::unique_ptr<nkui::PreparedPath>> prepared_paths;
+    std::vector<std::unique_ptr<nkui::PreparedTexture>> prepared_images;
     std::vector<nkui::SkribidiAdapter *> text_adapters;
     std::vector<std::pair<nkui::SkribidiAdapter *, nkui::PreparedGlyphs *>> prepared_texts;
     uint16_t prepared_slot = 1;
@@ -832,47 +806,35 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                     valid = false;
                     break;
                 }
-                int nvg_image = 0;
-                const auto cached = renderer_slot->images.find(command.resource.value);
-                if (cached != renderer_slot->images.end()) {
-                    nvg_image = cached->second;
-                } else {
-                    const uint8_t *pixels = image->pixels.data();
-                    std::vector<uint8_t> expanded;
-                    if (image->image_format == NKUI_IMAGE_R8) {
-                        expanded.resize(image->pixels.size() * 4);
-                        for (size_t index = 0; index < image->pixels.size(); ++index) {
-                            expanded[index * 4 + 0] = 255;
-                            expanded[index * 4 + 1] = 255;
-                            expanded[index * 4 + 2] = 255;
-                            expanded[index * 4 + 3] = image->pixels[index];
-                        }
-                        pixels = expanded.data();
-                    }
-                    nvg_image =
-                        nvgCreateImageRGBA(vg, static_cast<int>(image->image_width),
-                                           static_cast<int>(image->image_height), 0, pixels);
-                    if (nvg_image)
-                        renderer_slot->images.emplace(command.resource.value, nvg_image);
-                }
-                if (!nvg_image) {
+                auto prepared = std::make_unique<nkui::PreparedTexture>();
+                if (!prepared) {
                     valid = false;
                     break;
                 }
-                const auto transform = device_transform(command.transform, frame_info->pixel_scale);
-                set_nanovg_transform(vg, transform);
-                nvgBeginPath(vg);
-                nvgRect(vg, command.x, command.y, command.width, command.height);
-                nvgFillPaint(vg, nvgImagePattern(vg, command.x, command.y, command.width,
-                                                 command.height, 0.0f, nvg_image, 1.0f));
-                nvgFill(vg);
+                prepared->id = static_cast<int>(command.resource.value);
+                prepared->type = nkui::PreparedTextureRgba;
+                prepared->width = static_cast<int>(image->image_width);
+                prepared->height = static_cast<int>(image->image_height);
+                prepared->generation = 1;
+                prepared->dirty = true;
+                if (image->image_format == NKUI_IMAGE_R8) {
+                    prepared->pixels.resize(image->pixels.size() * 4);
+                    for (size_t index = 0; index < image->pixels.size(); ++index) {
+                        prepared->pixels[index * 4 + 0] = 255;
+                        prepared->pixels[index * 4 + 1] = 255;
+                        prepared->pixels[index * 4 + 2] = 255;
+                        prepared->pixels[index * 4 + 3] = image->pixels[index];
+                    }
+                } else {
+                    prepared->pixels = image->pixels;
+                }
+                auto *prepared_image = prepared.get();
+                prepared_images.push_back(std::move(prepared));
                 const nkui::ResourceId prepared_id =
-                    nkui::make_resource_id(nkui::ResourceKind::Path, 0x0FFE, prepared_slot++);
-                command.kind = nkui::RenderCommandKind::Path;
+                    nkui::make_resource_id(nkui::ResourceKind::Image, 0x0FFE, prepared_slot++);
                 command.resource = prepared_id;
-                command.transform = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
-                valid = frame_resources.bind_path(prepared_id, recorder,
-                                                  recorder.operations().size() - 1);
+                command.transform = device_transform(command.transform, frame_info->pixel_scale);
+                valid = frame_resources.bind_image(prepared_id, *prepared_image);
             } else if (command.kind == nkui::RenderCommandKind::GlyphBatch) {
                 auto *layout =
                     resolve_retained(nkui_resource{command.resource.value},
@@ -943,7 +905,6 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
         if (!valid)
             break;
     }
-    nvgEndFrame(vg);
     if (!valid)
         return NKUI_ERROR_INVALID_HANDLE;
     for (size_t pass = 0; pass < prepared_texts.size() && valid; ++pass) {

@@ -103,7 +103,14 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
                                                command.width, command.height, command.opacity);
                 break;
             case RenderCommandKind::Image:
-                return fail_command(command_index, "image resource is not prepared");
+                {
+                    const auto *image = resources.image(command.resource);
+                    rendered = image &&
+                               backend.draw_image(*image->image, command.x, command.y,
+                                                  command.width, command.height,
+                                                  command.transform.data(), command.opacity);
+                }
+                break;
             }
             if (!rendered)
                 return fail_command(command_index, backend.last_error());

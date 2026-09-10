@@ -83,6 +83,7 @@ struct SokolBackend::State {
     std::unordered_map<uint32_t, Target> targets;
     std::unordered_map<uint32_t, SurfaceState> surfaces;
     std::unordered_map<const PreparedPathData *, std::unordered_map<int, PaintImage>> paint_images;
+    std::unordered_map<uint32_t, PaintImage> images;
     sg_image white_image{};
     sg_view white_view{};
     sg_sampler white_sampler{};
@@ -525,6 +526,46 @@ const PreparedTexture *find_texture(const PreparedPathData &path, int id) {
     return found == textures.end() ? nullptr : &*found;
 }
 
+bool upload_texture(SokolBackend::State &state, const PreparedTexture &source,
+                    SokolBackend::State::PaintImage &image) {
+    if (!image.image.id) {
+        sg_image_desc image_desc{};
+        image_desc.width = source.width;
+        image_desc.height = source.height;
+        image_desc.pixel_format =
+            source.type == NVG_TEXTURE_RGBA ? SG_PIXELFORMAT_RGBA8 : SG_PIXELFORMAT_R8;
+        image_desc.usage.dynamic_update = true;
+        image.image = sg_make_image(&image_desc);
+        sg_view_desc view_desc{};
+        view_desc.texture.image = image.image;
+        image.view = sg_make_view(&view_desc);
+        sg_sampler_desc sampler_desc{};
+        sampler_desc.min_filter =
+            (source.flags & NVG_IMAGE_NEAREST) ? SG_FILTER_NEAREST : SG_FILTER_LINEAR;
+        sampler_desc.mag_filter = sampler_desc.min_filter;
+        sampler_desc.wrap_u =
+            (source.flags & NVG_IMAGE_REPEATX) ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
+        sampler_desc.wrap_v =
+            (source.flags & NVG_IMAGE_REPEATY) ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
+        image.sampler = sg_make_sampler(&sampler_desc);
+        if (sg_query_image_state(image.image) != SG_RESOURCESTATE_VALID ||
+            sg_query_view_state(image.view) != SG_RESOURCESTATE_VALID ||
+            sg_query_sampler_state(image.sampler) != SG_RESOURCESTATE_VALID)
+            return fail(state, "NanoVG paint texture creation failed");
+        image.type = source.type;
+        image.flags = source.flags;
+        state.stats.gpu_resources += 3;
+    }
+    if (image.generation != source.generation) {
+        const sg_image_data data = {.mip_levels = {{source.pixels.data(), source.pixels.size()}}};
+        sg_update_image(image.image, &data);
+        image.generation = source.generation;
+        ++state.stats.image_uploads;
+        state.stats.uploaded_bytes += source.pixels.size();
+    }
+    return true;
+}
+
 bool resolve_paint_image(SokolBackend::State &state, const PreparedPathData &path, int id,
                          sg_view &view, sg_sampler &sampler, int &type, int &flags) {
     if (!id) {
@@ -538,41 +579,8 @@ bool resolve_paint_image(SokolBackend::State &state, const PreparedPathData &pat
     if (!source)
         return fail(state, "NanoVG paint texture is missing");
     auto &image = state.paint_images[&path][id];
-    if (!image.image.id) {
-        sg_image_desc image_desc{};
-        image_desc.width = source->width;
-        image_desc.height = source->height;
-        image_desc.pixel_format =
-            source->type == NVG_TEXTURE_RGBA ? SG_PIXELFORMAT_RGBA8 : SG_PIXELFORMAT_R8;
-        image_desc.usage.dynamic_update = true;
-        image.image = sg_make_image(&image_desc);
-        sg_view_desc view_desc{};
-        view_desc.texture.image = image.image;
-        image.view = sg_make_view(&view_desc);
-        sg_sampler_desc sampler_desc{};
-        sampler_desc.min_filter =
-            (source->flags & NVG_IMAGE_NEAREST) ? SG_FILTER_NEAREST : SG_FILTER_LINEAR;
-        sampler_desc.mag_filter = sampler_desc.min_filter;
-        sampler_desc.wrap_u =
-            (source->flags & NVG_IMAGE_REPEATX) ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
-        sampler_desc.wrap_v =
-            (source->flags & NVG_IMAGE_REPEATY) ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
-        image.sampler = sg_make_sampler(&sampler_desc);
-        if (sg_query_image_state(image.image) != SG_RESOURCESTATE_VALID ||
-            sg_query_view_state(image.view) != SG_RESOURCESTATE_VALID ||
-            sg_query_sampler_state(image.sampler) != SG_RESOURCESTATE_VALID)
-            return fail(state, "NanoVG paint texture creation failed");
-        image.type = source->type;
-        image.flags = source->flags;
-        state.stats.gpu_resources += 3;
-    }
-    if (image.generation != source->generation) {
-        const sg_image_data data = {.mip_levels = {{source->pixels.data(), source->pixels.size()}}};
-        sg_update_image(image.image, &data);
-        image.generation = source->generation;
-        ++state.stats.image_uploads;
-        state.stats.uploaded_bytes += source->pixels.size();
-    }
+    if (!upload_texture(state, *source, image))
+        return false;
     view = image.view;
     sampler = image.sampler;
     type = image.type;
@@ -726,6 +734,12 @@ SokolBackend::~SokolBackend() {
                 sg_destroy_view(image.view);
                 sg_destroy_image(image.image);
             }
+        }
+        for (auto &[id, image] : state_->images) {
+            (void)id;
+            sg_destroy_sampler(image.sampler);
+            sg_destroy_view(image.view);
+            sg_destroy_image(image.image);
         }
         for (auto &[id, target] : state_->targets) {
             (void)id;
@@ -1051,6 +1065,27 @@ bool SokolBackend::draw_paths(const PreparedPathData &path) {
 
 bool SokolBackend::draw_paths(const NanoVGRecorder &recorder) {
     return draw_paths(recorder.data());
+}
+
+bool SokolBackend::draw_image(const PreparedTexture &image, float x, float y, float width,
+                              float height, const float transform[6], float opacity) {
+    if (!state_->in_pass || !transform || opacity < 0.0f || opacity > 1.0f || image.width <= 0 ||
+        image.height <= 0 || image.type != NVG_TEXTURE_RGBA || image.pixels.empty())
+        return fail(*state_, "invalid image draw");
+    auto &gpu_image = state_->images[static_cast<uint32_t>(image.id)];
+    if (!upload_texture(*state_, image, gpu_image))
+        return false;
+    const auto point = [transform](float px, float py, float u, float v) {
+        return TextureVertex{px * transform[0] + py * transform[2] + transform[4],
+                              px * transform[1] + py * transform[3] + transform[5], u, v};
+    };
+    const std::vector<TextureVertex> vertices = {
+        point(x, y, 0.0f, 1.0f), point(x + width, y, 1.0f, 1.0f),
+        point(x + width, y + height, 1.0f, 0.0f), point(x, y + height, 0.0f, 0.0f)};
+    const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
+    const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
+    return draw_mesh(*state_, state_->composite_pipeline, vertices, indices, tint.data(),
+                     sizeof(tint), gpu_image.view, gpu_image.sampler, state_->composite_vertices);
 }
 
 bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) {

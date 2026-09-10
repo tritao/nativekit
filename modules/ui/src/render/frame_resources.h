@@ -70,20 +70,27 @@ struct PreparedPathRef {
     uint32_t operation_index = 0;
 };
 
+struct PreparedImageRef {
+    const PreparedTexture *image = nullptr;
+};
+
 class FrameResources {
   public:
     bool bind_path(ResourceId id, const PreparedPathData &path, uint32_t operation_index);
     bool bind_path(ResourceId id, const PreparedPath &path, uint32_t operation_index);
     bool bind_path(ResourceId id, const NanoVGRecorder &recorder, uint32_t operation_index);
+    bool bind_image(ResourceId id, const PreparedTexture &image);
     bool bind_text(ResourceId id, const PreparedGlyphs &glyphs);
     bool bind_surface(ResourceId id, SurfaceProducer &producer);
     const PreparedPathRef *path(ResourceId id) const;
+    const PreparedImageRef *image(ResourceId id) const;
     const PreparedGlyphs *text(ResourceId id) const;
     SurfaceProducer *surface(ResourceId id) const;
     void reset();
 
   private:
     std::unordered_map<uint32_t, PreparedPathRef> paths_;
+    std::unordered_map<uint32_t, PreparedImageRef> images_;
     std::unordered_map<uint32_t, const PreparedGlyphs *> texts_;
     std::unordered_map<uint32_t, SurfaceProducer *> surfaces_;
 };

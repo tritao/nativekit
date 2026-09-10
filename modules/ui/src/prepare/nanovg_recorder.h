@@ -19,6 +19,11 @@ enum class PathFillRule : uint8_t {
     EvenOdd = 2,
 };
 
+enum PreparedTextureType : int {
+    PreparedTextureAlpha = 0x01,
+    PreparedTextureRgba = 0x02,
+};
+
 struct PreparedPathRange {
     uint32_t fill_offset = 0;
     uint32_t fill_count = 0;

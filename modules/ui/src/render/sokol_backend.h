@@ -67,6 +67,8 @@ class SokolBackend {
                                const float transform[6], float opacity = 1.0f);
     bool draw_paths(const PreparedPathData &path);
     bool draw_paths(const NanoVGRecorder &recorder);
+    bool draw_image(const PreparedTexture &image, float x, float y, float width, float height,
+                    const float transform[6], float opacity = 1.0f);
     bool upload_atlases(SkribidiAdapter &adapter, bool include_clean = false);
     bool draw_glyphs(const PreparedGlyphs &glyphs, float opacity = 1.0f);
     bool draw_glyphs_transformed(const PreparedGlyphs &glyphs, const float transform[6],

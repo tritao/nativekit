@@ -20,6 +20,14 @@ bool FrameResources::bind_path(ResourceId id, const NanoVGRecorder &recorder,
     return bind_path(id, recorder.data(), operation_index);
 }
 
+bool FrameResources::bind_image(ResourceId id, const PreparedTexture &image) {
+    if (!is_resource_id(id, ResourceKind::Image) || image.width <= 0 || image.height <= 0 ||
+        image.pixels.empty())
+        return false;
+    images_[id.value] = {&image};
+    return true;
+}
+
 bool FrameResources::bind_text(ResourceId id, const PreparedGlyphs &glyphs) {
     if (!is_resource_id(id, ResourceKind::TextLayout))
         return false;
@@ -39,6 +47,11 @@ const PreparedPathRef *FrameResources::path(ResourceId id) const {
     return found == paths_.end() ? nullptr : &found->second;
 }
 
+const PreparedImageRef *FrameResources::image(ResourceId id) const {
+    const auto found = images_.find(id.value);
+    return found == images_.end() ? nullptr : &found->second;
+}
+
 const PreparedGlyphs *FrameResources::text(ResourceId id) const {
     const auto found = texts_.find(id.value);
     return found == texts_.end() ? nullptr : found->second;
@@ -51,6 +64,7 @@ SurfaceProducer *FrameResources::surface(ResourceId id) const {
 
 void FrameResources::reset() {
     paths_.clear();
+    images_.clear();
     texts_.clear();
     surfaces_.clear();
 }
