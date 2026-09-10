@@ -2,6 +2,13 @@
 
 using namespace nkui;
 
+class TestProducer final : public SurfaceProducer {
+  public:
+    bool ready() const override { return true; }
+    uint32_t generation() const override { return 7; }
+    bool render(SokolBackend &, ResourceId, int, int) override { return true; }
+};
+
 int main() {
     NanoVGRecorder recorder;
     NVGcontext *vg = recorder.context();
@@ -12,15 +19,18 @@ int main() {
     nvgEndFrame(vg);
     const auto path = make_resource_id(ResourceKind::Path, 2, 3);
     const auto text = make_resource_id(ResourceKind::TextLayout, 2, 4);
+    const auto surface = make_resource_id(ResourceKind::RenderTarget, 2, 5);
     PreparedGlyphs glyphs;
     FrameResources resources;
+    TestProducer producer;
     if (!resources.bind_path(path, recorder, 0) || resources.bind_path(text, recorder, 0) ||
         resources.bind_path(path, recorder, 1) || !resources.bind_text(text, glyphs) ||
-        resources.bind_text(path, glyphs))
+        resources.bind_text(path, glyphs) || !resources.bind_surface(surface, producer) ||
+        resources.bind_surface(path, producer))
         return 1;
     if (!resources.path(path) || resources.path(path)->operation_index != 0 ||
-        resources.text(text) != &glyphs)
+        resources.text(text) != &glyphs || resources.surface(surface) != &producer)
         return 2;
     resources.reset();
-    return !resources.path(path) && !resources.text(text) ? 0 : 3;
+    return !resources.path(path) && !resources.text(text) && !resources.surface(surface) ? 0 : 3;
 }

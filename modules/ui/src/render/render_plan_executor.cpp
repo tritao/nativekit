@@ -1,5 +1,7 @@
 #include "render_plan_executor.h"
 
+#include <unordered_set>
+
 namespace nkui {
 namespace {
 
@@ -17,6 +19,21 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
     if (!backend.valid() || !is_resource_id(window.id, ResourceKind::RenderTarget) ||
         window.width <= 0 || window.height <= 0)
         return fail(error, 0, 0, "invalid render-plan execution input");
+    std::unordered_set<uint32_t> internal_targets;
+    for (const auto &pass : plan.passes)
+        internal_targets.insert(pass.target.value);
+    std::unordered_set<uint32_t> rendered_producers;
+    for (const auto &dependency : plan.dependencies) {
+        if (internal_targets.count(dependency.producer.value) ||
+            rendered_producers.count(dependency.producer.value))
+            continue;
+        SurfaceProducer *producer = resources.surface(dependency.producer);
+        if (!producer || !producer->ready())
+            return fail(error, 0, 0, "surface producer is unavailable");
+        if (!producer->render(backend, dependency.producer, window.width, window.height))
+            return fail(error, 0, 0, backend.last_error());
+        rendered_producers.insert(dependency.producer.value);
+    }
     for (uint32_t pass_index = 0; pass_index < plan.passes.size(); ++pass_index) {
         const auto &pass = plan.passes[pass_index];
         const bool window_pass = pass.target.value == window.id.value;

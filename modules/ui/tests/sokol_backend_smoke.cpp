@@ -20,6 +20,20 @@ using namespace nkui;
 #ifndef NKUI_TEST_FONT_PATH
 #error NKUI_TEST_FONT_PATH is required
 #endif
+
+class TestSurfaceProducer final : public SurfaceProducer {
+  public:
+    explicit TestSurfaceProducer(const NanoVGRecorder &recorder) : recorder_(recorder) {}
+    bool ready() const override { return true; }
+    uint32_t generation() const override { return 1; }
+    bool render(SokolBackend &backend, ResourceId target, int width, int height) override {
+        return backend.begin_target_pass(target, width, height, false) &&
+               backend.draw_path(recorder_, 2) && backend.end_pass();
+    }
+
+  private:
+    const NanoVGRecorder &recorder_;
+};
 #ifndef NKUI_TEST_COLOR_FONT_PATH
 #error NKUI_TEST_COLOR_FONT_PATH is required
 #endif
@@ -75,6 +89,7 @@ int main() {
         !text_adapter.prepare_glyphs(0.0f, 0.0f, 1.0f, GlyphMode::Color, color_glyphs))
         result = 9;
     const ResourceId main_target = make_resource_id(ResourceKind::RenderTarget, 1, 1);
+    const ResourceId external_target = make_resource_id(ResourceKind::RenderTarget, 1, 2);
     const ResourceId background = make_resource_id(ResourceKind::Path, 1, 1);
     const ResourceId layer_path = make_resource_id(ResourceKind::Path, 1, 2);
     const ResourceId foreground = make_resource_id(ResourceKind::Path, 1, 3);
@@ -85,6 +100,7 @@ int main() {
     display_list.draw_path(background);
     display_list.draw_text_layout(title, 20.0f, 35.0f);
     display_list.draw_text_layout(color_text, 250.0f, 55.0f);
+    display_list.draw_render_target(external_target, 205.0f, 145.0f, 90.0f, 70.0f);
     display_list.begin_layer(0.6f);
     display_list.draw_path(layer_path);
     display_list.draw_text_layout(layer_text, 58.0f, 105.0f);
@@ -145,12 +161,14 @@ int main() {
         GLint framebuffer = 0;
         glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
         FrameResources resources;
+        TestSurfaceProducer producer(recorder);
         if (!resources.bind_path(background, recorder, 0) ||
             !resources.bind_path(layer_path, recorder, 1) ||
             !resources.bind_path(foreground, recorder, 2) ||
             !resources.bind_text(title, title_glyphs) ||
             !resources.bind_text(layer_text, layer_glyphs) ||
             !resources.bind_text(color_text, color_glyphs) ||
+            !resources.bind_surface(external_target, producer) ||
             !backend->upload_atlases(text_adapter) ||
             !execute_render_plan(*backend, plan, resources,
                                  {main_target, width, height, static_cast<uint32_t>(framebuffer)}))
@@ -174,9 +192,9 @@ int main() {
             result = 6;
         ++frames;
     }
-    if (!result && backend->stats().passes != 90)
+    if (!result && backend->stats().passes != 120)
         result = 7;
-    if (!result && (backend->stats().draws != 270 || backend->stats().image_uploads < 2))
+    if (!result && (backend->stats().draws != 330 || backend->stats().image_uploads < 2))
         result = 10;
     if (ready)
         nk_surface_make_current(surface);
