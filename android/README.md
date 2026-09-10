@@ -14,6 +14,13 @@ cd android
 ./gradlew :sample:assembleDebug
 ```
 
+`graphics-sample` continuously renders an animated color with the portable
+OpenGL ES surface API and handles pause/resume plus native-surface recreation:
+
+```sh
+./gradlew :graphics-sample:assembleDebug
+```
+
 With an emulator or device connected, run the Java mapping tests and the
 end-to-end host/WebView instrumentation test with:
 

@@ -59,6 +59,18 @@ public final class MainActivity extends Activity {
 
     public int vulkanSurfaceProbe() { return nativeVulkanSurfaceProbe(vulkanSurfaceProbe); }
 
+    public int setVulkanSurfaceVisible(boolean visible) {
+        return nativeSetSurfaceVisible(vulkanSurfaceProbe, visible);
+    }
+
+    public int vulkanSurfaceLostProbe() {
+        return nativeVulkanSurfaceLostProbe(vulkanSurfaceProbe);
+    }
+
+    public int vulkanSurfaceRecreatedProbe() {
+        return nativeVulkanSurfaceRecreatedProbe(vulkanSurfaceProbe);
+    }
+
     public int persistedResourceProbe() { return nativePersistedResourceProbe(); }
 
     public int incomingShareProbe() { return nativeIncomingShareProbe(); }
@@ -103,6 +115,8 @@ public final class MainActivity extends Activity {
     private static native int nativeSurfaceLifecycleProbe(long surface, int eventKind);
     private static native long nativeCreateVulkanSurfaceProbe(long host);
     private static native int nativeVulkanSurfaceProbe(long surface);
+    private static native int nativeVulkanSurfaceLostProbe(long surface);
+    private static native int nativeVulkanSurfaceRecreatedProbe(long surface);
     private static native int nativeResourceClipboardProbe();
     private static native int nativeResourceStreamProbe();
     private static native int nativeWebViewHistoryProbe(long webView);

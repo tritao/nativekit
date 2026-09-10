@@ -82,7 +82,16 @@ public final class ConsumerTest {
             scenario.onActivity(activity -> {
                 assertNotEquals(0, activity.vulkanSurfaceHandle());
                 assertEquals(0, activity.vulkanSurfaceProbe());
+                assertEquals(0, activity.setVulkanSurfaceVisible(false));
             });
+            waitForIdle();
+            scenario.onActivity(activity -> {
+                assertEquals(0, activity.vulkanSurfaceLostProbe());
+                assertEquals(0, activity.setVulkanSurfaceVisible(true));
+            });
+            waitForIdle();
+            scenario.onActivity(activity ->
+                assertEquals(0, activity.vulkanSurfaceRecreatedProbe()));
 
             scenario.recreate();
             waitForIdle();

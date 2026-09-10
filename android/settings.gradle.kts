@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "NativeKitAndroid"
-include(":nativekit", ":sample", ":consumer")
+include(":nativekit", ":sample", ":graphics-sample", ":consumer")
