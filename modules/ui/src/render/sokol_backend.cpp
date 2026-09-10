@@ -25,6 +25,9 @@ struct SokolBackend::State {
     sg_shader glyph_shader{};
     sg_pipeline glyph_pipeline{};
     sg_sampler sampler{};
+    sg_buffer solid_vertices{};
+    sg_buffer glyph_vertices{};
+    sg_buffer indices{};
     std::unordered_map<uint32_t, AtlasImage> atlases;
     SokolBackendStats stats{};
     std::string error;
@@ -122,33 +125,26 @@ template <class Vertex>
 bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
                const std::vector<Vertex> &vertices, const std::vector<uint32_t> &indices,
                const void *fragment_uniforms, size_t fragment_uniform_size, sg_view view = {},
-               sg_sampler sampler = {}) {
+               sg_sampler sampler = {}, sg_buffer vertex_buffer = {}) {
     if (vertices.empty() || indices.empty())
         return true;
-    sg_buffer_desc vertex_desc{};
-    vertex_desc.data = {vertices.data(), vertices.size() * sizeof(Vertex)};
-    vertex_desc.usage.vertex_buffer = true;
-    const sg_buffer vertex_buffer = sg_make_buffer(&vertex_desc);
-    sg_buffer_desc index_desc{};
-    index_desc.data = {indices.data(), indices.size() * sizeof(uint32_t)};
-    index_desc.usage.index_buffer = true;
-    const sg_buffer index_buffer = sg_make_buffer(&index_desc);
-    if (sg_query_buffer_state(vertex_buffer) != SG_RESOURCESTATE_VALID ||
-        sg_query_buffer_state(index_buffer) != SG_RESOURCESTATE_VALID) {
-        if (vertex_buffer.id)
-            sg_destroy_buffer(vertex_buffer);
-        if (index_buffer.id)
-            sg_destroy_buffer(index_buffer);
-        return fail(state, "mesh buffer creation failed");
-    }
+    const sg_range vertex_data{vertices.data(), vertices.size() * sizeof(Vertex)};
+    const sg_range index_data{indices.data(), indices.size() * sizeof(uint32_t)};
+    const int vertex_offset = sg_append_buffer(vertex_buffer, &vertex_data);
+    const int index_offset = sg_append_buffer(state.indices, &index_data);
+    if (sg_query_buffer_overflow(vertex_buffer) || sg_query_buffer_overflow(state.indices))
+        return fail(state, "UI streaming buffer overflow");
     sg_apply_pipeline(pipeline);
     ++state.stats.pipeline_changes;
     sg_bindings bindings{};
     bindings.vertex_buffers[0] = vertex_buffer;
-    bindings.index_buffer = index_buffer;
+    bindings.vertex_buffer_offsets[0] = vertex_offset;
+    bindings.index_buffer = state.indices;
+    bindings.index_buffer_offset = index_offset;
     bindings.views[0] = view;
     bindings.samplers[0] = sampler;
     sg_apply_bindings(&bindings);
+    ++state.stats.binding_changes;
     const std::array<float, 2> viewport = {static_cast<float>(state.width),
                                            static_cast<float>(state.height)};
     const sg_range viewport_range{viewport.data(), sizeof(viewport)};
@@ -159,9 +155,18 @@ bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
     }
     sg_draw(0, static_cast<int>(indices.size()), 1);
     ++state.stats.draws;
-    sg_destroy_buffer(index_buffer);
-    sg_destroy_buffer(vertex_buffer);
+    state.stats.transient_bytes += vertex_data.size + index_data.size;
     return true;
+}
+
+sg_buffer make_stream_buffer(size_t size, bool index) {
+    sg_buffer_desc desc{};
+    desc.size = size;
+    desc.usage.vertex_buffer = !index;
+    desc.usage.index_buffer = index;
+    desc.usage.immutable = false;
+    desc.usage.dynamic_update = true;
+    return sg_make_buffer(&desc);
 }
 
 } // namespace
@@ -216,6 +221,9 @@ SokolBackend::~SokolBackend() {
             sg_destroy_image(atlas.image);
         }
         sg_destroy_sampler(state_->sampler);
+        sg_destroy_buffer(state_->indices);
+        sg_destroy_buffer(state_->glyph_vertices);
+        sg_destroy_buffer(state_->solid_vertices);
         sg_destroy_pipeline(state_->glyph_pipeline);
         sg_destroy_shader(state_->glyph_shader);
         sg_destroy_pipeline(state_->solid_pipeline);
@@ -243,10 +251,18 @@ bool SokolBackend::initialize() {
     sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
     sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
     state_->sampler = sg_make_sampler(&sampler_desc);
+    state_->solid_vertices = make_stream_buffer(4 * 1024 * 1024, false);
+    state_->glyph_vertices = make_stream_buffer(4 * 1024 * 1024, false);
+    state_->indices = make_stream_buffer(4 * 1024 * 1024, true);
     state_->initialized =
         sg_query_pipeline_state(state_->solid_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->glyph_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_sampler_state(state_->sampler) == SG_RESOURCESTATE_VALID;
+        sg_query_sampler_state(state_->sampler) == SG_RESOURCESTATE_VALID &&
+        sg_query_buffer_state(state_->solid_vertices) == SG_RESOURCESTATE_VALID &&
+        sg_query_buffer_state(state_->glyph_vertices) == SG_RESOURCESTATE_VALID &&
+        sg_query_buffer_state(state_->indices) == SG_RESOURCESTATE_VALID;
+    if (state_->initialized)
+        state_->stats.gpu_resources = 10;
     return state_->initialized || fail(*state_, "Sokol UI resource creation failed");
 }
 
@@ -287,7 +303,7 @@ bool SokolBackend::draw_paths(const NanoVGRecorder &recorder) {
             operation.paint.innerColor.r, operation.paint.innerColor.g,
             operation.paint.innerColor.b, operation.paint.innerColor.a};
         if (!draw_mesh(*state_, state_->solid_pipeline, mesh.vertices, mesh.indices, color.data(),
-                       sizeof(color)))
+                       sizeof(color), {}, {}, state_->solid_vertices))
             return false;
     }
     return true;
@@ -317,6 +333,7 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter) {
                                  State::AtlasImage{image, view, upload.texture_width,
                                                    upload.texture_height, upload.bytes_per_pixel})
                         .first;
+            state_->stats.gpu_resources += 2;
         } else {
             const sg_image_data data = {
                 .mip_levels = {{upload.pixels,
@@ -349,7 +366,7 @@ bool SokolBackend::draw_glyphs(const PreparedGlyphs &glyphs) {
         for (uint32_t index = 0; index < batch.index_count; ++index)
             indices.push_back(glyphs.indices[batch.first_index + index] - batch.first_vertex);
         if (!draw_mesh(*state_, state_->glyph_pipeline, vertices, indices, nullptr, 0,
-                       atlas->second.view, state_->sampler))
+                       atlas->second.view, state_->sampler, state_->glyph_vertices))
             return false;
     }
     return true;

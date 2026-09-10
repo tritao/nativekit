@@ -26,8 +26,11 @@ struct SokolBackendStats {
     uint32_t passes = 0;
     uint32_t draws = 0;
     uint32_t pipeline_changes = 0;
+    uint32_t binding_changes = 0;
     uint32_t image_uploads = 0;
     uint64_t uploaded_bytes = 0;
+    uint64_t transient_bytes = 0;
+    uint32_t gpu_resources = 0;
 };
 
 class SokolBackend {
