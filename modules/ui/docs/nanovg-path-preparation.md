@@ -84,7 +84,7 @@ the NativeKit compositor and Sokol backend.
 
 The stateful NanoVG API remains available to the compatibility recorder and
 uses the same NanoVG flattening and expansion implementation. NativeKit's
-retained path path is direct preparation:
+retained path is direct preparation:
 
 ```text
 NativeKit Path

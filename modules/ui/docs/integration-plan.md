@@ -82,11 +82,12 @@ rasterize glyphs and COLR content into atlas images; NanoVG tessellates general
 UI paths for the GPU. Similar drawing vocabulary does not imply interchangeable
 jobs.
 
-The likely long-term local fork is the NanoVG rendering half:
+The long-term local fork is the NanoVG path-preparation half:
 
-- remove or compile out Fontstash once Skribidi coverage is complete;
-- maintain the Sokol backend and generated shaders with NativeKit's Sokol pin;
-- expose an internal flush boundary suitable for ordered text interleaving;
+- keep Fontstash compiled out of the NativeKit path core;
+- maintain allocator-aware preparation and explicit fill/stroke metadata;
+- keep GPU resources, generated shaders, and ordered submission in NativeKit's
+  Sokol backend;
 - optionally replace NanoVG with a smaller display-list tessellator if profiles
   show excessive flushes, allocations, or unsupported effects.
 

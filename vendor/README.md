@@ -18,7 +18,7 @@ is not used.
 | `sheenbidi` | `83f77108a2873600283f6da4b326a2dca7a3a7a6` | Unicode bidi processing |
 | `libunibreak` | `304585d8e2d63187507368d612c3d5fff1486368` (`libunibreak_6_1`) | Grapheme and line breaking |
 | `budouxc` | `a044d49afc654117fac7623fff15bec15943270c` | East Asian word boundaries |
-| `nanovg` | `0fab93f792befda21018a5f979a7acdbb3b8ecfd` | UI path construction and tessellation |
+| `nanovg` | `fdf355d1596ea360bc8cf0f6748b73ddc6083acb` | UI path construction and tessellation |
 
 Each submodule retains its upstream license. Build glue in the parent project
 must keep third-party targets private and must not expose their types through a
