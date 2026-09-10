@@ -42,8 +42,11 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
             return fail(error, 0, 0, "surface producer description is invalid");
         if (description.format != SurfacePixelFormat::Rgba8 ||
             (description.alpha != SurfaceAlphaMode::Opaque &&
-             description.alpha != SurfaceAlphaMode::Premultiplied))
-            return fail(error, 0, 0, "surface producer format is unsupported");
+             description.alpha != SurfaceAlphaMode::Premultiplied) ||
+            (description.filter != SurfaceFilter::Nearest &&
+             description.filter != SurfaceFilter::Linear) ||
+            description.color_space != SurfaceColorSpace::Linear)
+            return fail(error, 0, 0, "surface producer descriptor is unsupported");
         const uint32_t generation = producer->generation();
         if (backend.surface_is_current(dependency.producer, generation, description)) {
             rendered_producers.insert(dependency.producer.value);

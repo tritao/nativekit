@@ -47,6 +47,8 @@ class SokolBackend {
     bool valid() const;
     bool begin_window_pass(int width, int height, uint32_t framebuffer, bool clear);
     bool begin_target_pass(ResourceId target, int width, int height, bool load_existing);
+    bool begin_surface_pass(ResourceId target, const SurfaceDescriptor &description,
+                            bool load_existing);
     bool surface_has_content(ResourceId target) const;
     bool surface_is_current(ResourceId target, uint32_t generation,
                             const SurfaceDescriptor &description) const;

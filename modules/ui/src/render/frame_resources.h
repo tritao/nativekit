@@ -21,11 +21,24 @@ enum class SurfaceAlphaMode : uint8_t {
     Premultiplied,
 };
 
+enum class SurfaceFilter : uint8_t {
+    Nearest = 1,
+    Linear,
+};
+
+enum class SurfaceColorSpace : uint8_t {
+    Linear = 1,
+    // Reserved for the sRGB pipeline family; the current backend rejects it explicitly.
+    Srgb,
+};
+
 struct SurfaceDescriptor {
     int width = 0;
     int height = 0;
     SurfacePixelFormat format = SurfacePixelFormat::Rgba8;
     SurfaceAlphaMode alpha = SurfaceAlphaMode::Premultiplied;
+    SurfaceFilter filter = SurfaceFilter::Nearest;
+    SurfaceColorSpace color_space = SurfaceColorSpace::Linear;
 };
 
 enum class SurfaceRenderResult : uint8_t {

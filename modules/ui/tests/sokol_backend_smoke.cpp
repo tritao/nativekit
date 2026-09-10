@@ -31,7 +31,8 @@ class TestSurfaceProducer final : public SurfaceProducer {
     bool describe(int requested_width, int requested_height,
                   SurfaceDescriptor &description) const override {
         description = {requested_width, requested_height, SurfacePixelFormat::Rgba8,
-                       SurfaceAlphaMode::Premultiplied};
+                       SurfaceAlphaMode::Premultiplied, SurfaceFilter::Linear,
+                       SurfaceColorSpace::Linear};
         return true;
     }
     uint32_t generation() const override { return generation_; }
@@ -41,7 +42,7 @@ class TestSurfaceProducer final : public SurfaceProducer {
             return SurfaceRenderResult::Failed;
         if (unavailable_)
             return SurfaceRenderResult::Unavailable;
-        if (!backend.begin_target_pass(target, description.width, description.height, false) ||
+        if (!backend.begin_surface_pass(target, description, false) ||
             !backend.draw_path(recorder_, 2) || !backend.end_pass())
             return SurfaceRenderResult::Failed;
         return SurfaceRenderResult::Rendered;

@@ -41,6 +41,8 @@ struct SokolBackend::State {
         int height = 0;
         SurfacePixelFormat format = SurfacePixelFormat::Rgba8;
         SurfaceAlphaMode alpha = SurfaceAlphaMode::Premultiplied;
+        SurfaceFilter filter = SurfaceFilter::Nearest;
+        SurfaceColorSpace color_space = SurfaceColorSpace::Linear;
     };
 
     struct PaintImage {
@@ -69,6 +71,7 @@ struct SokolBackend::State {
     sg_shader composite_shader{};
     sg_pipeline composite_pipeline{};
     sg_sampler sampler{};
+    sg_sampler surface_sampler{};
     sg_buffer solid_vertices{};
     sg_buffer glyph_vertices{};
     sg_buffer composite_vertices{};
@@ -265,7 +268,8 @@ sg_shader make_composite_shader() {
     desc.uniform_blocks[1].glsl_uniforms[0].glsl_name = "tint";
     desc.views[0].texture = {SG_SHADERSTAGE_FRAGMENT, SG_IMAGETYPE_2D, SG_IMAGESAMPLETYPE_FLOAT,
                              false};
-    desc.samplers[0] = {SG_SHADERSTAGE_FRAGMENT, SG_SAMPLERTYPE_NONFILTERING};
+    // The composite path supports both nearest and linear surface sampling.
+    desc.samplers[0] = {SG_SHADERSTAGE_FRAGMENT, SG_SAMPLERTYPE_FILTERING};
     desc.texture_sampler_pairs[0] = {SG_SHADERSTAGE_FRAGMENT, 0, 0, "tex"};
     return sg_make_shader(&desc);
 }
@@ -695,6 +699,7 @@ SokolBackend::~SokolBackend() {
             sg_destroy_image(atlas.image);
         }
         sg_destroy_sampler(state_->sampler);
+        sg_destroy_sampler(state_->surface_sampler);
         sg_destroy_sampler(state_->white_sampler);
         sg_destroy_view(state_->white_view);
         sg_destroy_image(state_->white_image);
@@ -753,6 +758,9 @@ bool SokolBackend::initialize() {
     sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
     sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
     state_->sampler = sg_make_sampler(&sampler_desc);
+    sampler_desc.min_filter = SG_FILTER_LINEAR;
+    sampler_desc.mag_filter = SG_FILTER_LINEAR;
+    state_->surface_sampler = sg_make_sampler(&sampler_desc);
     const uint32_t white_pixel = UINT32_MAX;
     sg_image_desc white_desc{};
     white_desc.width = 1;
@@ -785,6 +793,7 @@ bool SokolBackend::initialize() {
         sg_query_pipeline_state(state_->color_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->composite_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_sampler_state(state_->sampler) == SG_RESOURCESTATE_VALID &&
+        sg_query_sampler_state(state_->surface_sampler) == SG_RESOURCESTATE_VALID &&
         sg_query_image_state(state_->white_image) == SG_RESOURCESTATE_VALID &&
         sg_query_view_state(state_->white_view) == SG_RESOURCESTATE_VALID &&
         sg_query_sampler_state(state_->white_sampler) == SG_RESOURCESTATE_VALID &&
@@ -793,7 +802,7 @@ bool SokolBackend::initialize() {
         sg_query_buffer_state(state_->composite_vertices) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->indices) == SG_RESOURCESTATE_VALID;
     if (state_->initialized)
-        state_->stats.gpu_resources = 26;
+        state_->stats.gpu_resources = 27;
     return state_->initialized || fail(*state_, "Sokol UI resource creation failed");
 }
 
@@ -852,6 +861,19 @@ bool SokolBackend::begin_target_pass(ResourceId target_id, int width, int height
     return true;
 }
 
+bool SokolBackend::begin_surface_pass(ResourceId target_id, const SurfaceDescriptor &description,
+                                       bool load_existing) {
+    if (description.format != SurfacePixelFormat::Rgba8 || description.width <= 0 ||
+        description.height <= 0 ||
+        (description.alpha != SurfaceAlphaMode::Opaque &&
+         description.alpha != SurfaceAlphaMode::Premultiplied) ||
+        (description.filter != SurfaceFilter::Nearest &&
+         description.filter != SurfaceFilter::Linear) ||
+        description.color_space != SurfaceColorSpace::Linear)
+        return fail(*state_, "invalid surface descriptor");
+    return begin_target_pass(target_id, description.width, description.height, load_existing);
+}
+
 bool SokolBackend::surface_has_content(ResourceId target_id) const {
     if (!valid() || !is_resource_id(target_id, ResourceKind::RenderTarget))
         return false;
@@ -868,6 +890,8 @@ bool SokolBackend::surface_is_current(ResourceId target_id, uint32_t generation,
     return found != state_->surfaces.end() && found->second.generation == generation &&
            found->second.width == description.width && found->second.height == description.height &&
            found->second.format == description.format && found->second.alpha == description.alpha &&
+           found->second.filter == description.filter &&
+           found->second.color_space == description.color_space &&
            state_->targets.find(target_id.value) != state_->targets.end();
 }
 
@@ -877,7 +901,8 @@ void SokolBackend::mark_surface_current(ResourceId target_id, uint32_t generatio
         description.width <= 0 || description.height <= 0)
         return;
     state_->surfaces[target_id.value] = {generation, description.width, description.height,
-                                         description.format, description.alpha};
+                                         description.format, description.alpha, description.filter,
+                                         description.color_space};
 }
 
 bool SokolBackend::set_scissor(bool enabled, float x, float y, float width, float height) {
@@ -1075,8 +1100,16 @@ bool SokolBackend::draw_target(ResourceId target_id, float x, float y, float wid
     };
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
+    sg_sampler sampler = state_->sampler;
+    const auto surface = state_->surfaces.find(target_id.value);
+    if (surface != state_->surfaces.end()) {
+        if (surface->second.filter == SurfaceFilter::Linear)
+            sampler = state_->surface_sampler;
+        else if (surface->second.filter != SurfaceFilter::Nearest)
+            return fail(*state_, "surface filter is unsupported");
+    }
     return draw_mesh(*state_, state_->composite_pipeline, vertices, indices, tint.data(),
-                     sizeof(tint), found->second.texture, state_->sampler,
+                     sizeof(tint), found->second.texture, sampler,
                      state_->composite_vertices);
 }
 
