@@ -192,9 +192,9 @@ int main() {
             result = 6;
         ++frames;
     }
-    if (!result && backend->stats().passes != 120)
+    if (!result && backend->stats().passes != 91)
         result = 7;
-    if (!result && (backend->stats().draws != 330 || backend->stats().image_uploads < 2))
+    if (!result && (backend->stats().draws != 301 || backend->stats().image_uploads < 2))
         result = 10;
     if (ready)
         nk_surface_make_current(surface);

@@ -33,6 +33,12 @@ struct SokolBackend::State {
         int height = 0;
     };
 
+    struct SurfaceState {
+        uint32_t generation = 0;
+        int width = 0;
+        int height = 0;
+    };
+
     struct PaintImage {
         sg_image image{};
         sg_view view{};
@@ -65,6 +71,7 @@ struct SokolBackend::State {
     sg_buffer indices{};
     std::unordered_map<uint32_t, AtlasImage> atlases;
     std::unordered_map<uint32_t, Target> targets;
+    std::unordered_map<uint32_t, SurfaceState> surfaces;
     std::unordered_map<const NanoVGRecorder *, std::unordered_map<int, PaintImage>> paint_images;
     sg_image white_image{};
     sg_view white_view{};
@@ -839,6 +846,25 @@ bool SokolBackend::begin_target_pass(ResourceId target_id, int width, int height
     state_->in_pass = true;
     ++state_->stats.passes;
     return true;
+}
+
+bool SokolBackend::surface_is_current(ResourceId target_id, uint32_t generation, int width,
+                                      int height) const {
+    if (!valid() || !is_resource_id(target_id, ResourceKind::RenderTarget) || generation == 0 ||
+        width <= 0 || height <= 0)
+        return false;
+    const auto found = state_->surfaces.find(target_id.value);
+    return found != state_->surfaces.end() && found->second.generation == generation &&
+           found->second.width == width && found->second.height == height &&
+           state_->targets.find(target_id.value) != state_->targets.end();
+}
+
+void SokolBackend::mark_surface_current(ResourceId target_id, uint32_t generation, int width,
+                                         int height) {
+    if (!is_resource_id(target_id, ResourceKind::RenderTarget) || !generation || width <= 0 ||
+        height <= 0)
+        return;
+    state_->surfaces[target_id.value] = {generation, width, height};
 }
 
 bool SokolBackend::set_scissor(bool enabled, float x, float y, float width, float height) {

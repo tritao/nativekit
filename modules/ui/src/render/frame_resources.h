@@ -16,6 +16,8 @@ class SurfaceProducer {
   public:
     virtual ~SurfaceProducer() = default;
     virtual bool ready() const = 0;
+    // Return a non-zero revision for the pixels produced by this surface. The backend may reuse
+    // the target while this revision and the requested dimensions remain unchanged.
     virtual uint32_t generation() const = 0;
     virtual bool render(SokolBackend &backend, ResourceId target, int width, int height) = 0;
 };

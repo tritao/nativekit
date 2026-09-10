@@ -30,8 +30,16 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
         SurfaceProducer *producer = resources.surface(dependency.producer);
         if (!producer || !producer->ready())
             return fail(error, 0, 0, "surface producer is unavailable");
+        const uint32_t generation = producer->generation();
+        if (backend.surface_is_current(dependency.producer, generation, window.width,
+                                       window.height)) {
+            rendered_producers.insert(dependency.producer.value);
+            continue;
+        }
         if (!producer->render(backend, dependency.producer, window.width, window.height))
             return fail(error, 0, 0, backend.last_error());
+        backend.mark_surface_current(dependency.producer, generation, window.width,
+                                     window.height);
         rendered_producers.insert(dependency.producer.value);
     }
     for (uint32_t pass_index = 0; pass_index < plan.passes.size(); ++pass_index) {
