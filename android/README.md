@@ -67,9 +67,11 @@ Forward the Activity's system-back callback to
 It consumes back only when WebView history can be navigated, so the Activity can
 perform its normal back behavior when it returns false. The same helper can be
 used from predictive-back callbacks.
-Android currently implements URL opening and text clipboard operations; file
-clipboard operations remain unsupported. Open, save, and directory dialogs use
-the Storage Access Framework and return `content://` URIs.
+Android implements URL opening, text clipboard operations, and URI resource
+clipboard operations with provider-resolved MIME types and display names. The
+legacy local-path file clipboard API remains unsupported because Android shares
+provider-backed `content://` resources instead. Open, save, and directory
+dialogs use the Storage Access Framework and return `content://` URIs.
 Notifications use a library-owned channel, permission proxy, and receiver, so
 the embedding Activity does not need to forward permission or intent callbacks.
 System directory results are app-scoped paths; locale and appearance reflect the

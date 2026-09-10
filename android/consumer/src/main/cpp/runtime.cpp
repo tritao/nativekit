@@ -381,12 +381,16 @@ Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong
 
 extern "C" JNIEXPORT jint JNICALL
 Java_io_nativekit_consumer_MainActivity_nativeResourceClipboardProbe(JNIEnv *, jclass) {
-    nk_resource input{};
-    input.struct_size = sizeof(input);
-    input.uri = "content://io.nativekit.consumer/test";
-    input.mime_type = "text/plain";
-    input.display_name = "NativeKit resource";
-    if (nk_clipboard_set_resources(&input, 1) != NK_OK)
+    nk_resource input[2]{};
+    input[0].struct_size = sizeof(nk_resource);
+    input[0].uri = "content://io.nativekit.consumer.resources/clipboard-one";
+    input[0].mime_type = "application/octet-stream";
+    input[0].display_name = "ignored-one";
+    input[1].struct_size = sizeof(nk_resource);
+    input[1].uri = "content://io.nativekit.consumer.resources/clipboard-two";
+    input[1].mime_type = "application/octet-stream";
+    input[1].display_name = "ignored-two";
+    if (nk_clipboard_set_resources(input, 2) != NK_OK)
         return 1;
     nk_request_id request = NK_INVALID_REQUEST_ID;
     if (nk_clipboard_read_resources(&request) != NK_OK)
@@ -395,9 +399,12 @@ Java_io_nativekit_consumer_MainActivity_nativeResourceClipboardProbe(JNIEnv *, j
     event.struct_size = sizeof(event);
     for (int attempt = 0; attempt < 64; ++attempt) {
         if (nk_poll_event(&event) != NK_OK)
-            return 3;
-        if (event.kind == NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE && event.request_id == request)
+            return 11;
+        if (event.kind == NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE) {
+            if (event.request_id != request)
+                return 12;
             break;
+        }
         if (event.kind == NK_EVENT_NONE)
             return 3;
         nk_event_release(&event);
@@ -405,18 +412,43 @@ Java_io_nativekit_consumer_MainActivity_nativeResourceClipboardProbe(JNIEnv *, j
     }
     if (event.kind != NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE || event.request_id != request)
         return 4;
-    nk_resource_view output{};
-    output.struct_size = sizeof(output);
-    const auto decoded = nk_resource_event_item(&event, 0, &output);
-    const auto input_length = std::strlen(input.uri);
-    const bool uri_matches = decoded == NK_OK && output.uri_length == input_length &&
-                             std::memcmp(output.uri, input.uri, input_length) == 0;
-    const bool mime_matches = output.mime_type_length == 10 &&
-                              std::memcmp(output.mime_type, "text/plain", 10) == 0;
-    const bool name_matches = output.display_name_length == 4 &&
-                              std::memcmp(output.display_name, "test", 4) == 0;
+    nk_resource_view first{};
+    first.struct_size = sizeof(first);
+    nk_resource_view second{};
+    second.struct_size = sizeof(second);
+    const auto first_decoded = nk_resource_event_item(&event, 0, &first);
+    const auto second_decoded = nk_resource_event_item(&event, 1, &second);
+    nk_resource_view extra{};
+    extra.struct_size = sizeof(extra);
+    const bool exactly_two = nk_resource_event_item(&event, 2, &extra) ==
+                             NK_ERROR_INVALID_ARGUMENT;
+    const bool uris_match = first_decoded == NK_OK && second_decoded == NK_OK &&
+                            first.uri_length == std::strlen(input[0].uri) &&
+                            std::memcmp(first.uri, input[0].uri, first.uri_length) == 0 &&
+                            second.uri_length == std::strlen(input[1].uri) &&
+                            std::memcmp(second.uri, input[1].uri, second.uri_length) == 0;
+    const bool mimes_match = first.mime_type_length == 10 &&
+                             std::memcmp(first.mime_type, "text/plain", 10) == 0 &&
+                             second.mime_type_length == 9 &&
+                             std::memcmp(second.mime_type, "image/png", 9) == 0;
+    constexpr char first_name[] = "provided-clipboard-one";
+    constexpr char second_name[] = "provided-clipboard-two";
+    const bool names_match = first.display_name_length == sizeof(first_name) - 1 &&
+                             std::memcmp(first.display_name, first_name, sizeof(first_name) - 1) ==
+                                 0 &&
+                             second.display_name_length == sizeof(second_name) - 1 &&
+                             std::memcmp(second.display_name, second_name,
+                                         sizeof(second_name) - 1) == 0;
+    const bool flags_match = (first.flags & NK_RESOURCE_READABLE) != 0 &&
+                             (second.flags & NK_RESOURCE_READABLE) != 0;
     nk_event_release(&event);
-    return decoded != NK_OK ? 5 : !uri_matches ? 6 : !mime_matches ? 7 : !name_matches ? 8 : 0;
+    return first_decoded != NK_OK || second_decoded != NK_OK ? 5
+           : !exactly_two                                  ? 6
+           : !uris_match                                   ? 7
+           : !mimes_match                                  ? 8
+           : !names_match                                  ? 9
+           : !flags_match                                  ? 10
+                                                           : 0;
 }
 
 extern "C" JNIEXPORT jint JNICALL

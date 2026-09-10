@@ -3,8 +3,10 @@ package io.nativekit.consumer;
 import android.content.ContentProvider;
 import android.content.ContentValues;
 import android.database.Cursor;
+import android.database.MatrixCursor;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
+import android.provider.OpenableColumns;
 import java.io.File;
 import java.io.FileNotFoundException;
 
@@ -24,12 +26,34 @@ public final class TestResourceProvider extends ContentProvider {
     }
 
     @Override
-    public String getType(Uri uri) { return "application/octet-stream"; }
+    public String getType(Uri uri) {
+        String name = uri.getLastPathSegment();
+        if ("clipboard-one".equals(name))
+            return "text/plain";
+        if ("clipboard-two".equals(name))
+            return "image/png";
+        return "application/octet-stream";
+    }
 
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs,
                         String sortOrder) {
-        return null;
+        String[] columns = projection == null ? new String[] {OpenableColumns.DISPLAY_NAME}
+                                              : projection;
+        MatrixCursor cursor = new MatrixCursor(columns);
+        String name = uri.getLastPathSegment();
+        if (name == null || !name.startsWith("clipboard-"))
+            return cursor;
+        MatrixCursor.RowBuilder row = cursor.newRow();
+        for (String column : columns) {
+            if (OpenableColumns.DISPLAY_NAME.equals(column))
+                row.add(column, "provided-" + name);
+            else if (OpenableColumns.SIZE.equals(column))
+                row.add(column, 0L);
+            else
+                row.add(column, null);
+        }
+        return cursor;
     }
 
     @Override
