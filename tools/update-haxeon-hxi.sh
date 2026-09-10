@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/realtime-haxe"}
-output="$repo_dir/bindings/haxe/nativekit-abi64.hxi"
+output="$repo_dir/bindings/haxe/nativekit.hxi"
 destination=$output
 
 if [[ ${1:-} == "--check" ]]; then

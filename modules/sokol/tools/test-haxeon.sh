@@ -18,8 +18,8 @@ cmake --build "$build_dir"
     --root="$module_dir/tests/haxeon" \
     --root="$module_dir/bindings/haxe" \
     --root="$nativekit_dir/bindings/haxe" \
-    --ffi-interface="$nativekit_dir/bindings/haxe/nativekit-abi64.hxi" \
-    --ffi-interface="$module_dir/bindings/nativekit-sokol-linux-x86_64.hxi" \
+    --ffi-interface="$nativekit_dir/bindings/haxe/nativekit.hxi" \
+    --ffi-interface="$module_dir/bindings/nativekit-sokol.hxi" \
     "$module_dir/tests/haxeon/Triangle.hx" \
     "$module_dir/bindings/haxe/SokolCommandBuffer.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEvent.hx" \

@@ -15,5 +15,6 @@ cd "$repo_dir"
     --library=nativekit \
     --interface=NativeKit \
     --include=include \
+    --source-label=bindings/haxe/nativekit_import.h \
     "$@" \
     bindings/haxe/nativekit_import.h

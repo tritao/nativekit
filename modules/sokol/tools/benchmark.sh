@@ -15,6 +15,7 @@ cmake --build "$build_dir" --target nativekit_sokol_benchmark
     --library=nativekit_sokol_benchmark \
     --interface=NativeKitSokolBenchmark \
     --include="$module_dir/bench" \
+    --source-label=modules/sokol/bench/benchmark_import.h \
     --output="$build_dir/nativekit-sokol-benchmark.hxi" \
     "$module_dir/bench/benchmark_import.h"
 

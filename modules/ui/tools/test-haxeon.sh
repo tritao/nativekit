@@ -15,8 +15,8 @@ cmake --build "$build_dir" --target nativekit_ui
     --entry=Transaction \
     --root="$module_dir/tests/haxeon" \
     --root="$module_dir/bindings/haxe" \
-    --ffi-interface="$repo_dir/bindings/haxe/nativekit-abi64.hxi" \
-    --ffi-interface="$module_dir/bindings/nativekit-ui-linux-x86_64.hxi" \
+    --ffi-interface="$repo_dir/bindings/haxe/nativekit.hxi" \
+    --ffi-interface="$module_dir/bindings/nativekit-ui.hxi" \
     "$module_dir/tests/haxeon/Transaction.hx" \
     "$module_dir/bindings/haxe/CanvasCommandBuffer.hx")
 

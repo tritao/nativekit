@@ -1,6 +1,6 @@
 # Haxeon bindings
 
-`nativekit-abi64.hxi` is the reviewed semantic binding for the public NativeKit
+`nativekit.hxi` is the reviewed semantic binding for the public NativeKit
 C ABI on supported 64-bit desktop targets. The C headers remain authoritative. The file
 records verified portable structure layouts plus ownership and parameter
 directions that cannot yet be inferred safely from ordinary C declarations.
