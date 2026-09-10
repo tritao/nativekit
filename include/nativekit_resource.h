@@ -46,7 +46,7 @@ typedef struct nk_share_options {
     uint32_t flags;
     const char *title NK_NULLABLE_UTF8;
     const char *text NK_NULLABLE_UTF8;
-    const nk_resource *resources;
+    const nk_resource *resources NK_BORROWED_ARRAY(resource_count);
     uint32_t resource_count;
     uint32_t reserved;
     uint64_t reserved2[2];

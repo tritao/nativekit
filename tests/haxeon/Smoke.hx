@@ -60,6 +60,16 @@ class Smoke {
 		}
 
 		var windowOptions = NativeKitOptions.window(320, 200, "NativeKit smoke", 2);
+		var filters = NativeKitOptions.filteredFileDialog([
+			NativeKitOptions.dialogFilter("*.txt;*.md", "Text")
+		]);
+		if (filters.options.get_filter_count() != 1)
+			return 12;
+		var share = NativeKitOptions.resourceShare([
+			NativeKitOptions.resource("file:///tmp/nativekit.txt", "text/plain", "nativekit.txt")
+		], "hello");
+		if (share.options.get_resource_count() != 1)
+			return 13;
 		if (windowOptions.get_title() != "NativeKit smoke")
 			return 9;
 		windowOptions.set_title(null);

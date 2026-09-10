@@ -2,6 +2,7 @@ import NativeKitEvent;
 import NativeKitEventValue;
 import NativeKit;
 import NativeKitEventValue.NativeKitResource;
+import NativeKitOptions.NativeKitFileDialogOptions;
 
 /** Maps asynchronous NativeKit request IDs to one-shot typed completions. */
 class NativeKitRequests {
@@ -46,6 +47,11 @@ class NativeKitRequests {
 		var started = NativeKit.nk_dialog_open_file(parent, options);
 		return trackDialog("open-file dialog", started.status, started.out_request, handler);
 	}
+
+	/** Starts an open-file dialog while retaining its managed filter array through the native call. */
+	public function openFilteredFile(parent:Int, configured:NativeKitFileDialogOptions,
+			handler:Bool->Array<String>->Void):haxe.Int64
+		return openFile(parent, configured.options, handler);
 
 	public function saveFile(parent:Int, options:nk_file_dialog_options, handler:Bool->Array<String>->Void):haxe.Int64 {
 		var started = NativeKit.nk_dialog_save_file(parent, options);

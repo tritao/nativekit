@@ -28,6 +28,8 @@
 #define NK_NULLABLE_UTF8 __attribute__((annotate("hxi:nullable_utf8")))
 #define NK_BORROWED_BUFFER(length_field)                                                          \
     __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
+#define NK_BORROWED_ARRAY(count_field)                                                             \
+    __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
 #else
 #define NK_OUT
 #define NK_INOUT
@@ -36,6 +38,7 @@
 #define NK_UTF8
 #define NK_NULLABLE_UTF8
 #define NK_BORROWED_BUFFER(length_field)
+#define NK_BORROWED_ARRAY(count_field)
 #endif
 
 #ifdef __cplusplus

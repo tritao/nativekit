@@ -538,7 +538,7 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		title: nullable<utf8> @offset(8);
 		initial_path: nullable<utf8> @offset(16);
 		suggested_name: nullable<utf8> @offset(24);
-		filters: ptr<const<nk_dialog_filter>> @offset(32);
+		filters: ptr<const<nk_dialog_filter>> @offset(32) @borrowed @length_field("filter_count");
 		filter_count: u32 @offset(40);
 		reserved: u32 @offset(44);
 	}
@@ -704,7 +704,7 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		flags: u32 @offset(4);
 		title: nullable<utf8> @offset(8);
 		text: nullable<utf8> @offset(16);
-		resources: ptr<const<nk_resource>> @offset(24);
+		resources: ptr<const<nk_resource>> @offset(24) @borrowed @length_field("resource_count");
 		resource_count: u32 @offset(32);
 		reserved: u32 @offset(36);
 		reserved2: array<u64, 2> @offset(40);

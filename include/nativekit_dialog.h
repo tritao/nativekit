@@ -52,7 +52,7 @@ typedef struct nk_file_dialog_options {
     const char *title NK_NULLABLE_UTF8;
     const char *initial_path NK_NULLABLE_UTF8;
     const char *suggested_name NK_NULLABLE_UTF8;
-    const nk_dialog_filter *filters;
+    const nk_dialog_filter *filters NK_BORROWED_ARRAY(filter_count);
     uint32_t filter_count;
     uint32_t reserved;
 } nk_file_dialog_options;
