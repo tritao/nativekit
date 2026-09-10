@@ -11,6 +11,7 @@
 
 #include <GL/gl.h>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <thread>
@@ -21,16 +22,17 @@ using namespace nkui;
 #error NKUI_TEST_FONT_PATH is required
 #endif
 
-class TestSurfaceProducer final : public SurfaceProducer {
+class Mock3DSurfaceProducer final : public SurfaceProducer {
   public:
-    TestSurfaceProducer(const NanoVGRecorder &recorder, uint32_t &generation, bool &unavailable,
-                        bool &failed)
+    Mock3DSurfaceProducer(const NanoVGRecorder &recorder, uint32_t &generation,
+                          bool &unavailable, bool &failed)
         : recorder_(recorder), generation_(generation), unavailable_(unavailable),
           failed_(failed) {}
     bool ready() const override { return true; }
     bool describe(int requested_width, int requested_height,
                   SurfaceDescriptor &description) const override {
-        description = {requested_width, requested_height, SurfacePixelFormat::Rgba8,
+        description = {std::max(1, requested_width / 2), std::max(1, requested_height / 2),
+                       SurfacePixelFormat::Rgba8,
                        SurfaceAlphaMode::Premultiplied, SurfaceFilter::Linear,
                        SurfaceColorSpace::Linear};
         return true;
@@ -184,8 +186,8 @@ int main() {
         GLint framebuffer = 0;
         glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
         FrameResources resources;
-        TestSurfaceProducer producer(recorder, producer_generation, producer_unavailable,
-                                     producer_failed);
+        Mock3DSurfaceProducer producer(recorder, producer_generation, producer_unavailable,
+                                       producer_failed);
         if (!resources.bind_path(background, recorder, 0) ||
             !resources.bind_path(layer_path, recorder, 1) ||
             !resources.bind_path(foreground, recorder, 2) ||
@@ -225,8 +227,8 @@ int main() {
     if (!result) {
         ++producer_generation;
         producer_failed = true;
-        TestSurfaceProducer failed_producer(recorder, producer_generation, producer_unavailable,
-                                            producer_failed);
+        Mock3DSurfaceProducer failed_producer(recorder, producer_generation,
+                                              producer_unavailable, producer_failed);
         FrameResources failure_resources;
         RenderExecutionError failure_error{};
         if (!failure_resources.bind_surface(external_target, failed_producer) ||
