@@ -15,12 +15,14 @@ cmake --build "$build_dir" --target nativekit_ui
     --entry=Transaction \
     --root="$module_dir/tests/haxeon" \
     --root="$module_dir/bindings/haxe" \
+    --ffi-interface="$repo_dir/bindings/haxe/nativekit-abi64.hxi" \
     --ffi-interface="$module_dir/bindings/nativekit-ui-linux-x86_64.hxi" \
     "$module_dir/tests/haxeon/Transaction.hx" \
     "$module_dir/bindings/haxe/CanvasCommandBuffer.hx")
 
 (cd "$haxeon_dir/out" && \
+    NKUI_TEST_FONT_PATH="$repo_dir/vendor/skribidi/example/data/IBMPlexSans-Regular.ttf" \
     LD_LIBRARY_PATH="$build_dir/modules/ui:$build_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-    "$haxeon_dir/vendor/hashlink/hl" "$build_dir/haxeon-ui-transaction.hl")
+    xvfb-run -a "$haxeon_dir/vendor/hashlink/hl" "$build_dir/haxeon-ui-transaction.hl")
 
-echo "PASS: Haxeon submitted a validated NativeKit UI transaction in one FFI call"
+echo "PASS: Haxeon rendered a validated Canvas transaction through NativeKit UI and Sokol"

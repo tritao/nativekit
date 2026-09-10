@@ -12,3 +12,8 @@ issue fine-grained draw work through the exported Haxe-facing Sokol ABI.
 The dependency direction is Haxeon UI to NativeKit UI to NativeKit. NativeKit
 never depends on either optional module. Clay, Skribidi, NanoVG, and Sokol are
 private implementation dependencies and their types do not cross public ABIs.
+
+The Haxeon interfaces follow the same direction: `NativeKitUI` declares an
+explicit HXI dependency on `NativeKit`. Haxeon projects shared ABI declarations
+from the core interface once, while the UI interface contributes only its own
+functions and UI types.

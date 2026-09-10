@@ -44,7 +44,9 @@ It covers initialization, typed event polling, UTF-8 diagnostics, window and
 monitor handles, and the two-call monitor-name output buffer. The sibling
 `../realtime-haxe` checkout is used by default; set `HAXEON_DIR` to override it.
 The smoke test first runs `tools/update-haxeon-hxi.sh --check`, so header and
-checked-in binding drift fails before compilation.
+checked-in binding drift fails before compilation. The UI projection is composed
+with the core `NativeKit` HXI, so core declarations are projected once and the
+UI interface owns only its `nkui_*` functions.
 
 ## Windows compatibility smoke tests
 

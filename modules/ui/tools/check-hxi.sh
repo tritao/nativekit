@@ -10,6 +10,7 @@ output=${1:-"$module_dir/bindings/nativekit-ui-linux-x86_64.hxi"}
     --target=x86_64-linux-gnu \
     --library=nativekit_ui \
     --interface=NativeKitUI \
+    --depends=NativeKit \
     --include="$module_dir/include" \
     --include="$module_dir/bindings" \
     --include="$repo_dir/include" \
