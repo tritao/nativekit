@@ -25,6 +25,9 @@ nk_result NK_CALL nk_surface_set_bounds(nk_handle, int32_t, int32_t, int32_t, in
 }
 nk_result NK_CALL nk_surface_make_current(nk_handle) { return unsupported_graphics(); }
 nk_result NK_CALL nk_surface_present(nk_handle) { return unsupported_graphics(); }
+nk_result NK_CALL nk_surface_set_frame_callback(nk_handle, nk_surface_frame_callback, void *) {
+    return unsupported_graphics();
+}
 nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle, int32_t *, int32_t *) {
     return unsupported_graphics();
 }

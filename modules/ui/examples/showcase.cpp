@@ -69,6 +69,20 @@ struct Showcase {
     std::vector<nkui_resource> resources;
     std::vector<uint8_t> commands;
     size_t accent_transform_offset = 0;
+    bool frame_failed = false;
+    int rendered_frames = 0;
+    int last_width = 0;
+    int last_height = 0;
+
+    static void NK_CALL draw_frame(nk_handle surface, int32_t width, int32_t height,
+                                   void *user_data) {
+        auto &showcase = *static_cast<Showcase *>(user_data);
+        if (!showcase.resize(width, height) ||
+            nkui_renderer_render(showcase.renderer, showcase.list, surface) != NKUI_OK)
+            showcase.frame_failed = true;
+        else
+            ++showcase.rendered_frames;
+    }
 
     bool create(int framebuffer_width, int framebuffer_height) {
         if (nkui_renderer_create(&renderer) != NKUI_OK ||
@@ -184,6 +198,8 @@ struct Showcase {
         if (commands.size() < sizeof(nkui_transform_command) || framebuffer_width <= 0 ||
             framebuffer_height <= 0)
             return false;
+        if (framebuffer_width == last_width && framebuffer_height == last_height)
+            return true;
         const float scale = std::min(framebuffer_width / 900.0f, framebuffer_height / 600.0f);
         const float offset_x = (framebuffer_width - 900.0f * scale) * 0.5f;
         const float offset_y = (framebuffer_height - 600.0f * scale) * 0.5f;
@@ -198,7 +214,11 @@ struct Showcase {
             return false;
         std::memcpy(commands.data() + accent_transform_offset, &accent_transform,
                     sizeof(accent_transform));
-        return nkui_display_list_submit(list, commands.data(), commands.size()) == NKUI_OK;
+        if (nkui_display_list_submit(list, commands.data(), commands.size()) != NKUI_OK)
+            return false;
+        last_width = framebuffer_width;
+        last_height = framebuffer_height;
+        return true;
     }
 
     void destroy() {
@@ -262,14 +282,15 @@ int main(int argc, char **argv) {
         } else if (event.kind == NK_EVENT_WINDOW_RESIZE && event.source == window &&
                    event.data_size >= sizeof(nk_window_resize_event)) {
             const auto *resize = static_cast<const nk_window_resize_event *>(event.data);
-            ready = false;
             if (nk_surface_set_bounds(surface, 0, 0, resize->width, resize->height) != NK_OK)
                 result = 6;
         } else if (event.kind == NK_EVENT_SURFACE_READY && event.source == surface) {
-            ready = nk_surface_make_current(surface) == NK_OK &&
-                    nk_surface_get_framebuffer_size(surface, &framebuffer_width,
-                                                    &framebuffer_height) == NK_OK &&
-                    showcase.create(framebuffer_width, framebuffer_height);
+            ready =
+                nk_surface_make_current(surface) == NK_OK &&
+                nk_surface_get_framebuffer_size(surface, &framebuffer_width, &framebuffer_height) ==
+                    NK_OK &&
+                showcase.create(framebuffer_width, framebuffer_height) &&
+                nk_surface_set_frame_callback(surface, Showcase::draw_frame, &showcase) == NK_OK;
             if (!ready)
                 result = 4;
         } else if (event.kind == NK_EVENT_SURFACE_RESIZE && event.source == surface &&
@@ -289,9 +310,10 @@ int main(int argc, char **argv) {
         }
         const bool idle = event.kind == NK_EVENT_NONE;
         nk_event_release(&event);
+        if (showcase.frame_failed)
+            result = 5;
         if (ready && running) {
-            if (nkui_renderer_render(showcase.renderer, showcase.list, surface) != NKUI_OK ||
-                nk_surface_present(surface) != NK_OK)
+            if (nk_surface_present(surface) != NK_OK)
                 result = 5;
             if (smoke && ++frames == 30)
                 running = false;
@@ -299,6 +321,9 @@ int main(int argc, char **argv) {
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
     }
+    nk_surface_set_frame_callback(surface, nullptr, nullptr);
+    if (smoke && showcase.rendered_frames == 0)
+        result = 7;
     if (ready)
         nk_surface_make_current(surface);
     showcase.destroy();

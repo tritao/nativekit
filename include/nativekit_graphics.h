@@ -39,6 +39,10 @@ typedef struct nk_surface_options {
 } nk_surface_options;
 
 typedef void(NK_CALL *nk_graphics_proc)(void);
+typedef void(NK_CALL *nk_surface_frame_callback)(nk_handle surface,
+                                                 int32_t framebuffer_width,
+                                                 int32_t framebuffer_height,
+                                                 void *user_data);
 
 typedef struct nk_surface_resize_event {
     int32_t width;
@@ -74,6 +78,14 @@ NK_API nk_result NK_CALL nk_surface_make_current(nk_handle surface);
  * caller-owned native surface.
  */
 NK_API nk_result NK_CALL nk_surface_present(nk_handle surface);
+
+/*
+ * Installs a UI-thread callback invoked while the surface framebuffer is
+ * current and ready to draw. Do not call nk_surface_present recursively from
+ * the callback. Pass NULL to detach it.
+ */
+NK_API nk_result NK_CALL nk_surface_set_frame_callback(
+    nk_handle surface, nk_surface_frame_callback callback, void *user_data);
 
 NK_API nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle surface,
                                                          int32_t *out_width,

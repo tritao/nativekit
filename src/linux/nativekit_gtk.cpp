@@ -153,6 +153,8 @@ struct GtkSurfaceResource final : nk::core::Resource {
     uint32_t minor_version = 0;
     uint32_t flags = 0;
     uint32_t share_dependents = 0;
+    nk_surface_frame_callback frame_callback = nullptr;
+    void *frame_user_data = nullptr;
     std::shared_ptr<GtkSurfaceResource> shared_surface;
 
     ~GtkSurfaceResource() override {
@@ -560,7 +562,18 @@ gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer d
     return FALSE;
 }
 
-gboolean on_surface_render(GtkGLArea *, GdkGLContext *, gpointer) { return TRUE; }
+gboolean on_surface_render(GtkGLArea *area, GdkGLContext *, gpointer data) {
+    auto *resource = static_cast<GtkSurfaceResource *>(data);
+    if (!resource || !nk::core::is_runtime_generation(resource->generation) ||
+        !resource->frame_callback)
+        return TRUE;
+    const int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
+    resource->frame_callback(resource->handle,
+                             gtk_widget_get_allocated_width(GTK_WIDGET(area)) * scale,
+                             gtk_widget_get_allocated_height(GTK_WIDGET(area)) * scale,
+                             resource->frame_user_data);
+    return TRUE;
+}
 
 GdkGLContext *on_surface_create_context(GtkGLArea *area, gpointer data) {
     auto *resource = static_cast<GtkSurfaceResource *>(data);
@@ -2610,7 +2623,7 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
         parent->surfaces.push_back(resource->handle);
         g_signal_connect(resource->widget, "create-context",
                          G_CALLBACK(on_surface_create_context), resource.get());
-        g_signal_connect(resource->widget, "render", G_CALLBACK(on_surface_render), nullptr);
+        g_signal_connect(resource->widget, "render", G_CALLBACK(on_surface_render), resource.get());
         g_signal_connect(resource->widget, "resize", G_CALLBACK(on_surface_resize),
                          resource.get());
         if ((options->flags & NK_SURFACE_HIDDEN) == 0)
@@ -2703,6 +2716,19 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     if (!resource)
         return invalid_handle("graphics surface");
     gtk_gl_area_queue_render(GTK_GL_AREA(resource->widget));
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
+                                                nk_surface_frame_callback callback,
+                                                void *user_data) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return invalid_handle("graphics surface");
+    resource->frame_callback = callback;
+    resource->frame_user_data = callback ? user_data : nullptr;
     return NK_OK;
 }
 
