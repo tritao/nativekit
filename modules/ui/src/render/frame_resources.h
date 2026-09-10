@@ -2,7 +2,7 @@
 #define NATIVEKIT_UI_FRAME_RESOURCES_H
 
 #include "display_list/display_list.h"
-#include "prepare/nanovg_recorder.h"
+#include "prepare/nanovg_path.h"
 #include "prepare/skribidi_adapter.h"
 
 #include <cstdint>
@@ -66,12 +66,14 @@ class SurfaceProducer {
 };
 
 struct PreparedPathRef {
-    const NanoVGRecorder *recorder = nullptr;
+    const PreparedPathData *path = nullptr;
     uint32_t operation_index = 0;
 };
 
 class FrameResources {
   public:
+    bool bind_path(ResourceId id, const PreparedPathData &path, uint32_t operation_index);
+    bool bind_path(ResourceId id, const PreparedPath &path, uint32_t operation_index);
     bool bind_path(ResourceId id, const NanoVGRecorder &recorder, uint32_t operation_index);
     bool bind_text(ResourceId id, const PreparedGlyphs &glyphs);
     bool bind_surface(ResourceId id, SurfaceProducer &producer);

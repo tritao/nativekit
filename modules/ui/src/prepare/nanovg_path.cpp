@@ -3,6 +3,7 @@
 #include "nanovg.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace nkui {
 
@@ -71,6 +72,51 @@ bool prepare(const NanoVGPath &path, const PathPreparationParams &params, bool s
 }
 
 } // namespace
+
+bool PreparedPath::set(PreparedPathKind kind, const PreparedGeometry &geometry,
+                       const PreparedPaint &paint) {
+    data_ = {};
+    if (geometry.paths.empty() || geometry.vertices.empty())
+        return false;
+    try {
+        data_.path_data = geometry.paths;
+        data_.vertex_data = geometry.vertices;
+        PreparedPathOperation operation{};
+        operation.kind = kind;
+        operation.paint = paint;
+        operation.fringe = geometry.fringe_width;
+        operation.stroke_width = geometry.stroke_width;
+        operation.fill_rule = geometry.fill_rule;
+        std::copy(geometry.bounds.begin(), geometry.bounds.end(), operation.bounds);
+        operation.path_count = static_cast<uint32_t>(data_.path_data.size());
+        operation.vertex_count = static_cast<uint32_t>(data_.vertex_data.size());
+        data_.operation_data.push_back(operation);
+    } catch (...) {
+        data_ = {};
+        return false;
+    }
+    return true;
+}
+
+const PreparedPathData &PreparedPath::data() const {
+    return data_;
+}
+
+const std::vector<PreparedPathOperation> &PreparedPath::operations() const {
+    return data_.operations();
+}
+
+const std::vector<PreparedPathRange> &PreparedPath::paths() const {
+    return data_.paths();
+}
+
+const std::vector<PreparedVertex> &PreparedPath::vertices() const {
+    return data_.vertices();
+}
+
+const std::vector<PreparedTexture> &PreparedPath::textures() const {
+    return data_.textures();
+}
 
 NanoVGPath::NanoVGPath() : builder_(nvgCreatePathBuilder()) {}
 

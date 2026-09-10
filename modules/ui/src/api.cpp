@@ -4,6 +4,7 @@
 
 #include "display_list/display_list.h"
 #include "compositor/compositor.h"
+#include "prepare/nanovg_path.h"
 #include "prepare/nanovg_recorder.h"
 #include "prepare/skribidi_adapter.h"
 #include "render/frame_resources.h"
@@ -60,7 +61,7 @@ struct ResourceSlot {
     std::unique_ptr<nkui::SkribidiAdapter> text;
     nkui::PreparedGlyphs text_glyphs;
     std::unordered_map<int32_t, nkui::PreparedGlyphs> scaled_text_glyphs;
-    std::vector<nkui_path_element> path;
+    std::unique_ptr<nkui::NanoVGPath> path;
     nkui_color color{};
     uint32_t image_width = 0;
     uint32_t image_height = 0;
@@ -70,19 +71,17 @@ struct ResourceSlot {
 
 struct PathCacheKey {
     uint32_t path = 0;
-    uint32_t paint = 0;
     std::array<uint32_t, 6> transform{};
     uint32_t pixel_scale = 0;
 
     bool operator==(const PathCacheKey &other) const {
-        return path == other.path && paint == other.paint && transform == other.transform &&
-               pixel_scale == other.pixel_scale;
+        return path == other.path && transform == other.transform && pixel_scale == other.pixel_scale;
     }
 };
 
 struct PathCacheKeyHash {
     size_t operator()(const PathCacheKey &key) const {
-        size_t hash = key.path * 0x9E3779B1u ^ key.paint;
+        size_t hash = key.path * 0x9E3779B1u;
         for (const uint32_t value : key.transform)
             hash = (hash * 0x9E3779B1u) ^ value;
         return (hash * 0x9E3779B1u) ^ key.pixel_scale;
@@ -90,7 +89,7 @@ struct PathCacheKeyHash {
 };
 
 struct PreparedPathCacheEntry {
-    std::unique_ptr<nkui::NanoVGRecorder> recorder;
+    nkui::PreparedGeometry geometry;
 };
 
 struct RendererSlot {
@@ -157,33 +156,34 @@ RendererSlot *resolve(nkui_renderer handle) {
     return entry.backend && entry.generation == generation ? &entry : nullptr;
 }
 
-void append_path(NVGcontext *context, const std::vector<nkui_path_element> &elements) {
-    nvgBeginPath(context);
+bool append_path(nkui::NanoVGPath &path, const std::vector<nkui_path_element> &elements) {
+    path.reset();
     for (const auto &element : elements) {
         const float *v = element.values;
         switch (element.verb) {
         case NKUI_PATH_MOVE_TO:
-            nvgMoveTo(context, v[0], v[1]);
+            path.move_to(v[0], v[1]);
             break;
         case NKUI_PATH_LINE_TO:
-            nvgLineTo(context, v[0], v[1]);
+            path.line_to(v[0], v[1]);
             break;
         case NKUI_PATH_BEZIER_TO:
-            nvgBezierTo(context, v[0], v[1], v[2], v[3], v[4], v[5]);
+            path.bezier_to(v[0], v[1], v[2], v[3], v[4], v[5]);
             break;
         case NKUI_PATH_QUADRATIC_TO:
-            nvgQuadTo(context, v[0], v[1], v[2], v[3]);
+            path.quad_to(v[0], v[1], v[2], v[3]);
             break;
         case NKUI_PATH_ARC_TO:
-            nvgArcTo(context, v[0], v[1], v[2], v[3], v[4]);
+            path.arc_to(v[0], v[1], v[2], v[3], v[4]);
             break;
         case NKUI_PATH_CLOSE:
-            nvgClosePath(context);
+            path.close();
             break;
         default:
             break;
         }
     }
+    return !path.empty();
 }
 
 void set_nanovg_transform(NVGcontext *context, const std::array<float, 6> &matrix) {
@@ -197,9 +197,9 @@ uint32_t float_bits(float value) {
     return bits;
 }
 
-PathCacheKey path_cache_key(nkui_resource path, nkui_resource paint,
-                            const std::array<float, 6> &transform, float pixel_scale) {
-    PathCacheKey key{path.id, paint.id, {}, float_bits(pixel_scale)};
+PathCacheKey path_cache_key(nkui_resource path, const std::array<float, 6> &transform,
+                            float pixel_scale) {
+    PathCacheKey key{path.id, {}, float_bits(pixel_scale)};
     for (size_t index = 0; index < transform.size(); ++index)
         key.transform[index] = float_bits(transform[index]);
     return key;
@@ -222,45 +222,44 @@ std::array<float, 6> device_transform(const std::array<float, 6> &transform,
     return result;
 }
 
-NVGcolor paint_color(ResourceSlot *paint);
+nkui::PreparedPaint paint_color(ResourceSlot *paint);
 
 PreparedPathCacheEntry *prepare_cached_path(
     RendererSlot &renderer, nkui_resource path_handle, const ResourceSlot &path,
-    nkui_resource paint_handle, ResourceSlot *paint, const std::array<float, 6> &transform,
-    float pixel_scale) {
-    const PathCacheKey key = path_cache_key(path_handle, paint_handle, transform, pixel_scale);
+    const std::array<float, 6> &transform, float pixel_scale) {
+    const PathCacheKey key = path_cache_key(path_handle, transform, pixel_scale);
     if (const auto found = renderer.paths.find(key); found != renderer.paths.end())
         return &found->second;
     constexpr size_t max_cached_paths = 256;
     if (renderer.paths.size() >= max_cached_paths)
         renderer.paths.clear();
-    auto entry = std::make_unique<nkui::NanoVGRecorder>();
-    if (!entry || !entry->valid())
+    if (!path.path || !path.path->valid())
         return nullptr;
-    NVGcontext *context = entry->context();
-    nvgBeginFrame(context, 1.0f, 1.0f, pixel_scale);
-    set_nanovg_transform(context, transform);
-    append_path(context, path.path);
-    nvgFillColor(context, paint_color(paint));
-    nvgFill(context);
-    nvgEndFrame(context);
-    if (entry->operations().empty())
+    nkui::PathPreparationParams params;
+    params.device_pixel_ratio = pixel_scale;
+    params.transform = transform;
+    nkui::PreparedGeometry geometry;
+    if (!nkui::prepare_fill(*path.path, params, geometry))
         return nullptr;
     try {
         auto [found, inserted] = renderer.paths.emplace(key, PreparedPathCacheEntry{});
         if (!inserted)
             return &found->second;
-        found->second.recorder = std::move(entry);
+        found->second.geometry = std::move(geometry);
         return &found->second;
     } catch (...) {
         return nullptr;
     }
 }
 
-NVGcolor paint_color(ResourceSlot *paint) {
-    if (!paint)
-        return nvgRGBAf(0.0f, 0.0f, 0.0f, 1.0f);
-    return nvgRGBAf(paint->color.red, paint->color.green, paint->color.blue, paint->color.alpha);
+nkui::PreparedPaint paint_color(ResourceSlot *paint) {
+    nkui::PreparedPaint result{};
+    result.xform[0] = result.xform[3] = 1.0f;
+    result.feather = 1.0f;
+    const nkui_color color = paint ? paint->color : nkui_color{0.0f, 0.0f, 0.0f, 1.0f};
+    result.innerColor = {color.red, color.green, color.blue, color.alpha};
+    result.outerColor = result.innerColor;
+    return result;
 }
 
 nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
@@ -301,7 +300,7 @@ void release_resource_slot(ResourceSlot &slot) {
     slot.text_glyphs = {};
     slot.scaled_text_glyphs.clear();
     slot.fonts.clear();
-    slot.path.clear();
+    slot.path.reset();
     slot.pixels.clear();
     slot.color = {};
     slot.image_width = 0;
@@ -639,7 +638,14 @@ extern "C" nkui_result nkui_path_create(const nkui_path_element *elements, uint3
     if (result != NKUI_OK)
         return result;
     try {
-        slot->path.assign(elements, elements + count);
+        auto path = std::make_unique<nkui::NanoVGPath>();
+        if (!path->valid() || !append_path(*path, std::vector<nkui_path_element>(elements,
+                                                                                    elements + count))) {
+            release_resource_slot(*slot);
+            out_path->id = 0;
+            return NKUI_ERROR_OUT_OF_MEMORY;
+        }
+        slot->path = std::move(path);
     } catch (...) {
         release_resource_slot(*slot);
         out_path->id = 0;
@@ -772,6 +778,7 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
     nvgBeginFrame(vg, static_cast<float>(width), static_cast<float>(height),
                   frame_info->pixel_scale);
     nkui::FrameResources frame_resources;
+    std::vector<std::unique_ptr<nkui::PreparedPath>> prepared_paths;
     std::vector<nkui::SkribidiAdapter *> text_adapters;
     std::vector<std::pair<nkui::SkribidiAdapter *, nkui::PreparedGlyphs *>> prepared_texts;
     uint16_t prepared_slot = 1;
@@ -797,19 +804,26 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                 }
                 const auto transform = device_transform(command.transform, frame_info->pixel_scale);
                 const nkui_resource path_handle{command.resource.value};
-                const nkui_resource paint_handle{command.paint.value};
                 const auto cached = prepare_cached_path(*renderer_slot, path_handle, *path,
-                                                        paint_handle, paint, transform,
-                                                        frame_info->pixel_scale);
-                if (!cached || !cached->recorder) {
+                                                        transform, frame_info->pixel_scale);
+                if (!cached) {
                     valid = false;
                     break;
                 }
+                auto prepared = std::make_unique<nkui::PreparedPath>();
+                if (!prepared ||
+                    !prepared->set(nkui::PreparedPathKind::Fill, cached->geometry,
+                                   paint_color(paint))) {
+                    valid = false;
+                    break;
+                }
+                auto *prepared_path = prepared.get();
+                prepared_paths.push_back(std::move(prepared));
                 const nkui::ResourceId prepared_id =
                     nkui::make_resource_id(nkui::ResourceKind::Path, 0x0FFE, prepared_slot++);
                 command.resource = prepared_id;
                 command.transform = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
-                valid = frame_resources.bind_path(prepared_id, *cached->recorder, 0);
+                valid = frame_resources.bind_path(prepared_id, *prepared_path, 0);
             } else if (command.kind == nkui::RenderCommandKind::Image) {
                 auto *image =
                     resolve_retained(nkui_resource{command.resource.value},

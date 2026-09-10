@@ -2,12 +2,22 @@
 
 namespace nkui {
 
+bool FrameResources::bind_path(ResourceId id, const PreparedPathData &path,
+                               uint32_t operation_index) {
+    if (!is_resource_id(id, ResourceKind::Path) || operation_index >= path.operations().size())
+        return false;
+    paths_[id.value] = {&path, operation_index};
+    return true;
+}
+
+bool FrameResources::bind_path(ResourceId id, const PreparedPath &path,
+                               uint32_t operation_index) {
+    return bind_path(id, path.data(), operation_index);
+}
+
 bool FrameResources::bind_path(ResourceId id, const NanoVGRecorder &recorder,
                                uint32_t operation_index) {
-    if (!is_resource_id(id, ResourceKind::Path) || operation_index >= recorder.operations().size())
-        return false;
-    paths_[id.value] = {&recorder, operation_index};
-    return true;
+    return bind_path(id, recorder.data(), operation_index);
 }
 
 bool FrameResources::bind_text(ResourceId id, const PreparedGlyphs &glyphs) {

@@ -87,7 +87,7 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
             case RenderCommandKind::Path: {
                 const auto *path = resources.path(command.resource);
                 rendered = path &&
-                           backend.draw_path_transformed(*path->recorder, path->operation_index,
+                           backend.draw_path_transformed(*path->path, path->operation_index,
                                                          command.transform.data(), command.opacity);
                 break;
             }

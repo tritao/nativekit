@@ -11,11 +11,6 @@ struct NVGpathBuilder;
 
 namespace nkui {
 
-enum class PathFillRule : uint8_t {
-    NonZero = 1,
-    EvenOdd = 2,
-};
-
 enum class PathLineCap : uint8_t {
     Butt = 0,
     Round,
@@ -58,6 +53,21 @@ struct PreparedGeometry {
     float fringe_width = 0.0f;
     float stroke_width = 0.0f;
     PathFillRule fill_rule = PathFillRule::NonZero;
+};
+
+/** One NativeKit-owned prepared path operation and its geometry. */
+class PreparedPath {
+  public:
+    bool set(PreparedPathKind kind, const PreparedGeometry &geometry,
+             const PreparedPaint &paint);
+    const PreparedPathData &data() const;
+    const std::vector<PreparedPathOperation> &operations() const;
+    const std::vector<PreparedPathRange> &paths() const;
+    const std::vector<PreparedVertex> &vertices() const;
+    const std::vector<PreparedTexture> &textures() const;
+
+  private:
+    PreparedPathData data_;
 };
 
 /** Reusable path commands, independent of an NVGcontext or frame. */

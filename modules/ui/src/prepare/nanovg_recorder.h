@@ -14,6 +14,11 @@ enum class PreparedPathKind : uint8_t {
     Triangles,
 };
 
+enum class PathFillRule : uint8_t {
+    NonZero = 1,
+    EvenOdd = 2,
+};
+
 struct PreparedPathRange {
     uint32_t fill_offset = 0;
     uint32_t fill_count = 0;
@@ -66,6 +71,7 @@ struct PreparedPathOperation {
     PreparedScissor scissor{};
     float fringe = 0.0f;
     float stroke_width = 0.0f;
+    PathFillRule fill_rule = PathFillRule::NonZero;
     float bounds[4]{};
     uint32_t path_offset = 0;
     uint32_t path_count = 0;
@@ -82,6 +88,18 @@ struct PreparedTexture {
     uint32_t generation = 0;
     bool dirty = false;
     std::vector<uint8_t> pixels;
+};
+
+struct PreparedPathData {
+    std::vector<PreparedPathOperation> operation_data;
+    std::vector<PreparedPathRange> path_data;
+    std::vector<PreparedVertex> vertex_data;
+    std::vector<PreparedTexture> texture_data;
+
+    const std::vector<PreparedPathOperation> &operations() const { return operation_data; }
+    const std::vector<PreparedPathRange> &paths() const { return path_data; }
+    const std::vector<PreparedVertex> &vertices() const { return vertex_data; }
+    const std::vector<PreparedTexture> &textures() const { return texture_data; }
 };
 
 struct NanoVGRecorderStats {
@@ -108,6 +126,7 @@ class NanoVGRecorder {
     const std::vector<PreparedPathRange> &paths() const;
     const std::vector<PreparedVertex> &vertices() const;
     const std::vector<PreparedTexture> &textures() const;
+    const PreparedPathData &data() const;
     NanoVGRecorderStats stats() const;
 
   private:
