@@ -34,7 +34,8 @@ cmake --build "$test_root/build"
         --root="$repo_dir/bindings/haxe" \
         --ffi-interface="$repo_dir/bindings/haxe/nativekit-linux-x86_64.hxi" \
         "$repo_dir/tests/haxeon/Smoke.hx" \
-        "$repo_dir/bindings/haxe/NativeKitEvent.hx"
+        "$repo_dir/bindings/haxe/NativeKitEvent.hx" \
+        "$repo_dir/bindings/haxe/NativeKitRequests.hx"
 )
 
 set +e

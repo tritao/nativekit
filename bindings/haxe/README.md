@@ -28,6 +28,10 @@ throw instead of allowing out-of-bounds reads.
 HXI constants are projected through `NativeKitConstants`; handwritten bindings
 use those symbols rather than repeating numeric C ABI values.
 
+`NativeKitRequests` maps request IDs to one-shot typed completion callbacks. Its
+`poll()` method decodes and releases the native event before invoking a matching
+handler; `cancel()` only removes local tracking and does not cancel native work.
+
 Run the end-to-end smoke test with:
 
 ```sh
