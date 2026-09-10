@@ -1,7 +1,6 @@
 #include "nativekit_sokol.h"
 #include "nativekit_graphics.h"
 
-#define SOKOL_IMPL
 #define SOKOL_GLCORE
 #include "sokol_gfx.h"
 

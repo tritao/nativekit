@@ -6,7 +6,6 @@
 #error "The first NativeKit/Sokol prototype currently targets desktop Linux/OpenGL."
 #endif
 
-#define SOKOL_IMPL
 #define SOKOL_GLCORE
 #include "sokol_gfx.h"
 

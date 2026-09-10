@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.21)
 
 project(nativekit VERSION 0.1.0 LANGUAGES C CXX)
 
+set(NK_VENDOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor")
+
 # Keep Windows DLLs and the executables that load them together.  Targets are
 # declared from several subdirectories, whose default runtime directories would
 # otherwise differ and make shared-build tests fail before reaching main().
@@ -21,6 +23,7 @@ option(NK_BUILD_SHARED "Build NativeKit as a shared library" ON)
 option(NK_BUILD_TESTS "Build NativeKit tests" ${BUILD_TESTING})
 option(NK_BUILD_EXAMPLES "Build NativeKit examples" ON)
 option(NK_BUILD_SOKOL "Build the experimental Sokol graphics module" OFF)
+option(NK_BUILD_UI "Build the experimental retained UI module" OFF)
 option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
 
@@ -206,8 +209,31 @@ endif()
 if(NK_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
+if(NK_BUILD_SOKOL OR NK_BUILD_UI)
+    if(NOT UNIX OR APPLE OR ANDROID)
+        message(FATAL_ERROR "NativeKit Sokol currently supports desktop Linux/OpenGL only")
+    endif()
+    if(NOT EXISTS "${NK_VENDOR_DIR}/sokol/sokol_gfx.h")
+        message(FATAL_ERROR "Sokol submodule is missing; run git submodule update --init")
+    endif()
+    find_package(OpenGL REQUIRED)
+    add_library(nativekit_sokol_runtime SHARED modules/sokol/src/runtime.c)
+    target_include_directories(nativekit_sokol_runtime PRIVATE "${NK_VENDOR_DIR}/sokol")
+    target_link_libraries(nativekit_sokol_runtime PRIVATE OpenGL::GL)
+    set_target_properties(nativekit_sokol_runtime PROPERTIES
+        C_VISIBILITY_PRESET default
+        VERSION ${PROJECT_VERSION}
+        SOVERSION 0)
+    install(TARGETS nativekit_sokol_runtime EXPORT NativeKitTargets
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
 if(NK_BUILD_SOKOL)
     add_subdirectory(modules/sokol)
+endif()
+if(NK_BUILD_UI)
+    add_subdirectory(modules/ui)
 endif()
 
 install(TARGETS nativekit EXPORT NativeKitTargets

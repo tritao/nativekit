@@ -1,0 +1,25 @@
+[submodule "vendor/sokol"]
+	path = vendor/sokol
+	url = https://github.com/floooh/sokol.git
+[submodule "vendor/skribidi"]
+	path = vendor/skribidi
+	url = https://github.com/memononen/Skribidi.git
+[submodule "vendor/harfbuzz"]
+	path = vendor/harfbuzz
+	url = https://github.com/harfbuzz/harfbuzz.git
+[submodule "vendor/sheenbidi"]
+	path = vendor/sheenbidi
+	url = https://github.com/Tehreer/SheenBidi.git
+[submodule "vendor/libunibreak"]
+	path = vendor/libunibreak
+	url = https://github.com/adah1972/libunibreak.git
+[submodule "vendor/budouxc"]
+	path = vendor/budouxc
+	url = https://github.com/memononen/budouxc.git
+[submodule "vendor/nanovg"]
+	path = vendor/nanovg
+	url = https://github.com/memononen/nanovg.git
+[submodule "vendor/nanovg-sokol"]
+	path = vendor/nanovg-sokol
+	url = https://github.com/tritao/nanovg_sokol.h.git
+	branch = nativekit-sokol-2026

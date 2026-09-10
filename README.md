@@ -84,6 +84,13 @@ git clone https://github.com/tritao/nativekit.git
 cd nativekit
 ```
 
+The optional Sokol and UI modules use pinned Git submodules. Initialize them
+only when building those modules:
+
+```sh
+git submodule update --init
+```
+
 Configure, build, and test a desktop build with CMake:
 
 ```sh
@@ -91,6 +98,11 @@ cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+Experimental higher-level modules live in the same repository but remain
+optional so the core platform library stays compact. Enable the low-level Sokol
+adapter with `-DNK_BUILD_SOKOL=ON`, or the retained UI-engine scaffold with
+`-DNK_BUILD_UI=ON`. Their design and build notes live under [`modules/`](modules/).
 
 The Android library, sample applications, and Gradle wrapper live under
 [`android/`](android/). See the [Android guide](android/README.md) for SDK/NDK,
