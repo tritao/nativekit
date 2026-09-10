@@ -5,7 +5,6 @@
 #include "display_list/display_list.h"
 #include "compositor/compositor.h"
 #include "prepare/nanovg_path.h"
-#include "prepare/nanovg_recorder.h"
 #include "prepare/skribidi_adapter.h"
 #include "render/frame_resources.h"
 #include "render/render_plan_executor.h"
