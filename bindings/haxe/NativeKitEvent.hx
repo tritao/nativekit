@@ -6,6 +6,16 @@ enum NativeKitEventValue {
 	ClipboardFiles(request:haxe.Int64, result:Int, paths:Array<String>);
 	DropText(source:Int, text:String);
 	DropFiles(source:Int, paths:Array<String>);
+	DialogPaths(request:haxe.Int64, result:Int, accepted:Bool, paths:Array<String>);
+	DialogMessage(request:haxe.Int64, result:Int, button:Int);
+	WebViewNavigated(source:Int, url:String);
+	WebViewMessage(source:Int, json:String);
+	WebViewTitleChanged(source:Int, title:String);
+	WebViewEvaluation(source:Int, request:haxe.Int64, result:Int, json:String);
+	WebViewNavigationFailed(source:Int, category:Int, message:String);
+	WebViewNavigationRequest(source:Int, request:haxe.Int64, url:String);
+	NotificationActivated(request:haxe.Int64, action:String);
+	NotificationFailed(request:haxe.Int64, message:String);
 	Raw(kind:Int, source:Int, request:haxe.Int64, result:Int, flags:Int, dataCount:Int, data:haxe.io.Bytes);
 }
 
@@ -58,6 +68,23 @@ class NativeKitEvent {
 			case 401: ClipboardFiles(request, result, decodeClipboardFiles(data, dataCount));
 			case 300: DropFiles(source, decodeDropItems(data, dataCount));
 			case 301: DropText(source, decodeDropItems(data, dataCount).join(""));
+			case 100:
+				if (flags == 4) {
+					if (data.length != 4)
+						throw "NativeKit message-dialog payload has an invalid size";
+					DialogMessage(request, result, readU32(data, 0));
+				} else {
+					var paths = decodeDialogPaths(data);
+					DialogPaths(request, result, readU32(data, 0) != 0, paths);
+				}
+			case 200: WebViewNavigated(source, data.toString());
+			case 201: WebViewMessage(source, data.toString());
+			case 202: WebViewTitleChanged(source, data.toString());
+			case 203: WebViewEvaluation(source, request, result, data.toString());
+			case 204: WebViewNavigationFailed(source, flags, data.toString());
+			case 207: WebViewNavigationRequest(source, request, data.toString());
+			case 501: NotificationActivated(request, data.toString());
+			case 503: NotificationFailed(request, data.toString());
 			default: Raw(kind, source, request, result, flags, dataCount, data);
 		}
 	}
@@ -94,6 +121,28 @@ class NativeKitEvent {
 	/** Decodes an `nk_drop_data` payload and rejects inconsistent data. */
 	public static function decodeDropItems(data:haxe.io.Bytes, expectedCount:Int):Array<String>
 		return decodePackedStrings(data, expectedCount, 16);
+
+	/** Decodes an `nk_dialog_paths` payload and validates every path offset. */
+	public static function decodeDialogPaths(data:haxe.io.Bytes):Array<String> {
+		if (data.length < 16)
+			throw "NativeKit dialog payload is shorter than its header";
+		var count = readU32(data, 4), offsetsOffset = readU32(data, 8), stringsOffset = readU32(data, 12);
+		if (offsetsOffset < 16 || stringsOffset < offsetsOffset || stringsOffset > data.length || count > Std.int((stringsOffset - offsetsOffset) / 4))
+			throw "NativeKit dialog payload has an invalid offset table";
+		var values:Array<String> = [];
+		for (index in 0...count) {
+			var offset = readU32(data, offsetsOffset + index * 4);
+			if (offset < stringsOffset || offset >= data.length)
+				throw "NativeKit dialog payload has an invalid path offset";
+			var end = offset;
+			while (end < data.length && data.get(end) != 0)
+				end++;
+			if (end >= data.length)
+				throw "NativeKit dialog payload has an unterminated path";
+			values.push(data.getString(offset, end - offset));
+		}
+		return values;
+	}
 
 	static function decodePackedStrings(data:haxe.io.Bytes, expectedCount:Int, headerSize:Int):Array<String> {
 		if (data.length < headerSize)

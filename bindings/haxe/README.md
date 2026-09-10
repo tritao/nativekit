@@ -20,7 +20,7 @@ inspecting it manually, or prefer `take()`, which decodes and releases it in one
 operation. Release is idempotent. Any `Bytes` returned by `payload()` and all
 values returned by `decode()` are copies and remain valid after release.
 
-Known text, clipboard-file, and drop payloads project to typed
+Known WebView, notification, dialog, clipboard, and drop payloads project to typed
 `NativeKitEventValue` cases. Unknown kinds project to `Raw`, preserving metadata
 and copied payload data for forward compatibility. Malformed packed payloads
 throw instead of allowing out-of-bounds reads.
