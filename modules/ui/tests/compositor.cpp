@@ -34,5 +34,24 @@ int main() {
     if (!cycle.draw_render_target(main_target, 0.0f, 0.0f, 10.0f, 10.0f) ||
         compositor.compile(cycle, main_target, plan, &error) || error.command_index != 0)
         return 6;
+
+    DisplayList stateful;
+    const auto paint = make_resource_id(ResourceKind::Paint, 1, 1);
+    const float transform[6] = {2.0f, 0.0f, 0.0f, 3.0f, 5.0f, 7.0f};
+    if (!stateful.set_transform(transform) || !stateful.set_paint(paint) ||
+        !stateful.clip_rect(1.0f, 2.0f, 10.0f, 20.0f) || !stateful.set_global_alpha(0.5f) ||
+        !stateful.push_state() || !stateful.clip_rect(3.0f, 4.0f, 2.0f, 3.0f) ||
+        !stateful.set_global_alpha(0.25f) || !stateful.draw_path(path) || !stateful.pop_state() ||
+        !stateful.draw_path(path) || !compositor.compile(stateful, main_target, plan, &error))
+        return 7;
+    const auto &inner = plan.passes[0].commands[0];
+    const auto &outer = plan.passes[0].commands[1];
+    if (!inner.has_scissor || inner.scissor_x != 11.0f || inner.scissor_y != 19.0f ||
+        inner.scissor_width != 4.0f || inner.scissor_height != 9.0f || inner.opacity != 0.25f ||
+        !outer.has_scissor || outer.scissor_x != 7.0f || outer.scissor_y != 13.0f ||
+        outer.scissor_width != 20.0f || outer.scissor_height != 60.0f || outer.opacity != 0.5f ||
+        outer.paint.value != paint.value || outer.transform[0] != 2.0f ||
+        outer.transform[3] != 3.0f || outer.transform[4] != 5.0f || outer.transform[5] != 7.0f)
+        return 8;
     return 0;
 }

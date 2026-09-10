@@ -1,5 +1,8 @@
 #include "compositor.h"
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -11,6 +14,18 @@ struct Layer {
     ResourceId layer_target{};
     float opacity = 1.0f;
     bool isolated = false;
+};
+
+struct CanvasState {
+    std::array<float, 6> transform{1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    float alpha = 1.0f;
+    ResourceId paint{};
+    CompositeMode composite = CompositeMode::SourceOver;
+    bool has_scissor = false;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
 };
 
 bool fail(CompositorError *error, uint32_t index, const char *message) {
@@ -36,6 +51,46 @@ RenderPass &continue_pass(RenderPlan &plan, ResourceId target) {
     return plan.passes.back();
 }
 
+void apply_state(RenderCommand &command, const CanvasState &state) {
+    command.opacity *= state.alpha;
+    command.transform = state.transform;
+    command.paint = state.paint;
+    command.composite = state.composite;
+    command.has_scissor = state.has_scissor;
+    command.scissor_x = state.x;
+    command.scissor_y = state.y;
+    command.scissor_width = state.width;
+    command.scissor_height = state.height;
+}
+
+void intersect_clip(CanvasState &state, const ClipRectCommand &clip) {
+    const auto &m = state.transform;
+    const float corners[4][2] = {{clip.x, clip.y},
+                                 {clip.x + clip.width, clip.y},
+                                 {clip.x, clip.y + clip.height},
+                                 {clip.x + clip.width, clip.y + clip.height}};
+    float min_x = INFINITY, min_y = INFINITY, max_x = -INFINITY, max_y = -INFINITY;
+    for (const auto &corner : corners) {
+        const float x = corner[0] * m[0] + corner[1] * m[2] + m[4];
+        const float y = corner[0] * m[1] + corner[1] * m[3] + m[5];
+        min_x = std::min(min_x, x);
+        min_y = std::min(min_y, y);
+        max_x = std::max(max_x, x);
+        max_y = std::max(max_y, y);
+    }
+    if (state.has_scissor) {
+        min_x = std::max(min_x, state.x);
+        min_y = std::max(min_y, state.y);
+        max_x = std::min(max_x, state.x + state.width);
+        max_y = std::min(max_y, state.y + state.height);
+    }
+    state.has_scissor = true;
+    state.x = min_x;
+    state.y = min_y;
+    state.width = std::max(0.0f, max_x - min_x);
+    state.height = std::max(0.0f, max_y - min_y);
+}
+
 } // namespace
 
 ResourceId Compositor::allocate_transient_target() {
@@ -52,6 +107,8 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
         return fail(error, validation.command_index, "invalid compositor input");
     plan = {};
     std::vector<Layer> layers;
+    CanvasState state;
+    std::vector<CanvasState> states;
     ResourceId current_target = main_target;
     RenderPass *pass = &continue_pass(plan, current_target);
     size_t offset = 0;
@@ -60,21 +117,49 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
         const auto header = read<CommandHeader>(display_list.data() + offset);
         const uint8_t *record = display_list.data() + offset;
         switch (header.opcode) {
+        case CommandOpcode::SetTransform: {
+            const auto value = read<SetTransformCommand>(record);
+            std::copy(std::begin(value.matrix), std::end(value.matrix), state.transform.begin());
+            break;
+        }
+        case CommandOpcode::SetGlobalAlpha: {
+            state.alpha = read<SetGlobalAlphaCommand>(record).alpha;
+            break;
+        }
+        case CommandOpcode::SetPaint:
+            state.paint = read<SetPaintCommand>(record).paint;
+            break;
+        case CommandOpcode::SetCompositeMode:
+            state.composite = read<SetCompositeModeCommand>(record).mode;
+            break;
+        case CommandOpcode::PushState:
+            states.push_back(state);
+            break;
+        case CommandOpcode::PopState:
+            state = states.back();
+            states.pop_back();
+            break;
+        case CommandOpcode::ClipRect:
+            intersect_clip(state, read<ClipRectCommand>(record));
+            break;
         case CommandOpcode::DrawPath: {
             const auto value = read<DrawResourceCommand>(record);
             pass->commands.push_back({RenderCommandKind::Path, value.resource});
+            apply_state(pass->commands.back(), state);
             break;
         }
         case CommandOpcode::DrawImage: {
             const auto value = read<DrawRectResourceCommand>(record);
             pass->commands.push_back({RenderCommandKind::Image, value.resource, value.x, value.y,
                                       value.width, value.height});
+            apply_state(pass->commands.back(), state);
             break;
         }
         case CommandOpcode::DrawTextLayout: {
             const auto value = read<DrawRectResourceCommand>(record);
             pass->commands.push_back({RenderCommandKind::GlyphBatch, value.resource, value.x,
                                       value.y, value.width, value.height});
+            apply_state(pass->commands.back(), state);
             break;
         }
         case CommandOpcode::DrawRenderTarget: {
@@ -83,6 +168,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 return fail(error, index, "render target cannot sample itself");
             pass->commands.push_back({RenderCommandKind::CompositeTarget, value.resource, value.x,
                                       value.y, value.width, value.height});
+            apply_state(pass->commands.back(), state);
             plan.dependencies.push_back({value.resource, current_target});
             break;
         }
@@ -107,6 +193,11 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 pass = &continue_pass(plan, current_target);
                 pass->commands.push_back({RenderCommandKind::CompositeTarget, layer.layer_target,
                                           0.0f, 0.0f, 0.0f, 0.0f, layer.opacity});
+                pass->commands.back().has_scissor = state.has_scissor;
+                pass->commands.back().scissor_x = state.x;
+                pass->commands.back().scissor_y = state.y;
+                pass->commands.back().scissor_width = state.width;
+                pass->commands.back().scissor_height = state.height;
                 plan.dependencies.push_back({layer.layer_target, current_target});
             }
             break;
