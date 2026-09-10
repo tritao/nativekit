@@ -1,11 +1,23 @@
 #ifndef NATIVEKIT_JOYSTICK_H
 #define NATIVEKIT_JOYSTICK_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include "nativekit.h"
+
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ------------------------------------------------------------------------- */
+/* Joystick event types                                                      */
+/* ------------------------------------------------------------------------- */
 
 enum {
     NK_JOYSTICK_HAT_CENTERED = 0,
@@ -22,13 +34,18 @@ typedef struct nk_joystick_axis_event {
 
 typedef struct nk_joystick_button_event {
     uint32_t button;
-    uint32_t pressed;
+    /** 1 while the button is pressed, and 0 when it is released. */
+    nk_bool pressed;
 } nk_joystick_button_event;
 
 typedef struct nk_joystick_hat_event {
     uint32_t hat;
     uint32_t value;
 } nk_joystick_hat_event;
+
+/* ------------------------------------------------------------------------- */
+/* Joystick enumeration and state                                            */
+/* ------------------------------------------------------------------------- */
 
 /*
  * Writes connected joystick handles. Pass NULL to query the required count.
@@ -51,6 +68,11 @@ NK_API nk_result NK_CALL nk_joystick_get_buttons(nk_handle joystick, uint8_t *bu
                                                  uint32_t *inout_count);
 NK_API nk_result NK_CALL nk_joystick_get_hats(nk_handle joystick, uint8_t *hats,
                                               uint32_t *inout_count);
+
+/* ------------------------------------------------------------------------- */
+/* Joystick diagnostics                                                      */
+/* ------------------------------------------------------------------------- */
+
 /*
  * Returns a transport warning, such as a missing /dev/input directory,
  * insufficient device permissions, or unavailable inotify monitoring. An

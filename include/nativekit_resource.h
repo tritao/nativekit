@@ -15,12 +15,18 @@
 extern "C" {
 #endif
 
+/* ------------------------------------------------------------------------- */
+/* Resource flags and input types                                            */
+/* ------------------------------------------------------------------------- */
+
+typedef uint32_t nk_resource_flags;
 enum {
     NK_RESOURCE_READABLE = 1u << 0,
     NK_RESOURCE_WRITABLE = 1u << 1,
     NK_RESOURCE_PERSISTED = 1u << 2
 };
 
+typedef uint32_t nk_resource_open_flags;
 enum {
     NK_RESOURCE_OPEN_READ = 1u << 0,
     NK_RESOURCE_OPEN_WRITE = 1u << 1,
@@ -28,6 +34,7 @@ enum {
     NK_RESOURCE_OPEN_TRUNCATE = 1u << 3
 };
 
+typedef uint32_t nk_resource_stream_flags;
 enum {
     NK_RESOURCE_STREAM_READABLE = 1u << 0,
     NK_RESOURCE_STREAM_WRITABLE = 1u << 1,
@@ -41,7 +48,7 @@ enum { NK_SEEK_START = 0, NK_SEEK_CURRENT = 1, NK_SEEK_END = 2 };
 
 typedef struct nk_resource {
     uint32_t struct_size;
-    uint32_t flags;
+    nk_resource_flags flags;
     const char *uri NK_UTF8;
     const char *mime_type NK_NULLABLE_UTF8;
     const char *display_name NK_NULLABLE_UTF8;
@@ -51,7 +58,7 @@ typedef struct nk_resource {
 
 typedef struct nk_share_options {
     uint32_t struct_size;
-    uint32_t flags;
+    uint32_t flags; /* Reserved; must be zero. */
     const char *title NK_NULLABLE_UTF8;
     const char *text NK_NULLABLE_UTF8;
     const nk_resource *resources NK_BORROWED_ARRAY(resource_count);
@@ -60,16 +67,21 @@ typedef struct nk_share_options {
     uint64_t reserved2[2];
 } nk_share_options;
 
+/* ------------------------------------------------------------------------- */
+/* Resource event data                                                       */
+/* ------------------------------------------------------------------------- */
+
 /* Header and item table stored in resource-bearing event data. */
 typedef struct nk_resource_list {
-    uint32_t accepted;
+    /** 1 when the user accepted the operation, and 0 when it was cancelled. */
+    nk_bool accepted;
     uint32_t item_count;
     uint32_t items_offset;
     uint32_t strings_offset;
 } nk_resource_list;
 
 typedef struct nk_resource_item {
-    uint32_t flags;
+    nk_resource_flags flags;
     uint32_t uri_offset;
     uint32_t mime_type_offset;
     uint32_t display_name_offset;
@@ -77,7 +89,7 @@ typedef struct nk_resource_item {
 
 typedef struct nk_resource_view {
     uint32_t struct_size;
-    uint32_t flags;
+    nk_resource_flags flags;
     const char *uri;
     uint32_t uri_length;
     const char *mime_type;
@@ -89,7 +101,7 @@ typedef struct nk_resource_view {
 
 typedef struct nk_resource_stream_info {
     uint32_t struct_size;
-    uint32_t flags;
+    nk_resource_stream_flags flags;
     uint64_t size;
     uint64_t reserved[2];
 } nk_resource_stream_info;
@@ -157,18 +169,23 @@ NK_API nk_result NK_CALL nk_resource_drop_event_text(const nk_event *event, cons
  * These functions are UI-thread-only.
  */
 NK_API nk_result NK_CALL nk_resource_set_persisted_access(const nk_resource *resource,
-                                                          uint32_t access_flags,
-                                                          uint32_t *out_flags);
+                                                          nk_resource_flags access_flags,
+                                                          nk_resource_flags *out_flags NK_OUT);
 NK_API nk_result NK_CALL nk_resource_get_persisted_access(const nk_resource *resource,
-                                                          uint32_t *out_flags);
+                                                          nk_resource_flags *out_flags NK_OUT);
+
+/* ------------------------------------------------------------------------- */
+/* Resource stream APIs                                                      */
+/* ------------------------------------------------------------------------- */
 
 /*
  * Opens a URI-backed stream on the UI thread. Stream operations copy bytes
  * synchronously and may be called from worker threads. A successful read may
  * return fewer bytes than requested; zero bytes means end of stream.
  */
-NK_API nk_result NK_CALL nk_resource_open(const nk_resource *resource, uint32_t flags,
-                                          nk_handle *out_stream);
+NK_API nk_result NK_CALL nk_resource_open(const nk_resource *resource,
+                                          nk_resource_open_flags flags,
+                                          nk_handle *out_stream NK_OUT);
 NK_API nk_result NK_CALL nk_resource_stream_info_get(nk_handle stream,
                                                      nk_resource_stream_info *out_info);
 NK_API nk_result NK_CALL nk_resource_read(nk_handle stream, void *buffer, uint64_t size,

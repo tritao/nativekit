@@ -76,9 +76,9 @@ typedef struct nk_surface_resize_event {
  */
 NK_API nk_result NK_CALL nk_surface_create(nk_handle window,
                                            const nk_surface_options *options,
-                                           nk_handle *out_surface);
+                                           nk_handle *out_surface NK_OUT);
 NK_API nk_result NK_CALL nk_surface_destroy(nk_handle surface);
-NK_API nk_result NK_CALL nk_surface_show(nk_handle surface, uint32_t visible);
+NK_API nk_result NK_CALL nk_surface_show(nk_handle surface, nk_bool visible);
 NK_API nk_result NK_CALL nk_surface_set_bounds(nk_handle surface, int32_t x, int32_t y,
                                                int32_t width, int32_t height);
 
@@ -103,9 +103,13 @@ NK_API nk_result NK_CALL nk_surface_present(nk_handle surface);
 NK_API nk_result NK_CALL nk_surface_set_frame_callback(
     nk_handle surface, nk_surface_frame_callback callback, void *user_data);
 
+/* ------------------------------------------------------------------------- */
+/* Surface queries                                                           */
+/* ------------------------------------------------------------------------- */
+
 NK_API nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle surface,
-                                                         int32_t *out_width,
-                                                         int32_t *out_height);
+                                                         int32_t *out_width NK_OUT,
+                                                         int32_t *out_height NK_OUT);
 
 /* Resolves a function for the current surface context. */
 NK_API nk_result NK_CALL nk_surface_get_proc_address(nk_handle surface, const char *name NK_UTF8,

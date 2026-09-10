@@ -57,7 +57,11 @@ NK_API nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request NK_O
 /* ------------------------------------------------------------------------- */
 
 /* Enables or disables the text and/or local-file drop formats supported by the backend. */
-NK_API nk_result NK_CALL nk_window_set_drop_enabled(nk_handle window, uint32_t enabled);
+NK_API nk_result NK_CALL nk_window_set_drop_enabled(nk_handle window, nk_bool enabled);
+
+/* ------------------------------------------------------------------------- */
+/* Clipboard and drag-and-drop event helpers                                 */
+/* ------------------------------------------------------------------------- */
 
 /* Returned UTF-8 views remain owned by the event until nk_event_release(). */
 NK_API nk_result NK_CALL nk_clipboard_event_file(const nk_event *event, uint32_t index,

@@ -3,12 +3,49 @@
 NativeKit's public headers are the normative API reference. This document
 collects contracts that span more than one function.
 
+## Calling the ABI
+
+Include `nativekit.h` for initialization and events, then include only the
+feature headers you use. NativeKit is a C ABI; C++ callers receive the same
+ownership and lifetime rules and must not reinterpret opaque handles as pointers.
+
+Every extensible input or output structure begins with `struct_size`. Initialize
+the whole structure to zero, then set `struct_size = sizeof(structure)` before
+the call. Zero is the default for fields added in compatible revisions. Reserved
+fields and flags must remain zero. Output structures follow the same rule.
+
+Functions returning `nk_result` return `NK_OK` on success. A failure sets a
+thread-local diagnostic retrievable through `nk_last_error()`. The diagnostic is
+for logging, not program logic; branch on the typed result.
+`NK_ERROR_UNSUPPORTED` means the backend or runtime cannot provide an operation.
+`NK_ERROR_INVALID_REQUEST` means an operation cannot complete in its current
+lifecycle state.
+
+Boolean inputs use `nk_bool`: zero is false and any non-zero value is true.
+Boolean outputs are always normalized to zero or one. In language bindings,
+`nk_bool` should be exposed as the binding's native boolean type.
+Callers must pass only constants declared for an enum or flag type and valid
+combinations of those constants. Implementations may reject unknown values.
+
+All public strings are UTF-8. NativeKit copies inputs before returning unless a
+function explicitly returns a borrowed view. Borrowed event views remain valid
+only until `nk_event_release()`. Buffer-size queries include the trailing NUL;
+event text lengths exclude it.
+
+Opaque `nk_handle` values identify live resources and zero is always invalid.
+`nk_request_id` identifies one asynchronous operation and is not a resource
+handle, even when a language binding represents both as numbers.
+
 ## Threading
 
-The thread that successfully calls `nk_init()` becomes the UI thread. Window,
-graphics-surface, WebView, dialog, and event APIs must be called from that
-thread. A call made on another thread returns `NK_ERROR_WRONG_THREAD`.
-`nk_last_error()` is thread-local.
+The thread that successfully calls `nk_init()` becomes the UI thread. Unless a
+function is documented as thread-safe, initialization-independent, or a worker
+thread stream operation, it must be called on that thread. A call made on another
+thread returns `NK_ERROR_WRONG_THREAD`. `nk_last_error()` is thread-local.
+
+The explicit exceptions are monotonic clock reads, system directory and locale
+queries, `nk_wake_events()`, and opened resource-stream I/O. Platform UI objects,
+event polling, and resource creation or destruction remain UI-thread operations.
 
 ## Handles
 
@@ -105,6 +142,13 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_WEBVIEW_NAVIGATION_FAILED` | WebView | none | error text; category in `flags` |
 | `NK_EVENT_WEBVIEW_PROCESS_TERMINATED` | WebView | none | empty; backend reason in `flags` |
 | `NK_EVENT_WEBVIEW_NAVIGATION_REQUEST` | WebView | navigation ID | proposed URL |
+| `NK_EVENT_DIALOG_PATHS_COMPLETE` | none | dialog ID | `nk_dialog_paths`; operation in `flags` |
+| `NK_EVENT_DIALOG_RESOURCES_COMPLETE` | none | dialog ID | `nk_resource_list`; operation in `flags` |
+| `NK_EVENT_DIALOG_MESSAGE_COMPLETE` | none | dialog ID | `nk_dialog_message_result`; operation in `flags` |
+| `NK_EVENT_DROP_FILES` | window | none | `nk_drop_data` and local paths |
+| `NK_EVENT_DROP_TEXT` | window | none | `nk_drop_data` and UTF-8 items |
+| `NK_EVENT_CLIPBOARD_TEXT_COMPLETE` | none | clipboard read ID | UTF-8 text or empty |
+| `NK_EVENT_CLIPBOARD_FILES_COMPLETE` | none | clipboard read ID | `nk_clipboard_files` and local paths |
 | `NK_EVENT_NOTIFICATION_DELIVERED` | none | notification ID | empty |
 | `NK_EVENT_NOTIFICATION_ACTIVATED` | none | notification ID | optional platform action identifier |
 | `NK_EVENT_NOTIFICATION_DISMISSED` | none | notification ID | empty; platform reason may be in `flags` |
@@ -114,13 +158,13 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_RESOURCE_OPENED` | mobile host | none | `nk_resource_list` |
 | `NK_EVENT_SHARE_RECEIVED` | mobile host | none | `nk_received_share` followed by its resource list and strings |
 | `NK_EVENT_RESOURCE_DROP` | mobile host | none | `nk_resource_drop` followed by its resource list and optional text |
-| `NK_EVENT_KEY` | window | none | `nk_key_event` |
-| `NK_EVENT_TEXT_INPUT` | window | none | `nk_text_input_event` |
+| `NK_EVENT_KEY` | window or graphics surface | none | `nk_key_event` |
+| `NK_EVENT_TEXT_INPUT` | window or graphics surface | none | `nk_text_input_event` |
 | `NK_EVENT_TEXT_EDIT` | graphics surface | none | `nk_text_edit_event` followed by UTF-8 text |
-| `NK_EVENT_POINTER_MOVE` | window | none | `nk_pointer_move_event` |
-| `NK_EVENT_POINTER_BUTTON` | window | none | `nk_pointer_button_event` |
-| `NK_EVENT_POINTER_SCROLL` | window | none | `nk_pointer_scroll_event` |
-| `NK_EVENT_POINTER_ENTER` | window | none | empty; `flags` is one on enter and zero on leave |
+| `NK_EVENT_POINTER_MOVE` | window or graphics surface | none | `nk_pointer_move_event` |
+| `NK_EVENT_POINTER_BUTTON` | window or graphics surface | none | `nk_pointer_button_event` |
+| `NK_EVENT_POINTER_SCROLL` | window or graphics surface | none | `nk_pointer_scroll_event` |
+| `NK_EVENT_POINTER_ENTER` | window or graphics surface | none | empty; `flags` is one on enter and zero on leave |
 | `NK_EVENT_TOUCH` | graphics surface | none | `nk_touch_event` |
 | `NK_EVENT_WINDOW_MOVE` | window | none | `nk_window_move_event` |
 | `NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE` | window | none | `nk_window_framebuffer_resize_event` |
@@ -136,6 +180,7 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_SURFACE_READY` | graphics surface | none | empty |
 | `NK_EVENT_SURFACE_RESIZE` | graphics surface | none | `nk_surface_resize_event` |
 | `NK_EVENT_SURFACE_LOST` | graphics surface | none | empty |
+| `NK_EVENT_ACCESSIBILITY_ACTION` | graphics surface | none | `nk_accessibility_action_event` followed by optional UTF-8 value |
 
 A close event is a request: the window remains alive until the application calls
 `nk_window_destroy()`.
@@ -155,10 +200,12 @@ dead-key composition, active keyboard layouts, and IME committed text are
 reported through `NK_EVENT_TEXT_INPUT`.
 
 Custom-rendered Android editors opt into transactional IME input by calling
-`nk_surface_set_text_input_state()` with their current UTF-8 text, selection,
-and optional composition range, then `nk_surface_set_text_input_active()`. All
-positions are Unicode code-point indices; `NK_TEXT_POSITION_NONE` represents an
-absent composition. `NK_EVENT_TEXT_EDIT` reports the replacement range, inserted
+`nk_surface_set_text_input_state()` with a bounded UTF-8 window, its absolute
+document start and length, the absolute selection, and an optional absolute
+composition range, then `nk_surface_set_text_input_active()`. The supplied window
+must contain the selection and composition. All positions are Unicode code-point
+indices; `NK_TEXT_POSITION_NONE` represents an absent composition.
+`NK_EVENT_TEXT_EDIT` reports absolute replacement positions, inserted
 UTF-8 text, resulting selection, and resulting composition after each compose,
 commit, delete, selection, or finish-composition operation. The client applies
 the operation to its text model and publishes the resulting state again. Use
@@ -166,6 +213,40 @@ the operation to its text model and publishes the resulting state again. Use
 supports multi-stage IMEs, autocorrection, emoji, and surrounding-text deletion
 without exposing Android UTF-16 indices. Committed `NK_EVENT_TEXT_INPUT` remains
 the compatibility path for clients that do not publish structured editor state.
+
+The state also declares keyboard purpose, capitalization, autocorrection,
+multiline behavior, enter-key action, and a logical-pixel caret rectangle. These
+are requests to the platform IME, not guarantees about the keyboard UI.
+
+## Custom-surface accessibility
+
+Include `nativekit_accessibility.h` when a graphics surface renders interactive
+content that native accessibility services cannot inspect directly. Each virtual
+node has a stable positive ID, parent ID, sibling order, role, state, supported
+actions, logical bounds, label, value, and optional numeric range. ID zero names
+the host root and is never a client node.
+
+`nk_surface_accessibility_update()` is the preferred update path. It copies all
+input and atomically applies node upserts, recursive removals, and an
+optional focus change. Parents must already exist or occur before their children
+in the update array. One batch crosses the Android bridge once and generates one
+content-change notification. The single-node functions remain useful for small
+or infrequent changes.
+
+Text values may be bounded windows of a larger document. `text_start`,
+`document_length`, and selection fields are absolute Unicode code-point positions;
+the window must contain any supplied selection. Visible character or text-run
+rectangles can be supplied with `nk_surface_accessibility_set_text_ranges()`.
+Ranges are ordered, non-overlapping, and expressed in surface-local logical
+coordinates.
+
+Android projects the tree as virtual accessibility nodes, performs hover hit
+testing for touch exploration, converts code-point positions to Android UTF-16,
+and exposes visible text geometry on demand. Requested operations return as
+`NK_EVENT_ACCESSIBILITY_ACTION`; the client remains authoritative and publishes
+the resulting semantic state. Use `nk_accessibility_action_event_value()` for
+event-owned replacement text. Movement actions identify character, word, line,
+paragraph, or page granularity.
 
 Cursor resources may be standard platform shapes or copied RGBA8 images.
 Destroying a cursor handle does not invalidate a cursor already selected by a
@@ -340,7 +421,7 @@ do not treat the URI as a filesystem path. A share may contain zero or more
 resources plus optional UTF-8 text and subject, available through
 `nk_share_event_text()` and `nk_share_event_subject()`. Missing optional strings
 are returned as empty strings. URI grant flags describe the access conveyed by
-the Intent, and streams are opened through `nk_resource_open_stream()`.
+the Intent, and streams are opened through `nk_resource_open()`.
 
 Every successfully started WebView evaluation has exactly one terminal event.
 Destroying its WebView, directly or through parent-window destruction, completes

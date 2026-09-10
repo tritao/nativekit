@@ -168,6 +168,8 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	const NK_KEY_ESCAPE = 256;
 	const NK_KEY_F = 70;
 	const NK_KEY_F1 = 290;
+	const NK_KEY_F10 = 299;
+	const NK_KEY_F11 = 300;
 	const NK_KEY_F12 = 301;
 	const NK_KEY_F13 = 302;
 	const NK_KEY_F14 = 303;
@@ -176,12 +178,20 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	const NK_KEY_F17 = 306;
 	const NK_KEY_F18 = 307;
 	const NK_KEY_F19 = 308;
+	const NK_KEY_F2 = 291;
 	const NK_KEY_F20 = 309;
 	const NK_KEY_F21 = 310;
 	const NK_KEY_F22 = 311;
 	const NK_KEY_F23 = 312;
 	const NK_KEY_F24 = 313;
 	const NK_KEY_F25 = 314;
+	const NK_KEY_F3 = 292;
+	const NK_KEY_F4 = 293;
+	const NK_KEY_F5 = 294;
+	const NK_KEY_F6 = 295;
+	const NK_KEY_F7 = 296;
+	const NK_KEY_F8 = 297;
+	const NK_KEY_F9 = 298;
 	const NK_KEY_G = 71;
 	const NK_KEY_GRAVE_ACCENT = 96;
 	const NK_KEY_H = 72;
@@ -383,7 +393,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	extern fn nk_gamepad_get_name(joystick: nk_handle, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
 	extern fn nk_gamepad_get_options(out_options: ptr<nk_gamepad_options>) -> nk_result;
 	extern fn nk_gamepad_get_state(joystick: nk_handle, out_state: ptr<nk_gamepad_state>) -> nk_result;
-	extern fn nk_gamepad_is_mapped(joystick: nk_handle, out_mapped: ptr<u32>) -> nk_result;
+	extern fn nk_gamepad_is_mapped(joystick: nk_handle, out_mapped: ptr<nk_bool>) -> nk_result;
 	extern fn nk_gamepad_set_options(options: ptr<const<nk_gamepad_options>>) -> nk_result;
 	extern fn nk_get_capabilities() -> nk_capabilities;
 	extern fn nk_init(options: ptr<const<nk_init_options>>) -> nk_result;
@@ -407,15 +417,15 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	extern fn nk_pointer_button_get_state(window: nk_handle, button: nk_pointer_button, out_action: ptr<nk_input_action>) -> nk_result;
 	extern fn nk_pointer_get_position(window: nk_handle, out_x: ptr<f64>, out_y: ptr<f64>) -> nk_result;
 	extern fn nk_poll_event(event: ptr<nk_event> @inout) -> nk_result;
-	extern fn nk_raw_pointer_motion_supported() -> u32;
+	extern fn nk_raw_pointer_motion_supported() -> nk_bool;
 	extern fn nk_resource_close(stream: nk_handle) -> nk_result;
 	extern fn nk_resource_drop_event_text(event: ptr<const<nk_event>>, out_text: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
 	extern fn nk_resource_event_item(event: ptr<const<nk_event>>, index: u32, out_resource: ptr<nk_resource_view>) -> nk_result;
-	extern fn nk_resource_get_persisted_access(resource: ptr<const<nk_resource>>, out_flags: ptr<u32>) -> nk_result;
-	extern fn nk_resource_open(resource: ptr<const<nk_resource>>, flags: u32, out_stream: ptr<nk_handle>) -> nk_result;
+	extern fn nk_resource_get_persisted_access(resource: ptr<const<nk_resource>>, out_flags: ptr<nk_resource_flags> @out) -> nk_result;
+	extern fn nk_resource_open(resource: ptr<const<nk_resource>>, flags: nk_resource_open_flags, out_stream: ptr<nk_handle> @out) -> nk_result;
 	extern fn nk_resource_read(stream: nk_handle, buffer: ptr<void>, size: u64, out_read: ptr<u64>) -> nk_result;
 	extern fn nk_resource_seek(stream: nk_handle, offset: i64, origin: nk_seek_origin, out_position: ptr<u64>) -> nk_result;
-	extern fn nk_resource_set_persisted_access(resource: ptr<const<nk_resource>>, access_flags: u32, out_flags: ptr<u32>) -> nk_result;
+	extern fn nk_resource_set_persisted_access(resource: ptr<const<nk_resource>>, access_flags: nk_resource_flags, out_flags: ptr<nk_resource_flags> @out) -> nk_result;
 	extern fn nk_resource_stream_info_get(stream: nk_handle, out_info: ptr<nk_resource_stream_info>) -> nk_result;
 	extern fn nk_resource_write(stream: nk_handle, buffer: ptr<const<void>>, size: u64, out_written: ptr<u64>) -> nk_result;
 	extern fn nk_share(options: ptr<const<nk_share_options>>) -> nk_result;
@@ -426,33 +436,34 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	extern fn nk_shell_open_url(url: utf8) -> nk_result;
 	extern fn nk_shell_reveal_file(path: utf8) -> nk_result;
 	extern fn nk_shutdown() -> void;
-	extern fn nk_surface_create(window: nk_handle, options: ptr<const<nk_surface_options>>, out_surface: ptr<nk_handle>) -> nk_result;
+	extern fn nk_surface_create(window: nk_handle, options: ptr<const<nk_surface_options>>, out_surface: ptr<nk_handle> @out) -> nk_result;
 	extern fn nk_surface_destroy(surface: nk_handle) -> nk_result;
-	extern fn nk_surface_get_framebuffer_size(surface: nk_handle, out_width: ptr<i32>, out_height: ptr<i32>) -> nk_result;
+	extern fn nk_surface_get_framebuffer_size(surface: nk_handle, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
 	extern fn nk_surface_get_proc_address(surface: nk_handle, name: utf8, out_proc: ptr<nk_graphics_proc>) -> nk_result;
 	extern fn nk_surface_make_current(surface: nk_handle) -> nk_result;
 	extern fn nk_surface_present(surface: nk_handle) -> nk_result;
 	extern fn nk_surface_set_bounds(surface: nk_handle, x: i32, y: i32, width: i32, height: i32) -> nk_result;
-	extern fn nk_surface_set_text_input_active(surface: nk_handle, active: u32) -> nk_result;
+	extern fn nk_surface_set_frame_callback(surface: nk_handle, callback: nk_surface_frame_callback, user_data: ptr<void>) -> nk_result;
+	extern fn nk_surface_set_text_input_active(surface: nk_handle, active: nk_bool) -> nk_result;
 	extern fn nk_surface_set_text_input_state(surface: nk_handle, state: ptr<const<nk_text_input_state>>) -> nk_result;
-	extern fn nk_surface_show(surface: nk_handle, visible: u32) -> nk_result;
+	extern fn nk_surface_show(surface: nk_handle, visible: nk_bool) -> nk_result;
 	extern fn nk_system_directory(kind: nk_system_directory_kind, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
 	extern fn nk_system_get_appearance(appearance: ptr<nk_system_appearance>) -> nk_result;
 	extern fn nk_system_locale(buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
 	extern fn nk_text_edit_event_text(event: ptr<const<nk_event>>, out_text: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
-	extern fn nk_webview_can_go_back(webview: nk_handle, out_can_go_back: ptr<u32> @out) -> nk_result;
-	extern fn nk_webview_can_go_forward(webview: nk_handle, out_can_go_forward: ptr<u32> @out) -> nk_result;
+	extern fn nk_webview_can_go_back(webview: nk_handle, out_can_go_back: ptr<nk_bool> @out) -> nk_result;
+	extern fn nk_webview_can_go_forward(webview: nk_handle, out_can_go_forward: ptr<nk_bool> @out) -> nk_result;
 	extern fn nk_webview_create(parent: nk_handle, options: ptr<const<nk_webview_options>>, out_webview: ptr<nk_handle> @out) -> nk_result;
 	extern fn nk_webview_destroy(webview: nk_handle) -> nk_result;
 	extern fn nk_webview_eval(webview: nk_handle, script: utf8, out_request: ptr<nk_request_id> @out) -> nk_result;
 	extern fn nk_webview_go_back(webview: nk_handle) -> nk_result;
 	extern fn nk_webview_go_forward(webview: nk_handle) -> nk_result;
 	extern fn nk_webview_navigate(webview: nk_handle, url: utf8) -> nk_result;
-	extern fn nk_webview_navigation_decide(request: nk_request_id, allow: u32) -> nk_result;
+	extern fn nk_webview_navigation_decide(request: nk_request_id, allow: nk_bool) -> nk_result;
 	extern fn nk_webview_reload(webview: nk_handle) -> nk_result;
 	extern fn nk_webview_set_bounds(webview: nk_handle, x: i32, y: i32, width: i32, height: i32) -> nk_result;
 	extern fn nk_webview_set_html(webview: nk_handle, html: utf8, base_url: nullable<utf8>) -> nk_result;
-	extern fn nk_webview_show(webview: nk_handle, visible: u32) -> nk_result;
+	extern fn nk_webview_show(webview: nk_handle, visible: nk_bool) -> nk_result;
 	extern fn nk_webview_stop(webview: nk_handle) -> nk_result;
 	extern fn nk_window_activate(window: nk_handle) -> nk_result;
 	extern fn nk_window_create(options: ptr<const<nk_window_options>>, out_window: ptr<nk_handle> @out) -> nk_result;
@@ -461,14 +472,14 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	extern fn nk_window_get_cursor_mode(window: nk_handle, out_mode: ptr<nk_cursor_mode>) -> nk_result;
 	extern fn nk_window_get_frame_extents(window: nk_handle, out_extents: ptr<nk_window_frame_extents> @out) -> nk_result;
 	extern fn nk_window_get_framebuffer_size(window: nk_handle, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
-	extern fn nk_window_get_hovered(window: nk_handle, out_hovered: ptr<u32> @out) -> nk_result;
+	extern fn nk_window_get_hovered(window: nk_handle, out_hovered: ptr<nk_bool> @out) -> nk_result;
 	extern fn nk_window_get_native(window: nk_handle, out_native: ptr<nk_native_window> @out) -> nk_result;
 	extern fn nk_window_get_position(window: nk_handle, out_x: ptr<i32> @out, out_y: ptr<i32> @out) -> nk_result;
 	extern fn nk_window_get_scale(window: nk_handle, out_scale: ptr<f32> @out) -> nk_result;
 	extern fn nk_window_get_size(window: nk_handle, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
 	extern fn nk_window_get_state(window: nk_handle, out_state: ptr<nk_window_state> @out) -> nk_result;
-	extern fn nk_window_is_focused(window: nk_handle, out_focused: ptr<u32> @out) -> nk_result;
-	extern fn nk_window_is_visible(window: nk_handle, out_visible: ptr<u32> @out) -> nk_result;
+	extern fn nk_window_is_focused(window: nk_handle, out_focused: ptr<nk_bool> @out) -> nk_result;
+	extern fn nk_window_is_visible(window: nk_handle, out_visible: ptr<nk_bool> @out) -> nk_result;
 	extern fn nk_window_maximize(window: nk_handle) -> nk_result;
 	extern fn nk_window_minimize(window: nk_handle) -> nk_result;
 	extern fn nk_window_request_attention(window: nk_handle) -> nk_result;
@@ -477,17 +488,17 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	extern fn nk_window_set_bounds(window: nk_handle, x: i32, y: i32, width: i32, height: i32) -> nk_result;
 	extern fn nk_window_set_cursor(window: nk_handle, cursor: nk_handle) -> nk_result;
 	extern fn nk_window_set_cursor_mode(window: nk_handle, mode: nk_cursor_mode) -> nk_result;
-	extern fn nk_window_set_decorated(window: nk_handle, enabled: u32) -> nk_result;
-	extern fn nk_window_set_drop_enabled(window: nk_handle, enabled: u32) -> nk_result;
-	extern fn nk_window_set_floating(window: nk_handle, enabled: u32) -> nk_result;
-	extern fn nk_window_set_fullscreen(window: nk_handle, enabled: u32) -> nk_result;
+	extern fn nk_window_set_decorated(window: nk_handle, enabled: nk_bool) -> nk_result;
+	extern fn nk_window_set_drop_enabled(window: nk_handle, enabled: nk_bool) -> nk_result;
+	extern fn nk_window_set_floating(window: nk_handle, enabled: nk_bool) -> nk_result;
+	extern fn nk_window_set_fullscreen(window: nk_handle, enabled: nk_bool) -> nk_result;
 	extern fn nk_window_set_fullscreen_monitor(window: nk_handle, monitor: nk_handle) -> nk_result;
-	extern fn nk_window_set_mouse_passthrough(window: nk_handle, enabled: u32) -> nk_result;
+	extern fn nk_window_set_mouse_passthrough(window: nk_handle, enabled: nk_bool) -> nk_result;
 	extern fn nk_window_set_opacity(window: nk_handle, opacity: f32) -> nk_result;
-	extern fn nk_window_set_resizable(window: nk_handle, enabled: u32) -> nk_result;
+	extern fn nk_window_set_resizable(window: nk_handle, enabled: nk_bool) -> nk_result;
 	extern fn nk_window_set_size_limits(window: nk_handle, limits: ptr<const<nk_window_size_limits>>) -> nk_result;
 	extern fn nk_window_set_title(window: nk_handle, title: utf8) -> nk_result;
-	extern fn nk_window_show(window: nk_handle, visible: u32) -> nk_result;
+	extern fn nk_window_show(window: nk_handle, visible: nk_bool) -> nk_result;
 	extern fn nk_window_wrap_native(native: ptr<const<nk_native_window>>, out_window: ptr<nk_handle> @out) -> nk_result;
 	struct nk_clipboard_files @layout(8, 4) {
 		path_count: u32 @offset(0);
@@ -508,10 +519,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		patterns: utf8 @offset(8);
 	}
 	struct nk_dialog_message_result @layout(4, 4) {
-		button: u32 @offset(0);
+		button: nk_message_result @offset(0);
 	}
 	struct nk_dialog_paths @layout(16, 4) {
-		accepted: u32 @offset(0);
+		accepted: nk_bool @offset(0);
 		path_count: u32 @offset(4);
 		offsets_offset: u32 @offset(8);
 		strings_offset: u32 @offset(12);
@@ -536,7 +547,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	}
 	struct nk_file_dialog_options @layout(48, 8) {
 		struct_size: u32 @offset(0);
-		flags: u32 @offset(4);
+		flags: nk_dialog_flags @offset(4);
 		title: nullable<utf8> @offset(8);
 		initial_path: nullable<utf8> @offset(16);
 		suggested_name: nullable<utf8> @offset(24);
@@ -550,7 +561,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	}
 	struct nk_gamepad_button_event @layout(8, 4) {
 		button: nk_gamepad_button @offset(0);
-		pressed: u32 @offset(4);
+		pressed: nk_bool @offset(4);
 	}
 	struct nk_gamepad_options @layout(40, 8) {
 		struct_size: u32 @offset(0);
@@ -578,7 +589,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	}
 	struct nk_joystick_button_event @layout(8, 4) {
 		button: u32 @offset(0);
-		pressed: u32 @offset(4);
+		pressed: nk_bool @offset(4);
 	}
 	struct nk_joystick_hat_event @layout(8, 4) {
 		hat: u32 @offset(0);
@@ -592,8 +603,8 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	}
 	struct nk_message_dialog_options @layout(32, 8) {
 		struct_size: u32 @offset(0);
-		kind: u32 @offset(4);
-		buttons: u32 @offset(8);
+		kind: nk_message_kind @offset(4);
+		buttons: nk_message_buttons @offset(8);
 		reserved: u32 @offset(12);
 		title: nullable<utf8> @offset(16);
 		message: utf8 @offset(24);
@@ -658,7 +669,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	}
 	struct nk_resource @layout(56, 8) {
 		struct_size: u32 @offset(0);
-		flags: u32 @offset(4);
+		flags: nk_resource_flags @offset(4);
 		uri: utf8 @offset(8);
 		mime_type: nullable<utf8> @offset(16);
 		display_name: nullable<utf8> @offset(24);
@@ -673,26 +684,26 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		reserved: array<u64, 2> @offset(16);
 	}
 	struct nk_resource_item @layout(16, 4) {
-		flags: u32 @offset(0);
+		flags: nk_resource_flags @offset(0);
 		uri_offset: u32 @offset(4);
 		mime_type_offset: u32 @offset(8);
 		display_name_offset: u32 @offset(12);
 	}
 	struct nk_resource_list @layout(16, 4) {
-		accepted: u32 @offset(0);
+		accepted: nk_bool @offset(0);
 		item_count: u32 @offset(4);
 		items_offset: u32 @offset(8);
 		strings_offset: u32 @offset(12);
 	}
 	struct nk_resource_stream_info @layout(32, 8) {
 		struct_size: u32 @offset(0);
-		flags: u32 @offset(4);
+		flags: nk_resource_stream_flags @offset(4);
 		size: u64 @offset(8);
 		reserved: array<u64, 2> @offset(16);
 	}
 	struct nk_resource_view @layout(72, 8) {
 		struct_size: u32 @offset(0);
-		flags: u32 @offset(4);
+		flags: nk_resource_flags @offset(4);
 		uri: ptr<const<c_char>> @offset(8);
 		uri_length: u32 @offset(16);
 		mime_type: ptr<const<c_char>> @offset(24);
@@ -859,10 +870,13 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		flags: u32 @offset(4);
 		reserved: array<u64, 2> @offset(8);
 	}
+	type nk_bool = u32;
 	type nk_capabilities = u64;
 	type nk_color_scheme = u32;
 	type nk_cursor_mode = u32;
 	type nk_cursor_shape = u32;
+	type nk_dialog_flags = u32;
+	type nk_dialog_operation = u32;
 	type nk_event_kind = u32;
 	type nk_gamepad_axis = u32;
 	type nk_gamepad_button = u32;
@@ -873,12 +887,19 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	type nk_handle = u32;
 	type nk_input_action = u32;
 	type nk_key = u32;
+	type nk_message_buttons = u32;
+	type nk_message_kind = u32;
+	type nk_message_result = u32;
 	type nk_modifiers = u32;
 	type nk_native_window_kind = u32;
 	type nk_pointer_button = u32;
 	type nk_request_id = u64;
+	type nk_resource_flags = u32;
+	type nk_resource_open_flags = u32;
+	type nk_resource_stream_flags = u32;
 	type nk_result = i32;
 	type nk_seek_origin = u32;
+	callback nk_surface_frame_callback = fn(arg0: nk_handle, arg1: i32, arg2: i32, arg3: ptr<void>) -> void;
 	type nk_system_directory_kind = u32;
 	type nk_text_edit_action = u32;
 	type nk_text_input_action = u32;

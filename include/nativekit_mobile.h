@@ -102,7 +102,7 @@ NK_API nk_result NK_CALL nk_mobile_host_dispatch_event(nk_handle host,
                                                        const nk_mobile_host_event *event);
 
 /* Enables or disables URI/text drops onto the caller-owned host container. */
-NK_API nk_result NK_CALL nk_mobile_host_set_drop_enabled(nk_handle host, uint32_t enabled);
+NK_API nk_result NK_CALL nk_mobile_host_set_drop_enabled(nk_handle host, nk_bool enabled);
 
 #ifdef __cplusplus
 }

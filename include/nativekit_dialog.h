@@ -15,6 +15,11 @@
 extern "C" {
 #endif
 
+/* ------------------------------------------------------------------------- */
+/* Dialog and message constants                                              */
+/* ------------------------------------------------------------------------- */
+
+typedef uint32_t nk_dialog_operation;
 enum {
     NK_DIALOG_OPEN_FILE = 1,
     NK_DIALOG_SAVE_FILE = 2,
@@ -25,14 +30,17 @@ enum {
     NK_DIALOG_SELECT_RESOURCE_DIRECTORY = 7
 };
 
+typedef uint32_t nk_dialog_flags;
 enum {
     NK_DIALOG_ALLOW_MULTIPLE = 1u << 0,
     NK_DIALOG_CONFIRM_OVERWRITE = 1u << 1,
     NK_DIALOG_SHOW_HIDDEN = 1u << 2
 };
 
+typedef uint32_t nk_message_kind;
 enum { NK_MESSAGE_INFO = 0, NK_MESSAGE_WARNING = 1, NK_MESSAGE_ERROR = 2, NK_MESSAGE_QUESTION = 3 };
 
+typedef uint32_t nk_message_buttons;
 enum {
     NK_MESSAGE_BUTTON_OK = 1u << 0,
     NK_MESSAGE_BUTTON_CANCEL = 1u << 1,
@@ -40,6 +48,7 @@ enum {
     NK_MESSAGE_BUTTON_NO = 1u << 3
 };
 
+typedef uint32_t nk_message_result;
 enum {
     NK_MESSAGE_RESULT_NONE = 0,
     NK_MESSAGE_RESULT_OK = 1,
@@ -60,7 +69,7 @@ typedef struct nk_dialog_filter {
 
 typedef struct nk_file_dialog_options {
     uint32_t struct_size;
-    uint32_t flags;
+    nk_dialog_flags flags;
     const char *title NK_NULLABLE_UTF8;
     const char *initial_path NK_NULLABLE_UTF8;
     const char *suggested_name NK_NULLABLE_UTF8;
@@ -71,8 +80,8 @@ typedef struct nk_file_dialog_options {
 
 typedef struct nk_message_dialog_options {
     uint32_t struct_size;
-    uint32_t kind;
-    uint32_t buttons;
+    nk_message_kind kind;
+    nk_message_buttons buttons;
     uint32_t reserved;
     const char *title NK_NULLABLE_UTF8;
     const char *message NK_UTF8;
@@ -80,7 +89,8 @@ typedef struct nk_message_dialog_options {
 
 /* Header at the start of NK_EVENT_DIALOG_PATHS_COMPLETE data. */
 typedef struct nk_dialog_paths {
-    uint32_t accepted;
+    /** 1 when the user accepted the dialog, and 0 when it was cancelled. */
+    nk_bool accepted;
     uint32_t path_count;
     uint32_t offsets_offset;
     uint32_t strings_offset;
@@ -88,7 +98,7 @@ typedef struct nk_dialog_paths {
 
 /* Payload of NK_EVENT_DIALOG_MESSAGE_COMPLETE. */
 typedef struct nk_dialog_message_result {
-    uint32_t button;
+    nk_message_result button;
 } nk_dialog_message_result;
 
 /* ------------------------------------------------------------------------- */

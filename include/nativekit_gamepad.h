@@ -64,7 +64,8 @@ typedef struct nk_gamepad_axis_event {
 
 typedef struct nk_gamepad_button_event {
     nk_gamepad_button button;
-    uint32_t pressed;
+    /** 1 while the button is pressed, and 0 when it is released. */
+    nk_bool pressed;
 } nk_gamepad_button_event;
 
 typedef uint32_t nk_gamepad_flags;
@@ -97,7 +98,7 @@ NK_API nk_result NK_CALL nk_gamepad_add_mapping(const char *mapping NK_UTF8);
  */
 NK_API nk_result NK_CALL nk_gamepad_add_mappings(const char *database NK_UTF8,
                                                  uint32_t *out_added);
-NK_API nk_result NK_CALL nk_gamepad_is_mapped(nk_handle joystick, uint32_t *out_mapped);
+NK_API nk_result NK_CALL nk_gamepad_is_mapped(nk_handle joystick, nk_bool *out_mapped);
 NK_API nk_result NK_CALL
 nk_gamepad_get_mapping_source(nk_handle joystick, nk_gamepad_mapping_source *out_source);
 /* Returns the pinned SDL_GameControllerDB Git revision used for built-ins. */

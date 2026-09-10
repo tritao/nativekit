@@ -153,6 +153,8 @@ The public headers in [`include/`](include/) are the normative API reference.
 See [the API guide](docs/api.md) for threading, ownership, event payloads, URI
 resources, text input, graphics, and accessibility. The latest consistency and
 ABI audit is recorded in [the API review](docs/api-review.md).
+Use the [API documentation audit](docs/api-doc-audit.md) to inventory missing
+comments in C declarations and generated HXI surfaces.
 
 ## 🧪 Testing
 

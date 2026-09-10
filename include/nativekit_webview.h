@@ -1,11 +1,23 @@
 #ifndef NATIVEKIT_WEBVIEW_H
 #define NATIVEKIT_WEBVIEW_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include "nativekit.h"
+
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ------------------------------------------------------------------------- */
+/* WebView flags and navigation errors                                       */
+/* ------------------------------------------------------------------------- */
 
 enum {
     NK_WEBVIEW_DEVTOOLS = 1u << 0,
@@ -23,6 +35,10 @@ enum {
     NK_NAVIGATION_ERROR_CONNECTION = 5,
     NK_NAVIGATION_ERROR_CANCELLED = 6
 };
+
+/* ------------------------------------------------------------------------- */
+/* WebView options and messaging                                             */
+/* ------------------------------------------------------------------------- */
 
 typedef struct nk_webview_options {
     uint32_t struct_size;
@@ -46,6 +62,10 @@ typedef struct nk_webview_options {
  * event with a failing result. This bridge name is stable across backends.
  */
 
+/* ------------------------------------------------------------------------- */
+/* WebView lifecycle and navigation                                          */
+/* ------------------------------------------------------------------------- */
+
 /*
  * Creates a native child WebView inside `parent`. Bounds are logical pixels;
  * width and height must be positive. `initial_url` is nullable UTF-8. Creation
@@ -58,20 +78,24 @@ NK_API nk_result NK_CALL nk_webview_create(nk_handle parent, const nk_webview_op
 NK_API nk_result NK_CALL nk_webview_destroy(nk_handle webview);
 
 /* All WebView operations are UI-thread-only and copy string input. */
-NK_API nk_result NK_CALL nk_webview_show(nk_handle webview, uint32_t visible);
+NK_API nk_result NK_CALL nk_webview_show(nk_handle webview, nk_bool visible);
 NK_API nk_result NK_CALL nk_webview_set_bounds(nk_handle webview, int32_t x, int32_t y,
                                                int32_t width, int32_t height);
 NK_API nk_result NK_CALL nk_webview_navigate(nk_handle webview, const char *url NK_UTF8);
 NK_API nk_result NK_CALL nk_webview_set_html(nk_handle webview, const char *html NK_UTF8,
                                              const char *base_url NK_NULLABLE_UTF8);
 NK_API nk_result NK_CALL nk_webview_can_go_back(nk_handle webview,
-                                                uint32_t *out_can_go_back NK_OUT);
+                                                nk_bool *out_can_go_back NK_OUT);
 NK_API nk_result NK_CALL nk_webview_can_go_forward(nk_handle webview,
-                                                   uint32_t *out_can_go_forward NK_OUT);
+                                                   nk_bool *out_can_go_forward NK_OUT);
 NK_API nk_result NK_CALL nk_webview_go_back(nk_handle webview);
 NK_API nk_result NK_CALL nk_webview_go_forward(nk_handle webview);
 NK_API nk_result NK_CALL nk_webview_reload(nk_handle webview);
 NK_API nk_result NK_CALL nk_webview_stop(nk_handle webview);
+
+/* ------------------------------------------------------------------------- */
+/* WebView scripting and navigation policy                                   */
+/* ------------------------------------------------------------------------- */
 
 /*
  * Starts JavaScript evaluation. Completion is reported as
@@ -93,7 +117,7 @@ NK_API nk_result NK_CALL nk_webview_eval(nk_handle webview, const char *script N
  * Event data is the proposed URL. Pending requests are cancelled when their
  * WebView is destroyed; each request may be resolved exactly once.
  */
-NK_API nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t allow);
+NK_API nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, nk_bool allow);
 
 #ifdef __cplusplus
 }
