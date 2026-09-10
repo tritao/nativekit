@@ -20,26 +20,39 @@ extern "C" {
 /* ------------------------------------------------------------------------- */
 
 enum {
+    /** The hat is centered; no direction is active. */
     NK_JOYSTICK_HAT_CENTERED = 0,
+    /** The hat is pressed upward. */
     NK_JOYSTICK_HAT_UP = 1,
+    /** The hat is pressed to the right. */
     NK_JOYSTICK_HAT_RIGHT = 2,
+    /** The hat is pressed downward. */
     NK_JOYSTICK_HAT_DOWN = 4,
+    /** The hat is pressed to the left. */
     NK_JOYSTICK_HAT_LEFT = 8
 };
 
+/** Payload of NK_EVENT_JOYSTICK_AXIS. */
 typedef struct nk_joystick_axis_event {
+    /** Zero-based raw joystick axis index. */
     uint32_t axis;
+    /** Axis value normalized to [-1, 1]. */
     float value;
 } nk_joystick_axis_event;
 
+/** Payload of NK_EVENT_JOYSTICK_BUTTON. */
 typedef struct nk_joystick_button_event {
+    /** Zero-based raw joystick button index. */
     uint32_t button;
     /** 1 while the button is pressed, and 0 when it is released. */
     nk_bool pressed;
 } nk_joystick_button_event;
 
+/** Payload of NK_EVENT_JOYSTICK_HAT. */
 typedef struct nk_joystick_hat_event {
+    /** Zero-based raw joystick hat index. */
     uint32_t hat;
+    /** Bitwise OR of NK_JOYSTICK_HAT_* direction values. */
     uint32_t value;
 } nk_joystick_hat_event;
 
@@ -53,6 +66,7 @@ typedef struct nk_joystick_hat_event {
  * NK_EVENT_JOYSTICK_DISCONNECTED.
  */
 NK_API nk_result NK_CALL nk_joystick_list(nk_handle *joysticks, uint32_t *inout_count);
+/** Copies the device name into a caller-owned UTF-8 buffer. */
 NK_API nk_result NK_CALL nk_joystick_get_name(nk_handle joystick, char *buffer,
                                               uint32_t *inout_size);
 /* Returns a 32-character SDL-compatible device GUID plus a trailing NUL. */
@@ -64,8 +78,10 @@ NK_API nk_result NK_CALL nk_joystick_get_guid(nk_handle joystick, char *buffer,
  */
 NK_API nk_result NK_CALL nk_joystick_get_axes(nk_handle joystick, float *axes,
                                               uint32_t *inout_count);
+/** Copies the current button states as zero or one bytes. */
 NK_API nk_result NK_CALL nk_joystick_get_buttons(nk_handle joystick, uint8_t *buttons,
                                                  uint32_t *inout_count);
+/** Copies the current hat direction flags. */
 NK_API nk_result NK_CALL nk_joystick_get_hats(nk_handle joystick, uint8_t *hats,
                                               uint32_t *inout_count);
 
