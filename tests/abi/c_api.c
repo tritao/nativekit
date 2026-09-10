@@ -113,6 +113,11 @@ int main(void) {
            NK_ERROR_INVALID_ARGUMENT);
     assert(nk_mobile_host_set_drop_enabled(NK_INVALID_HANDLE, 2) ==
            NK_ERROR_INVALID_ARGUMENT);
+    uint32_t can_navigate = 0;
+    nk_result history_result = nk_webview_can_go_back(NK_INVALID_HANDLE, &can_navigate);
+    assert(history_result == NK_ERROR_INVALID_HANDLE || history_result == NK_ERROR_UNSUPPORTED);
+    history_result = nk_webview_can_go_back(NK_INVALID_HANDLE, NULL);
+    assert(history_result == NK_ERROR_INVALID_HANDLE || history_result == NK_ERROR_UNSUPPORTED);
     nk_result notification_result = nk_notification_show(NULL, NULL);
     assert(notification_result == NK_ERROR_INVALID_ARGUMENT ||
            notification_result == NK_ERROR_UNSUPPORTED);

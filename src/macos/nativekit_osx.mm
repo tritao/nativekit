@@ -1340,6 +1340,68 @@ nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char *html, const 
     return NK_OK;
 }
 
+nk_result NK_CALL nk_webview_can_go_back(nk_handle handle, uint32_t *out_can_go_back) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = webview(handle);
+    if (!resource || !out_can_go_back)
+        return fail(!resource ? NK_ERROR_INVALID_HANDLE : NK_ERROR_INVALID_ARGUMENT,
+                    !resource ? "invalid or stale WebView handle" : "history output is null");
+    *out_can_go_back = resource->view.canGoBack ? 1u : 0u;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_can_go_forward(nk_handle handle, uint32_t *out_can_go_forward) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = webview(handle);
+    if (!resource || !out_can_go_forward)
+        return fail(!resource ? NK_ERROR_INVALID_HANDLE : NK_ERROR_INVALID_ARGUMENT,
+                    !resource ? "invalid or stale WebView handle" : "history output is null");
+    *out_can_go_forward = resource->view.canGoForward ? 1u : 0u;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_go_back(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = webview(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    [resource->view goBack];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_go_forward(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = webview(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    [resource->view goForward];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_reload(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = webview(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    [resource->view reload];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_stop(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = webview(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    [resource->view stopLoading];
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
                                   nk_request_id *out_request) {
     return nk::core::result_boundary(

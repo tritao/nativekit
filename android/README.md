@@ -45,6 +45,11 @@ Persistable Storage Access Framework grants can be inspected with
 `nk_mobile_host_set_drop_enabled()` accepts text and `content://` drag data on
 the attached container. Drops preserve logical coordinates and URI metadata;
 temporary drag permissions remain valid until the host is destroyed.
+Forward the Activity's system-back callback to
+`NativeKitHost.handleBack(webViewHandle)` for the currently selected WebView.
+It consumes back only when WebView history can be navigated, so the Activity can
+perform its normal back behavior when it returns false. The same helper can be
+used from predictive-back callbacks.
 Android currently implements URL opening and text clipboard operations; file
 clipboard operations remain unsupported. Open, save, and directory dialogs use
 the Storage Access Framework and return `content://` URIs.

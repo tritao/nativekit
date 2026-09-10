@@ -168,6 +168,18 @@ final class NativeKitBridge {
         view.loadDataWithBaseURL(baseUrl, html, "text/html", "UTF-8", null);
     }
 
+    static boolean canGoBack(WebView view) { return view.canGoBack(); }
+
+    static boolean canGoForward(WebView view) { return view.canGoForward(); }
+
+    static void goBack(WebView view) { view.goBack(); }
+
+    static void goForward(WebView view) { view.goForward(); }
+
+    static void reload(WebView view) { view.reload(); }
+
+    static void stop(WebView view) { view.stopLoading(); }
+
     static void evaluate(WebView view, long request, String script) {
         view.evaluateJavascript(
             script, result -> nativeOnEvaluation(viewHandle(view), request, result, null));

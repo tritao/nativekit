@@ -272,6 +272,19 @@ and `null` preserve their JSON types. Values that JSON cannot represent complete
 with a failing event result when the native engine exposes the serialization
 failure.
 
+WebView history is explicit. `nk_webview_can_go_back()` and
+`nk_webview_can_go_forward()` query the current native history, while the
+matching navigation calls, `nk_webview_reload()`, and `nk_webview_stop()` submit
+native loading commands. A newly created WebView has no back or forward entry.
+On asynchronously created backends, history queries return false before the
+ready event and history commands may report unsupported until readiness.
+
+Android hosts can connect either legacy or predictive system-back callbacks to
+`NativeKitHost.handleBack(webView)`. It returns true only when that WebView had a
+back entry and navigation was submitted; otherwise the Activity remains
+responsible for its normal back behavior. NativeKit never guesses which of
+several child WebViews should receive back navigation.
+
 On Android, shell URL and clipboard operations use the `Context` of an attached
 mobile host. Text clipboard reads retain the cross-platform asynchronous event
 contract even though Android provides the value synchronously.

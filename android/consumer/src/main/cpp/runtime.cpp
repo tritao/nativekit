@@ -102,6 +102,23 @@ Java_io_nativekit_consumer_MainActivity_nativeResourceStreamProbe(JNIEnv *, jcla
 }
 
 extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeWebViewHistoryProbe(JNIEnv *, jclass,
+                                                                  jlong webview) {
+    uint32_t can_go_back = 1;
+    uint32_t can_go_forward = 1;
+    const auto handle = static_cast<nk_handle>(webview);
+    if (nk_webview_can_go_back(handle, &can_go_back) != NK_OK || can_go_back != 0)
+        return 1;
+    if (nk_webview_can_go_forward(handle, &can_go_forward) != NK_OK || can_go_forward != 0)
+        return 2;
+    if (nk_webview_reload(handle) != NK_OK)
+        return 3;
+    if (nk_webview_stop(handle) != NK_OK)
+        return 4;
+    return 0;
+}
+
+extern "C" JNIEXPORT jint JNICALL
 Java_io_nativekit_consumer_MainActivity_nativePersistedResourceProbe(JNIEnv *, jclass) {
     nk_resource resource{};
     resource.struct_size = sizeof(resource);

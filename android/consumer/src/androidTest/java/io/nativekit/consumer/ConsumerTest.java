@@ -32,6 +32,7 @@ public final class ConsumerTest {
             scenario.onActivity(activity -> {
                 assertEquals(1, activity.apiVersion());
                 assertNotEquals(0, activity.webViewHandle());
+                assertEquals(0, activity.webViewHistoryProbe());
                 assertEquals(0, activity.incomingShareProbe());
                 assertEquals(0, activity.resourceClipboardProbe());
                 assertEquals(0, activity.resourceStreamProbe());

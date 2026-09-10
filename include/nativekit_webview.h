@@ -64,6 +64,13 @@ NK_API nk_result NK_CALL nk_webview_set_bounds(nk_handle webview, int32_t x, int
 NK_API nk_result NK_CALL nk_webview_navigate(nk_handle webview, const char *url);
 NK_API nk_result NK_CALL nk_webview_set_html(nk_handle webview, const char *html,
                                              const char *base_url);
+NK_API nk_result NK_CALL nk_webview_can_go_back(nk_handle webview, uint32_t *out_can_go_back);
+NK_API nk_result NK_CALL nk_webview_can_go_forward(nk_handle webview,
+                                                   uint32_t *out_can_go_forward);
+NK_API nk_result NK_CALL nk_webview_go_back(nk_handle webview);
+NK_API nk_result NK_CALL nk_webview_go_forward(nk_handle webview);
+NK_API nk_result NK_CALL nk_webview_reload(nk_handle webview);
+NK_API nk_result NK_CALL nk_webview_stop(nk_handle webview);
 
 /*
  * Starts JavaScript evaluation. Completion is reported as

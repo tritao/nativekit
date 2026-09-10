@@ -1621,6 +1621,62 @@ nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char *html, const 
     return result;
 }
 
+static nk_result android_webview_history_query(nk_handle handle, const char *method_name,
+                                               uint32_t *out_value) {
+    const auto thread = require_thread();
+    auto resource = webview(handle);
+    if (thread != NK_OK)
+        return thread;
+    if (!resource || !out_value)
+        return !resource ? NK_ERROR_INVALID_HANDLE : NK_ERROR_INVALID_ARGUMENT;
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!env || !bridge)
+        return NK_ERROR_UNKNOWN;
+    auto method = env->GetStaticMethodID(bridge, method_name, "(Landroid/webkit/WebView;)Z");
+    const auto value = method && env->CallStaticBooleanMethod(bridge, method, resource->view);
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android WebView history query failed"))
+        return NK_ERROR_UNKNOWN;
+    *out_value = value ? 1u : 0u;
+    return NK_OK;
+}
+
+static nk_result android_webview_command(nk_handle handle, const char *method_name) {
+    const auto thread = require_thread();
+    auto resource = webview(handle);
+    if (thread != NK_OK)
+        return thread;
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    jvalue arguments[1]{};
+    arguments[0].l = resource->view;
+    return java_void_webview(resource, method_name, "(Landroid/webkit/WebView;)V", arguments);
+}
+nk_result NK_CALL nk_webview_can_go_back(nk_handle handle, uint32_t *out_can_go_back) {
+    return android_webview_history_query(handle, "canGoBack", out_can_go_back);
+}
+
+nk_result NK_CALL nk_webview_can_go_forward(nk_handle handle, uint32_t *out_can_go_forward) {
+    return android_webview_history_query(handle, "canGoForward", out_can_go_forward);
+}
+
+nk_result NK_CALL nk_webview_go_back(nk_handle handle) {
+    return android_webview_command(handle, "goBack");
+}
+
+nk_result NK_CALL nk_webview_go_forward(nk_handle handle) {
+    return android_webview_command(handle, "goForward");
+}
+
+nk_result NK_CALL nk_webview_reload(nk_handle handle) {
+    return android_webview_command(handle, "reload");
+}
+
+nk_result NK_CALL nk_webview_stop(nk_handle handle) {
+    return android_webview_command(handle, "stop");
+}
+
 nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
                                   nk_request_id *out_request) {
     const auto thread = require_thread();
@@ -1712,6 +1768,15 @@ JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeCreateWebView(JNIE
     nk_handle result = NK_INVALID_HANDLE;
     const auto status = nk_webview_create(static_cast<nk_handle>(host_handle), &options, &result);
     return status == NK_OK ? static_cast<jlong>(result) : 0;
+}
+
+JNIEXPORT jboolean JNICALL Java_io_nativekit_NativeKitHost_nativeHandleBack(JNIEnv *, jclass,
+                                                                            jlong handle) {
+    uint32_t can_go_back = 0;
+    if (nk_webview_can_go_back(static_cast<nk_handle>(handle), &can_go_back) != NK_OK ||
+        !can_go_back)
+        return JNI_FALSE;
+    return nk_webview_go_back(static_cast<nk_handle>(handle)) == NK_OK ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitHost_nativeSetLifecycle(JNIEnv *, jclass,

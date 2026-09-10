@@ -31,6 +31,13 @@ public final class NativeKitHost implements AutoCloseable {
         return nativeCreateWebView(handle, width, height, initialUrl);
     }
 
+    /** Navigates the selected WebView backward, returning false when it has no back history. */
+    public boolean handleBack(long webView) {
+        if (handle == 0 || webView == 0)
+            throw new IllegalArgumentException("host and WebView must be open");
+        return nativeHandleBack(webView);
+    }
+
     public void active() { setLifecycle(1); }
 
     public void inactive() { setLifecycle(2); }
@@ -147,6 +154,7 @@ public final class NativeKitHost implements AutoCloseable {
     private static native long nativeAttach(ViewGroup container);
     private static native long nativeCreateWebView(long host, int width, int height,
                                                    String initialUrl);
+    private static native boolean nativeHandleBack(long webView);
     private static native void nativeSetLifecycle(long handle, int state);
     private static native int nativeDispatchIntent(long handle, Intent intent);
     private static native int nativeSetDropEnabled(long handle, boolean enabled);

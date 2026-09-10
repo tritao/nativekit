@@ -2901,6 +2901,69 @@ nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char *html, const 
     return NK_OK;
 }
 
+nk_result NK_CALL nk_webview_can_go_back(nk_handle handle, uint32_t *out_can_go_back) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = webview(handle);
+    if (!resource || !out_can_go_back)
+        return !resource ? invalid_handle("WebView")
+                         : fail(NK_ERROR_INVALID_ARGUMENT, "history output is null");
+    *out_can_go_back = webkit_web_view_can_go_back(WEBKIT_WEB_VIEW(resource->widget)) ? 1u : 0u;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_can_go_forward(nk_handle handle, uint32_t *out_can_go_forward) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = webview(handle);
+    if (!resource || !out_can_go_forward)
+        return !resource ? invalid_handle("WebView")
+                         : fail(NK_ERROR_INVALID_ARGUMENT, "history output is null");
+    *out_can_go_forward =
+        webkit_web_view_can_go_forward(WEBKIT_WEB_VIEW(resource->widget)) ? 1u : 0u;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_go_back(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = webview(handle);
+    if (!resource)
+        return invalid_handle("WebView");
+    webkit_web_view_go_back(WEBKIT_WEB_VIEW(resource->widget));
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_go_forward(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = webview(handle);
+    if (!resource)
+        return invalid_handle("WebView");
+    webkit_web_view_go_forward(WEBKIT_WEB_VIEW(resource->widget));
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_reload(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = webview(handle);
+    if (!resource)
+        return invalid_handle("WebView");
+    webkit_web_view_reload(WEBKIT_WEB_VIEW(resource->widget));
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_stop(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = webview(handle);
+    if (!resource)
+        return invalid_handle("WebView");
+    webkit_web_view_stop_loading(WEBKIT_WEB_VIEW(resource->widget));
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
                                   nk_request_id *out_request) {
     return nk::core::result_boundary(

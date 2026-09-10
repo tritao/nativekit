@@ -1954,6 +1954,74 @@ nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char *html, const 
     }
 }
 
+static nk_result webview_history_query(nk_handle handle, bool forward, uint32_t *out_value) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = get_webview(handle);
+    if (!resource || !out_value)
+        return fail(!resource ? NK_ERROR_INVALID_HANDLE : NK_ERROR_INVALID_ARGUMENT,
+                    !resource ? "invalid or stale WebView handle" : "history output is null");
+    if (!resource->webview) {
+        if (resource->failed)
+            return fail(NK_ERROR_UNKNOWN, "WebView2 initialization failed");
+        *out_value = 0;
+        return NK_OK;
+    }
+    BOOL value = FALSE;
+    const auto status = forward ? resource->webview->get_CanGoForward(&value)
+                                : resource->webview->get_CanGoBack(&value);
+    if (FAILED(status))
+        return fail(NK_ERROR_UNKNOWN, "WebView2 history query failed");
+    *out_value = value ? 1u : 0u;
+    return NK_OK;
+}
+
+static nk_result webview_history_command(nk_handle handle, uint32_t command) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = get_webview(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale WebView handle");
+    if (!resource->webview)
+        return fail(resource->failed ? NK_ERROR_UNKNOWN : NK_ERROR_UNSUPPORTED,
+                    resource->failed ? "WebView2 initialization failed"
+                                     : "WebView history is unavailable before readiness");
+    HRESULT status = E_INVALIDARG;
+    switch (command) {
+    case 0:
+        status = resource->webview->GoBack();
+        break;
+    case 1:
+        status = resource->webview->GoForward();
+        break;
+    case 2:
+        status = resource->webview->Reload();
+        break;
+    case 3:
+        status = resource->webview->Stop();
+        break;
+    }
+    return SUCCEEDED(status) ? NK_OK : fail(NK_ERROR_UNKNOWN, "WebView2 history command failed");
+}
+nk_result NK_CALL nk_webview_can_go_back(nk_handle handle, uint32_t *out_can_go_back) {
+    return webview_history_query(handle, false, out_can_go_back);
+}
+nk_result NK_CALL nk_webview_can_go_forward(nk_handle handle, uint32_t *out_can_go_forward) {
+    return webview_history_query(handle, true, out_can_go_forward);
+}
+nk_result NK_CALL nk_webview_go_back(nk_handle handle) {
+    return webview_history_command(handle, 0);
+}
+nk_result NK_CALL nk_webview_go_forward(nk_handle handle) {
+    return webview_history_command(handle, 1);
+}
+nk_result NK_CALL nk_webview_reload(nk_handle handle) {
+    return webview_history_command(handle, 2);
+}
+nk_result NK_CALL nk_webview_stop(nk_handle handle) {
+    return webview_history_command(handle, 3);
+}
+
 nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
                                   nk_request_id *out_request) {
     nk_request_id request = NK_INVALID_REQUEST_ID;
@@ -2036,6 +2104,12 @@ nk_result NK_CALL nk_webview_navigate(nk_handle, const char *) {
 nk_result NK_CALL nk_webview_set_html(nk_handle, const char *, const char *) {
     return unsupported();
 }
+nk_result NK_CALL nk_webview_can_go_back(nk_handle, uint32_t *) { return unsupported(); }
+nk_result NK_CALL nk_webview_can_go_forward(nk_handle, uint32_t *) { return unsupported(); }
+nk_result NK_CALL nk_webview_go_back(nk_handle) { return unsupported(); }
+nk_result NK_CALL nk_webview_go_forward(nk_handle) { return unsupported(); }
+nk_result NK_CALL nk_webview_reload(nk_handle) { return unsupported(); }
+nk_result NK_CALL nk_webview_stop(nk_handle) { return unsupported(); }
 nk_result NK_CALL nk_webview_eval(nk_handle, const char *, nk_request_id *) {
     return unsupported();
 }
