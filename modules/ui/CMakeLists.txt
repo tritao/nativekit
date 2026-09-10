@@ -4,7 +4,8 @@ include(cmake/NanoVGSubmodules.cmake)
 add_library(nativekit_ui SHARED
     src/api.cpp
     src/display_list/display_list.cpp
-    src/prepare/nanovg_recorder.cpp)
+    src/prepare/nanovg_recorder.cpp
+    src/prepare/skribidi_adapter.cpp)
 add_library(NativeKit::ui ALIAS nativekit_ui)
 target_compile_features(nativekit_ui PRIVATE cxx_std_17)
 target_include_directories(nativekit_ui
@@ -36,6 +37,14 @@ if(NK_BUILD_TESTS)
     target_include_directories(nativekit_ui_nanovg_recorder_test PRIVATE src)
     target_link_libraries(nativekit_ui_nanovg_recorder_test PRIVATE nkui_nanovg_core)
     add_test(NAME nativekit_ui_nanovg_recorder COMMAND nativekit_ui_nanovg_recorder_test)
+    add_executable(nativekit_ui_skribidi_adapter_test
+        tests/skribidi_adapter.cpp
+        src/prepare/skribidi_adapter.cpp)
+    target_include_directories(nativekit_ui_skribidi_adapter_test PRIVATE src)
+    target_compile_definitions(nativekit_ui_skribidi_adapter_test PRIVATE
+        NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+    target_link_libraries(nativekit_ui_skribidi_adapter_test PRIVATE nkui_skribidi)
+    add_test(NAME nativekit_ui_skribidi_adapter COMMAND nativekit_ui_skribidi_adapter_test)
 endif()
 
 if(NK_BUILD_EXAMPLES AND TARGET nkui_nanovg)

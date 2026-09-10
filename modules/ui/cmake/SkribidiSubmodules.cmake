@@ -11,6 +11,7 @@ set(HB_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(HB_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${NK_VENDOR_DIR}/harfbuzz"
     "${CMAKE_CURRENT_BINARY_DIR}/third_party/harfbuzz" EXCLUDE_FROM_ALL)
+set_target_properties(harfbuzz PROPERTIES POSITION_INDEPENDENT_CODE YES)
 
 add_library(nkui_sheenbidi STATIC
     "${NK_VENDOR_DIR}/sheenbidi/Source/SheenBidi.c")
