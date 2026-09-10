@@ -5,6 +5,7 @@ import NativeKitRequests;
 import NativeKitEventBytes;
 import NativeKitEventDecoderTests;
 import NativeKitTextInput;
+import NativeKitOptions;
 import NativeKit.NativeKitConstants;
 
 class Smoke {
@@ -58,12 +59,7 @@ class Smoke {
 			payloadOk = payloadOk && invalidEvaluationRejected && requests.pending() == 0;
 		}
 
-		var windowOptions = new nk_window_options();
-		windowOptions.set_struct_size(nk_window_options.size());
-		windowOptions.set_flags(2);
-		windowOptions.set_width(320);
-		windowOptions.set_height(200);
-		windowOptions.set_title("NativeKit smoke");
+		var windowOptions = NativeKitOptions.window(320, 200, "NativeKit smoke", 2);
 		if (windowOptions.get_title() != "NativeKit smoke")
 			return 9;
 		windowOptions.set_title(null);

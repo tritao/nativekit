@@ -279,6 +279,7 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_NAVIGATION_ERROR_OTHER = 0;
 	const NK_NAVIGATION_ERROR_REQUEST = 1;
 	const NK_NAVIGATION_ERROR_SECURITY = 3;
+	const NK_NOTIFICATION_SILENT = 1;
 	const NK_OK = 0;
 	const NK_POINTER_BUTTON_4 = 3;
 	const NK_POINTER_BUTTON_5 = 4;
@@ -399,6 +400,8 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	extern fn nk_monitor_get_name(monitor: nk_handle, buffer: nullable<ptr<c_char>> @out_buffer("inout_size"), inout_size: ptr<u32> @inout) -> nk_result;
 	extern fn nk_monitor_get_primary(out_monitor: ptr<nk_handle> @out) -> nk_result;
 	extern fn nk_monitor_list(monitors: ptr<nk_handle>, inout_count: ptr<u32>) -> nk_result;
+	extern fn nk_notification_close(request: nk_request_id) -> nk_result;
+	extern fn nk_notification_show(options: ptr<const<nk_notification_options>>, out_request: ptr<nk_request_id>) -> nk_result;
 	extern fn nk_pointer_button_get_state(window: nk_handle, button: nk_pointer_button, out_action: ptr<nk_input_action>) -> nk_result;
 	extern fn nk_pointer_get_position(window: nk_handle, out_x: ptr<f64>, out_y: ptr<f64>) -> nk_result;
 	extern fn nk_poll_event(event: ptr<nk_event> @inout) -> nk_result;
@@ -618,6 +621,16 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		window: usize @offset(24);
 		view: usize @offset(32);
 		reserved2: array<usize, 3> @offset(40);
+	}
+	struct nk_notification_options @layout(56, 8) {
+		struct_size: u32 @offset(0);
+		flags: u32 @offset(4);
+		title: utf8 @offset(8);
+		body: nullable<utf8> @offset(16);
+		icon: nullable<utf8> @offset(24);
+		timeout_ms: u32 @offset(32);
+		reserved: u32 @offset(36);
+		reserved2: array<u64, 2> @offset(40);
 	}
 	struct nk_pointer_button_event @layout(32, 8) {
 		button: nk_pointer_button @offset(0);

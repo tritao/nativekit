@@ -12,5 +12,6 @@
 #include "nativekit_resource.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_webview.h"
+#include "nativekit_notification.h"
 
 #endif
