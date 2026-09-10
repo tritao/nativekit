@@ -35,6 +35,7 @@ static_assert(sizeof(nkui_composite_command) == sizeof(nkui::SetCompositeModeCom
 static_assert(sizeof(nkui_rect_command) == sizeof(nkui::ClipRectCommand));
 static_assert(sizeof(nkui_draw_rect_command) == sizeof(nkui::DrawRectResourceCommand));
 static_assert(sizeof(nkui_layer_command) == sizeof(nkui::BeginLayerCommand));
+static_assert(sizeof(nkui_stroke_path_command) == sizeof(nkui::StrokePathCommand));
 
 namespace {
 
@@ -70,9 +71,17 @@ struct PathCacheKey {
     uint32_t path = 0;
     std::array<uint32_t, 6> transform{};
     uint32_t pixel_scale = 0;
+    uint32_t kind = 0;
+    uint32_t stroke_width = 0;
+    uint32_t line_cap = 0;
+    uint32_t line_join = 0;
+    uint32_t miter_limit = 0;
 
     bool operator==(const PathCacheKey &other) const {
-        return path == other.path && transform == other.transform && pixel_scale == other.pixel_scale;
+        return path == other.path && transform == other.transform && pixel_scale == other.pixel_scale &&
+               kind == other.kind && stroke_width == other.stroke_width &&
+               line_cap == other.line_cap && line_join == other.line_join &&
+               miter_limit == other.miter_limit;
     }
 };
 
@@ -81,7 +90,12 @@ struct PathCacheKeyHash {
         size_t hash = key.path * 0x9E3779B1u;
         for (const uint32_t value : key.transform)
             hash = (hash * 0x9E3779B1u) ^ value;
-        return (hash * 0x9E3779B1u) ^ key.pixel_scale;
+        hash = (hash * 0x9E3779B1u) ^ key.pixel_scale;
+        hash = (hash * 0x9E3779B1u) ^ key.kind;
+        hash = (hash * 0x9E3779B1u) ^ key.stroke_width;
+        hash = (hash * 0x9E3779B1u) ^ key.line_cap;
+        hash = (hash * 0x9E3779B1u) ^ key.line_join;
+        return (hash * 0x9E3779B1u) ^ key.miter_limit;
     }
 };
 
@@ -188,11 +202,24 @@ uint32_t float_bits(float value) {
 }
 
 PathCacheKey path_cache_key(nkui_resource path, const std::array<float, 6> &transform,
-                            float pixel_scale) {
-    PathCacheKey key{path.id, {}, float_bits(pixel_scale)};
+                            float pixel_scale, const nkui::RenderCommand &command) {
+    PathCacheKey key{};
+    key.path = path.id;
+    key.pixel_scale = float_bits(pixel_scale);
+    key.kind = static_cast<uint32_t>(command.kind);
+    key.stroke_width = float_bits(command.stroke_width);
+    key.line_cap = command.line_cap;
+    key.line_join = command.line_join;
+    key.miter_limit = float_bits(command.miter_limit);
     for (size_t index = 0; index < transform.size(); ++index)
         key.transform[index] = float_bits(transform[index]);
     return key;
+}
+
+float average_scale(const std::array<float, 6> &transform) {
+    const float x_scale = std::sqrt(transform[0] * transform[0] + transform[2] * transform[2]);
+    const float y_scale = std::sqrt(transform[1] * transform[1] + transform[3] * transform[3]);
+    return (x_scale + y_scale) * 0.5f;
 }
 
 bool uniform_scale(const std::array<float, 6> &matrix, float &scale) {
@@ -216,8 +243,9 @@ nkui::PreparedPaint paint_color(ResourceSlot *paint);
 
 PreparedPathCacheEntry *prepare_cached_path(
     RendererSlot &renderer, nkui_resource path_handle, const ResourceSlot &path,
-    const std::array<float, 6> &transform, float pixel_scale) {
-    const PathCacheKey key = path_cache_key(path_handle, transform, pixel_scale);
+    const std::array<float, 6> &transform, float pixel_scale,
+    const nkui::RenderCommand &command) {
+    const PathCacheKey key = path_cache_key(path_handle, transform, pixel_scale, command);
     if (const auto found = renderer.paths.find(key); found != renderer.paths.end())
         return &found->second;
     constexpr size_t max_cached_paths = 256;
@@ -228,8 +256,16 @@ PreparedPathCacheEntry *prepare_cached_path(
     nkui::PathPreparationParams params;
     params.device_pixel_ratio = pixel_scale;
     params.transform = transform;
+    const bool stroke = command.kind == nkui::RenderCommandKind::StrokePath;
+    if (stroke) {
+        params.stroke_width = command.stroke_width * average_scale(transform);
+        params.line_cap = static_cast<nkui::PathLineCap>(command.line_cap);
+        params.line_join = static_cast<nkui::PathLineJoin>(command.line_join);
+        params.miter_limit = command.miter_limit;
+    }
     nkui::PreparedGeometry geometry;
-    if (!nkui::prepare_fill(*path.path, params, geometry))
+    if (!(stroke ? nkui::prepare_stroke(*path.path, params, geometry)
+                 : nkui::prepare_fill(*path.path, params, geometry)))
         return nullptr;
     try {
         auto [found, inserted] = renderer.paths.emplace(key, PreparedPathCacheEntry{});
@@ -351,6 +387,9 @@ bool collect_display_resources(const uint8_t *data, size_t size,
             break;
         case nkui::CommandOpcode::DrawPath:
             append(reinterpret_cast<const nkui::DrawResourceCommand *>(data + offset)->resource);
+            break;
+        case nkui::CommandOpcode::StrokePath:
+            append(reinterpret_cast<const nkui::StrokePathCommand *>(data + offset)->path);
             break;
         case nkui::CommandOpcode::DrawImage:
         case nkui::CommandOpcode::DrawTextLayout:
@@ -763,7 +802,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
             command.scissor_y *= frame_info->pixel_scale;
             command.scissor_width *= frame_info->pixel_scale;
             command.scissor_height *= frame_info->pixel_scale;
-            if (command.kind == nkui::RenderCommandKind::Path) {
+            if (command.kind == nkui::RenderCommandKind::Path ||
+                command.kind == nkui::RenderCommandKind::StrokePath) {
                 auto *path =
                     resolve_retained(nkui_resource{command.resource.value},
                                      nkui::ResourceKind::Path);
@@ -778,14 +818,17 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                 const auto transform = device_transform(command.transform, frame_info->pixel_scale);
                 const nkui_resource path_handle{command.resource.value};
                 const auto cached = prepare_cached_path(*renderer_slot, path_handle, *path,
-                                                        transform, frame_info->pixel_scale);
+                                                        transform, frame_info->pixel_scale, command);
                 if (!cached) {
                     valid = false;
                     break;
                 }
                 auto prepared = std::make_unique<nkui::PreparedPath>();
+                const auto kind = command.kind == nkui::RenderCommandKind::StrokePath
+                                      ? nkui::PreparedPathKind::Stroke
+                                      : nkui::PreparedPathKind::Fill;
                 if (!prepared ||
-                    !prepared->set(nkui::PreparedPathKind::Fill, cached->geometry,
+                    !prepared->set(kind, cached->geometry,
                                    paint_color(paint))) {
                     valid = false;
                     break;

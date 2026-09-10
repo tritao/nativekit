@@ -55,11 +55,12 @@ int main() {
         {NKUI_PATH_CLOSE, {}},
     };
     const uint8_t image_pixels[] = {30, 90, 240, 255};
-    nkui_resource path{}, paint{}, image{}, fonts{}, text{};
+    nkui_resource path{}, paint{}, stroke_paint{}, image{}, fonts{}, text{};
     nkui_display_list list{};
     nkui_renderer renderer{};
     if (nkui_path_create(path_elements, 5, &path) != NKUI_OK ||
         nkui_paint_create_solid({0.08f, 0.45f, 0.16f, 1.0f}, &paint) != NKUI_OK ||
+        nkui_paint_create_solid({0.85f, 0.12f, 0.08f, 1.0f}, &stroke_paint) != NKUI_OK ||
         nkui_image_create(1, 1, NKUI_IMAGE_RGBA8, image_pixels, sizeof(image_pixels), &image) !=
             NKUI_OK ||
         nkui_font_collection_create(&fonts) != NKUI_OK ||
@@ -75,6 +76,16 @@ int main() {
     append(commands, nkui_resource_command{{NKUI_COMMAND_DRAW_PATH, NKUI_COMMAND_VERSION,
                                             sizeof(nkui_resource_command)},
                                            path});
+    append(commands, nkui_resource_command{{NKUI_COMMAND_SET_PAINT, NKUI_COMMAND_VERSION,
+                                            sizeof(nkui_resource_command)},
+                                           stroke_paint});
+    append(commands, nkui_stroke_path_command{{NKUI_COMMAND_STROKE_PATH, NKUI_COMMAND_VERSION,
+                                               sizeof(nkui_stroke_path_command)},
+                                              path,
+                                              5.0f,
+                                              NKUI_PATH_LINE_CAP_ROUND,
+                                              NKUI_PATH_LINE_JOIN_ROUND,
+                                              10.0f});
     append(commands, nkui_draw_rect_command{{NKUI_COMMAND_DRAW_TEXT_LAYOUT, NKUI_COMMAND_VERSION,
                                              sizeof(nkui_draw_rect_command)},
                                             text,
@@ -98,6 +109,7 @@ int main() {
     if (nkui_display_list_submit(list, commands.data(), commands.size()) != NKUI_OK)
         return 5;
     if (nkui_resource_destroy(text) != NKUI_OK || nkui_resource_destroy(image) != NKUI_OK ||
+        nkui_resource_destroy(stroke_paint) != NKUI_OK ||
         nkui_resource_destroy(paint) != NKUI_OK || nkui_resource_destroy(path) != NKUI_OK)
         return 5;
 

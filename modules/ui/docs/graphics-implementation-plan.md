@@ -129,6 +129,7 @@ PushState
 PopState
 ClipRect
 DrawPath
+StrokePath
 DrawImage
 DrawTextLayout
 BeginLayer

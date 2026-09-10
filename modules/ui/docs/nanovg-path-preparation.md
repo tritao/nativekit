@@ -79,10 +79,15 @@ prepared concurrently when the supplied allocator is thread-safe.
 
 NativeKit translates NanoVG output immediately into its private
 `PreparedGeometry`, `PreparedPaint`, `PreparedVertex`, and `PreparedBlend`
-representations. The geometry cache is keyed by path, transform, and device
-scale, not by paint, so recoloring a retained path does not retessellate it.
-Paint is attached when a `PreparedPath` operation is created and is consumed by
-the NativeKit compositor and Sokol backend.
+representations. The geometry cache is keyed by path, transform, device scale,
+and stroke style when applicable, not by paint, so recoloring a retained path
+does not retessellate it. Paint is attached when a `PreparedPath` operation is
+created and is consumed by the NativeKit compositor and Sokol backend.
+
+The public NativeKit display list uses `NKUI_COMMAND_DRAW_PATH` for fills and
+`NKUI_COMMAND_STROKE_PATH` for strokes. A stroke command carries its logical
+width, line cap, line join, and miter limit; the compositor applies the current
+transform and paint before NativeKit requests `nvgPrepareStroke()`.
 
 The stateful NanoVG API remains available to the compatibility recorder and
 uses the same NanoVG flattening and expansion implementation. NativeKit's

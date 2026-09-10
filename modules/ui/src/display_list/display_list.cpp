@@ -35,6 +35,14 @@ bool valid_composite(CompositeMode mode) {
     return mode == CompositeMode::SourceOver;
 }
 
+bool valid_line_cap(uint32_t line_cap) {
+    return line_cap <= 2;
+}
+
+bool valid_line_join(uint32_t line_join) {
+    return line_join == 1 || line_join == 3 || line_join == 4;
+}
+
 bool fail(ValidationError *error, size_t offset, uint32_t index, const char *message) {
     if (error)
         *error = {offset, index, message};
@@ -192,6 +200,17 @@ bool DisplayList::draw_path(ResourceId path) {
     return append(value);
 }
 
+bool DisplayList::stroke_path(ResourceId path, float width, uint32_t line_cap,
+                               uint32_t line_join, float miter_limit) {
+    auto value = command<StrokePathCommand>(CommandOpcode::StrokePath);
+    value.path = path;
+    value.width = width;
+    value.line_cap = line_cap;
+    value.line_join = line_join;
+    value.miter_limit = miter_limit;
+    return append(value);
+}
+
 bool DisplayList::draw_image(ResourceId image, float x, float y, float width, float height) {
     auto value = command<DrawRectResourceCommand>(CommandOpcode::DrawImage);
     value.resource = image;
@@ -298,6 +317,15 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
             const auto *value = read_command<DrawResourceCommand>(record, header.size);
             if (!value || !is_resource_id(value->resource, ResourceKind::Path))
                 return fail(error, offset, index, "invalid path handle");
+            break;
+        }
+        case CommandOpcode::StrokePath: {
+            const auto *value = read_command<StrokePathCommand>(record, header.size);
+            if (!value || !is_resource_id(value->path, ResourceKind::Path) ||
+                !finite(value->width) || value->width <= 0.0f ||
+                !valid_line_cap(value->line_cap) || !valid_line_join(value->line_join) ||
+                !finite(value->miter_limit) || value->miter_limit <= 0.0f)
+                return fail(error, offset, index, "invalid stroke path command");
             break;
         }
         case CommandOpcode::DrawImage:

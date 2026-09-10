@@ -84,7 +84,8 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
                 return fail(error, pass_index, command_index, backend.last_error());
             bool rendered = false;
             switch (command.kind) {
-            case RenderCommandKind::Path: {
+            case RenderCommandKind::Path:
+            case RenderCommandKind::StrokePath: {
                 const auto *path = resources.path(command.resource);
                 rendered = path &&
                            backend.draw_path_transformed(*path->path, path->operation_index,

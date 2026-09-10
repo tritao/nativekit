@@ -15,12 +15,13 @@ static bool valid_list_and_growth() {
     if (!list.set_transform(transform) || !list.set_global_alpha(0.75f) ||
         !list.set_composite_mode(CompositeMode::SourceOver) || !list.push_state() ||
         !list.clip_rect(0.0f, 0.0f, 100.0f, 50.0f) || !list.draw_path(path) ||
+        !list.stroke_path(path, 4.0f, 1, 4, 10.0f) ||
         !list.begin_layer(0.5f) || !list.draw_image(image, 1.0f, 2.0f, 30.0f, 40.0f) ||
         !list.draw_text_layout(text, 4.0f, 5.0f) || !list.end_layer() || !list.pop_state())
         return false;
     ValidationError error{};
     if (!validate_display_list(list.data(), list.size(), &error) || !list.growth_count() ||
-        list.command_count() != 11)
+        list.command_count() != 12)
         return false;
     const auto capacity = list.capacity();
     const auto growth = list.growth_count();
@@ -63,7 +64,14 @@ static bool rejects_bad_streams() {
     std::memcpy(&header, corrupt.data(), sizeof(header));
     header.size = UINT32_MAX;
     std::memcpy(corrupt.data(), &header, sizeof(header));
-    return !validate_display_list(corrupt.data(), corrupt.size(), &error);
+    if (validate_display_list(corrupt.data(), corrupt.size(), &error))
+        return false;
+
+    list.reset();
+    if (!list.stroke_path(make_resource_id(ResourceKind::Path, 1, 1), 0.0f, 1, 4, 10.0f) ||
+        validate_display_list(list.data(), list.size(), &error))
+        return false;
+    return true;
 }
 
 int main() {

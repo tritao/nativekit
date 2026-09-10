@@ -166,6 +166,17 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             apply_state(pass->commands.back(), state);
             break;
         }
+        case CommandOpcode::StrokePath: {
+            const auto value = read<StrokePathCommand>(record);
+            pass->commands.push_back({RenderCommandKind::StrokePath, value.path});
+            auto &command = pass->commands.back();
+            command.stroke_width = value.width;
+            command.line_cap = value.line_cap;
+            command.line_join = value.line_join;
+            command.miter_limit = value.miter_limit;
+            apply_state(command, state);
+            break;
+        }
         case CommandOpcode::DrawImage: {
             const auto value = read<DrawRectResourceCommand>(record);
             pass->commands.push_back({RenderCommandKind::Image, value.resource, value.x, value.y,

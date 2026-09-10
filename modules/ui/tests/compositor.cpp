@@ -90,5 +90,15 @@ int main() {
         !overflow.clip_rect(2.0f, 0.0f, 4.0f, 4.0f) ||
         compositor.compile(overflow, main_target, plan, &error) || error.command_index != 1)
         return 13;
+
+    DisplayList stroked;
+    if (!stroked.stroke_path(path, 6.0f, 2, 3, 8.0f) ||
+        !compositor.compile(stroked, main_target, plan, &error) || plan.passes.size() != 1 ||
+        plan.passes[0].commands.size() != 1)
+        return 14;
+    const auto &stroke = plan.passes[0].commands[0];
+    if (stroke.kind != RenderCommandKind::StrokePath || stroke.stroke_width != 6.0f ||
+        stroke.line_cap != 2 || stroke.line_join != 3 || stroke.miter_limit != 8.0f)
+        return 15;
     return 0;
 }

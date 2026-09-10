@@ -14,6 +14,7 @@ enum class RenderCommandKind : uint8_t {
     Image,
     GlyphBatch,
     CompositeTarget,
+    StrokePath,
 };
 
 struct RenderCommand {
@@ -32,6 +33,10 @@ struct RenderCommand {
     float scissor_y = 0.0f;
     float scissor_width = 0.0f;
     float scissor_height = 0.0f;
+    float stroke_width = 1.0f;
+    uint32_t line_cap = 0;
+    uint32_t line_join = 4;
+    float miter_limit = 10.0f;
 };
 
 struct RenderPass {

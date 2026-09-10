@@ -37,6 +37,7 @@ enum class CommandOpcode : uint16_t {
     BeginLayer,
     EndLayer,
     DrawRenderTarget,
+    StrokePath,
 };
 
 enum class CompositeMode : uint32_t {
@@ -86,6 +87,15 @@ struct DrawResourceCommand {
     ResourceId resource;
 };
 
+struct StrokePathCommand {
+    CommandHeader header;
+    ResourceId path;
+    float width;
+    uint32_t line_cap;
+    uint32_t line_join;
+    float miter_limit;
+};
+
 struct DrawRectResourceCommand {
     CommandHeader header;
     ResourceId resource;
@@ -127,6 +137,8 @@ class DisplayList {
     bool pop_state();
     bool clip_rect(float x, float y, float width, float height);
     bool draw_path(ResourceId path);
+    bool stroke_path(ResourceId path, float width, uint32_t line_cap, uint32_t line_join,
+                     float miter_limit);
     bool draw_image(ResourceId image, float x, float y, float width, float height);
     bool draw_text_layout(ResourceId layout, float x, float y);
     bool begin_layer(float opacity, CompositeMode mode = CompositeMode::SourceOver);

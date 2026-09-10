@@ -59,7 +59,7 @@ extern "C" {
 /** Version of the stable NativeKit UI C ABI. */
 enum {
     /** Current UI ABI version. */
-    NKUI_API_VERSION = 1
+    NKUI_API_VERSION = 2
 };
 
 /** Result returned by a NativeKit UI operation. */
@@ -147,6 +147,8 @@ enum {
     NKUI_COMMAND_END_LAYER = 12,
     /** Composite a render-target resource into a logical-space rectangle. */
     NKUI_COMMAND_DRAW_RENDER_TARGET = 13,
+    /** Stroke a path using the current paint and the command's stroke style. */
+    NKUI_COMMAND_STROKE_PATH = 14,
     /** Version value required in every command header. */
     NKUI_COMMAND_VERSION = 1
 };
@@ -194,6 +196,42 @@ typedef struct nkui_resource_command {
     /** Paint or path resource selected or drawn by this command. */
     nkui_resource resource;
 } nkui_resource_command;
+
+/** End-cap style used when stroking an open path. */
+typedef enum nkui_path_line_cap {
+    /** Stop the stroke at the endpoint. */
+    NKUI_PATH_LINE_CAP_BUTT = 0,
+    /** Add a semicircular cap at the endpoint. */
+    NKUI_PATH_LINE_CAP_ROUND = 1,
+    /** Extend the stroke by half its width at the endpoint. */
+    NKUI_PATH_LINE_CAP_SQUARE = 2
+} nkui_path_line_cap;
+
+/** Join style used where two stroked segments meet. */
+typedef enum nkui_path_line_join {
+    /** Join segments with a circular arc. */
+    NKUI_PATH_LINE_JOIN_ROUND = 1,
+    /** Join segments with a clipped corner. */
+    NKUI_PATH_LINE_JOIN_BEVEL = 3,
+    /** Extend the outer edges to their intersection, subject to the miter limit. */
+    NKUI_PATH_LINE_JOIN_MITER = 4
+} nkui_path_line_join;
+
+/** Payload for NKUI_COMMAND_STROKE_PATH. */
+typedef struct nkui_stroke_path_command {
+    /** Command record header. */
+    nkui_command_header header;
+    /** Path resource to stroke. */
+    nkui_resource path;
+    /** Stroke width in logical pixels; must be positive and finite. */
+    float width;
+    /** End-cap style for open contours. */
+    nkui_path_line_cap line_cap;
+    /** Join style for connected segments. */
+    nkui_path_line_join line_join;
+    /** Positive miter limit used by NKUI_PATH_LINE_JOIN_MITER. */
+    float miter_limit;
+} nkui_stroke_path_command;
 
 /** Payload for NKUI_COMMAND_SET_GLOBAL_ALPHA. */
 typedef struct nkui_scalar_command {

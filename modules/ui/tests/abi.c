@@ -28,23 +28,27 @@ int main(void) {
         return 2;
     nkui_resource_command draw = {{NKUI_COMMAND_DRAW_PATH, NKUI_COMMAND_VERSION, sizeof(draw)},
                                   path};
+    nkui_stroke_path_command stroke = {
+        {NKUI_COMMAND_STROKE_PATH, NKUI_COMMAND_VERSION, sizeof(stroke)}, path, 4.0f,
+        NKUI_PATH_LINE_CAP_ROUND, NKUI_PATH_LINE_JOIN_MITER, 10.0f};
     nkui_layer_command begin = {
         {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION, sizeof(begin)}, 0.5f, 1};
     nkui_command_header end = {NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION, sizeof(end)};
-    uint8_t commands[sizeof(draw) + sizeof(begin) + sizeof(end)];
+    uint8_t commands[sizeof(draw) + sizeof(stroke) + sizeof(begin) + sizeof(end)];
     memcpy(commands, &draw, sizeof(draw));
-    memcpy(commands + sizeof(draw), &begin, sizeof(begin));
-    memcpy(commands + sizeof(draw) + sizeof(begin), &end, sizeof(end));
+    memcpy(commands + sizeof(draw), &stroke, sizeof(stroke));
+    memcpy(commands + sizeof(draw) + sizeof(stroke), &begin, sizeof(begin));
+    memcpy(commands + sizeof(draw) + sizeof(stroke) + sizeof(begin), &end, sizeof(end));
     if (nkui_display_list_submit(list, commands, sizeof(commands)) != NKUI_OK)
         return 3;
     nkui_transaction_info info = {0};
-    if (nkui_display_list_get_info(list, &info) != NKUI_OK || info.command_count != 3 ||
+    if (nkui_display_list_get_info(list, &info) != NKUI_OK || info.command_count != 4 ||
         info.command_bytes != sizeof(commands))
         return 4;
     commands[2] = 2;
     if (nkui_display_list_submit(list, commands, sizeof(commands)) !=
             NKUI_ERROR_INVALID_TRANSACTION ||
-        nkui_display_list_get_info(list, &info) != NKUI_OK || info.command_count != 3)
+        nkui_display_list_get_info(list, &info) != NKUI_OK || info.command_count != 4)
         return 5;
     if (nkui_display_list_destroy(list) != NKUI_OK ||
         nkui_display_list_reset(list) != NKUI_ERROR_INVALID_HANDLE)
