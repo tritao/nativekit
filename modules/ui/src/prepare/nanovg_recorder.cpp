@@ -8,11 +8,7 @@
 
 namespace nkui {
 
-struct NanoVGRecorder::State {
-    std::vector<PreparedPathOperation> operations;
-    std::vector<PreparedPathRange> paths;
-    std::vector<PreparedVertex> vertices;
-    std::vector<PreparedTexture> textures;
+struct NanoVGRecorder::State : PreparedPathData {
     uint32_t flushes = 0;
     int next_texture = 1;
 };
@@ -36,12 +32,12 @@ int render_create_texture(void *context, int type, int width, int height, int fl
     texture.pixels.resize(static_cast<size_t>(width) * height * bytes_per_pixel);
     if (data)
         std::memcpy(texture.pixels.data(), data, texture.pixels.size());
-    state.textures.push_back(std::move(texture));
+    state.texture_data.push_back(std::move(texture));
     return id;
 }
 
 int render_delete_texture(void *context, int image) {
-    auto &textures = static_cast<State *>(context)->textures;
+    auto &textures = static_cast<State *>(context)->texture_data;
     const auto found = std::find_if(textures.begin(), textures.end(),
                                     [image](const auto &texture) { return texture.id == image; });
     if (found == textures.end())
@@ -52,7 +48,7 @@ int render_delete_texture(void *context, int image) {
 
 int render_update_texture(void *context, int image, int x, int y, int width, int height,
                           const uint8_t *data) {
-    auto &textures = static_cast<State *>(context)->textures;
+    auto &textures = static_cast<State *>(context)->texture_data;
     const auto found = std::find_if(textures.begin(), textures.end(),
                                     [image](const auto &texture) { return texture.id == image; });
     if (found == textures.end() || !data || x < 0 || y < 0 || width < 0 || height < 0 ||
@@ -72,7 +68,7 @@ int render_update_texture(void *context, int image, int x, int y, int width, int
 }
 
 int render_get_texture_size(void *context, int image, int *width, int *height) {
-    const auto &textures = static_cast<State *>(context)->textures;
+    const auto &textures = static_cast<State *>(context)->texture_data;
     const auto found = std::find_if(textures.begin(), textures.end(),
                                     [image](const auto &texture) { return texture.id == image; });
     if (found == textures.end())
@@ -86,9 +82,9 @@ void render_viewport(void *, float, float, float) {}
 
 void render_cancel(void *context) {
     auto &state = *static_cast<State *>(context);
-    state.operations.clear();
-    state.paths.clear();
-    state.vertices.clear();
+    state.operation_data.clear();
+    state.path_data.clear();
+    state.vertex_data.clear();
 }
 
 void render_flush(void *context) {
@@ -123,12 +119,12 @@ PreparedScissor prepare_scissor(const NVGscissor &scissor) {
 }
 
 uint32_t copy_vertices(State &state, const NVGvertex *vertices, int count) {
-    const uint32_t offset = static_cast<uint32_t>(state.vertices.size());
+    const uint32_t offset = static_cast<uint32_t>(state.vertex_data.size());
     if (vertices && count > 0) {
-        state.vertices.reserve(state.vertices.size() + static_cast<size_t>(count));
+        state.vertex_data.reserve(state.vertex_data.size() + static_cast<size_t>(count));
         for (int index = 0; index < count; ++index)
-            state.vertices.push_back({vertices[index].x, vertices[index].y, vertices[index].u,
-                                      vertices[index].v});
+            state.vertex_data.push_back({vertices[index].x, vertices[index].y, vertices[index].u,
+                                         vertices[index].v});
     }
     return offset;
 }
@@ -147,7 +143,7 @@ PreparedPathOperation base_operation(PreparedPathKind kind, const NVGpaint &pain
 
 void copy_paths(State &state, PreparedPathOperation &operation, const NVGpath *paths,
                 int path_count) {
-    operation.path_offset = static_cast<uint32_t>(state.paths.size());
+    operation.path_offset = static_cast<uint32_t>(state.path_data.size());
     operation.path_count = static_cast<uint32_t>(path_count);
     for (int index = 0; index < path_count; ++index) {
         PreparedPathRange path{};
@@ -157,7 +153,7 @@ void copy_paths(State &state, PreparedPathOperation &operation, const NVGpath *p
         path.stroke_count = static_cast<uint32_t>(paths[index].nstroke);
         path.closed = paths[index].closed != 0;
         path.convex = paths[index].convex != 0;
-        state.paths.push_back(path);
+        state.path_data.push_back(path);
     }
 }
 
@@ -168,7 +164,7 @@ void render_fill(void *context, NVGpaint *paint, NVGcompositeOperationState comp
     auto operation = base_operation(PreparedPathKind::Fill, *paint, composite, *scissor, fringe);
     std::memcpy(operation.bounds, bounds, sizeof(operation.bounds));
     copy_paths(state, operation, paths, path_count);
-    state.operations.push_back(operation);
+    state.operation_data.push_back(operation);
 }
 
 void render_stroke(void *context, NVGpaint *paint, NVGcompositeOperationState composite,
@@ -178,7 +174,7 @@ void render_stroke(void *context, NVGpaint *paint, NVGcompositeOperationState co
     auto operation = base_operation(PreparedPathKind::Stroke, *paint, composite, *scissor, fringe);
     operation.stroke_width = stroke_width;
     copy_paths(state, operation, paths, path_count);
-    state.operations.push_back(operation);
+    state.operation_data.push_back(operation);
 }
 
 void render_triangles(void *context, NVGpaint *paint, NVGcompositeOperationState composite,
@@ -189,7 +185,7 @@ void render_triangles(void *context, NVGpaint *paint, NVGcompositeOperationState
         base_operation(PreparedPathKind::Triangles, *paint, composite, *scissor, fringe);
     operation.vertex_offset = copy_vertices(state, vertices, vertex_count);
     operation.vertex_count = static_cast<uint32_t>(vertex_count);
-    state.operations.push_back(operation);
+    state.operation_data.push_back(operation);
 }
 
 void render_delete(void *) {}
@@ -230,32 +226,36 @@ NVGcontext *NanoVGRecorder::context() const {
 }
 
 void NanoVGRecorder::reset() {
-    state_->operations.clear();
-    state_->paths.clear();
-    state_->vertices.clear();
+    state_->operation_data.clear();
+    state_->path_data.clear();
+    state_->vertex_data.clear();
     state_->flushes = 0;
 }
 
 const std::vector<PreparedPathOperation> &NanoVGRecorder::operations() const {
-    return state_->operations;
+    return state_->operation_data;
 }
 
 const std::vector<PreparedPathRange> &NanoVGRecorder::paths() const {
-    return state_->paths;
+    return state_->path_data;
 }
 
 const std::vector<PreparedVertex> &NanoVGRecorder::vertices() const {
-    return state_->vertices;
+    return state_->vertex_data;
 }
 
 const std::vector<PreparedTexture> &NanoVGRecorder::textures() const {
-    return state_->textures;
+    return state_->texture_data;
+}
+
+const PreparedPathData &NanoVGRecorder::data() const {
+    return *state_;
 }
 
 NanoVGRecorderStats NanoVGRecorder::stats() const {
-    return {static_cast<uint32_t>(state_->operations.size()),
-            static_cast<uint32_t>(state_->paths.size()),
-            static_cast<uint32_t>(state_->vertices.size()), state_->flushes};
+    return {static_cast<uint32_t>(state_->operation_data.size()),
+            static_cast<uint32_t>(state_->path_data.size()),
+            static_cast<uint32_t>(state_->vertex_data.size()), state_->flushes};
 }
 
 } // namespace nkui
