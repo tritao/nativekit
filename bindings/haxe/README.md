@@ -29,6 +29,10 @@ throw instead of allowing out-of-bounds reads.
 HXI constants are projected through `NativeKitConstants`; handwritten bindings
 use those symbols rather than repeating numeric C ABI values.
 
+UTF-8 inputs are marked in the authoritative C headers with `NK_UTF8` or
+`NK_NULLABLE_UTF8`. The importer projects these annotations to managed Haxe
+strings, so the binding import header does not redeclare public functions.
+
 `NativeKitRequests` maps request IDs to one-shot typed completion callbacks. Its
 `poll()` method decodes and releases the native event before invoking a matching
 handler; `cancel()` only removes local tracking and does not cancel native work.

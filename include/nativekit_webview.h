@@ -54,19 +54,20 @@ typedef struct nk_webview_options {
  * retained in call order by asynchronous backends.
  */
 NK_API nk_result NK_CALL nk_webview_create(nk_handle parent, const nk_webview_options *options,
-                                           nk_handle *out_webview);
+                                           nk_handle *out_webview NK_OUT);
 NK_API nk_result NK_CALL nk_webview_destroy(nk_handle webview);
 
 /* All WebView operations are UI-thread-only and copy string input. */
 NK_API nk_result NK_CALL nk_webview_show(nk_handle webview, uint32_t visible);
 NK_API nk_result NK_CALL nk_webview_set_bounds(nk_handle webview, int32_t x, int32_t y,
                                                int32_t width, int32_t height);
-NK_API nk_result NK_CALL nk_webview_navigate(nk_handle webview, const char *url);
-NK_API nk_result NK_CALL nk_webview_set_html(nk_handle webview, const char *html,
-                                             const char *base_url);
-NK_API nk_result NK_CALL nk_webview_can_go_back(nk_handle webview, uint32_t *out_can_go_back);
+NK_API nk_result NK_CALL nk_webview_navigate(nk_handle webview, const char *url NK_UTF8);
+NK_API nk_result NK_CALL nk_webview_set_html(nk_handle webview, const char *html NK_UTF8,
+                                             const char *base_url NK_NULLABLE_UTF8);
+NK_API nk_result NK_CALL nk_webview_can_go_back(nk_handle webview,
+                                                uint32_t *out_can_go_back NK_OUT);
 NK_API nk_result NK_CALL nk_webview_can_go_forward(nk_handle webview,
-                                                   uint32_t *out_can_go_forward);
+                                                   uint32_t *out_can_go_forward NK_OUT);
 NK_API nk_result NK_CALL nk_webview_go_back(nk_handle webview);
 NK_API nk_result NK_CALL nk_webview_go_forward(nk_handle webview);
 NK_API nk_result NK_CALL nk_webview_reload(nk_handle webview);
@@ -83,8 +84,8 @@ NK_API nk_result NK_CALL nk_webview_stop(nk_handle webview);
  * Destroying the WebView before completion emits exactly one final event with
  * NK_ERROR_INVALID_REQUEST, allowing consumers to settle pending futures.
  */
-NK_API nk_result NK_CALL nk_webview_eval(nk_handle webview, const char *script,
-                                         nk_request_id *out_request);
+NK_API nk_result NK_CALL nk_webview_eval(nk_handle webview, const char *script NK_UTF8,
+                                         nk_request_id *out_request NK_OUT);
 
 /*
  * Resolves an NK_EVENT_WEBVIEW_NAVIGATION_REQUEST. Navigation-policy events

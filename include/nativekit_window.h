@@ -162,7 +162,7 @@ NK_API nk_result NK_CALL nk_window_destroy(nk_handle window);
 NK_API nk_result NK_CALL nk_window_show(nk_handle window, uint32_t visible);
 
 /* Copies the nullable UTF-8 title before returning. UI thread only. */
-NK_API nk_result NK_CALL nk_window_set_title(nk_handle window, const char *title);
+NK_API nk_result NK_CALL nk_window_set_title(nk_handle window, const char *title NK_UTF8);
 
 /* Moves and resizes a top-level window in logical pixels. UI thread only. */
 NK_API nk_result NK_CALL nk_window_set_bounds(nk_handle window, int32_t x, int32_t y, int32_t width,

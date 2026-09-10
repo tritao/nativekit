@@ -22,7 +22,7 @@ typedef struct nk_drop_data {
 } nk_drop_data;
 
 /* Copies UTF-8 text into the system clipboard. UI thread only. */
-NK_API nk_result NK_CALL nk_clipboard_set_text(const char *text);
+NK_API nk_result NK_CALL nk_clipboard_set_text(const char *text NK_UTF8);
 
 /* Copies local paths into the clipboard as a URI list. UI thread only. */
 NK_API nk_result NK_CALL nk_clipboard_set_files(const char *const *paths, uint32_t path_count);

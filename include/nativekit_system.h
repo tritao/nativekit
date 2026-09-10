@@ -36,9 +36,9 @@ typedef struct nk_system_appearance {
  * application, or reveal a local file in its containing folder. Input is
  * copied before return. These functions must be called on the UI thread.
  */
-NK_API nk_result NK_CALL nk_shell_open_url(const char *url);
-NK_API nk_result NK_CALL nk_shell_open_file(const char *path);
-NK_API nk_result NK_CALL nk_shell_reveal_file(const char *path);
+NK_API nk_result NK_CALL nk_shell_open_url(const char *url NK_UTF8);
+NK_API nk_result NK_CALL nk_shell_open_file(const char *path NK_UTF8);
+NK_API nk_result NK_CALL nk_shell_reveal_file(const char *path NK_UTF8);
 
 /*
  * Writes a NUL-terminated UTF-8 value. `inout_size` is the buffer capacity on

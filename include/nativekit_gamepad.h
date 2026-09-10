@@ -74,12 +74,12 @@ enum {
 };
 
 /* Adds or replaces one SDL/GLFW controller mapping for its 32-character GUID. */
-NK_API nk_result NK_CALL nk_gamepad_add_mapping(const char *mapping);
+NK_API nk_result NK_CALL nk_gamepad_add_mapping(const char *mapping NK_UTF8);
 /*
  * Adds newline-separated mappings, ignoring blank lines, comments, and entries
  * for other platforms. The update is atomic if any applicable line is invalid.
  */
-NK_API nk_result NK_CALL nk_gamepad_add_mappings(const char *database,
+NK_API nk_result NK_CALL nk_gamepad_add_mappings(const char *database NK_UTF8,
                                                  uint32_t *out_added);
 NK_API nk_result NK_CALL nk_gamepad_is_mapped(nk_handle joystick, uint32_t *out_mapped);
 NK_API nk_result NK_CALL

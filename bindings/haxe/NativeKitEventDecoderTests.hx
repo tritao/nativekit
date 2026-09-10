@@ -20,6 +20,7 @@ class NativeKitEventDecoderTests {
 		var badResource = haxe.io.Bytes.alloc(16);
 		putU32(badResource, 4, 1); putU32(badResource, 8, 16); putU32(badResource, 12, 16);
 		var shortKey = new NativeKitEventContext(NativeKitConstants.NK_EVENT_KEY, 0, zero, 0, 0, 0, haxe.io.Bytes.alloc(15));
+		var shortWindow = new NativeKitEventContext(NativeKitConstants.NK_EVENT_WINDOW_RESIZE, 0, zero, 0, 0, 0, haxe.io.Bytes.alloc(7));
 		var pathsPayload = haxe.io.Bytes.alloc(16);
 		putU32(pathsPayload, 8, 16); putU32(pathsPayload, 12, 16);
 		var pathsContext = new NativeKitEventContext(NativeKitConstants.NK_EVENT_DIALOG_PATHS_COMPLETE, 0, zero, 0, 1, 0, pathsPayload);
@@ -51,7 +52,8 @@ class NativeKitEventDecoderTests {
 			&& throws(function() { NativeKitEventBytes.decodeDialogPaths(badDialog); })
 			&& throws(function() { NativeKitEventBytes.decodeClipboardFiles(unterminated, 1); })
 			&& throws(function() { NativeKitEventBytes.decodeResourceList(badResource, 0); })
-			&& throws(function() { NativeKitInputEvents.decode(shortKey); });
+			&& throws(function() { NativeKitInputEvents.decode(shortKey); })
+			&& throws(function() { NativeKitWindowEvents.decode(shortWindow); });
 	}
 
 	static function putU32(data:haxe.io.Bytes, offset:Int, value:Int):Void {

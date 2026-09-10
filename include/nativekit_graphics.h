@@ -80,7 +80,7 @@ NK_API nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle surface,
                                                          int32_t *out_height);
 
 /* Resolves a function for the current surface context. */
-NK_API nk_result NK_CALL nk_surface_get_proc_address(nk_handle surface, const char *name,
+NK_API nk_result NK_CALL nk_surface_get_proc_address(nk_handle surface, const char *name NK_UTF8,
                                                      nk_graphics_proc *out_proc);
 
 #ifdef __cplusplus

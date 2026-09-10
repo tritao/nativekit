@@ -24,6 +24,8 @@
 #define NK_INOUT __attribute__((annotate("hxi:inout")))
 #define NK_OUT_BUFFER(size_parameter) __attribute__((annotate("hxi:out_buffer")))
 #define NK_RETURNS_BORROWED_UTF8 __attribute__((annotate("hxi:returns_borrowed_utf8")))
+#define NK_UTF8 __attribute__((annotate("hxi:utf8")))
+#define NK_NULLABLE_UTF8 __attribute__((annotate("hxi:nullable_utf8")))
 #define NK_BORROWED_BUFFER(length_field)                                                          \
     __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
 #else
@@ -31,6 +33,8 @@
 #define NK_INOUT
 #define NK_OUT_BUFFER(size_parameter)
 #define NK_RETURNS_BORROWED_UTF8
+#define NK_UTF8
+#define NK_NULLABLE_UTF8
 #define NK_BORROWED_BUFFER(length_field)
 #endif
 
