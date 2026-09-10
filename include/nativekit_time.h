@@ -21,6 +21,7 @@ extern "C" {
 
 /* Monotonic time since an unspecified epoch. These calls do not require init. */
 NK_API uint64_t NK_CALL nk_time_now_ns(void);
+/** Returns monotonic time in seconds since the same unspecified epoch. */
 NK_API double NK_CALL nk_time_seconds(void);
 
 /* ------------------------------------------------------------------------- */
@@ -33,6 +34,7 @@ NK_API double NK_CALL nk_time_seconds(void);
  * Call nk_poll_event() afterwards; explicit wakeups need not produce an event.
  */
 NK_API nk_result NK_CALL nk_wait_events(void);
+/** Waits for an event or wakeup for at most `timeout_seconds`; zero polls. */
 NK_API nk_result NK_CALL nk_wait_events_timeout(double timeout_seconds);
 
 /* Thread-safe. Wakes a currently blocked event wait. */

@@ -19,16 +19,28 @@ extern "C" {
 /* Notification flags and options                                            */
 /* ------------------------------------------------------------------------- */
 
-enum { NK_NOTIFICATION_SILENT = 1u << 0 };
+enum {
+    /** Do not show notification sound or vibration when supported by the backend. */
+    NK_NOTIFICATION_SILENT = 1u << 0
+};
 
+/** Options for an asynchronous desktop notification request. */
 typedef struct nk_notification_options {
+    /** Set to sizeof(nk_notification_options) before passing the structure. */
     uint32_t struct_size;
+    /** Bitwise OR of NK_NOTIFICATION_* flags. */
     uint32_t flags;
+    /** Required UTF-8 notification title. */
     const char *title NK_UTF8;
+    /** Optional UTF-8 notification body. */
     const char *body NK_NULLABLE_UTF8;
+    /** Optional platform-resolved icon name or absolute file path. */
     const char *icon NK_NULLABLE_UTF8;
+    /** Requested display duration in milliseconds; zero uses the platform default. */
     uint32_t timeout_ms;
+    /** Reserved; set to zero. */
     uint32_t reserved;
+    /** Reserved for future notification options; set all elements to zero. */
     uint64_t reserved2[2];
 } nk_notification_options;
 
