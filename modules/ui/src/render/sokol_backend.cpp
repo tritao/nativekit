@@ -46,6 +46,7 @@ struct SokolBackend::State {
     sg_shader paint_shader{};
     sg_pipeline paint_pipeline{};
     sg_pipeline paint_cover_pipeline{};
+    sg_pipeline paint_fringe_pipeline{};
     sg_shader alpha_glyph_shader{};
     sg_pipeline alpha_glyph_pipeline{};
     sg_shader sdf_glyph_shader{};
@@ -89,6 +90,19 @@ struct PaintUniforms {
     std::array<float, 4> inverse_x;
     std::array<float, 4> inverse_y;
     std::array<float, 4> params;
+    std::array<float, 4> coverage;
+};
+
+struct PathVertex {
+    float x;
+    float y;
+    float u;
+    float v;
+};
+
+struct PathMesh {
+    std::vector<PathVertex> vertices;
+    std::vector<uint32_t> indices;
 };
 
 bool fail(SokolBackend::State &state, const char *message) {
@@ -122,14 +136,16 @@ sg_shader make_paint_shader() {
     sg_shader_desc desc{};
     desc.vertex_func.source =
         "#version 330\n"
-        "uniform vec2 viewport; layout(location=0) in vec2 position; out vec2 fpos;"
-        "void main(){fpos=position;vec2 p=vec2(position.x/viewport.x*2.0-1.0,"
+        "uniform vec2 viewport; layout(location=0) in vec2 position;"
+        "layout(location=1) in vec2 uv0; out vec2 fpos; out vec2 ftcoord;"
+        "void main(){fpos=position;ftcoord=uv0;vec2 p=vec2(position.x/viewport.x*2.0-1.0,"
         "1.0-position.y/viewport.y*2.0);gl_Position=vec4(p,0,1);}";
     desc.fragment_func.source =
         "#version 330\n"
         "uniform sampler2D tex; uniform vec4 innerColor; uniform vec4 outerColor;"
         "uniform vec4 extentRadiusFeather; uniform vec4 inverseX; uniform vec4 inverseY;"
-        "uniform vec4 params; in vec2 fpos; out vec4 frag_color;"
+        "uniform vec4 params; uniform vec4 coverage; in vec2 fpos; in vec2 ftcoord;"
+        "out vec4 frag_color;"
         "float sdroundrect(vec2 p,vec2 ext,float rad){vec2 ext2=ext-vec2(rad);"
         "vec2 d=abs(p)-ext2;return min(max(d.x,d.y),0.0)+length(max(d,0.0))-rad;}"
         "void main(){vec2 pt=vec2(dot(vec3(fpos,1),inverseX.xyz),"
@@ -139,15 +155,17 @@ sg_shader make_paint_shader() {
         "if(params.w<0.5)c.rgb*=c.a;}else{float d=sdroundrect(pt,extentRadiusFeather.xy,"
         "extentRadiusFeather.z);float t=clamp((d+extentRadiusFeather.w*0.5)/"
         "max(extentRadiusFeather.w,0.0001),0.0,1.0);c=mix(innerColor,outerColor,t);}"
-        "frag_color=c;}";
+        "if(coverage.x>0.5){float a=min(1.0,(1.0-abs(ftcoord.x*2.0-1.0))*coverage.y)"
+        "*min(1.0,ftcoord.y);if(a<coverage.z)discard;c*=a;}frag_color=c;}";
     desc.uniform_blocks[0].stage = SG_SHADERSTAGE_VERTEX;
     desc.uniform_blocks[0].size = 8;
     desc.uniform_blocks[0].glsl_uniforms[0] = {SG_UNIFORMTYPE_FLOAT2, 1, "viewport"};
     desc.uniform_blocks[1].stage = SG_SHADERSTAGE_FRAGMENT;
     desc.uniform_blocks[1].size = sizeof(PaintUniforms);
     const char *names[] = {"innerColor", "outerColor", "extentRadiusFeather",
-                           "inverseX",   "inverseY",   "params"};
-    for (int index = 0; index < 6; ++index)
+                           "inverseX",   "inverseY",   "params",
+                           "coverage"};
+    for (int index = 0; index < 7; ++index)
         desc.uniform_blocks[1].glsl_uniforms[index] = {SG_UNIFORMTYPE_FLOAT4, 1, names[index]};
     desc.views[0].texture = {SG_SHADERSTAGE_FRAGMENT, SG_IMAGETYPE_2D, SG_IMAGESAMPLETYPE_FLOAT,
                              false};
@@ -276,11 +294,12 @@ sg_pipeline make_fill_cover_pipeline(sg_shader shader) {
     return sg_make_pipeline(&desc);
 }
 
-sg_pipeline make_paint_pipeline(sg_shader shader, bool stencil_cover) {
+sg_pipeline make_paint_pipeline(sg_shader shader, bool stencil_cover, bool stencil_fringe = false) {
     sg_pipeline_desc desc{};
     desc.shader = shader;
-    desc.layout.buffers[0].stride = sizeof(SolidVertex);
-    desc.layout.attrs[0] = {0, 0, SG_VERTEXFORMAT_FLOAT2};
+    desc.layout.buffers[0].stride = sizeof(PathVertex);
+    desc.layout.attrs[0] = {0, offsetof(PathVertex, x), SG_VERTEXFORMAT_FLOAT2};
+    desc.layout.attrs[1] = {0, offsetof(PathVertex, u), SG_VERTEXFORMAT_FLOAT2};
     desc.index_type = SG_INDEXTYPE_UINT32;
     desc.colors[0].blend.enabled = true;
     desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
@@ -294,6 +313,12 @@ sg_pipeline make_paint_pipeline(sg_shader shader, bool stencil_cover) {
         desc.stencil.front.depth_fail_op = SG_STENCILOP_ZERO;
         desc.stencil.front.pass_op = SG_STENCILOP_ZERO;
         desc.stencil.back = desc.stencil.front;
+        desc.stencil.read_mask = 0xFF;
+        desc.stencil.write_mask = 0xFF;
+    } else if (stencil_fringe) {
+        desc.stencil.enabled = true;
+        desc.stencil.front.compare = SG_COMPAREFUNC_EQUAL;
+        desc.stencil.back.compare = SG_COMPAREFUNC_EQUAL;
         desc.stencil.read_mask = 0xFF;
         desc.stencil.write_mask = 0xFF;
     }
@@ -512,7 +537,67 @@ PaintUniforms paint_uniforms(const PreparedPathOperation &operation, const float
                        texture_type == NVG_TEXTURE_ALPHA ? 1.0f : 0.0f,
                        (texture_flags & NVG_IMAGE_FLIPY) ? 1.0f : 0.0f,
                        (texture_flags & NVG_IMAGE_PREMULTIPLIED) ? 1.0f : 0.0f};
+    const float width =
+        operation.kind == PreparedPathKind::Stroke ? operation.stroke_width : operation.fringe;
+    uniforms.coverage = {operation.kind == PreparedPathKind::Triangles ? 0.0f : 1.0f,
+                         operation.fringe > 0.0f
+                             ? (width * 0.5f + operation.fringe * 0.5f) / operation.fringe
+                             : 1.0f,
+                         -1.0f, 0.0f};
     return uniforms;
+}
+
+void append_path_range(PathMesh &mesh, const NanoVGRecorder &recorder, uint32_t offset,
+                       uint32_t count, bool strip, const float transform[6]) {
+    if (count < 3)
+        return;
+    const uint32_t base = static_cast<uint32_t>(mesh.vertices.size());
+    for (uint32_t index = 0; index < count; ++index) {
+        const auto &source = recorder.vertices()[offset + index];
+        mesh.vertices.push_back({source.x * transform[0] + source.y * transform[2] + transform[4],
+                                 source.x * transform[1] + source.y * transform[3] + transform[5],
+                                 source.u, source.v});
+    }
+    if (!strip) {
+        for (uint32_t index = 1; index + 1 < count; ++index)
+            mesh.indices.insert(mesh.indices.end(), {base, base + index, base + index + 1});
+    } else {
+        for (uint32_t index = 0; index + 2 < count; ++index) {
+            if (index & 1)
+                mesh.indices.insert(mesh.indices.end(),
+                                    {base + index + 1, base + index, base + index + 2});
+            else
+                mesh.indices.insert(mesh.indices.end(),
+                                    {base + index, base + index + 1, base + index + 2});
+        }
+    }
+}
+
+PathMesh make_paint_mesh(const NanoVGRecorder &recorder, const PreparedPathOperation &operation,
+                         const float transform[6], bool fringe_only = false) {
+    PathMesh mesh;
+    if (operation.kind == PreparedPathKind::Triangles) {
+        const uint32_t base = 0;
+        for (uint32_t index = 0; index < operation.vertex_count; ++index) {
+            const auto &source = recorder.vertices()[operation.vertex_offset + index];
+            mesh.vertices.push_back(
+                {source.x * transform[0] + source.y * transform[2] + transform[4],
+                 source.x * transform[1] + source.y * transform[3] + transform[5], source.u,
+                 source.v});
+            mesh.indices.push_back(base + index);
+        }
+        return mesh;
+    }
+    for (uint32_t index = 0; index < operation.path_count; ++index) {
+        const auto &path = recorder.paths()[operation.path_offset + index];
+        if (operation.kind == PreparedPathKind::Fill && !fringe_only)
+            append_path_range(mesh, recorder, path.fill_offset, path.fill_count, false, transform);
+        if (operation.kind == PreparedPathKind::Stroke || fringe_only ||
+            operation.kind == PreparedPathKind::Fill)
+            append_path_range(mesh, recorder, path.stroke_offset, path.stroke_count, true,
+                              transform);
+    }
+    return mesh;
 }
 
 } // namespace
@@ -599,6 +684,7 @@ SokolBackend::~SokolBackend() {
         sg_destroy_pipeline(state_->fill_cover_pipeline);
         sg_destroy_pipeline(state_->fill_stencil_pipeline);
         sg_destroy_pipeline(state_->paint_cover_pipeline);
+        sg_destroy_pipeline(state_->paint_fringe_pipeline);
         sg_destroy_pipeline(state_->paint_pipeline);
         sg_destroy_shader(state_->paint_shader);
         sg_destroy_shader(state_->solid_shader);
@@ -626,6 +712,7 @@ bool SokolBackend::initialize() {
     state_->fill_cover_pipeline = make_fill_cover_pipeline(state_->solid_shader);
     state_->paint_pipeline = make_paint_pipeline(state_->paint_shader, false);
     state_->paint_cover_pipeline = make_paint_pipeline(state_->paint_shader, true);
+    state_->paint_fringe_pipeline = make_paint_pipeline(state_->paint_shader, false, true);
     state_->alpha_glyph_pipeline = make_glyph_pipeline(state_->alpha_glyph_shader);
     state_->sdf_glyph_pipeline = make_glyph_pipeline(state_->sdf_glyph_shader);
     state_->color_glyph_pipeline = make_glyph_pipeline(state_->color_glyph_shader);
@@ -662,6 +749,7 @@ bool SokolBackend::initialize() {
         sg_query_pipeline_state(state_->fill_cover_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->paint_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->paint_cover_pipeline) == SG_RESOURCESTATE_VALID &&
+        sg_query_pipeline_state(state_->paint_fringe_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->alpha_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->sdf_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->color_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
@@ -675,7 +763,7 @@ bool SokolBackend::initialize() {
         sg_query_buffer_state(state_->composite_vertices) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->indices) == SG_RESOURCESTATE_VALID;
     if (state_->initialized)
-        state_->stats.gpu_resources = 25;
+        state_->stats.gpu_resources = 26;
     return state_->initialized || fail(*state_, "Sokol UI resource creation failed");
 }
 
@@ -761,7 +849,6 @@ bool SokolBackend::draw_path_transformed(const NanoVGRecorder &recorder, uint32_
         opacity > 1.0f || !transform)
         return fail(*state_, "invalid path draw");
     const auto &operation = recorder.operations()[operation_index];
-    SolidMesh mesh;
     sg_view paint_view{};
     sg_sampler paint_sampler{};
     int texture_type = 0;
@@ -769,7 +856,7 @@ bool SokolBackend::draw_path_transformed(const NanoVGRecorder &recorder, uint32_
     if (!resolve_paint_image(*state_, recorder, operation.paint.image, paint_view, paint_sampler,
                              texture_type, texture_flags))
         return false;
-    const PaintUniforms paint =
+    PaintUniforms paint =
         paint_uniforms(operation, transform, opacity, texture_type, texture_flags);
     if (operation.kind == PreparedPathKind::Fill &&
         (operation.path_count != 1 || !recorder.paths()[operation.path_offset].convex)) {
@@ -793,27 +880,28 @@ bool SokolBackend::draw_path_transformed(const NanoVGRecorder &recorder, uint32_
                            state_->solid_vertices))
                 return false;
         }
-        SolidMesh cover;
+        const PathMesh fringe = make_paint_mesh(recorder, operation, transform, true);
+        if (!fringe.indices.empty() &&
+            !draw_mesh(*state_, state_->paint_fringe_pipeline, fringe.vertices, fringe.indices,
+                       &paint, sizeof(paint), paint_view, paint_sampler, state_->solid_vertices))
+            return false;
+        PathMesh cover;
         const auto point = [transform](float x, float y) {
-            return SolidVertex{x * transform[0] + y * transform[2] + transform[4],
-                               x * transform[1] + y * transform[3] + transform[5]};
+            return PathVertex{x * transform[0] + y * transform[2] + transform[4],
+                              x * transform[1] + y * transform[3] + transform[5], 0.5f, 1.0f};
         };
         cover.vertices = {point(operation.bounds[0], operation.bounds[1]),
                           point(operation.bounds[2], operation.bounds[1]),
                           point(operation.bounds[2], operation.bounds[3]),
                           point(operation.bounds[0], operation.bounds[3])};
         cover.indices = {0, 1, 2, 0, 2, 3};
+        paint.coverage[0] = 0.0f;
         return draw_mesh(*state_, state_->paint_cover_pipeline, cover.vertices, cover.indices,
                          &paint, sizeof(paint), paint_view, paint_sampler, state_->solid_vertices);
     }
-    if (!triangulate_prepared_path(recorder, operation, mesh))
-        return fail(*state_, "unsupported triangle path");
-    for (auto &vertex : mesh.vertices) {
-        const float x = vertex.x;
-        const float y = vertex.y;
-        vertex.x = x * transform[0] + y * transform[2] + transform[4];
-        vertex.y = x * transform[1] + y * transform[3] + transform[5];
-    }
+    const PathMesh mesh = make_paint_mesh(recorder, operation, transform);
+    if (mesh.indices.empty())
+        return fail(*state_, "empty prepared path");
     return draw_mesh(*state_, state_->paint_pipeline, mesh.vertices, mesh.indices, &paint,
                      sizeof(paint), paint_view, paint_sampler, state_->solid_vertices);
 }

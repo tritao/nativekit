@@ -176,7 +176,7 @@ int main() {
     }
     if (!result && backend->stats().passes != 90)
         result = 7;
-    if (!result && (backend->stats().draws != 240 || backend->stats().image_uploads < 2))
+    if (!result && (backend->stats().draws != 270 || backend->stats().image_uploads < 2))
         result = 10;
     if (ready)
         nk_surface_make_current(surface);
