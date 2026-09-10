@@ -67,8 +67,15 @@ struct Showcase {
     nkui_display_list list{};
     nkui_resource fonts{};
     std::vector<nkui_resource> resources;
+    std::vector<nkui_resource> content_resources;
     std::vector<uint8_t> commands;
-    size_t accent_transform_offset = 0;
+    nkui_resource navy{};
+    nkui_resource rail_paint{};
+    nkui_resource card_paint{};
+    nkui_resource green{};
+    nkui_resource violet{};
+    nkui_resource cyan{};
+    nkui_resource image{};
     bool frame_failed = false;
     int rendered_frames = 0;
     int last_width = 0;
@@ -97,37 +104,14 @@ struct Showcase {
                 resources.push_back(resource);
             return resource;
         };
-        const nkui_resource background = retain(make_rect(0.0f, 0.0f, 900.0f, 600.0f));
-        const nkui_resource rail = retain(make_rect(0.0f, 0.0f, 250.0f, 600.0f));
-        const nkui_resource card = retain(make_rect(292.0f, 96.0f, 552.0f, 220.0f));
-        const nkui_resource lower_card = retain(make_rect(292.0f, 350.0f, 264.0f, 174.0f));
-        const nkui_resource accent = retain(make_rect(584.0f, 350.0f, 260.0f, 174.0f));
-        const nkui_resource badge = retain(make_rect(55.0f, 67.0f, 140.0f, 44.0f));
-        const nkui_resource navy = retain(make_paint(0.025f, 0.04f, 0.09f));
-        const nkui_resource rail_paint = retain(make_paint(0.055f, 0.085f, 0.16f));
-        const nkui_resource card_paint = retain(make_paint(0.09f, 0.13f, 0.23f));
-        const nkui_resource green = retain(make_paint(0.12f, 0.72f, 0.48f));
-        const nkui_resource violet = retain(make_paint(0.49f, 0.32f, 0.92f));
-        const nkui_resource cyan = retain(make_paint(0.12f, 0.67f, 0.9f));
-        if (!background.id || !rail.id || !card.id || !lower_card.id || !accent.id || !badge.id ||
-            !navy.id || !rail_paint.id || !card_paint.id || !green.id || !violet.id || !cyan.id)
+        navy = retain(make_paint(0.025f, 0.04f, 0.09f));
+        rail_paint = retain(make_paint(0.055f, 0.085f, 0.16f));
+        card_paint = retain(make_paint(0.09f, 0.13f, 0.23f));
+        green = retain(make_paint(0.12f, 0.72f, 0.48f));
+        violet = retain(make_paint(0.49f, 0.32f, 0.92f));
+        cyan = retain(make_paint(0.12f, 0.67f, 0.9f));
+        if (!navy.id || !rail_paint.id || !card_paint.id || !green.id || !violet.id || !cyan.id)
             return false;
-
-        nkui_resource title{}, subtitle{}, section{}, details{};
-        if (nkui_text_layout_create(fonts, "NativeKit Graphics", 560.0f, 38.0f, &title) !=
-                NKUI_OK ||
-            nkui_text_layout_create(fonts, "One display list · one compositor · one GPU owner",
-                                    560.0f, 19.0f, &subtitle) != NKUI_OK ||
-            nkui_text_layout_create(fonts, "Skribidi text + NanoVG paths", 500.0f, 25.0f,
-                                    &section) != NKUI_OK ||
-            nkui_text_layout_create(fonts,
-                                    "Retained resources\nExact ordering\nIsolated opacity layers",
-                                    220.0f, 18.0f, &details) != NKUI_OK)
-            return false;
-        resources.push_back(title);
-        resources.push_back(subtitle);
-        resources.push_back(section);
-        resources.push_back(details);
 
         std::vector<uint8_t> checker(16 * 16 * 4);
         for (int y = 0; y < 16; ++y)
@@ -139,83 +123,111 @@ struct Showcase {
                 checker[pixel + 2] = bright ? 230 : 155;
                 checker[pixel + 3] = 255;
             }
-        nkui_resource image{};
         if (nkui_image_create(16, 16, NKUI_IMAGE_RGBA8, checker.data(), checker.size(), &image) !=
             NKUI_OK)
             return false;
         resources.push_back(image);
 
-        append(commands, nkui_transform_command{
-                             header(NKUI_COMMAND_SET_TRANSFORM, sizeof(nkui_transform_command)),
-                             {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}});
-        set_paint(commands, navy);
-        draw_path(commands, background);
-        set_paint(commands, rail_paint);
-        draw_path(commands, rail);
-        set_paint(commands, green);
-        draw_path(commands, badge);
-        draw_text(commands, title, 292.0f, 38.0f);
-        draw_text(commands, subtitle, 294.0f, 76.0f);
-        set_paint(commands, card_paint);
-        draw_path(commands, card);
-        draw_path(commands, lower_card);
-        draw_text(commands, section, 326.0f, 138.0f);
-        draw_text(commands, details, 326.0f, 382.0f);
-
-        append(commands,
-               nkui_command_header{header(NKUI_COMMAND_PUSH_STATE, sizeof(nkui_command_header))});
-        append(commands,
-               nkui_rect_command{header(NKUI_COMMAND_CLIP_RECT, sizeof(nkui_rect_command)), 610.0f,
-                                 374.0f, 208.0f, 126.0f});
-        append(commands,
-               nkui_layer_command{header(NKUI_COMMAND_BEGIN_LAYER, sizeof(nkui_layer_command)),
-                                  0.72f, NKUI_COMPOSITE_SOURCE_OVER});
-        set_paint(commands, violet);
-        draw_path(commands, accent);
-        append(commands, nkui_draw_rect_command{
-                             header(NKUI_COMMAND_DRAW_IMAGE, sizeof(nkui_draw_rect_command)), image,
-                             615.0f, 375.0f, 200.0f, 124.0f});
-        append(commands,
-               nkui_command_header{header(NKUI_COMMAND_END_LAYER, sizeof(nkui_command_header))});
-        append(commands,
-               nkui_command_header{header(NKUI_COMMAND_POP_STATE, sizeof(nkui_command_header))});
-
-        append(commands,
-               nkui_command_header{header(NKUI_COMMAND_PUSH_STATE, sizeof(nkui_command_header))});
-        accent_transform_offset = commands.size();
-        append(commands, nkui_transform_command{
-                             header(NKUI_COMMAND_SET_TRANSFORM, sizeof(nkui_transform_command)),
-                             {1.0f, 0.0f, 0.0f, 1.0f, 28.0f, 390.0f}});
-        set_paint(commands, cyan);
-        draw_path(commands, badge);
-        append(commands,
-               nkui_command_header{header(NKUI_COMMAND_POP_STATE, sizeof(nkui_command_header))});
-
         return resize(framebuffer_width, framebuffer_height);
     }
 
     bool resize(int framebuffer_width, int framebuffer_height) {
-        if (commands.size() < sizeof(nkui_transform_command) || framebuffer_width <= 0 ||
-            framebuffer_height <= 0)
+        if (framebuffer_width <= 0 || framebuffer_height <= 0)
             return false;
         if (framebuffer_width == last_width && framebuffer_height == last_height)
             return true;
         const float scale = std::min(framebuffer_width / 900.0f, framebuffer_height / 600.0f);
         const float offset_x = (framebuffer_width - 900.0f * scale) * 0.5f;
         const float offset_y = (framebuffer_height - 600.0f * scale) * 0.5f;
-        const nkui_transform_command transform{
-            header(NKUI_COMMAND_SET_TRANSFORM, sizeof(nkui_transform_command)),
-            {scale, 0.0f, 0.0f, scale, offset_x, offset_y}};
-        std::memcpy(commands.data(), &transform, sizeof(transform));
-        const nkui_transform_command accent_transform{
-            header(NKUI_COMMAND_SET_TRANSFORM, sizeof(nkui_transform_command)),
-            {scale, 0.0f, 0.0f, scale, offset_x + 28.0f * scale, offset_y + 390.0f * scale}};
-        if (accent_transform_offset > commands.size() - sizeof(accent_transform))
+
+        const auto x = [&](float value) { return offset_x + value * scale; };
+        const auto y = [&](float value) { return offset_y + value * scale; };
+        const auto s = [&](float value) { return value * scale; };
+        std::vector<nkui_resource> next_resources;
+        const auto retain = [&](nkui_resource resource) {
+            if (resource.id)
+                next_resources.push_back(resource);
+            return resource;
+        };
+        const auto rect = [&](float left, float top, float width, float height) {
+            return retain(make_rect(x(left), y(top), s(width), s(height)));
+        };
+
+        const nkui_resource background =
+            retain(make_rect(0.0f, 0.0f, static_cast<float>(framebuffer_width),
+                             static_cast<float>(framebuffer_height)));
+        const nkui_resource rail = rect(0.0f, 0.0f, 250.0f, 600.0f);
+        const nkui_resource card = rect(292.0f, 96.0f, 552.0f, 220.0f);
+        const nkui_resource lower_card = rect(292.0f, 350.0f, 264.0f, 174.0f);
+        const nkui_resource accent = rect(584.0f, 350.0f, 260.0f, 174.0f);
+        const nkui_resource badge = rect(55.0f, 67.0f, 140.0f, 44.0f);
+        const nkui_resource floating_badge = rect(83.0f, 457.0f, 140.0f, 44.0f);
+        nkui_resource title{}, subtitle{}, section{}, details{};
+        const bool valid = background.id && rail.id && card.id && lower_card.id && accent.id &&
+                           badge.id && floating_badge.id &&
+                           nkui_text_layout_create(fonts, "NativeKit Graphics", s(560.0f),
+                                                   s(38.0f), &title) == NKUI_OK &&
+                           nkui_text_layout_create(
+                               fonts, "One display list · one compositor · one GPU owner",
+                               s(560.0f), s(19.0f), &subtitle) == NKUI_OK &&
+                           nkui_text_layout_create(fonts, "Skribidi text + NanoVG paths",
+                                                   s(500.0f), s(25.0f), &section) == NKUI_OK &&
+                           nkui_text_layout_create(
+                               fonts, "Retained resources\nExact ordering\nIsolated opacity layers",
+                               s(220.0f), s(18.0f), &details) == NKUI_OK;
+        for (nkui_resource text : {title, subtitle, section, details})
+            if (text.id)
+                next_resources.push_back(text);
+        if (!valid) {
+            for (auto resource : next_resources)
+                nkui_resource_destroy(resource);
             return false;
-        std::memcpy(commands.data() + accent_transform_offset, &accent_transform,
-                    sizeof(accent_transform));
-        if (nkui_display_list_submit(list, commands.data(), commands.size()) != NKUI_OK)
+        }
+
+        std::vector<uint8_t> next_commands;
+        set_paint(next_commands, navy);
+        draw_path(next_commands, background);
+        set_paint(next_commands, rail_paint);
+        draw_path(next_commands, rail);
+        set_paint(next_commands, green);
+        draw_path(next_commands, badge);
+        draw_text(next_commands, title, x(292.0f), y(38.0f));
+        draw_text(next_commands, subtitle, x(294.0f), y(76.0f));
+        set_paint(next_commands, card_paint);
+        draw_path(next_commands, card);
+        draw_path(next_commands, lower_card);
+        draw_text(next_commands, section, x(326.0f), y(138.0f));
+        draw_text(next_commands, details, x(326.0f), y(382.0f));
+        append(next_commands,
+               nkui_command_header{header(NKUI_COMMAND_PUSH_STATE, sizeof(nkui_command_header))});
+        append(next_commands,
+               nkui_rect_command{header(NKUI_COMMAND_CLIP_RECT, sizeof(nkui_rect_command)),
+                                 x(610.0f), y(374.0f), s(208.0f), s(126.0f)});
+        append(next_commands,
+               nkui_layer_command{header(NKUI_COMMAND_BEGIN_LAYER, sizeof(nkui_layer_command)),
+                                  0.72f, NKUI_COMPOSITE_SOURCE_OVER});
+        set_paint(next_commands, violet);
+        draw_path(next_commands, accent);
+        append(next_commands,
+               nkui_draw_rect_command{header(NKUI_COMMAND_DRAW_IMAGE,
+                                             sizeof(nkui_draw_rect_command)),
+                                      image, x(615.0f), y(375.0f), s(200.0f), s(124.0f)});
+        append(next_commands,
+               nkui_command_header{header(NKUI_COMMAND_END_LAYER, sizeof(nkui_command_header))});
+        append(next_commands,
+               nkui_command_header{header(NKUI_COMMAND_POP_STATE, sizeof(nkui_command_header))});
+        set_paint(next_commands, cyan);
+        draw_path(next_commands, floating_badge);
+
+        if (nkui_display_list_submit(list, next_commands.data(), next_commands.size()) != NKUI_OK) {
+            for (auto resource : next_resources)
+                nkui_resource_destroy(resource);
             return false;
+        }
+        for (auto resource : content_resources)
+            nkui_resource_destroy(resource);
+        content_resources = std::move(next_resources);
+        commands = std::move(next_commands);
         last_width = framebuffer_width;
         last_height = framebuffer_height;
         return true;
@@ -226,6 +238,8 @@ struct Showcase {
             nkui_renderer_destroy(renderer);
         if (list.id)
             nkui_display_list_destroy(list);
+        for (auto resource : content_resources)
+            nkui_resource_destroy(resource);
         for (auto resource : resources)
             nkui_resource_destroy(resource);
         if (fonts.id)
