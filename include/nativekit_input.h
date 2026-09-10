@@ -175,6 +175,34 @@ typedef struct nk_pointer_scroll_event {
     double y;
 } nk_pointer_scroll_event;
 
+typedef uint32_t nk_touch_action;
+enum {
+    NK_TOUCH_BEGIN = 1,
+    NK_TOUCH_MOVE = 2,
+    NK_TOUCH_END = 3,
+    NK_TOUCH_CANCEL = 4
+};
+
+typedef uint32_t nk_touch_tool;
+enum {
+    NK_TOUCH_TOOL_FINGER = 1,
+    NK_TOUCH_TOOL_STYLUS = 2,
+    NK_TOUCH_TOOL_ERASER = 3
+};
+
+typedef struct nk_touch_event {
+    uint32_t pointer_id;
+    nk_touch_action action;
+    nk_touch_tool tool;
+    nk_modifiers modifiers;
+    double x;
+    double y;
+    float pressure;
+    float tilt_x;
+    float tilt_y;
+    uint32_t reserved;
+} nk_touch_event;
+
 typedef uint32_t nk_cursor_shape;
 enum {
     NK_CURSOR_ARROW = 1,

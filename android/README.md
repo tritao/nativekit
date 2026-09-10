@@ -6,6 +6,9 @@ the C `nk_webview_*` API creates child Android WebViews inside that container.
 The portable `nk_surface_*` API creates child `SurfaceView`-backed OpenGL ES
 2.0/3.0 or Vulkan presentation surfaces and manages their native-window
 lifecycle. Surface loss and recreation are reported explicitly.
+Graphics surfaces also receive portable multi-touch, stylus, mouse, keyboard,
+text-input, and gamepad events. Android controller IDs remain internal; public
+joystick and gamepad events use NativeKit handles.
 
 Build with an Android SDK/NDK installation:
 
@@ -20,6 +23,10 @@ OpenGL ES surface API and handles pause/resume plus native-surface recreation:
 ```sh
 ./gradlew :graphics-sample:assembleDebug
 ```
+
+Android's typed JNI input constants are generated from the public C headers.
+After changing an input enum, run `tools/generate-android-input-values.py` from
+the repository root. `./gradlew verifyAndroidInputValues` checks for drift.
 
 With an emulator or device connected, run the Java mapping tests and the
 end-to-end host/WebView instrumentation test with:

@@ -7,6 +7,9 @@
 #include "core/gamepad_events.hpp"
 #include "core/runtime.hpp"
 #include "nativekit_joystick.h"
+#if defined(NK_BACKEND_ANDROID)
+#include "android/nativekit_android_internal.hpp"
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -237,6 +240,12 @@ nk_result NK_CALL nk_gamepad_is_mapped(nk_handle joystick, uint32_t *out_mapped)
                                              nk::core::set_error("out_mapped is required");
                                              return NK_ERROR_INVALID_ARGUMENT;
                                          }
+#if defined(NK_BACKEND_ANDROID)
+                                         if (nk::backend::android_standard_gamepad(joystick)) {
+                                             *out_mapped = 1;
+                                             return NK_OK;
+                                         }
+#endif
                                          std::string guid;
                                          if (const auto result = read_guid(joystick, guid);
                                              result != NK_OK)
@@ -255,6 +264,12 @@ nk_gamepad_get_mapping_source(nk_handle joystick, nk_gamepad_mapping_source *out
                                              nk::core::set_error("out_source is required");
                                              return NK_ERROR_INVALID_ARGUMENT;
                                          }
+#if defined(NK_BACKEND_ANDROID)
+                                         if (nk::backend::android_standard_gamepad(joystick)) {
+                                             *out_source = NK_GAMEPAD_MAPPING_BUILT_IN;
+                                             return NK_OK;
+                                         }
+#endif
                                          StoredMapping mapping;
                                          if (const auto result = mapping_for(joystick, mapping);
                                              result != NK_OK)
@@ -279,6 +294,11 @@ nk_result NK_CALL nk_gamepad_get_name(nk_handle joystick, char *buffer,
     return nk::core::result_boundary("unexpected error while reading a gamepad name",
                                      [&]() -> nk_result {
                                          nk::core::clear_error();
+#if defined(NK_BACKEND_ANDROID)
+                                         if (nk::backend::android_standard_gamepad(joystick))
+                                             return nk_joystick_get_name(joystick, buffer,
+                                                                         inout_size);
+#endif
                                          StoredMapping mapping;
                                          if (const auto result = mapping_for(joystick, mapping);
                                              result != NK_OK)
@@ -298,6 +318,18 @@ nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick, nk_gamepad_state *out
                                                  "nk_gamepad_state is missing or too small");
                                              return NK_ERROR_INVALID_ARGUMENT;
                                          }
+#if defined(NK_BACKEND_ANDROID)
+                                         if (nk::backend::android_standard_gamepad(joystick)) {
+                                             const auto result = nk::backend::android_gamepad_state(
+                                                 joystick, out_state);
+                                             if (result == NK_OK)
+                                                 nk::core::gamepad::normalize_state(
+                                                     *out_state, gamepad_options.stick_dead_zone,
+                                                     gamepad_options.trigger_dead_zone,
+                                                     gamepad_options.flags);
+                                             return result;
+                                         }
+#endif
                                          StoredMapping mapping;
                                          if (const auto result = mapping_for(joystick, mapping);
                                              result != NK_OK)

@@ -2,6 +2,9 @@
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
+#include "nativekit_gamepad.h"
+#include "nativekit_input.h"
+#include "nativekit_joystick.h"
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
@@ -10,6 +13,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/gamepad_events.hpp"
 #include "core/runtime.hpp"
 #include "android/nativekit_android_internal.hpp"
 
@@ -24,8 +28,10 @@
 
 #include <climits>
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -67,10 +73,23 @@ struct AndroidSurface final : nk::core::Resource {
     std::shared_ptr<AndroidSurface> shared_surface;
     uint32_t share_dependents = 0;
     bool destroying = false;
+    std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
+    std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> pointer_buttons{};
+    double pointer_x = 0;
+    double pointer_y = 0;
     int32_t width = 0;
     int32_t height = 0;
     int32_t framebuffer_width = 0;
     int32_t framebuffer_height = 0;
+};
+
+struct AndroidJoystick final : nk::core::Resource {
+    nk_handle handle = NK_INVALID_HANDLE;
+    int32_t device_id = 0;
+    std::string name;
+    std::string guid;
+    std::array<float, NK_GAMEPAD_AXIS_COUNT> axes{};
+    std::array<uint8_t, NK_GAMEPAD_BUTTON_COUNT> buttons{};
 };
 
 struct NavigationDecision {
@@ -81,6 +100,7 @@ struct NavigationDecision {
 std::unordered_map<nk_handle, std::shared_ptr<AndroidHost>> hosts;
 std::unordered_map<nk_handle, std::shared_ptr<AndroidWebView>> webviews;
 std::unordered_map<nk_handle, std::shared_ptr<AndroidSurface>> surfaces;
+std::unordered_map<int32_t, std::shared_ptr<AndroidJoystick>> joysticks;
 EGLDisplay egl_display = EGL_NO_DISPLAY;
 std::unordered_map<nk_request_id, nk_handle> evaluations;
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
@@ -120,6 +140,24 @@ std::vector<std::byte> bytes(const char *value) {
 template <typename T> std::vector<std::byte> bytes_of(const T &value) {
     const auto *first = reinterpret_cast<const std::byte *>(&value);
     return {first, first + sizeof(value)};
+}
+
+std::string controller_guid(const std::string &descriptor) {
+    auto hash = [&](uint64_t seed) {
+        uint64_t value = seed;
+        for (const unsigned char byte : descriptor) {
+            value ^= byte;
+            value *= UINT64_C(1099511628211);
+        }
+        return value;
+    };
+    const uint64_t first = hash(UINT64_C(1469598103934665603));
+    const uint64_t second = hash(UINT64_C(1099511628211));
+    char guid[33]{};
+    std::snprintf(guid, sizeof(guid), "%016llx%016llx",
+                  static_cast<unsigned long long>(first),
+                  static_cast<unsigned long long>(second));
+    return guid;
 }
 
 std::string to_utf8(JNIEnv *env, jstring value) {
@@ -256,6 +294,16 @@ std::shared_ptr<AndroidWebView> webview(nk_handle handle) {
 std::shared_ptr<AndroidSurface> surface(nk_handle handle) {
     return std::dynamic_pointer_cast<AndroidSurface>(
         nk::core::handles().get(handle, nk::core::ResourceType::surface));
+}
+
+std::shared_ptr<AndroidJoystick> joystick(nk_handle handle) {
+    return std::dynamic_pointer_cast<AndroidJoystick>(
+        nk::core::handles().get(handle, nk::core::ResourceType::joystick));
+}
+
+std::shared_ptr<AndroidJoystick> joystick_device(int32_t device) {
+    const auto found = joysticks.find(device);
+    return found == joysticks.end() ? nullptr : found->second;
 }
 
 std::shared_ptr<AndroidResourceStream> resource_stream(nk_handle handle) {
@@ -668,6 +716,22 @@ nk_result android_vulkan_window(nk_handle handle, ANativeWindow **out_window,
     return NK_OK;
 }
 
+bool android_standard_gamepad(nk_handle handle) { return joystick(handle) != nullptr; }
+
+nk_result android_gamepad_state(nk_handle handle, nk_gamepad_state *out_state) {
+    auto resource = joystick(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!out_state || out_state->struct_size < sizeof(*out_state))
+        return NK_ERROR_INVALID_ARGUMENT;
+    const auto struct_size = out_state->struct_size;
+    *out_state = {};
+    out_state->struct_size = struct_size;
+    std::copy(resource->axes.begin(), resource->axes.end(), out_state->axes);
+    std::copy(resource->buttons.begin(), resource->buttons.end(), out_state->buttons);
+    return NK_OK;
+}
+
 void pump_events() noexcept {}
 
 void shutdown() noexcept {
@@ -682,6 +746,11 @@ void shutdown() noexcept {
     }
     while (!webviews.empty())
         destroy_webview(webviews.begin()->first);
+    for (const auto &[device, resource] : joysticks) {
+        nk::core::gamepad_events::disconnect(resource->handle);
+        nk::core::handles().erase(resource->handle, nk::core::ResourceType::joystick);
+    }
+    joysticks.clear();
     if (egl_display != EGL_NO_DISPLAY) {
         eglTerminate(egl_display);
         egl_display = EGL_NO_DISPLAY;
@@ -859,7 +928,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_DRAG_DROP |
            NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
            NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE |
-           NK_CAP_VULKAN_SURFACE;
+           NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT | NK_CAP_JOYSTICK;
 }
 
 nk_result NK_CALL nk_shell_open_url(const char *url) {
@@ -1623,6 +1692,130 @@ nk_result NK_CALL nk_notification_close(nk_request_id request) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_key_get_state(nk_handle handle, nk_key key, nk_input_action *out_action) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!out_action || key > NK_KEY_LAST)
+        return NK_ERROR_INVALID_ARGUMENT;
+    *out_action = resource->keys[key];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_pointer_button_get_state(nk_handle handle, nk_pointer_button button,
+                                              nk_input_action *out_action) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!out_action || button > NK_POINTER_BUTTON_LAST)
+        return NK_ERROR_INVALID_ARGUMENT;
+    *out_action = resource->pointer_buttons[button];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_pointer_get_position(nk_handle handle, double *out_x, double *out_y) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!out_x || !out_y)
+        return NK_ERROR_INVALID_ARGUMENT;
+    *out_x = resource->pointer_x;
+    *out_y = resource->pointer_y;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_joystick_list(nk_handle *output, uint32_t *inout_count) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    if (!inout_count)
+        return NK_ERROR_INVALID_ARGUMENT;
+    const auto required = static_cast<uint32_t>(joysticks.size());
+    if (!output || *inout_count < required) {
+        *inout_count = required;
+        return required ? NK_ERROR_BUFFER_TOO_SMALL : NK_OK;
+    }
+    uint32_t index = 0;
+    for (const auto &[device, resource] : joysticks)
+        output[index++] = resource->handle;
+    *inout_count = required;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_joystick_get_name(nk_handle handle, char *buffer, uint32_t *inout_size) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = joystick(handle);
+    return resource ? copy_string_result(resource->name, buffer, inout_size)
+                    : NK_ERROR_INVALID_HANDLE;
+}
+
+nk_result NK_CALL nk_joystick_get_guid(nk_handle handle, char *buffer, uint32_t *inout_size) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = joystick(handle);
+    return resource ? copy_string_result(resource->guid, buffer, inout_size)
+                    : NK_ERROR_INVALID_HANDLE;
+}
+
+nk_result NK_CALL nk_joystick_get_axes(nk_handle handle, float *axes, uint32_t *inout_count) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = joystick(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!inout_count)
+        return NK_ERROR_INVALID_ARGUMENT;
+    if (!axes || *inout_count < resource->axes.size()) {
+        *inout_count = resource->axes.size();
+        return NK_ERROR_BUFFER_TOO_SMALL;
+    }
+    std::copy(resource->axes.begin(), resource->axes.end(), axes);
+    *inout_count = resource->axes.size();
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_joystick_get_buttons(nk_handle handle, uint8_t *buttons,
+                                          uint32_t *inout_count) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = joystick(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!inout_count)
+        return NK_ERROR_INVALID_ARGUMENT;
+    if (!buttons || *inout_count < resource->buttons.size()) {
+        *inout_count = resource->buttons.size();
+        return NK_ERROR_BUFFER_TOO_SMALL;
+    }
+    std::copy(resource->buttons.begin(), resource->buttons.end(), buttons);
+    *inout_count = resource->buttons.size();
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_joystick_get_hats(nk_handle handle, uint8_t *hats, uint32_t *inout_count) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    if (!joystick(handle))
+        return NK_ERROR_INVALID_HANDLE;
+    if (!inout_count)
+        return NK_ERROR_INVALID_ARGUMENT;
+    *inout_count = 0;
+    (void)hats;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_joystick_get_diagnostics(char *buffer, uint32_t *inout_size) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    return copy_string_result({}, buffer, inout_size);
+}
+
 nk_result NK_CALL nk_surface_create(nk_handle parent, const nk_surface_options *options,
                                     nk_handle *out_surface) {
     return nk::core::result_boundary(
@@ -2188,6 +2381,191 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceDestroye
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (resource)
         release_surface_window(*resource);
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTouch(
+    JNIEnv *, jclass, jlong handle_value, jint pointer_id, jint action, jint tool, jfloat x,
+    jfloat y, jfloat pressure, jfloat tilt_x, jfloat tilt_y, jint modifiers) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (!resource)
+        return;
+    const nk_touch_event payload{static_cast<uint32_t>(pointer_id),
+                                 static_cast<nk_touch_action>(action),
+                                 static_cast<nk_touch_tool>(tool),
+                                 static_cast<nk_modifiers>(modifiers),
+                                 x,
+                                 y,
+                                 pressure,
+                                 tilt_x,
+                                 tilt_y,
+                                 0};
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_TOUCH;
+    event.source = resource->handle;
+    event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerMove(
+    JNIEnv *, jclass, jlong handle_value, jfloat x, jfloat y) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (!resource)
+        return;
+    resource->pointer_x = x;
+    resource->pointer_y = y;
+    const nk_pointer_move_event payload{x, y};
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_POINTER_MOVE;
+    event.source = resource->handle;
+    event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerEnter(
+    JNIEnv *, jclass, jlong handle_value, jboolean entered) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (!resource)
+        return;
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_POINTER_ENTER;
+    event.source = resource->handle;
+    event.flags = entered ? 1u : 0u;
+    nk::core::push_event(std::move(event));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerButton(
+    JNIEnv *, jclass, jlong handle_value, jint button, jboolean pressed, jint modifiers,
+    jfloat x, jfloat y) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (!resource || button < 0 || button > NK_POINTER_BUTTON_LAST)
+        return;
+    const auto action = pressed ? NK_INPUT_PRESS : NK_INPUT_RELEASE;
+    resource->pointer_buttons[static_cast<std::size_t>(button)] = action;
+    resource->pointer_x = x;
+    resource->pointer_y = y;
+    const nk_pointer_button_event payload{static_cast<nk_pointer_button>(button), action,
+                                          static_cast<nk_modifiers>(modifiers), 0, x, y};
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_POINTER_BUTTON;
+    event.source = resource->handle;
+    event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerScroll(
+    JNIEnv *, jclass, jlong handle_value, jfloat x, jfloat y) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (!resource)
+        return;
+    const nk_pointer_scroll_event payload{x, y};
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_POINTER_SCROLL;
+    event.source = resource->handle;
+    event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnKey(
+    JNIEnv *, jclass, jlong handle_value, jint key, jint scancode, jint action, jint modifiers) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (!resource || key < 0 || key > NK_KEY_LAST)
+        return;
+    resource->keys[static_cast<std::size_t>(key)] = static_cast<nk_input_action>(action);
+    const nk_key_event payload{static_cast<nk_key>(key), static_cast<uint32_t>(scancode),
+                               static_cast<nk_input_action>(action),
+                               static_cast<nk_modifiers>(modifiers)};
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_KEY;
+    event.source = resource->handle;
+    event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnText(JNIEnv *, jclass,
+                                                                      jlong handle_value,
+                                                                      jint codepoint) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (!resource || codepoint <= 0 || codepoint > 0x10ffff ||
+        (codepoint >= 0xd800 && codepoint <= 0xdfff))
+        return;
+    const nk_text_input_event payload{static_cast<uint32_t>(codepoint), 0};
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_TEXT_INPUT;
+    event.source = resource->handle;
+    event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadAxis(
+    JNIEnv *, jclass, jlong handle_value, jint device, jint axis, jfloat value) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    auto controller = joystick_device(device);
+    if (!resource || !controller || axis < 0 || axis >= NK_GAMEPAD_AXIS_COUNT)
+        return;
+    controller->axes[static_cast<std::size_t>(axis)] = value;
+    const nk_joystick_axis_event raw{static_cast<uint32_t>(axis), value};
+    nk::core::QueuedEvent raw_event;
+    raw_event.kind = NK_EVENT_JOYSTICK_AXIS;
+    raw_event.source = controller->handle;
+    raw_event.data = bytes_of(raw);
+    nk::core::push_event(std::move(raw_event));
+    nk::core::gamepad_events::update(controller->handle, true);
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadButton(
+    JNIEnv *, jclass, jlong handle_value, jint device, jint button, jboolean pressed) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    auto controller = joystick_device(device);
+    if (!resource || !controller || button < 0 || button >= NK_GAMEPAD_BUTTON_COUNT)
+        return;
+    controller->buttons[static_cast<std::size_t>(button)] = pressed ? 1u : 0u;
+    const nk_joystick_button_event raw{static_cast<uint32_t>(button), pressed ? 1u : 0u};
+    nk::core::QueuedEvent raw_event;
+    raw_event.kind = NK_EVENT_JOYSTICK_BUTTON;
+    raw_event.source = controller->handle;
+    raw_event.data = bytes_of(raw);
+    nk::core::push_event(std::move(raw_event));
+    nk::core::gamepad_events::update(controller->handle, true);
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadConnected(
+    JNIEnv *env, jclass, jint device, jstring name, jstring descriptor) {
+    const auto device_name = to_utf8(env, name);
+    const auto device_descriptor = to_utf8(env, descriptor);
+    if (auto existing = joystick_device(device)) {
+        existing->name = device_name;
+        existing->guid = controller_guid(device_descriptor);
+        return;
+    }
+    auto resource = std::make_shared<AndroidJoystick>();
+    resource->device_id = device;
+    resource->name = device_name.empty() ? "Android game controller" : device_name;
+    resource->guid = controller_guid(device_descriptor);
+    resource->handle =
+        nk::core::handles().insert(nk::core::ResourceType::joystick, resource);
+    if (!resource->handle)
+        return;
+    joysticks.emplace(device, resource);
+    nk::core::gamepad_events::update(resource->handle, false);
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_JOYSTICK_CONNECTED;
+    event.source = resource->handle;
+    nk::core::push_event(std::move(event));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadDisconnected(
+    JNIEnv *, jclass, jint device) {
+    const auto found = joysticks.find(device);
+    if (found == joysticks.end())
+        return;
+    const auto handle = found->second->handle;
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_JOYSTICK_DISCONNECTED;
+    event.source = handle;
+    nk::core::push_event(std::move(event));
+    nk::core::gamepad_events::disconnect(handle);
+    nk::core::handles().erase(handle, nk::core::ResourceType::joystick);
+    joysticks.erase(found);
 }
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitHost_nativeInitialize(JNIEnv *env, jclass) {

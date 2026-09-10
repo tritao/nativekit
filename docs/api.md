@@ -120,6 +120,7 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_POINTER_BUTTON` | window | none | `nk_pointer_button_event` |
 | `NK_EVENT_POINTER_SCROLL` | window | none | `nk_pointer_scroll_event` |
 | `NK_EVENT_POINTER_ENTER` | window | none | empty; `flags` is one on enter and zero on leave |
+| `NK_EVENT_TOUCH` | graphics surface | none | `nk_touch_event` |
 | `NK_EVENT_WINDOW_MOVE` | window | none | `nk_window_move_event` |
 | `NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE` | window | none | `nk_window_framebuffer_resize_event` |
 | `NK_EVENT_MONITOR_CONNECTED` | monitor | none | empty |
@@ -233,6 +234,15 @@ Input delivery is independent of GTK window focus.
 `nk_gamepad_set_options()` configures radial stick dead zones, trigger dead
 zones, and optional `[0, 1]` trigger output. The same normalization applies to
 state queries and generated gamepad events.
+
+Android graphics surfaces accept multi-touch, stylus, mouse, hardware-keyboard,
+IME text, and game-controller input. Touch contacts use gesture-scoped pointer
+IDs and report logical coordinates, pressure, tool type, and two-dimensional
+tilt. Mouse input uses the existing pointer events. Android controllers are
+registered as NativeKit joystick resources, so raw joystick and normalized
+gamepad events use generation-safe joystick handles as their source rather than
+transient Android device IDs. Key and pointer state queries accept an Android
+graphics-surface handle.
 
 ## Graphics surfaces
 

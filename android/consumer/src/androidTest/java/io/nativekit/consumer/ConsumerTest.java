@@ -59,6 +59,8 @@ public final class ConsumerTest {
             scenario.onActivity(activity -> {
                 assertNotEquals(0, activity.graphicsSurfaceHandle());
                 assertEquals(0, activity.graphicsSurfaceProbe());
+                activity.dispatchInputForTest();
+                assertEquals(0, activity.inputProbe());
                 assertEquals(0, activity.setGraphicsSurfaceVisible(false));
             });
             waitForIdle();

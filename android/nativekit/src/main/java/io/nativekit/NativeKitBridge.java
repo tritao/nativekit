@@ -1,5 +1,7 @@
 package io.nativekit;
 
+import static io.nativekit.NativeKitInputValues.*;
+
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ClipData;
@@ -8,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.UriPermission;
 import android.content.ContextWrapper;
+import android.hardware.input.InputManager;
 import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -23,6 +26,13 @@ import android.view.ViewGroup;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.InputDevice;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.inputmethod.BaseInputConnection;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
+import android.text.InputType;
 import android.view.DragAndDropPermissions;
 import android.view.DragEvent;
 import android.webkit.RenderProcessGoneDetail;
@@ -59,8 +69,152 @@ final class NativeKitBridge {
     private static final Map<Long, ArrayList<DragAndDropPermissions>> dropPermissions =
         new HashMap<>();
     private static final Set<Long> cancelledDialogs = new HashSet<>();
+    private static InputManager inputManager;
+    private static InputManager.InputDeviceListener inputDeviceListener;
 
     private NativeKitBridge() {}
+
+    private static final class NativeSurfaceView extends SurfaceView {
+        private final long nativeHandle;
+
+        NativeSurfaceView(Context context, long handle) {
+            super(context);
+            nativeHandle = handle;
+            setFocusable(true);
+            setFocusableInTouchMode(true);
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            requestFocus();
+            int masked = event.getActionMasked();
+            int changed = event.getActionIndex();
+            if (masked == MotionEvent.ACTION_MOVE || masked == MotionEvent.ACTION_CANCEL) {
+                for (int index = 0; index < event.getPointerCount(); ++index)
+                    emitTouch(event, index, masked);
+            } else {
+                emitTouch(event, changed, masked);
+            }
+            return true;
+        }
+
+        private void emitTouch(MotionEvent event, int index, int action) {
+            int tool = event.getToolType(index);
+            if (tool == MotionEvent.TOOL_TYPE_MOUSE) {
+                nativeOnPointerMove(nativeHandle, logical(event.getX(index)),
+                                    logical(event.getY(index)));
+                return;
+            }
+            @TouchAction int nativeAction = action == MotionEvent.ACTION_DOWN ||
+                                       action == MotionEvent.ACTION_POINTER_DOWN
+                                   ? TOUCH_BEGIN
+                                   : action == MotionEvent.ACTION_MOVE ? TOUCH_MOVE
+                                   : action == MotionEvent.ACTION_UP ||
+                                             action == MotionEvent.ACTION_POINTER_UP ? TOUCH_END
+                                                                                     : TOUCH_CANCEL;
+            @TouchTool int nativeTool = tool == MotionEvent.TOOL_TYPE_STYLUS
+                                            ? TOUCH_TOOL_STYLUS
+                                            : tool == MotionEvent.TOOL_TYPE_ERASER
+                                                  ? TOUCH_TOOL_ERASER
+                                                  : TOUCH_TOOL_FINGER;
+            float orientation = event.getOrientation(index);
+            float tilt = event.getAxisValue(MotionEvent.AXIS_TILT, index);
+            nativeOnTouch(nativeHandle, event.getPointerId(index), nativeAction, nativeTool,
+                          logical(event.getX(index)), logical(event.getY(index)),
+                          event.getPressure(index),
+                          (float)(Math.sin(orientation) * tilt),
+                          (float)(Math.cos(orientation) * tilt), modifiers(event.getMetaState()));
+        }
+
+        @Override
+        public boolean onGenericMotionEvent(MotionEvent event) {
+            int source = event.getSource();
+            if ((source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK) {
+                registerGamepad(event.getDevice(), event.getDeviceId());
+                int[] axes = {MotionEvent.AXIS_X, MotionEvent.AXIS_Y, MotionEvent.AXIS_Z,
+                              MotionEvent.AXIS_RZ, MotionEvent.AXIS_LTRIGGER,
+                              MotionEvent.AXIS_RTRIGGER};
+                for (int index = 0; index < axes.length; ++index)
+                    nativeOnGamepadAxis(nativeHandle, event.getDeviceId(), index,
+                                        event.getAxisValue(axes[index]));
+                return true;
+            }
+            if ((source & InputDevice.SOURCE_CLASS_POINTER) != 0) {
+                if (event.getActionMasked() == MotionEvent.ACTION_HOVER_ENTER ||
+                    event.getActionMasked() == MotionEvent.ACTION_HOVER_EXIT)
+                    nativeOnPointerEnter(nativeHandle,
+                        event.getActionMasked() == MotionEvent.ACTION_HOVER_ENTER);
+                nativeOnPointerMove(nativeHandle, logical(event.getX()), logical(event.getY()));
+                if (event.getActionMasked() == MotionEvent.ACTION_SCROLL)
+                    nativeOnPointerScroll(nativeHandle,
+                        event.getAxisValue(MotionEvent.AXIS_HSCROLL),
+                        event.getAxisValue(MotionEvent.AXIS_VSCROLL));
+                if (event.getActionMasked() == MotionEvent.ACTION_BUTTON_PRESS ||
+                    event.getActionMasked() == MotionEvent.ACTION_BUTTON_RELEASE) {
+                    int actionButton = event.getActionButton();
+                    if (actionButton == 0)
+                        actionButton = event.getButtonState();
+                    nativeOnPointerButton(nativeHandle, pointerButton(actionButton),
+                        event.getActionMasked() == MotionEvent.ACTION_BUTTON_PRESS,
+                        modifiers(event.getMetaState()), logical(event.getX()),
+                        logical(event.getY()));
+                }
+                return true;
+            }
+            return super.onGenericMotionEvent(event);
+        }
+
+        @Override
+        public boolean onKeyDown(int keyCode, KeyEvent event) {
+            return emitKey(keyCode, event,
+                           event.getRepeatCount() == 0 ? INPUT_PRESS : INPUT_REPEAT);
+        }
+
+        @Override
+        public boolean onKeyUp(int keyCode, KeyEvent event) {
+            return emitKey(keyCode, event, INPUT_RELEASE);
+        }
+
+        private boolean emitKey(int keyCode, KeyEvent event, @InputAction int action) {
+            boolean controller = (event.getSource() & InputDevice.SOURCE_GAMEPAD) ==
+                                     InputDevice.SOURCE_GAMEPAD ||
+                                 (event.getSource() & InputDevice.SOURCE_JOYSTICK) ==
+                                     InputDevice.SOURCE_JOYSTICK;
+            int gamepad = controller ? gamepadButton(keyCode) : -1;
+            if (gamepad >= 0) {
+                registerGamepad(event.getDevice(), event.getDeviceId());
+                nativeOnGamepadButton(nativeHandle, event.getDeviceId(), gamepad, action != 0);
+                return true;
+            }
+            nativeOnKey(nativeHandle, nativeKey(keyCode), event.getScanCode(), action,
+                        modifiers(event.getMetaState()));
+            int unicode = event.getUnicodeChar();
+            if (action == INPUT_PRESS && unicode != 0)
+                nativeOnText(nativeHandle, unicode);
+            return true;
+        }
+
+        @Override
+        public boolean onCheckIsTextEditor() { return true; }
+
+        @Override
+        public InputConnection onCreateInputConnection(EditorInfo attributes) {
+            attributes.inputType = InputType.TYPE_CLASS_TEXT |
+                                   InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+            attributes.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI;
+            return new BaseInputConnection(this, false) {
+                @Override
+                public boolean commitText(CharSequence text, int cursor) {
+                    text.codePoints().forEach(value -> nativeOnText(nativeHandle, value));
+                    return true;
+                }
+            };
+        }
+
+        private float logical(float value) {
+            return value / getResources().getDisplayMetrics().density;
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     static WebView create(ViewGroup parent, long handle, int flags, int x, int y, int width,
@@ -149,7 +303,7 @@ final class NativeKitBridge {
 
     static SurfaceView createSurface(ViewGroup parent, long handle, int flags, int x, int y,
                                      int width, int height) {
-        SurfaceView view = new SurfaceView(parent.getContext());
+        SurfaceView view = new NativeSurfaceView(parent.getContext(), handle);
         view.setTag(io.nativekit.R.id.nativekit_handle, handle);
         if ((flags & 2) != 0) {
             view.setZOrderOnTop(true);
@@ -746,6 +900,7 @@ final class NativeKitBridge {
 
     static void observeHost(ViewGroup parent, long handle) {
         observedHosts.put(handle, parent);
+        observeInputDevices(parent.getContext());
         View.OnLayoutChangeListener listener = (view, left, top, right, bottom, oldLeft, oldTop,
                                                 oldRight, oldBottom) -> emitGeometry(parent, handle);
         parent.setTag(io.nativekit.R.id.nativekit_layout_listener, listener);
@@ -766,6 +921,58 @@ final class NativeKitBridge {
             parent.removeOnLayoutChangeListener((View.OnLayoutChangeListener)value);
         ViewCompat.setOnApplyWindowInsetsListener(parent, null);
         setDropEnabled(parent, handle, false);
+        if (observedHosts.isEmpty() && inputManager != null && inputDeviceListener != null) {
+            for (int deviceId : InputDevice.getDeviceIds())
+                if (gamepadDevice(InputDevice.getDevice(deviceId)))
+                    nativeOnGamepadDisconnected(deviceId);
+            inputManager.unregisterInputDeviceListener(inputDeviceListener);
+            inputManager = null;
+            inputDeviceListener = null;
+        }
+    }
+
+    private static boolean gamepadDevice(InputDevice device) {
+        if (device == null)
+            return false;
+        int sources = device.getSources();
+        return (sources & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+               (sources & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
+    }
+
+    private static void registerGamepad(@Nullable InputDevice device, int fallbackId) {
+        if (device == null) {
+            nativeOnGamepadConnected(fallbackId, "Android game controller",
+                                     "android-controller-" + fallbackId);
+        } else if (gamepadDevice(device)) {
+            nativeOnGamepadConnected(device.getId(), device.getName(), device.getDescriptor());
+        }
+    }
+
+    private static void observeInputDevices(Context context) {
+        if (inputManager != null)
+            return;
+        inputManager = (InputManager)context.getSystemService(Context.INPUT_SERVICE);
+        if (inputManager == null)
+            return;
+        inputDeviceListener = new InputManager.InputDeviceListener() {
+            @Override
+            public void onInputDeviceAdded(int deviceId) {
+                registerGamepad(InputDevice.getDevice(deviceId), deviceId);
+            }
+
+            @Override
+            public void onInputDeviceChanged(int deviceId) {
+                registerGamepad(InputDevice.getDevice(deviceId), deviceId);
+            }
+
+            @Override
+            public void onInputDeviceRemoved(int deviceId) {
+                nativeOnGamepadDisconnected(deviceId);
+            }
+        };
+        inputManager.registerInputDeviceListener(inputDeviceListener, null);
+        for (int deviceId : InputDevice.getDeviceIds())
+            registerGamepad(InputDevice.getDevice(deviceId), deviceId);
     }
 
     private static void emitGeometry(ViewGroup parent, long handle) {
@@ -791,6 +998,98 @@ final class NativeKitBridge {
     private static long viewHandle(WebView view) {
         Object value = view.getTag(io.nativekit.R.id.nativekit_handle);
         return value instanceof Long ? (Long)value : 0;
+    }
+
+    private static @Modifiers int modifiers(int meta) {
+        int result = 0;
+        if ((meta & KeyEvent.META_SHIFT_ON) != 0) result |= MOD_SHIFT;
+        if ((meta & KeyEvent.META_CTRL_ON) != 0) result |= MOD_CONTROL;
+        if ((meta & KeyEvent.META_ALT_ON) != 0) result |= MOD_ALT;
+        if ((meta & KeyEvent.META_META_ON) != 0) result |= MOD_SUPER;
+        if ((meta & KeyEvent.META_CAPS_LOCK_ON) != 0) result |= MOD_CAPS_LOCK;
+        if ((meta & KeyEvent.META_NUM_LOCK_ON) != 0) result |= MOD_NUM_LOCK;
+        return result;
+    }
+
+    private static @PointerButton int pointerButton(int button) {
+        if (button == MotionEvent.BUTTON_SECONDARY) return POINTER_BUTTON_RIGHT;
+        if (button == MotionEvent.BUTTON_TERTIARY) return POINTER_BUTTON_MIDDLE;
+        if (button == MotionEvent.BUTTON_BACK) return POINTER_BUTTON_4;
+        if (button == MotionEvent.BUTTON_FORWARD) return POINTER_BUTTON_5;
+        return POINTER_BUTTON_LEFT;
+    }
+
+    private static int nativeKey(int key) {
+        if (key >= KeyEvent.KEYCODE_A && key <= KeyEvent.KEYCODE_Z)
+            return KEY_A + key - KeyEvent.KEYCODE_A;
+        if (key >= KeyEvent.KEYCODE_0 && key <= KeyEvent.KEYCODE_9)
+            return KEY_0 + key - KeyEvent.KEYCODE_0;
+        if (key >= KeyEvent.KEYCODE_F1 && key <= KeyEvent.KEYCODE_F12)
+            return KEY_F1 + key - KeyEvent.KEYCODE_F1;
+        switch (key) {
+            case KeyEvent.KEYCODE_SPACE: return KEY_SPACE;
+            case KeyEvent.KEYCODE_APOSTROPHE: return KEY_APOSTROPHE;
+            case KeyEvent.KEYCODE_COMMA: return KEY_COMMA;
+            case KeyEvent.KEYCODE_MINUS: return KEY_MINUS;
+            case KeyEvent.KEYCODE_PERIOD: return KEY_PERIOD;
+            case KeyEvent.KEYCODE_SLASH: return KEY_SLASH;
+            case KeyEvent.KEYCODE_SEMICOLON: return KEY_SEMICOLON;
+            case KeyEvent.KEYCODE_EQUALS: return KEY_EQUAL;
+            case KeyEvent.KEYCODE_LEFT_BRACKET: return KEY_LEFT_BRACKET;
+            case KeyEvent.KEYCODE_BACKSLASH: return KEY_BACKSLASH;
+            case KeyEvent.KEYCODE_RIGHT_BRACKET: return KEY_RIGHT_BRACKET;
+            case KeyEvent.KEYCODE_GRAVE: return KEY_GRAVE_ACCENT;
+            case KeyEvent.KEYCODE_ESCAPE: return KEY_ESCAPE;
+            case KeyEvent.KEYCODE_ENTER: return KEY_ENTER;
+            case KeyEvent.KEYCODE_TAB: return KEY_TAB;
+            case KeyEvent.KEYCODE_DEL: return KEY_BACKSPACE;
+            case KeyEvent.KEYCODE_INSERT: return KEY_INSERT;
+            case KeyEvent.KEYCODE_FORWARD_DEL: return KEY_DELETE;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: return KEY_RIGHT;
+            case KeyEvent.KEYCODE_DPAD_LEFT: return KEY_LEFT;
+            case KeyEvent.KEYCODE_DPAD_DOWN: return KEY_DOWN;
+            case KeyEvent.KEYCODE_DPAD_UP: return KEY_UP;
+            case KeyEvent.KEYCODE_PAGE_UP: return KEY_PAGE_UP;
+            case KeyEvent.KEYCODE_PAGE_DOWN: return KEY_PAGE_DOWN;
+            case KeyEvent.KEYCODE_MOVE_HOME: return KEY_HOME;
+            case KeyEvent.KEYCODE_MOVE_END: return KEY_END;
+            case KeyEvent.KEYCODE_CAPS_LOCK: return KEY_CAPS_LOCK;
+            case KeyEvent.KEYCODE_SCROLL_LOCK: return KEY_SCROLL_LOCK;
+            case KeyEvent.KEYCODE_NUM_LOCK: return KEY_NUM_LOCK;
+            case KeyEvent.KEYCODE_SYSRQ: return KEY_PRINT_SCREEN;
+            case KeyEvent.KEYCODE_BREAK: return KEY_PAUSE;
+            case KeyEvent.KEYCODE_SHIFT_LEFT: return KEY_LEFT_SHIFT;
+            case KeyEvent.KEYCODE_CTRL_LEFT: return KEY_LEFT_CONTROL;
+            case KeyEvent.KEYCODE_ALT_LEFT: return KEY_LEFT_ALT;
+            case KeyEvent.KEYCODE_META_LEFT: return KEY_LEFT_SUPER;
+            case KeyEvent.KEYCODE_SHIFT_RIGHT: return KEY_RIGHT_SHIFT;
+            case KeyEvent.KEYCODE_CTRL_RIGHT: return KEY_RIGHT_CONTROL;
+            case KeyEvent.KEYCODE_ALT_RIGHT: return KEY_RIGHT_ALT;
+            case KeyEvent.KEYCODE_META_RIGHT: return KEY_RIGHT_SUPER;
+            case KeyEvent.KEYCODE_MENU: return KEY_MENU;
+            default: return KEY_UNKNOWN;
+        }
+    }
+
+    private static int gamepadButton(int key) {
+        switch (key) {
+            case KeyEvent.KEYCODE_BUTTON_A: return GAMEPAD_BUTTON_A;
+            case KeyEvent.KEYCODE_BUTTON_B: return GAMEPAD_BUTTON_B;
+            case KeyEvent.KEYCODE_BUTTON_X: return GAMEPAD_BUTTON_X;
+            case KeyEvent.KEYCODE_BUTTON_Y: return GAMEPAD_BUTTON_Y;
+            case KeyEvent.KEYCODE_BUTTON_L1: return GAMEPAD_BUTTON_LEFT_BUMPER;
+            case KeyEvent.KEYCODE_BUTTON_R1: return GAMEPAD_BUTTON_RIGHT_BUMPER;
+            case KeyEvent.KEYCODE_BUTTON_SELECT: return GAMEPAD_BUTTON_BACK;
+            case KeyEvent.KEYCODE_BUTTON_START: return GAMEPAD_BUTTON_START;
+            case KeyEvent.KEYCODE_BUTTON_MODE: return GAMEPAD_BUTTON_GUIDE;
+            case KeyEvent.KEYCODE_BUTTON_THUMBL: return GAMEPAD_BUTTON_LEFT_THUMB;
+            case KeyEvent.KEYCODE_BUTTON_THUMBR: return GAMEPAD_BUTTON_RIGHT_THUMB;
+            case KeyEvent.KEYCODE_DPAD_UP: return GAMEPAD_BUTTON_DPAD_UP;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: return GAMEPAD_BUTTON_DPAD_RIGHT;
+            case KeyEvent.KEYCODE_DPAD_DOWN: return GAMEPAD_BUTTON_DPAD_DOWN;
+            case KeyEvent.KEYCODE_DPAD_LEFT: return GAMEPAD_BUTTON_DPAD_LEFT;
+            default: return -1;
+        }
     }
 
     static int navigationErrorCategory(int errorCode) {
@@ -834,6 +1133,23 @@ final class NativeKitBridge {
                                                       int framebufferWidth,
                                                       int framebufferHeight);
     private static native void nativeOnSurfaceDestroyed(long handle);
+    private static native void nativeOnTouch(long handle, int pointerId, int action, int tool,
+                                             float x, float y, float pressure, float tiltX,
+                                             float tiltY, int modifiers);
+    private static native void nativeOnPointerMove(long handle, float x, float y);
+    private static native void nativeOnPointerEnter(long handle, boolean entered);
+    private static native void nativeOnPointerButton(long handle, int button, boolean pressed,
+                                                     int modifiers, float x, float y);
+    private static native void nativeOnPointerScroll(long handle, float x, float y);
+    private static native void nativeOnKey(long handle, int key, int scanCode, int action,
+                                          int modifiers);
+    private static native void nativeOnText(long handle, int codepoint);
+    private static native void nativeOnGamepadAxis(long handle, int device, int axis, float value);
+    private static native void nativeOnGamepadButton(long handle, int device, int button,
+                                                     boolean pressed);
+    private static native void nativeOnGamepadConnected(int device, String name,
+                                                        String descriptor);
+    private static native void nativeOnGamepadDisconnected(int device);
     private static native void nativeOnGeometry(long handle, int width, int height, float scale,
                                                 int insetLeft, int insetTop, int insetRight,
                                                 int insetBottom, int keyboardBottom);

@@ -1,5 +1,7 @@
 #include "nativekit.h"
+#include "nativekit_gamepad.h"
 #include "nativekit_graphics.h"
+#include "nativekit_input.h"
 #include "nativekit_resource.h"
 #include "nativekit_vulkan.h"
 #include "nativekit_webview.h"
@@ -274,6 +276,106 @@ Java_io_nativekit_consumer_MainActivity_nativeVulkanSurfaceRecreatedProbe(JNIEnv
                                  &live_vulkan_surface) != NK_OK)
         return 3;
     release_vulkan_probe();
+    return 0;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong surface_value) {
+    const auto surface = static_cast<nk_handle>(surface_value);
+    int touch_begin = 0;
+    int touch_move = 0;
+    int touch_end = 0;
+    bool first_finger = false;
+    bool second_finger = false;
+    bool stylus = false;
+    bool pointer_move = false;
+    bool pointer_button = false;
+    bool pointer_scroll = false;
+    bool key_press = false;
+    bool key_release = false;
+    bool text = false;
+    bool gamepad_axis = false;
+    bool gamepad_button = false;
+    nk_handle controller = NK_INVALID_HANDLE;
+    nk_event event{};
+    event.struct_size = sizeof(event);
+    for (int attempt = 0; attempt < 128; ++attempt) {
+        if (nk_poll_event(&event) != NK_OK)
+            return 1;
+        if (event.kind == NK_EVENT_NONE)
+            break;
+        if (event.kind == NK_EVENT_JOYSTICK_CONNECTED)
+            controller = event.source;
+        if (event.source == surface && event.kind == NK_EVENT_TOUCH &&
+            event.data_size >= sizeof(nk_touch_event)) {
+            const auto *value = static_cast<const nk_touch_event *>(event.data);
+            touch_begin += value->action == NK_TOUCH_BEGIN;
+            touch_move += value->action == NK_TOUCH_MOVE;
+            touch_end += value->action == NK_TOUCH_END;
+            first_finger |= value->pointer_id == 7 && value->tool == NK_TOUCH_TOOL_FINGER;
+            second_finger |= value->pointer_id == 11 && value->tool == NK_TOUCH_TOOL_FINGER;
+            stylus |= value->pointer_id == 19 && value->tool == NK_TOUCH_TOOL_STYLUS &&
+                      value->pressure > 0.6f && value->tilt_y != 0.f;
+        } else if (event.source == surface && event.kind == NK_EVENT_POINTER_MOVE) {
+            pointer_move = true;
+        } else if (event.source == surface && event.kind == NK_EVENT_POINTER_BUTTON &&
+                   event.data_size >= sizeof(nk_pointer_button_event)) {
+            const auto *value = static_cast<const nk_pointer_button_event *>(event.data);
+            pointer_button = value->button == NK_POINTER_BUTTON_RIGHT &&
+                             value->action == NK_INPUT_PRESS;
+        } else if (event.source == surface && event.kind == NK_EVENT_POINTER_SCROLL &&
+                   event.data_size >= sizeof(nk_pointer_scroll_event)) {
+            const auto *value = static_cast<const nk_pointer_scroll_event *>(event.data);
+            pointer_scroll = value->x == 1.5 && value->y == -2.0;
+        } else if (event.source == surface && event.kind == NK_EVENT_KEY &&
+                   event.data_size >= sizeof(nk_key_event)) {
+            const auto *value = static_cast<const nk_key_event *>(event.data);
+            key_press |= value->key == NK_KEY_A && value->action == NK_INPUT_PRESS &&
+                         (value->modifiers & NK_MOD_SHIFT);
+            key_release |= value->key == NK_KEY_A && value->action == NK_INPUT_RELEASE;
+        } else if (event.source == surface && event.kind == NK_EVENT_TEXT_INPUT &&
+                   event.data_size >= sizeof(nk_text_input_event)) {
+            text = static_cast<const nk_text_input_event *>(event.data)->codepoint == 'A';
+        } else if (event.kind == NK_EVENT_GAMEPAD_AXIS &&
+                   event.data_size >= sizeof(nk_gamepad_axis_event)) {
+            const auto *value = static_cast<const nk_gamepad_axis_event *>(event.data);
+            controller = event.source;
+            gamepad_axis |= value->axis == NK_GAMEPAD_AXIS_LEFT_X && value->value == 0.5f;
+        } else if (event.kind == NK_EVENT_GAMEPAD_BUTTON &&
+                   event.data_size >= sizeof(nk_gamepad_button_event)) {
+            const auto *value = static_cast<const nk_gamepad_button_event *>(event.data);
+            controller = event.source;
+            gamepad_button = value->button == NK_GAMEPAD_BUTTON_A && value->pressed;
+        }
+        nk_event_release(&event);
+        event.struct_size = sizeof(event);
+    }
+    if (touch_begin < 3 || touch_move < 2 || touch_end < 3 || !first_finger || !second_finger ||
+        !stylus)
+        return 2;
+    if (!pointer_move || !pointer_button || !pointer_scroll)
+        return 3;
+    if (!key_press || !key_release || !text)
+        return 4;
+    if (!controller || !gamepad_axis || !gamepad_button)
+        return 5;
+    uint32_t mapped = 0;
+    nk_gamepad_state gamepad{};
+    gamepad.struct_size = sizeof(gamepad);
+    if (nk_gamepad_is_mapped(controller, &mapped) != NK_OK || !mapped ||
+        nk_gamepad_get_state(controller, &gamepad) != NK_OK ||
+        gamepad.axes[NK_GAMEPAD_AXIS_LEFT_X] != 0.5f || !gamepad.buttons[NK_GAMEPAD_BUTTON_A])
+        return 9;
+    nk_input_action state = NK_INPUT_PRESS;
+    if (nk_key_get_state(surface, NK_KEY_A, &state) != NK_OK || state != NK_INPUT_RELEASE)
+        return 6;
+    if (nk_pointer_button_get_state(surface, NK_POINTER_BUTTON_RIGHT, &state) != NK_OK ||
+        state != NK_INPUT_PRESS)
+        return 7;
+    double x = 0;
+    double y = 0;
+    if (nk_pointer_get_position(surface, &x, &y) != NK_OK || x <= 0 || y <= 0)
+        return 8;
     return 0;
 }
 
