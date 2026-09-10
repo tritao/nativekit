@@ -306,9 +306,26 @@ Exit criteria:
 
 Potential upstream Skribidi improvements:
 
-- non-destructive dirty-region query followed by explicit acknowledgement;
-- explicit atlas texture creation, replacement, resize, and removal events;
-- efficient dirty-region access that reports format and row pitch.
+- richer batch-oriented render iteration when profiling justifies it;
+- multiple dirty rectangles when one bounding region is measurably wasteful;
+- explicit destroy/repack callbacks if queryable texture generations prove
+  insufficient for a future atlas replacement strategy.
+
+The initial boundary work is now implemented in the vendored Skribidi API:
+
+- `skb_layout_iterate_render_glyphs()` exposes value-based visual glyph data
+  without exposing line, run, glyph, or cluster storage;
+- `skb_layout_prepare_glyphs()` makes atlas population and rasterization an
+  explicit step before NativeKit quad emission;
+- atlas textures report semantic R8-mask, R8-SDF, or premultiplied RGBA8
+  formats, allocation generations, row pitch, and dirty origins;
+- dirty uploads use non-destructive epoch snapshots and exact acknowledgement;
+- font collections and layouts expose generations for retained cache identity.
+
+NativeKit keys retained GPU atlas resources by texture ID and generation, while
+the private adapter revalidates cached glyph batches after atlas growth. The
+active backend still uses a whole-image Sokol update as a correctness fallback;
+subregion upload and richer lifecycle callbacks remain deliberately deferred.
 
 These changes should be proposed upstream when generally useful. Do not make
 NativeKit GPU handles part of Skribidi.
