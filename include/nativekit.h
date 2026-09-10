@@ -18,6 +18,19 @@
 #define NK_CALL
 #endif
 
+/* Semantic FFI directions. They are no-ops outside Clang-based binding import. */
+#if defined(__clang__)
+#define NK_OUT __attribute__((annotate("hxi:out")))
+#define NK_INOUT __attribute__((annotate("hxi:inout")))
+#define NK_OUT_BUFFER(size_parameter) __attribute__((annotate("hxi:out_buffer")))
+#define NK_RETURNS_BORROWED_UTF8 __attribute__((annotate("hxi:returns_borrowed_utf8")))
+#else
+#define NK_OUT
+#define NK_INOUT
+#define NK_OUT_BUFFER(size_parameter)
+#define NK_RETURNS_BORROWED_UTF8
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -137,13 +150,13 @@ NK_API void NK_CALL nk_shutdown(void);
  * Returns a thread-local UTF-8 diagnostic for the most recent failing call.
  * The pointer remains valid until the next NativeKit call on this thread.
  */
-NK_API const char *NK_CALL nk_last_error(void);
+NK_API const char *NK_CALL nk_last_error(void) NK_RETURNS_BORROWED_UTF8;
 
 /*
  * Polls one event on the UI thread. Returns NK_OK with NK_EVENT_NONE when the
  * queue is empty. `event` must be zero-initialized with struct_size set.
  */
-NK_API nk_result NK_CALL nk_poll_event(nk_event *event);
+NK_API nk_result NK_CALL nk_poll_event(nk_event *event NK_INOUT);
 
 /* Releases an event returned by nk_poll_event; safe for an empty event. */
 NK_API void NK_CALL nk_event_release(nk_event *event);

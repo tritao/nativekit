@@ -154,7 +154,8 @@ NK_API nk_capabilities NK_CALL nk_get_capabilities(void);
  * their owner. Modal windows require an owner. Window ownership is deliberately
  * shallow and does not introduce a general-purpose widget hierarchy.
  */
-NK_API nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window);
+NK_API nk_result NK_CALL nk_window_create(const nk_window_options *options,
+                                          nk_handle *out_window NK_OUT);
 NK_API nk_result NK_CALL nk_window_destroy(nk_handle window);
 
 /* Shows when `visible` is non-zero and hides otherwise. UI thread only. */
@@ -168,21 +169,22 @@ NK_API nk_result NK_CALL nk_window_set_bounds(nk_handle window, int32_t x, int32
                                               int32_t height);
 
 /* Writes the current logical-to-device-pixel scale. UI thread only. */
-NK_API nk_result NK_CALL nk_window_get_scale(nk_handle window, float *out_scale);
+NK_API nk_result NK_CALL nk_window_get_scale(nk_handle window, float *out_scale NK_OUT);
 NK_API nk_result NK_CALL nk_window_get_content_scale(nk_handle window,
-                                                     nk_window_content_scale *out_scale);
-NK_API nk_result NK_CALL nk_window_get_position(nk_handle window, int32_t *out_x,
-                                                int32_t *out_y);
-NK_API nk_result NK_CALL nk_window_get_size(nk_handle window, int32_t *out_width,
-                                            int32_t *out_height);
+                                                     nk_window_content_scale *out_scale NK_OUT);
+NK_API nk_result NK_CALL nk_window_get_position(nk_handle window, int32_t *out_x NK_OUT,
+                                                int32_t *out_y NK_OUT);
+NK_API nk_result NK_CALL nk_window_get_size(nk_handle window, int32_t *out_width NK_OUT,
+                                            int32_t *out_height NK_OUT);
 NK_API nk_result NK_CALL nk_window_get_framebuffer_size(nk_handle window,
-                                                        int32_t *out_width,
-                                                        int32_t *out_height);
+                                                        int32_t *out_width NK_OUT,
+                                                        int32_t *out_height NK_OUT);
 NK_API nk_result NK_CALL nk_window_get_frame_extents(nk_handle window,
-                                                     nk_window_frame_extents *out_extents);
-NK_API nk_result NK_CALL nk_window_get_state(nk_handle window, nk_window_state *out_state);
-NK_API nk_result NK_CALL nk_window_is_focused(nk_handle window, uint32_t *out_focused);
-NK_API nk_result NK_CALL nk_window_is_visible(nk_handle window, uint32_t *out_visible);
+                                                     nk_window_frame_extents *out_extents NK_OUT);
+NK_API nk_result NK_CALL nk_window_get_state(nk_handle window,
+                                             nk_window_state *out_state NK_OUT);
+NK_API nk_result NK_CALL nk_window_is_focused(nk_handle window, uint32_t *out_focused NK_OUT);
+NK_API nk_result NK_CALL nk_window_is_visible(nk_handle window, uint32_t *out_visible NK_OUT);
 NK_API nk_result NK_CALL nk_window_minimize(nk_handle window);
 NK_API nk_result NK_CALL nk_window_maximize(nk_handle window);
 NK_API nk_result NK_CALL nk_window_restore(nk_handle window);
@@ -200,14 +202,15 @@ NK_API nk_result NK_CALL nk_window_set_decorated(nk_handle window, uint32_t enab
 NK_API nk_result NK_CALL nk_window_set_floating(nk_handle window, uint32_t enabled);
 NK_API nk_result NK_CALL nk_window_set_opacity(nk_handle window, float opacity);
 NK_API nk_result NK_CALL nk_window_set_mouse_passthrough(nk_handle window, uint32_t enabled);
-NK_API nk_result NK_CALL nk_window_get_hovered(nk_handle window, uint32_t *out_hovered);
+NK_API nk_result NK_CALL nk_window_get_hovered(nk_handle window, uint32_t *out_hovered NK_OUT);
 
 /*
  * Returns a borrowed platform descriptor. Its pointer-sized values are valid
  * only while the NativeKit window is alive and must never be freed by callers.
  * This is an explicit interoperability escape hatch, not a portable resource.
  */
-NK_API nk_result NK_CALL nk_window_get_native(nk_handle window, nk_native_window *out_native);
+NK_API nk_result NK_CALL nk_window_get_native(nk_handle window,
+                                              nk_native_window *out_native NK_OUT);
 
 /*
  * Attaches NativeKit to a caller-owned native window. Destroying the returned
@@ -215,7 +218,7 @@ NK_API nk_result NK_CALL nk_window_get_native(nk_handle window, nk_native_window
  * they can guarantee correct event and ownership behavior for the given kind.
  */
 NK_API nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native,
-                                               nk_handle *out_window);
+                                               nk_handle *out_window NK_OUT);
 
 #ifdef __cplusplus
 }

@@ -17,6 +17,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-hxi.sh" --check
+
 cmake -S "$repo_dir" -B "$test_root/build" -GNinja \
     -DCMAKE_BUILD_TYPE=Debug -DNK_BUILD_SHARED=ON \
     -DNK_BUILD_EXAMPLES=OFF -DNK_BUILD_TESTS=OFF

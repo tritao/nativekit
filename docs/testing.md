@@ -22,6 +22,8 @@ reviewed Linux HXI declarations into Haxe, and runs the result through HashLink.
 It covers initialization, typed event polling, UTF-8 diagnostics, window and
 monitor handles, and the two-call monitor-name output buffer. The sibling
 `../realtime-haxe` checkout is used by default; set `HAXEON_DIR` to override it.
+The smoke test first runs `tools/update-haxeon-hxi.sh --check`, so header and
+checked-in binding drift fails before compilation.
 
 ## Windows compatibility smoke tests
 

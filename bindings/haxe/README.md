@@ -19,6 +19,14 @@ Run the end-to-end smoke test with:
 tools/test-haxeon.sh
 ```
 
+Regenerate the target-specific interface after changing public headers, or
+verify that it is current without rewriting it:
+
+```sh
+tools/update-haxeon-hxi.sh
+tools/update-haxeon-hxi.sh --check
+```
+
 It expects the Haxeon checkout at `../realtime-haxe` by default. Override that
 with `HAXEON_DIR=/path/to/realtime-haxe`. Wine continues to validate the same C
 ABI independently through `tools/test-wine.sh`; producing Windows HashLink

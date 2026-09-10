@@ -42,13 +42,13 @@ typedef struct nk_video_mode {
  * NK_ERROR_BUFFER_TOO_SMALL and updates inout_count.
  */
 NK_API nk_result NK_CALL nk_monitor_list(nk_handle *monitors, uint32_t *inout_count);
-NK_API nk_result NK_CALL nk_monitor_get_primary(nk_handle *out_monitor);
-NK_API nk_result NK_CALL nk_monitor_get_name(nk_handle monitor, char *buffer,
-                                             uint32_t *inout_size);
+NK_API nk_result NK_CALL nk_monitor_get_primary(nk_handle *out_monitor NK_OUT);
+NK_API nk_result NK_CALL nk_monitor_get_name(
+    nk_handle monitor, char *buffer NK_OUT_BUFFER(inout_size), uint32_t *inout_size NK_INOUT);
 NK_API nk_result NK_CALL nk_monitor_get_geometry(nk_handle monitor,
-                                                 nk_monitor_geometry *out_geometry);
+                                                 nk_monitor_geometry *out_geometry NK_OUT);
 NK_API nk_result NK_CALL nk_monitor_get_current_mode(nk_handle monitor,
-                                                     nk_video_mode *out_mode);
+                                                     nk_video_mode *out_mode NK_OUT);
 /*
  * GTK 3 exposes only the current compositor mode, so this currently returns a
  * one-element list.
