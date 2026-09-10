@@ -3,6 +3,7 @@
 #include "nativekit_ui.h"
 #include "nativekit_window.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <thread>
@@ -66,8 +67,10 @@ struct Showcase {
     nkui_display_list list{};
     nkui_resource fonts{};
     std::vector<nkui_resource> resources;
+    std::vector<uint8_t> commands;
+    size_t accent_transform_offset = 0;
 
-    bool create() {
+    bool create(int framebuffer_width, int framebuffer_height) {
         if (nkui_renderer_create(&renderer) != NKUI_OK ||
             nkui_display_list_create(&list) != NKUI_OK ||
             nkui_font_collection_create(&fonts) != NKUI_OK ||
@@ -128,7 +131,9 @@ struct Showcase {
             return false;
         resources.push_back(image);
 
-        std::vector<uint8_t> commands;
+        append(commands, nkui_transform_command{
+                             header(NKUI_COMMAND_SET_TRANSFORM, sizeof(nkui_transform_command)),
+                             {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}});
         set_paint(commands, navy);
         draw_path(commands, background);
         set_paint(commands, rail_paint);
@@ -163,6 +168,7 @@ struct Showcase {
 
         append(commands,
                nkui_command_header{header(NKUI_COMMAND_PUSH_STATE, sizeof(nkui_command_header))});
+        accent_transform_offset = commands.size();
         append(commands, nkui_transform_command{
                              header(NKUI_COMMAND_SET_TRANSFORM, sizeof(nkui_transform_command)),
                              {1.0f, 0.0f, 0.0f, 1.0f, 28.0f, 390.0f}});
@@ -171,6 +177,27 @@ struct Showcase {
         append(commands,
                nkui_command_header{header(NKUI_COMMAND_POP_STATE, sizeof(nkui_command_header))});
 
+        return resize(framebuffer_width, framebuffer_height);
+    }
+
+    bool resize(int framebuffer_width, int framebuffer_height) {
+        if (commands.size() < sizeof(nkui_transform_command) || framebuffer_width <= 0 ||
+            framebuffer_height <= 0)
+            return false;
+        const float scale = std::min(framebuffer_width / 900.0f, framebuffer_height / 600.0f);
+        const float offset_x = (framebuffer_width - 900.0f * scale) * 0.5f;
+        const float offset_y = (framebuffer_height - 600.0f * scale) * 0.5f;
+        const nkui_transform_command transform{
+            header(NKUI_COMMAND_SET_TRANSFORM, sizeof(nkui_transform_command)),
+            {scale, 0.0f, 0.0f, scale, offset_x, offset_y}};
+        std::memcpy(commands.data(), &transform, sizeof(transform));
+        const nkui_transform_command accent_transform{
+            header(NKUI_COMMAND_SET_TRANSFORM, sizeof(nkui_transform_command)),
+            {scale, 0.0f, 0.0f, scale, offset_x + 28.0f * scale, offset_y + 390.0f * scale}};
+        if (accent_transform_offset > commands.size() - sizeof(accent_transform))
+            return false;
+        std::memcpy(commands.data() + accent_transform_offset, &accent_transform,
+                    sizeof(accent_transform));
         return nkui_display_list_submit(list, commands.data(), commands.size()) == NKUI_OK;
     }
 
@@ -221,6 +248,8 @@ int main(int argc, char **argv) {
     Showcase showcase;
     bool running = true;
     bool ready = false;
+    int framebuffer_width = 0;
+    int framebuffer_height = 0;
     int frames = 0;
     int result = 0;
     while (running && !result) {
@@ -231,9 +260,24 @@ int main(int argc, char **argv) {
         } else if (event.kind == NK_EVENT_WINDOW_CLOSE && event.source == window) {
             running = false;
         } else if (event.kind == NK_EVENT_SURFACE_READY && event.source == surface) {
-            ready = nk_surface_make_current(surface) == NK_OK && showcase.create();
+            ready = nk_surface_make_current(surface) == NK_OK &&
+                    nk_surface_get_framebuffer_size(surface, &framebuffer_width,
+                                                    &framebuffer_height) == NK_OK &&
+                    showcase.create(framebuffer_width, framebuffer_height);
             if (!ready)
                 result = 4;
+        } else if (event.kind == NK_EVENT_SURFACE_RESIZE && event.source == surface &&
+                   event.data_size >= sizeof(nk_surface_resize_event)) {
+            const auto *resize = static_cast<const nk_surface_resize_event *>(event.data);
+            framebuffer_width = resize->framebuffer_width;
+            framebuffer_height = resize->framebuffer_height;
+            if (framebuffer_width <= 0 || framebuffer_height <= 0) {
+                ready = false;
+            } else if (showcase.list.id) {
+                ready = showcase.resize(framebuffer_width, framebuffer_height);
+                if (!ready)
+                    result = 6;
+            }
         } else if (event.kind == NK_EVENT_SURFACE_LOST && event.source == surface) {
             ready = false;
         }
