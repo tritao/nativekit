@@ -38,41 +38,28 @@ native services on Windows, macOS, and Android.
 
 ## 🗺️ Platform feature matrix
 
-The table follows the capabilities advertised by each backend through
-`nk_get_capabilities()`. Applications should always query that function at
-runtime: optional system components and build configuration can still affect
-availability.
+This overview groups related API capabilities to keep platform support easy to
+scan. Applications should still query `nk_get_capabilities()` at runtime:
+optional system components and build configuration can affect availability.
 
-| Capability | Linux | Windows | macOS | Android | Web / WASM |
+| Feature family | Linux | Windows | macOS | Android | Web / WASM |
 |---|:---:|:---:|:---:|:---:|:---:|
-| Platform backend | ✅ | ✅ | ✅ | ✅ | 🚧 Coming soon |
-| NativeKit-owned top-level windows | ✅ | ✅ | ✅ | — | — |
-| Mobile host / caller-owned view attachment | — | — | — | ✅ | — |
-| WebView | ✅ | ✅ | ✅ | ✅ | — |
-| File and directory dialogs | ✅ | ✅ | ✅ | ✅ | — |
-| Clipboard | ✅ | ✅ | ✅ | ✅ | — |
-| File/resource drag and drop | ✅ | ✅ | ✅ | ✅ | — |
-| Shell and external URL opening | ✅ | ✅ | ✅ | ✅ | — |
-| Locale and desktop appearance | ✅ | ✅ | ✅ | ✅ | — |
-| Desktop notifications | ✅ | ✅ | ✅ | ✅ | — |
-| Export native window descriptor | ✅ | ✅ | ✅ | — | — |
-| Wrap an externally owned native window | — | — | — | — | — |
-| Keyboard, pointer, and text input | ✅ | — | — | ✅ | — |
-| Custom cursors | ✅ | — | — | — | — |
-| Pointer capture | ✅ | — | — | — | — |
-| Extended window geometry | ✅ | — | — | — | — |
-| Extended window styling | ✅ | — | — | — | — |
-| Monitor enumeration | ✅ | — | — | — | — |
-| Monitor/fullscreen mode control | ✅ | — | — | — | — |
-| Joysticks/gamepads | ✅ | — | — | ✅ | — |
-| OpenGL surfaces | ✅ | — | — | — | — |
-| OpenGL ES surfaces | ✅ | — | — | ✅ | — |
-| Vulkan surfaces | ✅ | — | — | ✅ | — |
-| URI resource streams | ✅ | ✅ | ✅ | ✅ | — |
-| Platform resource sharing | — | — | — | ✅ | — |
-| Custom-surface accessibility | — | — | — | ✅ | — |
+| Windows and lifecycle | ✅ | ✅ | ✅ | Host view | 🚧 |
+| WebView | ✅ | ✅ | ✅ | ✅ | 🚧 |
+| Dialogs and system services | ✅ | ✅ | ✅ | ✅ | 🚧 |
+| Clipboard and drag/drop | ✅ | ✅ | ✅ | ✅ | 🚧 |
+| Notifications | ✅ | ✅ | ✅ | ✅ | 🚧 |
+| Input, cursors, and capture | ✅ | — | — | Partial | 🚧 |
+| Monitors and fullscreen modes | ✅ | — | — | — | — |
+| Joysticks and gamepads | ✅ | — | — | ✅ | 🚧 |
+| OpenGL / OpenGL ES | ✅ | — | — | GLES | 🚧 |
+| Vulkan | ✅ | — | — | ✅ | 🚧 |
+| URI resources and sharing | Partial | Partial | Partial | ✅ | 🚧 |
+| Custom-surface accessibility | — | — | — | ✅ | 🚧 |
+| Native interoperability | Export | Export | Export | Host view | — |
 
-**Legend:** ✅ supported · 🚧 planned · — not currently advertised
+**Legend:** ✅ supported · **Partial** a subset is supported · 🚧 coming soon ·
+— not currently advertised
 
 - Linux desktop support requires GTK 3 and WebKitGTK 4.1. Without them, the
   library builds with a stub backend and reports the services as unsupported.
@@ -84,6 +71,9 @@ availability.
 - Capability bits describe complete API groups. Some common window operations
   are available on desktop backends even where the broader extended geometry or
   styling groups are not advertised.
+- See the [API guide](docs/api.md) and `NK_CAP_*` declarations in
+  [`nativekit_window.h`](include/nativekit_window.h) for exact capability-level
+  details.
 
 ## 🏗️ Build from source
 
