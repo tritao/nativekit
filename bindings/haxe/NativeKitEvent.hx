@@ -1,4 +1,5 @@
 import NativeKit;
+import NativeKit.NativeKitConstants;
 
 enum NativeKitEventValue {
 	None;
@@ -21,6 +22,7 @@ enum NativeKitEventValue {
 
 /** Owns one polled NativeKit event and releases its native payload exactly once. */
 class NativeKitEvent {
+	static inline final DIALOG_MESSAGE = 4;
 	final event:nk_event;
 	public final kind:Int;
 	public final source:Int;
@@ -63,13 +65,13 @@ class NativeKitEvent {
 	public function decode():NativeKitEventValue {
 		var data = payload();
 		return switch kind {
-			case 0: None;
-			case 400: ClipboardText(request, result, data.toString());
-			case 401: ClipboardFiles(request, result, decodeClipboardFiles(data, dataCount));
-			case 300: DropFiles(source, decodeDropItems(data, dataCount));
-			case 301: DropText(source, decodeDropItems(data, dataCount).join(""));
-			case 100:
-				if (flags == 4) {
+			case NativeKitConstants.NK_EVENT_NONE: None;
+			case NativeKitConstants.NK_EVENT_CLIPBOARD_TEXT_COMPLETE: ClipboardText(request, result, data.toString());
+			case NativeKitConstants.NK_EVENT_CLIPBOARD_FILES_COMPLETE: ClipboardFiles(request, result, decodeClipboardFiles(data, dataCount));
+			case NativeKitConstants.NK_EVENT_DROP_FILES: DropFiles(source, decodeDropItems(data, dataCount));
+			case NativeKitConstants.NK_EVENT_DROP_TEXT: DropText(source, decodeDropItems(data, dataCount).join(""));
+			case NativeKitConstants.NK_EVENT_DIALOG_COMPLETE:
+				if (flags == DIALOG_MESSAGE) {
 					if (data.length != 4)
 						throw "NativeKit message-dialog payload has an invalid size";
 					DialogMessage(request, result, readU32(data, 0));
@@ -77,14 +79,14 @@ class NativeKitEvent {
 					var paths = decodeDialogPaths(data);
 					DialogPaths(request, result, readU32(data, 0) != 0, paths);
 				}
-			case 200: WebViewNavigated(source, data.toString());
-			case 201: WebViewMessage(source, data.toString());
-			case 202: WebViewTitleChanged(source, data.toString());
-			case 203: WebViewEvaluation(source, request, result, data.toString());
-			case 204: WebViewNavigationFailed(source, flags, data.toString());
-			case 207: WebViewNavigationRequest(source, request, data.toString());
-			case 501: NotificationActivated(request, data.toString());
-			case 503: NotificationFailed(request, data.toString());
+			case NativeKitConstants.NK_EVENT_WEBVIEW_NAVIGATED: WebViewNavigated(source, data.toString());
+			case NativeKitConstants.NK_EVENT_WEBVIEW_MESSAGE: WebViewMessage(source, data.toString());
+			case NativeKitConstants.NK_EVENT_WEBVIEW_TITLE_CHANGED: WebViewTitleChanged(source, data.toString());
+			case NativeKitConstants.NK_EVENT_WEBVIEW_EVAL_COMPLETE: WebViewEvaluation(source, request, result, data.toString());
+			case NativeKitConstants.NK_EVENT_WEBVIEW_NAVIGATION_FAILED: WebViewNavigationFailed(source, flags, data.toString());
+			case NativeKitConstants.NK_EVENT_WEBVIEW_NAVIGATION_REQUEST: WebViewNavigationRequest(source, request, data.toString());
+			case NativeKitConstants.NK_EVENT_NOTIFICATION_ACTIVATED: NotificationActivated(request, data.toString());
+			case NativeKitConstants.NK_EVENT_NOTIFICATION_FAILED: NotificationFailed(request, data.toString());
 			default: Raw(kind, source, request, result, flags, dataCount, data);
 		}
 	}

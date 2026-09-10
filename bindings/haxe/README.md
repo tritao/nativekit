@@ -25,6 +25,9 @@ Known WebView, notification, dialog, clipboard, and drop payloads project to typ
 and copied payload data for forward compatibility. Malformed packed payloads
 throw instead of allowing out-of-bounds reads.
 
+HXI constants are projected through `NativeKitConstants`; handwritten bindings
+use those symbols rather than repeating numeric C ABI values.
+
 Run the end-to-end smoke test with:
 
 ```sh

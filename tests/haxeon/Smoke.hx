@@ -1,5 +1,6 @@
 import NativeKit;
 import NativeKitEvent;
+import NativeKit.NativeKitConstants;
 
 class Smoke {
 	static function main():Int {
@@ -33,7 +34,7 @@ class Smoke {
 			var completed = false;
 			for (_ in 0...1000) {
 				var next = NativeKitEvent.poll();
-				if (next.kind == 400) {
+				if (next.kind == NativeKitConstants.NK_EVENT_CLIPBOARD_TEXT_COMPLETE) {
 					payloadOk = switch next.take() {
 						case ClipboardText(completedRequest, completedResult, text):
 							completedResult == 0 && text == "nativekit ffi";
