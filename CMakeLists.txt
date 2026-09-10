@@ -217,11 +217,6 @@ if(WIN32 AND NK_WEBVIEW2_LOADER_DLL)
     install(FILES "${NK_WEBVIEW2_LICENSE}" "${NK_WEBVIEW2_NOTICE}"
         DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit/WebView2)
 endif()
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendor/wxWidgets/docs/licence.txt")
-    install(FILES vendor/wxWidgets/docs/lgpl.txt
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit
-        RENAME LGPL-2.0.txt)
-endif()
 configure_package_config_file(
     cmake/NativeKitConfig.cmake.in
     ${CMAKE_CURRENT_BINARY_DIR}/NativeKitConfig.cmake

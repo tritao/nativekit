@@ -1,9 +1,3 @@
-/*
- * Cocoa behavior in this file is informed by the wxWidgets OSX donor files
- * enumerated in tools/upstream-lock.json at its pinned revision. Adaptations are
- * licensed under the wxWindows Library Licence 3.1; see licenses/wxWidgets.txt.
- */
-
 #import <Cocoa/Cocoa.h>
 #import <UserNotifications/UserNotifications.h>
 #import <WebKit/WebKit.h>

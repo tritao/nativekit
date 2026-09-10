@@ -43,36 +43,36 @@ The table follows the capabilities advertised by each backend through
 runtime: optional system components and build configuration can still affect
 availability.
 
-| Capability | Linux | Windows | macOS | Android |
-|---|:---:|:---:|:---:|:---:|
-| NativeKit-owned top-level windows | ✅ | ✅ | ✅ | — |
-| Mobile host / caller-owned view attachment | — | — | — | ✅ |
-| WebView | ⚙️ | ⚙️ | ✅ | ✅ |
-| File and directory dialogs | ✅ | ✅ | ✅ | ✅ |
-| Clipboard | ✅ | ✅ | ✅ | ✅ |
-| File/resource drag and drop | ✅ | ✅ | ✅ | ✅ |
-| Shell and external URL opening | ✅ | ✅ | ✅ | ✅ |
-| Locale and desktop appearance | ✅ | ✅ | ✅ | ✅ |
-| Desktop notifications | ✅ | ✅ | ✅ | ✅ |
-| Export native window descriptor | ✅ | ✅ | ✅ | — |
-| Wrap an externally owned native window | — | — | — | — |
-| Keyboard, pointer, and text input | ✅ | — | — | ✅ |
-| Custom cursors | ✅ | — | — | — |
-| Pointer capture | ✅ | — | — | — |
-| Extended window geometry | ✅ | — | — | — |
-| Extended window styling | ✅ | — | — | — |
-| Monitor enumeration | ✅ | — | — | — |
-| Monitor/fullscreen mode control | ✅ | — | — | — |
-| Joysticks/gamepads | ✅ | — | — | ✅ |
-| OpenGL surfaces | ✅ | — | — | — |
-| OpenGL ES surfaces | ✅ | — | — | ✅ |
-| Vulkan surfaces | ✅ | — | — | ✅ |
-| URI resource streams | ✅ | ✅ | ✅ | ✅ |
-| Platform resource sharing | — | — | — | ✅ |
-| Custom-surface accessibility | — | — | — | ✅ |
+| Capability | Linux | Windows | macOS | Android | Web / WASM |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Platform backend | ✅ | ✅ | ✅ | ✅ | 🚧 Coming soon |
+| NativeKit-owned top-level windows | ✅ | ✅ | ✅ | — | — |
+| Mobile host / caller-owned view attachment | — | — | — | ✅ | — |
+| WebView | ✅ | ✅ | ✅ | ✅ | — |
+| File and directory dialogs | ✅ | ✅ | ✅ | ✅ | — |
+| Clipboard | ✅ | ✅ | ✅ | ✅ | — |
+| File/resource drag and drop | ✅ | ✅ | ✅ | ✅ | — |
+| Shell and external URL opening | ✅ | ✅ | ✅ | ✅ | — |
+| Locale and desktop appearance | ✅ | ✅ | ✅ | ✅ | — |
+| Desktop notifications | ✅ | ✅ | ✅ | ✅ | — |
+| Export native window descriptor | ✅ | ✅ | ✅ | — | — |
+| Wrap an externally owned native window | — | — | — | — | — |
+| Keyboard, pointer, and text input | ✅ | — | — | ✅ | — |
+| Custom cursors | ✅ | — | — | — | — |
+| Pointer capture | ✅ | — | — | — | — |
+| Extended window geometry | ✅ | — | — | — | — |
+| Extended window styling | ✅ | — | — | — | — |
+| Monitor enumeration | ✅ | — | — | — | — |
+| Monitor/fullscreen mode control | ✅ | — | — | — | — |
+| Joysticks/gamepads | ✅ | — | — | ✅ | — |
+| OpenGL surfaces | ✅ | — | — | — | — |
+| OpenGL ES surfaces | ✅ | — | — | ✅ | — |
+| Vulkan surfaces | ✅ | — | — | ✅ | — |
+| URI resource streams | ✅ | ✅ | ✅ | ✅ | — |
+| Platform resource sharing | — | — | — | ✅ | — |
+| Custom-surface accessibility | — | — | — | ✅ | — |
 
-**Legend:** ✅ advertised by the backend · ⚙️ requires an optional runtime or
-build dependency · — not currently advertised
+**Legend:** ✅ supported · 🚧 planned · — not currently advertised
 
 - Linux desktop support requires GTK 3 and WebKitGTK 4.1. Without them, the
   library builds with a stub backend and reports the services as unsupported.
@@ -87,17 +87,11 @@ build dependency · — not currently advertised
 
 ## 🏗️ Build from source
 
-Clone with the vendored wxWidgets donor source initialized:
+Clone the repository:
 
 ```sh
-git clone --recurse-submodules <nativekit-url>
+git clone https://github.com/tritao/nativekit.git
 cd nativekit
-```
-
-For an existing checkout:
-
-```sh
-git submodule update --init --recursive
 ```
 
 Configure, build, and test a desktop build with CMake:
@@ -181,11 +175,6 @@ Source formatting is defined by `.clang-format`:
 cmake --build build --target format
 cmake --build build --target format-check
 ```
-
-wxWidgets is pinned as a Git submodule for donor-code provenance. The exact
-revision and adapted donor files are recorded in
-[`tools/upstream-lock.json`](tools/upstream-lock.json); applicable terms are in
-[`licenses/wxWidgets.txt`](licenses/wxWidgets.txt).
 
 ## 📍 Project status
 

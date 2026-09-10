@@ -1,4 +1,0 @@
-[submodule "vendor/wxWidgets"]
-	path = vendor/wxWidgets
-	url = https://github.com/wxWidgets/wxWidgets.git
-	branch = master

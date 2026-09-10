@@ -1,9 +1,3 @@
-/*
- * Win32 behavior in this file is informed by the wxWidgets MSW donor files
- * enumerated in tools/upstream-lock.json at its pinned revision. Adaptations are
- * licensed under the wxWindows Library Licence 3.1; see licenses/wxWidgets.txt.
- */
-
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
 #include "nativekit_notification.h"
