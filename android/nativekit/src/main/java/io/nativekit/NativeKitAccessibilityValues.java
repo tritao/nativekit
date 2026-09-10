@@ -34,6 +34,8 @@ final class NativeKitAccessibilityValues {
     static final int ACCESSIBILITY_CAN_DECREMENT = 32;
     static final int ACCESSIBILITY_CAN_SCROLL_FORWARD = 64;
     static final int ACCESSIBILITY_CAN_SCROLL_BACKWARD = 128;
+    static final int ACCESSIBILITY_CAN_MOVE_NEXT = 256;
+    static final int ACCESSIBILITY_CAN_MOVE_PREVIOUS = 512;
 
     static final int ACCESSIBILITY_ACTION_ACTIVATE = 1;
     static final int ACCESSIBILITY_ACTION_FOCUS = 2;
@@ -44,6 +46,14 @@ final class NativeKitAccessibilityValues {
     static final int ACCESSIBILITY_ACTION_DECREMENT = 7;
     static final int ACCESSIBILITY_ACTION_SCROLL_FORWARD = 8;
     static final int ACCESSIBILITY_ACTION_SCROLL_BACKWARD = 9;
+    static final int ACCESSIBILITY_ACTION_MOVE_NEXT = 10;
+    static final int ACCESSIBILITY_ACTION_MOVE_PREVIOUS = 11;
+
+    static final int ACCESSIBILITY_GRANULARITY_CHARACTER = 1;
+    static final int ACCESSIBILITY_GRANULARITY_WORD = 2;
+    static final int ACCESSIBILITY_GRANULARITY_LINE = 3;
+    static final int ACCESSIBILITY_GRANULARITY_PARAGRAPH = 4;
+    static final int ACCESSIBILITY_GRANULARITY_PAGE = 5;
 
     private NativeKitAccessibilityValues() {}
 }

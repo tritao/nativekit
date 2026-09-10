@@ -9,7 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HEADER = ROOT / "include/nativekit_accessibility.h"
 OUTPUT = ROOT / "android/nativekit/src/main/java/io/nativekit/NativeKitAccessibilityValues.java"
 PREFIXES = ("NK_ACCESSIBILITY_GROUP", "NK_ACCESSIBILITY_FOCUSABLE",
-            "NK_ACCESSIBILITY_CAN_ACTIVATE", "NK_ACCESSIBILITY_ACTION_ACTIVATE")
+            "NK_ACCESSIBILITY_CAN_ACTIVATE", "NK_ACCESSIBILITY_ACTION_ACTIVATE",
+            "NK_ACCESSIBILITY_GRANULARITY_CHARACTER")
 
 
 def render() -> str:

@@ -319,8 +319,9 @@ Java_io_nativekit_consumer_MainActivity_nativePrepareAccessibility(JNIEnv *, jcl
     editor.height = 80.f;
     editor.label = "Document";
     editor.value = "hello \xf0\x9f\x98\x80";
-    if (const auto result = nk_surface_accessibility_set_node(surface, &editor); result != NK_OK)
-        return result;
+    editor.document_length = 7;
+    editor.selection_start = 6;
+    editor.selection_end = 7;
     nk_accessibility_node zoom{};
     zoom.struct_size = sizeof(zoom);
     zoom.id = 2;
@@ -333,10 +334,26 @@ Java_io_nativekit_consumer_MainActivity_nativePrepareAccessibility(JNIEnv *, jcl
     zoom.width = 200.f;
     zoom.height = 40.f;
     zoom.label = "Zoom";
+    zoom.selection_start = NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    zoom.selection_end = NK_ACCESSIBILITY_TEXT_POSITION_NONE;
     zoom.numeric_value = 100;
     zoom.numeric_minimum = 25;
     zoom.numeric_maximum = 400;
-    return nk_surface_accessibility_set_node(surface, &zoom);
+    const nk_accessibility_node nodes[] = {editor, zoom};
+    nk_accessibility_update update{};
+    update.struct_size = sizeof(update);
+    update.nodes = nodes;
+    update.node_count = 2;
+    update.flags = NK_ACCESSIBILITY_UPDATE_FOCUS;
+    update.focus = 1;
+    if (const auto result = nk_surface_accessibility_update(surface, &update); result != NK_OK)
+        return result;
+    const nk_accessibility_text_range text_ranges[] = {
+        {0, 1, 10.f, 20.f, 10.f, 20.f}, {1, 2, 20.f, 20.f, 10.f, 20.f},
+        {2, 3, 30.f, 20.f, 10.f, 20.f}, {3, 4, 40.f, 20.f, 10.f, 20.f},
+        {4, 5, 50.f, 20.f, 10.f, 20.f}, {5, 6, 60.f, 20.f, 10.f, 20.f},
+        {6, 7, 70.f, 20.f, 20.f, 20.f}};
+    return nk_surface_accessibility_set_text_ranges(surface, 1, text_ranges, 7);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -348,14 +365,23 @@ Java_io_nativekit_consumer_MainActivity_nativeUpdateAccessibility(JNIEnv *, jcla
     editor.role = NK_ACCESSIBILITY_TEXT_FIELD;
     editor.states = NK_ACCESSIBILITY_FOCUSABLE | NK_ACCESSIBILITY_MULTILINE;
     editor.actions = NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS |
-                     NK_ACCESSIBILITY_CAN_SET_VALUE | NK_ACCESSIBILITY_CAN_SET_SELECTION;
+                     NK_ACCESSIBILITY_CAN_SET_VALUE | NK_ACCESSIBILITY_CAN_SET_SELECTION |
+                     NK_ACCESSIBILITY_CAN_MOVE_NEXT | NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS;
     editor.width = 200.f;
     editor.height = 80.f;
     editor.label = "Document updated";
     editor.value = "hello \xf0\x9f\x98\x80";
-    if (nk_surface_accessibility_set_node(static_cast<nk_handle>(surface_value), &editor) != NK_OK)
-        return 1;
-    return nk_surface_accessibility_remove_node(static_cast<nk_handle>(surface_value), 2);
+    editor.document_length = 7;
+    editor.selection_start = 6;
+    editor.selection_end = 7;
+    const nk_accessibility_node_id removed[] = {2};
+    nk_accessibility_update update{};
+    update.struct_size = sizeof(update);
+    update.nodes = &editor;
+    update.node_count = 1;
+    update.removed_nodes = removed;
+    update.removed_node_count = 1;
+    return nk_surface_accessibility_update(static_cast<nk_handle>(surface_value), &update);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -366,6 +392,7 @@ Java_io_nativekit_consumer_MainActivity_nativeAccessibilityProbe(JNIEnv *, jclas
     bool valued = false;
     bool selected = false;
     bool incremented = false;
+    bool moved = false;
     nk_event event{};
     event.struct_size = sizeof(event);
     for (int attempt = 0; attempt < 64; ++attempt) {
@@ -392,11 +419,14 @@ Java_io_nativekit_consumer_MainActivity_nativeAccessibilityProbe(JNIEnv *, jclas
             }
             incremented |= value->node_id == 2 &&
                            value->action == NK_ACCESSIBILITY_ACTION_INCREMENT;
+            moved |= value->node_id == 1 &&
+                     value->action == NK_ACCESSIBILITY_ACTION_MOVE_NEXT &&
+                     value->granularity == NK_ACCESSIBILITY_GRANULARITY_WORD;
         }
         nk_event_release(&event);
         event.struct_size = sizeof(event);
     }
-    return focused && activated && valued && selected && incremented ? 0 : 3;
+    return focused && activated && valued && selected && incremented && moved ? 0 : 3;
 }
 
 extern "C" JNIEXPORT jint JNICALL

@@ -9,6 +9,10 @@ lifecycle. Surface loss and recreation are reported explicitly.
 Graphics surfaces also receive portable multi-touch, stylus, mouse, keyboard,
 text-input, and gamepad events. Android controller IDs remain internal; public
 joystick and gamepad events use NativeKit handles.
+Custom-rendered surfaces can publish an incremental accessibility tree with
+roles, state, actions, document text, selection, bounds, and visible text-run
+geometry. Batched updates cross JNI once and accessibility actions return as
+typed NativeKit events.
 
 Build with an Android SDK/NDK installation:
 

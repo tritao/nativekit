@@ -6,6 +6,9 @@ import static org.junit.Assert.assertNotEquals;
 import android.content.ClipData;
 import android.content.Intent;
 import android.net.Uri;
+import android.app.UiAutomation;
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.view.accessibility.AccessibilityEvent;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import org.junit.Test;
@@ -49,7 +52,7 @@ public final class ConsumerTest {
     }
 
     @Test
-    public void graphicsSurfacesRenderAndRecoverAcrossLifecycle() {
+    public void graphicsSurfacesRenderAndRecoverAcrossLifecycle() throws Exception {
         Intent launch = new Intent(
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
                 .getTargetContext(), MainActivity.class);
@@ -61,7 +64,23 @@ public final class ConsumerTest {
                 assertEquals(0, activity.graphicsSurfaceProbe());
                 activity.dispatchInputForTest();
                 assertEquals(0, activity.inputProbe());
-                activity.dispatchAccessibilityForTest();
+            });
+            UiAutomation automation =
+                androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                    .getUiAutomation();
+            AccessibilityServiceInfo service = automation.getServiceInfo();
+            service.flags |= AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
+            automation.setServiceInfo(service);
+            automation.executeAndWaitForEvent(
+                () -> scenario.onActivity(MainActivity::dispatchAccessibilityForTest),
+                event -> event.getEventType() ==
+                         AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                3000);
+            automation.executeAndWaitForEvent(
+                () -> scenario.onActivity(MainActivity::dispatchAccessibilityHoverForTest),
+                event -> event.getEventType() == AccessibilityEvent.TYPE_VIEW_HOVER_ENTER,
+                3000);
+            scenario.onActivity(activity -> {
                 assertEquals(0, activity.accessibilityProbe());
                 assertEquals(0, activity.setGraphicsSurfaceVisible(false));
             });

@@ -49,7 +49,9 @@ enum {
     NK_ACCESSIBILITY_CAN_INCREMENT = 1u << 4,
     NK_ACCESSIBILITY_CAN_DECREMENT = 1u << 5,
     NK_ACCESSIBILITY_CAN_SCROLL_FORWARD = 1u << 6,
-    NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD = 1u << 7
+    NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD = 1u << 7,
+    NK_ACCESSIBILITY_CAN_MOVE_NEXT = 1u << 8,
+    NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS = 1u << 9
 };
 
 typedef uint32_t nk_accessibility_action;
@@ -62,7 +64,18 @@ enum {
     NK_ACCESSIBILITY_ACTION_INCREMENT = 6,
     NK_ACCESSIBILITY_ACTION_DECREMENT = 7,
     NK_ACCESSIBILITY_ACTION_SCROLL_FORWARD = 8,
-    NK_ACCESSIBILITY_ACTION_SCROLL_BACKWARD = 9
+    NK_ACCESSIBILITY_ACTION_SCROLL_BACKWARD = 9,
+    NK_ACCESSIBILITY_ACTION_MOVE_NEXT = 10,
+    NK_ACCESSIBILITY_ACTION_MOVE_PREVIOUS = 11
+};
+
+typedef uint32_t nk_accessibility_text_granularity;
+enum {
+    NK_ACCESSIBILITY_GRANULARITY_CHARACTER = 1,
+    NK_ACCESSIBILITY_GRANULARITY_WORD = 2,
+    NK_ACCESSIBILITY_GRANULARITY_LINE = 3,
+    NK_ACCESSIBILITY_GRANULARITY_PARAGRAPH = 4,
+    NK_ACCESSIBILITY_GRANULARITY_PAGE = 5
 };
 
 typedef uint32_t nk_accessibility_text_position;
@@ -86,7 +99,11 @@ typedef struct nk_accessibility_node {
     double numeric_value;
     double numeric_minimum;
     double numeric_maximum;
-    uint64_t reserved[2];
+    /* The UTF-8 value may be a bounded window of a larger text document. */
+    nk_accessibility_text_position text_start;
+    nk_accessibility_text_position document_length;
+    nk_accessibility_text_position selection_start;
+    nk_accessibility_text_position selection_end;
 } nk_accessibility_node;
 
 /* Selection positions are Unicode code-point offsets in the node's value. */
@@ -97,8 +114,32 @@ typedef struct nk_accessibility_action_event {
     uint32_t value_length;
     nk_accessibility_text_position selection_start;
     nk_accessibility_text_position selection_end;
-    uint32_t reserved[2];
+    nk_accessibility_text_granularity granularity;
+    uint32_t reserved;
 } nk_accessibility_action_event;
+
+typedef uint32_t nk_accessibility_update_flags;
+enum { NK_ACCESSIBILITY_UPDATE_FOCUS = 1u << 0 };
+
+typedef struct nk_accessibility_update {
+    uint32_t struct_size;
+    nk_accessibility_update_flags flags;
+    const nk_accessibility_node *nodes NK_BORROWED_ARRAY(node_count);
+    uint32_t node_count;
+    const nk_accessibility_node_id *removed_nodes NK_BORROWED_ARRAY(removed_node_count);
+    uint32_t removed_node_count;
+    nk_accessibility_node_id focus;
+    uint32_t reserved;
+} nk_accessibility_update;
+
+typedef struct nk_accessibility_text_range {
+    nk_accessibility_text_position start;
+    nk_accessibility_text_position end;
+    float x;
+    float y;
+    float width;
+    float height;
+} nk_accessibility_text_range;
 
 /* Copies and incrementally inserts or replaces one virtual semantic node. */
 NK_API nk_result NK_CALL nk_surface_accessibility_set_node(
@@ -111,6 +152,14 @@ NK_API nk_result NK_CALL nk_surface_accessibility_clear(nk_handle surface);
 /* Moves accessibility focus; root clears virtual focus. */
 NK_API nk_result NK_CALL nk_surface_accessibility_set_focus(
     nk_handle surface, nk_accessibility_node_id node);
+/* Applies all replacements, removals, and optional focus as one notification. */
+NK_API nk_result NK_CALL nk_surface_accessibility_update(
+    nk_handle surface, const nk_accessibility_update *update);
+/* Supplies screen-reader geometry for visible text runs or characters. */
+NK_API nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
+    nk_handle surface, nk_accessibility_node_id node,
+    const nk_accessibility_text_range *ranges NK_BORROWED_ARRAY(range_count),
+    uint32_t range_count);
 
 /* Returns a borrowed UTF-8 view valid until nk_event_release(). */
 NK_API nk_result NK_CALL nk_accessibility_action_event_value(

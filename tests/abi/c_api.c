@@ -29,6 +29,12 @@ int main(void) {
     assert(nk_api_version() == NK_API_VERSION);
     assert(nk_init(&options) == NK_OK);
     assert(nk_surface_accessibility_clear(NK_INVALID_HANDLE) == NK_ERROR_UNSUPPORTED);
+    nk_accessibility_update accessibility_update = {0};
+    accessibility_update.struct_size = sizeof(accessibility_update);
+    assert(nk_surface_accessibility_update(NK_INVALID_HANDLE, &accessibility_update) ==
+           NK_ERROR_UNSUPPORTED);
+    assert(nk_surface_accessibility_set_text_ranges(NK_INVALID_HANDLE, 1, NULL, 0) ==
+           NK_ERROR_UNSUPPORTED);
     (void)nk_get_capabilities();
     (void)nk_vulkan_supported();
     uint32_t vulkan_extension_count = 0;

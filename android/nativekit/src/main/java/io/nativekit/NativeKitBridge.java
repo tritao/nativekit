@@ -17,6 +17,7 @@ import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.PixelFormat;
 import android.net.Uri;
 import android.os.Build;
@@ -109,6 +110,8 @@ final class NativeKitBridge {
         private final Map<Integer, SemanticNode> semanticNodes = new HashMap<>();
         private final SemanticProvider semanticProvider = new SemanticProvider();
         private int accessibilityFocus;
+        private int hoveredSemanticNode;
+        private boolean batchingSemanticUpdate;
 
         private static final class SemanticNode {
             int id;
@@ -126,6 +129,12 @@ final class NativeKitBridge {
             double numericValue;
             double numericMinimum;
             double numericMaximum;
+            int textStart;
+            int documentLength;
+            int selectionStart;
+            int selectionEnd;
+            int[] textRangePositions = new int[0];
+            float[] textRangeBounds = new float[0];
         }
 
         NativeSurfaceView(Context context, long handle) {
@@ -139,6 +148,51 @@ final class NativeKitBridge {
         @Override
         public AccessibilityNodeProvider getAccessibilityNodeProvider() {
             return semanticNodes.isEmpty() ? null : semanticProvider;
+        }
+
+        @Override
+        public boolean dispatchHoverEvent(MotionEvent event) {
+            AccessibilityManager manager = (AccessibilityManager)getContext().getSystemService(
+                Context.ACCESSIBILITY_SERVICE);
+            if (manager == null || !manager.isTouchExplorationEnabled())
+                return super.dispatchHoverEvent(event);
+            int action = event.getActionMasked();
+            int target = action == MotionEvent.ACTION_HOVER_EXIT
+                ? 0 : semanticNodeAt(logical(event.getX()), logical(event.getY()));
+            if (target != hoveredSemanticNode) {
+                if (hoveredSemanticNode != 0)
+                    sendVirtualEvent(hoveredSemanticNode,
+                                     AccessibilityEvent.TYPE_VIEW_HOVER_EXIT);
+                hoveredSemanticNode = target;
+                if (target != 0)
+                    sendVirtualEvent(target, AccessibilityEvent.TYPE_VIEW_HOVER_ENTER);
+            }
+            return target != 0 || action == MotionEvent.ACTION_HOVER_EXIT;
+        }
+
+        private int semanticNodeAt(float x, float y) {
+            SemanticNode result = null;
+            for (SemanticNode node : semanticNodes.values()) {
+                if (x < node.x || y < node.y || x >= node.x + node.width ||
+                    y >= node.y + node.height)
+                    continue;
+                if (result == null || semanticDepth(node) > semanticDepth(result) ||
+                    (semanticDepth(node) == semanticDepth(result) &&
+                     node.width * node.height < result.width * result.height))
+                    result = node;
+            }
+            return result == null ? 0 : result.id;
+        }
+
+        private int semanticDepth(SemanticNode node) {
+            int depth = 0;
+            for (int parent = node.parent; parent != 0 && depth <= semanticNodes.size(); ++depth) {
+                SemanticNode value = semanticNodes.get(parent);
+                if (value == null)
+                    break;
+                parent = value.parent;
+            }
+            return depth;
         }
 
         private final class SemanticProvider extends AccessibilityNodeProvider {
@@ -178,6 +232,7 @@ final class NativeKitBridge {
                 String value = "";
                 int selectionStart = -1;
                 int selectionEnd = -1;
+                int granularity = 0;
                 switch (action) {
                 case AccessibilityNodeInfo.ACTION_CLICK:
                     if ((node.actions & ACCESSIBILITY_CAN_ACTIVATE) == 0)
@@ -239,11 +294,27 @@ final class NativeKitBridge {
                         ? ACCESSIBILITY_ACTION_DECREMENT
                         : ACCESSIBILITY_ACTION_SCROLL_BACKWARD;
                     break;
+                case AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY:
+                case AccessibilityNodeInfo.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY:
+                    if ((node.actions & (action ==
+                            AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY
+                                ? ACCESSIBILITY_CAN_MOVE_NEXT
+                                : ACCESSIBILITY_CAN_MOVE_PREVIOUS)) == 0 || arguments == null)
+                        return false;
+                    granularity = nativeTextGranularity(arguments.getInt(
+                        AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT));
+                    if (granularity == 0)
+                        return false;
+                    nativeAction = action ==
+                            AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY
+                        ? ACCESSIBILITY_ACTION_MOVE_NEXT
+                        : ACCESSIBILITY_ACTION_MOVE_PREVIOUS;
+                    break;
                 default:
                     return false;
                 }
                 nativeOnAccessibilityAction(nativeHandle, virtualId, nativeAction, value,
-                                            selectionStart, selectionEnd);
+                                            selectionStart, selectionEnd, granularity);
                 return true;
             }
 
@@ -251,6 +322,49 @@ final class NativeKitBridge {
             public AccessibilityNodeInfo findFocus(int focus) {
                 return accessibilityFocus == 0 ? null
                                                : createAccessibilityNodeInfo(accessibilityFocus);
+            }
+
+            @Override
+            public void addExtraDataToAccessibilityNodeInfo(int virtualId,
+                                                             AccessibilityNodeInfo info,
+                                                             String key, Bundle arguments) {
+                SemanticNode node = semanticNodes.get(virtualId);
+                if (node == null ||
+                    !AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY.equals(key) ||
+                    arguments == null)
+                    return;
+                int start = arguments.getInt(
+                    AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_START_INDEX, 0);
+                int length = arguments.getInt(
+                    AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_LENGTH, 0);
+                ArrayList<RectF> locations = new ArrayList<>();
+                int[] screen = new int[2];
+                getLocationOnScreen(screen);
+                float density = getResources().getDisplayMetrics().density;
+                for (int index = 0; index < length; ++index) {
+                    int utf16 = Math.max(0, Math.min(start + index, node.value.length()));
+                    if (utf16 > 0 && utf16 < node.value.length() &&
+                        Character.isLowSurrogate(node.value.charAt(utf16)) &&
+                        Character.isHighSurrogate(node.value.charAt(utf16 - 1)))
+                        --utf16;
+                    int absolute = node.textStart +
+                        Character.codePointCount(node.value, 0, utf16);
+                    RectF location = null;
+                    for (int range = 0; range < node.textRangePositions.length / 2; ++range) {
+                        if (absolute < node.textRangePositions[range * 2] ||
+                            absolute >= node.textRangePositions[range * 2 + 1])
+                            continue;
+                        int rectangle = range * 4;
+                        float left = node.textRangeBounds[rectangle] * density + screen[0];
+                        float top = node.textRangeBounds[rectangle + 1] * density + screen[1];
+                        location = new RectF(left, top,
+                            left + node.textRangeBounds[rectangle + 2] * density,
+                            top + node.textRangeBounds[rectangle + 3] * density);
+                        break;
+                    }
+                    locations.add(location);
+                }
+                info.getExtras().putParcelableArrayList(key, locations);
             }
         }
 
@@ -269,9 +383,17 @@ final class NativeKitBridge {
             info.setMultiLine((node.states & ACCESSIBILITY_MULTILINE) != 0);
             info.setEditable(node.role == ACCESSIBILITY_TEXT_FIELD &&
                              (node.states & ACCESSIBILITY_READ_ONLY) == 0);
+            if (node.selectionStart >= node.textStart && node.selectionEnd >= node.selectionStart) {
+                int localStart = codeUnitIndex(node.value, node.selectionStart - node.textStart);
+                int localEnd = codeUnitIndex(node.value, node.selectionEnd - node.textStart);
+                info.setTextSelection(localStart, localEnd);
+            }
             info.setAccessibilityFocused(accessibilityFocus == node.id);
             if (node.role == ACCESSIBILITY_HEADING && Build.VERSION.SDK_INT >= 28)
                 info.setHeading(true);
+            if (Build.VERSION.SDK_INT >= 26 && node.textRangePositions.length != 0)
+                info.setAvailableExtraData(Collections.singletonList(
+                    AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY));
             if (node.role == ACCESSIBILITY_SLIDER)
                 info.setRangeInfo(AccessibilityNodeInfo.RangeInfo.obtain(
                     AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT, (float)node.numericMinimum,
@@ -307,6 +429,39 @@ final class NativeKitBridge {
             if ((actions & (ACCESSIBILITY_CAN_DECREMENT |
                             ACCESSIBILITY_CAN_SCROLL_BACKWARD)) != 0)
                 info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
+            int granularities = 0;
+            if ((actions & (ACCESSIBILITY_CAN_MOVE_NEXT | ACCESSIBILITY_CAN_MOVE_PREVIOUS)) != 0)
+                granularities = AccessibilityNodeInfo.MOVEMENT_GRANULARITY_CHARACTER |
+                    AccessibilityNodeInfo.MOVEMENT_GRANULARITY_WORD |
+                    AccessibilityNodeInfo.MOVEMENT_GRANULARITY_LINE |
+                    AccessibilityNodeInfo.MOVEMENT_GRANULARITY_PARAGRAPH |
+                    AccessibilityNodeInfo.MOVEMENT_GRANULARITY_PAGE;
+            info.setMovementGranularities(granularities);
+            if ((actions & ACCESSIBILITY_CAN_MOVE_NEXT) != 0)
+                info.addAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY);
+            if ((actions & ACCESSIBILITY_CAN_MOVE_PREVIOUS) != 0)
+                info.addAction(AccessibilityNodeInfo.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY);
+        }
+
+        private int codeUnitIndex(String text, int codePointIndex) {
+            int count = text.codePointCount(0, text.length());
+            return text.offsetByCodePoints(0, Math.max(0, Math.min(codePointIndex, count)));
+        }
+
+        private int nativeTextGranularity(int value) {
+            switch (value) {
+            case AccessibilityNodeInfo.MOVEMENT_GRANULARITY_CHARACTER:
+                return ACCESSIBILITY_GRANULARITY_CHARACTER;
+            case AccessibilityNodeInfo.MOVEMENT_GRANULARITY_WORD:
+                return ACCESSIBILITY_GRANULARITY_WORD;
+            case AccessibilityNodeInfo.MOVEMENT_GRANULARITY_LINE:
+                return ACCESSIBILITY_GRANULARITY_LINE;
+            case AccessibilityNodeInfo.MOVEMENT_GRANULARITY_PARAGRAPH:
+                return ACCESSIBILITY_GRANULARITY_PARAGRAPH;
+            case AccessibilityNodeInfo.MOVEMENT_GRANULARITY_PAGE:
+                return ACCESSIBILITY_GRANULARITY_PAGE;
+            default: return 0;
+            }
         }
 
         private String accessibilityClassName(int role) {
@@ -326,6 +481,8 @@ final class NativeKitBridge {
         }
 
         private void sendVirtualEvent(int id, int kind) {
+            if (batchingSemanticUpdate)
+                return;
             AccessibilityManager manager = (AccessibilityManager)getContext().getSystemService(
                 Context.ACCESSIBILITY_SERVICE);
             if (manager == null || !manager.isEnabled())
@@ -341,7 +498,8 @@ final class NativeKitBridge {
         void setSemanticNode(int id, int parent, int childIndex, int role, int states,
                              int actions, float x, float y, float width, float height,
                              String label, String value, double numericValue,
-                             double numericMinimum, double numericMaximum) {
+                             double numericMinimum, double numericMaximum, int textStart,
+                             int documentLength, int selectionStart, int selectionEnd) {
             SemanticNode node = new SemanticNode();
             node.id = id;
             node.parent = parent;
@@ -358,6 +516,10 @@ final class NativeKitBridge {
             node.numericValue = numericValue;
             node.numericMinimum = numericMinimum;
             node.numericMaximum = numericMaximum;
+            node.textStart = textStart;
+            node.documentLength = documentLength;
+            node.selectionStart = selectionStart;
+            node.selectionEnd = selectionEnd;
             semanticNodes.put(id, node);
             sendVirtualEvent(id, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
         }
@@ -393,6 +555,15 @@ final class NativeKitBridge {
             sendSemanticHostEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
         }
 
+        void setSemanticTextRanges(int id, int[] positions, float[] bounds) {
+            SemanticNode node = semanticNodes.get(id);
+            if (node == null)
+                return;
+            node.textRangePositions = positions;
+            node.textRangeBounds = bounds;
+            sendVirtualEvent(id, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        }
+
         void setSemanticFocus(int id) {
             accessibilityFocus = id;
             if (id == 0)
@@ -402,6 +573,8 @@ final class NativeKitBridge {
         }
 
         private void sendSemanticHostEvent(int kind) {
+            if (batchingSemanticUpdate)
+                return;
             AccessibilityManager manager = (AccessibilityManager)getContext().getSystemService(
                 Context.ACCESSIBILITY_SERVICE);
             if (manager != null && manager.isEnabled())
@@ -950,9 +1123,12 @@ final class NativeKitBridge {
                                              int childIndex, int role, int states, int actions,
                                              float x, float y, float width, float height,
                                              String label, String value, double numericValue,
-                                             double numericMinimum, double numericMaximum) {
+                                             double numericMinimum, double numericMaximum,
+                                             int textStart, int documentLength,
+                                             int selectionStart, int selectionEnd) {
         ((NativeSurfaceView)view).setSemanticNode(id, parent, childIndex, role, states, actions,
-            x, y, width, height, label, value, numericValue, numericMinimum, numericMaximum);
+            x, y, width, height, label, value, numericValue, numericMinimum, numericMaximum,
+            textStart, documentLength, selectionStart, selectionEnd);
     }
 
     static void removeSurfaceAccessibilityNode(SurfaceView view, int id) {
@@ -965,6 +1141,38 @@ final class NativeKitBridge {
 
     static void setSurfaceAccessibilityFocus(SurfaceView view, int id) {
         ((NativeSurfaceView)view).setSemanticFocus(id);
+    }
+
+    static void updateSurfaceAccessibility(SurfaceView view, int[] nodes, float[] bounds,
+                                           String[] labels, String[] values, double[] ranges,
+                                           int[] removed, int focus, boolean updateFocus) {
+        NativeSurfaceView surface = (NativeSurfaceView)view;
+        surface.batchingSemanticUpdate = true;
+        try {
+            for (int id : removed)
+                surface.removeSemanticNode(id);
+            for (int index = 0; index < labels.length; ++index) {
+                int integers = index * 10;
+                int rectangle = index * 4;
+                int range = index * 3;
+                surface.setSemanticNode(nodes[integers], nodes[integers + 1],
+                    nodes[integers + 2], nodes[integers + 3], nodes[integers + 4],
+                    nodes[integers + 5], bounds[rectangle], bounds[rectangle + 1],
+                    bounds[rectangle + 2], bounds[rectangle + 3], labels[index], values[index],
+                    ranges[range], ranges[range + 1], ranges[range + 2], nodes[integers + 6],
+                    nodes[integers + 7], nodes[integers + 8], nodes[integers + 9]);
+            }
+            if (updateFocus)
+                surface.setSemanticFocus(focus);
+        } finally {
+            surface.batchingSemanticUpdate = false;
+        }
+        surface.sendSemanticHostEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+    }
+
+    static void setSurfaceAccessibilityTextRanges(SurfaceView view, int id, int[] positions,
+                                                   float[] bounds) {
+        ((NativeSurfaceView)view).setSemanticTextRanges(id, positions, bounds);
     }
 
     private static void detachAfterRendererGone(WebView view) {
@@ -1766,7 +1974,7 @@ final class NativeKitBridge {
                                                 int compositionStart, int compositionEnd);
     private static native void nativeOnAccessibilityAction(long handle, int node, int action,
                                                            String value, int selectionStart,
-                                                           int selectionEnd);
+                                                           int selectionEnd, int granularity);
     private static native void nativeOnGamepadAxis(long handle, int device, int axis, float value);
     private static native void nativeOnGamepadButton(long handle, int device, int button,
                                                      boolean pressed);

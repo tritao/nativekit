@@ -1860,7 +1860,24 @@ nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle handle,
                                  NK_ACCESSIBILITY_CAN_SET_SELECTION |
                                  NK_ACCESSIBILITY_CAN_INCREMENT | NK_ACCESSIBILITY_CAN_DECREMENT |
                                  NK_ACCESSIBILITY_CAN_SCROLL_FORWARD |
-                                 NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD;
+                                 NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD |
+                                 NK_ACCESSIBILITY_CAN_MOVE_NEXT |
+                                 NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS;
+    uint32_t value_codepoints = 0;
+    if (node && node->value)
+        for (const auto *cursor = reinterpret_cast<const unsigned char *>(node->value); *cursor;
+             ++cursor)
+            value_codepoints += (*cursor & 0xc0u) != 0x80u;
+    const uint64_t text_end = node ? static_cast<uint64_t>(node->text_start) + value_codepoints : 0;
+    const bool no_selection = node &&
+                              node->selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                              node->selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    const bool valid_selection = node &&
+                                 node->selection_start != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                                 node->selection_end != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                                 node->selection_start <= node->selection_end &&
+                                 node->selection_start >= node->text_start &&
+                                 node->selection_end <= text_end;
     if (!node || node->struct_size < sizeof(*node) || node->id == NK_ACCESSIBILITY_ROOT ||
         node->id > INT_MAX || node->parent_id > INT_MAX || node->id == node->parent_id ||
         node->child_index > INT_MAX ||
@@ -1874,6 +1891,10 @@ nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle handle,
           node->numeric_value < node->numeric_minimum ||
           node->numeric_value > node->numeric_maximum))) {
         nk::core::set_error("invalid accessibility node");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    if (text_end > node->document_length || (!no_selection && !valid_selection)) {
+        nk::core::set_error("accessibility text ranges are inconsistent with the node value");
         return NK_ERROR_INVALID_ARGUMENT;
     }
     if (node->parent_id != NK_ACCESSIBILITY_ROOT &&
@@ -1904,7 +1925,7 @@ nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle handle,
             env->DeleteLocalRef(value);
         return NK_ERROR_OUT_OF_MEMORY;
     }
-    jvalue arguments[16]{};
+    jvalue arguments[20]{};
     arguments[0].l = resource->view;
     arguments[1].i = static_cast<jint>(node->id);
     arguments[2].i = static_cast<jint>(node->parent_id);
@@ -1921,9 +1942,17 @@ nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle handle,
     arguments[13].d = node->numeric_value;
     arguments[14].d = node->numeric_minimum;
     arguments[15].d = node->numeric_maximum;
+    arguments[16].i = static_cast<jint>(node->text_start);
+    arguments[17].i = static_cast<jint>(node->document_length);
+    arguments[18].i = node->selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE
+                          ? -1
+                          : static_cast<jint>(node->selection_start);
+    arguments[19].i = node->selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE
+                          ? -1
+                          : static_cast<jint>(node->selection_end);
     const auto result = java_void_surface(
         resource, "setSurfaceAccessibilityNode",
-        "(Landroid/view/SurfaceView;IIIIIIFFFFLjava/lang/String;Ljava/lang/String;DDD)V",
+        "(Landroid/view/SurfaceView;IIIIIIFFFFLjava/lang/String;Ljava/lang/String;DDDIIII)V",
         arguments);
     env->DeleteLocalRef(label);
     env->DeleteLocalRef(value);
@@ -1992,6 +2021,253 @@ nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle handle,
     arguments[1].i = static_cast<jint>(node);
     return java_void_surface(resource, "setSurfaceAccessibilityFocus",
                              "(Landroid/view/SurfaceView;I)V", arguments);
+}
+
+nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
+                                                   const nk_accessibility_update *update) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!update || update->struct_size < sizeof(*update) ||
+        (update->flags & ~NK_ACCESSIBILITY_UPDATE_FOCUS) ||
+        (update->node_count && !update->nodes) ||
+        (update->removed_node_count && !update->removed_nodes) ||
+        update->node_count > INT_MAX / 10 || update->removed_node_count > INT_MAX ||
+        update->focus > INT_MAX) {
+        nk::core::set_error("invalid accessibility update");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto parents = resource->semantic_parents;
+    for (uint32_t index = 0; index < update->removed_node_count; ++index) {
+        const auto removed = update->removed_nodes[index];
+        if (!removed || parents.find(removed) == parents.end()) {
+            nk::core::set_error("accessibility update removes an unknown node");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        std::vector<nk_accessibility_node_id> pending{removed};
+        for (std::size_t item = 0; item < pending.size(); ++item)
+            for (const auto &[candidate, parent] : parents)
+                if (parent == pending[item])
+                    pending.push_back(candidate);
+        for (const auto id : pending)
+            parents.erase(id);
+    }
+    for (uint32_t index = 0; index < update->node_count; ++index) {
+        const auto &node = update->nodes[index];
+        constexpr auto all_states = NK_ACCESSIBILITY_FOCUSABLE | NK_ACCESSIBILITY_FOCUSED |
+                                    NK_ACCESSIBILITY_SELECTED | NK_ACCESSIBILITY_CHECKED |
+                                    NK_ACCESSIBILITY_DISABLED | NK_ACCESSIBILITY_READ_ONLY |
+                                    NK_ACCESSIBILITY_MULTILINE | NK_ACCESSIBILITY_PASSWORD |
+                                    NK_ACCESSIBILITY_EXPANDED;
+        constexpr auto all_actions = NK_ACCESSIBILITY_CAN_ACTIVATE |
+                                     NK_ACCESSIBILITY_CAN_FOCUS |
+                                     NK_ACCESSIBILITY_CAN_SET_VALUE |
+                                     NK_ACCESSIBILITY_CAN_SET_SELECTION |
+                                     NK_ACCESSIBILITY_CAN_INCREMENT |
+                                     NK_ACCESSIBILITY_CAN_DECREMENT |
+                                     NK_ACCESSIBILITY_CAN_SCROLL_FORWARD |
+                                     NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD |
+                                     NK_ACCESSIBILITY_CAN_MOVE_NEXT |
+                                     NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS;
+        uint32_t value_codepoints = 0;
+        if (node.value)
+            for (const auto *cursor = reinterpret_cast<const unsigned char *>(node.value); *cursor;
+                 ++cursor)
+                value_codepoints += (*cursor & 0xc0u) != 0x80u;
+        const uint64_t text_end = static_cast<uint64_t>(node.text_start) + value_codepoints;
+        const bool no_selection =
+            node.selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+            node.selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+        const bool valid_selection =
+            node.selection_start != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+            node.selection_end != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+            node.selection_start <= node.selection_end && node.selection_start >= node.text_start &&
+            node.selection_end <= text_end;
+        if (node.struct_size < sizeof(node) || !node.id || node.id > INT_MAX ||
+            node.parent_id > INT_MAX || node.id == node.parent_id || node.child_index > INT_MAX ||
+            node.role > NK_ACCESSIBILITY_SCROLL_AREA || (node.states & ~all_states) ||
+            (node.actions & ~all_actions) || node.text_start > INT_MAX ||
+            node.document_length > INT_MAX || text_end > node.document_length ||
+            (!no_selection && !valid_selection) || !std::isfinite(node.x) ||
+            !std::isfinite(node.y) || !std::isfinite(node.width) || !std::isfinite(node.height) ||
+            node.width < 0 || node.height < 0 || !std::isfinite(node.numeric_value) ||
+            !std::isfinite(node.numeric_minimum) || !std::isfinite(node.numeric_maximum) ||
+            (node.role == NK_ACCESSIBILITY_SLIDER &&
+             (node.numeric_minimum > node.numeric_maximum ||
+              node.numeric_value < node.numeric_minimum ||
+              node.numeric_value > node.numeric_maximum)) ||
+            (node.parent_id && parents.find(node.parent_id) == parents.end())) {
+            nk::core::set_error("invalid node in accessibility update");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        auto ancestor = node.parent_id;
+        for (std::size_t depth = 0; ancestor; ++depth) {
+            if (ancestor == node.id || depth > parents.size()) {
+                nk::core::set_error("accessibility update would create a cycle");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            const auto found = parents.find(ancestor);
+            ancestor = found == parents.end() ? 0 : found->second;
+        }
+        parents[node.id] = node.parent_id;
+    }
+    if ((update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS) && update->focus &&
+        parents.find(update->focus) == parents.end()) {
+        nk::core::set_error("accessibility update focuses an unknown node");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+
+    auto *env = environment();
+    if (!env)
+        return NK_ERROR_WRONG_THREAD;
+    const auto node_count = static_cast<jsize>(update->node_count);
+    auto integers = env->NewIntArray(node_count * 10);
+    auto bounds = env->NewFloatArray(node_count * 4);
+    auto ranges = env->NewDoubleArray(node_count * 3);
+    auto removed = env->NewIntArray(static_cast<jsize>(update->removed_node_count));
+    auto string_class = env->FindClass("java/lang/String");
+    auto labels = string_class ? env->NewObjectArray(node_count, string_class, nullptr) : nullptr;
+    auto values = string_class ? env->NewObjectArray(node_count, string_class, nullptr) : nullptr;
+    if (!integers || !bounds || !ranges || !removed || !string_class || !labels || !values) {
+        clear_java_exception(env, "Android accessibility update allocation failed");
+        return NK_ERROR_OUT_OF_MEMORY;
+    }
+    std::vector<jint> integer_values(update->node_count * 10);
+    std::vector<jfloat> bound_values(update->node_count * 4);
+    std::vector<jdouble> range_values(update->node_count * 3);
+    std::vector<jint> removed_values(update->removed_node_count);
+    for (uint32_t index = 0; index < update->node_count; ++index) {
+        const auto &node = update->nodes[index];
+        const auto integer = index * 10;
+        integer_values[integer] = static_cast<jint>(node.id);
+        integer_values[integer + 1] = static_cast<jint>(node.parent_id);
+        integer_values[integer + 2] = static_cast<jint>(node.child_index);
+        integer_values[integer + 3] = static_cast<jint>(node.role);
+        integer_values[integer + 4] = static_cast<jint>(node.states);
+        integer_values[integer + 5] = static_cast<jint>(node.actions);
+        integer_values[integer + 6] = static_cast<jint>(node.text_start);
+        integer_values[integer + 7] = static_cast<jint>(node.document_length);
+        integer_values[integer + 8] = node.selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE
+                                          ? -1
+                                          : static_cast<jint>(node.selection_start);
+        integer_values[integer + 9] = node.selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE
+                                          ? -1
+                                          : static_cast<jint>(node.selection_end);
+        const auto rectangle = index * 4;
+        bound_values[rectangle] = node.x;
+        bound_values[rectangle + 1] = node.y;
+        bound_values[rectangle + 2] = node.width;
+        bound_values[rectangle + 3] = node.height;
+        const auto range = index * 3;
+        range_values[range] = node.numeric_value;
+        range_values[range + 1] = node.numeric_minimum;
+        range_values[range + 2] = node.numeric_maximum;
+        auto label = from_utf8(env, node.label ? node.label : "");
+        auto value = from_utf8(env, node.value ? node.value : "");
+        if (!label || !value) {
+            clear_java_exception(env, "Android accessibility string allocation failed");
+            return NK_ERROR_OUT_OF_MEMORY;
+        }
+        env->SetObjectArrayElement(labels, static_cast<jsize>(index), label);
+        env->SetObjectArrayElement(values, static_cast<jsize>(index), value);
+        env->DeleteLocalRef(label);
+        env->DeleteLocalRef(value);
+    }
+    for (uint32_t index = 0; index < update->removed_node_count; ++index)
+        removed_values[index] = static_cast<jint>(update->removed_nodes[index]);
+    env->SetIntArrayRegion(integers, 0, node_count * 10, integer_values.data());
+    env->SetFloatArrayRegion(bounds, 0, node_count * 4, bound_values.data());
+    env->SetDoubleArrayRegion(ranges, 0, node_count * 3, range_values.data());
+    if (!removed_values.empty())
+        env->SetIntArrayRegion(removed, 0, static_cast<jsize>(removed_values.size()),
+                               removed_values.data());
+    jvalue arguments[9]{};
+    arguments[0].l = resource->view;
+    arguments[1].l = integers;
+    arguments[2].l = bounds;
+    arguments[3].l = labels;
+    arguments[4].l = values;
+    arguments[5].l = ranges;
+    arguments[6].l = removed;
+    arguments[7].i = static_cast<jint>(update->focus);
+    arguments[8].z = (update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS) ? JNI_TRUE : JNI_FALSE;
+    const auto result = java_void_surface(
+        resource, "updateSurfaceAccessibility",
+        "(Landroid/view/SurfaceView;[I[F[Ljava/lang/String;[Ljava/lang/String;[D[IIZ)V",
+        arguments);
+    env->DeleteLocalRef(integers);
+    env->DeleteLocalRef(bounds);
+    env->DeleteLocalRef(labels);
+    env->DeleteLocalRef(values);
+    env->DeleteLocalRef(ranges);
+    env->DeleteLocalRef(removed);
+    env->DeleteLocalRef(string_class);
+    if (result == NK_OK)
+        resource->semantic_parents = std::move(parents);
+    return result;
+}
+
+nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
+    nk_handle handle, nk_accessibility_node_id node, const nk_accessibility_text_range *ranges,
+    uint32_t range_count) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!node || node > INT_MAX || resource->semantic_parents.find(node) ==
+                                           resource->semantic_parents.end() ||
+        (range_count && !ranges) || range_count > INT_MAX / 4) {
+        nk::core::set_error("invalid accessibility text ranges");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    std::vector<jint> positions(range_count * 2);
+    std::vector<jfloat> bounds(range_count * 4);
+    nk_accessibility_text_position previous = 0;
+    for (uint32_t index = 0; index < range_count; ++index) {
+        const auto &range = ranges[index];
+        if (range.start >= range.end || range.start < previous || range.end > INT_MAX ||
+            !std::isfinite(range.x) || !std::isfinite(range.y) ||
+            !std::isfinite(range.width) || !std::isfinite(range.height) || range.width < 0 ||
+            range.height < 0) {
+            nk::core::set_error("accessibility text ranges are invalid or unordered");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        positions[index * 2] = static_cast<jint>(range.start);
+        positions[index * 2 + 1] = static_cast<jint>(range.end);
+        bounds[index * 4] = range.x;
+        bounds[index * 4 + 1] = range.y;
+        bounds[index * 4 + 2] = range.width;
+        bounds[index * 4 + 3] = range.height;
+        previous = range.end;
+    }
+    auto *env = environment();
+    if (!env)
+        return NK_ERROR_WRONG_THREAD;
+    auto java_positions = env->NewIntArray(static_cast<jsize>(positions.size()));
+    auto java_bounds = env->NewFloatArray(static_cast<jsize>(bounds.size()));
+    if (!java_positions || !java_bounds) {
+        clear_java_exception(env, "Android accessibility range allocation failed");
+        return NK_ERROR_OUT_OF_MEMORY;
+    }
+    if (!positions.empty())
+        env->SetIntArrayRegion(java_positions, 0, static_cast<jsize>(positions.size()),
+                               positions.data());
+    if (!bounds.empty())
+        env->SetFloatArrayRegion(java_bounds, 0, static_cast<jsize>(bounds.size()), bounds.data());
+    jvalue arguments[4]{};
+    arguments[0].l = resource->view;
+    arguments[1].i = static_cast<jint>(node);
+    arguments[2].l = java_positions;
+    arguments[3].l = java_bounds;
+    const auto result = java_void_surface(
+        resource, "setSurfaceAccessibilityTextRanges", "(Landroid/view/SurfaceView;I[I[F)V",
+        arguments);
+    env->DeleteLocalRef(java_positions);
+    env->DeleteLocalRef(java_bounds);
+    return result;
 }
 
 nk_result NK_CALL nk_joystick_list(nk_handle *output, uint32_t *inout_count) {
@@ -2793,10 +3069,10 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnAccessibilityAction(
     JNIEnv *env, jclass, jlong handle_value, jint node, jint action, jstring value,
-    jint selection_start, jint selection_end) {
+    jint selection_start, jint selection_end, jint granularity) {
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (!resource || node <= 0 || action < NK_ACCESSIBILITY_ACTION_ACTIVATE ||
-        action > NK_ACCESSIBILITY_ACTION_SCROLL_BACKWARD)
+        action > NK_ACCESSIBILITY_ACTION_MOVE_PREVIOUS)
         return;
     const auto text = to_utf8(env, value);
     nk_accessibility_action_event payload{};
@@ -2810,6 +3086,9 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnAccessibilityAc
     };
     payload.selection_start = position(selection_start);
     payload.selection_end = position(selection_end);
+    payload.granularity = granularity > 0
+                              ? static_cast<nk_accessibility_text_granularity>(granularity)
+                              : 0;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_ACCESSIBILITY_ACTION;
     event.source = resource->handle;

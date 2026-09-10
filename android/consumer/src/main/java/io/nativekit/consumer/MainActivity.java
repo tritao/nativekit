@@ -11,9 +11,11 @@ import android.view.SurfaceView;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.text.InputType;
+import android.graphics.RectF;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.FrameLayout;
+import java.util.ArrayList;
 import io.nativekit.NativeKitHost;
 
 /** Minimal consumer: Java owns lifecycle while native code calls the NativeKit C ABI. */
@@ -54,6 +56,17 @@ public final class MainActivity extends Activity {
 
     public int accessibilityProbe() { return nativeAccessibilityProbe(surfaceProbe); }
 
+    public void dispatchAccessibilityHoverForTest() {
+        long now = SystemClock.uptimeMillis();
+        float density = getResources().getDisplayMetrics().density;
+        MotionEvent hover = MotionEvent.obtain(now, now, MotionEvent.ACTION_HOVER_ENTER,
+                                               15f * density, 25f * density, 0);
+        hover.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        if (!graphicsSurfaceView().dispatchGenericMotionEvent(hover))
+            throw new AssertionError("semantic hover was not handled");
+        hover.recycle();
+    }
+
     public void dispatchAccessibilityForTest() {
         SurfaceView view = graphicsSurfaceView();
         int prepared = nativePrepareAccessibility(surfaceProbe);
@@ -70,6 +83,18 @@ public final class MainActivity extends Activity {
             !"hello \ud83d\ude00".contentEquals(editor.getText()) || !editor.isMultiLine() ||
             slider.getRangeInfo() == null || slider.getRangeInfo().getCurrent() != 100f)
             throw new AssertionError("semantic nodes were not projected to Android");
+        Bundle characterRequest = new Bundle();
+        characterRequest.putInt(
+            AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_START_INDEX, 6);
+        characterRequest.putInt(
+            AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_LENGTH, 2);
+        provider.addExtraDataToAccessibilityNodeInfo(1, editor,
+            AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY, characterRequest);
+        ArrayList<RectF> characterBounds = editor.getExtras().getParcelableArrayList(
+            AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY, RectF.class);
+        if (characterBounds == null || characterBounds.size() != 2 ||
+            characterBounds.get(0) == null || characterBounds.get(1) == null)
+            throw new AssertionError("semantic character geometry was not exposed");
         provider.performAction(1, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null);
         provider.performAction(1, AccessibilityNodeInfo.ACTION_CLICK, null);
         Bundle text = new Bundle();
@@ -86,6 +111,14 @@ public final class MainActivity extends Activity {
                 provider.createAccessibilityNodeInfo(1).getContentDescription()) ||
             provider.createAccessibilityNodeInfo(2) != null)
             throw new AssertionError("incremental semantic update failed");
+        AccessibilityNodeInfo updated = provider.createAccessibilityNodeInfo(1);
+        if (updated.getTextSelectionStart() != 6 || updated.getTextSelectionEnd() != 8)
+            throw new AssertionError("semantic text selection was not converted to UTF-16");
+        Bundle movement = new Bundle();
+        movement.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT,
+                        AccessibilityNodeInfo.MOVEMENT_GRANULARITY_WORD);
+        provider.performAction(1, AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY,
+                               movement);
     }
 
     private SurfaceView graphicsSurfaceView() {

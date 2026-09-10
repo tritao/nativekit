@@ -29,6 +29,13 @@ nk_result NK_CALL nk_surface_accessibility_clear(nk_handle) {
 nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle, nk_accessibility_node_id) {
     return unsupported_accessibility();
 }
+nk_result NK_CALL nk_surface_accessibility_update(nk_handle, const nk_accessibility_update *) {
+    return unsupported_accessibility();
+}
+nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
+    nk_handle, nk_accessibility_node_id, const nk_accessibility_text_range *, uint32_t) {
+    return unsupported_accessibility();
+}
 #endif
 
 nk_result NK_CALL nk_accessibility_action_event_value(const nk_event *event,
