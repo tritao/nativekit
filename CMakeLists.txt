@@ -20,6 +20,7 @@ include(CMakePackageConfigHelpers)
 option(NK_BUILD_SHARED "Build NativeKit as a shared library" ON)
 option(NK_BUILD_TESTS "Build NativeKit tests" ${BUILD_TESTING})
 option(NK_BUILD_EXAMPLES "Build NativeKit examples" ON)
+option(NK_BUILD_SOKOL "Build the experimental Sokol graphics module" OFF)
 option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
 
@@ -48,6 +49,10 @@ file(GLOB_RECURSE NK_FORMAT_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.hh"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.hxx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/modules/*/examples/*.[ch]"
+    "${CMAKE_CURRENT_SOURCE_DIR}/modules/*/include/*.[ch]"
+    "${CMAKE_CURRENT_SOURCE_DIR}/modules/*/src/*.[ch]"
+    "${CMAKE_CURRENT_SOURCE_DIR}/modules/*/src/*.cpp"
 )
 
 if(NK_CLANG_FORMAT)
@@ -200,6 +205,9 @@ if(NK_BUILD_TESTS)
 endif()
 if(NK_BUILD_EXAMPLES)
     add_subdirectory(examples)
+endif()
+if(NK_BUILD_SOKOL)
+    add_subdirectory(modules/sokol)
 endif()
 
 install(TARGETS nativekit EXPORT NativeKitTargets
