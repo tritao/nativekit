@@ -4,6 +4,8 @@
 C ABI on supported 64-bit desktop targets. The C headers remain authoritative. The file
 records verified portable structure layouts plus ownership and parameter
 directions that cannot yet be inferred safely from ordinary C declarations.
+Its logical `@library("nativekit")` name resolves to the platform's native
+shared-library filename at runtime.
 
 The binding deliberately begins with lifecycle, event polling, diagnostics,
 window handles, and monitor-name lookup. `@out`, `@inout`, and
