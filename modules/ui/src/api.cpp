@@ -4,6 +4,7 @@
 #include "prepare/skribidi_adapter.h"
 
 #include <cmath>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -13,6 +14,8 @@ static_assert(sizeof(nkui_command_header) == sizeof(nkui::CommandHeader));
 static_assert(sizeof(nkui_text_metrics) == 5 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_position) == 2 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_caret) == 7 * sizeof(uint32_t));
+static_assert(sizeof(nkui_path_element) == 7 * sizeof(uint32_t));
+static_assert(sizeof(nkui_color) == 4 * sizeof(uint32_t));
 static_assert(sizeof(nkui_transform_command) == sizeof(nkui::SetTransformCommand));
 static_assert(sizeof(nkui_resource_command) == sizeof(nkui::DrawResourceCommand));
 static_assert(sizeof(nkui_scalar_command) == sizeof(nkui::SetGlobalAlphaCommand));
@@ -38,6 +41,12 @@ struct ResourceSlot {
     uint16_t generation = 1;
     std::vector<FontEntry> fonts;
     std::unique_ptr<nkui::SkribidiAdapter> text;
+    std::vector<nkui_path_element> path;
+    nkui_color color{};
+    uint32_t image_width = 0;
+    uint32_t image_height = 0;
+    nkui_image_format image_format = NKUI_IMAGE_FORMAT_INVALID;
+    std::vector<uint8_t> pixels;
 };
 
 std::mutex lists_mutex;
@@ -89,7 +98,8 @@ nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
     if (resources.size() >= UINT16_MAX)
         return NKUI_ERROR_OUT_OF_MEMORY;
     try {
-        resources.push_back({kind, 1, {}, {}});
+        resources.emplace_back();
+        resources.back().kind = kind;
     } catch (...) {
         return NKUI_ERROR_OUT_OF_MEMORY;
     }
@@ -101,6 +111,12 @@ nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
 void release_resource_slot(ResourceSlot &slot) {
     slot.text.reset();
     slot.fonts.clear();
+    slot.path.clear();
+    slot.pixels.clear();
+    slot.color = {};
+    slot.image_width = 0;
+    slot.image_height = 0;
+    slot.image_format = NKUI_IMAGE_FORMAT_INVALID;
     slot.kind = {};
     slot.generation = static_cast<uint16_t>((slot.generation % 0x0FFF) + 1);
 }
@@ -292,5 +308,97 @@ extern "C" nkui_result nkui_resource_destroy(nkui_resource resource) {
     if (slot.kind == nkui::ResourceKind{} || slot.generation != generation)
         return NKUI_ERROR_INVALID_HANDLE;
     release_resource_slot(slot);
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_path_create(const nkui_path_element *elements, uint32_t count,
+                                        nkui_resource *out_path) {
+    if (!elements || !count || !out_path)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    bool has_geometry = false;
+    for (uint32_t index = 0; index < count; ++index) {
+        const auto &element = elements[index];
+        uint32_t value_count = 0;
+        switch (element.verb) {
+        case NKUI_PATH_MOVE_TO:
+        case NKUI_PATH_LINE_TO:
+            value_count = 2;
+            has_geometry = true;
+            break;
+        case NKUI_PATH_BEZIER_TO:
+            value_count = 6;
+            has_geometry = true;
+            break;
+        case NKUI_PATH_QUADRATIC_TO:
+            value_count = 4;
+            has_geometry = true;
+            break;
+        case NKUI_PATH_ARC_TO:
+            value_count = 5;
+            has_geometry = true;
+            break;
+        case NKUI_PATH_CLOSE:
+            break;
+        default:
+            return NKUI_ERROR_INVALID_ARGUMENT;
+        }
+        for (uint32_t value = 0; value < value_count; ++value)
+            if (!std::isfinite(element.values[value]))
+                return NKUI_ERROR_INVALID_ARGUMENT;
+    }
+    if (!has_geometry)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    ResourceSlot *slot = nullptr;
+    const auto result = allocate_resource(nkui::ResourceKind::Path, out_path, &slot);
+    if (result != NKUI_OK)
+        return result;
+    try {
+        slot->path.assign(elements, elements + count);
+    } catch (...) {
+        release_resource_slot(*slot);
+        out_path->id = 0;
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_paint_create_solid(nkui_color color, nkui_resource *out_paint) {
+    if (!out_paint || !std::isfinite(color.red) || !std::isfinite(color.green) ||
+        !std::isfinite(color.blue) || !std::isfinite(color.alpha))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    ResourceSlot *slot = nullptr;
+    const auto result = allocate_resource(nkui::ResourceKind::Paint, out_paint, &slot);
+    if (result == NKUI_OK)
+        slot->color = color;
+    return result;
+}
+
+extern "C" nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_image_format format,
+                                         const uint8_t *pixels, uint32_t pixel_bytes,
+                                         nkui_resource *out_image) {
+    const uint32_t bytes_per_pixel = format == NKUI_IMAGE_R8      ? 1
+                                     : format == NKUI_IMAGE_RGBA8 ? 4
+                                                                  : 0;
+    const uint64_t required = static_cast<uint64_t>(width) * height * bytes_per_pixel;
+    if (!out_image || !pixels || !width || !height || !bytes_per_pixel || required != pixel_bytes ||
+        required > UINT32_MAX)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    ResourceSlot *slot = nullptr;
+    const auto result = allocate_resource(nkui::ResourceKind::Image, out_image, &slot);
+    if (result != NKUI_OK)
+        return result;
+    try {
+        slot->pixels.assign(pixels, pixels + pixel_bytes);
+    } catch (...) {
+        release_resource_slot(*slot);
+        out_image->id = 0;
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    slot->image_width = width;
+    slot->image_height = height;
+    slot->image_format = format;
     return NKUI_OK;
 }

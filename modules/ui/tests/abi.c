@@ -12,7 +12,20 @@ int main(void) {
     nkui_display_list list = {0};
     if (nkui_display_list_create(&list) != NKUI_OK || !list.id)
         return 2;
-    nkui_resource path = {(UINT32_C(1) << 28) | (UINT32_C(1) << 16) | UINT32_C(1)};
+    const nkui_path_element path_elements[] = {
+        {NKUI_PATH_MOVE_TO, {0.0f, 0.0f}},
+        {NKUI_PATH_LINE_TO, {32.0f, 0.0f}},
+        {NKUI_PATH_LINE_TO, {16.0f, 32.0f}},
+        {NKUI_PATH_CLOSE, {0.0f}},
+    };
+    nkui_resource path = {0};
+    nkui_resource paint = {0};
+    nkui_resource image = {0};
+    const uint8_t pixels[] = {255, 0, 0, 255};
+    if (nkui_path_create(path_elements, 4, &path) != NKUI_OK ||
+        nkui_paint_create_solid((nkui_color){1.0f, 0.0f, 0.0f, 1.0f}, &paint) != NKUI_OK ||
+        nkui_image_create(1, 1, NKUI_IMAGE_RGBA8, pixels, sizeof(pixels), &image) != NKUI_OK)
+        return 2;
     nkui_resource_command draw = {{NKUI_COMMAND_DRAW_PATH, NKUI_COMMAND_VERSION, sizeof(draw)},
                                   path};
     nkui_layer_command begin = {
@@ -53,5 +66,9 @@ int main(void) {
         nkui_text_layout_measure(layout, &metrics) != NKUI_ERROR_INVALID_HANDLE ||
         nkui_resource_destroy(fonts) != NKUI_OK)
         return 9;
+    if (nkui_resource_destroy(image) != NKUI_OK || nkui_resource_destroy(paint) != NKUI_OK ||
+        nkui_resource_destroy(path) != NKUI_OK ||
+        nkui_resource_destroy(path) != NKUI_ERROR_INVALID_HANDLE)
+        return 10;
     return 0;
 }
