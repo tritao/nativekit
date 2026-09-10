@@ -169,10 +169,38 @@ enum {
 typedef uint32_t nk_text_position;
 enum { NK_TEXT_POSITION_NONE = 0xffffffffu };
 
+typedef uint32_t nk_text_input_type;
+enum {
+    NK_TEXT_INPUT_TEXT = 0,
+    NK_TEXT_INPUT_EMAIL = 1,
+    NK_TEXT_INPUT_URL = 2,
+    NK_TEXT_INPUT_NUMBER = 3,
+    NK_TEXT_INPUT_PHONE = 4,
+    NK_TEXT_INPUT_PASSWORD = 5
+};
+
+typedef uint32_t nk_text_input_flags;
+enum {
+    NK_TEXT_INPUT_MULTILINE = 1u << 0,
+    NK_TEXT_INPUT_AUTOCORRECT = 1u << 1,
+    NK_TEXT_INPUT_CAPITALIZE_SENTENCES = 1u << 2
+};
+
+typedef uint32_t nk_text_input_action;
+enum {
+    NK_TEXT_INPUT_ACTION_DEFAULT = 0,
+    NK_TEXT_INPUT_ACTION_DONE = 1,
+    NK_TEXT_INPUT_ACTION_GO = 2,
+    NK_TEXT_INPUT_ACTION_NEXT = 3,
+    NK_TEXT_INPUT_ACTION_SEARCH = 4,
+    NK_TEXT_INPUT_ACTION_SEND = 5,
+    NK_TEXT_INPUT_ACTION_NONE = 6
+};
+
 /*
- * Positions are Unicode code-point indices in the text most recently supplied
- * with nk_surface_set_text_input_state(). COMPOSE, COMMIT, and DELETE replace
- * [replace_start, replace_end) with the UTF-8 text stored at text_offset.
+ * Positions are absolute Unicode code-point indices in the editor document.
+ * COMPOSE, COMMIT, and DELETE replace [replace_start, replace_end) with the
+ * UTF-8 text stored at text_offset.
  * Selection and composition positions describe the state after the edit.
  */
 typedef struct nk_text_edit_event {
@@ -190,12 +218,22 @@ typedef struct nk_text_edit_event {
 
 typedef struct nk_text_input_state {
     uint32_t struct_size;
-    uint32_t flags;
+    nk_text_input_flags flags;
+    /* A bounded UTF-8 view of the document, not necessarily the whole document. */
     const char *text NK_UTF8;
+    nk_text_position text_start;
+    nk_text_position document_length;
     nk_text_position selection_start;
     nk_text_position selection_end;
     nk_text_position composition_start;
     nk_text_position composition_end;
+    nk_text_input_type input_type;
+    nk_text_input_action action;
+    /* Cursor rectangle in surface-local logical coordinates. */
+    float cursor_x;
+    float cursor_y;
+    float cursor_width;
+    float cursor_height;
     uint64_t reserved[2];
 } nk_text_input_state;
 

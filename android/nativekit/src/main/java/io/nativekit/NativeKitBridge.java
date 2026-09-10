@@ -14,6 +14,7 @@ import android.hardware.input.InputManager;
 import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.PixelFormat;
 import android.net.Uri;
 import android.os.Build;
@@ -30,6 +31,7 @@ import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.inputmethod.BaseInputConnection;
+import android.view.inputmethod.CursorAnchorInfo;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
@@ -86,6 +88,15 @@ final class NativeKitBridge {
         private boolean synchronizingTextInput;
         private int pendingCompositionStart = -1;
         private int pendingCompositionEnd = -1;
+        private int textStart;
+        private int documentLength;
+        @TextInputType private int textInputType = TEXT_INPUT_TEXT;
+        @TextInputFlags private int textInputFlags;
+        @TextInputAction private int textInputAction = TEXT_INPUT_ACTION_DEFAULT;
+        private float cursorX;
+        private float cursorY;
+        private float cursorWidth;
+        private float cursorHeight;
 
         NativeSurfaceView(Context context, long handle) {
             super(context);
@@ -209,9 +220,10 @@ final class NativeKitBridge {
 
         @Override
         public InputConnection onCreateInputConnection(EditorInfo attributes) {
-            attributes.inputType = InputType.TYPE_CLASS_TEXT |
-                                   InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
-            attributes.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI;
+            attributes.inputType = androidInputType();
+            attributes.imeOptions = androidImeOptions();
+            attributes.initialSelStart = localCodeUnitIndex(selectionStart());
+            attributes.initialSelEnd = localCodeUnitIndex(selectionEnd());
             editorConnection = new BaseInputConnection(this, true) {
                 @Override
                 public Editable getEditable() { return editable; }
@@ -279,7 +291,8 @@ final class NativeKitBridge {
                     int start = Character.offsetByCodePoints(
                         editable, Math.min(selectionStart, selectionEnd),
                         -Math.min(Math.max(0, beforeLength),
-                                  codePointIndex(Math.min(selectionStart, selectionEnd))));
+                                  Character.codePointCount(editable, 0,
+                                      Math.min(selectionStart, selectionEnd))));
                     int trailing = Character.codePointCount(
                         editable, Math.max(selectionStart, selectionEnd), editable.length());
                     int end = Character.offsetByCodePoints(
@@ -291,6 +304,12 @@ final class NativeKitBridge {
                                                                               afterLength);
                     emitTextEdit(TEXT_EDIT_DELETE, "", replaceStart, replaceEnd);
                     return result;
+                }
+
+                @Override
+                public boolean requestCursorUpdates(int cursorUpdateMode) {
+                    updateCursorAnchor();
+                    return true;
                 }
             };
             if (pendingCompositionStart >= 0 && pendingCompositionEnd >= 0) {
@@ -314,14 +333,26 @@ final class NativeKitBridge {
         }
 
         private int codePointIndex(int utf16Index) {
-            return Character.codePointCount(editable, 0,
+            return textStart + Character.codePointCount(editable, 0,
                 Math.max(0, Math.min(utf16Index, editable.length())));
         }
 
         private int codeUnitIndex(int codePointIndex) {
             int count = Character.codePointCount(editable, 0, editable.length());
             return Character.offsetByCodePoints(editable, 0,
-                Math.max(0, Math.min(codePointIndex, count)));
+                Math.max(0, Math.min(codePointIndex - textStart, count)));
+        }
+
+        private int localCodeUnitIndex(int codePointIndex) { return codeUnitIndex(codePointIndex); }
+
+        private int selectionStart() {
+            int value = Selection.getSelectionStart(editable);
+            return value < 0 ? textStart : codePointIndex(value);
+        }
+
+        private int selectionEnd() {
+            int value = Selection.getSelectionEnd(editable);
+            return value < 0 ? textStart : codePointIndex(value);
         }
 
         private void emitTextEdit(int action, CharSequence text, int replaceStart,
@@ -338,9 +369,22 @@ final class NativeKitBridge {
                 compositionEnd < 0 ? -1 : codePointIndex(compositionEnd));
         }
 
-        void setTextInputState(String text, int selectionStart, int selectionEnd,
-                               int compositionStart, int compositionEnd) {
+        void setTextInputState(String text, int newTextStart, int newDocumentLength,
+                               int selectionStart, int selectionEnd, int compositionStart,
+                               int compositionEnd, @TextInputType int inputType,
+                               @TextInputFlags int inputFlags, @TextInputAction int action,
+                               float newCursorX, float newCursorY, float newCursorWidth,
+                               float newCursorHeight) {
             structuredTextInput = true;
+            textStart = newTextStart;
+            documentLength = newDocumentLength;
+            textInputType = inputType;
+            textInputFlags = inputFlags;
+            textInputAction = action;
+            cursorX = newCursorX;
+            cursorY = newCursorY;
+            cursorWidth = newCursorWidth;
+            cursorHeight = newCursorHeight;
             pendingCompositionStart = compositionStart;
             pendingCompositionEnd = compositionEnd;
             editable.replace(0, editable.length(), text);
@@ -360,6 +404,73 @@ final class NativeKitBridge {
                     Selection.getSelectionEnd(editable),
                     BaseInputConnection.getComposingSpanStart(editable),
                     BaseInputConnection.getComposingSpanEnd(editable));
+            updateCursorAnchor();
+        }
+
+        private int androidInputType() {
+            int type;
+            switch (textInputType) {
+            case TEXT_INPUT_EMAIL:
+                type = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;
+                break;
+            case TEXT_INPUT_URL:
+                type = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI;
+                break;
+            case TEXT_INPUT_NUMBER:
+                type = InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL |
+                       InputType.TYPE_NUMBER_FLAG_SIGNED;
+                break;
+            case TEXT_INPUT_PHONE:
+                type = InputType.TYPE_CLASS_PHONE;
+                break;
+            case TEXT_INPUT_PASSWORD:
+                type = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD;
+                break;
+            default:
+                type = InputType.TYPE_CLASS_TEXT;
+                break;
+            }
+            if ((textInputFlags & TEXT_INPUT_MULTILINE) != 0)
+                type |= InputType.TYPE_TEXT_FLAG_MULTI_LINE;
+            if ((textInputFlags & TEXT_INPUT_AUTOCORRECT) != 0)
+                type |= InputType.TYPE_TEXT_FLAG_AUTO_CORRECT;
+            else
+                type |= InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+            if ((textInputFlags & TEXT_INPUT_CAPITALIZE_SENTENCES) != 0)
+                type |= InputType.TYPE_TEXT_FLAG_CAP_SENTENCES;
+            return type;
+        }
+
+        private int androidImeOptions() {
+            int options = EditorInfo.IME_FLAG_NO_EXTRACT_UI;
+            switch (textInputAction) {
+            case TEXT_INPUT_ACTION_DONE: return options | EditorInfo.IME_ACTION_DONE;
+            case TEXT_INPUT_ACTION_GO: return options | EditorInfo.IME_ACTION_GO;
+            case TEXT_INPUT_ACTION_NEXT: return options | EditorInfo.IME_ACTION_NEXT;
+            case TEXT_INPUT_ACTION_SEARCH: return options | EditorInfo.IME_ACTION_SEARCH;
+            case TEXT_INPUT_ACTION_SEND: return options | EditorInfo.IME_ACTION_SEND;
+            case TEXT_INPUT_ACTION_NONE: return options | EditorInfo.IME_ACTION_NONE;
+            default: return options | EditorInfo.IME_ACTION_UNSPECIFIED;
+            }
+        }
+
+        private void updateCursorAnchor() {
+            if (Build.VERSION.SDK_INT < 21)
+                return;
+            InputMethodManager manager = (InputMethodManager)getContext().getSystemService(
+                Context.INPUT_METHOD_SERVICE);
+            if (manager == null)
+                return;
+            float density = getResources().getDisplayMetrics().density;
+            CursorAnchorInfo info = new CursorAnchorInfo.Builder()
+                .setMatrix(new Matrix())
+                .setSelectionRange(localCodeUnitIndex(selectionStart()),
+                                   localCodeUnitIndex(selectionEnd()))
+                .setInsertionMarkerLocation(cursorX * density, cursorY * density,
+                    (cursorY + cursorHeight) * density, (cursorY + cursorHeight) * density,
+                    CursorAnchorInfo.FLAG_HAS_VISIBLE_REGION)
+                .build();
+            manager.updateCursorAnchorInfo(this, info);
         }
 
         void setTextInputActive(boolean active) {
@@ -518,11 +629,14 @@ final class NativeKitBridge {
         setBounds(view, x, y, width, height);
     }
 
-    static void setSurfaceTextInputState(SurfaceView view, String text, int selectionStart,
-                                         int selectionEnd, int compositionStart,
-                                         int compositionEnd) {
-        ((NativeSurfaceView)view).setTextInputState(text, selectionStart, selectionEnd,
-                                                    compositionStart, compositionEnd);
+    static void setSurfaceTextInputState(SurfaceView view, String text, int textStart,
+                                         int documentLength, int selectionStart, int selectionEnd,
+                                         int compositionStart, int compositionEnd, int inputType,
+                                         int inputFlags, int action, float cursorX, float cursorY,
+                                         float cursorWidth, float cursorHeight) {
+        ((NativeSurfaceView)view).setTextInputState(text, textStart, documentLength,
+            selectionStart, selectionEnd, compositionStart, compositionEnd, inputType,
+            inputFlags, action, cursorX, cursorY, cursorWidth, cursorHeight);
     }
 
     static void setSurfaceTextInputActive(SurfaceView view, boolean active) {

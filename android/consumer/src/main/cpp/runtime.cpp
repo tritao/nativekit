@@ -285,10 +285,19 @@ Java_io_nativekit_consumer_MainActivity_nativePrepareTextInput(JNIEnv *, jclass,
     nk_text_input_state state{};
     state.struct_size = sizeof(state);
     state.text = "hello \xf0\x9f\x98\x80";
-    state.selection_start = 7;
-    state.selection_end = 7;
+    state.text_start = 100;
+    state.document_length = 1000;
+    state.selection_start = 107;
+    state.selection_end = 107;
     state.composition_start = NK_TEXT_POSITION_NONE;
     state.composition_end = NK_TEXT_POSITION_NONE;
+    state.input_type = NK_TEXT_INPUT_EMAIL;
+    state.flags = NK_TEXT_INPUT_AUTOCORRECT | NK_TEXT_INPUT_CAPITALIZE_SENTENCES;
+    state.action = NK_TEXT_INPUT_ACTION_SEND;
+    state.cursor_x = 12.f;
+    state.cursor_y = 18.f;
+    state.cursor_width = 2.f;
+    state.cursor_height = 20.f;
     return nk_surface_set_text_input_state(static_cast<nk_handle>(surface_value), &state);
 }
 
@@ -363,19 +372,20 @@ Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong
             if (nk_text_edit_event_text(&event, &edit_text, &edit_text_length) != NK_OK)
                 return 11;
             composing |= value->action == NK_TEXT_EDIT_COMPOSE &&
-                         value->replace_start == 7 && value->composition_start == 7;
+                         value->replace_start == 107 && value->composition_start == 107;
             committed |= value->action == NK_TEXT_EDIT_COMMIT &&
                          edit_text_length == 9 && std::memcmp(edit_text, "日本語", 9) == 0 &&
-                         value->composition_start == NK_TEXT_POSITION_NONE;
+                        value->composition_start == NK_TEXT_POSITION_NONE &&
+                        value->selection_start == 110;
             selected |= value->action == NK_TEXT_EDIT_SET_SELECTION &&
-                        value->selection_start == 5 && value->selection_end == 5;
-            deleted |= value->action == NK_TEXT_EDIT_DELETE && value->replace_start == 4 &&
-                       value->replace_end == 5 && value->selection_start == 4;
+                        value->selection_start == 105 && value->selection_end == 105;
+            deleted |= value->action == NK_TEXT_EDIT_DELETE && value->replace_start == 104 &&
+                       value->replace_end == 105 && value->selection_start == 104;
             composition_finished |= value->action == NK_TEXT_EDIT_FINISH_COMPOSITION &&
                                     value->composition_start == NK_TEXT_POSITION_NONE;
             composition_region |= value->action == NK_TEXT_EDIT_SET_COMPOSITION &&
-                                  value->composition_start == 0 &&
-                                  value->composition_end == 2;
+                                  value->composition_start == 100 &&
+                                  value->composition_end == 102;
         } else if (event.kind == NK_EVENT_GAMEPAD_AXIS &&
                    event.data_size >= sizeof(nk_gamepad_axis_event)) {
             const auto *value = static_cast<const nk_gamepad_axis_event *>(event.data);

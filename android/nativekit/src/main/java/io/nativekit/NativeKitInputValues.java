@@ -197,6 +197,41 @@ final class NativeKitInputValues {
     @Retention(RetentionPolicy.SOURCE)
     @interface TextEditAction {}
 
+    static final int TEXT_INPUT_TEXT = 0;
+    static final int TEXT_INPUT_EMAIL = 1;
+    static final int TEXT_INPUT_URL = 2;
+    static final int TEXT_INPUT_NUMBER = 3;
+    static final int TEXT_INPUT_PHONE = 4;
+    static final int TEXT_INPUT_PASSWORD = 5;
+
+    @IntDef({TEXT_INPUT_TEXT, TEXT_INPUT_EMAIL, TEXT_INPUT_URL, TEXT_INPUT_NUMBER,
+            TEXT_INPUT_PHONE, TEXT_INPUT_PASSWORD})
+    @Retention(RetentionPolicy.SOURCE)
+    @interface TextInputType {}
+
+    static final int TEXT_INPUT_MULTILINE = 1;
+    static final int TEXT_INPUT_AUTOCORRECT = 2;
+    static final int TEXT_INPUT_CAPITALIZE_SENTENCES = 4;
+
+    @IntDef(flag = true, value = {TEXT_INPUT_MULTILINE, TEXT_INPUT_AUTOCORRECT,
+            TEXT_INPUT_CAPITALIZE_SENTENCES})
+    @Retention(RetentionPolicy.SOURCE)
+    @interface TextInputFlags {}
+
+    static final int TEXT_INPUT_ACTION_DEFAULT = 0;
+    static final int TEXT_INPUT_ACTION_DONE = 1;
+    static final int TEXT_INPUT_ACTION_GO = 2;
+    static final int TEXT_INPUT_ACTION_NEXT = 3;
+    static final int TEXT_INPUT_ACTION_SEARCH = 4;
+    static final int TEXT_INPUT_ACTION_SEND = 5;
+    static final int TEXT_INPUT_ACTION_NONE = 6;
+
+    @IntDef({TEXT_INPUT_ACTION_DEFAULT, TEXT_INPUT_ACTION_DONE, TEXT_INPUT_ACTION_GO,
+            TEXT_INPUT_ACTION_NEXT, TEXT_INPUT_ACTION_SEARCH, TEXT_INPUT_ACTION_SEND,
+            TEXT_INPUT_ACTION_NONE})
+    @Retention(RetentionPolicy.SOURCE)
+    @interface TextInputAction {}
+
     static final int GAMEPAD_BUTTON_A = 0;
     static final int GAMEPAD_BUTTON_B = 1;
     static final int GAMEPAD_BUTTON_X = 2;

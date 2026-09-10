@@ -10,6 +10,7 @@ import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
+import android.text.InputType;
 import android.widget.FrameLayout;
 import io.nativekit.NativeKitHost;
 
@@ -104,10 +105,21 @@ public final class MainActivity extends Activity {
         view.dispatchKeyEvent(keyUp);
 
         nativePrepareTextInput(surfaceProbe);
-        InputConnection editor = view.onCreateInputConnection(new EditorInfo());
+        EditorInfo editorInfo = new EditorInfo();
+        InputConnection editor = view.onCreateInputConnection(editorInfo);
+        if ((editorInfo.inputType & InputType.TYPE_MASK_VARIATION) !=
+                InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
+            (editorInfo.inputType & InputType.TYPE_TEXT_FLAG_AUTO_CORRECT) == 0 ||
+            (editorInfo.inputType & InputType.TYPE_TEXT_FLAG_CAP_SENTENCES) == 0 ||
+            (editorInfo.imeOptions & EditorInfo.IME_MASK_ACTION) != EditorInfo.IME_ACTION_SEND ||
+            editorInfo.initialSelStart != 8 || editorInfo.initialSelEnd != 8 ||
+            !"hello \ud83d\ude00".contentEquals(editor.getTextBeforeCursor(32, 0)))
+            throw new AssertionError("text input snapshot was not exposed to the IME");
+        editor.beginBatchEdit();
         editor.setComposingText("に", 1);
         editor.setComposingText("日本", 1);
         editor.commitText("日本語", 1);
+        editor.endBatchEdit();
         editor.setSelection(5, 5);
         editor.deleteSurroundingText(1, 0);
         editor.setComposingRegion(0, 2);

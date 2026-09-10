@@ -31,6 +31,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -1767,14 +1768,27 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
     for (const auto *cursor = reinterpret_cast<const unsigned char *>(state->text); *cursor;
          ++cursor)
         codepoints += (*cursor & 0xc0u) != 0x80u;
+    const uint64_t text_end = static_cast<uint64_t>(state->text_start) + codepoints;
     const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
                                 state->composition_end == NK_TEXT_POSITION_NONE;
     const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
                                    state->composition_end != NK_TEXT_POSITION_NONE &&
                                    state->composition_start <= state->composition_end &&
-                                   state->composition_end <= codepoints;
-    if (state->selection_start > state->selection_end || state->selection_end > codepoints ||
-        (!no_composition && !valid_composition)) {
+                                   state->composition_start >= state->text_start &&
+                                   state->composition_end <= text_end;
+    const bool valid_cursor = std::isfinite(state->cursor_x) &&
+                              std::isfinite(state->cursor_y) &&
+                              std::isfinite(state->cursor_width) &&
+                              std::isfinite(state->cursor_height) &&
+                              state->cursor_width >= 0.f && state->cursor_height >= 0.f;
+    if (state->text_start > INT_MAX || state->document_length > INT_MAX ||
+        text_end > state->document_length ||
+        state->selection_start > state->selection_end ||
+        state->selection_start < state->text_start || state->selection_end > text_end ||
+        (!no_composition && !valid_composition) || state->input_type > NK_TEXT_INPUT_PASSWORD ||
+        (state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
+                          NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) != 0 ||
+        state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor) {
         nk::core::set_error("text input ranges are inconsistent with the supplied text");
         return NK_ERROR_INVALID_ARGUMENT;
     }
@@ -1782,19 +1796,29 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
     auto text = env ? from_utf8(env, state->text) : nullptr;
     if (!env || !text)
         return NK_ERROR_OUT_OF_MEMORY;
-    jvalue arguments[6]{};
+    jvalue arguments[15]{};
     arguments[0].l = resource->view;
     arguments[1].l = text;
-    arguments[2].i = static_cast<jint>(state->selection_start);
-    arguments[3].i = static_cast<jint>(state->selection_end);
-    arguments[4].i = state->composition_start == NK_TEXT_POSITION_NONE
+    arguments[2].i = static_cast<jint>(state->text_start);
+    arguments[3].i = static_cast<jint>(state->document_length);
+    arguments[4].i = static_cast<jint>(state->selection_start);
+    arguments[5].i = static_cast<jint>(state->selection_end);
+    arguments[6].i = state->composition_start == NK_TEXT_POSITION_NONE
                          ? -1
                          : static_cast<jint>(state->composition_start);
-    arguments[5].i = state->composition_end == NK_TEXT_POSITION_NONE
+    arguments[7].i = state->composition_end == NK_TEXT_POSITION_NONE
                          ? -1
                          : static_cast<jint>(state->composition_end);
+    arguments[8].i = static_cast<jint>(state->input_type);
+    arguments[9].i = static_cast<jint>(state->flags);
+    arguments[10].i = static_cast<jint>(state->action);
+    arguments[11].f = state->cursor_x;
+    arguments[12].f = state->cursor_y;
+    arguments[13].f = state->cursor_width;
+    arguments[14].f = state->cursor_height;
     const auto result = java_void_surface(
-        resource, "setSurfaceTextInputState", "(Landroid/view/SurfaceView;Ljava/lang/String;IIII)V",
+        resource, "setSurfaceTextInputState",
+        "(Landroid/view/SurfaceView;Ljava/lang/String;IIIIIIIIIFFFF)V",
         arguments);
     env->DeleteLocalRef(text);
     return result;

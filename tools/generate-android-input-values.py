@@ -18,6 +18,9 @@ GROUPS = (
     ("TouchAction", "include/nativekit_input.h", "NK_TOUCH_BEGIN", False),
     ("TouchTool", "include/nativekit_input.h", "NK_TOUCH_TOOL_FINGER", False),
     ("TextEditAction", "include/nativekit_input.h", "NK_TEXT_EDIT_COMPOSE", False),
+    ("TextInputType", "include/nativekit_input.h", "NK_TEXT_INPUT_TEXT", False),
+    ("TextInputFlags", "include/nativekit_input.h", "NK_TEXT_INPUT_MULTILINE", True),
+    ("TextInputAction", "include/nativekit_input.h", "NK_TEXT_INPUT_ACTION_DEFAULT", False),
     ("GamepadButton", "include/nativekit_gamepad.h", "NK_GAMEPAD_BUTTON_A", False),
     ("GamepadAxis", "include/nativekit_gamepad.h", "NK_GAMEPAD_AXIS_LEFT_X", False),
 )
