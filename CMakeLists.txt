@@ -208,7 +208,7 @@ install(TARGETS nativekit EXPORT NativeKitTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(DIRECTORY licenses/ DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit)
+install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit)
 install(FILES vendor/SDL_GameControllerDB/LICENSE
     DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit
     RENAME SDL_GameControllerDB.txt)

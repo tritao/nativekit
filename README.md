@@ -1,6 +1,6 @@
 # NativeKit 🧰
 
-**Native desktop capabilities behind one compact C ABI.**
+**Cross-platform native capabilities behind one compact C ABI.**
 
 NativeKit gives runtimes, language bindings, and lightweight applications access
 to windows, WebViews, dialogs, graphics surfaces, input, system services, and
@@ -182,3 +182,8 @@ NativeKit is under active development. The feature matrix documents what the
 current backends advertise, while runtime capability checks remain the contract
 applications should trust. Contributions, portability reports, and focused
 backend tests are welcome.
+
+## 📄 License
+
+NativeKit is available under the [Apache License 2.0](LICENSE). Third-party
+components retain their respective licenses.
