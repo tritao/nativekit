@@ -79,10 +79,10 @@ struct SokolBackend::State {
     sg_buffer glyph_vertices{};
     sg_buffer composite_vertices{};
     sg_buffer indices{};
-    std::unordered_map<uint32_t, AtlasImage> atlases;
+    std::unordered_map<uint64_t, AtlasImage> atlases;
     std::unordered_map<uint32_t, Target> targets;
     std::unordered_map<uint32_t, SurfaceState> surfaces;
-    std::unordered_map<const NanoVGRecorder *, std::unordered_map<int, PaintImage>> paint_images;
+    std::unordered_map<const PreparedPathData *, std::unordered_map<int, PaintImage>> paint_images;
     sg_image white_image{};
     sg_view white_view{};
     sg_sampler white_sampler{};
@@ -128,6 +128,10 @@ struct PathMesh {
 bool fail(SokolBackend::State &state, const char *message) {
     state.error = message;
     return false;
+}
+
+uint64_t atlas_key(AtlasTextureId texture, uint32_t generation) {
+    return (static_cast<uint64_t>(texture.value) << 32) | generation;
 }
 
 bool create_atlas_image(SokolBackend::State::AtlasImage &atlas, const AtlasUpload &upload) {
@@ -514,14 +518,14 @@ bool create_target(SokolBackend::State &state, SokolBackend::State::Target &targ
     return true;
 }
 
-const PreparedTexture *find_texture(const NanoVGRecorder &recorder, int id) {
-    const auto &textures = recorder.textures();
+const PreparedTexture *find_texture(const PreparedPathData &path, int id) {
+    const auto &textures = path.textures();
     const auto found = std::find_if(textures.begin(), textures.end(),
                                     [id](const auto &texture) { return texture.id == id; });
     return found == textures.end() ? nullptr : &*found;
 }
 
-bool resolve_paint_image(SokolBackend::State &state, const NanoVGRecorder &recorder, int id,
+bool resolve_paint_image(SokolBackend::State &state, const PreparedPathData &path, int id,
                          sg_view &view, sg_sampler &sampler, int &type, int &flags) {
     if (!id) {
         view = state.white_view;
@@ -530,10 +534,10 @@ bool resolve_paint_image(SokolBackend::State &state, const NanoVGRecorder &recor
         flags = NVG_IMAGE_PREMULTIPLIED;
         return true;
     }
-    const PreparedTexture *source = find_texture(recorder, id);
+    const PreparedTexture *source = find_texture(path, id);
     if (!source)
         return fail(state, "NanoVG paint texture is missing");
-    auto &image = state.paint_images[&recorder][id];
+    auto &image = state.paint_images[&path][id];
     if (!image.image.id) {
         sg_image_desc image_desc{};
         image_desc.width = source->width;
@@ -610,13 +614,13 @@ PaintUniforms paint_uniforms(const PreparedPathOperation &operation, const float
     return uniforms;
 }
 
-void append_path_range(PathMesh &mesh, const NanoVGRecorder &recorder, uint32_t offset,
+void append_path_range(PathMesh &mesh, const PreparedPathData &path, uint32_t offset,
                        uint32_t count, bool strip, const float transform[6]) {
     if (count < 3)
         return;
     const uint32_t base = static_cast<uint32_t>(mesh.vertices.size());
     for (uint32_t index = 0; index < count; ++index) {
-        const auto &source = recorder.vertices()[offset + index];
+        const auto &source = path.vertices()[offset + index];
         mesh.vertices.push_back({source.x * transform[0] + source.y * transform[2] + transform[4],
                                  source.x * transform[1] + source.y * transform[3] + transform[5],
                                  source.u, source.v});
@@ -636,13 +640,13 @@ void append_path_range(PathMesh &mesh, const NanoVGRecorder &recorder, uint32_t 
     }
 }
 
-PathMesh make_paint_mesh(const NanoVGRecorder &recorder, const PreparedPathOperation &operation,
+PathMesh make_paint_mesh(const PreparedPathData &path, const PreparedPathOperation &operation,
                          const float transform[6], bool fringe_only = false) {
     PathMesh mesh;
     if (operation.kind == PreparedPathKind::Triangles) {
         const uint32_t base = 0;
         for (uint32_t index = 0; index < operation.vertex_count; ++index) {
-            const auto &source = recorder.vertices()[operation.vertex_offset + index];
+            const auto &source = path.vertices()[operation.vertex_offset + index];
             mesh.vertices.push_back(
                 {source.x * transform[0] + source.y * transform[2] + transform[4],
                  source.x * transform[1] + source.y * transform[3] + transform[5], source.u,
@@ -652,12 +656,12 @@ PathMesh make_paint_mesh(const NanoVGRecorder &recorder, const PreparedPathOpera
         return mesh;
     }
     for (uint32_t index = 0; index < operation.path_count; ++index) {
-        const auto &path = recorder.paths()[operation.path_offset + index];
+        const auto &range = path.paths()[operation.path_offset + index];
         if (operation.kind == PreparedPathKind::Fill && !fringe_only)
-            append_path_range(mesh, recorder, path.fill_offset, path.fill_count, false, transform);
+            append_path_range(mesh, path, range.fill_offset, range.fill_count, false, transform);
         if (operation.kind == PreparedPathKind::Stroke || fringe_only ||
             operation.kind == PreparedPathKind::Fill)
-            append_path_range(mesh, recorder, path.stroke_offset, path.stroke_count, true,
+            append_path_range(mesh, path, range.stroke_offset, range.stroke_count, true,
                               transform);
     }
     return mesh;
@@ -665,22 +669,22 @@ PathMesh make_paint_mesh(const NanoVGRecorder &recorder, const PreparedPathOpera
 
 } // namespace
 
-bool triangulate_prepared_path(const NanoVGRecorder &recorder,
+bool triangulate_prepared_path(const PreparedPathData &path,
                                const PreparedPathOperation &operation, SolidMesh &mesh) {
     mesh = {};
     if (operation.kind != PreparedPathKind::Fill && operation.kind != PreparedPathKind::Stroke)
         return false;
     for (uint32_t index = 0; index < operation.path_count; ++index) {
-        const auto &path = recorder.paths()[operation.path_offset + index];
+        const auto &range = path.paths()[operation.path_offset + index];
         const uint32_t source_offset =
-            operation.kind == PreparedPathKind::Fill ? path.fill_offset : path.stroke_offset;
+            operation.kind == PreparedPathKind::Fill ? range.fill_offset : range.stroke_offset;
         const uint32_t source_count =
-            operation.kind == PreparedPathKind::Fill ? path.fill_count : path.stroke_count;
-        if (source_count < 3 || (operation.kind == PreparedPathKind::Fill && !path.convex))
+            operation.kind == PreparedPathKind::Fill ? range.fill_count : range.stroke_count;
+        if (source_count < 3 || (operation.kind == PreparedPathKind::Fill && !range.convex))
             return false;
         const uint32_t base = static_cast<uint32_t>(mesh.vertices.size());
         for (uint32_t vertex = 0; vertex < source_count; ++vertex) {
-            const auto &source = recorder.vertices()[source_offset + vertex];
+            const auto &source = path.vertices()[source_offset + vertex];
             mesh.vertices.push_back({source.x, source.y});
         }
         if (operation.kind == PreparedPathKind::Fill) {
@@ -703,6 +707,11 @@ bool triangulate_prepared_path(const NanoVGRecorder &recorder,
         }
     }
     return !mesh.indices.empty();
+}
+
+bool triangulate_prepared_path(const NanoVGRecorder &recorder,
+                               const PreparedPathOperation &operation, SolidMesh &mesh) {
+    return triangulate_prepared_path(recorder.data(), operation, mesh);
 }
 
 SokolBackend::SokolBackend() : state_(new State) {}
@@ -952,50 +961,50 @@ bool SokolBackend::set_scissor(bool enabled, float x, float y, float width, floa
     return true;
 }
 
-bool SokolBackend::draw_path(const NanoVGRecorder &recorder, uint32_t operation_index,
+bool SokolBackend::draw_path(const PreparedPathData &path, uint32_t operation_index,
                              float opacity) {
     static const float identity[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
-    return draw_path_transformed(recorder, operation_index, identity, opacity);
+    return draw_path_transformed(path, operation_index, identity, opacity);
 }
 
-bool SokolBackend::draw_path_transformed(const NanoVGRecorder &recorder, uint32_t operation_index,
+bool SokolBackend::draw_path_transformed(const PreparedPathData &path, uint32_t operation_index,
                                          const float transform[6], float opacity) {
-    if (!state_->in_pass || operation_index >= recorder.operations().size() || opacity < 0.0f ||
+    if (!state_->in_pass || operation_index >= path.operations().size() || opacity < 0.0f ||
         opacity > 1.0f || !transform)
         return fail(*state_, "invalid path draw");
-    const auto &operation = recorder.operations()[operation_index];
+    const auto &operation = path.operations()[operation_index];
     sg_view paint_view{};
     sg_sampler paint_sampler{};
     int texture_type = 0;
     int texture_flags = 0;
-    if (!resolve_paint_image(*state_, recorder, operation.paint.image, paint_view, paint_sampler,
+    if (!resolve_paint_image(*state_, path, operation.paint.image, paint_view, paint_sampler,
                              texture_type, texture_flags))
         return false;
     PaintUniforms paint =
         paint_uniforms(operation, transform, opacity, texture_type, texture_flags);
     if (operation.kind == PreparedPathKind::Fill &&
-        (operation.path_count != 1 || !recorder.paths()[operation.path_offset].convex)) {
+        (operation.path_count != 1 || !path.paths()[operation.path_offset].convex)) {
         const std::array<float, 4> stencil_color{};
         for (uint32_t index = 0; index < operation.path_count; ++index) {
-            const auto &path = recorder.paths()[operation.path_offset + index];
-            if (path.fill_count < 3)
+            const auto &range = path.paths()[operation.path_offset + index];
+            if (range.fill_count < 3)
                 continue;
             SolidMesh fan;
             const uint32_t base = static_cast<uint32_t>(fan.vertices.size());
-            for (uint32_t vertex = 0; vertex < path.fill_count; ++vertex) {
-                const auto &source = recorder.vertices()[path.fill_offset + vertex];
+            for (uint32_t vertex = 0; vertex < range.fill_count; ++vertex) {
+                const auto &source = path.vertices()[range.fill_offset + vertex];
                 fan.vertices.push_back(
                     {source.x * transform[0] + source.y * transform[2] + transform[4],
                      source.x * transform[1] + source.y * transform[3] + transform[5]});
             }
-            for (uint32_t vertex = 1; vertex + 1 < path.fill_count; ++vertex)
+            for (uint32_t vertex = 1; vertex + 1 < range.fill_count; ++vertex)
                 fan.indices.insert(fan.indices.end(), {base, base + vertex, base + vertex + 1});
             if (!draw_mesh(*state_, state_->fill_stencil_pipeline, fan.vertices, fan.indices,
                            stencil_color.data(), sizeof(stencil_color), {}, {},
                            state_->solid_vertices))
                 return false;
         }
-        const PathMesh fringe = make_paint_mesh(recorder, operation, transform, true);
+        const PathMesh fringe = make_paint_mesh(path, operation, transform, true);
         if (!fringe.indices.empty() &&
             !draw_mesh(*state_, state_->paint_fringe_pipeline, fringe.vertices, fringe.indices,
                        &paint, sizeof(paint), paint_view, paint_sampler, state_->solid_vertices))
@@ -1014,42 +1023,53 @@ bool SokolBackend::draw_path_transformed(const NanoVGRecorder &recorder, uint32_
         return draw_mesh(*state_, state_->paint_cover_pipeline, cover.vertices, cover.indices,
                          &paint, sizeof(paint), paint_view, paint_sampler, state_->solid_vertices);
     }
-    const PathMesh mesh = make_paint_mesh(recorder, operation, transform);
+    const PathMesh mesh = make_paint_mesh(path, operation, transform);
     if (mesh.indices.empty())
         return fail(*state_, "empty prepared path");
     return draw_mesh(*state_, state_->paint_pipeline, mesh.vertices, mesh.indices, &paint,
                      sizeof(paint), paint_view, paint_sampler, state_->solid_vertices);
 }
 
-bool SokolBackend::draw_paths(const NanoVGRecorder &recorder) {
+bool SokolBackend::draw_path(const NanoVGRecorder &recorder, uint32_t operation_index,
+                             float opacity) {
+    return draw_path(recorder.data(), operation_index, opacity);
+}
+
+bool SokolBackend::draw_path_transformed(const NanoVGRecorder &recorder, uint32_t operation_index,
+                                         const float transform[6], float opacity) {
+    return draw_path_transformed(recorder.data(), operation_index, transform, opacity);
+}
+
+bool SokolBackend::draw_paths(const PreparedPathData &path) {
     if (!state_->in_pass)
         return fail(*state_, "path draw outside pass");
-    for (uint32_t index = 0; index < recorder.operations().size(); ++index)
-        if (!draw_path(recorder, index))
+    for (uint32_t index = 0; index < path.operations().size(); ++index)
+        if (!draw_path(path, index))
             return false;
     return true;
 }
 
+bool SokolBackend::draw_paths(const NanoVGRecorder &recorder) {
+    return draw_paths(recorder.data());
+}
+
 bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) {
     for (const auto &upload : adapter.atlas_uploads(include_clean)) {
-        auto found = state_->atlases.find(upload.texture.value);
+        const uint64_t key = atlas_key(upload.texture, upload.generation);
+        auto found = state_->atlases.find(key);
         bool full_upload = !upload.dirty;
         if (found == state_->atlases.end()) {
             State::AtlasImage atlas;
             if (!create_atlas_image(atlas, upload))
                 return fail(*state_, "atlas image creation failed");
-            found = state_->atlases.emplace(upload.texture.value, std::move(atlas)).first;
+            found = state_->atlases.emplace(key, std::move(atlas)).first;
             state_->stats.gpu_resources += 2;
             full_upload = true;
         } else if (found->second.width != upload.texture_width ||
                    found->second.height != upload.texture_height ||
                    found->second.format != upload.format ||
                    found->second.bytes_per_pixel != upload.bytes_per_pixel) {
-            sg_destroy_view(found->second.view);
-            sg_destroy_image(found->second.image);
-            if (!create_atlas_image(found->second, upload))
-                return fail(*state_, "atlas image replacement failed");
-            full_upload = true;
+            return fail(*state_, "atlas generation changed dimensions");
         }
         copy_atlas_pixels(found->second, upload, full_upload);
         // Sokol currently exposes whole-image updates only; keep this fallback correct while
@@ -1076,7 +1096,7 @@ bool SokolBackend::draw_glyphs_transformed(const PreparedGlyphs &glyphs, const f
     if (!state_->in_pass || !transform || opacity < 0.0f || opacity > 1.0f)
         return fail(*state_, "invalid glyph draw");
     for (const auto &batch : glyphs.batches) {
-        const auto atlas = state_->atlases.find(batch.atlas.value);
+        const auto atlas = state_->atlases.find(atlas_key(batch.atlas, batch.atlas_generation));
         if (atlas == state_->atlases.end())
             return fail(*state_, "glyph atlas was not uploaded");
         if (batch.atlas_generation != atlas->second.generation)
