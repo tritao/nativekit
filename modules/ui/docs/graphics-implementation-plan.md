@@ -325,18 +325,32 @@ The initial boundary work is now implemented in the vendored Skribidi API:
 
 NativeKit keys retained GPU atlas resources by texture ID and generation, while
 the private adapter revalidates cached glyph batches after atlas growth. The
-active backend still uses a whole-image Sokol update as a correctness fallback;
-subregion upload and richer lifecycle callbacks remain deliberately deferred.
+active backend uses a persistent Sokol image-region update for partial dirty
+rectangles and retains the whole-image update for new generations, full dirty
+regions, and fallback cases. GPU atlas generations remain alive while retained
+glyph batches can reference them.
+
+Atlas synchronization follows a non-destructive snapshot/acknowledgement
+protocol:
+
+```text
+Skribidi CPU atlas -> peek dirty(epoch) -> GPU upload -> ack(epoch)
+```
+
+Acknowledgement is accepted only for the exact pending epoch, so failed
+uploads and glyphs rasterized after a snapshot remain dirty. Atlas format,
+row pitch, dirty origin, allocation generation, and upload statistics are
+explicit; alpha and SDF atlases stay R8 and color glyphs stay premultiplied
+RGBA8. The backend records full versus subregion uploads, dirtied and uploaded
+bytes, atlas reallocations, and related preparation counters for tuning.
 
 These changes should be proposed upstream when generally useful. Do not make
 NativeKit GPU handles part of Skribidi.
 
-Potential Sokol work:
-
-- investigate and, if appropriate, upstream an image-subregion update primitive
-  with origin, extent, source data, and row pitch;
-- otherwise implement backend-specific partial upload privately behind the
-  NativeKit image uploader.
+The vendored Sokol layer provides the image-subregion update primitive with
+origin, extent, source data, and row pitch. NativeKit uses it through the same
+uploader interface as the whole-atlas path, so both paths update the same CPU
+mirror and acknowledge epochs only after a successful GPU update.
 
 Exit criteria:
 
