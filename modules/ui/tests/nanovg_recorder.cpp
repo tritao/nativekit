@@ -1,5 +1,7 @@
 #include "prepare/nanovg_recorder.h"
 
+#include "nanovg.h"
+
 using namespace nkui;
 
 int main() {

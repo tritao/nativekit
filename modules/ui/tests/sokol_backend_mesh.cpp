@@ -1,6 +1,8 @@
 #include "prepare/nanovg_recorder.h"
 #include "render/sokol_backend.h"
 
+#include "nanovg.h"
+
 using namespace nkui;
 
 int main() {

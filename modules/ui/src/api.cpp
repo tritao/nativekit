@@ -10,6 +10,8 @@
 #include "render/render_plan_executor.h"
 #include "render/sokol_backend.h"
 
+#include "nanovg.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>

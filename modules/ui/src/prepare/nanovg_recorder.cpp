@@ -1,5 +1,7 @@
 #include "nanovg_recorder.h"
 
+#include "nanovg.h"
+
 #include <algorithm>
 #include <cstring>
 #include <vector>
@@ -9,7 +11,7 @@ namespace nkui {
 struct NanoVGRecorder::State {
     std::vector<PreparedPathOperation> operations;
     std::vector<PreparedPathRange> paths;
-    std::vector<NVGvertex> vertices;
+    std::vector<PreparedVertex> vertices;
     std::vector<PreparedTexture> textures;
     uint32_t flushes = 0;
     int next_texture = 1;
@@ -93,10 +95,41 @@ void render_flush(void *context) {
     ++static_cast<State *>(context)->flushes;
 }
 
+PreparedColor prepare_color(const NVGcolor &color) {
+    return {color.r, color.g, color.b, color.a};
+}
+
+PreparedPaint prepare_paint(const NVGpaint &paint) {
+    PreparedPaint result{};
+    std::memcpy(result.xform, paint.xform, sizeof(result.xform));
+    std::memcpy(result.extent, paint.extent, sizeof(result.extent));
+    result.radius = paint.radius;
+    result.feather = paint.feather;
+    result.innerColor = prepare_color(paint.innerColor);
+    result.outerColor = prepare_color(paint.outerColor);
+    result.image = paint.image;
+    return result;
+}
+
+PreparedBlend prepare_blend(const NVGcompositeOperationState &composite) {
+    return {composite.srcRGB, composite.dstRGB, composite.srcAlpha, composite.dstAlpha};
+}
+
+PreparedScissor prepare_scissor(const NVGscissor &scissor) {
+    PreparedScissor result{};
+    std::memcpy(result.xform, scissor.xform, sizeof(result.xform));
+    std::memcpy(result.extent, scissor.extent, sizeof(result.extent));
+    return result;
+}
+
 uint32_t copy_vertices(State &state, const NVGvertex *vertices, int count) {
     const uint32_t offset = static_cast<uint32_t>(state.vertices.size());
-    if (vertices && count > 0)
-        state.vertices.insert(state.vertices.end(), vertices, vertices + count);
+    if (vertices && count > 0) {
+        state.vertices.reserve(state.vertices.size() + static_cast<size_t>(count));
+        for (int index = 0; index < count; ++index)
+            state.vertices.push_back({vertices[index].x, vertices[index].y, vertices[index].u,
+                                      vertices[index].v});
+    }
     return offset;
 }
 
@@ -105,9 +138,9 @@ PreparedPathOperation base_operation(PreparedPathKind kind, const NVGpaint &pain
                                      const NVGscissor &scissor, float fringe) {
     PreparedPathOperation operation{};
     operation.kind = kind;
-    operation.paint = paint;
-    operation.composite = composite;
-    operation.scissor = scissor;
+    operation.paint = prepare_paint(paint);
+    operation.composite = prepare_blend(composite);
+    operation.scissor = prepare_scissor(scissor);
     operation.fringe = fringe;
     return operation;
 }
@@ -211,7 +244,7 @@ const std::vector<PreparedPathRange> &NanoVGRecorder::paths() const {
     return state_->paths;
 }
 
-const std::vector<NVGvertex> &NanoVGRecorder::vertices() const {
+const std::vector<PreparedVertex> &NanoVGRecorder::vertices() const {
     return state_->vertices;
 }
 

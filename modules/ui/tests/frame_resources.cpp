@@ -1,5 +1,7 @@
 #include "render/frame_resources.h"
 
+#include "nanovg.h"
+
 using namespace nkui;
 
 class TestProducer final : public SurfaceProducer {
