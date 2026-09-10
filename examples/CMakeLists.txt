@@ -9,6 +9,9 @@ set_target_properties(nativekit_showcase PROPERTIES LINKER_LANGUAGE CXX)
 add_executable(nativekit_opengl opengl.c)
 target_link_libraries(nativekit_opengl PRIVATE NativeKit::nativekit)
 set_target_properties(nativekit_opengl PROPERTIES LINKER_LANGUAGE CXX)
+add_dependencies(nativekit_showcase nativekit_opengl)
+target_compile_definitions(nativekit_showcase PRIVATE
+    NATIVEKIT_OPENGL_SAMPLE="$<TARGET_FILE:nativekit_opengl>")
 
 find_package(Vulkan QUIET)
 find_program(NATIVEKIT_GLSLC glslc)
@@ -32,8 +35,25 @@ if(Vulkan_FOUND AND NATIVEKIT_GLSLC)
         NATIVEKIT_FRAGMENT_SPV="${NATIVEKIT_FRAGMENT_SPV}")
     target_link_libraries(nativekit_vulkan PRIVATE NativeKit::nativekit Vulkan::Vulkan)
     set_target_properties(nativekit_vulkan PROPERTIES LINKER_LANGUAGE CXX)
+    add_dependencies(nativekit_showcase nativekit_vulkan)
+    target_compile_definitions(nativekit_showcase PRIVATE
+        NATIVEKIT_VULKAN_SAMPLE="$<TARGET_FILE:nativekit_vulkan>")
 endif()
 
 add_executable(nativekit_browser browser.c)
 target_link_libraries(nativekit_browser PRIVATE NativeKit::nativekit)
 set_target_properties(nativekit_browser PROPERTIES LINKER_LANGUAGE CXX)
+
+if(BUILD_TESTING AND UNIX AND NOT APPLE AND NOT ANDROID)
+    find_program(NATIVEKIT_XVFB_RUN xvfb-run)
+    if(NATIVEKIT_XVFB_RUN)
+        add_test(NAME opengl_example_smoke
+            COMMAND ${NATIVEKIT_XVFB_RUN} -a $<TARGET_FILE:nativekit_opengl> --smoke-test)
+        set_tests_properties(opengl_example_smoke PROPERTIES LABELS "graphics" TIMEOUT 15)
+        if(TARGET nativekit_vulkan)
+            add_test(NAME vulkan_example_smoke
+                COMMAND ${NATIVEKIT_XVFB_RUN} -a $<TARGET_FILE:nativekit_vulkan> --smoke-test)
+            set_tests_properties(vulkan_example_smoke PROPERTIES LABELS "graphics" TIMEOUT 15)
+        endif()
+    endif()
+endif()

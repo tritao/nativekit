@@ -109,6 +109,11 @@ recreate its swapchain-dependent resources.
 ./build/examples/nativekit_vulkan
 ```
 
+Both graphics examples accept `--smoke-test`, which renders 30 frames, resizes
+the window during the run, and exits. CTest runs these checks under Xvfb when it
+is available. NativeKit Lab can also launch either triangle from its Graphics
+card.
+
 Source formatting is defined by `.clang-format`. When ClangFormat is installed,
 CMake provides targets to apply it or verify that no changes are needed:
 

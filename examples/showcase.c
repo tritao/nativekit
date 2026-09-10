@@ -14,7 +14,10 @@
 #if defined(_WIN32)
 #include <windows.h>
 #else
+#include <spawn.h>
+#include <signal.h>
 #include <time.h>
+extern char **environ;
 #endif
 
 typedef struct app {
@@ -55,6 +58,8 @@ static const char page[] =
     "<div class=card><h2>Web & system</h2><button data-c=browser.open>Open sample browser window</button>"
     "<button data-c=web.eval>Evaluate JavaScript</button><button data-c=system.info>Query system information</button>"
     "<button data-c=shell.open>Open NativeKit website</button></div>"
+    "<div class=card><h2>Graphics</h2><button data-c=graphics.opengl>Launch OpenGL triangle</button>"
+    "<button data-c=graphics.vulkan>Launch Vulkan triangle</button></div>"
     "<div class=card><h2>Notifications</h2><button data-c=notification.show>Show notification</button></div>"
     "</section><aside class=log><h2>Live event log</h2><div id=events></div></aside></main><script>"
     "const bridge=window.webkit.messageHandlers.nativekit;document.addEventListener('click',e=>{const c=e.target.dataset.c;"
@@ -129,6 +134,29 @@ static void log_data(app *state, const char *kind, const void *data, size_t size
 
 static void log_text(app *state, const char *kind, const char *text) {
     log_data(state, kind, text, strlen(text));
+}
+
+static void launch_sample(app *state, const char *path, const char *name) {
+#if defined(_WIN32)
+    char command[2048];
+    snprintf(command, sizeof(command), "\"%s\"", path);
+    STARTUPINFOA startup = {.cb = sizeof(startup)};
+    PROCESS_INFORMATION process = {0};
+    if (CreateProcessA(NULL, command, NULL, NULL, FALSE, 0, NULL, NULL, &startup, &process)) {
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        log_text(state, "graphics", name);
+    } else {
+        log_text(state, "error", "Could not launch graphics sample");
+    }
+#else
+    pid_t child = 0;
+    char *const arguments[] = {(char *)path, NULL};
+    if (posix_spawn(&child, path, NULL, NULL, arguments, environ) == 0)
+        log_text(state, "graphics", name);
+    else
+        log_text(state, "error", "Could not launch graphics sample");
+#endif
 }
 
 static int command_is(const nk_event *event, const char *command) {
@@ -282,6 +310,14 @@ static void dispatch(app *state, const nk_event *event) {
             log_text(state, "shell", "Asked the desktop to open the URL");
         else
             log_text(state, "error", nk_last_error());
+    } else if (command_is(event, "graphics.opengl")) {
+        launch_sample(state, NATIVEKIT_OPENGL_SAMPLE, "Launched the OpenGL triangle");
+    } else if (command_is(event, "graphics.vulkan")) {
+#if defined(NATIVEKIT_VULKAN_SAMPLE)
+        launch_sample(state, NATIVEKIT_VULKAN_SAMPLE, "Launched the Vulkan triangle");
+#else
+        log_text(state, "graphics", "Vulkan sample was not built (Vulkan SDK and glslc required)");
+#endif
     } else if (command_is(event, "notification.show")) {
         nk_notification_options options = {0};
         options.struct_size = sizeof(options);
@@ -390,6 +426,9 @@ static void handle_event(app *state, const nk_event *event) {
 }
 
 int main(void) {
+#if !defined(_WIN32)
+    signal(SIGCHLD, SIG_IGN);
+#endif
     app state = {0};
     state.running = 1;
     nk_init_options init = {0};

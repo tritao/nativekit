@@ -427,7 +427,12 @@ static void renderer_destroy(renderer *r) {
     vkDestroyDevice(r->device, NULL);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    const int smoke_test = argc == 2 && strcmp(argv[1], "--smoke-test") == 0;
+    if (argc > 1 && !smoke_test) {
+        fprintf(stderr, "Usage: %s [--smoke-test]\n", argv[0]);
+        return 2;
+    }
     int exit_code = 1;
     nk_init_options init = {.struct_size = sizeof(init), .api_version = NK_API_VERSION};
     if (nk_init(&init) != NK_OK) { fprintf(stderr, "nk_init failed: %s\n", nk_last_error()); return 1; }
@@ -466,6 +471,7 @@ int main(void) {
                          .surface = (VkSurfaceKHR)(uintptr_t)native_surface};
     if (renderer_init(&graphics)) {
         int running = 1;
+        unsigned rendered_frames = 0;
         while (running) {
             nk_event event = {.struct_size = sizeof(event)};
             do {
@@ -478,7 +484,20 @@ int main(void) {
                 if (empty) break;
                 event.struct_size = sizeof(event);
             } while (running);
-            if (running && !draw_frame(&graphics)) running = 0;
+            if (running) {
+                if (!draw_frame(&graphics)) {
+                    running = 0;
+                } else {
+                    ++rendered_frames;
+                    if (smoke_test && rendered_frames == 10) {
+                        int32_t x = 0, y = 0;
+                        nk_window_get_position(window, &x, &y);
+                        nk_window_set_bounds(window, x, y, 520, 360);
+                    }
+                    if (smoke_test && rendered_frames >= 30)
+                        running = 0;
+                }
+            }
         }
         exit_code = 0;
     }

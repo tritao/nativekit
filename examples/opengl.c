@@ -4,6 +4,7 @@
 
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -237,7 +238,12 @@ static void renderer_destroy(renderer *graphics) {
         graphics->delete_program(graphics->program);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    const int smoke_test = argc == 2 && strcmp(argv[1], "--smoke-test") == 0;
+    if (argc > 1 && !smoke_test) {
+        fprintf(stderr, "Usage: %s [--smoke-test]\n", argv[0]);
+        return 2;
+    }
     nk_init_options init = {0};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
@@ -282,6 +288,7 @@ int main(void) {
     renderer graphics = {0};
     int ready = 0;
     int running = 1;
+    unsigned rendered_frames = 0;
     while (running) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
@@ -323,6 +330,14 @@ int main(void) {
                 fprintf(stderr, "nk_surface_present failed: %s\n", nk_last_error());
                 break;
             }
+            ++rendered_frames;
+            if (smoke_test && rendered_frames == 10) {
+                int32_t x = 0, y = 0;
+                nk_window_get_position(window, &x, &y);
+                nk_window_set_bounds(window, x, y, 520, 360);
+            }
+            if (smoke_test && rendered_frames >= 30)
+                running = 0;
             sleep_milliseconds(16);
         } else if (queue_was_empty) {
             sleep_milliseconds(8);
