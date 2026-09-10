@@ -18,7 +18,4 @@ NK_API nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request NK_O
 NK_API nk_result NK_CALL nk_webview_eval(nk_handle webview, hxi_utf8 script,
                                          nk_request_id *out_request NK_OUT);
 
-/* Binding-only names for constants declared by optional service headers. */
-enum { NK_BINDING_DIALOG_MESSAGE = 4 };
-
 #endif

@@ -5,6 +5,8 @@ import NativeKitEventValue;
 
 class NativeKitResourceEvents {
 	public static function decode(c:NativeKitEventContext):Null<NativeKitEventValue> return switch c.kind {
+		case NativeKitConstants.NK_EVENT_DIALOG_RESOURCES_COMPLETE:
+			var d=NativeKitEventBytes.decodeResourceList(c.data,0); Resources(c.kind,c.request,c.result,d.accepted,d.items);
 		case NativeKitConstants.NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE | NativeKitConstants.NK_EVENT_RESOURCE_OPENED:
 			var d=NativeKitEventBytes.decodeResourceList(c.data,0); Resources(c.kind,c.request,c.result,d.accepted,d.items);
 		case NativeKitConstants.NK_EVENT_SHARE_RECEIVED:

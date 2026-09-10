@@ -57,6 +57,21 @@ class NativeKitRequests {
 		return trackDialog("directory dialog", started.status, started.out_request, handler);
 	}
 
+	public function openResource(parent:Int, options:nk_file_dialog_options, handler:Bool->Array<NativeKitResource>->Void):haxe.Int64 {
+		var started = NativeKit.nk_dialog_open_resource(parent, options);
+		return trackResourceDialog("open-resource dialog", started.status, started.out_request, handler);
+	}
+
+	public function saveResource(parent:Int, options:nk_file_dialog_options, handler:Bool->Array<NativeKitResource>->Void):haxe.Int64 {
+		var started = NativeKit.nk_dialog_save_resource(parent, options);
+		return trackResourceDialog("save-resource dialog", started.status, started.out_request, handler);
+	}
+
+	public function selectResourceDirectory(parent:Int, options:nk_file_dialog_options, handler:Bool->Array<NativeKitResource>->Void):haxe.Int64 {
+		var started = NativeKit.nk_dialog_select_resource_directory(parent, options);
+		return trackResourceDialog("resource-directory dialog", started.status, started.out_request, handler);
+	}
+
 	public function messageDialog(parent:Int, options:nk_message_dialog_options, handler:Int->Void):haxe.Int64 {
 		var started = NativeKit.nk_dialog_message(parent, options);
 		checkStarted("message dialog", started.status);
@@ -107,6 +122,17 @@ class NativeKitRequests {
 		checkStarted(name, status);
 		track(request, function(value) switch value {
 			case DialogPaths(_, result, accepted, paths): checkCompleted(name, result); handler(accepted, paths);
+			case _: wrongEvent(name);
+		});
+		return request;
+	}
+
+	function trackResourceDialog(name:String, status:Int, request:haxe.Int64, handler:Bool->Array<NativeKitResource>->Void):haxe.Int64 {
+		checkStarted(name, status);
+		track(request, function(value) switch value {
+			case Resources(kind, _, result, accepted, items):
+				if (kind != NativeKit.NativeKitConstants.NK_EVENT_DIALOG_RESOURCES_COMPLETE) wrongEvent(name);
+				checkCompleted(name, result); handler(accepted, items);
 			case _: wrongEvent(name);
 		});
 		return request;

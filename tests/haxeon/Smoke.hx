@@ -8,12 +8,12 @@ import NativeKit.NativeKitConstants;
 
 class Smoke {
 	static function main():Int {
-		if (NativeKit.nk_api_version() != 1)
+		if (NativeKit.nk_api_version() != 2)
 			return 1;
 
 		var options = new nk_init_options();
 		options.set_struct_size(16);
-		options.set_api_version(1);
+		options.set_api_version(2);
 		options.set_event_queue_capacity(32);
 		if (NativeKit.nk_init(options) != 0)
 			return 2;
