@@ -73,7 +73,7 @@ void apply_state(RenderCommand &command, const CanvasState &state) {
     command.scissor_height = state.height;
 }
 
-void intersect_clip(CanvasState &state, const ClipRectCommand &clip) {
+bool intersect_clip(CanvasState &state, const ClipRectCommand &clip) {
     const auto &m = state.transform;
     const float corners[4][2] = {{clip.x, clip.y},
                                  {clip.x + clip.width, clip.y},
@@ -88,6 +88,9 @@ void intersect_clip(CanvasState &state, const ClipRectCommand &clip) {
         max_x = std::max(max_x, x);
         max_y = std::max(max_y, y);
     }
+    if (!std::isfinite(min_x) || !std::isfinite(min_y) || !std::isfinite(max_x) ||
+        !std::isfinite(max_y))
+        return false;
     if (state.has_scissor) {
         min_x = std::max(min_x, state.x);
         min_y = std::max(min_y, state.y);
@@ -99,6 +102,7 @@ void intersect_clip(CanvasState &state, const ClipRectCommand &clip) {
     state.y = min_y;
     state.width = std::max(0.0f, max_x - min_x);
     state.height = std::max(0.0f, max_y - min_y);
+    return true;
 }
 
 } // namespace
@@ -153,7 +157,8 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             states.pop_back();
             break;
         case CommandOpcode::ClipRect:
-            intersect_clip(state, read<ClipRectCommand>(record));
+            if (!intersect_clip(state, read<ClipRectCommand>(record)))
+                return fail(error, index, "clip transform overflow");
             break;
         case CommandOpcode::DrawPath: {
             const auto value = read<DrawResourceCommand>(record);

@@ -1,5 +1,7 @@
 #include "compositor/compositor.h"
 
+#include <limits>
+
 using namespace nkui;
 
 int main() {
@@ -81,5 +83,12 @@ int main() {
         outer.paint.value != paint.value || outer.transform[0] != 2.0f ||
         outer.transform[3] != 3.0f || outer.transform[4] != 5.0f || outer.transform[5] != 7.0f)
         return 12;
+    DisplayList overflow;
+    const float overflowing_transform[6] = {std::numeric_limits<float>::max(), 0.0f,
+                                            0.0f, 1.0f, 0.0f, 0.0f};
+    if (!overflow.set_transform(overflowing_transform) ||
+        !overflow.clip_rect(2.0f, 0.0f, 4.0f, 4.0f) ||
+        compositor.compile(overflow, main_target, plan, &error) || error.command_index != 1)
+        return 13;
     return 0;
 }

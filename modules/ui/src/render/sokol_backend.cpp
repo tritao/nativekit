@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <string>
 #include <unordered_map>
@@ -847,6 +848,9 @@ bool SokolBackend::set_scissor(bool enabled, float x, float y, float width, floa
         sg_apply_scissor_rect(0, 0, state_->width, state_->height, true);
         return true;
     }
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) ||
+        !std::isfinite(height) || width < 0.0f || height < 0.0f)
+        return fail(*state_, "invalid scissor rectangle");
     const int left = std::max(0, static_cast<int>(x));
     const int top = std::max(0, static_cast<int>(y));
     const int right = std::min(state_->width, static_cast<int>(x + width + 0.999f));
