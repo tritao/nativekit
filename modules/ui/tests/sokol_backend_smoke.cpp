@@ -57,6 +57,11 @@ int main() {
     bool ready = false;
     auto backend = std::make_unique<SokolBackend>();
     NanoVGRecorder recorder;
+    const unsigned char image_pixel[4] = {40, 120, 220, 220};
+    const int paint_image =
+        nvgCreateImageRGBA(recorder.context(), 1, 1, NVG_IMAGE_NEAREST, image_pixel);
+    if (!paint_image)
+        result = 12;
     SkribidiAdapter text_adapter;
     PreparedGlyphs title_glyphs;
     PreparedGlyphs layer_glyphs;
@@ -119,7 +124,8 @@ int main() {
         nvgBeginFrame(vg, static_cast<float>(width), static_cast<float>(height), 1.0f);
         nvgBeginPath(vg);
         nvgRect(vg, 0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height));
-        nvgFillColor(vg, nvgRGBA(8, 12, 25, 255));
+        nvgFillPaint(vg, nvgLinearGradient(vg, 0.0f, 0.0f, static_cast<float>(width), 0.0f,
+                                           nvgRGBA(45, 12, 25, 255), nvgRGBA(8, 55, 25, 255)));
         nvgFill(vg);
         nvgBeginPath(vg);
         nvgMoveTo(vg, 40.0f, 40.0f);
@@ -128,7 +134,7 @@ int main() {
         nvgLineTo(vg, 200.0f, 140.0f);
         nvgLineTo(vg, 40.0f, 140.0f);
         nvgClosePath(vg);
-        nvgFillColor(vg, nvgRGBA(40, 120, 220, 220));
+        nvgFillPaint(vg, nvgImagePattern(vg, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, paint_image, 1.0f));
         nvgFill(vg);
         nvgBeginPath(vg);
         nvgRect(vg, 35.0f, 35.0f, 170.0f, 110.0f);
@@ -152,10 +158,17 @@ int main() {
         if (!result && frames == 0) {
             unsigned char filled[4]{};
             unsigned char notch[4]{};
+            unsigned char gradient_left[4]{};
+            unsigned char gradient_right[4]{};
             glReadPixels(60, height - 85, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, filled);
             glReadPixels(170, height - 85, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, notch);
+            glReadPixels(10, height - 200, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gradient_left);
+            glReadPixels(width - 10, height - 200, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gradient_right);
             if (filled[2] <= notch[2] + 30)
                 result = 11;
+            if (!result && (gradient_left[0] <= gradient_right[0] + 15 ||
+                            gradient_right[1] <= gradient_left[1] + 15))
+                result = 13;
         }
         if (!result && nk_surface_present(surface) != NK_OK)
             result = 6;

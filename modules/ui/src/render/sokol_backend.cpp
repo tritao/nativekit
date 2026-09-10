@@ -30,10 +30,22 @@ struct SokolBackend::State {
         int height = 0;
     };
 
+    struct PaintImage {
+        sg_image image{};
+        sg_view view{};
+        sg_sampler sampler{};
+        uint32_t generation = 0;
+        int type = 0;
+        int flags = 0;
+    };
+
     sg_shader solid_shader{};
     sg_pipeline solid_pipeline{};
     sg_pipeline fill_stencil_pipeline{};
     sg_pipeline fill_cover_pipeline{};
+    sg_shader paint_shader{};
+    sg_pipeline paint_pipeline{};
+    sg_pipeline paint_cover_pipeline{};
     sg_shader alpha_glyph_shader{};
     sg_pipeline alpha_glyph_pipeline{};
     sg_shader sdf_glyph_shader{};
@@ -49,6 +61,10 @@ struct SokolBackend::State {
     sg_buffer indices{};
     std::unordered_map<uint32_t, AtlasImage> atlases;
     std::unordered_map<uint32_t, Target> targets;
+    std::unordered_map<const NanoVGRecorder *, std::unordered_map<int, PaintImage>> paint_images;
+    sg_image white_image{};
+    sg_view white_view{};
+    sg_sampler white_sampler{};
     SokolBackendStats stats{};
     std::string error;
     int width = 0;
@@ -64,6 +80,15 @@ struct TextureVertex {
     float y;
     float u;
     float v;
+};
+
+struct PaintUniforms {
+    std::array<float, 4> inner;
+    std::array<float, 4> outer;
+    std::array<float, 4> extent_radius_feather;
+    std::array<float, 4> inverse_x;
+    std::array<float, 4> inverse_y;
+    std::array<float, 4> params;
 };
 
 bool fail(SokolBackend::State &state, const char *message) {
@@ -90,6 +115,44 @@ sg_shader make_solid_shader() {
     desc.uniform_blocks[1].glsl_uniforms[0].type = SG_UNIFORMTYPE_FLOAT4;
     desc.uniform_blocks[1].glsl_uniforms[0].array_count = 1;
     desc.uniform_blocks[1].glsl_uniforms[0].glsl_name = "color";
+    return sg_make_shader(&desc);
+}
+
+sg_shader make_paint_shader() {
+    sg_shader_desc desc{};
+    desc.vertex_func.source =
+        "#version 330\n"
+        "uniform vec2 viewport; layout(location=0) in vec2 position; out vec2 fpos;"
+        "void main(){fpos=position;vec2 p=vec2(position.x/viewport.x*2.0-1.0,"
+        "1.0-position.y/viewport.y*2.0);gl_Position=vec4(p,0,1);}";
+    desc.fragment_func.source =
+        "#version 330\n"
+        "uniform sampler2D tex; uniform vec4 innerColor; uniform vec4 outerColor;"
+        "uniform vec4 extentRadiusFeather; uniform vec4 inverseX; uniform vec4 inverseY;"
+        "uniform vec4 params; in vec2 fpos; out vec4 frag_color;"
+        "float sdroundrect(vec2 p,vec2 ext,float rad){vec2 ext2=ext-vec2(rad);"
+        "vec2 d=abs(p)-ext2;return min(max(d.x,d.y),0.0)+length(max(d,0.0))-rad;}"
+        "void main(){vec2 pt=vec2(dot(vec3(fpos,1),inverseX.xyz),"
+        "dot(vec3(fpos,1),inverseY.xyz));vec4 c;if(params.x>1.5){"
+        "vec2 uv=pt/extentRadiusFeather.xy;if(params.z>0.5)uv.y=1.0-uv.y;"
+        "c=texture(tex,uv);if(params.y>0.5)c=vec4(1,1,1,c.r);c*=innerColor;"
+        "if(params.w<0.5)c.rgb*=c.a;}else{float d=sdroundrect(pt,extentRadiusFeather.xy,"
+        "extentRadiusFeather.z);float t=clamp((d+extentRadiusFeather.w*0.5)/"
+        "max(extentRadiusFeather.w,0.0001),0.0,1.0);c=mix(innerColor,outerColor,t);}"
+        "frag_color=c;}";
+    desc.uniform_blocks[0].stage = SG_SHADERSTAGE_VERTEX;
+    desc.uniform_blocks[0].size = 8;
+    desc.uniform_blocks[0].glsl_uniforms[0] = {SG_UNIFORMTYPE_FLOAT2, 1, "viewport"};
+    desc.uniform_blocks[1].stage = SG_SHADERSTAGE_FRAGMENT;
+    desc.uniform_blocks[1].size = sizeof(PaintUniforms);
+    const char *names[] = {"innerColor", "outerColor", "extentRadiusFeather",
+                           "inverseX",   "inverseY",   "params"};
+    for (int index = 0; index < 6; ++index)
+        desc.uniform_blocks[1].glsl_uniforms[index] = {SG_UNIFORMTYPE_FLOAT4, 1, names[index]};
+    desc.views[0].texture = {SG_SHADERSTAGE_FRAGMENT, SG_IMAGETYPE_2D, SG_IMAGESAMPLETYPE_FLOAT,
+                             false};
+    desc.samplers[0] = {SG_SHADERSTAGE_FRAGMENT, SG_SAMPLERTYPE_FILTERING};
+    desc.texture_sampler_pairs[0] = {SG_SHADERSTAGE_FRAGMENT, 0, 0, "tex"};
     return sg_make_shader(&desc);
 }
 
@@ -210,6 +273,30 @@ sg_pipeline make_fill_cover_pipeline(sg_shader shader) {
     desc.stencil.back = desc.stencil.front;
     desc.stencil.read_mask = 0xFF;
     desc.stencil.write_mask = 0xFF;
+    return sg_make_pipeline(&desc);
+}
+
+sg_pipeline make_paint_pipeline(sg_shader shader, bool stencil_cover) {
+    sg_pipeline_desc desc{};
+    desc.shader = shader;
+    desc.layout.buffers[0].stride = sizeof(SolidVertex);
+    desc.layout.attrs[0] = {0, 0, SG_VERTEXFORMAT_FLOAT2};
+    desc.index_type = SG_INDEXTYPE_UINT32;
+    desc.colors[0].blend.enabled = true;
+    desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+    desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+    desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    if (stencil_cover) {
+        desc.stencil.enabled = true;
+        desc.stencil.front.compare = SG_COMPAREFUNC_NOT_EQUAL;
+        desc.stencil.front.fail_op = SG_STENCILOP_ZERO;
+        desc.stencil.front.depth_fail_op = SG_STENCILOP_ZERO;
+        desc.stencil.front.pass_op = SG_STENCILOP_ZERO;
+        desc.stencil.back = desc.stencil.front;
+        desc.stencil.read_mask = 0xFF;
+        desc.stencil.write_mask = 0xFF;
+    }
     return sg_make_pipeline(&desc);
 }
 
@@ -339,6 +426,95 @@ bool create_target(SokolBackend::State &state, SokolBackend::State::Target &targ
     return true;
 }
 
+const PreparedTexture *find_texture(const NanoVGRecorder &recorder, int id) {
+    const auto &textures = recorder.textures();
+    const auto found = std::find_if(textures.begin(), textures.end(),
+                                    [id](const auto &texture) { return texture.id == id; });
+    return found == textures.end() ? nullptr : &*found;
+}
+
+bool resolve_paint_image(SokolBackend::State &state, const NanoVGRecorder &recorder, int id,
+                         sg_view &view, sg_sampler &sampler, int &type, int &flags) {
+    if (!id) {
+        view = state.white_view;
+        sampler = state.white_sampler;
+        type = NVG_TEXTURE_RGBA;
+        flags = NVG_IMAGE_PREMULTIPLIED;
+        return true;
+    }
+    const PreparedTexture *source = find_texture(recorder, id);
+    if (!source)
+        return fail(state, "NanoVG paint texture is missing");
+    auto &image = state.paint_images[&recorder][id];
+    if (!image.image.id) {
+        sg_image_desc image_desc{};
+        image_desc.width = source->width;
+        image_desc.height = source->height;
+        image_desc.pixel_format =
+            source->type == NVG_TEXTURE_RGBA ? SG_PIXELFORMAT_RGBA8 : SG_PIXELFORMAT_R8;
+        image_desc.usage.dynamic_update = true;
+        image.image = sg_make_image(&image_desc);
+        sg_view_desc view_desc{};
+        view_desc.texture.image = image.image;
+        image.view = sg_make_view(&view_desc);
+        sg_sampler_desc sampler_desc{};
+        sampler_desc.min_filter =
+            (source->flags & NVG_IMAGE_NEAREST) ? SG_FILTER_NEAREST : SG_FILTER_LINEAR;
+        sampler_desc.mag_filter = sampler_desc.min_filter;
+        sampler_desc.wrap_u =
+            (source->flags & NVG_IMAGE_REPEATX) ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
+        sampler_desc.wrap_v =
+            (source->flags & NVG_IMAGE_REPEATY) ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
+        image.sampler = sg_make_sampler(&sampler_desc);
+        if (sg_query_image_state(image.image) != SG_RESOURCESTATE_VALID ||
+            sg_query_view_state(image.view) != SG_RESOURCESTATE_VALID ||
+            sg_query_sampler_state(image.sampler) != SG_RESOURCESTATE_VALID)
+            return fail(state, "NanoVG paint texture creation failed");
+        image.type = source->type;
+        image.flags = source->flags;
+        state.stats.gpu_resources += 3;
+    }
+    if (image.generation != source->generation) {
+        const sg_image_data data = {.mip_levels = {{source->pixels.data(), source->pixels.size()}}};
+        sg_update_image(image.image, &data);
+        image.generation = source->generation;
+        ++state.stats.image_uploads;
+        state.stats.uploaded_bytes += source->pixels.size();
+    }
+    view = image.view;
+    sampler = image.sampler;
+    type = image.type;
+    flags = image.flags;
+    return true;
+}
+
+PaintUniforms paint_uniforms(const PreparedPathOperation &operation, const float transform[6],
+                             float opacity, int texture_type, int texture_flags) {
+    PaintUniforms uniforms{};
+    const float inner_alpha = operation.paint.innerColor.a * opacity;
+    const float outer_alpha = operation.paint.outerColor.a * opacity;
+    uniforms.inner = {operation.paint.innerColor.r * inner_alpha,
+                      operation.paint.innerColor.g * inner_alpha,
+                      operation.paint.innerColor.b * inner_alpha, inner_alpha};
+    uniforms.outer = {operation.paint.outerColor.r * outer_alpha,
+                      operation.paint.outerColor.g * outer_alpha,
+                      operation.paint.outerColor.b * outer_alpha, outer_alpha};
+    uniforms.extent_radius_feather = {operation.paint.extent[0], operation.paint.extent[1],
+                                      operation.paint.radius, operation.paint.feather};
+    float paint_transform[6];
+    std::memcpy(paint_transform, operation.paint.xform, sizeof(paint_transform));
+    nvgTransformMultiply(paint_transform, transform);
+    float inverse[6];
+    nvgTransformInverse(inverse, paint_transform);
+    uniforms.inverse_x = {inverse[0], inverse[2], inverse[4], 0.0f};
+    uniforms.inverse_y = {inverse[1], inverse[3], inverse[5], 0.0f};
+    uniforms.params = {operation.paint.image ? 2.0f : 0.0f,
+                       texture_type == NVG_TEXTURE_ALPHA ? 1.0f : 0.0f,
+                       (texture_flags & NVG_IMAGE_FLIPY) ? 1.0f : 0.0f,
+                       (texture_flags & NVG_IMAGE_PREMULTIPLIED) ? 1.0f : 0.0f};
+    return uniforms;
+}
+
 } // namespace
 
 bool triangulate_prepared_path(const NanoVGRecorder &recorder,
@@ -385,6 +561,15 @@ SokolBackend::SokolBackend() : state_(new State) {}
 
 SokolBackend::~SokolBackend() {
     if (state_->initialized) {
+        for (auto &[owner, images] : state_->paint_images) {
+            (void)owner;
+            for (auto &[id, image] : images) {
+                (void)id;
+                sg_destroy_sampler(image.sampler);
+                sg_destroy_view(image.view);
+                sg_destroy_image(image.image);
+            }
+        }
         for (auto &[id, target] : state_->targets) {
             (void)id;
             destroy_target(target);
@@ -395,6 +580,9 @@ SokolBackend::~SokolBackend() {
             sg_destroy_image(atlas.image);
         }
         sg_destroy_sampler(state_->sampler);
+        sg_destroy_sampler(state_->white_sampler);
+        sg_destroy_view(state_->white_view);
+        sg_destroy_image(state_->white_image);
         sg_destroy_buffer(state_->indices);
         sg_destroy_buffer(state_->composite_vertices);
         sg_destroy_buffer(state_->glyph_vertices);
@@ -410,6 +598,9 @@ SokolBackend::~SokolBackend() {
         sg_destroy_pipeline(state_->solid_pipeline);
         sg_destroy_pipeline(state_->fill_cover_pipeline);
         sg_destroy_pipeline(state_->fill_stencil_pipeline);
+        sg_destroy_pipeline(state_->paint_cover_pipeline);
+        sg_destroy_pipeline(state_->paint_pipeline);
+        sg_destroy_shader(state_->paint_shader);
         sg_destroy_shader(state_->solid_shader);
         sg_shutdown();
     }
@@ -425,6 +616,7 @@ bool SokolBackend::initialize() {
     if (!sg_isvalid())
         return fail(*state_, "sg_setup failed");
     state_->solid_shader = make_solid_shader();
+    state_->paint_shader = make_paint_shader();
     state_->alpha_glyph_shader = make_glyph_shader(GlyphMode::Alpha);
     state_->sdf_glyph_shader = make_glyph_shader(GlyphMode::Sdf);
     state_->color_glyph_shader = make_glyph_shader(GlyphMode::Color);
@@ -432,6 +624,8 @@ bool SokolBackend::initialize() {
     state_->solid_pipeline = make_solid_pipeline(state_->solid_shader);
     state_->fill_stencil_pipeline = make_fill_stencil_pipeline(state_->solid_shader);
     state_->fill_cover_pipeline = make_fill_cover_pipeline(state_->solid_shader);
+    state_->paint_pipeline = make_paint_pipeline(state_->paint_shader, false);
+    state_->paint_cover_pipeline = make_paint_pipeline(state_->paint_shader, true);
     state_->alpha_glyph_pipeline = make_glyph_pipeline(state_->alpha_glyph_shader);
     state_->sdf_glyph_pipeline = make_glyph_pipeline(state_->sdf_glyph_shader);
     state_->color_glyph_pipeline = make_glyph_pipeline(state_->color_glyph_shader);
@@ -442,6 +636,22 @@ bool SokolBackend::initialize() {
     sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
     sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
     state_->sampler = sg_make_sampler(&sampler_desc);
+    const uint32_t white_pixel = UINT32_MAX;
+    sg_image_desc white_desc{};
+    white_desc.width = 1;
+    white_desc.height = 1;
+    white_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    white_desc.data.mip_levels[0] = {&white_pixel, sizeof(white_pixel)};
+    state_->white_image = sg_make_image(&white_desc);
+    sg_view_desc white_view_desc{};
+    white_view_desc.texture.image = state_->white_image;
+    state_->white_view = sg_make_view(&white_view_desc);
+    sg_sampler_desc white_sampler_desc{};
+    white_sampler_desc.min_filter = SG_FILTER_NEAREST;
+    white_sampler_desc.mag_filter = SG_FILTER_NEAREST;
+    white_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    white_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    state_->white_sampler = sg_make_sampler(&white_sampler_desc);
     state_->solid_vertices = make_stream_buffer(4 * 1024 * 1024, false);
     state_->glyph_vertices = make_stream_buffer(4 * 1024 * 1024, false);
     state_->composite_vertices = make_stream_buffer(1024 * 1024, false);
@@ -450,17 +660,22 @@ bool SokolBackend::initialize() {
         sg_query_pipeline_state(state_->solid_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->fill_stencil_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->fill_cover_pipeline) == SG_RESOURCESTATE_VALID &&
+        sg_query_pipeline_state(state_->paint_pipeline) == SG_RESOURCESTATE_VALID &&
+        sg_query_pipeline_state(state_->paint_cover_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->alpha_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->sdf_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->color_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->composite_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_sampler_state(state_->sampler) == SG_RESOURCESTATE_VALID &&
+        sg_query_image_state(state_->white_image) == SG_RESOURCESTATE_VALID &&
+        sg_query_view_state(state_->white_view) == SG_RESOURCESTATE_VALID &&
+        sg_query_sampler_state(state_->white_sampler) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->solid_vertices) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->glyph_vertices) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->composite_vertices) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->indices) == SG_RESOURCESTATE_VALID;
     if (state_->initialized)
-        state_->stats.gpu_resources = 19;
+        state_->stats.gpu_resources = 25;
     return state_->initialized || fail(*state_, "Sokol UI resource creation failed");
 }
 
@@ -547,10 +762,15 @@ bool SokolBackend::draw_path_transformed(const NanoVGRecorder &recorder, uint32_
         return fail(*state_, "invalid path draw");
     const auto &operation = recorder.operations()[operation_index];
     SolidMesh mesh;
-    const float alpha = operation.paint.innerColor.a * opacity;
-    const std::array<float, 4> color = {operation.paint.innerColor.r * alpha,
-                                        operation.paint.innerColor.g * alpha,
-                                        operation.paint.innerColor.b * alpha, alpha};
+    sg_view paint_view{};
+    sg_sampler paint_sampler{};
+    int texture_type = 0;
+    int texture_flags = 0;
+    if (!resolve_paint_image(*state_, recorder, operation.paint.image, paint_view, paint_sampler,
+                             texture_type, texture_flags))
+        return false;
+    const PaintUniforms paint =
+        paint_uniforms(operation, transform, opacity, texture_type, texture_flags);
     if (operation.kind == PreparedPathKind::Fill &&
         (operation.path_count != 1 || !recorder.paths()[operation.path_offset].convex)) {
         const std::array<float, 4> stencil_color{};
@@ -583,8 +803,8 @@ bool SokolBackend::draw_path_transformed(const NanoVGRecorder &recorder, uint32_
                           point(operation.bounds[2], operation.bounds[3]),
                           point(operation.bounds[0], operation.bounds[3])};
         cover.indices = {0, 1, 2, 0, 2, 3};
-        return draw_mesh(*state_, state_->fill_cover_pipeline, cover.vertices, cover.indices,
-                         color.data(), sizeof(color), {}, {}, state_->solid_vertices);
+        return draw_mesh(*state_, state_->paint_cover_pipeline, cover.vertices, cover.indices,
+                         &paint, sizeof(paint), paint_view, paint_sampler, state_->solid_vertices);
     }
     if (!triangulate_prepared_path(recorder, operation, mesh))
         return fail(*state_, "unsupported triangle path");
@@ -594,8 +814,8 @@ bool SokolBackend::draw_path_transformed(const NanoVGRecorder &recorder, uint32_
         vertex.x = x * transform[0] + y * transform[2] + transform[4];
         vertex.y = x * transform[1] + y * transform[3] + transform[5];
     }
-    return draw_mesh(*state_, state_->solid_pipeline, mesh.vertices, mesh.indices, color.data(),
-                     sizeof(color), {}, {}, state_->solid_vertices);
+    return draw_mesh(*state_, state_->paint_pipeline, mesh.vertices, mesh.indices, &paint,
+                     sizeof(paint), paint_view, paint_sampler, state_->solid_vertices);
 }
 
 bool SokolBackend::draw_paths(const NanoVGRecorder &recorder) {
