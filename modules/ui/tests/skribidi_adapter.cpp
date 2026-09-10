@@ -20,5 +20,17 @@ int main() {
     for (const auto &batch : glyphs.batches)
         if (batch.mode != GlyphMode::Alpha || !batch.vertex_count || !batch.index_count)
             return 4;
-    return glyphs.vertices.size() % 4 == 0 && glyphs.indices.size() % 6 == 0 ? 0 : 5;
+    const auto first_query = adapter.pending_atlas_uploads();
+    const auto second_query = adapter.pending_atlas_uploads();
+    if (first_query.empty() || first_query.size() != second_query.size())
+        return 5;
+    for (const auto &upload : first_query)
+        if (!upload.texture.value || !upload.pixels ||
+            (upload.bytes_per_pixel != 1 && upload.bytes_per_pixel != 4) || upload.width <= 0 ||
+            upload.height <= 0 || upload.row_pitch <= 0 ||
+            !adapter.acknowledge_atlas_upload(upload.texture))
+            return 6;
+    if (!adapter.pending_atlas_uploads().empty())
+        return 7;
+    return glyphs.vertices.size() % 4 == 0 && glyphs.indices.size() % 6 == 0 ? 0 : 8;
 }

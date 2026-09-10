@@ -16,6 +16,7 @@ struct SkribidiAdapter::State {
     skb_rasterizer_t *rasterizer = nullptr;
     skb_image_atlas_t *atlas = nullptr;
     skb_layout_t *layout = nullptr;
+    uint16_t next_texture_slot = 1;
 };
 
 namespace {
@@ -53,6 +54,12 @@ void append_quad(const skb_quad_t &quad, const skb_image_t &atlas, PreparedGlyph
     output.indices.insert(output.indices.end(), std::begin(indices), std::end(indices));
 }
 
+void atlas_texture_created(skb_image_atlas_t *atlas, uint8_t texture_index, void *context) {
+    auto &state = *static_cast<SkribidiAdapter::State *>(context);
+    const uint32_t id = (uint32_t(1) << 28) | (uint32_t(1) << 16) | state.next_texture_slot++;
+    skb_image_atlas_set_texture_user_data(atlas, texture_index, id);
+}
+
 } // namespace
 
 SkribidiAdapter::SkribidiAdapter() : state_(new State) {
@@ -60,6 +67,8 @@ SkribidiAdapter::SkribidiAdapter() : state_(new State) {
     state_->temporary = skb_temp_alloc_create(512 * 1024);
     state_->rasterizer = skb_rasterizer_create(nullptr);
     state_->atlas = skb_image_atlas_create(nullptr);
+    if (state_->atlas)
+        skb_image_atlas_set_create_texture_callback(state_->atlas, atlas_texture_created, state_);
 }
 
 SkribidiAdapter::~SkribidiAdapter() {
@@ -155,6 +164,41 @@ bool SkribidiAdapter::prepare_glyphs(float origin_x, float origin_y, float pixel
 uint32_t SkribidiAdapter::atlas_texture_count() const {
     return state_->atlas ? static_cast<uint32_t>(skb_image_atlas_get_texture_count(state_->atlas))
                          : 0;
+}
+
+std::vector<AtlasUpload> SkribidiAdapter::pending_atlas_uploads() const {
+    std::vector<AtlasUpload> uploads;
+    if (!state_->atlas)
+        return uploads;
+    const int count = skb_image_atlas_get_texture_count(state_->atlas);
+    for (int index = 0; index < count; ++index) {
+        const skb_rect2i_t dirty = skb_image_atlas_get_texture_dirty_bounds(state_->atlas, index);
+        if (skb_rect2i_is_empty(dirty))
+            continue;
+        const skb_image_t *image = skb_image_atlas_get_texture(state_->atlas, index);
+        const AtlasTextureId texture{
+            static_cast<uint32_t>(skb_image_atlas_get_texture_user_data(state_->atlas, index))};
+        if (!image || !texture.value)
+            continue;
+        uploads.push_back({texture, static_cast<uint8_t>(index), image->bpp, image->width,
+                           image->height, image->stride_bytes, dirty.x, dirty.y, dirty.width,
+                           dirty.height, image->buffer});
+    }
+    return uploads;
+}
+
+bool SkribidiAdapter::acknowledge_atlas_upload(AtlasTextureId texture) {
+    if (!state_->atlas || !texture.value)
+        return false;
+    const int count = skb_image_atlas_get_texture_count(state_->atlas);
+    for (int index = 0; index < count; ++index) {
+        if (skb_image_atlas_get_texture_user_data(state_->atlas, index) != texture.value)
+            continue;
+        const skb_rect2i_t dirty =
+            skb_image_atlas_get_and_reset_texture_dirty_bounds(state_->atlas, index);
+        return !skb_rect2i_is_empty(dirty);
+    }
+    return false;
 }
 
 } // namespace nkui

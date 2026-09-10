@@ -38,6 +38,24 @@ struct PreparedGlyphs {
     std::vector<GlyphBatch> batches;
 };
 
+struct AtlasTextureId {
+    uint32_t value = 0;
+};
+
+struct AtlasUpload {
+    AtlasTextureId texture;
+    uint8_t texture_index = 0;
+    uint8_t bytes_per_pixel = 0;
+    int32_t texture_width = 0;
+    int32_t texture_height = 0;
+    int32_t row_pitch = 0;
+    int32_t x = 0;
+    int32_t y = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+    const uint8_t *pixels = nullptr;
+};
+
 class SkribidiAdapter {
   public:
     SkribidiAdapter();
@@ -51,6 +69,8 @@ class SkribidiAdapter {
     bool prepare_glyphs(float origin_x, float origin_y, float pixel_scale, GlyphMode mode,
                         PreparedGlyphs &output);
     uint32_t atlas_texture_count() const;
+    std::vector<AtlasUpload> pending_atlas_uploads() const;
+    bool acknowledge_atlas_upload(AtlasTextureId texture);
 
     struct State;
 
