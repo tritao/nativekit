@@ -37,6 +37,7 @@ Preparation uses a two-call sizing protocol:
 ```c
 NVGprepareParams params;
 nvgInitPrepareParams(&params);
+NVGpathBuilder* path = nvgCreatePathBuilder();
 
 NVGprepareOutput output = {0};
 int result = nvgPrepareFill(path, &params, &output);
@@ -53,6 +54,7 @@ result = nvgPrepareFill(path, &params, &output);
 /* Use paths[i].fillOffset/fillCount and strokeOffset/strokeCount into vertices. */
 free(vertices);
 free(paths);
+nvgDeletePathBuilder(path);
 ```
 
 The first call also populates counts, bounds, fringe width, stroke width, and
