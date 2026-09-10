@@ -1081,6 +1081,16 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
     for (const auto &upload : adapter.atlas_uploads(include_clean)) {
         const uint64_t key = atlas_key(upload.texture, upload.generation);
         auto found = state_->atlases.find(key);
+        bool replacing_generation = false;
+        if (found == state_->atlases.end()) {
+            for (const auto &[existing_key, existing_atlas] : state_->atlases) {
+                (void)existing_atlas;
+                if (static_cast<uint32_t>(existing_key >> 32) == upload.texture.value) {
+                    replacing_generation = true;
+                    break;
+                }
+            }
+        }
         const bool dirty_covers_image =
             upload.x == 0 && upload.y == 0 && upload.width == upload.texture_width &&
             upload.height == upload.texture_height;
@@ -1091,6 +1101,8 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
                 return fail(*state_, "atlas image creation failed");
             found = state_->atlases.emplace(key, std::move(atlas)).first;
             state_->stats.gpu_resources += 2;
+            if (replacing_generation)
+                ++state_->stats.atlas_reallocations;
             full_upload = true;
         } else if (found->second.width != upload.texture_width ||
                    found->second.height != upload.texture_height ||
@@ -1098,11 +1110,23 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
                    found->second.bytes_per_pixel != upload.bytes_per_pixel) {
             return fail(*state_, "atlas generation changed dimensions");
         }
+        const uint64_t dirty_bytes = upload.dirty
+                                         ? static_cast<uint64_t>(upload.width) * upload.height *
+                                               upload.bytes_per_pixel
+                                         : 0;
+        state_->stats.atlas_dirty_bytes += dirty_bytes;
+        if (upload.dirty)
+            state_->stats.atlas_dirty_capacity_bytes +=
+                static_cast<uint64_t>(upload.texture_width) * upload.texture_height *
+                upload.bytes_per_pixel;
         copy_atlas_pixels(found->second, upload, full_upload);
+        uint64_t uploaded_bytes = 0;
         if (full_upload) {
             const sg_image_data data = {
                 .mip_levels = {{found->second.pixels.data(), found->second.pixels.size()}}};
             sg_update_image(found->second.image, &data);
+            ++state_->stats.atlas_full_uploads;
+            uploaded_bytes = found->second.pixels.size();
         } else {
             sg_write_image_desc data{};
             data.src.data = {upload.pixels,
@@ -1120,12 +1144,13 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
             data.size.num_slices = 1;
             if (!sg_update_image_region(&data))
                 return fail(*state_, "atlas subregion upload failed");
+            ++state_->stats.atlas_subregion_uploads;
+            uploaded_bytes = dirty_bytes;
         }
         found->second.generation = upload.generation;
         ++state_->stats.image_uploads;
-        state_->stats.uploaded_bytes +=
-            full_upload ? found->second.pixels.size()
-                        : static_cast<size_t>(upload.width) * upload.height * upload.bytes_per_pixel;
+        state_->stats.uploaded_bytes += uploaded_bytes;
+        state_->stats.atlas_uploaded_bytes += uploaded_bytes;
         if (upload.dirty && !adapter.acknowledge_atlas_upload(upload.texture, upload.dirty_epoch))
             return fail(*state_, "atlas upload acknowledgement failed");
     }
