@@ -17,7 +17,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/audit-haxeon-abi.sh"
 HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-hxi.sh" --check
 
 cmake -S "$repo_dir" -B "$test_root/build" -GNinja \
@@ -33,7 +32,7 @@ cmake --build "$test_root/build"
         --entry=Smoke \
         --root="$repo_dir/tests/haxeon" \
         --root="$repo_dir/bindings/haxe" \
-        --ffi-interface="$repo_dir/bindings/haxe/nativekit-linux-x86_64.hxi" \
+        --ffi-interface="$repo_dir/bindings/haxe/nativekit-abi64.hxi" \
         "$repo_dir/tests/haxeon/Smoke.hx" \
         "$repo_dir/bindings/haxe/NativeKitEvent.hx" \
         "$repo_dir/bindings/haxe/NativeKitEventValue.hx" \

@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/realtime-haxe"}
-output="$repo_dir/bindings/haxe/nativekit-linux-x86_64.hxi"
+output="$repo_dir/bindings/haxe/nativekit-abi64.hxi"
 destination=$output
 
 if [[ ${1:-} == "--check" ]]; then
@@ -14,13 +14,7 @@ elif [[ $# -ne 0 ]]; then
     exit 2
 fi
 
-"$haxeon_dir/scripts/haxeon-ffi-import" \
-    --target=x86_64-linux-gnu \
-    --library=libnativekit.so \
-    --interface=NativeKit \
-    --include="$repo_dir/include" \
-    --output="$destination" \
-    "$repo_dir/bindings/haxe/nativekit_import.h"
+HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/audit-haxeon-abi.sh" --output="$destination"
 
 if [[ ${1:-} == "--check" ]] && ! cmp -s "$output" "$destination"; then
     echo "Haxeon binding is stale; run tools/update-haxeon-hxi.sh" >&2

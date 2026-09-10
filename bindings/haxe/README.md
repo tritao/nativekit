@@ -1,8 +1,8 @@
 # Haxeon bindings
 
-`nativekit-linux-x86_64.hxi` is the reviewed semantic binding for the public
-NativeKit C ABI on 64-bit Linux. The C headers remain authoritative. The file
-records target-specific structure layouts plus ownership and parameter
+`nativekit-abi64.hxi` is the reviewed semantic binding for the public NativeKit
+C ABI on supported 64-bit desktop targets. The C headers remain authoritative. The file
+records verified portable structure layouts plus ownership and parameter
 directions that cannot yet be inferred safely from ordinary C declarations.
 
 The binding deliberately begins with lifecycle, event polling, diagnostics,
@@ -53,7 +53,7 @@ header for Linux x86-64, Windows x86-64, and both macOS 64-bit architectures.
 It fails if declarations, constants, calling conventions, or structure layouts
 drift, or if the public ABI uses target-dependent C scalar types.
 
-Regenerate the target-specific interface after changing public headers, or
+Regenerate the canonical interface after changing public headers, or
 verify that it is current without rewriting it:
 
 ```sh
@@ -62,6 +62,6 @@ tools/update-haxeon-hxi.sh --check
 ```
 
 It expects the Haxeon checkout at `../realtime-haxe` by default. Override that
-with `HAXEON_DIR=/path/to/realtime-haxe`. Wine continues to validate the same C
-ABI independently through `tools/test-wine.sh`; producing Windows HashLink
-runtime artifacts is outside this Linux-target binding.
+with `HAXEON_DIR=/path/to/realtime-haxe`. The canonical file is written only
+after Linux, Windows, and both macOS 64-bit models compare successfully. Wine
+continues to validate the same C ABI independently through `tools/test-wine.sh`.

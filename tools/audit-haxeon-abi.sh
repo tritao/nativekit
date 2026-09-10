@@ -10,5 +10,8 @@ haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/realtime-haxe"}
     --target=x86_64-apple-darwin \
     --target=arm64-apple-darwin \
     --profile=portable-abi64 \
+    --library=libnativekit.so \
+    --interface=NativeKit \
     --include="$repo_dir/include" \
+    "$@" \
     "$repo_dir/bindings/haxe/nativekit_import.h"
