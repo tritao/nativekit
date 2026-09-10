@@ -7,17 +7,10 @@
 namespace nkui {
 
 struct NanoVGRecorder::State {
-    struct Texture {
-        int id = 0;
-        int type = 0;
-        int width = 0;
-        int height = 0;
-    };
-
     std::vector<PreparedPathOperation> operations;
     std::vector<PreparedPathRange> paths;
     std::vector<NVGvertex> vertices;
-    std::vector<Texture> textures;
+    std::vector<PreparedTexture> textures;
     uint32_t flushes = 0;
     int next_texture = 1;
 };
@@ -30,10 +23,18 @@ int render_create(void *) {
     return 1;
 }
 
-int render_create_texture(void *context, int type, int width, int height, int, const uint8_t *) {
+int render_create_texture(void *context, int type, int width, int height, int flags,
+                          const uint8_t *data) {
     auto &state = *static_cast<State *>(context);
+    if (width <= 0 || height <= 0)
+        return 0;
     const int id = state.next_texture++;
-    state.textures.push_back({id, type, width, height});
+    const size_t bytes_per_pixel = type == NVG_TEXTURE_RGBA ? 4 : 1;
+    PreparedTexture texture{id, type, width, height, flags, 1, true, {}};
+    texture.pixels.resize(static_cast<size_t>(width) * height * bytes_per_pixel);
+    if (data)
+        std::memcpy(texture.pixels.data(), data, texture.pixels.size());
+    state.textures.push_back(std::move(texture));
     return id;
 }
 
@@ -47,10 +48,25 @@ int render_delete_texture(void *context, int image) {
     return 1;
 }
 
-int render_update_texture(void *context, int image, int, int, int, int, const uint8_t *) {
-    const auto &textures = static_cast<State *>(context)->textures;
-    return std::any_of(textures.begin(), textures.end(),
-                       [image](const auto &texture) { return texture.id == image; });
+int render_update_texture(void *context, int image, int x, int y, int width, int height,
+                          const uint8_t *data) {
+    auto &textures = static_cast<State *>(context)->textures;
+    const auto found = std::find_if(textures.begin(), textures.end(),
+                                    [image](const auto &texture) { return texture.id == image; });
+    if (found == textures.end() || !data || x < 0 || y < 0 || width < 0 || height < 0 ||
+        x + width > found->width || y + height > found->height)
+        return 0;
+    const size_t bytes_per_pixel = found->type == NVG_TEXTURE_RGBA ? 4 : 1;
+    const size_t source_pitch = static_cast<size_t>(found->width) * bytes_per_pixel;
+    for (int row = y; row < y + height; ++row)
+        std::memcpy(found->pixels.data() +
+                        (static_cast<size_t>(row) * found->width + x) * bytes_per_pixel,
+                    data + static_cast<size_t>(row) * source_pitch +
+                        static_cast<size_t>(x) * bytes_per_pixel,
+                    static_cast<size_t>(width) * bytes_per_pixel);
+    ++found->generation;
+    found->dirty = true;
+    return 1;
 }
 
 int render_get_texture_size(void *context, int image, int *width, int *height) {
@@ -197,6 +213,10 @@ const std::vector<PreparedPathRange> &NanoVGRecorder::paths() const {
 
 const std::vector<NVGvertex> &NanoVGRecorder::vertices() const {
     return state_->vertices;
+}
+
+const std::vector<PreparedTexture> &NanoVGRecorder::textures() const {
+    return state_->textures;
 }
 
 NanoVGRecorderStats NanoVGRecorder::stats() const {

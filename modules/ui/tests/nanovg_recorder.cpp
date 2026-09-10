@@ -27,9 +27,22 @@ int main() {
         recorder.operations()[1].kind != PreparedPathKind::Stroke ||
         recorder.paths()[0].fill_count == 0 || recorder.paths()[1].stroke_count == 0)
         return 3;
+    const unsigned char pixels[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    const int image = nvgCreateImageRGBA(vg, 2, 1, 0, pixels);
+    if (!image || recorder.textures().size() < 2 || recorder.textures().back().id != image ||
+        recorder.textures().back().pixels.size() != 8 || recorder.textures().back().pixels[7] != 8)
+        return 4;
+    const unsigned char updated[8] = {9, 10, 11, 12, 13, 14, 15, 16};
+    nvgUpdateImage(vg, image, updated);
+    if (recorder.textures().back().generation != 2 || recorder.textures().back().pixels[0] != 9 ||
+        recorder.textures().back().pixels[7] != 16)
+        return 5;
+    nvgDeleteImage(vg, image);
+    if (recorder.textures().size() != 1)
+        return 6;
     recorder.reset();
     const auto reset = recorder.stats();
     return reset.operations == 0 && reset.paths == 0 && reset.vertices == 0 && reset.flushes == 0
                ? 0
-               : 4;
+               : 7;
 }

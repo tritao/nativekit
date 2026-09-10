@@ -37,6 +37,17 @@ struct PreparedPathOperation {
     uint32_t vertex_count = 0;
 };
 
+struct PreparedTexture {
+    int id = 0;
+    int type = 0;
+    int width = 0;
+    int height = 0;
+    int flags = 0;
+    uint32_t generation = 0;
+    bool dirty = false;
+    std::vector<uint8_t> pixels;
+};
+
 struct NanoVGRecorderStats {
     uint32_t operations = 0;
     uint32_t paths = 0;
@@ -60,6 +71,7 @@ class NanoVGRecorder {
     const std::vector<PreparedPathOperation> &operations() const;
     const std::vector<PreparedPathRange> &paths() const;
     const std::vector<NVGvertex> &vertices() const;
+    const std::vector<PreparedTexture> &textures() const;
     NanoVGRecorderStats stats() const;
 
   private:
