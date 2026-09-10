@@ -3,7 +3,7 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") @depe
 	/**
 	 * Current UI ABI version.
 	 */
-	const NKUI_API_VERSION = 1;
+	const NKUI_API_VERSION = 2;
 	/**
 	 * Start a composited layer with an opacity and composite mode.
 	 */
@@ -56,6 +56,10 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") @depe
 	 * Replace the current transform with a six-value affine matrix.
 	 */
 	const NKUI_COMMAND_SET_TRANSFORM = 1;
+	/**
+	 * Stroke a path using the current paint and the command's stroke style.
+	 */
+	const NKUI_COMMAND_STROKE_PATH = 14;
 	/**
 	 * Version value required in every command header.
 	 */
@@ -358,6 +362,40 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") @depe
 		 * Four bytes per pixel in red, green, blue, alpha order.
 		 */
 		NKUI_IMAGE_RGBA8 = 2;
+	}
+	/**
+	 * End-cap style used when stroking an open path.
+	 */
+	enum nkui_path_line_cap : c_int {
+		/**
+		 * Stop the stroke at the endpoint.
+		 */
+		NKUI_PATH_LINE_CAP_BUTT = 0;
+		/**
+		 * Add a semicircular cap at the endpoint.
+		 */
+		NKUI_PATH_LINE_CAP_ROUND = 1;
+		/**
+		 * Extend the stroke by half its width at the endpoint.
+		 */
+		NKUI_PATH_LINE_CAP_SQUARE = 2;
+	}
+	/**
+	 * Join style used where two stroked segments meet.
+	 */
+	enum nkui_path_line_join : c_int {
+		/**
+		 * Join segments with a circular arc.
+		 */
+		NKUI_PATH_LINE_JOIN_ROUND = 1;
+		/**
+		 * Join segments with a clipped corner.
+		 */
+		NKUI_PATH_LINE_JOIN_BEVEL = 3;
+		/**
+		 * Extend the outer edges to their intersection, subject to the miter limit.
+		 */
+		NKUI_PATH_LINE_JOIN_MITER = 4;
 	}
 	/**
 	 * Geometry operation used by one element of a path.
@@ -882,6 +920,35 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") @depe
 		 * Alpha multiplier in the inclusive range 0..1.
 		 */
 		value: f32 @offset(8);
+	}
+	/**
+	 * Payload for NKUI_COMMAND_STROKE_PATH.
+	 */
+	struct nkui_stroke_path_command @layout(28, 4) {
+		/**
+		 * Command record header.
+		 */
+		header: nkui_command_header @offset(0);
+		/**
+		 * Path resource to stroke.
+		 */
+		path: nkui_resource @offset(8);
+		/**
+		 * Stroke width in logical pixels; must be positive and finite.
+		 */
+		width: f32 @offset(12);
+		/**
+		 * End-cap style for open contours.
+		 */
+		line_cap: nkui_path_line_cap @offset(16);
+		/**
+		 * Join style for connected segments.
+		 */
+		line_join: nkui_path_line_join @offset(20);
+		/**
+		 * Positive miter limit used by NKUI_PATH_LINE_JOIN_MITER.
+		 */
+		miter_limit: f32 @offset(24);
 	}
 	/**
 	 * Visual geometry and direction for a text caret.
