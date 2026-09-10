@@ -39,6 +39,13 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_CURSOR_NOT_ALLOWED = 10;
 	const NK_CURSOR_NWSE_RESIZE = 7;
 	const NK_CURSOR_VERTICAL_RESIZE = 6;
+	const NK_DIALOG_ALLOW_MULTIPLE = 1;
+	const NK_DIALOG_CONFIRM_OVERWRITE = 2;
+	const NK_DIALOG_MESSAGE = 4;
+	const NK_DIALOG_OPEN_FILE = 1;
+	const NK_DIALOG_SAVE_FILE = 2;
+	const NK_DIALOG_SELECT_DIRECTORY = 3;
+	const NK_DIALOG_SHOW_HIDDEN = 4;
 	const NK_ERROR_ALREADY_INITIALIZED = -6;
 	const NK_ERROR_BUFFER_TOO_SMALL = -11;
 	const NK_ERROR_INVALID_ARGUMENT = -2;
@@ -224,6 +231,19 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_KEY_X = 88;
 	const NK_KEY_Y = 89;
 	const NK_KEY_Z = 90;
+	const NK_MESSAGE_BUTTON_CANCEL = 2;
+	const NK_MESSAGE_BUTTON_NO = 8;
+	const NK_MESSAGE_BUTTON_OK = 1;
+	const NK_MESSAGE_BUTTON_YES = 4;
+	const NK_MESSAGE_ERROR = 2;
+	const NK_MESSAGE_INFO = 0;
+	const NK_MESSAGE_QUESTION = 3;
+	const NK_MESSAGE_RESULT_CANCEL = 2;
+	const NK_MESSAGE_RESULT_NO = 4;
+	const NK_MESSAGE_RESULT_NONE = 0;
+	const NK_MESSAGE_RESULT_OK = 1;
+	const NK_MESSAGE_RESULT_YES = 3;
+	const NK_MESSAGE_WARNING = 1;
 	const NK_MOD_ALT = 4;
 	const NK_MOD_CAPS_LOCK = 16;
 	const NK_MOD_CONTROL = 2;
@@ -242,6 +262,20 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_POINTER_BUTTON_LEFT = 0;
 	const NK_POINTER_BUTTON_MIDDLE = 2;
 	const NK_POINTER_BUTTON_RIGHT = 1;
+	const NK_RESOURCE_OPEN_CREATE = 4;
+	const NK_RESOURCE_OPEN_READ = 1;
+	const NK_RESOURCE_OPEN_TRUNCATE = 8;
+	const NK_RESOURCE_OPEN_WRITE = 2;
+	const NK_RESOURCE_PERSISTED = 4;
+	const NK_RESOURCE_READABLE = 1;
+	const NK_RESOURCE_STREAM_READABLE = 1;
+	const NK_RESOURCE_STREAM_SEEKABLE = 4;
+	const NK_RESOURCE_STREAM_SIZE_KNOWN = 8;
+	const NK_RESOURCE_STREAM_WRITABLE = 2;
+	const NK_RESOURCE_WRITABLE = 2;
+	const NK_SEEK_CURRENT = 1;
+	const NK_SEEK_END = 2;
+	const NK_SEEK_START = 0;
 	const NK_SURFACE_ALPHA = 2;
 	const NK_SURFACE_DEBUG_CONTEXT = 16;
 	const NK_SURFACE_DEPTH = 4;
@@ -268,11 +302,22 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_WINDOW_STATE_VISIBLE = 1;
 	const NK_WINDOW_UTILITY = 1;
 	extern fn nk_api_version() -> u32;
+	extern fn nk_clipboard_read_resources(out_request: ptr<nk_request_id>) -> nk_result;
 	extern fn nk_clipboard_read_text(out_request: ptr<nk_request_id> @out) -> nk_result;
+	extern fn nk_clipboard_set_resources(resources: ptr<const<nk_resource>>, resource_count: u32) -> nk_result;
 	extern fn nk_clipboard_set_text(text: utf8) -> nk_result;
 	extern fn nk_cursor_create_custom(image: ptr<const<nk_cursor_image>>, out_cursor: ptr<nk_handle>) -> nk_result;
 	extern fn nk_cursor_create_standard(shape: nk_cursor_shape, out_cursor: ptr<nk_handle>) -> nk_result;
 	extern fn nk_cursor_destroy(cursor: nk_handle) -> nk_result;
+	extern fn nk_dialog_cancel(request: nk_request_id) -> nk_result;
+	extern fn nk_dialog_event_path(event: ptr<const<nk_event>>, index: u32, out_path: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
+	extern fn nk_dialog_message(parent: nk_handle, options: ptr<const<nk_message_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
+	extern fn nk_dialog_open_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
+	extern fn nk_dialog_open_resource(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
+	extern fn nk_dialog_save_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
+	extern fn nk_dialog_save_resource(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
+	extern fn nk_dialog_select_directory(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
+	extern fn nk_dialog_select_resource_directory(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
 	extern fn nk_event_release(event: ptr<nk_event>) -> void;
 	extern fn nk_gamepad_add_mapping(mapping: ptr<const<c_char>>) -> nk_result;
 	extern fn nk_gamepad_add_mappings(database: ptr<const<c_char>>, out_added: ptr<u32>) -> nk_result;
@@ -304,6 +349,20 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	extern fn nk_pointer_get_position(window: nk_handle, out_x: ptr<f64>, out_y: ptr<f64>) -> nk_result;
 	extern fn nk_poll_event(event: ptr<nk_event> @inout) -> nk_result;
 	extern fn nk_raw_pointer_motion_supported() -> u32;
+	extern fn nk_resource_close(stream: nk_handle) -> nk_result;
+	extern fn nk_resource_drop_event_text(event: ptr<const<nk_event>>, out_text: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
+	extern fn nk_resource_event_item(event: ptr<const<nk_event>>, index: u32, out_resource: ptr<nk_resource_view>) -> nk_result;
+	extern fn nk_resource_get_persisted_access(resource: ptr<const<nk_resource>>, out_flags: ptr<u32>) -> nk_result;
+	extern fn nk_resource_open(resource: ptr<const<nk_resource>>, flags: u32, out_stream: ptr<nk_handle>) -> nk_result;
+	extern fn nk_resource_read(stream: nk_handle, buffer: ptr<void>, size: u64, out_read: ptr<u64>) -> nk_result;
+	extern fn nk_resource_seek(stream: nk_handle, offset: i64, origin: nk_seek_origin, out_position: ptr<u64>) -> nk_result;
+	extern fn nk_resource_set_persisted_access(resource: ptr<const<nk_resource>>, access_flags: u32, out_flags: ptr<u32>) -> nk_result;
+	extern fn nk_resource_stream_info_get(stream: nk_handle, out_info: ptr<nk_resource_stream_info>) -> nk_result;
+	extern fn nk_resource_write(stream: nk_handle, buffer: ptr<const<void>>, size: u64, out_written: ptr<u64>) -> nk_result;
+	extern fn nk_share(options: ptr<const<nk_share_options>>) -> nk_result;
+	extern fn nk_share_event_subject(event: ptr<const<nk_event>>, out_subject: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
+	extern fn nk_share_event_text(event: ptr<const<nk_event>>, out_text: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
+	extern fn nk_shell_open_resource(resource: ptr<const<nk_resource>>) -> nk_result;
 	extern fn nk_shutdown() -> void;
 	extern fn nk_surface_create(window: nk_handle, options: ptr<const<nk_surface_options>>, out_surface: ptr<nk_handle>) -> nk_result;
 	extern fn nk_surface_destroy(surface: nk_handle) -> nk_result;
@@ -357,6 +416,19 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		rgba: ptr<const<void>> @offset(24);
 		reserved: array<u64, 2> @offset(32);
 	}
+	struct nk_dialog_filter @layout(16, 8) {
+		name: ptr<const<c_char>> @offset(0);
+		patterns: ptr<const<c_char>> @offset(8);
+	}
+	struct nk_dialog_message_result @layout(4, 4) {
+		button: u32 @offset(0);
+	}
+	struct nk_dialog_paths @layout(16, 4) {
+		accepted: u32 @offset(0);
+		path_count: u32 @offset(4);
+		offsets_offset: u32 @offset(8);
+		strings_offset: u32 @offset(12);
+	}
 	struct nk_event @layout(64, 8) {
 		struct_size: u32 @offset(0);
 		kind: nk_event_kind @offset(4);
@@ -368,6 +440,16 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		data: ptr<const<void>> @offset(32) @borrowed @length_field("data_size");
 		data_size: u64 @offset(40);
 		reserved: array<u64, 2> @offset(48);
+	}
+	struct nk_file_dialog_options @layout(48, 8) {
+		struct_size: u32 @offset(0);
+		flags: u32 @offset(4);
+		title: ptr<const<c_char>> @offset(8);
+		initial_path: ptr<const<c_char>> @offset(16);
+		suggested_name: ptr<const<c_char>> @offset(24);
+		filters: ptr<const<nk_dialog_filter>> @offset(32);
+		filter_count: u32 @offset(40);
+		reserved: u32 @offset(44);
 	}
 	struct nk_gamepad_axis_event @layout(8, 4) {
 		axis: nk_gamepad_axis @offset(0);
@@ -415,6 +497,14 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		action: nk_input_action @offset(8);
 		modifiers: nk_modifiers @offset(12);
 	}
+	struct nk_message_dialog_options @layout(32, 8) {
+		struct_size: u32 @offset(0);
+		kind: u32 @offset(4);
+		buttons: u32 @offset(8);
+		reserved: u32 @offset(12);
+		title: ptr<const<c_char>> @offset(16);
+		message: ptr<const<c_char>> @offset(24);
+	}
 	struct nk_monitor_geometry @layout(72, 8) {
 		struct_size: u32 @offset(0);
 		x: i32 @offset(4);
@@ -456,6 +546,67 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	struct nk_pointer_scroll_event @layout(16, 8) {
 		x: f64 @offset(0);
 		y: f64 @offset(8);
+	}
+	struct nk_received_share @layout(16, 4) {
+		resources_offset: u32 @offset(0);
+		text_offset: u32 @offset(4);
+		subject_offset: u32 @offset(8);
+		reserved: u32 @offset(12);
+	}
+	struct nk_resource @layout(56, 8) {
+		struct_size: u32 @offset(0);
+		flags: u32 @offset(4);
+		uri: ptr<const<c_char>> @offset(8);
+		mime_type: ptr<const<c_char>> @offset(16);
+		display_name: ptr<const<c_char>> @offset(24);
+		reserved: u32 @offset(32);
+		reserved2: array<u64, 2> @offset(40);
+	}
+	struct nk_resource_drop @layout(32, 8) {
+		resources_offset: u32 @offset(0);
+		text_offset: u32 @offset(4);
+		x: f32 @offset(8);
+		y: f32 @offset(12);
+		reserved: array<u64, 2> @offset(16);
+	}
+	struct nk_resource_item @layout(16, 4) {
+		flags: u32 @offset(0);
+		uri_offset: u32 @offset(4);
+		mime_type_offset: u32 @offset(8);
+		display_name_offset: u32 @offset(12);
+	}
+	struct nk_resource_list @layout(16, 4) {
+		accepted: u32 @offset(0);
+		item_count: u32 @offset(4);
+		items_offset: u32 @offset(8);
+		strings_offset: u32 @offset(12);
+	}
+	struct nk_resource_stream_info @layout(32, 8) {
+		struct_size: u32 @offset(0);
+		flags: u32 @offset(4);
+		size: u64 @offset(8);
+		reserved: array<u64, 2> @offset(16);
+	}
+	struct nk_resource_view @layout(72, 8) {
+		struct_size: u32 @offset(0);
+		flags: u32 @offset(4);
+		uri: ptr<const<c_char>> @offset(8);
+		uri_length: u32 @offset(16);
+		mime_type: ptr<const<c_char>> @offset(24);
+		mime_type_length: u32 @offset(32);
+		display_name: ptr<const<c_char>> @offset(40);
+		display_name_length: u32 @offset(48);
+		reserved: array<u64, 2> @offset(56);
+	}
+	struct nk_share_options @layout(56, 8) {
+		struct_size: u32 @offset(0);
+		flags: u32 @offset(4);
+		title: ptr<const<c_char>> @offset(8);
+		text: ptr<const<c_char>> @offset(16);
+		resources: ptr<const<nk_resource>> @offset(24);
+		resource_count: u32 @offset(32);
+		reserved: u32 @offset(36);
+		reserved2: array<u64, 2> @offset(40);
 	}
 	struct nk_surface_options @layout(64, 8) {
 		struct_size: u32 @offset(0);
@@ -577,6 +728,7 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	type nk_pointer_button = u32;
 	type nk_request_id = u64;
 	type nk_result = i32;
+	type nk_seek_origin = u32;
 	type nk_touch_action = u32;
 	type nk_touch_tool = u32;
 	type nk_window_kind = u32;

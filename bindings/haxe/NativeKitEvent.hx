@@ -39,6 +39,19 @@ enum NativeKitEventValue {
 	SurfaceReady(source:Int);
 	SurfaceResize(source:Int, width:Int, height:Int, framebufferWidth:Int, framebufferHeight:Int);
 	SurfaceLost(source:Int);
+	Resources(kind:Int, request:haxe.Int64, result:Int, accepted:Bool, items:Array<NativeKitResource>);
+	ShareReceived(text:Null<String>, subject:Null<String>, items:Array<NativeKitResource>);
+	ResourceDrop(source:Int, x:Float, y:Float, text:Null<String>, items:Array<NativeKitResource>);
+}
+
+class NativeKitResource {
+	public final flags:Int;
+	public final uri:String;
+	public final mimeType:Null<String>;
+	public final displayName:Null<String>;
+	public function new(flags:Int, uri:String, mimeType:Null<String>, displayName:Null<String>) {
+		this.flags = flags; this.uri = uri; this.mimeType = mimeType; this.displayName = displayName;
+	}
 }
 
 /** Owns one polled NativeKit event and releases its native payload exactly once. */
@@ -155,6 +168,14 @@ class NativeKitEvent {
 			case NativeKitConstants.NK_EVENT_SURFACE_RESIZE:
 				requireSize(data, 16); var value:nk_surface_resize_event = data; SurfaceResize(source, value.get_width(), value.get_height(), value.get_framebuffer_width(), value.get_framebuffer_height());
 			case NativeKitConstants.NK_EVENT_SURFACE_LOST: SurfaceLost(source);
+			case NativeKitConstants.NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE | NativeKitConstants.NK_EVENT_RESOURCE_OPENED:
+				var decoded = decodeResources(data, 0); Resources(kind, request, result, decoded.accepted, decoded.items);
+			case NativeKitConstants.NK_EVENT_SHARE_RECEIVED:
+				var listOffset = readU32(data, 0), decoded = decodeResources(data, listOffset);
+				ShareReceived(readOptionalString(data, readU32(data, 4), 16), readOptionalString(data, readU32(data, 8), 16), decoded.items);
+			case NativeKitConstants.NK_EVENT_RESOURCE_DROP:
+				requireMinimumSize(data, 32); var header:nk_resource_drop = data; var decoded = decodeResources(data, header.get_resources_offset());
+				ResourceDrop(source, header.get_x(), header.get_y(), readOptionalString(data, header.get_text_offset(), 32), decoded.items);
 			default: Raw(kind, source, request, result, flags, dataCount, data);
 		}
 	}
@@ -243,6 +264,31 @@ class NativeKitEvent {
 	static function requireSize(data:haxe.io.Bytes, size:Int):Void {
 		if (data.length != size)
 			throw "NativeKit event payload has an invalid size";
+	}
+
+	static function requireMinimumSize(data:haxe.io.Bytes, size:Int):Void {
+		if (data.length < size) throw "NativeKit event payload is truncated";
+	}
+
+	static function decodeResources(data:haxe.io.Bytes, listOffset:Int):{accepted:Bool, items:Array<NativeKitResource>} {
+		requireMinimumSize(data, listOffset + 16);
+		var accepted = readU32(data, listOffset) != 0, count = readU32(data, listOffset + 4), itemsOffset = readU32(data, listOffset + 8), stringsOffset = readU32(data, listOffset + 12);
+		if (itemsOffset < listOffset + 16 || stringsOffset < itemsOffset || stringsOffset > data.length || count > Std.int((stringsOffset - itemsOffset) / 16)) throw "NativeKit resource payload has an invalid table";
+		var items:Array<NativeKitResource> = [];
+		for (index in 0...count) {
+			var base = itemsOffset + index * 16, uri = readOptionalString(data, readU32(data, base + 4), stringsOffset);
+			if (uri == null || uri.length == 0) throw "NativeKit resource payload has an invalid URI";
+			items.push(new NativeKitResource(readU32(data, base), uri, readOptionalString(data, readU32(data, base + 8), stringsOffset), readOptionalString(data, readU32(data, base + 12), stringsOffset)));
+		}
+		return {accepted: accepted, items: items};
+	}
+
+	static function readOptionalString(data:haxe.io.Bytes, offset:Int, minimum:Int):Null<String> {
+		if (offset == 0) return null;
+		if (offset < minimum || offset >= data.length) throw "NativeKit resource payload has an invalid string offset";
+		var end = offset; while (end < data.length && data.get(end) != 0) end++;
+		if (end >= data.length) throw "NativeKit resource payload has an unterminated string";
+		return data.getString(offset, end - offset);
 	}
 
 	function ensureOpen():Void {

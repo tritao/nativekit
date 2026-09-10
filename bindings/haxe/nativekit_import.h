@@ -8,6 +8,7 @@
 #include "nativekit_joystick.h"
 #include "nativekit_gamepad.h"
 #include "nativekit_graphics.h"
+#include "nativekit_resource.h"
 
 /* Binding-only semantic spelling for UTF-8 input; ABI-identical to const char *. */
 typedef const char *hxi_utf8;
