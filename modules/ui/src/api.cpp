@@ -10,6 +10,7 @@
 #include "render/render_plan_executor.h"
 #include "render/sokol_backend.h"
 
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -52,6 +53,7 @@ struct ResourceSlot {
     std::vector<FontEntry> fonts;
     std::unique_ptr<nkui::SkribidiAdapter> text;
     nkui::PreparedGlyphs text_glyphs;
+    std::unordered_map<int32_t, nkui::PreparedGlyphs> scaled_text_glyphs;
     std::vector<nkui_path_element> path;
     nkui_color color{};
     uint32_t image_width = 0;
@@ -138,6 +140,20 @@ void append_path(NVGcontext *context, const std::vector<nkui_path_element> &elem
     }
 }
 
+void set_nanovg_transform(NVGcontext *context, const std::array<float, 6> &matrix) {
+    nvgResetTransform(context);
+    nvgTransform(context, matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
+}
+
+bool uniform_scale(const std::array<float, 6> &matrix, float &scale) {
+    constexpr float epsilon = 0.0001f;
+    if (std::abs(matrix[1]) > epsilon || std::abs(matrix[2]) > epsilon || matrix[0] <= 0.0f ||
+        matrix[3] <= 0.0f || std::abs(matrix[0] - matrix[3]) > epsilon)
+        return false;
+    scale = matrix[0];
+    return true;
+}
+
 NVGcolor paint_color(ResourceSlot *paint) {
     if (!paint)
         return nvgRGBAf(0.0f, 0.0f, 0.0f, 1.0f);
@@ -176,6 +192,7 @@ nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
 void release_resource_slot(ResourceSlot &slot) {
     slot.text.reset();
     slot.text_glyphs = {};
+    slot.scaled_text_glyphs.clear();
     slot.fonts.clear();
     slot.path.clear();
     slot.pixels.clear();
@@ -549,7 +566,6 @@ extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display
     NVGcontext *vg = recorder.context();
     nvgBeginFrame(vg, static_cast<float>(width), static_cast<float>(height), 1.0f);
     nkui::FrameResources frame_resources;
-    std::unordered_map<uint32_t, const nkui::PreparedGlyphs *> text_cache;
     std::vector<nkui::SkribidiAdapter *> text_adapters;
     uint16_t prepared_slot = 1;
     bool valid = true;
@@ -566,12 +582,14 @@ extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display
                     valid = false;
                     break;
                 }
+                set_nanovg_transform(vg, command.transform);
                 append_path(vg, path->path);
                 nvgFillColor(vg, paint_color(paint));
                 nvgFill(vg);
                 const nkui::ResourceId prepared_id =
                     nkui::make_resource_id(nkui::ResourceKind::Path, 0x0FFE, prepared_slot++);
                 command.resource = prepared_id;
+                command.transform = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
                 valid = frame_resources.bind_path(prepared_id, recorder,
                                                   recorder.operations().size() - 1);
             } else if (command.kind == nkui::RenderCommandKind::Image) {
@@ -608,6 +626,7 @@ extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display
                     valid = false;
                     break;
                 }
+                set_nanovg_transform(vg, command.transform);
                 nvgBeginPath(vg);
                 nvgRect(vg, command.x, command.y, command.width, command.height);
                 nvgFillPaint(vg, nvgImagePattern(vg, command.x, command.y, command.width,
@@ -617,6 +636,7 @@ extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display
                     nkui::make_resource_id(nkui::ResourceKind::Path, 0x0FFE, prepared_slot++);
                 command.kind = nkui::RenderCommandKind::Path;
                 command.resource = prepared_id;
+                command.transform = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
                 valid = frame_resources.bind_path(prepared_id, recorder,
                                                   recorder.operations().size() - 1);
             } else if (command.kind == nkui::RenderCommandKind::GlyphBatch) {
@@ -626,13 +646,41 @@ extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display
                     valid = false;
                     break;
                 }
-                const auto found = text_cache.find(command.resource.value);
-                if (found == text_cache.end()) {
-                    const auto *glyphs = &layout->text_glyphs;
-                    text_cache.emplace(command.resource.value, glyphs);
-                    text_adapters.push_back(layout->text.get());
-                    valid = frame_resources.bind_text(command.resource, *glyphs);
+                float requested_scale = 1.0f;
+                if (!uniform_scale(command.transform, requested_scale))
+                    requested_scale = 1.0f;
+                const int32_t scale_bucket =
+                    std::max(1, static_cast<int32_t>(std::round(requested_scale * 8.0f)));
+                const float raster_scale = scale_bucket / 8.0f;
+                nkui::PreparedGlyphs *glyphs = nullptr;
+                if (scale_bucket == 8) {
+                    glyphs = &layout->text_glyphs;
+                } else {
+                    auto found = layout->scaled_text_glyphs.find(scale_bucket);
+                    if (found == layout->scaled_text_glyphs.end()) {
+                        nkui::PreparedGlyphs prepared;
+                        valid = layout->text->prepare_glyphs(0.0f, 0.0f, raster_scale,
+                                                            nkui::GlyphMode::Alpha, prepared);
+                        if (!valid)
+                            break;
+                        found = layout->scaled_text_glyphs.emplace(scale_bucket,
+                                                                  std::move(prepared))
+                                    .first;
+                    }
+                    glyphs = &found->second;
                 }
+                const nkui::ResourceId prepared_id = nkui::make_resource_id(
+                    nkui::ResourceKind::TextLayout, 0x0FFE, prepared_slot++);
+                valid = frame_resources.bind_text(prepared_id, *glyphs);
+                command.resource = prepared_id;
+                if (requested_scale != 1.0f) {
+                    const float correction = requested_scale / raster_scale;
+                    command.x *= raster_scale;
+                    command.y *= raster_scale;
+                    command.transform = {correction, 0.0f, 0.0f, correction,
+                                         command.transform[4], command.transform[5]};
+                }
+                text_adapters.push_back(layout->text.get());
             } else if (command.kind == nkui::RenderCommandKind::CompositeTarget &&
                        command.resource.value < (UINT32_C(4) << 28)) {
                 valid = false;
