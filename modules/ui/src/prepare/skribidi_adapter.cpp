@@ -19,6 +19,7 @@ struct SkribidiAdapter::State {
     skb_layout_t *layout = nullptr;
     uint16_t next_texture_slot = 1;
     uint16_t texture_namespace = 1;
+    std::vector<uint32_t> texture_generations;
     std::string cached_text;
     float cached_width = 0.0f;
     float cached_font_size = 0.0f;
@@ -67,6 +68,9 @@ void atlas_texture_created(skb_image_atlas_t *atlas, uint8_t texture_index, void
     const uint32_t id = (uint32_t(1) << 28) | (uint32_t(state.texture_namespace & 0x0FFF) << 16) |
                         state.next_texture_slot++;
     skb_image_atlas_set_texture_user_data(atlas, texture_index, id);
+    if (state.texture_generations.size() <= texture_index)
+        state.texture_generations.resize(texture_index + 1, 0);
+    state.texture_generations[texture_index] = 1;
 }
 
 } // namespace
@@ -273,10 +277,14 @@ std::vector<AtlasUpload> SkribidiAdapter::atlas_uploads(bool include_clean) cons
             static_cast<uint32_t>(skb_image_atlas_get_texture_user_data(state_->atlas, index))};
         if (!image || !texture.value)
             continue;
+        const uint32_t generation = index < state_->texture_generations.size()
+                                        ? state_->texture_generations[index]
+                                        : 1;
         uploads.push_back({texture, static_cast<uint8_t>(index), image->bpp, image->width,
                            image->height, image->stride_bytes, is_dirty ? dirty.x : 0,
                            is_dirty ? dirty.y : 0, is_dirty ? dirty.width : image->width,
-                           is_dirty ? dirty.height : image->height, image->buffer, is_dirty});
+                           is_dirty ? dirty.height : image->height, image->buffer, is_dirty,
+                           generation});
     }
     return uploads;
 }
@@ -290,7 +298,13 @@ bool SkribidiAdapter::acknowledge_atlas_upload(AtlasTextureId texture) {
             continue;
         const skb_rect2i_t dirty =
             skb_image_atlas_get_and_reset_texture_dirty_bounds(state_->atlas, index);
-        return !skb_rect2i_is_empty(dirty);
+        if (skb_rect2i_is_empty(dirty))
+            return false;
+        if (index < state_->texture_generations.size()) {
+            auto &generation = state_->texture_generations[index];
+            generation = generation == UINT32_MAX ? 1 : generation + 1;
+        }
+        return true;
     }
     return false;
 }

@@ -82,6 +82,7 @@ struct AtlasUpload {
     int32_t height = 0;
     const uint8_t *pixels = nullptr;
     bool dirty = false;
+    uint32_t generation = 0;
 };
 
 class SkribidiAdapter {

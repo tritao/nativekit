@@ -18,6 +18,8 @@ struct SokolBackend::State {
         int width = 0;
         int height = 0;
         uint8_t bytes_per_pixel = 0;
+        uint32_t generation = 0;
+        std::vector<uint8_t> pixels;
     };
 
     struct Target {
@@ -108,6 +110,22 @@ struct PathMesh {
 bool fail(SokolBackend::State &state, const char *message) {
     state.error = message;
     return false;
+}
+
+void copy_atlas_pixels(SokolBackend::State::AtlasImage &target, const AtlasUpload &upload,
+                       bool full) {
+    const int32_t x = full ? 0 : upload.x;
+    const int32_t y = full ? 0 : upload.y;
+    const int32_t width = full ? upload.texture_width : upload.width;
+    const int32_t height = full ? upload.texture_height : upload.height;
+    for (int32_t row = 0; row < height; ++row) {
+        const auto *source = upload.pixels + static_cast<size_t>(y + row) * upload.row_pitch +
+                             static_cast<size_t>(x) * upload.bytes_per_pixel;
+        auto *destination = target.pixels.data() +
+                            (static_cast<size_t>(y + row) * target.width + x) *
+                                target.bytes_per_pixel;
+        std::memcpy(destination, source, static_cast<size_t>(width) * upload.bytes_per_pixel);
+    }
 }
 
 sg_shader make_solid_shader() {
@@ -917,12 +935,8 @@ bool SokolBackend::draw_paths(const NanoVGRecorder &recorder) {
 
 bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) {
     for (const auto &upload : adapter.atlas_uploads(include_clean)) {
-        const size_t tight_row = static_cast<size_t>(upload.texture_width) * upload.bytes_per_pixel;
-        std::vector<uint8_t> tight_pixels(tight_row * upload.texture_height);
-        for (int row = 0; row < upload.texture_height; ++row)
-            std::memcpy(tight_pixels.data() + static_cast<size_t>(row) * tight_row,
-                        upload.pixels + static_cast<size_t>(row) * upload.row_pitch, tight_row);
         auto found = state_->atlases.find(upload.texture.value);
+        bool created = false;
         if (found == state_->atlases.end()) {
             sg_image_desc desc{};
             desc.width = upload.texture_width;
@@ -937,17 +951,23 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
             if (sg_query_image_state(image) != SG_RESOURCESTATE_VALID ||
                 sg_query_view_state(view) != SG_RESOURCESTATE_VALID)
                 return fail(*state_, "atlas image creation failed");
-            found = state_->atlases
-                        .emplace(upload.texture.value,
-                                 State::AtlasImage{image, view, upload.texture_width,
-                                                   upload.texture_height, upload.bytes_per_pixel})
-                        .first;
+            State::AtlasImage atlas{image, view, upload.texture_width, upload.texture_height,
+                                    upload.bytes_per_pixel, upload.generation, {}};
+            atlas.pixels.resize(static_cast<size_t>(upload.texture_width) * upload.texture_height *
+                                upload.bytes_per_pixel);
+            found = state_->atlases.emplace(upload.texture.value, std::move(atlas)).first;
+            created = true;
             state_->stats.gpu_resources += 2;
         }
-        const sg_image_data data = {.mip_levels = {{tight_pixels.data(), tight_pixels.size()}}};
+        copy_atlas_pixels(found->second, upload, created || !upload.dirty);
+        // Sokol currently exposes whole-image updates only; keep this fallback correct while
+        // retaining the dirty rectangle in the CPU mirror for a future subregion primitive.
+        const sg_image_data data = {
+            .mip_levels = {{found->second.pixels.data(), found->second.pixels.size()}}};
         sg_update_image(found->second.image, &data);
+        found->second.generation = upload.generation;
         ++state_->stats.image_uploads;
-        state_->stats.uploaded_bytes += tight_pixels.size();
+        state_->stats.uploaded_bytes += found->second.pixels.size();
         if (upload.dirty && !adapter.acknowledge_atlas_upload(upload.texture))
             return fail(*state_, "atlas upload acknowledgement failed");
     }
