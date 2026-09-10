@@ -69,11 +69,15 @@ class CanvasCommandBuffer {
 		height:Float):Void
 		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_RENDER_TARGET, surface, x, y, width, height);
 
-	public function submit(list:nkui_display_list):Int {
-		var commands = Bytes.alloc(length);
-		for (index in 0...length)
-			commands.set(index, bytes.get(index));
-		return NativeKitUI.nkui_display_list_submit(list, commands);
+	/** Submits the encoded prefix without copying it into an exact-size buffer. */
+	public function submit(list:nkui_display_list):Int
+		return submitRange(list, 0, length);
+
+	/** Submits a validated range of the backing storage without copying. */
+	public function submitRange(list:nkui_display_list, offset:Int, count:Int):Int {
+		if (offset < 0 || offset > length || count < 0 || count > length - offset)
+			throw "Command range is out of bounds";
+		return NativeKitUI.nkui_display_list_submit_slice(list, bytes, offset, count);
 	}
 
 	function resource(opcode:Int, value:nkui_resource):Void {
