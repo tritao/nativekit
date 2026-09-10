@@ -52,6 +52,7 @@ if(NK_BUILD_TESTS)
     add_test(NAME nativekit_ui_nanovg_recorder COMMAND nativekit_ui_nanovg_recorder_test)
     add_executable(nativekit_ui_nanovg_path_test
         tests/nanovg_path.cpp
+        src/prepare/nanovg_recorder.cpp
         src/prepare/nanovg_path.cpp)
     target_include_directories(nativekit_ui_nanovg_path_test PRIVATE src)
     target_link_libraries(nativekit_ui_nanovg_path_test PRIVATE nkui_nanovg_core)
@@ -61,7 +62,8 @@ if(NK_BUILD_TESTS)
         src/prepare/skribidi_adapter.cpp)
     target_include_directories(nativekit_ui_skribidi_adapter_test PRIVATE src)
     target_compile_definitions(nativekit_ui_skribidi_adapter_test PRIVATE
-        NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+        NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf"
+        NKUI_TEST_COLOR_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/NotoColorEmoji-Regular.ttf")
     target_link_libraries(nativekit_ui_skribidi_adapter_test PRIVATE nkui_skribidi)
     add_test(NAME nativekit_ui_skribidi_adapter COMMAND nativekit_ui_skribidi_adapter_test)
     add_executable(nativekit_ui_compositor_test
