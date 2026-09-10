@@ -1,4 +1,5 @@
 import NativeKitEvent;
+import NativeKitEventValue;
 import NativeKit;
 
 /** Maps asynchronous NativeKit request IDs to one-shot typed completions. */

@@ -1,5 +1,6 @@
 import NativeKit;
 import NativeKitEvent;
+import NativeKitEventValue;
 import NativeKitRequests;
 import NativeKit.NativeKitConstants;
 
