@@ -77,7 +77,7 @@ typedef struct nk_video_mode {
 /* Monitor enumeration and queries                                           */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Writes connected monitor handles in GDK display order. Pass NULL to query
  * the required count. A missing or undersized array returns
  * NK_ERROR_BUFFER_TOO_SMALL and updates inout_count.
@@ -94,7 +94,7 @@ NK_API nk_result NK_CALL nk_monitor_get_geometry(nk_handle monitor,
 /** Returns the mode currently selected by the monitor compositor. */
 NK_API nk_result NK_CALL nk_monitor_get_current_mode(nk_handle monitor,
                                                      nk_video_mode *out_mode NK_OUT);
-/*
+/**
  * GTK 3 exposes only the current compositor mode, so this currently returns a
  * one-element list.
  */
@@ -105,7 +105,7 @@ NK_API nk_result NK_CALL nk_monitor_get_modes(nk_handle monitor, nk_video_mode *
 /* Window and monitor integration                                            */
 /* ------------------------------------------------------------------------- */
 
-/* An invalid monitor handle leaves fullscreen and restores windowed placement. */
+/** An invalid monitor handle leaves fullscreen and restores windowed placement. */
 NK_API nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle window,
                                                           nk_handle monitor);
 

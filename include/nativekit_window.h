@@ -263,10 +263,10 @@ typedef struct nk_window_size_limits {
 /* Capability and window lifecycle APIs                                      */
 /* ------------------------------------------------------------------------- */
 
-/* Returns process-wide capabilities of the compiled platform backend. */
+/** Returns process-wide capabilities of the compiled platform backend. */
 NK_API nk_capabilities NK_CALL nk_get_capabilities(void);
 
-/*
+/**
  * Creates a NativeKit-owned top-level window on the UI thread. Dimensions are
  * logical pixels and must be positive. `title` is nullable UTF-8. On success,
  * `out_window` receives a non-zero generation-checked handle. `owner` may name
@@ -290,17 +290,17 @@ NK_API nk_result NK_CALL nk_window_destroy(nk_handle window);
 /* Window visibility, geometry, and state APIs                                */
 /* ------------------------------------------------------------------------- */
 
-/* Shows when `visible` is non-zero and hides otherwise. UI thread only. */
+/** Shows when `visible` is non-zero and hides otherwise. UI thread only. */
 NK_API nk_result NK_CALL nk_window_show(nk_handle window, nk_bool visible);
 
-/* Copies the nullable UTF-8 title before returning. UI thread only. */
+/** Copies the nullable UTF-8 title before returning. UI thread only. */
 NK_API nk_result NK_CALL nk_window_set_title(nk_handle window, const char *title NK_UTF8);
 
-/* Moves and resizes a top-level window in logical pixels. UI thread only. */
+/** Moves and resizes a top-level window in logical pixels. UI thread only. */
 NK_API nk_result NK_CALL nk_window_set_bounds(nk_handle window, int32_t x, int32_t y, int32_t width,
                                               int32_t height);
 
-/* Writes the current logical-to-device-pixel scale. UI thread only. */
+/** Writes the current logical-to-device-pixel scale. UI thread only. */
 NK_API nk_result NK_CALL nk_window_get_scale(nk_handle window, float *out_scale NK_OUT);
 
 /** On NK_OK, fills in the current horizontal and vertical content scale factors. */
@@ -356,10 +356,10 @@ NK_API nk_result NK_CALL nk_window_request_attention(nk_handle window);
 /* Window styling and constraints                                             */
 /* ------------------------------------------------------------------------- */
 
-/* Zero disables the corresponding constraint; maxima must not be below minima. */
+/** Zero disables the corresponding constraint; maxima must not be below minima. */
 NK_API nk_result NK_CALL nk_window_set_size_limits(nk_handle window,
                                                    const nk_window_size_limits *limits);
-/* Passing zero for both values disables the aspect-ratio constraint. */
+/** Passing zero for both values disables the aspect-ratio constraint. */
 NK_API nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle window, int32_t numerator,
                                                     int32_t denominator);
 
@@ -385,7 +385,7 @@ NK_API nk_result NK_CALL nk_window_get_hovered(nk_handle window, nk_bool *out_ho
 /* Native-window interoperability                                            */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Returns a borrowed platform descriptor. Its pointer-sized values are valid
  * only while the NativeKit window is alive and must never be freed by callers.
  * This is an explicit interoperability escape hatch, not a portable resource.
@@ -393,7 +393,7 @@ NK_API nk_result NK_CALL nk_window_get_hovered(nk_handle window, nk_bool *out_ho
 NK_API nk_result NK_CALL nk_window_get_native(nk_handle window,
                                               nk_native_window *out_native NK_OUT);
 
-/*
+/**
  * Attaches NativeKit to a caller-owned native window. Destroying the returned
  * handle only detaches NativeKit. Backends return NK_ERROR_UNSUPPORTED until
  * they can guarantee correct event and ownership behavior for the given kind.

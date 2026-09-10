@@ -110,7 +110,7 @@ typedef struct nk_share_options {
 /* Resource event data                                                       */
 /* ------------------------------------------------------------------------- */
 
-/* Header and item table stored in resource-bearing event data. */
+/** Header and item table stored in resource-bearing event data. */
 typedef struct nk_resource_list {
     /** 1 when the user accepted the operation, and 0 when it was cancelled. */
     nk_bool accepted;
@@ -168,7 +168,7 @@ typedef struct nk_resource_stream_info {
     uint64_t reserved[2];
 } nk_resource_stream_info;
 
-/* Header at the start of NK_EVENT_SHARE_RECEIVED data. */
+/** Header at the start of NK_EVENT_SHARE_RECEIVED data. */
 typedef struct nk_received_share {
     /** Byte offset to the embedded nk_resource_list. */
     uint32_t resources_offset;
@@ -180,7 +180,7 @@ typedef struct nk_received_share {
     uint32_t reserved;
 } nk_received_share;
 
-/* Header at the start of NK_EVENT_RESOURCE_DROP data. Coordinates are logical pixels. */
+/** Header at the start of NK_EVENT_RESOURCE_DROP data. Coordinates are logical pixels. */
 typedef struct nk_resource_drop {
     /** Byte offset to the embedded nk_resource_list. */
     uint32_t resources_offset;
@@ -198,7 +198,7 @@ typedef struct nk_resource_drop {
 /* Resource sharing and dialog APIs                                          */
 /* ------------------------------------------------------------------------- */
 
-/* URI inputs are copied before return. These functions are UI-thread-only. */
+/** URI inputs are copied before return. These functions are UI-thread-only. */
 NK_API nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource);
 /** Launches the platform share UI with optional text and URI resources. */
 NK_API nk_result NK_CALL nk_share(const nk_share_options *options);
@@ -208,7 +208,7 @@ NK_API nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources
 /** Starts an asynchronous read of URI resources from the system clipboard. */
 NK_API nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request NK_OUT);
 
-/* Resource dialogs return NK_EVENT_DIALOG_RESOURCES_COMPLETE with nk_resource_list data. */
+/** Resource dialogs return NK_EVENT_DIALOG_RESOURCES_COMPLETE with nk_resource_list data. */
 NK_API nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
                                                  const nk_file_dialog_options *options,
                                                  nk_request_id *out_request NK_OUT);
@@ -224,7 +224,7 @@ NK_API nk_result NK_CALL nk_dialog_select_resource_directory(
 /* Resource event helpers                                                    */
 /* ------------------------------------------------------------------------- */
 
-/* Returned views remain owned by the event until nk_event_release(). */
+/** Returned views remain owned by the event until nk_event_release(). */
 NK_API nk_result NK_CALL nk_resource_event_item(const nk_event *event, uint32_t index,
                                                 nk_resource_view *out_resource);
 /** Returns optional UTF-8 text from a received-share event. */
@@ -241,7 +241,7 @@ NK_API nk_result NK_CALL nk_resource_drop_event_text(const nk_event *event, cons
 /* Persisted resource access                                                 */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Controls durable URI access on platforms that support it. access_flags is a
  * combination of NK_RESOURCE_READABLE and NK_RESOURCE_WRITABLE; zero releases
  * all persisted access. out_flags receives the actual resource flags retained.
@@ -258,7 +258,7 @@ NK_API nk_result NK_CALL nk_resource_get_persisted_access(const nk_resource *res
 /* Resource stream APIs                                                      */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Opens a URI-backed stream on the UI thread. Stream operations copy bytes
  * synchronously and may be called from worker threads. A successful read may
  * return fewer bytes than requested; zero bytes means end of stream.

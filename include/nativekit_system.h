@@ -70,7 +70,7 @@ typedef struct nk_system_appearance {
 /* Shell operations                                                          */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Requests that the desktop open a URI, open a local file with its default
  * application, or reveal a local file in its containing folder. Input is
  * copied before return. These functions must be called on the UI thread.
@@ -85,7 +85,7 @@ NK_API nk_result NK_CALL nk_shell_reveal_file(const char *path NK_UTF8);
 /* System queries                                                            */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Writes a NUL-terminated UTF-8 value. `inout_size` is the buffer capacity on
  * entry and receives the required size including NUL on every valid call. Pass
  * NULL as `buffer` to query the size. An absent or small buffer returns
@@ -96,7 +96,7 @@ NK_API nk_result NK_CALL nk_system_directory(nk_system_directory_kind kind, char
 /** Copies the current system locale identifier into a caller-owned UTF-8 buffer. */
 NK_API nk_result NK_CALL nk_system_locale(char *buffer, uint32_t *inout_size);
 
-/* Returns the current desktop appearance. UI thread only. */
+/** Returns the current desktop appearance. UI thread only. */
 NK_API nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance);
 
 #ifdef __cplusplus

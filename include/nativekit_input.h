@@ -474,7 +474,7 @@ typedef struct nk_text_input_state {
 /* Text input event helpers                                                  */
 /* ------------------------------------------------------------------------- */
 
-/* Returns a borrowed UTF-8 view valid until nk_event_release(). */
+/** Returns a borrowed UTF-8 view valid until nk_event_release(). */
 NK_API nk_result NK_CALL nk_text_edit_event_text(const nk_event *event,
                                                  const char **out_text,
                                                  uint32_t *out_length);

@@ -85,7 +85,7 @@ typedef struct nk_webview_options {
 /* WebView lifecycle and navigation                                          */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Creates a native child WebView inside `parent`. Bounds are logical pixels;
  * width and height must be positive. `initial_url` is nullable UTF-8. Creation
  * may finish asynchronously; NK_EVENT_WEBVIEW_READY reports when the native
@@ -126,7 +126,7 @@ NK_API nk_result NK_CALL nk_webview_stop(nk_handle webview);
 /* WebView scripting and navigation policy                                   */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Starts JavaScript evaluation. Completion is reported as
  * NK_EVENT_WEBVIEW_EVAL_COMPLETE with the returned request ID. Event data is
  * UTF-8 JSON for the result, or usually an error message when the event result
@@ -140,7 +140,7 @@ NK_API nk_result NK_CALL nk_webview_stop(nk_handle webview);
 NK_API nk_result NK_CALL nk_webview_eval(nk_handle webview, const char *script NK_UTF8,
                                          nk_request_id *out_request NK_OUT);
 
-/*
+/**
  * Resolves an NK_EVENT_WEBVIEW_NAVIGATION_REQUEST. Navigation-policy events
  * are emitted only for WebViews created with NK_WEBVIEW_NAVIGATION_POLICY.
  * Event data is the proposed URL. Pending requests are cancelled when their

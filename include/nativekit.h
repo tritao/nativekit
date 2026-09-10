@@ -263,7 +263,7 @@ typedef struct nk_init_options {
     uint32_t reserved;
 } nk_init_options;
 
-/*
+/**
  * Variable-length event data is owned by NativeKit. It remains valid until
  * nk_event_release() is called. A successfully polled event must be released,
  * even when data is NULL. Strings are UTF-8 and data_size excludes any trailing

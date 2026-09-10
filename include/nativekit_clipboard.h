@@ -43,14 +43,14 @@ typedef struct nk_drop_data {
 /* Clipboard operations                                                      */
 /* ------------------------------------------------------------------------- */
 
-/* Copies UTF-8 text into the system clipboard. UI thread only. */
+/** Copies UTF-8 text into the system clipboard. UI thread only. */
 NK_API nk_result NK_CALL nk_clipboard_set_text(const char *text NK_UTF8);
 
-/* Copies local paths into the clipboard as a URI list. UI thread only. */
+/** Copies local paths into the clipboard as a URI list. UI thread only. */
 NK_API nk_result NK_CALL nk_clipboard_set_files(const char *const *paths NK_IN_UTF8_ARRAY(path_count),
                                                 uint32_t path_count);
 
-/*
+/**
  * Starts an asynchronous clipboard read. Completion is delivered through the
  * corresponding NK_EVENT_CLIPBOARD_* event with the returned request ID.
  * Missing clipboard content completes successfully with empty event data.
@@ -63,14 +63,14 @@ NK_API nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request NK_O
 /* Drag-and-drop operations                                                  */
 /* ------------------------------------------------------------------------- */
 
-/* Enables or disables the text and/or local-file drop formats supported by the backend. */
+/** Enables or disables the text and/or local-file drop formats supported by the backend. */
 NK_API nk_result NK_CALL nk_window_set_drop_enabled(nk_handle window, nk_bool enabled);
 
 /* ------------------------------------------------------------------------- */
 /* Clipboard and drag-and-drop event helpers                                 */
 /* ------------------------------------------------------------------------- */
 
-/* Returned UTF-8 views remain owned by the event until nk_event_release(). */
+/** Returned UTF-8 views remain owned by the event until nk_event_release(). */
 NK_API nk_result NK_CALL nk_clipboard_event_file(const nk_event *event, uint32_t index,
                                                  const char **out_path, uint32_t *out_length);
 /** Returns one borrowed UTF-8 item from a drop event by zero-based index. */

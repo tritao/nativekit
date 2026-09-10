@@ -28,9 +28,9 @@ typedef uint64_t nk_vulkan_surface;
 /* Vulkan capability and extension queries                                   */
 /* ------------------------------------------------------------------------- */
 
-/* Returns non-zero when a Vulkan loader and vkGetInstanceProcAddr are available. */
+/** Returns non-zero when a Vulkan loader and vkGetInstanceProcAddr are available. */
 NK_API nk_bool NK_CALL nk_vulkan_supported(void);
-/*
+/**
  * Returns the instance extensions required by the presentation resource. Pass
  * a window on desktop or an NK_GRAPHICS_VULKAN child surface on Android.
  * The returned string pointers have process lifetime. Pass NULL to query count.
@@ -42,7 +42,7 @@ NK_API nk_result NK_CALL nk_vulkan_get_required_instance_extensions(
 /* Vulkan surface lifecycle                                                  */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Creates a VkSurfaceKHR from the desktop window or Android Vulkan child
  * surface. `instance` is a VkInstance cast to void*. `allocator`
  * may point to VkAllocationCallbacks. The application owns the returned surface

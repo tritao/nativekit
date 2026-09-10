@@ -66,6 +66,7 @@ typedef int32_t nks_result;
 #ifdef __cplusplus
 #define NKS_HANDLE(name)                                                                           \
     typedef struct name {                                                                          \
+        /** Opaque generation-checked handle value owned by the Sokol backend. */                  \
         uint32_t id;                                                                               \
         operator uint32_t() const {                                                                \
             return id;                                                                             \
@@ -78,6 +79,7 @@ typedef int32_t nks_result;
 #else
 #define NKS_HANDLE(name)                                                                           \
     typedef struct name {                                                                          \
+        /** Opaque generation-checked handle value owned by the Sokol backend. */                  \
         uint32_t id;                                                                               \
     } name
 #endif

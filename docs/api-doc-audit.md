@@ -15,14 +15,14 @@ enum constants, public constant macros, and—when requested—struct fields:
 ```
 
 Generated HXI files are parsed separately and matched to the C inventory. Their
-documentation status is inherited from the matching C declaration, so the HXI
-files must not be edited to resolve a documentation finding. A missing HXI
-entry with a source location points back to the C header that needs the comment.
+generated Doxygen comments must be present and match the normalized C comment;
+the HXI files must not be edited to resolve a documentation finding. Fix the C
+header or the importer/projection when the generated comment is missing.
 
-The scanner accepts both libclang's `raw_comment` documentation and the
-repository's existing adjacent `/* ... */` and `// ...` comments. It reports
-whether a comment is present; it does not assess the quality or completeness of
-that comment.
+Only Doxygen comments (`/** ... */` and `/// ...`) count as API documentation.
+Section headings and implementation notes may continue to use ordinary C
+comments. The scanner reports presence and normalized equality; it does not
+assess the quality or completeness of the prose.
 
 Requirements are Python 3, the Python `clang` bindings, libclang, and a Clang
 resource directory. The resource directory is discovered with

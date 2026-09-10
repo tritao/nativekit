@@ -3,9 +3,8 @@
 
 The C inventory is produced by libclang.  This keeps declaration discovery
 correct for typedefs, nested fields, enums, callbacks, and macro-expanded
-handles.  HXI files are parsed only to enumerate the generated declarations;
-their documentation status comes from the matching C declaration because HXI
-files are generated artifacts and should not be edited by hand.
+handles.  HXI files are parsed to enumerate declarations and to verify that
+the generated Doxygen comments match their C source declarations.
 """
 
 from __future__ import annotations
@@ -190,15 +189,17 @@ def is_documentation(text: str) -> bool:
 def comment_for(comments: list[Comment], text: str, offset: int) -> Optional[Comment]:
     """Find an ordinary C comment immediately preceding an AST declaration.
 
-    libclang exposes `/** ... */` comments through `raw_comment`, but the
-    existing headers also use ordinary `/* ... */` and `// ...` documentation.
-    This small fallback preserves coverage for that established style.
+    Only Doxygen comments are binding documentation.  Ordinary comments remain
+    useful for implementation notes and section headings but must not silently
+    become API documentation.
     """
 
     candidates = [comment for comment in comments if comment.end <= offset]
     if not candidates:
         return None
     comment = candidates[-1]
+    if not (comment.text.lstrip().startswith("/**") or comment.text.lstrip().startswith("///")):
+        return None
     if text[comment.end:offset].strip():
         return None
     if line_number(text, offset) - comment.end_line > 2:
@@ -222,11 +223,6 @@ def attach_cursor(item: Item, cursor: object, source: str, comments: list[Commen
         item.doc_line = line_number(source, raw_offset if raw_offset >= 0 else offset)
         item.doc = normalize_comment(raw)
         return item
-    comment = comment_for(comments, source, offset)
-    if comment is not None:
-        item.documented = True
-        item.doc_line = comment.start_line
-        item.doc = normalize_comment(comment.text)
     return item
 
 
@@ -409,20 +405,20 @@ def parse_hxi_file(path: Path, include_fields: bool) -> list[Item]:
         start = offsets[index]
         match = re.match(rf"\s*const\s+({IDENTIFIER})\b", line)
         if match:
-            add("constant", match.group(1), index + 1, start + match.start(1))
+            add("constant", match.group(1), index + 1, start)
             index += 1
             continue
 
         match = re.match(rf"\s*(?:extern\s+)?fn\s+({IDENTIFIER})\s*\(", line)
         if match:
-            add("function", match.group(1), index + 1, start + match.start(1))
+            add("function", match.group(1), index + 1, start)
             index += 1
             continue
 
         match = re.match(rf"\s*(struct|enum)\s+({IDENTIFIER})\b", line)
         if match:
             kind_name, name = match.groups()
-            add("type", name, index + 1, start + match.start(2))
+            add("type", name, index + 1, start)
             depth = line.count("{") - line.count("}")
             index += 1
             while index < len(lines) and depth > 0:
@@ -431,20 +427,18 @@ def parse_hxi_file(path: Path, include_fields: bool) -> list[Item]:
                 if kind_name == "enum" and ";" in member_line:
                     value = re.match(rf"\s*({IDENTIFIER})\b", member_line)
                     if value and value.group(1).startswith(PUBLIC_PREFIXES):
-                        add("constant", value.group(1), index + 1,
-                            member_start + value.start(1), parent=name)
+                        add("constant", value.group(1), index + 1, member_start, parent=name)
                 elif include_fields and ";" in member_line:
                     field_match = re.match(rf"\s*({IDENTIFIER})\s*:", member_line)
                     if field_match:
-                        add("field", field_match.group(1), index + 1,
-                            member_start + field_match.start(1), parent=name)
+                        add("field", field_match.group(1), index + 1, member_start, parent=name)
                 depth += member_line.count("{") - member_line.count("}")
                 index += 1
             continue
 
         match = re.match(rf"\s*(?:type|callback|opaque)\s+({IDENTIFIER})\b", line)
         if match:
-            add("type", match.group(1), index + 1, start + match.start(1))
+            add("type", match.group(1), index + 1, start)
         index += 1
 
     unique: dict[tuple[str, str, Optional[str]], Item] = {}
@@ -490,11 +484,15 @@ def hxi_reports(root: Path, files: list[Path], source_items: list[Item],
             if source is None:
                 item.reason = "no matching C declaration"
             else:
-                item.documented = source.documented
-                item.doc_line = source.doc_line
-                item.doc = source.doc
+                item.documented = source.documented and item.documented
+                item.doc_line = item.doc_line if item.documented else source.doc_line
                 if not source.documented:
                     item.reason = "C declaration is undocumented"
+                elif not item.documented:
+                    item.reason = "generated HXI declaration is undocumented"
+                elif item.doc != source.doc:
+                    item.documented = False
+                    item.reason = "generated HXI documentation differs from the C declaration"
             report.items.append(item)
         reports.append(report)
     return reports
@@ -536,7 +534,7 @@ def text_report(root: Path, c: CReport, hxi: list[HxiReport], only_missing: bool
         output.append(f"  [{status}] {relative(item.path, root)}:{item.line} {item.kind} {item.qualified_name}{detail}")
 
     output.extend(["", "Generated HXI documentation audit",
-                   "  HXI files are artifacts; coverage is inherited from the matching C declaration."])
+                   "  Generated comments are compared with the matching C declaration; HXI files are artifacts."])
     for report in hxi:
         hxi_summary = summary(report.items)
         output.append(f"  {relative(report.path, root)}: declarations: {hxi_summary['total']}  documented: {hxi_summary['documented']}  missing: {hxi_summary['missing']}")
@@ -545,7 +543,8 @@ def text_report(root: Path, c: CReport, hxi: list[HxiReport], only_missing: bool
                 continue
             status = "OK" if item.documented else "MISSING"
             source = f" -> {relative(item.source.path, root)}:{item.source.line}" if item.source else " -> no matching C declaration"
-            output.append(f"    [{status}] {relative(item.path, root)}:{item.line} {item.kind} {item.qualified_name}{source}")
+            reason = f" ({item.reason})" if item.reason else ""
+            output.append(f"    [{status}] {relative(item.path, root)}:{item.line} {item.kind} {item.qualified_name}{source}{reason}")
     return "\n".join(output)
 
 
@@ -553,7 +552,7 @@ def markdown_report(root: Path, c: CReport, hxi: list[HxiReport], only_missing: 
     c_summary = summary(c.items)
     lines = ["# NativeKit API documentation audit", "",
              f"C declarations: **{c_summary['total']}** · documented: **{c_summary['documented']}** · missing: **{c_summary['missing']}**",
-             "", "Generated HXI files are checked against their matching C declaration; they are not edited directly.",
+             "", "Generated HXI comments are checked against their matching C declaration; HXI files are not edited directly.",
              "", "## C declarations", "", "| Status | Declaration | Location |", "| --- | --- | --- |"]
     for item in c.items:
         if only_missing and item.documented:
@@ -571,7 +570,8 @@ def markdown_report(root: Path, c: CReport, hxi: list[HxiReport], only_missing: 
                 continue
             status = "documented" if item.documented else "missing"
             source = f"`{relative(item.source.path, root)}:{item.source.line}`" if item.source else "not found"
-            lines.append(f"| {status} | `{item.qualified_name}` ({item.kind}) | `{item.line}` | {source} |")
+            reason = item.reason or ""
+            lines.append(f"| {status} | `{item.qualified_name}` ({item.kind}) | `{item.line}` | {source} {reason} |")
         lines.append("")
     return "\n".join(lines).rstrip()
 
@@ -582,7 +582,7 @@ def json_report(root: Path, c: CReport, hxi: list[HxiReport], include_fields: bo
             "c_parser": "libclang",
             "c_headers": [relative(path, root) for path in c.files],
             "include_struct_fields": include_fields,
-            "hxi_coverage_basis": "matching C declaration documentation",
+            "hxi_coverage_basis": "generated HXI documentation compared with matching C declaration documentation",
         },
         "c": {"summary": summary(c.items), "items": [item_dict(item, root) for item in c.items]},
         "hxi": [{"path": relative(report.path, root), "summary": summary(report.items),

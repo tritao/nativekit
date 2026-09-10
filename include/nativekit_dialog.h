@@ -138,7 +138,7 @@ typedef struct nk_message_dialog_options {
     const char *message NK_UTF8;
 } nk_message_dialog_options;
 
-/* Header at the start of NK_EVENT_DIALOG_PATHS_COMPLETE data. */
+/** Header at the start of NK_EVENT_DIALOG_PATHS_COMPLETE data. */
 typedef struct nk_dialog_paths {
     /** 1 when the user accepted the dialog, and 0 when it was cancelled. */
     nk_bool accepted;
@@ -150,7 +150,7 @@ typedef struct nk_dialog_paths {
     uint32_t strings_offset;
 } nk_dialog_paths;
 
-/* Payload of NK_EVENT_DIALOG_MESSAGE_COMPLETE. */
+/** Payload of NK_EVENT_DIALOG_MESSAGE_COMPLETE. */
 typedef struct nk_dialog_message_result {
     /** Button selected by the user, or NK_MESSAGE_RESULT_NONE on cancellation. */
     nk_message_result button;
@@ -160,7 +160,7 @@ typedef struct nk_dialog_message_result {
 /* Dialog operations                                                         */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Starts a non-blocking native dialog on the UI thread. `parent` may be zero;
  * otherwise it must be a live window. All strings and filters are copied before
  * the function returns. Completion uses NK_EVENT_DIALOG_PATHS_COMPLETE or
@@ -183,14 +183,14 @@ NK_API nk_result NK_CALL nk_dialog_message(nk_handle parent,
                                            const nk_message_dialog_options *options,
                                            nk_request_id *out_request NK_OUT);
 
-/* Cancels a pending dialog. Its completion event is still emitted. */
+/** Cancels a pending dialog. Its completion event is still emitted. */
 NK_API nk_result NK_CALL nk_dialog_cancel(nk_request_id request);
 
 /* ------------------------------------------------------------------------- */
 /* Dialog event helpers                                                      */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Validates and returns a path from a dialog event. The returned UTF-8 view is
  * owned by the event and remains valid until nk_event_release().
  */

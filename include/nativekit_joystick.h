@@ -60,7 +60,7 @@ typedef struct nk_joystick_hat_event {
 /* Joystick enumeration and state                                            */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Writes connected joystick handles. Pass NULL to query the required count.
  * Hotplug is reported with NK_EVENT_JOYSTICK_CONNECTED and
  * NK_EVENT_JOYSTICK_DISCONNECTED.
@@ -69,10 +69,10 @@ NK_API nk_result NK_CALL nk_joystick_list(nk_handle *joysticks, uint32_t *inout_
 /** Copies the device name into a caller-owned UTF-8 buffer. */
 NK_API nk_result NK_CALL nk_joystick_get_name(nk_handle joystick, char *buffer,
                                               uint32_t *inout_size);
-/* Returns a 32-character SDL-compatible device GUID plus a trailing NUL. */
+/** Returns a 32-character SDL-compatible device GUID plus a trailing NUL. */
 NK_API nk_result NK_CALL nk_joystick_get_guid(nk_handle joystick, char *buffer,
                                               uint32_t *inout_size);
-/*
+/**
  * Each state function accepts NULL to query its element count. Axis values are
  * normalized to [-1, 1], buttons are 0 or 1, and hats use NK_JOYSTICK_HAT_*.
  */
@@ -89,7 +89,7 @@ NK_API nk_result NK_CALL nk_joystick_get_hats(nk_handle joystick, uint8_t *hats,
 /* Joystick diagnostics                                                      */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Returns a transport warning, such as a missing /dev/input directory,
  * insufficient device permissions, or unavailable inotify monitoring. An
  * empty string means that no transport problem has been observed.

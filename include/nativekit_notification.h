@@ -48,7 +48,7 @@ typedef struct nk_notification_options {
 /* Notification operations                                                   */
 /* ------------------------------------------------------------------------- */
 
-/*
+/**
  * Requests a desktop notification. Strings are copied before return. Success
  * means the request was accepted for asynchronous processing; delivery or
  * failure is reported with the same request ID through the event queue.
@@ -57,7 +57,7 @@ typedef struct nk_notification_options {
 NK_API nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
                                               nk_request_id *out_request);
 
-/* Removes a delivered notification. A successful close emits DISMISSED. */
+/** Removes a delivered notification. A successful close emits DISMISSED. */
 NK_API nk_result NK_CALL nk_notification_close(nk_request_id request);
 
 #ifdef __cplusplus
