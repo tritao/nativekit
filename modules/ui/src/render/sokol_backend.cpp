@@ -32,6 +32,8 @@ struct SokolBackend::State {
 
     sg_shader solid_shader{};
     sg_pipeline solid_pipeline{};
+    sg_pipeline fill_stencil_pipeline{};
+    sg_pipeline fill_cover_pipeline{};
     sg_shader glyph_shader{};
     sg_pipeline glyph_pipeline{};
     sg_shader composite_shader{};
@@ -152,6 +154,46 @@ sg_pipeline make_solid_pipeline(sg_shader shader) {
     desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
     desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
     desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    return sg_make_pipeline(&desc);
+}
+
+sg_pipeline make_fill_stencil_pipeline(sg_shader shader) {
+    sg_pipeline_desc desc{};
+    desc.shader = shader;
+    desc.layout.buffers[0].stride = sizeof(SolidVertex);
+    desc.layout.attrs[0] = {0, 0, SG_VERTEXFORMAT_FLOAT2};
+    desc.index_type = SG_INDEXTYPE_UINT32;
+    desc.colors[0].write_mask = SG_COLORMASK_NONE;
+    desc.cull_mode = SG_CULLMODE_NONE;
+    desc.stencil.enabled = true;
+    desc.stencil.front.compare = SG_COMPAREFUNC_ALWAYS;
+    desc.stencil.front.pass_op = SG_STENCILOP_INCR_WRAP;
+    desc.stencil.back.compare = SG_COMPAREFUNC_ALWAYS;
+    desc.stencil.back.pass_op = SG_STENCILOP_DECR_WRAP;
+    desc.stencil.read_mask = 0xFF;
+    desc.stencil.write_mask = 0xFF;
+    return sg_make_pipeline(&desc);
+}
+
+sg_pipeline make_fill_cover_pipeline(sg_shader shader) {
+    sg_pipeline_desc desc{};
+    desc.shader = shader;
+    desc.layout.buffers[0].stride = sizeof(SolidVertex);
+    desc.layout.attrs[0] = {0, 0, SG_VERTEXFORMAT_FLOAT2};
+    desc.index_type = SG_INDEXTYPE_UINT32;
+    desc.colors[0].blend.enabled = true;
+    desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+    desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+    desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    desc.stencil.enabled = true;
+    desc.stencil.front.compare = SG_COMPAREFUNC_NOT_EQUAL;
+    desc.stencil.front.fail_op = SG_STENCILOP_ZERO;
+    desc.stencil.front.depth_fail_op = SG_STENCILOP_ZERO;
+    desc.stencil.front.pass_op = SG_STENCILOP_ZERO;
+    desc.stencil.back = desc.stencil.front;
+    desc.stencil.read_mask = 0xFF;
+    desc.stencil.write_mask = 0xFF;
     return sg_make_pipeline(&desc);
 }
 
@@ -346,6 +388,8 @@ SokolBackend::~SokolBackend() {
         sg_destroy_pipeline(state_->composite_pipeline);
         sg_destroy_shader(state_->composite_shader);
         sg_destroy_pipeline(state_->solid_pipeline);
+        sg_destroy_pipeline(state_->fill_cover_pipeline);
+        sg_destroy_pipeline(state_->fill_stencil_pipeline);
         sg_destroy_shader(state_->solid_shader);
         sg_shutdown();
     }
@@ -364,6 +408,8 @@ bool SokolBackend::initialize() {
     state_->glyph_shader = make_glyph_shader();
     state_->composite_shader = make_composite_shader();
     state_->solid_pipeline = make_solid_pipeline(state_->solid_shader);
+    state_->fill_stencil_pipeline = make_fill_stencil_pipeline(state_->solid_shader);
+    state_->fill_cover_pipeline = make_fill_cover_pipeline(state_->solid_shader);
     state_->glyph_pipeline = make_glyph_pipeline(state_->glyph_shader);
     state_->composite_pipeline = make_composite_pipeline(state_->composite_shader);
     sg_sampler_desc sampler_desc{};
@@ -378,6 +424,8 @@ bool SokolBackend::initialize() {
     state_->indices = make_stream_buffer(4 * 1024 * 1024, true);
     state_->initialized =
         sg_query_pipeline_state(state_->solid_pipeline) == SG_RESOURCESTATE_VALID &&
+        sg_query_pipeline_state(state_->fill_stencil_pipeline) == SG_RESOURCESTATE_VALID &&
+        sg_query_pipeline_state(state_->fill_cover_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->glyph_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->composite_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_sampler_state(state_->sampler) == SG_RESOURCESTATE_VALID &&
@@ -386,7 +434,7 @@ bool SokolBackend::initialize() {
         sg_query_buffer_state(state_->composite_vertices) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->indices) == SG_RESOURCESTATE_VALID;
     if (state_->initialized)
-        state_->stats.gpu_resources = 13;
+        state_->stats.gpu_resources = 15;
     return state_->initialized || fail(*state_, "Sokol UI resource creation failed");
 }
 
@@ -467,12 +515,41 @@ bool SokolBackend::draw_path(const NanoVGRecorder &recorder, uint32_t operation_
         return fail(*state_, "invalid path draw");
     const auto &operation = recorder.operations()[operation_index];
     SolidMesh mesh;
-    if (!triangulate_prepared_path(recorder, operation, mesh))
-        return fail(*state_, "unsupported non-convex or triangle path");
     const float alpha = operation.paint.innerColor.a * opacity;
     const std::array<float, 4> color = {operation.paint.innerColor.r * alpha,
                                         operation.paint.innerColor.g * alpha,
                                         operation.paint.innerColor.b * alpha, alpha};
+    if (operation.kind == PreparedPathKind::Fill &&
+        (operation.path_count != 1 || !recorder.paths()[operation.path_offset].convex)) {
+        const std::array<float, 4> stencil_color{};
+        for (uint32_t index = 0; index < operation.path_count; ++index) {
+            const auto &path = recorder.paths()[operation.path_offset + index];
+            if (path.fill_count < 3)
+                continue;
+            SolidMesh fan;
+            const uint32_t base = static_cast<uint32_t>(fan.vertices.size());
+            for (uint32_t vertex = 0; vertex < path.fill_count; ++vertex) {
+                const auto &source = recorder.vertices()[path.fill_offset + vertex];
+                fan.vertices.push_back({source.x, source.y});
+            }
+            for (uint32_t vertex = 1; vertex + 1 < path.fill_count; ++vertex)
+                fan.indices.insert(fan.indices.end(), {base, base + vertex, base + vertex + 1});
+            if (!draw_mesh(*state_, state_->fill_stencil_pipeline, fan.vertices, fan.indices,
+                           stencil_color.data(), sizeof(stencil_color), {}, {},
+                           state_->solid_vertices))
+                return false;
+        }
+        SolidMesh cover;
+        cover.vertices = {{operation.bounds[0], operation.bounds[1]},
+                          {operation.bounds[2], operation.bounds[1]},
+                          {operation.bounds[2], operation.bounds[3]},
+                          {operation.bounds[0], operation.bounds[3]}};
+        cover.indices = {0, 1, 2, 0, 2, 3};
+        return draw_mesh(*state_, state_->fill_cover_pipeline, cover.vertices, cover.indices,
+                         color.data(), sizeof(color), {}, {}, state_->solid_vertices);
+    }
+    if (!triangulate_prepared_path(recorder, operation, mesh))
+        return fail(*state_, "unsupported triangle path");
     return draw_mesh(*state_, state_->solid_pipeline, mesh.vertices, mesh.indices, color.data(),
                      sizeof(color), {}, {}, state_->solid_vertices);
 }

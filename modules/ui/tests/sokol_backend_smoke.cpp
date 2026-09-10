@@ -113,7 +113,12 @@ int main() {
         nvgFillColor(vg, nvgRGBA(8, 12, 25, 255));
         nvgFill(vg);
         nvgBeginPath(vg);
-        nvgRect(vg, 40.0f, 40.0f, 160.0f, 100.0f);
+        nvgMoveTo(vg, 40.0f, 40.0f);
+        nvgLineTo(vg, 200.0f, 40.0f);
+        nvgLineTo(vg, 120.0f, 85.0f);
+        nvgLineTo(vg, 200.0f, 140.0f);
+        nvgLineTo(vg, 40.0f, 140.0f);
+        nvgClosePath(vg);
         nvgFillColor(vg, nvgRGBA(40, 120, 220, 220));
         nvgFill(vg);
         nvgBeginPath(vg);
@@ -131,16 +136,24 @@ int main() {
             !resources.bind_text(title, title_glyphs) ||
             !resources.bind_text(layer_text, layer_glyphs) ||
             !backend->upload_atlases(text_adapter) ||
-            !execute_render_plan(
-                *backend, plan, resources,
-                {main_target, width, height, static_cast<uint32_t>(framebuffer)}) ||
-            nk_surface_present(surface) != NK_OK)
+            !execute_render_plan(*backend, plan, resources,
+                                 {main_target, width, height, static_cast<uint32_t>(framebuffer)}))
+            result = 6;
+        if (!result && frames == 0) {
+            unsigned char filled[4]{};
+            unsigned char notch[4]{};
+            glReadPixels(60, height - 85, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, filled);
+            glReadPixels(170, height - 85, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, notch);
+            if (filled[2] <= notch[2] + 30)
+                result = 11;
+        }
+        if (!result && nk_surface_present(surface) != NK_OK)
             result = 6;
         ++frames;
     }
     if (!result && backend->stats().passes != 90)
         result = 7;
-    if (!result && (backend->stats().draws != 180 || backend->stats().image_uploads == 0))
+    if (!result && (backend->stats().draws != 210 || backend->stats().image_uploads == 0))
         result = 10;
     if (ready)
         nk_surface_make_current(surface);
