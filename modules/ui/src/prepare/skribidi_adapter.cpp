@@ -193,11 +193,13 @@ bool SkribidiAdapter::prepare_glyphs(float origin_x, float origin_y, float pixel
     if (!state_->layout || pixel_scale <= 0.0f)
         return false;
     output = {};
+    if (!skb_layout_prepare_glyphs(state_->layout, state_->atlas, state_->temporary,
+                                   state_->rasterizer, pixel_scale, raster_mode(mode)))
+        return false;
     RenderGlyphContext render{state_, origin_x, origin_y, pixel_scale, mode, &output};
     if (!skb_layout_iterate_render_glyphs(state_->layout, append_render_glyph, &render))
         return false;
-    return skb_image_atlas_rasterize_missing_items(state_->atlas, state_->temporary,
-                                                   state_->rasterizer);
+    return true;
 }
 
 TextRect SkribidiAdapter::bounds() const {
