@@ -38,7 +38,7 @@
 extern "C" {
 #endif
 
-#define NK_API_VERSION 2u
+enum { NK_API_VERSION = 2 };
 #define NK_INVALID_HANDLE ((nk_handle)0)
 #define NK_INVALID_REQUEST_ID ((nk_request_id)0)
 
