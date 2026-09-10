@@ -7,6 +7,7 @@ add_library(nativekit_ui SHARED
     src/compositor/compositor.cpp
     src/display_list/display_list.cpp
     src/prepare/nanovg_recorder.cpp
+    src/prepare/nanovg_path.cpp
     src/prepare/skribidi_adapter.cpp
     src/render/frame_resources.cpp
     src/render/render_plan_executor.cpp
@@ -49,6 +50,12 @@ if(NK_BUILD_TESTS)
     target_include_directories(nativekit_ui_nanovg_recorder_test PRIVATE src)
     target_link_libraries(nativekit_ui_nanovg_recorder_test PRIVATE nkui_nanovg_core)
     add_test(NAME nativekit_ui_nanovg_recorder COMMAND nativekit_ui_nanovg_recorder_test)
+    add_executable(nativekit_ui_nanovg_path_test
+        tests/nanovg_path.cpp
+        src/prepare/nanovg_path.cpp)
+    target_include_directories(nativekit_ui_nanovg_path_test PRIVATE src)
+    target_link_libraries(nativekit_ui_nanovg_path_test PRIVATE nkui_nanovg_core)
+    add_test(NAME nativekit_ui_nanovg_path COMMAND nativekit_ui_nanovg_path_test)
     add_executable(nativekit_ui_skribidi_adapter_test
         tests/skribidi_adapter.cpp
         src/prepare/skribidi_adapter.cpp)
@@ -67,6 +74,7 @@ if(NK_BUILD_TESTS)
         tests/sokol_backend_mesh.cpp
         src/display_list/display_list.cpp
         src/prepare/nanovg_recorder.cpp
+        src/prepare/nanovg_path.cpp
         src/prepare/skribidi_adapter.cpp
         src/render/sokol_backend.cpp)
     target_include_directories(nativekit_ui_sokol_backend_mesh_test PRIVATE
@@ -78,6 +86,7 @@ if(NK_BUILD_TESTS)
         tests/frame_resources.cpp
         src/display_list/display_list.cpp
         src/prepare/nanovg_recorder.cpp
+        src/prepare/nanovg_path.cpp
         src/render/frame_resources.cpp)
     target_include_directories(nativekit_ui_frame_resources_test PRIVATE src)
     target_link_libraries(nativekit_ui_frame_resources_test PRIVATE nkui_nanovg_core)
@@ -88,6 +97,7 @@ if(NK_BUILD_TESTS)
             src/compositor/compositor.cpp
             src/display_list/display_list.cpp
             src/prepare/nanovg_recorder.cpp
+            src/prepare/nanovg_path.cpp
             src/prepare/skribidi_adapter.cpp
             src/render/frame_resources.cpp
             src/render/render_plan_executor.cpp
