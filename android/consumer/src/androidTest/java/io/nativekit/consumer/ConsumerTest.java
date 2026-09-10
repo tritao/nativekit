@@ -30,7 +30,7 @@ public final class ConsumerTest {
         launch.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(launch)) {
             scenario.onActivity(activity -> {
-                assertEquals(1, activity.apiVersion());
+                assertEquals(2, activity.apiVersion());
                 assertNotEquals(0, activity.webViewHandle());
                 assertEquals(0, activity.webViewHistoryProbe());
                 assertEquals(0, activity.incomingShareProbe());

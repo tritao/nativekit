@@ -983,13 +983,13 @@ final class NativeKitBridge {
         return text == null ? null : text.toString();
     }
 
-    static boolean startFileDialog(ViewGroup parent, long request, int kind, int flags,
+    static boolean startFileDialog(ViewGroup parent, long request, int mode, int flags,
                                    @Nullable String title, @Nullable String suggestedName,
                                    @Nullable String[] patterns) {
         Context context = parent.getContext();
         Intent intent = new Intent(context, NativeKitDialogActivity.class);
         intent.putExtra(NativeKitDialogActivity.EXTRA_REQUEST, request);
-        intent.putExtra(NativeKitDialogActivity.EXTRA_KIND, kind);
+        intent.putExtra(NativeKitDialogActivity.EXTRA_MODE, mode);
         intent.putExtra(NativeKitDialogActivity.EXTRA_FLAGS, flags);
         intent.putExtra(NativeKitDialogActivity.EXTRA_TITLE, title);
         intent.putExtra(NativeKitDialogActivity.EXTRA_SUGGESTED_NAME, suggestedName);
@@ -1335,7 +1335,7 @@ final class NativeKitBridge {
     private static native void nativeOnGeometry(long handle, int width, int height, float scale,
                                                 int insetLeft, int insetTop, int insetRight,
                                                 int insetBottom, int keyboardBottom);
-    static native void nativeOnFileDialog(long request, int kind, boolean accepted,
+    static native void nativeOnFileDialog(long request, boolean accepted,
                                           @Nullable String[] uris, @Nullable String[] mimeTypes,
                                           @Nullable String[] displayNames,
                                           @Nullable int[] resourceFlags);

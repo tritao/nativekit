@@ -34,7 +34,7 @@ public final class NativeKitHostTest {
     private static final int EVENT_WEBVIEW_NAVIGATION_FAILED = 204;
     private static final int EVENT_WEBVIEW_PROCESS_TERMINATED = 205;
     private static final int EVENT_CLIPBOARD_TEXT_COMPLETE = 400;
-    private static final int EVENT_DIALOG_COMPLETE = 100;
+    private static final int EVENT_DIALOG_COMPLETE = 101;
     private static final int EVENT_NOTIFICATION_DELIVERED = 500;
     private static final int EVENT_NOTIFICATION_ACTIVATED = 501;
     private static final int EVENT_NOTIFICATION_DISMISSED = 502;
@@ -230,7 +230,7 @@ public final class NativeKitHostTest {
         });
         NativeKitEvent dialog = awaitEvent(scenario, EVENT_DIALOG_COMPLETE);
         assertEquals(request[0], dialog.requestId);
-        assertEquals(kind, dialog.flags);
+        assertEquals(kind + 4, dialog.flags);
         assertNotNull(dialog.data);
         assertEquals(0, geometryData(dialog).getInt(0));
         assertEquals(0, geometryData(dialog).getInt(4));

@@ -5,6 +5,9 @@ import android.view.ViewGroup;
 
 /** Lifecycle adapter for a caller-owned Android NativeKit host. */
 public final class NativeKitHost implements AutoCloseable {
+    private static final int DIALOG_COMMAND_OPEN = 101;
+    private static final int DIALOG_COMMAND_SAVE = 102;
+    private static final int DIALOG_COMMAND_DIRECTORY = 103;
     static { System.loadLibrary("nativekit"); }
 
     private long handle;
@@ -84,18 +87,22 @@ public final class NativeKitHost implements AutoCloseable {
         return nativeReadClipboardText();
     }
 
-    public long openFileDialog(String title) { return startFileDialog(1, title, null); }
-
-    public long saveFileDialog(String title, String suggestedName) {
-        return startFileDialog(2, title, suggestedName);
+    public long openFileDialog(String title) {
+        return startFileDialog(DIALOG_COMMAND_OPEN, title, null);
     }
 
-    public long selectDirectoryDialog(String title) { return startFileDialog(3, title, null); }
+    public long saveFileDialog(String title, String suggestedName) {
+        return startFileDialog(DIALOG_COMMAND_SAVE, title, suggestedName);
+    }
 
-    private long startFileDialog(int kind, String title, String suggestedName) {
+    public long selectDirectoryDialog(String title) {
+        return startFileDialog(DIALOG_COMMAND_DIRECTORY, title, null);
+    }
+
+    private long startFileDialog(int command, String title, String suggestedName) {
         if (handle == 0)
             throw new IllegalStateException("host is closed");
-        return nativeStartFileDialog(handle, kind, title, suggestedName);
+        return nativeStartFileDialog(handle, command, title, suggestedName);
     }
 
     public int cancelDialog(long request) {

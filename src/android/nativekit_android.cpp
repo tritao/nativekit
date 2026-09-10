@@ -105,9 +105,12 @@ EGLDisplay egl_display = EGL_NO_DISPLAY;
 std::unordered_map<nk_request_id, nk_handle> evaluations;
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
 struct DialogRequest {
-    uint32_t kind;
+    uint32_t operation;
     bool resources;
 };
+
+enum class AndroidPickerMode : jint { open = 1, save = 2, directory = 3 };
+enum class AndroidDialogCommand : jint { open = 101, save = 102, directory = 103 };
 
 struct ResourceValue {
     uint32_t flags = 0;
@@ -528,13 +531,31 @@ std::vector<std::byte> resource_drop_payload(float x, float y, const std::string
     return result;
 }
 
-nk_result start_file_dialog(uint32_t kind, bool resources, nk_handle parent,
+nk_result start_file_dialog(uint32_t operation, bool resources, nk_handle parent,
                             const nk_file_dialog_options *options, nk_request_id *out_request) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
     if (!options || options->struct_size < sizeof(nk_file_dialog_options) || !out_request ||
         (options->filter_count && !options->filters)) {
         nk::core::set_error("file dialog options or output is missing or invalid");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    AndroidPickerMode mode;
+    switch (operation) {
+    case NK_DIALOG_OPEN_FILE:
+    case NK_DIALOG_OPEN_RESOURCE:
+        mode = AndroidPickerMode::open;
+        break;
+    case NK_DIALOG_SAVE_FILE:
+    case NK_DIALOG_SAVE_RESOURCE:
+        mode = AndroidPickerMode::save;
+        break;
+    case NK_DIALOG_SELECT_DIRECTORY:
+    case NK_DIALOG_SELECT_RESOURCE_DIRECTORY:
+        mode = AndroidPickerMode::directory;
+        break;
+    default:
+        nk::core::set_error("invalid Android dialog operation");
         return NK_ERROR_INVALID_ARGUMENT;
     }
     auto host_resource = parent ? host(parent) : context_host();
@@ -564,7 +585,7 @@ nk_result start_file_dialog(uint32_t kind, bool resources, nk_handle parent,
     const auto request = nk::core::next_request_id();
     const auto started =
         method && env->CallStaticBooleanMethod(bridge, method, host_resource->view_group,
-                                               static_cast<jlong>(request), static_cast<jint>(kind),
+                                               static_cast<jlong>(request), static_cast<jint>(mode),
                                                static_cast<jint>(options->flags), title,
                                                suggested_name, patterns);
     if (patterns)
@@ -580,7 +601,7 @@ nk_result start_file_dialog(uint32_t kind, bool resources, nk_handle parent,
         nk::core::set_error("Android could not launch the system document picker");
         return NK_ERROR_UNKNOWN;
     }
-    file_dialogs.emplace(request, DialogRequest{kind, resources});
+    file_dialogs.emplace(request, DialogRequest{operation, resources});
     *out_request = request;
     return NK_OK;
 }
@@ -1615,7 +1636,7 @@ nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
     nk::core::QueuedEvent event;
     event.kind = dialog.resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE
                                   : NK_EVENT_DIALOG_PATHS_COMPLETE;
-    event.flags = dialog.kind;
+    event.flags = dialog.operation;
     event.request_id = request;
     event.data = dialog.resources ? resource_payload(false, {}) : dialog_payload(false, {});
     return nk::core::push_event(std::move(event));
@@ -2790,7 +2811,8 @@ JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeReadClipboardText(
 }
 
 JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeStartFileDialog(
-    JNIEnv *env, jclass, jlong host_handle, jint kind, jstring title, jstring suggested_name) {
+    JNIEnv *env, jclass, jlong host_handle, jint command, jstring title,
+    jstring suggested_name) {
     const auto title_value = to_utf8(env, title);
     const auto name_value = to_utf8(env, suggested_name);
     nk_file_dialog_options options{};
@@ -2799,11 +2821,11 @@ JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeStartFileDialog(
     options.suggested_name = suggested_name ? name_value.c_str() : nullptr;
     nk_request_id request = NK_INVALID_REQUEST_ID;
     nk_result result = NK_ERROR_INVALID_ARGUMENT;
-    if (kind == NK_DIALOG_OPEN_FILE)
+    if (command == static_cast<jint>(AndroidDialogCommand::open))
         result = nk_dialog_open_resource(static_cast<nk_handle>(host_handle), &options, &request);
-    else if (kind == NK_DIALOG_SAVE_FILE)
+    else if (command == static_cast<jint>(AndroidDialogCommand::save))
         result = nk_dialog_save_resource(static_cast<nk_handle>(host_handle), &options, &request);
-    else if (kind == NK_DIALOG_SELECT_DIRECTORY)
+    else if (command == static_cast<jint>(AndroidDialogCommand::directory))
         result = nk_dialog_select_resource_directory(static_cast<nk_handle>(host_handle), &options,
                                                      &request);
     return result == NK_OK ? static_cast<jlong>(request) : 0;
@@ -2959,12 +2981,12 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnRenderProcessGo
 }
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
-    JNIEnv *env, jclass, jlong request, jint kind, jboolean accepted, jobjectArray values,
+    JNIEnv *env, jclass, jlong request, jboolean accepted, jobjectArray values,
     jobjectArray mime_types, jobjectArray display_names, jintArray resource_flags) {
     nk::core::callback_boundary([&] {
         const auto request_id = static_cast<nk_request_id>(request);
         const auto found = file_dialogs.find(request_id);
-        if (found == file_dialogs.end() || found->second.kind != static_cast<uint32_t>(kind))
+        if (found == file_dialogs.end())
             return;
         const auto dialog = found->second;
         file_dialogs.erase(found);
@@ -2980,7 +3002,7 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
         nk::core::QueuedEvent event;
         event.kind = dialog.resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE
                                       : NK_EVENT_DIALOG_PATHS_COMPLETE;
-        event.flags = static_cast<uint32_t>(kind);
+        event.flags = dialog.operation;
         event.request_id = request_id;
         if (dialog.resources) {
             std::vector<ResourceValue> resources;

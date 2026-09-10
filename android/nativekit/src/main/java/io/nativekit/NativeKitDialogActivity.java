@@ -17,22 +17,23 @@ import java.util.Set;
 /** Internal proxy that owns Storage Access Framework activity results. */
 public final class NativeKitDialogActivity extends Activity {
     static final String EXTRA_REQUEST = "nativekit.request";
-    static final String EXTRA_KIND = "nativekit.kind";
+    static final String EXTRA_MODE = "nativekit.pickerMode";
     static final String EXTRA_FLAGS = "nativekit.flags";
     static final String EXTRA_TITLE = "nativekit.title";
     static final String EXTRA_SUGGESTED_NAME = "nativekit.suggestedName";
     static final String EXTRA_PATTERNS = "nativekit.patterns";
     private static final int PICK = 1;
+    private static final int PICKER_OPEN = 1;
+    private static final int PICKER_SAVE = 2;
+    private static final int PICKER_DIRECTORY = 3;
     private static final Map<Long, WeakReference<NativeKitDialogActivity>> active = new HashMap<>();
 
     private long request;
-    private int kind;
 
     @Override
     protected void onCreate(@Nullable Bundle state) {
         super.onCreate(state);
         request = getIntent().getLongExtra(EXTRA_REQUEST, 0);
-        kind = getIntent().getIntExtra(EXTRA_KIND, 0);
         if (request == 0 || NativeKitBridge.takeDialogCancellation(request)) {
             finish();
             return;
@@ -47,12 +48,23 @@ public final class NativeKitDialogActivity extends Activity {
     }
 
     private static Intent pickerIntent(Intent options) {
-        int kind = options.getIntExtra(EXTRA_KIND, 0);
-        String action = kind == 2 || kind == 6 ? Intent.ACTION_CREATE_DOCUMENT
-                                  : kind == 3 || kind == 7 ? Intent.ACTION_OPEN_DOCUMENT_TREE
-                                              : Intent.ACTION_OPEN_DOCUMENT;
+        int mode = options.getIntExtra(EXTRA_MODE, 0);
+        String action;
+        switch (mode) {
+        case PICKER_SAVE:
+            action = Intent.ACTION_CREATE_DOCUMENT;
+            break;
+        case PICKER_DIRECTORY:
+            action = Intent.ACTION_OPEN_DOCUMENT_TREE;
+            break;
+        case PICKER_OPEN:
+            action = Intent.ACTION_OPEN_DOCUMENT;
+            break;
+        default:
+            throw new IllegalArgumentException("Unknown picker mode");
+        }
         Intent picker = new Intent(action);
-        if (kind != 3 && kind != 7)
+        if (mode != PICKER_DIRECTORY)
             picker.addCategory(Intent.CATEGORY_OPENABLE);
         picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
                         Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
@@ -60,9 +72,9 @@ public final class NativeKitDialogActivity extends Activity {
         picker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,
                         (options.getIntExtra(EXTRA_FLAGS, 0) & 1) != 0);
         picker.putExtra(Intent.EXTRA_TITLE, options.getStringExtra(EXTRA_TITLE));
-        if (kind == 2 || kind == 6)
+        if (mode == PICKER_SAVE)
             picker.putExtra(Intent.EXTRA_TITLE, options.getStringExtra(EXTRA_SUGGESTED_NAME));
-        if (kind != 3 && kind != 7) {
+        if (mode != PICKER_DIRECTORY) {
             String[] mimeTypes = mimeTypes(options.getStringArrayExtra(EXTRA_PATTERNS));
             picker.setType(mimeTypes.length == 1 ? mimeTypes[0] : "*/*");
             if (mimeTypes.length > 1)
@@ -130,7 +142,7 @@ public final class NativeKitDialogActivity extends Activity {
     private void complete(boolean accepted, @Nullable String[] uris, @Nullable String[] mimeTypes,
                           @Nullable String[] displayNames, @Nullable int[] flags) {
         active.remove(request);
-        NativeKitBridge.nativeOnFileDialog(request, kind, accepted, uris, mimeTypes, displayNames,
+        NativeKitBridge.nativeOnFileDialog(request, accepted, uris, mimeTypes, displayNames,
                                            flags);
         finish();
     }
