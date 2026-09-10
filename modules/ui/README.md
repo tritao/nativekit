@@ -21,8 +21,10 @@ will use opaque handles, fixed-width values, versioned structures, and validated
 batched transactions. It must not expose Clay, Skribidi, NanoVG, or Sokol types.
 
 The module currently establishes the build, install, ABI-test, and dependency
-evaluation seams. Skribidi is linked privately; NanoVG-Sokol is compiled as a
-private evaluation target until the shared Sokol runtime boundary is complete.
+evaluation seams. Skribidi is linked privately; `skribidi_nanovg` and its
+NanoVG-Sokol backend are evaluation and visual-reference code, not the permanent
+rendering architecture. NativeKit will replace direct NanoVG-Sokol execution
+with a recording adapter and a NativeKit-owned compositor and Sokol backend.
 Build it with:
 
 ```sh
