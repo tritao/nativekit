@@ -1,5 +1,7 @@
 #include "sokol_backend.h"
 
+#include "frame_resources.h"
+
 #define SOKOL_GLCORE
 #include "sokol_gfx.h"
 
@@ -37,6 +39,8 @@ struct SokolBackend::State {
         uint32_t generation = 0;
         int width = 0;
         int height = 0;
+        SurfacePixelFormat format = SurfacePixelFormat::Rgba8;
+        SurfaceAlphaMode alpha = SurfaceAlphaMode::Premultiplied;
     };
 
     struct PaintImage {
@@ -848,23 +852,25 @@ bool SokolBackend::begin_target_pass(ResourceId target_id, int width, int height
     return true;
 }
 
-bool SokolBackend::surface_is_current(ResourceId target_id, uint32_t generation, int width,
-                                      int height) const {
+bool SokolBackend::surface_is_current(ResourceId target_id, uint32_t generation,
+                                      const SurfaceDescriptor &description) const {
     if (!valid() || !is_resource_id(target_id, ResourceKind::RenderTarget) || generation == 0 ||
-        width <= 0 || height <= 0)
+        description.width <= 0 || description.height <= 0)
         return false;
     const auto found = state_->surfaces.find(target_id.value);
     return found != state_->surfaces.end() && found->second.generation == generation &&
-           found->second.width == width && found->second.height == height &&
+           found->second.width == description.width && found->second.height == description.height &&
+           found->second.format == description.format && found->second.alpha == description.alpha &&
            state_->targets.find(target_id.value) != state_->targets.end();
 }
 
-void SokolBackend::mark_surface_current(ResourceId target_id, uint32_t generation, int width,
-                                         int height) {
-    if (!is_resource_id(target_id, ResourceKind::RenderTarget) || !generation || width <= 0 ||
-        height <= 0)
+void SokolBackend::mark_surface_current(ResourceId target_id, uint32_t generation,
+                                         const SurfaceDescriptor &description) {
+    if (!is_resource_id(target_id, ResourceKind::RenderTarget) || !generation ||
+        description.width <= 0 || description.height <= 0)
         return;
-    state_->surfaces[target_id.value] = {generation, width, height};
+    state_->surfaces[target_id.value] = {generation, description.width, description.height,
+                                         description.format, description.alpha};
 }
 
 bool SokolBackend::set_scissor(bool enabled, float x, float y, float width, float height) {

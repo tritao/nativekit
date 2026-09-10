@@ -5,8 +5,14 @@ using namespace nkui;
 class TestProducer final : public SurfaceProducer {
   public:
     bool ready() const override { return true; }
+    bool describe(int requested_width, int requested_height,
+                  SurfaceDescriptor &description) const override {
+        description = {requested_width, requested_height, SurfacePixelFormat::Rgba8,
+                       SurfaceAlphaMode::Premultiplied};
+        return true;
+    }
     uint32_t generation() const override { return 7; }
-    bool render(SokolBackend &, ResourceId, int, int) override { return true; }
+    bool render(SokolBackend &, ResourceId, const SurfaceDescriptor &) override { return true; }
 };
 
 int main() {

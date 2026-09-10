@@ -12,14 +12,35 @@ namespace nkui {
 
 class SokolBackend;
 
+enum class SurfacePixelFormat : uint8_t {
+    Rgba8 = 1,
+};
+
+enum class SurfaceAlphaMode : uint8_t {
+    Opaque = 1,
+    Premultiplied,
+};
+
+struct SurfaceDescriptor {
+    int width = 0;
+    int height = 0;
+    SurfacePixelFormat format = SurfacePixelFormat::Rgba8;
+    SurfaceAlphaMode alpha = SurfaceAlphaMode::Premultiplied;
+};
+
 class SurfaceProducer {
   public:
     virtual ~SurfaceProducer() = default;
     virtual bool ready() const = 0;
+    // Resolve the producer's output for the requested consumer size. The returned dimensions are
+    // the dimensions used for the producer target and may differ from the consumer size.
+    virtual bool describe(int requested_width, int requested_height,
+                          SurfaceDescriptor &description) const = 0;
     // Return a non-zero revision for the pixels produced by this surface. The backend may reuse
-    // the target while this revision and the requested dimensions remain unchanged.
+    // the target while this revision and the resolved descriptor remain unchanged.
     virtual uint32_t generation() const = 0;
-    virtual bool render(SokolBackend &backend, ResourceId target, int width, int height) = 0;
+    virtual bool render(SokolBackend &backend, ResourceId target,
+                        const SurfaceDescriptor &description) = 0;
 };
 
 struct PreparedPathRef {

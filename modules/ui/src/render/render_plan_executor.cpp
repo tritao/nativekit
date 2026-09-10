@@ -30,16 +30,22 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
         SurfaceProducer *producer = resources.surface(dependency.producer);
         if (!producer || !producer->ready())
             return fail(error, 0, 0, "surface producer is unavailable");
+        SurfaceDescriptor description{};
+        if (!producer->describe(window.width, window.height, description) || description.width <= 0 ||
+            description.height <= 0)
+            return fail(error, 0, 0, "surface producer description is invalid");
+        if (description.format != SurfacePixelFormat::Rgba8 ||
+            (description.alpha != SurfaceAlphaMode::Opaque &&
+             description.alpha != SurfaceAlphaMode::Premultiplied))
+            return fail(error, 0, 0, "surface producer format is unsupported");
         const uint32_t generation = producer->generation();
-        if (backend.surface_is_current(dependency.producer, generation, window.width,
-                                       window.height)) {
+        if (backend.surface_is_current(dependency.producer, generation, description)) {
             rendered_producers.insert(dependency.producer.value);
             continue;
         }
-        if (!producer->render(backend, dependency.producer, window.width, window.height))
+        if (!producer->render(backend, dependency.producer, description))
             return fail(error, 0, 0, backend.last_error());
-        backend.mark_surface_current(dependency.producer, generation, window.width,
-                                     window.height);
+        backend.mark_surface_current(dependency.producer, generation, description);
         rendered_producers.insert(dependency.producer.value);
     }
     for (uint32_t pass_index = 0; pass_index < plan.passes.size(); ++pass_index) {

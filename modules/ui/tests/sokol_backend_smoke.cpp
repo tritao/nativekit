@@ -25,9 +25,16 @@ class TestSurfaceProducer final : public SurfaceProducer {
   public:
     explicit TestSurfaceProducer(const NanoVGRecorder &recorder) : recorder_(recorder) {}
     bool ready() const override { return true; }
+    bool describe(int requested_width, int requested_height,
+                  SurfaceDescriptor &description) const override {
+        description = {requested_width, requested_height, SurfacePixelFormat::Rgba8,
+                       SurfaceAlphaMode::Premultiplied};
+        return true;
+    }
     uint32_t generation() const override { return 1; }
-    bool render(SokolBackend &backend, ResourceId target, int width, int height) override {
-        return backend.begin_target_pass(target, width, height, false) &&
+    bool render(SokolBackend &backend, ResourceId target,
+                const SurfaceDescriptor &description) override {
+        return backend.begin_target_pass(target, description.width, description.height, false) &&
                backend.draw_path(recorder_, 2) && backend.end_pass();
     }
 

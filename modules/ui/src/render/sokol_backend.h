@@ -10,6 +10,8 @@
 
 namespace nkui {
 
+struct SurfaceDescriptor;
+
 struct SolidVertex {
     float x;
     float y;
@@ -45,8 +47,10 @@ class SokolBackend {
     bool valid() const;
     bool begin_window_pass(int width, int height, uint32_t framebuffer, bool clear);
     bool begin_target_pass(ResourceId target, int width, int height, bool load_existing);
-    bool surface_is_current(ResourceId target, uint32_t generation, int width, int height) const;
-    void mark_surface_current(ResourceId target, uint32_t generation, int width, int height);
+    bool surface_is_current(ResourceId target, uint32_t generation,
+                            const SurfaceDescriptor &description) const;
+    void mark_surface_current(ResourceId target, uint32_t generation,
+                              const SurfaceDescriptor &description);
     bool set_scissor(bool enabled, float x = 0.0f, float y = 0.0f, float width = 0.0f,
                      float height = 0.0f);
     bool draw_path(const NanoVGRecorder &recorder, uint32_t operation_index, float opacity = 1.0f);
