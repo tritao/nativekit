@@ -1,11 +1,23 @@
 #ifndef NATIVEKIT_NOTIFICATION_H
 #define NATIVEKIT_NOTIFICATION_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include "nativekit.h"
+
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ------------------------------------------------------------------------- */
+/* Notification flags and options                                            */
+/* ------------------------------------------------------------------------- */
 
 enum { NK_NOTIFICATION_SILENT = 1u << 0 };
 
@@ -19,6 +31,10 @@ typedef struct nk_notification_options {
     uint32_t reserved;
     uint64_t reserved2[2];
 } nk_notification_options;
+
+/* ------------------------------------------------------------------------- */
+/* Notification operations                                                   */
+/* ------------------------------------------------------------------------- */
 
 /*
  * Requests a desktop notification. Strings are copied before return. Success

@@ -1,11 +1,23 @@
 #ifndef NATIVEKIT_SYSTEM_H
 #define NATIVEKIT_SYSTEM_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include "nativekit.h"
+
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ------------------------------------------------------------------------- */
+/* System types and constants                                                */
+/* ------------------------------------------------------------------------- */
 
 typedef uint32_t nk_system_directory_kind;
 typedef uint32_t nk_color_scheme;
@@ -31,6 +43,10 @@ typedef struct nk_system_appearance {
     uint64_t reserved2[2];
 } nk_system_appearance;
 
+/* ------------------------------------------------------------------------- */
+/* Shell operations                                                          */
+/* ------------------------------------------------------------------------- */
+
 /*
  * Requests that the desktop open a URI, open a local file with its default
  * application, or reveal a local file in its containing folder. Input is
@@ -39,6 +55,10 @@ typedef struct nk_system_appearance {
 NK_API nk_result NK_CALL nk_shell_open_url(const char *url NK_UTF8);
 NK_API nk_result NK_CALL nk_shell_open_file(const char *path NK_UTF8);
 NK_API nk_result NK_CALL nk_shell_reveal_file(const char *path NK_UTF8);
+
+/* ------------------------------------------------------------------------- */
+/* System queries                                                            */
+/* ------------------------------------------------------------------------- */
 
 /*
  * Writes a NUL-terminated UTF-8 value. `inout_size` is the buffer capacity on

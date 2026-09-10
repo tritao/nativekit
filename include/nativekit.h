@@ -1,8 +1,16 @@
 #ifndef NATIVEKIT_H
 #define NATIVEKIT_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include <stddef.h>
 #include <stdint.h>
+
+/* ------------------------------------------------------------------------- */
+/* Export and calling convention                                             */
+/* ------------------------------------------------------------------------- */
 
 #if defined(_WIN32)
 #if defined(NK_STATIC)
@@ -17,6 +25,10 @@
 #define NK_API __attribute__((visibility("default")))
 #define NK_CALL
 #endif
+
+/* ------------------------------------------------------------------------- */
+/* Binding annotations                                                       */
+/* ------------------------------------------------------------------------- */
 
 /* Semantic FFI directions. They are no-ops outside Clang-based binding import. */
 #if defined(__clang__)

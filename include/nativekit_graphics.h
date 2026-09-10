@@ -1,11 +1,23 @@
 #ifndef NATIVEKIT_GRAPHICS_H
 #define NATIVEKIT_GRAPHICS_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include "nativekit.h"
+
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ------------------------------------------------------------------------- */
+/* Graphics and surface data                                                 */
+/* ------------------------------------------------------------------------- */
 
 typedef uint32_t nk_graphics_api;
 enum {
@@ -50,6 +62,10 @@ typedef struct nk_surface_resize_event {
     int32_t framebuffer_width;
     int32_t framebuffer_height;
 } nk_surface_resize_event;
+
+/* ------------------------------------------------------------------------- */
+/* Surface lifecycle and rendering                                           */
+/* ------------------------------------------------------------------------- */
 
 /*
  * Creates a graphics surface inside a NativeKit window or mobile host. Context

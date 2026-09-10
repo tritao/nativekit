@@ -1,7 +1,15 @@
 #ifndef NATIVEKIT_UI_H
 #define NATIVEKIT_UI_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include "nativekit.h"
+
+/* ------------------------------------------------------------------------- */
+/* Export visibility                                                         */
+/* ------------------------------------------------------------------------- */
 
 #if defined(_WIN32)
 #if defined(NKUI_BUILDING_LIBRARY)
@@ -23,9 +31,17 @@
 #define NKUI_UTF8
 #endif
 
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ------------------------------------------------------------------------- */
+/* Version, result codes, and handles                                        */
+/* ------------------------------------------------------------------------- */
 
 enum { NKUI_API_VERSION = 1 };
 
@@ -49,6 +65,10 @@ typedef struct nkui_resource {
 typedef struct nkui_renderer {
     uint32_t id;
 } nkui_renderer;
+
+/* ------------------------------------------------------------------------- */
+/* Frame and command types                                                   */
+/* ------------------------------------------------------------------------- */
 
 /* Describes both the logical layout space and the physical framebuffer target. */
 typedef struct nkui_frame_info {
@@ -136,6 +156,10 @@ typedef struct nkui_layer_command {
     nkui_composite_mode composite_mode;
 } nkui_layer_command;
 
+/* ------------------------------------------------------------------------- */
+/* Text and layout types                                                      */
+/* ------------------------------------------------------------------------- */
+
 typedef enum nkui_font_family {
     NKUI_FONT_FAMILY_DEFAULT = 0,
     NKUI_FONT_FAMILY_EMOJI = 1
@@ -164,6 +188,10 @@ typedef struct nkui_text_caret {
     uint32_t direction;
 } nkui_text_caret;
 
+/* ------------------------------------------------------------------------- */
+/* Path, color, and image types                                              */
+/* ------------------------------------------------------------------------- */
+
 typedef enum nkui_path_verb {
     NKUI_PATH_MOVE_TO = 1,
     NKUI_PATH_LINE_TO = 2,
@@ -191,6 +219,10 @@ typedef enum nkui_image_format {
     NKUI_IMAGE_RGBA8 = 2
 } nkui_image_format;
 
+/* ------------------------------------------------------------------------- */
+/* Display-list APIs                                                         */
+/* ------------------------------------------------------------------------- */
+
 /* The initial stable seam while the retained-tree transaction ABI is designed. */
 NKUI_API uint32_t nkui_api_version(void);
 NKUI_API nkui_result nkui_display_list_create(nkui_display_list *out_list NKUI_OUT);
@@ -202,6 +234,11 @@ NKUI_API nkui_result nkui_display_list_submit(nkui_display_list list,
                                               uint32_t command_bytes);
 NKUI_API nkui_result nkui_display_list_get_info(nkui_display_list list,
                                                 nkui_transaction_info *out_info NKUI_OUT);
+
+/* ------------------------------------------------------------------------- */
+/* Fonts and text-layout APIs                                                */
+/* ------------------------------------------------------------------------- */
+
 NKUI_API nkui_result nkui_font_collection_create(nkui_resource *out_fonts NKUI_OUT);
 NKUI_API nkui_result nkui_font_collection_add(nkui_resource fonts, const char *path NKUI_UTF8,
                                               nkui_font_family family);
@@ -214,12 +251,22 @@ NKUI_API nkui_result nkui_text_layout_hit_test(nkui_resource layout, float x, fl
                                                nkui_text_position *out_position NKUI_OUT);
 NKUI_API nkui_result nkui_text_layout_caret(nkui_resource layout, nkui_text_position position,
                                             nkui_text_caret *out_caret NKUI_OUT);
+
+/* ------------------------------------------------------------------------- */
+/* Path, paint, and image APIs                                                */
+/* ------------------------------------------------------------------------- */
+
 NKUI_API nkui_result nkui_path_create(const nkui_path_element *elements NKUI_IN_ARRAY(count),
                                       uint32_t count, nkui_resource *out_path NKUI_OUT);
 NKUI_API nkui_result nkui_paint_create_solid(nkui_color color, nkui_resource *out_paint NKUI_OUT);
 NKUI_API nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_image_format format,
                                        const uint8_t *pixels NKUI_IN_ARRAY(pixel_bytes),
                                        uint32_t pixel_bytes, nkui_resource *out_image NKUI_OUT);
+
+/* ------------------------------------------------------------------------- */
+/* Renderer APIs                                                             */
+/* ------------------------------------------------------------------------- */
+
 NKUI_API nkui_result nkui_renderer_create(nkui_renderer *out_renderer NKUI_OUT);
 NKUI_API nkui_result nkui_renderer_destroy(nkui_renderer renderer);
 /* Makes the NativeKit surface current and renders one frame. Presentation remains explicit. */

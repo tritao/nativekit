@@ -1,14 +1,26 @@
 #ifndef NATIVEKIT_SOKOL_H
 #define NATIVEKIT_SOKOL_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include <stddef.h>
 #include <stdint.h>
+
+/* ------------------------------------------------------------------------- */
+/* Export visibility                                                         */
+/* ------------------------------------------------------------------------- */
 
 #if defined(_WIN32)
 #define NKS_API __declspec(dllexport)
 #else
 #define NKS_API __attribute__((visibility("default")))
 #endif
+
+/* ------------------------------------------------------------------------- */
+/* Binding annotations                                                       */
+/* ------------------------------------------------------------------------- */
 
 #if defined(__clang__)
 #define NKS_OUT __attribute__((annotate("hxi:out")))
@@ -20,9 +32,17 @@
 #define NKS_RETURNS_BORROWED_UTF8
 #endif
 
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ------------------------------------------------------------------------- */
+/* Handles and core types                                                    */
+/* ------------------------------------------------------------------------- */
 
 typedef uint32_t nks_nativekit_handle;
 typedef int32_t nks_result;
@@ -57,11 +77,19 @@ NKS_HANDLE(nks_image_builder);
 NKS_HANDLE(nks_sampler);
 #undef NKS_HANDLE
 
+/* ------------------------------------------------------------------------- */
+/* Result codes                                                              */
+/* ------------------------------------------------------------------------- */
+
 #define NKS_OK 0
 #define NKS_ERROR_UNKNOWN -1
 #define NKS_ERROR_INVALID_ARGUMENT -2
 #define NKS_ERROR_INVALID_HANDLE -3
 #define NKS_ERROR_WRONG_STATE -4
+
+/* ------------------------------------------------------------------------- */
+/* Graphics and command types                                                */
+/* ------------------------------------------------------------------------- */
 
 typedef uint32_t nks_vertex_format;
 #define NKS_VERTEXFORMAT_FLOAT 1
@@ -105,7 +133,16 @@ typedef uint32_t nks_command;
 #define NKS_COMMAND_APPLY_UNIFORMS 6
 #define NKS_COMMAND_DRAW 7
 
+/* ------------------------------------------------------------------------- */
+/* Diagnostics                                                               */
+/* ------------------------------------------------------------------------- */
+
 NKS_API const char *nks_last_error(void) NKS_RETURNS_BORROWED_UTF8;
+
+/* ------------------------------------------------------------------------- */
+/* Surface and renderer lifecycle                                            */
+/* ------------------------------------------------------------------------- */
+
 NKS_API nks_result nks_surface_create(nks_nativekit_handle nativekit_window, int32_t width,
                                       int32_t height, nks_nativekit_handle *out_surface NKS_OUT);
 NKS_API nks_result nks_surface_resize(nks_nativekit_handle surface, int32_t width, int32_t height);
@@ -113,6 +150,10 @@ NKS_API nks_result nks_surface_destroy(nks_nativekit_handle surface);
 NKS_API nks_result nks_renderer_create(nks_nativekit_handle nativekit_surface,
                                        nks_renderer *out_renderer NKS_OUT);
 NKS_API nks_result nks_renderer_destroy(nks_renderer renderer);
+
+/* ------------------------------------------------------------------------- */
+/* Buffer APIs                                                               */
+/* ------------------------------------------------------------------------- */
 
 NKS_API nks_result nks_buffer_create(nks_renderer renderer, const uint8_t *data, uint32_t size,
                                      nks_buffer *out_buffer NKS_OUT);
@@ -126,6 +167,11 @@ NKS_API nks_result nks_buffer_write_u16(nks_buffer_builder builder, uint32_t off
                                         uint32_t value);
 NKS_API nks_result nks_buffer_end(nks_buffer_builder builder, nks_buffer *out_buffer NKS_OUT);
 NKS_API nks_result nks_buffer_destroy(nks_renderer renderer, nks_buffer buffer);
+
+/* ------------------------------------------------------------------------- */
+/* Shader APIs                                                               */
+/* ------------------------------------------------------------------------- */
+
 NKS_API nks_result nks_shader_create(nks_renderer renderer, const char *vertex_source NKS_UTF8,
                                      const char *fragment_source NKS_UTF8,
                                      nks_shader *out_shader NKS_OUT);
@@ -142,6 +188,11 @@ NKS_API nks_result nks_shader_texture(nks_shader_builder builder, uint32_t view_
                                       uint32_t sampler_slot, nks_shader_stage stage,
                                       const char *name NKS_UTF8);
 NKS_API nks_result nks_shader_end(nks_shader_builder builder, nks_shader *out_shader NKS_OUT);
+
+/* ------------------------------------------------------------------------- */
+/* Pipeline APIs                                                             */
+/* ------------------------------------------------------------------------- */
+
 NKS_API nks_result nks_pipeline_begin(nks_renderer renderer, nks_shader shader, uint32_t stride,
                                       nks_pipeline_builder *out_builder NKS_OUT);
 NKS_API nks_result nks_pipeline_attribute(nks_pipeline_builder builder, uint32_t location,
@@ -151,6 +202,10 @@ NKS_API nks_result nks_pipeline_index_type(nks_pipeline_builder builder, nks_ind
 NKS_API nks_result nks_pipeline_end(nks_pipeline_builder builder,
                                     nks_pipeline *out_pipeline NKS_OUT);
 NKS_API nks_result nks_pipeline_destroy(nks_renderer renderer, nks_pipeline pipeline);
+
+/* ------------------------------------------------------------------------- */
+/* Frame and resource APIs                                                   */
+/* ------------------------------------------------------------------------- */
 
 NKS_API nks_result nks_begin_frame(nks_renderer renderer);
 NKS_API nks_result nks_apply_pipeline(nks_renderer renderer, nks_pipeline pipeline);

@@ -81,6 +81,10 @@ enum {
 typedef uint32_t nk_accessibility_text_position;
 enum { NK_ACCESSIBILITY_TEXT_POSITION_NONE = 0xffffffffu };
 
+/* ------------------------------------------------------------------------- */
+/* Accessibility data structures                                             */
+/* ------------------------------------------------------------------------- */
+
 typedef struct nk_accessibility_node {
     uint32_t struct_size;
     nk_accessibility_node_id id;
@@ -160,6 +164,10 @@ NK_API nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
     nk_handle surface, nk_accessibility_node_id node,
     const nk_accessibility_text_range *ranges NK_BORROWED_ARRAY(range_count),
     uint32_t range_count);
+
+/* ------------------------------------------------------------------------- */
+/* Accessibility event helpers                                               */
+/* ------------------------------------------------------------------------- */
 
 /* Returns a borrowed UTF-8 view valid until nk_event_release(). */
 NK_API nk_result NK_CALL nk_accessibility_action_event_value(

@@ -1,7 +1,15 @@
 #ifndef NATIVEKIT_RESOURCE_H
 #define NATIVEKIT_RESOURCE_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include "nativekit_dialog.h"
+
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 extern "C" {
@@ -103,6 +111,10 @@ typedef struct nk_resource_drop {
     uint64_t reserved[2];
 } nk_resource_drop;
 
+/* ------------------------------------------------------------------------- */
+/* Resource sharing and dialog APIs                                          */
+/* ------------------------------------------------------------------------- */
+
 /* URI inputs are copied before return. These functions are UI-thread-only. */
 NK_API nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource);
 NK_API nk_result NK_CALL nk_share(const nk_share_options *options);
@@ -120,6 +132,10 @@ NK_API nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
 NK_API nk_result NK_CALL nk_dialog_select_resource_directory(
     nk_handle parent, const nk_file_dialog_options *options, nk_request_id *out_request NK_OUT);
 
+/* ------------------------------------------------------------------------- */
+/* Resource event helpers                                                    */
+/* ------------------------------------------------------------------------- */
+
 /* Returned views remain owned by the event until nk_event_release(). */
 NK_API nk_result NK_CALL nk_resource_event_item(const nk_event *event, uint32_t index,
                                                 nk_resource_view *out_resource);
@@ -129,6 +145,10 @@ NK_API nk_result NK_CALL nk_share_event_subject(const nk_event *event, const cha
                                                 uint32_t *out_length);
 NK_API nk_result NK_CALL nk_resource_drop_event_text(const nk_event *event, const char **out_text,
                                                      uint32_t *out_length);
+
+/* ------------------------------------------------------------------------- */
+/* Persisted resource access                                                 */
+/* ------------------------------------------------------------------------- */
 
 /*
  * Controls durable URI access on platforms that support it. access_flags is a

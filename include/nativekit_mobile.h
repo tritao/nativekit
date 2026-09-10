@@ -1,11 +1,23 @@
 #ifndef NATIVEKIT_MOBILE_H
 #define NATIVEKIT_MOBILE_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include "nativekit.h"
+
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ------------------------------------------------------------------------- */
+/* Mobile host kinds and lifecycle                                           */
+/* ------------------------------------------------------------------------- */
 
 typedef uint32_t nk_mobile_host_kind;
 typedef uint32_t nk_mobile_lifecycle_state;
@@ -20,6 +32,10 @@ enum {
 };
 
 enum { NK_MOBILE_HOST_EVENT_ANDROID_INTENT = 1 };
+
+/* ------------------------------------------------------------------------- */
+/* Mobile host data                                                          */
+/* ------------------------------------------------------------------------- */
 
 typedef struct nk_mobile_host_options {
     uint32_t struct_size;
@@ -51,6 +67,10 @@ typedef struct nk_mobile_host_event {
     uint64_t reserved[2];
 } nk_mobile_host_event;
 
+/* ------------------------------------------------------------------------- */
+/* Mobile host lifecycle                                                     */
+/* ------------------------------------------------------------------------- */
+
 /*
  * Attaches NativeKit to a caller-owned mobile container. The caller retains
  * ownership and must keep the container alive until nk_mobile_host_destroy().
@@ -68,6 +88,10 @@ NK_API nk_result NK_CALL nk_mobile_host_destroy(nk_handle host);
 /* Mirrors the lifecycle state owned by the host Activity or view controller. */
 NK_API nk_result NK_CALL nk_mobile_host_set_lifecycle(nk_handle host,
                                                       nk_mobile_lifecycle_state state);
+
+/* ------------------------------------------------------------------------- */
+/* Mobile host events and drops                                              */
+/* ------------------------------------------------------------------------- */
 
 /*
  * Forwards a platform-owned host event while it is valid. Android supplies the

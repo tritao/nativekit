@@ -1,7 +1,15 @@
 #ifndef NATIVEKIT_DIALOG_H
 #define NATIVEKIT_DIALOG_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include "nativekit.h"
+
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,6 +47,10 @@ enum {
     NK_MESSAGE_RESULT_YES = 3,
     NK_MESSAGE_RESULT_NO = 4
 };
+
+/* ------------------------------------------------------------------------- */
+/* Dialog options and event data                                             */
+/* ------------------------------------------------------------------------- */
 
 typedef struct nk_dialog_filter {
     const char *name NK_NULLABLE_UTF8;
@@ -79,6 +91,10 @@ typedef struct nk_dialog_message_result {
     uint32_t button;
 } nk_dialog_message_result;
 
+/* ------------------------------------------------------------------------- */
+/* Dialog operations                                                         */
+/* ------------------------------------------------------------------------- */
+
 /*
  * Starts a non-blocking native dialog on the UI thread. `parent` may be zero;
  * otherwise it must be a live window. All strings and filters are copied before
@@ -101,6 +117,10 @@ NK_API nk_result NK_CALL nk_dialog_message(nk_handle parent,
 
 /* Cancels a pending dialog. Its completion event is still emitted. */
 NK_API nk_result NK_CALL nk_dialog_cancel(nk_request_id request);
+
+/* ------------------------------------------------------------------------- */
+/* Dialog event helpers                                                      */
+/* ------------------------------------------------------------------------- */
 
 /*
  * Validates and returns a path from a dialog event. The returned UTF-8 view is

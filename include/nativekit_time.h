@@ -1,15 +1,31 @@
 #ifndef NATIVEKIT_TIME_H
 #define NATIVEKIT_TIME_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include "nativekit.h"
+
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/* ------------------------------------------------------------------------- */
+/* Monotonic clock                                                           */
+/* ------------------------------------------------------------------------- */
+
 /* Monotonic time since an unspecified epoch. These calls do not require init. */
 NK_API uint64_t NK_CALL nk_time_now_ns(void);
 NK_API double NK_CALL nk_time_seconds(void);
+
+/* ------------------------------------------------------------------------- */
+/* Event waiting and wakeup                                                  */
+/* ------------------------------------------------------------------------- */
 
 /*
  * Blocks on the UI thread until an event is queued or nk_wake_events() is

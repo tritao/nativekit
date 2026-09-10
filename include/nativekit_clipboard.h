@@ -1,11 +1,23 @@
 #ifndef NATIVEKIT_CLIPBOARD_H
 #define NATIVEKIT_CLIPBOARD_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include "nativekit.h"
+
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ------------------------------------------------------------------------- */
+/* Clipboard and drag-and-drop data                                          */
+/* ------------------------------------------------------------------------- */
 
 /* Header at the start of NK_EVENT_CLIPBOARD_FILES_COMPLETE data. */
 typedef struct nk_clipboard_files {
@@ -21,6 +33,10 @@ typedef struct nk_drop_data {
     uint32_t strings_offset;
 } nk_drop_data;
 
+/* ------------------------------------------------------------------------- */
+/* Clipboard operations                                                      */
+/* ------------------------------------------------------------------------- */
+
 /* Copies UTF-8 text into the system clipboard. UI thread only. */
 NK_API nk_result NK_CALL nk_clipboard_set_text(const char *text NK_UTF8);
 
@@ -35,6 +51,10 @@ NK_API nk_result NK_CALL nk_clipboard_set_files(const char *const *paths NK_IN_U
  */
 NK_API nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request NK_OUT);
 NK_API nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request NK_OUT);
+
+/* ------------------------------------------------------------------------- */
+/* Drag-and-drop operations                                                  */
+/* ------------------------------------------------------------------------- */
 
 /* Enables or disables the text and/or local-file drop formats supported by the backend. */
 NK_API nk_result NK_CALL nk_window_set_drop_enabled(nk_handle window, uint32_t enabled);

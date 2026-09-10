@@ -1,11 +1,23 @@
 #ifndef NATIVEKIT_MONITOR_H
 #define NATIVEKIT_MONITOR_H
 
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
 #include "nativekit.h"
+
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ------------------------------------------------------------------------- */
+/* Monitor data types                                                        */
+/* ------------------------------------------------------------------------- */
 
 typedef struct nk_monitor_geometry {
     uint32_t struct_size;
@@ -36,6 +48,10 @@ typedef struct nk_video_mode {
     uint64_t reserved2[2];
 } nk_video_mode;
 
+/* ------------------------------------------------------------------------- */
+/* Monitor enumeration and queries                                           */
+/* ------------------------------------------------------------------------- */
+
 /*
  * Writes connected monitor handles in GDK display order. Pass NULL to query
  * the required count. A missing or undersized array returns
@@ -55,6 +71,10 @@ NK_API nk_result NK_CALL nk_monitor_get_current_mode(nk_handle monitor,
  */
 NK_API nk_result NK_CALL nk_monitor_get_modes(nk_handle monitor, nk_video_mode *modes,
                                               uint32_t *inout_count);
+
+/* ------------------------------------------------------------------------- */
+/* Window and monitor integration                                            */
+/* ------------------------------------------------------------------------- */
 
 /* An invalid monitor handle leaves fullscreen and restores windowed placement. */
 NK_API nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle window,
