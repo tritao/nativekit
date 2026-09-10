@@ -185,6 +185,18 @@ final class NativeKitInputValues {
     @Retention(RetentionPolicy.SOURCE)
     @interface TouchTool {}
 
+    static final int TEXT_EDIT_COMPOSE = 1;
+    static final int TEXT_EDIT_COMMIT = 2;
+    static final int TEXT_EDIT_DELETE = 3;
+    static final int TEXT_EDIT_SET_SELECTION = 4;
+    static final int TEXT_EDIT_FINISH_COMPOSITION = 5;
+    static final int TEXT_EDIT_SET_COMPOSITION = 6;
+
+    @IntDef({TEXT_EDIT_COMPOSE, TEXT_EDIT_COMMIT, TEXT_EDIT_DELETE, TEXT_EDIT_SET_SELECTION,
+            TEXT_EDIT_FINISH_COMPOSITION, TEXT_EDIT_SET_COMPOSITION})
+    @Retention(RetentionPolicy.SOURCE)
+    @interface TextEditAction {}
+
     static final int GAMEPAD_BUTTON_A = 0;
     static final int GAMEPAD_BUTTON_B = 1;
     static final int GAMEPAD_BUTTON_X = 2;

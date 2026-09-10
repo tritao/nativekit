@@ -156,6 +156,54 @@ typedef struct nk_text_input_event {
     uint32_t reserved;
 } nk_text_input_event;
 
+typedef uint32_t nk_text_edit_action;
+enum {
+    NK_TEXT_EDIT_COMPOSE = 1,
+    NK_TEXT_EDIT_COMMIT = 2,
+    NK_TEXT_EDIT_DELETE = 3,
+    NK_TEXT_EDIT_SET_SELECTION = 4,
+    NK_TEXT_EDIT_FINISH_COMPOSITION = 5,
+    NK_TEXT_EDIT_SET_COMPOSITION = 6
+};
+
+typedef uint32_t nk_text_position;
+enum { NK_TEXT_POSITION_NONE = 0xffffffffu };
+
+/*
+ * Positions are Unicode code-point indices in the text most recently supplied
+ * with nk_surface_set_text_input_state(). COMPOSE, COMMIT, and DELETE replace
+ * [replace_start, replace_end) with the UTF-8 text stored at text_offset.
+ * Selection and composition positions describe the state after the edit.
+ */
+typedef struct nk_text_edit_event {
+    nk_text_edit_action action;
+    uint32_t text_offset;
+    uint32_t text_length;
+    nk_text_position replace_start;
+    nk_text_position replace_end;
+    nk_text_position selection_start;
+    nk_text_position selection_end;
+    nk_text_position composition_start;
+    nk_text_position composition_end;
+    uint32_t reserved[3];
+} nk_text_edit_event;
+
+typedef struct nk_text_input_state {
+    uint32_t struct_size;
+    uint32_t flags;
+    const char *text;
+    nk_text_position selection_start;
+    nk_text_position selection_end;
+    nk_text_position composition_start;
+    nk_text_position composition_end;
+    uint64_t reserved[2];
+} nk_text_input_state;
+
+/* Returns a borrowed UTF-8 view valid until nk_event_release(). */
+NK_API nk_result NK_CALL nk_text_edit_event_text(const nk_event *event,
+                                                 const char **out_text,
+                                                 uint32_t *out_length);
+
 typedef struct nk_pointer_move_event {
     double x;
     double y;
@@ -243,6 +291,12 @@ NK_API nk_result NK_CALL nk_pointer_button_get_state(nk_handle window,
                                                       nk_pointer_button button,
                                                       nk_input_action *out_action);
 NK_API nk_result NK_CALL nk_pointer_get_position(nk_handle window, double *out_x, double *out_y);
+
+/* Synchronizes a custom editor with the platform IME. Positions are code points. */
+NK_API nk_result NK_CALL nk_surface_set_text_input_state(
+    nk_handle surface, const nk_text_input_state *state);
+/* Activates or deactivates the software keyboard for a custom graphics surface. */
+NK_API nk_result NK_CALL nk_surface_set_text_input_active(nk_handle surface, uint32_t active);
 
 NK_API nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape,
                                                    nk_handle *out_cursor);

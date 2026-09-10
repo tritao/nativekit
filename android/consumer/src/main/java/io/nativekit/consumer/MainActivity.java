@@ -8,6 +8,8 @@ import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
 import android.widget.FrameLayout;
 import io.nativekit.NativeKitHost;
 
@@ -100,6 +102,16 @@ public final class MainActivity extends Activity {
         KeyEvent keyUp = KeyEvent.changeAction(keyDown, KeyEvent.ACTION_UP);
         view.dispatchKeyEvent(keyDown);
         view.dispatchKeyEvent(keyUp);
+
+        nativePrepareTextInput(surfaceProbe);
+        InputConnection editor = view.onCreateInputConnection(new EditorInfo());
+        editor.setComposingText("に", 1);
+        editor.setComposingText("日本", 1);
+        editor.commitText("日本語", 1);
+        editor.setSelection(5, 5);
+        editor.deleteSurroundingText(1, 0);
+        editor.setComposingRegion(0, 2);
+        editor.finishComposingText();
 
         MotionEvent.PointerCoords gamepadCoordinates = coordinates(0, 0, 0f);
         gamepadCoordinates.setAxisValue(MotionEvent.AXIS_X, 0.5f);
@@ -236,6 +248,7 @@ public final class MainActivity extends Activity {
     private static native int nativeVulkanSurfaceLostProbe(long surface);
     private static native int nativeVulkanSurfaceRecreatedProbe(long surface);
     private static native int nativeResourceClipboardProbe();
+    private static native int nativePrepareTextInput(long surface);
     private static native int nativeResourceStreamProbe();
     private static native int nativeWebViewHistoryProbe(long webView);
     private static native int nativePersistedResourceProbe();

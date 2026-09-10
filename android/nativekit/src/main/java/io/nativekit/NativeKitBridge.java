@@ -32,7 +32,11 @@ import android.view.MotionEvent;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.Selection;
+import android.text.SpannableStringBuilder;
 import android.view.DragAndDropPermissions;
 import android.view.DragEvent;
 import android.webkit.RenderProcessGoneDetail;
@@ -76,6 +80,12 @@ final class NativeKitBridge {
 
     private static final class NativeSurfaceView extends SurfaceView {
         private final long nativeHandle;
+        private final SpannableStringBuilder editable = new SpannableStringBuilder();
+        @Nullable private BaseInputConnection editorConnection;
+        private boolean structuredTextInput;
+        private boolean synchronizingTextInput;
+        private int pendingCompositionStart = -1;
+        private int pendingCompositionEnd = -1;
 
         NativeSurfaceView(Context context, long handle) {
             super(context);
@@ -202,13 +212,170 @@ final class NativeKitBridge {
             attributes.inputType = InputType.TYPE_CLASS_TEXT |
                                    InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
             attributes.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI;
-            return new BaseInputConnection(this, false) {
+            editorConnection = new BaseInputConnection(this, true) {
+                @Override
+                public Editable getEditable() { return editable; }
+
                 @Override
                 public boolean commitText(CharSequence text, int cursor) {
-                    text.codePoints().forEach(value -> nativeOnText(nativeHandle, value));
-                    return true;
+                    int[] replacement = replacementRange();
+                    boolean result = super.commitText(text, cursor);
+                    emitTextEdit(TEXT_EDIT_COMMIT, text, replacement[0], replacement[1]);
+                    if (!structuredTextInput)
+                        text.codePoints().forEach(value -> nativeOnText(nativeHandle, value));
+                    return result;
+                }
+
+                @Override
+                public boolean setComposingText(CharSequence text, int cursor) {
+                    int[] replacement = replacementRange();
+                    boolean result = super.setComposingText(text, cursor);
+                    emitTextEdit(TEXT_EDIT_COMPOSE, text, replacement[0], replacement[1]);
+                    return result;
+                }
+
+                @Override
+                public boolean finishComposingText() {
+                    boolean result = super.finishComposingText();
+                    emitTextEdit(TEXT_EDIT_FINISH_COMPOSITION, "", -1, -1);
+                    return result;
+                }
+
+                @Override
+                public boolean setSelection(int start, int end) {
+                    boolean result = super.setSelection(start, end);
+                    emitTextEdit(TEXT_EDIT_SET_SELECTION, "", -1, -1);
+                    return result;
+                }
+
+                @Override
+                public boolean setComposingRegion(int start, int end) {
+                    boolean result = super.setComposingRegion(start, end);
+                    emitTextEdit(TEXT_EDIT_SET_COMPOSITION, "", -1, -1);
+                    return result;
+                }
+
+                @Override
+                public boolean deleteSurroundingText(int beforeLength, int afterLength) {
+                    int selectionStart = Math.max(0, Selection.getSelectionStart(editable));
+                    int selectionEnd = Math.max(0, Selection.getSelectionEnd(editable));
+                    int start = Math.max(0, Math.min(selectionStart, selectionEnd) -
+                                            Math.max(0, beforeLength));
+                    int end = Math.min(editable.length(),
+                                       Math.max(selectionStart, selectionEnd) +
+                                           Math.max(0, afterLength));
+                    int replaceStart = codePointIndex(start);
+                    int replaceEnd = codePointIndex(end);
+                    boolean result = super.deleteSurroundingText(beforeLength, afterLength);
+                    emitTextEdit(TEXT_EDIT_DELETE, "", replaceStart, replaceEnd);
+                    return result;
+                }
+
+                @Override
+                public boolean deleteSurroundingTextInCodePoints(int beforeLength,
+                                                                 int afterLength) {
+                    int selectionStart = Math.max(0, Selection.getSelectionStart(editable));
+                    int selectionEnd = Math.max(0, Selection.getSelectionEnd(editable));
+                    int start = Character.offsetByCodePoints(
+                        editable, Math.min(selectionStart, selectionEnd),
+                        -Math.min(Math.max(0, beforeLength),
+                                  codePointIndex(Math.min(selectionStart, selectionEnd))));
+                    int trailing = Character.codePointCount(
+                        editable, Math.max(selectionStart, selectionEnd), editable.length());
+                    int end = Character.offsetByCodePoints(
+                        editable, Math.max(selectionStart, selectionEnd),
+                        Math.min(Math.max(0, afterLength), trailing));
+                    int replaceStart = codePointIndex(start);
+                    int replaceEnd = codePointIndex(end);
+                    boolean result = super.deleteSurroundingTextInCodePoints(beforeLength,
+                                                                              afterLength);
+                    emitTextEdit(TEXT_EDIT_DELETE, "", replaceStart, replaceEnd);
+                    return result;
                 }
             };
+            if (pendingCompositionStart >= 0 && pendingCompositionEnd >= 0) {
+                synchronizingTextInput = true;
+                editorConnection.setComposingRegion(codeUnitIndex(pendingCompositionStart),
+                                                    codeUnitIndex(pendingCompositionEnd));
+                synchronizingTextInput = false;
+            }
+            return editorConnection;
+        }
+
+        private int[] replacementRange() {
+            int start = BaseInputConnection.getComposingSpanStart(editable);
+            int end = BaseInputConnection.getComposingSpanEnd(editable);
+            if (start < 0 || end < 0) {
+                start = Math.max(0, Selection.getSelectionStart(editable));
+                end = Math.max(0, Selection.getSelectionEnd(editable));
+            }
+            return new int[] {codePointIndex(Math.min(start, end)),
+                              codePointIndex(Math.max(start, end))};
+        }
+
+        private int codePointIndex(int utf16Index) {
+            return Character.codePointCount(editable, 0,
+                Math.max(0, Math.min(utf16Index, editable.length())));
+        }
+
+        private int codeUnitIndex(int codePointIndex) {
+            int count = Character.codePointCount(editable, 0, editable.length());
+            return Character.offsetByCodePoints(editable, 0,
+                Math.max(0, Math.min(codePointIndex, count)));
+        }
+
+        private void emitTextEdit(int action, CharSequence text, int replaceStart,
+                                  int replaceEnd) {
+            if (synchronizingTextInput)
+                return;
+            int selectionStart = Selection.getSelectionStart(editable);
+            int selectionEnd = Selection.getSelectionEnd(editable);
+            int compositionStart = BaseInputConnection.getComposingSpanStart(editable);
+            int compositionEnd = BaseInputConnection.getComposingSpanEnd(editable);
+            nativeOnTextEdit(nativeHandle, action, text.toString(), replaceStart, replaceEnd,
+                codePointIndex(selectionStart), codePointIndex(selectionEnd),
+                compositionStart < 0 ? -1 : codePointIndex(compositionStart),
+                compositionEnd < 0 ? -1 : codePointIndex(compositionEnd));
+        }
+
+        void setTextInputState(String text, int selectionStart, int selectionEnd,
+                               int compositionStart, int compositionEnd) {
+            structuredTextInput = true;
+            pendingCompositionStart = compositionStart;
+            pendingCompositionEnd = compositionEnd;
+            editable.replace(0, editable.length(), text);
+            Selection.setSelection(editable, codeUnitIndex(selectionStart),
+                                   codeUnitIndex(selectionEnd));
+            BaseInputConnection.removeComposingSpans(editable);
+            if (compositionStart >= 0 && compositionEnd >= 0 && editorConnection != null) {
+                synchronizingTextInput = true;
+                editorConnection.setComposingRegion(codeUnitIndex(compositionStart),
+                                                    codeUnitIndex(compositionEnd));
+                synchronizingTextInput = false;
+            }
+            InputMethodManager manager = (InputMethodManager)getContext().getSystemService(
+                Context.INPUT_METHOD_SERVICE);
+            if (manager != null)
+                manager.updateSelection(this, Selection.getSelectionStart(editable),
+                    Selection.getSelectionEnd(editable),
+                    BaseInputConnection.getComposingSpanStart(editable),
+                    BaseInputConnection.getComposingSpanEnd(editable));
+        }
+
+        void setTextInputActive(boolean active) {
+            InputMethodManager manager = (InputMethodManager)getContext().getSystemService(
+                Context.INPUT_METHOD_SERVICE);
+            if (manager == null)
+                return;
+            if (active) {
+                requestFocus();
+                manager.restartInput(this);
+                manager.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT);
+            } else {
+                manager.hideSoftInputFromWindow(getWindowToken(), 0);
+                manager.restartInput(this);
+                structuredTextInput = false;
+            }
         }
 
         private float logical(float value) {
@@ -349,6 +516,17 @@ final class NativeKitBridge {
 
     static void setSurfaceBounds(SurfaceView view, int x, int y, int width, int height) {
         setBounds(view, x, y, width, height);
+    }
+
+    static void setSurfaceTextInputState(SurfaceView view, String text, int selectionStart,
+                                         int selectionEnd, int compositionStart,
+                                         int compositionEnd) {
+        ((NativeSurfaceView)view).setTextInputState(text, selectionStart, selectionEnd,
+                                                    compositionStart, compositionEnd);
+    }
+
+    static void setSurfaceTextInputActive(SurfaceView view, boolean active) {
+        ((NativeSurfaceView)view).setTextInputActive(active);
     }
 
     private static void detachAfterRendererGone(WebView view) {
@@ -1144,6 +1322,10 @@ final class NativeKitBridge {
     private static native void nativeOnKey(long handle, int key, int scanCode, int action,
                                           int modifiers);
     private static native void nativeOnText(long handle, int codepoint);
+    private static native void nativeOnTextEdit(long handle, int action, String text,
+                                                int replaceStart, int replaceEnd,
+                                                int selectionStart, int selectionEnd,
+                                                int compositionStart, int compositionEnd);
     private static native void nativeOnGamepadAxis(long handle, int device, int axis, float value);
     private static native void nativeOnGamepadButton(long handle, int device, int button,
                                                      boolean pressed);

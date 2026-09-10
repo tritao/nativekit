@@ -1731,6 +1731,71 @@ nk_result NK_CALL nk_pointer_get_position(nk_handle handle, double *out_x, doubl
     return NK_OK;
 }
 
+nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
+                                                   const nk_text_input_state *state) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!state || state->struct_size < sizeof(nk_text_input_state) || !state->text) {
+        nk::core::set_error("text input state is missing or too small");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    uint32_t codepoints = 0;
+    for (const auto *cursor = reinterpret_cast<const unsigned char *>(state->text); *cursor;
+         ++cursor)
+        codepoints += (*cursor & 0xc0u) != 0x80u;
+    const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
+                                state->composition_end == NK_TEXT_POSITION_NONE;
+    const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
+                                   state->composition_end != NK_TEXT_POSITION_NONE &&
+                                   state->composition_start <= state->composition_end &&
+                                   state->composition_end <= codepoints;
+    if (state->selection_start > state->selection_end || state->selection_end > codepoints ||
+        (!no_composition && !valid_composition)) {
+        nk::core::set_error("text input ranges are inconsistent with the supplied text");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto *env = environment();
+    auto text = env ? from_utf8(env, state->text) : nullptr;
+    if (!env || !text)
+        return NK_ERROR_OUT_OF_MEMORY;
+    jvalue arguments[6]{};
+    arguments[0].l = resource->view;
+    arguments[1].l = text;
+    arguments[2].i = static_cast<jint>(state->selection_start);
+    arguments[3].i = static_cast<jint>(state->selection_end);
+    arguments[4].i = state->composition_start == NK_TEXT_POSITION_NONE
+                         ? -1
+                         : static_cast<jint>(state->composition_start);
+    arguments[5].i = state->composition_end == NK_TEXT_POSITION_NONE
+                         ? -1
+                         : static_cast<jint>(state->composition_end);
+    const auto result = java_void_surface(
+        resource, "setSurfaceTextInputState", "(Landroid/view/SurfaceView;Ljava/lang/String;IIII)V",
+        arguments);
+    env->DeleteLocalRef(text);
+    return result;
+}
+
+nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t active) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    if (active > 1) {
+        nk::core::set_error("text input active state must be zero or one");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    jvalue arguments[2]{};
+    arguments[0].l = resource->view;
+    arguments[1].z = active ? JNI_TRUE : JNI_FALSE;
+    return java_void_surface(resource, "setSurfaceTextInputActive",
+                             "(Landroid/view/SurfaceView;Z)V", arguments);
+}
+
 nk_result NK_CALL nk_joystick_list(nk_handle *output, uint32_t *inout_count) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
@@ -2494,6 +2559,37 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnText(JNIEnv *, 
     event.kind = NK_EVENT_TEXT_INPUT;
     event.source = resource->handle;
     event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
+    JNIEnv *env, jclass, jlong handle_value, jint action, jstring text, jint replace_start,
+    jint replace_end, jint selection_start, jint selection_end, jint composition_start,
+    jint composition_end) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (!resource || action < NK_TEXT_EDIT_COMPOSE || action > NK_TEXT_EDIT_SET_COMPOSITION)
+        return;
+    const auto value = to_utf8(env, text);
+    nk_text_edit_event payload{};
+    payload.action = static_cast<nk_text_edit_action>(action);
+    payload.text_offset = value.empty() ? 0u : sizeof(payload);
+    payload.text_length = static_cast<uint32_t>(value.size());
+    auto position = [](jint input) -> nk_text_position {
+        return input < 0 ? NK_TEXT_POSITION_NONE : static_cast<nk_text_position>(input);
+    };
+    payload.replace_start = position(replace_start);
+    payload.replace_end = position(replace_end);
+    payload.selection_start = position(selection_start);
+    payload.selection_end = position(selection_end);
+    payload.composition_start = position(composition_start);
+    payload.composition_end = position(composition_end);
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_TEXT_EDIT;
+    event.source = resource->handle;
+    event.data.resize(sizeof(payload) + value.size() + (value.empty() ? 0u : 1u));
+    std::memcpy(event.data.data(), &payload, sizeof(payload));
+    if (!value.empty())
+        std::memcpy(event.data.data() + sizeof(payload), value.c_str(), value.size() + 1);
     nk::core::push_event(std::move(event));
 }
 

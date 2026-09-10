@@ -17,6 +17,7 @@ GROUPS = (
     ("PointerButton", "include/nativekit_input.h", "NK_POINTER_BUTTON_LEFT", False),
     ("TouchAction", "include/nativekit_input.h", "NK_TOUCH_BEGIN", False),
     ("TouchTool", "include/nativekit_input.h", "NK_TOUCH_TOOL_FINGER", False),
+    ("TextEditAction", "include/nativekit_input.h", "NK_TEXT_EDIT_COMPOSE", False),
     ("GamepadButton", "include/nativekit_gamepad.h", "NK_GAMEPAD_BUTTON_A", False),
     ("GamepadAxis", "include/nativekit_gamepad.h", "NK_GAMEPAD_AXIS_LEFT_X", False),
 )
@@ -38,7 +39,7 @@ def enum_groups(path: Path) -> dict[str, list[tuple[str, int]]]:
             if not re.fullmatch(r"NK_[A-Z0-9_]+", name):
                 continue
             if separator:
-                cleaned = re.sub(r"(?<=\d)[uUlL]+\b", "", expression.strip())
+                cleaned = re.sub(r"(?<=[0-9a-fA-F])[uUlL]+\b", "", expression.strip())
                 previous = int(eval(cleaned, {"__builtins__": {}}, values))
             else:
                 previous += 1

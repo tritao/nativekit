@@ -280,6 +280,19 @@ Java_io_nativekit_consumer_MainActivity_nativeVulkanSurfaceRecreatedProbe(JNIEnv
 }
 
 extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativePrepareTextInput(JNIEnv *, jclass,
+                                                               jlong surface_value) {
+    nk_text_input_state state{};
+    state.struct_size = sizeof(state);
+    state.text = "hello \xf0\x9f\x98\x80";
+    state.selection_start = 7;
+    state.selection_end = 7;
+    state.composition_start = NK_TEXT_POSITION_NONE;
+    state.composition_end = NK_TEXT_POSITION_NONE;
+    return nk_surface_set_text_input_state(static_cast<nk_handle>(surface_value), &state);
+}
+
+extern "C" JNIEXPORT jint JNICALL
 Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong surface_value) {
     const auto surface = static_cast<nk_handle>(surface_value);
     int touch_begin = 0;
@@ -294,6 +307,12 @@ Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong
     bool key_press = false;
     bool key_release = false;
     bool text = false;
+    bool composing = false;
+    bool committed = false;
+    bool deleted = false;
+    bool selected = false;
+    bool composition_finished = false;
+    bool composition_region = false;
     bool gamepad_axis = false;
     bool gamepad_button = false;
     nk_handle controller = NK_INVALID_HANDLE;
@@ -336,6 +355,27 @@ Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong
         } else if (event.source == surface && event.kind == NK_EVENT_TEXT_INPUT &&
                    event.data_size >= sizeof(nk_text_input_event)) {
             text = static_cast<const nk_text_input_event *>(event.data)->codepoint == 'A';
+        } else if (event.source == surface && event.kind == NK_EVENT_TEXT_EDIT &&
+                   event.data_size >= sizeof(nk_text_edit_event)) {
+            const auto *value = static_cast<const nk_text_edit_event *>(event.data);
+            const char *edit_text = nullptr;
+            uint32_t edit_text_length = 0;
+            if (nk_text_edit_event_text(&event, &edit_text, &edit_text_length) != NK_OK)
+                return 11;
+            composing |= value->action == NK_TEXT_EDIT_COMPOSE &&
+                         value->replace_start == 7 && value->composition_start == 7;
+            committed |= value->action == NK_TEXT_EDIT_COMMIT &&
+                         edit_text_length == 9 && std::memcmp(edit_text, "日本語", 9) == 0 &&
+                         value->composition_start == NK_TEXT_POSITION_NONE;
+            selected |= value->action == NK_TEXT_EDIT_SET_SELECTION &&
+                        value->selection_start == 5 && value->selection_end == 5;
+            deleted |= value->action == NK_TEXT_EDIT_DELETE && value->replace_start == 4 &&
+                       value->replace_end == 5 && value->selection_start == 4;
+            composition_finished |= value->action == NK_TEXT_EDIT_FINISH_COMPOSITION &&
+                                    value->composition_start == NK_TEXT_POSITION_NONE;
+            composition_region |= value->action == NK_TEXT_EDIT_SET_COMPOSITION &&
+                                  value->composition_start == 0 &&
+                                  value->composition_end == 2;
         } else if (event.kind == NK_EVENT_GAMEPAD_AXIS &&
                    event.data_size >= sizeof(nk_gamepad_axis_event)) {
             const auto *value = static_cast<const nk_gamepad_axis_event *>(event.data);
@@ -357,6 +397,9 @@ Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong
         return 3;
     if (!key_press || !key_release || !text)
         return 4;
+    if (!composing || !committed || !deleted || !selected || !composition_region ||
+        !composition_finished)
+        return 10;
     if (!controller || !gamepad_axis || !gamepad_button)
         return 5;
     uint32_t mapped = 0;

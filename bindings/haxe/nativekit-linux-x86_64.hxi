@@ -105,6 +105,7 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_EVENT_SURFACE_LOST = 702;
 	const NK_EVENT_SURFACE_READY = 700;
 	const NK_EVENT_SURFACE_RESIZE = 701;
+	const NK_EVENT_TEXT_EDIT = 17;
 	const NK_EVENT_TEXT_INPUT = 11;
 	const NK_EVENT_TOUCH = 16;
 	const NK_EVENT_WEBVIEW_EVAL_COMPLETE = 203;
@@ -305,6 +306,13 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_SURFACE_FORWARD_COMPATIBLE = 32;
 	const NK_SURFACE_HIDDEN = 1;
 	const NK_SURFACE_STENCIL = 8;
+	const NK_TEXT_EDIT_COMMIT = 2;
+	const NK_TEXT_EDIT_COMPOSE = 1;
+	const NK_TEXT_EDIT_DELETE = 3;
+	const NK_TEXT_EDIT_FINISH_COMPOSITION = 5;
+	const NK_TEXT_EDIT_SET_COMPOSITION = 6;
+	const NK_TEXT_EDIT_SET_SELECTION = 4;
+	const NK_TEXT_POSITION_NONE = 4294967295;
 	const NK_TOUCH_BEGIN = 1;
 	const NK_TOUCH_CANCEL = 4;
 	const NK_TOUCH_END = 3;
@@ -404,10 +412,13 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	extern fn nk_surface_make_current(surface: nk_handle) -> nk_result;
 	extern fn nk_surface_present(surface: nk_handle) -> nk_result;
 	extern fn nk_surface_set_bounds(surface: nk_handle, x: i32, y: i32, width: i32, height: i32) -> nk_result;
+	extern fn nk_surface_set_text_input_active(surface: nk_handle, active: u32) -> nk_result;
+	extern fn nk_surface_set_text_input_state(surface: nk_handle, state: ptr<const<nk_text_input_state>>) -> nk_result;
 	extern fn nk_surface_show(surface: nk_handle, visible: u32) -> nk_result;
 	extern fn nk_system_directory(kind: nk_system_directory_kind, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
 	extern fn nk_system_get_appearance(appearance: ptr<nk_system_appearance>) -> nk_result;
 	extern fn nk_system_locale(buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
+	extern fn nk_text_edit_event_text(event: ptr<const<nk_event>>, out_text: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
 	extern fn nk_webview_can_go_back(webview: nk_handle, out_can_go_back: ptr<u32> @out) -> nk_result;
 	extern fn nk_webview_can_go_forward(webview: nk_handle, out_can_go_forward: ptr<u32> @out) -> nk_result;
 	extern fn nk_webview_create(parent: nk_handle, options: ptr<const<nk_webview_options>>, out_webview: ptr<nk_handle> @out) -> nk_result;
@@ -696,9 +707,31 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		reserved: u32 @offset(12);
 		reserved2: array<u64, 2> @offset(16);
 	}
+	struct nk_text_edit_event @layout(48, 4) {
+		action: nk_text_edit_action @offset(0);
+		text_offset: u32 @offset(4);
+		text_length: u32 @offset(8);
+		replace_start: nk_text_position @offset(12);
+		replace_end: nk_text_position @offset(16);
+		selection_start: nk_text_position @offset(20);
+		selection_end: nk_text_position @offset(24);
+		composition_start: nk_text_position @offset(28);
+		composition_end: nk_text_position @offset(32);
+		reserved: array<u32, 3> @offset(36);
+	}
 	struct nk_text_input_event @layout(8, 4) {
 		codepoint: u32 @offset(0);
 		reserved: u32 @offset(4);
+	}
+	struct nk_text_input_state @layout(48, 8) {
+		struct_size: u32 @offset(0);
+		flags: u32 @offset(4);
+		text: ptr<const<c_char>> @offset(8);
+		selection_start: nk_text_position @offset(16);
+		selection_end: nk_text_position @offset(20);
+		composition_start: nk_text_position @offset(24);
+		composition_end: nk_text_position @offset(28);
+		reserved: array<u64, 2> @offset(32);
 	}
 	struct nk_touch_event @layout(48, 8) {
 		pointer_id: u32 @offset(0);
@@ -808,6 +841,8 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	type nk_result = i32;
 	type nk_seek_origin = u32;
 	type nk_system_directory_kind = u32;
+	type nk_text_edit_action = u32;
+	type nk_text_position = u32;
 	type nk_touch_action = u32;
 	type nk_touch_tool = u32;
 	type nk_window_kind = u32;

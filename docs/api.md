@@ -116,6 +116,7 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_RESOURCE_DROP` | mobile host | none | `nk_resource_drop` followed by its resource list and optional text |
 | `NK_EVENT_KEY` | window | none | `nk_key_event` |
 | `NK_EVENT_TEXT_INPUT` | window | none | `nk_text_input_event` |
+| `NK_EVENT_TEXT_EDIT` | graphics surface | none | `nk_text_edit_event` followed by UTF-8 text |
 | `NK_EVENT_POINTER_MOVE` | window | none | `nk_pointer_move_event` |
 | `NK_EVENT_POINTER_BUTTON` | window | none | `nk_pointer_button_event` |
 | `NK_EVENT_POINTER_SCROLL` | window | none | `nk_pointer_scroll_event` |
@@ -152,6 +153,19 @@ transitions are never coalesced.
 The GTK backend routes key events through a per-window input-method context, so
 dead-key composition, active keyboard layouts, and IME committed text are
 reported through `NK_EVENT_TEXT_INPUT`.
+
+Custom-rendered Android editors opt into transactional IME input by calling
+`nk_surface_set_text_input_state()` with their current UTF-8 text, selection,
+and optional composition range, then `nk_surface_set_text_input_active()`. All
+positions are Unicode code-point indices; `NK_TEXT_POSITION_NONE` represents an
+absent composition. `NK_EVENT_TEXT_EDIT` reports the replacement range, inserted
+UTF-8 text, resulting selection, and resulting composition after each compose,
+commit, delete, selection, or finish-composition operation. The client applies
+the operation to its text model and publishes the resulting state again. Use
+`nk_text_edit_event_text()` to access the event-owned insertion text. This
+supports multi-stage IMEs, autocorrection, emoji, and surrounding-text deletion
+without exposing Android UTF-16 indices. Committed `NK_EVENT_TEXT_INPUT` remains
+the compatibility path for clients that do not publish structured editor state.
 
 Cursor resources may be standard platform shapes or copied RGBA8 images.
 Destroying a cursor handle does not invalidate a cursor already selected by a
