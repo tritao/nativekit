@@ -106,7 +106,7 @@ typedef struct nk_resource_drop {
 /* URI inputs are copied before return. These functions are UI-thread-only. */
 NK_API nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource);
 NK_API nk_result NK_CALL nk_share(const nk_share_options *options);
-NK_API nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources,
+NK_API nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources NK_IN_ARRAY(resource_count),
                                                     uint32_t resource_count);
 NK_API nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request NK_OUT);
 

@@ -25,7 +25,8 @@ typedef struct nk_drop_data {
 NK_API nk_result NK_CALL nk_clipboard_set_text(const char *text NK_UTF8);
 
 /* Copies local paths into the clipboard as a URI list. UI thread only. */
-NK_API nk_result NK_CALL nk_clipboard_set_files(const char *const *paths, uint32_t path_count);
+NK_API nk_result NK_CALL nk_clipboard_set_files(const char *const *paths NK_IN_UTF8_ARRAY(path_count),
+                                                uint32_t path_count);
 
 /*
  * Starts an asynchronous clipboard read. Completion is delivered through the

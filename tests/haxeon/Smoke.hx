@@ -58,6 +58,14 @@ class Smoke {
 			try requests.evaluateWebView(0, "1", function(_) {}) catch (_:Dynamic) invalidEvaluationRejected = true;
 			payloadOk = payloadOk && invalidEvaluationRejected && requests.pending() == 0;
 		}
+		var fileArrayResult = NativeKit.nk_clipboard_set_files(["/tmp/nativekit-a", "/tmp/nativekit-b"]);
+		if (fileArrayResult != 0 && fileArrayResult != NativeKitConstants.NK_ERROR_UNSUPPORTED)
+			return 14;
+		var resourceArrayResult = NativeKit.nk_clipboard_set_resources([
+			NativeKitOptions.resource("file:///tmp/nativekit-a", "text/plain", "nativekit-a")
+		]);
+		if (resourceArrayResult != 0 && resourceArrayResult != NativeKitConstants.NK_ERROR_UNSUPPORTED)
+			return 15;
 
 		var windowOptions = NativeKitOptions.window(320, 200, "NativeKit smoke", 2);
 		var filters = NativeKitOptions.filteredFileDialog([

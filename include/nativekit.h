@@ -23,6 +23,9 @@
 #define NK_OUT __attribute__((annotate("hxi:out")))
 #define NK_INOUT __attribute__((annotate("hxi:inout")))
 #define NK_OUT_BUFFER(size_parameter) __attribute__((annotate("hxi:out_buffer")))
+#define NK_IN_ARRAY(count_parameter) __attribute__((annotate("hxi:in_array")))
+#define NK_IN_UTF8_ARRAY(count_parameter)                                                        \
+    __attribute__((annotate("hxi:in_array"))) __attribute__((annotate("hxi:utf8_array")))
 #define NK_RETURNS_BORROWED_UTF8 __attribute__((annotate("hxi:returns_borrowed_utf8")))
 #define NK_UTF8 __attribute__((annotate("hxi:utf8")))
 #define NK_NULLABLE_UTF8 __attribute__((annotate("hxi:nullable_utf8")))
@@ -34,6 +37,8 @@
 #define NK_OUT
 #define NK_INOUT
 #define NK_OUT_BUFFER(size_parameter)
+#define NK_IN_ARRAY(count_parameter)
+#define NK_IN_UTF8_ARRAY(count_parameter)
 #define NK_RETURNS_BORROWED_UTF8
 #define NK_UTF8
 #define NK_NULLABLE_UTF8

@@ -357,8 +357,8 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	extern fn nk_clipboard_read_files(out_request: ptr<nk_request_id> @out) -> nk_result;
 	extern fn nk_clipboard_read_resources(out_request: ptr<nk_request_id> @out) -> nk_result;
 	extern fn nk_clipboard_read_text(out_request: ptr<nk_request_id> @out) -> nk_result;
-	extern fn nk_clipboard_set_files(paths: ptr<const<ptr<const<c_char>>>>, path_count: u32) -> nk_result;
-	extern fn nk_clipboard_set_resources(resources: ptr<const<nk_resource>>, resource_count: u32) -> nk_result;
+	extern fn nk_clipboard_set_files(paths: ptr<utf8> @in_array("path_count"), path_count: u32) -> nk_result;
+	extern fn nk_clipboard_set_resources(resources: ptr<const<nk_resource>> @in_array("resource_count"), resource_count: u32) -> nk_result;
 	extern fn nk_clipboard_set_text(text: utf8) -> nk_result;
 	extern fn nk_cursor_create_custom(image: ptr<const<nk_cursor_image>>, out_cursor: ptr<nk_handle>) -> nk_result;
 	extern fn nk_cursor_create_standard(shape: nk_cursor_shape, out_cursor: ptr<nk_handle>) -> nk_result;
