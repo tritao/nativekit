@@ -125,7 +125,25 @@ if(NK_BUILD_TESTS)
     endif()
 endif()
 
-if(NK_BUILD_EXAMPLES AND TARGET nkui_nanovg)
+if(NK_BUILD_EXAMPLES)
+    add_executable(nativekit_ui_showcase examples/showcase.cpp)
+    target_compile_definitions(nativekit_ui_showcase PRIVATE
+        NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+    target_link_libraries(nativekit_ui_showcase PRIVATE NativeKit::ui NativeKit::nativekit)
+    if(NK_BUILD_TESTS)
+        find_program(NKUI_SHOWCASE_XVFB_RUN xvfb-run)
+        if(NKUI_SHOWCASE_XVFB_RUN)
+            add_test(NAME nativekit_ui_showcase_smoke
+                COMMAND ${NKUI_SHOWCASE_XVFB_RUN} -a
+                    $<TARGET_FILE:nativekit_ui_showcase> --smoke-test)
+            set_tests_properties(nativekit_ui_showcase_smoke PROPERTIES
+                LABELS "graphics;ui;showcase"
+                TIMEOUT 15
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+        endif()
+    endif()
+
+    if(TARGET nkui_nanovg)
     add_executable(nativekit_ui_skribidi_nanovg examples/skribidi_nanovg.c)
     target_include_directories(nativekit_ui_skribidi_nanovg PRIVATE
         "${NK_VENDOR_DIR}/nanovg-sokol/src/nanovg_sokol"
@@ -146,6 +164,7 @@ if(NK_BUILD_EXAMPLES AND TARGET nkui_nanovg)
                 TIMEOUT 15
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
         endif()
+    endif()
     endif()
 endif()
 

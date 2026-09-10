@@ -20,11 +20,12 @@ All third-party integrations must sit behind private adapters. The public C ABI
 will use opaque handles, fixed-width values, versioned structures, and validated
 batched transactions. It must not expose Clay, Skribidi, NanoVG, or Sokol types.
 
-The module currently establishes the build, install, ABI-test, and dependency
-evaluation seams. Skribidi is linked privately; `skribidi_nanovg` and its
-NanoVG-Sokol backend are evaluation and visual-reference code, not the permanent
-rendering architecture. NativeKit will replace direct NanoVG-Sokol execution
-with a recording adapter and a NativeKit-owned compositor and Sokol backend.
+The module now has a validated semantic display list, a NanoVG recording
+adapter, direct Skribidi glyph batches, a NativeKit compositor, and a
+NativeKit-owned Sokol backend. The `skribidi_nanovg` program remains only as a
+legacy visual reference; public rendering uses opaque NativeKit UI resources
+and `nkui_renderer_render`.
+
 Build it with:
 
 ```sh
@@ -33,5 +34,10 @@ cmake --build build-ui
 ctest --test-dir build-ui --output-on-failure
 ```
 
-The first implementation milestone is a native-only `Box + Text` vertical
-slice before defining the Haxeon reconciler API.
+Run the interactive public-API showcase with:
+
+```sh
+./build-ui/modules/ui/nativekit_ui_showcase
+```
+
+The same executable supports `--smoke-test`, which renders 30 frames and exits.
