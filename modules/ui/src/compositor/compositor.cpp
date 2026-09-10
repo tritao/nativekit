@@ -106,6 +106,9 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
         !validate_display_list(display_list.data(), display_list.size(), &validation))
         return fail(error, validation.command_index, "invalid compositor input");
     plan = {};
+    // Transient IDs are frame-local structural slots. Reusing them across compilations lets the
+    // backend pool matching GPU targets instead of growing one target per transaction.
+    next_target_slot_ = 0x8000;
     std::vector<Layer> layers;
     CanvasState state;
     std::vector<CanvasState> states;

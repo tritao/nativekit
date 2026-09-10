@@ -1,6 +1,7 @@
 #ifndef NATIVEKIT_UI_SOKOL_BACKEND_H
 #define NATIVEKIT_UI_SOKOL_BACKEND_H
 
+#include "display_list/display_list.h"
 #include "prepare/nanovg_recorder.h"
 #include "prepare/skribidi_adapter.h"
 
@@ -43,9 +44,16 @@ class SokolBackend {
     bool initialize();
     bool valid() const;
     bool begin_window_pass(int width, int height, uint32_t framebuffer, bool clear);
+    bool begin_target_pass(ResourceId target, int width, int height, bool load_existing);
+    bool set_scissor(bool enabled, float x = 0.0f, float y = 0.0f, float width = 0.0f,
+                     float height = 0.0f);
+    bool draw_path(const NanoVGRecorder &recorder, uint32_t operation_index, float opacity = 1.0f);
     bool draw_paths(const NanoVGRecorder &recorder);
     bool upload_atlases(SkribidiAdapter &adapter);
-    bool draw_glyphs(const PreparedGlyphs &glyphs);
+    bool draw_glyphs(const PreparedGlyphs &glyphs, float opacity = 1.0f);
+    bool draw_target(ResourceId target, float x, float y, float width, float height, float opacity);
+    bool end_pass();
+    bool commit_frame();
     bool end_frame();
     SokolBackendStats stats() const;
     const char *last_error() const;

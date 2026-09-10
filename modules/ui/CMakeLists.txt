@@ -7,6 +7,8 @@ add_library(nativekit_ui SHARED
     src/display_list/display_list.cpp
     src/prepare/nanovg_recorder.cpp
     src/prepare/skribidi_adapter.cpp
+    src/render/frame_resources.cpp
+    src/render/render_plan_executor.cpp
     src/render/sokol_backend.cpp)
 add_library(NativeKit::ui ALIAS nativekit_ui)
 target_compile_features(nativekit_ui PRIVATE cxx_std_17)
@@ -57,6 +59,7 @@ if(NK_BUILD_TESTS)
     add_test(NAME nativekit_ui_compositor COMMAND nativekit_ui_compositor_test)
     add_executable(nativekit_ui_sokol_backend_mesh_test
         tests/sokol_backend_mesh.cpp
+        src/display_list/display_list.cpp
         src/prepare/nanovg_recorder.cpp
         src/prepare/skribidi_adapter.cpp
         src/render/sokol_backend.cpp)
@@ -65,6 +68,41 @@ if(NK_BUILD_TESTS)
     target_link_libraries(nativekit_ui_sokol_backend_mesh_test PRIVATE
         nkui_nanovg_core nkui_skribidi nativekit_sokol_runtime)
     add_test(NAME nativekit_ui_sokol_backend_mesh COMMAND nativekit_ui_sokol_backend_mesh_test)
+    add_executable(nativekit_ui_frame_resources_test
+        tests/frame_resources.cpp
+        src/display_list/display_list.cpp
+        src/prepare/nanovg_recorder.cpp
+        src/render/frame_resources.cpp)
+    target_include_directories(nativekit_ui_frame_resources_test PRIVATE src)
+    target_link_libraries(nativekit_ui_frame_resources_test PRIVATE nkui_nanovg_core)
+    add_test(NAME nativekit_ui_frame_resources COMMAND nativekit_ui_frame_resources_test)
+    if(NK_BUILD_EXAMPLES)
+        find_package(OpenGL REQUIRED)
+        add_executable(nativekit_ui_sokol_backend_smoke_test
+            tests/sokol_backend_smoke.cpp
+            src/compositor/compositor.cpp
+            src/display_list/display_list.cpp
+            src/prepare/nanovg_recorder.cpp
+            src/prepare/skribidi_adapter.cpp
+            src/render/frame_resources.cpp
+            src/render/render_plan_executor.cpp
+            src/render/sokol_backend.cpp)
+        target_include_directories(nativekit_ui_sokol_backend_smoke_test PRIVATE
+            src "${NK_VENDOR_DIR}/sokol")
+        target_link_libraries(nativekit_ui_sokol_backend_smoke_test PRIVATE
+            NativeKit::nativekit nkui_nanovg_core nkui_skribidi nativekit_sokol_runtime
+            OpenGL::GL)
+        find_program(NKUI_BACKEND_XVFB_RUN xvfb-run)
+        if(NKUI_BACKEND_XVFB_RUN)
+            add_test(NAME nativekit_ui_sokol_backend_smoke
+                COMMAND ${NKUI_BACKEND_XVFB_RUN} -a
+                    $<TARGET_FILE:nativekit_ui_sokol_backend_smoke_test>)
+            set_tests_properties(nativekit_ui_sokol_backend_smoke PROPERTIES
+                LABELS "graphics;ui"
+                TIMEOUT 15
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+        endif()
+    endif()
 endif()
 
 if(NK_BUILD_EXAMPLES AND TARGET nkui_nanovg)

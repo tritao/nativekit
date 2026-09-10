@@ -20,15 +20,29 @@ struct SokolBackend::State {
         uint8_t bytes_per_pixel = 0;
     };
 
+    struct Target {
+        sg_image color{};
+        sg_image depth{};
+        sg_view texture{};
+        sg_view color_attachment{};
+        sg_view depth_attachment{};
+        int width = 0;
+        int height = 0;
+    };
+
     sg_shader solid_shader{};
     sg_pipeline solid_pipeline{};
     sg_shader glyph_shader{};
     sg_pipeline glyph_pipeline{};
+    sg_shader composite_shader{};
+    sg_pipeline composite_pipeline{};
     sg_sampler sampler{};
     sg_buffer solid_vertices{};
     sg_buffer glyph_vertices{};
+    sg_buffer composite_vertices{};
     sg_buffer indices{};
     std::unordered_map<uint32_t, AtlasImage> atlases;
+    std::unordered_map<uint32_t, Target> targets;
     SokolBackendStats stats{};
     std::string error;
     int width = 0;
@@ -38,6 +52,13 @@ struct SokolBackend::State {
 };
 
 namespace {
+
+struct TextureVertex {
+    float x;
+    float y;
+    float u;
+    float v;
+};
 
 bool fail(SokolBackend::State &state, const char *message) {
     state.error = message;
@@ -91,6 +112,35 @@ sg_shader make_glyph_shader() {
     return sg_make_shader(&desc);
 }
 
+sg_shader make_composite_shader() {
+    sg_shader_desc desc{};
+    desc.vertex_func.source =
+        "#version 330\n"
+        "uniform vec2 viewport; layout(location=0) in vec2 position;"
+        "layout(location=1) in vec2 uv0; out vec2 uv; void main(){uv=uv0;"
+        "vec2 p=vec2(position.x/viewport.x*2.0-1.0,1.0-position.y/viewport.y*2.0);"
+        "gl_Position=vec4(p,0,1);}";
+    desc.fragment_func.source =
+        "#version 330\n"
+        "uniform sampler2D tex; uniform vec4 tint; in vec2 uv; out vec4 frag_color;"
+        "void main(){frag_color=texture(tex,uv)*tint;}";
+    desc.uniform_blocks[0].stage = SG_SHADERSTAGE_VERTEX;
+    desc.uniform_blocks[0].size = 8;
+    desc.uniform_blocks[0].glsl_uniforms[0].type = SG_UNIFORMTYPE_FLOAT2;
+    desc.uniform_blocks[0].glsl_uniforms[0].array_count = 1;
+    desc.uniform_blocks[0].glsl_uniforms[0].glsl_name = "viewport";
+    desc.uniform_blocks[1].stage = SG_SHADERSTAGE_FRAGMENT;
+    desc.uniform_blocks[1].size = 16;
+    desc.uniform_blocks[1].glsl_uniforms[0].type = SG_UNIFORMTYPE_FLOAT4;
+    desc.uniform_blocks[1].glsl_uniforms[0].array_count = 1;
+    desc.uniform_blocks[1].glsl_uniforms[0].glsl_name = "tint";
+    desc.views[0].texture = {SG_SHADERSTAGE_FRAGMENT, SG_IMAGETYPE_2D, SG_IMAGESAMPLETYPE_FLOAT,
+                             false};
+    desc.samplers[0] = {SG_SHADERSTAGE_FRAGMENT, SG_SAMPLERTYPE_NONFILTERING};
+    desc.texture_sampler_pairs[0] = {SG_SHADERSTAGE_FRAGMENT, 0, 0, "tex"};
+    return sg_make_shader(&desc);
+}
+
 sg_pipeline make_solid_pipeline(sg_shader shader) {
     sg_pipeline_desc desc{};
     desc.shader = shader;
@@ -115,6 +165,21 @@ sg_pipeline make_glyph_pipeline(sg_shader shader) {
     desc.index_type = SG_INDEXTYPE_UINT32;
     desc.colors[0].blend.enabled = true;
     desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+    desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+    desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    return sg_make_pipeline(&desc);
+}
+
+sg_pipeline make_composite_pipeline(sg_shader shader) {
+    sg_pipeline_desc desc{};
+    desc.shader = shader;
+    desc.layout.buffers[0].stride = sizeof(TextureVertex);
+    desc.layout.attrs[0] = {0, offsetof(TextureVertex, x), SG_VERTEXFORMAT_FLOAT2};
+    desc.layout.attrs[1] = {0, offsetof(TextureVertex, u), SG_VERTEXFORMAT_FLOAT2};
+    desc.index_type = SG_INDEXTYPE_UINT32;
+    desc.colors[0].blend.enabled = true;
+    desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
     desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
     desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
     desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
@@ -169,6 +234,53 @@ sg_buffer make_stream_buffer(size_t size, bool index) {
     return sg_make_buffer(&desc);
 }
 
+void destroy_target(SokolBackend::State::Target &target) {
+    sg_destroy_view(target.depth_attachment);
+    sg_destroy_view(target.color_attachment);
+    sg_destroy_view(target.texture);
+    sg_destroy_image(target.depth);
+    sg_destroy_image(target.color);
+    target = {};
+}
+
+bool create_target(SokolBackend::State &state, SokolBackend::State::Target &target, int width,
+                   int height) {
+    sg_image_desc color_desc{};
+    color_desc.width = width;
+    color_desc.height = height;
+    color_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    color_desc.usage.color_attachment = true;
+    target.color = sg_make_image(&color_desc);
+    sg_image_desc depth_desc{};
+    depth_desc.width = width;
+    depth_desc.height = height;
+    depth_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    depth_desc.usage.depth_stencil_attachment = true;
+    target.depth = sg_make_image(&depth_desc);
+    sg_view_desc texture_desc{};
+    texture_desc.texture.image = target.color;
+    target.texture = sg_make_view(&texture_desc);
+    sg_view_desc color_view_desc{};
+    color_view_desc.color_attachment.image = target.color;
+    target.color_attachment = sg_make_view(&color_view_desc);
+    sg_view_desc depth_view_desc{};
+    depth_view_desc.depth_stencil_attachment.image = target.depth;
+    target.depth_attachment = sg_make_view(&depth_view_desc);
+    target.width = width;
+    target.height = height;
+    const bool valid = sg_query_image_state(target.color) == SG_RESOURCESTATE_VALID &&
+                       sg_query_image_state(target.depth) == SG_RESOURCESTATE_VALID &&
+                       sg_query_view_state(target.texture) == SG_RESOURCESTATE_VALID &&
+                       sg_query_view_state(target.color_attachment) == SG_RESOURCESTATE_VALID &&
+                       sg_query_view_state(target.depth_attachment) == SG_RESOURCESTATE_VALID;
+    if (!valid) {
+        destroy_target(target);
+        return fail(state, "offscreen target creation failed");
+    }
+    state.stats.gpu_resources += 5;
+    return true;
+}
+
 } // namespace
 
 bool triangulate_prepared_path(const NanoVGRecorder &recorder,
@@ -215,6 +327,10 @@ SokolBackend::SokolBackend() : state_(new State) {}
 
 SokolBackend::~SokolBackend() {
     if (state_->initialized) {
+        for (auto &[id, target] : state_->targets) {
+            (void)id;
+            destroy_target(target);
+        }
         for (const auto &[id, atlas] : state_->atlases) {
             (void)id;
             sg_destroy_view(atlas.view);
@@ -222,10 +338,13 @@ SokolBackend::~SokolBackend() {
         }
         sg_destroy_sampler(state_->sampler);
         sg_destroy_buffer(state_->indices);
+        sg_destroy_buffer(state_->composite_vertices);
         sg_destroy_buffer(state_->glyph_vertices);
         sg_destroy_buffer(state_->solid_vertices);
         sg_destroy_pipeline(state_->glyph_pipeline);
         sg_destroy_shader(state_->glyph_shader);
+        sg_destroy_pipeline(state_->composite_pipeline);
+        sg_destroy_shader(state_->composite_shader);
         sg_destroy_pipeline(state_->solid_pipeline);
         sg_destroy_shader(state_->solid_shader);
         sg_shutdown();
@@ -243,8 +362,10 @@ bool SokolBackend::initialize() {
         return fail(*state_, "sg_setup failed");
     state_->solid_shader = make_solid_shader();
     state_->glyph_shader = make_glyph_shader();
+    state_->composite_shader = make_composite_shader();
     state_->solid_pipeline = make_solid_pipeline(state_->solid_shader);
     state_->glyph_pipeline = make_glyph_pipeline(state_->glyph_shader);
+    state_->composite_pipeline = make_composite_pipeline(state_->composite_shader);
     sg_sampler_desc sampler_desc{};
     sampler_desc.min_filter = SG_FILTER_NEAREST;
     sampler_desc.mag_filter = SG_FILTER_NEAREST;
@@ -253,16 +374,19 @@ bool SokolBackend::initialize() {
     state_->sampler = sg_make_sampler(&sampler_desc);
     state_->solid_vertices = make_stream_buffer(4 * 1024 * 1024, false);
     state_->glyph_vertices = make_stream_buffer(4 * 1024 * 1024, false);
+    state_->composite_vertices = make_stream_buffer(1024 * 1024, false);
     state_->indices = make_stream_buffer(4 * 1024 * 1024, true);
     state_->initialized =
         sg_query_pipeline_state(state_->solid_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->glyph_pipeline) == SG_RESOURCESTATE_VALID &&
+        sg_query_pipeline_state(state_->composite_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_sampler_state(state_->sampler) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->solid_vertices) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->glyph_vertices) == SG_RESOURCESTATE_VALID &&
+        sg_query_buffer_state(state_->composite_vertices) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->indices) == SG_RESOURCESTATE_VALID;
     if (state_->initialized)
-        state_->stats.gpu_resources = 10;
+        state_->stats.gpu_resources = 13;
     return state_->initialized || fail(*state_, "Sokol UI resource creation failed");
 }
 
@@ -292,20 +416,73 @@ bool SokolBackend::begin_window_pass(int width, int height, uint32_t framebuffer
     return true;
 }
 
+bool SokolBackend::begin_target_pass(ResourceId target_id, int width, int height,
+                                     bool load_existing) {
+    if (!valid() || state_->in_pass || !is_resource_id(target_id, ResourceKind::RenderTarget) ||
+        width <= 0 || height <= 0)
+        return fail(*state_, "invalid offscreen pass");
+    auto &target = state_->targets[target_id.value];
+    if (target.width != width || target.height != height) {
+        if (target.color.id) {
+            destroy_target(target);
+            state_->stats.gpu_resources -= 5;
+        }
+        if (!create_target(*state_, target, width, height))
+            return false;
+    }
+    state_->width = width;
+    state_->height = height;
+    sg_pass pass{};
+    pass.action.colors[0].load_action = load_existing ? SG_LOADACTION_LOAD : SG_LOADACTION_CLEAR;
+    pass.action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 0.0f};
+    pass.action.depth = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 1.0f};
+    pass.action.stencil = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 0};
+    pass.attachments.colors[0] = target.color_attachment;
+    pass.attachments.depth_stencil = target.depth_attachment;
+    sg_begin_pass(&pass);
+    state_->in_pass = true;
+    ++state_->stats.passes;
+    return true;
+}
+
+bool SokolBackend::set_scissor(bool enabled, float x, float y, float width, float height) {
+    if (!state_->in_pass)
+        return fail(*state_, "scissor outside pass");
+    if (!enabled) {
+        sg_apply_scissor_rect(0, 0, state_->width, state_->height, true);
+        return true;
+    }
+    const int left = std::max(0, static_cast<int>(x));
+    const int top = std::max(0, static_cast<int>(y));
+    const int right = std::min(state_->width, static_cast<int>(x + width + 0.999f));
+    const int bottom = std::min(state_->height, static_cast<int>(y + height + 0.999f));
+    sg_apply_scissor_rect(left, top, std::max(0, right - left), std::max(0, bottom - top), true);
+    return true;
+}
+
+bool SokolBackend::draw_path(const NanoVGRecorder &recorder, uint32_t operation_index,
+                             float opacity) {
+    if (!state_->in_pass || operation_index >= recorder.operations().size() || opacity < 0.0f ||
+        opacity > 1.0f)
+        return fail(*state_, "invalid path draw");
+    const auto &operation = recorder.operations()[operation_index];
+    SolidMesh mesh;
+    if (!triangulate_prepared_path(recorder, operation, mesh))
+        return fail(*state_, "unsupported non-convex or triangle path");
+    const float alpha = operation.paint.innerColor.a * opacity;
+    const std::array<float, 4> color = {operation.paint.innerColor.r * alpha,
+                                        operation.paint.innerColor.g * alpha,
+                                        operation.paint.innerColor.b * alpha, alpha};
+    return draw_mesh(*state_, state_->solid_pipeline, mesh.vertices, mesh.indices, color.data(),
+                     sizeof(color), {}, {}, state_->solid_vertices);
+}
+
 bool SokolBackend::draw_paths(const NanoVGRecorder &recorder) {
     if (!state_->in_pass)
         return fail(*state_, "path draw outside pass");
-    for (const auto &operation : recorder.operations()) {
-        SolidMesh mesh;
-        if (!triangulate_prepared_path(recorder, operation, mesh))
-            return fail(*state_, "unsupported non-convex or triangle path");
-        const std::array<float, 4> color = {
-            operation.paint.innerColor.r, operation.paint.innerColor.g,
-            operation.paint.innerColor.b, operation.paint.innerColor.a};
-        if (!draw_mesh(*state_, state_->solid_pipeline, mesh.vertices, mesh.indices, color.data(),
-                       sizeof(color), {}, {}, state_->solid_vertices))
+    for (uint32_t index = 0; index < recorder.operations().size(); ++index)
+        if (!draw_path(recorder, index))
             return false;
-    }
     return true;
 }
 
@@ -349,9 +526,9 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter) {
     return true;
 }
 
-bool SokolBackend::draw_glyphs(const PreparedGlyphs &glyphs) {
-    if (!state_->in_pass)
-        return fail(*state_, "glyph draw outside pass");
+bool SokolBackend::draw_glyphs(const PreparedGlyphs &glyphs, float opacity) {
+    if (!state_->in_pass || opacity < 0.0f || opacity > 1.0f)
+        return fail(*state_, "invalid glyph draw");
     for (const auto &batch : glyphs.batches) {
         if (batch.mode != GlyphMode::Alpha)
             return fail(*state_, "glyph mode is not implemented");
@@ -361,6 +538,8 @@ bool SokolBackend::draw_glyphs(const PreparedGlyphs &glyphs) {
         std::vector<GlyphVertex> vertices(glyphs.vertices.begin() + batch.first_vertex,
                                           glyphs.vertices.begin() + batch.first_vertex +
                                               batch.vertex_count);
+        for (auto &vertex : vertices)
+            vertex.alpha = static_cast<uint8_t>(vertex.alpha * opacity);
         std::vector<uint32_t> indices;
         indices.reserve(batch.index_count);
         for (uint32_t index = 0; index < batch.index_count; ++index)
@@ -372,13 +551,47 @@ bool SokolBackend::draw_glyphs(const PreparedGlyphs &glyphs) {
     return true;
 }
 
-bool SokolBackend::end_frame() {
+bool SokolBackend::draw_target(ResourceId target_id, float x, float y, float width, float height,
+                               float opacity) {
+    if (!state_->in_pass || opacity < 0.0f || opacity > 1.0f)
+        return fail(*state_, "invalid target composite");
+    const auto found = state_->targets.find(target_id.value);
+    if (found == state_->targets.end())
+        return fail(*state_, "target was not rendered");
+    if (width <= 0.0f)
+        width = static_cast<float>(found->second.width);
+    if (height <= 0.0f)
+        height = static_cast<float>(found->second.height);
+    const std::vector<TextureVertex> vertices = {
+        {x, y, 0.0f, 1.0f},
+        {x + width, y, 1.0f, 1.0f},
+        {x + width, y + height, 1.0f, 0.0f},
+        {x, y + height, 0.0f, 0.0f},
+    };
+    const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
+    const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
+    return draw_mesh(*state_, state_->composite_pipeline, vertices, indices, tint.data(),
+                     sizeof(tint), found->second.texture, state_->sampler,
+                     state_->composite_vertices);
+}
+
+bool SokolBackend::end_pass() {
     if (!state_->in_pass)
         return fail(*state_, "no pass to end");
     sg_end_pass();
-    sg_commit();
     state_->in_pass = false;
     return true;
+}
+
+bool SokolBackend::commit_frame() {
+    if (!valid() || state_->in_pass)
+        return fail(*state_, "cannot commit inside pass");
+    sg_commit();
+    return true;
+}
+
+bool SokolBackend::end_frame() {
+    return end_pass() && commit_frame();
 }
 
 SokolBackendStats SokolBackend::stats() const {
