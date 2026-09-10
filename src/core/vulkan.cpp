@@ -10,8 +10,13 @@
 #include <cstdint>
 #include <cstring>
 
-#if defined(NK_BACKEND_GTK)
+#if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_ANDROID)
 #include <dlfcn.h>
+#endif
+#if defined(NK_BACKEND_ANDROID)
+#include "android/nativekit_android_internal.hpp"
+#include <android/native_window.h>
+#include <unordered_map>
 #endif
 
 namespace {
@@ -77,12 +82,47 @@ nk_result native_window(nk_handle handle, nk_native_window &native) {
     return NK_OK;
 }
 #endif
+
+#if defined(NK_BACKEND_ANDROID)
+using VkInstance = void *;
+using VkSurfaceKHR = std::uint64_t;
+using VkResult = std::int32_t;
+using VkFlags = std::uint32_t;
+using VkStructureType = std::int32_t;
+using GetInstanceProcAddr = void *(*)(VkInstance, const char *);
+using DestroySurface = void (*)(VkInstance, VkSurfaceKHR, const void *);
+constexpr VkResult vk_success = 0;
+constexpr VkStructureType vk_structure_type_android_surface_create_info = 1000008000;
+
+struct AndroidSurfaceCreateInfo {
+    VkStructureType s_type;
+    const void *next;
+    VkFlags flags;
+    ANativeWindow *window;
+};
+
+using CreateAndroidSurface = VkResult (*)(VkInstance, const AndroidSurfaceCreateInfo *,
+                                          const void *, VkSurfaceKHR *);
+
+std::unordered_map<VkSurfaceKHR, ANativeWindow *> android_surface_windows;
+
+void *vulkan_library() {
+    static void *library = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
+    return library;
+}
+
+GetInstanceProcAddr get_instance_proc_addr() {
+    static auto function = reinterpret_cast<GetInstanceProcAddr>(
+        vulkan_library() ? dlsym(vulkan_library(), "vkGetInstanceProcAddr") : nullptr);
+    return function;
+}
+#endif
 } // namespace
 
 extern "C" {
 
 uint32_t NK_CALL nk_vulkan_supported(void) {
-#if defined(NK_BACKEND_GTK)
+#if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_ANDROID)
     return get_instance_proc_addr() ? 1u : 0u;
 #else
     return 0;
@@ -113,6 +153,27 @@ nk_result NK_CALL nk_vulkan_get_required_instance_extensions(nk_handle window,
                                          const char *required[] = {
                                              surface,
                                              nk::core::vulkan::platform_extension(native.kind)};
+                                         if (!extensions || *inout_count < 2) {
+                                             *inout_count = 2;
+                                             return NK_ERROR_BUFFER_TOO_SMALL;
+                                         }
+                                         extensions[0] = required[0];
+                                         extensions[1] = required[1];
+                                         *inout_count = 2;
+                                         return NK_OK;
+#elif defined(NK_BACKEND_ANDROID)
+                                         if (const auto result = nk::core::require_ui_thread();
+                                             result != NK_OK)
+                                             return result;
+                                         if (!get_instance_proc_addr())
+                                             return fail_loader("Vulkan loader is unavailable");
+                                         ANativeWindow *native = nullptr;
+                                         if (const auto result = nk::backend::android_vulkan_window(
+                                                 window, &native, false);
+                                             result != NK_OK)
+                                             return result;
+                                         static const char *required[] = {"VK_KHR_surface",
+                                                                          "VK_KHR_android_surface"};
                                          if (!extensions || *inout_count < 2) {
                                              *inout_count = 2;
                                              return NK_ERROR_BUFFER_TOO_SMALL;
@@ -185,6 +246,43 @@ nk_result NK_CALL nk_vulkan_create_surface(nk_handle window, void *instance,
                                          }
                                          *out_surface = surface;
                                          return NK_OK;
+#elif defined(NK_BACKEND_ANDROID)
+                                         if (const auto result = nk::core::require_ui_thread();
+                                             result != NK_OK)
+                                             return result;
+                                         if (!instance || !out_surface) {
+                                             nk::core::set_error(
+                                                 "instance and out_surface are required");
+                                             return NK_ERROR_INVALID_ARGUMENT;
+                                         }
+                                         *out_surface = NK_INVALID_VULKAN_SURFACE;
+                                         const auto get_proc = get_instance_proc_addr();
+                                         if (!get_proc)
+                                             return fail_loader("Vulkan loader is unavailable");
+                                         ANativeWindow *native = nullptr;
+                                         if (const auto result = nk::backend::android_vulkan_window(
+                                                 window, &native, true);
+                                             result != NK_OK)
+                                             return result;
+                                         const auto create = reinterpret_cast<CreateAndroidSurface>(
+                                             get_proc(instance, "vkCreateAndroidSurfaceKHR"));
+                                         if (!create)
+                                             return fail_loader(
+                                                 "VK_KHR_android_surface is not enabled");
+                                         const AndroidSurfaceCreateInfo info{
+                                             vk_structure_type_android_surface_create_info,
+                                             nullptr, 0, native};
+                                         VkSurfaceKHR surface = 0;
+                                         if (create(instance, &info, allocator, &surface) !=
+                                             vk_success) {
+                                             nk::core::set_error(
+                                                 "Android Vulkan surface creation failed");
+                                             return NK_ERROR_UNKNOWN;
+                                         }
+                                         ANativeWindow_acquire(native);
+                                         android_surface_windows.emplace(surface, native);
+                                         *out_surface = surface;
+                                         return NK_OK;
 #else
                                          (void)window;
                                          (void)instance;
@@ -200,7 +298,7 @@ nk_result NK_CALL nk_vulkan_destroy_surface(void *instance, nk_vulkan_surface su
     return nk::core::result_boundary("unexpected error while destroying a Vulkan surface",
                                      [&]() -> nk_result {
                                          nk::core::clear_error();
-#if defined(NK_BACKEND_GTK)
+#if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_ANDROID)
                                          if (const auto result = nk::core::require_ui_thread();
                                              result != NK_OK)
                                              return result;
@@ -218,6 +316,13 @@ nk_result NK_CALL nk_vulkan_destroy_surface(void *instance, nk_vulkan_surface su
                                              return fail_loader(
                                                  "VK_KHR_surface is not enabled on the instance");
                                          destroy(instance, surface, allocator);
+#if defined(NK_BACKEND_ANDROID)
+                                         if (const auto found = android_surface_windows.find(surface);
+                                             found != android_surface_windows.end()) {
+                                             ANativeWindow_release(found->second);
+                                             android_surface_windows.erase(found);
+                                         }
+#endif
                                          return NK_OK;
 #else
                                          (void)instance;

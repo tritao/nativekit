@@ -32,8 +32,6 @@ public final class ConsumerTest {
             scenario.onActivity(activity -> {
                 assertEquals(1, activity.apiVersion());
                 assertNotEquals(0, activity.webViewHandle());
-                assertNotEquals(0, activity.graphicsSurfaceHandle());
-                assertEquals(0, activity.graphicsSurfaceProbe());
                 assertEquals(0, activity.webViewHistoryProbe());
                 assertEquals(0, activity.incomingShareProbe());
                 assertEquals(0, activity.resourceClipboardProbe());
@@ -48,5 +46,56 @@ public final class ConsumerTest {
                 assertEquals(0, activity.incomingViewProbe());
             });
         }
+    }
+
+    @Test
+    public void graphicsSurfacesRenderAndRecoverAcrossLifecycle() {
+        Intent launch = new Intent(
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                .getTargetContext(), MainActivity.class);
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(launch)) {
+            scenario.onActivity(MainActivity::createGraphicsSurfaceProbe);
+            waitForIdle();
+            scenario.onActivity(activity -> {
+                assertNotEquals(0, activity.graphicsSurfaceHandle());
+                assertEquals(0, activity.graphicsSurfaceProbe());
+                assertEquals(0, activity.setGraphicsSurfaceVisible(false));
+            });
+            waitForIdle();
+            scenario.onActivity(activity -> {
+                assertEquals(0, activity.graphicsSurfaceLifecycleProbe(702));
+                assertEquals(0, activity.setGraphicsSurfaceVisible(true));
+            });
+            waitForIdle();
+            scenario.onActivity(activity ->
+                assertEquals(0, activity.graphicsSurfaceLifecycleProbe(700)));
+
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
+            waitForIdle();
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
+            waitForIdle();
+            scenario.onActivity(activity ->
+                assertEquals(0, activity.graphicsSurfaceLifecycleProbe(700)));
+
+            scenario.onActivity(MainActivity::createVulkanSurfaceProbe);
+            waitForIdle();
+            scenario.onActivity(activity -> {
+                assertNotEquals(0, activity.vulkanSurfaceHandle());
+                assertEquals(0, activity.vulkanSurfaceProbe());
+            });
+
+            scenario.recreate();
+            waitForIdle();
+            scenario.onActivity(MainActivity::createGraphicsSurfaceProbe);
+            waitForIdle();
+            scenario.onActivity(activity -> {
+                assertNotEquals(0, activity.graphicsSurfaceHandle());
+                assertEquals(0, activity.graphicsSurfaceProbe());
+            });
+        }
+    }
+
+    private static void waitForIdle() {
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().waitForIdleSync();
     }
 }

@@ -4,7 +4,8 @@ The Android library attaches NativeKit to a caller-owned `ViewGroup`. It does
 not create or own an Activity. `NativeKitHost` forwards lifecycle changes and
 the C `nk_webview_*` API creates child Android WebViews inside that container.
 The portable `nk_surface_*` API creates child `SurfaceView`-backed OpenGL ES
-2.0 or 3.0 surfaces and manages their EGL window lifecycle.
+2.0/3.0 or Vulkan presentation surfaces and manages their native-window
+lifecycle. Surface loss and recreation are reported explicitly.
 
 Build with an Android SDK/NDK installation:
 

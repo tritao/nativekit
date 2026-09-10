@@ -133,6 +133,7 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_GAMEPAD_BUTTON` | mapped joystick | none | `nk_gamepad_button_event` |
 | `NK_EVENT_SURFACE_READY` | graphics surface | none | empty |
 | `NK_EVENT_SURFACE_RESIZE` | graphics surface | none | `nk_surface_resize_event` |
+| `NK_EVENT_SURFACE_LOST` | graphics surface | none | empty |
 
 A close event is a request: the window remains alive until the application calls
 `nk_window_destroy()`.
@@ -247,11 +248,11 @@ caller-owned native surface. Contexts can reuse another surface's GTK context;
 the shared source must outlive its dependents. Procedure lookup resolves both
 core and extension entry points for the current GL implementation.
 
-On Android, `NK_EVENT_SURFACE_READY` is emitted whenever the platform surface
-is created, including after lifecycle-driven surface recreation. The EGL
-context remains owned by the NativeKit surface while its window surface is
-temporarily absent. Rendering calls return `NK_ERROR_INVALID_REQUEST` until a
-new ready event arrives.
+On Android, `NK_EVENT_SURFACE_LOST` is emitted when a platform surface becomes
+unavailable and `NK_EVENT_SURFACE_READY` is emitted when it is created again.
+The EGL context remains owned by the NativeKit surface while its window surface
+is temporarily absent. Rendering calls return `NK_ERROR_INVALID_REQUEST` until
+a new ready event arrives.
 
 ## Vulkan surfaces
 
@@ -262,7 +263,11 @@ the active GTK display extension: `VK_KHR_xlib_surface` or
 `VK_KHR_wayland_surface`.
 
 `nk_vulkan_create_surface()` accepts a `VkInstance` cast to `void *` and returns
-the bits of a `VkSurfaceKHR`. The application owns that surface and must call
+the bits of a `VkSurfaceKHR`. On Android, first create an
+`NK_GRAPHICS_VULKAN` child surface and wait for `NK_EVENT_SURFACE_READY`; pass
+that handle instead of the mobile-host handle. Destroy the `VkSurfaceKHR` after
+`NK_EVENT_SURFACE_LOST` and create a replacement after the next ready event.
+The application owns each Vulkan surface and must call
 `nk_vulkan_destroy_surface()` before destroying its Vulkan instance. Both calls
 accept an optional `VkAllocationCallbacks` pointer and require the relevant
 instance extensions to have been enabled.

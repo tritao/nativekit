@@ -1,9 +1,11 @@
 #include "nativekit.h"
 #include "nativekit_graphics.h"
 #include "nativekit_resource.h"
+#include "nativekit_vulkan.h"
 #include "nativekit_webview.h"
 
 #include <jni.h>
+#include <dlfcn.h>
 
 #include <cstring>
 
@@ -71,10 +73,132 @@ Java_io_nativekit_consumer_MainActivity_nativeGraphicsSurfaceProbe(JNIEnv *, jcl
         return 4;
     if (nk_surface_present(surface) != NK_OK)
         return 5;
-    if (nk_surface_show(surface, 0) != NK_OK || nk_surface_show(surface, 1) != NK_OK ||
-        nk_surface_set_bounds(surface, 12, 12, 80, 60) != NK_OK)
+    if (nk_surface_set_bounds(surface, 12, 12, 80, 60) != NK_OK)
         return 6;
     return 0;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeSetSurfaceVisible(JNIEnv *, jclass,
+                                                                 jlong surface, jboolean visible) {
+    return nk_surface_show(static_cast<nk_handle>(surface), visible ? 1u : 0u);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeSurfaceLifecycleProbe(JNIEnv *, jclass,
+                                                                    jlong surface_value,
+                                                                    jint expected_kind) {
+    const auto surface = static_cast<nk_handle>(surface_value);
+    nk_event event{};
+    event.struct_size = sizeof(event);
+    bool found = false;
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        if (nk_poll_event(&event) != NK_OK)
+            return 1;
+        if (event.kind == NK_EVENT_NONE)
+            break;
+        if (event.source == surface && event.kind == static_cast<nk_event_kind>(expected_kind))
+            found = true;
+        nk_event_release(&event);
+        event.struct_size = sizeof(event);
+    }
+    if (!found)
+        return 2;
+    if (expected_kind == NK_EVENT_SURFACE_LOST)
+        return nk_surface_make_current(surface) == NK_ERROR_INVALID_REQUEST ? 0 : 3;
+    return nk_surface_make_current(surface) == NK_OK && nk_surface_present(surface) == NK_OK ? 0
+                                                                                             : 4;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeCreateVulkanSurfaceProbe(JNIEnv *, jclass,
+                                                                        jlong host) {
+    nk_surface_options options{};
+    options.struct_size = sizeof(options);
+    options.api = NK_GRAPHICS_VULKAN;
+    options.x = 96;
+    options.y = 8;
+    options.width = 64;
+    options.height = 48;
+    nk_handle surface = NK_INVALID_HANDLE;
+    return nk_surface_create(static_cast<nk_handle>(host), &options, &surface) == NK_OK
+               ? static_cast<jlong>(surface)
+               : 0;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeVulkanSurfaceProbe(JNIEnv *, jclass,
+                                                                  jlong surface_value) {
+    if (!nk_vulkan_supported())
+        return 1;
+    const auto surface_handle = static_cast<nk_handle>(surface_value);
+    nk_event event{};
+    event.struct_size = sizeof(event);
+    bool ready = false;
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        if (nk_poll_event(&event) != NK_OK)
+            return 2;
+        if (event.kind == NK_EVENT_NONE)
+            break;
+        if (event.kind == NK_EVENT_SURFACE_READY && event.source == surface_handle)
+            ready = true;
+        nk_event_release(&event);
+        event.struct_size = sizeof(event);
+    }
+    if (!ready)
+        return 2;
+    uint32_t extension_count = 0;
+    if (nk_vulkan_get_required_instance_extensions(surface_handle, nullptr, &extension_count) !=
+            NK_ERROR_BUFFER_TOO_SMALL ||
+        extension_count != 2)
+        return 3;
+    const char *extensions[2]{};
+    if (nk_vulkan_get_required_instance_extensions(surface_handle, extensions,
+                                                    &extension_count) != NK_OK)
+        return 4;
+    struct ApplicationInfo {
+        uint32_t type = 0;
+        const void *next = nullptr;
+        const char *name = "NativeKit probe";
+        uint32_t application_version = 1;
+        const char *engine = "NativeKit";
+        uint32_t engine_version = 1;
+        uint32_t api_version = (1u << 22);
+    } application;
+    struct InstanceCreateInfo {
+        uint32_t type = 1;
+        const void *next = nullptr;
+        uint32_t flags = 0;
+        const ApplicationInfo *application = nullptr;
+        uint32_t layer_count = 0;
+        const char *const *layers = nullptr;
+        uint32_t extension_count = 0;
+        const char *const *extensions = nullptr;
+    } info;
+    info.application = &application;
+    info.extension_count = extension_count;
+    info.extensions = extensions;
+    void *library = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
+    using CreateInstance = int32_t (*)(const InstanceCreateInfo *, const void *, void **);
+    using DestroyInstance = void (*)(void *, const void *);
+    auto create_instance = library ? reinterpret_cast<CreateInstance>(dlsym(library,
+                                                                            "vkCreateInstance"))
+                                   : nullptr;
+    auto destroy_instance = library ? reinterpret_cast<DestroyInstance>(
+                                          dlsym(library, "vkDestroyInstance"))
+                                    : nullptr;
+    void *instance = nullptr;
+    if (!create_instance || !destroy_instance || create_instance(&info, nullptr, &instance) != 0)
+        return 5;
+    nk_vulkan_surface vulkan_surface = NK_INVALID_VULKAN_SURFACE;
+    const auto created =
+        nk_vulkan_create_surface(surface_handle, instance, nullptr, &vulkan_surface);
+    const auto destroyed = created == NK_OK
+                               ? nk_vulkan_destroy_surface(instance, vulkan_surface, nullptr)
+                               : created;
+    destroy_instance(instance, nullptr);
+    dlclose(library);
+    return created != NK_OK ? 6 : destroyed != NK_OK ? 7 : 0;
 }
 
 extern "C" JNIEXPORT jint JNICALL

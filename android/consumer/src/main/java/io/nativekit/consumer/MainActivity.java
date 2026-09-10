@@ -13,6 +13,7 @@ public final class MainActivity extends Activity {
     private NativeKitHost nativeKit;
     private long probe;
     private long surfaceProbe;
+    private long vulkanSurfaceProbe;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -22,7 +23,6 @@ public final class MainActivity extends Activity {
         nativeKit = new NativeKitHost(content);
         nativeKit.dispatchIntent(getIntent());
         probe = nativeProbe(nativeKit.handle());
-        surfaceProbe = nativeCreateSurfaceProbe(nativeKit.handle());
     }
 
     public int apiVersion() { return (int)(probe >>> 32); }
@@ -38,6 +38,26 @@ public final class MainActivity extends Activity {
     public long graphicsSurfaceHandle() { return surfaceProbe; }
 
     public int graphicsSurfaceProbe() { return nativeGraphicsSurfaceProbe(surfaceProbe); }
+
+    public void createGraphicsSurfaceProbe() {
+        surfaceProbe = nativeCreateSurfaceProbe(nativeKit.handle());
+    }
+
+    public int setGraphicsSurfaceVisible(boolean visible) {
+        return nativeSetSurfaceVisible(surfaceProbe, visible);
+    }
+
+    public int graphicsSurfaceLifecycleProbe(int eventKind) {
+        return nativeSurfaceLifecycleProbe(surfaceProbe, eventKind);
+    }
+
+    public void createVulkanSurfaceProbe() {
+        vulkanSurfaceProbe = nativeCreateVulkanSurfaceProbe(nativeKit.handle());
+    }
+
+    public long vulkanSurfaceHandle() { return vulkanSurfaceProbe; }
+
+    public int vulkanSurfaceProbe() { return nativeVulkanSurfaceProbe(vulkanSurfaceProbe); }
 
     public int persistedResourceProbe() { return nativePersistedResourceProbe(); }
 
@@ -79,6 +99,10 @@ public final class MainActivity extends Activity {
     private static native long nativeProbe(long host);
     private static native long nativeCreateSurfaceProbe(long host);
     private static native int nativeGraphicsSurfaceProbe(long surface);
+    private static native int nativeSetSurfaceVisible(long surface, boolean visible);
+    private static native int nativeSurfaceLifecycleProbe(long surface, int eventKind);
+    private static native long nativeCreateVulkanSurfaceProbe(long host);
+    private static native int nativeVulkanSurfaceProbe(long surface);
     private static native int nativeResourceClipboardProbe();
     private static native int nativeResourceStreamProbe();
     private static native int nativeWebViewHistoryProbe(long webView);

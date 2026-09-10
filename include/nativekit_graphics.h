@@ -10,7 +10,8 @@ extern "C" {
 typedef uint32_t nk_graphics_api;
 enum {
     NK_GRAPHICS_OPENGL = 1,
-    NK_GRAPHICS_OPENGL_ES = 2
+    NK_GRAPHICS_OPENGL_ES = 2,
+    NK_GRAPHICS_VULKAN = 3
 };
 
 enum {
@@ -49,8 +50,9 @@ typedef struct nk_surface_resize_event {
 /*
  * Creates a graphics surface inside a NativeKit window or mobile host. Context
  * configuration is fixed at creation. Desktop backends support OpenGL and
- * OpenGL ES; Android supports OpenGL ES. A share_surface must remain alive
- * until every surface sharing it has been destroyed.
+ * OpenGL ES; Android supports OpenGL ES and Vulkan presentation views. A
+ * share_surface must remain alive until every surface sharing it has been
+ * destroyed. Vulkan views do not support GL context flags or sharing.
  */
 NK_API nk_result NK_CALL nk_surface_create(nk_handle window,
                                            const nk_surface_options *options,

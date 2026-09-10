@@ -11,6 +11,7 @@
 #include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/runtime.hpp"
+#include "android/nativekit_android_internal.hpp"
 
 #include <jni.h>
 #include <android/native_window_jni.h>
@@ -65,6 +66,7 @@ struct AndroidSurface final : nk::core::Resource {
     uint32_t context_flags = 0;
     std::shared_ptr<AndroidSurface> shared_surface;
     uint32_t share_dependents = 0;
+    bool destroying = false;
     int32_t width = 0;
     int32_t height = 0;
     int32_t framebuffer_width = 0;
@@ -574,6 +576,7 @@ nk_result destroy_webview(nk_handle handle) {
 }
 
 void release_surface_window(AndroidSurface &resource) {
+    const bool was_ready = resource.window != nullptr;
     if (resource.surface != EGL_NO_SURFACE) {
         if (eglGetCurrentContext() == resource.context)
             eglMakeCurrent(resource.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -586,6 +589,12 @@ void release_surface_window(AndroidSurface &resource) {
     }
     resource.framebuffer_width = 0;
     resource.framebuffer_height = 0;
+    if (was_ready && !resource.destroying) {
+        nk::core::QueuedEvent lost;
+        lost.kind = NK_EVENT_SURFACE_LOST;
+        lost.source = resource.handle;
+        nk::core::push_event(std::move(lost));
+    }
 }
 
 nk_result destroy_surface(nk_handle handle) {
@@ -599,6 +608,7 @@ nk_result destroy_surface(nk_handle handle) {
         nk::core::set_error("graphics surface is still shared by another surface");
         return NK_ERROR_INVALID_REQUEST;
     }
+    resource->destroying = true;
     if (auto *env = environment(); env && resource->view) {
         jvalue arguments[1]{};
         arguments[0].l = resource->view;
@@ -637,6 +647,26 @@ bool abandon_webview(nk_handle handle) {
 namespace nk::backend {
 
 nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled);
+
+nk_result android_vulkan_window(nk_handle handle, ANativeWindow **out_window,
+                                bool require_ready) {
+    if (!out_window) {
+        nk::core::set_error("Android native-window output is required");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    *out_window = nullptr;
+    auto resource = surface(handle);
+    if (!resource || resource->api != NK_GRAPHICS_VULKAN) {
+        nk::core::set_error("handle is not an Android Vulkan surface");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    if (require_ready && !resource->window) {
+        nk::core::set_error("Android Vulkan surface is not ready");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    *out_window = resource->window;
+    return NK_OK;
+}
 
 void pump_events() noexcept {}
 
@@ -828,7 +858,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
            NK_CAP_DRAG_DROP |
            NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
-           NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE;
+           NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE |
+           NK_CAP_VULKAN_SURFACE;
 }
 
 nk_result NK_CALL nk_shell_open_url(const char *url) {
@@ -1605,16 +1636,24 @@ nk_result NK_CALL nk_surface_create(nk_handle parent, const nk_surface_options *
             }
             if (!options || options->struct_size < sizeof(*options) || !out_surface ||
                 options->width <= 0 || options->height <= 0 ||
-                options->api != NK_GRAPHICS_OPENGL_ES) {
-                nk::core::set_error("invalid Android OpenGL ES surface options");
+                (options->api != NK_GRAPHICS_OPENGL_ES &&
+                 options->api != NK_GRAPHICS_VULKAN)) {
+                nk::core::set_error("invalid Android graphics surface options");
                 return NK_ERROR_INVALID_ARGUMENT;
             }
             *out_surface = NK_INVALID_HANDLE;
-            const uint32_t major = options->major_version ? options->major_version : 2;
-            if ((major != 2 && major != 3) || options->minor_version != 0 ||
+            const bool vulkan = options->api == NK_GRAPHICS_VULKAN;
+            const uint32_t major =
+                vulkan ? 0 : (options->major_version ? options->major_version : 2);
+            if ((!vulkan && major != 2 && major != 3) || options->minor_version != 0 ||
                 (options->flags & (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE))) {
-                nk::core::set_error("Android surfaces support OpenGL ES 2.0 or 3.0 contexts");
+                nk::core::set_error("unsupported Android graphics surface configuration");
                 return NK_ERROR_UNSUPPORTED;
+            }
+            if (vulkan && (options->major_version || options->share_surface ||
+                           (options->flags & (NK_SURFACE_DEPTH | NK_SURFACE_STENCIL)))) {
+                nk::core::set_error("Vulkan surfaces do not accept GL context options");
+                return NK_ERROR_INVALID_ARGUMENT;
             }
             auto shared = options->share_surface ? surface(options->share_surface) : nullptr;
             if (options->share_surface && !shared) {
@@ -1626,7 +1665,7 @@ nk_result NK_CALL nk_surface_create(nk_handle parent, const nk_surface_options *
                 nk::core::set_error("shared surfaces must use identical context options");
                 return NK_ERROR_INVALID_ARGUMENT;
             }
-            if (egl_display == EGL_NO_DISPLAY) {
+            if (!vulkan && egl_display == EGL_NO_DISPLAY) {
                 egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
                 if (egl_display == EGL_NO_DISPLAY || !eglInitialize(egl_display, nullptr, nullptr)) {
                     egl_display = EGL_NO_DISPLAY;
@@ -1634,36 +1673,50 @@ nk_result NK_CALL nk_surface_create(nk_handle parent, const nk_surface_options *
                     return NK_ERROR_UNSUPPORTED;
                 }
             }
-            EGLint attributes[] = {
-                EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-                EGL_RENDERABLE_TYPE, major == 3 ? 0x0040 : EGL_OPENGL_ES2_BIT,
-                EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8,
-                EGL_ALPHA_SIZE, (options->flags & NK_SURFACE_ALPHA) ? 8 : 0,
-                EGL_DEPTH_SIZE, (options->flags & NK_SURFACE_DEPTH) ? 16 : 0,
-                EGL_STENCIL_SIZE, (options->flags & NK_SURFACE_STENCIL) ? 8 : 0,
-                EGL_NONE};
             EGLConfig config = nullptr;
-            EGLint config_count = 0;
-            if (!eglChooseConfig(egl_display, attributes, &config, 1, &config_count) ||
-                config_count == 0) {
-                nk::core::set_error("Android EGL configuration is unavailable");
-                return NK_ERROR_UNSUPPORTED;
-            }
-            EGLint context_attributes[] = {EGL_CONTEXT_CLIENT_VERSION,
-                                           static_cast<EGLint>(major), EGL_NONE};
-            eglBindAPI(EGL_OPENGL_ES_API);
-            EGLContext context = eglCreateContext(
-                egl_display, config, shared ? shared->context : EGL_NO_CONTEXT,
-                context_attributes);
-            if (context == EGL_NO_CONTEXT) {
-                nk::core::set_error("Android OpenGL ES context creation failed");
-                return NK_ERROR_UNSUPPORTED;
+            EGLContext context = EGL_NO_CONTEXT;
+            if (!vulkan) {
+                EGLint attributes[] = {
+                    EGL_SURFACE_TYPE,
+                    EGL_WINDOW_BIT,
+                    EGL_RENDERABLE_TYPE,
+                    major == 3 ? 0x0040 : EGL_OPENGL_ES2_BIT,
+                    EGL_RED_SIZE,
+                    8,
+                    EGL_GREEN_SIZE,
+                    8,
+                    EGL_BLUE_SIZE,
+                    8,
+                    EGL_ALPHA_SIZE,
+                    (options->flags & NK_SURFACE_ALPHA) ? 8 : 0,
+                    EGL_DEPTH_SIZE,
+                    (options->flags & NK_SURFACE_DEPTH) ? 16 : 0,
+                    EGL_STENCIL_SIZE,
+                    (options->flags & NK_SURFACE_STENCIL) ? 8 : 0,
+                    EGL_NONE};
+                EGLint config_count = 0;
+                if (!eglChooseConfig(egl_display, attributes, &config, 1, &config_count) ||
+                    config_count == 0) {
+                    nk::core::set_error("Android EGL configuration is unavailable");
+                    return NK_ERROR_UNSUPPORTED;
+                }
+                EGLint context_attributes[] = {EGL_CONTEXT_CLIENT_VERSION,
+                                               static_cast<EGLint>(major), EGL_NONE};
+                eglBindAPI(EGL_OPENGL_ES_API);
+                context = eglCreateContext(egl_display, config,
+                                           shared ? shared->context : EGL_NO_CONTEXT,
+                                           context_attributes);
+                if (context == EGL_NO_CONTEXT) {
+                    nk::core::set_error("Android OpenGL ES context creation failed");
+                    return NK_ERROR_UNSUPPORTED;
+                }
             }
             auto resource = std::make_shared<AndroidSurface>();
             resource->host = parent;
             resource->display = egl_display;
             resource->config = config;
             resource->context = context;
+            resource->api = options->api;
             resource->major_version = major;
             resource->minor_version = options->minor_version;
             resource->context_flags = options->flags &
@@ -1673,7 +1726,8 @@ nk_result NK_CALL nk_surface_create(nk_handle parent, const nk_surface_options *
             const auto handle =
                 nk::core::handles().insert(nk::core::ResourceType::surface, resource);
             if (!handle) {
-                eglDestroyContext(egl_display, context);
+                if (context != EGL_NO_CONTEXT)
+                    eglDestroyContext(egl_display, context);
                 return NK_ERROR_OUT_OF_MEMORY;
             }
             resource->handle = handle;
@@ -1762,6 +1816,10 @@ nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
     auto resource = surface(handle);
     if (!resource)
         return NK_ERROR_INVALID_HANDLE;
+    if (resource->api != NK_GRAPHICS_OPENGL_ES) {
+        nk::core::set_error("operation requires an Android OpenGL ES surface");
+        return NK_ERROR_UNSUPPORTED;
+    }
     if (resource->surface == EGL_NO_SURFACE) {
         nk::core::set_error("Android graphics surface is not ready");
         return NK_ERROR_INVALID_REQUEST;
@@ -1794,7 +1852,7 @@ nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out
         return NK_ERROR_INVALID_HANDLE;
     if (!out_width || !out_height)
         return NK_ERROR_INVALID_ARGUMENT;
-    if (resource->surface == EGL_NO_SURFACE)
+    if (!resource->window)
         return NK_ERROR_INVALID_REQUEST;
     *out_width = resource->framebuffer_width;
     *out_height = resource->framebuffer_height;
@@ -2089,15 +2147,17 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceCreated(
     resource->window = ANativeWindow_fromSurface(env, java_surface);
     if (!resource->window)
         return;
-    EGLint visual_id = 0;
-    eglGetConfigAttrib(resource->display, resource->config, EGL_NATIVE_VISUAL_ID, &visual_id);
-    ANativeWindow_setBuffersGeometry(resource->window, 0, 0, visual_id);
-    resource->surface =
-        eglCreateWindowSurface(resource->display, resource->config, resource->window, nullptr);
-    if (resource->surface == EGL_NO_SURFACE) {
-        ANativeWindow_release(resource->window);
-        resource->window = nullptr;
-        return;
+    if (resource->api == NK_GRAPHICS_OPENGL_ES) {
+        EGLint visual_id = 0;
+        eglGetConfigAttrib(resource->display, resource->config, EGL_NATIVE_VISUAL_ID, &visual_id);
+        ANativeWindow_setBuffersGeometry(resource->window, 0, 0, visual_id);
+        resource->surface =
+            eglCreateWindowSurface(resource->display, resource->config, resource->window, nullptr);
+        if (resource->surface == EGL_NO_SURFACE) {
+            ANativeWindow_release(resource->window);
+            resource->window = nullptr;
+            return;
+        }
     }
     nk::core::QueuedEvent ready;
     ready.kind = NK_EVENT_SURFACE_READY;

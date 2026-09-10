@@ -70,7 +70,9 @@ final class NativeKitBridge {
         view.setBackgroundColor(Color.TRANSPARENT);
         view.getSettings().setJavaScriptEnabled(true);
         view.setVisibility((flags & 2) != 0 ? View.GONE : View.VISIBLE);
+        parent.addView(view);
         setBounds(view, x, y, width, height);
+        parent.removeView(view);
 
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             throw new UnsupportedOperationException(
@@ -154,7 +156,9 @@ final class NativeKitBridge {
             view.getHolder().setFormat(PixelFormat.TRANSLUCENT);
         }
         view.setVisibility((flags & 1) != 0 ? View.GONE : View.VISIBLE);
+        parent.addView(view);
         setBounds(view, x, y, width, height);
+        parent.removeView(view);
         view.getHolder().addCallback(new SurfaceHolder.Callback() {
             @Override
             public void surfaceCreated(SurfaceHolder holder) {
@@ -210,8 +214,12 @@ final class NativeKitBridge {
         float density = view.getResources().getDisplayMetrics().density;
         view.setX(Math.round(x * density));
         view.setY(Math.round(y * density));
-        view.setLayoutParams(
-            new ViewGroup.LayoutParams(Math.round(width * density), Math.round(height * density)));
+        ViewGroup.LayoutParams layout = view.getLayoutParams();
+        if (layout == null)
+            layout = new ViewGroup.LayoutParams(0, 0);
+        layout.width = Math.round(width * density);
+        layout.height = Math.round(height * density);
+        view.setLayoutParams(layout);
     }
 
     static void navigate(WebView view, String url, boolean bypassPolicy) { view.loadUrl(url); }
