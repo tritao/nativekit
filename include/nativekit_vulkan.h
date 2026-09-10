@@ -19,7 +19,9 @@ extern "C" {
 /* Vulkan types                                                              */
 /* ------------------------------------------------------------------------- */
 
+/** Application-owned VkSurfaceKHR bits returned by NativeKit. */
 typedef uint64_t nk_vulkan_surface;
+/** Sentinel used when no Vulkan surface has been created. */
 #define NK_INVALID_VULKAN_SURFACE ((nk_vulkan_surface)0)
 
 /* ------------------------------------------------------------------------- */
@@ -49,6 +51,7 @@ NK_API nk_result NK_CALL nk_vulkan_get_required_instance_extensions(
 NK_API nk_result NK_CALL nk_vulkan_create_surface(nk_handle window, void *instance,
                                                   const void *allocator,
                                                   nk_vulkan_surface *out_surface);
+/** Destroys an application-owned Vulkan surface before its VkInstance. */
 NK_API nk_result NK_CALL nk_vulkan_destroy_surface(void *instance, nk_vulkan_surface surface,
                                                    const void *allocator);
 
