@@ -60,6 +60,7 @@ struct SokolBackend::State {
     sg_shader solid_shader{};
     sg_pipeline solid_pipeline{};
     sg_pipeline fill_stencil_pipeline{};
+    sg_pipeline fill_stencil_even_odd_pipeline{};
     sg_pipeline fill_cover_pipeline{};
     sg_shader paint_shader{};
     sg_pipeline paint_pipeline{};
@@ -322,7 +323,7 @@ sg_pipeline make_solid_pipeline(sg_shader shader) {
     return sg_make_pipeline(&desc);
 }
 
-sg_pipeline make_fill_stencil_pipeline(sg_shader shader) {
+sg_pipeline make_fill_stencil_pipeline(sg_shader shader, bool even_odd = false) {
     sg_pipeline_desc desc{};
     desc.shader = shader;
     desc.layout.buffers[0].stride = sizeof(SolidVertex);
@@ -332,9 +333,9 @@ sg_pipeline make_fill_stencil_pipeline(sg_shader shader) {
     desc.cull_mode = SG_CULLMODE_NONE;
     desc.stencil.enabled = true;
     desc.stencil.front.compare = SG_COMPAREFUNC_ALWAYS;
-    desc.stencil.front.pass_op = SG_STENCILOP_INCR_WRAP;
+    desc.stencil.front.pass_op = even_odd ? SG_STENCILOP_INVERT : SG_STENCILOP_INCR_WRAP;
     desc.stencil.back.compare = SG_COMPAREFUNC_ALWAYS;
-    desc.stencil.back.pass_op = SG_STENCILOP_DECR_WRAP;
+    desc.stencil.back.pass_op = even_odd ? SG_STENCILOP_INVERT : SG_STENCILOP_DECR_WRAP;
     desc.stencil.read_mask = 0xFF;
     desc.stencil.write_mask = 0xFF;
     return sg_make_pipeline(&desc);
@@ -770,6 +771,7 @@ SokolBackend::~SokolBackend() {
         sg_destroy_pipeline(state_->solid_pipeline);
         sg_destroy_pipeline(state_->fill_cover_pipeline);
         sg_destroy_pipeline(state_->fill_stencil_pipeline);
+        sg_destroy_pipeline(state_->fill_stencil_even_odd_pipeline);
         sg_destroy_pipeline(state_->paint_cover_pipeline);
         sg_destroy_pipeline(state_->paint_fringe_pipeline);
         sg_destroy_pipeline(state_->paint_pipeline);
@@ -796,6 +798,7 @@ bool SokolBackend::initialize() {
     state_->composite_shader = make_composite_shader();
     state_->solid_pipeline = make_solid_pipeline(state_->solid_shader);
     state_->fill_stencil_pipeline = make_fill_stencil_pipeline(state_->solid_shader);
+    state_->fill_stencil_even_odd_pipeline = make_fill_stencil_pipeline(state_->solid_shader, true);
     state_->fill_cover_pipeline = make_fill_cover_pipeline(state_->solid_shader);
     state_->paint_pipeline = make_paint_pipeline(state_->paint_shader, false);
     state_->paint_cover_pipeline = make_paint_pipeline(state_->paint_shader, true);
@@ -836,6 +839,7 @@ bool SokolBackend::initialize() {
     state_->initialized =
         sg_query_pipeline_state(state_->solid_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->fill_stencil_pipeline) == SG_RESOURCESTATE_VALID &&
+        sg_query_pipeline_state(state_->fill_stencil_even_odd_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->fill_cover_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->paint_pipeline) == SG_RESOURCESTATE_VALID &&
         sg_query_pipeline_state(state_->paint_cover_pipeline) == SG_RESOURCESTATE_VALID &&
@@ -854,7 +858,7 @@ bool SokolBackend::initialize() {
         sg_query_buffer_state(state_->composite_vertices) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->indices) == SG_RESOURCESTATE_VALID;
     if (state_->initialized)
-        state_->stats.gpu_resources = 27;
+        state_->stats.gpu_resources = 28;
     return state_->initialized || fail(*state_, "Sokol UI resource creation failed");
 }
 
@@ -1013,7 +1017,11 @@ bool SokolBackend::draw_path_transformed(const PreparedPathData &path, uint32_t 
             }
             for (uint32_t vertex = 1; vertex + 1 < range.fill_count; ++vertex)
                 fan.indices.insert(fan.indices.end(), {base, base + vertex, base + vertex + 1});
-            if (!draw_mesh(*state_, state_->fill_stencil_pipeline, fan.vertices, fan.indices,
+            const sg_pipeline stencil_pipeline =
+                operation.fill_rule == PathFillRule::EvenOdd
+                    ? state_->fill_stencil_even_odd_pipeline
+                    : state_->fill_stencil_pipeline;
+            if (!draw_mesh(*state_, stencil_pipeline, fan.vertices, fan.indices,
                            stencil_color.data(), sizeof(stencil_color), {}, {},
                            state_->solid_vertices))
                 return false;
