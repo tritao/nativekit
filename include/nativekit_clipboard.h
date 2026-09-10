@@ -32,8 +32,8 @@ NK_API nk_result NK_CALL nk_clipboard_set_files(const char *const *paths, uint32
  * corresponding NK_EVENT_CLIPBOARD_* event with the returned request ID.
  * Missing clipboard content completes successfully with empty event data.
  */
-NK_API nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request);
-NK_API nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request);
+NK_API nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request NK_OUT);
+NK_API nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request NK_OUT);
 
 /* Enables or disables the text and/or local-file drop formats supported by the backend. */
 NK_API nk_result NK_CALL nk_window_set_drop_enabled(nk_handle window, uint32_t enabled);

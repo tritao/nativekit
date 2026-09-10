@@ -24,11 +24,14 @@
 #define NK_INOUT __attribute__((annotate("hxi:inout")))
 #define NK_OUT_BUFFER(size_parameter) __attribute__((annotate("hxi:out_buffer")))
 #define NK_RETURNS_BORROWED_UTF8 __attribute__((annotate("hxi:returns_borrowed_utf8")))
+#define NK_BORROWED_BUFFER(length_field)                                                          \
+    __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
 #else
 #define NK_OUT
 #define NK_INOUT
 #define NK_OUT_BUFFER(size_parameter)
 #define NK_RETURNS_BORROWED_UTF8
+#define NK_BORROWED_BUFFER(length_field)
 #endif
 
 #ifdef __cplusplus
@@ -129,7 +132,7 @@ typedef struct nk_event {
     nk_request_id request_id;
     nk_result result;
     uint32_t data_count;
-    const void *data;
+    const void *data NK_BORROWED_BUFFER(data_size);
     uint64_t data_size;
     uint64_t reserved[2];
 } nk_event;

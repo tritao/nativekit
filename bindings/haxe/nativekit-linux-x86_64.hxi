@@ -100,6 +100,8 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_WINDOW_STATE_VISIBLE = 1;
 	const NK_WINDOW_UTILITY = 1;
 	extern fn nk_api_version() -> u32;
+	extern fn nk_clipboard_read_text(out_request: ptr<nk_request_id> @out) -> nk_result;
+	extern fn nk_clipboard_set_text(text: utf8) -> nk_result;
 	extern fn nk_event_release(event: ptr<nk_event>) -> void;
 	extern fn nk_get_capabilities() -> nk_capabilities;
 	extern fn nk_init(options: ptr<const<nk_init_options>>) -> nk_result;
@@ -151,7 +153,7 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		request_id: nk_request_id @offset(16);
 		result: nk_result @offset(24);
 		data_count: u32 @offset(28);
-		data: ptr<const<void>> @offset(32);
+		data: ptr<const<void>> @offset(32) @borrowed @length_field("data_size");
 		data_size: u64 @offset(40);
 		reserved: array<u64, 2> @offset(48);
 	}
@@ -252,6 +254,7 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		flags: u32 @offset(4);
 		reserved: array<u64, 2> @offset(8);
 	}
+	type hxi_utf8 = ptr<const<c_char>>;
 	type nk_capabilities = u64;
 	type nk_event_kind = u32;
 	type nk_handle = u32;

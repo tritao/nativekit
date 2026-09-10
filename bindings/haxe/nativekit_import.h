@@ -5,4 +5,9 @@
 #include "nativekit_monitor.h"
 #include "nativekit_window.h"
 
+/* Binding-only semantic spelling for UTF-8 input; ABI-identical to const char *. */
+typedef const char *hxi_utf8;
+NK_API nk_result NK_CALL nk_clipboard_set_text(hxi_utf8 text);
+NK_API nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request NK_OUT);
+
 #endif
