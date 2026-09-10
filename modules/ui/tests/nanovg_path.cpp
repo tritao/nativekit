@@ -74,10 +74,20 @@ int main() {
     native_params.edgeAntiAlias = 1;
     native_params.fillRule = NVG_FILL_NON_ZERO;
     native_params.allocator = &allocator;
-    NVGprepareOutput query{};
-    if (nvgPrepareFill(path.builder(), &native_params, &query) != NVG_PREPARE_OUTPUT_TOO_SMALL ||
-        query.pathCount <= 0 || query.vertexCount <= 0)
+    NVGpathBuilder *native_path = nvgCreatePathBuilder();
+    if (native_path == nullptr)
         return 5;
+    nvgPathMoveTo(native_path, 10.0f, 10.0f);
+    nvgPathLineTo(native_path, 90.0f, 10.0f);
+    nvgPathLineTo(native_path, 90.0f, 90.0f);
+    nvgPathLineTo(native_path, 10.0f, 90.0f);
+    nvgPathClose(native_path);
+    NVGprepareOutput query{};
+    if (nvgPrepareFill(native_path, &native_params, &query) != NVG_PREPARE_OUTPUT_TOO_SMALL ||
+        query.pathCount <= 0 || query.vertexCount <= 0) {
+        nvgDeletePathBuilder(native_path);
+        return 6;
+    }
     std::vector<NVGpreparedPath> native_paths(static_cast<size_t>(query.pathCount));
     std::vector<NVGvertex> native_vertices(static_cast<size_t>(query.vertexCount));
     NVGprepareOutput prepared{};
@@ -85,15 +95,18 @@ int main() {
     prepared.pathCapacity = static_cast<int>(native_paths.size());
     prepared.vertices = native_vertices.data();
     prepared.vertexCapacity = static_cast<int>(native_vertices.size());
-    if (nvgPrepareFill(path.builder(), &native_params, &prepared) != NVG_PREPARE_OK ||
-        allocation_stats.allocations == 0 || allocation_stats.frees == 0)
-        return 6;
+    if (nvgPrepareFill(native_path, &native_params, &prepared) != NVG_PREPARE_OK ||
+        allocation_stats.allocations == 0 || allocation_stats.frees == 0) {
+        nvgDeletePathBuilder(native_path);
+        return 7;
+    }
+    nvgDeletePathBuilder(native_path);
 
     NanoVGPath copy(path);
     NanoVGPath appended;
     if (!copy.valid() || copy.empty() || !appended.append_transformed(copy, {1, 0, 0, 1, 3, 4}) ||
         appended.empty())
-        return 7;
+        return 8;
     appended.reset();
-    return appended.empty() ? 0 : 8;
+    return appended.empty() ? 0 : 9;
 }

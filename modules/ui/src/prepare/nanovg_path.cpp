@@ -26,15 +26,15 @@ NVGprepareParams native_params(const PathPreparationParams &params) {
     return native;
 }
 
-bool prepare(const NanoVGPath &path, const PathPreparationParams &params, bool stroke,
+bool prepare(NVGpathBuilder *builder, const PathPreparationParams &params, bool stroke,
              PreparedGeometry &output) {
     output = {};
-    if (!path.valid() || path.empty())
+    if (builder == nullptr || nvgPathBuilderIsEmpty(builder) != 0)
         return false;
     const NVGprepareParams native = native_params(params);
     NVGprepareOutput query{};
-    const int query_result = stroke ? nvgPrepareStroke(path.builder(), &native, &query)
-                                    : nvgPrepareFill(path.builder(), &native, &query);
+    const int query_result = stroke ? nvgPrepareStroke(builder, &native, &query)
+                                    : nvgPrepareFill(builder, &native, &query);
     if (query_result == NVG_PREPARE_INVALID || query.pathCount <= 0 || query.vertexCount <= 0)
         return false;
     output.paths.resize(static_cast<size_t>(query.pathCount));
@@ -44,8 +44,8 @@ bool prepare(const NanoVGPath &path, const PathPreparationParams &params, bool s
     native_output.pathCapacity = query.pathCount;
     native_output.vertices = new NVGvertex[static_cast<size_t>(query.vertexCount)];
     native_output.vertexCapacity = query.vertexCount;
-    const int result = stroke ? nvgPrepareStroke(path.builder(), &native, &native_output)
-                              : nvgPrepareFill(path.builder(), &native, &native_output);
+    const int result = stroke ? nvgPrepareStroke(builder, &native, &native_output)
+                              : nvgPrepareFill(builder, &native, &native_output);
     if (result != NVG_PREPARE_OK) {
         delete[] native_output.paths;
         delete[] native_output.vertices;
@@ -207,18 +207,14 @@ bool NanoVGPath::bounds(std::array<float, 4> &out) const {
     return valid() && nvgPathBuilderBounds(builder_, out.data()) != 0;
 }
 
-NVGpathBuilder *NanoVGPath::builder() const {
-    return builder_;
-}
-
 bool prepare_fill(const NanoVGPath &path, const PathPreparationParams &params,
                   PreparedGeometry &output) {
-    return prepare(path, params, false, output);
+    return prepare(path.builder_, params, false, output);
 }
 
 bool prepare_stroke(const NanoVGPath &path, const PathPreparationParams &params,
                     PreparedGeometry &output) {
-    return prepare(path, params, true, output);
+    return prepare(path.builder_, params, true, output);
 }
 
 } // namespace nkui

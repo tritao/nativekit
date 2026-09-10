@@ -93,9 +93,12 @@ class NanoVGPath {
     bool append(const NanoVGPath &other);
     bool append_transformed(const NanoVGPath &other, const std::array<float, 6> &transform);
     bool bounds(std::array<float, 4> &out) const;
-    NVGpathBuilder *builder() const;
 
   private:
+    friend bool prepare_fill(const NanoVGPath &path, const PathPreparationParams &params,
+                             PreparedGeometry &output);
+    friend bool prepare_stroke(const NanoVGPath &path, const PathPreparationParams &params,
+                               PreparedGeometry &output);
     NVGpathBuilder *builder_ = nullptr;
 };
 
