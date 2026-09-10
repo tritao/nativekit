@@ -1,5 +1,6 @@
 import NativeKit;
 import NativeKitEvent;
+import NativeKitRequests;
 import NativeKit.NativeKitConstants;
 
 class Smoke {
@@ -31,21 +32,23 @@ class Smoke {
 		if (NativeKit.nk_clipboard_set_text("nativekit ffi") == 0) {
 			var request = NativeKit.nk_clipboard_read_text();
 			payloadOk = request.status == 0;
-			var completed = false;
+			var completed = false, requests = new NativeKitRequests();
+			requests.track(request.out_request, function(value) {
+				payloadOk = switch value {
+					case ClipboardText(completedRequest, completedResult, text): completedResult == 0 && text == "nativekit ffi";
+					case _: false;
+				};
+				completed = true;
+			});
+			var duplicateRejected = false;
+			try requests.track(request.out_request, function(_) {}) catch (_:Dynamic) duplicateRejected = true;
+			payloadOk = payloadOk && duplicateRejected && requests.pending() == 1;
 			for (_ in 0...1000) {
-				var next = NativeKitEvent.poll();
-				if (next.kind == NativeKitConstants.NK_EVENT_CLIPBOARD_TEXT_COMPLETE) {
-					payloadOk = switch next.take() {
-						case ClipboardText(completedRequest, completedResult, text):
-							completedResult == 0 && text == "nativekit ffi";
-						case _: false;
-					};
-					completed = true;
+				requests.poll();
+				if (completed)
 					break;
-				}
-				next.release();
 			}
-			payloadOk = payloadOk && completed;
+			payloadOk = payloadOk && completed && requests.pending() == 0 && !requests.cancel(request.out_request);
 		}
 
 		var windowOptions = new nk_window_options();

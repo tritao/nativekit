@@ -1,10 +1,22 @@
 import NativeKitEvent;
+import NativeKit;
 
 /** Maps asynchronous NativeKit request IDs to one-shot typed completions. */
 class NativeKitRequests {
 	final handlers:Map<String, NativeKitEventValue->Void> = [];
 
 	public function new() {}
+
+	/** Starts a clipboard-text read and tracks its typed completion. */
+	public function readClipboardText(handler:String->Void):haxe.Int64 {
+		var started = NativeKit.nk_clipboard_read_text();
+		if (started.status != 0) throw 'NativeKit clipboard read failed: ${started.status}';
+		track(started.out_request, function(value) switch value {
+			case ClipboardText(_, result, text): if (result == 0) handler(text); else throw 'NativeKit clipboard completion failed: $result';
+			case _: throw "NativeKit clipboard request completed with the wrong event";
+		});
+		return started.out_request;
+	}
 
 	public function track(request:haxe.Int64, handler:NativeKitEventValue->Void):Void {
 		var key = Std.string(request);
