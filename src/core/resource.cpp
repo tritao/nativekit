@@ -32,7 +32,8 @@ extern "C" nk_result NK_CALL nk_resource_event_item(const nk_event *event, uint3
     if (!event || (event->kind != NK_EVENT_DIALOG_COMPLETE &&
                    event->kind != NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE &&
                    event->kind != NK_EVENT_RESOURCE_OPENED &&
-                   event->kind != NK_EVENT_SHARE_RECEIVED) ||
+                   event->kind != NK_EVENT_SHARE_RECEIVED &&
+                   event->kind != NK_EVENT_RESOURCE_DROP) ||
         !out_resource || out_resource->struct_size < sizeof(nk_resource_view) ||
         !event->data || event->data_size < sizeof(nk_resource_list) ||
         event->data_size > std::numeric_limits<std::size_t>::max()) {
@@ -41,14 +42,17 @@ extern "C" nk_result NK_CALL nk_resource_event_item(const nk_event *event, uint3
     }
     const auto size = static_cast<std::size_t>(event->data_size);
     std::size_t list_offset = 0;
-    if (event->kind == NK_EVENT_SHARE_RECEIVED) {
-        if (size < sizeof(nk_received_share)) {
-            nk::core::set_error("malformed received-share payload");
+    if (event->kind == NK_EVENT_SHARE_RECEIVED || event->kind == NK_EVENT_RESOURCE_DROP) {
+        const auto header_size = event->kind == NK_EVENT_SHARE_RECEIVED
+                                     ? sizeof(nk_received_share)
+                                     : sizeof(nk_resource_drop);
+        if (size < header_size) {
+            nk::core::set_error("malformed resource-bearing payload");
             return NK_ERROR_INVALID_ARGUMENT;
         }
-        nk_received_share share{};
-        std::memcpy(&share, event->data, sizeof(share));
-        list_offset = share.resources_offset;
+        uint32_t encoded_offset = 0;
+        std::memcpy(&encoded_offset, event->data, sizeof(encoded_offset));
+        list_offset = encoded_offset;
     }
     if (list_offset > size || sizeof(nk_resource_list) > size - list_offset) {
         nk::core::set_error("malformed resource-list offset");
@@ -116,4 +120,25 @@ extern "C" nk_result NK_CALL nk_share_event_subject(const nk_event *event,
                                                      const char **out_subject,
                                                      uint32_t *out_length) {
     return share_string(event, true, out_subject, out_length);
+}
+
+extern "C" nk_result NK_CALL nk_resource_drop_event_text(const nk_event *event,
+                                                          const char **out_text,
+                                                          uint32_t *out_length) {
+    nk::core::clear_error();
+    if (!event || event->kind != NK_EVENT_RESOURCE_DROP || !event->data || !out_text ||
+        !out_length || event->data_size < sizeof(nk_resource_drop) ||
+        event->data_size > std::numeric_limits<std::size_t>::max()) {
+        nk::core::set_error("invalid resource-drop event arguments");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    nk_resource_drop drop{};
+    std::memcpy(&drop, event->data, sizeof(drop));
+    if (!string_view(static_cast<const unsigned char *>(event->data),
+                     static_cast<std::size_t>(event->data_size), drop.text_offset,
+                     sizeof(nk_resource_drop), out_text, out_length)) {
+        nk::core::set_error("malformed resource-drop text");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    return NK_OK;
 }

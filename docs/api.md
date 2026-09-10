@@ -53,6 +53,11 @@ Container size, display scale, system-bar safe insets, and software-keyboard
 inset changes produce `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED`. Geometry and
 WebView bounds use logical pixels on mobile just as they do on desktop.
 
+`nk_mobile_host_set_drop_enabled()` opts the caller-owned container into mobile
+URI and text drops. Android retains any temporary drag permission until the host
+is destroyed, allowing the queued resource event to be processed after the
+platform callback has returned.
+
 ## Window ownership
 
 NativeKit supports multiple independent top-level windows. A new window may
@@ -107,6 +112,7 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE` | none | clipboard read ID | `nk_resource_list` |
 | `NK_EVENT_RESOURCE_OPENED` | mobile host | none | `nk_resource_list` |
 | `NK_EVENT_SHARE_RECEIVED` | mobile host | none | `nk_received_share` followed by its resource list and strings |
+| `NK_EVENT_RESOURCE_DROP` | mobile host | none | `nk_resource_drop` followed by its resource list and optional text |
 | `NK_EVENT_KEY` | window | none | `nk_key_event` |
 | `NK_EVENT_TEXT_INPUT` | window | none | `nk_text_input_event` |
 | `NK_EVENT_POINTER_MOVE` | window | none | `nk_pointer_move_event` |
@@ -379,6 +385,12 @@ access. Its output is the actual mask and includes `NK_RESOURCE_PERSISTED` when
 any access remains. Acquiring access succeeds only while Android has supplied a
 persistable transient grant, such as a Storage Access Framework result. Other
 platforms report this operation as unsupported.
+
+Android host drops use the same resource-list decoder as dialogs, clipboard,
+and incoming intents. `nk_resource_drop` supplies logical host coordinates;
+`nk_resource_drop_event_text()` returns optional UTF-8 text, and
+`nk_resource_event_item()` decodes each dropped URI. Mixed text/resource drops
+are represented by one event.
 
 URI contents are accessed through opaque resource-stream handles.
 `nk_resource_open()` runs on the UI thread and accepts explicit read, write,

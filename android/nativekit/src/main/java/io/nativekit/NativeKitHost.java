@@ -44,6 +44,13 @@ public final class NativeKitHost implements AutoCloseable {
         return nativeDispatchIntent(handle, intent);
     }
 
+    /** Enables or disables URI/text drops onto the host container. */
+    public int setDropEnabled(boolean enabled) {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeSetDropEnabled(handle, enabled);
+    }
+
     /** Returns the next queued event, or {@code null} when the queue is empty. */
     public NativeKitEvent pollEvent() {
         if (handle == 0) {
@@ -142,6 +149,7 @@ public final class NativeKitHost implements AutoCloseable {
                                                    String initialUrl);
     private static native void nativeSetLifecycle(long handle, int state);
     private static native int nativeDispatchIntent(long handle, Intent intent);
+    private static native int nativeSetDropEnabled(long handle, boolean enabled);
     private static native NativeKitEvent nativePollEvent();
     private static native int nativeOpenUrl(String url);
     private static native int nativeSetClipboardText(String text);

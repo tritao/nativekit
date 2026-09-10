@@ -111,6 +111,8 @@ int main(void) {
     assert(mobile_result == NK_ERROR_INVALID_ARGUMENT || mobile_result == NK_ERROR_UNSUPPORTED);
     assert(nk_mobile_host_dispatch_event(NK_INVALID_HANDLE, NULL) ==
            NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_mobile_host_set_drop_enabled(NK_INVALID_HANDLE, 2) ==
+           NK_ERROR_INVALID_ARGUMENT);
     nk_result notification_result = nk_notification_show(NULL, NULL);
     assert(notification_result == NK_ERROR_INVALID_ARGUMENT ||
            notification_result == NK_ERROR_UNSUPPORTED);
@@ -188,6 +190,31 @@ int main(void) {
     assert(nk_share_event_subject(&share_event, &share_string, &share_string_length) == NK_OK);
     assert(share_string_length == 7);
     assert(memcmp(share_string, "Subject", 7) == 0);
+    typedef struct drop_test_payload {
+        nk_resource_drop drop;
+        nk_resource_list resources;
+        nk_resource_item item;
+        char uri[21];
+        char text[13];
+    } drop_test_payload;
+    drop_test_payload drop_data = {
+        {offsetof(drop_test_payload, resources), offsetof(drop_test_payload, text), 12.0f, 24.0f,
+         {0, 0}},
+        {0, 1, offsetof(drop_test_payload, item), offsetof(drop_test_payload, uri)},
+        {NK_RESOURCE_READABLE, offsetof(drop_test_payload, uri), 0, 0},
+        "content://provider/z",
+        "dropped text"};
+    nk_event drop_event = {0};
+    drop_event.struct_size = sizeof(drop_event);
+    drop_event.kind = NK_EVENT_RESOURCE_DROP;
+    drop_event.data = &drop_data;
+    drop_event.data_size = sizeof(drop_data);
+    resource_view.struct_size = sizeof(resource_view);
+    assert(nk_resource_event_item(&drop_event, 0, &resource_view) == NK_OK);
+    assert(resource_view.uri_length == 20);
+    assert(nk_resource_drop_event_text(&drop_event, &share_string, &share_string_length) == NK_OK);
+    assert(share_string_length == 12);
+    assert(memcmp(share_string, "dropped text", 12) == 0);
     nk_resource_stream_info stream_info = {0};
     stream_info.struct_size = sizeof(stream_info);
     assert(nk_resource_stream_info_get(NK_INVALID_HANDLE, &stream_info) ==

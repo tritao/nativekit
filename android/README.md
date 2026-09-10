@@ -42,6 +42,9 @@ path segment.
 Persistable Storage Access Framework grants can be inspected with
 `nk_resource_get_persisted_access()` and updated or released with
 `nk_resource_set_persisted_access()`.
+`nk_mobile_host_set_drop_enabled()` accepts text and `content://` drag data on
+the attached container. Drops preserve logical coordinates and URI metadata;
+temporary drag permissions remain valid until the host is destroyed.
 Android currently implements URL opening and text clipboard operations; file
 clipboard operations remain unsupported. Open, save, and directory dialogs use
 the Storage Access Framework and return `content://` URIs.

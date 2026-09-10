@@ -1,11 +1,13 @@
 package io.nativekit;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.UriPermission;
+import android.content.ContextWrapper;
 import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -17,6 +19,8 @@ import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.DragAndDropPermissions;
+import android.view.DragEvent;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -48,6 +52,8 @@ final class NativeKitBridge {
     private static final int NK_NAVIGATION_ERROR_CONNECTION = 5;
 
     private static final Map<Long, ViewGroup> observedHosts = new HashMap<>();
+    private static final Map<Long, ArrayList<DragAndDropPermissions>> dropPermissions =
+        new HashMap<>();
     private static final Set<Long> cancelledDialogs = new HashSet<>();
 
     private NativeKitBridge() {}
@@ -227,6 +233,82 @@ final class NativeKitBridge {
                                subject == null ? null : subject.toString(), values, mimeTypes,
                                displayNames, resourceFlags);
         return true;
+    }
+
+    static void setDropEnabled(ViewGroup parent, long host, boolean enabled) {
+        if (!enabled) {
+            parent.setOnDragListener(null);
+            releaseDropPermissions(host);
+            return;
+        }
+        parent.setOnDragListener((view, event) -> {
+            if (event.getAction() == DragEvent.ACTION_DRAG_STARTED)
+                return event.getClipDescription() != null;
+            if (event.getAction() != DragEvent.ACTION_DROP)
+                return true;
+            ClipData clips = event.getClipData();
+            if (clips == null)
+                return false;
+            Activity activity = activity(parent.getContext());
+            if (activity != null && Build.VERSION.SDK_INT >= 24) {
+                DragAndDropPermissions permissions = activity.requestDragAndDropPermissions(event);
+                if (permissions != null)
+                    dropPermissions.computeIfAbsent(host, ignored -> new ArrayList<>())
+                        .add(permissions);
+            }
+            ArrayList<Uri> uris = new ArrayList<>();
+            StringBuilder text = new StringBuilder();
+            for (int index = 0; index < clips.getItemCount(); ++index) {
+                ClipData.Item item = clips.getItemAt(index);
+                addUniqueUri(uris, item.getUri());
+                if (item.getText() != null) {
+                    if (text.length() != 0)
+                        text.append('\n');
+                    text.append(item.getText());
+                }
+            }
+            if (uris.isEmpty() && text.length() == 0)
+                return false;
+            String[] values = new String[uris.size()];
+            String[] mimeTypes = new String[uris.size()];
+            String[] displayNames = new String[uris.size()];
+            int[] flags = new int[uris.size()];
+            String fallbackMime = clips.getDescription().getMimeTypeCount() == 1
+                ? clips.getDescription().getMimeType(0)
+                : null;
+            for (int index = 0; index < uris.size(); ++index) {
+                Uri uri = uris.get(index);
+                values[index] = uri.toString();
+                mimeTypes[index] = resourceMimeType(parent.getContext(), uri, fallbackMime);
+                displayNames[index] = resourceDisplayName(parent.getContext(), uri);
+                flags[index] = 1;
+            }
+            float density = parent.getResources().getDisplayMetrics().density;
+            nativeOnResourceDrop(host, event.getX() / density, event.getY() / density,
+                                 text.length() == 0 ? null : text.toString(), values, mimeTypes,
+                                 displayNames, flags);
+            return true;
+        });
+    }
+
+    private static void releaseDropPermissions(long host) {
+        ArrayList<DragAndDropPermissions> permissions = dropPermissions.remove(host);
+        if (permissions != null && Build.VERSION.SDK_INT >= 24)
+            for (DragAndDropPermissions permission : permissions)
+                permission.release();
+    }
+
+    @Nullable
+    private static Activity activity(Context context) {
+        while (context instanceof ContextWrapper) {
+            if (context instanceof Activity)
+                return (Activity)context;
+            Context next = ((ContextWrapper)context).getBaseContext();
+            if (next == context)
+                break;
+            context = next;
+        }
+        return context instanceof Activity ? (Activity)context : null;
     }
 
     private static void addUniqueUri(ArrayList<Uri> uris, @Nullable Uri uri) {
@@ -611,6 +693,7 @@ final class NativeKitBridge {
         if (value instanceof View.OnLayoutChangeListener)
             parent.removeOnLayoutChangeListener((View.OnLayoutChangeListener)value);
         ViewCompat.setOnApplyWindowInsetsListener(parent, null);
+        setDropEnabled(parent, handle, false);
     }
 
     private static void emitGeometry(ViewGroup parent, long handle) {
@@ -685,6 +768,10 @@ final class NativeKitBridge {
                                               @Nullable String subject, String[] uris,
                                               String[] mimeTypes, String[] displayNames,
                                               int[] resourceFlags);
+    private static native void nativeOnResourceDrop(long host, float x, float y,
+                                                    @Nullable String text, String[] uris,
+                                                    String[] mimeTypes, String[] displayNames,
+                                                    int[] resourceFlags);
     static native void nativeOnNotificationDelivered(long request);
     static native void nativeOnNotificationFailed(long request, String message);
     static native void nativeOnNotificationActivated(long request);

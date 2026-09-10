@@ -390,6 +390,41 @@ std::vector<std::byte> received_share_payload(const std::string &text,
     return result;
 }
 
+std::vector<std::byte> resource_drop_payload(float x, float y, const std::string &text,
+                                             const std::vector<ResourceValue> &resources) {
+    auto packed_resources = resource_payload(false, resources);
+    const auto prefix = sizeof(nk_resource_drop);
+    nk_resource_list list{};
+    std::memcpy(&list, packed_resources.data(), sizeof(list));
+    list.items_offset += prefix;
+    list.strings_offset += prefix;
+    std::memcpy(packed_resources.data(), &list, sizeof(list));
+    for (uint32_t index = 0; index < list.item_count; ++index) {
+        nk_resource_item item{};
+        const auto offset = sizeof(nk_resource_list) + index * sizeof(item);
+        std::memcpy(&item, packed_resources.data() + offset, sizeof(item));
+        item.uri_offset += prefix;
+        if (item.mime_type_offset)
+            item.mime_type_offset += prefix;
+        if (item.display_name_offset)
+            item.display_name_offset += prefix;
+        std::memcpy(packed_resources.data() + offset, &item, sizeof(item));
+    }
+    std::vector<std::byte> result(prefix + packed_resources.size() +
+                                  (text.empty() ? 0 : text.size() + 1));
+    nk_resource_drop drop{};
+    drop.resources_offset = prefix;
+    drop.x = x;
+    drop.y = y;
+    std::memcpy(result.data() + prefix, packed_resources.data(), packed_resources.size());
+    if (!text.empty()) {
+        drop.text_offset = static_cast<uint32_t>(prefix + packed_resources.size());
+        std::memcpy(result.data() + drop.text_offset, text.c_str(), text.size() + 1);
+    }
+    std::memcpy(result.data(), &drop, sizeof(drop));
+    return result;
+}
+
 nk_result start_file_dialog(uint32_t kind, bool resources, nk_handle parent,
                             const nk_file_dialog_options *options, nk_request_id *out_request) {
     if (const auto thread = require_thread(); thread != NK_OK)
@@ -502,6 +537,8 @@ bool abandon_webview(nk_handle handle) {
 
 namespace nk::backend {
 
+nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled);
+
 void pump_events() noexcept {}
 
 void shutdown() noexcept {
@@ -510,7 +547,7 @@ void shutdown() noexcept {
     auto *env = environment();
     if (env) {
         for (auto &[handle, resource] : hosts) {
-            (void)handle;
+            mobile_host_set_drop_enabled(handle, false);
             if (resource->view_group)
                 env->DeleteGlobalRef(resource->view_group);
         }
@@ -576,6 +613,7 @@ nk_result mobile_host_destroy(nk_handle handle) {
             children.push_back(child);
     for (const auto child : children)
         destroy_webview(child);
+    mobile_host_set_drop_enabled(handle, false);
     if (auto *env = environment(); env && found->second->view_group)
         env->DeleteGlobalRef(found->second->view_group);
     found->second->view_group = nullptr;
@@ -639,12 +677,34 @@ nk_result mobile_host_dispatch_event(nk_handle handle, const nk_mobile_host_even
     return handled ? NK_OK : NK_ERROR_UNSUPPORTED;
 }
 
+nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled) {
+    auto resource = host(handle);
+    if (!resource) {
+        nk::core::set_error("invalid Android mobile host handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!env || !bridge)
+        return NK_ERROR_UNKNOWN;
+    auto method = env->GetStaticMethodID(bridge, "setDropEnabled",
+                                         "(Landroid/view/ViewGroup;JZ)V");
+    if (method)
+        env->CallStaticVoidMethod(bridge, method, resource->view_group,
+                                  static_cast<jlong>(handle), enabled ? JNI_TRUE : JNI_FALSE);
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android drop configuration failed"))
+        return NK_ERROR_UNKNOWN;
+    return NK_OK;
+}
+
 } // namespace nk::backend
 
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
+           NK_CAP_DRAG_DROP |
            NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
            NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO;
 }
@@ -1672,6 +1732,13 @@ JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeDispatchIntent(JNIE
     return nk_mobile_host_dispatch_event(static_cast<nk_handle>(handle), &event);
 }
 
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeSetDropEnabled(JNIEnv *, jclass,
+                                                                            jlong handle,
+                                                                            jboolean enabled) {
+    return nk_mobile_host_set_drop_enabled(static_cast<nk_handle>(handle),
+                                           enabled == JNI_TRUE ? 1u : 0u);
+}
+
 JNIEXPORT jobject JNICALL Java_io_nativekit_NativeKitHost_nativePollEvent(JNIEnv *env, jclass) {
     jobject result = nullptr;
     nk::core::callback_boundary([&] {
@@ -2005,6 +2072,56 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnIncomingIntent(
             const auto subject_value = to_utf8(env, subject);
             event.data = received_share_payload(text_value, subject_value, resources);
         }
+        nk::core::push_event(std::move(event));
+    });
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnResourceDrop(
+    JNIEnv *env, jclass, jlong host_handle, jfloat x, jfloat y, jstring text, jobjectArray uris,
+    jobjectArray mime_types, jobjectArray display_names, jintArray resource_flags) {
+    nk::core::callback_boundary([&] {
+        const auto source = static_cast<nk_handle>(host_handle);
+        if (!host(source))
+            return;
+        const auto count = uris ? env->GetArrayLength(uris) : 0;
+        const auto mime_count = mime_types ? env->GetArrayLength(mime_types) : 0;
+        const auto name_count = display_names ? env->GetArrayLength(display_names) : 0;
+        const auto flag_count = resource_flags ? env->GetArrayLength(resource_flags) : 0;
+        jint *flags = resource_flags ? env->GetIntArrayElements(resource_flags, nullptr) : nullptr;
+        std::vector<ResourceValue> resources;
+        resources.reserve(static_cast<std::size_t>(count));
+        for (jsize index = 0; index < count; ++index) {
+            auto uri = static_cast<jstring>(env->GetObjectArrayElement(uris, index));
+            auto mime = index < mime_count
+                            ? static_cast<jstring>(env->GetObjectArrayElement(mime_types, index))
+                            : nullptr;
+            auto name = index < name_count
+                            ? static_cast<jstring>(env->GetObjectArrayElement(display_names, index))
+                            : nullptr;
+            ResourceValue resource;
+            resource.uri = to_utf8(env, uri);
+            resource.mime_type = to_utf8(env, mime);
+            resource.display_name = to_utf8(env, name);
+            if (flags && index < flag_count)
+                resource.flags = static_cast<uint32_t>(flags[index]);
+            if (!resource.uri.empty())
+                resources.push_back(std::move(resource));
+            if (name)
+                env->DeleteLocalRef(name);
+            if (mime)
+                env->DeleteLocalRef(mime);
+            if (uri)
+                env->DeleteLocalRef(uri);
+        }
+        if (flags)
+            env->ReleaseIntArrayElements(resource_flags, flags, JNI_ABORT);
+        const auto text_value = to_utf8(env, text);
+        if (resources.empty() && text_value.empty())
+            return;
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_RESOURCE_DROP;
+        event.source = source;
+        event.data = resource_drop_payload(x, y, text_value, resources);
         nk::core::push_event(std::move(event));
     });
 }
