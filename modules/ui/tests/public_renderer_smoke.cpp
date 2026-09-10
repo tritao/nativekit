@@ -120,7 +120,10 @@ int main() {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             continue;
         }
-        const nkui_result render_result = nkui_renderer_render(renderer, list, surface);
+        const nkui_frame_info frame_info{sizeof(frame_info), static_cast<float>(width),
+                                         static_cast<float>(height), width, height, 1.0f};
+        const nkui_result render_result =
+            nkui_renderer_render_frame(renderer, list, surface, &frame_info);
         if (render_result != NKUI_OK) {
             std::fprintf(stderr, "public render result %d\n", render_result);
             result = 7;

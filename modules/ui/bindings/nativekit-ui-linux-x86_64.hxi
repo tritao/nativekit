@@ -128,6 +128,7 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") {
 	extern fn nkui_renderer_create(out_renderer: ptr<nkui_renderer> @out) -> nkui_result;
 	extern fn nkui_renderer_destroy(renderer: nkui_renderer) -> nkui_result;
 	extern fn nkui_renderer_render(renderer: nkui_renderer, list: nkui_display_list, surface: nk_handle) -> nkui_result;
+	extern fn nkui_renderer_render_frame(renderer: nkui_renderer, list: nkui_display_list, surface: nk_handle, frame_info: ptr<const<nkui_frame_info>>) -> nkui_result;
 	extern fn nkui_resource_destroy(resource: nkui_resource) -> nkui_result;
 	extern fn nkui_text_layout_caret(layout: nkui_resource, position: nkui_text_position, out_caret: ptr<nkui_text_caret> @out) -> nkui_result;
 	extern fn nkui_text_layout_create(fonts: nkui_resource, text: utf8, width: f32, font_size: f32, out_layout: ptr<nkui_resource> @out) -> nkui_result;
@@ -176,6 +177,14 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") {
 		y: f32 @offset(16);
 		width: f32 @offset(20);
 		height: f32 @offset(24);
+	}
+	struct nkui_frame_info @layout(24, 4) {
+		struct_size: u32 @offset(0);
+		logical_width: f32 @offset(4);
+		logical_height: f32 @offset(8);
+		framebuffer_width: i32 @offset(12);
+		framebuffer_height: i32 @offset(16);
+		pixel_scale: f32 @offset(20);
 	}
 	struct nkui_layer_command @layout(16, 4) {
 		header: nkui_command_header @offset(0);

@@ -540,13 +540,18 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_list list,
-                                            nk_handle surface) {
-    int32_t width = 0;
-    int32_t height = 0;
-    if (!surface || nk_surface_make_current(surface) != NK_OK ||
-        nk_surface_get_framebuffer_size(surface, &width, &height) != NK_OK || width <= 0 ||
-        height <= 0)
+extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_display_list list,
+                                                   nk_handle surface,
+                                                   const nkui_frame_info *frame_info) {
+    if (!frame_info || frame_info->struct_size < sizeof(*frame_info) ||
+        !std::isfinite(frame_info->logical_width) || !std::isfinite(frame_info->logical_height) ||
+        !std::isfinite(frame_info->pixel_scale) || frame_info->logical_width <= 0.0f ||
+        frame_info->logical_height <= 0.0f || frame_info->framebuffer_width <= 0 ||
+        frame_info->framebuffer_height <= 0 || frame_info->pixel_scale <= 0.0f)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    const int32_t width = frame_info->framebuffer_width;
+    const int32_t height = frame_info->framebuffer_height;
+    if (!surface || nk_surface_make_current(surface) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
     GLint framebuffer = 0;
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
@@ -564,7 +569,8 @@ extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display
     auto &recorder = *renderer_slot->recorder;
     recorder.reset();
     NVGcontext *vg = recorder.context();
-    nvgBeginFrame(vg, static_cast<float>(width), static_cast<float>(height), 1.0f);
+    nvgBeginFrame(vg, static_cast<float>(width), static_cast<float>(height),
+                  frame_info->pixel_scale);
     nkui::FrameResources frame_resources;
     std::vector<nkui::SkribidiAdapter *> text_adapters;
     uint16_t prepared_slot = 1;
@@ -703,4 +709,16 @@ extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display
         nkui::execute_render_plan(*renderer_slot->backend, plan, frame_resources,
                                   {main_target, width, height, static_cast<uint32_t>(framebuffer)});
     return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
+}
+
+extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_list list,
+                                             nk_handle surface) {
+    int32_t width = 0;
+    int32_t height = 0;
+    if (!surface || nk_surface_make_current(surface) != NK_OK ||
+        nk_surface_get_framebuffer_size(surface, &width, &height) != NK_OK)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    const nkui_frame_info frame_info{sizeof(nkui_frame_info), static_cast<float>(width),
+                                     static_cast<float>(height), width, height, 1.0f};
+    return nkui_renderer_render_frame(renderer, list, surface, &frame_info);
 }

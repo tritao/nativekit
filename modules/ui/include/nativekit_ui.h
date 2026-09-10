@@ -50,6 +50,16 @@ typedef struct nkui_renderer {
     uint32_t id;
 } nkui_renderer;
 
+/* Describes both the logical layout space and the physical framebuffer target. */
+typedef struct nkui_frame_info {
+    uint32_t struct_size;
+    float logical_width;
+    float logical_height;
+    int32_t framebuffer_width;
+    int32_t framebuffer_height;
+    float pixel_scale;
+} nkui_frame_info;
+
 typedef uint16_t nkui_command_opcode;
 enum {
     NKUI_COMMAND_SET_TRANSFORM = 1,
@@ -215,6 +225,10 @@ NKUI_API nkui_result nkui_renderer_destroy(nkui_renderer renderer);
 /* Makes the NativeKit surface current and renders one frame. Presentation remains explicit. */
 NKUI_API nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_list list,
                                           nk_handle surface);
+/* Renders with explicit logical and framebuffer dimensions. Presentation remains explicit. */
+NKUI_API nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_display_list list,
+                                                nk_handle surface,
+                                                const nkui_frame_info *frame_info);
 NKUI_API nkui_result nkui_resource_destroy(nkui_resource resource);
 
 #ifdef __cplusplus
