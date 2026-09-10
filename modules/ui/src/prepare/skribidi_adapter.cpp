@@ -173,10 +173,6 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size
         state_->cached_font_size == font_size &&
         state_->cached_font_generation == skb_font_collection_get_generation(state_->fonts))
         return true;
-    if (state_->layout) {
-        skb_layout_destroy(state_->layout);
-        state_->layout = nullptr;
-    }
     const skb_attribute_t attributes[] = {
         skb_attribute_make_font_size(font_size),
         skb_attribute_make_text_wrap(SKB_WRAP_WORD_CHAR),
@@ -184,8 +180,11 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size
                                        skb_rgba(255, 255, 255, 255)),
     };
     const skb_layout_params_t params = {.font_collection = state_->fonts, .layout_width = width};
-    state_->layout = skb_layout_create_utf8(state_->temporary, &params, text, -1,
-                                            SKB_ATTRIBUTE_SET_FROM_STATIC_ARRAY(attributes));
+    if (!state_->layout)
+        state_->layout = skb_layout_create(&params);
+    if (state_->layout)
+        skb_layout_set_utf8(state_->layout, state_->temporary, &params, text, -1,
+                            SKB_ATTRIBUTE_SET_FROM_STATIC_ARRAY(attributes));
     if (state_->layout) {
         state_->cached_text = text;
         state_->cached_width = width;
