@@ -13,10 +13,10 @@ class Triangle {
 
 	static function createVertexBuffer(renderer:nks_renderer):nks_buffer {
 		var values = [
-			0.0 - 0.65, 0.65, 1.0, 0.30, 0.35, 0.0, 0.0,
-			0.65, 0.65, 0.25, 0.85, 0.55, 4.0, 0.0,
-			0.65, 0.0 - 0.65, 0.30, 0.55, 1.0, 4.0, 4.0,
-			0.0 - 0.65, 0.0 - 0.65, 1.0, 0.85, 0.25, 0.0, 4.0
+			0.0 - 0.04, 0.04, 1.0, 0.30, 0.35, 0.0, 0.0,
+			0.04, 0.04, 0.25, 0.85, 0.55, 2.0, 0.0,
+			0.04, 0.0 - 0.04, 0.30, 0.55, 1.0, 2.0, 2.0,
+			0.0 - 0.04, 0.0 - 0.04, 1.0, 0.85, 0.25, 0.0, 2.0
 		];
 		var madeBuilder = NativeKitSokol.nks_buffer_begin(renderer, values.length * 4);
 		checked(madeBuilder.status);
@@ -28,6 +28,46 @@ class Triangle {
 		if (NativeKitSokol.nks_buffer_write_f32(builder, 0, 0.0) != 0 - 3)
 			throw "completed buffer builder was not invalidated";
 		return madeBuffer.out_buffer;
+	}
+
+	static function applyFrameBindings(renderer:nks_renderer, pipeline:nks_pipeline,
+		buffer:nks_buffer, indexBuffer:nks_buffer, image:nks_image, sampler:nks_sampler):Void {
+		checked(NativeKitSokol.nks_apply_pipeline(renderer, pipeline));
+		checked(NativeKitSokol.nks_apply_vertex_buffer(renderer, 0, buffer, 0));
+		checked(NativeKitSokol.nks_apply_index_buffer(renderer, indexBuffer, 0));
+		checked(NativeKitSokol.nks_apply_image(renderer, 0, image));
+		checked(NativeKitSokol.nks_apply_sampler(renderer, 0, sampler));
+	}
+
+	static function drawImmediate(renderer:nks_renderer):Void {
+		for (y in 0...20) {
+			for (x in 0...20) {
+				var uniforms = NativeKitSokol.nks_uniforms_begin(renderer, 8);
+				checked(uniforms.status);
+				checked(NativeKitSokol.nks_uniforms_write_f32(uniforms.out_builder, 0,
+					-0.90 + x * 0.095));
+				checked(NativeKitSokol.nks_uniforms_write_f32(uniforms.out_builder, 4,
+					-0.90 + y * 0.095));
+				checked(NativeKitSokol.nks_apply_uniforms(renderer, 0, uniforms.out_builder));
+				checked(NativeKitSokol.nks_draw(renderer, 0, 6, 1));
+			}
+		}
+	}
+
+	static function encodeBatched(commandBuffer:SokolCommandBuffer, pipeline:nks_pipeline,
+		buffer:nks_buffer, indexBuffer:nks_buffer, image:nks_image, sampler:nks_sampler):Void {
+		commandBuffer.reset();
+		commandBuffer.applyPipeline(pipeline);
+		commandBuffer.applyVertexBuffer(0, buffer, 0);
+		commandBuffer.applyIndexBuffer(indexBuffer, 0);
+		commandBuffer.applyImage(0, image);
+		commandBuffer.applySampler(0, sampler);
+		for (y in 0...20) {
+			for (x in 0...20) {
+				commandBuffer.applyUniform2f(0, -0.90 + x * 0.095, -0.90 + y * 0.095);
+				commandBuffer.draw(0, 6, 1);
+			}
+		}
 	}
 
 	static function createCheckerboard(renderer:nks_renderer):nks_image {
@@ -86,6 +126,9 @@ class Triangle {
 		var running = true;
 		var ready = false;
 		var frames = 0;
+		var immediateMs = 0.0;
+		var batchedMs = 0.0;
+		var commandBuffer = new SokolCommandBuffer(64);
 		while (running) {
 			var event = NativeKitEvent.poll();
 			var eventKind = event.kind;
@@ -136,22 +179,20 @@ class Triangle {
 				if (frames == 0 && NativeKitSokol.nks_submit_commands(renderer,
 					haxe.io.Bytes.alloc(4), 4) != 0 - 2)
 					throw "truncated command stream was accepted";
-				var uniforms = haxe.io.Bytes.alloc(8);
-				uniforms.setFloat(0, 0.0);
-				uniforms.setFloat(4, 0.0);
-				var commandBuffer = new SokolCommandBuffer(124);
-				commandBuffer.applyPipeline(pipeline);
-				commandBuffer.applyVertexBuffer(0, buffer, 0);
-				commandBuffer.applyIndexBuffer(indexBuffer, 0);
-				commandBuffer.applyImage(0, image);
-				commandBuffer.applySampler(0, sampler);
-				commandBuffer.applyUniforms(0, uniforms);
-				commandBuffer.draw(0, 6, 1);
-				var commands = commandBuffer.finish();
-				checked(NativeKitSokol.nks_submit_commands(renderer, commands, commands.length));
+				var started = Date.now().getTime();
+				if (frames < 12) {
+					applyFrameBindings(renderer, pipeline, buffer, indexBuffer, image, sampler);
+					drawImmediate(renderer);
+					immediateMs += Date.now().getTime() - started;
+				} else {
+					encodeBatched(commandBuffer, pipeline, buffer, indexBuffer, image, sampler);
+					checked(NativeKitSokol.nks_submit_commands(renderer, commandBuffer.data(),
+						commandBuffer.size()));
+					batchedMs += Date.now().getTime() - started;
+				}
 				checked(NativeKitSokol.nks_end_frame(renderer));
 				frames += 1;
-				if (frames >= 30) running = false;
+				if (frames >= 24) running = false;
 			}
 		}
 
@@ -169,6 +210,9 @@ class Triangle {
 		checked(NativeKitSokol.nks_surface_destroy(surface));
 		NativeKit.nk_window_destroy(window);
 		NativeKit.nk_shutdown();
-		return frames == 30 ? 42 : 4;
+		Sys.println("draws_per_frame=400");
+		Sys.println("immediate_cpu_ms_per_frame=" + immediateMs / 12.0);
+		Sys.println("batched_encode_and_submit_ms_per_frame=" + batchedMs / 12.0);
+		return frames == 24 && immediateMs > batchedMs ? 42 : 4;
 	}
 }

@@ -1,7 +1,7 @@
 import haxe.io.Bytes;
 
 class SokolCommandBuffer {
-	final bytes:Bytes;
+	var bytes:Bytes;
 	var length:Int;
 
 	public function new(capacity:Int) {
@@ -10,6 +10,15 @@ class SokolCommandBuffer {
 		bytes = Bytes.alloc(capacity);
 		length = 0;
 	}
+
+	public function reset():Void
+		length = 0;
+
+	public function data():Bytes
+		return bytes;
+
+	public function size():Int
+		return length;
 
 	public function applyPipeline(pipeline:nks_pipeline):Void {
 		header(1, 12);
@@ -51,6 +60,15 @@ class SokolCommandBuffer {
 		length += data.length;
 	}
 
+	public function applyUniform2f(slot:Int, x:Float, y:Float):Void {
+		header(6, 24);
+		word(slot);
+		word(8);
+		bytes.setFloat(length, x);
+		bytes.setFloat(length + 4, y);
+		length += 8;
+	}
+
 	public function draw(baseElement:Int, elementCount:Int, instanceCount:Int):Void {
 		header(7, 20);
 		word(baseElement);
@@ -73,7 +91,16 @@ class SokolCommandBuffer {
 	}
 
 	function require(count:Int):Void {
-		if (count < 0 || length > bytes.length - count)
-			throw "command buffer capacity exceeded";
+		if (count < 0)
+			throw "negative command size";
+		if (length <= bytes.length - count)
+			return;
+		var capacity = bytes.length;
+		while (capacity < length + count)
+			capacity *= 2;
+		var grown = Bytes.alloc(capacity);
+		for (index in 0...length)
+			grown.set(index, bytes.get(index));
+		bytes = grown;
 	}
 }

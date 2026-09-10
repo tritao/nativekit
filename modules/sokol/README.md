@@ -34,13 +34,14 @@ modules/sokol/tools/test-haxeon.sh
 ```
 
 The scene is assembled in Haxe from generic buffers, shaders, pipeline
-attributes, bindings, and a draw call. There is no triangle-specific operation
-in the native adapter. The current test renders an indexed quad, uploads a
-vertex-stage uniform block each frame, constructs an RGBA8 checkerboard in Haxe,
-and binds its image and sampler independently. Frame state, inline uniform data,
+attributes, bindings, and draw calls. There is no triangle-specific operation
+in the native adapter. The stress test constructs an RGBA8 checkerboard in Haxe
+and renders 400 independently positioned textured quads per frame. State,
+inline uniform data,
 and draws are encoded with the generic `SokolCommandBuffer` Haxe helper and sent
-through `nks_submit_commands` in one HXI call. The immediate calls remain
-available for simple rendering and debugging.
+through `nks_submit_commands` in one HXI call. Its storage grows automatically
+and can be reset and reused without reallocating each frame. The immediate calls
+remain available for simple rendering and debugging.
 
 Renderer, resource, and builder handles are distinct one-word value types in
 the public C ABI. Their IDs encode a resource kind, generation, and pool slot;
@@ -59,7 +60,9 @@ which performed the same million operations in native code took about 0.8 ms.
 In the first packed-command benchmark, 10,000 simulated draw records took about
 3.33 ms as individual HXI calls and 0.030 ms as one packed submission, including
 native command parsing. This measures CPU submission overhead rather than GPU
-rendering, but confirms that batching is valuable for draw-heavy scenes.
+rendering. In the initial rendered stress run, 400 quads averaged about 2.57 ms
+of immediate CPU submission time per frame versus 0.57 ms for command encoding
+and batched submission. Both measurements exclude presentation and GPU time.
 
 The GTK backend renders through a `GtkGLArea`. Its framebuffer is not assumed to
 be zero: the prototype queries the current draw framebuffer after NativeKit

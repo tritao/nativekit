@@ -39,7 +39,7 @@ set +e
 status=$?
 set -e
 if [[ $status -ne 42 ]]; then
-    echo "test-haxeon: triangle returned $status, expected 42" >&2
-    exit 1
+	echo "test-haxeon: stress scene returned $status, expected 42" >&2
+	exit 1
 fi
-echo "PASS: Haxeon assembled and rendered a textured quad through NativeKit-Sokol"
+echo "PASS: Haxeon rendered 400 textured quads through immediate and batched paths"
