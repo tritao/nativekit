@@ -4,6 +4,15 @@ import NativeKit;
 import NativeKitEventValue.NativeKitResource;
 import NativeKitOptions.NativeKitFileDialogOptions;
 
+/** Stable typed result of a completed NativeKit message dialog. */
+enum abstract NativeKitMessageResult(Int) from Int to Int {
+	var None = 0;
+	var Ok = 1;
+	var Cancel = 2;
+	var Yes = 3;
+	var No = 4;
+}
+
 /** Maps asynchronous NativeKit request IDs to one-shot typed completions. */
 class NativeKitRequests {
 	final handlers:Map<String, NativeKitEventValue->Void> = [];
@@ -43,46 +52,41 @@ class NativeKitRequests {
 		return started.out_request;
 	}
 
-	public function openFile(parent:Int, options:nk_file_dialog_options, handler:Bool->Array<String>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_open_file(parent, options);
+	public function openFile(parent:Int, configured:NativeKitFileDialogOptions, handler:Bool->Array<String>->Void):haxe.Int64 {
+		var started = NativeKit.nk_dialog_open_file(parent, configured.options);
 		return trackDialog("open-file dialog", started.status, started.out_request, handler);
 	}
 
-	/** Starts an open-file dialog while retaining its managed filter array through the native call. */
-	public function openFilteredFile(parent:Int, configured:NativeKitFileDialogOptions,
-			handler:Bool->Array<String>->Void):haxe.Int64
-		return openFile(parent, configured.options, handler);
-
-	public function saveFile(parent:Int, options:nk_file_dialog_options, handler:Bool->Array<String>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_save_file(parent, options);
+	public function saveFile(parent:Int, configured:NativeKitFileDialogOptions, handler:Bool->Array<String>->Void):haxe.Int64 {
+		var started = NativeKit.nk_dialog_save_file(parent, configured.options);
 		return trackDialog("save-file dialog", started.status, started.out_request, handler);
 	}
 
-	public function selectDirectory(parent:Int, options:nk_file_dialog_options, handler:Bool->Array<String>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_select_directory(parent, options);
+	public function selectDirectory(parent:Int, configured:NativeKitFileDialogOptions, handler:Bool->Array<String>->Void):haxe.Int64 {
+		var started = NativeKit.nk_dialog_select_directory(parent, configured.options);
 		return trackDialog("directory dialog", started.status, started.out_request, handler);
 	}
 
-	public function openResource(parent:Int, options:nk_file_dialog_options, handler:Bool->Array<NativeKitResource>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_open_resource(parent, options);
+	public function openResource(parent:Int, configured:NativeKitFileDialogOptions, handler:Bool->Array<NativeKitResource>->Void):haxe.Int64 {
+		var started = NativeKit.nk_dialog_open_resource(parent, configured.options);
 		return trackResourceDialog("open-resource dialog", started.status, started.out_request, handler);
 	}
 
-	public function saveResource(parent:Int, options:nk_file_dialog_options, handler:Bool->Array<NativeKitResource>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_save_resource(parent, options);
+	public function saveResource(parent:Int, configured:NativeKitFileDialogOptions, handler:Bool->Array<NativeKitResource>->Void):haxe.Int64 {
+		var started = NativeKit.nk_dialog_save_resource(parent, configured.options);
 		return trackResourceDialog("save-resource dialog", started.status, started.out_request, handler);
 	}
 
-	public function selectResourceDirectory(parent:Int, options:nk_file_dialog_options, handler:Bool->Array<NativeKitResource>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_select_resource_directory(parent, options);
+	public function selectResourceDirectory(parent:Int, configured:NativeKitFileDialogOptions, handler:Bool->Array<NativeKitResource>->Void):haxe.Int64 {
+		var started = NativeKit.nk_dialog_select_resource_directory(parent, configured.options);
 		return trackResourceDialog("resource-directory dialog", started.status, started.out_request, handler);
 	}
 
-	public function messageDialog(parent:Int, options:nk_message_dialog_options, handler:Int->Void):haxe.Int64 {
+	public function messageDialog(parent:Int, options:nk_message_dialog_options, handler:NativeKitMessageResult->Void):haxe.Int64 {
 		var started = NativeKit.nk_dialog_message(parent, options);
 		checkStarted("message dialog", started.status);
 		track(started.out_request, function(value) switch value {
-			case DialogMessage(_, result, button): checkCompleted("message dialog", result); handler(button);
+			case DialogMessage(_, result, button): checkCompleted("message dialog", result); handler(cast button);
 			case _: wrongEvent("message dialog");
 		});
 		return started.out_request;

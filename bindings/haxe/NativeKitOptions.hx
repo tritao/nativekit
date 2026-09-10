@@ -6,7 +6,7 @@ class NativeKitOptions {
 	/** Attaches a managed contiguous filter array and keeps it alive with the options. */
 	public static function filteredFileDialog(filters:Array<nk_dialog_filter>, ?title:String,
 			?initialPath:String, ?suggestedName:String, ?flags:Int):NativeKitFileDialogOptions {
-		var options = fileDialog(title, initialPath, suggestedName, flags);
+		var options = rawFileDialog(title, initialPath, suggestedName, flags);
 		var storage = nk_dialog_filter.array(filters);
 		if (filters.length > 0) options.set_filters(storage);
 		options.set_filter_count(filters.length);
@@ -48,6 +48,10 @@ class NativeKitOptions {
 	}
 
 	public static function fileDialog(?title:String, ?initialPath:String,
+			?suggestedName:String, ?flags:Int):NativeKitFileDialogOptions
+		return filteredFileDialog([], title, initialPath, suggestedName, flags);
+
+	static function rawFileDialog(?title:String, ?initialPath:String,
 			?suggestedName:String, ?flags:Int):nk_file_dialog_options {
 		var value = new nk_file_dialog_options();
 		value.set_struct_size(nk_file_dialog_options.size());
