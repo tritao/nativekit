@@ -1,13 +1,16 @@
 include(cmake/SkribidiSubmodules.cmake)
 include(cmake/NanoVGSubmodules.cmake)
 
-add_library(nativekit_ui SHARED src/api.cpp)
+add_library(nativekit_ui SHARED
+    src/api.cpp
+    src/display_list/display_list.cpp)
 add_library(NativeKit::ui ALIAS nativekit_ui)
 target_compile_features(nativekit_ui PRIVATE cxx_std_17)
 target_include_directories(nativekit_ui
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE src)
 target_link_libraries(nativekit_ui PRIVATE NativeKit::nativekit nkui_skribidi)
 target_compile_definitions(nativekit_ui PRIVATE NKUI_BUILDING_LIBRARY)
 set_target_properties(nativekit_ui PROPERTIES
@@ -21,6 +24,11 @@ if(NK_BUILD_TESTS)
     add_executable(nativekit_ui_abi_test tests/abi.c)
     target_link_libraries(nativekit_ui_abi_test PRIVATE NativeKit::ui)
     add_test(NAME nativekit_ui_abi COMMAND nativekit_ui_abi_test)
+    add_executable(nativekit_ui_display_list_test
+        tests/display_list.cpp
+        src/display_list/display_list.cpp)
+    target_include_directories(nativekit_ui_display_list_test PRIVATE src)
+    add_test(NAME nativekit_ui_display_list COMMAND nativekit_ui_display_list_test)
 endif()
 
 if(NK_BUILD_EXAMPLES AND TARGET nkui_nanovg)
