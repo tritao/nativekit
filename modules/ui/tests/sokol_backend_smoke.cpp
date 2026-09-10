@@ -4,6 +4,7 @@
 
 #include "compositor/compositor.h"
 #include "prepare/nanovg_recorder.h"
+#include "prepare/skribidi_adapter.h"
 #include "render/frame_resources.h"
 #include "render/render_plan_executor.h"
 #include "render/sokol_backend.h"
@@ -15,6 +16,10 @@
 #include <thread>
 
 using namespace nkui;
+
+#ifndef NKUI_TEST_FONT_PATH
+#error NKUI_TEST_FONT_PATH is required
+#endif
 
 int main() {
     nk_init_options init{};
@@ -49,14 +54,28 @@ int main() {
     bool ready = false;
     auto backend = std::make_unique<SokolBackend>();
     NanoVGRecorder recorder;
+    SkribidiAdapter text_adapter;
+    PreparedGlyphs title_glyphs;
+    PreparedGlyphs layer_glyphs;
+    if (!text_adapter.valid() || !text_adapter.add_font(NKUI_TEST_FONT_PATH) ||
+        !text_adapter.layout_utf8("NativeKit direct text", 280.0f, 24.0f) ||
+        !text_adapter.prepare_glyphs(20.0f, 35.0f, 1.0f, GlyphMode::Alpha, title_glyphs) ||
+        !text_adapter.prepare_glyphs(58.0f, 105.0f, 1.0f, GlyphMode::Alpha, layer_glyphs))
+        result = 9;
     const ResourceId main_target = make_resource_id(ResourceKind::RenderTarget, 1, 1);
     const ResourceId background = make_resource_id(ResourceKind::Path, 1, 1);
     const ResourceId layer_path = make_resource_id(ResourceKind::Path, 1, 2);
+    const ResourceId foreground = make_resource_id(ResourceKind::Path, 1, 3);
+    const ResourceId title = make_resource_id(ResourceKind::TextLayout, 1, 1);
+    const ResourceId layer_text = make_resource_id(ResourceKind::TextLayout, 1, 2);
     DisplayList display_list;
     display_list.draw_path(background);
+    display_list.draw_text_layout(title, 20.0f, 35.0f);
     display_list.begin_layer(0.6f);
     display_list.draw_path(layer_path);
+    display_list.draw_text_layout(layer_text, 58.0f, 105.0f);
     display_list.end_layer();
+    display_list.draw_path(foreground);
     RenderPlan plan;
     Compositor compositor;
     if (!compositor.compile(display_list, main_target, plan))
@@ -97,12 +116,21 @@ int main() {
         nvgRect(vg, 40.0f, 40.0f, 160.0f, 100.0f);
         nvgFillColor(vg, nvgRGBA(40, 120, 220, 220));
         nvgFill(vg);
+        nvgBeginPath(vg);
+        nvgRect(vg, 35.0f, 35.0f, 170.0f, 110.0f);
+        nvgStrokeWidth(vg, 3.0f);
+        nvgStrokeColor(vg, nvgRGBA(245, 245, 255, 255));
+        nvgStroke(vg);
         nvgEndFrame(vg);
         GLint framebuffer = 0;
         glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
         FrameResources resources;
         if (!resources.bind_path(background, recorder, 0) ||
             !resources.bind_path(layer_path, recorder, 1) ||
+            !resources.bind_path(foreground, recorder, 2) ||
+            !resources.bind_text(title, title_glyphs) ||
+            !resources.bind_text(layer_text, layer_glyphs) ||
+            !backend->upload_atlases(text_adapter) ||
             !execute_render_plan(
                 *backend, plan, resources,
                 {main_target, width, height, static_cast<uint32_t>(framebuffer)}) ||
@@ -112,6 +140,8 @@ int main() {
     }
     if (!result && backend->stats().passes != 90)
         result = 7;
+    if (!result && (backend->stats().draws != 180 || backend->stats().image_uploads == 0))
+        result = 10;
     if (ready)
         nk_surface_make_current(surface);
     backend.reset();

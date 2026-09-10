@@ -488,6 +488,11 @@ bool SokolBackend::draw_paths(const NanoVGRecorder &recorder) {
 
 bool SokolBackend::upload_atlases(SkribidiAdapter &adapter) {
     for (const auto &upload : adapter.pending_atlas_uploads()) {
+        const size_t tight_row = static_cast<size_t>(upload.texture_width) * upload.bytes_per_pixel;
+        std::vector<uint8_t> tight_pixels(tight_row * upload.texture_height);
+        for (int row = 0; row < upload.texture_height; ++row)
+            std::memcpy(tight_pixels.data() + static_cast<size_t>(row) * tight_row,
+                        upload.pixels + static_cast<size_t>(row) * upload.row_pitch, tight_row);
         auto found = state_->atlases.find(upload.texture.value);
         if (found == state_->atlases.end()) {
             sg_image_desc desc{};
@@ -496,8 +501,6 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter) {
             desc.pixel_format =
                 upload.bytes_per_pixel == 1 ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
             desc.usage.dynamic_update = true;
-            desc.data.mip_levels[0] = {upload.pixels, static_cast<size_t>(upload.row_pitch) *
-                                                          upload.texture_height};
             const sg_image image = sg_make_image(&desc);
             sg_view_desc view_desc{};
             view_desc.texture.image = image;
@@ -511,15 +514,11 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter) {
                                                    upload.texture_height, upload.bytes_per_pixel})
                         .first;
             state_->stats.gpu_resources += 2;
-        } else {
-            const sg_image_data data = {
-                .mip_levels = {{upload.pixels,
-                                static_cast<size_t>(upload.row_pitch) * upload.texture_height}}};
-            sg_update_image(found->second.image, &data);
         }
+        const sg_image_data data = {.mip_levels = {{tight_pixels.data(), tight_pixels.size()}}};
+        sg_update_image(found->second.image, &data);
         ++state_->stats.image_uploads;
-        state_->stats.uploaded_bytes +=
-            static_cast<uint64_t>(upload.row_pitch) * upload.texture_height;
+        state_->stats.uploaded_bytes += tight_pixels.size();
         if (!adapter.acknowledge_atlas_upload(upload.texture))
             return fail(*state_, "atlas upload acknowledgement failed");
     }
