@@ -2,6 +2,7 @@
 #define NATIVEKIT_UI_SKRIBIDI_ADAPTER_H
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace nkui {
@@ -47,6 +48,27 @@ struct PreparedGlyphs {
     std::vector<GlyphBatch> batches;
 };
 
+struct TextPosition {
+    int32_t offset = 0;
+    uint8_t affinity = 0;
+};
+
+struct TextCaret {
+    float x = 0.0f;
+    float y = 0.0f;
+    float ascender = 0.0f;
+    float descender = 0.0f;
+    float slope = 0.0f;
+    uint8_t direction = 0;
+};
+
+struct TextRect {
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+};
+
 struct AtlasUpload {
     AtlasTextureId texture;
     uint8_t texture_index = 0;
@@ -73,6 +95,14 @@ class SkribidiAdapter {
     bool layout_utf8(const char *text, float width, float font_size);
     bool prepare_glyphs(float origin_x, float origin_y, float pixel_scale, GlyphMode mode,
                         PreparedGlyphs &output);
+    TextRect bounds() const;
+    TextPosition hit_test(float x, float y) const;
+    TextCaret caret(TextPosition position) const;
+    int32_t next_grapheme(int32_t offset) const;
+    int32_t previous_grapheme(int32_t offset) const;
+    int32_t align_grapheme(int32_t offset) const;
+    std::vector<TextRect> selection_rects(TextPosition start, TextPosition end) const;
+    uint32_t layout_build_count() const;
     uint32_t atlas_texture_count() const;
     std::vector<AtlasUpload> pending_atlas_uploads() const;
     bool acknowledge_atlas_upload(AtlasTextureId texture);

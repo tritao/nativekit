@@ -7,6 +7,7 @@
 #include "skribidi/skb_rasterizer.h"
 
 #include <cstring>
+#include <string>
 
 namespace nkui {
 
@@ -17,6 +18,12 @@ struct SkribidiAdapter::State {
     skb_image_atlas_t *atlas = nullptr;
     skb_layout_t *layout = nullptr;
     uint16_t next_texture_slot = 1;
+    std::string cached_text;
+    float cached_width = 0.0f;
+    float cached_font_size = 0.0f;
+    uint32_t font_generation = 0;
+    uint32_t cached_font_generation = 0;
+    uint32_t layout_builds = 0;
 };
 
 namespace {
@@ -92,12 +99,19 @@ bool SkribidiAdapter::valid() const {
 bool SkribidiAdapter::add_font(const char *path, FontFamily family) {
     const uint8_t skb_family =
         family == FontFamily::Emoji ? SKB_FONT_FAMILY_EMOJI : SKB_FONT_FAMILY_DEFAULT;
-    return path && skb_font_collection_add_font(state_->fonts, path, skb_family, nullptr);
+    if (!path || !skb_font_collection_add_font(state_->fonts, path, skb_family, nullptr))
+        return false;
+    ++state_->font_generation;
+    return true;
 }
 
 bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size) {
     if (!valid() || !text || width <= 0.0f || font_size <= 0.0f)
         return false;
+    if (state_->layout && state_->cached_text == text && state_->cached_width == width &&
+        state_->cached_font_size == font_size &&
+        state_->cached_font_generation == state_->font_generation)
+        return true;
     if (state_->layout) {
         skb_layout_destroy(state_->layout);
         state_->layout = nullptr;
@@ -111,6 +125,13 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size
     const skb_layout_params_t params = {.font_collection = state_->fonts, .layout_width = width};
     state_->layout = skb_layout_create_utf8(state_->temporary, &params, text, -1,
                                             SKB_ATTRIBUTE_SET_FROM_STATIC_ARRAY(attributes));
+    if (state_->layout) {
+        state_->cached_text = text;
+        state_->cached_width = width;
+        state_->cached_font_size = font_size;
+        state_->cached_font_generation = state_->font_generation;
+        ++state_->layout_builds;
+    }
     return state_->layout != nullptr;
 }
 
@@ -163,6 +184,60 @@ bool SkribidiAdapter::prepare_glyphs(float origin_x, float origin_y, float pixel
     }
     return skb_image_atlas_rasterize_missing_items(state_->atlas, state_->temporary,
                                                    state_->rasterizer);
+}
+
+TextRect SkribidiAdapter::bounds() const {
+    if (!state_->layout)
+        return {};
+    const skb_rect2_t value = skb_layout_get_bounds(state_->layout);
+    return {value.x, value.y, value.width, value.height};
+}
+
+TextPosition SkribidiAdapter::hit_test(float x, float y) const {
+    if (!state_->layout)
+        return {};
+    const skb_text_position_t value = skb_layout_hit_test(state_->layout, SKB_MOVEMENT_CARET, x, y);
+    return {value.offset, static_cast<uint8_t>(value.affinity)};
+}
+
+TextCaret SkribidiAdapter::caret(TextPosition position) const {
+    if (!state_->layout)
+        return {};
+    const skb_text_position_t value = {position.offset,
+                                       static_cast<skb_caret_affinity_t>(position.affinity)};
+    const skb_caret_info_t result = skb_layout_get_caret_info_at(state_->layout, value);
+    return {result.x, result.y, result.ascender, result.descender, result.slope, result.direction};
+}
+
+int32_t SkribidiAdapter::next_grapheme(int32_t offset) const {
+    return state_->layout ? skb_layout_get_next_grapheme_offset(state_->layout, offset) : 0;
+}
+
+int32_t SkribidiAdapter::previous_grapheme(int32_t offset) const {
+    return state_->layout ? skb_layout_get_prev_grapheme_offset(state_->layout, offset) : 0;
+}
+
+int32_t SkribidiAdapter::align_grapheme(int32_t offset) const {
+    return state_->layout ? skb_layout_align_grapheme_offset(state_->layout, offset) : 0;
+}
+
+std::vector<TextRect> SkribidiAdapter::selection_rects(TextPosition start, TextPosition end) const {
+    std::vector<TextRect> rectangles;
+    if (!state_->layout)
+        return rectangles;
+    const skb_text_range_t range = {
+        {start.offset, static_cast<skb_caret_affinity_t>(start.affinity)},
+        {end.offset, static_cast<skb_caret_affinity_t>(end.affinity)}};
+    const auto collect = [](skb_rect2_t rect, void *context) {
+        static_cast<std::vector<TextRect> *>(context)->push_back(
+            {rect.x, rect.y, rect.width, rect.height});
+    };
+    skb_layout_iterate_text_range_bounds(state_->layout, range, collect, &rectangles);
+    return rectangles;
+}
+
+uint32_t SkribidiAdapter::layout_build_count() const {
+    return state_->layout_builds;
 }
 
 uint32_t SkribidiAdapter::atlas_texture_count() const {
