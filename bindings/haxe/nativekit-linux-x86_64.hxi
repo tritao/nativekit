@@ -302,7 +302,8 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_WINDOW_STATE_VISIBLE = 1;
 	const NK_WINDOW_UTILITY = 1;
 	extern fn nk_api_version() -> u32;
-	extern fn nk_clipboard_read_resources(out_request: ptr<nk_request_id>) -> nk_result;
+	extern fn nk_clipboard_read_files(out_request: ptr<nk_request_id> @out) -> nk_result;
+	extern fn nk_clipboard_read_resources(out_request: ptr<nk_request_id> @out) -> nk_result;
 	extern fn nk_clipboard_read_text(out_request: ptr<nk_request_id> @out) -> nk_result;
 	extern fn nk_clipboard_set_resources(resources: ptr<const<nk_resource>>, resource_count: u32) -> nk_result;
 	extern fn nk_clipboard_set_text(text: utf8) -> nk_result;
@@ -311,13 +312,13 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	extern fn nk_cursor_destroy(cursor: nk_handle) -> nk_result;
 	extern fn nk_dialog_cancel(request: nk_request_id) -> nk_result;
 	extern fn nk_dialog_event_path(event: ptr<const<nk_event>>, index: u32, out_path: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
-	extern fn nk_dialog_message(parent: nk_handle, options: ptr<const<nk_message_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
-	extern fn nk_dialog_open_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
-	extern fn nk_dialog_open_resource(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
-	extern fn nk_dialog_save_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
-	extern fn nk_dialog_save_resource(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
-	extern fn nk_dialog_select_directory(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
-	extern fn nk_dialog_select_resource_directory(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id>) -> nk_result;
+	extern fn nk_dialog_message(parent: nk_handle, options: ptr<const<nk_message_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	extern fn nk_dialog_open_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	extern fn nk_dialog_open_resource(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	extern fn nk_dialog_save_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	extern fn nk_dialog_save_resource(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	extern fn nk_dialog_select_directory(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	extern fn nk_dialog_select_resource_directory(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
 	extern fn nk_event_release(event: ptr<nk_event>) -> void;
 	extern fn nk_gamepad_add_mapping(mapping: ptr<const<c_char>>) -> nk_result;
 	extern fn nk_gamepad_add_mappings(database: ptr<const<c_char>>, out_added: ptr<u32>) -> nk_result;
@@ -372,6 +373,7 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	extern fn nk_surface_present(surface: nk_handle) -> nk_result;
 	extern fn nk_surface_set_bounds(surface: nk_handle, x: i32, y: i32, width: i32, height: i32) -> nk_result;
 	extern fn nk_surface_show(surface: nk_handle, visible: u32) -> nk_result;
+	extern fn nk_webview_eval(webview: nk_handle, script: utf8, out_request: ptr<nk_request_id> @out) -> nk_result;
 	extern fn nk_window_activate(window: nk_handle) -> nk_result;
 	extern fn nk_window_create(options: ptr<const<nk_window_options>>, out_window: ptr<nk_handle> @out) -> nk_result;
 	extern fn nk_window_destroy(window: nk_handle) -> nk_result;

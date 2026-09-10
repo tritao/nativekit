@@ -52,6 +52,9 @@ class Smoke {
 					break;
 			}
 			payloadOk = payloadOk && completed && requests.pending() == 0 && !requests.cancel(request.out_request);
+			var invalidEvaluationRejected = false;
+			try requests.evaluateWebView(0, "1", function(_) {}) catch (_:Dynamic) invalidEvaluationRejected = true;
+			payloadOk = payloadOk && invalidEvaluationRejected && requests.pending() == 0;
 		}
 
 		var windowOptions = new nk_window_options();

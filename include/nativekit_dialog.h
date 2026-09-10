@@ -84,16 +84,16 @@ typedef struct nk_dialog_message_result {
  */
 NK_API nk_result NK_CALL nk_dialog_open_file(nk_handle parent,
                                              const nk_file_dialog_options *options,
-                                             nk_request_id *out_request);
+                                             nk_request_id *out_request NK_OUT);
 NK_API nk_result NK_CALL nk_dialog_save_file(nk_handle parent,
                                              const nk_file_dialog_options *options,
-                                             nk_request_id *out_request);
+                                             nk_request_id *out_request NK_OUT);
 NK_API nk_result NK_CALL nk_dialog_select_directory(nk_handle parent,
                                                     const nk_file_dialog_options *options,
-                                                    nk_request_id *out_request);
+                                                    nk_request_id *out_request NK_OUT);
 NK_API nk_result NK_CALL nk_dialog_message(nk_handle parent,
                                            const nk_message_dialog_options *options,
-                                           nk_request_id *out_request);
+                                           nk_request_id *out_request NK_OUT);
 
 /* Cancels a pending dialog. Its completion event is still emitted. */
 NK_API nk_result NK_CALL nk_dialog_cancel(nk_request_id request);
