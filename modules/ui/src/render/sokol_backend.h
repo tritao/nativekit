@@ -48,9 +48,13 @@ class SokolBackend {
     bool set_scissor(bool enabled, float x = 0.0f, float y = 0.0f, float width = 0.0f,
                      float height = 0.0f);
     bool draw_path(const NanoVGRecorder &recorder, uint32_t operation_index, float opacity = 1.0f);
+    bool draw_path_transformed(const NanoVGRecorder &recorder, uint32_t operation_index,
+                               const float transform[6], float opacity = 1.0f);
     bool draw_paths(const NanoVGRecorder &recorder);
     bool upload_atlases(SkribidiAdapter &adapter);
     bool draw_glyphs(const PreparedGlyphs &glyphs, float opacity = 1.0f);
+    bool draw_glyphs_transformed(const PreparedGlyphs &glyphs, const float transform[6],
+                                 float origin_x, float origin_y, float opacity = 1.0f);
     bool draw_target(ResourceId target, float x, float y, float width, float height, float opacity);
     bool end_pass();
     bool commit_frame();

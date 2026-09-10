@@ -536,8 +536,14 @@ bool SokolBackend::set_scissor(bool enabled, float x, float y, float width, floa
 
 bool SokolBackend::draw_path(const NanoVGRecorder &recorder, uint32_t operation_index,
                              float opacity) {
+    static const float identity[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    return draw_path_transformed(recorder, operation_index, identity, opacity);
+}
+
+bool SokolBackend::draw_path_transformed(const NanoVGRecorder &recorder, uint32_t operation_index,
+                                         const float transform[6], float opacity) {
     if (!state_->in_pass || operation_index >= recorder.operations().size() || opacity < 0.0f ||
-        opacity > 1.0f)
+        opacity > 1.0f || !transform)
         return fail(*state_, "invalid path draw");
     const auto &operation = recorder.operations()[operation_index];
     SolidMesh mesh;
@@ -556,7 +562,9 @@ bool SokolBackend::draw_path(const NanoVGRecorder &recorder, uint32_t operation_
             const uint32_t base = static_cast<uint32_t>(fan.vertices.size());
             for (uint32_t vertex = 0; vertex < path.fill_count; ++vertex) {
                 const auto &source = recorder.vertices()[path.fill_offset + vertex];
-                fan.vertices.push_back({source.x, source.y});
+                fan.vertices.push_back(
+                    {source.x * transform[0] + source.y * transform[2] + transform[4],
+                     source.x * transform[1] + source.y * transform[3] + transform[5]});
             }
             for (uint32_t vertex = 1; vertex + 1 < path.fill_count; ++vertex)
                 fan.indices.insert(fan.indices.end(), {base, base + vertex, base + vertex + 1});
@@ -566,16 +574,26 @@ bool SokolBackend::draw_path(const NanoVGRecorder &recorder, uint32_t operation_
                 return false;
         }
         SolidMesh cover;
-        cover.vertices = {{operation.bounds[0], operation.bounds[1]},
-                          {operation.bounds[2], operation.bounds[1]},
-                          {operation.bounds[2], operation.bounds[3]},
-                          {operation.bounds[0], operation.bounds[3]}};
+        const auto point = [transform](float x, float y) {
+            return SolidVertex{x * transform[0] + y * transform[2] + transform[4],
+                               x * transform[1] + y * transform[3] + transform[5]};
+        };
+        cover.vertices = {point(operation.bounds[0], operation.bounds[1]),
+                          point(operation.bounds[2], operation.bounds[1]),
+                          point(operation.bounds[2], operation.bounds[3]),
+                          point(operation.bounds[0], operation.bounds[3])};
         cover.indices = {0, 1, 2, 0, 2, 3};
         return draw_mesh(*state_, state_->fill_cover_pipeline, cover.vertices, cover.indices,
                          color.data(), sizeof(color), {}, {}, state_->solid_vertices);
     }
     if (!triangulate_prepared_path(recorder, operation, mesh))
         return fail(*state_, "unsupported triangle path");
+    for (auto &vertex : mesh.vertices) {
+        const float x = vertex.x;
+        const float y = vertex.y;
+        vertex.x = x * transform[0] + y * transform[2] + transform[4];
+        vertex.y = x * transform[1] + y * transform[3] + transform[5];
+    }
     return draw_mesh(*state_, state_->solid_pipeline, mesh.vertices, mesh.indices, color.data(),
                      sizeof(color), {}, {}, state_->solid_vertices);
 }
@@ -629,7 +647,13 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter) {
 }
 
 bool SokolBackend::draw_glyphs(const PreparedGlyphs &glyphs, float opacity) {
-    if (!state_->in_pass || opacity < 0.0f || opacity > 1.0f)
+    static const float identity[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    return draw_glyphs_transformed(glyphs, identity, 0.0f, 0.0f, opacity);
+}
+
+bool SokolBackend::draw_glyphs_transformed(const PreparedGlyphs &glyphs, const float transform[6],
+                                           float origin_x, float origin_y, float opacity) {
+    if (!state_->in_pass || !transform || opacity < 0.0f || opacity > 1.0f)
         return fail(*state_, "invalid glyph draw");
     for (const auto &batch : glyphs.batches) {
         const auto atlas = state_->atlases.find(batch.atlas.value);
@@ -643,8 +667,13 @@ bool SokolBackend::draw_glyphs(const PreparedGlyphs &glyphs, float opacity) {
         std::vector<GlyphVertex> vertices(glyphs.vertices.begin() + batch.first_vertex,
                                           glyphs.vertices.begin() + batch.first_vertex +
                                               batch.vertex_count);
-        for (auto &vertex : vertices)
+        for (auto &vertex : vertices) {
+            const float x = vertex.x + origin_x;
+            const float y = vertex.y + origin_y;
+            vertex.x = x * transform[0] + y * transform[2] + transform[4];
+            vertex.y = x * transform[1] + y * transform[3] + transform[5];
             vertex.alpha = static_cast<uint8_t>(vertex.alpha * opacity);
+        }
         std::vector<uint32_t> indices;
         indices.reserve(batch.index_count);
         for (uint32_t index = 0; index < batch.index_count; ++index)

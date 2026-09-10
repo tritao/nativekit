@@ -38,13 +38,16 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
             switch (command.kind) {
             case RenderCommandKind::Path: {
                 const auto *path = resources.path(command.resource);
-                rendered = path && backend.draw_path(*path->recorder, path->operation_index,
-                                                     command.opacity);
+                rendered = path &&
+                           backend.draw_path_transformed(*path->recorder, path->operation_index,
+                                                         command.transform.data(), command.opacity);
                 break;
             }
             case RenderCommandKind::GlyphBatch: {
                 const auto *text = resources.text(command.resource);
-                rendered = text && backend.draw_glyphs(*text, command.opacity);
+                rendered =
+                    text && backend.draw_glyphs_transformed(*text, command.transform.data(),
+                                                            command.x, command.y, command.opacity);
                 break;
             }
             case RenderCommandKind::CompositeTarget:

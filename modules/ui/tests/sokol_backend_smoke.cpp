@@ -64,10 +64,10 @@ int main() {
     if (!text_adapter.valid() || !text_adapter.add_font(NKUI_TEST_FONT_PATH) ||
         !text_adapter.add_font(NKUI_TEST_COLOR_FONT_PATH, FontFamily::Emoji) ||
         !text_adapter.layout_utf8("NativeKit direct text", 280.0f, 24.0f) ||
-        !text_adapter.prepare_glyphs(20.0f, 35.0f, 1.0f, GlyphMode::Alpha, title_glyphs) ||
-        !text_adapter.prepare_glyphs(58.0f, 105.0f, 1.0f, GlyphMode::Sdf, layer_glyphs) ||
+        !text_adapter.prepare_glyphs(0.0f, 0.0f, 1.0f, GlyphMode::Alpha, title_glyphs) ||
+        !text_adapter.prepare_glyphs(0.0f, 0.0f, 1.0f, GlyphMode::Sdf, layer_glyphs) ||
         !text_adapter.layout_utf8("😀", 80.0f, 32.0f) ||
-        !text_adapter.prepare_glyphs(250.0f, 55.0f, 1.0f, GlyphMode::Color, color_glyphs))
+        !text_adapter.prepare_glyphs(0.0f, 0.0f, 1.0f, GlyphMode::Color, color_glyphs))
         result = 9;
     const ResourceId main_target = make_resource_id(ResourceKind::RenderTarget, 1, 1);
     const ResourceId background = make_resource_id(ResourceKind::Path, 1, 1);
