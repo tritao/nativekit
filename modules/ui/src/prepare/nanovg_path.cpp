@@ -10,7 +10,8 @@ namespace nkui {
 namespace {
 
 NVGprepareParams native_params(const PathPreparationParams &params) {
-    NVGprepareParams native{};
+    NVGprepareParams native;
+    nvgInitPrepareParams(&native);
     native.devicePixelRatio = params.device_pixel_ratio;
     native.tessellationTolerance = params.tessellation_tolerance;
     native.distanceTolerance = params.distance_tolerance;

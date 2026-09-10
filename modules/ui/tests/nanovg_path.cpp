@@ -69,12 +69,10 @@ int main() {
 
     AllocationStats allocation_stats;
     NVGprepareAllocator allocator{&allocation_stats, allocate, reallocate, release};
-    NVGprepareParams native_params{};
+    NVGprepareParams native_params;
+    nvgInitPrepareParams(&native_params);
     native_params.edgeAntiAlias = 1;
     native_params.fillRule = NVG_FILL_NON_ZERO;
-    native_params.transform[0] = 1.0f;
-    native_params.transform[3] = 1.0f;
-    native_params.lineJoin = NVG_MITER;
     native_params.allocator = &allocator;
     NVGprepareOutput query{};
     if (nvgPrepareFill(path.builder(), &native_params, &query) != NVG_PREPARE_OUTPUT_TOO_SMALL ||

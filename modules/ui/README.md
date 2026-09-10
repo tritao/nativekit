@@ -15,6 +15,8 @@ The vendored experimental implementation stack is:
 See the repository-level [`vendor/README.md`](../../vendor/README.md) for pinned revisions and
 [`docs/integration-plan.md`](docs/integration-plan.md) for the integration
 sequence and the policy on adapting versus rewriting upstream code.
+The reusable NanoVG path API is documented in
+[`docs/nanovg-path-preparation.md`](docs/nanovg-path-preparation.md).
 
 All third-party integrations must sit behind private adapters. The public C ABI
 will use opaque handles, fixed-width values, versioned structures, and validated
