@@ -31,7 +31,7 @@ layers first. Arbitrary clips, destination-dependent blending, filters, and
 external render-target producers are added without exposing scheduling details
 through the public Canvas API.
 
-The former `skribidi_nanovg` example and NanoVG-Sokol backend are not part of
-the NativeKit build. NativeKit's path preparation, compositor, and Sokol
-backend are the sole runtime path; the recorder remains only as a compatibility
-adapter and focused test fixture.
+The former combined NanoVG/Skribidi example and NanoVG-Sokol backend are not
+part of the NativeKit build. NativeKit's path preparation, compositor, and
+Sokol backend are the sole runtime path; the recorder remains only as a
+compatibility adapter and focused test fixture.
