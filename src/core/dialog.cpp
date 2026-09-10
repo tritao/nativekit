@@ -10,7 +10,7 @@
 extern "C" nk_result NK_CALL nk_dialog_event_path(const nk_event *event, uint32_t index,
                                                   const char **out_path, uint32_t *out_length) {
     nk::core::clear_error();
-    if (!event || event->kind != NK_EVENT_DIALOG_COMPLETE || !event->data || !out_path ||
+    if (!event || event->kind != NK_EVENT_DIALOG_PATHS_COMPLETE || !event->data || !out_path ||
         !out_length || event->data_size < sizeof(nk_dialog_paths)) {
         nk::core::set_error("invalid dialog event path arguments");
         return NK_ERROR_INVALID_ARGUMENT;

@@ -11,9 +11,13 @@ namespace {
 bool is_terminal_request_event(const QueuedEvent &event) {
     if (event.request_id == NK_INVALID_REQUEST_ID)
         return false;
-    return event.kind == NK_EVENT_DIALOG_COMPLETE || event.kind == NK_EVENT_WEBVIEW_EVAL_COMPLETE ||
+    return event.kind == NK_EVENT_DIALOG_PATHS_COMPLETE ||
+           event.kind == NK_EVENT_DIALOG_RESOURCES_COMPLETE ||
+           event.kind == NK_EVENT_DIALOG_MESSAGE_COMPLETE ||
+           event.kind == NK_EVENT_WEBVIEW_EVAL_COMPLETE ||
            event.kind == NK_EVENT_CLIPBOARD_TEXT_COMPLETE ||
            event.kind == NK_EVENT_CLIPBOARD_FILES_COMPLETE ||
+           event.kind == NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE ||
            event.kind == NK_EVENT_NOTIFICATION_DELIVERED ||
            event.kind == NK_EVENT_NOTIFICATION_FAILED;
 }

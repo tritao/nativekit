@@ -495,7 +495,8 @@ int main(void) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == NK_EVENT_DIALOG_COMPLETE && event.request_id == dialog_request) {
+        if (event.kind == NK_EVENT_DIALOG_PATHS_COMPLETE && event.request_id == dialog_request) {
+            assert(event.kind == NK_EVENT_DIALOG_PATHS_COMPLETE);
             assert(event.flags == NK_DIALOG_OPEN_FILE);
             assert(event.data_size >= sizeof(nk_dialog_paths));
             const nk_dialog_paths *paths = (const nk_dialog_paths *)event.data;
@@ -525,7 +526,8 @@ int main(void) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == NK_EVENT_DIALOG_COMPLETE && event.request_id == message_request) {
+        if (event.kind == NK_EVENT_DIALOG_MESSAGE_COMPLETE && event.request_id == message_request) {
+            assert(event.kind == NK_EVENT_DIALOG_MESSAGE_COMPLETE);
             assert(event.flags == NK_DIALOG_MESSAGE);
             assert(event.data_size == sizeof(nk_dialog_message_result));
             const nk_dialog_message_result *result = (const nk_dialog_message_result *)event.data;

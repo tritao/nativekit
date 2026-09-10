@@ -1060,7 +1060,7 @@ void emit_file_completion(const WinDialogContext &context, std::vector<std::stri
     if (!nk::core::is_runtime_generation(context.generation))
         return;
     nk::core::QueuedEvent event;
-    event.kind = NK_EVENT_DIALOG_COMPLETE;
+    event.kind = NK_EVENT_DIALOG_PATHS_COMPLETE;
     event.request_id = context.request;
     event.flags = context.kind;
     event.result = result;
@@ -1204,7 +1204,7 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexce
     context->complete = true;
     try {
         nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_DIALOG_COMPLETE;
+        event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
         event.request_id = context->request;
         event.flags = context->kind;
         event.result = response ? NK_OK : NK_ERROR_UNKNOWN;

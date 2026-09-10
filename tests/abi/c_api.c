@@ -240,7 +240,7 @@ int main(void) {
                 "abc"};
     nk_event packed_event = {0};
     packed_event.struct_size = sizeof(packed_event);
-    packed_event.kind = NK_EVENT_DIALOG_COMPLETE;
+    packed_event.kind = NK_EVENT_DIALOG_PATHS_COMPLETE;
     packed_event.data = &packed;
     packed_event.data_size = sizeof(packed);
     const char *decoded_path = NULL;
@@ -248,6 +248,9 @@ int main(void) {
     assert(nk_dialog_event_path(&packed_event, 0, &decoded_path, &decoded_length) == NK_OK);
     assert(decoded_length == 3);
     assert(memcmp(decoded_path, "abc", 3) == 0);
+    packed_event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
+    assert(nk_dialog_event_path(&packed_event, 0, &decoded_path, &decoded_length) ==
+           NK_ERROR_INVALID_ARGUMENT);
     uint32_t home_size = 0;
     nk_result home_result = nk_system_directory(NK_DIRECTORY_HOME, NULL, &home_size);
     assert(home_result == NK_ERROR_BUFFER_TOO_SMALL || home_result == NK_ERROR_UNSUPPORTED);

@@ -1579,18 +1579,18 @@ nk_result NK_CALL nk_dialog_select_directory(nk_handle parent,
 nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
                                           const nk_file_dialog_options *options,
                                           nk_request_id *out_request) {
-    return start_file_dialog(NK_DIALOG_OPEN_FILE, true, parent, options, out_request);
+    return start_file_dialog(NK_DIALOG_OPEN_RESOURCE, true, parent, options, out_request);
 }
 
 nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
                                           const nk_file_dialog_options *options,
                                           nk_request_id *out_request) {
-    return start_file_dialog(NK_DIALOG_SAVE_FILE, true, parent, options, out_request);
+    return start_file_dialog(NK_DIALOG_SAVE_RESOURCE, true, parent, options, out_request);
 }
 
 nk_result NK_CALL nk_dialog_select_resource_directory(
     nk_handle parent, const nk_file_dialog_options *options, nk_request_id *out_request) {
-    return start_file_dialog(NK_DIALOG_SELECT_DIRECTORY, true, parent, options, out_request);
+    return start_file_dialog(NK_DIALOG_SELECT_RESOURCE_DIRECTORY, true, parent, options, out_request);
 }
 
 nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
@@ -1613,7 +1613,8 @@ nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
         clear_java_exception(env, "Android file dialog cancellation failed");
     }
     nk::core::QueuedEvent event;
-    event.kind = NK_EVENT_DIALOG_COMPLETE;
+    event.kind = dialog.resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE
+                                  : NK_EVENT_DIALOG_PATHS_COMPLETE;
     event.flags = dialog.kind;
     event.request_id = request;
     event.data = dialog.resources ? resource_payload(false, {}) : dialog_payload(false, {});
@@ -2881,7 +2882,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
                 env->DeleteLocalRef(value);
         }
         nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_DIALOG_COMPLETE;
+        event.kind = dialog.resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE
+                                      : NK_EVENT_DIALOG_PATHS_COMPLETE;
         event.flags = static_cast<uint32_t>(kind);
         event.request_id = request_id;
         if (dialog.resources) {

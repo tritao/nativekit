@@ -29,7 +29,7 @@ bool string_view(const unsigned char *bytes, std::size_t size, uint32_t offset, 
 extern "C" nk_result NK_CALL nk_resource_event_item(const nk_event *event, uint32_t index,
                                                       nk_resource_view *out_resource) {
     nk::core::clear_error();
-    if (!event || (event->kind != NK_EVENT_DIALOG_COMPLETE &&
+    if (!event || (event->kind != NK_EVENT_DIALOG_RESOURCES_COMPLETE &&
                    event->kind != NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE &&
                    event->kind != NK_EVENT_RESOURCE_OPENED &&
                    event->kind != NK_EVENT_SHARE_RECEIVED &&

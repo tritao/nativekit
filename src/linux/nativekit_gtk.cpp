@@ -1291,7 +1291,7 @@ void emit_file_dialog_completion(DialogContext *context, int response) {
         g_slist_free(filenames);
     }
     nk::core::QueuedEvent event;
-    event.kind = NK_EVENT_DIALOG_COMPLETE;
+    event.kind = NK_EVENT_DIALOG_PATHS_COMPLETE;
     event.request_id = context->request;
     event.flags = context->kind;
     event.data_count = static_cast<uint32_t>(paths.size());
@@ -1324,7 +1324,7 @@ void on_dialog_response(GObject *, int response, gpointer data) {
     nk::core::callback_boundary([&] {
         if (context->kind == NK_DIALOG_MESSAGE) {
             nk::core::QueuedEvent event;
-            event.kind = NK_EVENT_DIALOG_COMPLETE;
+            event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
             event.request_id = context->request;
             event.flags = context->kind;
             const nk_dialog_message_result payload{message_result(response)};
@@ -1342,7 +1342,7 @@ void cancel_dialog(DialogContext *context, bool emit_event) {
         nk::core::callback_boundary([&] {
             if (context->kind == NK_DIALOG_MESSAGE) {
                 nk::core::QueuedEvent event;
-                event.kind = NK_EVENT_DIALOG_COMPLETE;
+                event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
                 event.request_id = context->request;
                 event.flags = context->kind;
                 const nk_dialog_message_result payload{NK_MESSAGE_RESULT_CANCEL};

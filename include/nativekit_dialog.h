@@ -11,7 +11,10 @@ enum {
     NK_DIALOG_OPEN_FILE = 1,
     NK_DIALOG_SAVE_FILE = 2,
     NK_DIALOG_SELECT_DIRECTORY = 3,
-    NK_DIALOG_MESSAGE = 4
+    NK_DIALOG_MESSAGE = 4,
+    NK_DIALOG_OPEN_RESOURCE = 5,
+    NK_DIALOG_SAVE_RESOURCE = 6,
+    NK_DIALOG_SELECT_RESOURCE_DIRECTORY = 7
 };
 
 enum {
@@ -63,7 +66,7 @@ typedef struct nk_message_dialog_options {
     const char *message;
 } nk_message_dialog_options;
 
-/* Header at the start of NK_EVENT_DIALOG_COMPLETE data for file dialogs. */
+/* Header at the start of NK_EVENT_DIALOG_PATHS_COMPLETE data. */
 typedef struct nk_dialog_paths {
     uint32_t accepted;
     uint32_t path_count;
@@ -71,7 +74,7 @@ typedef struct nk_dialog_paths {
     uint32_t strings_offset;
 } nk_dialog_paths;
 
-/* Payload of NK_EVENT_DIALOG_COMPLETE for message dialogs. */
+/* Payload of NK_EVENT_DIALOG_MESSAGE_COMPLETE. */
 typedef struct nk_dialog_message_result {
     uint32_t button;
 } nk_dialog_message_result;
@@ -79,8 +82,9 @@ typedef struct nk_dialog_message_result {
 /*
  * Starts a non-blocking native dialog on the UI thread. `parent` may be zero;
  * otherwise it must be a live window. All strings and filters are copied before
- * the function returns. Completion uses NK_EVENT_DIALOG_COMPLETE, with the
- * dialog kind in event.flags and the returned request ID in event.request_id.
+ * the function returns. Completion uses NK_EVENT_DIALOG_PATHS_COMPLETE or
+ * NK_EVENT_DIALOG_MESSAGE_COMPLETE, with the operation in event.flags and the
+ * returned request ID in event.request_id.
  */
 NK_API nk_result NK_CALL nk_dialog_open_file(nk_handle parent,
                                              const nk_file_dialog_options *options,

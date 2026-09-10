@@ -396,7 +396,7 @@ void finish_file_dialog(nk_request_id request, NSInteger response,
                 paths.push_back(utf8(url.path));
         }
         nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_DIALOG_COMPLETE;
+        event.kind = NK_EVENT_DIALOG_PATHS_COMPLETE;
         event.request_id = request;
         event.flags = context->kind;
         event.data_count = static_cast<uint32_t>(paths.size());
@@ -423,7 +423,7 @@ void finish_message_dialog(nk_request_id request, NSInteger response) noexcept {
         if (index >= 0 && static_cast<std::size_t>(index) < context->message_results.size())
             result = context->message_results[static_cast<std::size_t>(index)];
         nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_DIALOG_COMPLETE;
+        event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
         event.request_id = request;
         event.flags = NK_DIALOG_MESSAGE;
         event.data = bytes_of(nk_dialog_message_result{result});

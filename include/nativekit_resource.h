@@ -110,7 +110,7 @@ NK_API nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources
                                                     uint32_t resource_count);
 NK_API nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request NK_OUT);
 
-/* Resource dialogs return NK_EVENT_DIALOG_COMPLETE with nk_resource_list data. */
+/* Resource dialogs return NK_EVENT_DIALOG_RESOURCES_COMPLETE with nk_resource_list data. */
 NK_API nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
                                                  const nk_file_dialog_options *options,
                                                  nk_request_id *out_request NK_OUT);

@@ -18,7 +18,8 @@ static nk_event wait_for_dialog(nk_request_id request) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == NK_EVENT_DIALOG_COMPLETE && event.request_id == request)
+        if ((event.kind == NK_EVENT_DIALOG_PATHS_COMPLETE ||
+             event.kind == NK_EVENT_DIALOG_MESSAGE_COMPLETE) && event.request_id == request)
             return event;
         nk_event_release(&event);
         Sleep(10);
@@ -312,6 +313,7 @@ int main(void) {
     assert(nk_dialog_open_file(window, &file_options, &file_request) == NK_OK);
     assert(nk_dialog_cancel(file_request) == NK_OK);
     nk_event file_event = wait_for_dialog(file_request);
+    assert(file_event.kind == NK_EVENT_DIALOG_PATHS_COMPLETE);
     assert(file_event.flags == NK_DIALOG_OPEN_FILE);
     assert(file_event.result == NK_OK);
     assert(file_event.data_size >= sizeof(nk_dialog_paths));
@@ -332,6 +334,7 @@ int main(void) {
     assert(nk_dialog_message(window, &message_options, &message_request) == NK_OK);
     assert(nk_dialog_cancel(message_request) == NK_OK);
     nk_event message_event = wait_for_dialog(message_request);
+    assert(message_event.kind == NK_EVENT_DIALOG_MESSAGE_COMPLETE);
     assert(message_event.flags == NK_DIALOG_MESSAGE);
     assert(message_event.result == NK_OK);
     assert(message_event.data_size == sizeof(nk_dialog_message_result));

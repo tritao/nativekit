@@ -48,11 +48,11 @@ public final class NativeKitDialogActivity extends Activity {
 
     private static Intent pickerIntent(Intent options) {
         int kind = options.getIntExtra(EXTRA_KIND, 0);
-        String action = kind == 2 ? Intent.ACTION_CREATE_DOCUMENT
-                                  : kind == 3 ? Intent.ACTION_OPEN_DOCUMENT_TREE
+        String action = kind == 2 || kind == 6 ? Intent.ACTION_CREATE_DOCUMENT
+                                  : kind == 3 || kind == 7 ? Intent.ACTION_OPEN_DOCUMENT_TREE
                                               : Intent.ACTION_OPEN_DOCUMENT;
         Intent picker = new Intent(action);
-        if (kind != 3)
+        if (kind != 3 && kind != 7)
             picker.addCategory(Intent.CATEGORY_OPENABLE);
         picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
                         Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
@@ -60,9 +60,9 @@ public final class NativeKitDialogActivity extends Activity {
         picker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,
                         (options.getIntExtra(EXTRA_FLAGS, 0) & 1) != 0);
         picker.putExtra(Intent.EXTRA_TITLE, options.getStringExtra(EXTRA_TITLE));
-        if (kind == 2)
+        if (kind == 2 || kind == 6)
             picker.putExtra(Intent.EXTRA_TITLE, options.getStringExtra(EXTRA_SUGGESTED_NAME));
-        if (kind != 3) {
+        if (kind != 3 && kind != 7) {
             String[] mimeTypes = mimeTypes(options.getStringArrayExtra(EXTRA_PATTERNS));
             picker.setType(mimeTypes.length == 1 ? mimeTypes[0] : "*/*");
             if (mimeTypes.length > 1)

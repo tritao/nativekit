@@ -334,7 +334,7 @@ static void report_dialog(app *state, const nk_event *event) {
         log_data(state, "dialog error", event->data, (size_t)event->data_size);
         return;
     }
-    if (event->flags == NK_DIALOG_MESSAGE) {
+    if (event->kind == NK_EVENT_DIALOG_MESSAGE_COMPLETE) {
         const nk_dialog_message_result *result = event->data;
         char text[64];
         snprintf(text, sizeof(text), "button result=%u", result ? result->button : 0);
@@ -397,7 +397,8 @@ static void handle_event(app *state, const nk_event *event) {
         show_capabilities(state);
     } else if (event->kind == NK_EVENT_WEBVIEW_MESSAGE && event->source == state->webview) {
         dispatch(state, event);
-    } else if (event->kind == NK_EVENT_DIALOG_COMPLETE) {
+    } else if (event->kind == NK_EVENT_DIALOG_PATHS_COMPLETE ||
+               event->kind == NK_EVENT_DIALOG_MESSAGE_COMPLETE) {
         report_dialog(state, event);
     } else if (event->kind == NK_EVENT_CLIPBOARD_TEXT_COMPLETE) {
         log_data(state, event->result == NK_OK ? "clipboard" : "clipboard error", event->data,

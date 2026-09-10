@@ -385,16 +385,20 @@ including logical window coordinates, followed by strings decoded through
 
 ## Dialog results
 
-Dialogs never run a nested blocking loop. Starting one returns a request ID and
-completion arrives through `NK_EVENT_DIALOG_COMPLETE`. File and directory results
-begin with `nk_dialog_paths`, followed by a table of 32-bit offsets and NUL-terminated
-UTF-8 paths. Consumers should use `nk_dialog_event_path()` instead of parsing this
-layout directly. Cancellation is a successful completion with `accepted == 0`.
+Dialogs never run a nested blocking loop. Starting one returns a request ID. Path,
+resource, and message dialogs complete through `NK_EVENT_DIALOG_PATHS_COMPLETE`,
+`NK_EVENT_DIALOG_RESOURCES_COMPLETE`, and `NK_EVENT_DIALOG_MESSAGE_COMPLETE`
+respectively. An event kind therefore always determines exactly one payload schema.
+File and directory results begin with `nk_dialog_paths`, followed by a table of
+32-bit offsets and NUL-terminated UTF-8 paths. Consumers should use
+`nk_dialog_event_path()` instead of parsing this layout directly. Cancellation is a
+successful completion with `accepted == 0`.
 
 Android uses the Storage Access Framework for open, save, and directory dialogs.
 Its path-based dialog entry points are unsupported because document-provider
-results are not filesystem paths. Use the resource dialog variants, which return
-the original `content:` URI and access flags through `nk_resource_event_item()`.
+results are not filesystem paths. Use the resource dialog variants, which complete
+with `NK_EVENT_DIALOG_RESOURCES_COMPLETE` and return the original `content:` URI
+and access flags through `nk_resource_event_item()`.
 
 ## URI resources and sharing
 
