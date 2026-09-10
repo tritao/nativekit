@@ -4,6 +4,7 @@ import NativeKitEventValue;
 import NativeKitEventValue.NativeKitResource;
 import NativeKitEventContext;
 import NativeKitWindowEvents;
+import NativeKitInputEvents;
 
 /** Owns one polled NativeKit event and releases its native payload exactly once. */
 class NativeKitEvent {
@@ -55,6 +56,9 @@ class NativeKitEvent {
 		var window = NativeKitWindowEvents.decode(context);
 		if (window != null)
 			return window;
+		var input = NativeKitInputEvents.decode(context);
+		if (input != null)
+			return input;
 		return switch kind {
 			case NativeKitConstants.NK_EVENT_NONE: None;
 			case NativeKitConstants.NK_EVENT_CLIPBOARD_TEXT_COMPLETE: ClipboardText(request, result, data.toString());
