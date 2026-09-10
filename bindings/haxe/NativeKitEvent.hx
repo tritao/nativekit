@@ -6,6 +6,7 @@ import NativeKitEventContext;
 import NativeKitWindowEvents;
 import NativeKitInputEvents;
 import NativeKitServiceEvents;
+import NativeKitResourceEvents;
 
 /** Owns one polled NativeKit event and releases its native payload exactly once. */
 class NativeKitEvent {
@@ -63,6 +64,9 @@ class NativeKitEvent {
 		var service = NativeKitServiceEvents.decode(context);
 		if (service != null)
 			return service;
+		var resources = NativeKitResourceEvents.decode(context);
+		if (resources != null)
+			return resources;
 		return switch kind {
 			case NativeKitConstants.NK_EVENT_NONE: None;
 			case NativeKitConstants.NK_EVENT_CLIPBOARD_TEXT_COMPLETE: ClipboardText(request, result, data.toString());
@@ -135,13 +139,13 @@ class NativeKitEvent {
 				requireSize(data, 16); var value:nk_surface_resize_event = data; SurfaceResize(source, value.get_width(), value.get_height(), value.get_framebuffer_width(), value.get_framebuffer_height());
 			case NativeKitConstants.NK_EVENT_SURFACE_LOST: SurfaceLost(source);
 			case NativeKitConstants.NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE | NativeKitConstants.NK_EVENT_RESOURCE_OPENED:
-				var decoded = decodeResources(data, 0); Resources(kind, request, result, decoded.accepted, decoded.items);
+				var decoded = decodeResourceList(data, 0); Resources(kind, request, result, decoded.accepted, decoded.items);
 			case NativeKitConstants.NK_EVENT_SHARE_RECEIVED:
-				var listOffset = readU32(data, 0), decoded = decodeResources(data, listOffset);
-				ShareReceived(readOptionalString(data, readU32(data, 4), 16), readOptionalString(data, readU32(data, 8), 16), decoded.items);
+				var listOffset = readU32(data, 0), decoded = decodeResourceList(data, listOffset);
+				ShareReceived(readEventString(data, readU32(data, 4), 16), readEventString(data, readU32(data, 8), 16), decoded.items);
 			case NativeKitConstants.NK_EVENT_RESOURCE_DROP:
-				requireMinimumSize(data, 32); var header:nk_resource_drop = data; var decoded = decodeResources(data, header.get_resources_offset());
-				ResourceDrop(source, header.get_x(), header.get_y(), readOptionalString(data, header.get_text_offset(), 32), decoded.items);
+				requireMinimumSize(data, 32); var header:nk_resource_drop = data; var decoded = decodeResourceList(data, header.get_resources_offset());
+				ResourceDrop(source, header.get_x(), header.get_y(), readEventString(data, header.get_text_offset(), 32), decoded.items);
 			default: Raw(kind, source, request, result, flags, dataCount, data);
 		}
 	}
@@ -236,26 +240,28 @@ class NativeKitEvent {
 		if (data.length < size) throw "NativeKit event payload is truncated";
 	}
 
-	static function decodeResources(data:haxe.io.Bytes, listOffset:Int):{accepted:Bool, items:Array<NativeKitResource>} {
+	public static function decodeResourceList(data:haxe.io.Bytes, listOffset:Int):{accepted:Bool, items:Array<NativeKitResource>} {
 		requireMinimumSize(data, listOffset + 16);
 		var accepted = readU32(data, listOffset) != 0, count = readU32(data, listOffset + 4), itemsOffset = readU32(data, listOffset + 8), stringsOffset = readU32(data, listOffset + 12);
 		if (itemsOffset < listOffset + 16 || stringsOffset < itemsOffset || stringsOffset > data.length || count > Std.int((stringsOffset - itemsOffset) / 16)) throw "NativeKit resource payload has an invalid table";
 		var items:Array<NativeKitResource> = [];
 		for (index in 0...count) {
-			var base = itemsOffset + index * 16, uri = readOptionalString(data, readU32(data, base + 4), stringsOffset);
+			var base = itemsOffset + index * 16, uri = readEventString(data, readU32(data, base + 4), stringsOffset);
 			if (uri == null || uri.length == 0) throw "NativeKit resource payload has an invalid URI";
-			items.push(new NativeKitResource(readU32(data, base), uri, readOptionalString(data, readU32(data, base + 8), stringsOffset), readOptionalString(data, readU32(data, base + 12), stringsOffset)));
+			items.push(new NativeKitResource(readU32(data, base), uri, readEventString(data, readU32(data, base + 8), stringsOffset), readEventString(data, readU32(data, base + 12), stringsOffset)));
 		}
 		return {accepted: accepted, items: items};
 	}
 
-	static function readOptionalString(data:haxe.io.Bytes, offset:Int, minimum:Int):Null<String> {
+	public static function readEventString(data:haxe.io.Bytes, offset:Int, minimum:Int):Null<String> {
 		if (offset == 0) return null;
 		if (offset < minimum || offset >= data.length) throw "NativeKit resource payload has an invalid string offset";
 		var end = offset; while (end < data.length && data.get(end) != 0) end++;
 		if (end >= data.length) throw "NativeKit resource payload has an unterminated string";
 		return data.getString(offset, end - offset);
 	}
+
+	public static function readEventU32(data:haxe.io.Bytes, offset:Int):Int return readU32(data, offset);
 
 	function ensureOpen():Void {
 		if (released)
