@@ -1,4 +1,5 @@
 #include "nativekit.h"
+#include "nativekit_accessibility.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
@@ -27,6 +28,7 @@ int main(void) {
     options.api_version = NK_API_VERSION;
     assert(nk_api_version() == NK_API_VERSION);
     assert(nk_init(&options) == NK_OK);
+    assert(nk_surface_accessibility_clear(NK_INVALID_HANDLE) == NK_ERROR_UNSUPPORTED);
     (void)nk_get_capabilities();
     (void)nk_vulkan_supported();
     uint32_t vulkan_extension_count = 0;

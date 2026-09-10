@@ -61,6 +61,8 @@ public final class ConsumerTest {
                 assertEquals(0, activity.graphicsSurfaceProbe());
                 activity.dispatchInputForTest();
                 assertEquals(0, activity.inputProbe());
+                activity.dispatchAccessibilityForTest();
+                assertEquals(0, activity.accessibilityProbe());
                 assertEquals(0, activity.setGraphicsSurfaceVisible(false));
             });
             waitForIdle();

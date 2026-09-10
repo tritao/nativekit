@@ -67,6 +67,7 @@ if(NK_BUILD_SHARED)
 endif()
 
 add_library(nativekit ${NK_LIBRARY_TYPE}
+    src/core/accessibility.cpp
     src/core/api.cpp
     src/core/clipboard.cpp
     src/core/dialog.cpp

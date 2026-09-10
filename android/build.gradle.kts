@@ -4,6 +4,12 @@ plugins {
 }
 
 tasks.register<Exec>("verifyAndroidInputValues") {
+    dependsOn("verifyAndroidAccessibilityValues")
     workingDir = rootDir.parentFile
     commandLine("python3", "tools/generate-android-input-values.py", "--check")
+}
+
+tasks.register<Exec>("verifyAndroidAccessibilityValues") {
+    workingDir = rootDir.parentFile
+    commandLine("python3", "tools/generate-android-accessibility-values.py", "--check")
 }

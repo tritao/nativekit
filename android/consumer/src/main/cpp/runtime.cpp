@@ -1,4 +1,5 @@
 #include "nativekit.h"
+#include "nativekit_accessibility.h"
 #include "nativekit_gamepad.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
@@ -299,6 +300,103 @@ Java_io_nativekit_consumer_MainActivity_nativePrepareTextInput(JNIEnv *, jclass,
     state.cursor_width = 2.f;
     state.cursor_height = 20.f;
     return nk_surface_set_text_input_state(static_cast<nk_handle>(surface_value), &state);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativePrepareAccessibility(JNIEnv *, jclass,
+                                                                    jlong surface_value) {
+    const auto surface = static_cast<nk_handle>(surface_value);
+    nk_accessibility_node editor{};
+    editor.struct_size = sizeof(editor);
+    editor.id = 1;
+    editor.role = NK_ACCESSIBILITY_TEXT_FIELD;
+    editor.states = NK_ACCESSIBILITY_FOCUSABLE | NK_ACCESSIBILITY_MULTILINE;
+    editor.actions = NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS |
+                     NK_ACCESSIBILITY_CAN_SET_VALUE | NK_ACCESSIBILITY_CAN_SET_SELECTION;
+    editor.x = 10.f;
+    editor.y = 20.f;
+    editor.width = 200.f;
+    editor.height = 80.f;
+    editor.label = "Document";
+    editor.value = "hello \xf0\x9f\x98\x80";
+    if (const auto result = nk_surface_accessibility_set_node(surface, &editor); result != NK_OK)
+        return result;
+    nk_accessibility_node zoom{};
+    zoom.struct_size = sizeof(zoom);
+    zoom.id = 2;
+    zoom.child_index = 1;
+    zoom.role = NK_ACCESSIBILITY_SLIDER;
+    zoom.states = NK_ACCESSIBILITY_FOCUSABLE;
+    zoom.actions = NK_ACCESSIBILITY_CAN_INCREMENT | NK_ACCESSIBILITY_CAN_DECREMENT;
+    zoom.x = 10.f;
+    zoom.y = 110.f;
+    zoom.width = 200.f;
+    zoom.height = 40.f;
+    zoom.label = "Zoom";
+    zoom.numeric_value = 100;
+    zoom.numeric_minimum = 25;
+    zoom.numeric_maximum = 400;
+    return nk_surface_accessibility_set_node(surface, &zoom);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeUpdateAccessibility(JNIEnv *, jclass,
+                                                                   jlong surface_value) {
+    nk_accessibility_node editor{};
+    editor.struct_size = sizeof(editor);
+    editor.id = 1;
+    editor.role = NK_ACCESSIBILITY_TEXT_FIELD;
+    editor.states = NK_ACCESSIBILITY_FOCUSABLE | NK_ACCESSIBILITY_MULTILINE;
+    editor.actions = NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS |
+                     NK_ACCESSIBILITY_CAN_SET_VALUE | NK_ACCESSIBILITY_CAN_SET_SELECTION;
+    editor.width = 200.f;
+    editor.height = 80.f;
+    editor.label = "Document updated";
+    editor.value = "hello \xf0\x9f\x98\x80";
+    if (nk_surface_accessibility_set_node(static_cast<nk_handle>(surface_value), &editor) != NK_OK)
+        return 1;
+    return nk_surface_accessibility_remove_node(static_cast<nk_handle>(surface_value), 2);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeAccessibilityProbe(JNIEnv *, jclass,
+                                                                 jlong surface_value) {
+    bool focused = false;
+    bool activated = false;
+    bool valued = false;
+    bool selected = false;
+    bool incremented = false;
+    nk_event event{};
+    event.struct_size = sizeof(event);
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        if (nk_poll_event(&event) != NK_OK)
+            return 1;
+        if (event.kind == NK_EVENT_NONE)
+            break;
+        if (event.source == static_cast<nk_handle>(surface_value) &&
+            event.kind == NK_EVENT_ACCESSIBILITY_ACTION &&
+            event.data_size >= sizeof(nk_accessibility_action_event)) {
+            const auto *value = static_cast<const nk_accessibility_action_event *>(event.data);
+            focused |= value->node_id == 1 && value->action == NK_ACCESSIBILITY_ACTION_FOCUS;
+            activated |= value->node_id == 1 &&
+                         value->action == NK_ACCESSIBILITY_ACTION_ACTIVATE;
+            selected |= value->node_id == 1 &&
+                        value->action == NK_ACCESSIBILITY_ACTION_SET_SELECTION &&
+                        value->selection_start == 6 && value->selection_end == 7;
+            if (value->node_id == 1 && value->action == NK_ACCESSIBILITY_ACTION_SET_VALUE) {
+                const char *text = nullptr;
+                uint32_t length = 0;
+                if (nk_accessibility_action_event_value(&event, &text, &length) != NK_OK)
+                    return 2;
+                valued = length == 8 && std::memcmp(text, "new \xf0\x9f\x98\x80", 8) == 0;
+            }
+            incremented |= value->node_id == 2 &&
+                           value->action == NK_ACCESSIBILITY_ACTION_INCREMENT;
+        }
+        nk_event_release(&event);
+        event.struct_size = sizeof(event);
+    }
+    return focused && activated && valued && selected && incremented ? 0 : 3;
 }
 
 extern "C" JNIEXPORT jint JNICALL

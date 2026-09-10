@@ -11,6 +11,8 @@ import android.view.SurfaceView;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.text.InputType;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.FrameLayout;
 import io.nativekit.NativeKitHost;
 
@@ -49,6 +51,49 @@ public final class MainActivity extends Activity {
     public int graphicsSurfaceProbe() { return nativeGraphicsSurfaceProbe(surfaceProbe); }
 
     public int inputProbe() { return nativeInputProbe(surfaceProbe); }
+
+    public int accessibilityProbe() { return nativeAccessibilityProbe(surfaceProbe); }
+
+    public void dispatchAccessibilityForTest() {
+        SurfaceView view = graphicsSurfaceView();
+        int prepared = nativePrepareAccessibility(surfaceProbe);
+        if (prepared != 0)
+            throw new AssertionError("could not prepare semantic tree: " + prepared);
+        AccessibilityNodeProvider provider = view.getAccessibilityNodeProvider();
+        AccessibilityNodeInfo editor = provider == null ? null
+                                                         : provider.createAccessibilityNodeInfo(1);
+        AccessibilityNodeInfo slider = provider == null ? null
+                                                         : provider.createAccessibilityNodeInfo(2);
+        if (editor == null || slider == null ||
+            !"android.widget.EditText".contentEquals(editor.getClassName()) ||
+            !"Document".contentEquals(editor.getContentDescription()) ||
+            !"hello \ud83d\ude00".contentEquals(editor.getText()) || !editor.isMultiLine() ||
+            slider.getRangeInfo() == null || slider.getRangeInfo().getCurrent() != 100f)
+            throw new AssertionError("semantic nodes were not projected to Android");
+        provider.performAction(1, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null);
+        provider.performAction(1, AccessibilityNodeInfo.ACTION_CLICK, null);
+        Bundle text = new Bundle();
+        text.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                             "new \ud83d\ude00");
+        provider.performAction(1, AccessibilityNodeInfo.ACTION_SET_TEXT, text);
+        Bundle selection = new Bundle();
+        selection.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 6);
+        selection.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, 8);
+        provider.performAction(1, AccessibilityNodeInfo.ACTION_SET_SELECTION, selection);
+        provider.performAction(2, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, null);
+        if (nativeUpdateAccessibility(surfaceProbe) != 0 ||
+            !"Document updated".contentEquals(
+                provider.createAccessibilityNodeInfo(1).getContentDescription()) ||
+            provider.createAccessibilityNodeInfo(2) != null)
+            throw new AssertionError("incremental semantic update failed");
+    }
+
+    private SurfaceView graphicsSurfaceView() {
+        for (int index = 0; index < content.getChildCount(); ++index)
+            if (content.getChildAt(index) instanceof SurfaceView)
+                return (SurfaceView)content.getChildAt(index);
+        throw new IllegalStateException("graphics surface is unavailable");
+    }
 
     public void dispatchInputForTest() {
         SurfaceView view = null;
@@ -261,6 +306,9 @@ public final class MainActivity extends Activity {
     private static native int nativeVulkanSurfaceRecreatedProbe(long surface);
     private static native int nativeResourceClipboardProbe();
     private static native int nativePrepareTextInput(long surface);
+    private static native int nativePrepareAccessibility(long surface);
+    private static native int nativeUpdateAccessibility(long surface);
+    private static native int nativeAccessibilityProbe(long surface);
     private static native int nativeResourceStreamProbe();
     private static native int nativeWebViewHistoryProbe(long webView);
     private static native int nativePersistedResourceProbe();

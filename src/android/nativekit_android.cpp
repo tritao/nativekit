@@ -1,4 +1,5 @@
 #include "nativekit_mobile.h"
+#include "nativekit_accessibility.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
@@ -82,6 +83,7 @@ struct AndroidSurface final : nk::core::Resource {
     int32_t height = 0;
     int32_t framebuffer_width = 0;
     int32_t framebuffer_height = 0;
+    std::unordered_map<nk_accessibility_node_id, nk_accessibility_node_id> semantic_parents;
 };
 
 struct AndroidJoystick final : nk::core::Resource {
@@ -950,7 +952,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_DRAG_DROP |
            NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
            NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE |
-           NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT | NK_CAP_JOYSTICK;
+           NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT | NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY;
 }
 
 nk_result NK_CALL nk_shell_open_url(const char *url) {
@@ -1841,6 +1843,157 @@ nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t ac
                              "(Landroid/view/SurfaceView;Z)V", arguments);
 }
 
+nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle handle,
+                                                     const nk_accessibility_node *node) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    constexpr auto all_states = NK_ACCESSIBILITY_FOCUSABLE | NK_ACCESSIBILITY_FOCUSED |
+                                NK_ACCESSIBILITY_SELECTED | NK_ACCESSIBILITY_CHECKED |
+                                NK_ACCESSIBILITY_DISABLED | NK_ACCESSIBILITY_READ_ONLY |
+                                NK_ACCESSIBILITY_MULTILINE | NK_ACCESSIBILITY_PASSWORD |
+                                NK_ACCESSIBILITY_EXPANDED;
+    constexpr auto all_actions = NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS |
+                                 NK_ACCESSIBILITY_CAN_SET_VALUE |
+                                 NK_ACCESSIBILITY_CAN_SET_SELECTION |
+                                 NK_ACCESSIBILITY_CAN_INCREMENT | NK_ACCESSIBILITY_CAN_DECREMENT |
+                                 NK_ACCESSIBILITY_CAN_SCROLL_FORWARD |
+                                 NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD;
+    if (!node || node->struct_size < sizeof(*node) || node->id == NK_ACCESSIBILITY_ROOT ||
+        node->id > INT_MAX || node->parent_id > INT_MAX || node->id == node->parent_id ||
+        node->child_index > INT_MAX ||
+        node->role > NK_ACCESSIBILITY_SCROLL_AREA || (node->states & ~all_states) ||
+        (node->actions & ~all_actions) || !std::isfinite(node->x) || !std::isfinite(node->y) ||
+        !std::isfinite(node->width) || !std::isfinite(node->height) || node->width < 0.f ||
+        node->height < 0.f || !std::isfinite(node->numeric_value) ||
+        !std::isfinite(node->numeric_minimum) || !std::isfinite(node->numeric_maximum) ||
+        (node->role == NK_ACCESSIBILITY_SLIDER &&
+         (node->numeric_minimum > node->numeric_maximum ||
+          node->numeric_value < node->numeric_minimum ||
+          node->numeric_value > node->numeric_maximum))) {
+        nk::core::set_error("invalid accessibility node");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    if (node->parent_id != NK_ACCESSIBILITY_ROOT &&
+        resource->semantic_parents.find(node->parent_id) == resource->semantic_parents.end()) {
+        nk::core::set_error("accessibility node parent does not exist");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto ancestor = node->parent_id;
+    for (std::size_t depth = 0; ancestor != NK_ACCESSIBILITY_ROOT; ++depth) {
+        if (ancestor == node->id || depth > resource->semantic_parents.size()) {
+            nk::core::set_error("accessibility node would create a cycle");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        const auto parent = resource->semantic_parents.find(ancestor);
+        if (parent == resource->semantic_parents.end())
+            break;
+        ancestor = parent->second;
+    }
+    auto *env = environment();
+    if (!env)
+        return NK_ERROR_UNKNOWN;
+    auto label = from_utf8(env, node->label ? node->label : "");
+    auto value = from_utf8(env, node->value ? node->value : "");
+    if (!label || !value) {
+        if (label)
+            env->DeleteLocalRef(label);
+        if (value)
+            env->DeleteLocalRef(value);
+        return NK_ERROR_OUT_OF_MEMORY;
+    }
+    jvalue arguments[16]{};
+    arguments[0].l = resource->view;
+    arguments[1].i = static_cast<jint>(node->id);
+    arguments[2].i = static_cast<jint>(node->parent_id);
+    arguments[3].i = static_cast<jint>(node->child_index);
+    arguments[4].i = static_cast<jint>(node->role);
+    arguments[5].i = static_cast<jint>(node->states);
+    arguments[6].i = static_cast<jint>(node->actions);
+    arguments[7].f = node->x;
+    arguments[8].f = node->y;
+    arguments[9].f = node->width;
+    arguments[10].f = node->height;
+    arguments[11].l = label;
+    arguments[12].l = value;
+    arguments[13].d = node->numeric_value;
+    arguments[14].d = node->numeric_minimum;
+    arguments[15].d = node->numeric_maximum;
+    const auto result = java_void_surface(
+        resource, "setSurfaceAccessibilityNode",
+        "(Landroid/view/SurfaceView;IIIIIIFFFFLjava/lang/String;Ljava/lang/String;DDD)V",
+        arguments);
+    env->DeleteLocalRef(label);
+    env->DeleteLocalRef(value);
+    if (result == NK_OK)
+        resource->semantic_parents[node->id] = node->parent_id;
+    return result;
+}
+
+nk_result NK_CALL nk_surface_accessibility_remove_node(nk_handle handle,
+                                                        nk_accessibility_node_id node) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!node || node > INT_MAX)
+        return NK_ERROR_INVALID_ARGUMENT;
+    if (resource->semantic_parents.find(node) == resource->semantic_parents.end())
+        return NK_ERROR_INVALID_ARGUMENT;
+    jvalue arguments[2]{};
+    arguments[0].l = resource->view;
+    arguments[1].i = static_cast<jint>(node);
+    const auto result = java_void_surface(resource, "removeSurfaceAccessibilityNode",
+                                          "(Landroid/view/SurfaceView;I)V", arguments);
+    if (result == NK_OK) {
+        std::vector<nk_accessibility_node_id> removed{node};
+        for (std::size_t index = 0; index < removed.size(); ++index)
+            for (const auto &[candidate, parent] : resource->semantic_parents)
+                if (parent == removed[index])
+                    removed.push_back(candidate);
+        for (const auto id : removed)
+            resource->semantic_parents.erase(id);
+    }
+    return result;
+}
+
+nk_result NK_CALL nk_surface_accessibility_clear(nk_handle handle) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    jvalue arguments[1]{};
+    arguments[0].l = resource->view;
+    const auto result = java_void_surface(resource, "clearSurfaceAccessibility",
+                                          "(Landroid/view/SurfaceView;)V", arguments);
+    if (result == NK_OK)
+        resource->semantic_parents.clear();
+    return result;
+}
+
+nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle handle,
+                                                      nk_accessibility_node_id node) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (node > INT_MAX)
+        return NK_ERROR_INVALID_ARGUMENT;
+    if (node != NK_ACCESSIBILITY_ROOT &&
+        resource->semantic_parents.find(node) == resource->semantic_parents.end())
+        return NK_ERROR_INVALID_ARGUMENT;
+    jvalue arguments[2]{};
+    arguments[0].l = resource->view;
+    arguments[1].i = static_cast<jint>(node);
+    return java_void_surface(resource, "setSurfaceAccessibilityFocus",
+                             "(Landroid/view/SurfaceView;I)V", arguments);
+}
+
 nk_result NK_CALL nk_joystick_list(nk_handle *output, uint32_t *inout_count) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
@@ -2635,6 +2788,35 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
     std::memcpy(event.data.data(), &payload, sizeof(payload));
     if (!value.empty())
         std::memcpy(event.data.data() + sizeof(payload), value.c_str(), value.size() + 1);
+    nk::core::push_event(std::move(event));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnAccessibilityAction(
+    JNIEnv *env, jclass, jlong handle_value, jint node, jint action, jstring value,
+    jint selection_start, jint selection_end) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (!resource || node <= 0 || action < NK_ACCESSIBILITY_ACTION_ACTIVATE ||
+        action > NK_ACCESSIBILITY_ACTION_SCROLL_BACKWARD)
+        return;
+    const auto text = to_utf8(env, value);
+    nk_accessibility_action_event payload{};
+    payload.node_id = static_cast<nk_accessibility_node_id>(node);
+    payload.action = static_cast<nk_accessibility_action>(action);
+    payload.value_offset = text.empty() ? 0u : sizeof(payload);
+    payload.value_length = static_cast<uint32_t>(text.size());
+    auto position = [](jint input) -> nk_accessibility_text_position {
+        return input < 0 ? NK_ACCESSIBILITY_TEXT_POSITION_NONE
+                         : static_cast<nk_accessibility_text_position>(input);
+    };
+    payload.selection_start = position(selection_start);
+    payload.selection_end = position(selection_end);
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_ACCESSIBILITY_ACTION;
+    event.source = resource->handle;
+    event.data.resize(sizeof(payload) + text.size() + (text.empty() ? 0u : 1u));
+    std::memcpy(event.data.data(), &payload, sizeof(payload));
+    if (!text.empty())
+        std::memcpy(event.data.data() + sizeof(payload), text.c_str(), text.size() + 1);
     nk::core::push_event(std::move(event));
 }
 

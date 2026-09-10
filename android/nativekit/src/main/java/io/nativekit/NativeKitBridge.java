@@ -1,6 +1,7 @@
 package io.nativekit;
 
 import static io.nativekit.NativeKitInputValues.*;
+import static io.nativekit.NativeKitAccessibilityValues.*;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -15,15 +16,22 @@ import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Matrix;
+import android.graphics.Rect;
 import android.graphics.PixelFormat;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Environment;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityManager;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityNodeProvider;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -58,6 +66,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.Comparator;
 import java.util.Locale;
 
 /** Package-private JNI implementation. Public consumers use NativeKitHost. */
@@ -97,12 +106,306 @@ final class NativeKitBridge {
         private float cursorY;
         private float cursorWidth;
         private float cursorHeight;
+        private final Map<Integer, SemanticNode> semanticNodes = new HashMap<>();
+        private final SemanticProvider semanticProvider = new SemanticProvider();
+        private int accessibilityFocus;
+
+        private static final class SemanticNode {
+            int id;
+            int parent;
+            int childIndex;
+            int role;
+            int states;
+            int actions;
+            float x;
+            float y;
+            float width;
+            float height;
+            String label;
+            String value;
+            double numericValue;
+            double numericMinimum;
+            double numericMaximum;
+        }
 
         NativeSurfaceView(Context context, long handle) {
             super(context);
             nativeHandle = handle;
             setFocusable(true);
             setFocusableInTouchMode(true);
+            setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        }
+
+        @Override
+        public AccessibilityNodeProvider getAccessibilityNodeProvider() {
+            return semanticNodes.isEmpty() ? null : semanticProvider;
+        }
+
+        private final class SemanticProvider extends AccessibilityNodeProvider {
+            @Override
+            public AccessibilityNodeInfo createAccessibilityNodeInfo(int virtualId) {
+                if (virtualId == View.NO_ID) {
+                    AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain(NativeSurfaceView.this);
+                    onInitializeAccessibilityNodeInfo(info);
+                    semanticNodes.values().stream().filter(node -> node.parent == 0)
+                        .sorted(Comparator.comparingInt(node -> node.childIndex))
+                        .forEach(node -> info.addChild(NativeSurfaceView.this, node.id));
+                    return info;
+                }
+                SemanticNode node = semanticNodes.get(virtualId);
+                if (node == null)
+                    return null;
+                AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
+                info.setPackageName(getContext().getPackageName());
+                info.setSource(NativeSurfaceView.this, node.id);
+                if (node.parent == 0)
+                    info.setParent(NativeSurfaceView.this);
+                else
+                    info.setParent(NativeSurfaceView.this, node.parent);
+                semanticNodes.values().stream().filter(child -> child.parent == node.id)
+                    .sorted(Comparator.comparingInt(child -> child.childIndex))
+                    .forEach(child -> info.addChild(NativeSurfaceView.this, child.id));
+                populateNodeInfo(info, node);
+                return info;
+            }
+
+            @Override
+            public boolean performAction(int virtualId, int action, Bundle arguments) {
+                SemanticNode node = semanticNodes.get(virtualId);
+                if (node == null)
+                    return false;
+                int nativeAction;
+                String value = "";
+                int selectionStart = -1;
+                int selectionEnd = -1;
+                switch (action) {
+                case AccessibilityNodeInfo.ACTION_CLICK:
+                    if ((node.actions & ACCESSIBILITY_CAN_ACTIVATE) == 0)
+                        return false;
+                    nativeAction = ACCESSIBILITY_ACTION_ACTIVATE;
+                    break;
+                case AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS:
+                    if ((node.actions & ACCESSIBILITY_CAN_FOCUS) == 0)
+                        return false;
+                    accessibilityFocus = virtualId;
+                    sendVirtualEvent(virtualId, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED);
+                    nativeAction = ACCESSIBILITY_ACTION_FOCUS;
+                    break;
+                case AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS:
+                    if ((node.actions & ACCESSIBILITY_CAN_FOCUS) == 0)
+                        return false;
+                    if (accessibilityFocus == virtualId)
+                        accessibilityFocus = 0;
+                    sendVirtualEvent(virtualId,
+                                     AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED);
+                    nativeAction = ACCESSIBILITY_ACTION_CLEAR_FOCUS;
+                    break;
+                case AccessibilityNodeInfo.ACTION_SET_TEXT:
+                    if ((node.actions & ACCESSIBILITY_CAN_SET_VALUE) == 0 || arguments == null)
+                        return false;
+                    CharSequence replacement = arguments.getCharSequence(
+                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE);
+                    value = replacement == null ? "" : replacement.toString();
+                    nativeAction = ACCESSIBILITY_ACTION_SET_VALUE;
+                    break;
+                case AccessibilityNodeInfo.ACTION_SET_SELECTION:
+                    if ((node.actions & ACCESSIBILITY_CAN_SET_SELECTION) == 0 || arguments == null)
+                        return false;
+                    selectionStart = arguments.getInt(
+                        AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, -1);
+                    selectionEnd = arguments.getInt(
+                        AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, -1);
+                    if (selectionStart >= 0)
+                        selectionStart = Character.codePointCount(node.value, 0,
+                            Math.min(selectionStart, node.value.length()));
+                    if (selectionEnd >= 0)
+                        selectionEnd = Character.codePointCount(node.value, 0,
+                            Math.min(selectionEnd, node.value.length()));
+                    nativeAction = ACCESSIBILITY_ACTION_SET_SELECTION;
+                    break;
+                case AccessibilityNodeInfo.ACTION_SCROLL_FORWARD:
+                    if ((node.actions & (ACCESSIBILITY_CAN_INCREMENT |
+                                         ACCESSIBILITY_CAN_SCROLL_FORWARD)) == 0)
+                        return false;
+                    nativeAction = (node.role == ACCESSIBILITY_SLIDER)
+                        ? ACCESSIBILITY_ACTION_INCREMENT
+                        : ACCESSIBILITY_ACTION_SCROLL_FORWARD;
+                    break;
+                case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD:
+                    if ((node.actions & (ACCESSIBILITY_CAN_DECREMENT |
+                                         ACCESSIBILITY_CAN_SCROLL_BACKWARD)) == 0)
+                        return false;
+                    nativeAction = (node.role == ACCESSIBILITY_SLIDER)
+                        ? ACCESSIBILITY_ACTION_DECREMENT
+                        : ACCESSIBILITY_ACTION_SCROLL_BACKWARD;
+                    break;
+                default:
+                    return false;
+                }
+                nativeOnAccessibilityAction(nativeHandle, virtualId, nativeAction, value,
+                                            selectionStart, selectionEnd);
+                return true;
+            }
+
+            @Override
+            public AccessibilityNodeInfo findFocus(int focus) {
+                return accessibilityFocus == 0 ? null
+                                               : createAccessibilityNodeInfo(accessibilityFocus);
+            }
+        }
+
+        private void populateNodeInfo(AccessibilityNodeInfo info, SemanticNode node) {
+            info.setClassName(accessibilityClassName(node.role));
+            info.setContentDescription(node.label.isEmpty() ? null : node.label);
+            info.setText(node.value.isEmpty() ? null : node.value);
+            info.setEnabled((node.states & ACCESSIBILITY_DISABLED) == 0);
+            info.setFocusable((node.states & ACCESSIBILITY_FOCUSABLE) != 0);
+            info.setFocused((node.states & ACCESSIBILITY_FOCUSED) != 0);
+            info.setSelected((node.states & ACCESSIBILITY_SELECTED) != 0);
+            info.setCheckable(node.role == ACCESSIBILITY_CHECKBOX ||
+                              node.role == ACCESSIBILITY_RADIO);
+            info.setChecked((node.states & ACCESSIBILITY_CHECKED) != 0);
+            info.setPassword((node.states & ACCESSIBILITY_PASSWORD) != 0);
+            info.setMultiLine((node.states & ACCESSIBILITY_MULTILINE) != 0);
+            info.setEditable(node.role == ACCESSIBILITY_TEXT_FIELD &&
+                             (node.states & ACCESSIBILITY_READ_ONLY) == 0);
+            info.setAccessibilityFocused(accessibilityFocus == node.id);
+            if (node.role == ACCESSIBILITY_HEADING && Build.VERSION.SDK_INT >= 28)
+                info.setHeading(true);
+            if (node.role == ACCESSIBILITY_SLIDER)
+                info.setRangeInfo(AccessibilityNodeInfo.RangeInfo.obtain(
+                    AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT, (float)node.numericMinimum,
+                    (float)node.numericMaximum, (float)node.numericValue));
+            addAccessibilityActions(info, node.actions);
+            float density = getResources().getDisplayMetrics().density;
+            Rect parent = new Rect(Math.round(node.x * density), Math.round(node.y * density),
+                Math.round((node.x + node.width) * density),
+                Math.round((node.y + node.height) * density));
+            info.setBoundsInParent(parent);
+            int[] location = new int[2];
+            getLocationOnScreen(location);
+            Rect screen = new Rect(parent);
+            screen.offset(location[0], location[1]);
+            info.setBoundsInScreen(screen);
+            info.setVisibleToUser(getVisibility() == View.VISIBLE && node.width > 0 &&
+                                  node.height > 0);
+        }
+
+        private void addAccessibilityActions(AccessibilityNodeInfo info, int actions) {
+            if ((actions & ACCESSIBILITY_CAN_ACTIVATE) != 0)
+                info.addAction(AccessibilityNodeInfo.ACTION_CLICK);
+            if ((actions & ACCESSIBILITY_CAN_FOCUS) != 0) {
+                info.addAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS);
+                info.addAction(AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS);
+            }
+            if ((actions & ACCESSIBILITY_CAN_SET_VALUE) != 0)
+                info.addAction(AccessibilityNodeInfo.ACTION_SET_TEXT);
+            if ((actions & ACCESSIBILITY_CAN_SET_SELECTION) != 0)
+                info.addAction(AccessibilityNodeInfo.ACTION_SET_SELECTION);
+            if ((actions & (ACCESSIBILITY_CAN_INCREMENT | ACCESSIBILITY_CAN_SCROLL_FORWARD)) != 0)
+                info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+            if ((actions & (ACCESSIBILITY_CAN_DECREMENT |
+                            ACCESSIBILITY_CAN_SCROLL_BACKWARD)) != 0)
+                info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
+        }
+
+        private String accessibilityClassName(int role) {
+            switch (role) {
+            case ACCESSIBILITY_BUTTON: return "android.widget.Button";
+            case ACCESSIBILITY_CHECKBOX: return "android.widget.CheckBox";
+            case ACCESSIBILITY_RADIO: return "android.widget.RadioButton";
+            case ACCESSIBILITY_TEXT:
+            case ACCESSIBILITY_HEADING: return "android.widget.TextView";
+            case ACCESSIBILITY_TEXT_FIELD: return "android.widget.EditText";
+            case ACCESSIBILITY_IMAGE: return "android.widget.ImageView";
+            case ACCESSIBILITY_LIST: return "android.widget.ListView";
+            case ACCESSIBILITY_SLIDER: return "android.widget.SeekBar";
+            case ACCESSIBILITY_SCROLL_AREA: return "android.widget.ScrollView";
+            default: return "android.view.View";
+            }
+        }
+
+        private void sendVirtualEvent(int id, int kind) {
+            AccessibilityManager manager = (AccessibilityManager)getContext().getSystemService(
+                Context.ACCESSIBILITY_SERVICE);
+            if (manager == null || !manager.isEnabled())
+                return;
+            AccessibilityEvent event = AccessibilityEvent.obtain(kind);
+            event.setPackageName(getContext().getPackageName());
+            event.setSource(this, id);
+            ViewParent parent = getParent();
+            if (parent != null)
+                parent.requestSendAccessibilityEvent(this, event);
+        }
+
+        void setSemanticNode(int id, int parent, int childIndex, int role, int states,
+                             int actions, float x, float y, float width, float height,
+                             String label, String value, double numericValue,
+                             double numericMinimum, double numericMaximum) {
+            SemanticNode node = new SemanticNode();
+            node.id = id;
+            node.parent = parent;
+            node.childIndex = childIndex;
+            node.role = role;
+            node.states = states;
+            node.actions = actions;
+            node.x = x;
+            node.y = y;
+            node.width = width;
+            node.height = height;
+            node.label = label;
+            node.value = value;
+            node.numericValue = numericValue;
+            node.numericMinimum = numericMinimum;
+            node.numericMaximum = numericMaximum;
+            semanticNodes.put(id, node);
+            sendVirtualEvent(id, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        }
+
+        void removeSemanticNode(int id) {
+            ArrayList<Integer> removed = new ArrayList<>();
+            for (SemanticNode node : semanticNodes.values())
+                if (node.id == id || isSemanticDescendant(node, id))
+                    removed.add(node.id);
+            for (int removedId : removed)
+                semanticNodes.remove(removedId);
+            if (!semanticNodes.containsKey(accessibilityFocus))
+                accessibilityFocus = 0;
+            sendSemanticHostEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        }
+
+        private boolean isSemanticDescendant(SemanticNode node, int ancestor) {
+            int parent = node.parent;
+            for (int depth = 0; parent != 0 && depth <= semanticNodes.size(); ++depth) {
+                if (parent == ancestor)
+                    return true;
+                SemanticNode value = semanticNodes.get(parent);
+                if (value == null)
+                    return false;
+                parent = value.parent;
+            }
+            return false;
+        }
+
+        void clearSemanticNodes() {
+            semanticNodes.clear();
+            accessibilityFocus = 0;
+            sendSemanticHostEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        }
+
+        void setSemanticFocus(int id) {
+            accessibilityFocus = id;
+            if (id == 0)
+                sendSemanticHostEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED);
+            else
+                sendVirtualEvent(id, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED);
+        }
+
+        private void sendSemanticHostEvent(int kind) {
+            AccessibilityManager manager = (AccessibilityManager)getContext().getSystemService(
+                Context.ACCESSIBILITY_SERVICE);
+            if (manager != null && manager.isEnabled())
+                sendAccessibilityEvent(kind);
         }
 
         @Override
@@ -641,6 +944,27 @@ final class NativeKitBridge {
 
     static void setSurfaceTextInputActive(SurfaceView view, boolean active) {
         ((NativeSurfaceView)view).setTextInputActive(active);
+    }
+
+    static void setSurfaceAccessibilityNode(SurfaceView view, int id, int parent,
+                                             int childIndex, int role, int states, int actions,
+                                             float x, float y, float width, float height,
+                                             String label, String value, double numericValue,
+                                             double numericMinimum, double numericMaximum) {
+        ((NativeSurfaceView)view).setSemanticNode(id, parent, childIndex, role, states, actions,
+            x, y, width, height, label, value, numericValue, numericMinimum, numericMaximum);
+    }
+
+    static void removeSurfaceAccessibilityNode(SurfaceView view, int id) {
+        ((NativeSurfaceView)view).removeSemanticNode(id);
+    }
+
+    static void clearSurfaceAccessibility(SurfaceView view) {
+        ((NativeSurfaceView)view).clearSemanticNodes();
+    }
+
+    static void setSurfaceAccessibilityFocus(SurfaceView view, int id) {
+        ((NativeSurfaceView)view).setSemanticFocus(id);
     }
 
     private static void detachAfterRendererGone(WebView view) {
@@ -1440,6 +1764,9 @@ final class NativeKitBridge {
                                                 int replaceStart, int replaceEnd,
                                                 int selectionStart, int selectionEnd,
                                                 int compositionStart, int compositionEnd);
+    private static native void nativeOnAccessibilityAction(long handle, int node, int action,
+                                                           String value, int selectionStart,
+                                                           int selectionEnd);
     private static native void nativeOnGamepadAxis(long handle, int device, int axis, float value);
     private static native void nativeOnGamepadButton(long handle, int device, int button,
                                                      boolean pressed);

@@ -33,7 +33,8 @@ enum {
     NK_CAP_JOYSTICK = UINT64_C(1) << 20,
     NK_CAP_RESOURCE_SHARING = UINT64_C(1) << 21,
     NK_CAP_RESOURCE_IO = UINT64_C(1) << 22,
-    NK_CAP_VULKAN_SURFACE = UINT64_C(1) << 23
+    NK_CAP_VULKAN_SURFACE = UINT64_C(1) << 23,
+    NK_CAP_ACCESSIBILITY = UINT64_C(1) << 24
 };
 
 typedef uint32_t nk_native_window_kind;

@@ -27,6 +27,8 @@ OpenGL ES surface API and handles pause/resume plus native-surface recreation:
 Android's typed JNI input constants are generated from the public C headers.
 After changing an input enum, run `tools/generate-android-input-values.py` from
 the repository root. `./gradlew verifyAndroidInputValues` checks for drift.
+Accessibility values are generated separately by
+`tools/generate-android-accessibility-values.py`; the same Gradle verification task checks both.
 
 With an emulator or device connected, run the Java mapping tests and the
 end-to-end host/WebView instrumentation test with:
