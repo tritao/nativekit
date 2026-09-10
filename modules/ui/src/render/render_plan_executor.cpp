@@ -28,8 +28,14 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
             rendered_producers.count(dependency.producer.value))
             continue;
         SurfaceProducer *producer = resources.surface(dependency.producer);
-        if (!producer || !producer->ready())
+        if (!producer)
             return fail(error, 0, 0, "surface producer is unavailable");
+        if (!producer->ready()) {
+            if (!backend.surface_has_content(dependency.producer))
+                return fail(error, 0, 0, "surface producer is unavailable");
+            rendered_producers.insert(dependency.producer.value);
+            continue;
+        }
         SurfaceDescriptor description{};
         if (!producer->describe(window.width, window.height, description) || description.width <= 0 ||
             description.height <= 0)
@@ -43,8 +49,16 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
             rendered_producers.insert(dependency.producer.value);
             continue;
         }
-        if (!producer->render(backend, dependency.producer, description))
-            return fail(error, 0, 0, backend.last_error());
+        const SurfaceRenderResult render_result =
+            producer->render(backend, dependency.producer, description);
+        if (render_result == SurfaceRenderResult::Unavailable) {
+            if (!backend.surface_has_content(dependency.producer))
+                return fail(error, 0, 0, "surface producer has no fallback content");
+            rendered_producers.insert(dependency.producer.value);
+            continue;
+        }
+        if (render_result != SurfaceRenderResult::Rendered)
+            return fail(error, 0, 0, "surface producer render failed");
         backend.mark_surface_current(dependency.producer, generation, description);
         rendered_producers.insert(dependency.producer.value);
     }

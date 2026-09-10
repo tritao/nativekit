@@ -23,7 +23,10 @@ using namespace nkui;
 
 class TestSurfaceProducer final : public SurfaceProducer {
   public:
-    explicit TestSurfaceProducer(const NanoVGRecorder &recorder) : recorder_(recorder) {}
+    TestSurfaceProducer(const NanoVGRecorder &recorder, uint32_t &generation, bool &unavailable,
+                        bool &failed)
+        : recorder_(recorder), generation_(generation), unavailable_(unavailable),
+          failed_(failed) {}
     bool ready() const override { return true; }
     bool describe(int requested_width, int requested_height,
                   SurfaceDescriptor &description) const override {
@@ -31,15 +34,24 @@ class TestSurfaceProducer final : public SurfaceProducer {
                        SurfaceAlphaMode::Premultiplied};
         return true;
     }
-    uint32_t generation() const override { return 1; }
-    bool render(SokolBackend &backend, ResourceId target,
-                const SurfaceDescriptor &description) override {
-        return backend.begin_target_pass(target, description.width, description.height, false) &&
-               backend.draw_path(recorder_, 2) && backend.end_pass();
+    uint32_t generation() const override { return generation_; }
+    SurfaceRenderResult render(SokolBackend &backend, ResourceId target,
+                               const SurfaceDescriptor &description) override {
+        if (failed_)
+            return SurfaceRenderResult::Failed;
+        if (unavailable_)
+            return SurfaceRenderResult::Unavailable;
+        if (!backend.begin_target_pass(target, description.width, description.height, false) ||
+            !backend.draw_path(recorder_, 2) || !backend.end_pass())
+            return SurfaceRenderResult::Failed;
+        return SurfaceRenderResult::Rendered;
     }
 
   private:
     const NanoVGRecorder &recorder_;
+    uint32_t &generation_;
+    bool &unavailable_;
+    bool &failed_;
 };
 #ifndef NKUI_TEST_COLOR_FONT_PATH
 #error NKUI_TEST_COLOR_FONT_PATH is required
@@ -76,6 +88,9 @@ int main() {
     int height = 0;
     int frames = 0;
     bool ready = false;
+    uint32_t producer_generation = 1;
+    bool producer_unavailable = false;
+    bool producer_failed = false;
     auto backend = std::make_unique<SokolBackend>();
     NanoVGRecorder recorder;
     const unsigned char image_pixel[4] = {40, 120, 220, 220};
@@ -168,7 +183,8 @@ int main() {
         GLint framebuffer = 0;
         glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
         FrameResources resources;
-        TestSurfaceProducer producer(recorder);
+        TestSurfaceProducer producer(recorder, producer_generation, producer_unavailable,
+                                     producer_failed);
         if (!resources.bind_path(background, recorder, 0) ||
             !resources.bind_path(layer_path, recorder, 1) ||
             !resources.bind_path(foreground, recorder, 2) ||
@@ -198,10 +214,28 @@ int main() {
         if (!result && nk_surface_present(surface) != NK_OK)
             result = 6;
         ++frames;
+        if (frames == 1) {
+            ++producer_generation;
+            producer_unavailable = true;
+        } else if (frames == 3) {
+            producer_unavailable = false;
+        }
     }
-    if (!result && backend->stats().passes != 91)
+    if (!result) {
+        ++producer_generation;
+        producer_failed = true;
+        TestSurfaceProducer failed_producer(recorder, producer_generation, producer_unavailable,
+                                            producer_failed);
+        FrameResources failure_resources;
+        RenderExecutionError failure_error{};
+        if (!failure_resources.bind_surface(external_target, failed_producer) ||
+            execute_render_plan(*backend, plan, failure_resources,
+                                {main_target, width, height, 0}, &failure_error))
+            result = 14;
+    }
+    if (!result && backend->stats().passes != 92)
         result = 7;
-    if (!result && (backend->stats().draws != 301 || backend->stats().image_uploads < 2))
+    if (!result && (backend->stats().draws != 302 || backend->stats().image_uploads < 2))
         result = 10;
     if (ready)
         nk_surface_make_current(surface);

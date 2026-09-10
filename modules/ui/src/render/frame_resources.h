@@ -28,9 +28,17 @@ struct SurfaceDescriptor {
     SurfaceAlphaMode alpha = SurfaceAlphaMode::Premultiplied;
 };
 
+enum class SurfaceRenderResult : uint8_t {
+    Rendered = 1,
+    Unavailable,
+    Failed,
+};
+
 class SurfaceProducer {
   public:
     virtual ~SurfaceProducer() = default;
+    // Return false when no new frame can be acquired. The executor may keep using the last valid
+    // target in that case.
     virtual bool ready() const = 0;
     // Resolve the producer's output for the requested consumer size. The returned dimensions are
     // the dimensions used for the producer target and may differ from the consumer size.
@@ -39,8 +47,9 @@ class SurfaceProducer {
     // Return a non-zero revision for the pixels produced by this surface. The backend may reuse
     // the target while this revision and the resolved descriptor remain unchanged.
     virtual uint32_t generation() const = 0;
-    virtual bool render(SokolBackend &backend, ResourceId target,
-                        const SurfaceDescriptor &description) = 0;
+    // Return Unavailable for a transient synchronization miss; Failed aborts the frame.
+    virtual SurfaceRenderResult render(SokolBackend &backend, ResourceId target,
+                                       const SurfaceDescriptor &description) = 0;
 };
 
 struct PreparedPathRef {

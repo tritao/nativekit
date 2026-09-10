@@ -852,6 +852,13 @@ bool SokolBackend::begin_target_pass(ResourceId target_id, int width, int height
     return true;
 }
 
+bool SokolBackend::surface_has_content(ResourceId target_id) const {
+    if (!valid() || !is_resource_id(target_id, ResourceKind::RenderTarget))
+        return false;
+    return state_->surfaces.find(target_id.value) != state_->surfaces.end() &&
+           state_->targets.find(target_id.value) != state_->targets.end();
+}
+
 bool SokolBackend::surface_is_current(ResourceId target_id, uint32_t generation,
                                       const SurfaceDescriptor &description) const {
     if (!valid() || !is_resource_id(target_id, ResourceKind::RenderTarget) || generation == 0 ||

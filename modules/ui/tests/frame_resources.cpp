@@ -12,7 +12,10 @@ class TestProducer final : public SurfaceProducer {
         return true;
     }
     uint32_t generation() const override { return 7; }
-    bool render(SokolBackend &, ResourceId, const SurfaceDescriptor &) override { return true; }
+    SurfaceRenderResult render(SokolBackend &, ResourceId,
+                               const SurfaceDescriptor &) override {
+        return SurfaceRenderResult::Rendered;
+    }
 };
 
 int main() {
