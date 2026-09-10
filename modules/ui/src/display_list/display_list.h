@@ -116,6 +116,7 @@ class DisplayList {
     size_t capacity() const;
     uint32_t growth_count() const;
     uint32_t command_count() const;
+    bool assign_validated(const uint8_t *data, size_t size);
 
     bool set_transform(const float matrix[6]);
     bool set_paint(ResourceId paint);

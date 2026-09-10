@@ -88,6 +88,29 @@ uint32_t DisplayList::command_count() const {
     return command_count_;
 }
 
+bool DisplayList::assign_validated(const uint8_t *data, size_t size) {
+    if (!validate_display_list(data, size))
+        return false;
+    try {
+        if (size)
+            bytes_.assign(data, data + size);
+        else
+            bytes_.clear();
+    } catch (...) {
+        return false;
+    }
+    size_ = size;
+    command_count_ = 0;
+    size_t offset = 0;
+    while (offset < size_) {
+        CommandHeader header{};
+        std::memcpy(&header, bytes_.data() + offset, sizeof(header));
+        offset += header.size;
+        ++command_count_;
+    }
+    return true;
+}
+
 bool DisplayList::reserve_record(size_t record_size) {
     if (record_size > std::numeric_limits<size_t>::max() - size_)
         return false;
