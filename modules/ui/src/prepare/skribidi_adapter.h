@@ -99,6 +99,12 @@ struct AtlasUpload {
     uint64_t dirty_epoch = 0;
 };
 
+struct SkribidiAdapterStats {
+    uint64_t glyph_cache_misses = 0;
+    uint64_t glyphs_rasterized = 0;
+    uint64_t prepared_batch_count = 0;
+};
+
 class SkribidiAdapter {
   public:
     SkribidiAdapter();
@@ -124,6 +130,7 @@ class SkribidiAdapter {
     uint64_t layout_generation() const;
     uint32_t layout_build_count() const;
     uint32_t atlas_texture_count() const;
+    SkribidiAdapterStats stats() const;
     std::vector<AtlasUpload> pending_atlas_uploads() const;
     std::vector<AtlasUpload> atlas_uploads(bool include_clean) const;
     bool acknowledge_atlas_upload(AtlasTextureId texture, uint64_t dirty_epoch);

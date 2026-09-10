@@ -24,6 +24,7 @@ struct SkribidiAdapter::State {
     float cached_font_size = 0.0f;
     uint64_t cached_font_generation = 0;
     uint32_t layout_builds = 0;
+    uint64_t prepared_batch_count = 0;
 };
 
 namespace {
@@ -211,6 +212,7 @@ bool SkribidiAdapter::prepare_glyphs(float origin_x, float origin_y, float pixel
     RenderGlyphContext render{state_, origin_x, origin_y, pixel_scale, mode, &output};
     if (!skb_layout_iterate_render_glyphs(state_->layout, append_render_glyph, &render))
         return false;
+    state_->prepared_batch_count += output.batches.size();
     return true;
 }
 
@@ -301,6 +303,14 @@ uint32_t SkribidiAdapter::layout_build_count() const {
 uint32_t SkribidiAdapter::atlas_texture_count() const {
     return state_->atlas ? static_cast<uint32_t>(skb_image_atlas_get_texture_count(state_->atlas))
                          : 0;
+}
+
+SkribidiAdapterStats SkribidiAdapter::stats() const {
+    if (!state_->atlas)
+        return {};
+    const skb_image_atlas_stats_t atlas_stats = skb_image_atlas_get_stats(state_->atlas);
+    return {atlas_stats.glyph_cache_misses, atlas_stats.glyphs_rasterized,
+            state_->prepared_batch_count};
 }
 
 std::vector<AtlasUpload> SkribidiAdapter::pending_atlas_uploads() const {
