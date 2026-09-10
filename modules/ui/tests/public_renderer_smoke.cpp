@@ -76,9 +76,18 @@ int main() {
     append(commands, nkui_resource_command{{NKUI_COMMAND_DRAW_PATH, NKUI_COMMAND_VERSION,
                                             sizeof(nkui_resource_command)},
                                            path});
+    append(commands, nkui_transform_command{{NKUI_COMMAND_SET_TRANSFORM, NKUI_COMMAND_VERSION,
+                                             sizeof(nkui_transform_command)},
+                                            {1.0f, 0.0f, 0.0f, 1.0f, 4.0f, 4.0f}});
+    append(commands, nkui_resource_command{{NKUI_COMMAND_DRAW_PATH, NKUI_COMMAND_VERSION,
+                                            sizeof(nkui_resource_command)},
+                                           path});
     append(commands, nkui_resource_command{{NKUI_COMMAND_SET_PAINT, NKUI_COMMAND_VERSION,
                                             sizeof(nkui_resource_command)},
                                            stroke_paint});
+    append(commands, nkui_transform_command{{NKUI_COMMAND_SET_TRANSFORM, NKUI_COMMAND_VERSION,
+                                             sizeof(nkui_transform_command)},
+                                            {1.0f, 0.0f, 0.0f, 1.0f, 2.0f, 2.0f}});
     append(commands, nkui_stroke_path_command{{NKUI_COMMAND_STROKE_PATH, NKUI_COMMAND_VERSION,
                                                sizeof(nkui_stroke_path_command)},
                                               path,
@@ -86,6 +95,9 @@ int main() {
                                               NKUI_PATH_LINE_CAP_ROUND,
                                               NKUI_PATH_LINE_JOIN_ROUND,
                                               10.0f});
+    append(commands, nkui_transform_command{{NKUI_COMMAND_SET_TRANSFORM, NKUI_COMMAND_VERSION,
+                                             sizeof(nkui_transform_command)},
+                                            {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}});
     append(commands, nkui_draw_rect_command{{NKUI_COMMAND_DRAW_TEXT_LAYOUT, NKUI_COMMAND_VERSION,
                                              sizeof(nkui_draw_rect_command)},
                                             text,
@@ -157,6 +169,15 @@ int main() {
     }
     if (!result && frames != 30)
         result = 8;
+    nkui_renderer_stats stats{};
+    if (!result && (nkui_renderer_get_stats(renderer, &stats) != NKUI_OK ||
+                    stats.struct_size != sizeof(stats) || stats.path_preparations == 0 ||
+                    stats.path_preparations != 4 || stats.path_cache_misses != 4 ||
+                    stats.path_cache_hits == 0 || stats.path_vertices_generated == 0 ||
+                    stats.path_geometry_bytes_allocated == 0 ||
+                    stats.path_geometry_bytes_retained == 0 ||
+                    stats.path_tessellation_nanoseconds == 0))
+        result = 16;
     if (ready)
         nk_surface_make_current(surface);
     if (nkui_renderer_destroy(renderer) != NKUI_OK)

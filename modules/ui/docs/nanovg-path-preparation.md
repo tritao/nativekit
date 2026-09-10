@@ -78,11 +78,34 @@ prepared concurrently when the supplied allocator is thread-safe.
 ## NativeKit integration
 
 NativeKit translates NanoVG output immediately into its private
-`PreparedGeometry`, `PreparedPaint`, `PreparedVertex`, and `PreparedBlend`
-representations. The geometry cache is keyed by path, transform, device scale,
-and stroke style when applicable, not by paint, so recoloring a retained path
-does not retessellate it. Paint is attached when a `PreparedPath` operation is
-created and is consumed by the NativeKit compositor and Sokol backend.
+`PreparedGeometry`, `PreparedPaint`, and `PreparedVertex` representations.
+NanoVG writes directly into the `std::vector` storage owned by the NativeKit
+preparation result; there is no temporary `NVGpreparedPath`/`NVGvertex` array
+or conversion copy between tessellation and the retained geometry.
+
+NativeKit's retained-path policy is device-space preparation with deferred
+placement:
+
+- the linear part of the device transform (scale, skew, and rotation) is
+  passed to NanoVG and is part of the geometry-cache key;
+- translation is removed before preparation and is applied by the renderer;
+- device pixel scale is part of the key and affects flattening tolerance,
+  fringe width, and stroke expansion; and
+- therefore moving a retained path reuses geometry, while a scale, skew,
+  rotation, or pixel-scale change prepares a new device-quality result.
+
+The standalone preparation API leaves this choice to its caller. Callers
+wanting transform-independent retained geometry can prepare in local space
+and apply a transform during rendering, accepting that very large scale
+changes may reduce curve or stroke quality. NativeKit chooses device-space
+geometry so that its cache preserves antialias and tessellation quality.
+
+The geometry cache is keyed by path, the tessellation-affecting transform,
+device scale, and stroke style when applicable, not by paint, so recoloring a
+retained path does not retessellate it. Paint is attached when a
+`PreparedPath` operation is created and is consumed by the NativeKit
+compositor and Sokol backend. Canvas clipping and compositing remain on the
+render-plan command; they are not retained in prepared path data.
 
 The public NativeKit display list uses `NKUI_COMMAND_DRAW_PATH` for fills and
 `NKUI_COMMAND_STROKE_PATH` for strokes. A stroke command carries its logical
@@ -102,5 +125,6 @@ NativeKit Path
 ```
 
 Skribidi remains NativeKit's text authority. Ordinary `DrawImage` operations
-also bypass NanoVG; NanoVG image handles are relevant only when an image is a
-paint on prepared path geometry.
+also bypass NanoVG. Image-pattern paints, where used by the compatibility
+boundary, carry a NativeKit-local opaque image token into the backend rather
+than retaining a NanoVG image handle in path data.

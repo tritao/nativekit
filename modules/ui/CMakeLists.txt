@@ -6,7 +6,6 @@ add_library(nativekit_ui SHARED
     src/api.cpp
     src/compositor/compositor.cpp
     src/display_list/display_list.cpp
-    src/prepare/nanovg_recorder.cpp
     src/prepare/nanovg_path.cpp
     src/prepare/skribidi_adapter.cpp
     src/render/frame_resources.cpp

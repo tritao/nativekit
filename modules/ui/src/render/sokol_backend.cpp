@@ -83,7 +83,8 @@ struct SokolBackend::State {
     std::unordered_map<uint64_t, AtlasImage> atlases;
     std::unordered_map<uint32_t, Target> targets;
     std::unordered_map<uint32_t, SurfaceState> surfaces;
-    std::unordered_map<const PreparedPathData *, std::unordered_map<int, PaintImage>> paint_images;
+    std::unordered_map<const PreparedPathData *,
+                       std::unordered_map<PreparedImageToken, PaintImage>> paint_images;
     std::unordered_map<uint32_t, PaintImage> images;
     sg_image white_image{};
     sg_view white_view{};
@@ -520,10 +521,10 @@ bool create_target(SokolBackend::State &state, SokolBackend::State::Target &targ
     return true;
 }
 
-const PreparedTexture *find_texture(const PreparedPathData &path, int id) {
+const PreparedTexture *find_texture(const PreparedPathData &path, PreparedImageToken token) {
     const auto &textures = path.textures();
     const auto found = std::find_if(textures.begin(), textures.end(),
-                                    [id](const auto &texture) { return texture.id == id; });
+                                    [token](const auto &texture) { return texture.token == token; });
     return found == textures.end() ? nullptr : &*found;
 }
 
@@ -567,19 +568,20 @@ bool upload_texture(SokolBackend::State &state, const PreparedTexture &source,
     return true;
 }
 
-bool resolve_paint_image(SokolBackend::State &state, const PreparedPathData &path, int id,
+bool resolve_paint_image(SokolBackend::State &state, const PreparedPathData &path,
+                         PreparedImageToken token,
                          sg_view &view, sg_sampler &sampler, int &type, int &flags) {
-    if (!id) {
+    if (!token) {
         view = state.white_view;
         sampler = state.white_sampler;
         type = NVG_TEXTURE_RGBA;
         flags = NVG_IMAGE_PREMULTIPLIED;
         return true;
     }
-    const PreparedTexture *source = find_texture(path, id);
+    const PreparedTexture *source = find_texture(path, token);
     if (!source)
         return fail(state, "NanoVG paint texture is missing");
-    auto &image = state.paint_images[&path][id];
+    auto &image = state.paint_images[&path][token];
     if (!upload_texture(state, *source, image))
         return false;
     view = image.view;
@@ -1061,7 +1063,7 @@ bool SokolBackend::draw_image(const PreparedTexture &image, float x, float y, fl
     if (!state_->in_pass || !transform || opacity < 0.0f || opacity > 1.0f || image.width <= 0 ||
         image.height <= 0 || image.type != NVG_TEXTURE_RGBA || image.pixels.empty())
         return fail(*state_, "invalid image draw");
-    auto &gpu_image = state_->images[static_cast<uint32_t>(image.id)];
+    auto &gpu_image = state_->images[image.token];
     if (!upload_texture(*state_, image, gpu_image))
         return false;
     const auto point = [transform](float px, float py, float u, float v) {

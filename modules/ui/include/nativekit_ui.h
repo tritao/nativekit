@@ -116,6 +116,26 @@ typedef struct nkui_frame_info {
     float pixel_scale;
 } nkui_frame_info;
 
+/** Preparation and geometry-cache counters for one renderer. */
+typedef struct nkui_renderer_stats {
+    /** Set to sizeof(nkui_renderer_stats) when returned by the API. */
+    uint32_t struct_size;
+    /** Number of NanoVG fill/stroke preparations performed after cache misses. */
+    uint64_t path_preparations;
+    /** Number of retained path geometry cache hits. */
+    uint64_t path_cache_hits;
+    /** Number of retained path geometry cache misses. */
+    uint64_t path_cache_misses;
+    /** Number of vertices produced by direct path preparation. */
+    uint64_t path_vertices_generated;
+    /** Vector capacity bytes allocated for newly prepared path geometry. */
+    uint64_t path_geometry_bytes_allocated;
+    /** Nanoseconds spent inside NanoVG path preparation. */
+    uint64_t path_tessellation_nanoseconds;
+    /** Vector capacity bytes currently retained by the path geometry cache. */
+    uint64_t path_geometry_bytes_retained;
+} nkui_renderer_stats;
+
 /** 16-bit opcode identifying one display-list command record. */
 typedef uint16_t nkui_command_opcode;
 
@@ -536,6 +556,10 @@ NKUI_API nkui_result nkui_renderer_create(nkui_renderer *out_renderer NKUI_OUT);
 
 /** Destroys a renderer and releases its backend caches. */
 NKUI_API nkui_result nkui_renderer_destroy(nkui_renderer renderer);
+
+/** Returns preparation and geometry-cache counters for a renderer. */
+NKUI_API nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
+                                             nkui_renderer_stats *out_stats NKUI_OUT);
 
 /**
  * Renders a display list using the surface's current framebuffer size.

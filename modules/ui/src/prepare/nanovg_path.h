@@ -45,7 +45,8 @@ struct PathPreparationParams {
     float miter_limit = 10.0f;
 };
 
-/** Caller-owned NativeKit representation of one prepared geometry result. */
+/** Caller-owned NativeKit representation of one prepared geometry result.
+ * The vectors retain their capacity when reused for a subsequent preparation. */
 struct PreparedGeometry {
     std::vector<PreparedPathRange> paths;
     std::vector<PreparedVertex> vertices;

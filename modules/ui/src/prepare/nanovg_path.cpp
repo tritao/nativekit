@@ -3,11 +3,38 @@
 #include "nanovg.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <utility>
 
 namespace nkui {
 
+/* These private PODs intentionally mirror NanoVG's caller-owned output
+ * records.  Keep the checks beside the direct-write bridge below: NativeKit
+ * owns the vectors, while NanoVG only fills their storage for this call. */
+static_assert(sizeof(PreparedVertex) == sizeof(NVGvertex));
+static_assert(offsetof(PreparedVertex, x) == offsetof(NVGvertex, x));
+static_assert(offsetof(PreparedVertex, y) == offsetof(NVGvertex, y));
+static_assert(offsetof(PreparedVertex, u) == offsetof(NVGvertex, u));
+static_assert(offsetof(PreparedVertex, v) == offsetof(NVGvertex, v));
+static_assert(sizeof(PreparedPathRange) == sizeof(NVGpreparedPath));
+static_assert(offsetof(PreparedPathRange, fill_offset) == offsetof(NVGpreparedPath, fillOffset));
+static_assert(offsetof(PreparedPathRange, fill_count) == offsetof(NVGpreparedPath, fillCount));
+static_assert(offsetof(PreparedPathRange, stroke_offset) == offsetof(NVGpreparedPath, strokeOffset));
+static_assert(offsetof(PreparedPathRange, stroke_count) == offsetof(NVGpreparedPath, strokeCount));
+static_assert(offsetof(PreparedPathRange, closed) == offsetof(NVGpreparedPath, closed));
+static_assert(offsetof(PreparedPathRange, convex) == offsetof(NVGpreparedPath, convex));
+static_assert(offsetof(PreparedPathRange, winding) == offsetof(NVGpreparedPath, winding));
+
 namespace {
+
+void reset_geometry(PreparedGeometry &output) {
+    output.paths.clear();
+    output.vertices.clear();
+    output.bounds.fill(0.0f);
+    output.fringe_width = 0.0f;
+    output.stroke_width = 0.0f;
+    output.fill_rule = PathFillRule::NonZero;
+}
 
 NVGprepareParams native_params(const PathPreparationParams &params) {
     NVGprepareParams native;
@@ -28,7 +55,7 @@ NVGprepareParams native_params(const PathPreparationParams &params) {
 
 bool prepare(NVGpathBuilder *builder, const PathPreparationParams &params, bool stroke,
              PreparedGeometry &output) {
-    output = {};
+    reset_geometry(output);
     if (builder == nullptr || nvgPathBuilderIsEmpty(builder) != 0)
         return false;
     const NVGprepareParams native = native_params(params);
@@ -40,35 +67,20 @@ bool prepare(NVGpathBuilder *builder, const PathPreparationParams &params, bool 
     output.paths.resize(static_cast<size_t>(query.pathCount));
     output.vertices.resize(static_cast<size_t>(query.vertexCount));
     NVGprepareOutput native_output{};
-    native_output.paths = new NVGpreparedPath[static_cast<size_t>(query.pathCount)];
+    native_output.paths = reinterpret_cast<NVGpreparedPath *>(output.paths.data());
     native_output.pathCapacity = query.pathCount;
-    native_output.vertices = new NVGvertex[static_cast<size_t>(query.vertexCount)];
+    native_output.vertices = reinterpret_cast<NVGvertex *>(output.vertices.data());
     native_output.vertexCapacity = query.vertexCount;
     const int result = stroke ? nvgPrepareStroke(builder, &native, &native_output)
                               : nvgPrepareFill(builder, &native, &native_output);
     if (result != NVG_PREPARE_OK) {
-        delete[] native_output.paths;
-        delete[] native_output.vertices;
-        output = {};
+        reset_geometry(output);
         return false;
-    }
-    for (int index = 0; index < native_output.pathCount; ++index) {
-        const auto &source = native_output.paths[index];
-        output.paths[static_cast<size_t>(index)] = {
-            static_cast<uint32_t>(source.fillOffset), static_cast<uint32_t>(source.fillCount),
-            static_cast<uint32_t>(source.strokeOffset), static_cast<uint32_t>(source.strokeCount),
-            source.closed != 0, source.convex != 0};
-    }
-    for (int index = 0; index < native_output.vertexCount; ++index) {
-        const auto &source = native_output.vertices[index];
-        output.vertices[static_cast<size_t>(index)] = {source.x, source.y, source.u, source.v};
     }
     std::copy(std::begin(native_output.bounds), std::end(native_output.bounds), output.bounds.begin());
     output.fringe_width = native_output.fringeWidth;
     output.stroke_width = native_output.strokeWidth;
     output.fill_rule = static_cast<PathFillRule>(native_output.fillRule);
-    delete[] native_output.paths;
-    delete[] native_output.vertices;
     return true;
 }
 

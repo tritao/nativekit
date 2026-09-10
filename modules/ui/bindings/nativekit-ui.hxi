@@ -582,6 +582,10 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") @depe
 	 */
 	extern fn nkui_renderer_destroy(renderer: nkui_renderer) -> nkui_result;
 	/**
+	 * Returns preparation and geometry-cache counters for a renderer.
+	 */
+	extern fn nkui_renderer_get_stats(renderer: nkui_renderer, out_stats: ptr<nkui_renderer_stats> @out) -> nkui_result;
+	/**
 	 * Renders a display list using the surface's current framebuffer size.
 	 *
 	 * This convenience form uses a one-to-one logical-to-physical pixel scale.
@@ -885,6 +889,43 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") @depe
 		 * Internal generation-and-slot token; treat the handle as an opaque value.
 		 */
 		id: u32 @offset(0);
+	}
+	/**
+	 * Preparation and geometry-cache counters for one renderer.
+	 */
+	struct nkui_renderer_stats @layout(64, 8) {
+		/**
+		 * Set to sizeof(nkui_renderer_stats) when returned by the API.
+		 */
+		struct_size: u32 @offset(0);
+		/**
+		 * Number of NanoVG fill/stroke preparations performed after cache misses.
+		 */
+		path_preparations: u64 @offset(8);
+		/**
+		 * Number of retained path geometry cache hits.
+		 */
+		path_cache_hits: u64 @offset(16);
+		/**
+		 * Number of retained path geometry cache misses.
+		 */
+		path_cache_misses: u64 @offset(24);
+		/**
+		 * Number of vertices produced by direct path preparation.
+		 */
+		path_vertices_generated: u64 @offset(32);
+		/**
+		 * Vector capacity bytes allocated for newly prepared path geometry.
+		 */
+		path_geometry_bytes_allocated: u64 @offset(40);
+		/**
+		 * Nanoseconds spent inside NanoVG path preparation.
+		 */
+		path_tessellation_nanoseconds: u64 @offset(48);
+		/**
+		 * Vector capacity bytes currently retained by the path geometry cache.
+		 */
+		path_geometry_bytes_retained: u64 @offset(56);
 	}
 	/**
 	 * Opaque handle for a path, paint, image, font collection, or text layout.

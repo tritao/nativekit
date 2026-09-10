@@ -22,13 +22,19 @@ enum PreparedTextureType : int {
     PreparedTextureRgba = 0x02,
 };
 
+/* NativeKit-local identity for an image used by a prepared paint.  NanoVG
+ * image handles are translated to this token at the compatibility boundary;
+ * they never become part of the retained path representation. */
+using PreparedImageToken = uint32_t;
+
 struct PreparedPathRange {
-    uint32_t fill_offset = 0;
-    uint32_t fill_count = 0;
-    uint32_t stroke_offset = 0;
-    uint32_t stroke_count = 0;
-    bool closed = false;
-    bool convex = false;
+    int32_t fill_offset = 0;
+    int32_t fill_count = 0;
+    int32_t stroke_offset = 0;
+    int32_t stroke_count = 0;
+    uint8_t closed = 0;
+    uint8_t convex = 0;
+    int32_t winding = 0;
 };
 
 struct PreparedColor {
@@ -45,19 +51,7 @@ struct PreparedPaint {
     float feather = 0.0f;
     PreparedColor innerColor{};
     PreparedColor outerColor{};
-    int image = 0;
-};
-
-struct PreparedBlend {
-    int srcRGB = 0;
-    int dstRGB = 0;
-    int srcAlpha = 0;
-    int dstAlpha = 0;
-};
-
-struct PreparedScissor {
-    float xform[6]{};
-    float extent[2]{};
+    PreparedImageToken image = 0;
 };
 
 struct PreparedVertex {
@@ -70,8 +64,6 @@ struct PreparedVertex {
 struct PreparedPathOperation {
     PreparedPathKind kind{};
     PreparedPaint paint{};
-    PreparedBlend composite{};
-    PreparedScissor scissor{};
     float fringe = 0.0f;
     float stroke_width = 0.0f;
     PathFillRule fill_rule = PathFillRule::NonZero;
@@ -83,7 +75,7 @@ struct PreparedPathOperation {
 };
 
 struct PreparedTexture {
-    int id = 0;
+    PreparedImageToken token = 0;
     int type = 0;
     int width = 0;
     int height = 0;

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -107,6 +108,7 @@ struct RendererSlot {
     std::unique_ptr<nkui::SokolBackend> backend;
     nkui::Compositor compositor;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
+    nkui_renderer_stats stats{};
     uint16_t generation = 1;
 };
 
@@ -222,6 +224,16 @@ float average_scale(const std::array<float, 6> &transform) {
     return (x_scale + y_scale) * 0.5f;
 }
 
+uint64_t geometry_memory_bytes(const nkui::PreparedGeometry &geometry) {
+    return static_cast<uint64_t>(geometry.paths.capacity()) * sizeof(nkui::PreparedPathRange) +
+           static_cast<uint64_t>(geometry.vertices.capacity()) * sizeof(nkui::PreparedVertex);
+}
+
+void clear_path_cache(RendererSlot &renderer) {
+    renderer.paths.clear();
+    renderer.stats.path_geometry_bytes_retained = 0;
+}
+
 bool uniform_scale(const std::array<float, 6> &matrix, float &scale) {
     constexpr float epsilon = 0.0001f;
     if (std::abs(matrix[1]) > epsilon || std::abs(matrix[2]) > epsilon || matrix[0] <= 0.0f ||
@@ -239,6 +251,14 @@ std::array<float, 6> device_transform(const std::array<float, 6> &transform,
     return result;
 }
 
+std::array<float, 6> tessellation_transform(const std::array<float, 6> &transform) {
+    return {transform[0], transform[1], transform[2], transform[3], 0.0f, 0.0f};
+}
+
+std::array<float, 6> placement_transform(const std::array<float, 6> &transform) {
+    return {1.0f, 0.0f, 0.0f, 1.0f, transform[4], transform[5]};
+}
+
 nkui::PreparedPaint paint_color(ResourceSlot *paint);
 
 PreparedPathCacheEntry *prepare_cached_path(
@@ -246,11 +266,14 @@ PreparedPathCacheEntry *prepare_cached_path(
     const std::array<float, 6> &transform, float pixel_scale,
     const nkui::RenderCommand &command) {
     const PathCacheKey key = path_cache_key(path_handle, transform, pixel_scale, command);
-    if (const auto found = renderer.paths.find(key); found != renderer.paths.end())
+    if (const auto found = renderer.paths.find(key); found != renderer.paths.end()) {
+        ++renderer.stats.path_cache_hits;
         return &found->second;
+    }
+    ++renderer.stats.path_cache_misses;
     constexpr size_t max_cached_paths = 256;
     if (renderer.paths.size() >= max_cached_paths)
-        renderer.paths.clear();
+        clear_path_cache(renderer);
     if (!path.path || !path.path->valid())
         return nullptr;
     nkui::PathPreparationParams params;
@@ -264,14 +287,25 @@ PreparedPathCacheEntry *prepare_cached_path(
         params.miter_limit = command.miter_limit;
     }
     nkui::PreparedGeometry geometry;
-    if (!(stroke ? nkui::prepare_stroke(*path.path, params, geometry)
-                 : nkui::prepare_fill(*path.path, params, geometry)))
+    ++renderer.stats.path_preparations;
+    const auto start = std::chrono::steady_clock::now();
+    const bool prepared = stroke ? nkui::prepare_stroke(*path.path, params, geometry)
+                                 : nkui::prepare_fill(*path.path, params, geometry);
+    renderer.stats.path_tessellation_nanoseconds += static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - start)
+            .count());
+    if (!prepared)
         return nullptr;
+    const uint64_t geometry_bytes = geometry_memory_bytes(geometry);
+    renderer.stats.path_vertices_generated += geometry.vertices.size();
+    renderer.stats.path_geometry_bytes_allocated += geometry_bytes;
     try {
         auto [found, inserted] = renderer.paths.emplace(key, PreparedPathCacheEntry{});
         if (!inserted)
             return &found->second;
         found->second.geometry = std::move(geometry);
+        renderer.stats.path_geometry_bytes_retained += geometry_bytes;
         return &found->second;
     } catch (...) {
         return nullptr;
@@ -733,6 +767,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
             auto &slot = renderers[index];
             if (!slot.backend) {
                 slot.backend = std::make_unique<nkui::SokolBackend>();
+                slot.stats = {};
                 out_renderer->id = make_handle(slot.generation, static_cast<uint16_t>(index + 1));
                 return NKUI_OK;
             }
@@ -742,6 +777,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
         renderers.emplace_back();
         auto &slot = renderers.back();
         slot.backend = std::make_unique<nkui::SokolBackend>();
+        slot.stats = {};
         out_renderer->id = make_handle(1, static_cast<uint16_t>(renderers.size()));
         return NKUI_OK;
     } catch (...) {
@@ -755,10 +791,24 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
     slot->backend.reset();
-    slot->paths.clear();
+    clear_path_cache(*slot);
+    slot->stats = {};
     slot->generation = static_cast<uint16_t>(slot->generation + 1);
     if (!slot->generation)
         slot->generation = 1;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
+                                                 nkui_renderer_stats *out_stats) {
+    if (!out_stats)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(renderers_mutex);
+    auto *slot = resolve(renderer);
+    if (!slot)
+        return NKUI_ERROR_INVALID_HANDLE;
+    *out_stats = slot->stats;
+    out_stats->struct_size = sizeof(*out_stats);
     return NKUI_OK;
 }
 
@@ -816,9 +866,10 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                     break;
                 }
                 const auto transform = device_transform(command.transform, frame_info->pixel_scale);
+                const auto tessellation = tessellation_transform(transform);
                 const nkui_resource path_handle{command.resource.value};
                 const auto cached = prepare_cached_path(*renderer_slot, path_handle, *path,
-                                                        transform, frame_info->pixel_scale, command);
+                                                        tessellation, frame_info->pixel_scale, command);
                 if (!cached) {
                     valid = false;
                     break;
@@ -838,7 +889,7 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                 const nkui::ResourceId prepared_id =
                     nkui::make_resource_id(nkui::ResourceKind::Path, 0x0FFE, prepared_slot++);
                 command.resource = prepared_id;
-                command.transform = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+                command.transform = placement_transform(transform);
                 valid = frame_resources.bind_path(prepared_id, *prepared_path, 0);
             } else if (command.kind == nkui::RenderCommandKind::Image) {
                 auto *image =
@@ -853,7 +904,7 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                     valid = false;
                     break;
                 }
-                prepared->id = static_cast<int>(command.resource.value);
+                prepared->token = command.resource.value;
                 prepared->type = nkui::PreparedTextureRgba;
                 prepared->width = static_cast<int>(image->image_width);
                 prepared->height = static_cast<int>(image->image_height);

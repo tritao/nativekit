@@ -28,7 +28,8 @@ int render_create_texture(void *context, int type, int width, int height, int fl
         return 0;
     const int id = state.next_texture++;
     const size_t bytes_per_pixel = type == NVG_TEXTURE_RGBA ? 4 : 1;
-    PreparedTexture texture{id, type, width, height, flags, 1, true, {}};
+    PreparedTexture texture{static_cast<PreparedImageToken>(id), type, width, height, flags, 1,
+                            true, {}};
     texture.pixels.resize(static_cast<size_t>(width) * height * bytes_per_pixel);
     if (data)
         std::memcpy(texture.pixels.data(), data, texture.pixels.size());
@@ -38,8 +39,9 @@ int render_create_texture(void *context, int type, int width, int height, int fl
 
 int render_delete_texture(void *context, int image) {
     auto &textures = static_cast<State *>(context)->texture_data;
-    const auto found = std::find_if(textures.begin(), textures.end(),
-                                    [image](const auto &texture) { return texture.id == image; });
+    const auto found = std::find_if(textures.begin(), textures.end(), [image](const auto &texture) {
+        return texture.token == static_cast<PreparedImageToken>(image);
+    });
     if (found == textures.end())
         return 0;
     textures.erase(found);
@@ -49,8 +51,9 @@ int render_delete_texture(void *context, int image) {
 int render_update_texture(void *context, int image, int x, int y, int width, int height,
                           const uint8_t *data) {
     auto &textures = static_cast<State *>(context)->texture_data;
-    const auto found = std::find_if(textures.begin(), textures.end(),
-                                    [image](const auto &texture) { return texture.id == image; });
+    const auto found = std::find_if(textures.begin(), textures.end(), [image](const auto &texture) {
+        return texture.token == static_cast<PreparedImageToken>(image);
+    });
     if (found == textures.end() || !data || x < 0 || y < 0 || width < 0 || height < 0 ||
         x + width > found->width || y + height > found->height)
         return 0;
@@ -69,8 +72,9 @@ int render_update_texture(void *context, int image, int x, int y, int width, int
 
 int render_get_texture_size(void *context, int image, int *width, int *height) {
     const auto &textures = static_cast<State *>(context)->texture_data;
-    const auto found = std::find_if(textures.begin(), textures.end(),
-                                    [image](const auto &texture) { return texture.id == image; });
+    const auto found = std::find_if(textures.begin(), textures.end(), [image](const auto &texture) {
+        return texture.token == static_cast<PreparedImageToken>(image);
+    });
     if (found == textures.end())
         return 0;
     *width = found->width;
@@ -103,18 +107,7 @@ PreparedPaint prepare_paint(const NVGpaint &paint) {
     result.feather = paint.feather;
     result.innerColor = prepare_color(paint.innerColor);
     result.outerColor = prepare_color(paint.outerColor);
-    result.image = paint.image;
-    return result;
-}
-
-PreparedBlend prepare_blend(const NVGcompositeOperationState &composite) {
-    return {composite.srcRGB, composite.dstRGB, composite.srcAlpha, composite.dstAlpha};
-}
-
-PreparedScissor prepare_scissor(const NVGscissor &scissor) {
-    PreparedScissor result{};
-    std::memcpy(result.xform, scissor.xform, sizeof(result.xform));
-    std::memcpy(result.extent, scissor.extent, sizeof(result.extent));
+    result.image = static_cast<PreparedImageToken>(paint.image);
     return result;
 }
 
@@ -129,14 +122,10 @@ uint32_t copy_vertices(State &state, const NVGvertex *vertices, int count) {
     return offset;
 }
 
-PreparedPathOperation base_operation(PreparedPathKind kind, const NVGpaint &paint,
-                                     NVGcompositeOperationState composite,
-                                     const NVGscissor &scissor, float fringe) {
+PreparedPathOperation base_operation(PreparedPathKind kind, const NVGpaint &paint, float fringe) {
     PreparedPathOperation operation{};
     operation.kind = kind;
     operation.paint = prepare_paint(paint);
-    operation.composite = prepare_blend(composite);
-    operation.scissor = prepare_scissor(scissor);
     operation.fringe = fringe;
     return operation;
 }
@@ -153,6 +142,7 @@ void copy_paths(State &state, PreparedPathOperation &operation, const NVGpath *p
         path.stroke_count = static_cast<uint32_t>(paths[index].nstroke);
         path.closed = paths[index].closed != 0;
         path.convex = paths[index].convex != 0;
+        path.winding = paths[index].winding;
         state.path_data.push_back(path);
     }
 }
@@ -161,7 +151,9 @@ void render_fill(void *context, NVGpaint *paint, NVGcompositeOperationState comp
                  NVGscissor *scissor, float fringe, const float *bounds, const NVGpath *paths,
                  int path_count) {
     auto &state = *static_cast<State *>(context);
-    auto operation = base_operation(PreparedPathKind::Fill, *paint, composite, *scissor, fringe);
+    (void)composite;
+    (void)scissor;
+    auto operation = base_operation(PreparedPathKind::Fill, *paint, fringe);
     std::memcpy(operation.bounds, bounds, sizeof(operation.bounds));
     copy_paths(state, operation, paths, path_count);
     state.operation_data.push_back(operation);
@@ -171,7 +163,9 @@ void render_stroke(void *context, NVGpaint *paint, NVGcompositeOperationState co
                    NVGscissor *scissor, float fringe, float stroke_width, const NVGpath *paths,
                    int path_count) {
     auto &state = *static_cast<State *>(context);
-    auto operation = base_operation(PreparedPathKind::Stroke, *paint, composite, *scissor, fringe);
+    (void)composite;
+    (void)scissor;
+    auto operation = base_operation(PreparedPathKind::Stroke, *paint, fringe);
     operation.stroke_width = stroke_width;
     copy_paths(state, operation, paths, path_count);
     state.operation_data.push_back(operation);
@@ -181,8 +175,10 @@ void render_triangles(void *context, NVGpaint *paint, NVGcompositeOperationState
                       NVGscissor *scissor, const NVGvertex *vertices, int vertex_count,
                       float fringe) {
     auto &state = *static_cast<State *>(context);
+    (void)composite;
+    (void)scissor;
     auto operation =
-        base_operation(PreparedPathKind::Triangles, *paint, composite, *scissor, fringe);
+        base_operation(PreparedPathKind::Triangles, *paint, fringe);
     operation.vertex_offset = copy_vertices(state, vertices, vertex_count);
     operation.vertex_count = static_cast<uint32_t>(vertex_count);
     state.operation_data.push_back(operation);
