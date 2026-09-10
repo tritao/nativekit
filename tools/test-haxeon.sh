@@ -17,6 +17,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
+HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/audit-haxeon-abi.sh"
 HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-hxi.sh" --check
 
 cmake -S "$repo_dir" -B "$test_root/build" -GNinja \

@@ -48,6 +48,11 @@ Run the end-to-end smoke test with:
 tools/test-haxeon.sh
 ```
 
+The test first runs `tools/audit-haxeon-abi.sh`, which imports the same public
+header for Linux x86-64, Windows x86-64, and both macOS 64-bit architectures.
+It fails if declarations, constants, calling conventions, or structure layouts
+drift, or if the public ABI uses target-dependent C scalar types.
+
 Regenerate the target-specific interface after changing public headers, or
 verify that it is current without rewriting it:
 
