@@ -81,6 +81,7 @@ struct AtlasUpload {
     int32_t width = 0;
     int32_t height = 0;
     const uint8_t *pixels = nullptr;
+    bool dirty = false;
 };
 
 class SkribidiAdapter {
@@ -91,6 +92,7 @@ class SkribidiAdapter {
     SkribidiAdapter &operator=(const SkribidiAdapter &) = delete;
 
     bool valid() const;
+    bool set_atlas_namespace(uint16_t value);
     bool add_font(const char *path, FontFamily family = FontFamily::Default);
     bool layout_utf8(const char *text, float width, float font_size);
     bool prepare_glyphs(float origin_x, float origin_y, float pixel_scale, GlyphMode mode,
@@ -105,6 +107,7 @@ class SkribidiAdapter {
     uint32_t layout_build_count() const;
     uint32_t atlas_texture_count() const;
     std::vector<AtlasUpload> pending_atlas_uploads() const;
+    std::vector<AtlasUpload> atlas_uploads(bool include_clean) const;
     bool acknowledge_atlas_upload(AtlasTextureId texture);
 
     struct State;

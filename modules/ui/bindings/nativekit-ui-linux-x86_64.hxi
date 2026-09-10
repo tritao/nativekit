@@ -41,6 +41,7 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") {
 		NKUI_ERROR_INVALID_HANDLE = -2;
 		NKUI_ERROR_INVALID_TRANSACTION = -3;
 		NKUI_ERROR_OUT_OF_MEMORY = -4;
+		NKUI_ERROR_RENDERING = -5;
 	}
 	extern fn nkui_api_version() -> u32;
 	extern fn nkui_display_list_create(out_list: ptr<nkui_display_list> @out) -> nkui_result;
@@ -53,6 +54,9 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") {
 	extern fn nkui_image_create(width: u32, height: u32, format: nkui_image_format, pixels: ptr<const<u8>> @in_array("pixel_bytes"), pixel_bytes: u32, out_image: ptr<nkui_resource> @out) -> nkui_result;
 	extern fn nkui_paint_create_solid(color: nkui_color, out_paint: ptr<nkui_resource> @out) -> nkui_result;
 	extern fn nkui_path_create(elements: ptr<const<nkui_path_element>> @in_array("count"), count: u32, out_path: ptr<nkui_resource> @out) -> nkui_result;
+	extern fn nkui_renderer_create(out_renderer: ptr<nkui_renderer> @out) -> nkui_result;
+	extern fn nkui_renderer_destroy(renderer: nkui_renderer) -> nkui_result;
+	extern fn nkui_renderer_render(renderer: nkui_renderer, list: nkui_display_list, width: u32, height: u32, framebuffer: u32) -> nkui_result;
 	extern fn nkui_resource_destroy(resource: nkui_resource) -> nkui_result;
 	extern fn nkui_text_layout_caret(layout: nkui_resource, position: nkui_text_position, out_caret: ptr<nkui_text_caret> @out) -> nkui_result;
 	extern fn nkui_text_layout_create(fonts: nkui_resource, text: utf8, width: f32, font_size: f32, out_layout: ptr<nkui_resource> @out) -> nkui_result;
@@ -99,6 +103,9 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") {
 		y: f32 @offset(12);
 		width: f32 @offset(16);
 		height: f32 @offset(20);
+	}
+	struct nkui_renderer @layout(4, 4) {
+		id: u32 @offset(0);
 	}
 	struct nkui_resource @layout(4, 4) {
 		id: u32 @offset(0);

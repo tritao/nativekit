@@ -46,8 +46,15 @@ int main() {
             return 9;
     if (!adapter.pending_atlas_uploads().empty())
         return 10;
+    const auto clean_uploads = adapter.atlas_uploads(true);
+    if (clean_uploads.size() != first_query.size())
+        return 11;
+    for (const auto &upload : clean_uploads)
+        if (upload.dirty || upload.x != 0 || upload.y != 0 ||
+            upload.width != upload.texture_width || upload.height != upload.texture_height)
+            return 12;
     if (!adapter.layout_utf8("áb NativeKit مرحبا", 400.0f, 28.0f) ||
         adapter.layout_build_count() != 2)
-        return 11;
-    return glyphs.vertices.size() % 4 == 0 && glyphs.indices.size() % 6 == 0 ? 0 : 12;
+        return 13;
+    return glyphs.vertices.size() % 4 == 0 && glyphs.indices.size() % 6 == 0 ? 0 : 14;
 }

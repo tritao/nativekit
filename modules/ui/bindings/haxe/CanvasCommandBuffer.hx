@@ -1,5 +1,6 @@
 import haxe.io.Bytes;
 import NativeKitUI;
+import NativeKitUI.Nkui_composite_mode;
 
 class CanvasCommandBuffer {
 	var bytes:Bytes;
@@ -22,48 +23,51 @@ class CanvasCommandBuffer {
 		return length;
 
 	public function save():Void
-		header(5, 8);
+		header(NativeKitUIConstants.NKUI_COMMAND_PUSH_STATE, 8);
 
 	public function restore():Void
-		header(6, 8);
+		header(NativeKitUIConstants.NKUI_COMMAND_POP_STATE, 8);
 
 	public function transform(a:Float, b:Float, c:Float, d:Float, x:Float, y:Float):Void {
-		header(1, 32);
+		header(NativeKitUIConstants.NKUI_COMMAND_SET_TRANSFORM, 32);
 		float(a); float(b); float(c); float(d); float(x); float(y);
 	}
 
 	public function globalAlpha(alpha:Float):Void {
-		header(3, 12);
+		header(NativeKitUIConstants.NKUI_COMMAND_SET_GLOBAL_ALPHA, 12);
 		float(alpha);
 	}
 
+	public function paint(value:nkui_resource):Void
+		resource(NativeKitUIConstants.NKUI_COMMAND_SET_PAINT, value);
+
 	public function clipRect(x:Float, y:Float, width:Float, height:Float):Void {
-		header(7, 24);
+		header(NativeKitUIConstants.NKUI_COMMAND_CLIP_RECT, 24);
 		float(x); float(y); float(width); float(height);
 	}
 
 	public function drawPath(path:nkui_resource):Void
-		resource(8, path);
+		resource(NativeKitUIConstants.NKUI_COMMAND_DRAW_PATH, path);
 
 	public function drawImage(image:nkui_resource, x:Float, y:Float, width:Float,
 		height:Float):Void
-		drawRect(9, image, x, y, width, height);
+		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_IMAGE, image, x, y, width, height);
 
 	public function drawText(layout:nkui_resource, x:Float, y:Float):Void
-		drawRect(10, layout, x, y, 0.0, 0.0);
+		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_TEXT_LAYOUT, layout, x, y, 0.0, 0.0);
 
 	public function beginLayer(opacity:Float):Void {
-		header(11, 16);
+		header(NativeKitUIConstants.NKUI_COMMAND_BEGIN_LAYER, 16);
 		float(opacity);
-		word(1);
+		word(Nkui_composite_mode.NKUI_COMPOSITE_SOURCE_OVER);
 	}
 
 	public function endLayer():Void
-		header(12, 8);
+		header(NativeKitUIConstants.NKUI_COMMAND_END_LAYER, 8);
 
 	public function drawSurface(surface:nkui_resource, x:Float, y:Float, width:Float,
 		height:Float):Void
-		drawRect(13, surface, x, y, width, height);
+		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_RENDER_TARGET, surface, x, y, width, height);
 
 	public function submit(list:nkui_display_list):Int {
 		var commands = Bytes.alloc(length);
@@ -88,7 +92,7 @@ class CanvasCommandBuffer {
 		require(size);
 		bytes.set(length, opcode & 255);
 		bytes.set(length + 1, (opcode >> 8) & 255);
-		bytes.set(length + 2, 1);
+		bytes.set(length + 2, NativeKitUIConstants.NKUI_COMMAND_VERSION);
 		bytes.set(length + 3, 0);
 		bytes.setInt32(length + 4, size);
 		length += 8;

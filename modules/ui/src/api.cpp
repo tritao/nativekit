@@ -1,13 +1,19 @@
 #include "nativekit_ui.h"
 
 #include "display_list/display_list.h"
+#include "compositor/compositor.h"
+#include "prepare/nanovg_recorder.h"
 #include "prepare/skribidi_adapter.h"
+#include "render/frame_resources.h"
+#include "render/render_plan_executor.h"
+#include "render/sokol_backend.h"
 
 #include <cmath>
 #include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 static_assert(sizeof(nkui_command_header) == sizeof(nkui::CommandHeader));
@@ -41,6 +47,7 @@ struct ResourceSlot {
     uint16_t generation = 1;
     std::vector<FontEntry> fonts;
     std::unique_ptr<nkui::SkribidiAdapter> text;
+    nkui::PreparedGlyphs text_glyphs;
     std::vector<nkui_path_element> path;
     nkui_color color{};
     uint32_t image_width = 0;
@@ -49,10 +56,20 @@ struct ResourceSlot {
     std::vector<uint8_t> pixels;
 };
 
+struct RendererSlot {
+    std::unique_ptr<nkui::SokolBackend> backend;
+    std::unique_ptr<nkui::NanoVGRecorder> recorder;
+    nkui::Compositor compositor;
+    std::unordered_map<uint32_t, int> images;
+    uint16_t generation = 1;
+};
+
 std::mutex lists_mutex;
 std::vector<DisplayListSlot> lists;
 std::mutex resources_mutex;
 std::vector<ResourceSlot> resources;
+std::mutex renderers_mutex;
+std::vector<RendererSlot> renderers;
 
 uint32_t make_handle(uint16_t generation, uint16_t slot) {
     return (static_cast<uint32_t>(generation) << 16) | slot;
@@ -77,6 +94,50 @@ ResourceSlot *resolve(nkui_resource handle, nkui::ResourceKind expected) {
         return nullptr;
     auto &entry = resources[slot - 1];
     return entry.kind == expected && entry.generation == generation ? &entry : nullptr;
+}
+
+RendererSlot *resolve(nkui_renderer handle) {
+    const uint16_t slot = static_cast<uint16_t>(handle.id);
+    const uint16_t generation = static_cast<uint16_t>(handle.id >> 16);
+    if (!slot || slot > renderers.size())
+        return nullptr;
+    auto &entry = renderers[slot - 1];
+    return entry.backend && entry.generation == generation ? &entry : nullptr;
+}
+
+void append_path(NVGcontext *context, const std::vector<nkui_path_element> &elements) {
+    nvgBeginPath(context);
+    for (const auto &element : elements) {
+        const float *v = element.values;
+        switch (element.verb) {
+        case NKUI_PATH_MOVE_TO:
+            nvgMoveTo(context, v[0], v[1]);
+            break;
+        case NKUI_PATH_LINE_TO:
+            nvgLineTo(context, v[0], v[1]);
+            break;
+        case NKUI_PATH_BEZIER_TO:
+            nvgBezierTo(context, v[0], v[1], v[2], v[3], v[4], v[5]);
+            break;
+        case NKUI_PATH_QUADRATIC_TO:
+            nvgQuadTo(context, v[0], v[1], v[2], v[3]);
+            break;
+        case NKUI_PATH_ARC_TO:
+            nvgArcTo(context, v[0], v[1], v[2], v[3], v[4]);
+            break;
+        case NKUI_PATH_CLOSE:
+            nvgClosePath(context);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+NVGcolor paint_color(ResourceSlot *paint) {
+    if (!paint)
+        return nvgRGBAf(0.0f, 0.0f, 0.0f, 1.0f);
+    return nvgRGBAf(paint->color.red, paint->color.green, paint->color.blue, paint->color.alpha);
 }
 
 nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
@@ -110,6 +171,7 @@ nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
 
 void release_resource_slot(ResourceSlot &slot) {
     slot.text.reset();
+    slot.text_glyphs = {};
     slot.fonts.clear();
     slot.path.clear();
     slot.pixels.clear();
@@ -245,10 +307,13 @@ extern "C" nkui_result nkui_text_layout_create(nkui_resource fonts, const char *
         out_layout->id = 0;
         return NKUI_ERROR_OUT_OF_MEMORY;
     }
-    bool valid = layout_slot->text->valid();
+    bool valid = layout_slot->text->valid() &&
+                 layout_slot->text->set_atlas_namespace(static_cast<uint16_t>(out_layout->id));
     for (const auto &font : font_entries)
         valid = valid && layout_slot->text->add_font(font.path.c_str(), font.family);
     valid = valid && layout_slot->text->layout_utf8(text, width, font_size);
+    valid = valid && layout_slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha,
+                                                       layout_slot->text_glyphs);
     if (!valid) {
         release_resource_slot(*layout_slot);
         out_layout->id = 0;
@@ -401,4 +466,183 @@ extern "C" nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_i
     slot->image_height = height;
     slot->image_format = format;
     return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
+    if (!out_renderer)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    out_renderer->id = 0;
+    std::lock_guard<std::mutex> lock(renderers_mutex);
+    try {
+        for (uint32_t index = 0; index < renderers.size(); ++index) {
+            auto &slot = renderers[index];
+            if (!slot.backend) {
+                slot.backend = std::make_unique<nkui::SokolBackend>();
+                slot.recorder = std::make_unique<nkui::NanoVGRecorder>();
+                if (!slot.recorder->valid()) {
+                    slot.backend.reset();
+                    slot.recorder.reset();
+                    return NKUI_ERROR_RENDERING;
+                }
+                out_renderer->id = make_handle(slot.generation, static_cast<uint16_t>(index + 1));
+                return NKUI_OK;
+            }
+        }
+        if (renderers.size() >= UINT16_MAX)
+            return NKUI_ERROR_OUT_OF_MEMORY;
+        renderers.emplace_back();
+        auto &slot = renderers.back();
+        slot.backend = std::make_unique<nkui::SokolBackend>();
+        slot.recorder = std::make_unique<nkui::NanoVGRecorder>();
+        if (!slot.recorder->valid()) {
+            renderers.pop_back();
+            return NKUI_ERROR_RENDERING;
+        }
+        out_renderer->id = make_handle(1, static_cast<uint16_t>(renderers.size()));
+        return NKUI_OK;
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+}
+
+extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
+    std::lock_guard<std::mutex> lock(renderers_mutex);
+    auto *slot = resolve(renderer);
+    if (!slot)
+        return NKUI_ERROR_INVALID_HANDLE;
+    slot->backend.reset();
+    slot->recorder.reset();
+    slot->images.clear();
+    slot->generation = static_cast<uint16_t>(slot->generation + 1);
+    if (!slot->generation)
+        slot->generation = 1;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_list list,
+                                            uint32_t width, uint32_t height, uint32_t framebuffer) {
+    if (!width || !height || width > INT32_MAX || height > INT32_MAX)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::scoped_lock lock(renderers_mutex, lists_mutex, resources_mutex);
+    auto *renderer_slot = resolve(renderer);
+    auto *list_slot = resolve(list);
+    if (!renderer_slot || !list_slot)
+        return NKUI_ERROR_INVALID_HANDLE;
+    const nkui::ResourceId main_target =
+        nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);
+    nkui::RenderPlan plan;
+    if (!renderer_slot->compositor.compile(*list_slot->list, main_target, plan))
+        return NKUI_ERROR_INVALID_TRANSACTION;
+
+    auto &recorder = *renderer_slot->recorder;
+    recorder.reset();
+    NVGcontext *vg = recorder.context();
+    nvgBeginFrame(vg, static_cast<float>(width), static_cast<float>(height), 1.0f);
+    nkui::FrameResources frame_resources;
+    std::unordered_map<uint32_t, const nkui::PreparedGlyphs *> text_cache;
+    std::vector<nkui::SkribidiAdapter *> text_adapters;
+    uint16_t prepared_slot = 1;
+    bool valid = true;
+
+    for (auto &pass : plan.passes) {
+        for (auto &command : pass.commands) {
+            if (command.kind == nkui::RenderCommandKind::Path) {
+                auto *path =
+                    resolve(nkui_resource{command.resource.value}, nkui::ResourceKind::Path);
+                auto *paint = command.paint.value ? resolve(nkui_resource{command.paint.value},
+                                                            nkui::ResourceKind::Paint)
+                                                  : nullptr;
+                if (!path || (command.paint.value && !paint) || !prepared_slot) {
+                    valid = false;
+                    break;
+                }
+                append_path(vg, path->path);
+                nvgFillColor(vg, paint_color(paint));
+                nvgFill(vg);
+                const nkui::ResourceId prepared_id =
+                    nkui::make_resource_id(nkui::ResourceKind::Path, 0x0FFE, prepared_slot++);
+                command.resource = prepared_id;
+                valid = frame_resources.bind_path(prepared_id, recorder,
+                                                  recorder.operations().size() - 1);
+            } else if (command.kind == nkui::RenderCommandKind::Image) {
+                auto *image =
+                    resolve(nkui_resource{command.resource.value}, nkui::ResourceKind::Image);
+                if (!image || !prepared_slot) {
+                    valid = false;
+                    break;
+                }
+                int nvg_image = 0;
+                const auto cached = renderer_slot->images.find(command.resource.value);
+                if (cached != renderer_slot->images.end()) {
+                    nvg_image = cached->second;
+                } else {
+                    const uint8_t *pixels = image->pixels.data();
+                    std::vector<uint8_t> expanded;
+                    if (image->image_format == NKUI_IMAGE_R8) {
+                        expanded.resize(image->pixels.size() * 4);
+                        for (size_t index = 0; index < image->pixels.size(); ++index) {
+                            expanded[index * 4 + 0] = 255;
+                            expanded[index * 4 + 1] = 255;
+                            expanded[index * 4 + 2] = 255;
+                            expanded[index * 4 + 3] = image->pixels[index];
+                        }
+                        pixels = expanded.data();
+                    }
+                    nvg_image =
+                        nvgCreateImageRGBA(vg, static_cast<int>(image->image_width),
+                                           static_cast<int>(image->image_height), 0, pixels);
+                    if (nvg_image)
+                        renderer_slot->images.emplace(command.resource.value, nvg_image);
+                }
+                if (!nvg_image) {
+                    valid = false;
+                    break;
+                }
+                nvgBeginPath(vg);
+                nvgRect(vg, command.x, command.y, command.width, command.height);
+                nvgFillPaint(vg, nvgImagePattern(vg, command.x, command.y, command.width,
+                                                 command.height, 0.0f, nvg_image, 1.0f));
+                nvgFill(vg);
+                const nkui::ResourceId prepared_id =
+                    nkui::make_resource_id(nkui::ResourceKind::Path, 0x0FFE, prepared_slot++);
+                command.kind = nkui::RenderCommandKind::Path;
+                command.resource = prepared_id;
+                valid = frame_resources.bind_path(prepared_id, recorder,
+                                                  recorder.operations().size() - 1);
+            } else if (command.kind == nkui::RenderCommandKind::GlyphBatch) {
+                auto *layout =
+                    resolve(nkui_resource{command.resource.value}, nkui::ResourceKind::TextLayout);
+                if (!layout || !layout->text) {
+                    valid = false;
+                    break;
+                }
+                const auto found = text_cache.find(command.resource.value);
+                if (found == text_cache.end()) {
+                    const auto *glyphs = &layout->text_glyphs;
+                    text_cache.emplace(command.resource.value, glyphs);
+                    text_adapters.push_back(layout->text.get());
+                    valid = frame_resources.bind_text(command.resource, *glyphs);
+                }
+            } else if (command.kind == nkui::RenderCommandKind::CompositeTarget &&
+                       command.resource.value < (UINT32_C(4) << 28)) {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid)
+            break;
+    }
+    nvgEndFrame(vg);
+    if (!valid)
+        return NKUI_ERROR_INVALID_HANDLE;
+    const bool new_backend = !renderer_slot->backend->valid();
+    if (new_backend && !renderer_slot->backend->initialize())
+        return NKUI_ERROR_RENDERING;
+    for (auto *adapter : text_adapters)
+        if (!renderer_slot->backend->upload_atlases(*adapter, new_backend))
+            return NKUI_ERROR_RENDERING;
+    const bool executed = nkui::execute_render_plan(
+        *renderer_slot->backend, plan, frame_resources,
+        {main_target, static_cast<int>(width), static_cast<int>(height), framebuffer});
+    return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
 }

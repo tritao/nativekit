@@ -18,6 +18,7 @@ struct SkribidiAdapter::State {
     skb_image_atlas_t *atlas = nullptr;
     skb_layout_t *layout = nullptr;
     uint16_t next_texture_slot = 1;
+    uint16_t texture_namespace = 1;
     std::string cached_text;
     float cached_width = 0.0f;
     float cached_font_size = 0.0f;
@@ -63,7 +64,8 @@ void append_quad(const skb_quad_t &quad, const skb_image_t &atlas, PreparedGlyph
 
 void atlas_texture_created(skb_image_atlas_t *atlas, uint8_t texture_index, void *context) {
     auto &state = *static_cast<SkribidiAdapter::State *>(context);
-    const uint32_t id = (uint32_t(1) << 28) | (uint32_t(1) << 16) | state.next_texture_slot++;
+    const uint32_t id = (uint32_t(1) << 28) | (uint32_t(state.texture_namespace & 0x0FFF) << 16) |
+                        state.next_texture_slot++;
     skb_image_atlas_set_texture_user_data(atlas, texture_index, id);
 }
 
@@ -94,6 +96,13 @@ SkribidiAdapter::~SkribidiAdapter() {
 
 bool SkribidiAdapter::valid() const {
     return state_->fonts && state_->temporary && state_->rasterizer && state_->atlas;
+}
+
+bool SkribidiAdapter::set_atlas_namespace(uint16_t value) {
+    if (!value || value > 0x0FFF || state_->next_texture_slot != 1)
+        return false;
+    state_->texture_namespace = value;
+    return true;
 }
 
 bool SkribidiAdapter::add_font(const char *path, FontFamily family) {
@@ -246,13 +255,18 @@ uint32_t SkribidiAdapter::atlas_texture_count() const {
 }
 
 std::vector<AtlasUpload> SkribidiAdapter::pending_atlas_uploads() const {
+    return atlas_uploads(false);
+}
+
+std::vector<AtlasUpload> SkribidiAdapter::atlas_uploads(bool include_clean) const {
     std::vector<AtlasUpload> uploads;
     if (!state_->atlas)
         return uploads;
     const int count = skb_image_atlas_get_texture_count(state_->atlas);
     for (int index = 0; index < count; ++index) {
         const skb_rect2i_t dirty = skb_image_atlas_get_texture_dirty_bounds(state_->atlas, index);
-        if (skb_rect2i_is_empty(dirty))
+        const bool is_dirty = !skb_rect2i_is_empty(dirty);
+        if (!is_dirty && !include_clean)
             continue;
         const skb_image_t *image = skb_image_atlas_get_texture(state_->atlas, index);
         const AtlasTextureId texture{
@@ -260,8 +274,9 @@ std::vector<AtlasUpload> SkribidiAdapter::pending_atlas_uploads() const {
         if (!image || !texture.value)
             continue;
         uploads.push_back({texture, static_cast<uint8_t>(index), image->bpp, image->width,
-                           image->height, image->stride_bytes, dirty.x, dirty.y, dirty.width,
-                           dirty.height, image->buffer});
+                           image->height, image->stride_bytes, is_dirty ? dirty.x : 0,
+                           is_dirty ? dirty.y : 0, is_dirty ? dirty.width : image->width,
+                           is_dirty ? dirty.height : image->height, image->buffer, is_dirty});
     }
     return uploads;
 }

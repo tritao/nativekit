@@ -99,12 +99,24 @@ if(NK_BUILD_TESTS)
         target_link_libraries(nativekit_ui_sokol_backend_smoke_test PRIVATE
             NativeKit::nativekit nkui_nanovg_core nkui_skribidi nativekit_sokol_runtime
             OpenGL::GL)
+        add_executable(nativekit_ui_public_renderer_smoke_test tests/public_renderer_smoke.cpp)
+        target_compile_definitions(nativekit_ui_public_renderer_smoke_test PRIVATE
+            NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+        target_link_libraries(nativekit_ui_public_renderer_smoke_test PRIVATE
+            NativeKit::ui NativeKit::nativekit OpenGL::GL)
         find_program(NKUI_BACKEND_XVFB_RUN xvfb-run)
         if(NKUI_BACKEND_XVFB_RUN)
             add_test(NAME nativekit_ui_sokol_backend_smoke
                 COMMAND ${NKUI_BACKEND_XVFB_RUN} -a
                     $<TARGET_FILE:nativekit_ui_sokol_backend_smoke_test>)
             set_tests_properties(nativekit_ui_sokol_backend_smoke PROPERTIES
+                LABELS "graphics;ui"
+                TIMEOUT 15
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+            add_test(NAME nativekit_ui_public_renderer_smoke
+                COMMAND ${NKUI_BACKEND_XVFB_RUN} -a
+                    $<TARGET_FILE:nativekit_ui_public_renderer_smoke_test>)
+            set_tests_properties(nativekit_ui_public_renderer_smoke PROPERTIES
                 LABELS "graphics;ui"
                 TIMEOUT 15
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")

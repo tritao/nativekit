@@ -915,8 +915,8 @@ bool SokolBackend::draw_paths(const NanoVGRecorder &recorder) {
     return true;
 }
 
-bool SokolBackend::upload_atlases(SkribidiAdapter &adapter) {
-    for (const auto &upload : adapter.pending_atlas_uploads()) {
+bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) {
+    for (const auto &upload : adapter.atlas_uploads(include_clean)) {
         const size_t tight_row = static_cast<size_t>(upload.texture_width) * upload.bytes_per_pixel;
         std::vector<uint8_t> tight_pixels(tight_row * upload.texture_height);
         for (int row = 0; row < upload.texture_height; ++row)
@@ -948,7 +948,7 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter) {
         sg_update_image(found->second.image, &data);
         ++state_->stats.image_uploads;
         state_->stats.uploaded_bytes += tight_pixels.size();
-        if (!adapter.acknowledge_atlas_upload(upload.texture))
+        if (upload.dirty && !adapter.acknowledge_atlas_upload(upload.texture))
             return fail(*state_, "atlas upload acknowledgement failed");
     }
     return true;

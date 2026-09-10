@@ -34,7 +34,8 @@ typedef enum nkui_result {
     NKUI_ERROR_INVALID_ARGUMENT = -1,
     NKUI_ERROR_INVALID_HANDLE = -2,
     NKUI_ERROR_INVALID_TRANSACTION = -3,
-    NKUI_ERROR_OUT_OF_MEMORY = -4
+    NKUI_ERROR_OUT_OF_MEMORY = -4,
+    NKUI_ERROR_RENDERING = -5
 } nkui_result;
 
 typedef struct nkui_display_list {
@@ -44,6 +45,10 @@ typedef struct nkui_display_list {
 typedef struct nkui_resource {
     uint32_t id;
 } nkui_resource;
+
+typedef struct nkui_renderer {
+    uint32_t id;
+} nkui_renderer;
 
 typedef uint16_t nkui_command_opcode;
 enum {
@@ -205,6 +210,12 @@ NKUI_API nkui_result nkui_paint_create_solid(nkui_color color, nkui_resource *ou
 NKUI_API nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_image_format format,
                                        const uint8_t *pixels NKUI_IN_ARRAY(pixel_bytes),
                                        uint32_t pixel_bytes, nkui_resource *out_image NKUI_OUT);
+NKUI_API nkui_result nkui_renderer_create(nkui_renderer *out_renderer NKUI_OUT);
+NKUI_API nkui_result nkui_renderer_destroy(nkui_renderer renderer);
+/* Render to the current graphics context. Context activation and presentation remain owned by
+   nk_surface; framebuffer is zero for a platform's default framebuffer. */
+NKUI_API nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_list list,
+                                          uint32_t width, uint32_t height, uint32_t framebuffer);
 NKUI_API nkui_result nkui_resource_destroy(nkui_resource resource);
 
 #ifdef __cplusplus
