@@ -1,0 +1,50 @@
+// Curated from include/nativekit.h and include/nativekit_window.h.
+// Layouts are target-specific; regenerate and review them when the C ABI changes.
+interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
+	type nk_handle = u32;
+	type nk_request_id = u64;
+	type nk_result = i32;
+	type nk_event_kind = u32;
+
+	struct nk_init_options @layout(16, 4) {
+		struct_size: u32 @offset(0);
+		api_version: u32 @offset(4);
+		event_queue_capacity: u32 @offset(8);
+		reserved: u32 @offset(12);
+	}
+
+	struct nk_event @layout(64, 8) {
+		struct_size: u32 @offset(0);
+		kind: nk_event_kind @offset(4);
+		source: nk_handle @offset(8);
+		flags: u32 @offset(12);
+		request_id: nk_request_id @offset(16);
+		result: nk_result @offset(24);
+		data_count: u32 @offset(28);
+		data: ptr<const<void>> @offset(32);
+		data_size: u64 @offset(40);
+		reserved: array<u64, 2> @offset(48);
+	}
+
+	struct nk_window_options @layout(40, 8) {
+		struct_size: u32 @offset(0);
+		flags: u32 @offset(4);
+		width: i32 @offset(8);
+		height: i32 @offset(12);
+		title: nullable<ptr<const<c_char>>> @offset(16);
+		owner: nk_handle @offset(24);
+		kind: u32 @offset(28);
+		reserved: u64 @offset(32);
+	}
+
+	extern fn nk_api_version() -> u32;
+	extern fn nk_init(options: ptr<const<nk_init_options>>) -> nk_result;
+	extern fn nk_shutdown() -> void;
+	extern fn nk_last_error() -> utf8 @borrowed;
+	extern fn nk_poll_event(event: ptr<nk_event> @inout) -> nk_result;
+	extern fn nk_event_release(event: ptr<nk_event>) -> void;
+	extern fn nk_window_create(options: ptr<const<nk_window_options>>, out_window: ptr<nk_handle> @out) -> nk_result;
+	extern fn nk_window_destroy(window: nk_handle) -> nk_result;
+	extern fn nk_monitor_get_primary(out_monitor: ptr<nk_handle> @out) -> nk_result;
+	extern fn nk_monitor_get_name(monitor: nk_handle, buffer: nullable<ptr<u8>> @out_buffer("inout_size"), inout_size: ptr<u32> @inout) -> nk_result;
+}

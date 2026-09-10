@@ -15,6 +15,14 @@ Leak detection remains enabled for the core tests. It is disabled only for the
 GTK integration process because GTK, Pango, and Fontconfig retain
 process-lifetime caches outside NativeKit's ownership.
 
+## Haxeon binding smoke test
+
+`tools/test-haxeon.sh` builds a temporary shared NativeKit library, projects the
+reviewed Linux HXI declarations into Haxe, and runs the result through HashLink.
+It covers initialization, typed event polling, UTF-8 diagnostics, window and
+monitor handles, and the two-call monitor-name output buffer. The sibling
+`../realtime-haxe` checkout is used by default; set `HAXEON_DIR` to override it.
+
 ## Windows compatibility smoke tests
 
 `tools/test-wine.sh` cross-builds a static Windows test suite with MinGW and runs
