@@ -200,12 +200,39 @@ bool SkribidiAdapter::prepare_glyphs(float origin_x, float origin_y, float pixel
     if (!state_->layout || pixel_scale <= 0.0f)
         return false;
     output = {};
+    output.origin_x = origin_x;
+    output.origin_y = origin_y;
+    output.pixel_scale = pixel_scale;
+    output.mode = mode;
+    output.layout_generation = skb_layout_get_generation(state_->layout);
     if (!skb_layout_prepare_glyphs(state_->layout, state_->atlas, state_->temporary,
                                    state_->rasterizer, pixel_scale, raster_mode(mode)))
         return false;
     RenderGlyphContext render{state_, origin_x, origin_y, pixel_scale, mode, &output};
     if (!skb_layout_iterate_render_glyphs(state_->layout, append_render_glyph, &render))
         return false;
+    return true;
+}
+
+bool SkribidiAdapter::prepared_glyphs_current(const PreparedGlyphs &glyphs) const {
+    if (!state_->atlas || !state_->layout ||
+        glyphs.layout_generation != skb_layout_get_generation(state_->layout))
+        return false;
+    const int count = skb_image_atlas_get_texture_count(state_->atlas);
+    for (const auto &batch : glyphs.batches) {
+        bool found = false;
+        for (int index = 0; index < count; ++index) {
+            if (skb_image_atlas_get_texture_user_data(state_->atlas, index) != batch.atlas.value)
+                continue;
+            found = true;
+            if (skb_image_atlas_get_texture_generation(state_->atlas, index) !=
+                batch.atlas_generation)
+                return false;
+            break;
+        }
+        if (!found)
+            return false;
+    }
     return true;
 }
 

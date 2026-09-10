@@ -53,6 +53,11 @@ struct PreparedGlyphs {
     std::vector<GlyphVertex> vertices;
     std::vector<uint32_t> indices;
     std::vector<GlyphBatch> batches;
+    float origin_x = 0.0f;
+    float origin_y = 0.0f;
+    float pixel_scale = 1.0f;
+    GlyphMode mode = GlyphMode::Alpha;
+    uint64_t layout_generation = 0;
 };
 
 struct TextPosition {
@@ -107,6 +112,7 @@ class SkribidiAdapter {
     bool layout_utf8(const char *text, float width, float font_size);
     bool prepare_glyphs(float origin_x, float origin_y, float pixel_scale, GlyphMode mode,
                         PreparedGlyphs &output);
+    bool prepared_glyphs_current(const PreparedGlyphs &glyphs) const;
     TextRect bounds() const;
     TextPosition hit_test(float x, float y) const;
     TextCaret caret(TextPosition position) const;

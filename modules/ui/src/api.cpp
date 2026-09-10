@@ -773,6 +773,7 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                   frame_info->pixel_scale);
     nkui::FrameResources frame_resources;
     std::vector<nkui::SkribidiAdapter *> text_adapters;
+    std::vector<std::pair<nkui::SkribidiAdapter *, nkui::PreparedGlyphs *>> prepared_texts;
     uint16_t prepared_slot = 1;
     bool valid = true;
 
@@ -876,6 +877,9 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                 nkui::PreparedGlyphs *glyphs = nullptr;
                 if (scale_bucket == 8) {
                     glyphs = &layout->text_glyphs;
+                    if (!layout->text->prepared_glyphs_current(*glyphs))
+                        valid = layout->text->prepare_glyphs(0.0f, 0.0f, raster_scale,
+                                                             nkui::GlyphMode::Alpha, *glyphs);
                 } else {
                     auto found = layout->scaled_text_glyphs.find(scale_bucket);
                     if (found == layout->scaled_text_glyphs.end()) {
@@ -889,7 +893,14 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                                     .first;
                     }
                     glyphs = &found->second;
+                    if (valid && !layout->text->prepared_glyphs_current(*glyphs))
+                        valid = layout->text->prepare_glyphs(0.0f, 0.0f, raster_scale,
+                                                             nkui::GlyphMode::Alpha, *glyphs);
                 }
+                if (!valid)
+                    break;
+                if (valid)
+                    prepared_texts.push_back({layout->text.get(), glyphs});
                 const nkui::ResourceId prepared_id = nkui::make_resource_id(
                     nkui::ResourceKind::TextLayout, 0x0FFE, prepared_slot++);
                 valid = frame_resources.bind_text(prepared_id, *glyphs);
@@ -921,6 +932,14 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
     nvgEndFrame(vg);
     if (!valid)
         return NKUI_ERROR_INVALID_HANDLE;
+    for (size_t pass = 0; pass < prepared_texts.size() && valid; ++pass) {
+        auto &[adapter, glyphs] = prepared_texts[pass];
+        if (!adapter->prepared_glyphs_current(*glyphs))
+            valid = adapter->prepare_glyphs(glyphs->origin_x, glyphs->origin_y,
+                                            glyphs->pixel_scale, glyphs->mode, *glyphs);
+    }
+    if (!valid)
+        return NKUI_ERROR_RENDERING;
     const bool new_backend = !renderer_slot->backend->valid();
     if (new_backend && !renderer_slot->backend->initialize())
         return NKUI_ERROR_RENDERING;
