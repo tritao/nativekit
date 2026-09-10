@@ -10,4 +10,7 @@ typedef const char *hxi_utf8;
 NK_API nk_result NK_CALL nk_clipboard_set_text(hxi_utf8 text);
 NK_API nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request NK_OUT);
 
+/* Binding-only names for constants declared by optional service headers. */
+enum { NK_BINDING_DIALOG_MESSAGE = 4 };
+
 #endif

@@ -18,11 +18,16 @@ enum NativeKitEventValue {
 	NotificationActivated(request:haxe.Int64, action:String);
 	NotificationFailed(request:haxe.Int64, message:String);
 	Raw(kind:Int, source:Int, request:haxe.Int64, result:Int, flags:Int, dataCount:Int, data:haxe.io.Bytes);
+	WindowClose(source:Int);
+	WindowResize(source:Int, width:Int, height:Int);
+	WindowMove(source:Int, x:Int, y:Int);
+	WindowFramebufferResize(source:Int, width:Int, height:Int);
+	WindowScaleChanged(source:Int, scale:Float);
+	WindowStateChanged(source:Int, stateFlags:Int);
 }
 
 /** Owns one polled NativeKit event and releases its native payload exactly once. */
 class NativeKitEvent {
-	static inline final DIALOG_MESSAGE = 4;
 	final event:nk_event;
 	public final kind:Int;
 	public final source:Int;
@@ -71,7 +76,7 @@ class NativeKitEvent {
 			case NativeKitConstants.NK_EVENT_DROP_FILES: DropFiles(source, decodeDropItems(data, dataCount));
 			case NativeKitConstants.NK_EVENT_DROP_TEXT: DropText(source, decodeDropItems(data, dataCount).join(""));
 			case NativeKitConstants.NK_EVENT_DIALOG_COMPLETE:
-				if (flags == DIALOG_MESSAGE) {
+				if (flags == NativeKitConstants.NK_BINDING_DIALOG_MESSAGE) {
 					if (data.length != 4)
 						throw "NativeKit message-dialog payload has an invalid size";
 					DialogMessage(request, result, readU32(data, 0));
@@ -87,6 +92,22 @@ class NativeKitEvent {
 			case NativeKitConstants.NK_EVENT_WEBVIEW_NAVIGATION_REQUEST: WebViewNavigationRequest(source, request, data.toString());
 			case NativeKitConstants.NK_EVENT_NOTIFICATION_ACTIVATED: NotificationActivated(request, data.toString());
 			case NativeKitConstants.NK_EVENT_NOTIFICATION_FAILED: NotificationFailed(request, data.toString());
+			case NativeKitConstants.NK_EVENT_WINDOW_CLOSE: WindowClose(source);
+			case NativeKitConstants.NK_EVENT_WINDOW_RESIZE:
+				var value:nk_window_resize_event = data;
+				WindowResize(source, value.get_width(), value.get_height());
+			case NativeKitConstants.NK_EVENT_WINDOW_MOVE:
+				var value:nk_window_move_event = data;
+				WindowMove(source, value.get_x(), value.get_y());
+			case NativeKitConstants.NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE:
+				var value:nk_window_framebuffer_resize_event = data;
+				WindowFramebufferResize(source, value.get_width(), value.get_height());
+			case NativeKitConstants.NK_EVENT_WINDOW_SCALE_CHANGED:
+				var value:nk_window_scale_event = data;
+				WindowScaleChanged(source, value.get_scale());
+			case NativeKitConstants.NK_EVENT_WINDOW_STATE_CHANGED:
+				var value:nk_window_state = data;
+				WindowStateChanged(source, value.get_flags());
 			default: Raw(kind, source, request, result, flags, dataCount, data);
 		}
 	}
