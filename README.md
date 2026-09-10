@@ -100,6 +100,15 @@ The OpenGL example loads graphics entry points through NativeKit, creates a
 ./build/examples/nativekit_opengl
 ```
 
+When the Vulkan development files and `glslc` are installed, the Vulkan example
+creates a native `VkSurfaceKHR`, builds the device, swapchain and graphics
+pipeline, and renders a colored triangle. Resize the window to see the sample
+recreate its swapchain-dependent resources.
+
+```sh
+./build/examples/nativekit_vulkan
+```
+
 Source formatting is defined by `.clang-format`. When ClangFormat is installed,
 CMake provides targets to apply it or verify that no changes are needed:
 
