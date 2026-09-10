@@ -259,6 +259,11 @@ int main(int argc, char **argv) {
             result = 3;
         } else if (event.kind == NK_EVENT_WINDOW_CLOSE && event.source == window) {
             running = false;
+        } else if (event.kind == NK_EVENT_WINDOW_RESIZE && event.source == window &&
+                   event.data_size >= sizeof(nk_window_resize_event)) {
+            const auto *resize = static_cast<const nk_window_resize_event *>(event.data);
+            if (nk_surface_set_bounds(surface, 0, 0, resize->width, resize->height) != NK_OK)
+                result = 6;
         } else if (event.kind == NK_EVENT_SURFACE_READY && event.source == surface) {
             ready = nk_surface_make_current(surface) == NK_OK &&
                     nk_surface_get_framebuffer_size(surface, &framebuffer_width,
