@@ -2,6 +2,8 @@ import NativeKit;
 import NativeKitEvent;
 import NativeKitEventValue;
 import NativeKitRequests;
+import NativeKitEventBytes;
+import NativeKitEventDecoderTests;
 import NativeKit.NativeKitConstants;
 
 class Smoke {
@@ -26,7 +28,7 @@ class Smoke {
 			eventOk = false;
 		} catch (_:Dynamic) {}
 		try {
-			NativeKitEvent.decodeClipboardFiles(haxe.io.Bytes.alloc(4), 0);
+			NativeKitEventBytes.decodeClipboardFiles(haxe.io.Bytes.alloc(4), 0);
 			eventOk = false;
 		} catch (_:Dynamic) {}
 		var payloadOk = true;
@@ -80,6 +82,8 @@ class Smoke {
 			return 6;
 		if (!payloadOk)
 			return 7;
+		if (!NativeKitEventDecoderTests.run())
+			return 8;
 		return 42;
 	}
 }
