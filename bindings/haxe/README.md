@@ -26,6 +26,11 @@ Known WebView, notification, dialog, clipboard, and drop payloads project to typ
 and copied payload data for forward compatibility. Malformed packed payloads
 throw instead of allowing out-of-bounds reads.
 
+Transactional custom-editor input projects `NK_EVENT_TEXT_EDIT` to
+`TextEdit(source, edit)`. Replacement, selection, and composition positions are
+Unicode code-point indices; optional replacement text is copied and strictly
+validated as UTF-8 before the native event is released.
+
 HXI constants are projected through `NativeKitConstants`; handwritten bindings
 use those symbols rather than repeating numeric C ABI values.
 

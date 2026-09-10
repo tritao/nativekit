@@ -312,7 +312,7 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_TEXT_EDIT_FINISH_COMPOSITION = 5;
 	const NK_TEXT_EDIT_SET_COMPOSITION = 6;
 	const NK_TEXT_EDIT_SET_SELECTION = 4;
-	const NK_TEXT_POSITION_NONE = 4294967295;
+	const NK_TEXT_POSITION_NONE = -1;
 	const NK_TOUCH_BEGIN = 1;
 	const NK_TOUCH_CANCEL = 4;
 	const NK_TOUCH_END = 3;

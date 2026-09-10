@@ -21,6 +21,7 @@ class NativeKitEventDecoderTests {
 		putU32(badResource, 4, 1); putU32(badResource, 8, 16); putU32(badResource, 12, 16);
 		var shortKey = new NativeKitEventContext(NativeKitConstants.NK_EVENT_KEY, 0, zero, 0, 0, 0, haxe.io.Bytes.alloc(15));
 		var shortWindow = new NativeKitEventContext(NativeKitConstants.NK_EVENT_WINDOW_RESIZE, 0, zero, 0, 0, 0, haxe.io.Bytes.alloc(7));
+		var shortEdit = new NativeKitEventContext(NativeKitConstants.NK_EVENT_TEXT_EDIT, 0, zero, 0, 0, 0, haxe.io.Bytes.alloc(47));
 		var pathsPayload = haxe.io.Bytes.alloc(16);
 		putU32(pathsPayload, 8, 16); putU32(pathsPayload, 12, 16);
 		var pathsContext = new NativeKitEventContext(NativeKitConstants.NK_EVENT_DIALOG_PATHS_COMPLETE, 0, zero, 0, 1, 0, pathsPayload);
@@ -42,18 +43,35 @@ class NativeKitEventDecoderTests {
 			case Resources(kind, _, result, accepted, items): kind == NativeKitConstants.NK_EVENT_DIALOG_RESOURCES_COMPLETE && result == 0 && !accepted && items.length == 0;
 			case _: false;
 		};
+		var editPayload = haxe.io.Bytes.alloc(50);
+		putU32(editPayload, 0, NativeKitConstants.NK_TEXT_EDIT_COMPOSE);
+		putU32(editPayload, 4, 48); putU32(editPayload, 8, 2);
+		putU32(editPayload, 12, 1); putU32(editPayload, 16, 2);
+		putU32(editPayload, 20, 2); putU32(editPayload, 24, 2);
+		putU32(editPayload, 28, 1); putU32(editPayload, 32, 2);
+		editPayload.set(48, 0xc3); editPayload.set(49, 0xa9);
+		var editContext = new NativeKitEventContext(NativeKitConstants.NK_EVENT_TEXT_EDIT, 9, zero, 0, 0, 0, editPayload);
+		var editOk = switch NativeKitEvent.decodeContext(editContext) {
+			case TextEdit(9, edit): edit.action == NativeKitConstants.NK_TEXT_EDIT_COMPOSE && edit.text == "é" && edit.replaceStart == 1 && edit.compositionEnd == 2;
+			case _: false;
+		};
+		var invalidUtf8 = haxe.io.Bytes.alloc(50);
+		putU32(invalidUtf8, 4, 48); putU32(invalidUtf8, 8, 2);
+		invalidUtf8.set(48, 0xc0); invalidUtf8.set(49, 0x80);
 
 		if (!pathsOk) throw "path completion decoding failed";
 		if (!messageOk) throw "message completion decoding failed";
 		if (!resourcesOk) throw "resource completion decoding failed";
-		return rawOk && nonMatch
+		return rawOk && nonMatch && editOk
 			&& throws(function() { NativeKitEventBytes.requireSize(haxe.io.Bytes.alloc(3), 4); })
 			&& throws(function() { NativeKitEventBytes.readU32(haxe.io.Bytes.alloc(3), 0); })
 			&& throws(function() { NativeKitEventBytes.decodeDialogPaths(badDialog); })
 			&& throws(function() { NativeKitEventBytes.decodeClipboardFiles(unterminated, 1); })
 			&& throws(function() { NativeKitEventBytes.decodeResourceList(badResource, 0); })
 			&& throws(function() { NativeKitInputEvents.decode(shortKey); })
-			&& throws(function() { NativeKitWindowEvents.decode(shortWindow); });
+			&& throws(function() { NativeKitInputEvents.decode(shortEdit); })
+			&& throws(function() { NativeKitWindowEvents.decode(shortWindow); })
+			&& throws(function() { NativeKitEventBytes.readUtf8Slice(invalidUtf8,48,2,48); });
 	}
 
 	static function putU32(data:haxe.io.Bytes, offset:Int, value:Int):Void {

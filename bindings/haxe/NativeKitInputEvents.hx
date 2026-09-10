@@ -3,11 +3,16 @@ import NativeKit.NativeKitConstants;
 import NativeKitEventContext;
 import NativeKitEventBytes;
 import NativeKitEventValue;
+import NativeKitEventValue.NativeKitTextEdit;
 
 class NativeKitInputEvents {
 	public static function decode(c:NativeKitEventContext):Null<NativeKitEventValue> return switch c.kind {
 		case NativeKitConstants.NK_EVENT_KEY: NativeKitEventBytes.requireSize(c.data,16); var v:nk_key_event=c.data; Key(c.source,v.get_key(),v.get_scancode(),v.get_action(),v.get_modifiers());
 		case NativeKitConstants.NK_EVENT_TEXT_INPUT: NativeKitEventBytes.requireSize(c.data,8); var v:nk_text_input_event=c.data; TextInput(c.source,v.get_codepoint());
+		case NativeKitConstants.NK_EVENT_TEXT_EDIT:
+			NativeKitEventBytes.requireMinimumSize(c.data,48); var v:nk_text_edit_event=c.data;
+			var text=NativeKitEventBytes.readUtf8Slice(c.data,v.get_text_offset(),v.get_text_length(),48);
+			TextEdit(c.source,new NativeKitTextEdit(v.get_action(),text,v.get_replace_start(),v.get_replace_end(),v.get_selection_start(),v.get_selection_end(),v.get_composition_start(),v.get_composition_end()));
 		case NativeKitConstants.NK_EVENT_POINTER_MOVE: NativeKitEventBytes.requireSize(c.data,16); var v:nk_pointer_move_event=c.data; PointerMove(c.source,v.get_x(),v.get_y());
 		case NativeKitConstants.NK_EVENT_POINTER_BUTTON: NativeKitEventBytes.requireSize(c.data,32); var v:nk_pointer_button_event=c.data; PointerButton(c.source,v.get_button(),v.get_action(),v.get_modifiers(),v.get_x(),v.get_y());
 		case NativeKitConstants.NK_EVENT_POINTER_SCROLL: NativeKitEventBytes.requireSize(c.data,16); var v:nk_pointer_scroll_event=c.data; PointerScroll(c.source,v.get_x(),v.get_y());

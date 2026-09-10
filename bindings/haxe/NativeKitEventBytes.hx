@@ -56,6 +56,40 @@ class NativeKitEventBytes {
 		return requireString(data, offset, minimum);
 	}
 
+	public static function readUtf8Slice(data:haxe.io.Bytes, offset:Int, length:Int, minimum:Int):Null<String> {
+		if (length == 0) {
+			if (offset != 0) throw "NativeKit event payload has an invalid empty string offset";
+			return null;
+		}
+		if (offset < minimum || length < 0 || offset > data.length - length)
+			throw "NativeKit event payload has an invalid string range";
+		var cursor = offset, end = offset + length;
+		while (cursor < end) {
+			var first = data.get(cursor++);
+			if (first < 0x80) continue;
+			if (first >= 0xc2 && first <= 0xdf) {
+				continuation(data, cursor, end); cursor++;
+			} else if (first >= 0xe0 && first <= 0xef) {
+				continuation(data, cursor, end); continuation(data, cursor + 1, end);
+				var second = data.get(cursor);
+				if ((first == 0xe0 && second < 0xa0) || (first == 0xed && second >= 0xa0)) invalidUtf8();
+				cursor += 2;
+			} else if (first >= 0xf0 && first <= 0xf4) {
+				continuation(data, cursor, end); continuation(data, cursor + 1, end); continuation(data, cursor + 2, end);
+				var second = data.get(cursor);
+				if ((first == 0xf0 && second < 0x90) || (first == 0xf4 && second >= 0x90)) invalidUtf8();
+				cursor += 3;
+			} else invalidUtf8();
+		}
+		return data.getString(offset, length);
+	}
+
+	static function continuation(data:haxe.io.Bytes, offset:Int, end:Int):Void
+		if (offset >= end || data.get(offset) < 0x80 || data.get(offset) > 0xbf) invalidUtf8();
+
+	static function invalidUtf8():Void
+		throw "NativeKit event payload contains invalid UTF-8";
+
 	static function decodePackedStrings(data:haxe.io.Bytes, expectedCount:Int, headerSize:Int):Array<String> {
 		requireMinimumSize(data, headerSize);
 		var count = readU32(data, headerSize == 8 ? 0 : 8);

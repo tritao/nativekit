@@ -23,6 +23,7 @@ enum NativeKitEventValue {
 	WindowStateChanged(source:Int, stateFlags:Int);
 	Key(source:Int, key:Int, scancode:Int, action:Int, modifiers:Int);
 	TextInput(source:Int, codepoint:Int);
+	TextEdit(source:Int, edit:NativeKitTextEdit);
 	PointerMove(source:Int, x:Float, y:Float);
 	PointerButton(source:Int, button:Int, action:Int, modifiers:Int, x:Float, y:Float);
 	PointerScroll(source:Int, x:Float, y:Float);
@@ -39,6 +40,25 @@ enum NativeKitEventValue {
 	Resources(kind:Int, request:haxe.Int64, result:Int, accepted:Bool, items:Array<NativeKitResource>);
 	ShareReceived(text:Null<String>, subject:Null<String>, items:Array<NativeKitResource>);
 	ResourceDrop(source:Int, x:Float, y:Float, text:Null<String>, items:Array<NativeKitResource>);
+}
+
+class NativeKitTextEdit {
+	public final action:Int;
+	public final text:Null<String>;
+	public final replaceStart:Int;
+	public final replaceEnd:Int;
+	public final selectionStart:Int;
+	public final selectionEnd:Int;
+	public final compositionStart:Int;
+	public final compositionEnd:Int;
+
+	public function new(action:Int, text:Null<String>, replaceStart:Int, replaceEnd:Int,
+		selectionStart:Int, selectionEnd:Int, compositionStart:Int, compositionEnd:Int) {
+		this.action = action; this.text = text;
+		this.replaceStart = replaceStart; this.replaceEnd = replaceEnd;
+		this.selectionStart = selectionStart; this.selectionEnd = selectionEnd;
+		this.compositionStart = compositionStart; this.compositionEnd = compositionEnd;
+	}
 }
 
 class NativeKitResource {
