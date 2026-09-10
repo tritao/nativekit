@@ -1,5 +1,6 @@
 include(cmake/SkribidiSubmodules.cmake)
 include(cmake/NanoVGSubmodules.cmake)
+find_package(OpenGL REQUIRED)
 
 add_library(nativekit_ui SHARED
     src/api.cpp
@@ -15,11 +16,12 @@ target_compile_features(nativekit_ui PRIVATE cxx_std_17)
 target_include_directories(nativekit_ui
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE src)
 target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/sokol")
 target_link_libraries(nativekit_ui PRIVATE NativeKit::nativekit nkui_skribidi nkui_nanovg_core
-    nativekit_sokol_runtime)
+    nativekit_sokol_runtime OpenGL::GL)
 target_compile_definitions(nativekit_ui PRIVATE NKUI_BUILDING_LIBRARY)
 set_target_properties(nativekit_ui PROPERTIES
     EXPORT_NAME ui
@@ -81,7 +83,6 @@ if(NK_BUILD_TESTS)
     target_link_libraries(nativekit_ui_frame_resources_test PRIVATE nkui_nanovg_core)
     add_test(NAME nativekit_ui_frame_resources COMMAND nativekit_ui_frame_resources_test)
     if(NK_BUILD_EXAMPLES)
-        find_package(OpenGL REQUIRED)
         add_executable(nativekit_ui_sokol_backend_smoke_test
             tests/sokol_backend_smoke.cpp
             src/compositor/compositor.cpp

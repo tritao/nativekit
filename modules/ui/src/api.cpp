@@ -1,5 +1,7 @@
 #include "nativekit_ui.h"
 
+#include "nativekit_graphics.h"
+
 #include "display_list/display_list.h"
 #include "compositor/compositor.h"
 #include "prepare/nanovg_recorder.h"
@@ -15,6 +17,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <GL/gl.h>
 
 static_assert(sizeof(nkui_command_header) == sizeof(nkui::CommandHeader));
 static_assert(sizeof(nkui_text_metrics) == 5 * sizeof(uint32_t));
@@ -520,9 +524,15 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
 }
 
 extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_list list,
-                                            uint32_t width, uint32_t height, uint32_t framebuffer) {
-    if (!width || !height || width > INT32_MAX || height > INT32_MAX)
+                                            nk_handle surface) {
+    int32_t width = 0;
+    int32_t height = 0;
+    if (!surface || nk_surface_make_current(surface) != NK_OK ||
+        nk_surface_get_framebuffer_size(surface, &width, &height) != NK_OK || width <= 0 ||
+        height <= 0)
         return NKUI_ERROR_INVALID_ARGUMENT;
+    GLint framebuffer = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
     std::scoped_lock lock(renderers_mutex, lists_mutex, resources_mutex);
     auto *renderer_slot = resolve(renderer);
     auto *list_slot = resolve(list);
@@ -641,8 +651,8 @@ extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display
     for (auto *adapter : text_adapters)
         if (!renderer_slot->backend->upload_atlases(*adapter, new_backend))
             return NKUI_ERROR_RENDERING;
-    const bool executed = nkui::execute_render_plan(
-        *renderer_slot->backend, plan, frame_resources,
-        {main_target, static_cast<int>(width), static_cast<int>(height), framebuffer});
+    const bool executed =
+        nkui::execute_render_plan(*renderer_slot->backend, plan, frame_resources,
+                                  {main_target, width, height, static_cast<uint32_t>(framebuffer)});
     return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
 }

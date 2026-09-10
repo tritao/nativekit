@@ -1,7 +1,7 @@
 #ifndef NATIVEKIT_UI_H
 #define NATIVEKIT_UI_H
 
-#include <stdint.h>
+#include "nativekit.h"
 
 #if defined(_WIN32)
 #if defined(NKUI_BUILDING_LIBRARY)
@@ -212,10 +212,9 @@ NKUI_API nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_ima
                                        uint32_t pixel_bytes, nkui_resource *out_image NKUI_OUT);
 NKUI_API nkui_result nkui_renderer_create(nkui_renderer *out_renderer NKUI_OUT);
 NKUI_API nkui_result nkui_renderer_destroy(nkui_renderer renderer);
-/* Render to the current graphics context. Context activation and presentation remain owned by
-   nk_surface; framebuffer is zero for a platform's default framebuffer. */
+/* Makes the NativeKit surface current and renders one frame. Presentation remains explicit. */
 NKUI_API nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_list list,
-                                          uint32_t width, uint32_t height, uint32_t framebuffer);
+                                          nk_handle surface);
 NKUI_API nkui_result nkui_resource_destroy(nkui_resource resource);
 
 #ifdef __cplusplus

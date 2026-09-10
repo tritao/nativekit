@@ -12,6 +12,7 @@ output=${1:-"$module_dir/bindings/nativekit-ui-linux-x86_64.hxi"}
     --interface=NativeKitUI \
     --include="$module_dir/include" \
     --include="$module_dir/bindings" \
+    --include="$repo_dir/include" \
     --output="$output" \
     "$module_dir/bindings/nativekit_ui_import.h"
 

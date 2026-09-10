@@ -120,11 +120,7 @@ int main() {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             continue;
         }
-        GLint framebuffer = 0;
-        nk_surface_make_current(surface);
-        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
-        const nkui_result render_result =
-            nkui_renderer_render(renderer, list, width, height, static_cast<uint32_t>(framebuffer));
+        const nkui_result render_result = nkui_renderer_render(renderer, list, surface);
         if (render_result != NKUI_OK) {
             std::fprintf(stderr, "public render result %d\n", render_result);
             result = 7;
@@ -150,7 +146,7 @@ int main() {
         result = 12;
     else if (nkui_renderer_create(&renderer) != NKUI_OK)
         result = 13;
-    else if (nkui_renderer_render(renderer, list, width, height, 0) != NKUI_OK)
+    else if (nkui_renderer_render(renderer, list, surface) != NKUI_OK)
         result = 14;
     else if (nkui_renderer_destroy(renderer) != NKUI_OK)
         result = 15;
