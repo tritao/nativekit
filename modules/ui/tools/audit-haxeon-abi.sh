@@ -4,7 +4,8 @@ set -euo pipefail
 module_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 repo_dir=$(cd "$module_dir/../.." && pwd)
 haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/realtime-haxe"}
-output=${1:-"$module_dir/bindings/nativekit-ui.hxi"}
+
+cd "$repo_dir"
 
 "$haxeon_dir/scripts/haxeon-ffi-audit" \
     --target=x86_64-linux-gnu \
@@ -21,7 +22,5 @@ output=${1:-"$module_dir/bindings/nativekit-ui.hxi"}
     --include="$repo_dir/include" \
     --exclude-header="$repo_dir/include/nativekit.h" \
     --source-label=modules/ui/bindings/nativekit_ui_import.h \
-    --output="$output" \
+    "$@" \
     "$module_dir/bindings/nativekit_ui_import.h"
-
-echo "check-hxi: wrote $output"
