@@ -1081,7 +1081,10 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
     for (const auto &upload : adapter.atlas_uploads(include_clean)) {
         const uint64_t key = atlas_key(upload.texture, upload.generation);
         auto found = state_->atlases.find(key);
-        bool full_upload = !upload.dirty;
+        const bool dirty_covers_image =
+            upload.x == 0 && upload.y == 0 && upload.width == upload.texture_width &&
+            upload.height == upload.texture_height;
+        bool full_upload = !upload.dirty || dirty_covers_image;
         if (found == state_->atlases.end()) {
             State::AtlasImage atlas;
             if (!create_atlas_image(atlas, upload))
@@ -1096,14 +1099,33 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
             return fail(*state_, "atlas generation changed dimensions");
         }
         copy_atlas_pixels(found->second, upload, full_upload);
-        // Sokol currently exposes whole-image updates only; keep this fallback correct while
-        // retaining the dirty rectangle in the CPU mirror for a future subregion primitive.
-        const sg_image_data data = {
-            .mip_levels = {{found->second.pixels.data(), found->second.pixels.size()}}};
-        sg_update_image(found->second.image, &data);
+        if (full_upload) {
+            const sg_image_data data = {
+                .mip_levels = {{found->second.pixels.data(), found->second.pixels.size()}}};
+            sg_update_image(found->second.image, &data);
+        } else {
+            sg_write_image_desc data{};
+            data.src.data = {upload.pixels,
+                             static_cast<size_t>(upload.row_pitch) * upload.texture_height};
+            data.src.offset = static_cast<size_t>(upload.y) * upload.row_pitch +
+                              static_cast<size_t>(upload.x) * upload.bytes_per_pixel;
+            data.src.bytes_per_row = upload.row_pitch;
+            data.src.bytes_per_slice = upload.row_pitch * upload.height;
+            data.dst.image = found->second.image;
+            data.dst.mip_level = 0;
+            data.dst.x = upload.x;
+            data.dst.y = upload.y;
+            data.size.width = upload.width;
+            data.size.height = upload.height;
+            data.size.num_slices = 1;
+            if (!sg_update_image_region(&data))
+                return fail(*state_, "atlas subregion upload failed");
+        }
         found->second.generation = upload.generation;
         ++state_->stats.image_uploads;
-        state_->stats.uploaded_bytes += found->second.pixels.size();
+        state_->stats.uploaded_bytes +=
+            full_upload ? found->second.pixels.size()
+                        : static_cast<size_t>(upload.width) * upload.height * upload.bytes_per_pixel;
         if (upload.dirty && !adapter.acknowledge_atlas_upload(upload.texture, upload.dirty_epoch))
             return fail(*state_, "atlas upload acknowledgement failed");
     }
