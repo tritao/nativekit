@@ -22,8 +22,7 @@ struct SkribidiAdapter::State {
     std::string cached_text;
     float cached_width = 0.0f;
     float cached_font_size = 0.0f;
-    uint32_t font_generation = 0;
-    uint32_t cached_font_generation = 0;
+    uint64_t cached_font_generation = 0;
     uint32_t layout_builds = 0;
 };
 
@@ -164,7 +163,6 @@ bool SkribidiAdapter::add_font(const char *path, FontFamily family) {
         family == FontFamily::Emoji ? SKB_FONT_FAMILY_EMOJI : SKB_FONT_FAMILY_DEFAULT;
     if (!path || !skb_font_collection_add_font(state_->fonts, path, skb_family, nullptr))
         return false;
-    ++state_->font_generation;
     return true;
 }
 
@@ -173,7 +171,7 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size
         return false;
     if (state_->layout && state_->cached_text == text && state_->cached_width == width &&
         state_->cached_font_size == font_size &&
-        state_->cached_font_generation == state_->font_generation)
+        state_->cached_font_generation == skb_font_collection_get_generation(state_->fonts))
         return true;
     if (state_->layout) {
         skb_layout_destroy(state_->layout);
@@ -192,7 +190,7 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size
         state_->cached_text = text;
         state_->cached_width = width;
         state_->cached_font_size = font_size;
-        state_->cached_font_generation = state_->font_generation;
+        state_->cached_font_generation = skb_font_collection_get_generation(state_->fonts);
         ++state_->layout_builds;
     }
     return state_->layout != nullptr;
@@ -260,6 +258,14 @@ std::vector<TextRect> SkribidiAdapter::selection_rects(TextPosition start, TextP
     };
     skb_layout_iterate_text_range_bounds(state_->layout, range, collect, &rectangles);
     return rectangles;
+}
+
+uint64_t SkribidiAdapter::font_collection_generation() const {
+    return state_->fonts ? skb_font_collection_get_generation(state_->fonts) : 0;
+}
+
+uint64_t SkribidiAdapter::layout_generation() const {
+    return state_->layout ? skb_layout_get_generation(state_->layout) : 0;
 }
 
 uint32_t SkribidiAdapter::layout_build_count() const {

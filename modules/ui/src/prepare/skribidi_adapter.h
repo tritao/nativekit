@@ -114,6 +114,8 @@ class SkribidiAdapter {
     int32_t previous_grapheme(int32_t offset) const;
     int32_t align_grapheme(int32_t offset) const;
     std::vector<TextRect> selection_rects(TextPosition start, TextPosition end) const;
+    uint64_t font_collection_generation() const;
+    uint64_t layout_generation() const;
     uint32_t layout_build_count() const;
     uint32_t atlas_texture_count() const;
     std::vector<AtlasUpload> pending_atlas_uploads() const;
