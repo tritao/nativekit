@@ -4,6 +4,7 @@ import NativeKitEventValue;
 import NativeKitRequests;
 import NativeKitEventBytes;
 import NativeKitEventDecoderTests;
+import NativeKitTextInput;
 import NativeKit.NativeKitConstants;
 
 class Smoke {
@@ -58,10 +59,20 @@ class Smoke {
 		}
 
 		var windowOptions = new nk_window_options();
-		windowOptions.set_struct_size(40);
+		windowOptions.set_struct_size(nk_window_options.size());
 		windowOptions.set_flags(2);
 		windowOptions.set_width(320);
 		windowOptions.set_height(200);
+		windowOptions.set_title("NativeKit smoke");
+		if (windowOptions.get_title() != "NativeKit smoke")
+			return 9;
+		windowOptions.set_title(null);
+		if (windowOptions.get_title() != null)
+			return 10;
+		var textState = NativeKitTextInput.state("first", 5, 5);
+		textState.set_text("olá 👋");
+		if (textState.get_text() != "olá 👋" || textState.get_struct_size() != nk_text_input_state.size())
+			return 11;
 		var created = NativeKit.nk_window_create(windowOptions);
 		var windowOk = created.status == -4;
 		if (created.status == 0)

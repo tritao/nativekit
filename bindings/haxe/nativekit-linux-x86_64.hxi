@@ -483,8 +483,8 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		reserved: array<u64, 2> @offset(32);
 	}
 	struct nk_dialog_filter @layout(16, 8) {
-		name: ptr<const<c_char>> @offset(0);
-		patterns: ptr<const<c_char>> @offset(8);
+		name: nullable<utf8> @offset(0);
+		patterns: utf8 @offset(8);
 	}
 	struct nk_dialog_message_result @layout(4, 4) {
 		button: u32 @offset(0);
@@ -516,9 +516,9 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	struct nk_file_dialog_options @layout(48, 8) {
 		struct_size: u32 @offset(0);
 		flags: u32 @offset(4);
-		title: ptr<const<c_char>> @offset(8);
-		initial_path: ptr<const<c_char>> @offset(16);
-		suggested_name: ptr<const<c_char>> @offset(24);
+		title: nullable<utf8> @offset(8);
+		initial_path: nullable<utf8> @offset(16);
+		suggested_name: nullable<utf8> @offset(24);
 		filters: ptr<const<nk_dialog_filter>> @offset(32);
 		filter_count: u32 @offset(40);
 		reserved: u32 @offset(44);
@@ -574,8 +574,8 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		kind: u32 @offset(4);
 		buttons: u32 @offset(8);
 		reserved: u32 @offset(12);
-		title: ptr<const<c_char>> @offset(16);
-		message: ptr<const<c_char>> @offset(24);
+		title: nullable<utf8> @offset(16);
+		message: utf8 @offset(24);
 	}
 	struct nk_monitor_geometry @layout(72, 8) {
 		struct_size: u32 @offset(0);
@@ -628,9 +628,9 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	struct nk_resource @layout(56, 8) {
 		struct_size: u32 @offset(0);
 		flags: u32 @offset(4);
-		uri: ptr<const<c_char>> @offset(8);
-		mime_type: ptr<const<c_char>> @offset(16);
-		display_name: ptr<const<c_char>> @offset(24);
+		uri: utf8 @offset(8);
+		mime_type: nullable<utf8> @offset(16);
+		display_name: nullable<utf8> @offset(24);
 		reserved: u32 @offset(32);
 		reserved2: array<u64, 2> @offset(40);
 	}
@@ -673,8 +673,8 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	struct nk_share_options @layout(56, 8) {
 		struct_size: u32 @offset(0);
 		flags: u32 @offset(4);
-		title: ptr<const<c_char>> @offset(8);
-		text: ptr<const<c_char>> @offset(16);
+		title: nullable<utf8> @offset(8);
+		text: nullable<utf8> @offset(16);
 		resources: ptr<const<nk_resource>> @offset(24);
 		resource_count: u32 @offset(32);
 		reserved: u32 @offset(36);
@@ -726,7 +726,7 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	struct nk_text_input_state @layout(48, 8) {
 		struct_size: u32 @offset(0);
 		flags: u32 @offset(4);
-		text: ptr<const<c_char>> @offset(8);
+		text: utf8 @offset(8);
 		selection_start: nk_text_position @offset(16);
 		selection_end: nk_text_position @offset(20);
 		composition_start: nk_text_position @offset(24);
@@ -763,7 +763,7 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		y: i32 @offset(12);
 		width: i32 @offset(16);
 		height: i32 @offset(20);
-		initial_url: ptr<const<c_char>> @offset(24);
+		initial_url: nullable<utf8> @offset(24);
 		reserved: array<u64, 2> @offset(32);
 	}
 	struct nk_window_content_scale @layout(32, 8) {
@@ -795,7 +795,7 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		flags: u32 @offset(4);
 		width: i32 @offset(8);
 		height: i32 @offset(12);
-		title: ptr<const<c_char>> @offset(16);
+		title: nullable<utf8> @offset(16);
 		owner: nk_handle @offset(24);
 		kind: nk_window_kind @offset(28);
 		reserved: u64 @offset(32);

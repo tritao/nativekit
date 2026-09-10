@@ -41,17 +41,17 @@ enum {
 };
 
 typedef struct nk_dialog_filter {
-    const char *name;
+    const char *name NK_NULLABLE_UTF8;
     /* Semicolon-separated glob patterns, for example "*.png;*.jpg". */
-    const char *patterns;
+    const char *patterns NK_UTF8;
 } nk_dialog_filter;
 
 typedef struct nk_file_dialog_options {
     uint32_t struct_size;
     uint32_t flags;
-    const char *title;
-    const char *initial_path;
-    const char *suggested_name;
+    const char *title NK_NULLABLE_UTF8;
+    const char *initial_path NK_NULLABLE_UTF8;
+    const char *suggested_name NK_NULLABLE_UTF8;
     const nk_dialog_filter *filters;
     uint32_t filter_count;
     uint32_t reserved;
@@ -62,8 +62,8 @@ typedef struct nk_message_dialog_options {
     uint32_t kind;
     uint32_t buttons;
     uint32_t reserved;
-    const char *title;
-    const char *message;
+    const char *title NK_NULLABLE_UTF8;
+    const char *message NK_UTF8;
 } nk_message_dialog_options;
 
 /* Header at the start of NK_EVENT_DIALOG_PATHS_COMPLETE data. */

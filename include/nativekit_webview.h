@@ -31,7 +31,7 @@ typedef struct nk_webview_options {
     int32_t y;
     int32_t width;
     int32_t height;
-    const char *initial_url;
+    const char *initial_url NK_NULLABLE_UTF8;
     uint64_t reserved[2];
 } nk_webview_options;
 

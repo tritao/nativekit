@@ -34,9 +34,9 @@ enum { NK_SEEK_START = 0, NK_SEEK_CURRENT = 1, NK_SEEK_END = 2 };
 typedef struct nk_resource {
     uint32_t struct_size;
     uint32_t flags;
-    const char *uri;
-    const char *mime_type;
-    const char *display_name;
+    const char *uri NK_UTF8;
+    const char *mime_type NK_NULLABLE_UTF8;
+    const char *display_name NK_NULLABLE_UTF8;
     uint32_t reserved;
     uint64_t reserved2[2];
 } nk_resource;
@@ -44,8 +44,8 @@ typedef struct nk_resource {
 typedef struct nk_share_options {
     uint32_t struct_size;
     uint32_t flags;
-    const char *title;
-    const char *text;
+    const char *title NK_NULLABLE_UTF8;
+    const char *text NK_NULLABLE_UTF8;
     const nk_resource *resources;
     uint32_t resource_count;
     uint32_t reserved;

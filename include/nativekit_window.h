@@ -73,7 +73,7 @@ typedef struct nk_window_options {
     uint32_t flags;
     int32_t width;
     int32_t height;
-    const char *title;
+    const char *title NK_NULLABLE_UTF8;
     nk_handle owner;
     nk_window_kind kind;
     uint64_t reserved;

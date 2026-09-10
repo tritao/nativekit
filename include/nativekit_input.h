@@ -191,7 +191,7 @@ typedef struct nk_text_edit_event {
 typedef struct nk_text_input_state {
     uint32_t struct_size;
     uint32_t flags;
-    const char *text;
+    const char *text NK_UTF8;
     nk_text_position selection_start;
     nk_text_position selection_end;
     nk_text_position composition_start;

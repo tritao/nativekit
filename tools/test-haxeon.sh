@@ -41,6 +41,7 @@ cmake --build "$test_root/build"
 		"$repo_dir/bindings/haxe/NativeKitEventDecoderTests.hx" \
         "$repo_dir/bindings/haxe/NativeKitWindowEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitInputEvents.hx" \
+		"$repo_dir/bindings/haxe/NativeKitTextInput.hx" \
         "$repo_dir/bindings/haxe/NativeKitServiceEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitResourceEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitRequests.hx"

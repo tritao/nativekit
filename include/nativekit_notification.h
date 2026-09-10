@@ -12,9 +12,9 @@ enum { NK_NOTIFICATION_SILENT = 1u << 0 };
 typedef struct nk_notification_options {
     uint32_t struct_size;
     uint32_t flags;
-    const char *title;
-    const char *body;
-    const char *icon;
+    const char *title NK_UTF8;
+    const char *body NK_NULLABLE_UTF8;
+    const char *icon NK_NULLABLE_UTF8;
     uint32_t timeout_ms;
     uint32_t reserved;
     uint64_t reserved2[2];
