@@ -4,6 +4,10 @@
 #include "nativekit.h"
 #include "nativekit_monitor.h"
 #include "nativekit_window.h"
+#include "nativekit_input.h"
+#include "nativekit_joystick.h"
+#include "nativekit_gamepad.h"
+#include "nativekit_graphics.h"
 
 /* Binding-only semantic spelling for UTF-8 input; ABI-identical to const char *. */
 typedef const char *hxi_utf8;

@@ -25,6 +25,20 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_CAP_WINDOW_GEOMETRY = 65536;
 	const NK_CAP_WINDOW_STYLING = 131072;
 	const NK_CAP_WRAP_NATIVE_WINDOW = 256;
+	const NK_CURSOR_ARROW = 1;
+	const NK_CURSOR_CROSSHAIR = 3;
+	const NK_CURSOR_HAND = 4;
+	const NK_CURSOR_HORIZONTAL_RESIZE = 5;
+	const NK_CURSOR_IBEAM = 2;
+	const NK_CURSOR_MODE_CAPTURED = 2;
+	const NK_CURSOR_MODE_DISABLED = 3;
+	const NK_CURSOR_MODE_HIDDEN = 1;
+	const NK_CURSOR_MODE_NORMAL = 0;
+	const NK_CURSOR_MOVE = 9;
+	const NK_CURSOR_NESW_RESIZE = 8;
+	const NK_CURSOR_NOT_ALLOWED = 10;
+	const NK_CURSOR_NWSE_RESIZE = 7;
+	const NK_CURSOR_VERTICAL_RESIZE = 6;
 	const NK_ERROR_ALREADY_INITIALIZED = -6;
 	const NK_ERROR_BUFFER_TOO_SMALL = -11;
 	const NK_ERROR_INVALID_ARGUMENT = -2;
@@ -65,9 +79,11 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_EVENT_RESOURCE_DROP = 802;
 	const NK_EVENT_RESOURCE_OPENED = 800;
 	const NK_EVENT_SHARE_RECEIVED = 801;
+	const NK_EVENT_SURFACE_LOST = 702;
 	const NK_EVENT_SURFACE_READY = 700;
 	const NK_EVENT_SURFACE_RESIZE = 701;
 	const NK_EVENT_TEXT_INPUT = 11;
+	const NK_EVENT_TOUCH = 16;
 	const NK_EVENT_WEBVIEW_EVAL_COMPLETE = 203;
 	const NK_EVENT_WEBVIEW_MESSAGE = 201;
 	const NK_EVENT_WEBVIEW_NAVIGATED = 200;
@@ -82,12 +98,163 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_EVENT_WINDOW_RESIZE = 2;
 	const NK_EVENT_WINDOW_SCALE_CHANGED = 3;
 	const NK_EVENT_WINDOW_STATE_CHANGED = 4;
+	const NK_GAMEPAD_AXIS_LEFT_X = 0;
+	const NK_GAMEPAD_BUTTON_A = 0;
+	const NK_GAMEPAD_MAPPING_APPLICATION = 2;
+	const NK_GAMEPAD_MAPPING_BUILT_IN = 1;
+	const NK_GAMEPAD_TRIGGER_ZERO_TO_ONE = 1;
+	const NK_GRAPHICS_OPENGL = 1;
+	const NK_GRAPHICS_OPENGL_ES = 2;
+	const NK_GRAPHICS_VULKAN = 3;
+	const NK_INPUT_PRESS = 1;
+	const NK_INPUT_RELEASE = 0;
+	const NK_INPUT_REPEAT = 2;
+	const NK_JOYSTICK_HAT_CENTERED = 0;
+	const NK_JOYSTICK_HAT_DOWN = 4;
+	const NK_JOYSTICK_HAT_LEFT = 8;
+	const NK_JOYSTICK_HAT_RIGHT = 2;
+	const NK_JOYSTICK_HAT_UP = 1;
+	const NK_KEY_0 = 48;
+	const NK_KEY_1 = 49;
+	const NK_KEY_2 = 50;
+	const NK_KEY_3 = 51;
+	const NK_KEY_4 = 52;
+	const NK_KEY_5 = 53;
+	const NK_KEY_6 = 54;
+	const NK_KEY_7 = 55;
+	const NK_KEY_8 = 56;
+	const NK_KEY_9 = 57;
+	const NK_KEY_A = 65;
+	const NK_KEY_APOSTROPHE = 39;
+	const NK_KEY_B = 66;
+	const NK_KEY_BACKSLASH = 92;
+	const NK_KEY_BACKSPACE = 259;
+	const NK_KEY_C = 67;
+	const NK_KEY_CAPS_LOCK = 280;
+	const NK_KEY_COMMA = 44;
+	const NK_KEY_D = 68;
+	const NK_KEY_DELETE = 261;
+	const NK_KEY_DOWN = 264;
+	const NK_KEY_E = 69;
+	const NK_KEY_END = 269;
+	const NK_KEY_ENTER = 257;
+	const NK_KEY_EQUAL = 61;
+	const NK_KEY_ESCAPE = 256;
+	const NK_KEY_F = 70;
+	const NK_KEY_F1 = 290;
+	const NK_KEY_F12 = 301;
+	const NK_KEY_F13 = 302;
+	const NK_KEY_F14 = 303;
+	const NK_KEY_F15 = 304;
+	const NK_KEY_F16 = 305;
+	const NK_KEY_F17 = 306;
+	const NK_KEY_F18 = 307;
+	const NK_KEY_F19 = 308;
+	const NK_KEY_F20 = 309;
+	const NK_KEY_F21 = 310;
+	const NK_KEY_F22 = 311;
+	const NK_KEY_F23 = 312;
+	const NK_KEY_F24 = 313;
+	const NK_KEY_F25 = 314;
+	const NK_KEY_G = 71;
+	const NK_KEY_GRAVE_ACCENT = 96;
+	const NK_KEY_H = 72;
+	const NK_KEY_HOME = 268;
+	const NK_KEY_I = 73;
+	const NK_KEY_INSERT = 260;
+	const NK_KEY_J = 74;
+	const NK_KEY_K = 75;
+	const NK_KEY_KP_0 = 320;
+	const NK_KEY_KP_1 = 321;
+	const NK_KEY_KP_2 = 322;
+	const NK_KEY_KP_3 = 323;
+	const NK_KEY_KP_4 = 324;
+	const NK_KEY_KP_5 = 325;
+	const NK_KEY_KP_6 = 326;
+	const NK_KEY_KP_7 = 327;
+	const NK_KEY_KP_8 = 328;
+	const NK_KEY_KP_9 = 329;
+	const NK_KEY_KP_ADD = 334;
+	const NK_KEY_KP_DECIMAL = 330;
+	const NK_KEY_KP_DIVIDE = 331;
+	const NK_KEY_KP_ENTER = 335;
+	const NK_KEY_KP_EQUAL = 336;
+	const NK_KEY_KP_MULTIPLY = 332;
+	const NK_KEY_KP_SUBTRACT = 333;
+	const NK_KEY_L = 76;
+	const NK_KEY_LAST = 348;
+	const NK_KEY_LEFT = 263;
+	const NK_KEY_LEFT_ALT = 342;
+	const NK_KEY_LEFT_BRACKET = 91;
+	const NK_KEY_LEFT_CONTROL = 341;
+	const NK_KEY_LEFT_SHIFT = 340;
+	const NK_KEY_LEFT_SUPER = 343;
+	const NK_KEY_M = 77;
+	const NK_KEY_MENU = 348;
+	const NK_KEY_MINUS = 45;
+	const NK_KEY_N = 78;
+	const NK_KEY_NUM_LOCK = 282;
+	const NK_KEY_O = 79;
+	const NK_KEY_P = 80;
+	const NK_KEY_PAGE_DOWN = 267;
+	const NK_KEY_PAGE_UP = 266;
+	const NK_KEY_PAUSE = 284;
+	const NK_KEY_PERIOD = 46;
+	const NK_KEY_PRINT_SCREEN = 283;
+	const NK_KEY_Q = 81;
+	const NK_KEY_R = 82;
+	const NK_KEY_RIGHT = 262;
+	const NK_KEY_RIGHT_ALT = 346;
+	const NK_KEY_RIGHT_BRACKET = 93;
+	const NK_KEY_RIGHT_CONTROL = 345;
+	const NK_KEY_RIGHT_SHIFT = 344;
+	const NK_KEY_RIGHT_SUPER = 347;
+	const NK_KEY_S = 83;
+	const NK_KEY_SCROLL_LOCK = 281;
+	const NK_KEY_SEMICOLON = 59;
+	const NK_KEY_SLASH = 47;
+	const NK_KEY_SPACE = 32;
+	const NK_KEY_T = 84;
+	const NK_KEY_TAB = 258;
+	const NK_KEY_U = 85;
+	const NK_KEY_UNKNOWN = 0;
+	const NK_KEY_UP = 265;
+	const NK_KEY_V = 86;
+	const NK_KEY_W = 87;
+	const NK_KEY_X = 88;
+	const NK_KEY_Y = 89;
+	const NK_KEY_Z = 90;
+	const NK_MOD_ALT = 4;
+	const NK_MOD_CAPS_LOCK = 16;
+	const NK_MOD_CONTROL = 2;
+	const NK_MOD_NUM_LOCK = 32;
+	const NK_MOD_SHIFT = 1;
+	const NK_MOD_SUPER = 8;
 	const NK_NATIVE_WINDOW_COCOA = 2;
 	const NK_NATIVE_WINDOW_UNKNOWN = 0;
 	const NK_NATIVE_WINDOW_WAYLAND = 4;
 	const NK_NATIVE_WINDOW_WIN32 = 1;
 	const NK_NATIVE_WINDOW_X11 = 3;
 	const NK_OK = 0;
+	const NK_POINTER_BUTTON_4 = 3;
+	const NK_POINTER_BUTTON_5 = 4;
+	const NK_POINTER_BUTTON_LAST = 7;
+	const NK_POINTER_BUTTON_LEFT = 0;
+	const NK_POINTER_BUTTON_MIDDLE = 2;
+	const NK_POINTER_BUTTON_RIGHT = 1;
+	const NK_SURFACE_ALPHA = 2;
+	const NK_SURFACE_DEBUG_CONTEXT = 16;
+	const NK_SURFACE_DEPTH = 4;
+	const NK_SURFACE_FORWARD_COMPATIBLE = 32;
+	const NK_SURFACE_HIDDEN = 1;
+	const NK_SURFACE_STENCIL = 8;
+	const NK_TOUCH_BEGIN = 1;
+	const NK_TOUCH_CANCEL = 4;
+	const NK_TOUCH_END = 3;
+	const NK_TOUCH_MOVE = 2;
+	const NK_TOUCH_TOOL_ERASER = 3;
+	const NK_TOUCH_TOOL_FINGER = 1;
+	const NK_TOUCH_TOOL_STYLUS = 2;
 	const NK_WINDOW_BORDERLESS = 4;
 	const NK_WINDOW_HIDDEN = 2;
 	const NK_WINDOW_MODAL = 8;
@@ -103,9 +270,29 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	extern fn nk_api_version() -> u32;
 	extern fn nk_clipboard_read_text(out_request: ptr<nk_request_id> @out) -> nk_result;
 	extern fn nk_clipboard_set_text(text: utf8) -> nk_result;
+	extern fn nk_cursor_create_custom(image: ptr<const<nk_cursor_image>>, out_cursor: ptr<nk_handle>) -> nk_result;
+	extern fn nk_cursor_create_standard(shape: nk_cursor_shape, out_cursor: ptr<nk_handle>) -> nk_result;
+	extern fn nk_cursor_destroy(cursor: nk_handle) -> nk_result;
 	extern fn nk_event_release(event: ptr<nk_event>) -> void;
+	extern fn nk_gamepad_add_mapping(mapping: ptr<const<c_char>>) -> nk_result;
+	extern fn nk_gamepad_add_mappings(database: ptr<const<c_char>>, out_added: ptr<u32>) -> nk_result;
+	extern fn nk_gamepad_get_builtin_database_revision(buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
+	extern fn nk_gamepad_get_mapping_source(joystick: nk_handle, out_source: ptr<nk_gamepad_mapping_source>) -> nk_result;
+	extern fn nk_gamepad_get_name(joystick: nk_handle, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
+	extern fn nk_gamepad_get_options(out_options: ptr<nk_gamepad_options>) -> nk_result;
+	extern fn nk_gamepad_get_state(joystick: nk_handle, out_state: ptr<nk_gamepad_state>) -> nk_result;
+	extern fn nk_gamepad_is_mapped(joystick: nk_handle, out_mapped: ptr<u32>) -> nk_result;
+	extern fn nk_gamepad_set_options(options: ptr<const<nk_gamepad_options>>) -> nk_result;
 	extern fn nk_get_capabilities() -> nk_capabilities;
 	extern fn nk_init(options: ptr<const<nk_init_options>>) -> nk_result;
+	extern fn nk_joystick_get_axes(joystick: nk_handle, axes: ptr<f32>, inout_count: ptr<u32>) -> nk_result;
+	extern fn nk_joystick_get_buttons(joystick: nk_handle, buttons: ptr<u8>, inout_count: ptr<u32>) -> nk_result;
+	extern fn nk_joystick_get_diagnostics(buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
+	extern fn nk_joystick_get_guid(joystick: nk_handle, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
+	extern fn nk_joystick_get_hats(joystick: nk_handle, hats: ptr<u8>, inout_count: ptr<u32>) -> nk_result;
+	extern fn nk_joystick_get_name(joystick: nk_handle, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
+	extern fn nk_joystick_list(joysticks: ptr<nk_handle>, inout_count: ptr<u32>) -> nk_result;
+	extern fn nk_key_get_state(window: nk_handle, key: nk_key, out_action: ptr<nk_input_action>) -> nk_result;
 	extern fn nk_last_error() -> utf8 @borrowed;
 	extern fn nk_monitor_get_current_mode(monitor: nk_handle, out_mode: ptr<nk_video_mode> @out) -> nk_result;
 	extern fn nk_monitor_get_geometry(monitor: nk_handle, out_geometry: ptr<nk_monitor_geometry> @out) -> nk_result;
@@ -113,12 +300,24 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	extern fn nk_monitor_get_name(monitor: nk_handle, buffer: nullable<ptr<c_char>> @out_buffer("inout_size"), inout_size: ptr<u32> @inout) -> nk_result;
 	extern fn nk_monitor_get_primary(out_monitor: ptr<nk_handle> @out) -> nk_result;
 	extern fn nk_monitor_list(monitors: ptr<nk_handle>, inout_count: ptr<u32>) -> nk_result;
+	extern fn nk_pointer_button_get_state(window: nk_handle, button: nk_pointer_button, out_action: ptr<nk_input_action>) -> nk_result;
+	extern fn nk_pointer_get_position(window: nk_handle, out_x: ptr<f64>, out_y: ptr<f64>) -> nk_result;
 	extern fn nk_poll_event(event: ptr<nk_event> @inout) -> nk_result;
+	extern fn nk_raw_pointer_motion_supported() -> u32;
 	extern fn nk_shutdown() -> void;
+	extern fn nk_surface_create(window: nk_handle, options: ptr<const<nk_surface_options>>, out_surface: ptr<nk_handle>) -> nk_result;
+	extern fn nk_surface_destroy(surface: nk_handle) -> nk_result;
+	extern fn nk_surface_get_framebuffer_size(surface: nk_handle, out_width: ptr<i32>, out_height: ptr<i32>) -> nk_result;
+	extern fn nk_surface_get_proc_address(surface: nk_handle, name: ptr<const<c_char>>, out_proc: ptr<nk_graphics_proc>) -> nk_result;
+	extern fn nk_surface_make_current(surface: nk_handle) -> nk_result;
+	extern fn nk_surface_present(surface: nk_handle) -> nk_result;
+	extern fn nk_surface_set_bounds(surface: nk_handle, x: i32, y: i32, width: i32, height: i32) -> nk_result;
+	extern fn nk_surface_show(surface: nk_handle, visible: u32) -> nk_result;
 	extern fn nk_window_activate(window: nk_handle) -> nk_result;
 	extern fn nk_window_create(options: ptr<const<nk_window_options>>, out_window: ptr<nk_handle> @out) -> nk_result;
 	extern fn nk_window_destroy(window: nk_handle) -> nk_result;
 	extern fn nk_window_get_content_scale(window: nk_handle, out_scale: ptr<nk_window_content_scale> @out) -> nk_result;
+	extern fn nk_window_get_cursor_mode(window: nk_handle, out_mode: ptr<nk_cursor_mode>) -> nk_result;
 	extern fn nk_window_get_frame_extents(window: nk_handle, out_extents: ptr<nk_window_frame_extents> @out) -> nk_result;
 	extern fn nk_window_get_framebuffer_size(window: nk_handle, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
 	extern fn nk_window_get_hovered(window: nk_handle, out_hovered: ptr<u32> @out) -> nk_result;
@@ -135,6 +334,8 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	extern fn nk_window_restore(window: nk_handle) -> nk_result;
 	extern fn nk_window_set_aspect_ratio(window: nk_handle, numerator: i32, denominator: i32) -> nk_result;
 	extern fn nk_window_set_bounds(window: nk_handle, x: i32, y: i32, width: i32, height: i32) -> nk_result;
+	extern fn nk_window_set_cursor(window: nk_handle, cursor: nk_handle) -> nk_result;
+	extern fn nk_window_set_cursor_mode(window: nk_handle, mode: nk_cursor_mode) -> nk_result;
 	extern fn nk_window_set_decorated(window: nk_handle, enabled: u32) -> nk_result;
 	extern fn nk_window_set_floating(window: nk_handle, enabled: u32) -> nk_result;
 	extern fn nk_window_set_fullscreen(window: nk_handle, enabled: u32) -> nk_result;
@@ -146,6 +347,16 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	extern fn nk_window_set_title(window: nk_handle, title: ptr<const<c_char>>) -> nk_result;
 	extern fn nk_window_show(window: nk_handle, visible: u32) -> nk_result;
 	extern fn nk_window_wrap_native(native: ptr<const<nk_native_window>>, out_window: ptr<nk_handle> @out) -> nk_result;
+	struct nk_cursor_image @layout(48, 8) {
+		struct_size: u32 @offset(0);
+		width: i32 @offset(4);
+		height: i32 @offset(8);
+		stride: i32 @offset(12);
+		hotspot_x: i32 @offset(16);
+		hotspot_y: i32 @offset(20);
+		rgba: ptr<const<void>> @offset(24);
+		reserved: array<u64, 2> @offset(32);
+	}
 	struct nk_event @layout(64, 8) {
 		struct_size: u32 @offset(0);
 		kind: nk_event_kind @offset(4);
@@ -158,11 +369,51 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		data_size: u64 @offset(40);
 		reserved: array<u64, 2> @offset(48);
 	}
+	struct nk_gamepad_axis_event @layout(8, 4) {
+		axis: nk_gamepad_axis @offset(0);
+		value: f32 @offset(4);
+	}
+	struct nk_gamepad_button_event @layout(8, 4) {
+		button: nk_gamepad_button @offset(0);
+		pressed: u32 @offset(4);
+	}
+	struct nk_gamepad_options @layout(40, 8) {
+		struct_size: u32 @offset(0);
+		stick_dead_zone: f32 @offset(4);
+		trigger_dead_zone: f32 @offset(8);
+		flags: nk_gamepad_flags @offset(12);
+		reserved: u32 @offset(16);
+		reserved2: array<u64, 2> @offset(24);
+	}
+	struct nk_gamepad_state @layout(80, 8) {
+		struct_size: u32 @offset(0);
+		buttons: array<u8, 15> @offset(4);
+		axes: array<f32, 6> @offset(20);
+		reserved: array<u64, 4> @offset(48);
+	}
 	struct nk_init_options @layout(16, 4) {
 		struct_size: u32 @offset(0);
 		api_version: u32 @offset(4);
 		event_queue_capacity: u32 @offset(8);
 		reserved: u32 @offset(12);
+	}
+	struct nk_joystick_axis_event @layout(8, 4) {
+		axis: u32 @offset(0);
+		value: f32 @offset(4);
+	}
+	struct nk_joystick_button_event @layout(8, 4) {
+		button: u32 @offset(0);
+		pressed: u32 @offset(4);
+	}
+	struct nk_joystick_hat_event @layout(8, 4) {
+		hat: u32 @offset(0);
+		value: u32 @offset(4);
+	}
+	struct nk_key_event @layout(16, 4) {
+		key: nk_key @offset(0);
+		scancode: u32 @offset(4);
+		action: nk_input_action @offset(8);
+		modifiers: nk_modifiers @offset(12);
 	}
 	struct nk_monitor_geometry @layout(72, 8) {
 		struct_size: u32 @offset(0);
@@ -189,6 +440,58 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		window: usize @offset(24);
 		view: usize @offset(32);
 		reserved2: array<usize, 3> @offset(40);
+	}
+	struct nk_pointer_button_event @layout(32, 8) {
+		button: nk_pointer_button @offset(0);
+		action: nk_input_action @offset(4);
+		modifiers: nk_modifiers @offset(8);
+		reserved: u32 @offset(12);
+		x: f64 @offset(16);
+		y: f64 @offset(24);
+	}
+	struct nk_pointer_move_event @layout(16, 8) {
+		x: f64 @offset(0);
+		y: f64 @offset(8);
+	}
+	struct nk_pointer_scroll_event @layout(16, 8) {
+		x: f64 @offset(0);
+		y: f64 @offset(8);
+	}
+	struct nk_surface_options @layout(64, 8) {
+		struct_size: u32 @offset(0);
+		flags: u32 @offset(4);
+		api: nk_graphics_api @offset(8);
+		major_version: u32 @offset(12);
+		minor_version: u32 @offset(16);
+		x: i32 @offset(20);
+		y: i32 @offset(24);
+		width: i32 @offset(28);
+		height: i32 @offset(32);
+		share_surface: nk_handle @offset(36);
+		reserved: u32 @offset(40);
+		reserved2: array<u64, 2> @offset(48);
+	}
+	struct nk_surface_resize_event @layout(16, 4) {
+		width: i32 @offset(0);
+		height: i32 @offset(4);
+		framebuffer_width: i32 @offset(8);
+		framebuffer_height: i32 @offset(12);
+	}
+	struct nk_text_input_event @layout(8, 4) {
+		codepoint: u32 @offset(0);
+		reserved: u32 @offset(4);
+	}
+	struct nk_touch_event @layout(48, 8) {
+		pointer_id: u32 @offset(0);
+		action: nk_touch_action @offset(4);
+		tool: nk_touch_tool @offset(8);
+		modifiers: nk_modifiers @offset(12);
+		x: f64 @offset(16);
+		y: f64 @offset(24);
+		pressure: f32 @offset(32);
+		tilt_x: f32 @offset(36);
+		tilt_y: f32 @offset(40);
+		reserved: u32 @offset(44);
 	}
 	struct nk_video_mode @layout(56, 8) {
 		struct_size: u32 @offset(0);
@@ -257,10 +560,24 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	}
 	type hxi_utf8 = ptr<const<c_char>>;
 	type nk_capabilities = u64;
+	type nk_cursor_mode = u32;
+	type nk_cursor_shape = u32;
 	type nk_event_kind = u32;
+	type nk_gamepad_axis = u32;
+	type nk_gamepad_button = u32;
+	type nk_gamepad_flags = u32;
+	type nk_gamepad_mapping_source = u32;
+	type nk_graphics_api = u32;
+	callback nk_graphics_proc = fn() -> void;
 	type nk_handle = u32;
+	type nk_input_action = u32;
+	type nk_key = u32;
+	type nk_modifiers = u32;
 	type nk_native_window_kind = u32;
+	type nk_pointer_button = u32;
 	type nk_request_id = u64;
 	type nk_result = i32;
+	type nk_touch_action = u32;
+	type nk_touch_tool = u32;
 	type nk_window_kind = u32;
 }

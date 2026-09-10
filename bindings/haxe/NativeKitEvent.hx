@@ -24,6 +24,21 @@ enum NativeKitEventValue {
 	WindowFramebufferResize(source:Int, width:Int, height:Int);
 	WindowScaleChanged(source:Int, scale:Float);
 	WindowStateChanged(source:Int, stateFlags:Int);
+	Key(source:Int, key:Int, scancode:Int, action:Int, modifiers:Int);
+	TextInput(source:Int, codepoint:Int);
+	PointerMove(source:Int, x:Float, y:Float);
+	PointerButton(source:Int, button:Int, action:Int, modifiers:Int, x:Float, y:Float);
+	PointerScroll(source:Int, x:Float, y:Float);
+	PointerEnter(source:Int, entered:Bool);
+	Touch(source:Int, pointerId:Int, action:Int, tool:Int, modifiers:Int, x:Float, y:Float, pressure:Float, tiltX:Float, tiltY:Float);
+	JoystickAxis(source:Int, axis:Int, value:Float);
+	JoystickButton(source:Int, button:Int, pressed:Bool);
+	JoystickHat(source:Int, hat:Int, value:Int);
+	GamepadAxis(source:Int, axis:Int, value:Float);
+	GamepadButton(source:Int, button:Int, pressed:Bool);
+	SurfaceReady(source:Int);
+	SurfaceResize(source:Int, width:Int, height:Int, framebufferWidth:Int, framebufferHeight:Int);
+	SurfaceLost(source:Int);
 }
 
 /** Owns one polled NativeKit event and releases its native payload exactly once. */
@@ -94,20 +109,52 @@ class NativeKitEvent {
 			case NativeKitConstants.NK_EVENT_NOTIFICATION_FAILED: NotificationFailed(request, data.toString());
 			case NativeKitConstants.NK_EVENT_WINDOW_CLOSE: WindowClose(source);
 			case NativeKitConstants.NK_EVENT_WINDOW_RESIZE:
+				requireSize(data, 8);
 				var value:nk_window_resize_event = data;
 				WindowResize(source, value.get_width(), value.get_height());
 			case NativeKitConstants.NK_EVENT_WINDOW_MOVE:
+				requireSize(data, 8);
 				var value:nk_window_move_event = data;
 				WindowMove(source, value.get_x(), value.get_y());
 			case NativeKitConstants.NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE:
+				requireSize(data, 8);
 				var value:nk_window_framebuffer_resize_event = data;
 				WindowFramebufferResize(source, value.get_width(), value.get_height());
 			case NativeKitConstants.NK_EVENT_WINDOW_SCALE_CHANGED:
+				requireSize(data, 4);
 				var value:nk_window_scale_event = data;
 				WindowScaleChanged(source, value.get_scale());
 			case NativeKitConstants.NK_EVENT_WINDOW_STATE_CHANGED:
+				requireSize(data, 24);
 				var value:nk_window_state = data;
 				WindowStateChanged(source, value.get_flags());
+			case NativeKitConstants.NK_EVENT_KEY:
+				requireSize(data, 16); var value:nk_key_event = data; Key(source, value.get_key(), value.get_scancode(), value.get_action(), value.get_modifiers());
+			case NativeKitConstants.NK_EVENT_TEXT_INPUT:
+				requireSize(data, 8); var value:nk_text_input_event = data; TextInput(source, value.get_codepoint());
+			case NativeKitConstants.NK_EVENT_POINTER_MOVE:
+				requireSize(data, 16); var value:nk_pointer_move_event = data; PointerMove(source, value.get_x(), value.get_y());
+			case NativeKitConstants.NK_EVENT_POINTER_BUTTON:
+				requireSize(data, 32); var value:nk_pointer_button_event = data; PointerButton(source, value.get_button(), value.get_action(), value.get_modifiers(), value.get_x(), value.get_y());
+			case NativeKitConstants.NK_EVENT_POINTER_SCROLL:
+				requireSize(data, 16); var value:nk_pointer_scroll_event = data; PointerScroll(source, value.get_x(), value.get_y());
+			case NativeKitConstants.NK_EVENT_POINTER_ENTER: PointerEnter(source, flags != 0);
+			case NativeKitConstants.NK_EVENT_TOUCH:
+				requireSize(data, 48); var value:nk_touch_event = data; Touch(source, value.get_pointer_id(), value.get_action(), value.get_tool(), value.get_modifiers(), value.get_x(), value.get_y(), value.get_pressure(), value.get_tilt_x(), value.get_tilt_y());
+			case NativeKitConstants.NK_EVENT_JOYSTICK_AXIS:
+				requireSize(data, 8); var value:nk_joystick_axis_event = data; JoystickAxis(source, value.get_axis(), value.get_value());
+			case NativeKitConstants.NK_EVENT_JOYSTICK_BUTTON:
+				requireSize(data, 8); var value:nk_joystick_button_event = data; JoystickButton(source, value.get_button(), value.get_pressed() != 0);
+			case NativeKitConstants.NK_EVENT_JOYSTICK_HAT:
+				requireSize(data, 8); var value:nk_joystick_hat_event = data; JoystickHat(source, value.get_hat(), value.get_value());
+			case NativeKitConstants.NK_EVENT_GAMEPAD_AXIS:
+				requireSize(data, 8); var value:nk_gamepad_axis_event = data; GamepadAxis(source, value.get_axis(), value.get_value());
+			case NativeKitConstants.NK_EVENT_GAMEPAD_BUTTON:
+				requireSize(data, 8); var value:nk_gamepad_button_event = data; GamepadButton(source, value.get_button(), value.get_pressed() != 0);
+			case NativeKitConstants.NK_EVENT_SURFACE_READY: SurfaceReady(source);
+			case NativeKitConstants.NK_EVENT_SURFACE_RESIZE:
+				requireSize(data, 16); var value:nk_surface_resize_event = data; SurfaceResize(source, value.get_width(), value.get_height(), value.get_framebuffer_width(), value.get_framebuffer_height());
+			case NativeKitConstants.NK_EVENT_SURFACE_LOST: SurfaceLost(source);
 			default: Raw(kind, source, request, result, flags, dataCount, data);
 		}
 	}
@@ -191,6 +238,11 @@ class NativeKitEvent {
 		if (offset < 0 || offset > data.length - 4)
 			throw "NativeKit packed event payload has a truncated integer";
 		return data.get(offset) | data.get(offset + 1) << 8 | data.get(offset + 2) << 16 | data.get(offset + 3) << 24;
+	}
+
+	static function requireSize(data:haxe.io.Bytes, size:Int):Void {
+		if (data.length != size)
+			throw "NativeKit event payload has an invalid size";
 	}
 
 	function ensureOpen():Void {
