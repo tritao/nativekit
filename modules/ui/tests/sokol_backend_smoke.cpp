@@ -26,9 +26,9 @@ using namespace nkui;
 
 class Mock3DSurfaceProducer final : public SurfaceProducer {
   public:
-    Mock3DSurfaceProducer(const NanoVGRecorder &recorder, uint32_t &generation,
+    Mock3DSurfaceProducer(const PreparedPathData &path, uint32_t &generation,
                           bool &unavailable, bool &failed)
-        : recorder_(recorder), generation_(generation), unavailable_(unavailable),
+        : path_(path), generation_(generation), unavailable_(unavailable),
           failed_(failed) {}
     bool ready() const override { return true; }
     bool describe(int requested_width, int requested_height,
@@ -47,13 +47,13 @@ class Mock3DSurfaceProducer final : public SurfaceProducer {
         if (unavailable_)
             return SurfaceRenderResult::Unavailable;
         if (!backend.begin_surface_pass(target, description, false) ||
-            !backend.draw_path(recorder_, 2) || !backend.end_pass())
+            !backend.draw_path(path_, 2) || !backend.end_pass())
             return SurfaceRenderResult::Failed;
         return SurfaceRenderResult::Rendered;
     }
 
   private:
-    const NanoVGRecorder &recorder_;
+    const PreparedPathData &path_;
     uint32_t &generation_;
     bool &unavailable_;
     bool &failed_;
@@ -188,11 +188,11 @@ int main() {
         GLint framebuffer = 0;
         glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
         FrameResources resources;
-        Mock3DSurfaceProducer producer(recorder, producer_generation, producer_unavailable,
+        Mock3DSurfaceProducer producer(recorder.data(), producer_generation, producer_unavailable,
                                        producer_failed);
-        if (!resources.bind_path(background, recorder, 0) ||
-            !resources.bind_path(layer_path, recorder, 1) ||
-            !resources.bind_path(foreground, recorder, 2) ||
+        if (!resources.bind_path(background, recorder.data(), 0) ||
+            !resources.bind_path(layer_path, recorder.data(), 1) ||
+            !resources.bind_path(foreground, recorder.data(), 2) ||
             !resources.bind_text(title, title_glyphs) ||
             !resources.bind_text(layer_text, layer_glyphs) ||
             !resources.bind_text(color_text, color_glyphs) ||
@@ -229,7 +229,7 @@ int main() {
     if (!result) {
         ++producer_generation;
         producer_failed = true;
-        Mock3DSurfaceProducer failed_producer(recorder, producer_generation,
+        Mock3DSurfaceProducer failed_producer(recorder.data(), producer_generation,
                                               producer_unavailable, producer_failed);
         FrameResources failure_resources;
         RenderExecutionError failure_error{};

@@ -16,7 +16,7 @@ int main() {
     if (recorder.operations().size() != 1)
         return 1;
     SolidMesh mesh;
-    if (!triangulate_prepared_path(recorder, recorder.operations()[0], mesh))
+    if (!triangulate_prepared_path(recorder.data(), recorder.operations()[0], mesh))
         return 2;
     return mesh.vertices.size() >= 4 && mesh.indices.size() >= 6 ? 0 : 3;
 }

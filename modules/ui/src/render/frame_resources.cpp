@@ -15,11 +15,6 @@ bool FrameResources::bind_path(ResourceId id, const PreparedPath &path,
     return bind_path(id, path.data(), operation_index);
 }
 
-bool FrameResources::bind_path(ResourceId id, const NanoVGRecorder &recorder,
-                               uint32_t operation_index) {
-    return bind_path(id, recorder.data(), operation_index);
-}
-
 bool FrameResources::bind_image(ResourceId id, const PreparedTexture &image) {
     if (!is_resource_id(id, ResourceKind::Image) || image.width <= 0 || image.height <= 0 ||
         image.pixels.empty())

@@ -24,8 +24,6 @@ struct SolidMesh {
 
 bool triangulate_prepared_path(const PreparedPathData &path,
                                const PreparedPathOperation &operation, SolidMesh &mesh);
-bool triangulate_prepared_path(const NanoVGRecorder &recorder,
-                               const PreparedPathOperation &operation, SolidMesh &mesh);
 
 struct SokolBackendStats {
     uint32_t passes = 0;
@@ -60,13 +58,9 @@ class SokolBackend {
                      float height = 0.0f);
     bool draw_path(const PreparedPathData &path, uint32_t operation_index,
                    float opacity = 1.0f);
-    bool draw_path(const NanoVGRecorder &recorder, uint32_t operation_index, float opacity = 1.0f);
     bool draw_path_transformed(const PreparedPathData &path, uint32_t operation_index,
                                const float transform[6], float opacity = 1.0f);
-    bool draw_path_transformed(const NanoVGRecorder &recorder, uint32_t operation_index,
-                               const float transform[6], float opacity = 1.0f);
     bool draw_paths(const PreparedPathData &path);
-    bool draw_paths(const NanoVGRecorder &recorder);
     bool draw_image(const PreparedTexture &image, float x, float y, float width, float height,
                     const float transform[6], float opacity = 1.0f);
     bool upload_atlases(SkribidiAdapter &adapter, bool include_clean = false);

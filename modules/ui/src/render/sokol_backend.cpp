@@ -718,11 +718,6 @@ bool triangulate_prepared_path(const PreparedPathData &path,
     return !mesh.indices.empty();
 }
 
-bool triangulate_prepared_path(const NanoVGRecorder &recorder,
-                               const PreparedPathOperation &operation, SolidMesh &mesh) {
-    return triangulate_prepared_path(recorder.data(), operation, mesh);
-}
-
 SokolBackend::SokolBackend() : state_(new State) {}
 
 SokolBackend::~SokolBackend() {
@@ -1052,16 +1047,6 @@ bool SokolBackend::draw_path_transformed(const PreparedPathData &path, uint32_t 
                      sizeof(paint), paint_view, paint_sampler, state_->solid_vertices);
 }
 
-bool SokolBackend::draw_path(const NanoVGRecorder &recorder, uint32_t operation_index,
-                             float opacity) {
-    return draw_path(recorder.data(), operation_index, opacity);
-}
-
-bool SokolBackend::draw_path_transformed(const NanoVGRecorder &recorder, uint32_t operation_index,
-                                         const float transform[6], float opacity) {
-    return draw_path_transformed(recorder.data(), operation_index, transform, opacity);
-}
-
 bool SokolBackend::draw_paths(const PreparedPathData &path) {
     if (!state_->in_pass)
         return fail(*state_, "path draw outside pass");
@@ -1069,10 +1054,6 @@ bool SokolBackend::draw_paths(const PreparedPathData &path) {
         if (!draw_path(path, index))
             return false;
     return true;
-}
-
-bool SokolBackend::draw_paths(const NanoVGRecorder &recorder) {
-    return draw_paths(recorder.data());
 }
 
 bool SokolBackend::draw_image(const PreparedTexture &image, float x, float y, float width,

@@ -34,8 +34,9 @@ int main() {
     PreparedGlyphs glyphs;
     FrameResources resources;
     TestProducer producer;
-    if (!resources.bind_path(path, recorder, 0) || resources.bind_path(text, recorder, 0) ||
-        resources.bind_path(path, recorder, 1) || !resources.bind_text(text, glyphs) ||
+    if (!resources.bind_path(path, recorder.data(), 0) ||
+        resources.bind_path(text, recorder.data(), 0) ||
+        resources.bind_path(path, recorder.data(), 1) || !resources.bind_text(text, glyphs) ||
         resources.bind_text(path, glyphs) || !resources.bind_surface(surface, producer) ||
         resources.bind_surface(path, producer))
         return 1;
