@@ -1,0 +1,83 @@
+name: Android
+
+on:
+  push:
+  pull_request:
+
+env:
+  ANDROID_COMPILE_SDK: "36"
+  ANDROID_NDK_VERSION: "30.0.16248370"
+  ANDROID_CMAKE_VERSION: "3.22.1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android toolchain
+        run: >-
+          sdkmanager
+          "platforms;android-${ANDROID_COMPILE_SDK}"
+          "ndk;${ANDROID_NDK_VERSION}"
+          "cmake;${ANDROID_CMAKE_VERSION}"
+      - name: Verify generated JNI values
+        working-directory: android
+        run: ./gradlew verifyAndroidInputValues
+      - name: Run JVM tests
+        working-directory: android
+        run: ./gradlew :nativekit:testDebugUnitTest
+      - name: Build library and samples
+        working-directory: android
+        run: >-
+          ./gradlew
+          :nativekit:assembleDebug
+          :nativekit:assembleRelease
+          :sample:assembleDebug
+          :consumer:assembleDebug
+          :consumer:assembleDebugAndroidTest
+          :graphics-sample:assembleDebug
+      - name: Validate release Prefab consumers
+        working-directory: android
+        run: ./gradlew :consumer:assembleRelease :graphics-sample:assembleRelease
+
+  instrumentation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [23, 36]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install native toolchain
+        run: >-
+          sdkmanager
+          "platforms;android-${ANDROID_COMPILE_SDK}"
+          "ndk;${ANDROID_NDK_VERSION}"
+          "cmake;${ANDROID_CMAKE_VERSION}"
+      - name: Run emulator instrumentation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: cd android && ./gradlew :sample:connectedDebugAndroidTest :consumer:connectedDebugAndroidTest

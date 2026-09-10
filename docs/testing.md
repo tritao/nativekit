@@ -15,6 +15,27 @@ Leak detection remains enabled for the core tests. It is disabled only for the
 GTK integration process because GTK, Pango, and Fontconfig retain
 process-lifetime caches outside NativeKit's ownership.
 
+## Android tests
+
+The Android workflow pins Java 17, API 36, NDK 30.0.16248370, and CMake 3.22.1.
+Its build job checks generated JNI constants, runs the library JVM tests, builds
+the AAR and samples, and compiles both C++ Prefab consumers in debug and release
+configurations. Native builds cover every ABI declared by the Gradle modules.
+
+Instrumentation runs on API 23 (the supported minimum) and API 36. The sample
+tests exercise host and WebView integration; the consumer tests additionally
+cover URI providers, clipboard and sharing, lifecycle recovery, graphics
+surfaces, and input delivery. Run the same checks locally with:
+
+```sh
+cd android
+./gradlew verifyAndroidInputValues :nativekit:testDebugUnitTest \
+  :nativekit:assembleRelease :sample:assembleDebug \
+  :consumer:assembleDebugAndroidTest :consumer:assembleRelease \
+  :graphics-sample:assembleRelease
+./gradlew :sample:connectedDebugAndroidTest :consumer:connectedDebugAndroidTest
+```
+
 ## Haxeon binding smoke test
 
 `tools/test-haxeon.sh` builds a temporary shared NativeKit library, projects the
