@@ -1,6 +1,7 @@
 #include "nativekit_mobile.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_graphics.h"
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
@@ -12,12 +13,16 @@
 #include "core/runtime.hpp"
 
 #include <jni.h>
+#include <android/native_window_jni.h>
+#include <EGL/egl.h>
+#include <dlfcn.h>
 
 #include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include <climits>
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -45,6 +50,27 @@ struct AndroidWebView final : nk::core::Resource {
     bool navigation_policy = false;
 };
 
+struct AndroidSurface final : nk::core::Resource {
+    nk_handle handle = NK_INVALID_HANDLE;
+    nk_handle host = NK_INVALID_HANDLE;
+    jobject view = nullptr;
+    EGLDisplay display = EGL_NO_DISPLAY;
+    EGLConfig config = nullptr;
+    EGLContext context = EGL_NO_CONTEXT;
+    EGLSurface surface = EGL_NO_SURFACE;
+    ANativeWindow *window = nullptr;
+    nk_graphics_api api = NK_GRAPHICS_OPENGL_ES;
+    uint32_t major_version = 2;
+    uint32_t minor_version = 0;
+    uint32_t context_flags = 0;
+    std::shared_ptr<AndroidSurface> shared_surface;
+    uint32_t share_dependents = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+    int32_t framebuffer_width = 0;
+    int32_t framebuffer_height = 0;
+};
+
 struct NavigationDecision {
     nk_handle webview;
     std::string url;
@@ -52,6 +78,8 @@ struct NavigationDecision {
 
 std::unordered_map<nk_handle, std::shared_ptr<AndroidHost>> hosts;
 std::unordered_map<nk_handle, std::shared_ptr<AndroidWebView>> webviews;
+std::unordered_map<nk_handle, std::shared_ptr<AndroidSurface>> surfaces;
+EGLDisplay egl_display = EGL_NO_DISPLAY;
 std::unordered_map<nk_request_id, nk_handle> evaluations;
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
 struct DialogRequest {
@@ -223,6 +251,11 @@ std::shared_ptr<AndroidWebView> webview(nk_handle handle) {
         nk::core::handles().get(handle, nk::core::ResourceType::webview));
 }
 
+std::shared_ptr<AndroidSurface> surface(nk_handle handle) {
+    return std::dynamic_pointer_cast<AndroidSurface>(
+        nk::core::handles().get(handle, nk::core::ResourceType::surface));
+}
+
 std::shared_ptr<AndroidResourceStream> resource_stream(nk_handle handle) {
     return std::dynamic_pointer_cast<AndroidResourceStream>(
         nk::core::handles().get(handle, nk::core::ResourceType::resource_stream));
@@ -254,6 +287,26 @@ nk_result java_void_webview(const std::shared_ptr<AndroidWebView> &resource, con
     env->CallStaticVoidMethodA(bridge, method, arguments);
     env->DeleteLocalRef(bridge);
     if (clear_java_exception(env, "Android WebView operation failed"))
+        return NK_ERROR_UNKNOWN;
+    (void)resource;
+    return NK_OK;
+}
+
+nk_result java_void_surface(const std::shared_ptr<AndroidSurface> &resource, const char *name,
+                            const char *signature, jvalue *arguments) {
+    auto *env = environment();
+    if (!env) {
+        nk::core::set_error("Android JNI environment is unavailable on the UI thread");
+        return NK_ERROR_WRONG_THREAD;
+    }
+    auto *bridge = bridge_class(env);
+    if (!bridge)
+        return NK_ERROR_UNKNOWN;
+    auto method = env->GetStaticMethodID(bridge, name, signature);
+    if (method)
+        env->CallStaticVoidMethodA(bridge, method, arguments);
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android graphics surface operation failed"))
         return NK_ERROR_UNKNOWN;
     (void)resource;
     return NK_OK;
@@ -520,6 +573,52 @@ nk_result destroy_webview(nk_handle handle) {
     return NK_OK;
 }
 
+void release_surface_window(AndroidSurface &resource) {
+    if (resource.surface != EGL_NO_SURFACE) {
+        if (eglGetCurrentContext() == resource.context)
+            eglMakeCurrent(resource.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        eglDestroySurface(resource.display, resource.surface);
+        resource.surface = EGL_NO_SURFACE;
+    }
+    if (resource.window) {
+        ANativeWindow_release(resource.window);
+        resource.window = nullptr;
+    }
+    resource.framebuffer_width = 0;
+    resource.framebuffer_height = 0;
+}
+
+nk_result destroy_surface(nk_handle handle) {
+    const auto found = surfaces.find(handle);
+    if (found == surfaces.end()) {
+        nk::core::set_error("invalid Android graphics surface handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    auto resource = found->second;
+    if (resource->share_dependents) {
+        nk::core::set_error("graphics surface is still shared by another surface");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    if (auto *env = environment(); env && resource->view) {
+        jvalue arguments[1]{};
+        arguments[0].l = resource->view;
+        java_void_surface(resource, "destroySurface", "(Landroid/view/SurfaceView;)V", arguments);
+        env->DeleteGlobalRef(resource->view);
+        resource->view = nullptr;
+    }
+    release_surface_window(*resource);
+    if (resource->context != EGL_NO_CONTEXT) {
+        eglDestroyContext(resource->display, resource->context);
+        resource->context = EGL_NO_CONTEXT;
+    }
+    resource->display = EGL_NO_DISPLAY;
+    if (resource->shared_surface)
+        --resource->shared_surface->share_dependents;
+    surfaces.erase(found);
+    nk::core::handles().erase(handle, nk::core::ResourceType::surface);
+    return NK_OK;
+}
+
 bool abandon_webview(nk_handle handle) {
     const auto found = webviews.find(handle);
     if (found == webviews.end())
@@ -542,8 +641,21 @@ nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled);
 void pump_events() noexcept {}
 
 void shutdown() noexcept {
+    while (!surfaces.empty()) {
+        const auto leaf = std::find_if(surfaces.begin(), surfaces.end(),
+                                       [](const auto &item) {
+                                           return item.second->share_dependents == 0;
+                                       });
+        if (leaf == surfaces.end())
+            break;
+        destroy_surface(leaf->first);
+    }
     while (!webviews.empty())
         destroy_webview(webviews.begin()->first);
+    if (egl_display != EGL_NO_DISPLAY) {
+        eglTerminate(egl_display);
+        egl_display = EGL_NO_DISPLAY;
+    }
     auto *env = environment();
     if (env) {
         for (auto &[handle, resource] : hosts) {
@@ -608,6 +720,16 @@ nk_result mobile_host_destroy(nk_handle handle) {
         return NK_ERROR_INVALID_HANDLE;
     }
     std::vector<nk_handle> children;
+    for (;;) {
+        const auto leaf = std::find_if(surfaces.begin(), surfaces.end(),
+                                       [handle](const auto &item) {
+                                           return item.second->host == handle &&
+                                                  item.second->share_dependents == 0;
+                                       });
+        if (leaf == surfaces.end())
+            break;
+        destroy_surface(leaf->first);
+    }
     for (const auto &[child, resource] : webviews)
         if (resource->host == handle)
             children.push_back(child);
@@ -706,7 +828,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
            NK_CAP_DRAG_DROP |
            NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
-           NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO;
+           NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE;
 }
 
 nk_result NK_CALL nk_shell_open_url(const char *url) {
@@ -1470,6 +1592,234 @@ nk_result NK_CALL nk_notification_close(nk_request_id request) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_surface_create(nk_handle parent, const nk_surface_options *options,
+                                    nk_handle *out_surface) {
+    return nk::core::result_boundary(
+        "unexpected error while creating an Android graphics surface", [&]() -> nk_result {
+            if (const auto thread = require_thread(); thread != NK_OK)
+                return thread;
+            auto parent_resource = host(parent);
+            if (!parent_resource) {
+                nk::core::set_error("Android graphics surface parent is not a mobile host");
+                return NK_ERROR_INVALID_HANDLE;
+            }
+            if (!options || options->struct_size < sizeof(*options) || !out_surface ||
+                options->width <= 0 || options->height <= 0 ||
+                options->api != NK_GRAPHICS_OPENGL_ES) {
+                nk::core::set_error("invalid Android OpenGL ES surface options");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            *out_surface = NK_INVALID_HANDLE;
+            const uint32_t major = options->major_version ? options->major_version : 2;
+            if ((major != 2 && major != 3) || options->minor_version != 0 ||
+                (options->flags & (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE))) {
+                nk::core::set_error("Android surfaces support OpenGL ES 2.0 or 3.0 contexts");
+                return NK_ERROR_UNSUPPORTED;
+            }
+            auto shared = options->share_surface ? surface(options->share_surface) : nullptr;
+            if (options->share_surface && !shared) {
+                nk::core::set_error("invalid shared Android graphics surface");
+                return NK_ERROR_INVALID_HANDLE;
+            }
+            if (shared && (shared->host != parent || shared->api != options->api ||
+                           shared->major_version != major)) {
+                nk::core::set_error("shared surfaces must use identical context options");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            if (egl_display == EGL_NO_DISPLAY) {
+                egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+                if (egl_display == EGL_NO_DISPLAY || !eglInitialize(egl_display, nullptr, nullptr)) {
+                    egl_display = EGL_NO_DISPLAY;
+                    nk::core::set_error("Android EGL display initialization failed");
+                    return NK_ERROR_UNSUPPORTED;
+                }
+            }
+            EGLint attributes[] = {
+                EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+                EGL_RENDERABLE_TYPE, major == 3 ? 0x0040 : EGL_OPENGL_ES2_BIT,
+                EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8,
+                EGL_ALPHA_SIZE, (options->flags & NK_SURFACE_ALPHA) ? 8 : 0,
+                EGL_DEPTH_SIZE, (options->flags & NK_SURFACE_DEPTH) ? 16 : 0,
+                EGL_STENCIL_SIZE, (options->flags & NK_SURFACE_STENCIL) ? 8 : 0,
+                EGL_NONE};
+            EGLConfig config = nullptr;
+            EGLint config_count = 0;
+            if (!eglChooseConfig(egl_display, attributes, &config, 1, &config_count) ||
+                config_count == 0) {
+                nk::core::set_error("Android EGL configuration is unavailable");
+                return NK_ERROR_UNSUPPORTED;
+            }
+            EGLint context_attributes[] = {EGL_CONTEXT_CLIENT_VERSION,
+                                           static_cast<EGLint>(major), EGL_NONE};
+            eglBindAPI(EGL_OPENGL_ES_API);
+            EGLContext context = eglCreateContext(
+                egl_display, config, shared ? shared->context : EGL_NO_CONTEXT,
+                context_attributes);
+            if (context == EGL_NO_CONTEXT) {
+                nk::core::set_error("Android OpenGL ES context creation failed");
+                return NK_ERROR_UNSUPPORTED;
+            }
+            auto resource = std::make_shared<AndroidSurface>();
+            resource->host = parent;
+            resource->display = egl_display;
+            resource->config = config;
+            resource->context = context;
+            resource->major_version = major;
+            resource->minor_version = options->minor_version;
+            resource->context_flags = options->flags &
+                                      (NK_SURFACE_DEBUG_CONTEXT |
+                                       NK_SURFACE_FORWARD_COMPATIBLE);
+            resource->shared_surface = shared;
+            const auto handle =
+                nk::core::handles().insert(nk::core::ResourceType::surface, resource);
+            if (!handle) {
+                eglDestroyContext(egl_display, context);
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            resource->handle = handle;
+            surfaces.emplace(handle, resource);
+            if (shared)
+                ++shared->share_dependents;
+            auto *env = environment();
+            auto *bridge = env ? bridge_class(env) : nullptr;
+            auto method = bridge ? env->GetStaticMethodID(
+                                       bridge, "createSurface",
+                                       "(Landroid/view/ViewGroup;JIIIII)Landroid/view/SurfaceView;")
+                                  : nullptr;
+            jobject view = method ? env->CallStaticObjectMethod(
+                                        bridge, method, parent_resource->view_group,
+                                        static_cast<jlong>(handle),
+                                        static_cast<jint>(options->flags),
+                                        static_cast<jint>(options->x),
+                                        static_cast<jint>(options->y),
+                                        static_cast<jint>(options->width),
+                                        static_cast<jint>(options->height))
+                                  : nullptr;
+            if (bridge)
+                env->DeleteLocalRef(bridge);
+            if (!method || clear_java_exception(env, "Android SurfaceView creation failed") ||
+                !view) {
+                destroy_surface(handle);
+                return NK_ERROR_UNKNOWN;
+            }
+            resource->view = env->NewGlobalRef(view);
+            if (!resource->view) {
+                jvalue arguments[1]{};
+                arguments[0].l = view;
+                java_void_surface(resource, "destroySurface", "(Landroid/view/SurfaceView;)V",
+                                  arguments);
+                env->DeleteLocalRef(view);
+                destroy_surface(handle);
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            env->DeleteLocalRef(view);
+            *out_surface = handle;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    return destroy_surface(handle);
+}
+
+nk_result NK_CALL nk_surface_show(nk_handle handle, uint32_t visible) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    jvalue arguments[2]{};
+    arguments[0].l = resource->view;
+    arguments[1].z = visible ? JNI_TRUE : JNI_FALSE;
+    return java_void_surface(resource, "showSurface", "(Landroid/view/SurfaceView;Z)V",
+                             arguments);
+}
+
+nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, int32_t width,
+                                        int32_t height) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (width <= 0 || height <= 0)
+        return NK_ERROR_INVALID_ARGUMENT;
+    jvalue arguments[5]{};
+    arguments[0].l = resource->view;
+    arguments[1].i = x;
+    arguments[2].i = y;
+    arguments[3].i = width;
+    arguments[4].i = height;
+    return java_void_surface(resource, "setSurfaceBounds",
+                             "(Landroid/view/SurfaceView;IIII)V", arguments);
+}
+
+nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (resource->surface == EGL_NO_SURFACE) {
+        nk::core::set_error("Android graphics surface is not ready");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    if (!eglMakeCurrent(resource->display, resource->surface, resource->surface,
+                        resource->context)) {
+        nk::core::set_error("could not make the Android EGL context current");
+        return NK_ERROR_UNKNOWN;
+    }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_present(nk_handle handle) {
+    if (const auto result = nk_surface_make_current(handle); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!eglSwapBuffers(resource->display, resource->surface)) {
+        nk::core::set_error("could not present the Android EGL surface");
+        return NK_ERROR_UNKNOWN;
+    }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out_width,
+                                                  int32_t *out_height) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!out_width || !out_height)
+        return NK_ERROR_INVALID_ARGUMENT;
+    if (resource->surface == EGL_NO_SURFACE)
+        return NK_ERROR_INVALID_REQUEST;
+    *out_width = resource->framebuffer_width;
+    *out_height = resource->framebuffer_height;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_get_proc_address(nk_handle handle, const char *name,
+                                              nk_graphics_proc *out_proc) {
+    if (!name || !*name || !out_proc)
+        return NK_ERROR_INVALID_ARGUMENT;
+    *out_proc = nullptr;
+    if (const auto result = nk_surface_make_current(handle); result != NK_OK)
+        return result;
+    void *address = reinterpret_cast<void *>(eglGetProcAddress(name));
+    static void *gles = dlopen("libGLESv2.so", RTLD_LAZY | RTLD_LOCAL);
+    if (!address && gles)
+        address = dlsym(gles, name);
+    if (!address) {
+        nk::core::set_error("OpenGL ES procedure is unavailable");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    *out_proc = reinterpret_cast<nk_graphics_proc>(address);
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_webview_create(nk_handle parent, const nk_webview_options *options,
                                     nk_handle *out_webview) {
     return nk::core::result_boundary(
@@ -1728,6 +2078,56 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t a
         resource, "navigate", "(Landroid/webkit/WebView;Ljava/lang/String;Z)V", arguments);
     env->DeleteLocalRef(value);
     return result;
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceCreated(
+    JNIEnv *env, jclass, jlong handle_value, jobject java_surface) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (!resource || !java_surface)
+        return;
+    release_surface_window(*resource);
+    resource->window = ANativeWindow_fromSurface(env, java_surface);
+    if (!resource->window)
+        return;
+    EGLint visual_id = 0;
+    eglGetConfigAttrib(resource->display, resource->config, EGL_NATIVE_VISUAL_ID, &visual_id);
+    ANativeWindow_setBuffersGeometry(resource->window, 0, 0, visual_id);
+    resource->surface =
+        eglCreateWindowSurface(resource->display, resource->config, resource->window, nullptr);
+    if (resource->surface == EGL_NO_SURFACE) {
+        ANativeWindow_release(resource->window);
+        resource->window = nullptr;
+        return;
+    }
+    nk::core::QueuedEvent ready;
+    ready.kind = NK_EVENT_SURFACE_READY;
+    ready.source = resource->handle;
+    nk::core::push_event(std::move(ready));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceChanged(
+    JNIEnv *, jclass, jlong handle_value, jint width, jint height, jint framebuffer_width,
+    jint framebuffer_height) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (!resource)
+        return;
+    resource->width = width;
+    resource->height = height;
+    resource->framebuffer_width = framebuffer_width;
+    resource->framebuffer_height = framebuffer_height;
+    const nk_surface_resize_event payload{width, height, framebuffer_width, framebuffer_height};
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_SURFACE_RESIZE;
+    event.source = resource->handle;
+    event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceDestroyed(
+    JNIEnv *, jclass, jlong handle_value) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (resource)
+        release_surface_window(*resource);
 }
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitHost_nativeInitialize(JNIEnv *env, jclass) {

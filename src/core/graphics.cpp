@@ -3,7 +3,7 @@
 #include "core/error.hpp"
 #include "core/runtime.hpp"
 
-#if !defined(NK_BACKEND_GTK)
+#if !defined(NK_BACKEND_GTK) && !defined(NK_BACKEND_ANDROID)
 namespace {
 nk_result unsupported_graphics() {
     nk::core::clear_error();

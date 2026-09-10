@@ -11,6 +11,7 @@ import android.content.ContextWrapper;
 import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.graphics.PixelFormat;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -19,6 +20,9 @@ import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Surface;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.view.DragAndDropPermissions;
 import android.view.DragEvent;
 import android.webkit.RenderProcessGoneDetail;
@@ -141,6 +145,54 @@ final class NativeKitBridge {
         view.destroy();
     }
 
+    static SurfaceView createSurface(ViewGroup parent, long handle, int flags, int x, int y,
+                                     int width, int height) {
+        SurfaceView view = new SurfaceView(parent.getContext());
+        view.setTag(io.nativekit.R.id.nativekit_handle, handle);
+        if ((flags & 2) != 0) {
+            view.setZOrderOnTop(true);
+            view.getHolder().setFormat(PixelFormat.TRANSLUCENT);
+        }
+        view.setVisibility((flags & 1) != 0 ? View.GONE : View.VISIBLE);
+        setBounds(view, x, y, width, height);
+        view.getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(SurfaceHolder holder) {
+                nativeOnSurfaceCreated(handle, holder.getSurface());
+            }
+
+            @Override
+            public void surfaceChanged(SurfaceHolder holder, int format, int framebufferWidth,
+                                       int framebufferHeight) {
+                float density = view.getResources().getDisplayMetrics().density;
+                nativeOnSurfaceChanged(handle, Math.round(framebufferWidth / density),
+                                       Math.round(framebufferHeight / density), framebufferWidth,
+                                       framebufferHeight);
+            }
+
+            @Override
+            public void surfaceDestroyed(SurfaceHolder holder) {
+                nativeOnSurfaceDestroyed(handle);
+            }
+        });
+        parent.addView(view);
+        return view;
+    }
+
+    static void destroySurface(SurfaceView view) {
+        ViewGroup parent = (ViewGroup)view.getParent();
+        if (parent != null)
+            parent.removeView(view);
+    }
+
+    static void showSurface(SurfaceView view, boolean visible) {
+        view.setVisibility(visible ? View.VISIBLE : View.GONE);
+    }
+
+    static void setSurfaceBounds(SurfaceView view, int x, int y, int width, int height) {
+        setBounds(view, x, y, width, height);
+    }
+
     private static void detachAfterRendererGone(WebView view) {
         ViewGroup parent = (ViewGroup)view.getParent();
         if (parent != null) {
@@ -154,7 +206,7 @@ final class NativeKitBridge {
         view.setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
-    static void setBounds(WebView view, int x, int y, int width, int height) {
+    static void setBounds(View view, int x, int y, int width, int height) {
         float density = view.getResources().getDisplayMetrics().density;
         view.setX(Math.round(x * density));
         view.setY(Math.round(y * density));
@@ -769,6 +821,11 @@ final class NativeKitBridge {
     private static native boolean nativeOnNavigationRequest(long handle, String url);
     private static native void nativeOnNavigationFailed(long handle, int category, String message);
     private static native void nativeOnRenderProcessGone(long handle, boolean crashed);
+    private static native void nativeOnSurfaceCreated(long handle, Surface surface);
+    private static native void nativeOnSurfaceChanged(long handle, int width, int height,
+                                                      int framebufferWidth,
+                                                      int framebufferHeight);
+    private static native void nativeOnSurfaceDestroyed(long handle);
     private static native void nativeOnGeometry(long handle, int width, int height, float scale,
                                                 int insetLeft, int insetTop, int insetRight,
                                                 int insetBottom, int keyboardBottom);

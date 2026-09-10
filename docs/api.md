@@ -6,8 +6,9 @@ collects contracts that span more than one function.
 ## Threading
 
 The thread that successfully calls `nk_init()` becomes the UI thread. Window,
-WebView, dialog, and event APIs must be called from that thread. A call made on
-another thread returns `NK_ERROR_WRONG_THREAD`. `nk_last_error()` is thread-local.
+graphics-surface, WebView, dialog, and event APIs must be called from that
+thread. A call made on another thread returns `NK_ERROR_WRONG_THREAD`.
+`nk_last_error()` is thread-local.
 
 ## Handles
 
@@ -234,14 +235,23 @@ state queries and generated gamepad events.
 
 ## Graphics surfaces
 
-Graphics surfaces are separate resources attached to NativeKit-owned windows.
-The GTK backend implements OpenGL and OpenGL ES surfaces with `GtkGLArea`.
+Graphics surfaces are separate resources attached to NativeKit-owned windows or
+mobile hosts. The GTK backend implements OpenGL and OpenGL ES surfaces with
+`GtkGLArea`. Android implements OpenGL ES 2.0 and 3.0 with a child `SurfaceView`
+and EGL window surface. Its logical bounds are converted to device pixels and
+reported alongside framebuffer dimensions in `NK_EVENT_SURFACE_RESIZE`.
 Applications call `nk_surface_make_current()`, render, and then call
 `nk_surface_present()`. GTK owns the final framebuffer composition, so
 presentation schedules a `GtkGLArea` render instead of directly swapping a
 caller-owned native surface. Contexts can reuse another surface's GTK context;
 the shared source must outlive its dependents. Procedure lookup resolves both
 core and extension entry points for the current GL implementation.
+
+On Android, `NK_EVENT_SURFACE_READY` is emitted whenever the platform surface
+is created, including after lifecycle-driven surface recreation. The EGL
+context remains owned by the NativeKit surface while its window surface is
+temporarily absent. Rendering calls return `NK_ERROR_INVALID_REQUEST` until a
+new ready event arrives.
 
 ## Vulkan surfaces
 

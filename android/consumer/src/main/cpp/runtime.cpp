@@ -1,4 +1,5 @@
 #include "nativekit.h"
+#include "nativekit_graphics.h"
 #include "nativekit_resource.h"
 #include "nativekit_webview.h"
 
@@ -17,6 +18,63 @@ Java_io_nativekit_consumer_MainActivity_nativeProbe(JNIEnv *, jclass, jlong host
     if (nk_webview_create(static_cast<nk_handle>(host), &options, &webview) != NK_OK)
         return 0;
     return static_cast<jlong>(nk_api_version()) << 32 | webview;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeCreateSurfaceProbe(JNIEnv *, jclass, jlong host) {
+    nk_surface_options options{};
+    options.struct_size = sizeof(options);
+    options.flags = NK_SURFACE_DEPTH;
+    options.api = NK_GRAPHICS_OPENGL_ES;
+    options.major_version = 2;
+    options.x = 8;
+    options.y = 8;
+    options.width = 64;
+    options.height = 48;
+    nk_handle surface = NK_INVALID_HANDLE;
+    return nk_surface_create(static_cast<nk_handle>(host), &options, &surface) == NK_OK
+               ? static_cast<jlong>(surface)
+               : 0;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeGraphicsSurfaceProbe(JNIEnv *, jclass,
+                                                                    jlong surface_value) {
+    const auto surface = static_cast<nk_handle>(surface_value);
+    nk_event event{};
+    bool ready = false;
+    bool resized = false;
+    event.struct_size = sizeof(event);
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        if (nk_poll_event(&event) != NK_OK)
+            return 1;
+        if (event.kind == NK_EVENT_NONE)
+            break;
+        if (event.source == surface && event.kind == NK_EVENT_SURFACE_READY)
+            ready = true;
+        if (event.source == surface && event.kind == NK_EVENT_SURFACE_RESIZE)
+            resized = true;
+        nk_event_release(&event);
+        event.struct_size = sizeof(event);
+    }
+    if (!ready || !resized)
+        return 2;
+    int32_t width = 0;
+    int32_t height = 0;
+    if (nk_surface_make_current(surface) != NK_OK ||
+        nk_surface_get_framebuffer_size(surface, &width, &height) != NK_OK || width <= 0 ||
+        height <= 0)
+        return 3;
+    nk_graphics_proc clear_color = nullptr;
+    if (nk_surface_get_proc_address(surface, "glClearColor", &clear_color) != NK_OK ||
+        !clear_color)
+        return 4;
+    if (nk_surface_present(surface) != NK_OK)
+        return 5;
+    if (nk_surface_show(surface, 0) != NK_OK || nk_surface_show(surface, 1) != NK_OK ||
+        nk_surface_set_bounds(surface, 12, 12, 80, 60) != NK_OK)
+        return 6;
+    return 0;
 }
 
 extern "C" JNIEXPORT jint JNICALL

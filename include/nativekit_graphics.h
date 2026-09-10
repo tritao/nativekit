@@ -47,9 +47,9 @@ typedef struct nk_surface_resize_event {
 } nk_surface_resize_event;
 
 /*
- * Creates a GTK-backed graphics surface inside a NativeKit window. Context
- * configuration is fixed at creation. The initial implementation supports
- * OpenGL and OpenGL ES through GtkGLArea. A share_surface must remain alive
+ * Creates a graphics surface inside a NativeKit window or mobile host. Context
+ * configuration is fixed at creation. Desktop backends support OpenGL and
+ * OpenGL ES; Android supports OpenGL ES. A share_surface must remain alive
  * until every surface sharing it has been destroyed.
  */
 NK_API nk_result NK_CALL nk_surface_create(nk_handle window,
@@ -61,8 +61,8 @@ NK_API nk_result NK_CALL nk_surface_set_bounds(nk_handle surface, int32_t x, int
                                                int32_t width, int32_t height);
 
 /*
- * Makes the surface context and its GTK-managed framebuffer current. This is a
- * UI-thread operation in the GTK backend.
+ * Makes the surface context and framebuffer current. This is a UI-thread
+ * operation.
  */
 NK_API nk_result NK_CALL nk_surface_make_current(nk_handle surface);
 

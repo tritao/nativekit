@@ -12,6 +12,7 @@ public final class MainActivity extends Activity {
 
     private NativeKitHost nativeKit;
     private long probe;
+    private long surfaceProbe;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -21,6 +22,7 @@ public final class MainActivity extends Activity {
         nativeKit = new NativeKitHost(content);
         nativeKit.dispatchIntent(getIntent());
         probe = nativeProbe(nativeKit.handle());
+        surfaceProbe = nativeCreateSurfaceProbe(nativeKit.handle());
     }
 
     public int apiVersion() { return (int)(probe >>> 32); }
@@ -32,6 +34,10 @@ public final class MainActivity extends Activity {
     public int resourceStreamProbe() { return nativeResourceStreamProbe(); }
 
     public int webViewHistoryProbe() { return nativeWebViewHistoryProbe(webViewHandle()); }
+
+    public long graphicsSurfaceHandle() { return surfaceProbe; }
+
+    public int graphicsSurfaceProbe() { return nativeGraphicsSurfaceProbe(surfaceProbe); }
 
     public int persistedResourceProbe() { return nativePersistedResourceProbe(); }
 
@@ -71,6 +77,8 @@ public final class MainActivity extends Activity {
     }
 
     private static native long nativeProbe(long host);
+    private static native long nativeCreateSurfaceProbe(long host);
+    private static native int nativeGraphicsSurfaceProbe(long surface);
     private static native int nativeResourceClipboardProbe();
     private static native int nativeResourceStreamProbe();
     private static native int nativeWebViewHistoryProbe(long webView);

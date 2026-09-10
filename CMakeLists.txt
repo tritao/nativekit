@@ -116,7 +116,7 @@ if(ANDROID)
         src/android/nativekit_android.cpp
         src/platform/nativekit_stub.cpp)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_ANDROID=1 NK_STUB_ANDROID=1)
-    target_link_libraries(nativekit PRIVATE android log)
+    target_link_libraries(nativekit PRIVATE android EGL GLESv2 log)
 elseif(WIN32)
     if(NK_ENABLE_WEBVIEW2)
         include(FetchContent)
