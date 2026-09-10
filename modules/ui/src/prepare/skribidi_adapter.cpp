@@ -63,6 +63,46 @@ void append_quad(const skb_quad_t &quad, const skb_image_t &atlas, PreparedGlyph
     output.indices.insert(output.indices.end(), std::begin(indices), std::end(indices));
 }
 
+struct RenderGlyphContext {
+    SkribidiAdapter::State *state = nullptr;
+    float origin_x = 0.0f;
+    float origin_y = 0.0f;
+    float pixel_scale = 1.0f;
+    GlyphMode requested_mode = GlyphMode::Alpha;
+    PreparedGlyphs *output = nullptr;
+};
+
+bool append_render_glyph(const skb_layout_render_glyph_t *glyph, void *context) {
+    auto &render = *static_cast<RenderGlyphContext *>(context);
+    const skb_quad_t quad = skb_image_atlas_get_glyph_quad(
+        render.state->atlas, render.origin_x + glyph->offset_x, render.origin_y + glyph->offset_y,
+        render.pixel_scale, render.state->fonts, glyph->font_handle, glyph->glyph_id,
+        glyph->font_size, glyph->color, raster_mode(render.requested_mode));
+    if (quad.flags & SKB_QUAD_IS_EMPTY)
+        return true;
+
+    const GlyphMode actual_mode = quad_mode(quad, render.requested_mode);
+    const AtlasTextureId atlas_id{static_cast<uint32_t>(
+        skb_image_atlas_get_texture_user_data(render.state->atlas, quad.texture_idx))};
+    if (!atlas_id.value)
+        return false;
+    if (render.output->batches.empty() || render.output->batches.back().atlas.value != atlas_id.value ||
+        render.output->batches.back().mode != actual_mode) {
+        render.output->batches.push_back(
+            {atlas_id, actual_mode, static_cast<uint32_t>(render.output->vertices.size()), 0,
+             static_cast<uint32_t>(render.output->indices.size()), 0});
+    }
+    const skb_image_t *atlas =
+        skb_image_atlas_get_texture(render.state->atlas, quad.texture_idx);
+    if (!atlas)
+        return false;
+    append_quad(quad, *atlas, *render.output);
+    auto &batch = render.output->batches.back();
+    batch.vertex_count += 4;
+    batch.index_count += 6;
+    return true;
+}
+
 void atlas_texture_created(skb_image_atlas_t *atlas, uint8_t texture_index, void *context) {
     auto &state = *static_cast<SkribidiAdapter::State *>(context);
     const uint32_t id = (uint32_t(1) << 28) | (uint32_t(state.texture_namespace & 0x0FFF) << 16) |
@@ -153,48 +193,9 @@ bool SkribidiAdapter::prepare_glyphs(float origin_x, float origin_y, float pixel
     if (!state_->layout || pixel_scale <= 0.0f)
         return false;
     output = {};
-    const auto *params = skb_layout_get_params(state_->layout);
-    const auto *lines = skb_layout_get_lines(state_->layout);
-    const auto *runs = skb_layout_get_layout_runs(state_->layout);
-    const auto *glyphs = skb_layout_get_glyphs(state_->layout);
-    const int line_count = skb_layout_get_lines_count(state_->layout);
-    for (int line_index = 0; line_index < line_count; ++line_index) {
-        const auto range = lines[line_index].layout_run_range;
-        for (int run_index = range.start; run_index < range.end; ++run_index) {
-            const auto &run = runs[run_index];
-            if (run.type != SKB_CONTENT_RUN_UTF8 && run.type != SKB_CONTENT_RUN_UTF32)
-                continue;
-            for (int glyph_index = run.glyph_range.start; glyph_index < run.glyph_range.end;
-                 ++glyph_index) {
-                const auto &glyph = glyphs[glyph_index];
-                const skb_quad_t quad = skb_image_atlas_get_glyph_quad(
-                    state_->atlas, origin_x + glyph.offset_x, origin_y + glyph.offset_y,
-                    pixel_scale, params->font_collection, run.font_handle, glyph.gid, run.font_size,
-                    skb_rgba(255, 255, 255, 255), raster_mode(mode));
-                if (quad.flags & SKB_QUAD_IS_EMPTY)
-                    continue;
-                const GlyphMode actual_mode = quad_mode(quad, mode);
-                const AtlasTextureId atlas_id{static_cast<uint32_t>(
-                    skb_image_atlas_get_texture_user_data(state_->atlas, quad.texture_idx))};
-                if (!atlas_id.value)
-                    return false;
-                if (output.batches.empty() || output.batches.back().atlas.value != atlas_id.value ||
-                    output.batches.back().mode != actual_mode) {
-                    output.batches.push_back({atlas_id, actual_mode,
-                                              static_cast<uint32_t>(output.vertices.size()), 0,
-                                              static_cast<uint32_t>(output.indices.size()), 0});
-                }
-                const skb_image_t *atlas =
-                    skb_image_atlas_get_texture(state_->atlas, quad.texture_idx);
-                if (!atlas)
-                    return false;
-                append_quad(quad, *atlas, output);
-                auto &batch = output.batches.back();
-                batch.vertex_count += 4;
-                batch.index_count += 6;
-            }
-        }
-    }
+    RenderGlyphContext render{state_, origin_x, origin_y, pixel_scale, mode, &output};
+    if (!skb_layout_iterate_render_glyphs(state_->layout, append_render_glyph, &render))
+        return false;
     return skb_image_atlas_rasterize_missing_items(state_->atlas, state_->temporary,
                                                    state_->rasterizer);
 }
