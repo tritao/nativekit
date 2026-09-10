@@ -1,6 +1,34 @@
 #include "prepare/nanovg_path.h"
 
+#include "nanovg.h"
+
 #include <array>
+#include <cstdlib>
+
+namespace {
+
+struct AllocationStats {
+    int allocations = 0;
+    int reallocations = 0;
+    int frees = 0;
+};
+
+void *allocate(void *user_ptr, size_t size) {
+    ++static_cast<AllocationStats *>(user_ptr)->allocations;
+    return std::malloc(size);
+}
+
+void *reallocate(void *user_ptr, void *ptr, size_t size) {
+    ++static_cast<AllocationStats *>(user_ptr)->reallocations;
+    return std::realloc(ptr, size);
+}
+
+void release(void *user_ptr, void *ptr) {
+    ++static_cast<AllocationStats *>(user_ptr)->frees;
+    std::free(ptr);
+}
+
+} // namespace
 
 using namespace nkui;
 
@@ -39,11 +67,35 @@ int main() {
         stroke.vertices.empty() || stroke.fringe_width != 0.0f || stroke.stroke_width != 4.0f)
         return 4;
 
+    AllocationStats allocation_stats;
+    NVGprepareAllocator allocator{&allocation_stats, allocate, reallocate, release};
+    NVGprepareParams native_params{};
+    native_params.edgeAntiAlias = 1;
+    native_params.fillRule = NVG_FILL_NON_ZERO;
+    native_params.transform[0] = 1.0f;
+    native_params.transform[3] = 1.0f;
+    native_params.lineJoin = NVG_MITER;
+    native_params.allocator = &allocator;
+    NVGprepareOutput query{};
+    if (nvgPrepareFill(path.builder(), &native_params, &query) != NVG_PREPARE_OUTPUT_TOO_SMALL ||
+        query.pathCount <= 0 || query.vertexCount <= 0)
+        return 5;
+    std::vector<NVGpreparedPath> native_paths(static_cast<size_t>(query.pathCount));
+    std::vector<NVGvertex> native_vertices(static_cast<size_t>(query.vertexCount));
+    NVGprepareOutput prepared{};
+    prepared.paths = native_paths.data();
+    prepared.pathCapacity = static_cast<int>(native_paths.size());
+    prepared.vertices = native_vertices.data();
+    prepared.vertexCapacity = static_cast<int>(native_vertices.size());
+    if (nvgPrepareFill(path.builder(), &native_params, &prepared) != NVG_PREPARE_OK ||
+        allocation_stats.allocations == 0 || allocation_stats.frees == 0)
+        return 6;
+
     NanoVGPath copy(path);
     NanoVGPath appended;
     if (!copy.valid() || copy.empty() || !appended.append_transformed(copy, {1, 0, 0, 1, 3, 4}) ||
         appended.empty())
-        return 5;
+        return 7;
     appended.reset();
-    return appended.empty() ? 0 : 6;
+    return appended.empty() ? 0 : 8;
 }
