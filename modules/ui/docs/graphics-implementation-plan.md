@@ -300,7 +300,8 @@ Exit criteria:
 5. Track texture generation, format, dimensions, dirty bounds, and upload
    acknowledgement.
 6. Remove per-update full RGBA conversion and temporary full-atlas allocation.
-7. Add a texture-created/replaced/removed lifecycle in the adapter.
+7. Use queryable texture generations in the adapter; add explicit lifecycle
+   callbacks only if future replacement/repack behavior needs them.
 8. Keep a correct whole-atlas fallback isolated in the uploader until partial
    region upload is supported by the active backend.
 
@@ -551,7 +552,8 @@ Prefer upstream contributions when generally applicable:
 
 - Sokol image-subregion updates;
 - Skribidi dirty query/acknowledgement;
-- Skribidi atlas texture lifecycle notifications;
+- Skribidi atlas texture generations (with lifecycle notifications only if
+  generation queries prove insufficient);
 - narrowly scoped NanoVG renderer-callback improvements needed by any recording
   backend.
 
