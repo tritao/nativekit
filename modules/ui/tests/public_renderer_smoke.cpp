@@ -120,8 +120,9 @@ int main() {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             continue;
         }
-        const nkui_frame_info frame_info{sizeof(frame_info), static_cast<float>(width),
-                                         static_cast<float>(height), width, height, 1.0f};
+        const float pixel_scale = frames == 1 ? 2.0f : 1.0f;
+        const nkui_frame_info frame_info{sizeof(frame_info), width / pixel_scale,
+                                         height / pixel_scale, width, height, pixel_scale};
         const nkui_result render_result =
             nkui_renderer_render_frame(renderer, list, surface, &frame_info);
         if (render_result != NKUI_OK) {

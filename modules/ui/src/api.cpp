@@ -62,11 +62,37 @@ struct ResourceSlot {
     std::vector<uint8_t> pixels;
 };
 
+struct PathCacheKey {
+    uint32_t path = 0;
+    uint32_t paint = 0;
+    std::array<uint32_t, 6> transform{};
+    uint32_t pixel_scale = 0;
+
+    bool operator==(const PathCacheKey &other) const {
+        return path == other.path && paint == other.paint && transform == other.transform &&
+               pixel_scale == other.pixel_scale;
+    }
+};
+
+struct PathCacheKeyHash {
+    size_t operator()(const PathCacheKey &key) const {
+        size_t hash = key.path * 0x9E3779B1u ^ key.paint;
+        for (const uint32_t value : key.transform)
+            hash = (hash * 0x9E3779B1u) ^ value;
+        return (hash * 0x9E3779B1u) ^ key.pixel_scale;
+    }
+};
+
+struct PreparedPathCacheEntry {
+    std::unique_ptr<nkui::NanoVGRecorder> recorder;
+};
+
 struct RendererSlot {
     std::unique_ptr<nkui::SokolBackend> backend;
     std::unique_ptr<nkui::NanoVGRecorder> recorder;
     nkui::Compositor compositor;
     std::unordered_map<uint32_t, int> images;
+    std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
     uint16_t generation = 1;
 };
 
@@ -145,6 +171,20 @@ void set_nanovg_transform(NVGcontext *context, const std::array<float, 6> &matri
     nvgTransform(context, matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
 }
 
+uint32_t float_bits(float value) {
+    uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+PathCacheKey path_cache_key(nkui_resource path, nkui_resource paint,
+                            const std::array<float, 6> &transform, float pixel_scale) {
+    PathCacheKey key{path.id, paint.id, {}, float_bits(pixel_scale)};
+    for (size_t index = 0; index < transform.size(); ++index)
+        key.transform[index] = float_bits(transform[index]);
+    return key;
+}
+
 bool uniform_scale(const std::array<float, 6> &matrix, float &scale) {
     constexpr float epsilon = 0.0001f;
     if (std::abs(matrix[1]) > epsilon || std::abs(matrix[2]) > epsilon || matrix[0] <= 0.0f ||
@@ -152,6 +192,49 @@ bool uniform_scale(const std::array<float, 6> &matrix, float &scale) {
         return false;
     scale = matrix[0];
     return true;
+}
+
+std::array<float, 6> device_transform(const std::array<float, 6> &transform,
+                                       float pixel_scale) {
+    std::array<float, 6> result = transform;
+    for (float &value : result)
+        value *= pixel_scale;
+    return result;
+}
+
+NVGcolor paint_color(ResourceSlot *paint);
+
+PreparedPathCacheEntry *prepare_cached_path(
+    RendererSlot &renderer, nkui_resource path_handle, const ResourceSlot &path,
+    nkui_resource paint_handle, ResourceSlot *paint, const std::array<float, 6> &transform,
+    float pixel_scale) {
+    const PathCacheKey key = path_cache_key(path_handle, paint_handle, transform, pixel_scale);
+    if (const auto found = renderer.paths.find(key); found != renderer.paths.end())
+        return &found->second;
+    constexpr size_t max_cached_paths = 256;
+    if (renderer.paths.size() >= max_cached_paths)
+        renderer.paths.clear();
+    auto entry = std::make_unique<nkui::NanoVGRecorder>();
+    if (!entry || !entry->valid())
+        return nullptr;
+    NVGcontext *context = entry->context();
+    nvgBeginFrame(context, 1.0f, 1.0f, pixel_scale);
+    set_nanovg_transform(context, transform);
+    append_path(context, path.path);
+    nvgFillColor(context, paint_color(paint));
+    nvgFill(context);
+    nvgEndFrame(context);
+    if (entry->operations().empty())
+        return nullptr;
+    try {
+        auto [found, inserted] = renderer.paths.emplace(key, PreparedPathCacheEntry{});
+        if (!inserted)
+            return &found->second;
+        found->second.recorder = std::move(entry);
+        return &found->second;
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 NVGcolor paint_color(ResourceSlot *paint) {
@@ -534,6 +617,7 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     slot->backend.reset();
     slot->recorder.reset();
     slot->images.clear();
+    slot->paths.clear();
     slot->generation = static_cast<uint16_t>(slot->generation + 1);
     if (!slot->generation)
         slot->generation = 1;
@@ -578,6 +662,10 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
 
     for (auto &pass : plan.passes) {
         for (auto &command : pass.commands) {
+            command.scissor_x *= frame_info->pixel_scale;
+            command.scissor_y *= frame_info->pixel_scale;
+            command.scissor_width *= frame_info->pixel_scale;
+            command.scissor_height *= frame_info->pixel_scale;
             if (command.kind == nkui::RenderCommandKind::Path) {
                 auto *path =
                     resolve(nkui_resource{command.resource.value}, nkui::ResourceKind::Path);
@@ -588,16 +676,21 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                     valid = false;
                     break;
                 }
-                set_nanovg_transform(vg, command.transform);
-                append_path(vg, path->path);
-                nvgFillColor(vg, paint_color(paint));
-                nvgFill(vg);
+                const auto transform = device_transform(command.transform, frame_info->pixel_scale);
+                const nkui_resource path_handle{command.resource.value};
+                const nkui_resource paint_handle{command.paint.value};
+                const auto cached = prepare_cached_path(*renderer_slot, path_handle, *path,
+                                                        paint_handle, paint, transform,
+                                                        frame_info->pixel_scale);
+                if (!cached || !cached->recorder) {
+                    valid = false;
+                    break;
+                }
                 const nkui::ResourceId prepared_id =
                     nkui::make_resource_id(nkui::ResourceKind::Path, 0x0FFE, prepared_slot++);
                 command.resource = prepared_id;
                 command.transform = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
-                valid = frame_resources.bind_path(prepared_id, recorder,
-                                                  recorder.operations().size() - 1);
+                valid = frame_resources.bind_path(prepared_id, *cached->recorder, 0);
             } else if (command.kind == nkui::RenderCommandKind::Image) {
                 auto *image =
                     resolve(nkui_resource{command.resource.value}, nkui::ResourceKind::Image);
@@ -632,7 +725,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                     valid = false;
                     break;
                 }
-                set_nanovg_transform(vg, command.transform);
+                const auto transform = device_transform(command.transform, frame_info->pixel_scale);
+                set_nanovg_transform(vg, transform);
                 nvgBeginPath(vg);
                 nvgRect(vg, command.x, command.y, command.width, command.height);
                 nvgFillPaint(vg, nvgImagePattern(vg, command.x, command.y, command.width,
@@ -653,7 +747,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                     break;
                 }
                 float requested_scale = 1.0f;
-                if (!uniform_scale(command.transform, requested_scale))
+                const auto transform = device_transform(command.transform, frame_info->pixel_scale);
+                if (!uniform_scale(transform, requested_scale))
                     requested_scale = 1.0f;
                 const int32_t scale_bucket =
                     std::max(1, static_cast<int32_t>(std::round(requested_scale * 8.0f)));
@@ -683,14 +778,21 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                     const float correction = requested_scale / raster_scale;
                     command.x *= raster_scale;
                     command.y *= raster_scale;
-                    command.transform = {correction, 0.0f, 0.0f, correction,
-                                         command.transform[4], command.transform[5]};
+                    command.transform = {correction, 0.0f, 0.0f, correction, transform[4],
+                                         transform[5]};
+                } else {
+                    command.transform = transform;
                 }
                 text_adapters.push_back(layout->text.get());
             } else if (command.kind == nkui::RenderCommandKind::CompositeTarget &&
                        command.resource.value < (UINT32_C(4) << 28)) {
                 valid = false;
                 break;
+            } else if (command.kind == nkui::RenderCommandKind::CompositeTarget) {
+                command.x *= frame_info->pixel_scale;
+                command.y *= frame_info->pixel_scale;
+                command.width *= frame_info->pixel_scale;
+                command.height *= frame_info->pixel_scale;
             }
         }
         if (!valid)
