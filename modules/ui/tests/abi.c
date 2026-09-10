@@ -2,6 +2,10 @@
 
 #include <string.h>
 
+#ifndef NKUI_TEST_FONT_PATH
+#error NKUI_TEST_FONT_PATH is required
+#endif
+
 int main(void) {
     if (nkui_api_version() != NKUI_API_VERSION)
         return 1;
@@ -32,5 +36,22 @@ int main(void) {
     if (nkui_display_list_destroy(list) != NKUI_OK ||
         nkui_display_list_reset(list) != NKUI_ERROR_INVALID_HANDLE)
         return 6;
+    nkui_resource fonts = {0};
+    nkui_resource layout = {0};
+    if (nkui_font_collection_create(&fonts) != NKUI_OK ||
+        nkui_font_collection_add(fonts, NKUI_TEST_FONT_PATH, NKUI_FONT_FAMILY_DEFAULT) != NKUI_OK ||
+        nkui_text_layout_create(fonts, "NativeKit مرحبا", 300.0f, 24.0f, &layout) != NKUI_OK)
+        return 7;
+    nkui_text_metrics metrics = {0};
+    nkui_text_position position = {0};
+    nkui_text_caret caret = {0};
+    if (nkui_text_layout_measure(layout, &metrics) != NKUI_OK || metrics.width <= 0.0f ||
+        nkui_text_layout_hit_test(layout, 0.0f, 0.0f, &position) != NKUI_OK ||
+        nkui_text_layout_caret(layout, position, &caret) != NKUI_OK)
+        return 8;
+    if (nkui_resource_destroy(layout) != NKUI_OK ||
+        nkui_text_layout_measure(layout, &metrics) != NKUI_ERROR_INVALID_HANDLE ||
+        nkui_resource_destroy(fonts) != NKUI_OK)
+        return 9;
     return 0;
 }

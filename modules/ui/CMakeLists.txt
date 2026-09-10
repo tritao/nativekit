@@ -32,6 +32,8 @@ if(NK_BUILD_TESTS)
     add_test(NAME nativekit_ui_dependencies
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-dependencies.sh")
     add_executable(nativekit_ui_abi_test tests/abi.c)
+    target_compile_definitions(nativekit_ui_abi_test PRIVATE
+        NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
     target_link_libraries(nativekit_ui_abi_test PRIVATE NativeKit::ui)
     add_test(NAME nativekit_ui_abi COMMAND nativekit_ui_abi_test)
     add_executable(nativekit_ui_display_list_test

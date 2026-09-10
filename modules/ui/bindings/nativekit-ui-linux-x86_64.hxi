@@ -6,6 +6,13 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") {
 	extern fn nkui_display_list_get_info(list: nkui_display_list, out_info: ptr<nkui_transaction_info> @out) -> nkui_result;
 	extern fn nkui_display_list_reset(list: nkui_display_list) -> nkui_result;
 	extern fn nkui_display_list_submit(list: nkui_display_list, commands: ptr<const<u8>> @in_array("command_bytes"), command_bytes: u32) -> nkui_result;
+	extern fn nkui_font_collection_add(fonts: nkui_resource, path: utf8, family: nkui_font_family) -> nkui_result;
+	extern fn nkui_font_collection_create(out_fonts: ptr<nkui_resource> @out) -> nkui_result;
+	extern fn nkui_resource_destroy(resource: nkui_resource) -> nkui_result;
+	extern fn nkui_text_layout_caret(layout: nkui_resource, position: nkui_text_position, out_caret: ptr<nkui_text_caret> @out) -> nkui_result;
+	extern fn nkui_text_layout_create(fonts: nkui_resource, text: utf8, width: f32, font_size: f32, out_layout: ptr<nkui_resource> @out) -> nkui_result;
+	extern fn nkui_text_layout_hit_test(layout: nkui_resource, x: f32, y: f32, out_position: ptr<nkui_text_position> @out) -> nkui_result;
+	extern fn nkui_text_layout_measure(layout: nkui_resource, out_metrics: ptr<nkui_text_metrics> @out) -> nkui_result;
 	struct nkui_command_header @layout(8, 4) {
 		opcode: nkui_command_opcode @offset(0);
 		version: u16 @offset(2);
@@ -49,6 +56,26 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") {
 		header: nkui_command_header @offset(0);
 		value: f32 @offset(8);
 	}
+	struct nkui_text_caret @layout(28, 4) {
+		struct_size: u32 @offset(0);
+		x: f32 @offset(4);
+		y: f32 @offset(8);
+		ascender: f32 @offset(12);
+		descender: f32 @offset(16);
+		slope: f32 @offset(20);
+		direction: u32 @offset(24);
+	}
+	struct nkui_text_metrics @layout(20, 4) {
+		struct_size: u32 @offset(0);
+		x: f32 @offset(4);
+		y: f32 @offset(8);
+		width: f32 @offset(12);
+		height: f32 @offset(16);
+	}
+	struct nkui_text_position @layout(8, 4) {
+		offset: i32 @offset(0);
+		affinity: u32 @offset(4);
+	}
 	struct nkui_transaction_info @layout(16, 4) {
 		struct_size: u32 @offset(0);
 		api_version: u32 @offset(4);
@@ -60,5 +87,6 @@ interface NativeKitUI @target("x86_64-linux-gnu") @library("nativekit_ui") {
 		matrix: array<f32, 6> @offset(8);
 	}
 	type nkui_command_opcode = u16;
+	type nkui_font_family = u32;
 	type nkui_result = i32;
 }

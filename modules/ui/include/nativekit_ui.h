@@ -16,9 +16,11 @@
 #if defined(__clang__)
 #define NKUI_OUT __attribute__((annotate("hxi:out")))
 #define NKUI_IN_ARRAY(count_parameter) __attribute__((annotate("hxi:in_array")))
+#define NKUI_UTF8 __attribute__((annotate("hxi:utf8")))
 #else
 #define NKUI_OUT
 #define NKUI_IN_ARRAY(count_parameter)
+#define NKUI_UTF8
 #endif
 
 #ifdef __cplusplus
@@ -115,6 +117,33 @@ typedef struct nkui_layer_command {
     uint32_t composite_mode;
 } nkui_layer_command;
 
+typedef uint32_t nkui_font_family;
+#define NKUI_FONT_FAMILY_DEFAULT UINT32_C(0)
+#define NKUI_FONT_FAMILY_EMOJI UINT32_C(1)
+
+typedef struct nkui_text_metrics {
+    uint32_t struct_size;
+    float x;
+    float y;
+    float width;
+    float height;
+} nkui_text_metrics;
+
+typedef struct nkui_text_position {
+    int32_t offset;
+    uint32_t affinity;
+} nkui_text_position;
+
+typedef struct nkui_text_caret {
+    uint32_t struct_size;
+    float x;
+    float y;
+    float ascender;
+    float descender;
+    float slope;
+    uint32_t direction;
+} nkui_text_caret;
+
 /* The initial stable seam while the retained-tree transaction ABI is designed. */
 NKUI_API uint32_t nkui_api_version(void);
 NKUI_API nkui_result nkui_display_list_create(nkui_display_list *out_list NKUI_OUT);
@@ -126,6 +155,19 @@ NKUI_API nkui_result nkui_display_list_submit(nkui_display_list list,
                                               uint32_t command_bytes);
 NKUI_API nkui_result nkui_display_list_get_info(nkui_display_list list,
                                                 nkui_transaction_info *out_info NKUI_OUT);
+NKUI_API nkui_result nkui_font_collection_create(nkui_resource *out_fonts NKUI_OUT);
+NKUI_API nkui_result nkui_font_collection_add(nkui_resource fonts, const char *path NKUI_UTF8,
+                                              nkui_font_family family);
+NKUI_API nkui_result nkui_text_layout_create(nkui_resource fonts, const char *text NKUI_UTF8,
+                                             float width, float font_size,
+                                             nkui_resource *out_layout NKUI_OUT);
+NKUI_API nkui_result nkui_text_layout_measure(nkui_resource layout,
+                                              nkui_text_metrics *out_metrics NKUI_OUT);
+NKUI_API nkui_result nkui_text_layout_hit_test(nkui_resource layout, float x, float y,
+                                               nkui_text_position *out_position NKUI_OUT);
+NKUI_API nkui_result nkui_text_layout_caret(nkui_resource layout, nkui_text_position position,
+                                            nkui_text_caret *out_caret NKUI_OUT);
+NKUI_API nkui_result nkui_resource_destroy(nkui_resource resource);
 
 #ifdef __cplusplus
 }
