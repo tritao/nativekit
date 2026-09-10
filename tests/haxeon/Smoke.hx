@@ -69,7 +69,7 @@ class Smoke {
 		windowOptions.set_title(null);
 		if (windowOptions.get_title() != null)
 			return 10;
-		var textState = NativeKitTextInput.state("first", 5, 5);
+		var textState = NativeKitTextInput.state("first", 0, 5, 5, 5);
 		textState.set_text("olá 👋");
 		if (textState.get_text() != "olá 👋" || textState.get_struct_size() != nk_text_input_state.size())
 			return 11;

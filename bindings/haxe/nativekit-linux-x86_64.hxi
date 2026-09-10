@@ -312,6 +312,22 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	const NK_TEXT_EDIT_FINISH_COMPOSITION = 5;
 	const NK_TEXT_EDIT_SET_COMPOSITION = 6;
 	const NK_TEXT_EDIT_SET_SELECTION = 4;
+	const NK_TEXT_INPUT_ACTION_DEFAULT = 0;
+	const NK_TEXT_INPUT_ACTION_DONE = 1;
+	const NK_TEXT_INPUT_ACTION_GO = 2;
+	const NK_TEXT_INPUT_ACTION_NEXT = 3;
+	const NK_TEXT_INPUT_ACTION_NONE = 6;
+	const NK_TEXT_INPUT_ACTION_SEARCH = 4;
+	const NK_TEXT_INPUT_ACTION_SEND = 5;
+	const NK_TEXT_INPUT_AUTOCORRECT = 2;
+	const NK_TEXT_INPUT_CAPITALIZE_SENTENCES = 4;
+	const NK_TEXT_INPUT_EMAIL = 1;
+	const NK_TEXT_INPUT_MULTILINE = 1;
+	const NK_TEXT_INPUT_NUMBER = 3;
+	const NK_TEXT_INPUT_PASSWORD = 5;
+	const NK_TEXT_INPUT_PHONE = 4;
+	const NK_TEXT_INPUT_TEXT = 0;
+	const NK_TEXT_INPUT_URL = 2;
 	const NK_TEXT_POSITION_NONE = -1;
 	const NK_TOUCH_BEGIN = 1;
 	const NK_TOUCH_CANCEL = 4;
@@ -723,15 +739,23 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 		codepoint: u32 @offset(0);
 		reserved: u32 @offset(4);
 	}
-	struct nk_text_input_state @layout(48, 8) {
+	struct nk_text_input_state @layout(80, 8) {
 		struct_size: u32 @offset(0);
-		flags: u32 @offset(4);
+		flags: nk_text_input_flags @offset(4);
 		text: utf8 @offset(8);
-		selection_start: nk_text_position @offset(16);
-		selection_end: nk_text_position @offset(20);
-		composition_start: nk_text_position @offset(24);
-		composition_end: nk_text_position @offset(28);
-		reserved: array<u64, 2> @offset(32);
+		text_start: nk_text_position @offset(16);
+		document_length: nk_text_position @offset(20);
+		selection_start: nk_text_position @offset(24);
+		selection_end: nk_text_position @offset(28);
+		composition_start: nk_text_position @offset(32);
+		composition_end: nk_text_position @offset(36);
+		input_type: nk_text_input_type @offset(40);
+		action: nk_text_input_action @offset(44);
+		cursor_x: f32 @offset(48);
+		cursor_y: f32 @offset(52);
+		cursor_width: f32 @offset(56);
+		cursor_height: f32 @offset(60);
+		reserved: array<u64, 2> @offset(64);
 	}
 	struct nk_touch_event @layout(48, 8) {
 		pointer_id: u32 @offset(0);
@@ -842,6 +866,9 @@ interface NativeKit @target("x86_64-linux-gnu") @library("libnativekit.so") {
 	type nk_seek_origin = u32;
 	type nk_system_directory_kind = u32;
 	type nk_text_edit_action = u32;
+	type nk_text_input_action = u32;
+	type nk_text_input_flags = u32;
+	type nk_text_input_type = u32;
 	type nk_text_position = u32;
 	type nk_touch_action = u32;
 	type nk_touch_tool = u32;
