@@ -1,4 +1,5 @@
 #include "nativekit_graphics.h"
+#include "nativekit_clipboard.h"
 #include "nativekit_input.h"
 #include "nativekit_window.h"
 
@@ -757,6 +758,29 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_INPUT | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_WINDOW_GEOMETRY |
            NK_CAP_RESOURCE_IO;
+}
+
+nk_result NK_CALL nk_clipboard_set_text(const char *text) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!text)
+        return invalid_argument("web clipboard text is null");
+    if (!nk::web::set_clipboard_text(text))
+        return unsupported("browser clipboard write is unavailable");
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!out_request)
+        return invalid_argument("web clipboard request output is null");
+    *out_request = NK_INVALID_REQUEST_ID;
+    const auto request = nk::core::next_request_id();
+    if (!nk::web::read_clipboard_text(request))
+        return unsupported("browser clipboard read is unavailable");
+    *out_request = request;
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {

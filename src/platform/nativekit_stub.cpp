@@ -189,7 +189,7 @@ nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *) {
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_clipboard_set_text(const char *) {
     return unsupported();
 }
@@ -197,7 +197,7 @@ nk_result NK_CALL nk_clipboard_set_text(const char *) {
 nk_result NK_CALL nk_clipboard_set_files(const char *const *, uint32_t) {
     return unsupported();
 }
-#if !defined(NK_STUB_ANDROID)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_clipboard_read_text(nk_request_id *) {
     return unsupported();
 }

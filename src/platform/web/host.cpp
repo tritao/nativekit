@@ -1,5 +1,7 @@
 #include "platform/web/host.h"
 
+#include "core/event_queue.hpp"
+#include "core/runtime.hpp"
 #include "nativekit_web_config.h"
 
 #include <emscripten/emscripten.h>
@@ -8,6 +10,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <utility>
 
 #ifndef NK_WEB_CANVAS_SELECTOR
 #define NK_WEB_CANVAS_SELECTOR "#canvas"
@@ -355,6 +359,37 @@ EM_JS(void, nk_web_configure_text_input,
           }
       });
 
+EM_JS(int, nk_web_set_clipboard_text, (const char *text), {
+    const value = UTF8ToString(text);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).catch(() => {});
+        return 1;
+    }
+    const input = document.createElement("textarea");
+    input.value = value;
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.focus();
+    input.select();
+    const copied = document.execCommand && document.execCommand("copy");
+    input.remove();
+    return copied ? 1 : 0;
+});
+
+EM_JS(void, nk_web_read_clipboard_text, (double request), {
+    const complete = (result, value) => {
+        if (Module.ccall)
+            Module.ccall("nk_web_host_clipboard_text_complete", null,
+                         ["number", "number", "string"], [request, result, value || ""]);
+    };
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+        complete(-4, "");
+        return;
+    }
+    navigator.clipboard.readText().then(value => complete(0, value)).catch(() => complete(-1, ""));
+});
+
 extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(int type, const char *text,
                                                                     int selection_start,
                                                                     int selection_end) {
@@ -366,6 +401,20 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(int type, cons
     event.selection_start = selection_start < 0 ? 0u : static_cast<uint32_t>(selection_start);
     event.selection_end = selection_end < 0 ? 0u : static_cast<uint32_t>(selection_end);
     host_state.callbacks.text_input(event, host_state.user_data);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_clipboard_text_complete(
+    uint32_t request, nk_result result, const char *text) {
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_CLIPBOARD_TEXT_COMPLETE;
+    event.request_id = static_cast<nk_request_id>(request);
+    event.result = result;
+    if (text && *text) {
+        const auto length = std::strlen(text);
+        const auto *first = reinterpret_cast<const std::byte *>(text);
+        event.data.assign(first, first + length);
+    }
+    nk::core::push_event(std::move(event));
 }
 
 namespace nk::web {
@@ -446,6 +495,15 @@ void configure_text_input(const TextInputConfig &config) noexcept {
             ? -1
             : static_cast<int>(config.composition_end),
         config.cursor_x, config.cursor_y, config.cursor_width, config.cursor_height);
+}
+
+bool set_clipboard_text(const char *text) noexcept {
+    return text && nk_web_set_clipboard_text(text) != 0;
+}
+
+bool read_clipboard_text(nk_request_id request) noexcept {
+    nk_web_read_clipboard_text(static_cast<double>(request));
+    return true;
 }
 
 bool create_webgl_context(const WebGLContextOptions &options,
