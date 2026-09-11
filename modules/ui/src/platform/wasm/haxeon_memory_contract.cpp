@@ -2,10 +2,10 @@
 
 #include <cstdint>
 
-extern "C" uint32_t nkui_haxeon_host_allocator_status();
+extern "C" uint32_t nkui_wasm_host_allocator_status();
 
 extern "C" uint32_t nkui_haxeon_memory_contract_status() {
-    return nkui_haxeon_host_allocator_status();
+    return nkui_wasm_host_allocator_status();
 }
 
 extern "C" uint32_t nkui_haxeon_memory_contract_version() {

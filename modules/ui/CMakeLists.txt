@@ -96,6 +96,12 @@ if(NK_BUILD_TESTS)
         src/display_list/display_list.cpp)
     target_include_directories(nativekit_ui_display_list_test PRIVATE src)
     add_test(NAME nativekit_ui_display_list COMMAND nativekit_ui_display_list_test)
+    add_executable(nativekit_ui_wasm_host_allocator_test
+        tests/wasm_host_allocator.cpp
+        src/platform/wasm/host_allocator.cpp)
+    target_compile_features(nativekit_ui_wasm_host_allocator_test PRIVATE cxx_std_20)
+    target_include_directories(nativekit_ui_wasm_host_allocator_test PRIVATE src)
+    add_test(NAME nativekit_ui_wasm_host_allocator COMMAND nativekit_ui_wasm_host_allocator_test)
     add_executable(nativekit_ui_nanovg_recorder_test
         tests/nanovg_recorder.cpp
         src/prepare/nanovg_recorder.cpp)
@@ -323,12 +329,12 @@ if(NK_BUILD_EXAMPLES)
             set(NKUI_HAXEON_MEMORY_CONTRACT
                 "${CMAKE_CURRENT_BINARY_DIR}/nativekit_haxeon_memory_contract.json")
             configure_file(
-                "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_haxeon/wasm_memory_contract.json.in"
+                "${CMAKE_CURRENT_SOURCE_DIR}/cmake/wasm_memory_contract.json.in"
                 "${NKUI_HAXEON_MEMORY_CONTRACT}" @ONLY)
             set(NKUI_HAXEON_MEMORY_CONTRACT_HEADER
                 "${CMAKE_CURRENT_BINARY_DIR}/nativekit_haxeon_memory_contract.h")
             configure_file(
-                "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_haxeon/wasm_memory_contract.h.in"
+                "${CMAKE_CURRENT_SOURCE_DIR}/cmake/wasm_memory_contract.h.in"
                 "${NKUI_HAXEON_MEMORY_CONTRACT_HEADER}" @ONLY)
             set(NKUI_HAXEON_GUEST_WASM
                 "${CMAKE_CURRENT_BINARY_DIR}/nativekit_ui_showcase_wasm32.wasm")
@@ -354,13 +360,19 @@ if(NK_BUILD_EXAMPLES)
             add_custom_target(nativekit_ui_haxeon_guest
                 DEPENDS "${NKUI_HAXEON_GUEST_WASM}")
 
-            add_executable(nativekit_ui_haxeon
-                examples/ui_haxeon/host.cpp
-                examples/ui_haxeon/wasm_memory_contract.cpp
-                examples/ui_haxeon/wasm_host_allocator.cpp)
+            add_library(nativekit_ui_wasm_host STATIC
+                src/platform/wasm/host_allocator.cpp
+                src/platform/wasm/host_allocator_wasm.cpp
+                src/platform/wasm/haxeon_memory_contract.cpp)
+            target_compile_features(nativekit_ui_wasm_host PRIVATE cxx_std_20)
+            target_include_directories(nativekit_ui_wasm_host PRIVATE
+                src "${CMAKE_CURRENT_BINARY_DIR}")
+
+            add_executable(nativekit_ui_haxeon examples/ui_haxeon/host.cpp)
             target_include_directories(nativekit_ui_haxeon PRIVATE
                 "${CMAKE_CURRENT_BINARY_DIR}")
-            target_link_libraries(nativekit_ui_haxeon PRIVATE NativeKit::ui NativeKit::nativekit)
+            target_link_libraries(nativekit_ui_haxeon PRIVATE NativeKit::ui NativeKit::nativekit
+                nativekit_ui_wasm_host)
             add_dependencies(nativekit_ui_haxeon nativekit_ui_haxeon_guest)
             set(NKUI_HAXEON_FONT_PATH
                 "${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
