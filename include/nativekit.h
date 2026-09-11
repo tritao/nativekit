@@ -45,11 +45,7 @@
     __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
 #define NK_BORROWED_ARRAY(count_field)                                                             \
     __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
-#if defined(__clang__)
 #define NK_HANDLE __attribute__((annotate("hxi:handle")))
-#else
-#define NK_HANDLE
-#endif
 #else
 #define NK_OUT
 #define NK_INOUT

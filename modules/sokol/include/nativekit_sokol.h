@@ -26,10 +26,12 @@
 #define NKS_OUT __attribute__((annotate("hxi:out")))
 #define NKS_UTF8 __attribute__((annotate("hxi:utf8")))
 #define NKS_RETURNS_BORROWED_UTF8 __attribute__((annotate("hxi:returns_borrowed_utf8")))
+#define NKS_HANDLE_ANNOTATION __attribute__((annotate("hxi:handle")))
 #else
 #define NKS_OUT
 #define NKS_UTF8
 #define NKS_RETURNS_BORROWED_UTF8
+#define NKS_HANDLE_ANNOTATION
 #endif
 
 /* ------------------------------------------------------------------------- */
@@ -59,13 +61,7 @@ extern "C" {
 /* ------------------------------------------------------------------------- */
 
 /** A NativeKit window or surface handle accepted by the Sokol adapter. */
-#if defined(__clang__)
-#define NKS_HANDLE_ANNOTATION __attribute__((annotate("hxi:handle")))
-#else
-#define NKS_HANDLE_ANNOTATION
-#endif
-
-typedef uint32_t nks_nativekit_handle NKS_HANDLE_ANNOTATION;
+typedef uint32_t nks_nativekit_handle;
 
 /** Result returned by a Sokol adapter operation; zero is success. */
 typedef int32_t nks_result;

@@ -10,7 +10,7 @@ import NativeKitWindowEvents;
 class NativeKitEvent {
 	final event:nk_event;
 	public final kind:Int;
-	public final source:Int;
+	public final source:nk_handle;
 	public final request:haxe.Int64;
 	public final result:Int;
 	public final flags:Int;
