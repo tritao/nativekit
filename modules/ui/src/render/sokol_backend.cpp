@@ -578,8 +578,7 @@ bool SokolBackend::begin_window_pass(int width, int height,
                                      const nk_surface_frame_target &target, bool clear) {
     if (!valid() || state_->in_pass || width <= 0 || height <= 0)
         return fail(*state_, "invalid window pass");
-    if (target.struct_size < sizeof(target) ||
-        (target.api != NK_GRAPHICS_OPENGL && target.api != NK_GRAPHICS_OPENGL_ES))
+    if (target.struct_size < sizeof(target) || target.api != NK_GRAPHICS_OPENGL)
         return fail(*state_, "unsupported window target");
     state_->width = width;
     state_->height = height;

@@ -544,7 +544,7 @@ nks_result nks_begin_frame(nks_renderer h) {
     target.struct_size = sizeof(target);
     if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK || target.width <= 0 ||
         target.height <= 0 ||
-        (target.api != NK_GRAPHICS_OPENGL && target.api != NK_GRAPHICS_OPENGL_ES))
+        target.api != NK_GRAPHICS_OPENGL)
         return fail(NKS_ERROR_UNKNOWN, "framebuffer size failed");
     sg_pass pass{};
     pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
