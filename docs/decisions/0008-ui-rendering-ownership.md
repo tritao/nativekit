@@ -17,8 +17,9 @@ adapter records direct glyph batches instead of converting glyphs into NanoVG
 paths or image-pattern rectangles.
 
 The NativeKit compositor resolves semantic isolation into render targets and
-ordered passes. The Sokol backend executes the resulting render plan and is the
-only UI subsystem allowed to create Sokol resources or call `sg_*` functions.
+ordered passes. The NativeKit render subsystem owns the shared Sokol device,
+resources, and execution of the resulting render plan; it is the only UI
+subsystem allowed to create Sokol resources or call `sg_*` functions.
 NanoVG and Skribidi types never cross the public NativeKit UI ABI.
 
 `nk_surface` continues to mean a platform presentation surface associated with

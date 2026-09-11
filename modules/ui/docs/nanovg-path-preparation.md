@@ -16,6 +16,13 @@ sub-paths, winding, append, and transformed append.
 control points. They are suitable for invalidation and broad-phase tests; they
 are not an exact extrema calculation.
 
+The NativeKit C++ adapter uses the same concepts with value-oriented names:
+`NanoVGPath` is the reusable command builder, `PathPreparationParams` is the
+complete geometry input, and `PreparedGeometry` is caller-owned output. The
+builder is valid after construction unless NanoVG cannot allocate its private
+storage; command methods are intentionally `void` to match NanoVG's existing
+immediate path API, so callers should check `valid()` before using one.
+
 ## Preparing geometry
 
 Call `nvgInitPrepareParams()` before changing individual preparation fields.
@@ -31,6 +38,22 @@ Stroke width is expressed in the transformed coordinate space. A negative
 fringe width selects NanoVG's device-ratio-derived default; zero disables the
 fringe. `nvgPrepareFill()` and `nvgPrepareStroke()` do not require a frame,
 renderer callback, GPU resource, or `NVGcontext`.
+
+The NativeKit adapter exposes the equivalent calls as:
+
+```cpp
+PathPreparationParams params;
+params.fill_rule = PathFillRule::EvenOdd;
+PreparedGeometry geometry;
+if (!prepare_fill(path, params, geometry))
+    return false;
+```
+
+`prepare_fill()` and `prepare_stroke()` clear the output before preparing. On
+success, the output ranges and vertices are ready for immediate attachment to
+one `PreparedPath` operation. Reusing the same `PreparedGeometry` preserves
+vector capacity; callers that need an arena can reserve or replace those
+containers at the NativeKit boundary.
 
 Preparation uses a two-call sizing protocol:
 

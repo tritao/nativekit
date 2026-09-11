@@ -274,8 +274,10 @@ int main() {
     }
     if (ready)
         nk_surface_make_current(surface);
-    shared_backend.reset();
     backend.reset();
+    if (shared_backend && !shared_backend->valid())
+        result = 18;
+    shared_backend.reset();
     nk_surface_destroy(surface);
     nk_window_destroy(window);
     nk_shutdown();

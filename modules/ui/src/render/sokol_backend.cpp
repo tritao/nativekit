@@ -3,14 +3,6 @@
 #include "frame_resources.h"
 #include "graphics_device.h"
 
-#define SOKOL_GLCORE
-#include "sokol_gfx.h"
-
-#include "nkui_composite.glsl.h"
-#include "nkui_path.glsl.h"
-#include "nkui_solid.glsl.h"
-#include "nkui_text.glsl.h"
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -61,25 +53,6 @@ struct SokolBackend::State {
         int flags = 0;
     };
 
-    sg_shader solid_shader{};
-    sg_pipeline solid_pipeline{};
-    sg_pipeline fill_stencil_pipeline{};
-    sg_pipeline fill_stencil_even_odd_pipeline{};
-    sg_pipeline fill_cover_pipeline{};
-    sg_shader paint_shader{};
-    sg_pipeline paint_pipeline{};
-    sg_pipeline paint_cover_pipeline{};
-    sg_pipeline paint_fringe_pipeline{};
-    sg_shader alpha_glyph_shader{};
-    sg_pipeline alpha_glyph_pipeline{};
-    sg_shader sdf_glyph_shader{};
-    sg_pipeline sdf_glyph_pipeline{};
-    sg_shader color_glyph_shader{};
-    sg_pipeline color_glyph_pipeline{};
-    sg_shader composite_shader{};
-    sg_pipeline composite_pipeline{};
-    sg_sampler sampler{};
-    sg_sampler surface_sampler{};
     sg_buffer solid_vertices{};
     sg_buffer glyph_vertices{};
     sg_buffer composite_vertices{};
@@ -90,9 +63,6 @@ struct SokolBackend::State {
     std::unordered_map<const PreparedPathData *,
                        std::unordered_map<PreparedImageToken, PaintImage>> paint_images;
     std::unordered_map<uint32_t, PaintImage> images;
-    sg_image white_image{};
-    sg_view white_view{};
-    sg_sampler white_sampler{};
     SokolBackendStats stats{};
     std::string error;
     std::shared_ptr<GraphicsDevice> device;
@@ -235,153 +205,6 @@ void copy_atlas_pixels(SokolBackend::State::AtlasImage &target, const AtlasUploa
     }
 }
 
-sg_shader make_solid_shader() {
-    const sg_shader_desc *desc = nkui_solid_solid_shader_desc(sg_query_backend());
-    return desc ? sg_make_shader(desc) : sg_shader{};
-}
-
-sg_shader make_path_shader() {
-    const sg_shader_desc *desc = nkui_path_path_shader_desc(sg_query_backend());
-    return desc ? sg_make_shader(desc) : sg_shader{};
-}
-
-sg_shader make_glyph_shader(GlyphMode mode) {
-    const sg_shader_desc *desc = nullptr;
-    switch (mode) {
-    case GlyphMode::Alpha:
-        desc = nkui_text_alpha_shader_desc(sg_query_backend());
-        break;
-    case GlyphMode::Sdf:
-        desc = nkui_text_sdf_shader_desc(sg_query_backend());
-        break;
-    case GlyphMode::Color:
-        desc = nkui_text_color_shader_desc(sg_query_backend());
-        break;
-    }
-    return desc ? sg_make_shader(desc) : sg_shader{};
-}
-
-sg_shader make_composite_shader() {
-    const sg_shader_desc *desc = nkui_composite_composite_shader_desc(sg_query_backend());
-    return desc ? sg_make_shader(desc) : sg_shader{};
-}
-
-sg_pipeline make_solid_pipeline(sg_shader shader) {
-    sg_pipeline_desc desc{};
-    desc.shader = shader;
-    desc.layout.buffers[0].stride = sizeof(SolidVertex);
-    desc.layout.attrs[0] = {0, 0, SG_VERTEXFORMAT_FLOAT2};
-    desc.index_type = SG_INDEXTYPE_UINT32;
-    desc.colors[0].blend.enabled = true;
-    desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
-    desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
-    desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    return sg_make_pipeline(&desc);
-}
-
-sg_pipeline make_fill_stencil_pipeline(sg_shader shader, bool even_odd = false) {
-    sg_pipeline_desc desc{};
-    desc.shader = shader;
-    desc.layout.buffers[0].stride = sizeof(SolidVertex);
-    desc.layout.attrs[0] = {0, 0, SG_VERTEXFORMAT_FLOAT2};
-    desc.index_type = SG_INDEXTYPE_UINT32;
-    desc.colors[0].write_mask = SG_COLORMASK_NONE;
-    desc.cull_mode = SG_CULLMODE_NONE;
-    desc.stencil.enabled = true;
-    desc.stencil.front.compare = SG_COMPAREFUNC_ALWAYS;
-    desc.stencil.front.pass_op = even_odd ? SG_STENCILOP_INVERT : SG_STENCILOP_INCR_WRAP;
-    desc.stencil.back.compare = SG_COMPAREFUNC_ALWAYS;
-    desc.stencil.back.pass_op = even_odd ? SG_STENCILOP_INVERT : SG_STENCILOP_DECR_WRAP;
-    desc.stencil.read_mask = 0xFF;
-    desc.stencil.write_mask = 0xFF;
-    return sg_make_pipeline(&desc);
-}
-
-sg_pipeline make_fill_cover_pipeline(sg_shader shader) {
-    sg_pipeline_desc desc{};
-    desc.shader = shader;
-    desc.layout.buffers[0].stride = sizeof(SolidVertex);
-    desc.layout.attrs[0] = {0, 0, SG_VERTEXFORMAT_FLOAT2};
-    desc.index_type = SG_INDEXTYPE_UINT32;
-    desc.colors[0].blend.enabled = true;
-    desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
-    desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
-    desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    desc.stencil.enabled = true;
-    desc.stencil.front.compare = SG_COMPAREFUNC_NOT_EQUAL;
-    desc.stencil.front.fail_op = SG_STENCILOP_ZERO;
-    desc.stencil.front.depth_fail_op = SG_STENCILOP_ZERO;
-    desc.stencil.front.pass_op = SG_STENCILOP_ZERO;
-    desc.stencil.back = desc.stencil.front;
-    desc.stencil.read_mask = 0xFF;
-    desc.stencil.write_mask = 0xFF;
-    return sg_make_pipeline(&desc);
-}
-
-sg_pipeline make_paint_pipeline(sg_shader shader, bool stencil_cover, bool stencil_fringe = false) {
-    sg_pipeline_desc desc{};
-    desc.shader = shader;
-    desc.layout.buffers[0].stride = sizeof(PathVertex);
-    desc.layout.attrs[0] = {0, offsetof(PathVertex, x), SG_VERTEXFORMAT_FLOAT2};
-    desc.layout.attrs[1] = {0, offsetof(PathVertex, u), SG_VERTEXFORMAT_FLOAT2};
-    desc.index_type = SG_INDEXTYPE_UINT32;
-    desc.colors[0].blend.enabled = true;
-    desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
-    desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
-    desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    if (stencil_cover) {
-        desc.stencil.enabled = true;
-        desc.stencil.front.compare = SG_COMPAREFUNC_NOT_EQUAL;
-        desc.stencil.front.fail_op = SG_STENCILOP_ZERO;
-        desc.stencil.front.depth_fail_op = SG_STENCILOP_ZERO;
-        desc.stencil.front.pass_op = SG_STENCILOP_ZERO;
-        desc.stencil.back = desc.stencil.front;
-        desc.stencil.read_mask = 0xFF;
-        desc.stencil.write_mask = 0xFF;
-    } else if (stencil_fringe) {
-        desc.stencil.enabled = true;
-        desc.stencil.front.compare = SG_COMPAREFUNC_EQUAL;
-        desc.stencil.back.compare = SG_COMPAREFUNC_EQUAL;
-        desc.stencil.read_mask = 0xFF;
-        desc.stencil.write_mask = 0xFF;
-    }
-    return sg_make_pipeline(&desc);
-}
-
-sg_pipeline make_glyph_pipeline(sg_shader shader) {
-    sg_pipeline_desc desc{};
-    desc.shader = shader;
-    desc.layout.buffers[0].stride = sizeof(GlyphVertex);
-    desc.layout.attrs[0] = {0, offsetof(GlyphVertex, x), SG_VERTEXFORMAT_FLOAT2};
-    desc.layout.attrs[1] = {0, offsetof(GlyphVertex, u), SG_VERTEXFORMAT_FLOAT2};
-    desc.layout.attrs[2] = {0, offsetof(GlyphVertex, red), SG_VERTEXFORMAT_UBYTE4N};
-    desc.index_type = SG_INDEXTYPE_UINT32;
-    desc.colors[0].blend.enabled = true;
-    desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
-    desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
-    desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    return sg_make_pipeline(&desc);
-}
-
-sg_pipeline make_composite_pipeline(sg_shader shader) {
-    sg_pipeline_desc desc{};
-    desc.shader = shader;
-    desc.layout.buffers[0].stride = sizeof(TextureVertex);
-    desc.layout.attrs[0] = {0, offsetof(TextureVertex, x), SG_VERTEXFORMAT_FLOAT2};
-    desc.layout.attrs[1] = {0, offsetof(TextureVertex, u), SG_VERTEXFORMAT_FLOAT2};
-    desc.index_type = SG_INDEXTYPE_UINT32;
-    desc.colors[0].blend.enabled = true;
-    desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
-    desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
-    desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    return sg_make_pipeline(&desc);
-}
-
 template <class Vertex>
 bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
                const std::vector<Vertex> &vertices, const std::vector<uint32_t> &indices,
@@ -512,7 +335,7 @@ bool upload_texture(SokolBackend::State &state, const PreparedTexture &source,
         if (sg_query_image_state(image.image) != SG_RESOURCESTATE_VALID ||
             sg_query_view_state(image.view) != SG_RESOURCESTATE_VALID ||
             sg_query_sampler_state(image.sampler) != SG_RESOURCESTATE_VALID)
-            return fail(state, "NanoVG paint texture creation failed");
+            return fail(state, "prepared path texture creation failed");
         image.type = source.type;
         image.flags = source.flags;
         state.stats.gpu_resources += 3;
@@ -531,8 +354,8 @@ bool resolve_paint_image(SokolBackend::State &state, const PreparedPathData &pat
                          PreparedImageToken token,
                          sg_view &view, sg_sampler &sampler, int &type, int &flags) {
     if (!token) {
-        view = state.white_view;
-        sampler = state.white_sampler;
+        view = state.device->resources().white_view;
+        sampler = state.device->resources().white_sampler;
         type = PreparedTextureRgba;
         flags = PreparedImagePremultiplied;
         return true;
@@ -708,32 +531,10 @@ SokolBackend::~SokolBackend() {
             sg_destroy_view(atlas.view);
             sg_destroy_image(atlas.image);
         }
-        sg_destroy_sampler(state_->sampler);
-        sg_destroy_sampler(state_->surface_sampler);
-        sg_destroy_sampler(state_->white_sampler);
-        sg_destroy_view(state_->white_view);
-        sg_destroy_image(state_->white_image);
         sg_destroy_buffer(state_->indices);
         sg_destroy_buffer(state_->composite_vertices);
         sg_destroy_buffer(state_->glyph_vertices);
         sg_destroy_buffer(state_->solid_vertices);
-        sg_destroy_pipeline(state_->color_glyph_pipeline);
-        sg_destroy_shader(state_->color_glyph_shader);
-        sg_destroy_pipeline(state_->sdf_glyph_pipeline);
-        sg_destroy_shader(state_->sdf_glyph_shader);
-        sg_destroy_pipeline(state_->alpha_glyph_pipeline);
-        sg_destroy_shader(state_->alpha_glyph_shader);
-        sg_destroy_pipeline(state_->composite_pipeline);
-        sg_destroy_shader(state_->composite_shader);
-        sg_destroy_pipeline(state_->solid_pipeline);
-        sg_destroy_pipeline(state_->fill_cover_pipeline);
-        sg_destroy_pipeline(state_->fill_stencil_pipeline);
-        sg_destroy_pipeline(state_->fill_stencil_even_odd_pipeline);
-        sg_destroy_pipeline(state_->paint_cover_pipeline);
-        sg_destroy_pipeline(state_->paint_fringe_pipeline);
-        sg_destroy_pipeline(state_->paint_pipeline);
-        sg_destroy_shader(state_->paint_shader);
-        sg_destroy_shader(state_->solid_shader);
         state_->device.reset();
     }
     delete state_;
@@ -746,69 +547,11 @@ bool SokolBackend::initialize() {
     state_->device = GraphicsDevice::acquire(&device_error);
     if (!state_->device)
         return fail(*state_, device_error.c_str());
-    state_->solid_shader = make_solid_shader();
-    state_->paint_shader = make_path_shader();
-    state_->alpha_glyph_shader = make_glyph_shader(GlyphMode::Alpha);
-    state_->sdf_glyph_shader = make_glyph_shader(GlyphMode::Sdf);
-    state_->color_glyph_shader = make_glyph_shader(GlyphMode::Color);
-    state_->composite_shader = make_composite_shader();
-    state_->solid_pipeline = make_solid_pipeline(state_->solid_shader);
-    state_->fill_stencil_pipeline = make_fill_stencil_pipeline(state_->solid_shader);
-    state_->fill_stencil_even_odd_pipeline = make_fill_stencil_pipeline(state_->solid_shader, true);
-    state_->fill_cover_pipeline = make_fill_cover_pipeline(state_->solid_shader);
-    state_->paint_pipeline = make_paint_pipeline(state_->paint_shader, false);
-    state_->paint_cover_pipeline = make_paint_pipeline(state_->paint_shader, true);
-    state_->paint_fringe_pipeline = make_paint_pipeline(state_->paint_shader, false, true);
-    state_->alpha_glyph_pipeline = make_glyph_pipeline(state_->alpha_glyph_shader);
-    state_->sdf_glyph_pipeline = make_glyph_pipeline(state_->sdf_glyph_shader);
-    state_->color_glyph_pipeline = make_glyph_pipeline(state_->color_glyph_shader);
-    state_->composite_pipeline = make_composite_pipeline(state_->composite_shader);
-    sg_sampler_desc sampler_desc{};
-    sampler_desc.min_filter = SG_FILTER_NEAREST;
-    sampler_desc.mag_filter = SG_FILTER_NEAREST;
-    sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
-    sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
-    state_->sampler = sg_make_sampler(&sampler_desc);
-    sampler_desc.min_filter = SG_FILTER_LINEAR;
-    sampler_desc.mag_filter = SG_FILTER_LINEAR;
-    state_->surface_sampler = sg_make_sampler(&sampler_desc);
-    const uint32_t white_pixel = UINT32_MAX;
-    sg_image_desc white_desc{};
-    white_desc.width = 1;
-    white_desc.height = 1;
-    white_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-    white_desc.data.mip_levels[0] = {&white_pixel, sizeof(white_pixel)};
-    state_->white_image = sg_make_image(&white_desc);
-    sg_view_desc white_view_desc{};
-    white_view_desc.texture.image = state_->white_image;
-    state_->white_view = sg_make_view(&white_view_desc);
-    sg_sampler_desc white_sampler_desc{};
-    white_sampler_desc.min_filter = SG_FILTER_NEAREST;
-    white_sampler_desc.mag_filter = SG_FILTER_NEAREST;
-    white_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
-    white_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
-    state_->white_sampler = sg_make_sampler(&white_sampler_desc);
     state_->solid_vertices = make_stream_buffer(4 * 1024 * 1024, false);
     state_->glyph_vertices = make_stream_buffer(4 * 1024 * 1024, false);
     state_->composite_vertices = make_stream_buffer(1024 * 1024, false);
     state_->indices = make_stream_buffer(4 * 1024 * 1024, true);
     state_->initialized =
-        sg_query_pipeline_state(state_->solid_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_pipeline_state(state_->fill_stencil_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_pipeline_state(state_->fill_stencil_even_odd_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_pipeline_state(state_->fill_cover_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_pipeline_state(state_->paint_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_pipeline_state(state_->paint_cover_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_pipeline_state(state_->paint_fringe_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_pipeline_state(state_->alpha_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_pipeline_state(state_->sdf_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_pipeline_state(state_->color_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_pipeline_state(state_->composite_pipeline) == SG_RESOURCESTATE_VALID &&
-        sg_query_sampler_state(state_->sampler) == SG_RESOURCESTATE_VALID &&
-        sg_query_sampler_state(state_->surface_sampler) == SG_RESOURCESTATE_VALID &&
-        sg_query_image_state(state_->white_image) == SG_RESOURCESTATE_VALID &&
-        sg_query_view_state(state_->white_view) == SG_RESOURCESTATE_VALID &&
-        sg_query_sampler_state(state_->white_sampler) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->solid_vertices) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->glyph_vertices) == SG_RESOURCESTATE_VALID &&
         sg_query_buffer_state(state_->composite_vertices) == SG_RESOURCESTATE_VALID &&
@@ -975,8 +718,8 @@ bool SokolBackend::draw_path_transformed(const PreparedPathData &path, uint32_t 
                 fan.indices.insert(fan.indices.end(), {base, base + vertex, base + vertex + 1});
             const sg_pipeline stencil_pipeline =
                 operation.fill_rule == PathFillRule::EvenOdd
-                    ? state_->fill_stencil_even_odd_pipeline
-                    : state_->fill_stencil_pipeline;
+                    ? state_->device->resources().fill_stencil_even_odd_pipeline
+                    : state_->device->resources().fill_stencil_pipeline;
             if (!draw_mesh(*state_, stencil_pipeline, fan.vertices, fan.indices,
                            stencil_color.data(), sizeof(stencil_color), {}, {},
                            state_->solid_vertices))
@@ -984,7 +727,8 @@ bool SokolBackend::draw_path_transformed(const PreparedPathData &path, uint32_t 
         }
         const PathMesh fringe = make_paint_mesh(path, operation, transform, true);
         if (!fringe.indices.empty() &&
-            !draw_mesh(*state_, state_->paint_fringe_pipeline, fringe.vertices, fringe.indices,
+            !draw_mesh(*state_, state_->device->resources().paint_fringe_pipeline, fringe.vertices,
+                       fringe.indices,
                        &paint, sizeof(paint), paint_view, paint_sampler, state_->solid_vertices))
             return false;
         PathMesh cover;
@@ -998,13 +742,15 @@ bool SokolBackend::draw_path_transformed(const PreparedPathData &path, uint32_t 
                           point(operation.bounds[0], operation.bounds[3])};
         cover.indices = {0, 1, 2, 0, 2, 3};
         paint.coverage[0] = 0.0f;
-        return draw_mesh(*state_, state_->paint_cover_pipeline, cover.vertices, cover.indices,
+        return draw_mesh(*state_, state_->device->resources().paint_cover_pipeline, cover.vertices,
+                         cover.indices,
                          &paint, sizeof(paint), paint_view, paint_sampler, state_->solid_vertices);
     }
     const PathMesh mesh = make_paint_mesh(path, operation, transform);
     if (mesh.indices.empty())
         return fail(*state_, "empty prepared path");
-    return draw_mesh(*state_, state_->paint_pipeline, mesh.vertices, mesh.indices, &paint,
+    return draw_mesh(*state_, state_->device->resources().paint_pipeline, mesh.vertices,
+                     mesh.indices, &paint,
                      sizeof(paint), paint_view, paint_sampler, state_->solid_vertices);
 }
 
@@ -1034,7 +780,8 @@ bool SokolBackend::draw_image(const PreparedTexture &image, float x, float y, fl
         point(x + width, y + height, 1.0f, 0.0f), point(x, y + height, 0.0f, 0.0f)};
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
-    return draw_mesh(*state_, state_->composite_pipeline, vertices, indices, tint.data(),
+        return draw_mesh(*state_, state_->device->resources().composite_pipeline, vertices, indices,
+                         tint.data(),
                      sizeof(tint), gpu_image.view, gpu_image.sampler, state_->composite_vertices);
 }
 
@@ -1137,9 +884,10 @@ bool SokolBackend::draw_glyphs_transformed(const PreparedGlyphs &glyphs, const f
         if ((batch.mode == GlyphMode::Color) != color_format ||
             (batch.mode == GlyphMode::Sdf) != (atlas->second.format == AtlasTextureFormat::R8Sdf))
             return fail(*state_, "glyph mode does not match atlas format");
-        const sg_pipeline pipeline = batch.mode == GlyphMode::Color ? state_->color_glyph_pipeline
-                                     : batch.mode == GlyphMode::Sdf ? state_->sdf_glyph_pipeline
-                                                                    : state_->alpha_glyph_pipeline;
+        const sg_pipeline pipeline =
+            batch.mode == GlyphMode::Color ? state_->device->resources().color_glyph_pipeline
+            : batch.mode == GlyphMode::Sdf ? state_->device->resources().sdf_glyph_pipeline
+                                           : state_->device->resources().alpha_glyph_pipeline;
         std::vector<GlyphVertex> vertices(glyphs.vertices.begin() + batch.first_vertex,
                                           glyphs.vertices.begin() + batch.first_vertex +
                                               batch.vertex_count);
@@ -1155,7 +903,7 @@ bool SokolBackend::draw_glyphs_transformed(const PreparedGlyphs &glyphs, const f
         for (uint32_t index = 0; index < batch.index_count; ++index)
             indices.push_back(glyphs.indices[batch.first_index + index] - batch.first_vertex);
         if (!draw_mesh(*state_, pipeline, vertices, indices, nullptr, 0, atlas->second.view,
-                       state_->sampler, state_->glyph_vertices))
+                       state_->device->resources().sampler, state_->glyph_vertices))
             return false;
     }
     return true;
@@ -1180,15 +928,16 @@ bool SokolBackend::draw_target(ResourceId target_id, float x, float y, float wid
     };
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
-    sg_sampler sampler = state_->sampler;
+    sg_sampler sampler = state_->device->resources().sampler;
     const auto surface = state_->surfaces.find(target_id.value);
     if (surface != state_->surfaces.end()) {
         if (surface->second.filter == SurfaceFilter::Linear)
-            sampler = state_->surface_sampler;
+            sampler = state_->device->resources().surface_sampler;
         else if (surface->second.filter != SurfaceFilter::Nearest)
             return fail(*state_, "surface filter is unsupported");
     }
-    return draw_mesh(*state_, state_->composite_pipeline, vertices, indices, tint.data(),
+    return draw_mesh(*state_, state_->device->resources().composite_pipeline, vertices, indices,
+                     tint.data(),
                      sizeof(tint), found->second.texture, sampler,
                      state_->composite_vertices);
 }
