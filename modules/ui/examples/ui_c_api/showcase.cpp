@@ -302,6 +302,10 @@ struct WebShowcase {
             return fail(1);
 
         if (smoke) {
+            const nk_capabilities capabilities = nk_get_capabilities();
+            if ((capabilities & (NK_CAP_CLIPBOARD | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE)) !=
+                (NK_CAP_CLIPBOARD | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE))
+                return fail(8);
             nk_handle cursor = NK_INVALID_HANDLE;
             nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
             if (nk_cursor_create_standard(NK_CURSOR_HAND, &cursor) != NK_OK ||

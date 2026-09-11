@@ -757,8 +757,8 @@ void shutdown() noexcept {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_WINDOW | NK_CAP_INPUT | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_WINDOW_GEOMETRY |
-           NK_CAP_RESOURCE_IO;
+    return NK_CAP_WINDOW | NK_CAP_INPUT | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
+           NK_CAP_POINTER_CAPTURE | NK_CAP_CLIPBOARD | NK_CAP_WINDOW_GEOMETRY | NK_CAP_RESOURCE_IO;
 }
 
 nk_result NK_CALL nk_clipboard_set_text(const char *text) {
