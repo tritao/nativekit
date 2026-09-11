@@ -1,4 +1,5 @@
 #include "nativekit.h"
+#include "nativekit_resource.h"
 #include "nativekit_graphics.h"
 #include "nativekit_ui.h"
 #include "nativekit_window.h"
@@ -226,6 +227,8 @@ struct WebShowcase {
     bool finished = false;
     bool frame_callback_installed = false;
     bool initialized = false;
+    nk_request_id asset_request = NK_INVALID_REQUEST_ID;
+    bool asset_loaded = false;
     int result = 0;
 
     static void NK_CALL draw_frame(nk_handle surface, int32_t width, int32_t height,
@@ -243,7 +246,7 @@ struct WebShowcase {
             return;
         }
         ++app.showcase.rendered_frames;
-        if (app.smoke && app.showcase.rendered_frames >= 30)
+        if (app.smoke && app.showcase.rendered_frames >= 30 && app.asset_loaded)
             app.finish(0);
     }
 
@@ -275,6 +278,13 @@ struct WebShowcase {
         if (nk_surface_create(window, &surface_options, &surface) != NK_OK)
             return fail(1);
 
+        nk_resource asset{};
+        asset.struct_size = sizeof(asset);
+        asset.flags = NK_RESOURCE_READABLE;
+        asset.uri = "/nativekit_ui_c_api.data";
+        if (nk_resource_load_async(&asset, &asset_request) != NK_OK)
+            return fail(1);
+
         return poll_events() && result == 0;
     }
 
@@ -299,6 +309,14 @@ struct WebShowcase {
     }
 
     void handle_event(const nk_event &event) {
+        if (event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE &&
+            event.request_id == asset_request) {
+            if (event.result != NK_OK || event.data_size == 0)
+                result = 7;
+            else
+                asset_loaded = true;
+            return;
+        }
         if (event.source == window && event.kind == NK_EVENT_WINDOW_RESIZE &&
             event.data_size >= sizeof(nk_window_resize_event)) {
             const auto *resize = static_cast<const nk_window_resize_event *>(event.data);

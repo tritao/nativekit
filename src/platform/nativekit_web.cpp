@@ -1,6 +1,7 @@
 #include "nativekit_graphics.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_input.h"
+#include "nativekit_resource.h"
 #include "nativekit_window.h"
 
 #include "core/boundary.hpp"
@@ -779,6 +780,21 @@ nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request) {
     const auto request = nk::core::next_request_id();
     if (!nk::web::read_clipboard_text(request))
         return unsupported("browser clipboard read is unavailable");
+    *out_request = request;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_resource_load_async(const nk_resource *resource,
+                                         nk_request_id *out_request) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+        !*resource->uri || !out_request)
+        return invalid_argument("web resource load arguments are invalid");
+    *out_request = NK_INVALID_REQUEST_ID;
+    const auto request = nk::core::next_request_id();
+    if (!nk::web::fetch_resource(resource->uri, request))
+        return unsupported("browser resource fetch is unavailable");
     *out_request = request;
     return NK_OK;
 }

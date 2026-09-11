@@ -1,6 +1,7 @@
 #include "nativekit_resource.h"
 
 #include "core/error.hpp"
+#include "core/runtime.hpp"
 
 #include <cstddef>
 #include <cstring>
@@ -87,6 +88,22 @@ extern "C" nk_result NK_CALL nk_resource_event_item(const nk_event *event, uint3
     *out_resource = result;
     return NK_OK;
 }
+
+#if !defined(NK_BACKEND_WEB)
+extern "C" nk_result NK_CALL nk_resource_load_async(const nk_resource *resource,
+                                                     nk_request_id *out_request) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+        !*resource->uri || !out_request) {
+        nk::core::set_error("resource load arguments are invalid");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    *out_request = NK_INVALID_REQUEST_ID;
+    nk::core::set_error("asynchronous URI resource loading is unavailable on this platform");
+    return NK_ERROR_UNSUPPORTED;
+}
+#endif
 
 namespace {
 nk_result share_string(const nk_event *event, bool subject, const char **out,

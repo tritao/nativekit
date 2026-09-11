@@ -390,6 +390,38 @@ EM_JS(void, nk_web_read_clipboard_text, (double request), {
     navigator.clipboard.readText().then(value => complete(0, value)).catch(() => complete(-1, ""));
 });
 
+EM_JS(void, nk_web_fetch_resource, (const char *uri, double request), {
+    const complete = (result, pointer, size) => {
+        if (Module.ccall)
+            Module.ccall("nk_web_host_resource_complete", null,
+                         ["number", "number", "number", "number"],
+                         [request, result, pointer || 0, size || 0]);
+    };
+    try {
+        fetch(UTF8ToString(uri), {credentials: "same-origin"}).then(response => {
+            if (!response.ok) {
+                complete(-1, 0, 0);
+                return;
+            }
+            return response.arrayBuffer().then(buffer => {
+                const bytes = new Uint8Array(buffer);
+                if (bytes.length > 0xffffffff) {
+                    complete(-8, 0, 0);
+                    return;
+                }
+                const pointer = bytes.length ? _malloc(bytes.length) : 0;
+                if (pointer)
+                    HEAPU8.set(bytes, pointer);
+                complete(0, pointer, bytes.length);
+                if (pointer)
+                    _free(pointer);
+            });
+        }).catch(() => complete(-1, 0, 0));
+    } catch (error) {
+        complete(-1, 0, 0);
+    }
+});
+
 extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(int type, const char *text,
                                                                     int selection_start,
                                                                     int selection_end) {
@@ -413,6 +445,19 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_clipboard_text_complete(
         const auto length = std::strlen(text);
         const auto *first = reinterpret_cast<const std::byte *>(text);
         event.data.assign(first, first + length);
+    }
+    nk::core::push_event(std::move(event));
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_complete(
+    uint32_t request, nk_result result, const void *data, uint32_t size) {
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_RESOURCE_DATA_COMPLETE;
+    event.request_id = static_cast<nk_request_id>(request);
+    event.result = result;
+    if (data && size) {
+        const auto *first = static_cast<const std::byte *>(data);
+        event.data.assign(first, first + size);
     }
     nk::core::push_event(std::move(event));
 }
@@ -503,6 +548,13 @@ bool set_clipboard_text(const char *text) noexcept {
 
 bool read_clipboard_text(nk_request_id request) noexcept {
     nk_web_read_clipboard_text(static_cast<double>(request));
+    return true;
+}
+
+bool fetch_resource(const char *uri, nk_request_id request) noexcept {
+    if (!uri || request == NK_INVALID_REQUEST_ID)
+        return false;
+    nk_web_fetch_resource(uri, static_cast<double>(request));
     return true;
 }
 

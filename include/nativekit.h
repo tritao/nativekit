@@ -255,7 +255,9 @@ enum NK_ENUM(nk_event_kind) {
     /** A mobile host received a share operation. */
     NK_EVENT_SHARE_RECEIVED = 801,
     /** A mobile host received dropped resources or text. */
-    NK_EVENT_RESOURCE_DROP = 802
+    NK_EVENT_RESOURCE_DROP = 802,
+    /** An asynchronous URI resource load completed with raw byte data. */
+    NK_EVENT_RESOURCE_DATA_COMPLETE = 803
 };
 
 /* ------------------------------------------------------------------------- */

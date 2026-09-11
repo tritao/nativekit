@@ -130,6 +130,7 @@ bool set_cursor(const char *cursor) noexcept;
 void configure_text_input(const TextInputConfig &config) noexcept;
 bool set_clipboard_text(const char *text) noexcept;
 bool read_clipboard_text(nk_request_id request) noexcept;
+bool fetch_resource(const char *uri, nk_request_id request) noexcept;
 
 bool create_webgl_context(const WebGLContextOptions &options,
                           EMSCRIPTEN_WEBGL_CONTEXT_HANDLE *out_context) noexcept;

@@ -266,6 +266,13 @@ NK_API nk_result NK_CALL nk_resource_get_persisted_access(const nk_resource *res
 NK_API nk_result NK_CALL nk_resource_open(const nk_resource *resource,
                                           nk_resource_open_flags flags,
                                           nk_handle *out_stream NK_OUT);
+/**
+ * Starts an asynchronous read of the complete URI resource. Completion is
+ * delivered through NK_EVENT_RESOURCE_DATA_COMPLETE; its event data contains
+ * the loaded bytes and its result reports the fetch outcome.
+ */
+NK_API nk_result NK_CALL nk_resource_load_async(const nk_resource *resource,
+                                                nk_request_id *out_request NK_OUT);
 /** Returns capabilities and size information for a resource stream. */
 NK_API nk_result NK_CALL nk_resource_stream_info_get(nk_handle stream,
                                                      nk_resource_stream_info *out_info);
