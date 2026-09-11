@@ -30,3 +30,16 @@ modules/ui/tools/showcase.sh --smoke-test
 `--static-frame` renders one canonical frame. `--smoke-test` renders 30 frames
 and exits, while `--stats` prints the final retained-list and path-cache
 counters.
+
+The Web host uses one fixed shared linear-memory contract:
+
+```text
+[0, 128 MiB)       NativeKit/Emscripten host heap
+[128, 256 MiB)     Haxeon guest heap
+```
+
+The native `sbrk` boundary rejects host allocations that would enter the
+guest region. The browser shell validates the same boundary and fixed memory
+size before instantiating the guest. This keeps the two allocators from
+silently overlapping; a future dynamic-memory implementation must negotiate
+this contract instead of enabling independent growth.

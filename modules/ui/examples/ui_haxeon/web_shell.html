@@ -45,6 +45,18 @@
       return new TextDecoder().decode(heap.subarray(pointer, end));
     }
 
+    function validateMemoryContract() {
+      const base = Module["_nkui_haxeon_memory_contract_base"]();
+      const limit = Module["_nkui_haxeon_memory_contract_limit"]();
+      const status = Module["_nkui_haxeon_memory_contract_status"]();
+      if (status !== 0)
+        throw new Error("native heap crossed the Haxeon guest boundary");
+      if (!hostMemory || hostMemory.buffer.byteLength !== limit)
+        throw new Error("shared memory size does not match the Haxeon contract");
+      if (base <= 0 || base >= limit)
+        throw new Error("invalid Haxeon guest memory boundary");
+    }
+
     function forward(names) {
       return Object.fromEntries(names.map(name => {
         const value = Module["_" + name];
@@ -165,6 +177,12 @@
       onRuntimeInitialized() {
         if (!hostMemory) {
           setResult(23, "NativeKit host did not expose shared memory");
+          return;
+        }
+        try {
+          validateMemoryContract();
+        } catch (error) {
+          setResult(26, "NativeKit shared memory contract failed: " + error.message);
           return;
         }
         startGuest();
