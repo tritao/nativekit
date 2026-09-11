@@ -17,6 +17,24 @@ struct GpuBufferHandle {
     explicit operator bool() const { return value != 0; }
 };
 
+/** Generation-checked identity for a device-owned GPU image. */
+struct GpuImageHandle {
+    uint32_t value = 0;
+    explicit operator bool() const { return value != 0; }
+};
+
+/** Generation-checked identity for a device-owned GPU view. */
+struct GpuViewHandle {
+    uint32_t value = 0;
+    explicit operator bool() const { return value != 0; }
+};
+
+/** Generation-checked identity for a device-owned GPU sampler. */
+struct GpuSamplerHandle {
+    uint32_t value = 0;
+    explicit operator bool() const { return value != 0; }
+};
+
 /** Device-owned registry for dynamic Sokol resources. */
 class GpuResourceRegistry {
   public:
@@ -29,16 +47,28 @@ class GpuResourceRegistry {
     GpuBufferHandle create_buffer(const sg_buffer_desc &description);
     sg_buffer resolve(GpuBufferHandle handle) const;
     void destroy(GpuBufferHandle handle);
+    GpuImageHandle create_image(const sg_image_desc &description);
+    sg_image resolve(GpuImageHandle handle) const;
+    void destroy(GpuImageHandle handle);
+    GpuViewHandle create_view(const sg_view_desc &description);
+    sg_view resolve(GpuViewHandle handle) const;
+    void destroy(GpuViewHandle handle);
+    GpuSamplerHandle create_sampler(const sg_sampler_desc &description);
+    sg_sampler resolve(GpuSamplerHandle handle) const;
+    void destroy(GpuSamplerHandle handle);
     void clear();
 
   private:
-    struct BufferSlot {
+    template <class T> struct Slot {
         uint16_t generation = 1;
         bool active = false;
-        sg_buffer value{};
+        T value{};
     };
 
-    std::vector<BufferSlot> buffers_;
+    std::vector<Slot<sg_buffer>> buffers_;
+    std::vector<Slot<sg_image>> images_;
+    std::vector<Slot<sg_view>> views_;
+    std::vector<Slot<sg_sampler>> samplers_;
 };
 
 /** Immutable shader, pipeline, and sampler resources shared by UI executors. */

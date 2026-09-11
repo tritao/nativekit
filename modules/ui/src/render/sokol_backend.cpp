@@ -14,8 +14,8 @@ namespace nkui {
 
 struct SokolBackend::State {
     struct AtlasImage {
-        sg_image image{};
-        sg_view view{};
+        GpuImageHandle image{};
+        GpuViewHandle view{};
         int width = 0;
         int height = 0;
         AtlasTextureFormat format = AtlasTextureFormat::R8Mask;
@@ -25,11 +25,11 @@ struct SokolBackend::State {
     };
 
     struct Target {
-        sg_image color{};
-        sg_image depth{};
-        sg_view texture{};
-        sg_view color_attachment{};
-        sg_view depth_attachment{};
+        GpuImageHandle color{};
+        GpuImageHandle depth{};
+        GpuViewHandle texture{};
+        GpuViewHandle color_attachment{};
+        GpuViewHandle depth_attachment{};
         int width = 0;
         int height = 0;
     };
@@ -45,9 +45,9 @@ struct SokolBackend::State {
     };
 
     struct PaintImage {
-        sg_image image{};
-        sg_view view{};
-        sg_sampler sampler{};
+        GpuImageHandle image{};
+        GpuViewHandle view{};
+        GpuSamplerHandle sampler{};
         uint32_t generation = 0;
         int type = 0;
         int flags = 0;
@@ -163,7 +163,8 @@ uint64_t atlas_key(AtlasTextureId texture, uint32_t generation) {
     return (static_cast<uint64_t>(texture.value) << 32) | generation;
 }
 
-bool create_atlas_image(SokolBackend::State::AtlasImage &atlas, const AtlasUpload &upload) {
+bool create_atlas_image(GpuResourceRegistry &gpu, SokolBackend::State::AtlasImage &atlas,
+                        const AtlasUpload &upload) {
     sg_image_desc desc{};
     desc.width = upload.texture_width;
     desc.height = upload.texture_height;
@@ -171,13 +172,15 @@ bool create_atlas_image(SokolBackend::State::AtlasImage &atlas, const AtlasUploa
                             ? SG_PIXELFORMAT_RGBA8
                             : SG_PIXELFORMAT_R8;
     desc.usage.dynamic_update = true;
-    atlas.image = sg_make_image(&desc);
+    atlas.image = gpu.create_image(desc);
     sg_view_desc view_desc{};
-    view_desc.texture.image = atlas.image;
-    atlas.view = sg_make_view(&view_desc);
-    if (sg_query_image_state(atlas.image) != SG_RESOURCESTATE_VALID ||
-        sg_query_view_state(atlas.view) != SG_RESOURCESTATE_VALID)
+    view_desc.texture.image = gpu.resolve(atlas.image);
+    atlas.view = gpu.create_view(view_desc);
+    if (!atlas.image || !atlas.view) {
+        gpu.destroy(atlas.view);
+        gpu.destroy(atlas.image);
         return false;
+    }
     atlas.width = upload.texture_width;
     atlas.height = upload.texture_height;
     atlas.format = upload.format;
@@ -251,12 +254,13 @@ bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
     return true;
 }
 
-void destroy_target(SokolBackend::State::Target &target) {
-    sg_destroy_view(target.depth_attachment);
-    sg_destroy_view(target.color_attachment);
-    sg_destroy_view(target.texture);
-    sg_destroy_image(target.depth);
-    sg_destroy_image(target.color);
+void destroy_target(SokolBackend::State &state, SokolBackend::State::Target &target) {
+    auto &gpu = state.device->gpu_resources();
+    gpu.destroy(target.depth_attachment);
+    gpu.destroy(target.color_attachment);
+    gpu.destroy(target.texture);
+    gpu.destroy(target.depth);
+    gpu.destroy(target.color);
     target = {};
 }
 
@@ -267,31 +271,29 @@ bool create_target(SokolBackend::State &state, SokolBackend::State::Target &targ
     color_desc.height = height;
     color_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
     color_desc.usage.color_attachment = true;
-    target.color = sg_make_image(&color_desc);
+    auto &gpu = state.device->gpu_resources();
+    target.color = gpu.create_image(color_desc);
     sg_image_desc depth_desc{};
     depth_desc.width = width;
     depth_desc.height = height;
     depth_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     depth_desc.usage.depth_stencil_attachment = true;
-    target.depth = sg_make_image(&depth_desc);
+    target.depth = gpu.create_image(depth_desc);
     sg_view_desc texture_desc{};
-    texture_desc.texture.image = target.color;
-    target.texture = sg_make_view(&texture_desc);
+    texture_desc.texture.image = gpu.resolve(target.color);
+    target.texture = gpu.create_view(texture_desc);
     sg_view_desc color_view_desc{};
-    color_view_desc.color_attachment.image = target.color;
-    target.color_attachment = sg_make_view(&color_view_desc);
+    color_view_desc.color_attachment.image = gpu.resolve(target.color);
+    target.color_attachment = gpu.create_view(color_view_desc);
     sg_view_desc depth_view_desc{};
-    depth_view_desc.depth_stencil_attachment.image = target.depth;
-    target.depth_attachment = sg_make_view(&depth_view_desc);
+    depth_view_desc.depth_stencil_attachment.image = gpu.resolve(target.depth);
+    target.depth_attachment = gpu.create_view(depth_view_desc);
     target.width = width;
     target.height = height;
-    const bool valid = sg_query_image_state(target.color) == SG_RESOURCESTATE_VALID &&
-                       sg_query_image_state(target.depth) == SG_RESOURCESTATE_VALID &&
-                       sg_query_view_state(target.texture) == SG_RESOURCESTATE_VALID &&
-                       sg_query_view_state(target.color_attachment) == SG_RESOURCESTATE_VALID &&
-                       sg_query_view_state(target.depth_attachment) == SG_RESOURCESTATE_VALID;
+    const bool valid = target.color && target.depth && target.texture &&
+                       target.color_attachment && target.depth_attachment;
     if (!valid) {
-        destroy_target(target);
+        destroy_target(state, target);
         return fail(state, "offscreen target creation failed");
     }
     state.stats.gpu_resources += 5;
@@ -307,17 +309,18 @@ const PreparedTexture *find_texture(const PreparedPathData &path, PreparedImageT
 
 bool upload_texture(SokolBackend::State &state, const PreparedTexture &source,
                     SokolBackend::State::PaintImage &image) {
-    if (!image.image.id) {
+    auto &gpu = state.device->gpu_resources();
+    if (!image.image) {
         sg_image_desc image_desc{};
         image_desc.width = source.width;
         image_desc.height = source.height;
         image_desc.pixel_format =
             source.type == PreparedTextureRgba ? SG_PIXELFORMAT_RGBA8 : SG_PIXELFORMAT_R8;
         image_desc.usage.dynamic_update = true;
-        image.image = sg_make_image(&image_desc);
+        image.image = gpu.create_image(image_desc);
         sg_view_desc view_desc{};
-        view_desc.texture.image = image.image;
-        image.view = sg_make_view(&view_desc);
+        view_desc.texture.image = gpu.resolve(image.image);
+        image.view = gpu.create_view(view_desc);
         sg_sampler_desc sampler_desc{};
         sampler_desc.min_filter =
             (source.flags & PreparedImageNearest) ? SG_FILTER_NEAREST : SG_FILTER_LINEAR;
@@ -326,18 +329,20 @@ bool upload_texture(SokolBackend::State &state, const PreparedTexture &source,
             (source.flags & PreparedImageRepeatX) ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
         sampler_desc.wrap_v =
             (source.flags & PreparedImageRepeatY) ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
-        image.sampler = sg_make_sampler(&sampler_desc);
-        if (sg_query_image_state(image.image) != SG_RESOURCESTATE_VALID ||
-            sg_query_view_state(image.view) != SG_RESOURCESTATE_VALID ||
-            sg_query_sampler_state(image.sampler) != SG_RESOURCESTATE_VALID)
+        image.sampler = gpu.create_sampler(sampler_desc);
+        if (!image.image || !image.view || !image.sampler) {
+            gpu.destroy(image.sampler);
+            gpu.destroy(image.view);
+            gpu.destroy(image.image);
             return fail(state, "prepared path texture creation failed");
+        }
         image.type = source.type;
         image.flags = source.flags;
         state.stats.gpu_resources += 3;
     }
     if (image.generation != source.generation) {
         const sg_image_data data = {.mip_levels = {{source.pixels.data(), source.pixels.size()}}};
-        sg_update_image(image.image, &data);
+        sg_update_image(gpu.resolve(image.image), &data);
         image.generation = source.generation;
         ++state.stats.image_uploads;
         state.stats.uploaded_bytes += source.pixels.size();
@@ -361,8 +366,8 @@ bool resolve_paint_image(SokolBackend::State &state, const PreparedPathData &pat
     auto &image = state.paint_images[&path][token];
     if (!upload_texture(state, *source, image))
         return false;
-    view = image.view;
-    sampler = image.sampler;
+    view = state.device->gpu_resources().resolve(image.view);
+    sampler = state.device->gpu_resources().resolve(image.sampler);
     type = image.type;
     flags = image.flags;
     return true;
@@ -502,31 +507,31 @@ SokolBackend::SokolBackend() : state_(new State) {}
 
 SokolBackend::~SokolBackend() {
     if (state_->device) {
+        auto &gpu = state_->device->gpu_resources();
         for (auto &[owner, images] : state_->paint_images) {
             (void)owner;
             for (auto &[id, image] : images) {
                 (void)id;
-                sg_destroy_sampler(image.sampler);
-                sg_destroy_view(image.view);
-                sg_destroy_image(image.image);
+                gpu.destroy(image.sampler);
+                gpu.destroy(image.view);
+                gpu.destroy(image.image);
             }
         }
         for (auto &[id, image] : state_->images) {
             (void)id;
-            sg_destroy_sampler(image.sampler);
-            sg_destroy_view(image.view);
-            sg_destroy_image(image.image);
+            gpu.destroy(image.sampler);
+            gpu.destroy(image.view);
+            gpu.destroy(image.image);
         }
         for (auto &[id, target] : state_->targets) {
             (void)id;
-            destroy_target(target);
+            destroy_target(*state_, target);
         }
         for (const auto &[id, atlas] : state_->atlases) {
             (void)id;
-            sg_destroy_view(atlas.view);
-            sg_destroy_image(atlas.image);
+            gpu.destroy(atlas.view);
+            gpu.destroy(atlas.image);
         }
-        auto &gpu = state_->device->gpu_resources();
         gpu.destroy(state_->indices);
         gpu.destroy(state_->composite_vertices);
         gpu.destroy(state_->glyph_vertices);
@@ -602,8 +607,8 @@ bool SokolBackend::begin_target_pass(ResourceId target_id, int width, int height
         return fail(*state_, "invalid offscreen pass");
     auto &target = state_->targets[target_id.value];
     if (target.width != width || target.height != height) {
-        if (target.color.id) {
-            destroy_target(target);
+        if (target.color) {
+            destroy_target(*state_, target);
             state_->stats.gpu_resources -= 5;
         }
         if (!create_target(*state_, target, width, height))
@@ -616,8 +621,9 @@ bool SokolBackend::begin_target_pass(ResourceId target_id, int width, int height
     pass.action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 0.0f};
     pass.action.depth = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 1.0f};
     pass.action.stencil = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 0};
-    pass.attachments.colors[0] = target.color_attachment;
-    pass.attachments.depth_stencil = target.depth_attachment;
+    pass.attachments.colors[0] = state_->device->gpu_resources().resolve(target.color_attachment);
+    pass.attachments.depth_stencil =
+        state_->device->gpu_resources().resolve(target.depth_attachment);
     sg_begin_pass(&pass);
     state_->in_pass = true;
     ++state_->stats.passes;
@@ -789,8 +795,10 @@ bool SokolBackend::draw_image(const PreparedTexture &image, float x, float y, fl
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
         return draw_mesh(*state_, state_->device->resources().composite_pipeline, vertices, indices,
-                         tint.data(),
-                     sizeof(tint), gpu_image.view, gpu_image.sampler, state_->composite_vertices);
+                         tint.data(), sizeof(tint),
+                         state_->device->gpu_resources().resolve(gpu_image.view),
+                         state_->device->gpu_resources().resolve(gpu_image.sampler),
+                         state_->composite_vertices);
 }
 
 bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) {
@@ -813,7 +821,7 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
         bool full_upload = !upload.dirty || dirty_covers_image;
         if (found == state_->atlases.end()) {
             State::AtlasImage atlas;
-            if (!create_atlas_image(atlas, upload))
+            if (!create_atlas_image(state_->device->gpu_resources(), atlas, upload))
                 return fail(*state_, "atlas image creation failed");
             found = state_->atlases.emplace(key, std::move(atlas)).first;
             state_->stats.gpu_resources += 2;
@@ -840,7 +848,7 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
         if (full_upload) {
             const sg_image_data data = {
                 .mip_levels = {{found->second.pixels.data(), found->second.pixels.size()}}};
-            sg_update_image(found->second.image, &data);
+            sg_update_image(state_->device->gpu_resources().resolve(found->second.image), &data);
             ++state_->stats.atlas_full_uploads;
             uploaded_bytes = found->second.pixels.size();
         } else {
@@ -851,7 +859,7 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
                               static_cast<size_t>(upload.x) * upload.bytes_per_pixel;
             data.src.bytes_per_row = upload.row_pitch;
             data.src.bytes_per_slice = upload.row_pitch * upload.height;
-            data.dst.image = found->second.image;
+            data.dst.image = state_->device->gpu_resources().resolve(found->second.image);
             data.dst.mip_level = 0;
             data.dst.x = upload.x;
             data.dst.y = upload.y;
@@ -910,7 +918,8 @@ bool SokolBackend::draw_glyphs_transformed(const PreparedGlyphs &glyphs, const f
         indices.reserve(batch.index_count);
         for (uint32_t index = 0; index < batch.index_count; ++index)
             indices.push_back(glyphs.indices[batch.first_index + index] - batch.first_vertex);
-        if (!draw_mesh(*state_, pipeline, vertices, indices, nullptr, 0, atlas->second.view,
+        if (!draw_mesh(*state_, pipeline, vertices, indices, nullptr, 0,
+                       state_->device->gpu_resources().resolve(atlas->second.view),
                        state_->device->resources().sampler, state_->glyph_vertices))
             return false;
     }
@@ -945,8 +954,8 @@ bool SokolBackend::draw_target(ResourceId target_id, float x, float y, float wid
             return fail(*state_, "surface filter is unsupported");
     }
     return draw_mesh(*state_, state_->device->resources().composite_pipeline, vertices, indices,
-                     tint.data(),
-                     sizeof(tint), found->second.texture, sampler,
+                     tint.data(), sizeof(tint),
+                     state_->device->gpu_resources().resolve(found->second.texture), sampler,
                      state_->composite_vertices);
 }
 

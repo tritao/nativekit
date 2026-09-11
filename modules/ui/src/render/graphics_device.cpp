@@ -35,6 +35,23 @@ bool decode_buffer_handle(GpuBufferHandle handle, size_t &slot, uint16_t &genera
     return true;
 }
 
+template <class Handle>
+uint32_t encode_handle(size_t slot, uint16_t generation) {
+    return (static_cast<uint32_t>(generation) << 16) |
+           static_cast<uint32_t>(slot + 1);
+}
+
+template <class Handle>
+bool decode_handle(Handle handle, size_t &slot, uint16_t &generation) {
+    const uint32_t encoded_slot = handle.value & kHandleSlotMask;
+    const uint32_t encoded_generation = (handle.value >> 16) & kHandleGenerationMask;
+    if (!encoded_slot || !encoded_generation)
+        return false;
+    slot = encoded_slot - 1;
+    generation = static_cast<uint16_t>(encoded_generation);
+    return true;
+}
+
 struct PathVertex {
     float x;
     float y;
@@ -300,7 +317,157 @@ void GpuResourceRegistry::destroy(GpuBufferHandle handle) {
     slot.generation = static_cast<uint16_t>((slot.generation % kHandleGenerationMask) + 1);
 }
 
+GpuImageHandle GpuResourceRegistry::create_image(const sg_image_desc &description) {
+    size_t slot_index = images_.size();
+    for (size_t index = 0; index < images_.size(); ++index) {
+        if (!images_[index].active) {
+            slot_index = index;
+            break;
+        }
+    }
+    if (slot_index >= kHandleSlotMask)
+        return {};
+    if (slot_index == images_.size())
+        images_.push_back({});
+    auto &slot = images_[slot_index];
+    slot.value = sg_make_image(&description);
+    if (sg_query_image_state(slot.value) != SG_RESOURCESTATE_VALID) {
+        slot.value = {};
+        return {};
+    }
+    slot.active = true;
+    return {encode_handle<GpuImageHandle>(slot_index, slot.generation)};
+}
+
+sg_image GpuResourceRegistry::resolve(GpuImageHandle handle) const {
+    size_t slot_index = 0;
+    uint16_t generation = 0;
+    if (!decode_handle(handle, slot_index, generation) || slot_index >= images_.size())
+        return {};
+    const auto &slot = images_[slot_index];
+    return slot.active && slot.generation == generation ? slot.value : sg_image{};
+}
+
+void GpuResourceRegistry::destroy(GpuImageHandle handle) {
+    size_t slot_index = 0;
+    uint16_t generation = 0;
+    if (!decode_handle(handle, slot_index, generation) || slot_index >= images_.size())
+        return;
+    auto &slot = images_[slot_index];
+    if (!slot.active || slot.generation != generation)
+        return;
+    sg_destroy_image(slot.value);
+    slot.value = {};
+    slot.active = false;
+    slot.generation = static_cast<uint16_t>((slot.generation % kHandleGenerationMask) + 1);
+}
+
+GpuViewHandle GpuResourceRegistry::create_view(const sg_view_desc &description) {
+    size_t slot_index = views_.size();
+    for (size_t index = 0; index < views_.size(); ++index) {
+        if (!views_[index].active) {
+            slot_index = index;
+            break;
+        }
+    }
+    if (slot_index >= kHandleSlotMask)
+        return {};
+    if (slot_index == views_.size())
+        views_.push_back({});
+    auto &slot = views_[slot_index];
+    slot.value = sg_make_view(&description);
+    if (sg_query_view_state(slot.value) != SG_RESOURCESTATE_VALID) {
+        slot.value = {};
+        return {};
+    }
+    slot.active = true;
+    return {encode_handle<GpuViewHandle>(slot_index, slot.generation)};
+}
+
+sg_view GpuResourceRegistry::resolve(GpuViewHandle handle) const {
+    size_t slot_index = 0;
+    uint16_t generation = 0;
+    if (!decode_handle(handle, slot_index, generation) || slot_index >= views_.size())
+        return {};
+    const auto &slot = views_[slot_index];
+    return slot.active && slot.generation == generation ? slot.value : sg_view{};
+}
+
+void GpuResourceRegistry::destroy(GpuViewHandle handle) {
+    size_t slot_index = 0;
+    uint16_t generation = 0;
+    if (!decode_handle(handle, slot_index, generation) || slot_index >= views_.size())
+        return;
+    auto &slot = views_[slot_index];
+    if (!slot.active || slot.generation != generation)
+        return;
+    sg_destroy_view(slot.value);
+    slot.value = {};
+    slot.active = false;
+    slot.generation = static_cast<uint16_t>((slot.generation % kHandleGenerationMask) + 1);
+}
+
+GpuSamplerHandle GpuResourceRegistry::create_sampler(const sg_sampler_desc &description) {
+    size_t slot_index = samplers_.size();
+    for (size_t index = 0; index < samplers_.size(); ++index) {
+        if (!samplers_[index].active) {
+            slot_index = index;
+            break;
+        }
+    }
+    if (slot_index >= kHandleSlotMask)
+        return {};
+    if (slot_index == samplers_.size())
+        samplers_.push_back({});
+    auto &slot = samplers_[slot_index];
+    slot.value = sg_make_sampler(&description);
+    if (sg_query_sampler_state(slot.value) != SG_RESOURCESTATE_VALID) {
+        slot.value = {};
+        return {};
+    }
+    slot.active = true;
+    return {encode_handle<GpuSamplerHandle>(slot_index, slot.generation)};
+}
+
+sg_sampler GpuResourceRegistry::resolve(GpuSamplerHandle handle) const {
+    size_t slot_index = 0;
+    uint16_t generation = 0;
+    if (!decode_handle(handle, slot_index, generation) || slot_index >= samplers_.size())
+        return {};
+    const auto &slot = samplers_[slot_index];
+    return slot.active && slot.generation == generation ? slot.value : sg_sampler{};
+}
+
+void GpuResourceRegistry::destroy(GpuSamplerHandle handle) {
+    size_t slot_index = 0;
+    uint16_t generation = 0;
+    if (!decode_handle(handle, slot_index, generation) || slot_index >= samplers_.size())
+        return;
+    auto &slot = samplers_[slot_index];
+    if (!slot.active || slot.generation != generation)
+        return;
+    sg_destroy_sampler(slot.value);
+    slot.value = {};
+    slot.active = false;
+    slot.generation = static_cast<uint16_t>((slot.generation % kHandleGenerationMask) + 1);
+}
+
 void GpuResourceRegistry::clear() {
+    for (auto &slot : samplers_) {
+        if (slot.active)
+            sg_destroy_sampler(slot.value);
+        slot = {};
+    }
+    for (auto &slot : views_) {
+        if (slot.active)
+            sg_destroy_view(slot.value);
+        slot = {};
+    }
+    for (auto &slot : images_) {
+        if (slot.active)
+            sg_destroy_image(slot.value);
+        slot = {};
+    }
     for (auto &slot : buffers_) {
         if (slot.active)
             sg_destroy_buffer(slot.value);
