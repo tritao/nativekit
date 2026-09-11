@@ -2,6 +2,8 @@
 #define NATIVEKIT_UI_SKRIBIDI_ADAPTER_H
 
 #include <cstdint>
+#include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -115,6 +117,8 @@ class SkribidiAdapter {
     bool valid() const;
     bool set_atlas_namespace(uint16_t value);
     bool add_font(const char *path, FontFamily family = FontFamily::Default);
+    bool add_font_from_data(const char *name, const void *data, std::size_t bytes,
+                            FontFamily family = FontFamily::Default);
     bool layout_utf8(const char *text, float width, float font_size);
     bool prepare_glyphs(float origin_x, float origin_y, float pixel_scale, GlyphMode mode,
                         PreparedGlyphs &output);

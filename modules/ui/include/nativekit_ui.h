@@ -474,6 +474,13 @@ NKUI_API nkui_result nkui_font_collection_create(nkui_resource *out_fonts NKUI_O
 NKUI_API nkui_result nkui_font_collection_add(nkui_resource fonts, const char *path NKUI_UTF8,
                                               nkui_font_family family);
 
+/** Adds a copied TTF/OTF byte buffer, suitable for asynchronously fetched browser assets. */
+NKUI_API nkui_result nkui_font_collection_add_data(
+    nkui_resource fonts, const char *name NKUI_UTF8,
+    const uint8_t *font_data NKUI_IN_ARRAY(font_bytes), uint32_t font_bytes,
+    nkui_font_family family);
+
+
 /**
  * Shapes and lays out a UTF-8 string within a maximum width.
  *

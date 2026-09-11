@@ -25,6 +25,7 @@ struct SkribidiAdapter::State {
     uint64_t cached_font_generation = 0;
     uint32_t layout_builds = 0;
     uint64_t prepared_batch_count = 0;
+    std::vector<std::shared_ptr<std::vector<uint8_t>>> font_data;
 };
 
 namespace {
@@ -165,6 +166,28 @@ bool SkribidiAdapter::add_font(const char *path, FontFamily family) {
     if (!path || !skb_font_collection_add_font(state_->fonts, path, skb_family, nullptr))
         return false;
     return true;
+}
+
+bool SkribidiAdapter::add_font_from_data(const char *name, const void *data, std::size_t bytes,
+                                         FontFamily family) {
+    const uint8_t skb_family =
+        family == FontFamily::Emoji ? SKB_FONT_FAMILY_EMOJI : SKB_FONT_FAMILY_DEFAULT;
+    if (!name || !*name || !data || !bytes || !valid())
+        return false;
+    try {
+        auto owned = std::make_shared<std::vector<uint8_t>>(
+            static_cast<const uint8_t *>(data), static_cast<const uint8_t *>(data) + bytes);
+        state_->font_data.push_back(owned);
+        if (!skb_font_collection_add_font_from_data(state_->fonts, name, owned->data(),
+                                                    owned->size(), nullptr, nullptr, skb_family,
+                                                    nullptr)) {
+            state_->font_data.pop_back();
+            return false;
+        }
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size) {

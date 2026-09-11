@@ -47,6 +47,7 @@ struct DisplayListSlot {
 struct FontEntry {
     std::string path;
     nkui::FontFamily family = nkui::FontFamily::Default;
+    std::shared_ptr<std::vector<uint8_t>> data;
 };
 
 struct ResourceSlot {
@@ -561,6 +562,29 @@ extern "C" nkui_result nkui_font_collection_add(nkui_resource fonts, const char 
     return NKUI_OK;
 }
 
+extern "C" nkui_result nkui_font_collection_add_data(nkui_resource fonts, const char *name,
+                                                      const uint8_t *font_data,
+                                                      uint32_t font_bytes,
+                                                      nkui_font_family family) {
+    if (!name || !*name || !font_data || !font_bytes ||
+        (family != NKUI_FONT_FAMILY_DEFAULT && family != NKUI_FONT_FAMILY_EMOJI))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(fonts, nkui::ResourceKind::FontCollection);
+    if (!slot)
+        return NKUI_ERROR_INVALID_HANDLE;
+    try {
+        auto data = std::make_shared<std::vector<uint8_t>>(font_data, font_data + font_bytes);
+        slot->fonts.push_back({name, family == NKUI_FONT_FAMILY_EMOJI ? nkui::FontFamily::Emoji
+                                                                       : nkui::FontFamily::Default,
+                               std::move(data)});
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    return NKUI_OK;
+}
+
+
 extern "C" nkui_result nkui_text_layout_create(nkui_resource fonts, const char *text, float width,
                                                float font_size, nkui_resource *out_layout) {
     if (!text || !out_layout || !std::isfinite(width) || !std::isfinite(font_size) ||
@@ -590,8 +614,14 @@ extern "C" nkui_result nkui_text_layout_create(nkui_resource fonts, const char *
     }
     bool valid = layout_slot->text->valid() &&
                  layout_slot->text->set_atlas_namespace(static_cast<uint16_t>(out_layout->id));
-    for (const auto &font : font_entries)
-        valid = valid && layout_slot->text->add_font(font.path.c_str(), font.family);
+    for (const auto &font : font_entries) {
+        if (font.data)
+            valid = valid && layout_slot->text->add_font_from_data(
+                                 font.path.c_str(), font.data->data(), font.data->size(),
+                                 font.family);
+        else
+            valid = valid && layout_slot->text->add_font(font.path.c_str(), font.family);
+    }
     valid = valid && layout_slot->text->layout_utf8(text, width, font_size);
     valid = valid && layout_slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha,
                                                        layout_slot->text_glyphs);
