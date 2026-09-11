@@ -39,8 +39,9 @@ The Web host uses version 1 of a generated shared linear-memory contract:
 ```
 
 The generated JSON contract is consumed by C++, Haxeon, and the browser. The
-native `sbrk` boundary rejects host allocations that would enter the guest
-region. The browser compares the host exports with the guest Wasm contract
-section before instantiating the guest. This keeps the two allocators from
-silently overlapping; a future dynamic-memory implementation must negotiate
-a new contract version instead of enabling independent growth.
+NativeKit host uses an explicit bounded allocator rooted at Emscripten's heap
+base and refuses allocations outside the host region. The browser compares the
+host exports with the guest Wasm contract section before instantiating the
+guest. This keeps the two allocators from silently overlapping; a future
+dynamic-memory implementation must negotiate a new contract version instead of
+enabling independent growth.
