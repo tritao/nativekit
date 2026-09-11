@@ -1,0 +1,71 @@
+#ifndef NATIVEKIT_UI_LAYOUT_RENDER_COMPILER_H
+#define NATIVEKIT_UI_LAYOUT_RENDER_COMPILER_H
+
+#include "compositor/render_plan.h"
+#include "layout/layout_types.h"
+#include "render/frame_resources.h"
+
+#include <cstddef>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace nkui {
+
+struct LayoutRenderCompileError {
+    std::size_t primitive_index = 0;
+    const char *message = nullptr;
+};
+
+/**
+ * Owns the prepared resources referenced by one layout render plan.
+ *
+ * The frame must remain alive until its plan has finished executing because
+ * FrameResources deliberately stores non-owning references to prepared data.
+ * The text adapter is retained across compilations so atlas state can be
+ * reused by a UI session.
+ */
+class LayoutRenderFrame {
+  public:
+    LayoutRenderFrame() = default;
+    ~LayoutRenderFrame() = default;
+    LayoutRenderFrame(const LayoutRenderFrame &) = delete;
+    LayoutRenderFrame &operator=(const LayoutRenderFrame &) = delete;
+
+    const RenderPlan &plan() const { return plan_; }
+    const FrameResources &resources() const { return resources_; }
+    FrameResources &resources() { return resources_; }
+    SkribidiAdapter *text_adapter() { return text_.get(); }
+    const SkribidiAdapter *text_adapter() const { return text_.get(); }
+
+  private:
+    friend class LayoutRenderCompiler;
+
+    void reset();
+
+    RenderPlan plan_;
+    FrameResources resources_;
+    std::unique_ptr<SkribidiAdapter> text_;
+    std::vector<std::unique_ptr<PreparedPath>> paths_;
+    std::vector<std::unique_ptr<PreparedGlyphs>> glyphs_;
+    std::size_t configured_font_count_ = 0;
+    bool configured_system_fallbacks_ = false;
+};
+
+/** Compiles NativeKit-owned layout output into the backend-neutral render plan. */
+class LayoutRenderCompiler {
+  public:
+    bool add_font(const char *path);
+    bool add_system_fallbacks();
+
+    bool compile(const LayoutSnapshot &snapshot, ResourceId main_target, float pixel_scale,
+                 LayoutRenderFrame &out, LayoutRenderCompileError *error = nullptr) const;
+
+  private:
+    std::vector<std::string> font_paths_;
+    bool system_fallbacks_ = false;
+};
+
+} // namespace nkui
+
+#endif

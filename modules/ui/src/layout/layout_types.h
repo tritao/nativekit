@@ -97,6 +97,10 @@ struct LayoutPrimitive {
     uint32_t node_id = 0;
     LayoutRect bounds{};
     LayoutColor color{};
+    float radius_top_left = 0.0f;
+    float radius_top_right = 0.0f;
+    float radius_bottom_left = 0.0f;
+    float radius_bottom_right = 0.0f;
     std::string text;
     uint16_t font_id = 0;
     uint16_t font_size = 0;

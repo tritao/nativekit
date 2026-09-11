@@ -155,6 +155,10 @@ void append_primitive(LayoutSnapshot &snapshot, const Clay_RenderCommand &comman
     case CLAY_RENDER_COMMAND_TYPE_RECTANGLE:
         primitive.kind = LayoutPrimitiveKind::Rectangle;
         primitive.color = color_from(command.renderData.rectangle.backgroundColor);
+        primitive.radius_top_left = command.renderData.rectangle.cornerRadius.topLeft;
+        primitive.radius_top_right = command.renderData.rectangle.cornerRadius.topRight;
+        primitive.radius_bottom_left = command.renderData.rectangle.cornerRadius.bottomLeft;
+        primitive.radius_bottom_right = command.renderData.rectangle.cornerRadius.bottomRight;
         break;
     case CLAY_RENDER_COMMAND_TYPE_BORDER:
         primitive.kind = LayoutPrimitiveKind::Border;
