@@ -1023,8 +1023,15 @@ nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource) {
 nk_result NK_CALL nk_share(const nk_share_options *options) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
-    if (!options || options->struct_size < sizeof(nk_share_options) ||
-        (!options->text && options->resource_count == 0)) {
+    if (!options || options->struct_size < sizeof(nk_share_options)) {
+        nk::core::set_error("invalid share options");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    if (options->flags != 0) {
+        nk::core::set_error("share option flags are reserved and must be zero");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    if (!options->text && options->resource_count == 0) {
         nk::core::set_error("share options must contain text or resources");
         return NK_ERROR_INVALID_ARGUMENT;
     }
