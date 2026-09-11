@@ -186,5 +186,19 @@ int main() {
     if (!adapter.layout_utf8("NativeKit text options", 500.0f, options) ||
         adapter.layout_build_count() != options_builds)
         return 38;
-    return glyphs.vertices.size() % 4 == 0 && glyphs.indices.size() % 6 == 0 ? 0 : 39;
+    TextLayoutOptions wrapped_options;
+    wrapped_options.font_size = 24.0f;
+    wrapped_options.wrap = TextWrapMode::WordCharacter;
+    TextLayoutResult wrapped;
+    if (!adapter.layout_utf8("Skribidi owns paragraph wrapping in NativeKit", 90.0f,
+                            wrapped_options, &wrapped) ||
+        !wrapped.id || wrapped.lines.size() < 2)
+        return 39;
+    PreparedGlyphs first_line;
+    PreparedGlyphs second_line;
+    if (!adapter.prepare_glyphs_for_line(0, 0.0f, 0.0f, 1.0f, GlyphMode::Alpha, first_line) ||
+        !adapter.prepare_glyphs_for_line(1, 0.0f, 0.0f, 1.0f, GlyphMode::Alpha, second_line) ||
+        first_line.vertices.empty() || second_line.vertices.empty())
+        return 40;
+    return glyphs.vertices.size() % 4 == 0 && glyphs.indices.size() % 6 == 0 ? 0 : 41;
 }

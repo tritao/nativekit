@@ -20,10 +20,11 @@ and button activation without exposing a public layout ABI yet.
 
 `LayoutEngine` is a NativeKit-owned facade over a replaceable `LayoutBackend`;
 the current implementation is `ClayLayoutBackend`. Clay types stay inside that
-adapter. In the current text-boundary experiment, Clay still chooses line
-breaks for box layout, while Skribidi supplies intrinsic metrics and shapes
-each emitted line without wrapping it a second time. This keeps the replacement
-seam explicit while the external paragraph-layout interface is evaluated.
+adapter. NativeKit registers Clay's generic external paragraph-layout callback:
+Skribidi supplies intrinsic metrics, line breaks, bidi/shaping geometry, and an
+opaque `TextLayoutId`; Clay contributes box constraints and line placement but
+does not run its internal word wrapping. The resulting snapshot carries the
+ID and line index through to glyph preparation.
 
 See the repository-level [`vendor/README.md`](../../vendor/README.md) for pinned revisions and
 [`docs/integration-plan.md`](docs/integration-plan.md) for the integration

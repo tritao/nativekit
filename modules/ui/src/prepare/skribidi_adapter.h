@@ -23,20 +23,13 @@ enum class AtlasTextureFormat : uint8_t {
     Rgba8Premultiplied,
 };
 
-enum class TextWrapMode : uint8_t {
-    None = 0,
-    Word,
-    WordCharacter,
-};
-
 struct TextLayoutOptions {
     float font_size = 16.0f;
     float letter_spacing = 0.0f;
     float line_height = 0.0f;
     FontFamily family = FontFamily::Default;
     TextWrapMode wrap = TextWrapMode::WordCharacter;
-    bool align_center = false;
-    bool align_end = false;
+    TextAlignment alignment = TextAlignment::Start;
 };
 
 struct GlyphVertex {
@@ -96,6 +89,18 @@ struct TextRect {
     float height = 0.0f;
 };
 
+struct TextLayoutLine {
+    std::size_t text_offset = 0;
+    std::size_t text_length = 0;
+    TextRect bounds{};
+};
+
+struct TextLayoutResult {
+    TextLayoutId id = 0;
+    TextRect bounds{};
+    std::vector<TextLayoutLine> lines;
+};
+
 struct AtlasUpload {
     AtlasTextureId texture;
     uint8_t texture_index = 0;
@@ -138,8 +143,12 @@ class SkribidiAdapter {
     bool add_system_fallbacks();
     bool layout_utf8(const char *text, float width, float font_size);
     bool layout_utf8(const char *text, float width, const TextLayoutOptions &options);
+    bool layout_utf8(const char *text, float width, const TextLayoutOptions &options,
+                     TextLayoutResult *result);
     bool prepare_glyphs(float origin_x, float origin_y, float pixel_scale, GlyphMode mode,
                         PreparedGlyphs &output);
+    bool prepare_glyphs_for_line(uint32_t line_index, float origin_x, float origin_y,
+                                 float pixel_scale, GlyphMode mode, PreparedGlyphs &output);
     bool prepared_glyphs_current(const PreparedGlyphs &glyphs) const;
     TextRect bounds() const;
     TextPosition hit_test(float x, float y) const;
@@ -160,6 +169,10 @@ class SkribidiAdapter {
     struct State;
 
   private:
+    bool prepare_glyphs_internal(float origin_x, float origin_y, float pixel_scale, GlyphMode mode,
+                                 PreparedGlyphs &output, int32_t line_start, int32_t line_end,
+                                 float line_x, float line_y);
+
     State *state_ = nullptr;
 };
 

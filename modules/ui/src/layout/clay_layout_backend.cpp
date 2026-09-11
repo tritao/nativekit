@@ -74,12 +74,17 @@ struct ClayLayoutBackend::State {
         context = Clay_Initialize(
             Clay_CreateArenaWithCapacityAndMemory(clay_memory.size(), clay_memory.data()),
             {1.0f, 1.0f}, error_handler);
-        if (context)
+        if (context) {
             Clay_SetMeasureTextFunction(measure_text, this);
+            Clay_SetLayoutTextFunction(layout_text, this);
+        }
     }
 
     static Clay_Dimensions measure_text(Clay_StringSlice text, Clay_TextElementConfig *config,
                                         void *user_data);
+    static Clay_TextLayoutResult layout_text(Clay_StringSlice text,
+                                              Clay_TextElementConfig *config,
+                                              float available_width, void *user_data);
 
     std::size_t max_nodes = 0;
     std::vector<char> clay_memory;
@@ -88,6 +93,8 @@ struct ClayLayoutBackend::State {
     const std::vector<LayoutNode> *nodes = nullptr;
     std::vector<std::vector<std::size_t>> children;
     std::vector<Clay_ElementId> element_ids;
+    std::unordered_map<TextLayoutId, LayoutTextLayout> text_layouts;
+    std::vector<Clay_TextLayoutLine> callback_lines;
     std::string clay_error;
     bool previous_pointer_down = false;
 };
@@ -104,14 +111,87 @@ Clay_Dimensions ClayLayoutBackend::State::measure_text(Clay_StringSlice text,
     options.font_size = config->fontSize > 0 ? static_cast<float>(config->fontSize) : 16.0f;
     options.letter_spacing = static_cast<float>(config->letterSpacing);
     options.line_height = static_cast<float>(config->lineHeight);
-    // Clay remains responsible for choosing line breaks in this backend. The
-    // text engine supplies intrinsic metrics using the same shaping options.
+    // Clay asks the text engine for intrinsic metrics without imposing a
+    // paragraph width. The paragraph callback below owns actual line breaks.
     options.wrap = TextWrapMode::None;
     if (!state.text.layout_utf8(value.c_str(), kUnboundedTextWidth, options))
         return {0.0f, config->lineHeight > 0 ? static_cast<float>(config->lineHeight) : 0.0f};
     const TextRect bounds = state.text.bounds();
     return {bounds.width, config->lineHeight > 0 ? static_cast<float>(config->lineHeight)
                                                   : bounds.height};
+}
+
+Clay_TextLayoutResult ClayLayoutBackend::State::layout_text(Clay_StringSlice text,
+                                                            Clay_TextElementConfig *config,
+                                                            float available_width,
+                                                            void *user_data) {
+    auto &state = *static_cast<State *>(user_data);
+    Clay_TextLayoutResult result{};
+    if (!config || text.length < 0 || (!text.chars && text.length != 0) ||
+        !std::isfinite(available_width) || available_width <= 0.0f)
+        return result;
+
+    try {
+        const std::string value(text.chars ? text.chars : "", static_cast<std::size_t>(text.length));
+        TextLayoutOptions options;
+        options.font_size = config->fontSize > 0 ? static_cast<float>(config->fontSize) : 16.0f;
+        options.letter_spacing = static_cast<float>(config->letterSpacing);
+        options.line_height = static_cast<float>(config->lineHeight);
+        options.wrap = config->wrapMode == CLAY_TEXT_WRAP_NONE
+                           ? TextWrapMode::None
+                       : config->wrapMode == CLAY_TEXT_WRAP_NEWLINES ? TextWrapMode::Word
+                                                                      : TextWrapMode::WordCharacter;
+        options.alignment = config->textAlignment == CLAY_TEXT_ALIGN_CENTER
+                                ? TextAlignment::Center
+                            : config->textAlignment == CLAY_TEXT_ALIGN_RIGHT ? TextAlignment::End
+                                                                             : TextAlignment::Start;
+
+        TextLayoutResult shaped;
+        if (!state.text.layout_utf8(value.c_str(), available_width, options, &shaped) ||
+            shaped.id == 0)
+            return result;
+
+        LayoutTextLayout native_layout;
+        native_layout.id = shaped.id;
+        native_layout.node_id = config->userData
+                                    ? static_cast<const LayoutNode *>(config->userData)->id
+                                    : 0;
+        native_layout.text = value;
+        native_layout.width = available_width;
+        native_layout.height = shaped.bounds.height;
+        native_layout.font_id = config->fontId;
+        native_layout.font_size = config->fontSize;
+        native_layout.line_height = config->lineHeight;
+        native_layout.letter_spacing = config->letterSpacing;
+        native_layout.wrap = options.wrap;
+        native_layout.alignment = options.alignment;
+        native_layout.lines.reserve(shaped.lines.size());
+        state.callback_lines.clear();
+        state.callback_lines.reserve(shaped.lines.size());
+        for (const TextLayoutLine &line : shaped.lines) {
+            if (line.text_offset > value.size() ||
+                line.text_length > value.size() - line.text_offset ||
+                line.text_length > static_cast<std::size_t>(INT32_MAX))
+                return result;
+            native_layout.lines.push_back(
+                {line.text_offset, line.text_length,
+                 {line.bounds.x, line.bounds.y, line.bounds.width, line.bounds.height}});
+            const char *line_chars = text.chars ? text.chars + line.text_offset : nullptr;
+            state.callback_lines.push_back(
+                {{line.bounds.width, line.bounds.height},
+                 {static_cast<int32_t>(line.text_length), line_chars, text.chars},
+                 {line.bounds.x, 0.0f}});
+        }
+        state.text_layouts[shaped.id] = std::move(native_layout);
+        result.success = true;
+        result.dimensions = {available_width, shaped.bounds.height};
+        result.lineCount = static_cast<int32_t>(state.callback_lines.size());
+        result.lines = state.callback_lines.data();
+        result.layoutId = shaped.id;
+        return result;
+    } catch (...) {
+        return {};
+    }
 }
 
 namespace {
@@ -202,6 +282,8 @@ void append_primitive(LayoutSnapshot &snapshot, const Clay_RenderCommand &comman
         primitive.font_size = command.renderData.text.fontSize;
         primitive.line_height = command.renderData.text.lineHeight;
         primitive.letter_spacing = command.renderData.text.letterSpacing;
+        primitive.text_layout_id = command.renderData.text.textLayoutId;
+        primitive.text_line_index = command.renderData.text.textLineIndex;
         break;
     case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:
         primitive.kind = LayoutPrimitiveKind::ClipBegin;
@@ -258,6 +340,8 @@ bool ClayLayoutBackend::layout(const std::vector<LayoutNode> &nodes, float width
     state.children.assign(nodes.size(), {});
     state.element_ids.resize(nodes.size());
     state.clay_error.clear();
+    state.text_layouts.clear();
+    state.callback_lines.clear();
 
     std::size_t root = nodes.size();
     std::vector<uint8_t> marks(nodes.size(), 0);
@@ -343,6 +427,9 @@ bool ClayLayoutBackend::layout(const std::vector<LayoutNode> &nodes, float width
         if (command)
             append_primitive(out, *command);
     }
+    out.text_layouts.reserve(state.text_layouts.size());
+    for (const auto &entry : state.text_layouts)
+        out.text_layouts.push_back(entry.second);
 
     if (state.previous_pointer_down && !pointer_down) {
         for (const LayoutItem &item : out.items) {

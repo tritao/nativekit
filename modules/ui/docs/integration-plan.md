@@ -46,8 +46,11 @@ authority, and ordinary images bypass NanoVG entirely.
 3. Define a UTF-8 paragraph request containing available width, scale, locale,
    font candidates, size, weight, spacing, alignment, and spans. Return stable
    internal layout IDs plus width, height, and baseline metrics.
-4. Make text measurement a callback of box layout. Cache by text/style/font
-   generation/width/scale so repeated layout passes do not reshape text.
+4. Make intrinsic measurement and paragraph layout callbacks of box layout.
+   Skribidi returns line records and an opaque text-layout ID; Clay only
+   consumes the resulting line dimensions and forwards the ID/line index.
+   Cache by text/style/font generation/width/scale so repeated layout passes do
+   not reshape text.
 5. Translate Skribidi glyph atlas creation and dirty rectangles into Sokol
    textures and partial uploads. Render its `skb_quad_t` output with dedicated
    alpha, color, and SDF pipelines.
@@ -68,10 +71,11 @@ passes on representative screens. Only optimize after those numbers exist.
 
 ## Stage 4: layout and retained UI
 
-Extend the private Clay adapter after the initial text measurement slice. A
-text node measures through Skribidi under Clay's width constraint. Layout
-results populate retained geometry, hit testing, scrolling, focus order, and
-accessibility nodes before producing the display list.
+The private Clay adapter now provides both intrinsic measurement and external
+paragraph layout through Skribidi. Clay's box solver still produces retained
+geometry, hit testing, scrolling, focus order, and accessibility bounds, while
+the text engine owns line breaks and glyph geometry before the display list is
+produced.
 
 The first end-to-end slice is `Box + Text + Button`: nested box layout, shaped
 text, pointer activation, keyboard focus, and a NativeKit accessibility node.

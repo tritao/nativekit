@@ -38,8 +38,11 @@ editing, rasterization, and CPU atlas packing.
 The layout side follows the same boundary: NativeKit exposes `LayoutNode`,
 `LayoutSnapshot`, and `LayoutBackend`, while Clay is currently one private
 `ClayLayoutBackend` implementation. The adapter uses Skribidi for intrinsic
-text metrics and final shaping; Clay's current line-breaking behavior is kept
-as an explicit interim seam rather than leaking Clay text types into NativeKit.
+text metrics, paragraph line breaking, bidi, and final shaping through Clay's
+generic external text-layout callback. Clay consumes the returned line
+dimensions for box layout and forwards an opaque text-layout ID and line index
+to NativeKit render primitives; Clay's own internal wrapping is bypassed for
+these external text elements.
 
 ## Non-goals
 

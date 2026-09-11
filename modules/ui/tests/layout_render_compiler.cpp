@@ -2,6 +2,7 @@
 #include "layout/layout_render_compiler.h"
 #include "render/render_plan_executor.h"
 
+#include <algorithm>
 #include <array>
 #include <iostream>
 #include <string>
@@ -177,7 +178,11 @@ int main() {
             ++text_commands;
         }
     }
-    if (path_commands < 2 || text_commands != 1)
+    const uint32_t expected_text_commands = static_cast<uint32_t>(std::count_if(
+        snapshot.primitives.begin(), snapshot.primitives.end(), [](const LayoutPrimitive &primitive) {
+            return primitive.kind == LayoutPrimitiveKind::Text && !primitive.text.empty();
+        }));
+    if (path_commands < 2 || text_commands != expected_text_commands)
         return 11;
 
     RecordingBackend backend;

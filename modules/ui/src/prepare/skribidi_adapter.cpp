@@ -8,9 +8,10 @@
 #include "skribidi/skb_layout.h"
 #include "skribidi/skb_rasterizer.h"
 
-#include <cstdlib>
-#include <cstdio>
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <unordered_set>
@@ -28,8 +29,11 @@ struct SkribidiAdapter::State {
     std::string cached_text;
     float cached_width = 0.0f;
     TextLayoutOptions cached_options{};
+    TextLayoutResult cached_result{};
     bool has_cached_layout = false;
     uint64_t cached_font_generation = 0;
+    TextLayoutId next_layout_id = 1;
+    std::vector<skb_range_t> cached_line_ranges;
     uint32_t layout_builds = 0;
     uint64_t prepared_batch_count = 0;
     std::unordered_set<std::string> system_fonts_loaded;
@@ -90,6 +94,39 @@ GlyphMode quad_mode(const skb_quad_t &quad, GlyphMode requested) {
     return requested == GlyphMode::Color ? GlyphMode::Alpha : requested;
 }
 
+std::vector<std::size_t> utf8_codepoint_offsets(const char *text) {
+    std::vector<std::size_t> offsets;
+    if (!text)
+        return offsets;
+    const auto continuation = [](unsigned char value) {
+        return (value & 0xC0u) == 0x80u;
+    };
+    const std::size_t length = std::strlen(text);
+    offsets.reserve(length + 1);
+    std::size_t index = 0;
+    while (index < length) {
+        offsets.push_back(index);
+        const unsigned char first = static_cast<unsigned char>(text[index]);
+        std::size_t sequence_length = 1;
+        if (first >= 0xC2u && first <= 0xDFu)
+            sequence_length = 2;
+        else if (first >= 0xE0u && first <= 0xEFu)
+            sequence_length = 3;
+        else if (first >= 0xF0u && first <= 0xF4u)
+            sequence_length = 4;
+        if (sequence_length > 1 &&
+            (index + sequence_length > length ||
+             !std::all_of(text + index + 1, text + index + sequence_length,
+                          [&](char value) {
+                              return continuation(static_cast<unsigned char>(value));
+                          })))
+            sequence_length = 1;
+        index += sequence_length;
+    }
+    offsets.push_back(length);
+    return offsets;
+}
+
 AtlasTextureFormat atlas_format(skb_image_atlas_texture_format_t format) {
     switch (format) {
     case SKB_IMAGE_ATLAS_FORMAT_R8_SDF:
@@ -130,10 +167,15 @@ struct RenderGlyphContext {
     float pixel_scale = 1.0f;
     GlyphMode requested_mode = GlyphMode::Alpha;
     PreparedGlyphs *output = nullptr;
+    int32_t line_start = -1;
+    int32_t line_end = -1;
 };
 
 bool append_render_glyph(const skb_layout_render_glyph_t *glyph, void *context) {
     auto &render = *static_cast<RenderGlyphContext *>(context);
+    if (render.line_start >= 0 &&
+        (glyph->text_range.end <= render.line_start || glyph->text_range.start >= render.line_end))
+        return true;
     if (std::getenv("NKUI_DEBUG_GLYPHS")) {
         const uint32_t script = skb_script_to_iso15924_tag(glyph->script);
         const uint32_t *text = skb_layout_get_text(render.state->layout);
@@ -268,6 +310,11 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size
 
 bool SkribidiAdapter::layout_utf8(const char *text, float width,
                                   const TextLayoutOptions &options) {
+    return layout_utf8(text, width, options, nullptr);
+}
+
+bool SkribidiAdapter::layout_utf8(const char *text, float width,
+                                  const TextLayoutOptions &options, TextLayoutResult *result) {
     if (!valid() || !text || !std::isfinite(width) || width <= 0.0f ||
         !std::isfinite(options.font_size) || options.font_size <= 0.0f ||
         !std::isfinite(options.letter_spacing) || options.letter_spacing < 0.0f ||
@@ -279,18 +326,21 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width,
         state_->cached_options.line_height == options.line_height &&
         state_->cached_options.family == options.family &&
         state_->cached_options.wrap == options.wrap &&
-        state_->cached_options.align_center == options.align_center &&
-        state_->cached_options.align_end == options.align_end &&
-        state_->cached_font_generation == skb_font_collection_get_generation(state_->fonts))
+        state_->cached_options.alignment == options.alignment &&
+        state_->cached_font_generation == skb_font_collection_get_generation(state_->fonts)) {
+        if (result)
+            *result = state_->cached_result;
         return true;
+    }
     const skb_text_wrap_t wrap = options.wrap == TextWrapMode::None
                                      ? SKB_WRAP_NONE
                                  : options.wrap == TextWrapMode::Word
                                      ? SKB_WRAP_WORD
                                      : SKB_WRAP_WORD_CHAR;
-    const skb_align_t align = options.align_center ? SKB_ALIGN_CENTER
-                              : options.align_end ? SKB_ALIGN_END
-                                                  : SKB_ALIGN_START;
+    const skb_align_t align = options.alignment == TextAlignment::Center
+                                  ? SKB_ALIGN_CENTER
+                              : options.alignment == TextAlignment::End ? SKB_ALIGN_END
+                                                                        : SKB_ALIGN_START;
     const skb_line_height_t line_height_type = options.line_height > 0.0f
                                                    ? SKB_LINE_HEIGHT_ABSOLUTE
                                                    : SKB_LINE_HEIGHT_NORMAL;
@@ -299,11 +349,14 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width,
         skb_attribute_make_font_family(static_cast<uint8_t>(options.family)),
         skb_attribute_make_letter_spacing(options.letter_spacing),
         skb_attribute_make_line_height(line_height_type, options.line_height),
-        skb_attribute_make_text_wrap(wrap),
-        skb_attribute_make_horizontal_align(align),
         skb_attribute_make_paint_color(SKB_PAINT_TEXT, SKB_PAINT_STATE_DEFAULT,
                                        skb_rgba(255, 255, 255, 255))};
-    const skb_layout_params_t params = {.font_collection = state_->fonts, .layout_width = width};
+    const skb_attribute_t layout_attributes[] = {skb_attribute_make_text_wrap(wrap),
+                                                  skb_attribute_make_horizontal_align(align)};
+    const skb_layout_params_t params = {
+        .font_collection = state_->fonts,
+        .layout_width = width,
+        .layout_attributes = SKB_ATTRIBUTE_SET_FROM_STATIC_ARRAY(layout_attributes)};
     if (!state_->layout)
         state_->layout = skb_layout_create(&params);
     if (state_->layout)
@@ -315,13 +368,65 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width,
         state_->cached_options = options;
         state_->has_cached_layout = true;
         state_->cached_font_generation = skb_font_collection_get_generation(state_->fonts);
+        TextLayoutResult layout_result;
+        layout_result.id = state_->next_layout_id++;
+        if (!layout_result.id)
+            layout_result.id = state_->next_layout_id++;
+        const skb_rect2_t layout_bounds = skb_layout_get_bounds(state_->layout);
+        layout_result.bounds = {layout_bounds.x, layout_bounds.y, layout_bounds.width,
+                                layout_bounds.height};
+        const auto offsets = utf8_codepoint_offsets(text);
+        const int32_t lines_count = skb_layout_get_lines_count(state_->layout);
+        const skb_layout_line_t *lines = skb_layout_get_lines(state_->layout);
+        if (lines_count > 0 && !lines)
+            return false;
+        layout_result.lines.reserve(static_cast<std::size_t>(std::max(lines_count, 0)));
+        state_->cached_line_ranges.clear();
+        state_->cached_line_ranges.reserve(static_cast<std::size_t>(std::max(lines_count, 0)));
+        const int32_t text_count = skb_layout_get_text_count(state_->layout);
+        for (int32_t index = 0; index < lines_count; ++index) {
+            const skb_layout_line_t &line = lines[index];
+            if (line.text_range.start < 0 || line.text_range.end < line.text_range.start ||
+                line.text_range.end > text_count ||
+                static_cast<std::size_t>(line.text_range.end) >= offsets.size())
+                return false;
+            const std::size_t start = offsets[static_cast<std::size_t>(line.text_range.start)];
+            const std::size_t end = offsets[static_cast<std::size_t>(line.text_range.end)];
+            state_->cached_line_ranges.push_back(line.text_range);
+            layout_result.lines.push_back(
+                {start, end - start,
+                 {line.bounds.x, line.bounds.y, line.bounds.width, line.bounds.height}});
+        }
+        state_->cached_result = std::move(layout_result);
         ++state_->layout_builds;
+        if (result)
+            *result = state_->cached_result;
     }
     return state_->layout != nullptr;
 }
 
 bool SkribidiAdapter::prepare_glyphs(float origin_x, float origin_y, float pixel_scale,
                                      GlyphMode mode, PreparedGlyphs &output) {
+    return prepare_glyphs_internal(origin_x, origin_y, pixel_scale, mode, output, -1, -1, 0.0f,
+                                   0.0f);
+}
+
+bool SkribidiAdapter::prepare_glyphs_for_line(uint32_t line_index, float origin_x, float origin_y,
+                                              float pixel_scale, GlyphMode mode,
+                                              PreparedGlyphs &output) {
+    if (!state_->layout || line_index >= state_->cached_result.lines.size() ||
+        line_index >= state_->cached_line_ranges.size())
+        return false;
+    const auto &line = state_->cached_result.lines[line_index];
+    const auto range = state_->cached_line_ranges[line_index];
+    return prepare_glyphs_internal(origin_x, origin_y, pixel_scale, mode, output, range.start,
+                                   range.end, line.bounds.x, line.bounds.y);
+}
+
+bool SkribidiAdapter::prepare_glyphs_internal(float origin_x, float origin_y, float pixel_scale,
+                                              GlyphMode mode, PreparedGlyphs &output,
+                                              int32_t line_start, int32_t line_end, float line_x,
+                                              float line_y) {
     if (!state_->layout || pixel_scale <= 0.0f)
         return false;
     output = {};
@@ -346,7 +451,8 @@ bool SkribidiAdapter::prepare_glyphs(float origin_x, float origin_y, float pixel
         }
         std::fprintf(stderr, "\n");
     }
-    RenderGlyphContext render{state_, origin_x, origin_y, pixel_scale, mode, &output};
+    RenderGlyphContext render{state_, origin_x - line_x, origin_y - line_y, pixel_scale, mode,
+                              &output, line_start, line_end};
     if (!skb_layout_iterate_render_glyphs(state_->layout, append_render_glyph, &render))
         return false;
     state_->prepared_batch_count += output.batches.size();

@@ -22,6 +22,20 @@ enum class FontFamily : uint8_t {
     Emoji = 1,
 };
 
+enum class TextWrapMode : uint8_t {
+    None = 0,
+    Word,
+    WordCharacter,
+};
+
+enum class TextAlignment : uint8_t {
+    Start = 0,
+    Center,
+    End,
+};
+
+using TextLayoutId = uint64_t;
+
 enum class LayoutDirection : uint8_t {
     LeftToRight = 0,
     TopToBottom,
@@ -119,6 +133,30 @@ struct LayoutPrimitive {
     uint16_t font_size = 0;
     uint16_t line_height = 0;
     uint16_t letter_spacing = 0;
+    TextLayoutId text_layout_id = 0;
+    uint32_t text_line_index = 0;
+};
+
+struct LayoutTextLine {
+    std::size_t text_offset = 0;
+    std::size_t text_length = 0;
+    LayoutRect bounds{};
+};
+
+struct LayoutTextLayout {
+    TextLayoutId id = 0;
+    uint32_t node_id = 0;
+    std::string text;
+    float width = 0.0f;
+    float height = 0.0f;
+    uint16_t font_id = 0;
+    uint16_t font_size = 0;
+    uint16_t line_height = 0;
+    uint16_t letter_spacing = 0;
+    FontFamily family = FontFamily::Default;
+    TextWrapMode wrap = TextWrapMode::WordCharacter;
+    TextAlignment alignment = TextAlignment::Start;
+    std::vector<LayoutTextLine> lines;
 };
 
 struct LayoutEvent {
@@ -133,6 +171,7 @@ struct LayoutEvent {
 struct LayoutSnapshot {
     std::vector<LayoutItem> items;
     std::vector<LayoutPrimitive> primitives;
+    std::vector<LayoutTextLayout> text_layouts;
     std::vector<LayoutEvent> events;
 
     const LayoutItem *find(uint32_t id) const;

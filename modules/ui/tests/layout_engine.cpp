@@ -1,5 +1,6 @@
 #include "layout/layout_engine.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -50,7 +51,9 @@ int main(int argc, char **argv) {
     root.style.background = {0.92f, 0.94f, 0.98f, 1.0f};
     nodes.push_back(root);
 
-    nodes.push_back(text(2, 0, "NativeKit layout"));
+    nodes.push_back(text(2, 0,
+                         "NativeKit layout delegates paragraph wrapping to Skribidi while Clay "
+                         "keeps box constraints and hit testing"));
 
     LayoutNode button = box(3, 0);
     button.kind = LayoutNodeKind::Button;
@@ -77,6 +80,23 @@ int main(int argc, char **argv) {
         return 5;
     if (snapshot.primitives.size() < 3)
         return 6;
+    const auto text_layout = std::find_if(
+        snapshot.text_layouts.begin(), snapshot.text_layouts.end(),
+        [](const LayoutTextLayout &layout) { return layout.node_id == 2; });
+    if (text_layout == snapshot.text_layouts.end() || text_layout->id == 0 ||
+        text_layout->lines.size() < 2)
+        return 10;
+    uint32_t title_line_count = 0;
+    for (const auto &primitive : snapshot.primitives) {
+        if (primitive.kind != LayoutPrimitiveKind::Text || primitive.node_id != 2)
+            continue;
+        if (primitive.text_layout_id != text_layout->id ||
+            primitive.text_line_index != title_line_count)
+            return 11;
+        ++title_line_count;
+    }
+    if (title_line_count != text_layout->lines.size())
+        return 12;
     const auto hit = snapshot.hit_test(button_item->bounds.x + 1.0f, button_item->bounds.y + 1.0f);
     if (!hit || *hit != 3)
         return 7;

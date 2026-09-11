@@ -123,6 +123,7 @@ void LayoutRenderFrame::reset() {
     plan_ = {};
     paths_.clear();
     glyphs_.clear();
+    active_text_layout_id_ = 0;
 }
 
 bool LayoutRenderCompiler::add_font(const char *path, FontFamily family) {
@@ -253,19 +254,49 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     continue;
                 if (!out.text_ || primitive.font_size == 0 || transient_slot > kMaxTransientSlot)
                     return fail(error, index, "layout text preparation input is invalid");
-                const float width = std::max(primitive.bounds.width, 1.0f);
-                TextLayoutOptions options;
-                options.font_size = static_cast<float>(primitive.font_size);
-                options.letter_spacing = static_cast<float>(primitive.letter_spacing);
-                options.line_height = static_cast<float>(primitive.line_height);
-                // Clay has already emitted one command per chosen line. Shape
-                // that line through Skribidi without asking it to wrap again.
-                options.wrap = TextWrapMode::None;
-                if (!out.text_->layout_utf8(primitive.text.c_str(), width, options))
-                    return fail(error, index, "layout text shaping failed");
+                const LayoutTextLayout *text_layout = nullptr;
+                if (primitive.text_layout_id) {
+                    const auto found = std::find_if(
+                        snapshot.text_layouts.begin(), snapshot.text_layouts.end(),
+                        [&primitive](const LayoutTextLayout &candidate) {
+                            return candidate.id == primitive.text_layout_id;
+                        });
+                    if (found == snapshot.text_layouts.end() ||
+                        primitive.text_line_index >= found->lines.size())
+                        return fail(error, index, "layout text layout ID is invalid");
+                    text_layout = &*found;
+                    if (out.active_text_layout_id_ != text_layout->id) {
+                        TextLayoutOptions options;
+                        options.font_size = static_cast<float>(text_layout->font_size);
+                        options.letter_spacing = static_cast<float>(text_layout->letter_spacing);
+                        options.line_height = static_cast<float>(text_layout->line_height);
+                        options.family = text_layout->family;
+                        options.wrap = text_layout->wrap;
+                        options.alignment = text_layout->alignment;
+                        if (!out.text_->layout_utf8(text_layout->text.c_str(),
+                                                    std::max(text_layout->width, 1.0f), options))
+                            return fail(error, index, "layout text shaping failed");
+                        out.active_text_layout_id_ = text_layout->id;
+                    }
+                } else {
+                    const float width = std::max(primitive.bounds.width, 1.0f);
+                    TextLayoutOptions options;
+                    options.font_size = static_cast<float>(primitive.font_size);
+                    options.letter_spacing = static_cast<float>(primitive.letter_spacing);
+                    options.line_height = static_cast<float>(primitive.line_height);
+                    options.wrap = TextWrapMode::None;
+                    if (!out.text_->layout_utf8(primitive.text.c_str(), width, options))
+                        return fail(error, index, "layout text shaping failed");
+                    out.active_text_layout_id_ = 0;
+                }
                 auto glyphs = std::make_unique<PreparedGlyphs>();
-                if (!out.text_->prepare_glyphs(0.0f, 0.0f, pixel_scale, GlyphMode::Alpha,
-                                               *glyphs))
+                const bool prepared = text_layout
+                                          ? out.text_->prepare_glyphs_for_line(
+                                                primitive.text_line_index, 0.0f, 0.0f, pixel_scale,
+                                                GlyphMode::Alpha, *glyphs)
+                                          : out.text_->prepare_glyphs(
+                                                0.0f, 0.0f, pixel_scale, GlyphMode::Alpha, *glyphs);
+                if (!prepared)
                     return fail(error, index, "layout glyph preparation failed");
                 tint_glyphs(*glyphs, primitive.color);
                 const ResourceId id =

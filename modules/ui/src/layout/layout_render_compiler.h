@@ -51,6 +51,7 @@ class LayoutRenderFrame {
     std::vector<std::unique_ptr<PreparedGlyphs>> glyphs_;
     std::size_t configured_font_count_ = 0;
     bool configured_system_fallbacks_ = false;
+    TextLayoutId active_text_layout_id_ = 0;
 };
 
 /** Compiles NativeKit-owned layout output into the backend-neutral render plan. */
