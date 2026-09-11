@@ -44,15 +44,15 @@ optional system components and build configuration can affect availability.
 
 | Feature family | Linux | Windows | macOS | Android | Web / WASM |
 |---|:---:|:---:|:---:|:---:|:---:|
-| Windows and lifecycle | ✅ | ✅ | ✅ | Host view | 🚧 |
+| Windows and lifecycle | ✅ | ✅ | ✅ | Host view | Partial |
 | WebView | ✅ | ✅ | ✅ | ✅ | 🚧 |
 | Dialogs and system services | ✅ | ✅ | ✅ | ✅ | 🚧 |
 | Clipboard and drag/drop | ✅ | ✅ | ✅ | ✅ | 🚧 |
 | Notifications | ✅ | ✅ | ✅ | ✅ | 🚧 |
-| Input, cursors, and capture | ✅ | — | — | Partial | 🚧 |
+| Input, cursors, and capture | ✅ | — | — | Partial | Partial |
 | Monitors and fullscreen modes | ✅ | — | — | — | — |
 | Joysticks and gamepads | ✅ | — | — | ✅ | 🚧 |
-| OpenGL / OpenGL ES | ✅ | — | — | GLES | 🚧 |
+| OpenGL / OpenGL ES | ✅ | — | — | GLES | Partial |
 | Vulkan | ✅ | — | — | ✅ | 🚧 |
 | URI resources and sharing | Partial | Partial | Partial | ✅ | 🚧 |
 | Custom-surface accessibility | — | — | — | ✅ | 🚧 |
@@ -103,6 +103,22 @@ Experimental higher-level modules live in the same repository but remain
 optional so the core platform library stays compact. Enable the low-level Sokol
 adapter with `-DNK_BUILD_SOKOL=ON`, or the retained UI-engine scaffold with
 `-DNK_BUILD_UI=ON`. Their design and build notes live under [`modules/`](modules/).
+
+### Web / WASM preview
+
+The initial browser backend is Emscripten + WebGL2 behind NativeKit's regular
+window, surface, input, and frame-callback APIs. Set it up and build the
+browser UI showcase with:
+
+```sh
+./tools/setup-web.sh
+./tools/build-web.sh
+python3 -m http.server --directory build-web/modules/ui 8080
+```
+
+Then open `http://localhost:8080/nativekit_ui_c_api.html`. Add `?smoke` to run
+the 30-frame browser smoke test. The generated web host is an example/deploy
+shell; Emscripten remains private to the platform implementation.
 
 The Android library, sample applications, and Gradle wrapper live under
 [`android/`](android/). See the [Android guide](android/README.md) for SDK/NDK,

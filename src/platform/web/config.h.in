@@ -1,0 +1,3 @@
+#pragma once
+
+#define NK_WEB_CANVAS_SELECTOR "@NK_WEB_CANVAS_SELECTOR@"

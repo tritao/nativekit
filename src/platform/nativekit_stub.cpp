@@ -27,11 +27,12 @@ void shutdown() noexcept {}
 } // namespace nk::backend
 
 extern "C" {
-#if !defined(NK_STUB_ANDROID)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_WEB)
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_RESOURCE_IO;
 }
 #endif
+#if !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_window_create(const nk_window_options *, nk_handle *) {
     return unsupported();
 }
@@ -86,6 +87,7 @@ nk_result NK_CALL nk_window_get_native(nk_handle, nk_native_window *) {
 nk_result NK_CALL nk_window_wrap_native(const nk_native_window *, nk_handle *) {
     return unsupported();
 }
+#endif
 #if !defined(NK_STUB_ANDROID)
 nk_result NK_CALL nk_webview_create(nk_handle, const nk_webview_options *, nk_handle *) {
     return unsupported();

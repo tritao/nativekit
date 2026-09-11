@@ -23,13 +23,14 @@ nkui_generate_shader(
     nkui_composite.glsl.h
     NKUI_COMPOSITE_SHADER)
 
-add_library(nativekit_ui SHARED
+add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/api.cpp
     src/compositor/compositor.cpp
     src/compositor/render_plan.cpp
     src/display_list/display_list.cpp
     src/prepare/nanovg_path.cpp
     src/prepare/skribidi_adapter.cpp
+    src/prepare/system_fonts.cpp
     src/render/frame_resources.cpp
     src/render/graphics_device.cpp
     src/render/render_backend_factory.cpp
@@ -54,6 +55,18 @@ target_include_directories(nativekit_ui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../
 target_include_directories(nativekit_ui PRIVATE "${NKUI_SHADER_GENERATED_DIR}")
 target_link_libraries(nativekit_ui PRIVATE NativeKit::nativekit nkui_skribidi nkui_nanovg_core
     nativekit_sokol_runtime ${NK_SOKOL_GRAPHICS_LIBRARIES})
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(FONTCONFIG QUIET IMPORTED_TARGET fontconfig)
+    endif()
+    if(TARGET PkgConfig::FONTCONFIG)
+        target_link_libraries(nativekit_ui PRIVATE PkgConfig::FONTCONFIG)
+        target_compile_definitions(nativekit_ui PRIVATE NKUI_HAS_FONTCONFIG=1)
+    endif()
+elseif(APPLE)
+    target_link_libraries(nativekit_ui PRIVATE "-framework CoreText" "-framework CoreFoundation")
+endif()
 if(NK_BUILD_SOKOL_BACKEND_MATRIX)
     target_link_libraries(nativekit_ui PRIVATE
         nativekit_sokol_runtime_glcore nativekit_sokol_runtime_gles3)
@@ -96,7 +109,8 @@ if(NK_BUILD_TESTS)
     add_test(NAME nativekit_ui_nanovg_path COMMAND nativekit_ui_nanovg_path_test)
     add_executable(nativekit_ui_skribidi_adapter_test
         tests/skribidi_adapter.cpp
-        src/prepare/skribidi_adapter.cpp)
+        src/prepare/skribidi_adapter.cpp
+        src/prepare/system_fonts.cpp)
     target_include_directories(nativekit_ui_skribidi_adapter_test PRIVATE src)
     target_compile_definitions(nativekit_ui_skribidi_adapter_test PRIVATE
         NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf"
@@ -192,9 +206,26 @@ endif()
 
 if(NK_BUILD_EXAMPLES)
     add_executable(nativekit_ui_c_api examples/ui_c_api/showcase.cpp)
+    set(NKUI_C_API_FONT_PATH
+        "${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+    if(EMSCRIPTEN)
+        # The browser build uses Emscripten's packaged filesystem only for the
+        # example asset.  NativeKit's public resource APIs still receive a
+        # normal path and do not know how the bytes were bundled.
+        set(NKUI_C_API_FONT_PATH "/assets/IBMPlexSans-Regular.ttf")
+    endif()
     target_compile_definitions(nativekit_ui_c_api PRIVATE
-        NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+        NKUI_TEST_FONT_PATH="${NKUI_C_API_FONT_PATH}")
     target_link_libraries(nativekit_ui_c_api PRIVATE NativeKit::ui NativeKit::nativekit)
+    if(EMSCRIPTEN)
+        target_link_options(nativekit_ui_c_api PRIVATE
+            "--preload-file=${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf@/assets/IBMPlexSans-Regular.ttf")
+        add_custom_command(TARGET nativekit_ui_c_api POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_c_api/web_shell.html"
+                "$<TARGET_FILE_DIR:nativekit_ui_c_api>/nativekit_ui_c_api.html"
+            COMMENT "Copying NativeKit UI browser host")
+    endif()
     if(NK_BUILD_TESTS)
         find_program(NKUI_C_API_XVFB_RUN xvfb-run)
         if(NKUI_C_API_XVFB_RUN)
@@ -276,10 +307,12 @@ if(NK_BUILD_EXAMPLES)
 
 endif()
 
-install(TARGETS nativekit_ui EXPORT NativeKitTargets
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+if(NOT EMSCRIPTEN)
+    install(TARGETS nativekit_ui EXPORT NativeKitTargets
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES
     "${NK_VENDOR_DIR}/skribidi/LICENSE"

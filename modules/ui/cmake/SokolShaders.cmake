@@ -16,10 +16,15 @@ if(NOT NK_SOKOL_SHDC_EXECUTABLE)
         "-DNK_SOKOL_SHDC=/path/to/sokol-shdc.")
 endif()
 
-set(NKUI_SHADER_LANGUAGES
-    "glsl410:glsl300es:hlsl5:metal_macos:metal_ios:metal_sim:wgsl:spirv_vk"
-    CACHE STRING
-    "Colon-separated sokol-shdc shader languages for NativeKit UI")
+if(EMSCRIPTEN AND NOT DEFINED NKUI_SHADER_LANGUAGES)
+    set(NKUI_SHADER_LANGUAGES "glsl300es" CACHE STRING
+        "Colon-separated sokol-shdc shader languages for NativeKit UI")
+else()
+    set(NKUI_SHADER_LANGUAGES
+        "glsl410:glsl300es:hlsl5:metal_macos:metal_ios:metal_sim:wgsl:spirv_vk"
+        CACHE STRING
+        "Colon-separated sokol-shdc shader languages for NativeKit UI")
+endif()
 set(NKUI_SHADER_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated" CACHE INTERNAL
     "NativeKit UI generated shader directory")
 

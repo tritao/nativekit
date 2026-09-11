@@ -56,3 +56,20 @@ Run the interactive public-API showcase with:
 ```
 
 The same executable supports `--smoke-test`, which renders 30 frames and exits.
+
+## Web / WASM
+
+The first browser backend uses Emscripten, WebGL2, and the GLES3 Sokol
+backend. Emscripten and the pinned `sokol-shdc` binary are kept under `.tools`
+and ignored by Git:
+
+```sh
+./tools/setup-web.sh
+./tools/build-web.sh
+python3 -m http.server --directory build-web/modules/ui 8080
+```
+
+Open `http://localhost:8080/nativekit_ui_c_api.html` for the interactive C ABI
+showcase, or append `?smoke` to run its 30-frame browser smoke test. The
+browser owns the frame loop through `nk_surface_set_frame_callback()`; no
+Emscripten types appear in NativeKit's public headers.

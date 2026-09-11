@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NativeKit UI C ABI - WebGL2</title>
+  <style>
+    :root { color-scheme: dark; font: 14px system-ui, sans-serif; }
+    html, body { margin: 0; min-height: 100%; background: #101522; }
+    body { display: grid; place-items: center; gap: 12px; padding: 20px; box-sizing: border-box; }
+    #canvas { display: block; width: min(900px, 100%); height: auto; outline: none; background: #070a17; }
+    #status { color: #a9b5cc; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" width="900" height="600" tabindex="0" aria-label="NativeKit UI showcase"></canvas>
+  <div id="status">Loading NativeKit…</div>
+  <script>
+    const status = document.getElementById("status");
+    const smoke = new URLSearchParams(location.search).has("smoke");
+    var Module = {
+      canvas: document.getElementById("canvas"),
+      arguments: smoke ? ["--smoke-test"] : [],
+      onRuntimeInitialized() {
+        status.textContent = smoke ? "Running browser smoke test…" : "NativeKit WebGL2 ready";
+        Module.canvas.focus();
+      },
+      onNativeKitResult(result) {
+        status.textContent = result === 0
+          ? "NativeKit browser smoke test passed"
+          : "NativeKit browser smoke test failed (" + result + ")";
+        document.documentElement.dataset.nativekitResult = String(result);
+      },
+      print(text) { status.textContent = text; },
+      printErr(text) { console.error(text); }
+    };
+  </script>
+  <script src="nativekit_ui_c_api.js"></script>
+</body>
+</html>

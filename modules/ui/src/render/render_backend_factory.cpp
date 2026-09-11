@@ -22,8 +22,13 @@ std::unique_ptr<RenderBackend> create_render_backend(nk_graphics_api api) {
         return nullptr;
 #else
     #if defined(NK_SOKOL_BACKEND_GLES3)
+        #if defined(__EMSCRIPTEN__)
+        if (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES)
+            return nullptr;
+        #else
         if (api != NK_GRAPHICS_OPENGL_ES)
             return nullptr;
+        #endif
     #else
         if (api != NK_GRAPHICS_OPENGL)
             return nullptr;

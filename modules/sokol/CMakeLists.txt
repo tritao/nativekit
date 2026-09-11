@@ -1,4 +1,4 @@
-add_library(nativekit_sokol SHARED src/adapter.cpp)
+add_library(nativekit_sokol ${NK_LIBRARY_TYPE} src/adapter.cpp)
 add_library(NativeKit::sokol ALIAS nativekit_sokol)
 target_compile_features(nativekit_sokol PRIVATE cxx_std_17)
 target_include_directories(nativekit_sokol

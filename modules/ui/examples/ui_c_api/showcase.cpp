@@ -3,6 +3,10 @@
 #include "nativekit_ui.h"
 #include "nativekit_window.h"
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
+#endif
+
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -76,11 +80,15 @@ struct CApiShowcase {
     static void NK_CALL draw_frame(nk_handle surface, int32_t width, int32_t height,
                                    void *user_data) {
         auto &showcase = *static_cast<CApiShowcase *>(user_data);
-        if (!showcase.resize(width, height) ||
-            nkui_renderer_render(showcase.renderer, showcase.list, surface) != NKUI_OK)
+        if (!showcase.render_frame(surface, width, height))
             showcase.frame_failed = true;
         else
             ++showcase.rendered_frames;
+    }
+
+    bool render_frame(nk_handle surface, int32_t framebuffer_width, int32_t framebuffer_height) {
+        return resize(framebuffer_width, framebuffer_height) &&
+               nkui_renderer_render(renderer, list, surface) == NKUI_OK;
     }
 
     bool create(int framebuffer_width, int framebuffer_height) {
@@ -202,12 +210,177 @@ struct CApiShowcase {
     }
 };
 
+#if defined(__EMSCRIPTEN__)
+
+EM_JS(void, nk_web_example_report, (int result), {
+    if (typeof Module !== "undefined" && Module.onNativeKitResult)
+        Module.onNativeKitResult(result);
+});
+
+struct WebShowcase {
+    nk_handle window = NK_INVALID_HANDLE;
+    nk_handle surface = NK_INVALID_HANDLE;
+    CApiShowcase showcase;
+    bool smoke = false;
+    bool ready = false;
+    bool finished = false;
+    bool frame_callback_installed = false;
+    bool initialized = false;
+    int result = 0;
+
+    static void NK_CALL draw_frame(nk_handle surface, int32_t width, int32_t height,
+                                   void *user_data) {
+        auto &app = *static_cast<WebShowcase *>(user_data);
+        if (app.finished)
+            return;
+        if (!app.poll_events() || !app.ready) {
+            if (!app.finished)
+                app.finish(app.result != 0 ? app.result : 4);
+            return;
+        }
+        if (!app.showcase.render_frame(surface, width, height)) {
+            app.finish(5);
+            return;
+        }
+        ++app.showcase.rendered_frames;
+        if (app.smoke && app.showcase.rendered_frames >= 30)
+            app.finish(0);
+    }
+
+    bool start(bool smoke_mode) {
+        smoke = smoke_mode;
+        nk_init_options init{};
+        init.struct_size = sizeof(init);
+        init.api_version = NK_API_VERSION;
+        if (nk_init(&init) != NK_OK)
+            return fail(1);
+        initialized = true;
+
+        nk_window_options window_options{};
+        window_options.struct_size = sizeof(window_options);
+        window_options.flags = NK_WINDOW_RESIZABLE;
+        window_options.width = 900;
+        window_options.height = 600;
+        window_options.title = "NativeKit UI C ABI - WebGL2";
+        if (nk_window_create(&window_options, &window) != NK_OK)
+            return fail(1);
+
+        nk_surface_options surface_options{};
+        surface_options.struct_size = sizeof(surface_options);
+        surface_options.flags = NK_SURFACE_FORWARD_COMPATIBLE | NK_SURFACE_STENCIL;
+        surface_options.api = NK_GRAPHICS_OPENGL_ES;
+        surface_options.major_version = 3;
+        surface_options.width = window_options.width;
+        surface_options.height = window_options.height;
+        if (nk_surface_create(window, &surface_options, &surface) != NK_OK)
+            return fail(1);
+
+        return poll_events() && result == 0;
+    }
+
+    bool poll_events() {
+        for (;;) {
+            nk_event event{};
+            event.struct_size = sizeof(event);
+            if (nk_poll_event(&event) != NK_OK) {
+                result = 3;
+                nk_event_release(&event);
+                return false;
+            }
+            if (event.kind == NK_EVENT_NONE) {
+                nk_event_release(&event);
+                return true;
+            }
+            handle_event(event);
+            nk_event_release(&event);
+            if (finished)
+                return false;
+        }
+    }
+
+    void handle_event(const nk_event &event) {
+        if (event.source == window && event.kind == NK_EVENT_WINDOW_RESIZE &&
+            event.data_size >= sizeof(nk_window_resize_event)) {
+            const auto *resize = static_cast<const nk_window_resize_event *>(event.data);
+            if (nk_surface_set_bounds(surface, 0, 0, resize->width, resize->height) != NK_OK)
+                result = 6;
+            return;
+        }
+        if (event.source != surface)
+            return;
+        if (event.kind == NK_EVENT_SURFACE_READY) {
+            int32_t width = 0;
+            int32_t height = 0;
+            ready = nk_surface_make_current(surface) == NK_OK &&
+                    nk_surface_get_framebuffer_size(surface, &width, &height) == NK_OK &&
+                    (showcase.renderer.id || showcase.create(width, height));
+            if (!ready) {
+                result = 4;
+                return;
+            }
+            if (!frame_callback_installed) {
+                if (nk_surface_set_frame_callback(surface, draw_frame, this) != NK_OK) {
+                    result = 4;
+                    ready = false;
+                } else {
+                    frame_callback_installed = true;
+                }
+            }
+            return;
+        }
+        if (event.kind == NK_EVENT_SURFACE_RESIZE &&
+            event.data_size >= sizeof(nk_surface_resize_event)) {
+            const auto *resize = static_cast<const nk_surface_resize_event *>(event.data);
+            ready = resize->framebuffer_width > 0 && resize->framebuffer_height > 0;
+            if (ready && showcase.list.id &&
+                !showcase.resize(resize->framebuffer_width, resize->framebuffer_height))
+                result = 6;
+        } else if (event.kind == NK_EVENT_SURFACE_LOST) {
+            ready = false;
+        }
+    }
+
+    bool fail(int code) {
+        result = code;
+        finish(result);
+        return false;
+    }
+
+    void finish(int code) {
+        if (finished)
+            return;
+        finished = true;
+        result = code;
+        if (surface != NK_INVALID_HANDLE)
+            nk_surface_set_frame_callback(surface, nullptr, nullptr);
+        showcase.destroy();
+        if (surface != NK_INVALID_HANDLE) {
+            nk_surface_destroy(surface);
+            surface = NK_INVALID_HANDLE;
+        }
+        if (window != NK_INVALID_HANDLE) {
+            nk_window_destroy(window);
+            window = NK_INVALID_HANDLE;
+        }
+        if (initialized)
+            nk_shutdown();
+        nk_web_example_report(result);
+    }
+};
+
+#endif
+
 } // namespace
 
 int main(int argc, char **argv) {
     const bool smoke = argc == 2 && std::strcmp(argv[1], "--smoke-test") == 0;
     if (argc > 1 && !smoke)
         return 2;
+
+#if defined(__EMSCRIPTEN__)
+    static WebShowcase app;
+    return app.start(smoke) ? 0 : app.result;
+#else
 
     nk_init_options init{};
     init.struct_size = sizeof(init);
@@ -309,4 +482,5 @@ int main(int argc, char **argv) {
     nk_window_destroy(window);
     nk_shutdown();
     return result;
+#endif
 }

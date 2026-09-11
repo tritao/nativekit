@@ -30,7 +30,7 @@ option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSaniti
 option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
 
 set(_nk_default_sokol_backend glcore)
-if(ANDROID)
+if(ANDROID OR EMSCRIPTEN)
     set(_nk_default_sokol_backend gles3)
 endif()
 set(NK_SOKOL_BACKEND "${_nk_default_sokol_backend}" CACHE STRING
@@ -80,7 +80,7 @@ if(NK_CLANG_FORMAT)
 endif()
 
 set(NK_LIBRARY_TYPE STATIC)
-if(NK_BUILD_SHARED)
+if(NK_BUILD_SHARED AND NOT EMSCRIPTEN)
     set(NK_LIBRARY_TYPE SHARED)
 endif()
 
@@ -120,11 +120,24 @@ target_include_directories(nativekit
     PRIVATE src
 )
 target_compile_definitions(nativekit PRIVATE NK_BUILDING_LIBRARY)
-if(NOT NK_BUILD_SHARED)
+if(NOT NK_BUILD_SHARED OR EMSCRIPTEN)
     target_compile_definitions(nativekit PUBLIC NK_STATIC)
 endif()
 
-if(UNIX AND NOT APPLE AND NOT ANDROID)
+if(EMSCRIPTEN)
+    set(NK_WEB_CANVAS_SELECTOR "#canvas" CACHE STRING
+        "CSS selector for the canvas used by NativeKit's browser backend")
+    configure_file(src/platform/web/config.h.in
+        "${CMAKE_CURRENT_BINARY_DIR}/nativekit_web_config.h" @ONLY)
+    target_include_directories(nativekit PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+    target_compile_definitions(nativekit PRIVATE NK_BACKEND_WEB=1)
+    # WebGL2 is part of the first browser backend.  Keep this linker detail on
+    # the NativeKit target so consumers inherit it without seeing Emscripten
+    # types or headers in the public API.
+    target_link_options(nativekit INTERFACE "-sUSE_WEBGL2=1")
+endif()
+
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
         pkg_check_modules(GTK3 QUIET IMPORTED_TARGET gtk+-3.0)
@@ -132,7 +145,12 @@ if(UNIX AND NOT APPLE AND NOT ANDROID)
     endif()
 endif()
 
-if(ANDROID)
+if(EMSCRIPTEN)
+    target_sources(nativekit PRIVATE
+        src/platform/nativekit_web.cpp
+        src/platform/web/host.cpp
+        src/platform/nativekit_stub.cpp)
+elseif(ANDROID)
     target_sources(nativekit PRIVATE
         src/android/nativekit_android.cpp
         src/platform/nativekit_stub.cpp)
@@ -197,7 +215,7 @@ set_target_properties(nativekit PROPERTIES
     SOVERSION 0
 )
 
-if(UNIX AND NOT APPLE AND NOT ANDROID)
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     target_link_options(nativekit PRIVATE
         "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/cmake/nativekit.exports"
     )
@@ -233,21 +251,28 @@ if(NK_BUILD_SOKOL OR NK_BUILD_UI)
         set(NK_SOKOL_GRAPHICS_LIBRARIES OpenGL::GL)
         set(NK_SOKOL_GRAPHICS_INCLUDE_DIRS)
     elseif(NK_SOKOL_BACKEND STREQUAL "gles3")
-        if(NOT UNIX OR APPLE)
+        if(NOT EMSCRIPTEN AND (NOT UNIX OR APPLE))
             message(FATAL_ERROR "NativeKit Sokol gles3 requires Linux or Android")
         endif()
-        find_path(NK_SOKOL_GLES3_INCLUDE_DIR GLES3/gl3.h REQUIRED)
-        find_library(NK_SOKOL_GLES3_LIBRARY NAMES GLESv2 REQUIRED)
+        if(NOT EMSCRIPTEN)
+            find_path(NK_SOKOL_GLES3_INCLUDE_DIR GLES3/gl3.h REQUIRED)
+            find_library(NK_SOKOL_GLES3_LIBRARY NAMES GLESv2 REQUIRED)
+        endif()
         set(NK_SOKOL_COMPILE_DEFINITION NK_SOKOL_BACKEND_GLES3=1)
-        set(NK_SOKOL_GRAPHICS_LIBRARIES "${NK_SOKOL_GLES3_LIBRARY}")
-        set(NK_SOKOL_GRAPHICS_INCLUDE_DIRS "${NK_SOKOL_GLES3_INCLUDE_DIR}")
+        if(EMSCRIPTEN)
+            set(NK_SOKOL_GRAPHICS_LIBRARIES)
+            set(NK_SOKOL_GRAPHICS_INCLUDE_DIRS)
+        else()
+            set(NK_SOKOL_GRAPHICS_LIBRARIES "${NK_SOKOL_GLES3_LIBRARY}")
+            set(NK_SOKOL_GRAPHICS_INCLUDE_DIRS "${NK_SOKOL_GLES3_INCLUDE_DIR}")
+        endif()
     else()
         message(FATAL_ERROR
             "Unsupported NK_SOKOL_BACKEND='${NK_SOKOL_BACKEND}'; choose glcore or gles3")
     endif()
     function(nk_add_sokol_runtime target compile_definition symbol_prefix graphics_libraries
              graphics_include_dirs)
-        add_library(${target} SHARED modules/sokol/src/runtime.c modules/sokol/src/api.c)
+        add_library(${target} ${NK_LIBRARY_TYPE} modules/sokol/src/runtime.c modules/sokol/src/api.c)
         target_include_directories(${target} PRIVATE
             "${NK_VENDOR_DIR}/sokol" "${CMAKE_CURRENT_SOURCE_DIR}/modules/sokol/src"
             ${graphics_include_dirs})
@@ -274,7 +299,7 @@ if(NK_BUILD_SOKOL OR NK_BUILD_UI)
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
     if(NK_BUILD_SOKOL_BACKEND_MATRIX)
-        if(NOT UNIX OR APPLE OR ANDROID)
+        if(EMSCRIPTEN OR NOT UNIX OR APPLE OR ANDROID)
             message(FATAL_ERROR "NativeKit Sokol backend matrix requires desktop Linux")
         endif()
         find_package(OpenGL REQUIRED)
