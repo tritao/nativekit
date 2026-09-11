@@ -98,6 +98,7 @@ int main() {
     bool producer_failed = false;
     bool prepared_subregion_update = false;
     auto backend = std::make_unique<SokolBackend>();
+    std::unique_ptr<SokolBackend> shared_backend;
     NanoVGRecorder recorder;
     const unsigned char image_pixel[4] = {40, 120, 220, 220};
     const int paint_image =
@@ -148,8 +149,16 @@ int main() {
                 nk_surface_get_framebuffer_size(surface, &width, &height) != NK_OK ||
                 !backend->initialize())
                 result = 5;
-            else
-                ready = true;
+            else {
+                // Multiple UI renderers retain one process-local Sokol
+                // device. This exercises shared setup and release without
+                // changing the single-renderer draw sequence below.
+                shared_backend = std::make_unique<SokolBackend>();
+                if (!shared_backend->initialize())
+                    result = 17;
+                else
+                    ready = true;
+            }
         } else if (event.kind == NK_EVENT_SURFACE_RESIZE && event.source == surface &&
                    event.data_size >= sizeof(nk_surface_resize_event)) {
             const auto *size = static_cast<const nk_surface_resize_event *>(event.data);
@@ -265,6 +274,7 @@ int main() {
     }
     if (ready)
         nk_surface_make_current(surface);
+    shared_backend.reset();
     backend.reset();
     nk_surface_destroy(surface);
     nk_window_destroy(window);

@@ -31,6 +31,7 @@ add_library(nativekit_ui SHARED
     src/prepare/nanovg_path.cpp
     src/prepare/skribidi_adapter.cpp
     src/render/frame_resources.cpp
+    src/render/graphics_device.cpp
     src/render/render_plan_executor.cpp
     src/render/shader_toolchain_probe.cpp
     src/render/sokol_backend.cpp
@@ -106,6 +107,7 @@ if(NK_BUILD_TESTS)
         src/prepare/nanovg_recorder.cpp
         src/prepare/nanovg_path.cpp
         src/prepare/skribidi_adapter.cpp
+        src/render/graphics_device.cpp
         src/render/sokol_backend.cpp)
     target_include_directories(nativekit_ui_sokol_backend_mesh_test PRIVATE
         src "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}")
@@ -129,6 +131,7 @@ if(NK_BUILD_TESTS)
             src/prepare/nanovg_recorder.cpp
             src/prepare/nanovg_path.cpp
             src/prepare/skribidi_adapter.cpp
+            src/render/graphics_device.cpp
             src/render/frame_resources.cpp
             src/render/render_plan_executor.cpp
             src/render/sokol_backend.cpp)

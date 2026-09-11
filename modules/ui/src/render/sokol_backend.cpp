@@ -1,6 +1,7 @@
 #include "sokol_backend.h"
 
 #include "frame_resources.h"
+#include "graphics_device.h"
 
 #define SOKOL_GLCORE
 #include "sokol_gfx.h"
@@ -94,6 +95,7 @@ struct SokolBackend::State {
     sg_sampler white_sampler{};
     SokolBackendStats stats{};
     std::string error;
+    std::shared_ptr<GraphicsDevice> device;
     int width = 0;
     int height = 0;
     bool initialized = false;
@@ -681,7 +683,7 @@ bool triangulate_prepared_path(const PreparedPathData &path,
 SokolBackend::SokolBackend() : state_(new State) {}
 
 SokolBackend::~SokolBackend() {
-    if (state_->initialized) {
+    if (state_->device) {
         for (auto &[owner, images] : state_->paint_images) {
             (void)owner;
             for (auto &[id, image] : images) {
@@ -732,19 +734,18 @@ SokolBackend::~SokolBackend() {
         sg_destroy_pipeline(state_->paint_pipeline);
         sg_destroy_shader(state_->paint_shader);
         sg_destroy_shader(state_->solid_shader);
-        sg_shutdown();
+        state_->device.reset();
     }
     delete state_;
 }
 
 bool SokolBackend::initialize() {
-    if (state_->initialized || sg_isvalid())
-        return fail(*state_, "Sokol runtime is already owned");
-    sg_desc desc{};
-    desc.environment.defaults = {SG_PIXELFORMAT_RGBA8, SG_PIXELFORMAT_DEPTH_STENCIL, 1};
-    sg_setup(&desc);
-    if (!sg_isvalid())
-        return fail(*state_, "sg_setup failed");
+    if (state_->initialized)
+        return fail(*state_, "Sokol backend is already initialized");
+    std::string device_error;
+    state_->device = GraphicsDevice::acquire(&device_error);
+    if (!state_->device)
+        return fail(*state_, device_error.c_str());
     state_->solid_shader = make_solid_shader();
     state_->paint_shader = make_path_shader();
     state_->alpha_glyph_shader = make_glyph_shader(GlyphMode::Alpha);
