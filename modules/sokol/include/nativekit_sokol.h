@@ -43,13 +43,14 @@ extern "C" {
 #endif
 
 /**
- * NativeKit's Sokol adapter for rendering through a NativeKit OpenGL surface.
+ * NativeKit's Sokol adapter for rendering through a NativeKit OpenGL or GLES3
+ * surface, selected by the build's NK_SOKOL_BACKEND option.
  *
  * Create a NativeKit window and surface first, then create one Sokol renderer
  * for that surface. Resources belong to the renderer that created them. Each
  * frame must be enclosed by nks_begin_frame() and nks_end_frame(). The current
- * adapter supports one renderer at a time and initializes an OpenGL 3.3
- * context for the surface.
+ * adapter supports one renderer at a time and initializes the selected
+ * graphics context for the surface.
  *
  * Functions return NKS_OK on success. On failure, call nks_last_error()
  * immediately for a diagnostic string. Handles are value types; do not free,
@@ -259,12 +260,13 @@ NKS_API const char *nks_last_error(void) NKS_RETURNS_BORROWED_UTF8;
 /* ------------------------------------------------------------------------- */
 
 /**
- * Creates an OpenGL surface associated with a NativeKit window.
+ * Creates a surface for the selected Sokol graphics backend associated with a
+ * NativeKit window.
  *
  * `nativekit_window` must be a valid NativeKit window handle, and `width` and
- * `height` must be positive. The current adapter requests an OpenGL 3.3
- * forward-compatible surface. On NKS_OK, writes the NativeKit surface handle
- * to `out_surface`; destroy it with nks_surface_destroy() after destroying its
+ * `height` must be positive. The current adapter requests the configured
+ * OpenGL or GLES3 surface. On NKS_OK, writes the NativeKit surface handle to
+ * `out_surface`; destroy it with nks_surface_destroy() after destroying its
  * renderer.
  */
 NKS_API nks_result nks_surface_create(nks_nativekit_handle nativekit_window, int32_t width,
@@ -378,8 +380,9 @@ NKS_API nks_result nks_buffer_destroy(nks_renderer renderer, nks_buffer buffer);
 /**
  * Creates a shader from NUL-terminated vertex and fragment shader source.
  *
- * The source strings are UTF-8 GLSL for the current OpenGL backend. Both
- * stages are required. On NKS_OK, writes the shader handle to `out_shader`.
+ * The source strings are UTF-8 GLSL for the configured OpenGL or GLES3
+ * backend. Both stages are required. On NKS_OK, writes the shader handle to
+ * `out_shader`.
  */
 NKS_API nks_result nks_shader_create(nks_renderer renderer, const char *vertex_source NKS_UTF8,
                                      const char *fragment_source NKS_UTF8,

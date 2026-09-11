@@ -1,7 +1,7 @@
 #ifndef NATIVEKIT_SOKOL_RUNTIME_H
 #define NATIVEKIT_SOKOL_RUNTIME_H
 
-#define SOKOL_GLCORE
+#include "nativekit_sokol_backend_config.h"
 #include "sokol_gfx.h"
 
 #ifdef __cplusplus

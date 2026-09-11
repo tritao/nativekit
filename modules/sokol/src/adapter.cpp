@@ -185,9 +185,15 @@ nks_result nks_surface_create(nks_nativekit_handle window, int32_t width, int32_
     nk_surface_options o{};
     o.struct_size = sizeof(o);
     o.flags = NK_SURFACE_FORWARD_COMPATIBLE;
+#if defined(NK_SOKOL_BACKEND_GLES3)
+    o.api = NK_GRAPHICS_OPENGL_ES;
+    o.major_version = 3;
+    o.minor_version = 0;
+#else
     o.api = NK_GRAPHICS_OPENGL;
     o.major_version = 3;
     o.minor_version = 3;
+#endif
     o.width = width;
     o.height = height;
     return nk_surface_create(window, &o, out) == NK_OK
@@ -544,7 +550,11 @@ nks_result nks_begin_frame(nks_renderer h) {
     target.struct_size = sizeof(target);
     if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK || target.width <= 0 ||
         target.height <= 0 ||
+#if defined(NK_SOKOL_BACKEND_GLES3)
+        target.api != NK_GRAPHICS_OPENGL_ES)
+#else
         target.api != NK_GRAPHICS_OPENGL)
+#endif
         return fail(NKS_ERROR_UNKNOWN, "framebuffer size failed");
     sg_pass pass{};
     pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;

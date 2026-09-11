@@ -36,8 +36,10 @@ build with `-DNK_SOKOL_SHDC=/path/to/sokol-shdc`, or put `sokol-shdc` on `PATH`.
 The current generator languages are selected by `NKUI_SHADER_LANGUAGES` and
 default to `glsl410:glsl300es:hlsl5:metal_macos:metal_ios:metal_sim:wgsl:spirv_vk`.
 The generated descriptors are therefore ready for the intended Sokol backend
-families, although the NativeKit surface/runtime submission path currently
-enables desktop OpenGL only.
+families. Select the compiled Sokol variant with `-DNK_SOKOL_BACKEND=glcore`
+or `-DNK_SOKOL_BACKEND=gles3`; the default is `glcore` on desktop Linux and
+`gles3` on Android. A build contains one Sokol backend variant at a time, so
+this is not yet simultaneous OpenGL/GLES/Vulkan support in one process.
 
 Build it with:
 

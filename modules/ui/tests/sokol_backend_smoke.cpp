@@ -14,7 +14,13 @@
 
 #include "nanovg.h"
 
+#if defined(NK_SOKOL_BACKEND_GLES3)
+#include <GLES3/gl3.h>
+#define NKUI_TEST_SURFACE_API NK_GRAPHICS_OPENGL_ES
+#else
 #include <GL/gl.h>
+#define NKUI_TEST_SURFACE_API NK_GRAPHICS_OPENGL
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -82,9 +88,13 @@ int main() {
     nk_surface_options surface_options{};
     surface_options.struct_size = sizeof(surface_options);
     surface_options.flags = NK_SURFACE_FORWARD_COMPATIBLE | NK_SURFACE_STENCIL;
-    surface_options.api = NK_GRAPHICS_OPENGL;
+    surface_options.api = NKUI_TEST_SURFACE_API;
     surface_options.major_version = 3;
+#if defined(NK_SOKOL_BACKEND_GLES3)
+    surface_options.minor_version = 0;
+#else
     surface_options.minor_version = 3;
+#endif
     surface_options.width = window_options.width;
     surface_options.height = window_options.height;
     nk_handle surface = NK_INVALID_HANDLE;
@@ -187,7 +197,7 @@ int main() {
         nk_surface_frame_target frame_target{};
         frame_target.struct_size = sizeof(frame_target);
         if (nk_surface_get_frame_target(surface, &frame_target) != NK_OK ||
-            frame_target.api != NK_GRAPHICS_OPENGL || frame_target.width <= 0 ||
+            frame_target.api != NKUI_TEST_SURFACE_API || frame_target.width <= 0 ||
             frame_target.height <= 0)
             result = 16;
         else

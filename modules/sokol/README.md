@@ -1,11 +1,16 @@
 # NativeKit Sokol module
 
-This isolated experiment uses NativeKit for its window, event loop, OpenGL
-context, framebuffer sizing, and presentation. `sokol_gfx.h` owns only rendering
-resources and draw submission. It deliberately does not use `sokol_app.h`.
+This isolated experiment uses NativeKit for its window, event loop, graphics
+context, framebuffer sizing, and presentation. `sokol_gfx.h` owns only
+rendering resources and draw submission. It deliberately does not use
+`sokol_app.h`.
 
-The first milestone is Linux/OpenGL only. Sokol is pinned in `CMakeLists.txt` so
-that changes to its source-level API cannot silently change the experiment.
+The Sokol variant is selected at configure time with `NK_SOKOL_BACKEND=glcore`
+or `NK_SOKOL_BACKEND=gles3`. The default is `glcore` on desktop Linux and
+`gles3` on Android. Each build uses one Sokol backend variant; simultaneous
+OpenGL/GLES/Vulkan runtime support will require separate backend runtimes.
+Sokol is pinned in `CMakeLists.txt` so that changes to its source-level API
+cannot silently change the experiment.
 
 Build and run from the NativeKit repository root:
 
@@ -13,6 +18,14 @@ Build and run from the NativeKit repository root:
 cmake -S . -B build-sokol -GNinja -DNK_BUILD_SOKOL=ON
 cmake --build build-sokol
 ./build-sokol/modules/sokol/nativekit_sokol_triangle
+```
+
+For an explicit GLES3 build on Linux:
+
+```sh
+cmake -S . -B build-sokol-gles -GNinja \
+  -DNK_BUILD_SOKOL=ON -DNK_SOKOL_BACKEND=gles3
+cmake --build build-sokol-gles
 ```
 
 For a bounded 30-frame run (suitable for Xvfb):

@@ -1,4 +1,4 @@
-#define SOKOL_GLCORE
+#include "nativekit_sokol_backend_config.h"
 #include "sokol_gfx.h"
 
 #include "ui_toolchain_probe.glsl.h"

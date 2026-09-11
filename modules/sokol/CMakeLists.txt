@@ -5,8 +5,10 @@ target_include_directories(nativekit_sokol
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    PRIVATE "${NK_VENDOR_DIR}/sokol")
-target_link_libraries(nativekit_sokol PRIVATE NativeKit::nativekit nativekit_sokol_runtime OpenGL::GL)
+    PRIVATE "${NK_VENDOR_DIR}/sokol" ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
+target_compile_definitions(nativekit_sokol PUBLIC ${NK_SOKOL_COMPILE_DEFINITION})
+target_link_libraries(nativekit_sokol PRIVATE NativeKit::nativekit nativekit_sokol_runtime
+    ${NK_SOKOL_GRAPHICS_LIBRARIES})
 set_target_properties(nativekit_sokol PROPERTIES
     EXPORT_NAME sokol
     CXX_VISIBILITY_PRESET hidden
@@ -22,9 +24,12 @@ endif()
 
 if(NK_BUILD_EXAMPLES)
     add_executable(nativekit_sokol_triangle examples/triangle.c)
-    target_include_directories(nativekit_sokol_triangle PRIVATE "${NK_VENDOR_DIR}/sokol")
+    target_include_directories(nativekit_sokol_triangle PRIVATE
+        "${NK_VENDOR_DIR}/sokol" "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
+    target_compile_definitions(nativekit_sokol_triangle PRIVATE ${NK_SOKOL_COMPILE_DEFINITION})
     target_link_libraries(nativekit_sokol_triangle PRIVATE NativeKit::nativekit
-        nativekit_sokol_runtime OpenGL::GL)
+        nativekit_sokol_runtime ${NK_SOKOL_GRAPHICS_LIBRARIES})
     set_target_properties(nativekit_sokol_triangle PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 

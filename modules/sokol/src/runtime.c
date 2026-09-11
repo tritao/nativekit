@@ -1,5 +1,4 @@
 #define SOKOL_IMPL
-#define SOKOL_GLCORE
 #include "nativekit_sokol_runtime.h"
 
 #include <stdint.h>

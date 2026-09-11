@@ -2,6 +2,7 @@
 
 #include "frame_resources.h"
 #include "graphics_device.h"
+#include "nativekit_sokol_backend_config.h"
 
 #include <algorithm>
 #include <array>
@@ -578,7 +579,12 @@ bool SokolBackend::begin_window_pass(int width, int height,
                                      const nk_surface_frame_target &target, bool clear) {
     if (!valid() || state_->in_pass || width <= 0 || height <= 0)
         return fail(*state_, "invalid window pass");
-    if (target.struct_size < sizeof(target) || target.api != NK_GRAPHICS_OPENGL)
+#if defined(NK_SOKOL_BACKEND_GLES3)
+    constexpr nk_graphics_api supported_api = NK_GRAPHICS_OPENGL_ES;
+#else
+    constexpr nk_graphics_api supported_api = NK_GRAPHICS_OPENGL;
+#endif
+    if (target.struct_size < sizeof(target) || target.api != supported_api)
         return fail(*state_, "unsupported window target");
     state_->width = width;
     state_->height = height;

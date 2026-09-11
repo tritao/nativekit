@@ -2,14 +2,18 @@
 #include "nativekit_graphics.h"
 #include "nativekit_window.h"
 
-#if !defined(__linux__)
-#error "The first NativeKit/Sokol prototype currently targets desktop Linux/OpenGL."
+#if !defined(__linux__) && !defined(__ANDROID__)
+#error "The NativeKit/Sokol prototype currently targets Linux or Android."
 #endif
 
-#define SOKOL_GLCORE
+#include "nativekit_sokol_backend_config.h"
 #include "sokol_gfx.h"
 
+#if defined(NK_SOKOL_BACKEND_GLES3)
+#include <GLES3/gl3.h>
+#else
 #include <GL/gl.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -49,12 +53,20 @@ static int renderer_init(prototype_renderer *renderer) {
     };
     renderer->vertices = sg_make_buffer(&(sg_buffer_desc){.data = SG_RANGE(vertices)});
     renderer->shader = sg_make_shader(&(sg_shader_desc){
+#if defined(NK_SOKOL_BACKEND_GLES3)
+        .vertex_func.source = "#version 300 es\nprecision highp float;\n"
+#else
         .vertex_func.source = "#version 330\n"
+#endif
                               "layout(location=0) in vec2 position;\n"
                               "layout(location=1) in vec3 color0;\n"
                               "out vec3 color;\n"
                               "void main(){ color=color0; gl_Position=vec4(position,0.0,1.0); }\n",
+#if defined(NK_SOKOL_BACKEND_GLES3)
+        .fragment_func.source = "#version 300 es\nprecision mediump float;\n"
+#else
         .fragment_func.source = "#version 330\n"
+#endif
                                 "in vec3 color; out vec4 frag_color;\n"
                                 "void main(){ frag_color=vec4(color,1.0); }\n",
     });
@@ -131,9 +143,17 @@ int main(int argc, char **argv) {
     nk_surface_options surface_options = {
         .struct_size = sizeof(surface_options),
         .flags = NK_SURFACE_FORWARD_COMPATIBLE,
+#if defined(NK_SOKOL_BACKEND_GLES3)
+        .api = NK_GRAPHICS_OPENGL_ES,
+#else
         .api = NK_GRAPHICS_OPENGL,
+#endif
         .major_version = 3,
+#if defined(NK_SOKOL_BACKEND_GLES3)
+        .minor_version = 0,
+#else
         .minor_version = 3,
+#endif
         .width = window_options.width,
         .height = window_options.height,
     };
