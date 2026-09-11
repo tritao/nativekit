@@ -12,6 +12,11 @@ OpenGL/GLES/Vulkan runtime support will require separate backend runtimes.
 Sokol is pinned in `CMakeLists.txt` so that changes to its source-level API
 cannot silently change the experiment.
 
+To build the first two independent prefixed runtimes together on desktop
+Linux, enable `-DNK_BUILD_SOKOL_BACKEND_MATRIX=ON`. This builds separate
+`glcore` and `gles3` runtime artifacts and a link test; the UI renderer still
+uses the selected single-backend runtime until backend dispatch is completed.
+
 Build and run from the NativeKit repository root:
 
 ```sh

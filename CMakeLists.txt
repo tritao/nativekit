@@ -23,6 +23,8 @@ option(NK_BUILD_SHARED "Build NativeKit as a shared library" ON)
 option(NK_BUILD_TESTS "Build NativeKit tests" ${BUILD_TESTING})
 option(NK_BUILD_EXAMPLES "Build NativeKit examples" ON)
 option(NK_BUILD_SOKOL "Build the experimental Sokol graphics module" OFF)
+option(NK_BUILD_SOKOL_BACKEND_MATRIX
+    "Build independent prefixed Sokol runtimes for glcore and gles3" OFF)
 option(NK_BUILD_UI "Build the experimental retained UI module" OFF)
 option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
@@ -243,20 +245,51 @@ if(NK_BUILD_SOKOL OR NK_BUILD_UI)
         message(FATAL_ERROR
             "Unsupported NK_SOKOL_BACKEND='${NK_SOKOL_BACKEND}'; choose glcore or gles3")
     endif()
-    add_library(nativekit_sokol_runtime SHARED modules/sokol/src/runtime.c)
-    target_include_directories(nativekit_sokol_runtime PRIVATE
-        "${NK_VENDOR_DIR}/sokol" "${CMAKE_CURRENT_SOURCE_DIR}/modules/sokol/src"
-        ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
+    function(nk_add_sokol_runtime target compile_definition symbol_prefix graphics_libraries
+             graphics_include_dirs)
+        add_library(${target} SHARED modules/sokol/src/runtime.c)
+        target_include_directories(${target} PRIVATE
+            "${NK_VENDOR_DIR}/sokol" "${CMAKE_CURRENT_SOURCE_DIR}/modules/sokol/src"
+            ${graphics_include_dirs})
+        target_compile_definitions(${target} PRIVATE ${compile_definition})
+        if(symbol_prefix)
+            target_compile_definitions(${target} PRIVATE
+                SOKOL_GFX_SYMBOL_PREFIX=${symbol_prefix}
+                NK_SOKOL_RUNTIME_PREFIX=${symbol_prefix}runtime_)
+        endif()
+        target_link_libraries(${target} PRIVATE ${graphics_libraries})
+        set_target_properties(${target} PROPERTIES
+            C_VISIBILITY_PRESET default
+            VERSION ${PROJECT_VERSION}
+            SOVERSION 0)
+    endfunction()
+
+    nk_add_sokol_runtime(nativekit_sokol_runtime ${NK_SOKOL_COMPILE_DEFINITION} ""
+        "${NK_SOKOL_GRAPHICS_LIBRARIES}" "${NK_SOKOL_GRAPHICS_INCLUDE_DIRS}")
     target_compile_definitions(nativekit_sokol_runtime PUBLIC ${NK_SOKOL_COMPILE_DEFINITION})
-    target_link_libraries(nativekit_sokol_runtime PRIVATE ${NK_SOKOL_GRAPHICS_LIBRARIES})
-    set_target_properties(nativekit_sokol_runtime PROPERTIES
-        C_VISIBILITY_PRESET default
-        VERSION ${PROJECT_VERSION}
-        SOVERSION 0)
     install(TARGETS nativekit_sokol_runtime EXPORT NativeKitTargets
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+    if(NK_BUILD_SOKOL_BACKEND_MATRIX)
+        if(NOT UNIX OR APPLE OR ANDROID)
+            message(FATAL_ERROR "NativeKit Sokol backend matrix requires desktop Linux")
+        endif()
+        find_package(OpenGL REQUIRED)
+        find_path(NK_SOKOL_MATRIX_GLES3_INCLUDE_DIR GLES3/gl3.h REQUIRED)
+        find_library(NK_SOKOL_MATRIX_GLES3_LIBRARY NAMES GLESv2 REQUIRED)
+        nk_add_sokol_runtime(nativekit_sokol_runtime_glcore NK_SOKOL_BACKEND_GLCORE=1
+            nk_sokol_glcore_ "OpenGL::GL" "")
+        nk_add_sokol_runtime(nativekit_sokol_runtime_gles3 NK_SOKOL_BACKEND_GLES3=1
+            nk_sokol_gles3_ "${NK_SOKOL_MATRIX_GLES3_LIBRARY}"
+            "${NK_SOKOL_MATRIX_GLES3_INCLUDE_DIR}")
+        install(TARGETS nativekit_sokol_runtime_glcore nativekit_sokol_runtime_gles3
+            EXPORT NativeKitTargets
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    endif()
 endif()
 if(NK_BUILD_SOKOL)
     add_subdirectory(modules/sokol)

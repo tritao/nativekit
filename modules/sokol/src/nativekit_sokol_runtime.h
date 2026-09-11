@@ -4,6 +4,15 @@
 #include "nativekit_sokol_backend_config.h"
 #include "sokol_gfx.h"
 
+#if defined(NK_SOKOL_RUNTIME_PREFIX)
+#define NK_SOKOL_RUNTIME_CAT2(a, b) a##b
+#define NK_SOKOL_RUNTIME_CAT(a, b) NK_SOKOL_RUNTIME_CAT2(a, b)
+#define nk_sokol_runtime_acquire \
+    NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, acquire)
+#define nk_sokol_runtime_release \
+    NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, release)
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

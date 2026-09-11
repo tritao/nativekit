@@ -22,6 +22,17 @@ if(NK_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/bench")
 endif()
 
+if(NK_BUILD_SOKOL_BACKEND_MATRIX AND NK_BUILD_TESTS)
+    add_executable(nativekit_sokol_runtime_matrix_test tests/runtime_matrix.c)
+    target_include_directories(nativekit_sokol_runtime_matrix_test PRIVATE
+        "${NK_VENDOR_DIR}/sokol")
+    target_link_libraries(nativekit_sokol_runtime_matrix_test PRIVATE
+        nativekit_sokol_runtime_glcore nativekit_sokol_runtime_gles3)
+    add_test(NAME nativekit_sokol_runtime_matrix
+        COMMAND nativekit_sokol_runtime_matrix_test)
+    set_tests_properties(nativekit_sokol_runtime_matrix PROPERTIES LABELS "graphics;sokol")
+endif()
+
 if(NK_BUILD_EXAMPLES)
     add_executable(nativekit_sokol_triangle examples/triangle.c)
     target_include_directories(nativekit_sokol_triangle PRIVATE
