@@ -8,6 +8,8 @@ class Color {
 	public final alpha:Float;
 
 	public function new(red:Float, green:Float, blue:Float, alpha:Float = 1.0) {
+		if (red < 0.0 || red > 1.0 || green < 0.0 || green > 1.0 || blue < 0.0 || blue > 1.0 || alpha < 0.0 || alpha > 1.0)
+			throw "Color components must be in the range 0..1";
 		this.red = red;
 		this.green = green;
 		this.blue = blue;

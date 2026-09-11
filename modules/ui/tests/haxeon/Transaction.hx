@@ -52,7 +52,7 @@ class Transaction {
 		if (fontPath == null)
 			return 9;
 		fonts.add(fontPath);
-		var text = TextLayout.create(fonts, "NativeKit — こんにちは — مرحبا", 220.0, 18.0);
+		var text = TextLayout.createStyled(fonts, "NativeKit — こんにちは — مرحبا", new TextStyle(18.0), new ParagraphStyle(220.0));
 		var metrics = text.measure();
 		if (metrics.width <= 0.0 || text.hitTest(16.0, 24.0).offset < 0)
 			return 8;
@@ -98,7 +98,7 @@ class Transaction {
 					return 15;
 				var frame = new FrameInfo(256.0, 192.0, size.out_width, size.out_height, scale.out_scale);
 				try {
-					renderer.renderFrame(list, surface, frame);
+					renderer.renderFrame(list, Surface.fromNativeHandle(surface), frame);
 				} catch (_:Dynamic) {
 					return 16;
 				}
@@ -116,12 +116,24 @@ class Transaction {
 		info = list.info();
 		if (info.commandCount != 0)
 			return 5;
+		canvas.reset();
+		canvas.update(list);
+		if (list.info().commandCount != 0)
+			return 6;
 		list.dispose();
 		text.dispose();
 		fonts.dispose();
 		image.dispose();
 		paint.dispose();
 		path.dispose();
+		var staleRejected = false;
+		try {
+			canvas.setPaint(paint);
+		} catch (_:Dynamic) {
+			staleRejected = true;
+		}
+		if (!staleRejected)
+			return 7;
 		NativeKit.nk_surface_destroy(surface);
 		NativeKit.nk_window_destroy(window);
 		NativeKit.nk_shutdown();

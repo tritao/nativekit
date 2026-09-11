@@ -21,6 +21,10 @@ class TextLayout extends NativeKitUIResource {
 		return new TextLayout(made.out_layout, text, width, fontSize);
 	}
 
+	/** Creates a layout from typed style objects so future text ABI growth does not add positional arguments. */
+	public static function createStyled(fonts:FontCollection, text:String, style:TextStyle, paragraph:ParagraphStyle):TextLayout
+		return create(fonts, text, paragraph.width, style.fontSize);
+
 	public function measure():TextMetrics {
 		var measured = NativeKitUI.nkui_text_layout_measure(nativeHandle());
 		UiResult.check(measured.status, "textLayout.measure");

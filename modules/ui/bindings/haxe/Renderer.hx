@@ -17,14 +17,14 @@ class Renderer {
 		return new Renderer(made.out_renderer);
 	}
 
-	public function render(list:DisplayList, surface:Int):Void {
+	public function render(list:DisplayList, surface:Surface):Void {
 		ensureLive();
-		UiResult.check(NativeKitUI.nkui_renderer_render(value, list.nativeHandle(), surface), "renderer.render");
+		UiResult.check(NativeKitUI.nkui_renderer_render(value, list.nativeHandle(), surface.nativeHandle()), "renderer.render");
 	}
 
-	public function renderFrame(list:DisplayList, surface:Int, frame:FrameInfo):Void {
+	public function renderFrame(list:DisplayList, surface:Surface, frame:FrameInfo):Void {
 		ensureLive();
-		UiResult.check(NativeKitUI.nkui_renderer_render_frame(value, list.nativeHandle(), surface, frame.nativeValue()), "renderer.renderFrame");
+		UiResult.check(NativeKitUI.nkui_renderer_render_frame(value, list.nativeHandle(), surface.nativeHandle(), frame.nativeValue()), "renderer.renderFrame");
 	}
 
 	public function stats():RendererStats {

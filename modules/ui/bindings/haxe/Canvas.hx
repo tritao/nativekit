@@ -141,8 +141,11 @@ class Canvas {
 		displayList.update(this);
 
 	@:allow(DisplayList)
-	private function submitTo(list:nkui_display_list):Void
+	private function submitTo(list:nkui_display_list):Void {
+		if (openLayers != 0)
+			throw "Canvas update with an open layer";
 		UiResult.check(commands.submit(list), "displayList.update");
+	}
 }
 
 private class CanvasState {
