@@ -191,20 +191,50 @@ if(NK_BUILD_TESTS)
 endif()
 
 if(NK_BUILD_EXAMPLES)
-    add_executable(nativekit_ui_showcase examples/showcase.cpp)
-    target_compile_definitions(nativekit_ui_showcase PRIVATE
+    add_executable(nativekit_ui_c_api examples/ui_c_api/showcase.cpp)
+    target_compile_definitions(nativekit_ui_c_api PRIVATE
         NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
-    target_link_libraries(nativekit_ui_showcase PRIVATE NativeKit::ui NativeKit::nativekit)
+    target_link_libraries(nativekit_ui_c_api PRIVATE NativeKit::ui NativeKit::nativekit)
     if(NK_BUILD_TESTS)
-        find_program(NKUI_SHOWCASE_XVFB_RUN xvfb-run)
-        if(NKUI_SHOWCASE_XVFB_RUN)
-            add_test(NAME nativekit_ui_showcase_smoke
-                COMMAND ${NKUI_SHOWCASE_XVFB_RUN} -a
-                    $<TARGET_FILE:nativekit_ui_showcase> --smoke-test)
-            set_tests_properties(nativekit_ui_showcase_smoke PROPERTIES
-                LABELS "graphics;ui;showcase"
+        find_program(NKUI_C_API_XVFB_RUN xvfb-run)
+        if(NKUI_C_API_XVFB_RUN)
+            add_test(NAME nativekit_ui_c_api_smoke
+                COMMAND ${NKUI_C_API_XVFB_RUN} -a
+                    $<TARGET_FILE:nativekit_ui_c_api> --smoke-test)
+            set_tests_properties(nativekit_ui_c_api_smoke PROPERTIES
+                LABELS "graphics;ui;abi"
                 TIMEOUT 15
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+        endif()
+    endif()
+
+    set(NKUI_HAXEON_DIR "$ENV{HAXEON_DIR}")
+    if(NOT NKUI_HAXEON_DIR)
+        set(NKUI_HAXEON_DIR "${PROJECT_SOURCE_DIR}/../realtime-haxe")
+    endif()
+    if(EXISTS "${NKUI_HAXEON_DIR}/.tools/haxe/haxe")
+        add_custom_target(nativekit_ui_showcase
+            COMMAND ${CMAKE_COMMAND} -E env
+                "NATIVEKIT_BUILD_DIR=${CMAKE_BINARY_DIR}"
+                "HAXEON_DIR=${NKUI_HAXEON_DIR}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase.sh" --build-only
+            DEPENDS nativekit_ui
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+            USES_TERMINAL)
+
+        if(NK_BUILD_TESTS)
+            find_program(NKUI_SHOWCASE_XVFB_RUN xvfb-run)
+            if(NKUI_SHOWCASE_XVFB_RUN)
+                add_test(NAME nativekit_ui_showcase_static
+                    COMMAND ${NKUI_SHOWCASE_XVFB_RUN} -a
+                        "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase.sh"
+                        --static-frame --stats)
+                set_tests_properties(nativekit_ui_showcase_static PROPERTIES
+                    LABELS "graphics;ui;showcase;visual"
+                    TIMEOUT 30
+                    ENVIRONMENT
+                        "LIBGL_ALWAYS_SOFTWARE=1;NATIVEKIT_BUILD_DIR=${CMAKE_BINARY_DIR};HAXEON_DIR=${NKUI_HAXEON_DIR}")
+            endif()
         endif()
     endif()
 

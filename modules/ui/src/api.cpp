@@ -998,7 +998,9 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                 } else {
                     command.transform = transform;
                 }
-                text_adapters.push_back(layout->text.get());
+                if (std::find(text_adapters.begin(), text_adapters.end(), layout->text.get()) ==
+                    text_adapters.end())
+                    text_adapters.push_back(layout->text.get());
             } else if (command.kind == nkui::RenderCommandKind::CompositeTarget &&
                        command.resource.value < (UINT32_C(4) << 28)) {
                 valid = false;
