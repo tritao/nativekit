@@ -200,5 +200,28 @@ int main() {
         !adapter.prepare_glyphs_for_line(1, 0.0f, 0.0f, 1.0f, GlyphMode::Alpha, second_line) ||
         first_line.vertices.empty() || second_line.vertices.empty())
         return 40;
+    TextLayoutResult retained_first;
+    TextLayoutResult retained_second;
+    TextLayoutOptions retained_options;
+    retained_options.font_size = 22.0f;
+    retained_options.wrap = TextWrapMode::WordCharacter;
+    if (!adapter.layout_utf8("first retained paragraph", 120.0f, retained_options,
+                             &retained_first) ||
+        !adapter.layout_utf8("second retained paragraph", 120.0f, retained_options,
+                             &retained_second) ||
+        !retained_first.id || !retained_second.id || retained_first.id == retained_second.id ||
+        !adapter.has_layout(retained_first.id) || !adapter.has_layout(retained_second.id))
+        return 42;
+    const uint32_t retained_builds = adapter.layout_build_count();
+    PreparedGlyphs retained_first_glyphs;
+    PreparedGlyphs retained_second_glyphs;
+    if (!adapter.prepare_glyphs_for_line(retained_first.id, 0, 0.0f, 0.0f, 1.0f,
+                                         GlyphMode::Alpha, retained_first_glyphs) ||
+        !adapter.prepare_glyphs_for_line(retained_second.id, 0, 0.0f, 0.0f, 1.0f,
+                                         GlyphMode::Alpha, retained_second_glyphs) ||
+        retained_first_glyphs.layout_id != retained_first.id ||
+        retained_second_glyphs.layout_id != retained_second.id ||
+        adapter.layout_build_count() != retained_builds)
+        return 43;
     return glyphs.vertices.size() % 4 == 0 && glyphs.indices.size() % 6 == 0 ? 0 : 41;
 }

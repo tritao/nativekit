@@ -8,6 +8,8 @@
 
 namespace nkui {
 
+class SkribidiAdapter;
+
 /**
  * NativeKit's replaceable box-layout contract. Implementations may use Clay
  * or another solver, but callers only exchange NativeKit-owned values.
@@ -26,7 +28,8 @@ class LayoutBackend {
                         float delta_seconds, LayoutSnapshot &out, LayoutError *error) = 0;
 };
 
-std::unique_ptr<LayoutBackend> make_clay_layout_backend(std::size_t max_nodes);
+std::unique_ptr<LayoutBackend> make_clay_layout_backend(std::size_t max_nodes,
+                                                        SkribidiAdapter *text_adapter);
 
 } // namespace nkui
 

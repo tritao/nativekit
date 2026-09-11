@@ -1,6 +1,7 @@
 #include "layout/layout_render_compiler.h"
 
 #include "prepare/nanovg_path.h"
+#include "prepare/skribidi_adapter.h"
 
 #include <algorithm>
 #include <cmath>
@@ -123,7 +124,7 @@ void LayoutRenderFrame::reset() {
     plan_ = {};
     paths_.clear();
     glyphs_.clear();
-    active_text_layout_id_ = 0;
+    text_source_ = nullptr;
 }
 
 bool LayoutRenderCompiler::add_font(const char *path, FontFamily family) {
@@ -158,7 +159,8 @@ bool LayoutRenderCompiler::add_system_fallbacks() {
 
 bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId main_target,
                                    float pixel_scale, LayoutRenderFrame &out,
-                                   LayoutRenderCompileError *error, bool load_existing) const {
+                                   LayoutRenderCompileError *error, bool load_existing,
+                                   SkribidiAdapter *text_source) const {
     if (error)
         *error = {};
     if (!is_resource_id(main_target, ResourceKind::RenderTarget) || !std::isfinite(pixel_scale) ||
@@ -166,6 +168,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
         return fail(error, 0, "invalid layout render input");
 
     out.reset();
+    out.text_source_ = text_source;
     try {
         out.plan_.passes.push_back({main_target, {}, load_existing, {}});
         bool has_text = false;
@@ -173,28 +176,31 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             has_text = has_text || primitive.kind == LayoutPrimitiveKind::Text;
 
         if (has_text) {
-            if (!out.text_)
+            if (!text_source && !out.text_)
                 out.text_ = std::make_unique<SkribidiAdapter>();
-            if (!out.text_ || !out.text_->valid())
+            SkribidiAdapter *text = out.text_adapter();
+            if (!text || !text->valid())
                 return fail(error, 0, "text renderer is unavailable");
-            while (out.configured_font_count_ < fonts_.size()) {
-                const auto &font = fonts_[out.configured_font_count_];
-                const bool added = font.data
-                                       ? out.text_->add_font_from_data(
-                                             font.name.c_str(), font.data->data(), font.data->size(),
-                                             font.family)
-                                       : out.text_->add_font(font.name.c_str(), font.family);
-                if (!added)
-                    return fail(error, 0, "layout font could not be loaded");
-                ++out.configured_font_count_;
+            if (!text_source) {
+                while (out.configured_font_count_ < fonts_.size()) {
+                    const auto &font = fonts_[out.configured_font_count_];
+                    const bool added = font.data
+                                           ? text->add_font_from_data(
+                                                 font.name.c_str(), font.data->data(),
+                                                 font.data->size(), font.family)
+                                           : text->add_font(font.name.c_str(), font.family);
+                    if (!added)
+                        return fail(error, 0, "layout font could not be loaded");
+                    ++out.configured_font_count_;
+                }
+                if (system_fallbacks_ && !out.configured_system_fallbacks_) {
+                    if (!text->add_system_fallbacks())
+                        return fail(error, 0, "system font fallbacks are unavailable");
+                    out.configured_system_fallbacks_ = true;
+                }
+                if (out.configured_font_count_ == 0 && !out.configured_system_fallbacks_)
+                    return fail(error, 0, "text primitives require a configured font");
             }
-            if (system_fallbacks_ && !out.configured_system_fallbacks_) {
-                if (!out.text_->add_system_fallbacks())
-                    return fail(error, 0, "system font fallbacks are unavailable");
-                out.configured_system_fallbacks_ = true;
-            }
-            if (out.configured_font_count_ == 0 && !out.configured_system_fallbacks_)
-                return fail(error, 0, "text primitives require a configured font");
         }
 
         std::vector<LayoutRect> clips;
@@ -252,7 +258,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             if (primitive.kind == LayoutPrimitiveKind::Text) {
                 if (primitive.text.empty())
                     continue;
-                if (!out.text_ || primitive.font_size == 0 || transient_slot > kMaxTransientSlot)
+                SkribidiAdapter *text = out.text_adapter();
+                if (!text || primitive.font_size == 0 || transient_slot > kMaxTransientSlot)
                     return fail(error, index, "layout text preparation input is invalid");
                 const LayoutTextLayout *text_layout = nullptr;
                 if (primitive.text_layout_id) {
@@ -265,19 +272,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                         primitive.text_line_index >= found->lines.size())
                         return fail(error, index, "layout text layout ID is invalid");
                     text_layout = &*found;
-                    if (out.active_text_layout_id_ != text_layout->id) {
-                        TextLayoutOptions options;
-                        options.font_size = static_cast<float>(text_layout->font_size);
-                        options.letter_spacing = static_cast<float>(text_layout->letter_spacing);
-                        options.line_height = static_cast<float>(text_layout->line_height);
-                        options.family = text_layout->family;
-                        options.wrap = text_layout->wrap;
-                        options.alignment = text_layout->alignment;
-                        if (!out.text_->layout_utf8(text_layout->text.c_str(),
-                                                    std::max(text_layout->width, 1.0f), options))
-                            return fail(error, index, "layout text shaping failed");
-                        out.active_text_layout_id_ = text_layout->id;
-                    }
+                    if (!text->has_layout(text_layout->id))
+                        return fail(error, index, "layout text resource is unavailable");
                 } else {
                     const float width = std::max(primitive.bounds.width, 1.0f);
                     TextLayoutOptions options;
@@ -285,16 +281,15 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     options.letter_spacing = static_cast<float>(primitive.letter_spacing);
                     options.line_height = static_cast<float>(primitive.line_height);
                     options.wrap = TextWrapMode::None;
-                    if (!out.text_->layout_utf8(primitive.text.c_str(), width, options))
+                    if (!text->layout_utf8(primitive.text.c_str(), width, options))
                         return fail(error, index, "layout text shaping failed");
-                    out.active_text_layout_id_ = 0;
                 }
                 auto glyphs = std::make_unique<PreparedGlyphs>();
                 const bool prepared = text_layout
-                                          ? out.text_->prepare_glyphs_for_line(
-                                                primitive.text_line_index, 0.0f, 0.0f, pixel_scale,
-                                                GlyphMode::Alpha, *glyphs)
-                                          : out.text_->prepare_glyphs(
+                                          ? text->prepare_glyphs_for_line(
+                                                text_layout->id, primitive.text_line_index, 0.0f,
+                                                0.0f, pixel_scale, GlyphMode::Alpha, *glyphs)
+                                          : text->prepare_glyphs(
                                                 0.0f, 0.0f, pixel_scale, GlyphMode::Alpha, *glyphs);
                 if (!prepared)
                     return fail(error, index, "layout glyph preparation failed");

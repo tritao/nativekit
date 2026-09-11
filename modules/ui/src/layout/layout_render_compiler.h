@@ -13,6 +13,8 @@
 
 namespace nkui {
 
+class SkribidiAdapter;
+
 struct LayoutRenderCompileError {
     std::size_t primitive_index = 0;
     const char *message = nullptr;
@@ -36,8 +38,12 @@ class LayoutRenderFrame {
     const RenderPlan &plan() const { return plan_; }
     const FrameResources &resources() const { return resources_; }
     FrameResources &resources() { return resources_; }
-    SkribidiAdapter *text_adapter() { return text_.get(); }
-    const SkribidiAdapter *text_adapter() const { return text_.get(); }
+    // A shared source is owned by the layout engine and must outlive this
+    // frame and any backend atlas uploads derived from it.
+    SkribidiAdapter *text_adapter() { return text_source_ ? text_source_ : text_.get(); }
+    const SkribidiAdapter *text_adapter() const {
+        return text_source_ ? text_source_ : text_.get();
+    }
 
   private:
     friend class LayoutRenderCompiler;
@@ -47,11 +53,11 @@ class LayoutRenderFrame {
     RenderPlan plan_;
     FrameResources resources_;
     std::unique_ptr<SkribidiAdapter> text_;
+    SkribidiAdapter *text_source_ = nullptr;
     std::vector<std::unique_ptr<PreparedPath>> paths_;
     std::vector<std::unique_ptr<PreparedGlyphs>> glyphs_;
     std::size_t configured_font_count_ = 0;
     bool configured_system_fallbacks_ = false;
-    TextLayoutId active_text_layout_id_ = 0;
 };
 
 /** Compiles NativeKit-owned layout output into the backend-neutral render plan. */
@@ -64,7 +70,7 @@ class LayoutRenderCompiler {
 
     bool compile(const LayoutSnapshot &snapshot, ResourceId main_target, float pixel_scale,
                  LayoutRenderFrame &out, LayoutRenderCompileError *error = nullptr,
-                 bool load_existing = false) const;
+                 bool load_existing = false, SkribidiAdapter *text_source = nullptr) const;
 
   private:
     struct FontEntry {

@@ -1,16 +1,18 @@
 #include "layout/layout_engine.h"
 
 #include "layout/layout_backend.h"
+#include "prepare/skribidi_adapter.h"
 
 namespace nkui {
 
 LayoutEngine::LayoutEngine(std::size_t max_nodes)
-    : backend_(make_clay_layout_backend(max_nodes)) {}
+    : text_(std::make_unique<SkribidiAdapter>()),
+      backend_(make_clay_layout_backend(max_nodes, text_.get())) {}
 
 LayoutEngine::~LayoutEngine() = default;
 
 bool LayoutEngine::valid() const {
-    return backend_ && backend_->valid();
+    return text_ && text_->valid() && backend_ && backend_->valid();
 }
 
 bool LayoutEngine::add_font(const char *path, FontFamily family) {

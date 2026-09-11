@@ -9,6 +9,7 @@
 namespace nkui {
 
 class LayoutBackend;
+class SkribidiAdapter;
 
 /**
  * Private NativeKit layout boundary. Clay and its types are deliberately
@@ -23,6 +24,8 @@ class LayoutEngine {
     LayoutEngine &operator=(const LayoutEngine &) = delete;
 
     bool valid() const;
+    SkribidiAdapter *text_adapter() { return text_.get(); }
+    const SkribidiAdapter *text_adapter() const { return text_.get(); }
     bool add_font(const char *path, FontFamily family = FontFamily::Default);
     bool add_font_from_data(const char *name, const void *data, std::size_t bytes,
                             FontFamily family = FontFamily::Default);
@@ -33,6 +36,7 @@ class LayoutEngine {
                 LayoutSnapshot &out, LayoutError *error = nullptr);
 
   private:
+    std::unique_ptr<SkribidiAdapter> text_;
     std::unique_ptr<LayoutBackend> backend_;
 };
 

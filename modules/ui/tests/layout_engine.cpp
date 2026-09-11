@@ -1,4 +1,5 @@
 #include "layout/layout_engine.h"
+#include "prepare/skribidi_adapter.h"
 
 #include <algorithm>
 #include <cmath>
@@ -97,6 +98,14 @@ int main(int argc, char **argv) {
     }
     if (title_line_count != text_layout->lines.size())
         return 12;
+    const uint32_t stable_text_layout_builds = engine.text_adapter()->layout_build_count();
+    if (!engine.layout(nodes, 420.0f, 240.0f, 0.0f, 0.0f, false, 1.0f / 60.0f, snapshot,
+                       &error) ||
+        engine.text_adapter()->layout_build_count() != stable_text_layout_builds)
+        return 13;
+    button_item = snapshot.find(3);
+    if (!button_item)
+        return 13;
     const auto hit = snapshot.hit_test(button_item->bounds.x + 1.0f, button_item->bounds.y + 1.0f);
     if (!hit || *hit != 3)
         return 7;

@@ -1440,7 +1440,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(
     nkui::LayoutRenderCompileError compile_error{};
     if (!session_state->compiler.compile(session_state->snapshot, main_target,
                                          frame_info->pixel_scale, session_state->frame,
-                                         &compile_error, load_existing != 0))
+                                         &compile_error, load_existing != 0,
+                                         session_state->engine->text_adapter()))
         return NKUI_ERROR_INVALID_TRANSACTION;
     const bool new_backend = !renderer_slot->backend->valid();
     if (new_backend && !renderer_slot->backend->initialize())

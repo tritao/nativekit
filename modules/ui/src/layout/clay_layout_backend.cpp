@@ -14,8 +14,6 @@
 namespace nkui {
 namespace {
 
-constexpr float kUnboundedTextWidth = 1000000.0f;
-
 Clay_Color clay_color(LayoutColor color) {
     return {color.red * 255.0f, color.green * 255.0f, color.blue * 255.0f,
             color.alpha * 255.0f};
@@ -41,7 +39,7 @@ class ClayLayoutBackend final : public LayoutBackend {
   public:
     struct State;
 
-    explicit ClayLayoutBackend(std::size_t max_nodes);
+    ClayLayoutBackend(std::size_t max_nodes, SkribidiAdapter *text_adapter);
     ~ClayLayoutBackend() override;
 
     bool valid() const override;
@@ -58,7 +56,8 @@ class ClayLayoutBackend final : public LayoutBackend {
 };
 
 struct ClayLayoutBackend::State {
-    explicit State(std::size_t max_nodes_value) : max_nodes(max_nodes_value) {
+    State(std::size_t max_nodes_value, SkribidiAdapter *text_adapter_value)
+        : max_nodes(max_nodes_value), text(text_adapter_value) {
         Clay_SetMaxElementCount(static_cast<int32_t>(max_nodes + 1));
         Clay_SetMaxMeasureTextCacheWordCount(static_cast<int32_t>(max_nodes * 8 + 32));
         clay_memory.resize(Clay_MinMemorySize());
@@ -76,12 +75,16 @@ struct ClayLayoutBackend::State {
             {1.0f, 1.0f}, error_handler);
         if (context) {
             Clay_SetMeasureTextFunction(measure_text, this);
+            Clay_SetMeasureTextIntrinsicFunction(measure_intrinsic_text, this);
             Clay_SetLayoutTextFunction(layout_text, this);
         }
     }
 
     static Clay_Dimensions measure_text(Clay_StringSlice text, Clay_TextElementConfig *config,
                                         void *user_data);
+    static Clay_TextIntrinsicDimensions measure_intrinsic_text(Clay_StringSlice text,
+                                                               Clay_TextElementConfig *config,
+                                                               void *user_data);
     static Clay_TextLayoutResult layout_text(Clay_StringSlice text,
                                               Clay_TextElementConfig *config,
                                               float available_width, void *user_data);
@@ -89,7 +92,7 @@ struct ClayLayoutBackend::State {
     std::size_t max_nodes = 0;
     std::vector<char> clay_memory;
     Clay_Context *context = nullptr;
-    SkribidiAdapter text;
+    SkribidiAdapter *text = nullptr;
     const std::vector<LayoutNode> *nodes = nullptr;
     std::vector<std::vector<std::size_t>> children;
     std::vector<Clay_ElementId> element_ids;
@@ -102,23 +105,37 @@ struct ClayLayoutBackend::State {
 Clay_Dimensions ClayLayoutBackend::State::measure_text(Clay_StringSlice text,
                                                        Clay_TextElementConfig *config,
                                                        void *user_data) {
-    auto &state = *static_cast<State *>(user_data);
     if (!config || text.length < 0 || (!text.chars && text.length != 0))
         return {0.0f, 0.0f};
+
+    const Clay_TextIntrinsicDimensions intrinsic =
+        measure_intrinsic_text(text, config, user_data);
+    return {intrinsic.unwrappedDimensions.width, intrinsic.unwrappedDimensions.height};
+}
+
+Clay_TextIntrinsicDimensions ClayLayoutBackend::State::measure_intrinsic_text(
+    Clay_StringSlice text, Clay_TextElementConfig *config, void *user_data) {
+    auto &state = *static_cast<State *>(user_data);
+    Clay_TextIntrinsicDimensions result{};
+    if (!config || text.length < 0 || (!text.chars && text.length != 0) || !state.text)
+        return result;
 
     const std::string value(text.chars ? text.chars : "", static_cast<std::size_t>(text.length));
     TextLayoutOptions options;
     options.font_size = config->fontSize > 0 ? static_cast<float>(config->fontSize) : 16.0f;
     options.letter_spacing = static_cast<float>(config->letterSpacing);
     options.line_height = static_cast<float>(config->lineHeight);
-    // Clay asks the text engine for intrinsic metrics without imposing a
-    // paragraph width. The paragraph callback below owns actual line breaks.
     options.wrap = TextWrapMode::None;
-    if (!state.text.layout_utf8(value.c_str(), kUnboundedTextWidth, options))
-        return {0.0f, config->lineHeight > 0 ? static_cast<float>(config->lineHeight) : 0.0f};
-    const TextRect bounds = state.text.bounds();
-    return {bounds.width, config->lineHeight > 0 ? static_cast<float>(config->lineHeight)
-                                                  : bounds.height};
+    TextRect bounds;
+    if (!state.text->measure_intrinsic_utf8(value.c_str(), options, &bounds))
+        return result;
+    result.unwrappedDimensions = {
+        bounds.width,
+        config->lineHeight > 0 ? static_cast<float>(config->lineHeight) : bounds.height};
+    // External paragraph engines may break at character boundaries, so the
+    // safe lower bound is zero unless the engine exposes a stronger one.
+    result.minWidth = 0.0f;
+    return result;
 }
 
 Clay_TextLayoutResult ClayLayoutBackend::State::layout_text(Clay_StringSlice text,
@@ -147,7 +164,8 @@ Clay_TextLayoutResult ClayLayoutBackend::State::layout_text(Clay_StringSlice tex
                                                                              : TextAlignment::Start;
 
         TextLayoutResult shaped;
-        if (!state.text.layout_utf8(value.c_str(), available_width, options, &shaped) ||
+        if (!state.text ||
+            !state.text->layout_utf8(value.c_str(), available_width, options, &shaped) ||
             shaped.id == 0)
             return result;
 
@@ -299,26 +317,26 @@ void append_primitive(LayoutSnapshot &snapshot, const Clay_RenderCommand &comman
 
 } // namespace
 
-ClayLayoutBackend::ClayLayoutBackend(std::size_t max_nodes)
-    : state_(std::make_unique<State>(max_nodes)) {}
+ClayLayoutBackend::ClayLayoutBackend(std::size_t max_nodes, SkribidiAdapter *text_adapter)
+    : state_(std::make_unique<State>(max_nodes, text_adapter)) {}
 
 ClayLayoutBackend::~ClayLayoutBackend() = default;
 
 bool ClayLayoutBackend::valid() const {
-    return state_ && state_->context && state_->text.valid();
+    return state_ && state_->context && state_->text && state_->text->valid();
 }
 
 bool ClayLayoutBackend::add_font(const char *path, FontFamily family) {
-    return state_ && state_->text.add_font(path, family);
+    return state_ && state_->text && state_->text->add_font(path, family);
 }
 
 bool ClayLayoutBackend::add_font_from_data(const char *name, const void *data, std::size_t bytes,
                                            FontFamily family) {
-    return state_ && state_->text.add_font_from_data(name, data, bytes, family);
+    return state_ && state_->text && state_->text->add_font_from_data(name, data, bytes, family);
 }
 
 bool ClayLayoutBackend::add_system_fallbacks() {
-    return state_ && state_->text.add_system_fallbacks();
+    return state_ && state_->text && state_->text->add_system_fallbacks();
 }
 
 bool ClayLayoutBackend::layout(const std::vector<LayoutNode> &nodes, float width, float height,
@@ -441,8 +459,9 @@ bool ClayLayoutBackend::layout(const std::vector<LayoutNode> &nodes, float width
     return true;
 }
 
-std::unique_ptr<LayoutBackend> make_clay_layout_backend(std::size_t max_nodes) {
-    return std::make_unique<ClayLayoutBackend>(max_nodes);
+std::unique_ptr<LayoutBackend> make_clay_layout_backend(std::size_t max_nodes,
+                                                        SkribidiAdapter *text_adapter) {
+    return std::make_unique<ClayLayoutBackend>(max_nodes, text_adapter);
 }
 
 } // namespace nkui

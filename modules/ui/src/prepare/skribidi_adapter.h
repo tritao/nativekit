@@ -65,6 +65,7 @@ struct PreparedGlyphs {
     float origin_y = 0.0f;
     float pixel_scale = 1.0f;
     GlyphMode mode = GlyphMode::Alpha;
+    TextLayoutId layout_id = 0;
     uint64_t layout_generation = 0;
 };
 
@@ -141,14 +142,20 @@ class SkribidiAdapter {
                                    const std::shared_ptr<std::vector<uint8_t>> &data,
                                    FontFamily family = FontFamily::Default);
     bool add_system_fallbacks();
+    bool measure_intrinsic_utf8(const char *text, const TextLayoutOptions &options,
+                                TextRect *result);
     bool layout_utf8(const char *text, float width, float font_size);
     bool layout_utf8(const char *text, float width, const TextLayoutOptions &options);
     bool layout_utf8(const char *text, float width, const TextLayoutOptions &options,
                      TextLayoutResult *result);
+    bool has_layout(TextLayoutId id) const;
     bool prepare_glyphs(float origin_x, float origin_y, float pixel_scale, GlyphMode mode,
                         PreparedGlyphs &output);
     bool prepare_glyphs_for_line(uint32_t line_index, float origin_x, float origin_y,
                                  float pixel_scale, GlyphMode mode, PreparedGlyphs &output);
+    bool prepare_glyphs_for_line(TextLayoutId id, uint32_t line_index, float origin_x,
+                                 float origin_y, float pixel_scale, GlyphMode mode,
+                                 PreparedGlyphs &output);
     bool prepared_glyphs_current(const PreparedGlyphs &glyphs) const;
     TextRect bounds() const;
     TextPosition hit_test(float x, float y) const;
@@ -169,9 +176,9 @@ class SkribidiAdapter {
     struct State;
 
   private:
-    bool prepare_glyphs_internal(float origin_x, float origin_y, float pixel_scale, GlyphMode mode,
-                                 PreparedGlyphs &output, int32_t line_start, int32_t line_end,
-                                 float line_x, float line_y);
+    bool prepare_glyphs_internal(TextLayoutId id, float origin_x, float origin_y,
+                                 float pixel_scale, GlyphMode mode, PreparedGlyphs &output,
+                                 int32_t line_start, int32_t line_end, float line_x, float line_y);
 
     State *state_ = nullptr;
 };

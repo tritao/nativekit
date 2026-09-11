@@ -152,10 +152,15 @@ int main() {
     const ResourceId main_target = make_resource_id(ResourceKind::RenderTarget, 1, 1);
     LayoutRenderFrame frame;
     LayoutRenderCompileError compile_error;
-    if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error)) {
+    const uint32_t layout_builds = engine.text_adapter()->layout_build_count();
+    if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error, false,
+                          engine.text_adapter())) {
         std::cerr << (compile_error.message ? compile_error.message : "compile failed") << "\n";
         return 6;
     }
+    if (engine.text_adapter()->layout_build_count() != layout_builds ||
+        frame.text_adapter() != engine.text_adapter())
+        return 6;
     if (frame.plan().passes.size() != 1 || frame.plan().passes.front().commands.size() < 3 ||
         !frame.text_adapter())
         return 7;
@@ -198,6 +203,16 @@ int main() {
         backend.text_count != text_commands || backend.commit_count != 1)
         return 12;
 
+    LayoutSnapshot recolored = snapshot;
+    for (auto &primitive : recolored.primitives) {
+        if (primitive.kind == LayoutPrimitiveKind::Text)
+            primitive.color = {0.9f, 0.2f, 0.1f, 1.0f};
+    }
+    if (!compiler.compile(recolored, main_target, 2.0f, frame, &compile_error, false,
+                          engine.text_adapter()) ||
+        engine.text_adapter()->layout_build_count() != layout_builds)
+        return 13;
+
     const auto *text_adapter = frame.text_adapter();
     const LayoutItem *button_item = snapshot.find(2);
     if (!button_item)
@@ -210,10 +225,12 @@ int main() {
                        &layout_error) ||
         snapshot.events.size() != 1 || snapshot.events.front().node_id != 2)
         return 14;
-    if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error) ||
+    if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error, false,
+                          engine.text_adapter()) ||
         frame.text_adapter() != text_adapter)
         return 15;
-    if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error, true) ||
+    if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error, true,
+                          engine.text_adapter()) ||
         frame.plan().passes.size() != 1 || !frame.plan().passes.front().load_existing)
         return 16;
 
