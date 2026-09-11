@@ -10,6 +10,7 @@
 
 #include <cstdlib>
 #include <cstdio>
+#include <cmath>
 #include <cstring>
 #include <string>
 #include <unordered_set>
@@ -26,7 +27,8 @@ struct SkribidiAdapter::State {
     uint16_t texture_namespace = 1;
     std::string cached_text;
     float cached_width = 0.0f;
-    float cached_font_size = 0.0f;
+    TextLayoutOptions cached_options{};
+    bool has_cached_layout = false;
     uint64_t cached_font_generation = 0;
     uint32_t layout_builds = 0;
     uint64_t prepared_batch_count = 0;
@@ -259,18 +261,48 @@ bool SkribidiAdapter::add_system_fallbacks() {
 }
 
 bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size) {
-    if (!valid() || !text || width <= 0.0f || font_size <= 0.0f)
+    TextLayoutOptions options;
+    options.font_size = font_size;
+    return layout_utf8(text, width, options);
+}
+
+bool SkribidiAdapter::layout_utf8(const char *text, float width,
+                                  const TextLayoutOptions &options) {
+    if (!valid() || !text || !std::isfinite(width) || width <= 0.0f ||
+        !std::isfinite(options.font_size) || options.font_size <= 0.0f ||
+        !std::isfinite(options.letter_spacing) || options.letter_spacing < 0.0f ||
+        !std::isfinite(options.line_height) || options.line_height < 0.0f)
         return false;
-    if (state_->layout && state_->cached_text == text && state_->cached_width == width &&
-        state_->cached_font_size == font_size &&
+    if (state_->layout && state_->has_cached_layout && state_->cached_text == text &&
+        state_->cached_width == width && state_->cached_options.font_size == options.font_size &&
+        state_->cached_options.letter_spacing == options.letter_spacing &&
+        state_->cached_options.line_height == options.line_height &&
+        state_->cached_options.family == options.family &&
+        state_->cached_options.wrap == options.wrap &&
+        state_->cached_options.align_center == options.align_center &&
+        state_->cached_options.align_end == options.align_end &&
         state_->cached_font_generation == skb_font_collection_get_generation(state_->fonts))
         return true;
+    const skb_text_wrap_t wrap = options.wrap == TextWrapMode::None
+                                     ? SKB_WRAP_NONE
+                                 : options.wrap == TextWrapMode::Word
+                                     ? SKB_WRAP_WORD
+                                     : SKB_WRAP_WORD_CHAR;
+    const skb_align_t align = options.align_center ? SKB_ALIGN_CENTER
+                              : options.align_end ? SKB_ALIGN_END
+                                                  : SKB_ALIGN_START;
+    const skb_line_height_t line_height_type = options.line_height > 0.0f
+                                                   ? SKB_LINE_HEIGHT_ABSOLUTE
+                                                   : SKB_LINE_HEIGHT_NORMAL;
     const skb_attribute_t attributes[] = {
-        skb_attribute_make_font_size(font_size),
-        skb_attribute_make_text_wrap(SKB_WRAP_WORD_CHAR),
+        skb_attribute_make_font_size(options.font_size),
+        skb_attribute_make_font_family(static_cast<uint8_t>(options.family)),
+        skb_attribute_make_letter_spacing(options.letter_spacing),
+        skb_attribute_make_line_height(line_height_type, options.line_height),
+        skb_attribute_make_text_wrap(wrap),
+        skb_attribute_make_horizontal_align(align),
         skb_attribute_make_paint_color(SKB_PAINT_TEXT, SKB_PAINT_STATE_DEFAULT,
-                                       skb_rgba(255, 255, 255, 255)),
-    };
+                                       skb_rgba(255, 255, 255, 255))};
     const skb_layout_params_t params = {.font_collection = state_->fonts, .layout_width = width};
     if (!state_->layout)
         state_->layout = skb_layout_create(&params);
@@ -280,7 +312,8 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size
     if (state_->layout) {
         state_->cached_text = text;
         state_->cached_width = width;
-        state_->cached_font_size = font_size;
+        state_->cached_options = options;
+        state_->has_cached_layout = true;
         state_->cached_font_generation = skb_font_collection_get_generation(state_->fonts);
         ++state_->layout_builds;
     }
@@ -300,7 +333,7 @@ bool SkribidiAdapter::prepare_glyphs(float origin_x, float origin_y, float pixel
     if (!skb_layout_prepare_glyphs(state_->layout, state_->atlas, state_->temporary,
                                    state_->rasterizer, pixel_scale, raster_mode(mode)))
         return false;
-    if (std::getenv("NKUI_DEBUG_GLYPHS") && state_->cached_font_size == 18.0f) {
+    if (std::getenv("NKUI_DEBUG_GLYPHS") && state_->cached_options.font_size == 18.0f) {
         const uint32_t *text = skb_layout_get_text(state_->layout);
         const skb_text_property_t *properties = skb_layout_get_text_properties(state_->layout);
         const int32_t count = skb_layout_get_text_count(state_->layout);

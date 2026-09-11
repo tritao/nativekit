@@ -31,6 +31,7 @@ add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/layout/clay_layout_backend.cpp
     src/layout/layout_engine.cpp
     src/layout/layout_render_compiler.cpp
+    src/layout/layout_types.cpp
     src/prepare/nanovg_path.cpp
     src/prepare/skribidi_adapter.cpp
     src/prepare/system_fonts.cpp
@@ -156,6 +157,7 @@ if(NK_BUILD_TESTS)
         tests/layout_engine.cpp
         src/layout/clay_layout_backend.cpp
         src/layout/layout_engine.cpp
+        src/layout/layout_types.cpp
         src/prepare/skribidi_adapter.cpp
         src/prepare/system_fonts.cpp)
     target_compile_features(nativekit_ui_layout_engine_test PRIVATE cxx_std_20)
@@ -170,6 +172,7 @@ if(NK_BUILD_TESTS)
         src/layout/clay_layout_backend.cpp
         src/layout/layout_engine.cpp
         src/layout/layout_render_compiler.cpp
+        src/layout/layout_types.cpp
         src/display_list/display_list.cpp
         src/prepare/nanovg_path.cpp
         src/prepare/skribidi_adapter.cpp

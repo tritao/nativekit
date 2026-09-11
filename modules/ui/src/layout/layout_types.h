@@ -2,6 +2,7 @@
 #define NATIVEKIT_UI_LAYOUT_TYPES_H
 
 #include <cstdint>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
@@ -12,6 +13,13 @@ enum class LayoutNodeKind : uint8_t {
     Box = 1,
     Text,
     Button,
+};
+
+// NativeKit-owned font family selector. Concrete text engines translate this
+// value to their own font collection model.
+enum class FontFamily : uint8_t {
+    Default = 0,
+    Emoji = 1,
 };
 
 enum class LayoutDirection : uint8_t {
@@ -68,6 +76,11 @@ struct LayoutNode {
     uint16_t font_size = 16;
     uint16_t line_height = 0;
     uint16_t letter_spacing = 0;
+};
+
+struct LayoutError {
+    std::size_t node_index = 0;
+    const char *message = nullptr;
 };
 
 struct LayoutRect {

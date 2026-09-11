@@ -18,6 +18,13 @@ first native vertical slice is covered by `nativekit_ui_layout_engine`, which
 proves `Box + Text + Button`, text measurement through Skribidi, hit testing,
 and button activation without exposing a public layout ABI yet.
 
+`LayoutEngine` is a NativeKit-owned facade over a replaceable `LayoutBackend`;
+the current implementation is `ClayLayoutBackend`. Clay types stay inside that
+adapter. In the current text-boundary experiment, Clay still chooses line
+breaks for box layout, while Skribidi supplies intrinsic metrics and shapes
+each emitted line without wrapping it a second time. This keeps the replacement
+seam explicit while the external paragraph-layout interface is evaluated.
+
 See the repository-level [`vendor/README.md`](../../vendor/README.md) for pinned revisions and
 [`docs/integration-plan.md`](docs/integration-plan.md) for the integration
 sequence and the policy on adapting versus rewriting upstream code.

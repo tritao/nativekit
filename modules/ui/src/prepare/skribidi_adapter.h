@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "layout/layout_types.h"
+
 namespace nkui {
 
 enum class GlyphMode : uint8_t {
@@ -21,9 +23,20 @@ enum class AtlasTextureFormat : uint8_t {
     Rgba8Premultiplied,
 };
 
-enum class FontFamily : uint8_t {
-    Default = 0,
-    Emoji = 1,
+enum class TextWrapMode : uint8_t {
+    None = 0,
+    Word,
+    WordCharacter,
+};
+
+struct TextLayoutOptions {
+    float font_size = 16.0f;
+    float letter_spacing = 0.0f;
+    float line_height = 0.0f;
+    FontFamily family = FontFamily::Default;
+    TextWrapMode wrap = TextWrapMode::WordCharacter;
+    bool align_center = false;
+    bool align_end = false;
 };
 
 struct GlyphVertex {
@@ -124,6 +137,7 @@ class SkribidiAdapter {
                                    FontFamily family = FontFamily::Default);
     bool add_system_fallbacks();
     bool layout_utf8(const char *text, float width, float font_size);
+    bool layout_utf8(const char *text, float width, const TextLayoutOptions &options);
     bool prepare_glyphs(float origin_x, float origin_y, float pixel_scale, GlyphMode mode,
                         PreparedGlyphs &output);
     bool prepared_glyphs_current(const PreparedGlyphs &glyphs) const;

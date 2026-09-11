@@ -174,5 +174,17 @@ int main() {
             return 36;
         ++sample_index;
     }
-    return glyphs.vertices.size() % 4 == 0 && glyphs.indices.size() % 6 == 0 ? 0 : 36;
+    TextLayoutOptions options;
+    options.font_size = 24.0f;
+    options.letter_spacing = 1.0f;
+    options.line_height = 40.0f;
+    options.wrap = TextWrapMode::None;
+    if (!adapter.layout_utf8("NativeKit text options", 500.0f, options) ||
+        adapter.bounds().height < 39.0f)
+        return 37;
+    const uint32_t options_builds = adapter.layout_build_count();
+    if (!adapter.layout_utf8("NativeKit text options", 500.0f, options) ||
+        adapter.layout_build_count() != options_builds)
+        return 38;
+    return glyphs.vertices.size() % 4 == 0 && glyphs.indices.size() % 6 == 0 ? 0 : 39;
 }

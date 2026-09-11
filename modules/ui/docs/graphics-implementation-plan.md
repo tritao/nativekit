@@ -35,6 +35,12 @@ render passes, and submission. NanoVG is a private path and image preparation
 engine. Skribidi remains the private authority for text shaping, layout,
 editing, rasterization, and CPU atlas packing.
 
+The layout side follows the same boundary: NativeKit exposes `LayoutNode`,
+`LayoutSnapshot`, and `LayoutBackend`, while Clay is currently one private
+`ClayLayoutBackend` implementation. The adapter uses Skribidi for intrinsic
+text metrics and final shaping; Clay's current line-breaking behavior is kept
+as an explicit interim seam rather than leaking Clay text types into NativeKit.
+
 ## Non-goals
 
 The initial implementation will not:

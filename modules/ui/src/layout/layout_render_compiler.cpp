@@ -254,8 +254,14 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 if (!out.text_ || primitive.font_size == 0 || transient_slot > kMaxTransientSlot)
                     return fail(error, index, "layout text preparation input is invalid");
                 const float width = std::max(primitive.bounds.width, 1.0f);
-                if (!out.text_->layout_utf8(primitive.text.c_str(), width,
-                                            static_cast<float>(primitive.font_size)))
+                TextLayoutOptions options;
+                options.font_size = static_cast<float>(primitive.font_size);
+                options.letter_spacing = static_cast<float>(primitive.letter_spacing);
+                options.line_height = static_cast<float>(primitive.line_height);
+                // Clay has already emitted one command per chosen line. Shape
+                // that line through Skribidi without asking it to wrap again.
+                options.wrap = TextWrapMode::None;
+                if (!out.text_->layout_utf8(primitive.text.c_str(), width, options))
                     return fail(error, index, "layout text shaping failed");
                 auto glyphs = std::make_unique<PreparedGlyphs>();
                 if (!out.text_->prepare_glyphs(0.0f, 0.0f, pixel_scale, GlyphMode::Alpha,

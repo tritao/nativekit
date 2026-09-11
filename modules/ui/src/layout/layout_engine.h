@@ -2,17 +2,13 @@
 #define NATIVEKIT_UI_LAYOUT_ENGINE_H
 
 #include "layout/layout_types.h"
-#include "prepare/skribidi_adapter.h"
 
 #include <cstddef>
 #include <memory>
 
 namespace nkui {
 
-struct LayoutError {
-    std::size_t node_index = 0;
-    const char *message = nullptr;
-};
+class LayoutBackend;
 
 /**
  * Private NativeKit layout boundary. Clay and its types are deliberately
@@ -21,8 +17,6 @@ struct LayoutError {
  */
 class LayoutEngine {
   public:
-    struct State;
-
     explicit LayoutEngine(std::size_t max_nodes = 512);
     ~LayoutEngine();
     LayoutEngine(const LayoutEngine &) = delete;
@@ -39,7 +33,7 @@ class LayoutEngine {
                 LayoutSnapshot &out, LayoutError *error = nullptr);
 
   private:
-    std::unique_ptr<State> state_;
+    std::unique_ptr<LayoutBackend> backend_;
 };
 
 } // namespace nkui
