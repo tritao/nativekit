@@ -52,7 +52,9 @@ class Transaction {
 		fonts.add(fontPath);
 		var text = TextLayout.createStyled(fonts, "NativeKit — こんにちは — مرحبا", new TextStyle(18.0), new ParagraphStyle(220.0));
 		var metrics = text.measure();
-		if (metrics.width <= 0.0 || text.hitTest(16.0, 24.0).offset < 0)
+		var position = text.hitTest(16.0, 24.0);
+		var caret = text.caret(position);
+		if (metrics.width <= 0.0 || position.offset < 0 || caret.slope != caret.slope)
 			return 8;
 		var canvas = new Canvas(8);
 		canvas.withState(function(canvas) {
@@ -60,6 +62,7 @@ class Transaction {
 			canvas.withClip(new Rect(0.0, 0.0, 100.0, 80.0), function(canvas) {
 				canvas.setAlpha(0.5);
 				canvas.fill(path, paint);
+				canvas.stroke(path, paint, 2.0, LineCap.Round, LineJoin.Round);
 				canvas.drawText(text, 16.0, 24.0);
 				canvas.withLayer(0.6, function(canvas) {
 					canvas.drawImage(image, new Rect(4.0, 4.0, 12.0, 12.0));
@@ -68,7 +71,7 @@ class Transaction {
 		});
 		canvas.update(list);
 		var info = list.info();
-		if (info.commandCount != 13 || info.commandBytes <= 0)
+		if (info.commandCount != 15 || info.commandBytes <= 0)
 			return 3;
 
 		var renderer = Renderer.create();
