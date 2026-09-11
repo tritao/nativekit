@@ -1,28 +1,28 @@
 import NativeKit.NativeKitConstants;
-import NativeKit.Nk_event_kind;
+import NativeKit.NkEventKind;
 import NativeKitEventBytes;
 import NativeKitEventContext;
 import NativeKitEventValue;
 
 class NativeKitServiceEvents {
 	public static function decode(c:NativeKitEventContext):Null<NativeKitEventValue> return switch c.kind {
-		case Nk_event_kind.NK_EVENT_NONE: None;
-		case Nk_event_kind.NK_EVENT_CLIPBOARD_TEXT_COMPLETE: ClipboardText(c.request,c.result,c.data.toString());
-		case Nk_event_kind.NK_EVENT_CLIPBOARD_FILES_COMPLETE: ClipboardFiles(c.request,c.result,NativeKitEventBytes.decodeClipboardFiles(c.data,c.dataCount));
-		case Nk_event_kind.NK_EVENT_DROP_FILES: DropFiles(c.source,NativeKitEventBytes.decodeDropItems(c.data,c.dataCount));
-		case Nk_event_kind.NK_EVENT_DROP_TEXT: DropText(c.source,NativeKitEventBytes.decodeDropItems(c.data,c.dataCount).join(""));
-		case Nk_event_kind.NK_EVENT_DIALOG_PATHS_COMPLETE:
+		case NkEventKind.None: None;
+		case NkEventKind.ClipboardTextComplete: ClipboardText(c.request,c.result,c.data.toString());
+		case NkEventKind.ClipboardFilesComplete: ClipboardFiles(c.request,c.result,NativeKitEventBytes.decodeClipboardFiles(c.data,c.dataCount));
+		case NkEventKind.DropFiles: DropFiles(c.source,NativeKitEventBytes.decodeDropItems(c.data,c.dataCount));
+		case NkEventKind.DropText: DropText(c.source,NativeKitEventBytes.decodeDropItems(c.data,c.dataCount).join(""));
+		case NkEventKind.DialogPathsComplete:
 			DialogPaths(c.request,c.result,NativeKitEventBytes.readU32(c.data,0)!=0,NativeKitEventBytes.decodeDialogPaths(c.data));
-		case Nk_event_kind.NK_EVENT_DIALOG_MESSAGE_COMPLETE:
+		case NkEventKind.DialogMessageComplete:
 			NativeKitEventBytes.requireSize(c.data,4); DialogMessage(c.request,c.result,NativeKitEventBytes.readU32(c.data,0));
-		case Nk_event_kind.NK_EVENT_WEBVIEW_NAVIGATED: WebViewNavigated(c.source,c.data.toString());
-		case Nk_event_kind.NK_EVENT_WEBVIEW_MESSAGE: WebViewMessage(c.source,c.data.toString());
-		case Nk_event_kind.NK_EVENT_WEBVIEW_TITLE_CHANGED: WebViewTitleChanged(c.source,c.data.toString());
-		case Nk_event_kind.NK_EVENT_WEBVIEW_EVAL_COMPLETE: WebViewEvaluation(c.source,c.request,c.result,c.data.toString());
-		case Nk_event_kind.NK_EVENT_WEBVIEW_NAVIGATION_FAILED: WebViewNavigationFailed(c.source,c.flags,c.data.toString());
-		case Nk_event_kind.NK_EVENT_WEBVIEW_NAVIGATION_REQUEST: WebViewNavigationRequest(c.source,c.request,c.data.toString());
-		case Nk_event_kind.NK_EVENT_NOTIFICATION_ACTIVATED: NotificationActivated(c.request,c.data.toString());
-		case Nk_event_kind.NK_EVENT_NOTIFICATION_FAILED: NotificationFailed(c.request,c.data.toString());
+		case NkEventKind.WebviewNavigated: WebViewNavigated(c.source,c.data.toString());
+		case NkEventKind.WebviewMessage: WebViewMessage(c.source,c.data.toString());
+		case NkEventKind.WebviewTitleChanged: WebViewTitleChanged(c.source,c.data.toString());
+		case NkEventKind.WebviewEvalComplete: WebViewEvaluation(c.source,c.request,c.result,c.data.toString());
+		case NkEventKind.WebviewNavigationFailed: WebViewNavigationFailed(c.source,c.flags,c.data.toString());
+		case NkEventKind.WebviewNavigationRequest: WebViewNavigationRequest(c.source,c.request,c.data.toString());
+		case NkEventKind.NotificationActivated: NotificationActivated(c.request,c.data.toString());
+		case NkEventKind.NotificationFailed: NotificationFailed(c.request,c.data.toString());
 		default:null;
 	}
 }

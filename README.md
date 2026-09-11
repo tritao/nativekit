@@ -121,6 +121,16 @@ Then open `http://localhost:8080/nativekit_ui_c_api.html`. Add `?smoke` to run
 the 30-frame browser smoke test. The generated web host is an example/deploy
 shell; Emscripten remains private to the platform implementation.
 
+The same Showcase source can also be compiled through Haxeon’s wasm32 backend:
+
+```sh
+./modules/ui/tools/showcase-wasm.sh
+```
+
+This produces a validated guest module and portable wasm32 HXI contracts. A
+browser host bridge is still required to connect those imports to Emscripten’s
+NativeKit runtime.
+
 The Android library, sample applications, and Gradle wrapper live under
 [`android/`](android/). See the [Android guide](android/README.md) for SDK/NDK,
 host lifecycle, and instrumentation-test instructions.

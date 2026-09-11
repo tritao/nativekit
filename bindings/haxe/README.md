@@ -34,9 +34,10 @@ Unicode code-point indices; optional replacement text is copied and strictly
 validated as UTF-8 before the native event is released.
 
 Fixed-width value domains marked with `NK_ENUM` in the public headers project
-as nominal Haxe enum abstracts, while their members remain available through
-`NativeKitConstants` for source compatibility. Handwritten bindings use those
-generated symbols rather than repeating numeric C ABI values.
+as PascalCase Haxe enum abstracts such as `NkResult` and `NkEventKind`, with
+PascalCase members such as `Ok` and `WindowClose`. The legacy `Nk_*` types and
+`NK_*` members remain available, as do the raw values through
+`NativeKitConstants` for source compatibility.
 
 UTF-8 inputs are marked in the authoritative C headers with `NK_UTF8` or
 `NK_NULLABLE_UTF8`. The importer projects these annotations to managed Haxe

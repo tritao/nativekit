@@ -1,8 +1,8 @@
 import NativeKit;
 import NativeKit.NativeKitConstants;
-import NativeKit.Nk_result;
-import NativeKit.Nk_text_input_action;
-import NativeKit.Nk_text_input_type;
+import NativeKit.NkResult;
+import NativeKit.NkTextInputAction;
+import NativeKit.NkTextInputType;
 
 /** Builds and submits owned text-input state for custom native surfaces. */
 class NativeKitTextInput {
@@ -20,9 +20,9 @@ class NativeKitTextInput {
 		value.set_selection_end(selectionEnd);
 		value.set_composition_start(compositionStart == null ? NativeKitConstants.NK_TEXT_POSITION_NONE : compositionStart);
 		value.set_composition_end(compositionEnd == null ? NativeKitConstants.NK_TEXT_POSITION_NONE : compositionEnd);
-		value.set_input_type(inputType == null ? Nk_text_input_type.NK_TEXT_INPUT_TEXT : inputType);
+		value.set_input_type(inputType == null ? NkTextInputType.Text : inputType);
 		value.set_flags(flags == null ? 0 : flags);
-		value.set_action(action == null ? Nk_text_input_action.NK_TEXT_INPUT_ACTION_DEFAULT : action);
+		value.set_action(action == null ? NkTextInputAction.Default : action);
 		value.set_cursor_x(cursorX == null ? 0.0 : cursorX);
 		value.set_cursor_y(cursorY == null ? 0.0 : cursorY);
 		value.set_cursor_width(cursorWidth == null ? 0.0 : cursorWidth);
@@ -39,14 +39,14 @@ class NativeKitTextInput {
 			state(text, textStart, documentLength, selectionStart, selectionEnd,
 				compositionStart, compositionEnd, inputType, flags, action,
 				cursorX, cursorY, cursorWidth, cursorHeight));
-		if (result != Nk_result.NK_OK)
+		if (result != NkResult.Ok)
 			throw 'NativeKit text-input update failed: $result';
 	}
 
 	/** Shows or hides the platform text-input UI for a custom surface. */
 	public static function setActive(surface:Int, active:Bool):Void {
 		var result = NativeKit.nk_surface_set_text_input_active(surface, active ? 1 : 0);
-		if (result != Nk_result.NK_OK)
+		if (result != NkResult.Ok)
 			throw 'NativeKit text-input activation failed: $result';
 	}
 }

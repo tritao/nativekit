@@ -1,9 +1,9 @@
 import NativeKit;
 import NativeKit.NativeKitConstants;
-import NativeKit.Nk_event_kind;
-import NativeKit.Nk_graphics_api;
-import NativeKit.Nk_input_action;
-import NativeKit.Nk_result;
+import NativeKit.NkEventKind;
+import NativeKit.NkGraphicsApi;
+import NativeKit.NkInputAction;
+import NativeKit.NkResult;
 import NativeKitEvent;
 import NativeKitEventValue;
 import NativeKitOptions;
@@ -552,13 +552,13 @@ class Showcase {
             init.set_struct_size(nk_init_options.size());
             init.set_api_version(NativeKitConstants.NK_API_VERSION);
             init.set_event_queue_capacity(64);
-            if (NativeKit.nk_init(init) != Nk_result.NK_OK)
+            if (NativeKit.nk_init(init) != NkResult.Ok)
                 return 10;
             initialized = true;
 
             var windowOptions = NativeKitOptions.window(900, 650, "NativeKit Graphics Lab");
             var createdWindow = NativeKit.nk_window_create(windowOptions);
-            if (createdWindow.status != Nk_result.NK_OK) {
+            if (createdWindow.status != NkResult.Ok) {
                 NativeKit.nk_shutdown();
                 return 11;
             }
@@ -568,13 +568,13 @@ class Showcase {
             surfaceOptions.set_struct_size(nk_surface_options.size());
             surfaceOptions.set_flags(NativeKitConstants.NK_SURFACE_FORWARD_COMPATIBLE |
                 NativeKitConstants.NK_SURFACE_STENCIL);
-            surfaceOptions.set_api(Nk_graphics_api.NK_GRAPHICS_OPENGL);
+            surfaceOptions.set_api(NkGraphicsApi.Opengl);
             surfaceOptions.set_major_version(3);
             surfaceOptions.set_minor_version(3);
             surfaceOptions.set_width(900);
             surfaceOptions.set_height(650);
             var createdSurface = NativeKit.nk_surface_create(window, surfaceOptions);
-            if (createdSurface.status != Nk_result.NK_OK) {
+            if (createdSurface.status != NkResult.Ok) {
                 NativeKit.nk_window_destroy(window);
                 NativeKit.nk_shutdown();
                 return 12;
@@ -604,17 +604,17 @@ class Showcase {
                         running = false;
                     case WindowResize(source, width, height) if (source == window):
                         if (NativeKit.nk_surface_set_bounds(surface, 0, 0, width, height) !=
-                            Nk_result.NK_OK)
+                            NkResult.Ok)
                             throw "surface resize failed";
                     case SurfaceReady(source) if (source == surface):
                         ready = true;
                         var size = NativeKit.nk_surface_get_framebuffer_size(surface);
-                        if (size.status != Nk_result.NK_OK)
+                        if (size.status != NkResult.Ok)
                             throw "framebuffer size query failed";
                         framebufferWidth = size.out_width;
                         framebufferHeight = size.out_height;
                         var windowScale = NativeKit.nk_window_get_scale(window);
-                        if (windowScale.status != Nk_result.NK_OK)
+                        if (windowScale.status != NkResult.Ok)
                             throw "window scale query failed";
                         scale = windowScale.out_scale;
                     case SurfaceResize(source, width, height, newFramebufferWidth, newFramebufferHeight)
@@ -628,9 +628,9 @@ class Showcase {
                     case PointerMove(source, x, y) if (source == window):
                         app.updatePointer(x, y);
                     case PointerButton(source, _, action, _, x, y) if (source == window):
-                        app.pointerButton(x, y, action == Nk_input_action.NK_INPUT_PRESS);
+                        app.pointerButton(x, y, action == NkInputAction.Press);
                     case Key(source, key, _, action, _) if (source == window &&
-                        action == Nk_input_action.NK_INPUT_PRESS && key == NativeKitConstants.NK_KEY_ESCAPE):
+                            action == NkInputAction.Press && key == NativeKitConstants.NK_KEY_ESCAPE):
                         running = false;
                     default:
                 }
@@ -647,7 +647,7 @@ class Showcase {
                     app.encodeFrame(elapsed, framebufferWidth, framebufferHeight, scale, staticFrame);
                     app.render(surface, logicalWidth, logicalHeight, framebufferWidth, framebufferHeight,
                         scale);
-                    if (NativeKit.nk_surface_present(surface) != Nk_result.NK_OK)
+                    if (NativeKit.nk_surface_present(surface) != NkResult.Ok)
                         throw "surface present failed";
                     rendered++;
                     if (staticFrame || (smoke && rendered >= 30))
@@ -658,7 +658,7 @@ class Showcase {
                         if (nextFrameAt < afterFrame)
                             nextFrameAt = afterFrame;
                     }
-                } else if (eventKind == Nk_event_kind.NK_EVENT_NONE) {
+                } else if (eventKind == NkEventKind.None) {
                     Sys.sleep(0.002);
                 }
             }
