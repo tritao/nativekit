@@ -2,10 +2,8 @@
 #include "nativekit_graphics.h"
 #include "nativekit_sokol_runtime.h"
 
-#define SOKOL_GLCORE
 #include "sokol_gfx.h"
 
-#include <GL/gl.h>
 #include <array>
 #include <cstdarg>
 #include <cstdio>
@@ -542,20 +540,21 @@ nks_result nks_begin_frame(nks_renderer h) {
     if (nk_surface_make_current(s->value.surface) != NK_OK)
         return fail(NKS_ERROR_UNKNOWN, "current: %s", nk_last_error());
     sg_reset_state_cache();
-    int32_t w = 0, he = 0;
-    if (nk_surface_get_framebuffer_size(s->value.surface, &w, &he) != NK_OK || w <= 0 || he <= 0)
+    nk_surface_frame_target target{};
+    target.struct_size = sizeof(target);
+    if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK || target.width <= 0 ||
+        target.height <= 0 ||
+        (target.api != NK_GRAPHICS_OPENGL && target.api != NK_GRAPHICS_OPENGL_ES))
         return fail(NKS_ERROR_UNKNOWN, "framebuffer size failed");
-    GLint fb = 0;
-    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fb);
     sg_pass pass{};
     pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
     pass.action.colors[0].clear_value = {.035f, .055f, .11f, 1};
-    pass.swapchain = {.width = w,
-                      .height = he,
+    pass.swapchain = {.width = target.width,
+                      .height = target.height,
                       .sample_count = 1,
                       .color_format = SG_PIXELFORMAT_RGBA8,
                       .depth_format = SG_PIXELFORMAT_NONE,
-                      .gl = {.framebuffer = (uint32_t)fb}};
+                      .gl = {.framebuffer = static_cast<uint32_t>(target.native_target)}};
     sg_begin_pass(&pass);
     s->value.in_frame = true;
     active_renderer = h;

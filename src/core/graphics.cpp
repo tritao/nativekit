@@ -31,6 +31,9 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle, nk_surface_frame_call
 nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle, int32_t *, int32_t *) {
     return unsupported_graphics();
 }
+nk_result NK_CALL nk_surface_get_frame_target(nk_handle, nk_surface_frame_target *) {
+    return unsupported_graphics();
+}
 nk_result NK_CALL nk_surface_get_proc_address(nk_handle, const char *, nk_graphics_proc *) {
     return unsupported_graphics();
 }

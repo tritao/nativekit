@@ -109,6 +109,29 @@ typedef struct nk_surface_resize_event {
     int32_t framebuffer_height;
 } nk_surface_resize_event;
 
+/**
+ * Backend-native render target for the current surface frame.
+ *
+ * Callers must make the surface current before requesting this descriptor.
+ * For OpenGL and OpenGL ES, `native_target` is the current draw framebuffer
+ * name, with zero representing the default framebuffer. Other graphics APIs
+ * may use the field for a backend-native target handle in a future backend.
+ */
+typedef struct nk_surface_frame_target {
+    /** Set to sizeof(nk_surface_frame_target) or a larger compatible size. */
+    uint32_t struct_size;
+    /** Graphics API that owns the target. */
+    nk_graphics_api api;
+    /** Current framebuffer width in device pixels. */
+    int32_t width;
+    /** Current framebuffer height in device pixels. */
+    int32_t height;
+    /** Backend-native target token; opaque to NativeKit callers. */
+    uint64_t native_target;
+    /** Reserved for future target metadata; set to zero. */
+    uint64_t reserved[2];
+} nk_surface_frame_target;
+
 /* ------------------------------------------------------------------------- */
 /* Surface lifecycle and rendering                                           */
 /* ------------------------------------------------------------------------- */
@@ -170,6 +193,10 @@ NK_API nk_result NK_CALL nk_surface_set_frame_callback(
 NK_API nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle surface,
                                                          int32_t *out_width NK_OUT,
                                                          int32_t *out_height NK_OUT);
+
+/** Returns the current backend-native render target for a surface frame. */
+NK_API nk_result NK_CALL nk_surface_get_frame_target(
+    nk_handle surface, nk_surface_frame_target *out_target NK_OUT);
 
 /**
  * Resolves a graphics function for the current surface context.

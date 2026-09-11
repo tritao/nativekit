@@ -2066,6 +2066,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_surface_get_framebuffer_size(surface: nk_handle, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
 	/**
+	 * Returns the current backend-native render target for a surface frame.
+	 */
+	extern fn nk_surface_get_frame_target(surface: nk_handle, out_target: ptr<nk_surface_frame_target> @out) -> nk_result;
+	/**
 	 * Resolves a graphics function for the current surface context.
 	 *
 	 * `name` is a non-null UTF-8 function name. On NK_OK, writes a callable
@@ -3407,6 +3411,28 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * Reserved for future options; set all elements to zero.
 		 */
 		reserved2: array<u64, 2> @offset(48);
+	}
+	/**
+	 * Backend-native render target for the current surface frame.
+	 *
+	 * Callers must make the surface current before requesting this descriptor.
+	 * For OpenGL and OpenGL ES, `native_target` is the current draw framebuffer
+	 * name, with zero representing the default framebuffer. Other graphics APIs
+	 * may use the field for a backend-native target handle in a future backend.
+	 */
+	struct nk_surface_frame_target @layout(40, 8) {
+		/** Set to sizeof(nk_surface_frame_target) or a larger compatible size. */
+		struct_size: u32 @offset(0);
+		/** Graphics API that owns the target. */
+		api: nk_graphics_api @offset(4);
+		/** Current framebuffer width in device pixels. */
+		width: i32 @offset(8);
+		/** Current framebuffer height in device pixels. */
+		height: i32 @offset(12);
+		/** Backend-native target token; opaque to NativeKit callers. */
+		native_target: u64 @offset(16);
+		/** Reserved for future target metadata; set to zero. */
+		reserved: array<u64, 2> @offset(24);
 	}
 	/**
 	 * Payload of NK_EVENT_SURFACE_RESIZE.

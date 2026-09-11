@@ -21,8 +21,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <GL/gl.h>
-
 static_assert(sizeof(nkui_command_header) == sizeof(nkui::CommandHeader));
 static_assert(sizeof(nkui_text_metrics) == 5 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_position) == 2 * sizeof(uint32_t));
@@ -827,8 +825,11 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
     const int32_t height = frame_info->framebuffer_height;
     if (!surface || nk_surface_make_current(surface) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
-    GLint framebuffer = 0;
-    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
+    nk_surface_frame_target frame_target{};
+    frame_target.struct_size = sizeof(frame_target);
+    if (nk_surface_get_frame_target(surface, &frame_target) != NK_OK ||
+        (frame_target.api != NK_GRAPHICS_OPENGL && frame_target.api != NK_GRAPHICS_OPENGL_ES))
+        return NKUI_ERROR_RENDERING;
     std::scoped_lock lock(renderers_mutex, lists_mutex, resources_mutex);
     auto *renderer_slot = resolve(renderer);
     auto *list_slot = resolve(list);
@@ -1018,7 +1019,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
             return NKUI_ERROR_RENDERING;
     const bool executed =
         nkui::execute_render_plan(*renderer_slot->backend, plan, frame_resources,
-                                  {main_target, width, height, static_cast<uint32_t>(framebuffer)});
+                                  {main_target, width, height,
+                                   static_cast<uint32_t>(frame_target.native_target)});
     return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
 }
 

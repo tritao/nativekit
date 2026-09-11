@@ -2599,6 +2599,40 @@ nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out
     return NK_OK;
 }
 
+nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
+                                               nk_surface_frame_target *out_target) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    if (!out_target || out_target->struct_size < sizeof(*out_target)) {
+        nk::core::set_error("frame target output is missing or too small");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    int32_t width = 0;
+    int32_t height = 0;
+    if (const auto result = nk_surface_get_framebuffer_size(handle, &width, &height);
+        result != NK_OK)
+        return result;
+    nk_graphics_proc proc = nullptr;
+    if (const auto result = nk_surface_get_proc_address(handle, "glGetIntegerv", &proc);
+        result != NK_OK)
+        return result;
+    using GlGetIntegerv = void (*)(unsigned int, int *);
+    auto get_integerv = reinterpret_cast<GlGetIntegerv>(proc);
+    int framebuffer = 0;
+    get_integerv(0x8CA6u, &framebuffer); // GL_DRAW_FRAMEBUFFER_BINDING
+    const uint32_t size = out_target->struct_size;
+    *out_target = {};
+    out_target->struct_size = size;
+    out_target->api = resource->api;
+    out_target->width = width;
+    out_target->height = height;
+    out_target->native_target = static_cast<uint64_t>(static_cast<uint32_t>(framebuffer));
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_surface_get_proc_address(nk_handle handle, const char *name,
                                               nk_graphics_proc *out_proc) {
     if (!name || !*name || !out_proc)
