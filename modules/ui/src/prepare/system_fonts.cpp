@@ -3,8 +3,10 @@
 #include "skribidi/skb_common.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cwctype>
+#include <fstream>
 #include <iterator>
 #include <string>
 
@@ -27,6 +29,74 @@ namespace nkui {
 
 namespace {
 
+uint16_t read_u16(const uint8_t *bytes) {
+    return static_cast<uint16_t>((uint16_t(bytes[0]) << 8) | uint16_t(bytes[1]));
+}
+
+uint32_t read_u32(const uint8_t *bytes) {
+    return (uint32_t(bytes[0]) << 24) | (uint32_t(bytes[1]) << 16) |
+           (uint32_t(bytes[2]) << 8) | uint32_t(bytes[3]);
+}
+
+bool read_bytes(std::ifstream &file, std::streamoff offset, void *destination, std::size_t bytes) {
+    file.clear();
+    file.seekg(offset, std::ios::beg);
+    return file.good() && static_cast<bool>(file.read(static_cast<char *>(destination), bytes));
+}
+
+bool has_sfnt_table(const std::string &path, uint32_t wanted_tag) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file)
+        return false;
+
+    file.seekg(0, std::ios::end);
+    const std::streamoff file_size = file.tellg();
+    if (file_size < 12)
+        return false;
+
+    std::array<uint8_t, 12> header{};
+    if (!read_bytes(file, 0, header.data(), header.size()))
+        return false;
+
+    std::streamoff sfnt_offset = 0;
+    if (read_u32(header.data()) == 0x74746366u) { // 'ttcf'
+        if (read_u32(header.data() + 8) == 0 || file_size < 16)
+            return false;
+        std::array<uint8_t, 4> offset_bytes{};
+        if (!read_bytes(file, 12, offset_bytes.data(), offset_bytes.size()))
+            return false;
+        sfnt_offset = read_u32(offset_bytes.data());
+    }
+
+    if (sfnt_offset < 0 || sfnt_offset > file_size - 12)
+        return false;
+    if (!read_bytes(file, sfnt_offset, header.data(), header.size()))
+        return false;
+
+    const uint32_t table_count = read_u16(header.data() + 4);
+    const std::streamoff directory_offset = sfnt_offset + 12;
+    if (table_count > (file_size - directory_offset) / 16)
+        return false;
+
+    std::array<uint8_t, 16> record{};
+    for (uint32_t index = 0; index < table_count; ++index) {
+        if (!read_bytes(file, directory_offset + std::streamoff(index) * 16, record.data(),
+                        record.size()))
+            return false;
+        if (read_u32(record.data()) == wanted_tag)
+            return true;
+    }
+    return false;
+}
+
+bool supports_skribidi_color(const std::string &path) {
+    // Skribidi's current color rasterizer consumes vector COLR/CPAL glyphs.
+    // Do not classify bitmap color fonts (CBDT/CBLC or sbix) as usable color
+    // fallbacks: they have FC_COLOR=true but cannot produce Skribidi quads.
+    return has_sfnt_table(path, SKB_TAG_STR("COLR")) &&
+           has_sfnt_table(path, SKB_TAG_STR("CPAL"));
+}
+
 void append_unique(std::vector<SystemFontFallback> &fonts, const std::string &path, bool emoji,
                    uint32_t script_tag) {
     if (path.empty())
@@ -34,8 +104,11 @@ void append_unique(std::vector<SystemFontFallback> &fonts, const std::string &pa
     const auto found = std::find_if(fonts.begin(), fonts.end(), [&](const auto &font) {
         return font.path == path && font.emoji == emoji && font.script_tag == script_tag;
     });
+    const bool color = emoji && supports_skribidi_color(path);
     if (found == fonts.end())
-        fonts.push_back({path, emoji, script_tag});
+        fonts.push_back({path, emoji, script_tag, color});
+    else if (color)
+        found->color = true;
 }
 
 #if defined(NKUI_HAS_FONTCONFIG)
@@ -55,6 +128,50 @@ void append_fontconfig_match(std::vector<SystemFontFallback> &fonts, const char 
         FcPatternDestroy(match);
     }
     FcPatternDestroy(pattern);
+}
+
+void append_fontconfig_emoji_matches(std::vector<SystemFontFallback> &fonts) {
+    // FcFontMatch returns the first preferred font. On Linux that is often
+    // Noto Color Emoji, whose CBDT/CBLC bitmap data is not supported by
+    // Skribidi. Enumerate the color candidates and retain the first COLR/CPAL
+    // font instead of accepting the first FC_COLOR=true result.
+    const char *queries[] = {":charset=1f44b:color=true", ":charset=1f44b"};
+    for (const char *query : queries) {
+        FcPattern *pattern = FcNameParse(reinterpret_cast<const FcChar8 *>(query));
+        if (!pattern)
+            continue;
+        FcConfigSubstitute(nullptr, pattern, FcMatchPattern);
+        FcDefaultSubstitute(pattern);
+        FcResult result = FcResultNoMatch;
+        FcFontSet *matches = FcFontSort(nullptr, pattern, FcTrue, nullptr, &result);
+        if (matches) {
+            for (int index = 0; index < matches->nfont; ++index) {
+                FcChar8 *file = nullptr;
+                if (FcPatternGetString(matches->fonts[index], FC_FILE, 0, &file) !=
+                        FcResultMatch ||
+                    !file)
+                    continue;
+                const std::string path(reinterpret_cast<const char *>(file));
+                if (supports_skribidi_color(path)) {
+                    append_unique(fonts, path, true, 0);
+                    break;
+                }
+            }
+            FcFontSetDestroy(matches);
+        }
+        FcPatternDestroy(pattern);
+        if (std::any_of(fonts.begin(), fonts.end(), [](const auto &font) {
+                return font.emoji && font.color;
+            }))
+            break;
+    }
+
+    // A monochrome outline fallback is still preferable to an empty glyph
+    // when the platform has no COLR/CPAL emoji font.
+    if (!std::any_of(fonts.begin(), fonts.end(), [](const auto &font) {
+            return font.emoji;
+        }))
+        append_fontconfig_match(fonts, ":charset=1f44b:color=false", true, 0);
 }
 #endif
 
@@ -215,7 +332,7 @@ std::vector<SystemFontFallback> discover_system_font_fallbacks() {
         // glyphs.  The coverage query lets Fontconfig choose a compatible
         // installed fallback (for example Symbola) instead of producing an
         // empty glyph quad.
-        append_fontconfig_match(fonts, ":charset=1f44b", true, 0);
+        append_fontconfig_emoji_matches(fonts);
     }
 #elif defined(__APPLE__)
     append_core_text_match(fonts, "مرحبا", false, SKB_TAG_STR("Arab"));

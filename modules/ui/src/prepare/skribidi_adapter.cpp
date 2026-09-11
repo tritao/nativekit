@@ -47,22 +47,30 @@ bool system_font_fallback(skb_font_collection_t *font_collection, const char *, 
                      static_cast<char>(script_tag >> 8), static_cast<char>(script_tag),
                      static_cast<unsigned>(font_family));
     bool added = false;
-    for (const auto &font : system_font_fallbacks()) {
-        if (font.emoji != emoji ||
-            (!emoji && font.script_tag != 0 && font.script_tag != script_tag))
-            continue;
-        const std::string key = std::to_string(static_cast<unsigned>(font_family)) + ":" +
-                                font.path;
-        if (!state->system_fonts_loaded.insert(key).second)
-            continue;
-        if (skb_font_collection_add_font(font_collection, font.path.c_str(), font_family,
-                                          nullptr)) {
-            added = true;
-            // Family-only candidates, used by the Windows registry adapter,
-            // need to be loaded as a group before font selection is retried.
-            if (!emoji && font.script_tag == 0)
+    const auto &fallbacks = system_font_fallbacks();
+    for (int pass = 0; pass < 2 && !added; ++pass) {
+        for (const auto &font : fallbacks) {
+            if (emoji && ((pass == 0) != font.color))
                 continue;
-            return true;
+            if (font.emoji != emoji ||
+                (!emoji && font.script_tag != 0 && font.script_tag != script_tag))
+                continue;
+            const std::string key = std::to_string(static_cast<unsigned>(font_family)) + ":" +
+                                    font.path;
+            if (!state->system_fonts_loaded.insert(key).second)
+                continue;
+            if (skb_font_collection_add_font(font_collection, font.path.c_str(), font_family,
+                                              nullptr)) {
+                added = true;
+                if (std::getenv("NKUI_DEBUG_GLYPHS"))
+                    std::fprintf(stderr, "fallback font %s color=%u\n", font.path.c_str(),
+                                 font.color ? 1u : 0u);
+                // Family-only candidates, used by the Windows registry adapter,
+                // need to be loaded as a group before font selection is retried.
+                if (!emoji && font.script_tag == 0)
+                    continue;
+                return true;
+            }
         }
     }
     return added;

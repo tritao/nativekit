@@ -20,6 +20,8 @@ import haxe.io.Bytes;
 class Showcase {
     public static inline var LOGICAL_WIDTH:Float = 900.0;
     public static inline var LOGICAL_HEIGHT:Float = 650.0;
+    static inline var TEXT_ORIGIN_X:Float = 260.0;
+    static inline var TEXT_ORIGIN_Y:Float = 425.0;
     public static inline var TARGET_FPS:Float = 60.0;
     public static inline var STATUS_REFRESH_SECONDS:Float = 0.25;
 
@@ -199,6 +201,13 @@ class Showcase {
         return resource;
     }
 
+    public function addTestFonts(fontPath:Null<String>, emojiPath:Null<String>):Void {
+        if (fontPath != null)
+            fonts.add(fontPath);
+        if (emojiPath != null)
+            fonts.add(emojiPath, FontFamily.Emoji);
+    }
+
     public function updatePointer(x:Float, y:Float):Void {
         pointerX = x;
         pointerY = y;
@@ -222,7 +231,7 @@ class Showcase {
     function updateCaret():Void {
         if (pointerX < 252.0 || pointerX > 868.0 || pointerY < 392.0 || pointerY > 510.0)
             return;
-        caretPosition = multilingual.hitTest(pointerX - 260.0, pointerY - 397.0);
+        caretPosition = multilingual.hitTest(pointerX - TEXT_ORIGIN_X, pointerY - TEXT_ORIGIN_Y);
     }
 
     /** Encodes one complete frame using only the typed Haxe graphics API. */
@@ -259,8 +268,13 @@ class Showcase {
         if (caretChanged) {
             var caret = multilingual.caret(caretPosition);
             replacedCaret = caretPath;
-            caretPath = linePath(260.0 + caret.x, 397.0 + caret.y + caret.ascender,
-                260.0 + caret.x, 397.0 + caret.y + caret.descender);
+            // Skribidi reports caret.x at the baseline and a slope in
+            // dx/dy form. Keep the caret in the same layout coordinate space
+            // as drawing and hit testing, including italic fonts.
+            caretPath = linePath(TEXT_ORIGIN_X + caret.x + caret.slope * caret.ascender,
+                TEXT_ORIGIN_Y + caret.y + caret.ascender,
+                TEXT_ORIGIN_X + caret.x + caret.slope * caret.descender,
+                TEXT_ORIGIN_Y + caret.y + caret.descender);
             caretPathOffset = caretPosition.offset;
             caretPathAffinity = caretPosition.affinity;
         }
@@ -359,7 +373,7 @@ class Showcase {
 
             canvas.fill(textCardPath, cardRaised);
             canvas.drawText(textLabel, 262.0, 388.0);
-            canvas.drawText(multilingual, 260.0, 425.0);
+            canvas.drawText(multilingual, TEXT_ORIGIN_X, TEXT_ORIGIN_Y);
             canvas.drawText(caretInstruction, 260.0, 464.0);
             if (caretPath != null) {
                 canvas.stroke(caretPath, green, 2.0, LineCap.Round, LineJoin.Round);
@@ -581,6 +595,7 @@ class Showcase {
             }
             surface = createdSurface.out_surface;
             app = new Showcase();
+            app.addTestFonts(Sys.getEnv("NKUI_TEST_FONT_PATH"), Sys.getEnv("NKUI_COLOR_FONT_PATH"));
 
             var running = true;
             var ready = false;

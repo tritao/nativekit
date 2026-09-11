@@ -56,6 +56,8 @@ if [[ "$build_only" == true ]]; then
     exit 0
 fi
 
+font_path=${NKUI_TEST_FONT_PATH:-"$repo_dir/vendor/skribidi/example/data/IBMPlexSans-Regular.ttf"}
+emoji_path=${NKUI_COLOR_FONT_PATH:-"$repo_dir/vendor/skribidi/example/data/NotoColorEmoji-Regular.ttf"}
 runtime_library_path="$build_dir/modules/ui:$build_dir:$haxeon_dir/out:$haxeon_dir/vendor/hashlink"
 hashlink_runtime="$haxeon_dir/vendor/hashlink/hl"
 if [[ -x "$haxeon_dir/.tools/hashlink/hl" ]]; then
@@ -67,5 +69,7 @@ if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
 fi
 
 (cd "$haxeon_dir/out" && \
+    NKUI_TEST_FONT_PATH="$font_path" \
+    NKUI_COLOR_FONT_PATH="$emoji_path" \
     LD_LIBRARY_PATH="$runtime_library_path" \
     "$hashlink_runtime" "$artifact" "${program_args[@]}")
