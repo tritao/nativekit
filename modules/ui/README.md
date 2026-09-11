@@ -34,7 +34,10 @@ UI shader sources use `sokol-shdc`; generated headers are written below the
 build directory and are never checked into the source tree. Configure the UI
 build with `-DNK_SOKOL_SHDC=/path/to/sokol-shdc`, or put `sokol-shdc` on `PATH`.
 The current generator languages are selected by `NKUI_SHADER_LANGUAGES` and
-default to `glsl410:glsl300es`.
+default to `glsl410:glsl300es:hlsl5:metal_macos:metal_ios:metal_sim:wgsl:spirv_vk`.
+The generated descriptors are therefore ready for the intended Sokol backend
+families, although the NativeKit surface/runtime submission path currently
+enables desktop OpenGL only.
 
 Build it with:
 
