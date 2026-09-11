@@ -111,6 +111,7 @@ def main():
 
     websocket = WebSocket(page["webSocketDebuggerUrl"])
     try:
+        probe_sent = False
         expression = (
             "JSON.stringify({"
             "result:document.documentElement.dataset.nativekitResult || '',"
@@ -122,12 +123,21 @@ def main():
         )
         state = {}
         while time.monotonic() < deadline:
+            if not probe_sent:
+                probe_sent = bool(websocket.evaluate(
+                    "(()=>{const input=document.getElementById('__nativekit_text_input');"
+                    "if(!input)return false;"
+                    "input.dispatchEvent(new InputEvent('input',{bubbles:true,data:'A',"
+                    "inputType:'insertText'}));return true;})()",
+                    2,
+                ))
             value = websocket.evaluate(expression, 1)
             state = json.loads(value)
             if state["result"]:
                 if state["result"] != "0":
                     raise RuntimeError(f"NativeKit browser smoke test failed: {state}")
-                if not state["webgl2"] or state["width"] <= 0 or state["height"] <= 0:
+                if (not probe_sent or not state["webgl2"] or state["width"] <= 0 or
+                        state["height"] <= 0):
                     raise RuntimeError(f"NativeKit browser canvas is invalid: {state}")
                 print(f"web smoke passed: {state}")
                 return 0

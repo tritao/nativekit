@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_resource.h"
 #include "nativekit_graphics.h"
+#include "nativekit_input.h"
 #include "nativekit_ui.h"
 #include "nativekit_window.h"
 
@@ -229,6 +230,7 @@ struct WebShowcase {
     bool initialized = false;
     nk_request_id asset_request = NK_INVALID_REQUEST_ID;
     bool asset_loaded = false;
+    bool text_edit_seen = false;
     int result = 0;
 
     static void NK_CALL draw_frame(nk_handle surface, int32_t width, int32_t height,
@@ -246,7 +248,8 @@ struct WebShowcase {
             return;
         }
         ++app.showcase.rendered_frames;
-        if (app.smoke && app.showcase.rendered_frames >= 30 && app.asset_loaded)
+        if (app.smoke && app.showcase.rendered_frames >= 30 && app.asset_loaded &&
+            app.text_edit_seen)
             app.finish(0);
     }
 
@@ -285,6 +288,25 @@ struct WebShowcase {
         if (nk_resource_load_async(&asset, &asset_request) != NK_OK)
             return fail(1);
 
+        if (smoke) {
+            nk_handle cursor = NK_INVALID_HANDLE;
+            nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
+            if (nk_cursor_create_standard(NK_CURSOR_HAND, &cursor) != NK_OK ||
+                nk_window_set_cursor(window, cursor) != NK_OK ||
+                nk_cursor_destroy(cursor) != NK_OK ||
+                nk_window_get_cursor_mode(window, &cursor_mode) != NK_OK ||
+                cursor_mode != NK_CURSOR_MODE_NORMAL)
+                return fail(8);
+            nk_text_input_state text_state{};
+            text_state.struct_size = sizeof(text_state);
+            text_state.text = "";
+            text_state.composition_start = NK_TEXT_POSITION_NONE;
+            text_state.composition_end = NK_TEXT_POSITION_NONE;
+            if (nk_surface_set_text_input_state(surface, &text_state) != NK_OK ||
+                nk_surface_set_text_input_active(surface, 1) != NK_OK)
+                return fail(8);
+        }
+
         return poll_events() && result == 0;
     }
 
@@ -315,6 +337,20 @@ struct WebShowcase {
                 result = 7;
             else
                 asset_loaded = true;
+            return;
+        }
+        if (event.source == surface && event.kind == NK_EVENT_TEXT_EDIT) {
+            const char *text = nullptr;
+            uint32_t length = 0;
+            if (event.data_size < sizeof(nk_text_edit_event) ||
+                nk_text_edit_event_text(&event, &text, &length) != NK_OK ||
+                event.data_size < sizeof(nk_text_edit_event) || length != 1 || !text ||
+                text[0] != 'A') {
+                result = 8;
+            } else {
+                text_edit_seen = true;
+                nk_surface_set_text_input_active(surface, 0);
+            }
             return;
         }
         if (event.source == window && event.kind == NK_EVENT_WINDOW_RESIZE &&
