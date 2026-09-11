@@ -1,3 +1,12 @@
+// NativeKit solid-color path shader.
+//
+// This is the minimal path used for flat-color geometry and stencil setup.
+// Prepared framebuffer-pixel positions are converted to clip space in the
+// vertex stage, while the fragment stage outputs the supplied premultiplied
+// color unchanged. Keeping this separate from the path paint shader avoids
+// binding a texture for solid fills and gives stencil-only passes a matching
+// vertex layout.
+
 @module nkui_solid
 
 @vs vs

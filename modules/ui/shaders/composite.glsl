@@ -1,3 +1,12 @@
+// NativeKit render-target compositor shader.
+//
+// This shader draws a previously rendered offscreen target as a textured quad.
+// The vertex stage converts framebuffer-pixel positions to clip space and
+// forwards UVs; the fragment stage samples the target with the selected
+// surface sampler and applies the caller's premultiplied tint/opacity. It is
+// intentionally separate from path image paints because target composition
+// has its own filtering and pass/layer lifetime semantics.
+
 @module nkui_composite
 
 @vs vs

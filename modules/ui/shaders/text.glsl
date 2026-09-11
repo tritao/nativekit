@@ -1,3 +1,14 @@
+// NativeKit text atlas shaders.
+//
+// The shared vertex stage maps prepared glyph quads from framebuffer pixels to
+// clip space and forwards atlas UVs plus the per-glyph premultiplied color.
+// Alpha glyphs read an R8 mask, SDF glyphs reconstruct coverage from an R8
+// signed-distance field with screen-space smoothing, and color glyphs read
+// premultiplied RGBA atlas data. The explicit unfilterable/nonfiltering
+// declarations preserve R8 mask/SDF sampling on backends where float formats
+// cannot be filtered. The three fragment programs share one generated shader
+// module but remain distinct pipelines in NativeKit.
+
 @module nkui_text
 @image_sample_type tex unfilterable_float
 @sampler_type smp nonfiltering

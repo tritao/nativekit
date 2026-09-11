@@ -1,3 +1,9 @@
+// Build-only sokol-shdc probe.
+//
+// This shader is never used for rendering. CMake compiles it first to verify
+// that the configured shader toolchain can generate a valid backend output
+// before compiling the NativeKit path, solid, text, and composite modules.
+
 @module ui_toolchain_probe
 
 @vs vs

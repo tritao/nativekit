@@ -1,3 +1,13 @@
+// NativeKit path paint shader.
+//
+// The vertex stage maps prepared path/paint geometry from framebuffer pixel
+// coordinates into clip space and forwards both the position and paint
+// coordinates. The fragment stage evaluates either a solid rounded-rect /
+// gradient paint or a sampled image paint in the inverse paint-transform
+// space. `coverage` applies the analytic fringe used by NanoVG CPU
+// tessellation; non-convex fills use the separate stencil passes around this
+// shader. Premultiplied image paints are selected through `mode.w`.
+
 @module nkui_path
 
 @vs vs
