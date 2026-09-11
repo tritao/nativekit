@@ -7,8 +7,8 @@
 #include "prepare/nanovg_path.h"
 #include "prepare/skribidi_adapter.h"
 #include "render/frame_resources.h"
+#include "render/render_backend_factory.h"
 #include "render/render_plan_executor.h"
-#include "render/sokol_backend.h"
 
 #include <algorithm>
 #include <array>
@@ -104,6 +104,8 @@ struct PreparedPathCacheEntry {
 
 struct RendererSlot {
     std::unique_ptr<nkui::RenderBackend> backend;
+    nk_graphics_api backend_api = 0;
+    bool active = false;
     nkui::Compositor compositor;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
     nkui_renderer_stats stats{};
@@ -162,7 +164,7 @@ RendererSlot *resolve(nkui_renderer handle) {
     if (!slot || slot > renderers.size())
         return nullptr;
     auto &entry = renderers[slot - 1];
-    return entry.backend && entry.generation == generation ? &entry : nullptr;
+    return entry.active && entry.generation == generation ? &entry : nullptr;
 }
 
 bool append_path(nkui::NanoVGPath &path, const std::vector<nkui_path_element> &elements) {
@@ -765,8 +767,10 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
     try {
         for (uint32_t index = 0; index < renderers.size(); ++index) {
             auto &slot = renderers[index];
-            if (!slot.backend) {
-                slot.backend = std::make_unique<nkui::SokolBackend>();
+            if (!slot.active) {
+                slot.backend.reset();
+                slot.backend_api = 0;
+                slot.active = true;
                 slot.stats = {};
                 out_renderer->id = make_handle(slot.generation, static_cast<uint16_t>(index + 1));
                 return NKUI_OK;
@@ -776,7 +780,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
             return NKUI_ERROR_OUT_OF_MEMORY;
         renderers.emplace_back();
         auto &slot = renderers.back();
-        slot.backend = std::make_unique<nkui::SokolBackend>();
+        slot.active = true;
         slot.stats = {};
         out_renderer->id = make_handle(1, static_cast<uint16_t>(renderers.size()));
         return NKUI_OK;
@@ -791,6 +795,8 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
     slot->backend.reset();
+    slot->backend_api = 0;
+    slot->active = false;
     clear_path_cache(*slot);
     slot->stats = {};
     slot->generation = static_cast<uint16_t>(slot->generation + 1);
@@ -827,14 +833,20 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
         return NKUI_ERROR_INVALID_ARGUMENT;
     nk_surface_frame_target frame_target{};
     frame_target.struct_size = sizeof(frame_target);
-    if (nk_surface_get_frame_target(surface, &frame_target) != NK_OK ||
-        (frame_target.api != NK_GRAPHICS_OPENGL && frame_target.api != NK_GRAPHICS_OPENGL_ES))
+    if (nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
         return NKUI_ERROR_RENDERING;
     std::scoped_lock lock(renderers_mutex, lists_mutex, resources_mutex);
     auto *renderer_slot = resolve(renderer);
     auto *list_slot = resolve(list);
     if (!renderer_slot || !list_slot)
         return NKUI_ERROR_INVALID_HANDLE;
+    if (!renderer_slot->backend || renderer_slot->backend_api != frame_target.api) {
+        auto backend = nkui::create_render_backend(frame_target.api);
+        if (!backend)
+            return NKUI_ERROR_RENDERING;
+        renderer_slot->backend = std::move(backend);
+        renderer_slot->backend_api = frame_target.api;
+    }
     const nkui::ResourceId main_target =
         nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);
     nkui::RenderPlan plan;

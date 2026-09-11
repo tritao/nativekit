@@ -33,6 +33,7 @@ add_library(nativekit_ui SHARED
     src/prepare/skribidi_adapter.cpp
     src/render/frame_resources.cpp
     src/render/graphics_device.cpp
+    src/render/render_backend_factory.cpp
     src/render/render_plan_executor.cpp
     src/render/shader_toolchain_probe.cpp
     src/render/sokol_backend.cpp
