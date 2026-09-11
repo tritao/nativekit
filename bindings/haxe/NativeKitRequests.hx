@@ -1,6 +1,7 @@
 import NativeKitEvent;
 import NativeKitEventValue;
 import NativeKit;
+import NativeKit.MessageDialogOptions;
 import NativeKitEventValue.NativeKitResource;
 import NativeKitOptions.NativeKitFileDialogOptions;
 
@@ -82,7 +83,7 @@ class NativeKitRequests {
 		return trackResourceDialog("resource-directory dialog", started.status, started.out_request, handler);
 	}
 
-	public function messageDialog(parent:Int, options:nk_message_dialog_options, handler:NativeKitMessageResult->Void):haxe.Int64 {
+	public function messageDialog(parent:Int, options:MessageDialogOptions, handler:NativeKitMessageResult->Void):haxe.Int64 {
 		var started = NativeKit.nk_dialog_message(parent, options);
 		checkStarted("message dialog", started.status);
 		track(started.out_request, function(value) switch value {
@@ -141,7 +142,7 @@ class NativeKitRequests {
 		checkStarted(name, status);
 		track(request, function(value) switch value {
 			case Resources(kind, _, result, accepted, items):
-				if (kind != NativeKit.NkEventKind.DialogResourcesComplete) wrongEvent(name);
+				if (kind != NativeKit.EventKind.DialogResourcesComplete) wrongEvent(name);
 				checkCompleted(name, result); handler(accepted, items);
 			case _: wrongEvent(name);
 		});

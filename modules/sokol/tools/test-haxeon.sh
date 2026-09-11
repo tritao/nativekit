@@ -19,6 +19,7 @@ cmake --build "$build_dir"
     --root="$module_dir/bindings/haxe" \
     --root="$nativekit_dir/bindings/haxe" \
     --ffi-interface="$nativekit_dir/bindings/haxe/nativekit.hxi" \
+    --ffi-projection="$nativekit_dir/bindings/haxe/nativekit.hxmap" \
     --ffi-interface="$module_dir/bindings/nativekit-sokol.hxi" \
     "$module_dir/tests/haxeon/Triangle.hx" \
     "$module_dir/bindings/haxe/SokolCommandBuffer.hx" \

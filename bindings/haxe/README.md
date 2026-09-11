@@ -7,6 +7,11 @@ directions that cannot yet be inferred safely from ordinary C declarations.
 Its logical `@library("nativekit")` name resolves to the platform's native
 shared-library filename at runtime.
 
+`nativekit.hxmap` is the separate Haxe projection policy. It contains only
+Haxe-facing naming rules; it does not alter C symbols, structure layouts, or
+ownership contracts. Other bindings can reuse the generic prefix rules and
+provide small manifests only for library-specific exceptions.
+
 The binding deliberately begins with lifecycle, event polling, diagnostics,
 window handles, and monitor-name lookup. `@out`, `@inout`, and
 `@out_buffer("size")` keep raw pointers private in the generated module: Haxe
@@ -34,10 +39,10 @@ Unicode code-point indices; optional replacement text is copied and strictly
 validated as UTF-8 before the native event is released.
 
 Fixed-width value domains marked with `NK_ENUM` in the public headers project
-as PascalCase Haxe enum abstracts such as `NkResult` and `NkEventKind`, with
-PascalCase members such as `Ok` and `WindowClose`. The legacy `Nk_*` types and
-`NK_*` members remain available, as do the raw values through
-`NativeKitConstants` for source compatibility.
+as concise PascalCase Haxe enum abstracts such as `Result` and `EventKind`, with
+PascalCase members such as `Ok` and `WindowClose`. The raw `nk_*` types and
+`NK_*` spellings remain in the C/HXI interface, while managed Haxe code uses
+the concise projected types and typed enum abstracts.
 
 UTF-8 inputs are marked in the authoritative C headers with `NK_UTF8` or
 `NK_NULLABLE_UTF8`. The importer projects these annotations to managed Haxe
@@ -52,6 +57,9 @@ Run the end-to-end smoke test with:
 ```sh
 tools/test-haxeon.sh
 ```
+
+Compiler invocations using the HXI interface should load the matching
+projection manifest with `--ffi-projection`.
 
 The test first runs `tools/audit-haxeon-abi.sh`, which imports the same public
 header for Linux x86-64, Windows x86-64, and both macOS 64-bit architectures.

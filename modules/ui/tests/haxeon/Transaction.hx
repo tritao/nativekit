@@ -1,38 +1,45 @@
 import NativeKit;
+import NativeKit.EventKind;
+import NativeKit.GraphicsApi;
+import NativeKit.Result;
+import NativeKit.Event;
+import NativeKit.InitOptions;
+import NativeKit.SurfaceOptions;
+import NativeKit.WindowOptions;
 import haxe.io.Bytes;
 
 class Transaction {
 	static function main():Int {
-		var init = new nk_init_options();
-		init.set_struct_size(nk_init_options.size());
+		var init = new InitOptions();
+		init.set_struct_size(InitOptions.size());
 		init.set_api_version(NativeKitConstants.NK_API_VERSION);
 		init.set_event_queue_capacity(32);
-		if (NativeKit.nk_init(init) != NativeKitConstants.NK_OK)
+		if (NativeKit.nk_init(init) != Result.Ok)
 			return 10;
 
-		var windowOptions = new nk_window_options();
-		windowOptions.set_struct_size(nk_window_options.size());
+		var windowOptions = new WindowOptions();
+		windowOptions.set_struct_size(WindowOptions.size());
 		windowOptions.set_flags(NativeKitConstants.NK_WINDOW_RESIZABLE);
 		windowOptions.set_width(256);
 		windowOptions.set_height(192);
 		windowOptions.set_title("Haxeon: NativeKit UI");
 		var createdWindow = NativeKit.nk_window_create(windowOptions);
-		if (createdWindow.status != NativeKitConstants.NK_OK) {
+		if (createdWindow.status != Result.Ok) {
 			NativeKit.nk_shutdown();
 			return 11;
 		}
 		var window = createdWindow.out_window;
-		var surfaceOptions = new nk_surface_options();
-		surfaceOptions.set_struct_size(nk_surface_options.size());
+		var surfaceOptions = new SurfaceOptions();
+		surfaceOptions.set_struct_size(SurfaceOptions.size());
 		surfaceOptions.set_flags(NativeKitConstants.NK_SURFACE_FORWARD_COMPATIBLE |
 			NativeKitConstants.NK_SURFACE_STENCIL);
-		surfaceOptions.set_api(NativeKitConstants.NK_GRAPHICS_OPENGL);
+		surfaceOptions.set_api(GraphicsApi.Opengl);
 		surfaceOptions.set_major_version(3);
 		surfaceOptions.set_minor_version(3);
 		surfaceOptions.set_width(256);
 		surfaceOptions.set_height(192);
 		var createdSurface = NativeKit.nk_surface_create(window, surfaceOptions);
-		if (createdSurface.status != NativeKitConstants.NK_OK) {
+		if (createdSurface.status != Result.Ok) {
 			NativeKit.nk_window_destroy(window);
 			NativeKit.nk_shutdown();
 			return 12;
@@ -79,23 +86,23 @@ class Transaction {
 		var rendered = 0;
 		var attempts = 0;
 		while (rendered < 3 && attempts < 120) {
-			var event = new nk_event();
-			event.set_struct_size(nk_event.size());
+			var event = new Event();
+			event.set_struct_size(Event.size());
 			var polled = NativeKit.nk_poll_event(event);
-			if (polled.status != NativeKitConstants.NK_OK)
+			if (polled.status != Result.Ok)
 				return 14;
 			var eventKind = polled.event.get_kind();
 			var eventSource = polled.event.get_source();
 			NativeKit.nk_event_release(polled.event);
-			if (eventKind == NativeKitConstants.NK_EVENT_SURFACE_READY && eventSource == surface)
+			if (eventKind == EventKind.SurfaceReady && eventSource == surface)
 				ready = true;
 			if (ready) {
 				var size = NativeKit.nk_surface_get_framebuffer_size(surface);
-				if (size.status != NativeKitConstants.NK_OK || size.out_width <= 0 ||
+				if (size.status != Result.Ok || size.out_width <= 0 ||
 					size.out_height <= 0)
 					return 14;
 				var scale = NativeKit.nk_window_get_scale(window);
-				if (scale.status != NativeKitConstants.NK_OK || scale.out_scale <= 0.0)
+				if (scale.status != Result.Ok || scale.out_scale <= 0.0)
 					return 15;
 				var frame = new FrameInfo(256.0, 192.0, size.out_width, size.out_height, scale.out_scale);
 				try {
@@ -103,7 +110,7 @@ class Transaction {
 				} catch (_:Dynamic) {
 					return 16;
 				}
-				if (NativeKit.nk_surface_present(surface) != NativeKitConstants.NK_OK)
+				if (NativeKit.nk_surface_present(surface) != Result.Ok)
 					return 16;
 				rendered++;
 			}

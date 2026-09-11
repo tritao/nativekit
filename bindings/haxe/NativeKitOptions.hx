@@ -1,46 +1,54 @@
 import NativeKit;
 import NativeKit.NativeKitConstants;
-import NativeKit.NkMessageKind;
-import NativeKit.NkResult;
-import NativeKit.NkWindowKind;
+import NativeKit.MessageKind;
+import NativeKit.Result;
+import NativeKit.WindowKind;
+import NativeKit.DialogFilter;
+import NativeKit.FileDialogOptions;
+import NativeKit.MessageDialogOptions;
+import NativeKit.NotificationOptions;
+import NativeKit.Resource;
+import NativeKit.ShareOptions;
+import NativeKit.WebviewOptions;
+import NativeKit.WindowOptions;
 
 /** Creates correctly sized NativeKit option structures with useful defaults. */
 class NativeKitOptions {
 	/** Attaches a managed contiguous filter array and keeps it alive with the options. */
-	public static function filteredFileDialog(filters:Array<nk_dialog_filter>, ?title:String,
+	public static function filteredFileDialog(filters:Array<DialogFilter>, ?title:String,
 			?initialPath:String, ?suggestedName:String, ?flags:Int):NativeKitFileDialogOptions {
 		var options = rawFileDialog(title, initialPath, suggestedName, flags);
-		var storage = nk_dialog_filter.array(filters);
+		var storage = DialogFilter.array(filters);
 		if (filters.length > 0) options.set_filters(storage);
 		options.set_filter_count(filters.length);
 		return new NativeKitFileDialogOptions(options, storage);
 	}
 
 	/** Creates one dialog filter with managed UTF-8 storage. */
-	public static function dialogFilter(patterns:String, ?name:String):nk_dialog_filter {
-		var value = new nk_dialog_filter();
+	public static function dialogFilter(patterns:String, ?name:String):DialogFilter {
+		var value = new DialogFilter();
 		value.set_patterns(patterns);
 		value.set_name(name);
 		return value;
 	}
 
 	public static function window(width:Int, height:Int, ?title:String, ?flags:Int,
-			?owner:Int, ?kind:Int):nk_window_options {
-		var value = new nk_window_options();
-		value.set_struct_size(nk_window_options.size());
+			?owner:Int, ?kind:Int):WindowOptions {
+		var value = new WindowOptions();
+		value.set_struct_size(WindowOptions.size());
 		value.set_width(width);
 		value.set_height(height);
 		value.set_title(title);
 		value.set_flags(flags == null ? NativeKitConstants.NK_WINDOW_RESIZABLE : flags);
 		value.set_owner(owner == null ? 0 : owner);
-		value.set_kind(kind == null ? NkWindowKind.Normal : kind);
+		value.set_kind(kind == null ? WindowKind.Normal : kind);
 		return value;
 	}
 
 	public static function webview(x:Int, y:Int, width:Int, height:Int,
-			?initialUrl:String, ?flags:Int):nk_webview_options {
-		var value = new nk_webview_options();
-		value.set_struct_size(nk_webview_options.size());
+			?initialUrl:String, ?flags:Int):WebviewOptions {
+		var value = new WebviewOptions();
+		value.set_struct_size(WebviewOptions.size());
 		value.set_x(x);
 		value.set_y(y);
 		value.set_width(width);
@@ -55,9 +63,9 @@ class NativeKitOptions {
 		return filteredFileDialog([], title, initialPath, suggestedName, flags);
 
 	static function rawFileDialog(?title:String, ?initialPath:String,
-			?suggestedName:String, ?flags:Int):nk_file_dialog_options {
-		var value = new nk_file_dialog_options();
-		value.set_struct_size(nk_file_dialog_options.size());
+		?suggestedName:String, ?flags:Int):FileDialogOptions {
+		var value = new FileDialogOptions();
+		value.set_struct_size(FileDialogOptions.size());
 		value.set_title(title);
 		value.set_initial_path(initialPath);
 		value.set_suggested_name(suggestedName);
@@ -66,20 +74,20 @@ class NativeKitOptions {
 	}
 
 	public static function messageDialog(message:String, ?title:String, ?kind:Int,
-			?buttons:Int):nk_message_dialog_options {
-		var value = new nk_message_dialog_options();
-		value.set_struct_size(nk_message_dialog_options.size());
+			?buttons:Int):MessageDialogOptions {
+		var value = new MessageDialogOptions();
+		value.set_struct_size(MessageDialogOptions.size());
 		value.set_message(message);
 		value.set_title(title);
-		value.set_kind(kind == null ? NkMessageKind.Info : kind);
+		value.set_kind(kind == null ? MessageKind.Info : kind);
 		value.set_buttons(buttons == null ? NativeKitConstants.NK_MESSAGE_BUTTON_OK : buttons);
 		return value;
 	}
 
 	public static function resource(uri:String, ?mimeType:String, ?displayName:String,
-			?flags:Int):nk_resource {
-		var value = new nk_resource();
-		value.set_struct_size(nk_resource.size());
+			?flags:Int):Resource {
+		var value = new Resource();
+		value.set_struct_size(Resource.size());
 		value.set_uri(uri);
 		value.set_mime_type(mimeType);
 		value.set_display_name(displayName);
@@ -87,9 +95,9 @@ class NativeKitOptions {
 		return value;
 	}
 
-	public static function textShare(text:String, ?title:String, ?flags:Int):nk_share_options {
-		var value = new nk_share_options();
-		value.set_struct_size(nk_share_options.size());
+	public static function textShare(text:String, ?title:String, ?flags:Int):ShareOptions {
+		var value = new ShareOptions();
+		value.set_struct_size(ShareOptions.size());
 		value.set_text(text);
 		value.set_title(title);
 		value.set_flags(flags == null ? 0 : flags);
@@ -97,23 +105,23 @@ class NativeKitOptions {
 	}
 
 	/** Attaches managed contiguous resources and keeps them alive with the share options. */
-	public static function resourceShare(resources:Array<nk_resource>, ?text:String,
+	public static function resourceShare(resources:Array<Resource>, ?text:String,
 			?title:String, ?flags:Int):NativeKitShareOptions {
-		var options = new nk_share_options();
-		options.set_struct_size(nk_share_options.size());
+		var options = new ShareOptions();
+		options.set_struct_size(ShareOptions.size());
 		options.set_text(text);
 		options.set_title(title);
 		options.set_flags(flags == null ? 0 : flags);
-		var storage = nk_resource.array(resources);
+		var storage = Resource.array(resources);
 		if (resources.length > 0) options.set_resources(storage);
 		options.set_resource_count(resources.length);
 		return new NativeKitShareOptions(options, storage);
 	}
 
 	public static function notification(title:String, ?body:String, ?icon:String,
-			?timeoutMs:Int, ?flags:Int):nk_notification_options {
-		var value = new nk_notification_options();
-		value.set_struct_size(nk_notification_options.size());
+			?timeoutMs:Int, ?flags:Int):NotificationOptions {
+		var value = new NotificationOptions();
+		value.set_struct_size(NotificationOptions.size());
 		value.set_title(title);
 		value.set_body(body);
 		value.set_icon(icon);
@@ -124,27 +132,27 @@ class NativeKitOptions {
 }
 
 class NativeKitFileDialogOptions {
-	public final options:nk_file_dialog_options;
-	final filters:nk_dialog_filter;
+	public final options:FileDialogOptions;
+	final filters:DialogFilter;
 
-	public function new(options:nk_file_dialog_options, filters:nk_dialog_filter) {
+	public function new(options:FileDialogOptions, filters:DialogFilter) {
 		this.options = options;
 		this.filters = filters;
 	}
 }
 
 class NativeKitShareOptions {
-	public final options:nk_share_options;
-	final resources:nk_resource;
+	public final options:ShareOptions;
+	final resources:Resource;
 
-	public function new(options:nk_share_options, resources:nk_resource) {
+	public function new(options:ShareOptions, resources:Resource) {
 		this.options = options;
 		this.resources = resources;
 	}
 
 	public function submit():Void {
 		var result = NativeKit.nk_share(options);
-		if (result != NkResult.Ok)
+		if (result != Result.Ok)
 			throw 'NativeKit share failed: $result';
 	}
 }

@@ -40,6 +40,7 @@ fi
         --root="$repo_dir/tests/haxeon" \
         --root="$repo_dir/bindings/haxe" \
         --ffi-interface="$repo_dir/bindings/haxe/nativekit.hxi" \
+        --ffi-projection="$repo_dir/bindings/haxe/nativekit.hxmap" \
         "$repo_dir/tests/haxeon/Smoke.hx" \
         "$repo_dir/bindings/haxe/NativeKitEvent.hx" \
         "$repo_dir/bindings/haxe/NativeKitEventValue.hx" \

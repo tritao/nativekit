@@ -1,4 +1,6 @@
 import NativeKit;
+import NativeKit.EventKind;
+import NativeKit.InitOptions;
 import NativeKit.NativeKitConstants;
 import NativeKitEvent;
 import NativeKitEventValue;
@@ -100,8 +102,8 @@ class Triangle {
 	}
 
 	static function main():Int {
-		var init = new nk_init_options();
-		init.set_struct_size(nk_init_options.size());
+		var init = new InitOptions();
+		init.set_struct_size(InitOptions.size());
 		init.set_api_version(NativeKitConstants.NK_API_VERSION);
 		if (NativeKit.nk_init(init) != 0)
 			return 1;
@@ -134,9 +136,9 @@ class Triangle {
 			var eventKind = event.kind;
 			var eventSource = event.source;
 			event.release();
-			if (eventKind == NativeKitConstants.NK_EVENT_WINDOW_CLOSE && eventSource == window)
+			if (eventKind == EventKind.WindowClose && eventSource == window)
 				running = false;
-			if (eventKind == NativeKitConstants.NK_EVENT_SURFACE_READY && eventSource == surface) {
+			if (eventKind == EventKind.SurfaceReady && eventSource == surface) {
 					var madeRenderer = NativeKitSokol.nks_renderer_create(surface);
 					checked(madeRenderer.status);
 					renderer = madeRenderer.out_renderer;

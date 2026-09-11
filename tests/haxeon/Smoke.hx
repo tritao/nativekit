@@ -1,4 +1,5 @@
 import NativeKit;
+import NativeKit.Result;
 import NativeKitEvent;
 import NativeKitEventValue;
 import NativeKitRequests;
@@ -7,13 +8,15 @@ import NativeKitEventDecoderTests;
 import NativeKitTextInput;
 import NativeKitOptions;
 import NativeKit.NativeKitConstants;
+import NativeKit.InitOptions;
+import NativeKit.TextInputState;
 
 class Smoke {
 	static function main():Int {
 		if (NativeKit.nk_api_version() != NativeKitConstants.NK_API_VERSION)
 			return 1;
 
-		var options = new nk_init_options();
+		var options = new InitOptions();
 		options.set_struct_size(16);
 		options.set_api_version(NativeKitConstants.NK_API_VERSION);
 		options.set_event_queue_capacity(32);
@@ -59,12 +62,12 @@ class Smoke {
 			payloadOk = payloadOk && invalidEvaluationRejected && requests.pending() == 0;
 		}
 		var fileArrayResult = NativeKit.nk_clipboard_set_files(["/tmp/nativekit-a", "/tmp/nativekit-b"]);
-		if (fileArrayResult != 0 && fileArrayResult != NativeKitConstants.NK_ERROR_UNSUPPORTED)
+		if (fileArrayResult != 0 && fileArrayResult != Result.ErrorUnsupported)
 			return 14;
 		var resourceArrayResult = NativeKit.nk_clipboard_set_resources([
 			NativeKitOptions.resource("file:///tmp/nativekit-a", "text/plain", "nativekit-a")
 		]);
-		if (resourceArrayResult != 0 && resourceArrayResult != NativeKitConstants.NK_ERROR_UNSUPPORTED)
+		if (resourceArrayResult != 0 && resourceArrayResult != Result.ErrorUnsupported)
 			return 15;
 
 		var windowOptions = NativeKitOptions.window(320, 200, "NativeKit smoke", 2);
@@ -86,7 +89,7 @@ class Smoke {
 			return 10;
 		var textState = NativeKitTextInput.state("first", 0, 5, 5, 5);
 		textState.set_text("olá 👋");
-		if (textState.get_text() != "olá 👋" || textState.get_struct_size() != nk_text_input_state.size())
+		if (textState.get_text() != "olá 👋" || textState.get_struct_size() != TextInputState.size())
 			return 11;
 		var created = NativeKit.nk_window_create(windowOptions);
 		var windowOk = created.status == -4;
