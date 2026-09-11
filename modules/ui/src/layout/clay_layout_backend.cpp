@@ -1,4 +1,4 @@
-#include "layout/layout_backend.h"
+#include "layout/layout_engine.h"
 
 #include "prepare/skribidi_adapter.h"
 
@@ -35,29 +35,8 @@ Clay_SizingAxis clay_axis(LayoutAxis axis) {
 
 } // namespace
 
-class ClayLayoutBackend final : public LayoutBackend {
-  public:
-    struct State;
-
-    ClayLayoutBackend(std::size_t max_nodes, SkribidiAdapter *text_adapter);
-    ~ClayLayoutBackend() override;
-
-    bool valid() const override;
-    bool add_font(const char *path, FontFamily family) override;
-    bool add_font_from_data(const char *name, const void *data, std::size_t bytes,
-                            FontFamily family) override;
-    bool add_system_fallbacks() override;
-    bool layout(const std::vector<LayoutNode> &nodes, float width, float height,
-                float pointer_x, float pointer_y, bool pointer_down, float delta_seconds,
-                LayoutSnapshot &out, LayoutError *error) override;
-
-  private:
-    std::unique_ptr<State> state_;
-};
-
-struct ClayLayoutBackend::State {
-    State(std::size_t max_nodes_value, SkribidiAdapter *text_adapter_value)
-        : max_nodes(max_nodes_value), text(text_adapter_value) {
+struct LayoutEngine::Impl {
+    explicit Impl(std::size_t max_nodes_value) : max_nodes(max_nodes_value) {
         Clay_SetMaxElementCount(static_cast<int32_t>(max_nodes + 1));
         Clay_SetMaxMeasureTextCacheWordCount(static_cast<int32_t>(max_nodes * 8 + 32));
         clay_memory.resize(Clay_MinMemorySize());
@@ -66,7 +45,7 @@ struct ClayLayoutBackend::State {
 
         Clay_ErrorHandler error_handler{};
         error_handler.errorHandlerFunction = [](Clay_ErrorData data) {
-            auto *state = static_cast<State *>(data.userData);
+            auto *state = static_cast<Impl *>(data.userData);
             state->clay_error = data.errorText.chars ? data.errorText.chars : "Clay error";
         };
         error_handler.userData = this;
@@ -80,6 +59,15 @@ struct ClayLayoutBackend::State {
         }
     }
 
+    bool valid() const;
+    bool add_font(const char *path, FontFamily family);
+    bool add_font_from_data(const char *name, const void *data, std::size_t bytes,
+                            FontFamily family);
+    bool add_system_fallbacks();
+    bool layout(const std::vector<LayoutNode> &nodes, float width, float height,
+                float pointer_x, float pointer_y, bool pointer_down, float delta_seconds,
+                LayoutSnapshot &out, LayoutError *error);
+
     static Clay_Dimensions measure_text(Clay_StringSlice text, Clay_TextElementConfig *config,
                                         void *user_data);
     static Clay_TextIntrinsicDimensions measure_intrinsic_text(Clay_StringSlice text,
@@ -92,7 +80,7 @@ struct ClayLayoutBackend::State {
     std::size_t max_nodes = 0;
     std::vector<char> clay_memory;
     Clay_Context *context = nullptr;
-    SkribidiAdapter *text = nullptr;
+    SkribidiAdapter text;
     const std::vector<LayoutNode> *nodes = nullptr;
     std::vector<std::vector<std::size_t>> children;
     std::vector<Clay_ElementId> element_ids;
@@ -102,9 +90,9 @@ struct ClayLayoutBackend::State {
     bool previous_pointer_down = false;
 };
 
-Clay_Dimensions ClayLayoutBackend::State::measure_text(Clay_StringSlice text,
-                                                       Clay_TextElementConfig *config,
-                                                       void *user_data) {
+Clay_Dimensions LayoutEngine::Impl::measure_text(Clay_StringSlice text,
+                                                 Clay_TextElementConfig *config,
+                                                 void *user_data) {
     if (!config || text.length < 0 || (!text.chars && text.length != 0))
         return {0.0f, 0.0f};
 
@@ -113,11 +101,11 @@ Clay_Dimensions ClayLayoutBackend::State::measure_text(Clay_StringSlice text,
     return {intrinsic.unwrappedDimensions.width, intrinsic.unwrappedDimensions.height};
 }
 
-Clay_TextIntrinsicDimensions ClayLayoutBackend::State::measure_intrinsic_text(
+Clay_TextIntrinsicDimensions LayoutEngine::Impl::measure_intrinsic_text(
     Clay_StringSlice text, Clay_TextElementConfig *config, void *user_data) {
-    auto &state = *static_cast<State *>(user_data);
+    auto &state = *static_cast<Impl *>(user_data);
     Clay_TextIntrinsicDimensions result{};
-    if (!config || text.length < 0 || (!text.chars && text.length != 0) || !state.text)
+    if (!config || text.length < 0 || (!text.chars && text.length != 0))
         return result;
 
     const std::string value(text.chars ? text.chars : "", static_cast<std::size_t>(text.length));
@@ -127,7 +115,7 @@ Clay_TextIntrinsicDimensions ClayLayoutBackend::State::measure_intrinsic_text(
     options.line_height = static_cast<float>(config->lineHeight);
     options.wrap = TextWrapMode::None;
     TextRect bounds;
-    if (!state.text->measure_intrinsic_utf8(value.c_str(), options, &bounds))
+    if (!state.text.measure_intrinsic_utf8(value.c_str(), options, &bounds))
         return result;
     result.unwrappedDimensions = {
         bounds.width,
@@ -138,11 +126,10 @@ Clay_TextIntrinsicDimensions ClayLayoutBackend::State::measure_intrinsic_text(
     return result;
 }
 
-Clay_TextLayoutResult ClayLayoutBackend::State::layout_text(Clay_StringSlice text,
-                                                            Clay_TextElementConfig *config,
-                                                            float available_width,
-                                                            void *user_data) {
-    auto &state = *static_cast<State *>(user_data);
+Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
+                                                      Clay_TextElementConfig *config,
+                                                      float available_width, void *user_data) {
+    auto &state = *static_cast<Impl *>(user_data);
     Clay_TextLayoutResult result{};
     if (!config || text.length < 0 || (!text.chars && text.length != 0) ||
         !std::isfinite(available_width) || available_width <= 0.0f)
@@ -164,8 +151,7 @@ Clay_TextLayoutResult ClayLayoutBackend::State::layout_text(Clay_StringSlice tex
                                                                              : TextAlignment::Start;
 
         TextLayoutResult shaped;
-        if (!state.text ||
-            !state.text->layout_utf8(value.c_str(), available_width, options, &shaped) ||
+        if (!state.text.layout_utf8(value.c_str(), available_width, options, &shaped) ||
             shaped.id == 0)
             return result;
 
@@ -237,7 +223,8 @@ Clay_ElementDeclaration declaration_for(const LayoutNode &node) {
     return declaration;
 }
 
-void append_node(ClayLayoutBackend::State &state, std::size_t index) {
+template <typename LayoutState>
+void append_node(LayoutState &state, std::size_t index) {
     const auto &node = (*state.nodes)[index];
     const Clay_ElementId id = state.element_ids[index];
     Clay__OpenElementWithId(id);
@@ -317,43 +304,38 @@ void append_primitive(LayoutSnapshot &snapshot, const Clay_RenderCommand &comman
 
 } // namespace
 
-ClayLayoutBackend::ClayLayoutBackend(std::size_t max_nodes, SkribidiAdapter *text_adapter)
-    : state_(std::make_unique<State>(max_nodes, text_adapter)) {}
-
-ClayLayoutBackend::~ClayLayoutBackend() = default;
-
-bool ClayLayoutBackend::valid() const {
-    return state_ && state_->context && state_->text && state_->text->valid();
+bool LayoutEngine::Impl::valid() const {
+    return context && text.valid();
 }
 
-bool ClayLayoutBackend::add_font(const char *path, FontFamily family) {
-    return state_ && state_->text && state_->text->add_font(path, family);
+bool LayoutEngine::Impl::add_font(const char *path, FontFamily family) {
+    return text.add_font(path, family);
 }
 
-bool ClayLayoutBackend::add_font_from_data(const char *name, const void *data, std::size_t bytes,
-                                           FontFamily family) {
-    return state_ && state_->text && state_->text->add_font_from_data(name, data, bytes, family);
+bool LayoutEngine::Impl::add_font_from_data(const char *name, const void *data, std::size_t bytes,
+                                            FontFamily family) {
+    return text.add_font_from_data(name, data, bytes, family);
 }
 
-bool ClayLayoutBackend::add_system_fallbacks() {
-    return state_ && state_->text && state_->text->add_system_fallbacks();
+bool LayoutEngine::Impl::add_system_fallbacks() {
+    return text.add_system_fallbacks();
 }
 
-bool ClayLayoutBackend::layout(const std::vector<LayoutNode> &nodes, float width, float height,
-                               float pointer_x, float pointer_y, bool pointer_down,
-                               float delta_seconds, LayoutSnapshot &out, LayoutError *error) {
+bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float width, float height,
+                                float pointer_x, float pointer_y, bool pointer_down,
+                                float delta_seconds, LayoutSnapshot &out, LayoutError *error) {
     if (error)
         *error = {};
     out = {};
     if (!valid() || nodes.empty() || !std::isfinite(width) || !std::isfinite(height) ||
         !std::isfinite(pointer_x) || !std::isfinite(pointer_y) || !std::isfinite(delta_seconds) ||
-        width <= 0.0f || height <= 0.0f || nodes.size() > state_->max_nodes) {
+        width <= 0.0f || height <= 0.0f || nodes.size() > max_nodes) {
         if (error)
             error->message = "invalid layout input";
         return false;
     }
 
-    auto &state = *state_;
+    auto &state = *this;
     state.nodes = &nodes;
     state.children.assign(nodes.size(), {});
     state.element_ids.resize(nodes.size());
@@ -459,9 +441,45 @@ bool ClayLayoutBackend::layout(const std::vector<LayoutNode> &nodes, float width
     return true;
 }
 
-std::unique_ptr<LayoutBackend> make_clay_layout_backend(std::size_t max_nodes,
-                                                        SkribidiAdapter *text_adapter) {
-    return std::make_unique<ClayLayoutBackend>(max_nodes, text_adapter);
+LayoutEngine::LayoutEngine(std::size_t max_nodes) : impl_(std::make_unique<Impl>(max_nodes)) {}
+
+LayoutEngine::~LayoutEngine() = default;
+
+bool LayoutEngine::valid() const {
+    return impl_ && impl_->valid();
+}
+
+SkribidiAdapter *LayoutEngine::text_adapter() {
+    return impl_ ? &impl_->text : nullptr;
+}
+
+const SkribidiAdapter *LayoutEngine::text_adapter() const {
+    return impl_ ? &impl_->text : nullptr;
+}
+
+bool LayoutEngine::add_font(const char *path, FontFamily family) {
+    return impl_ && impl_->add_font(path, family);
+}
+
+bool LayoutEngine::add_font_from_data(const char *name, const void *data, std::size_t bytes,
+                                      FontFamily family) {
+    return impl_ && impl_->add_font_from_data(name, data, bytes, family);
+}
+
+bool LayoutEngine::add_system_fallbacks() {
+    return impl_ && impl_->add_system_fallbacks();
+}
+
+bool LayoutEngine::layout(const std::vector<LayoutNode> &nodes, float width, float height,
+                          float pointer_x, float pointer_y, bool pointer_down,
+                          float delta_seconds, LayoutSnapshot &out, LayoutError *error) {
+    if (!impl_) {
+        if (error)
+            error->message = "layout implementation is unavailable";
+        return false;
+    }
+    return impl_->layout(nodes, width, height, pointer_x, pointer_y, pointer_down, delta_seconds,
+                         out, error);
 }
 
 } // namespace nkui

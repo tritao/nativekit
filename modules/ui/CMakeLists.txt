@@ -29,15 +29,12 @@ add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/compositor/render_plan.cpp
     src/display_list/display_list.cpp
     src/layout/clay_layout_backend.cpp
-    src/layout/layout_engine.cpp
     src/layout/layout_render_compiler.cpp
-    src/layout/layout_types.cpp
     src/prepare/nanovg_path.cpp
     src/prepare/skribidi_adapter.cpp
     src/prepare/system_fonts.cpp
     src/render/frame_resources.cpp
     src/render/graphics_device.cpp
-    src/render/render_backend_factory.cpp
     src/render/render_plan_executor.cpp
     src/render/shader_toolchain_probe.cpp
     src/render/sokol_backend.cpp
@@ -156,8 +153,6 @@ if(NK_BUILD_TESTS)
     add_executable(nativekit_ui_layout_engine_test
         tests/layout_engine.cpp
         src/layout/clay_layout_backend.cpp
-        src/layout/layout_engine.cpp
-        src/layout/layout_types.cpp
         src/prepare/skribidi_adapter.cpp
         src/prepare/system_fonts.cpp)
     target_compile_features(nativekit_ui_layout_engine_test PRIVATE cxx_std_20)
@@ -170,9 +165,7 @@ if(NK_BUILD_TESTS)
     add_executable(nativekit_ui_layout_render_compiler_test
         tests/layout_render_compiler.cpp
         src/layout/clay_layout_backend.cpp
-        src/layout/layout_engine.cpp
         src/layout/layout_render_compiler.cpp
-        src/layout/layout_types.cpp
         src/display_list/display_list.cpp
         src/prepare/nanovg_path.cpp
         src/prepare/skribidi_adapter.cpp
@@ -401,7 +394,6 @@ if(NK_BUILD_EXAMPLES)
             src/prepare/skribidi_adapter.cpp
             src/prepare/system_fonts.cpp
             src/render/graphics_device.cpp
-            src/render/render_backend_factory.cpp
             src/render/sokol_backend.cpp
             "${NKUI_TOOLCHAIN_PROBE_SHADER}"
             "${NKUI_PATH_SHADER}"

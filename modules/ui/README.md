@@ -13,14 +13,14 @@ The vendored experimental implementation stack is:
 - Sokol for GPU submission;
 - an internal display list which keeps those dependencies out of the public ABI.
 
-Clay is currently integrated as a private frame-scoped layout backend. The
-first native vertical slice is covered by `nativekit_ui_layout_engine`, which
+Clay is currently integrated as a private implementation of `LayoutEngine`.
+The first native vertical slice is covered by `nativekit_ui_layout_engine`, which
 proves `Box + Text + Button`, text measurement through Skribidi, hit testing,
 and button activation without exposing a public layout ABI yet.
 
-`LayoutEngine` is a NativeKit-owned facade over a replaceable `LayoutBackend`;
-the current implementation is `ClayLayoutBackend`. Clay types stay inside that
-adapter. NativeKit registers Clay's generic external paragraph-layout callback:
+`LayoutEngine` is a NativeKit-owned facade over a private Clay implementation.
+Clay types stay inside that implementation. NativeKit registers Clay's generic
+external paragraph-layout callback:
 Skribidi supplies intrinsic metrics, line breaks, bidi/shaping geometry, and an
 opaque `TextLayoutId`; Clay contributes box constraints and line placement but
 does not run its internal word wrapping. The resulting snapshot carries the

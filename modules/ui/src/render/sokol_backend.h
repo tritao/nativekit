@@ -5,6 +5,7 @@
 #include "nativekit_sokol_api.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace nkui {
@@ -25,6 +26,9 @@ bool triangulate_prepared_path(const PreparedPathData &path,
                                const PreparedPathOperation &operation, SolidMesh &mesh);
 
 using SokolBackendStats = RenderBackendStats;
+
+/** Creates the renderer implementation compatible with a surface API. */
+std::unique_ptr<RenderBackend> create_render_backend(nk_graphics_api api);
 
 class SokolBackend final : public RenderBackend {
   public:
