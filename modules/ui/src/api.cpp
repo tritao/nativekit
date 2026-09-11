@@ -1053,15 +1053,12 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                     nkui::ResourceKind::TextLayout, 0x0FFE, prepared_slot++);
                 valid = frame_resources.bind_text(prepared_id, *glyphs);
                 command.resource = prepared_id;
-                if (requested_scale != 1.0f) {
-                    const float correction = requested_scale / raster_scale;
-                    command.x *= raster_scale;
-                    command.y *= raster_scale;
-                    command.transform = {correction, 0.0f, 0.0f, correction, transform[4],
-                                         transform[5]};
-                } else {
-                    command.transform = transform;
-                }
+                // Skribidi's pixel scale changes atlas raster density while
+                // preserving layout geometry. Keep the draw origin in layout
+                // coordinates and apply the complete device transform here;
+                // baking raster_scale into x/y or replacing the transform with
+                // a correction scales positions but leaves glyph geometry small.
+                command.transform = transform;
                 if (std::find(text_adapters.begin(), text_adapters.end(), layout->text.get()) ==
                     text_adapters.end())
                     text_adapters.push_back(layout->text.get());
