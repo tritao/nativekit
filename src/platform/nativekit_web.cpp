@@ -21,6 +21,11 @@ namespace {
 
 struct WebSurfaceResource;
 
+struct WebCursorResource final : nk::core::Resource {
+    nk_handle handle = NK_INVALID_HANDLE;
+    nk_cursor_shape shape = NK_CURSOR_ARROW;
+};
+
 template <typename T> std::vector<std::byte> bytes_of(const T &value) {
     const auto *first = reinterpret_cast<const std::byte *>(&value);
     return {first, first + sizeof(value)};
@@ -47,6 +52,8 @@ struct WebWindowResource final : nk::core::Resource {
     bool hovered = false;
     bool resizable = true;
     bool fullscreen = false;
+    nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
+    std::shared_ptr<WebCursorResource> cursor;
 };
 
 struct WebSurfaceResource final : nk::core::Resource {
@@ -110,6 +117,30 @@ std::shared_ptr<WebWindowResource> get_window(nk_handle handle) {
 std::shared_ptr<WebSurfaceResource> get_surface(nk_handle handle) {
     return get_resource<WebSurfaceResource>(handle, nk::core::ResourceType::surface,
                                             "invalid web surface handle");
+}
+
+const char *cursor_name(nk_cursor_shape shape) {
+    switch (shape) {
+    case NK_CURSOR_ARROW: return "default";
+    case NK_CURSOR_IBEAM: return "text";
+    case NK_CURSOR_CROSSHAIR: return "crosshair";
+    case NK_CURSOR_HAND: return "pointer";
+    case NK_CURSOR_HORIZONTAL_RESIZE: return "ew-resize";
+    case NK_CURSOR_VERTICAL_RESIZE: return "ns-resize";
+    case NK_CURSOR_NWSE_RESIZE: return "nwse-resize";
+    case NK_CURSOR_NESW_RESIZE: return "nesw-resize";
+    case NK_CURSOR_MOVE: return "move";
+    case NK_CURSOR_NOT_ALLOWED: return "not-allowed";
+    default: return nullptr;
+    }
+}
+
+void apply_cursor(WebWindowResource &window) {
+    if (window.cursor_mode != NK_CURSOR_MODE_NORMAL) {
+        nk::web::set_cursor("none");
+        return;
+    }
+    nk::web::set_cursor(window.cursor ? cursor_name(window.cursor->shape) : "default");
 }
 
 void queue_window_state(WebWindowResource &window) {
@@ -392,6 +423,29 @@ void on_pointer(const nk::web::PointerEvent &event, void *user_data) {
     });
 }
 
+void on_touch(const nk::web::TouchEvent &event, void *user_data) {
+    nk::core::callback_boundary([&] {
+        auto *window = static_cast<WebWindowResource *>(user_data);
+        if (!window || !nk::core::is_runtime_generation(window->generation))
+            return;
+        const nk_touch_action action = event.type == nk::web::TouchEventType::begin
+                                           ? NK_TOUCH_BEGIN
+                                           : event.type == nk::web::TouchEventType::end
+                                                 ? NK_TOUCH_END
+                                                 : event.type == nk::web::TouchEventType::cancel
+                                                       ? NK_TOUCH_CANCEL
+                                                       : NK_TOUCH_MOVE;
+        const nk_touch_event payload{event.identifier, action, NK_TOUCH_TOOL_FINGER,
+                                     event.modifiers, event.x, event.y, event.pressure, 0.0f,
+                                     0.0f, 0};
+        nk::core::QueuedEvent queued;
+        queued.kind = NK_EVENT_TOUCH;
+        queued.source = window->handle;
+        queued.data = bytes_of(payload);
+        nk::core::push_event(std::move(queued));
+    });
+}
+
 void on_focus(bool focused, void *user_data) {
     nk::core::callback_boundary([&] {
         auto *window = static_cast<WebWindowResource *>(user_data);
@@ -420,6 +474,18 @@ void on_context(bool restored, void *user_data) {
             event.kind = restored ? NK_EVENT_SURFACE_READY : NK_EVENT_SURFACE_LOST;
             event.source = surface->handle;
             nk::core::push_event(std::move(event));
+        }
+    });
+}
+
+void on_pointer_lock(bool active, void *user_data) {
+    nk::core::callback_boundary([&] {
+        auto *window = static_cast<WebWindowResource *>(user_data);
+        if (!window || !nk::core::is_runtime_generation(window->generation))
+            return;
+        if (!active && window->cursor_mode != NK_CURSOR_MODE_NORMAL) {
+            window->cursor_mode = NK_CURSOR_MODE_NORMAL;
+            apply_cursor(*window);
         }
     });
 }
@@ -512,8 +578,10 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         callbacks.resize = on_resize;
         callbacks.key = on_key;
         callbacks.pointer = on_pointer;
+        callbacks.touch = on_touch;
         callbacks.focus = on_focus;
         callbacks.context = on_context;
+        callbacks.pointer_lock = on_pointer_lock;
         nk::web::install_callbacks(callbacks, window.get());
         nk::web::set_canvas_visible(window->visible);
         if (!window->title.empty())
@@ -903,23 +971,83 @@ nk_result NK_CALL nk_pointer_get_position(nk_handle handle, double *out_x, doubl
     return NK_OK;
 }
 
-nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape, nk_handle *) {
-    return unsupported("custom browser cursors are not implemented yet");
+nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_handle *out_cursor) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!out_cursor)
+        return invalid_argument("web cursor output is null");
+    *out_cursor = NK_INVALID_HANDLE;
+    if (!cursor_name(shape))
+        return invalid_argument("invalid standard cursor shape");
+    auto cursor = std::make_shared<WebCursorResource>();
+    cursor->shape = shape;
+    cursor->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, cursor);
+    if (cursor->handle == NK_INVALID_HANDLE)
+        return invalid_argument("web cursor handle registry is full");
+    *out_cursor = cursor->handle;
+    return NK_OK;
 }
 nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *, nk_handle *) {
     return unsupported("custom browser cursors are not implemented yet");
 }
-nk_result NK_CALL nk_cursor_destroy(nk_handle) {
-    return unsupported("custom browser cursors are not implemented yet");
+nk_result NK_CALL nk_cursor_destroy(nk_handle handle) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!get_resource<WebCursorResource>(handle, nk::core::ResourceType::cursor,
+                                         "invalid web cursor handle"))
+        return invalid_handle("invalid web cursor handle");
+    return nk::core::handles().erase(handle, nk::core::ResourceType::cursor) ? NK_OK
+                                                                              : NK_ERROR_INVALID_HANDLE;
 }
-nk_result NK_CALL nk_window_set_cursor(nk_handle, nk_handle) {
-    return unsupported("custom browser cursors are not implemented yet");
+nk_result NK_CALL nk_window_set_cursor(nk_handle window_handle, nk_handle cursor_handle) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    auto window = get_window(window_handle);
+    if (!window)
+        return invalid_handle("invalid web window handle");
+    std::shared_ptr<WebCursorResource> cursor;
+    if (cursor_handle != NK_INVALID_HANDLE) {
+        cursor = get_resource<WebCursorResource>(cursor_handle, nk::core::ResourceType::cursor,
+                                                 "invalid web cursor handle");
+        if (!cursor)
+            return invalid_handle("invalid web cursor handle");
+    }
+    window->cursor = std::move(cursor);
+    apply_cursor(*window);
+    return NK_OK;
 }
-nk_result NK_CALL nk_window_set_cursor_mode(nk_handle, nk_cursor_mode) {
-    return unsupported("browser cursor modes are not implemented yet");
+nk_result NK_CALL nk_window_set_cursor_mode(nk_handle handle, nk_cursor_mode mode) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (mode > NK_CURSOR_MODE_DISABLED)
+        return invalid_argument("invalid web cursor mode");
+    auto window = get_window(handle);
+    if (!window)
+        return invalid_handle("invalid web window handle");
+    if (mode == NK_CURSOR_MODE_NORMAL || mode == NK_CURSOR_MODE_HIDDEN) {
+        if (window->cursor_mode == NK_CURSOR_MODE_CAPTURED ||
+            window->cursor_mode == NK_CURSOR_MODE_DISABLED)
+            nk::web::exit_pointer_lock();
+        window->cursor_mode = mode;
+        apply_cursor(*window);
+        return NK_OK;
+    }
+    if (!nk::web::request_pointer_lock())
+        return unsupported("browser pointer lock requires a user gesture and page permission");
+    window->cursor_mode = mode;
+    apply_cursor(*window);
+    return NK_OK;
 }
-nk_result NK_CALL nk_window_get_cursor_mode(nk_handle, nk_cursor_mode *) {
-    return unsupported("browser cursor modes are not implemented yet");
+nk_result NK_CALL nk_window_get_cursor_mode(nk_handle handle, nk_cursor_mode *out_mode) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!out_mode)
+        return invalid_argument("web cursor mode output is null");
+    auto window = get_window(handle);
+    if (!window)
+        return invalid_handle("invalid web window handle");
+    *out_mode = window->cursor_mode;
+    return NK_OK;
 }
 uint32_t NK_CALL nk_raw_pointer_motion_supported(void) {
     return 0;

@@ -67,6 +67,19 @@ uint32_t modifiers(const EmscriptenWheelEvent &event) {
     return result;
 }
 
+uint32_t modifiers(const EmscriptenTouchEvent &event) {
+    uint32_t result = 0;
+    if (event.shiftKey)
+        result |= 1u << 0;
+    if (event.ctrlKey)
+        result |= 1u << 1;
+    if (event.altKey)
+        result |= 1u << 2;
+    if (event.metaKey)
+        result |= 1u << 3;
+    return result;
+}
+
 EM_BOOL resize_callback(int, const EmscriptenUiEvent *, void *) {
     nk::web::CanvasSize size{};
     if (nk::web::canvas_size(&size) && host_state.callbacks.resize)
@@ -132,6 +145,31 @@ EM_BOOL wheel_callback(int, const EmscriptenWheelEvent *event, void *) {
     return EM_TRUE;
 }
 
+EM_BOOL touch_callback(int event_type, const EmscriptenTouchEvent *event, void *) {
+    if (!event || !host_state.callbacks.touch)
+        return EM_FALSE;
+    const auto type = event_type == EMSCRIPTEN_EVENT_TOUCHSTART
+                          ? nk::web::TouchEventType::begin
+                          : event_type == EMSCRIPTEN_EVENT_TOUCHEND
+                                ? nk::web::TouchEventType::end
+                                : event_type == EMSCRIPTEN_EVENT_TOUCHCANCEL
+                                      ? nk::web::TouchEventType::cancel
+                                      : nk::web::TouchEventType::move;
+    for (int index = 0; index < event->numTouches; ++index) {
+        const auto &point = event->touches[index];
+        if (!point.isChanged || !point.onTarget)
+            continue;
+        nk::web::TouchEvent touch{};
+        touch.type = type;
+        touch.identifier = static_cast<uint32_t>(point.identifier);
+        touch.x = point.targetX;
+        touch.y = point.targetY;
+        touch.modifiers = modifiers(*event);
+        host_state.callbacks.touch(touch, host_state.user_data);
+    }
+    return EM_TRUE;
+}
+
 EM_BOOL focus_callback(int event_type, const EmscriptenFocusEvent *, void *) {
     if (host_state.callbacks.focus)
         host_state.callbacks.focus(event_type == EMSCRIPTEN_EVENT_FOCUS,
@@ -144,6 +182,12 @@ EM_BOOL context_callback(int event_type, const void *, void *) {
         host_state.callbacks.context(event_type == EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED,
                                      host_state.user_data);
     return EM_TRUE;
+}
+
+bool pointer_lock_callback(int, const EmscriptenPointerlockChangeEvent *event, void *) {
+    if (host_state.callbacks.pointer_lock)
+        host_state.callbacks.pointer_lock(event && event->isActive, host_state.user_data);
+    return true;
 }
 
 EM_BOOL frame_callback_adapter(double time, void *) {
@@ -170,6 +214,12 @@ EM_JS(void, nk_web_set_canvas_visible, (const char *selector, int visible), {
 
 EM_JS(void, nk_web_set_document_title, (const char *title), {
     document.title = UTF8ToString(title);
+});
+
+EM_JS(void, nk_web_set_canvas_cursor, (const char *selector, const char *cursor), {
+    const canvas = document.querySelector(UTF8ToString(selector));
+    if (canvas)
+        canvas.style.cursor = UTF8ToString(cursor);
 });
 
 namespace nk::web {
@@ -230,6 +280,13 @@ bool set_title(const char *title) noexcept {
     return true;
 }
 
+bool set_cursor(const char *cursor) noexcept {
+    if (!cursor)
+        return false;
+    nk_web_set_canvas_cursor(canvas_selector(), cursor);
+    return true;
+}
+
 bool create_webgl_context(const WebGLContextOptions &options,
                           EMSCRIPTEN_WEBGL_CONTEXT_HANDLE *out_context) noexcept {
     if (!out_context)
@@ -273,6 +330,15 @@ bool exit_fullscreen() noexcept {
     return emscripten_exit_fullscreen() == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
+bool request_pointer_lock() noexcept {
+    return emscripten_request_pointerlock(canvas_selector(), EM_TRUE) ==
+           EMSCRIPTEN_RESULT_SUCCESS;
+}
+
+bool exit_pointer_lock() noexcept {
+    return emscripten_exit_pointerlock() == EMSCRIPTEN_RESULT_SUCCESS;
+}
+
 bool install_callbacks(const HostCallbacks &callbacks, void *user_data) noexcept {
     remove_callbacks();
     host_state.callbacks = callbacks;
@@ -286,6 +352,10 @@ bool install_callbacks(const HostCallbacks &callbacks, void *user_data) noexcept
     emscripten_set_mouseenter_callback(canvas_selector(), &host_state, EM_TRUE, mouse_callback);
     emscripten_set_mouseleave_callback(canvas_selector(), &host_state, EM_TRUE, mouse_callback);
     emscripten_set_wheel_callback(canvas_selector(), &host_state, EM_TRUE, wheel_callback);
+    emscripten_set_touchstart_callback(canvas_selector(), &host_state, EM_TRUE, touch_callback);
+    emscripten_set_touchend_callback(canvas_selector(), &host_state, EM_TRUE, touch_callback);
+    emscripten_set_touchmove_callback(canvas_selector(), &host_state, EM_TRUE, touch_callback);
+    emscripten_set_touchcancel_callback(canvas_selector(), &host_state, EM_TRUE, touch_callback);
     emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE,
                                     key_callback);
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE,
@@ -300,6 +370,8 @@ bool install_callbacks(const HostCallbacks &callbacks, void *user_data) noexcept
                                              context_callback);
     emscripten_set_webglcontextrestored_callback(canvas_selector(), &host_state, EM_TRUE,
                                                  context_callback);
+    emscripten_set_pointerlockchange_callback(canvas_selector(), &host_state, EM_TRUE,
+                                              pointer_lock_callback);
     return true;
 }
 
@@ -313,6 +385,10 @@ void remove_callbacks() noexcept {
     emscripten_set_mouseenter_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
     emscripten_set_mouseleave_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
     emscripten_set_wheel_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
+    emscripten_set_touchstart_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
+    emscripten_set_touchend_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
+    emscripten_set_touchmove_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
+    emscripten_set_touchcancel_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
     emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE,
                                     nullptr);
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
@@ -322,6 +398,7 @@ void remove_callbacks() noexcept {
     emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
     emscripten_set_webglcontextlost_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
     emscripten_set_webglcontextrestored_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
+    emscripten_set_pointerlockchange_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
     host_state = {};
 }
 
