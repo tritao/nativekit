@@ -1,6 +1,8 @@
 import haxe.io.Bytes;
 import NativeKitUI;
-import NativeKitUI.Nkui_composite_mode;
+import CompositeMode;
+import LineCap;
+import LineJoin;
 
 class CanvasCommandBuffer {
 	var bytes:Bytes;
@@ -13,12 +15,15 @@ class CanvasCommandBuffer {
 		length = 0;
 	}
 
+	@:noCompletion
 	public function reset():Void
 		length = 0;
 
+	@:noCompletion
 	public function data():Bytes
 		return bytes;
 
+	@:noCompletion
 	public function size():Int
 		return length;
 
@@ -38,7 +43,12 @@ class CanvasCommandBuffer {
 		float(alpha);
 	}
 
-	public function paint(value:nkui_resource):Void
+	public function composite(mode:CompositeMode):Void {
+		header(NativeKitUIConstants.NKUI_COMMAND_SET_COMPOSITE_MODE, 12);
+		word(cast mode);
+	}
+
+	public function paint(value:Paint):Void
 		resource(NativeKitUIConstants.NKUI_COMMAND_SET_PAINT, value);
 
 	public function clipRect(x:Float, y:Float, width:Float, height:Float):Void {
@@ -46,49 +56,65 @@ class CanvasCommandBuffer {
 		float(x); float(y); float(width); float(height);
 	}
 
-	public function drawPath(path:nkui_resource):Void
+	public function drawPath(path:Path):Void
 		resource(NativeKitUIConstants.NKUI_COMMAND_DRAW_PATH, path);
 
-	public function drawImage(image:nkui_resource, x:Float, y:Float, width:Float,
+	public function drawImage(image:Image, x:Float, y:Float, width:Float,
 		height:Float):Void
 		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_IMAGE, image, x, y, width, height);
 
-	public function drawText(layout:nkui_resource, x:Float, y:Float):Void
+	public function drawText(layout:TextLayout, x:Float, y:Float):Void
 		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_TEXT_LAYOUT, layout, x, y, 0.0, 0.0);
 
-	public function beginLayer(opacity:Float):Void {
+	public function beginLayer(opacity:Float, mode:CompositeMode = CompositeMode.SourceOver):Void {
 		header(NativeKitUIConstants.NKUI_COMMAND_BEGIN_LAYER, 16);
 		float(opacity);
-		word(Nkui_composite_mode.NKUI_COMPOSITE_SOURCE_OVER);
+		word(cast mode);
 	}
 
 	public function endLayer():Void
 		header(NativeKitUIConstants.NKUI_COMMAND_END_LAYER, 8);
 
-	public function drawSurface(surface:nkui_resource, x:Float, y:Float, width:Float,
+	public function drawSurface(surface:NativeKitUIResource, x:Float, y:Float, width:Float,
 		height:Float):Void
 		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_RENDER_TARGET, surface, x, y, width, height);
 
-	/** Submits the encoded prefix without copying it into an exact-size buffer. */
-	public function submit(list:nkui_display_list):Int
+	public function strokePath(path:Path, width:Float, cap:LineCap = LineCap.Butt, join:LineJoin = LineJoin.Miter,
+		miterLimit:Float = 4.0):Void {
+		header(NativeKitUIConstants.NKUI_COMMAND_STROKE_PATH, 28);
+		word(path.nativeHandle().get_id());
+		float(width);
+		word(cast cap);
+		word(cast join);
+		float(miterLimit);
+	}
+
+	/** Internal submission bridge; public callers should use Canvas and DisplayList. */
+	@:noCompletion
+	@:allow(DisplayList)
+	@:allow(Canvas)
+	private function submit(list:nkui_display_list):Int
 		return submitRange(list, 0, length);
 
-	/** Submits a validated range of the backing storage without copying. */
-	public function submitRange(list:nkui_display_list, offset:Int, count:Int):Int {
+	/** Internal range submission bridge. */
+	@:noCompletion
+	@:allow(DisplayList)
+	@:allow(Canvas)
+	private function submitRange(list:nkui_display_list, offset:Int, count:Int):Int {
 		if (offset < 0 || offset > length || count < 0 || count > length - offset)
 			throw "Command range is out of bounds";
 		return NativeKitUI.nkui_display_list_submit_slice(list, bytes, offset, count);
 	}
 
-	function resource(opcode:Int, value:nkui_resource):Void {
+	function resource(opcode:Int, value:NativeKitUIResource):Void {
 		header(opcode, 12);
-		word(value.get_id());
+		word(value.nativeHandle().get_id());
 	}
 
-	function drawRect(opcode:Int, value:nkui_resource, x:Float, y:Float, width:Float,
+	function drawRect(opcode:Int, value:NativeKitUIResource, x:Float, y:Float, width:Float,
 		height:Float):Void {
 		header(opcode, 28);
-		word(value.get_id());
+		word(value.nativeHandle().get_id());
 		float(x); float(y); float(width); float(height);
 	}
 

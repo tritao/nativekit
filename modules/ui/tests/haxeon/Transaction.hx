@@ -1,7 +1,5 @@
 import NativeKit;
 import NativeKitUI;
-import NativeKitUI.Nkui_image_format;
-import NativeKitUI.Nkui_path_verb;
 import NativeKitUI.Nkui_result;
 import haxe.io.Bytes;
 
@@ -43,68 +41,39 @@ class Transaction {
 		}
 		var surface = createdSurface.out_surface;
 
-		var made = NativeKitUI.nkui_display_list_create();
-		if (made.status != Nkui_result.NKUI_OK)
-			return 1;
-		var list = made.out_list;
-		var move = new nkui_path_element();
-		move.set_verb(Nkui_path_verb.NKUI_PATH_MOVE_TO);
-		move.set_values(0, 0.0); move.set_values(1, 0.0);
-		var line = new nkui_path_element();
-		line.set_verb(Nkui_path_verb.NKUI_PATH_LINE_TO);
-		line.set_values(0, 244.0); line.set_values(1, 12.0);
-		var down = new nkui_path_element();
-		down.set_verb(Nkui_path_verb.NKUI_PATH_LINE_TO);
-		down.set_values(0, 244.0); down.set_values(1, 180.0);
-		var back = new nkui_path_element();
-		back.set_verb(Nkui_path_verb.NKUI_PATH_LINE_TO);
-		back.set_values(0, 12.0); back.set_values(1, 180.0);
-		var close = new nkui_path_element();
-		close.set_verb(Nkui_path_verb.NKUI_PATH_CLOSE);
-		var madePath = NativeKitUI.nkui_path_create([move, line, down, back, close]);
-		if (madePath.status != Nkui_result.NKUI_OK)
-			return 7;
-		var path = madePath.out_path;
-		var color = new nkui_color();
-		color.set_red(0.2); color.set_green(0.6); color.set_blue(0.9); color.set_alpha(1.0);
-		var madePaint = NativeKitUI.nkui_paint_create_solid(color);
+		var list = DisplayList.create();
+		var path = new PathBuilder().moveTo(0.0, 0.0).lineTo(244.0, 12.0).lineTo(244.0, 180.0).lineTo(12.0, 180.0).close().build();
+		var paint = SolidPaint.create(Color.rgba(0.2, 0.6, 0.9));
 		var pixels = Bytes.alloc(4);
 		pixels.set(0, 20); pixels.set(1, 80); pixels.set(2, 220); pixels.set(3, 255);
-		var madeImage = NativeKitUI.nkui_image_create(1, 1, Nkui_image_format.NKUI_IMAGE_RGBA8, pixels);
-		var fonts = NativeKitUI.nkui_font_collection_create();
+		var image = Image.create(1, 1, ImageFormat.RGBA8, pixels);
+		var fonts = FontCollection.create();
 		var fontPath = Sys.getEnv("NKUI_TEST_FONT_PATH");
-		if (fontPath == null || fonts.status != Nkui_result.NKUI_OK ||
-			NativeKitUI.nkui_font_collection_add(fonts.out_fonts, fontPath,
-				NativeKitUI.Nkui_font_family.NKUI_FONT_FAMILY_DEFAULT) != Nkui_result.NKUI_OK)
+		if (fontPath == null)
 			return 9;
-		var madeText = NativeKitUI.nkui_text_layout_create(fonts.out_fonts,
-			"NativeKit — こんにちは — مرحبا", 220.0, 18.0);
-		if (madePaint.status != Nkui_result.NKUI_OK || madeImage.status != Nkui_result.NKUI_OK ||
-			madeText.status != Nkui_result.NKUI_OK)
+		fonts.add(fontPath);
+		var text = TextLayout.create(fonts, "NativeKit — こんにちは — مرحبا", 220.0, 18.0);
+		var metrics = text.measure();
+		if (metrics.width <= 0.0 || text.hitTest(16.0, 24.0).offset < 0)
 			return 8;
-		var commands = new CanvasCommandBuffer(8);
-		commands.save();
-		commands.transform(1.0, 0.0, 0.0, 1.0, 4.0, 5.0);
-		commands.clipRect(0.0, 0.0, 100.0, 80.0);
-		commands.globalAlpha(0.5);
-		commands.paint(madePaint.out_paint);
-		commands.drawPath(path);
-		commands.drawText(madeText.out_layout, 16.0, 24.0);
-		commands.beginLayer(0.6);
-		commands.drawImage(madeImage.out_image, 4.0, 4.0, 12.0, 12.0);
-		commands.endLayer();
-		commands.restore();
-		if (commands.submit(list) != Nkui_result.NKUI_OK)
-			return 2;
-		var info = NativeKitUI.nkui_display_list_get_info(list);
-		if (info.status != Nkui_result.NKUI_OK || info.out_info.get_command_count() != 11 ||
-			info.out_info.get_command_bytes() != commands.size())
+		var canvas = new Canvas(8);
+		canvas.withState(function(canvas) {
+			canvas.translate(4.0, 5.0);
+			canvas.withClip(new Rect(0.0, 0.0, 100.0, 80.0), function(canvas) {
+				canvas.setAlpha(0.5);
+				canvas.fill(path, paint);
+				canvas.drawText(text, 16.0, 24.0);
+				canvas.withLayer(0.6, function(canvas) {
+					canvas.drawImage(image, new Rect(4.0, 4.0, 12.0, 12.0));
+				});
+			});
+		});
+		canvas.update(list);
+		var info = list.info();
+		if (info.commandCount != 13 || info.commandBytes <= 0)
 			return 3;
 
-		var madeRenderer = NativeKitUI.nkui_renderer_create();
-		if (madeRenderer.status != Nkui_result.NKUI_OK)
-			return 13;
-		var renderer = madeRenderer.out_renderer;
+		var renderer = Renderer.create();
 		var ready = false;
 		var rendered = 0;
 		var attempts = 0;
@@ -127,16 +96,13 @@ class Transaction {
 				var scale = NativeKit.nk_window_get_scale(window);
 				if (scale.status != NativeKitConstants.NK_OK || scale.out_scale <= 0.0)
 					return 15;
-				var frame = new nkui_frame_info();
-				frame.set_struct_size(nkui_frame_info.size());
-				frame.set_logical_width(256.0);
-				frame.set_logical_height(192.0);
-				frame.set_framebuffer_width(size.out_width);
-				frame.set_framebuffer_height(size.out_height);
-				frame.set_pixel_scale(scale.out_scale);
-				if (NativeKitUI.nkui_renderer_render_frame(renderer, list, surface, frame) !=
-					Nkui_result.NKUI_OK || NativeKit.nk_surface_present(surface) !=
-					NativeKitConstants.NK_OK)
+				var frame = new FrameInfo(256.0, 192.0, size.out_width, size.out_height, scale.out_scale);
+				try {
+					renderer.renderFrame(list, surface, frame);
+				} catch (_:Dynamic) {
+					return 16;
+				}
+				if (NativeKit.nk_surface_present(surface) != NativeKitConstants.NK_OK)
 					return 16;
 				rendered++;
 			}
@@ -144,23 +110,21 @@ class Transaction {
 		}
 		if (!ready || rendered != 3)
 			return 17;
-		if (NativeKitUI.nkui_renderer_destroy(renderer) != Nkui_result.NKUI_OK)
-			return 18;
-		commands.reset();
-		if (commands.submit(list) != Nkui_result.NKUI_OK)
-			return 4;
-		info = NativeKitUI.nkui_display_list_get_info(list);
-		if (info.status != Nkui_result.NKUI_OK || info.out_info.get_command_count() != 0)
+		var stats = renderer.stats();
+		renderer.dispose();
+		list.clear();
+		info = list.info();
+		if (info.commandCount != 0)
 			return 5;
-		var destroyed = NativeKitUI.nkui_display_list_destroy(list);
-		NativeKitUI.nkui_resource_destroy(madeText.out_layout);
-		NativeKitUI.nkui_resource_destroy(fonts.out_fonts);
-		NativeKitUI.nkui_resource_destroy(madeImage.out_image);
-		NativeKitUI.nkui_resource_destroy(madePaint.out_paint);
-		NativeKitUI.nkui_resource_destroy(path);
+		list.dispose();
+		text.dispose();
+		fonts.dispose();
+		image.dispose();
+		paint.dispose();
+		path.dispose();
 		NativeKit.nk_surface_destroy(surface);
 		NativeKit.nk_window_destroy(window);
 		NativeKit.nk_shutdown();
-		return destroyed == Nkui_result.NKUI_OK ? 0 : 6;
+		return 0;
 	}
 }

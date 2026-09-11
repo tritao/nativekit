@@ -18,7 +18,7 @@ cmake --build "$build_dir" --target nativekit_ui
     --ffi-interface="$repo_dir/bindings/haxe/nativekit.hxi" \
     --ffi-interface="$module_dir/bindings/nativekit-ui.hxi" \
     "$module_dir/tests/haxeon/Transaction.hx" \
-    "$module_dir/bindings/haxe/CanvasCommandBuffer.hx")
+    "$module_dir/bindings/haxe/"*.hx)
 
 (cd "$haxeon_dir/out" && \
     NKUI_TEST_FONT_PATH="$repo_dir/vendor/skribidi/example/data/IBMPlexSans-Regular.ttf" \
