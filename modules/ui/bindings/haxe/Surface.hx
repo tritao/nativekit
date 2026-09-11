@@ -10,6 +10,7 @@ class Surface {
 		return new Surface(handle);
 
 	@:allow(Renderer)
+	@:allow(LayoutSession)
 	private function nativeHandle():Int
 		return value;
 }

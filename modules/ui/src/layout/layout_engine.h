@@ -2,6 +2,7 @@
 #define NATIVEKIT_UI_LAYOUT_ENGINE_H
 
 #include "layout/layout_types.h"
+#include "prepare/skribidi_adapter.h"
 
 #include <cstddef>
 #include <memory>
@@ -28,7 +29,9 @@ class LayoutEngine {
     LayoutEngine &operator=(const LayoutEngine &) = delete;
 
     bool valid() const;
-    bool add_font(const char *path);
+    bool add_font(const char *path, FontFamily family = FontFamily::Default);
+    bool add_font_from_data(const char *name, const void *data, std::size_t bytes,
+                            FontFamily family = FontFamily::Default);
     bool add_system_fallbacks();
 
     bool layout(const std::vector<LayoutNode> &nodes, float width, float height,

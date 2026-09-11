@@ -1,9 +1,12 @@
 #include "nativekit_ui.h"
+#include "nativekit_ui_layout.h"
 
 #include "nativekit_graphics.h"
 
 #include "display_list/display_list.h"
 #include "compositor/compositor.h"
+#include "layout/layout_engine.h"
+#include "layout/layout_render_compiler.h"
 #include "prepare/nanovg_path.h"
 #include "prepare/skribidi_adapter.h"
 #include "render/frame_resources.h"
@@ -17,6 +20,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -35,6 +39,7 @@ static_assert(sizeof(nkui_rect_command) == sizeof(nkui::ClipRectCommand));
 static_assert(sizeof(nkui_draw_rect_command) == sizeof(nkui::DrawRectResourceCommand));
 static_assert(sizeof(nkui_layer_command) == sizeof(nkui::BeginLayerCommand));
 static_assert(sizeof(nkui_stroke_path_command) == sizeof(nkui::StrokePathCommand));
+static_assert(sizeof(nkui_layout_event) == sizeof(uint32_t) * 2);
 
 namespace {
 
@@ -116,12 +121,28 @@ struct RendererSlot {
     uint16_t generation = 1;
 };
 
+struct LayoutSessionState {
+    std::unique_ptr<nkui::LayoutEngine> engine;
+    nkui::LayoutRenderCompiler compiler;
+    nkui::LayoutRenderFrame frame;
+    nkui::LayoutSnapshot snapshot;
+    bool fonts_configured = false;
+    bool submitted = false;
+};
+
+struct LayoutSessionSlot {
+    std::unique_ptr<LayoutSessionState> session;
+    uint16_t generation = 1;
+};
+
 std::mutex lists_mutex;
 std::vector<DisplayListSlot> lists;
 std::mutex resources_mutex;
 std::vector<ResourceSlot> resources;
 std::mutex renderers_mutex;
 std::vector<RendererSlot> renderers;
+std::mutex layout_sessions_mutex;
+std::vector<LayoutSessionSlot> layout_sessions;
 
 uint32_t make_handle(uint16_t generation, uint16_t slot) {
     return (static_cast<uint32_t>(generation) << 16) | slot;
@@ -169,6 +190,164 @@ RendererSlot *resolve(nkui_renderer handle) {
         return nullptr;
     auto &entry = renderers[slot - 1];
     return entry.active && entry.generation == generation ? &entry : nullptr;
+}
+
+LayoutSessionState *resolve(nkui_layout_session handle) {
+    const uint16_t slot = static_cast<uint16_t>(handle.id);
+    const uint16_t generation = static_cast<uint16_t>(handle.id >> 16);
+    if (!slot || slot > layout_sessions.size())
+        return nullptr;
+    auto &entry = layout_sessions[slot - 1];
+    return entry.session && entry.generation == generation ? entry.session.get() : nullptr;
+}
+
+bool read_u32(const uint8_t *bytes, size_t size, size_t offset, uint32_t &out) {
+    if (!bytes || offset > size || size - offset < sizeof(out))
+        return false;
+    std::memcpy(&out, bytes + offset, sizeof(out));
+    return true;
+}
+
+bool read_i32(const uint8_t *bytes, size_t size, size_t offset, int32_t &out) {
+    uint32_t value = 0;
+    if (!read_u32(bytes, size, offset, value))
+        return false;
+    std::memcpy(&out, &value, sizeof(out));
+    return true;
+}
+
+bool read_float(const uint8_t *bytes, size_t size, size_t offset, float &out) {
+    uint32_t value = 0;
+    if (!read_u32(bytes, size, offset, value))
+        return false;
+    std::memcpy(&out, &value, sizeof(out));
+    return true;
+}
+
+bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
+                             std::vector<nkui::LayoutNode> &nodes) {
+    constexpr size_t header_bytes = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES;
+    constexpr size_t record_bytes = NKUI_LAYOUT_NODE_RECORD_BYTES;
+    constexpr size_t max_nodes = 512;
+    if (!bytes || byte_count < header_bytes)
+        return false;
+    const size_t size = byte_count;
+    uint32_t version = 0;
+    uint32_t node_count = 0;
+    uint32_t encoded_record_bytes = 0;
+    uint32_t string_offset = 0;
+    if (!read_u32(bytes, size, 0, version) || !read_u32(bytes, size, 4, node_count) ||
+        !read_u32(bytes, size, 8, encoded_record_bytes) ||
+        !read_u32(bytes, size, 12, string_offset) ||
+        version != NKUI_LAYOUT_TRANSACTION_VERSION || !node_count || node_count > max_nodes ||
+        encoded_record_bytes != record_bytes)
+        return false;
+    if (node_count > (std::numeric_limits<size_t>::max() - header_bytes) / record_bytes)
+        return false;
+    const size_t records_end = header_bytes + static_cast<size_t>(node_count) * record_bytes;
+    if (string_offset < records_end || string_offset > size)
+        return false;
+
+    const auto read_node_u32 = [&](size_t record, size_t field, uint32_t &out) {
+        return read_u32(bytes, size, record + field, out);
+    };
+    const auto read_node_i32 = [&](size_t record, size_t field, int32_t &out) {
+        return read_i32(bytes, size, record + field, out);
+    };
+    const auto read_node_float = [&](size_t record, size_t field, float &out) {
+        return read_float(bytes, size, record + field, out);
+    };
+    const auto read_u16 = [&](size_t record, size_t field, uint16_t &out) {
+        uint32_t value = 0;
+        if (!read_node_u32(record, field, value) || value > UINT16_MAX)
+            return false;
+        out = static_cast<uint16_t>(value);
+        return true;
+    };
+    try {
+        nodes.clear();
+        nodes.reserve(node_count);
+        for (uint32_t index = 0; index < node_count; ++index) {
+            const size_t record = header_bytes + static_cast<size_t>(index) * record_bytes;
+            nkui::LayoutNode node;
+            uint32_t id = 0;
+            uint32_t kind = 0;
+            uint32_t width_sizing = 0;
+            uint32_t height_sizing = 0;
+            uint32_t direction = 0;
+            uint32_t clip = 0;
+            uint32_t text_offset = 0;
+            uint32_t text_length = 0;
+            if (!read_node_u32(record, 0, id) || !read_node_i32(record, 4, node.parent) ||
+                !read_node_u32(record, 8, kind) || !read_node_u32(record, 12, width_sizing) ||
+                !read_node_float(record, 16, node.style.width.value) ||
+                !read_node_u32(record, 20, height_sizing) || height_sizing > 3 ||
+                !read_node_float(record, 24, node.style.height.value) ||
+                !read_node_u32(record, 28, direction) || direction > 1 ||
+                !read_u16(record, 32, node.style.padding_left) ||
+                !read_u16(record, 36, node.style.padding_right) ||
+                !read_u16(record, 40, node.style.padding_top) ||
+                !read_u16(record, 44, node.style.padding_bottom) ||
+                !read_u16(record, 48, node.style.child_gap) ||
+                !read_node_float(record, 52, node.style.background.red) ||
+                !read_node_float(record, 56, node.style.background.green) ||
+                !read_node_float(record, 60, node.style.background.blue) ||
+                !read_node_float(record, 64, node.style.background.alpha) ||
+                !read_node_float(record, 68, node.style.radius_top_left) ||
+                !read_node_float(record, 72, node.style.radius_top_right) ||
+                !read_node_float(record, 76, node.style.radius_bottom_left) ||
+                !read_node_float(record, 80, node.style.radius_bottom_right) ||
+                !read_node_u32(record, 84, clip) || clip > (NKUI_LAYOUT_CLIP_HORIZONTAL | NKUI_LAYOUT_CLIP_VERTICAL) ||
+                !read_node_u32(record, 88, text_offset) || !read_node_u32(record, 92, text_length) ||
+                !read_node_float(record, 96, node.text_color.red) ||
+                !read_node_float(record, 100, node.text_color.green) ||
+                !read_node_float(record, 104, node.text_color.blue) ||
+                !read_node_float(record, 108, node.text_color.alpha) ||
+                !read_u16(record, 112, node.font_id) || !read_u16(record, 116, node.font_size) ||
+                !read_u16(record, 120, node.line_height) ||
+                !read_u16(record, 124, node.letter_spacing))
+                return false;
+            if (kind < NKUI_LAYOUT_NODE_BOX || kind > NKUI_LAYOUT_NODE_BUTTON ||
+                width_sizing > NKUI_LAYOUT_SIZING_PERCENT)
+                return false;
+            node.id = id;
+            node.kind = static_cast<nkui::LayoutNodeKind>(kind);
+            node.style.width.sizing = static_cast<nkui::LayoutSizing>(width_sizing);
+            node.style.height.sizing = static_cast<nkui::LayoutSizing>(height_sizing);
+            node.style.direction = static_cast<nkui::LayoutDirection>(direction);
+            node.style.clip_horizontal = (clip & NKUI_LAYOUT_CLIP_HORIZONTAL) != 0;
+            node.style.clip_vertical = (clip & NKUI_LAYOUT_CLIP_VERTICAL) != 0;
+            const auto valid_axis = [](const nkui::LayoutAxis &axis) {
+                return std::isfinite(axis.value) && axis.value >= 0.0f &&
+                       (axis.sizing != nkui::LayoutSizing::Percent || axis.value <= 1.0f);
+            };
+            const auto valid_color = [](const nkui::LayoutColor &color) {
+                const auto valid = [](float value) {
+                    return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
+                };
+                return valid(color.red) && valid(color.green) && valid(color.blue) &&
+                       valid(color.alpha);
+            };
+            if (!valid_axis(node.style.width) || !valid_axis(node.style.height) ||
+                !valid_color(node.style.background) || !valid_color(node.text_color) ||
+                !std::isfinite(node.style.radius_top_left) ||
+                !std::isfinite(node.style.radius_top_right) ||
+                !std::isfinite(node.style.radius_bottom_left) ||
+                !std::isfinite(node.style.radius_bottom_right) ||
+                node.style.radius_top_left < 0.0f || node.style.radius_top_right < 0.0f ||
+                node.style.radius_bottom_left < 0.0f || node.style.radius_bottom_right < 0.0f)
+                return false;
+            if (text_length > size - string_offset || text_offset < string_offset ||
+                text_offset - string_offset > size - string_offset - text_length)
+                return false;
+            node.text.assign(reinterpret_cast<const char *>(bytes + text_offset), text_length);
+            nodes.push_back(std::move(node));
+        }
+    } catch (...) {
+        nodes.clear();
+        return false;
+    }
+    return true;
 }
 
 bool append_path(nkui::NanoVGPath &path, const std::vector<nkui_path_element> &elements) {
@@ -596,6 +775,138 @@ extern "C" nkui_result nkui_font_collection_add_system_fallbacks(nkui_resource f
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
     slot->system_fallbacks = true;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_layout_session_create(nkui_layout_session *out_session) {
+    if (!out_session)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    out_session->id = 0;
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    try {
+        for (uint32_t index = 0; index < layout_sessions.size(); ++index) {
+            auto &slot = layout_sessions[index];
+            if (slot.session)
+                continue;
+            slot.session = std::make_unique<LayoutSessionState>();
+            slot.session->engine = std::make_unique<nkui::LayoutEngine>();
+            if (!slot.session->engine->valid()) {
+                slot.session.reset();
+                return NKUI_ERROR_RENDERING;
+            }
+            out_session->id = make_handle(slot.generation, static_cast<uint16_t>(index + 1));
+            return NKUI_OK;
+        }
+        if (layout_sessions.size() >= UINT16_MAX)
+            return NKUI_ERROR_OUT_OF_MEMORY;
+        LayoutSessionSlot slot;
+        slot.session = std::make_unique<LayoutSessionState>();
+        slot.session->engine = std::make_unique<nkui::LayoutEngine>();
+        if (!slot.session->engine->valid())
+            return NKUI_ERROR_RENDERING;
+        layout_sessions.push_back(std::move(slot));
+        out_session->id = make_handle(1, static_cast<uint16_t>(layout_sessions.size()));
+        return NKUI_OK;
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+}
+
+extern "C" nkui_result nkui_layout_session_destroy(nkui_layout_session session) {
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    const uint16_t slot_index = static_cast<uint16_t>(session.id);
+    auto *state = resolve(session);
+    if (!state || !slot_index)
+        return NKUI_ERROR_INVALID_HANDLE;
+    auto &slot = layout_sessions[slot_index - 1];
+    slot.session.reset();
+    slot.generation = static_cast<uint16_t>(slot.generation + 1);
+    if (!slot.generation)
+        slot.generation = 1;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_layout_session_set_font_collection(nkui_layout_session session,
+                                                                  nkui_resource fonts) {
+    std::scoped_lock lock(layout_sessions_mutex, resources_mutex);
+    auto *state = resolve(session);
+    auto *font_slot = resolve(fonts, nkui::ResourceKind::FontCollection);
+    if (!state || !font_slot || state->fonts_configured)
+        return NKUI_ERROR_INVALID_HANDLE;
+    try {
+        for (const auto &font : font_slot->fonts) {
+            const bool added_to_engine =
+                font.data ? state->engine->add_font_from_data(font.path.c_str(), font.data->data(),
+                                                               font.data->size(), font.family)
+                          : state->engine->add_font(font.path.c_str(), font.family);
+            const bool added_to_compiler =
+                font.data ? state->compiler.add_font_from_data(font.path.c_str(), font.data->data(),
+                                                                font.data->size(), font.family)
+                          : state->compiler.add_font(font.path.c_str(), font.family);
+            if (!added_to_engine || !added_to_compiler)
+                return NKUI_ERROR_INVALID_ARGUMENT;
+        }
+        if (font_slot->system_fallbacks) {
+            if (!state->engine->add_system_fallbacks() || !state->compiler.add_system_fallbacks())
+                return NKUI_ERROR_INVALID_ARGUMENT;
+        }
+        state->fonts_configured = true;
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_layout_session_submit(
+    nkui_layout_session session, const uint8_t *transaction, uint32_t transaction_bytes, float width,
+    float height, float pointer_x, float pointer_y, nk_bool pointer_down, float delta_seconds) {
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    auto *state = resolve(session);
+    if (!state)
+        return NKUI_ERROR_INVALID_HANDLE;
+    std::vector<nkui::LayoutNode> nodes;
+    if (!read_layout_transaction(transaction, transaction_bytes, nodes))
+        return NKUI_ERROR_INVALID_TRANSACTION;
+    const bool has_text = std::any_of(nodes.begin(), nodes.end(), [](const nkui::LayoutNode &node) {
+        return node.kind == nkui::LayoutNodeKind::Text && !node.text.empty();
+    });
+    if (has_text && !state->fonts_configured)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    nkui::LayoutSnapshot snapshot;
+    nkui::LayoutError error{};
+    if (!state->engine->layout(nodes, width, height, pointer_x, pointer_y, pointer_down != 0,
+                               delta_seconds, snapshot, &error))
+        return NKUI_ERROR_INVALID_TRANSACTION;
+    state->snapshot = std::move(snapshot);
+    state->submitted = true;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_layout_session_get_event_count(nkui_layout_session session,
+                                                              uint32_t *out_count) {
+    if (!out_count)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    auto *state = resolve(session);
+    if (!state)
+        return NKUI_ERROR_INVALID_HANDLE;
+    *out_count = static_cast<uint32_t>(state->snapshot.events.size());
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_layout_session_get_event(nkui_layout_session session, uint32_t index,
+                                                       nkui_layout_event *out_event) {
+    if (!out_event)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    auto *state = resolve(session);
+    if (!state)
+        return NKUI_ERROR_INVALID_HANDLE;
+    if (index >= state->snapshot.events.size())
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    const auto &event = state->snapshot.events[index];
+    out_event->kind = static_cast<uint32_t>(event.kind);
+    out_event->node_id = event.node_id;
     return NKUI_OK;
 }
 
@@ -1095,6 +1406,52 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
     const bool executed =
         nkui::execute_render_plan(*renderer_slot->backend, plan, frame_resources,
                                   {main_target, frame_target});
+    return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
+}
+
+extern "C" nkui_result nkui_layout_session_render_frame(
+    nkui_renderer renderer, nkui_layout_session session, nk_handle surface,
+    const nkui_frame_info *frame_info) {
+    if (!frame_info || frame_info->struct_size < sizeof(*frame_info) ||
+        !std::isfinite(frame_info->logical_width) || !std::isfinite(frame_info->logical_height) ||
+        !std::isfinite(frame_info->pixel_scale) || frame_info->logical_width <= 0.0f ||
+        frame_info->logical_height <= 0.0f || frame_info->framebuffer_width <= 0 ||
+        frame_info->framebuffer_height <= 0 || frame_info->pixel_scale <= 0.0f)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    if (!surface || nk_surface_make_current(surface) != NK_OK)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    nk_surface_frame_target frame_target{};
+    frame_target.struct_size = sizeof(frame_target);
+    if (nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
+        return NKUI_ERROR_RENDERING;
+    std::scoped_lock lock(renderers_mutex, layout_sessions_mutex);
+    auto *renderer_slot = resolve(renderer);
+    auto *session_state = resolve(session);
+    if (!renderer_slot || !session_state || !session_state->submitted)
+        return NKUI_ERROR_INVALID_HANDLE;
+    if (!renderer_slot->backend || renderer_slot->backend_api != frame_target.api) {
+        auto backend = nkui::create_render_backend(frame_target.api);
+        if (!backend)
+            return NKUI_ERROR_RENDERING;
+        renderer_slot->backend = std::move(backend);
+        renderer_slot->backend_api = frame_target.api;
+    }
+    const nkui::ResourceId main_target =
+        nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);
+    nkui::LayoutRenderCompileError compile_error{};
+    if (!session_state->compiler.compile(session_state->snapshot, main_target,
+                                         frame_info->pixel_scale, session_state->frame,
+                                         &compile_error))
+        return NKUI_ERROR_INVALID_TRANSACTION;
+    const bool new_backend = !renderer_slot->backend->valid();
+    if (new_backend && !renderer_slot->backend->initialize())
+        return NKUI_ERROR_RENDERING;
+    if (auto *adapter = session_state->frame.text_adapter())
+        if (!renderer_slot->backend->upload_atlases(*adapter, new_backend))
+            return NKUI_ERROR_RENDERING;
+    const bool executed = nkui::execute_render_plan(
+        *renderer_slot->backend, session_state->frame.plan(), session_state->frame.resources(),
+        {main_target, frame_target});
     return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
 }
 

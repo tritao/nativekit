@@ -19,6 +19,7 @@ class FrameInfo {
 	}
 
 	@:allow(Renderer)
+	@:allow(LayoutSession)
 	private function nativeValue():nkui_frame_info {
 		var result = new nkui_frame_info();
 		result.set_struct_size(nkui_frame_info.size());

@@ -221,8 +221,13 @@ bool LayoutEngine::valid() const {
     return state_ && state_->context && state_->text.valid();
 }
 
-bool LayoutEngine::add_font(const char *path) {
-    return state_ && state_->text.add_font(path);
+bool LayoutEngine::add_font(const char *path, FontFamily family) {
+    return state_ && state_->text.add_font(path, family);
+}
+
+bool LayoutEngine::add_font_from_data(const char *name, const void *data, std::size_t bytes,
+                                      FontFamily family) {
+    return state_ && state_->text.add_font_from_data(name, data, bytes, family);
 }
 
 bool LayoutEngine::add_system_fallbacks() {

@@ -49,6 +49,12 @@ class Renderer {
 	public function isDisposed():Bool
 		return disposed;
 
+	@:allow(LayoutSession)
+	private function nativeHandle():nkui_renderer {
+		ensureLive();
+		return value;
+	}
+
 	function ensureLive():Void {
 		if (disposed)
 			throw "Renderer has been disposed";

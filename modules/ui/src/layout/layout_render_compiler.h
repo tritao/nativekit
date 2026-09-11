@@ -6,6 +6,7 @@
 #include "render/frame_resources.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -55,14 +56,22 @@ class LayoutRenderFrame {
 /** Compiles NativeKit-owned layout output into the backend-neutral render plan. */
 class LayoutRenderCompiler {
   public:
-    bool add_font(const char *path);
+    bool add_font(const char *path, FontFamily family = FontFamily::Default);
+    bool add_font_from_data(const char *name, const void *data, std::size_t bytes,
+                            FontFamily family = FontFamily::Default);
     bool add_system_fallbacks();
 
     bool compile(const LayoutSnapshot &snapshot, ResourceId main_target, float pixel_scale,
                  LayoutRenderFrame &out, LayoutRenderCompileError *error = nullptr) const;
 
   private:
-    std::vector<std::string> font_paths_;
+    struct FontEntry {
+        std::string name;
+        FontFamily family = FontFamily::Default;
+        std::shared_ptr<std::vector<uint8_t>> data;
+    };
+
+    std::vector<FontEntry> fonts_;
     bool system_fallbacks_ = false;
 };
 

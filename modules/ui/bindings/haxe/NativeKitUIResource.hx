@@ -27,6 +27,7 @@ class NativeKitUIResource {
 	@:allow(DisplayList)
 	@:allow(FontCollection)
 	@:allow(TextLayout)
+	@:allow(LayoutSession)
 	private function nativeHandle():nkui_resource {
 		if (disposed)
 			throw "NativeKit UI resource has been disposed";

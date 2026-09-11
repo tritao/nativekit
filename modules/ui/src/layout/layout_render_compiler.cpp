@@ -125,11 +125,25 @@ void LayoutRenderFrame::reset() {
     glyphs_.clear();
 }
 
-bool LayoutRenderCompiler::add_font(const char *path) {
+bool LayoutRenderCompiler::add_font(const char *path, FontFamily family) {
     if (!path || !*path)
         return false;
     try {
-        font_paths_.emplace_back(path);
+        fonts_.push_back({path, family, {}});
+    } catch (...) {
+        return false;
+    }
+    return true;
+}
+
+bool LayoutRenderCompiler::add_font_from_data(const char *name, const void *data, std::size_t bytes,
+                                              FontFamily family) {
+    if (!name || !*name || !data || !bytes)
+        return false;
+    try {
+        auto owned = std::make_shared<std::vector<uint8_t>>(
+            static_cast<const uint8_t *>(data), static_cast<const uint8_t *>(data) + bytes);
+        fonts_.push_back({name, family, std::move(owned)});
     } catch (...) {
         return false;
     }
@@ -162,8 +176,14 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 out.text_ = std::make_unique<SkribidiAdapter>();
             if (!out.text_ || !out.text_->valid())
                 return fail(error, 0, "text renderer is unavailable");
-            while (out.configured_font_count_ < font_paths_.size()) {
-                if (!out.text_->add_font(font_paths_[out.configured_font_count_].c_str()))
+            while (out.configured_font_count_ < fonts_.size()) {
+                const auto &font = fonts_[out.configured_font_count_];
+                const bool added = font.data
+                                       ? out.text_->add_font_from_data(
+                                             font.name.c_str(), font.data->data(), font.data->size(),
+                                             font.family)
+                                       : out.text_->add_font(font.name.c_str(), font.family);
+                if (!added)
                     return fail(error, 0, "layout font could not be loaded");
                 ++out.configured_font_count_;
             }

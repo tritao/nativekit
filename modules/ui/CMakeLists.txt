@@ -183,6 +183,12 @@ if(NK_BUILD_TESTS)
         nkui_nanovg_core nkui_skribidi)
     add_test(NAME nativekit_ui_layout_render_compiler
         COMMAND nativekit_ui_layout_render_compiler_test)
+    add_executable(nativekit_ui_layout_session_test
+        tests/layout_session.cpp)
+    target_compile_definitions(nativekit_ui_layout_session_test PRIVATE
+        NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+    target_link_libraries(nativekit_ui_layout_session_test PRIVATE NativeKit::ui)
+    add_test(NAME nativekit_ui_layout_session COMMAND nativekit_ui_layout_session_test)
     if(NK_BUILD_EXAMPLES)
         add_executable(nativekit_ui_sokol_backend_smoke_test
             tests/sokol_backend_smoke.cpp
