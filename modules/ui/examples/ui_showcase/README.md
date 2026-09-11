@@ -31,15 +31,16 @@ modules/ui/tools/showcase.sh --smoke-test
 and exits, while `--stats` prints the final retained-list and path-cache
 counters.
 
-The Web host uses one fixed shared linear-memory contract:
+The Web host uses version 1 of a generated shared linear-memory contract:
 
 ```text
 [0, 128 MiB)       NativeKit/Emscripten host heap
 [128, 256 MiB)     Haxeon guest heap
 ```
 
-The native `sbrk` boundary rejects host allocations that would enter the
-guest region. The browser shell validates the same boundary and fixed memory
-size before instantiating the guest. This keeps the two allocators from
+The generated JSON contract is consumed by C++, Haxeon, and the browser. The
+native `sbrk` boundary rejects host allocations that would enter the guest
+region. The browser compares the host exports with the guest Wasm contract
+section before instantiating the guest. This keeps the two allocators from
 silently overlapping; a future dynamic-memory implementation must negotiate
-this contract instead of enabling independent growth.
+a new contract version instead of enabling independent growth.

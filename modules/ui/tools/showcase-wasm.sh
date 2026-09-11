@@ -6,8 +6,7 @@ repo_dir=$(cd "$module_dir/../.." && pwd)
 haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/realtime-haxe"}
 build_dir=${NATIVEKIT_WASM_BUILD_DIR:-"$repo_dir/build-wasm"}
 artifact="$build_dir/nativekit_ui_showcase_wasm32.wasm"
-memory_base=${NATIVEKIT_HAXEON_GUEST_MEMORY_BASE:-134217728}
-memory_limit=${NATIVEKIT_HAXEON_MEMORY_LIMIT:-268435456}
+memory_contract=${NATIVEKIT_HAXEON_MEMORY_CONTRACT:-"$build_dir/nativekit_haxeon_memory_contract.json"}
 
 if [[ $# -ne 0 ]]; then
     echo "usage: modules/ui/tools/showcase-wasm.sh" >&2
@@ -20,11 +19,32 @@ if [[ ! -x "$haxeon_dir/.tools/haxe/haxe" ]]; then
     exit 1
 fi
 
-if (( memory_base <= 0 || memory_limit <= memory_base || memory_base % 8 != 0 ||
-    memory_limit % 65536 != 0 )); then
-    echo "showcase-wasm: invalid shared memory contract base=$memory_base limit=$memory_limit" >&2
+if [[ ! -f "$memory_contract" ]]; then
+    echo "showcase-wasm: memory contract not found at $memory_contract" >&2
     exit 1
 fi
+
+node - "$memory_contract" <<'NODE'
+const fs = require('fs');
+const path = process.argv[2];
+const contract = JSON.parse(fs.readFileSync(path, 'utf8'));
+const fields = ["version", "page_size", "host_base", "host_limit", "guest_base", "guest_limit", "memory_size"];
+for (const field of fields) {
+  if (!Number.isSafeInteger(contract[field]) || contract[field] < 0)
+    throw new Error(`invalid integer field ${field}`);
+}
+if (contract.name !== "nativekit-haxeon-linear-memory" || contract.address_model !== "wasm32")
+  throw new Error("invalid memory contract identity");
+if (contract.page_size !== 65536 || contract.host_base !== 0 ||
+    contract.host_limit !== contract.guest_base ||
+    contract.guest_base >= contract.guest_limit ||
+    contract.guest_limit !== contract.memory_size ||
+    contract.memory_size % contract.page_size !== 0)
+  throw new Error("invalid memory contract partition");
+if (contract.version !== 1)
+  throw new Error(`unsupported memory contract version ${contract.version}`);
+console.log(`showcase-wasm: validated memory contract version ${contract.version}`);
+NODE
 
 mkdir -p "$build_dir"
 HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-wasm-hxi.sh" --check
@@ -35,7 +55,7 @@ HAXEON_DIR="$haxeon_dir" "$module_dir/tools/update-haxeon-wasm-hxi.sh" --check
     --output="$artifact" \
     --entry=ShowcaseWeb \
     --wasm-import-memory \
-    --wasm-memory-base="$memory_base" \
+    --wasm-memory-contract="$memory_contract" \
     --export=ShowcaseWeb.main \
     --export=ShowcaseWeb.frame \
     --export=ShowcaseWeb.status \

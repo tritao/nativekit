@@ -1,0 +1,11 @@
+{
+  "name": "nativekit-haxeon-linear-memory",
+  "version": @NKUI_HAXEON_MEMORY_CONTRACT_VERSION@,
+  "address_model": "wasm32",
+  "page_size": @NKUI_HAXEON_WASM_PAGE_SIZE@,
+  "host_base": @NKUI_HAXEON_HOST_HEAP_BASE@,
+  "host_limit": @NKUI_HAXEON_HOST_HEAP_LIMIT@,
+  "guest_base": @NKUI_HAXEON_GUEST_MEMORY_BASE@,
+  "guest_limit": @NKUI_HAXEON_GUEST_MEMORY_LIMIT@,
+  "memory_size": @NKUI_HAXEON_MEMORY_LIMIT@
+}

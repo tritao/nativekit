@@ -46,15 +46,53 @@
     }
 
     function validateMemoryContract() {
-      const base = Module["_nkui_haxeon_memory_contract_base"]();
-      const limit = Module["_nkui_haxeon_memory_contract_limit"]();
+      const contract = {
+        version: Module["_nkui_haxeon_memory_contract_version"](),
+        pageSize: Module["_nkui_haxeon_memory_contract_page_size"](),
+        hostBase: Module["_nkui_haxeon_memory_contract_host_base"](),
+        hostLimit: Module["_nkui_haxeon_memory_contract_host_limit"](),
+        guestBase: Module["_nkui_haxeon_memory_contract_guest_base"](),
+        guestLimit: Module["_nkui_haxeon_memory_contract_guest_limit"](),
+        memorySize: Module["_nkui_haxeon_memory_contract_memory_size"]()
+      };
       const status = Module["_nkui_haxeon_memory_contract_status"]();
+      if (contract.version !== 1)
+        throw new Error("unsupported memory contract version " + contract.version);
       if (status !== 0)
         throw new Error("native heap crossed the Haxeon guest boundary");
-      if (!hostMemory || hostMemory.buffer.byteLength !== limit)
+      if (contract.hostBase !== 0 || contract.hostLimit !== contract.guestBase ||
+          contract.guestBase >= contract.guestLimit || contract.guestLimit !== contract.memorySize ||
+          contract.pageSize !== 65536 || contract.memorySize % contract.pageSize !== 0)
+        throw new Error("native memory partition is invalid");
+      if (!hostMemory || hostMemory.buffer.byteLength !== contract.memorySize)
         throw new Error("shared memory size does not match the Haxeon contract");
-      if (base <= 0 || base >= limit)
-        throw new Error("invalid Haxeon guest memory boundary");
+      return contract;
+    }
+
+    function readGuestMemoryContract(module) {
+      const sections = WebAssembly.Module.customSections(module, "haxeon.memory.contract");
+      if (sections.length !== 1)
+        throw new Error("guest did not provide exactly one memory contract");
+      const bytes = new Uint8Array(sections[0]);
+      if (bytes.length !== 28 || bytes[0] !== 72 || bytes[1] !== 77 || bytes[2] !== 67)
+        throw new Error("guest memory contract has an invalid header");
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      return {
+        version: view.getUint8(3),
+        pageSize: view.getUint32(4, true),
+        hostBase: view.getUint32(8, true),
+        hostLimit: view.getUint32(12, true),
+        guestBase: view.getUint32(16, true),
+        guestLimit: view.getUint32(20, true),
+        memorySize: view.getUint32(24, true)
+      };
+    }
+
+    function validateGuestMemoryContract(module, hostContract) {
+      const guestContract = readGuestMemoryContract(module);
+      for (const field of ["version", "pageSize", "hostBase", "hostLimit", "guestBase", "guestLimit", "memorySize"])
+        if (guestContract[field] !== hostContract[field])
+          throw new Error("guest memory contract mismatch in " + field);
     }
 
     function forward(names) {
@@ -108,16 +146,15 @@
           __math_sin: Math.sin
         }
       };
-      WebAssembly.instantiateStreaming(fetch("nativekit_ui_haxeon_guest.wasm"), imports)
-        .catch(error => {
-          if (!(error instanceof TypeError))
-            throw error;
-          return fetch("nativekit_ui_haxeon_guest.wasm")
-            .then(response => response.arrayBuffer())
-            .then(bytes => WebAssembly.instantiate(bytes, imports));
+      fetch("nativekit_ui_haxeon_guest.wasm")
+        .then(response => response.arrayBuffer())
+        .then(bytes => WebAssembly.compile(bytes))
+        .then(module => {
+          validateGuestMemoryContract(module, validateMemoryContract());
+          return WebAssembly.instantiate(module, imports);
         })
-        .then(result => {
-          guest = result.instance.exports;
+        .then(instance => {
+          guest = instance.exports;
           let started;
           try {
             started = guest["ShowcaseWeb.main"]();
