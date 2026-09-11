@@ -16,10 +16,13 @@ import haxe.io.Bytes;
 class Showcase {
     public static inline var LOGICAL_WIDTH:Float = 900.0;
     public static inline var LOGICAL_HEIGHT:Float = 650.0;
+    public static inline var TARGET_FPS:Float = 60.0;
+    public static inline var STATUS_REFRESH_SECONDS:Float = 0.25;
 
     final list:DisplayList;
     final renderer:Renderer;
     final fonts:FontCollection;
+    final canvas:Canvas;
     final resources:Array<NativeKitUIResource>;
 
     final background:Paint;
@@ -79,6 +82,15 @@ class Showcase {
     var statusLayout:Null<TextLayout>;
     var caretStatusLayout:Null<TextLayout>;
     var caretPath:Null<Path>;
+    var statusText:Null<String>;
+    var statusLastRefresh:Float = -1.0;
+    var statusFramebufferWidth:Int = -1;
+    var statusFramebufferHeight:Int = -1;
+    var statusPixelScale:Float = -1.0;
+    var caretPathOffset:Int = -1;
+    var caretPathAffinity:Int = -1;
+    var caretStatusOffset:Int = -1;
+    var caretStatusAffinity:Int = -1;
     var caretPosition:TextPosition;
     var pointerX:Float = 0.0;
     var pointerY:Float = 0.0;
@@ -92,14 +104,8 @@ class Showcase {
         list = DisplayList.create();
         renderer = Renderer.create();
         fonts = FontCollection.create();
-
-        var fontPath = Sys.getEnv("NKUI_TEST_FONT_PATH");
-        if (fontPath == null)
-            throw "NKUI_TEST_FONT_PATH is required";
-        fonts.add(fontPath);
-        var emojiPath = Sys.getEnv("NKUI_COLOR_FONT_PATH");
-        if (emojiPath != null)
-            fonts.add(emojiPath, FontFamily.Emoji);
+        canvas = new Canvas(8192);
+        fonts.addSystemFallbacks();
 
         background = keep(SolidPaint.create(Color.fromBytes(10, 15, 30)));
         lightBackground = keep(SolidPaint.create(Color.fromBytes(235, 240, 249)));
@@ -218,26 +224,55 @@ class Showcase {
     /** Encodes one complete frame using only the typed Haxe graphics API. */
     public function encodeFrame(seconds:Float, framebufferWidth:Int, framebufferHeight:Int,
             pixelScale:Float, staticFrame:Bool):Void {
-        var oldStatus = statusLayout;
-        var oldCaretStatus = caretStatusLayout;
-        var oldCaret = caretPath;
-        var stats = renderer.stats();
-        var info = list.info();
-        var status = "OPENGL · ${framebufferWidth}×${framebufferHeight} · scale ${format(pixelScale)}\n" +
-            "commands ${info.commandCount} / ${info.commandBytes} bytes · " +
-            "prepares ${stats.pathPreparations} · hits ${stats.pathCacheHits} · " +
-            "retained ${stats.pathGeometryBytesRetained} B";
-        statusLayout = TextLayout.createStyled(fonts, status, new TextStyle(10.0),
-            new ParagraphStyle(600.0));
-        caretStatusLayout = TextLayout.createStyled(fonts,
-            "offset ${caretPosition.offset} · affinity ${caretPosition.affinity}",
-            new TextStyle(10.0), new ParagraphStyle(570.0));
+        var replacedCaret:Null<Path> = null;
+        var sizeChanged = framebufferWidth != statusFramebufferWidth ||
+            framebufferHeight != statusFramebufferHeight || pixelScale != statusPixelScale;
+        var refreshStatus = statusLayout == null || sizeChanged || staticFrame ||
+            statusLastRefresh < 0.0 || seconds - statusLastRefresh >= STATUS_REFRESH_SECONDS;
+        if (refreshStatus) {
+            var stats = renderer.stats();
+            var info = list.info();
+            var status = 'OPENGL · ${framebufferWidth}×${framebufferHeight} · scale ${format(pixelScale)}\n' +
+                'cmd ${info.commandCount} · ${info.commandBytes} B · prep ${stats.pathPreparations} · ' +
+                'hits ${stats.pathCacheHits}\n' +
+                'retained ${stats.pathGeometryBytesRetained} B';
+            if (statusText == null || status != statusText) {
+                if (statusLayout == null)
+                    statusLayout = TextLayout.createStyled(fonts, status, new TextStyle(10.0),
+                        new ParagraphStyle(240.0));
+                else
+                    statusLayout.setText(status);
+                statusText = status;
+            }
+            statusLastRefresh = seconds;
+            statusFramebufferWidth = framebufferWidth;
+            statusFramebufferHeight = framebufferHeight;
+            statusPixelScale = pixelScale;
+        }
 
-        var caret = multilingual.caret(caretPosition);
-        caretPath = linePath(260.0 + caret.x, 397.0 + caret.y + caret.ascender,
-            260.0 + caret.x, 397.0 + caret.y + caret.descender);
+        var caretChanged = caretPath == null || caretPathOffset != caretPosition.offset ||
+            caretPathAffinity != caretPosition.affinity;
+        if (caretChanged) {
+            var caret = multilingual.caret(caretPosition);
+            replacedCaret = caretPath;
+            caretPath = linePath(260.0 + caret.x, 397.0 + caret.y + caret.ascender,
+                260.0 + caret.x, 397.0 + caret.y + caret.descender);
+            caretPathOffset = caretPosition.offset;
+            caretPathAffinity = caretPosition.affinity;
+        }
+        if (caretStatusLayout == null || caretStatusOffset != caretPosition.offset ||
+            caretStatusAffinity != caretPosition.affinity) {
+            var caretStatus = 'offset ${caretPosition.offset} · affinity ${caretPosition.affinity}';
+            if (caretStatusLayout == null)
+                caretStatusLayout = TextLayout.createStyled(fonts, caretStatus,
+                    new TextStyle(10.0), new ParagraphStyle(570.0));
+            else
+                caretStatusLayout.setText(caretStatus);
+            caretStatusOffset = caretPosition.offset;
+            caretStatusAffinity = caretPosition.affinity;
+        }
 
-        var canvas = new Canvas(8192);
+        canvas.reset();
         canvas.withState(function(canvas) {
             var base = lightTheme ? lightBackground : background;
             canvas.fill(backgroundPath, base);
@@ -353,12 +388,8 @@ class Showcase {
             canvas.drawText(footerLabel, 262.0, 643.0);
         });
         canvas.update(list);
-        if (oldStatus != null)
-            oldStatus.dispose();
-        if (oldCaretStatus != null)
-            oldCaretStatus.dispose();
-        if (oldCaret != null)
-            oldCaret.dispose();
+        if (replacedCaret != null)
+            replacedCaret.dispose();
         frameNumber++;
     }
 
@@ -556,6 +587,7 @@ class Showcase {
             var scale = 1.0;
             var rendered = 0;
             var started = Date.now().getTime();
+            var nextFrameAt:Float = started;
 
             while (running) {
                 var event = NativeKitEvent.poll();
@@ -600,6 +632,11 @@ class Showcase {
                 }
 
                 if (ready && running) {
+                    if (!staticFrame && !smoke) {
+                        var beforeFrame = Date.now().getTime();
+                        if (nextFrameAt > beforeFrame)
+                            Sys.sleep((nextFrameAt - beforeFrame) / 1000.0);
+                    }
                     var elapsed = (Date.now().getTime() - started) / 1000.0;
                     if (staticFrame)
                         elapsed = 0.0;
@@ -611,6 +648,12 @@ class Showcase {
                     rendered++;
                     if (staticFrame || (smoke && rendered >= 30))
                         running = false;
+                    else if (!smoke) {
+                        nextFrameAt += 1000.0 / TARGET_FPS;
+                        var afterFrame = Date.now().getTime();
+                        if (nextFrameAt < afterFrame)
+                            nextFrameAt = afterFrame;
+                    }
                 } else if (eventKind == NativeKitConstants.NK_EVENT_NONE) {
                     Sys.sleep(0.002);
                 }

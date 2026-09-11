@@ -78,6 +78,8 @@ int main() {
         nkui_text_layout_create(fonts, "NativeKit direct text", 220.0f, 24.0f, &text) != NKUI_OK ||
         nkui_display_list_create(&list) != NKUI_OK || nkui_renderer_create(&renderer) != NKUI_OK)
         return 4;
+    if (nkui_text_layout_set_text(text, "NativeKit updated text") != NKUI_OK)
+        return 4;
 
     std::vector<uint8_t> commands;
     append(commands, nkui_resource_command{{NKUI_COMMAND_SET_PAINT, NKUI_COMMAND_VERSION,

@@ -248,6 +248,14 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_font_collection_add(fonts: nkui_resource, path: utf8, family: nkui_font_family) -> nkui_result;
 	/**
+	 * Adds a copied TTF/OTF byte buffer, suitable for asynchronously fetched browser assets.
+	 */
+	extern fn nkui_font_collection_add_data(fonts: nkui_resource, name: utf8, font_data: ptr<const<u8>> @in_array("font_bytes"), font_bytes: u32, family: nkui_font_family) -> nkui_result;
+	/**
+	 * Enables best-effort platform system-font fallback discovery for new layouts.
+	 */
+	extern fn nkui_font_collection_add_system_fallbacks(fonts: nkui_resource) -> nkui_result;
+	/**
 	 * Creates an empty font collection and writes its resource handle.
 	 */
 	extern fn nkui_font_collection_create(out_fonts: ptr<nkui_resource> @out) -> nkui_result;
@@ -337,6 +345,10 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * Returns the layout bounds in `out_metrics`.
 	 */
 	extern fn nkui_text_layout_measure(layout: nkui_resource, out_metrics: ptr<nkui_text_metrics> @out) -> nkui_result;
+	/**
+	 * Re-shapes an existing layout with new UTF-8 text while retaining its handle and style.
+	 */
+	extern fn nkui_text_layout_set_text(layout: nkui_resource, text: utf8) -> nkui_result;
 	/**
 	 * A normalized RGBA paint color.
 	 */

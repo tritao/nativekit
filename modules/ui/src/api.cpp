@@ -56,9 +56,12 @@ struct ResourceSlot {
     bool externally_alive = true;
     uint32_t display_refs = 0;
     std::vector<FontEntry> fonts;
+    bool system_fallbacks = false;
     std::unique_ptr<nkui::SkribidiAdapter> text;
     nkui::PreparedGlyphs text_glyphs;
     std::unordered_map<int32_t, nkui::PreparedGlyphs> scaled_text_glyphs;
+    float text_width = 0.0f;
+    float text_font_size = 0.0f;
     std::unique_ptr<nkui::NanoVGPath> path;
     nkui_color color{};
     uint32_t image_width = 0;
@@ -362,7 +365,10 @@ void release_resource_slot(ResourceSlot &slot) {
     slot.text.reset();
     slot.text_glyphs = {};
     slot.scaled_text_glyphs.clear();
+    slot.text_width = 0.0f;
+    slot.text_font_size = 0.0f;
     slot.fonts.clear();
+    slot.system_fallbacks = false;
     slot.path.reset();
     slot.pixels.clear();
     slot.color = {};
@@ -584,6 +590,14 @@ extern "C" nkui_result nkui_font_collection_add_data(nkui_resource fonts, const 
     return NKUI_OK;
 }
 
+extern "C" nkui_result nkui_font_collection_add_system_fallbacks(nkui_resource fonts) {
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(fonts, nkui::ResourceKind::FontCollection);
+    if (!slot)
+        return NKUI_ERROR_INVALID_HANDLE;
+    slot->system_fallbacks = true;
+    return NKUI_OK;
+}
 
 extern "C" nkui_result nkui_text_layout_create(nkui_resource fonts, const char *text, float width,
                                                float font_size, nkui_resource *out_layout) {
@@ -592,7 +606,7 @@ extern "C" nkui_result nkui_text_layout_create(nkui_resource fonts, const char *
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
     auto *font_slot = resolve(fonts, nkui::ResourceKind::FontCollection);
-    if (!font_slot || font_slot->fonts.empty())
+    if (!font_slot || (font_slot->fonts.empty() && !font_slot->system_fallbacks))
         return NKUI_ERROR_INVALID_HANDLE;
     std::vector<FontEntry> font_entries;
     try {
@@ -622,6 +636,7 @@ extern "C" nkui_result nkui_text_layout_create(nkui_resource fonts, const char *
         else
             valid = valid && layout_slot->text->add_font(font.path.c_str(), font.family);
     }
+    valid = valid && (!font_slot->system_fallbacks || layout_slot->text->add_system_fallbacks());
     valid = valid && layout_slot->text->layout_utf8(text, width, font_size);
     valid = valid && layout_slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha,
                                                        layout_slot->text_glyphs);
@@ -630,6 +645,25 @@ extern "C" nkui_result nkui_text_layout_create(nkui_resource fonts, const char *
         out_layout->id = 0;
         return NKUI_ERROR_INVALID_ARGUMENT;
     }
+    layout_slot->text_width = width;
+    layout_slot->text_font_size = font_size;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_text_layout_set_text(nkui_resource layout, const char *text) {
+    if (!text)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text || slot->text_width <= 0.0f || slot->text_font_size <= 0.0f)
+        return NKUI_ERROR_INVALID_HANDLE;
+    if (!slot->text->layout_utf8(text, slot->text_width, slot->text_font_size))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    nkui::PreparedGlyphs updated;
+    if (!slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha, updated))
+        return NKUI_ERROR_RENDERING;
+    slot->text_glyphs = std::move(updated);
+    slot->scaled_text_glyphs.clear();
     return NKUI_OK;
 }
 

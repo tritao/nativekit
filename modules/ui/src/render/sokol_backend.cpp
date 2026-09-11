@@ -822,10 +822,12 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
                 }
             }
         }
-        const bool dirty_covers_image =
-            upload.x == 0 && upload.y == 0 && upload.width == upload.texture_width &&
-            upload.height == upload.texture_height;
-        bool full_upload = !upload.dirty || dirty_covers_image;
+        // Sokol rotates dynamic-image storage on every persistent update. A
+        // subregion update therefore targets a fresh slot whose untouched
+        // glyphs are not guaranteed to contain the previous atlas contents.
+        // Upload the retained CPU mirror as a whole whenever the atlas is
+        // dirty; this is infrequent (only when new glyphs are rasterized) and
+        // keeps the operation correct on every Sokol backend.
         if (found == state_->atlases.end()) {
             State::AtlasImage atlas;
             if (!create_atlas_image(state_->device->gpu_resources(), atlas, upload))
@@ -834,7 +836,6 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
             state_->stats.gpu_resources += 2;
             if (replacing_generation)
                 ++state_->stats.atlas_reallocations;
-            full_upload = true;
         } else if (found->second.width != upload.texture_width ||
                    found->second.height != upload.texture_height ||
                    found->second.format != upload.format ||
@@ -850,35 +851,13 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
             state_->stats.atlas_dirty_capacity_bytes +=
                 static_cast<uint64_t>(upload.texture_width) * upload.texture_height *
                 upload.bytes_per_pixel;
-        copy_atlas_pixels(found->second, upload, full_upload);
-        uint64_t uploaded_bytes = 0;
-        if (full_upload) {
-            const sg_image_data data = {
-                .mip_levels = {{found->second.pixels.data(), found->second.pixels.size()}}};
-            state_->api->gfx->update_image(
-                state_->device->gpu_resources().resolve(found->second.image), &data);
-            ++state_->stats.atlas_full_uploads;
-            uploaded_bytes = found->second.pixels.size();
-        } else {
-            sg_write_image_desc data{};
-            data.src.data = {upload.pixels,
-                             static_cast<size_t>(upload.row_pitch) * upload.texture_height};
-            data.src.offset = static_cast<size_t>(upload.y) * upload.row_pitch +
-                              static_cast<size_t>(upload.x) * upload.bytes_per_pixel;
-            data.src.bytes_per_row = upload.row_pitch;
-            data.src.bytes_per_slice = upload.row_pitch * upload.height;
-            data.dst.image = state_->device->gpu_resources().resolve(found->second.image);
-            data.dst.mip_level = 0;
-            data.dst.x = upload.x;
-            data.dst.y = upload.y;
-            data.size.width = upload.width;
-            data.size.height = upload.height;
-            data.size.num_slices = 1;
-            if (!state_->api->gfx->update_image_region(&data))
-                return fail(*state_, "atlas subregion upload failed");
-            ++state_->stats.atlas_subregion_uploads;
-            uploaded_bytes = dirty_bytes;
-        }
+        copy_atlas_pixels(found->second, upload, true);
+        const sg_image_data data = {
+            .mip_levels = {{found->second.pixels.data(), found->second.pixels.size()}}};
+        state_->api->gfx->update_image(
+            state_->device->gpu_resources().resolve(found->second.image), &data);
+        ++state_->stats.atlas_full_uploads;
+        const uint64_t uploaded_bytes = found->second.pixels.size();
         found->second.generation = upload.generation;
         ++state_->stats.image_uploads;
         state_->stats.uploaded_bytes += uploaded_bytes;

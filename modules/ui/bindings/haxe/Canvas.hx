@@ -19,7 +19,7 @@ class Canvas {
 
 	public function reset():Void {
 		commands.reset();
-		state = new CanvasState();
+		state.reset();
 		saved = [];
 		openLayers = 0;
 	}
@@ -156,6 +156,14 @@ private class CanvasState {
 	public var clip:Null<Rect>;
 
 	public function new() {
+		transform = Transform2D.identity();
+		alpha = 1.0;
+		paint = null;
+		composite = CompositeMode.SourceOver;
+		clip = null;
+	}
+
+	public function reset():Void {
 		transform = Transform2D.identity();
 		alpha = 1.0;
 		paint = null;

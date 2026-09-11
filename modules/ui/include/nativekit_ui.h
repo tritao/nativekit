@@ -480,6 +480,8 @@ NKUI_API nkui_result nkui_font_collection_add_data(
     const uint8_t *font_data NKUI_IN_ARRAY(font_bytes), uint32_t font_bytes,
     nkui_font_family family);
 
+/** Enables best-effort platform system-font fallback discovery for new layouts. */
+NKUI_API nkui_result nkui_font_collection_add_system_fallbacks(nkui_resource fonts);
 
 /**
  * Shapes and lays out a UTF-8 string within a maximum width.
@@ -492,6 +494,9 @@ NKUI_API nkui_result nkui_font_collection_add_data(
 NKUI_API nkui_result nkui_text_layout_create(nkui_resource fonts, const char *text NKUI_UTF8,
                                              float width, float font_size,
                                              nkui_resource *out_layout NKUI_OUT);
+
+/** Re-shapes an existing layout with new UTF-8 text while retaining its handle and style. */
+NKUI_API nkui_result nkui_text_layout_set_text(nkui_resource layout, const char *text NKUI_UTF8);
 
 /** Returns the layout bounds in `out_metrics`. */
 NKUI_API nkui_result nkui_text_layout_measure(nkui_resource layout,

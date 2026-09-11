@@ -1,8 +1,8 @@
 import NativeKitUI;
 
-/** A shaped, immutable text layout resource. */
+/** A shaped text layout resource with a stable handle and mutable UTF-8 content. */
 class TextLayout extends NativeKitUIResource {
-	public final text:String;
+	public var text(default, null):String;
 	public final width:Float;
 	public final fontSize:Float;
 
@@ -24,6 +24,14 @@ class TextLayout extends NativeKitUIResource {
 	/** Creates a layout from typed style objects so future text ABI growth does not add positional arguments. */
 	public static function createStyled(fonts:FontCollection, text:String, style:TextStyle, paragraph:ParagraphStyle):TextLayout
 		return create(fonts, text, paragraph.width, style.fontSize);
+
+	/** Re-shapes this layout without replacing its native resource handle. */
+	public function setText(value:String):Void {
+		if (value == null)
+			throw "Text layout text cannot be null";
+		UiResult.check(NativeKitUI.nkui_text_layout_set_text(nativeHandle(), value), "textLayout.setText");
+		text = value;
+	}
 
 	public function measure():TextMetrics {
 		var measured = NativeKitUI.nkui_text_layout_measure(nativeHandle());

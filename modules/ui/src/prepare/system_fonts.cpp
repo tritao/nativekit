@@ -69,7 +69,7 @@ void append_core_text_match(std::vector<SystemFontFallback> &fonts, const char *
         CFTypeRef value = CTFontCopyAttribute(font, kCTFontURLAttribute);
         if (value && CFGetTypeID(value) == CFURLGetTypeID()) {
             char path[PATH_MAX] = {};
-            if (CFURLGetFileSystemRepresentation(static_cast<CFURLRef>(value), true,
+            if (CFURLGetFileSystemRepresentation(reinterpret_cast<CFURLRef>(value), true,
                                                   reinterpret_cast<UInt8 *>(path), sizeof(path)))
                 append_unique(fonts, path, emoji, script_tag);
         }
@@ -102,24 +102,35 @@ std::wstring lowercase(std::wstring value) {
     return value;
 }
 
-void append_windows_fonts(std::vector<SystemFontFallback> &fonts) {
+void append_windows_registry_fonts(std::vector<SystemFontFallback> &fonts, HKEY root,
+                                   REGSAM view, bool user_fonts) {
     HKEY key = nullptr;
-    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
-                     L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts", 0,
-                     KEY_READ | KEY_WOW64_64KEY, &key) != ERROR_SUCCESS)
+    if (RegOpenKeyExW(root, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts", 0,
+                      KEY_READ | view, &key) != ERROR_SUCCESS)
         return;
 
     wchar_t windows_directory[MAX_PATH] = {};
     const UINT directory_size = GetWindowsDirectoryW(windows_directory, MAX_PATH);
-    std::wstring font_directory = directory_size ? std::wstring(windows_directory, directory_size)
-                                                 : std::wstring(L"C:\\Windows");
-    font_directory += L"\\Fonts\\";
+    std::wstring font_directory;
+    if (user_fonts) {
+        wchar_t local_app_data[MAX_PATH] = {};
+        const DWORD local_app_data_size =
+            GetEnvironmentVariableW(L"LOCALAPPDATA", local_app_data, MAX_PATH);
+        font_directory = local_app_data_size
+                             ? std::wstring(local_app_data, local_app_data_size)
+                             : std::wstring(windows_directory, directory_size);
+        font_directory += L"\\Microsoft\\Windows\\Fonts\\";
+    } else {
+        font_directory = directory_size ? std::wstring(windows_directory, directory_size)
+                                         : std::wstring(L"C:\\Windows");
+        font_directory += L"\\Fonts\\";
+    }
 
     for (DWORD index = 0;; ++index) {
         wchar_t name[256] = {};
         wchar_t data[MAX_PATH] = {};
         DWORD name_size = static_cast<DWORD>(std::size(name));
-        DWORD data_size = static_cast<DWORD>(std::size(data));
+        DWORD data_size = static_cast<DWORD>(sizeof(data));
         DWORD type = 0;
         const LONG result = RegEnumValueW(key, index, name, &name_size, nullptr, &type,
                                           reinterpret_cast<LPBYTE>(data), &data_size);
@@ -129,14 +140,32 @@ void append_windows_fonts(std::vector<SystemFontFallback> &fonts) {
             continue;
 
         std::wstring family = lowercase(std::wstring(name, name_size));
-        std::wstring path(data, data_size ? data_size - 1 : 0);
+        std::wstring path(data, data_size / sizeof(wchar_t));
+        while (!path.empty() && path.back() == L'\0')
+            path.pop_back();
+        if (type == REG_EXPAND_SZ) {
+            wchar_t expanded[MAX_PATH] = {};
+            const DWORD expanded_size = ExpandEnvironmentStringsW(
+                path.c_str(), expanded, static_cast<DWORD>(std::size(expanded)));
+            if (expanded_size > 0 && expanded_size <= std::size(expanded))
+                path.assign(expanded, expanded_size - 1);
+        }
         if (path.empty())
             continue;
         if (path.find(L'\\') == std::wstring::npos && path.find(L'/') == std::wstring::npos)
             path = font_directory + path;
 
         const bool emoji = family.find(L"emoji") != std::wstring::npos;
-        const bool useful = emoji || family.find(L"arab") != std::wstring::npos ||
+        const bool useful = emoji || family.find(L"segoe") != std::wstring::npos ||
+                            family.find(L"arial") != std::wstring::npos ||
+                            family.find(L"tahoma") != std::wstring::npos ||
+                            family.find(L"verdana") != std::wstring::npos ||
+                            family.find(L"calibri") != std::wstring::npos ||
+                            family.find(L"gadugi") != std::wstring::npos ||
+                            family.find(L"ebrima") != std::wstring::npos ||
+                            family.find(L"nirmala") != std::wstring::npos ||
+                            family.find(L"leelawadee") != std::wstring::npos ||
+                            family.find(L"arab") != std::wstring::npos ||
                             family.find(L"hebrew") != std::wstring::npos ||
                             family.find(L"japan") != std::wstring::npos ||
                             family.find(L"meiryo") != std::wstring::npos ||
@@ -153,6 +182,14 @@ void append_windows_fonts(std::vector<SystemFontFallback> &fonts) {
     }
     RegCloseKey(key);
 }
+
+void append_windows_fonts(std::vector<SystemFontFallback> &fonts) {
+    const REGSAM views[] = {KEY_WOW64_64KEY, KEY_WOW64_32KEY};
+    const HKEY roots[] = {HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER};
+    for (HKEY root : roots)
+        for (REGSAM view : views)
+            append_windows_registry_fonts(fonts, root, view, root == HKEY_CURRENT_USER);
+}
 #endif
 
 } // namespace
@@ -162,6 +199,7 @@ std::vector<SystemFontFallback> discover_system_font_fallbacks() {
 
 #if defined(NKUI_HAS_FONTCONFIG)
     if (FcInit()) {
+        append_fontconfig_match(fonts, ":lang=en", false, SKB_TAG_STR("Latn"));
         append_fontconfig_match(fonts, ":lang=ar", false, SKB_TAG_STR("Arab"));
         append_fontconfig_match(fonts, ":lang=he", false, SKB_TAG_STR("Hebr"));
         append_fontconfig_match(fonts, ":lang=ja", false, SKB_TAG_STR("Hani"));
@@ -171,7 +209,13 @@ std::vector<SystemFontFallback> discover_system_font_fallbacks() {
         append_fontconfig_match(fonts, ":lang=zh", false, SKB_TAG_STR("Hani"));
         append_fontconfig_match(fonts, ":lang=hi", false, SKB_TAG_STR("Deva"));
         append_fontconfig_match(fonts, ":lang=th", false, SKB_TAG_STR("Thai"));
-        append_fontconfig_match(fonts, "Noto Color Emoji", true, 0);
+        // Prefer a system font selected by actual emoji coverage.  Some
+        // Linux installations expose Noto Color Emoji as CBDT/CBLC bitmap
+        // data, while Skribidi's portable rasterizer consumes outline/COLR
+        // glyphs.  The coverage query lets Fontconfig choose a compatible
+        // installed fallback (for example Symbola) instead of producing an
+        // empty glyph quad.
+        append_fontconfig_match(fonts, ":charset=1f44b", true, 0);
     }
 #elif defined(__APPLE__)
     append_core_text_match(fonts, "مرحبا", false, SKB_TAG_STR("Arab"));

@@ -93,13 +93,20 @@ struct CApiShowcase {
                nkui_renderer_render(renderer, list, surface) == NKUI_OK;
     }
 
-    bool create(int framebuffer_width, int framebuffer_height) {
+    bool create(int framebuffer_width, int framebuffer_height, const uint8_t *font_data = nullptr,
+                uint32_t font_bytes = 0) {
         if (nkui_renderer_create(&renderer) != NKUI_OK ||
             nkui_display_list_create(&list) != NKUI_OK ||
-            nkui_font_collection_create(&fonts) != NKUI_OK ||
-            nkui_font_collection_add(fonts, NKUI_TEST_FONT_PATH, NKUI_FONT_FAMILY_DEFAULT) !=
-                NKUI_OK)
+            nkui_font_collection_create(&fonts) != NKUI_OK)
             return false;
+        if (font_data && font_bytes) {
+            if (nkui_font_collection_add_data(fonts, "IBMPlexSans-Regular", font_data, font_bytes,
+                                              NKUI_FONT_FAMILY_DEFAULT) != NKUI_OK)
+                return false;
+        } else if (nkui_font_collection_add(fonts, NKUI_TEST_FONT_PATH,
+                                            NKUI_FONT_FAMILY_DEFAULT) != NKUI_OK) {
+            return false;
+        }
 
         const auto retain = [this](nkui_resource resource) {
             if (resource.id)
@@ -230,7 +237,11 @@ struct WebShowcase {
     bool initialized = false;
     nk_request_id asset_request = NK_INVALID_REQUEST_ID;
     bool asset_loaded = false;
+    std::vector<uint8_t> asset_bytes;
+    bool surface_ready = false;
     bool text_edit_seen = false;
+    int framebuffer_width = 0;
+    int framebuffer_height = 0;
     int result = 0;
 
     static void NK_CALL draw_frame(nk_handle surface, int32_t width, int32_t height,
@@ -238,11 +249,13 @@ struct WebShowcase {
         auto &app = *static_cast<WebShowcase *>(user_data);
         if (app.finished)
             return;
-        if (!app.poll_events() || !app.ready) {
+        if (!app.poll_events()) {
             if (!app.finished)
                 app.finish(app.result != 0 ? app.result : 4);
             return;
         }
+        if (!app.ready)
+            return;
         if (!app.showcase.render_frame(surface, width, height)) {
             app.finish(5);
             return;
@@ -284,7 +297,7 @@ struct WebShowcase {
         nk_resource asset{};
         asset.struct_size = sizeof(asset);
         asset.flags = NK_RESOURCE_READABLE;
-        asset.uri = "/nativekit_ui_c_api.data";
+        asset.uri = "/assets/IBMPlexSans-Regular.ttf";
         if (nk_resource_load_async(&asset, &asset_request) != NK_OK)
             return fail(1);
 
@@ -333,10 +346,15 @@ struct WebShowcase {
     void handle_event(const nk_event &event) {
         if (event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE &&
             event.request_id == asset_request) {
-            if (event.result != NK_OK || event.data_size == 0)
+            if (event.result != NK_OK || event.data_size == 0 || !event.data ||
+                event.data_size > UINT32_MAX)
                 result = 7;
-            else
+            else {
+                const auto *bytes = static_cast<const uint8_t *>(event.data);
+                asset_bytes.assign(bytes, bytes + event.data_size);
                 asset_loaded = true;
+                try_start_showcase();
+            }
             return;
         }
         if (event.source == surface && event.kind == NK_EVENT_TEXT_EDIT) {
@@ -365,33 +383,50 @@ struct WebShowcase {
         if (event.kind == NK_EVENT_SURFACE_READY) {
             int32_t width = 0;
             int32_t height = 0;
-            ready = nk_surface_make_current(surface) == NK_OK &&
-                    nk_surface_get_framebuffer_size(surface, &width, &height) == NK_OK &&
-                    (showcase.renderer.id || showcase.create(width, height));
-            if (!ready) {
+            surface_ready = nk_surface_make_current(surface) == NK_OK &&
+                            nk_surface_get_framebuffer_size(surface, &width, &height) == NK_OK &&
+                            width > 0 && height > 0;
+            if (!surface_ready) {
                 result = 4;
                 return;
             }
+            framebuffer_width = width;
+            framebuffer_height = height;
             if (!frame_callback_installed) {
                 if (nk_surface_set_frame_callback(surface, draw_frame, this) != NK_OK) {
                     result = 4;
-                    ready = false;
+                    surface_ready = false;
                 } else {
                     frame_callback_installed = true;
                 }
             }
+            try_start_showcase();
             return;
         }
         if (event.kind == NK_EVENT_SURFACE_RESIZE &&
             event.data_size >= sizeof(nk_surface_resize_event)) {
             const auto *resize = static_cast<const nk_surface_resize_event *>(event.data);
-            ready = resize->framebuffer_width > 0 && resize->framebuffer_height > 0;
+            framebuffer_width = resize->framebuffer_width;
+            framebuffer_height = resize->framebuffer_height;
+            surface_ready = framebuffer_width > 0 && framebuffer_height > 0;
+            ready = surface_ready && showcase.list.id;
             if (ready && showcase.list.id &&
-                !showcase.resize(resize->framebuffer_width, resize->framebuffer_height))
+                !showcase.resize(framebuffer_width, framebuffer_height))
                 result = 6;
         } else if (event.kind == NK_EVENT_SURFACE_LOST) {
             ready = false;
+            surface_ready = false;
         }
+    }
+
+    void try_start_showcase() {
+        if (finished || ready || !surface_ready || !asset_loaded)
+            return;
+        if (!showcase.create(framebuffer_width, framebuffer_height, asset_bytes.data(),
+                             static_cast<uint32_t>(asset_bytes.size())))
+            result = 4;
+        else
+            ready = true;
     }
 
     bool fail(int code) {

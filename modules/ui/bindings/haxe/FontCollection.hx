@@ -13,4 +13,9 @@ class FontCollection extends NativeKitUIResource {
 
 	public function add(path:String, family:FontFamily = FontFamily.Default):Void
 		UiResult.check(NativeKitUI.nkui_font_collection_add(nativeHandle(), path, cast family), "fonts.add");
+
+	/** Adds platform-provided script and emoji fallback fonts when available. */
+	public function addSystemFallbacks():Void
+		UiResult.check(NativeKitUI.nkui_font_collection_add_system_fallbacks(nativeHandle()),
+			"fonts.addSystemFallbacks");
 }

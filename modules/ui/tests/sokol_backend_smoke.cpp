@@ -109,11 +109,11 @@ int main() {
     uint32_t producer_generation = 1;
     bool producer_unavailable = false;
     bool producer_failed = false;
-    bool prepared_subregion_update = false;
+    bool prepared_text_update = false;
 #ifdef NKUI_TEST_PUBLIC_SOKOL_RUNTIME
     nks_renderer public_renderer{};
 #endif
-    auto backend = std::make_unique<SokolBackend>();
+    auto backend = std::make_unique<SokolBackend>(nk_sokol_get_api());
     std::unique_ptr<SokolBackend> shared_backend;
     NanoVGRecorder recorder;
     const unsigned char image_pixel[4] = {40, 120, 220, 220};
@@ -179,7 +179,7 @@ int main() {
                     // Multiple UI renderers retain one process-local Sokol
                     // device. This exercises shared setup and release without
                     // changing the single-renderer draw sequence below.
-                    shared_backend = std::make_unique<SokolBackend>();
+                    shared_backend = std::make_unique<SokolBackend>(nk_sokol_get_api());
                     if (!shared_backend->initialize())
                         result = 17;
                     else
@@ -233,16 +233,16 @@ int main() {
         FrameResources resources;
         Mock3DSurfaceProducer producer(recorder.data(), producer_generation, producer_unavailable,
                                        producer_failed);
-        if (!prepared_subregion_update && frames == 1) {
+        if (!prepared_text_update && frames == 1) {
             PreparedGlyphs updated_title;
-            if (!text_adapter.layout_utf8("NativeKit direct text: subregion upload 123", 280.0f,
+            if (!text_adapter.layout_utf8("NativeKit direct text: retained atlas update 123", 280.0f,
                                           24.0f) ||
                 !text_adapter.prepare_glyphs(0.0f, 0.0f, 1.0f, GlyphMode::Alpha,
                                              updated_title))
                 result = 15;
             else {
                 title_glyphs = std::move(updated_title);
-                prepared_subregion_update = true;
+                prepared_text_update = true;
             }
         }
         if (!resources.bind_path(background, recorder.data(), 0) ||
@@ -299,9 +299,9 @@ int main() {
         result = 10;
     if (!result) {
         const auto atlas_stats = backend->stats();
-        if (!atlas_stats.atlas_full_uploads || !atlas_stats.atlas_subregion_uploads ||
-            !atlas_stats.atlas_dirty_bytes || !atlas_stats.atlas_uploaded_bytes ||
-            atlas_stats.atlas_uploaded_bytes >= atlas_stats.atlas_dirty_capacity_bytes) {
+        if (!atlas_stats.atlas_full_uploads || !atlas_stats.atlas_dirty_bytes ||
+            !atlas_stats.atlas_uploaded_bytes ||
+            atlas_stats.atlas_uploaded_bytes < atlas_stats.atlas_dirty_capacity_bytes) {
             result = 16;
         }
     }

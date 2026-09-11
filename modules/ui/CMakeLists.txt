@@ -130,6 +130,7 @@ if(NK_BUILD_TESTS)
         src/prepare/nanovg_recorder.cpp
         src/prepare/nanovg_path.cpp
         src/prepare/skribidi_adapter.cpp
+        src/prepare/system_fonts.cpp
         src/render/graphics_device.cpp
         src/render/sokol_backend.cpp)
     target_include_directories(nativekit_ui_sokol_backend_mesh_test PRIVATE
@@ -156,6 +157,7 @@ if(NK_BUILD_TESTS)
             src/prepare/nanovg_recorder.cpp
             src/prepare/nanovg_path.cpp
             src/prepare/skribidi_adapter.cpp
+            src/prepare/system_fonts.cpp
             src/render/graphics_device.cpp
             src/render/frame_resources.cpp
             src/render/render_plan_executor.cpp
@@ -208,19 +210,16 @@ if(NK_BUILD_EXAMPLES)
     add_executable(nativekit_ui_c_api examples/ui_c_api/showcase.cpp)
     set(NKUI_C_API_FONT_PATH
         "${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
-    if(EMSCRIPTEN)
-        # The browser build uses Emscripten's packaged filesystem only for the
-        # example asset.  NativeKit's public resource APIs still receive a
-        # normal path and do not know how the bytes were bundled.
-        set(NKUI_C_API_FONT_PATH "/assets/IBMPlexSans-Regular.ttf")
-    endif()
     target_compile_definitions(nativekit_ui_c_api PRIVATE
         NKUI_TEST_FONT_PATH="${NKUI_C_API_FONT_PATH}")
     target_link_libraries(nativekit_ui_c_api PRIVATE NativeKit::ui NativeKit::nativekit)
     if(EMSCRIPTEN)
-        target_link_options(nativekit_ui_c_api PRIVATE
-            "--preload-file=${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf@/assets/IBMPlexSans-Regular.ttf")
         add_custom_command(TARGET nativekit_ui_c_api POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:nativekit_ui_c_api>/assets"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${NKUI_C_API_FONT_PATH}"
+                "$<TARGET_FILE_DIR:nativekit_ui_c_api>/assets/IBMPlexSans-Regular.ttf"
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_c_api/web_shell.html"
                 "$<TARGET_FILE_DIR:nativekit_ui_c_api>/nativekit_ui_c_api.html"
@@ -275,6 +274,7 @@ if(NK_BUILD_EXAMPLES)
             src/prepare/nanovg_recorder.cpp
             src/prepare/nanovg_path.cpp
             src/prepare/skribidi_adapter.cpp
+            src/prepare/system_fonts.cpp
             src/render/graphics_device.cpp
             src/render/render_backend_factory.cpp
             src/render/sokol_backend.cpp

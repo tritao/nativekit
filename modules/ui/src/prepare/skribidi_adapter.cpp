@@ -1,13 +1,18 @@
 #include "skribidi_adapter.h"
 
+#include "system_fonts.h"
+
 #include "skribidi/skb_attributes.h"
 #include "skribidi/skb_font_collection.h"
 #include "skribidi/skb_image_atlas.h"
 #include "skribidi/skb_layout.h"
 #include "skribidi/skb_rasterizer.h"
 
+#include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <string>
+#include <unordered_set>
 
 namespace nkui {
 
@@ -25,10 +30,43 @@ struct SkribidiAdapter::State {
     uint64_t cached_font_generation = 0;
     uint32_t layout_builds = 0;
     uint64_t prepared_batch_count = 0;
+    std::unordered_set<std::string> system_fonts_loaded;
     std::vector<std::shared_ptr<std::vector<uint8_t>>> font_data;
 };
 
 namespace {
+
+bool system_font_fallback(skb_font_collection_t *font_collection, const char *, uint8_t script,
+                          uint8_t font_family, void *context) {
+    auto *state = static_cast<SkribidiAdapter::State *>(context);
+    const uint32_t script_tag = skb_script_to_iso15924_tag(script);
+    const bool emoji = font_family == SKB_FONT_FAMILY_EMOJI;
+    if (std::getenv("NKUI_DEBUG_GLYPHS"))
+        std::fprintf(stderr, "fallback request %c%c%c%c family=%u\n",
+                     static_cast<char>(script_tag >> 24), static_cast<char>(script_tag >> 16),
+                     static_cast<char>(script_tag >> 8), static_cast<char>(script_tag),
+                     static_cast<unsigned>(font_family));
+    bool added = false;
+    for (const auto &font : system_font_fallbacks()) {
+        if (font.emoji != emoji ||
+            (!emoji && font.script_tag != 0 && font.script_tag != script_tag))
+            continue;
+        const std::string key = std::to_string(static_cast<unsigned>(font_family)) + ":" +
+                                font.path;
+        if (!state->system_fonts_loaded.insert(key).second)
+            continue;
+        if (skb_font_collection_add_font(font_collection, font.path.c_str(), font_family,
+                                          nullptr)) {
+            added = true;
+            // Family-only candidates, used by the Windows registry adapter,
+            // need to be loaded as a group before font selection is retried.
+            if (!emoji && font.script_tag == 0)
+                continue;
+            return true;
+        }
+    }
+    return added;
+}
 
 skb_rasterize_alpha_mode_t raster_mode(GlyphMode mode) {
     return mode == GlyphMode::Sdf ? SKB_RASTERIZE_ALPHA_SDF : SKB_RASTERIZE_ALPHA_MASK;
@@ -86,6 +124,17 @@ struct RenderGlyphContext {
 
 bool append_render_glyph(const skb_layout_render_glyph_t *glyph, void *context) {
     auto &render = *static_cast<RenderGlyphContext *>(context);
+    if (std::getenv("NKUI_DEBUG_GLYPHS")) {
+        const uint32_t script = skb_script_to_iso15924_tag(glyph->script);
+        const uint32_t *text = skb_layout_get_text(render.state->layout);
+        std::fprintf(stderr, "glyph %c%c%c%c size=%.1f font=%u gid=%u range=%d..%d cp=%x offset=%.1f,%.1f\n",
+                     static_cast<char>(script >> 24), static_cast<char>(script >> 16),
+                     static_cast<char>(script >> 8), static_cast<char>(script),
+                     glyph->font_size, static_cast<unsigned>(glyph->font_handle),
+                     static_cast<unsigned>(glyph->glyph_id), glyph->text_range.start,
+                     glyph->text_range.end,
+                     text ? text[glyph->text_range.start] : 0u, glyph->offset_x, glyph->offset_y);
+    }
     const skb_quad_t quad = skb_image_atlas_get_glyph_quad(
         render.state->atlas, render.origin_x + glyph->offset_x, render.origin_y + glyph->offset_y,
         render.pixel_scale, render.state->fonts, glyph->font_handle, glyph->glyph_id,
@@ -190,6 +239,13 @@ bool SkribidiAdapter::add_font_from_data(const char *name, const void *data, std
     }
 }
 
+bool SkribidiAdapter::add_system_fallbacks() {
+    if (!valid())
+        return false;
+    skb_font_collection_set_on_font_fallback(state_->fonts, system_font_fallback, state_);
+    return true;
+}
+
 bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size) {
     if (!valid() || !text || width <= 0.0f || font_size <= 0.0f)
         return false;
@@ -232,6 +288,19 @@ bool SkribidiAdapter::prepare_glyphs(float origin_x, float origin_y, float pixel
     if (!skb_layout_prepare_glyphs(state_->layout, state_->atlas, state_->temporary,
                                    state_->rasterizer, pixel_scale, raster_mode(mode)))
         return false;
+    if (std::getenv("NKUI_DEBUG_GLYPHS") && state_->cached_font_size == 18.0f) {
+        const uint32_t *text = skb_layout_get_text(state_->layout);
+        const skb_text_property_t *properties = skb_layout_get_text_properties(state_->layout);
+        const int32_t count = skb_layout_get_text_count(state_->layout);
+        std::fprintf(stderr, "text properties:");
+        for (int32_t i = 0; i < count; ++i) {
+            const uint32_t script = skb_script_to_iso15924_tag(properties[i].script);
+            std::fprintf(stderr, " %x/%c%c%c%c", text[i], static_cast<char>(script >> 24),
+                         static_cast<char>(script >> 16), static_cast<char>(script >> 8),
+                         static_cast<char>(script));
+        }
+        std::fprintf(stderr, "\n");
+    }
     RenderGlyphContext render{state_, origin_x, origin_y, pixel_scale, mode, &output};
     if (!skb_layout_iterate_render_glyphs(state_->layout, append_render_glyph, &render))
         return false;
