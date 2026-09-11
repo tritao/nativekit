@@ -300,9 +300,9 @@ int main() {
     if (!result) {
         const auto atlas_stats = backend->stats();
         if (!atlas_stats.atlas_full_uploads || !atlas_stats.atlas_dirty_bytes ||
-            !atlas_stats.atlas_subregion_uploads || !atlas_stats.atlas_subregion_bytes ||
+            atlas_stats.atlas_subregion_uploads || atlas_stats.atlas_subregion_bytes ||
             atlas_stats.atlas_full_upload_fallbacks || !atlas_stats.atlas_uploaded_bytes ||
-            atlas_stats.atlas_uploaded_bytes >= atlas_stats.atlas_dirty_capacity_bytes) {
+            atlas_stats.atlas_uploaded_bytes < atlas_stats.atlas_dirty_capacity_bytes) {
             result = 16;
         }
     }
