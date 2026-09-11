@@ -1,7 +1,6 @@
 #ifndef NATIVEKIT_UI_GRAPHICS_DEVICE_H
 #define NATIVEKIT_UI_GRAPHICS_DEVICE_H
 
-#include "nativekit_sokol_backend_config.h"
 #include "nativekit_sokol_api.h"
 #include "sokol_gfx.h"
 

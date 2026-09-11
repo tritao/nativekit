@@ -1,6 +1,5 @@
 #include "render_backend_factory.h"
 
-#include "nativekit_sokol_backend_config.h"
 #include "nativekit_sokol_api.h"
 #include "sokol_backend.h"
 
