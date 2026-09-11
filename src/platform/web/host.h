@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativekit_input.h"
+
 #include <cstdint>
 
 #include <emscripten/html5.h>
@@ -66,11 +68,46 @@ struct TouchEvent {
     uint32_t modifiers = 0;
 };
 
+enum class TextInputEventType : uint8_t {
+    compose,
+    commit,
+    delete_backward,
+    delete_forward,
+    finish_composition,
+    selection
+};
+
+struct TextInputEvent {
+    TextInputEventType type = TextInputEventType::commit;
+    const char *text = nullptr;
+    uint32_t selection_start = 0;
+    uint32_t selection_end = 0;
+};
+
+struct TextInputConfig {
+    bool active = false;
+    uint32_t flags = 0;
+    uint32_t input_type = 0;
+    uint32_t action = 0;
+    const char *text = "";
+    uint32_t text_start = 0;
+    uint32_t document_length = 0;
+    uint32_t selection_start = 0;
+    uint32_t selection_end = 0;
+    uint32_t composition_start = NK_TEXT_POSITION_NONE;
+    uint32_t composition_end = NK_TEXT_POSITION_NONE;
+    float cursor_x = 0.0f;
+    float cursor_y = 0.0f;
+    float cursor_width = 0.0f;
+    float cursor_height = 0.0f;
+};
+
 struct HostCallbacks {
     void (*resize)(const CanvasSize &, void *) = nullptr;
     void (*key)(const KeyEvent &, void *) = nullptr;
     void (*pointer)(const PointerEvent &, void *) = nullptr;
     void (*touch)(const TouchEvent &, void *) = nullptr;
+    void (*text_input)(const TextInputEvent &, void *) = nullptr;
     void (*focus)(bool focused, void *) = nullptr;
     void (*context)(bool restored, void *) = nullptr;
     void (*pointer_lock)(bool active, void *) = nullptr;
@@ -90,6 +127,7 @@ bool set_canvas_size(int32_t width, int32_t height) noexcept;
 bool set_canvas_visible(bool visible) noexcept;
 bool set_title(const char *title) noexcept;
 bool set_cursor(const char *cursor) noexcept;
+void configure_text_input(const TextInputConfig &config) noexcept;
 
 bool create_webgl_context(const WebGLContextOptions &options,
                           EMSCRIPTEN_WEBGL_CONTEXT_HANDLE *out_context) noexcept;

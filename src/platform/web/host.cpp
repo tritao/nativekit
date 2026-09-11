@@ -222,6 +222,152 @@ EM_JS(void, nk_web_set_canvas_cursor, (const char *selector, const char *cursor)
         canvas.style.cursor = UTF8ToString(cursor);
 });
 
+EM_JS(void, nk_web_configure_text_input,
+      (const char *selector, int active, int flags, int input_type, int action,
+       const char *text, int text_start, int document_length, int selection_start,
+       int selection_end, int composition_start, int composition_end, float cursor_x,
+       float cursor_y, float cursor_width, float cursor_height), {
+          const canvas = document.querySelector(UTF8ToString(selector));
+          if (!canvas)
+              return;
+
+          const id = "__nativekit_text_input";
+          const multiline = !!(flags & 1);
+          let input = document.getElementById(id);
+          const expectedTag = multiline ? "TEXTAREA" : "INPUT";
+          if (input && input.tagName !== expectedTag) {
+              input.remove();
+              input = null;
+          }
+          if (!input) {
+              input = document.createElement(multiline ? "textarea" : "input");
+              input.id = id;
+              input.setAttribute("aria-hidden", "true");
+              input.tabIndex = -1;
+              input.style.position = "fixed";
+              input.style.zIndex = "-1";
+              input.style.opacity = "0";
+              input.style.pointerEvents = "none";
+              input.style.border = "0";
+              input.style.padding = "0";
+              input.style.margin = "0";
+              input.style.width = "1px";
+              input.style.height = "1px";
+              input.style.outline = "none";
+              input._nkComposing = false;
+              input._nkIgnoreInput = false;
+              const emit = (type, value, start, end) => {
+                  if (!input._nkActive || !Module.ccall)
+                      return;
+                  Module.ccall("nk_web_host_text_input_event", null,
+                               ["number", "string", "number", "number"],
+                               [type, value || "", start || 0, end || 0]);
+              };
+              input.addEventListener("compositionstart", () => {
+                  input._nkComposing = true;
+              });
+              input.addEventListener("compositionupdate", event => {
+                  input._nkComposing = true;
+                  emit(0, event.data || "", 0, 0);
+              });
+              input.addEventListener("compositionend", event => {
+                  input._nkComposing = false;
+                  input._nkIgnoreInput = true;
+                  if (event.data)
+                      emit(1, event.data, 0, 0);
+                  else
+                      emit(4, "", 0, 0);
+              });
+              input.addEventListener("input", event => {
+                  if (input._nkIgnoreInput) {
+                      input._nkIgnoreInput = false;
+                      return;
+                  }
+                  if (input._nkComposing)
+                      return;
+                  if (event.inputType === "deleteContentBackward")
+                      emit(2, "", 0, 0);
+                  else if (event.inputType === "deleteContentForward")
+                      emit(3, "", 0, 0);
+                  else if (event.inputType === "insertLineBreak")
+                      emit(1, "\n", 0, 0);
+                  else if (event.data !== null)
+                      emit(1, event.data, 0, 0);
+              });
+              const codePointToUtf16 = (value, position) => {
+                  let index = 0;
+                  let count = 0;
+                  for (const character of value) {
+                      if (count >= position)
+                          break;
+                      index += character.length;
+                      count++;
+                  }
+                  return index;
+              };
+              const emitSelection = () => {
+                  if (!input._nkActive)
+                      return;
+                  const value = input.value;
+                  const start = Array.from(value.slice(0, input.selectionStart)).length;
+                  const end = Array.from(value.slice(0, input.selectionEnd)).length;
+                  emit(5, "", start, end);
+              };
+              input.addEventListener("select", emitSelection);
+              input.addEventListener("keyup", emitSelection);
+              input._nkCodePointToUtf16 = codePointToUtf16;
+              canvas.parentElement.appendChild(input);
+          }
+
+          input._nkActive = !!active;
+          input._nkTextStart = text_start;
+          input._nkDocumentLength = document_length;
+          input._nkCompositionStart = composition_start;
+          input._nkCompositionEnd = composition_end;
+          input.type = input_type === 5 ? "password"
+                     : input_type === 1 ? "email"
+                     : input_type === 2 ? "url"
+                     : input_type === 3 ? "number"
+                     : input_type === 4 ? "tel" : "text";
+          input.autocomplete = "off";
+          input.autocorrect = (flags & 2) ? "on" : "off";
+          input.autocapitalize = (flags & 4) ? "sentences" : "off";
+          input.enterKeyHint = ["enter", "done", "go", "next", "search", "send", "enter"][action] || "enter";
+          input.inputMode = input_type === 3 ? "decimal"
+                         : input_type === 4 ? "tel"
+                         : input_type === 1 ? "email"
+                         : input_type === 2 ? "url" : "text";
+          input.value = UTF8ToString(text);
+          input.style.left = Math.max(0, cursor_x) + "px";
+          input.style.top = Math.max(0, cursor_y) + "px";
+          input.style.width = Math.max(1, cursor_width) + "px";
+          input.style.height = Math.max(1, cursor_height) + "px";
+          const toUtf16 = input._nkCodePointToUtf16;
+          const relativeStart = Math.max(0, selection_start - text_start);
+          const relativeEnd = Math.max(relativeStart, selection_end - text_start);
+          input.setSelectionRange(toUtf16(input.value, relativeStart),
+                                  toUtf16(input.value, relativeEnd));
+          if (active) {
+              if (document.activeElement !== input)
+                  input.focus({preventScroll: true});
+          } else if (document.activeElement === input) {
+              input.blur();
+          }
+      });
+
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(int type, const char *text,
+                                                                    int selection_start,
+                                                                    int selection_end) {
+    if (!host_state.callbacks.text_input)
+        return;
+    nk::web::TextInputEvent event{};
+    event.type = static_cast<nk::web::TextInputEventType>(type);
+    event.text = text;
+    event.selection_start = selection_start < 0 ? 0u : static_cast<uint32_t>(selection_start);
+    event.selection_end = selection_end < 0 ? 0u : static_cast<uint32_t>(selection_end);
+    host_state.callbacks.text_input(event, host_state.user_data);
+}
+
 namespace nk::web {
 
 const char *canvas_selector() noexcept {
@@ -285,6 +431,21 @@ bool set_cursor(const char *cursor) noexcept {
         return false;
     nk_web_set_canvas_cursor(canvas_selector(), cursor);
     return true;
+}
+
+void configure_text_input(const TextInputConfig &config) noexcept {
+    nk_web_configure_text_input(
+        canvas_selector(), config.active ? 1 : 0, static_cast<int>(config.flags),
+        static_cast<int>(config.input_type), static_cast<int>(config.action), config.text,
+        static_cast<int>(config.text_start), static_cast<int>(config.document_length),
+        static_cast<int>(config.selection_start), static_cast<int>(config.selection_end),
+        config.composition_start == NK_TEXT_POSITION_NONE
+            ? -1
+            : static_cast<int>(config.composition_start),
+        config.composition_end == NK_TEXT_POSITION_NONE
+            ? -1
+            : static_cast<int>(config.composition_end),
+        config.cursor_x, config.cursor_y, config.cursor_width, config.cursor_height);
 }
 
 bool create_webgl_context(const WebGLContextOptions &options,

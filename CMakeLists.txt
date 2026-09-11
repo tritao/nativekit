@@ -134,7 +134,9 @@ if(EMSCRIPTEN)
     # WebGL2 is part of the first browser backend.  Keep this linker detail on
     # the NativeKit target so consumers inherit it without seeing Emscripten
     # types or headers in the public API.
-    target_link_options(nativekit INTERFACE "-sUSE_WEBGL2=1")
+    target_link_options(nativekit INTERFACE
+        "-sUSE_WEBGL2=1"
+        "-sEXPORTED_RUNTIME_METHODS=ccall")
 endif()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)

@@ -12,6 +12,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -54,6 +56,7 @@ struct WebWindowResource final : nk::core::Resource {
     bool fullscreen = false;
     nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
     std::shared_ptr<WebCursorResource> cursor;
+    nk_handle text_input_surface = NK_INVALID_HANDLE;
 };
 
 struct WebSurfaceResource final : nk::core::Resource {
@@ -69,6 +72,10 @@ struct WebSurfaceResource final : nk::core::Resource {
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = 0;
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
+    bool text_input_active = false;
+    bool text_input_state_set = false;
+    nk_text_input_state text_input_state{};
+    std::string text_input_text;
 
     ~WebSurfaceResource() override {
         if (context)
@@ -117,6 +124,81 @@ std::shared_ptr<WebWindowResource> get_window(nk_handle handle) {
 std::shared_ptr<WebSurfaceResource> get_surface(nk_handle handle) {
     return get_resource<WebSurfaceResource>(handle, nk::core::ResourceType::surface,
                                             "invalid web surface handle");
+}
+
+uint32_t utf8_codepoints(const std::string &text) {
+    uint32_t result = 0;
+    for (const auto character : text)
+        result += (static_cast<unsigned char>(character) & 0xc0u) != 0x80u;
+    return result;
+}
+
+std::size_t utf8_byte_offset(const std::string &text, uint32_t codepoint) {
+    std::size_t offset = 0;
+    while (offset < text.size()) {
+        if ((static_cast<unsigned char>(text[offset]) & 0xc0u) != 0x80u) {
+            if (codepoint == 0)
+                return offset;
+            --codepoint;
+        }
+        ++offset;
+    }
+    return offset;
+}
+
+void configure_text_input(WebSurfaceResource &surface) {
+    nk::web::TextInputConfig config{};
+    config.active = surface.text_input_active;
+    config.text = surface.text_input_text.c_str();
+    if (surface.text_input_state_set) {
+        const auto &state = surface.text_input_state;
+        config.flags = state.flags;
+        config.input_type = state.input_type;
+        config.action = state.action;
+        config.text_start = state.text_start;
+        config.document_length = state.document_length;
+        config.selection_start = state.selection_start;
+        config.selection_end = state.selection_end;
+        config.composition_start = state.composition_start;
+        config.composition_end = state.composition_end;
+        config.cursor_x = state.cursor_x;
+        config.cursor_y = state.cursor_y;
+        config.cursor_width = state.cursor_width;
+        config.cursor_height = state.cursor_height;
+    }
+    nk::web::configure_text_input(config);
+}
+
+void update_text_input_state(WebSurfaceResource &surface, nk_text_position replace_start,
+                             nk_text_position replace_end, const std::string &text,
+                             nk_text_position selection_start, nk_text_position selection_end,
+                             nk_text_position composition_start,
+                             nk_text_position composition_end) {
+    if (!surface.text_input_state_set)
+        return;
+    auto &state = surface.text_input_state;
+    const auto text_end = static_cast<uint64_t>(state.text_start) +
+                          utf8_codepoints(surface.text_input_text);
+    if (replace_start < state.text_start || replace_end < replace_start ||
+        replace_end > text_end)
+        return;
+    const auto relative_start = replace_start - state.text_start;
+    const auto relative_end = replace_end - state.text_start;
+    const auto byte_start = utf8_byte_offset(surface.text_input_text, relative_start);
+    const auto byte_end = utf8_byte_offset(surface.text_input_text, relative_end);
+    surface.text_input_text.replace(byte_start, byte_end - byte_start, text);
+    const auto removed = replace_end - replace_start;
+    const auto inserted = utf8_codepoints(text);
+    const auto document_delta = static_cast<int64_t>(inserted) - removed;
+    if (document_delta < 0)
+        state.document_length -= static_cast<uint32_t>(-document_delta);
+    else
+        state.document_length += static_cast<uint32_t>(document_delta);
+    state.selection_start = selection_start;
+    state.selection_end = selection_end;
+    state.composition_start = composition_start;
+    state.composition_end = composition_end;
+    state.text = surface.text_input_text.c_str();
 }
 
 const char *cursor_name(nk_cursor_shape shape) {
@@ -446,6 +528,136 @@ void on_touch(const nk::web::TouchEvent &event, void *user_data) {
     });
 }
 
+void queue_text_edit(WebSurfaceResource &surface, nk_text_edit_action action,
+                     const std::string &text, nk_text_position replace_start,
+                     nk_text_position replace_end, nk_text_position selection_start,
+                     nk_text_position selection_end, nk_text_position composition_start,
+                     nk_text_position composition_end) {
+    nk_text_edit_event payload{};
+    payload.action = action;
+    payload.text_offset = text.empty() ? 0u : sizeof(payload);
+    payload.text_length = static_cast<uint32_t>(text.size());
+    payload.replace_start = replace_start;
+    payload.replace_end = replace_end;
+    payload.selection_start = selection_start;
+    payload.selection_end = selection_end;
+    payload.composition_start = composition_start;
+    payload.composition_end = composition_end;
+
+    nk::core::QueuedEvent queued;
+    queued.kind = NK_EVENT_TEXT_EDIT;
+    queued.source = surface.handle;
+    queued.data.resize(sizeof(payload) + text.size() + (text.empty() ? 0u : 1u));
+    std::memcpy(queued.data.data(), &payload, sizeof(payload));
+    if (!text.empty())
+        std::memcpy(queued.data.data() + sizeof(payload), text.c_str(), text.size() + 1);
+    if (nk::core::push_event(std::move(queued)) == NK_OK)
+        update_text_input_state(surface, replace_start, replace_end, text, selection_start,
+                                selection_end, composition_start, composition_end);
+}
+
+void on_text_input(const nk::web::TextInputEvent &event, void *user_data) {
+    nk::core::callback_boundary([&] {
+        auto *window = static_cast<WebWindowResource *>(user_data);
+        if (!window || !nk::core::is_runtime_generation(window->generation) ||
+            window->text_input_surface == NK_INVALID_HANDLE)
+            return;
+        auto surface = get_surface(window->text_input_surface);
+        if (!surface || !surface->text_input_active || !surface->text_input_state_set)
+            return;
+
+        const auto &state = surface->text_input_state;
+        const auto text_end = static_cast<nk_text_position>(
+            static_cast<uint64_t>(state.text_start) + utf8_codepoints(surface->text_input_text));
+        const bool has_composition = state.composition_start != NK_TEXT_POSITION_NONE &&
+                                     state.composition_end != NK_TEXT_POSITION_NONE &&
+                                     state.composition_start <= state.composition_end &&
+                                     state.composition_start >= state.text_start &&
+                                     state.composition_end <= text_end;
+        nk_text_position replace_start = state.selection_start;
+        nk_text_position replace_end = state.selection_end;
+        nk_text_position selection_start = state.selection_start;
+        nk_text_position selection_end = state.selection_end;
+        nk_text_position composition_start = state.composition_start;
+        nk_text_position composition_end = state.composition_end;
+        nk_text_edit_action action = NK_TEXT_EDIT_COMMIT;
+        std::string text = event.text ? event.text : "";
+
+        switch (event.type) {
+        case nk::web::TextInputEventType::compose:
+            if (has_composition) {
+                replace_start = state.composition_start;
+                replace_end = state.composition_end;
+            }
+            selection_start = replace_start + utf8_codepoints(text);
+            selection_end = selection_start;
+            composition_start = replace_start;
+            composition_end = selection_start;
+            action = NK_TEXT_EDIT_COMPOSE;
+            break;
+        case nk::web::TextInputEventType::commit:
+            if (has_composition) {
+                replace_start = state.composition_start;
+                replace_end = state.composition_end;
+            }
+            selection_start = replace_start + utf8_codepoints(text);
+            selection_end = selection_start;
+            composition_start = NK_TEXT_POSITION_NONE;
+            composition_end = NK_TEXT_POSITION_NONE;
+            action = NK_TEXT_EDIT_COMMIT;
+            break;
+        case nk::web::TextInputEventType::delete_backward:
+            action = NK_TEXT_EDIT_DELETE;
+            if (replace_start == replace_end) {
+                if (replace_start <= state.text_start)
+                    return;
+                --replace_start;
+                replace_end = replace_start + 1;
+            }
+            selection_start = replace_start;
+            selection_end = replace_start;
+            composition_start = NK_TEXT_POSITION_NONE;
+            composition_end = NK_TEXT_POSITION_NONE;
+            break;
+        case nk::web::TextInputEventType::delete_forward:
+            action = NK_TEXT_EDIT_DELETE;
+            if (replace_start == replace_end) {
+                if (replace_end >= text_end)
+                    return;
+                replace_end++;
+            }
+            selection_end = replace_start;
+            selection_start = replace_start;
+            composition_start = NK_TEXT_POSITION_NONE;
+            composition_end = NK_TEXT_POSITION_NONE;
+            break;
+        case nk::web::TextInputEventType::finish_composition:
+            replace_start = state.selection_start;
+            replace_end = replace_start;
+            selection_start = replace_start;
+            selection_end = replace_start;
+            composition_start = NK_TEXT_POSITION_NONE;
+            composition_end = NK_TEXT_POSITION_NONE;
+            action = NK_TEXT_EDIT_FINISH_COMPOSITION;
+            text.clear();
+            break;
+        case nk::web::TextInputEventType::selection: {
+            const auto relative_start = std::min(event.selection_start, text_end - state.text_start);
+            const auto relative_end = std::min(event.selection_end, text_end - state.text_start);
+            selection_start = state.text_start + std::min(relative_start, relative_end);
+            selection_end = state.text_start + std::max(relative_start, relative_end);
+            replace_start = state.selection_start;
+            replace_end = state.selection_end;
+            action = NK_TEXT_EDIT_SET_SELECTION;
+            break;
+        }
+        }
+
+        queue_text_edit(*surface, action, text, replace_start, replace_end, selection_start,
+                        selection_end, composition_start, composition_end);
+    });
+}
+
 void on_focus(bool focused, void *user_data) {
     nk::core::callback_boundary([&] {
         auto *window = static_cast<WebWindowResource *>(user_data);
@@ -579,6 +791,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         callbacks.key = on_key;
         callbacks.pointer = on_pointer;
         callbacks.touch = on_touch;
+        callbacks.text_input = on_text_input;
         callbacks.focus = on_focus;
         callbacks.context = on_context;
         callbacks.pointer_lock = on_pointer_lock;
@@ -813,6 +1026,15 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
     auto surface = get_surface(handle);
     if (!surface)
         return invalid_handle("invalid web surface handle");
+    if (surface->text_input_active) {
+        if (auto window = get_window(surface->parent)) {
+            if (window->text_input_surface == surface->handle) {
+                window->text_input_surface = NK_INVALID_HANDLE;
+                surface->text_input_active = false;
+                configure_text_input(*surface);
+            }
+        }
+    }
     if (surface->frame_callback && active_window.lock())
         nk::web::stop_frame_loop();
     surface->frame_callback = nullptr;
@@ -894,6 +1116,81 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
         surface->frame_user_data = nullptr;
         nk::core::set_error("could not start the browser animation-frame loop");
         return NK_ERROR_UNKNOWN;
+    }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
+                                                   const nk_text_input_state *state) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!state || state->struct_size < sizeof(nk_text_input_state) || !state->text)
+        return invalid_argument("text input state is missing or too small");
+    const std::string text = state->text;
+    uint32_t codepoints = utf8_codepoints(text);
+    const uint64_t text_end = static_cast<uint64_t>(state->text_start) + codepoints;
+    const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
+                                state->composition_end == NK_TEXT_POSITION_NONE;
+    const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
+                                   state->composition_end != NK_TEXT_POSITION_NONE &&
+                                   state->composition_start <= state->composition_end &&
+                                   state->composition_start >= state->text_start &&
+                                   state->composition_end <= text_end;
+    const bool valid_cursor = std::isfinite(state->cursor_x) &&
+                              std::isfinite(state->cursor_y) &&
+                              std::isfinite(state->cursor_width) &&
+                              std::isfinite(state->cursor_height) &&
+                              state->cursor_width >= 0.0f && state->cursor_height >= 0.0f;
+    if (text_end > std::numeric_limits<nk_text_position>::max() ||
+        state->text_start > state->document_length || text_end > state->document_length ||
+        state->selection_start > state->selection_end ||
+        state->selection_start < state->text_start || state->selection_end > text_end ||
+        (!no_composition && !valid_composition) || state->input_type > NK_TEXT_INPUT_PASSWORD ||
+        (state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
+                          NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) != 0 ||
+        state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
+        return invalid_argument("text input ranges are inconsistent with the supplied text");
+    auto surface = get_surface(handle);
+    if (!surface)
+        return invalid_handle("invalid web text-input surface handle");
+    surface->text_input_text = text;
+    surface->text_input_state = *state;
+    surface->text_input_state.text = surface->text_input_text.c_str();
+    surface->text_input_state_set = true;
+    if (surface->text_input_active)
+        configure_text_input(*surface);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, nk_bool active) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (active > 1)
+        return invalid_argument("text input active state must be zero or one");
+    auto surface = get_surface(handle);
+    if (!surface)
+        return invalid_handle("invalid web text-input surface handle");
+    auto window = get_window(surface->parent);
+    if (!window)
+        return invalid_handle("invalid web text-input window handle");
+    if (active) {
+        if (window->text_input_surface != NK_INVALID_HANDLE &&
+            window->text_input_surface != surface->handle) {
+            auto previous = get_surface(window->text_input_surface);
+            if (previous) {
+                previous->text_input_active = false;
+                configure_text_input(*previous);
+            }
+        }
+        window->text_input_surface = surface->handle;
+        surface->text_input_active = true;
+        configure_text_input(*surface);
+    } else {
+        surface->text_input_active = false;
+        if (window->text_input_surface == surface->handle) {
+            window->text_input_surface = NK_INVALID_HANDLE;
+            configure_text_input(*surface);
+        }
     }
     return NK_OK;
 }
