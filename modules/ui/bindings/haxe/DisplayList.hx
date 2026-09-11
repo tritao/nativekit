@@ -22,13 +22,6 @@ class DisplayList {
 		canvas.submitTo(value);
 	}
 
-	/** Internal bridge for Canvas and other command encoders. */
-	@:noCompletion
-	public function updateCommands(commands:CanvasCommandBuffer):Void {
-		ensureLive();
-		UiResult.check(commands.submit(value), "displayList.update");
-	}
-
 	/** Removes all commands and releases the list's retained resource references. */
 	public function clear():Void {
 		ensureLive();

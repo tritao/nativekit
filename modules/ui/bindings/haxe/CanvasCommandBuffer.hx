@@ -4,6 +4,7 @@ import CompositeMode;
 import LineCap;
 import LineJoin;
 
+@:noCompletion
 class CanvasCommandBuffer {
 	var bytes:Bytes;
 	var length:Int;
@@ -16,16 +17,9 @@ class CanvasCommandBuffer {
 	}
 
 	@:noCompletion
-	public function reset():Void
+	@:allow(Canvas)
+	private function reset():Void
 		length = 0;
-
-	@:noCompletion
-	public function data():Bytes
-		return bytes;
-
-	@:noCompletion
-	public function size():Int
-		return length;
 
 	public function save():Void
 		header(NativeKitUIConstants.NKUI_COMMAND_PUSH_STATE, 8);
@@ -74,10 +68,6 @@ class CanvasCommandBuffer {
 
 	public function endLayer():Void
 		header(NativeKitUIConstants.NKUI_COMMAND_END_LAYER, 8);
-
-	public function drawSurface(surface:NativeKitUIResource, x:Float, y:Float, width:Float,
-		height:Float):Void
-		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_RENDER_TARGET, surface, x, y, width, height);
 
 	public function strokePath(path:Path, width:Float, cap:LineCap = LineCap.Butt, join:LineJoin = LineJoin.Miter,
 		miterLimit:Float = 4.0):Void {
