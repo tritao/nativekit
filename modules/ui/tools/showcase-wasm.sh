@@ -25,13 +25,22 @@ HAXEON_DIR="$haxeon_dir" "$module_dir/tools/update-haxeon-wasm-hxi.sh" --check
 (cd "$haxeon_dir" && .tools/haxe/haxe -cp src --run compiler.tools.HaxeonCompiler \
     --target=wasm32 \
     --output="$artifact" \
-    --entry=Showcase \
+    --entry=ShowcaseWeb \
+    --wasm-import-memory \
+    --wasm-memory-base=134217728 \
+    --export=ShowcaseWeb.main \
+    --export=ShowcaseWeb.frame \
+    --export=ShowcaseWeb.status \
+    --export=ShowcaseWeb.shutdown \
     --root="$module_dir/examples/ui_showcase" \
     --root="$module_dir/bindings/haxe" \
     --root="$repo_dir/bindings/haxe" \
     --ffi-interface="$repo_dir/bindings/haxe/nativekit-wasm.hxi" \
+    --ffi-projection="$repo_dir/bindings/haxe/nativekit.hxmap" \
     --ffi-interface="$module_dir/bindings/nativekit-ui-wasm.hxi" \
+    --ffi-projection="$module_dir/bindings/nativekit-ui.hxmap" \
     "$module_dir/examples/ui_showcase/Showcase.hx" \
+    "$module_dir/examples/ui_showcase/ShowcaseWeb.hx" \
     "$module_dir/bindings/haxe/"*.hx \
     "$repo_dir/bindings/haxe/NativeKitEvent.hx" \
     "$repo_dir/bindings/haxe/NativeKitEventValue.hx" \
@@ -49,7 +58,8 @@ const path = process.argv[2];
 const module = new WebAssembly.Module(fs.readFileSync(path));
 const imports = WebAssembly.Module.imports(module);
 const exports = WebAssembly.Module.exports(module).map(value => value.name);
-if (!exports.includes('main') || !exports.includes('memory'))
-    throw new Error('Showcase wasm is missing the main or memory export');
+const importsMemory = imports.some(value => value.kind === 'memory' && value.module === 'env' && value.name === 'memory');
+if (!exports.includes('main') || (!exports.includes('memory') && !importsMemory))
+    throw new Error('Showcase wasm is missing the main export or memory contract');
 console.log(`showcase-wasm: built ${path} (${imports.length} imports; exports ${exports.join(', ')})`);
 NODE

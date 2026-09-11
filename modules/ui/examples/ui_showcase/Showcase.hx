@@ -1,10 +1,10 @@
 import NativeKit;
 import NativeKitUI;
 import NativeKit.NativeKitConstants;
-import NativeKit.NkEventKind;
-import NativeKit.NkGraphicsApi;
-import NativeKit.NkInputAction;
-import NativeKit.NkResult;
+import NativeKit.EventKind;
+import NativeKit.GraphicsApi;
+import NativeKit.InputAction;
+import NativeKit.Result;
 import NativeKitEvent;
 import NativeKitEventValue;
 import NativeKitOptions;
@@ -21,8 +21,20 @@ import haxe.io.Bytes;
 class Showcase {
     public static inline var LOGICAL_WIDTH:Float = 900.0;
     public static inline var LOGICAL_HEIGHT:Float = 650.0;
+    static inline var HEADER_X:Float = 244.0;
+    static inline var HEADER_Y:Float = 20.0;
+    static inline var HEADER_WIDTH:Float = 632.0;
+    static inline var HEADER_HEIGHT:Float = 76.0;
+    static inline var HEADER_TITLE_X:Float = 270.0;
+    static inline var HEADER_TITLE_Y:Float = 46.0;
+    static inline var HEADER_SUBTITLE_X:Float = 272.0;
+    static inline var HEADER_SUBTITLE_Y:Float = 74.0;
+    static inline var HEADER_STATUS_X:Float = 622.0;
+    static inline var HEADER_STATUS_Y:Float = 34.0;
     static inline var TEXT_ORIGIN_X:Float = 260.0;
     static inline var TEXT_ORIGIN_Y:Float = 425.0;
+    static inline var IMAGE_TEXTURE_SIZE:Int = 256;
+    static inline var IMAGE_TEXTURE_CELLS:Int = 6;
     public static inline var TARGET_FPS:Float = 60.0;
     public static inline var STATUS_REFRESH_SECONDS:Float = 0.25;
 
@@ -110,18 +122,17 @@ class Showcase {
     var layerOpacity:Float = 0.68;
     var animate:Bool = true;
     var lightTheme:Bool = false;
-    var frameNumber:Int = 0;
+    var sceneScale:Float = 1.0;
+    var sceneOffsetX:Float = 0.0;
+    var sceneOffsetY:Float = 0.0;
 
-    function new() {
+    /** Takes ownership of the configured font collection. */
+    function new(fonts:FontCollection, ?multilingualText:String) {
         resources = [];
         list = DisplayList.create();
         renderer = Renderer.create();
-        fonts = FontCollection.create();
+        this.fonts = fonts;
         canvas = new Canvas(8192);
-        if (fontPath != null)
-            fonts.add(fontPath);
-        else
-            fonts.addSystemFallbacks();
 
         layoutSession = LayoutSession.create();
         layoutSession.setFonts(fonts);
@@ -156,7 +167,7 @@ class Showcase {
 
         backgroundPath = keep(rectPath(0.0, 0.0, LOGICAL_WIDTH, LOGICAL_HEIGHT));
         sidebarPath = keep(rectPath(0.0, 0.0, 220.0, LOGICAL_HEIGHT));
-        headerPath = keep(roundRectPath(244.0, 24.0, 632.0, 64.0, 14.0));
+        headerPath = keep(roundRectPath(HEADER_X, HEADER_Y, HEADER_WIDTH, HEADER_HEIGHT, 14.0));
         vectorCardPath = keep(roundRectPath(244.0, 108.0, 306.0, 236.0, 14.0));
         paintCardPath = keep(roundRectPath(564.0, 108.0, 312.0, 236.0, 14.0));
         textCardPath = keep(roundRectPath(244.0, 364.0, 632.0, 154.0, 14.0));
@@ -172,7 +183,10 @@ class Showcase {
         animationButtonPath = keep(rectPath(24.0, 350.0, 172.0, 40.0));
         sliderTrackPath = keep(rectPath(24.0, 424.0, 172.0, 6.0));
         themeButtonPath = keep(rectPath(24.0, 472.0, 172.0, 40.0));
-        image = keep(checkerImage(24, 24));
+        // Keep enough source resolution for the image panel at high-DPI scales.
+        // The renderer remains linear-filtered; this avoids enlarging a tiny
+        // diagnostic bitmap until its source texels become visible.
+        image = keep(checkerImage(IMAGE_TEXTURE_SIZE, IMAGE_TEXTURE_SIZE));
 
         title = keep(TextLayout.createStyled(fonts, "NativeKit Graphics Lab",
             new TextStyle(29.0), new ParagraphStyle(600.0)));
@@ -190,7 +204,7 @@ class Showcase {
         surfaceLabel = keep(TextLayout.createStyled(fonts, "GRAPHICS SURFACE",
             new TextStyle(12.0), new ParagraphStyle(270.0)));
         multilingual = keep(TextLayout.createStyled(fonts,
-            "NativeKit — مرحبا — שלום — こんにちは 👋",
+            multilingualText == null ? "NativeKit — مرحبا — שלום — こんにちは 👋" : multilingualText,
             new TextStyle(18.0), new ParagraphStyle(580.0)));
         sidebarCopy = keep(TextLayout.createStyled(fonts,
             "A visual proof of the\nNativeKit rendering\narchitecture.",
@@ -224,36 +238,56 @@ class Showcase {
         caretPosition = multilingual.hitTest(160.0, 22.0);
     }
 
+    /** Fits the fixed design canvas into the current logical window viewport. */
+    public function setViewport(width:Float, height:Float):Void {
+        if (width <= 0.0 || height <= 0.0)
+            return;
+        sceneScale = Math.min(width / LOGICAL_WIDTH, height / LOGICAL_HEIGHT);
+        sceneOffsetX = (width - LOGICAL_WIDTH * sceneScale) * 0.5;
+        sceneOffsetY = (height - LOGICAL_HEIGHT * sceneScale) * 0.5;
+    }
+
     function keep<T:NativeKitUIResource>(resource:T):T {
         resources.push(resource);
         return resource;
     }
 
-    public function addTestFonts(fontPath:Null<String>, emojiPath:Null<String>):Void {
-        if (fontPath != null)
-            fonts.add(fontPath);
-        if (emojiPath != null)
-            fonts.add(emojiPath, FontFamily.Emoji);
-    }
-
     public function updatePointer(x:Float, y:Float):Void {
-        pointerX = x;
-        pointerY = y;
+        pointerX = (x - sceneOffsetX) / sceneScale;
+        pointerY = (y - sceneOffsetY) / sceneScale;
         updateCaret();
     }
 
     public function pointerButton(x:Float, y:Float, pressed:Bool):Void {
         updatePointer(x, y);
+        pointerDown = pressed;
+        if (pressed)
+            pointerPressedPending = true;
         if (!pressed)
             return;
-        if (x >= 24.0 && x <= 196.0 && y >= 350.0 && y <= 398.0) {
+        if (pointerX >= 24.0 && pointerX <= 196.0 && pointerY >= 350.0 && pointerY <= 398.0) {
             animate = !animate;
-        } else if (x >= 24.0 && x <= 196.0 && y >= 414.0 && y <= 454.0) {
-            layerOpacity = Math.max(0.15, Math.min(1.0, (x - 24.0) / 172.0));
-        } else if (x >= 24.0 && x <= 196.0 && y >= 472.0 && y <= 514.0) {
+        } else if (pointerX >= 24.0 && pointerX <= 196.0 && pointerY >= 414.0 &&
+                pointerY <= 454.0) {
+            layerOpacity = Math.max(0.15, Math.min(1.0, (pointerX - 24.0) / 172.0));
+        } else if (pointerX >= 24.0 && pointerX <= 196.0 && pointerY >= 472.0 &&
+                pointerY <= 514.0) {
             lightTheme = !lightTheme;
         }
         updateCaret();
+    }
+
+    function submitLayoutFrame(logicalWidth:Float, logicalHeight:Float):Void {
+        layoutRoot.style.width = LayoutAxis.fixed(logicalWidth);
+        layoutRoot.style.height = LayoutAxis.fixed(logicalHeight);
+        layoutRoot.style.padding = new Insets(14.0, 14.0, 0.0, 0.0);
+        layoutLabel.text = animate ? "LAYOUT  ·  ANIMATE ON" : "LAYOUT  ·  ANIMATE OFF";
+        var events = layoutSession.submit(layoutRoot, logicalWidth, logicalHeight, pointerX,
+            pointerY, pointerDown || pointerPressedPending, 1.0 / TARGET_FPS);
+        pointerPressedPending = false;
+        for (event in events)
+            if (event.nodeId == layoutButton.id && event.isButtonActivated())
+                animate = !animate;
     }
 
     function updateCaret():Void {
@@ -263,20 +297,19 @@ class Showcase {
     }
 
     /** Encodes one complete frame using only the typed Haxe graphics API. */
-    public function encodeFrame(seconds:Float, framebufferWidth:Int, framebufferHeight:Int,
-            pixelScale:Float, staticFrame:Bool):Void {
+    public function encodeFrame(seconds:Float, logicalWidth:Float, logicalHeight:Float,
+            framebufferWidth:Int, framebufferHeight:Int, pixelScale:Float,
+            staticFrame:Bool):Void {
+        setViewport(logicalWidth, logicalHeight);
+        submitLayoutFrame(logicalWidth, logicalHeight);
         var replacedCaret:Null<Path> = null;
         var sizeChanged = framebufferWidth != statusFramebufferWidth ||
             framebufferHeight != statusFramebufferHeight || pixelScale != statusPixelScale;
         var refreshStatus = statusLayout == null || sizeChanged || staticFrame ||
             statusLastRefresh < 0.0 || seconds - statusLastRefresh >= STATUS_REFRESH_SECONDS;
         if (refreshStatus) {
-            var stats = renderer.stats();
-            var info = list.info();
-            var status = 'OPENGL · ${framebufferWidth}×${framebufferHeight} · scale ${format(pixelScale)}\n' +
-                'cmd ${info.commandCount} · ${info.commandBytes} B · prep ${stats.pathPreparations} · ' +
-                'hits ${stats.pathCacheHits}\n' +
-                'retained ${stats.pathGeometryBytesRetained} B';
+            var status = 'OPENGL · retained display list · typed compositor\n' +
+                'vector paths · paints · text · image';
             if (statusText == null || status != statusText) {
                 if (statusLayout == null)
                     statusLayout = TextLayout.createStyled(fonts, status, new TextStyle(10.0),
@@ -299,10 +332,13 @@ class Showcase {
             // Skribidi reports caret.x at the baseline and a slope in
             // dx/dy form. Keep the caret in the same layout coordinate space
             // as drawing and hit testing, including italic fonts.
-            caretPath = linePath(TEXT_ORIGIN_X + caret.x + caret.slope * caret.ascender,
-                TEXT_ORIGIN_Y + caret.y + caret.ascender,
-                TEXT_ORIGIN_X + caret.x + caret.slope * caret.descender,
-                TEXT_ORIGIN_Y + caret.y + caret.descender);
+            var caretX1 = TEXT_ORIGIN_X + caret.x + caret.slope * caret.ascender;
+            var caretY1 = TEXT_ORIGIN_Y + caret.y + caret.ascender;
+            var caretX2 = TEXT_ORIGIN_X + caret.x + caret.slope * caret.descender;
+            var caretY2 = TEXT_ORIGIN_Y + caret.y + caret.descender;
+            caretPath = caretX1 != caretX2 || caretY1 != caretY2
+                ? linePath(caretX1, caretY1, caretX2, caretY2)
+                : null;
             caretPathOffset = caretPosition.offset;
             caretPathAffinity = caretPosition.affinity;
         }
@@ -320,10 +356,15 @@ class Showcase {
 
         canvas.reset();
         canvas.withState(function(canvas) {
-            var base = lightTheme ? lightBackground : background;
-            canvas.fill(backgroundPath, base);
+            var base:Paint = background;
+            if (lightTheme)
+                base = lightBackground;
+            canvas.withState(function(canvas) {
+                canvas.translate(sceneOffsetX, sceneOffsetY);
+                canvas.scale(sceneScale, sceneScale);
+                canvas.fill(backgroundPath, base);
 
-            canvas.withClip(new Rect(0.0, 0.0, 220.0, LOGICAL_HEIGHT), function(canvas) {
+                canvas.withClip(new Rect(0.0, 0.0, 220.0, LOGICAL_HEIGHT), function(canvas) {
                 canvas.fill(sidebarPath, sidebar);
                 canvas.setAlpha(0.9);
                 canvas.withState(function(canvas) {
@@ -336,7 +377,6 @@ class Showcase {
                 });
                 canvas.drawText(sidebarCopy, 24.0, 134.0);
                 canvas.drawText(controlsLabel, 24.0, 310.0);
-
                 canvas.fill(animationButtonPath, animate ? green : cardRaised);
                 canvas.drawText(animate ? animateOnLabel : animateOffLabel, 40.0, 375.0);
                 canvas.fill(sliderTrackPath, cardRaised);
@@ -354,9 +394,9 @@ class Showcase {
             });
 
             canvas.fill(headerPath, cardRaised);
-            canvas.drawText(title, 270.0, 52.0);
-            canvas.drawText(subtitle, 272.0, 82.0);
-            canvas.drawText(statusLayout, 622.0, 39.0);
+            canvas.drawText(title, HEADER_TITLE_X, HEADER_TITLE_Y);
+            canvas.drawText(subtitle, HEADER_SUBTITLE_X, HEADER_SUBTITLE_Y);
+            canvas.drawText(statusLayout, HEADER_STATUS_X, HEADER_STATUS_Y);
 
             canvas.fill(vectorCardPath, card);
             canvas.drawText(vectorLabel, 262.0, 132.0);
@@ -388,15 +428,17 @@ class Showcase {
                 canvas.translate(60.0, 0.0);
                 canvas.fill(circle22Path, orange);
             });
-            canvas.withClip(new Rect(594.0, 224.0, 252.0, 88.0), function(canvas) {
-                canvas.withLayer(layerOpacity, function(canvas) {
-                    canvas.drawImage(image, new Rect(600.0, 230.0, 84.0, 84.0));
-                    canvas.withState(function(canvas) {
-                        canvas.translate(790.0, 270.0);
-                        canvas.fill(diamondPath, cyan);
-                    });
+            var paintClip = new Rect(594.0, 224.0, 252.0, 88.0);
+            canvas.save();
+            canvas.clip(paintClip);
+            canvas.withLayer(layerOpacity, function(canvas) {
+                canvas.drawImage(image, new Rect(600.0, 230.0, 84.0, 84.0));
+                canvas.withState(function(canvas) {
+                    canvas.translate(790.0, 270.0);
+                    canvas.fill(diamondPath, cyan);
                 });
             });
+            canvas.restore();
             canvas.drawText(paintCaption, 582.0, 330.0);
 
             canvas.fill(textCardPath, cardRaised);
@@ -432,18 +474,20 @@ class Showcase {
                 });
             });
             canvas.drawText(footerLabel, 262.0, 643.0);
+            });
         });
         canvas.update(list);
         if (replacedCaret != null)
             replacedCaret.dispose();
-        frameNumber++;
     }
 
     public function render(surface:Int, logicalWidth:Float, logicalHeight:Float,
             framebufferWidth:Int, framebufferHeight:Int, pixelScale:Float):Void {
         var frame = new FrameInfo(logicalWidth, logicalHeight, framebufferWidth, framebufferHeight,
             pixelScale);
-        renderer.renderFrame(list, Surface.fromNativeHandle(surface), frame);
+        var target = Surface.fromNativeHandle(surface);
+        renderer.renderFrame(list, target, frame);
+        layoutSession.renderOverlay(renderer, target, frame);
     }
 
     public function printStats():Void {
@@ -472,6 +516,7 @@ class Showcase {
             caretStatusLayout.dispose();
             caretStatusLayout = null;
         }
+        layoutSession.dispose();
         renderer.dispose();
         list.dispose();
         for (resource in resources)
@@ -562,7 +607,9 @@ class Showcase {
         var pixels = Bytes.alloc(width * height * 4);
         for (y in 0...height)
             for (x in 0...width) {
-                var bright = (((x / 4) + (y / 4)) % 2) == 0;
+                var cellX = Std.int(x * IMAGE_TEXTURE_CELLS / width);
+                var cellY = Std.int(y * IMAGE_TEXTURE_CELLS / height);
+                var bright = ((cellX + cellY) % 2) == 0;
                 var offset = (y * width + x) * 4;
                 pixels.set(offset, bright ? 49 : 18);
                 pixels.set(offset + 1, bright ? 202 : 76);
@@ -572,154 +619,4 @@ class Showcase {
         return Image.create(width, height, ImageFormat.RGBA8, pixels);
     }
 
-    static function has(args:Array<String>, name:String):Bool
-        return args.indexOf(name) >= 0;
-
-    static function main():Int {
-        var args = Sys.args();
-        var smoke = has(args, "--smoke-test");
-        var staticFrame = has(args, "--static-frame");
-        var printStats = has(args, "--stats");
-        for (arg in args)
-            if (arg != "--smoke-test" && arg != "--static-frame" && arg != "--stats")
-                return 2;
-
-        var initialized = false;
-        var window:Int = 0;
-        var surface:Int = 0;
-        var app:Null<Showcase> = null;
-        var result = 0;
-        try {
-            var init = new nk_init_options();
-            init.set_struct_size(nk_init_options.size());
-            init.set_api_version(NativeKitConstants.NK_API_VERSION);
-            init.set_event_queue_capacity(64);
-            if (NativeKit.nk_init(init) != NkResult.Ok)
-                return 10;
-            initialized = true;
-
-            var windowOptions = NativeKitOptions.window(900, 650, "NativeKit Graphics Lab");
-            var createdWindow = NativeKit.nk_window_create(windowOptions);
-            if (createdWindow.status != NkResult.Ok) {
-                NativeKit.nk_shutdown();
-                return 11;
-            }
-            window = createdWindow.out_window;
-
-            var surfaceOptions = new nk_surface_options();
-            surfaceOptions.set_struct_size(nk_surface_options.size());
-            surfaceOptions.set_flags(NativeKitConstants.NK_SURFACE_FORWARD_COMPATIBLE |
-                NativeKitConstants.NK_SURFACE_STENCIL);
-            surfaceOptions.set_api(NkGraphicsApi.Opengl);
-            surfaceOptions.set_major_version(3);
-            surfaceOptions.set_minor_version(3);
-            surfaceOptions.set_width(900);
-            surfaceOptions.set_height(650);
-            var createdSurface = NativeKit.nk_surface_create(window, surfaceOptions);
-            if (createdSurface.status != NkResult.Ok) {
-                NativeKit.nk_window_destroy(window);
-                NativeKit.nk_shutdown();
-                return 12;
-            }
-            surface = createdSurface.out_surface;
-            app = new Showcase();
-            app.addTestFonts(Sys.getEnv("NKUI_TEST_FONT_PATH"), Sys.getEnv("NKUI_COLOR_FONT_PATH"));
-
-            var running = true;
-            var ready = false;
-            var logicalWidth = LOGICAL_WIDTH;
-            var logicalHeight = LOGICAL_HEIGHT;
-            var framebufferWidth = 0;
-            var framebufferHeight = 0;
-            var scale = 1.0;
-            var rendered = 0;
-            var started = Date.now().getTime();
-            var nextFrameAt:Float = started;
-
-            while (running) {
-                var event = NativeKitEvent.poll();
-                var value = event.decode();
-                var eventKind = event.kind;
-                var eventSource = event.source;
-                event.release();
-                switch (value) {
-                    case WindowClose(source) if (source == window):
-                        running = false;
-                    case WindowResize(source, width, height) if (source == window):
-                        if (NativeKit.nk_surface_set_bounds(surface, 0, 0, width, height) !=
-                            NkResult.Ok)
-                            throw "surface resize failed";
-                    case SurfaceReady(source) if (source == surface):
-                        ready = true;
-                        var size = NativeKit.nk_surface_get_framebuffer_size(surface);
-                        if (size.status != NkResult.Ok)
-                            throw "framebuffer size query failed";
-                        framebufferWidth = size.out_width;
-                        framebufferHeight = size.out_height;
-                        var windowScale = NativeKit.nk_window_get_scale(window);
-                        if (windowScale.status != NkResult.Ok)
-                            throw "window scale query failed";
-                        scale = windowScale.out_scale;
-                    case SurfaceResize(source, width, height, newFramebufferWidth, newFramebufferHeight)
-                        if (source == surface):
-                        logicalWidth = width;
-                        logicalHeight = height;
-                        framebufferWidth = newFramebufferWidth;
-                        framebufferHeight = newFramebufferHeight;
-                    case SurfaceLost(source) if (source == surface):
-                        ready = false;
-                    case PointerMove(source, x, y) if (source == window):
-                        app.updatePointer(x, y);
-                    case PointerButton(source, _, action, _, x, y) if (source == window):
-                        app.pointerButton(x, y, action == NkInputAction.Press);
-                    case Key(source, key, _, action, _) if (source == window &&
-                            action == NkInputAction.Press && key == NativeKitConstants.NK_KEY_ESCAPE):
-                        running = false;
-                    default:
-                }
-
-                if (ready && running) {
-                    if (!staticFrame && !smoke) {
-                        var beforeFrame = Date.now().getTime();
-                        if (nextFrameAt > beforeFrame)
-                            Sys.sleep((nextFrameAt - beforeFrame) / 1000.0);
-                    }
-                    var elapsed = (Date.now().getTime() - started) / 1000.0;
-                    if (staticFrame)
-                        elapsed = 0.0;
-                    app.encodeFrame(elapsed, framebufferWidth, framebufferHeight, scale, staticFrame);
-                    app.render(surface, logicalWidth, logicalHeight, framebufferWidth, framebufferHeight,
-                        scale);
-                    if (NativeKit.nk_surface_present(surface) != NkResult.Ok)
-                        throw "surface present failed";
-                    rendered++;
-                    if (staticFrame || (smoke && rendered >= 30))
-                        running = false;
-                    else if (!smoke) {
-                        nextFrameAt += 1000.0 / TARGET_FPS;
-                        var afterFrame = Date.now().getTime();
-                        if (nextFrameAt < afterFrame)
-                            nextFrameAt = afterFrame;
-                    }
-                } else if (eventKind == NkEventKind.None) {
-                    Sys.sleep(0.002);
-                }
-            }
-            if (printStats || smoke || staticFrame)
-                app.printStats();
-            result = rendered > 0 ? 0 : 17;
-        } catch (error:Dynamic) {
-            Sys.println("nativekit_ui_showcase: " + Std.string(error));
-            result = 20;
-        }
-        if (app != null)
-            app.dispose();
-        if (surface != 0)
-            NativeKit.nk_surface_destroy(surface);
-        if (window != 0)
-            NativeKit.nk_window_destroy(window);
-        if (initialized)
-            NativeKit.nk_shutdown();
-        return result;
-    }
 }

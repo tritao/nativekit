@@ -1,0 +1,6 @@
+{
+  "interface": "NativeKitUI",
+  "typeNames": {
+    "nk_handle": "NativeKit.Handle"
+  }
+}

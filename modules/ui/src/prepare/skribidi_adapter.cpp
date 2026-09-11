@@ -227,24 +227,28 @@ bool SkribidiAdapter::add_font(const char *path, FontFamily family) {
 
 bool SkribidiAdapter::add_font_from_data(const char *name, const void *data, std::size_t bytes,
                                          FontFamily family) {
-    const uint8_t skb_family =
-        family == FontFamily::Emoji ? SKB_FONT_FAMILY_EMOJI : SKB_FONT_FAMILY_DEFAULT;
     if (!name || !*name || !data || !bytes || !valid())
         return false;
     try {
         auto owned = std::make_shared<std::vector<uint8_t>>(
             static_cast<const uint8_t *>(data), static_cast<const uint8_t *>(data) + bytes);
-        state_->font_data.push_back(owned);
-        if (!skb_font_collection_add_font_from_data(state_->fonts, name, owned->data(),
-                                                    owned->size(), nullptr, nullptr, skb_family,
-                                                    nullptr)) {
-            state_->font_data.pop_back();
-            return false;
-        }
-        return true;
+        return add_font_from_shared_data(name, owned, family);
     } catch (...) {
         return false;
     }
+}
+
+bool SkribidiAdapter::add_font_from_shared_data(
+    const char *name, const std::shared_ptr<std::vector<uint8_t>> &data, FontFamily family) {
+    const uint8_t skb_family =
+        family == FontFamily::Emoji ? SKB_FONT_FAMILY_EMOJI : SKB_FONT_FAMILY_DEFAULT;
+    if (!name || !*name || !data || data->empty() || !valid())
+        return false;
+    if (!skb_font_collection_add_font_from_data(state_->fonts, name, data->data(), data->size(),
+                                                nullptr, nullptr, skb_family, nullptr))
+        return false;
+    state_->font_data.push_back(data);
+    return true;
 }
 
 bool SkribidiAdapter::add_system_fallbacks() {

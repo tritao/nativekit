@@ -284,6 +284,8 @@ if(NK_BUILD_EXAMPLES)
         set(NKUI_HAXEON_DIR "${PROJECT_SOURCE_DIR}/../realtime-haxe")
     endif()
     if(EXISTS "${NKUI_HAXEON_DIR}/.tools/haxe/haxe")
+        file(GLOB_RECURSE NKUI_HAXEON_DEPS CONFIGURE_DEPENDS
+            "${NKUI_HAXEON_DIR}/src/*.hx")
         add_custom_target(nativekit_ui_showcase
             COMMAND ${CMAKE_COMMAND} -E env
                 "NATIVEKIT_BUILD_DIR=${CMAKE_BINARY_DIR}"
@@ -306,6 +308,58 @@ if(NK_BUILD_EXAMPLES)
                     ENVIRONMENT
                         "LIBGL_ALWAYS_SOFTWARE=1;NATIVEKIT_BUILD_DIR=${CMAKE_BINARY_DIR};HAXEON_DIR=${NKUI_HAXEON_DIR}")
             endif()
+        endif()
+
+        if(EMSCRIPTEN)
+            file(GLOB NKUI_HAXEON_GUEST_HX_DEPS CONFIGURE_DEPENDS
+                "${CMAKE_CURRENT_SOURCE_DIR}/bindings/haxe/*.hx"
+                "${PROJECT_SOURCE_DIR}/bindings/haxe/*.hx")
+            set(NKUI_HAXEON_GUEST_WASM
+                "${CMAKE_CURRENT_BINARY_DIR}/nativekit_ui_showcase_wasm32.wasm")
+            add_custom_command(OUTPUT "${NKUI_HAXEON_GUEST_WASM}"
+                COMMAND ${CMAKE_COMMAND} -E env
+                    "NATIVEKIT_WASM_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+                    "HAXEON_DIR=${NKUI_HAXEON_DIR}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase-wasm.sh"
+                DEPENDS
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase-wasm.sh"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/Showcase.hx"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/ShowcaseWeb.hx"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui-wasm.hxi"
+                    "${PROJECT_SOURCE_DIR}/bindings/haxe/nativekit-wasm.hxi"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui.hxmap"
+                    "${PROJECT_SOURCE_DIR}/bindings/haxe/nativekit.hxmap"
+                    ${NKUI_HAXEON_GUEST_HX_DEPS}
+                    ${NKUI_HAXEON_DEPS}
+                WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+                USES_TERMINAL)
+            add_custom_target(nativekit_ui_haxeon_guest
+                DEPENDS "${NKUI_HAXEON_GUEST_WASM}")
+
+            add_executable(nativekit_ui_haxeon examples/ui_haxeon/host.cpp)
+            target_link_libraries(nativekit_ui_haxeon PRIVATE NativeKit::ui NativeKit::nativekit)
+            add_dependencies(nativekit_ui_haxeon nativekit_ui_haxeon_guest)
+            set(NKUI_HAXEON_FONT_PATH
+                "${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+            target_link_options(nativekit_ui_haxeon PRIVATE
+                "-sINITIAL_MEMORY=268435456"
+                "-sALLOW_MEMORY_GROWTH=1"
+                "-sEXPORTED_FUNCTIONS=[_main,_nk_api_version,_nk_event_release,_nk_init,_nk_last_error,_nk_poll_event,_nk_shutdown,_nk_surface_create,_nk_surface_destroy,_nk_surface_get_framebuffer_size,_nk_surface_make_current,_nk_surface_present,_nk_surface_set_bounds,_nk_window_create,_nk_window_destroy,_nk_window_get_scale,_nkui_display_list_create,_nkui_display_list_destroy,_nkui_display_list_get_info,_nkui_display_list_reset,_nkui_display_list_submit,_nkui_font_collection_add,_nkui_font_collection_add_system_fallbacks,_nkui_font_collection_create,_nkui_image_create,_nkui_paint_create_solid,_nkui_path_create,_nkui_renderer_create,_nkui_renderer_destroy,_nkui_renderer_get_stats,_nkui_renderer_render,_nkui_renderer_render_frame,_nkui_resource_destroy,_nkui_text_layout_caret,_nkui_text_layout_create,_nkui_text_layout_hit_test,_nkui_text_layout_set_text,_nkui_layout_session_create,_nkui_layout_session_destroy,_nkui_layout_session_get_event,_nkui_layout_session_get_event_count,_nkui_layout_session_render_frame,_nkui_layout_session_set_font_collection,_nkui_layout_session_submit]"
+                "--preload-file=${NKUI_HAXEON_FONT_PATH}@/assets/IBMPlexSans-Regular.ttf"
+                "-sNO_EXIT_RUNTIME=1")
+            add_custom_target(nativekit_ui_haxeon_assets
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${NKUI_HAXEON_GUEST_WASM}"
+                    "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/nativekit_ui_haxeon_guest.wasm"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_haxeon/web_shell.html"
+                    "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/nativekit_ui_haxeon.html"
+                DEPENDS
+                    nativekit_ui_haxeon_guest
+                    "${NKUI_HAXEON_FONT_PATH}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_haxeon/web_shell.html"
+                COMMENT "Copying NativeKit Haxeon browser host")
+            add_dependencies(nativekit_ui_haxeon nativekit_ui_haxeon_assets)
         endif()
     endif()
     if(NK_BUILD_SOKOL_BACKEND_MATRIX AND NK_BUILD_TESTS)

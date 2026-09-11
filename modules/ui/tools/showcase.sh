@@ -33,12 +33,15 @@ fi
 
 (cd "$haxeon_dir" && .tools/haxe/haxe -cp src --run compiler.tools.HaxeonCompiler \
     --output="$artifact" \
-    --entry=Showcase \
+    --entry=ShowcaseDesktop \
     --root="$module_dir/examples/ui_showcase" \
     --root="$module_dir/bindings/haxe" \
     --root="$repo_dir/bindings/haxe" \
     --ffi-interface="$repo_dir/bindings/haxe/nativekit.hxi" \
+    --ffi-projection="$repo_dir/bindings/haxe/nativekit.hxmap" \
     --ffi-interface="$module_dir/bindings/nativekit-ui.hxi" \
+    --ffi-projection="$module_dir/bindings/nativekit-ui.hxmap" \
+    "$module_dir/examples/ui_showcase/ShowcaseDesktop.hx" \
     "$module_dir/examples/ui_showcase/Showcase.hx" \
     "$module_dir/bindings/haxe/"*.hx \
     "$repo_dir/bindings/haxe/NativeKitEvent.hx" \

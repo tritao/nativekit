@@ -941,9 +941,8 @@ extern "C" nkui_result nkui_text_layout_create(nkui_resource fonts, const char *
                  layout_slot->text->set_atlas_namespace(static_cast<uint16_t>(out_layout->id));
     for (const auto &font : font_entries) {
         if (font.data)
-            valid = valid && layout_slot->text->add_font_from_data(
-                                 font.path.c_str(), font.data->data(), font.data->size(),
-                                 font.family);
+            valid = valid && layout_slot->text->add_font_from_shared_data(font.path.c_str(), font.data,
+                                                                           font.family);
         else
             valid = valid && layout_slot->text->add_font(font.path.c_str(), font.family);
     }

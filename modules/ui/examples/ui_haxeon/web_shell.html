@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NativeKit Haxeon Showcase - WebGL2</title>
+  <style>
+    :root { color-scheme: dark; font: 14px system-ui, sans-serif; }
+    html, body { margin: 0; min-height: 100%; background: #101522; }
+    body { display: grid; place-items: center; gap: 12px; padding: 20px; box-sizing: border-box; }
+    #canvas { display: block; width: min(900px, 100%); height: auto; outline: none; background: #070a17; }
+    #status { color: #a9b5cc; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" width="900" height="650" tabindex="0" aria-label="NativeKit Haxeon UI showcase"></canvas>
+  <div id="status">Loading Haxeon Showcase…</div>
+  <script>
+    const canvas = document.getElementById("canvas");
+    const status = document.getElementById("status");
+    const smoke = new URLSearchParams(location.search).has("smoke");
+    let hostMemory = null;
+    let guest = null;
+    let frameCount = 0;
+    let finished = false;
+
+    function setResult(result, message) {
+      if (finished)
+        return;
+      finished = true;
+      status.textContent = message || (result === 0
+        ? "NativeKit Haxeon browser smoke test passed"
+        : "NativeKit Haxeon browser smoke test failed (" + result + ")");
+      document.documentElement.dataset.nativekitResult = String(result);
+    }
+
+    function readNativeError() {
+      const pointer = Module["_nk_last_error"]();
+      if (!pointer || !hostMemory)
+        return "unknown NativeKit error";
+      const heap = new Uint8Array(hostMemory.buffer);
+      let end = pointer;
+      while (heap[end])
+        end++;
+      return new TextDecoder().decode(heap.subarray(pointer, end));
+    }
+
+    function forward(names) {
+      return Object.fromEntries(names.map(name => {
+        const value = Module["_" + name];
+        if (typeof value !== "function")
+          throw new Error("Emscripten did not export " + name);
+        return [name, (...args) => value(...args)];
+      }));
+    }
+
+    function nativekitImports() {
+      return forward([
+        "nk_api_version", "nk_event_release", "nk_init", "nk_poll_event", "nk_shutdown",
+        "nk_surface_create", "nk_surface_destroy", "nk_surface_get_framebuffer_size",
+        "nk_surface_make_current", "nk_surface_present", "nk_surface_set_bounds",
+        "nk_window_create", "nk_window_destroy", "nk_window_get_scale"
+      ]);
+    }
+
+    function nativekitUiImports() {
+      return forward([
+        "nkui_display_list_create", "nkui_display_list_destroy",
+        "nkui_display_list_get_info", "nkui_display_list_reset",
+        "nkui_display_list_submit", "nkui_font_collection_add",
+        "nkui_font_collection_add_system_fallbacks",
+        "nkui_font_collection_create", "nkui_image_create",
+        "nkui_paint_create_solid", "nkui_path_create", "nkui_renderer_create",
+        "nkui_renderer_render", "nkui_renderer_destroy", "nkui_renderer_get_stats",
+        "nkui_renderer_render_frame", "nkui_resource_destroy",
+        "nkui_text_layout_caret", "nkui_text_layout_create",
+        "nkui_text_layout_hit_test", "nkui_text_layout_set_text",
+        "nkui_layout_session_create", "nkui_layout_session_destroy",
+        "nkui_layout_session_get_event", "nkui_layout_session_get_event_count",
+        "nkui_layout_session_render_frame", "nkui_layout_session_set_font_collection",
+        "nkui_layout_session_submit"
+      ]);
+    }
+
+    function startGuest() {
+      const imports = {
+        env: { memory: hostMemory },
+        nativekit: nativekitImports(),
+        nativekit_ui: nativekitUiImports(),
+        std: { sys_exit: code => {} },
+        haxeon_runtime: {
+          __math_is_nan: Number.isNaN,
+          __math_cos: Math.cos,
+          __math_fmod: (left, right) => left % right,
+          __math_round: Math.round,
+          __math_sin: Math.sin
+        }
+      };
+      WebAssembly.instantiateStreaming(fetch("nativekit_ui_haxeon_guest.wasm"), imports)
+        .catch(error => {
+          if (!(error instanceof TypeError))
+            throw error;
+          return fetch("nativekit_ui_haxeon_guest.wasm")
+            .then(response => response.arrayBuffer())
+            .then(bytes => WebAssembly.instantiate(bytes, imports));
+        })
+        .then(result => {
+          guest = result.instance.exports;
+          let started;
+          try {
+            started = guest["ShowcaseWeb.main"]();
+          } catch (error) {
+            setResult(25, "Haxeon guest main failed: " + error.message);
+            return;
+          }
+          if (started !== 0) {
+            setResult(started, "Haxeon Showcase failed to initialize (" + started + "): " + readNativeError());
+            return;
+          }
+          status.textContent = smoke ? "Running Haxeon browser smoke test…" :
+            "NativeKit Haxeon WebGL2 ready";
+          canvas.focus();
+          requestAnimationFrame(tick);
+        })
+        .catch(error => setResult(24, "Haxeon guest failed: " + error.message));
+    }
+
+    function tick(time) {
+      if (finished || !guest)
+        return;
+      try {
+        const frameResult = guest["ShowcaseWeb.frame"](time);
+        frameCount++;
+        if (frameResult < 0) {
+          setResult(-frameResult, "Haxeon Showcase frame failed (" + frameResult + "): " + readNativeError());
+          return;
+        }
+        if (smoke && frameCount >= 60) {
+          const result = guest["ShowcaseWeb.status"]();
+          guest["ShowcaseWeb.shutdown"]();
+          setResult(result);
+          return;
+        }
+        requestAnimationFrame(tick);
+      } catch (error) {
+        setResult(21, "Haxeon Showcase frame failed: " + error.message);
+      }
+    }
+
+    var Module = {
+      canvas,
+      noInitialRun: false,
+      instantiateWasm(imports, receiveInstance) {
+        fetch("nativekit_ui_haxeon.wasm")
+          .then(response => response.arrayBuffer())
+          .then(bytes => WebAssembly.instantiate(bytes, imports))
+          .then(result => {
+            hostMemory = Object.values(result.instance.exports)
+              .find(value => value instanceof WebAssembly.Memory);
+            receiveInstance(result.instance);
+          })
+          .catch(error => setResult(22, "NativeKit host failed: " + error.message));
+        return {};
+      },
+      onRuntimeInitialized() {
+        if (!hostMemory) {
+          setResult(23, "NativeKit host did not expose shared memory");
+          return;
+        }
+        startGuest();
+      },
+      print(text) { status.textContent = text; },
+      printErr(text) { console.error(text); }
+    };
+  </script>
+  <script src="nativekit_ui_haxeon.js"></script>
+</body>
+</html>

@@ -41,12 +41,13 @@ emcmake cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
     -DNK_BUILD_UI=ON \
     -DNK_SOKOL_BACKEND=gles3 \
     -DNK_SOKOL_SHDC="$shdc"
-cmake --build "$build_dir" --target nativekit_ui_c_api
+cmake --build "$build_dir" --target nativekit_ui_c_api nativekit_ui_haxeon
 
 artifact_dir="$build_dir/modules/ui"
 echo
 echo "Web build complete:"
 echo "  $artifact_dir/nativekit_ui_c_api.html"
+echo "  $artifact_dir/nativekit_ui_haxeon.html"
 echo
 echo "Serve it over HTTP (required for the packaged font):"
 echo "  python3 -m http.server --directory \"$artifact_dir\" 8080"
