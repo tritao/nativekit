@@ -163,22 +163,27 @@ int main() {
             result = 4;
         } else if (event.kind == NK_EVENT_SURFACE_READY && event.source == surface) {
             if (nk_surface_make_current(surface) != NK_OK ||
-                nk_surface_get_framebuffer_size(surface, &width, &height) != NK_OK ||
-                !backend->initialize())
+                nk_surface_get_framebuffer_size(surface, &width, &height) != NK_OK)
                 result = 5;
             else {
-                // Multiple UI renderers retain one process-local Sokol
-                // device. This exercises shared setup and release without
-                // changing the single-renderer draw sequence below.
-                shared_backend = std::make_unique<SokolBackend>();
-                if (!shared_backend->initialize())
-                    result = 17;
-                else {
 #ifdef NKUI_TEST_PUBLIC_SOKOL_RUNTIME
-                    if (nks_renderer_create(surface, &public_renderer) != NKS_OK)
-                        result = 19;
+                // Exercise the reverse ownership order: the public Sokol
+                // adapter acquires the NativeKit-wide runtime first, then
+                // UI backends retain the same compatible lease.
+                if (nks_renderer_create(surface, &public_renderer) != NKS_OK)
+                    result = 19;
 #endif
-                    ready = true;
+                if (!result && !backend->initialize())
+                    result = 5;
+                if (!result) {
+                    // Multiple UI renderers retain one process-local Sokol
+                    // device. This exercises shared setup and release without
+                    // changing the single-renderer draw sequence below.
+                    shared_backend = std::make_unique<SokolBackend>();
+                    if (!shared_backend->initialize())
+                        result = 17;
+                    else
+                        ready = true;
                 }
             }
         } else if (event.kind == NK_EVENT_SURFACE_RESIZE && event.source == surface &&

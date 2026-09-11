@@ -219,7 +219,7 @@ nks_result nks_renderer_create(nks_nativekit_handle surface, nks_renderer *out) 
         return fail(NKS_ERROR_UNKNOWN, "current: %s", nk_last_error());
     sg_desc desc{};
     desc.environment.defaults = {.color_format = SG_PIXELFORMAT_RGBA8,
-                                 .depth_format = SG_PIXELFORMAT_NONE,
+                                 .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
                                  .sample_count = 1};
     if (!nk_sokol_runtime_acquire(&desc))
         return fail(NKS_ERROR_UNKNOWN, "Sokol graphics runtime acquisition failed");
