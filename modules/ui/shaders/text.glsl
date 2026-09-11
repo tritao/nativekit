@@ -1,4 +1,6 @@
 @module nkui_text
+@image_sample_type tex unfilterable_float
+@sampler_type smp nonfiltering
 
 @vs vs
 layout(binding=0) uniform text_vs_params {

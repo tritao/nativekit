@@ -5,14 +5,16 @@
 #define SOKOL_GLCORE
 #include "sokol_gfx.h"
 
+#include "nkui_composite.glsl.h"
 #include "nkui_path.glsl.h"
+#include "nkui_solid.glsl.h"
+#include "nkui_text.glsl.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
 #include <string>
-#include <type_traits>
 #include <unordered_map>
 
 namespace nkui {
@@ -232,25 +234,8 @@ void copy_atlas_pixels(SokolBackend::State::AtlasImage &target, const AtlasUploa
 }
 
 sg_shader make_solid_shader() {
-    sg_shader_desc desc{};
-    desc.vertex_func.source = "#version 330\n"
-                              "uniform vec2 viewport; layout(location=0) in vec2 position;"
-                              "void main(){vec2 p=vec2(position.x/viewport.x*2.0-1.0,"
-                              "1.0-position.y/viewport.y*2.0);gl_Position=vec4(p,0,1);}";
-    desc.fragment_func.source =
-        "#version 330\n"
-        "uniform vec4 color; out vec4 frag_color; void main(){frag_color=color;}";
-    desc.uniform_blocks[0].stage = SG_SHADERSTAGE_VERTEX;
-    desc.uniform_blocks[0].size = 8;
-    desc.uniform_blocks[0].glsl_uniforms[0].type = SG_UNIFORMTYPE_FLOAT2;
-    desc.uniform_blocks[0].glsl_uniforms[0].array_count = 1;
-    desc.uniform_blocks[0].glsl_uniforms[0].glsl_name = "viewport";
-    desc.uniform_blocks[1].stage = SG_SHADERSTAGE_FRAGMENT;
-    desc.uniform_blocks[1].size = 16;
-    desc.uniform_blocks[1].glsl_uniforms[0].type = SG_UNIFORMTYPE_FLOAT4;
-    desc.uniform_blocks[1].glsl_uniforms[0].array_count = 1;
-    desc.uniform_blocks[1].glsl_uniforms[0].glsl_name = "color";
-    return sg_make_shader(&desc);
+    const sg_shader_desc *desc = nkui_solid_solid_shader_desc(sg_query_backend());
+    return desc ? sg_make_shader(desc) : sg_shader{};
 }
 
 sg_shader make_path_shader() {
@@ -259,70 +244,24 @@ sg_shader make_path_shader() {
 }
 
 sg_shader make_glyph_shader(GlyphMode mode) {
-    sg_shader_desc desc{};
-    desc.vertex_func.source =
-        "#version 330\n"
-        "uniform vec2 viewport; layout(location=0) in vec2 position;"
-        "layout(location=1) in vec2 uv0; layout(location=2) in vec4 color0;"
-        "out vec2 uv; out vec4 color; void main(){uv=uv0;color=color0;"
-        "vec2 p=vec2(position.x/viewport.x*2.0-1.0,1.0-position.y/viewport.y*2.0);"
-        "gl_Position=vec4(p,0,1);}";
-    if (mode == GlyphMode::Color)
-        desc.fragment_func.source =
-            "#version 330\n"
-            "uniform sampler2D tex; in vec2 uv; in vec4 color; out vec4 frag_color;"
-            "void main(){frag_color=texture(tex,uv)*color;}";
-    else if (mode == GlyphMode::Sdf)
-        desc.fragment_func.source =
-            "#version 330\n"
-            "uniform sampler2D tex; in vec2 uv; in vec4 color; out vec4 frag_color;"
-            "void main(){float d=texture(tex,uv).r;float w=max(fwidth(d),0.001);"
-            "float a=smoothstep(0.5-w,0.5+w,d);frag_color=vec4(color.rgb,color.a*a);}";
-    else
-        desc.fragment_func.source =
-            "#version 330\n"
-            "uniform sampler2D tex; in vec2 uv; in vec4 color; out vec4 frag_color;"
-            "void main(){float a=texture(tex,uv).r;frag_color=vec4(color.rgb,color.a*a);}";
-    desc.uniform_blocks[0].stage = SG_SHADERSTAGE_VERTEX;
-    desc.uniform_blocks[0].size = 8;
-    desc.uniform_blocks[0].glsl_uniforms[0].type = SG_UNIFORMTYPE_FLOAT2;
-    desc.uniform_blocks[0].glsl_uniforms[0].array_count = 1;
-    desc.uniform_blocks[0].glsl_uniforms[0].glsl_name = "viewport";
-    desc.views[0].texture = {SG_SHADERSTAGE_FRAGMENT, SG_IMAGETYPE_2D,
-                             SG_IMAGESAMPLETYPE_UNFILTERABLE_FLOAT, false};
-    desc.samplers[0] = {SG_SHADERSTAGE_FRAGMENT, SG_SAMPLERTYPE_NONFILTERING};
-    desc.texture_sampler_pairs[0] = {SG_SHADERSTAGE_FRAGMENT, 0, 0, "tex"};
-    return sg_make_shader(&desc);
+    const sg_shader_desc *desc = nullptr;
+    switch (mode) {
+    case GlyphMode::Alpha:
+        desc = nkui_text_alpha_shader_desc(sg_query_backend());
+        break;
+    case GlyphMode::Sdf:
+        desc = nkui_text_sdf_shader_desc(sg_query_backend());
+        break;
+    case GlyphMode::Color:
+        desc = nkui_text_color_shader_desc(sg_query_backend());
+        break;
+    }
+    return desc ? sg_make_shader(desc) : sg_shader{};
 }
 
 sg_shader make_composite_shader() {
-    sg_shader_desc desc{};
-    desc.vertex_func.source =
-        "#version 330\n"
-        "uniform vec2 viewport; layout(location=0) in vec2 position;"
-        "layout(location=1) in vec2 uv0; out vec2 uv; void main(){uv=uv0;"
-        "vec2 p=vec2(position.x/viewport.x*2.0-1.0,1.0-position.y/viewport.y*2.0);"
-        "gl_Position=vec4(p,0,1);}";
-    desc.fragment_func.source =
-        "#version 330\n"
-        "uniform sampler2D tex; uniform vec4 tint; in vec2 uv; out vec4 frag_color;"
-        "void main(){frag_color=texture(tex,uv)*tint;}";
-    desc.uniform_blocks[0].stage = SG_SHADERSTAGE_VERTEX;
-    desc.uniform_blocks[0].size = 8;
-    desc.uniform_blocks[0].glsl_uniforms[0].type = SG_UNIFORMTYPE_FLOAT2;
-    desc.uniform_blocks[0].glsl_uniforms[0].array_count = 1;
-    desc.uniform_blocks[0].glsl_uniforms[0].glsl_name = "viewport";
-    desc.uniform_blocks[1].stage = SG_SHADERSTAGE_FRAGMENT;
-    desc.uniform_blocks[1].size = 16;
-    desc.uniform_blocks[1].glsl_uniforms[0].type = SG_UNIFORMTYPE_FLOAT4;
-    desc.uniform_blocks[1].glsl_uniforms[0].array_count = 1;
-    desc.uniform_blocks[1].glsl_uniforms[0].glsl_name = "tint";
-    desc.views[0].texture = {SG_SHADERSTAGE_FRAGMENT, SG_IMAGETYPE_2D, SG_IMAGESAMPLETYPE_FLOAT,
-                             false};
-    // The composite path supports both nearest and linear surface sampling.
-    desc.samplers[0] = {SG_SHADERSTAGE_FRAGMENT, SG_SAMPLERTYPE_FILTERING};
-    desc.texture_sampler_pairs[0] = {SG_SHADERSTAGE_FRAGMENT, 0, 0, "tex"};
-    return sg_make_shader(&desc);
+    const sg_shader_desc *desc = nkui_composite_composite_shader_desc(sg_query_backend());
+    return desc ? sg_make_shader(desc) : sg_shader{};
 }
 
 sg_pipeline make_solid_pipeline(sg_shader shader) {
@@ -465,20 +404,12 @@ bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
     bindings.samplers[0] = sampler;
     sg_apply_bindings(&bindings);
     ++state.stats.binding_changes;
-    // The generated path shader uses a std140 uniform block. A vec2 in a
-    // std140 block has a 16-byte block footprint, while the legacy inline
-    // shaders use Sokol's 8-byte GLSL uniform block representation. Keep the
-    // two ABI shapes explicit until the remaining shader families are
-    // generated as well.
-    const std::array<float, 4> path_viewport = {
+    // All NativeKit shader families use generated std140 uniform blocks. A
+    // vec2 therefore has a 16-byte block footprint even though only the first
+    // two values are consumed by the vertex shader.
+    const std::array<float, 4> viewport = {
         static_cast<float>(state.width), static_cast<float>(state.height), 0.0f, 0.0f};
-    const std::array<float, 2> legacy_viewport = {static_cast<float>(state.width),
-                                                  static_cast<float>(state.height)};
-    const sg_range viewport_range = [&]() {
-        if constexpr (std::is_same_v<Vertex, PathVertex>)
-            return sg_range{path_viewport.data(), sizeof(path_viewport)};
-        return sg_range{legacy_viewport.data(), sizeof(legacy_viewport)};
-    }();
+    const sg_range viewport_range{viewport.data(), sizeof(viewport)};
     sg_apply_uniforms(0, &viewport_range);
     if (fragment_uniforms) {
         const sg_range fragment_range{fragment_uniforms, fragment_uniform_size};
