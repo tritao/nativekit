@@ -2,6 +2,7 @@
 #define NATIVEKIT_UI_PREPARED_PATH_H
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace nkui {
@@ -99,10 +100,16 @@ struct PreparedPathData {
     std::vector<PreparedPathRange> path_data;
     std::vector<PreparedVertex> vertex_data;
     std::vector<PreparedTexture> texture_data;
+    const std::vector<PreparedPathRange> *path_view = nullptr;
+    const std::vector<PreparedVertex> *vertex_view = nullptr;
 
     const std::vector<PreparedPathOperation> &operations() const { return operation_data; }
-    const std::vector<PreparedPathRange> &paths() const { return path_data; }
-    const std::vector<PreparedVertex> &vertices() const { return vertex_data; }
+    const std::vector<PreparedPathRange> &paths() const {
+        return path_view ? *path_view : path_data;
+    }
+    const std::vector<PreparedVertex> &vertices() const {
+        return vertex_view ? *vertex_view : vertex_data;
+    }
     const std::vector<PreparedTexture> &textures() const { return texture_data; }
 };
 

@@ -88,6 +88,7 @@ bool prepare(NVGpathBuilder *builder, const PathPreparationParams &params, bool 
 
 bool PreparedPath::set(PreparedPathKind kind, const PreparedGeometry &geometry,
                        const PreparedPaint &paint) {
+    geometry_view_.reset();
     data_ = {};
     if (geometry.paths.empty() || geometry.vertices.empty())
         return false;
@@ -105,6 +106,36 @@ bool PreparedPath::set(PreparedPathKind kind, const PreparedGeometry &geometry,
         operation.vertex_count = static_cast<uint32_t>(data_.vertex_data.size());
         data_.operation_data.push_back(operation);
     } catch (...) {
+        data_ = {};
+        return false;
+    }
+    return true;
+}
+
+bool PreparedPath::set_view(PreparedPathKind kind,
+                            std::shared_ptr<const PreparedGeometry> geometry,
+                            const PreparedPaint &paint) {
+    geometry_view_ = std::move(geometry);
+    data_ = {};
+    if (!geometry_view_ || geometry_view_->paths.empty() || geometry_view_->vertices.empty()) {
+        geometry_view_.reset();
+        return false;
+    }
+    data_.path_view = &geometry_view_->paths;
+    data_.vertex_view = &geometry_view_->vertices;
+    PreparedPathOperation operation{};
+    operation.kind = kind;
+    operation.paint = paint;
+    operation.fringe = geometry_view_->fringe_width;
+    operation.stroke_width = geometry_view_->stroke_width;
+    operation.fill_rule = geometry_view_->fill_rule;
+    std::copy(geometry_view_->bounds.begin(), geometry_view_->bounds.end(), operation.bounds);
+    operation.path_count = static_cast<uint32_t>(geometry_view_->paths.size());
+    operation.vertex_count = static_cast<uint32_t>(geometry_view_->vertices.size());
+    try {
+        data_.operation_data.push_back(operation);
+    } catch (...) {
+        geometry_view_.reset();
         data_ = {};
         return false;
     }

@@ -61,6 +61,9 @@ class PreparedPath {
   public:
     bool set(PreparedPathKind kind, const PreparedGeometry &geometry,
              const PreparedPaint &paint);
+    /** Attach shared read-only geometry without copying its path or vertex arrays. */
+    bool set_view(PreparedPathKind kind, std::shared_ptr<const PreparedGeometry> geometry,
+                  const PreparedPaint &paint);
     const PreparedPathData &data() const;
     const std::vector<PreparedPathOperation> &operations() const;
     const std::vector<PreparedPathRange> &paths() const;
@@ -69,6 +72,7 @@ class PreparedPath {
 
   private:
     PreparedPathData data_;
+    std::shared_ptr<const PreparedGeometry> geometry_view_;
 };
 
 /** Reusable path commands, independent of an NVGcontext or frame. */

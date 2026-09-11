@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 
 namespace {
 
@@ -299,6 +300,12 @@ int main() {
         fill.fill_rule != PathFillRule::EvenOdd || fill.bounds[0] < 25.0f ||
         fill.bounds[1] < 27.0f)
         return 3;
+    auto shared_fill = std::make_shared<const PreparedGeometry>(fill);
+    PreparedPath shared_path;
+    if (!shared_path.set_view(PreparedPathKind::Fill, shared_fill, PreparedPaint{}) ||
+        shared_path.vertices().data() != shared_fill->vertices.data() ||
+        shared_path.paths().data() != shared_fill->paths.data())
+        return 18;
     const auto fill_path_capacity = fill.paths.capacity();
     const auto fill_vertex_capacity = fill.vertices.capacity();
     if (!prepare_fill(path, fill_params, fill) || fill.paths.capacity() != fill_path_capacity ||

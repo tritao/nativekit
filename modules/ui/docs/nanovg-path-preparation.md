@@ -104,7 +104,11 @@ NativeKit translates NanoVG output immediately into its private
 `PreparedGeometry`, `PreparedPaint`, and `PreparedVertex` representations.
 NanoVG writes directly into the `std::vector` storage owned by the NativeKit
 preparation result; there is no temporary `NVGpreparedPath`/`NVGvertex` array
-or conversion copy between tessellation and the retained geometry.
+or conversion copy between tessellation and the retained geometry. Retained
+cache entries can be attached with `PreparedPath::set_view()`, which shares
+the immutable path and vertex arrays with the cache instead of copying them
+for every display-list command. The shared view keeps its geometry alive until
+the prepared operation is released, including when a cache entry is evicted.
 
 NativeKit's retained-path policy is device-space preparation with deferred
 placement:

@@ -101,7 +101,7 @@ struct PathCacheKeyHash {
 };
 
 struct PreparedPathCacheEntry {
-    nkui::PreparedGeometry geometry;
+    std::shared_ptr<const nkui::PreparedGeometry> geometry;
 };
 
 struct RendererSlot {
@@ -301,10 +301,12 @@ PreparedPathCacheEntry *prepare_cached_path(
     renderer.stats.path_vertices_generated += geometry.vertices.size();
     renderer.stats.path_geometry_bytes_allocated += geometry_bytes;
     try {
+        auto cached_geometry =
+            std::make_shared<const nkui::PreparedGeometry>(std::move(geometry));
         auto [found, inserted] = renderer.paths.emplace(key, PreparedPathCacheEntry{});
         if (!inserted)
             return &found->second;
-        found->second.geometry = std::move(geometry);
+        found->second.geometry = std::move(cached_geometry);
         renderer.stats.path_geometry_bytes_retained += geometry_bytes;
         return &found->second;
     } catch (...) {
@@ -879,7 +881,7 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                                       ? nkui::PreparedPathKind::Stroke
                                       : nkui::PreparedPathKind::Fill;
                 if (!prepared ||
-                    !prepared->set(kind, cached->geometry,
+                    !prepared->set_view(kind, cached->geometry,
                                    paint_color(paint))) {
                     valid = false;
                     break;
