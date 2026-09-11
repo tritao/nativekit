@@ -113,6 +113,7 @@ browser UI showcase with:
 ```sh
 ./tools/setup-web.sh
 ./tools/build-web.sh
+./tools/test-web.sh
 python3 -m http.server --directory build-web/modules/ui 8080
 ```
 
