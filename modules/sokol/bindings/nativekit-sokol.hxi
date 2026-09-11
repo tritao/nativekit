@@ -442,102 +442,11 @@ interface NativeKitSokol @target("portable-abi64") @library("nativekit_sokol") {
 	/**
 	 * Buffer handle returned by nks_buffer_create() or nks_buffer_end().
 	 */
-	struct nks_buffer @layout(4, 4) {
-		/**
-		 * Opaque generation-checked handle value owned by the Sokol backend.
-		 */
-		id: u32 @offset(0);
-	}
+	handle nks_buffer : u32;
 	/**
 	 * Temporary builder handle returned by nks_buffer_begin_kind().
 	 */
-	struct nks_buffer_builder @layout(4, 4) {
-		/**
-		 * Opaque generation-checked handle value owned by the Sokol backend.
-		 */
-		id: u32 @offset(0);
-	}
-	/**
-	 * Image handle returned by nks_image_end().
-	 */
-	struct nks_image @layout(4, 4) {
-		/**
-		 * Opaque generation-checked handle value owned by the Sokol backend.
-		 */
-		id: u32 @offset(0);
-	}
-	/**
-	 * Temporary builder handle returned by nks_image_begin().
-	 */
-	struct nks_image_builder @layout(4, 4) {
-		/**
-		 * Opaque generation-checked handle value owned by the Sokol backend.
-		 */
-		id: u32 @offset(0);
-	}
-	/**
-	 * Pipeline handle returned by nks_pipeline_end().
-	 */
-	struct nks_pipeline @layout(4, 4) {
-		/**
-		 * Opaque generation-checked handle value owned by the Sokol backend.
-		 */
-		id: u32 @offset(0);
-	}
-	/**
-	 * Temporary builder handle returned by nks_pipeline_begin().
-	 */
-	struct nks_pipeline_builder @layout(4, 4) {
-		/**
-		 * Opaque generation-checked handle value owned by the Sokol backend.
-		 */
-		id: u32 @offset(0);
-	}
-	/**
-	 * Renderer handle returned by nks_renderer_create(). It owns the adapter resources created with it.
-	 */
-	struct nks_renderer @layout(4, 4) {
-		/**
-		 * Opaque generation-checked handle value owned by the Sokol backend.
-		 */
-		id: u32 @offset(0);
-	}
-	/**
-	 * Sampler handle returned by nks_sampler_create().
-	 */
-	struct nks_sampler @layout(4, 4) {
-		/**
-		 * Opaque generation-checked handle value owned by the Sokol backend.
-		 */
-		id: u32 @offset(0);
-	}
-	/**
-	 * Shader handle returned by nks_shader_create() or nks_shader_end().
-	 */
-	struct nks_shader @layout(4, 4) {
-		/**
-		 * Opaque generation-checked handle value owned by the Sokol backend.
-		 */
-		id: u32 @offset(0);
-	}
-	/**
-	 * Temporary builder handle returned by nks_shader_begin().
-	 */
-	struct nks_shader_builder @layout(4, 4) {
-		/**
-		 * Opaque generation-checked handle value owned by the Sokol backend.
-		 */
-		id: u32 @offset(0);
-	}
-	/**
-	 * Temporary builder handle returned by nks_uniforms_begin().
-	 */
-	struct nks_uniform_builder @layout(4, 4) {
-		/**
-		 * Opaque generation-checked handle value owned by the Sokol backend.
-		 */
-		id: u32 @offset(0);
-	}
+	handle nks_buffer_builder : u32;
 	/**
 	 * The intended use of a buffer created by nks_buffer_begin_kind().
 	 */
@@ -551,21 +460,54 @@ interface NativeKitSokol @target("portable-abi64") @library("nativekit_sokol") {
 	 */
 	type nks_filter = u32;
 	/**
+	 * Image handle returned by nks_image_end().
+	 */
+	handle nks_image : u32;
+	/**
+	 * Temporary builder handle returned by nks_image_begin().
+	 */
+	handle nks_image_builder : u32;
+	/**
 	 * How an applied index buffer is interpreted by the pipeline.
 	 */
 	type nks_index_type = u32;
+	handle nks_nativekit_handle : u32;
 	/**
-	 * A NativeKit window or surface handle accepted by the Sokol adapter.
+	 * Pipeline handle returned by nks_pipeline_end().
 	 */
-	type nks_nativekit_handle = u32;
+	handle nks_pipeline : u32;
+	/**
+	 * Temporary builder handle returned by nks_pipeline_begin().
+	 */
+	handle nks_pipeline_builder : u32;
+	/**
+	 * Renderer handle returned by nks_renderer_create(). It owns the adapter resources created with it.
+	 */
+	handle nks_renderer : u32;
 	/**
 	 * Result returned by a Sokol adapter operation; zero is success.
 	 */
 	type nks_result = i32;
 	/**
+	 * Sampler handle returned by nks_sampler_create().
+	 */
+	handle nks_sampler : u32;
+	/**
+	 * Shader handle returned by nks_shader_create() or nks_shader_end().
+	 */
+	handle nks_shader : u32;
+	/**
+	 * Temporary builder handle returned by nks_shader_begin().
+	 */
+	handle nks_shader_builder : u32;
+	/**
 	 * Shader stage associated with a uniform block or texture binding.
 	 */
 	type nks_shader_stage = u32;
+	/**
+	 * Temporary builder handle returned by nks_uniforms_begin().
+	 */
+	handle nks_uniform_builder : u32;
 	/**
 	 * Data type used to describe a shader uniform member.
 	 */

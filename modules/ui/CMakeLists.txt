@@ -1,6 +1,28 @@
 include(cmake/SkribidiSubmodules.cmake)
 include(cmake/NanoVGSubmodules.cmake)
+include(cmake/SokolShaders.cmake)
 find_package(OpenGL REQUIRED)
+
+nkui_generate_shader(
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/toolchain_probe.glsl"
+    ui_toolchain_probe.glsl.h
+    NKUI_TOOLCHAIN_PROBE_SHADER)
+nkui_generate_shader(
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/path.glsl"
+    nkui_path.glsl.h
+    NKUI_PATH_SHADER)
+nkui_generate_shader(
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/solid.glsl"
+    nkui_solid.glsl.h
+    NKUI_SOLID_SHADER)
+nkui_generate_shader(
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/text.glsl"
+    nkui_text.glsl.h
+    NKUI_TEXT_SHADER)
+nkui_generate_shader(
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/composite.glsl"
+    nkui_composite.glsl.h
+    NKUI_COMPOSITE_SHADER)
 
 add_library(nativekit_ui SHARED
     src/api.cpp
@@ -10,7 +32,13 @@ add_library(nativekit_ui SHARED
     src/prepare/skribidi_adapter.cpp
     src/render/frame_resources.cpp
     src/render/render_plan_executor.cpp
-    src/render/sokol_backend.cpp)
+    src/render/shader_toolchain_probe.cpp
+    src/render/sokol_backend.cpp
+    "${NKUI_TOOLCHAIN_PROBE_SHADER}"
+    "${NKUI_PATH_SHADER}"
+    "${NKUI_SOLID_SHADER}"
+    "${NKUI_TEXT_SHADER}"
+    "${NKUI_COMPOSITE_SHADER}")
 add_library(NativeKit::ui ALIAS nativekit_ui)
 target_compile_features(nativekit_ui PRIVATE cxx_std_17)
 target_include_directories(nativekit_ui
@@ -20,6 +48,7 @@ target_include_directories(nativekit_ui
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE src)
 target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/sokol")
+target_include_directories(nativekit_ui PRIVATE "${NKUI_SHADER_GENERATED_DIR}")
 target_link_libraries(nativekit_ui PRIVATE NativeKit::nativekit nkui_skribidi nkui_nanovg_core
     nativekit_sokol_runtime OpenGL::GL)
 target_compile_definitions(nativekit_ui PRIVATE NKUI_BUILDING_LIBRARY)
@@ -79,7 +108,7 @@ if(NK_BUILD_TESTS)
         src/prepare/skribidi_adapter.cpp
         src/render/sokol_backend.cpp)
     target_include_directories(nativekit_ui_sokol_backend_mesh_test PRIVATE
-        src "${NK_VENDOR_DIR}/sokol")
+        src "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}")
     target_link_libraries(nativekit_ui_sokol_backend_mesh_test PRIVATE
         nkui_nanovg_core nkui_skribidi nativekit_sokol_runtime)
     add_test(NAME nativekit_ui_sokol_backend_mesh COMMAND nativekit_ui_sokol_backend_mesh_test)
@@ -104,7 +133,7 @@ if(NK_BUILD_TESTS)
             src/render/render_plan_executor.cpp
             src/render/sokol_backend.cpp)
         target_include_directories(nativekit_ui_sokol_backend_smoke_test PRIVATE
-            src "${NK_VENDOR_DIR}/sokol")
+            src "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}")
         target_compile_definitions(nativekit_ui_sokol_backend_smoke_test PRIVATE
             NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf"
             NKUI_TEST_COLOR_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/NotoColorEmoji-Regular.ttf")

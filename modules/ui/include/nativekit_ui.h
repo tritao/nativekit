@@ -79,22 +79,13 @@ typedef enum nkui_result {
 } nkui_result;
 
 /** Opaque handle for a retained display list. */
-typedef struct nkui_display_list {
-    /** Internal generation-and-slot token; treat the handle as an opaque value. */
-    uint32_t id;
-} nkui_display_list;
+NK_DECLARE_HANDLE(nkui_display_list);
 
 /** Opaque handle for a path, paint, image, font collection, or text layout. */
-typedef struct nkui_resource {
-    /** Internal resource-kind, generation, and slot token. */
-    uint32_t id;
-} nkui_resource;
+NK_DECLARE_HANDLE(nkui_resource);
 
 /** Opaque handle for a renderer and its backend resources. */
-typedef struct nkui_renderer {
-    /** Internal generation-and-slot token; treat the handle as an opaque value. */
-    uint32_t id;
-} nkui_renderer;
+NK_DECLARE_HANDLE(nkui_renderer);
 
 /* ------------------------------------------------------------------------- */
 /* Frame and command types                                                   */

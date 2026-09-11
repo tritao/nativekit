@@ -3985,7 +3985,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Opaque generation-checked identifier for a live NativeKit resource.
 	 */
-	type nk_handle = u32;
+	handle nk_handle : u32;
 	/**
 	 * Transition reported for a key or pointer button.
 	 */

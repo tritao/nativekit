@@ -234,9 +234,10 @@ bool direct_matches_compatibility() {
     PreparedGeometry image_fill;
     const auto &image_operation = recorder.operations()[2];
     if (!prepare_fill(path, image_fill_params, image_fill) ||
-        !matches_recorded(image_fill, recorder.data(), 2) || !image_operation.paint.image ||
-        image_operation.paint.image != static_cast<PreparedImageToken>(image) ||
-        recorder.textures().size() != 1 || recorder.textures()[0].token != image_operation.paint.image)
+        !matches_recorded(image_fill, recorder.data(), 2) || !image_operation.paint.image_token ||
+        image_operation.paint.image_token != static_cast<PreparedImageToken>(image) ||
+        recorder.textures().size() != 1 ||
+        recorder.textures()[0].token != image_operation.paint.image_token)
         return false;
 
     PathPreparationParams hole_params;

@@ -314,11 +314,11 @@ PreparedPathCacheEntry *prepare_cached_path(
 
 nkui::PreparedPaint paint_color(ResourceSlot *paint) {
     nkui::PreparedPaint result{};
-    result.xform[0] = result.xform[3] = 1.0f;
+    result.transform[0] = result.transform[3] = 1.0f;
     result.feather = 1.0f;
     const nkui_color color = paint ? paint->color : nkui_color{0.0f, 0.0f, 0.0f, 1.0f};
-    result.innerColor = {color.red, color.green, color.blue, color.alpha};
-    result.outerColor = result.innerColor;
+    result.inner_color = {color.red, color.green, color.blue, color.alpha};
+    result.outer_color = result.inner_color;
     return result;
 }
 

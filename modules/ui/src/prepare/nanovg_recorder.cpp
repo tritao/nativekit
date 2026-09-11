@@ -28,8 +28,17 @@ int render_create_texture(void *context, int type, int width, int height, int fl
         return 0;
     const int id = state.next_texture++;
     const size_t bytes_per_pixel = type == NVG_TEXTURE_RGBA ? 4 : 1;
-    PreparedTexture texture{static_cast<PreparedImageToken>(id), type, width, height, flags, 1,
-                            true, {}};
+    const PreparedTextureType prepared_type =
+        type == NVG_TEXTURE_RGBA ? PreparedTextureRgba : PreparedTextureAlpha;
+    const int prepared_flags =
+        (flags & NVG_IMAGE_GENERATE_MIPMAPS ? PreparedImageGenerateMipmaps : 0) |
+        (flags & NVG_IMAGE_REPEATX ? PreparedImageRepeatX : 0) |
+        (flags & NVG_IMAGE_REPEATY ? PreparedImageRepeatY : 0) |
+        (flags & NVG_IMAGE_FLIPY ? PreparedImageFlipY : 0) |
+        (flags & NVG_IMAGE_PREMULTIPLIED ? PreparedImagePremultiplied : 0) |
+        (flags & NVG_IMAGE_NEAREST ? PreparedImageNearest : 0);
+    PreparedTexture texture{static_cast<PreparedImageToken>(id), prepared_type, width, height,
+                            prepared_flags, 1, true, {}};
     texture.pixels.resize(static_cast<size_t>(width) * height * bytes_per_pixel);
     if (data)
         std::memcpy(texture.pixels.data(), data, texture.pixels.size());
@@ -57,7 +66,7 @@ int render_update_texture(void *context, int image, int x, int y, int width, int
     if (found == textures.end() || !data || x < 0 || y < 0 || width < 0 || height < 0 ||
         x + width > found->width || y + height > found->height)
         return 0;
-    const size_t bytes_per_pixel = found->type == NVG_TEXTURE_RGBA ? 4 : 1;
+    const size_t bytes_per_pixel = found->type == PreparedTextureRgba ? 4 : 1;
     const size_t source_pitch = static_cast<size_t>(found->width) * bytes_per_pixel;
     for (int row = y; row < y + height; ++row)
         std::memcpy(found->pixels.data() +
@@ -101,13 +110,13 @@ PreparedColor prepare_color(const NVGcolor &color) {
 
 PreparedPaint prepare_paint(const NVGpaint &paint) {
     PreparedPaint result{};
-    std::memcpy(result.xform, paint.xform, sizeof(result.xform));
+    std::memcpy(result.transform, paint.xform, sizeof(result.transform));
     std::memcpy(result.extent, paint.extent, sizeof(result.extent));
     result.radius = paint.radius;
     result.feather = paint.feather;
-    result.innerColor = prepare_color(paint.innerColor);
-    result.outerColor = prepare_color(paint.outerColor);
-    result.image = static_cast<PreparedImageToken>(paint.image);
+    result.inner_color = prepare_color(paint.innerColor);
+    result.outer_color = prepare_color(paint.outerColor);
+    result.image_token = static_cast<PreparedImageToken>(paint.image);
     return result;
 }
 

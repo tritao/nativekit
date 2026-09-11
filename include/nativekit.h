@@ -45,6 +45,11 @@
     __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
 #define NK_BORROWED_ARRAY(count_field)                                                             \
     __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
+#if defined(__clang__)
+#define NK_HANDLE __attribute__((annotate("hxi:handle")))
+#else
+#define NK_HANDLE
+#endif
 #else
 #define NK_OUT
 #define NK_INOUT
@@ -56,7 +61,14 @@
 #define NK_NULLABLE_UTF8
 #define NK_BORROWED_BUFFER(length_field)
 #define NK_BORROWED_ARRAY(count_field)
+#define NK_HANDLE
 #endif
+
+/* Every named NativeKit handle is a value-copyable, four-byte opaque token. */
+#define NK_DECLARE_HANDLE(name) \
+    typedef struct name {        \
+        uint32_t id;              \
+    } name NK_HANDLE
 
 /* ------------------------------------------------------------------------- */
 /* C linkage                                                                 */
@@ -82,7 +94,7 @@ enum {
 #define NK_INVALID_REQUEST_ID ((nk_request_id)0)
 
 /** Opaque generation-checked identifier for a live NativeKit resource. */
-typedef uint32_t nk_handle;
+typedef uint32_t nk_handle NK_HANDLE;
 
 /** Identifier for one asynchronous operation; it is not a resource handle. */
 typedef uint64_t nk_request_id;

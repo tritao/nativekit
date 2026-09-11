@@ -72,7 +72,7 @@ class CanvasCommandBuffer {
 	public function strokePath(path:Path, width:Float, cap:LineCap = LineCap.Butt, join:LineJoin = LineJoin.Miter,
 		miterLimit:Float = 4.0):Void {
 		header(NativeKitUIConstants.NKUI_COMMAND_STROKE_PATH, 28);
-		word(path.nativeHandle().get_id());
+		word(path.nativeHandle().rawValue());
 		float(width);
 		word(cast cap);
 		word(cast join);
@@ -98,13 +98,13 @@ class CanvasCommandBuffer {
 
 	function resource(opcode:Int, value:NativeKitUIResource):Void {
 		header(opcode, 12);
-		word(value.nativeHandle().get_id());
+		word(value.nativeHandle().rawValue());
 	}
 
 	function drawRect(opcode:Int, value:NativeKitUIResource, x:Float, y:Float, width:Float,
 		height:Float):Void {
 		header(opcode, 28);
-		word(value.nativeHandle().get_id());
+		word(value.nativeHandle().rawValue());
 		float(x); float(y); float(width); float(height);
 	}
 

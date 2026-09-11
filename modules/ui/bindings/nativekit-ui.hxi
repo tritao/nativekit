@@ -389,15 +389,6 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		mode: nkui_composite_mode @offset(8);
 	}
 	/**
-	 * Opaque handle for a retained display list.
-	 */
-	struct nkui_display_list @layout(4, 4) {
-		/**
-		 * Internal generation-and-slot token; treat the handle as an opaque value.
-		 */
-		id: u32 @offset(0);
-	}
-	/**
 	 * Payload for image, text-layout, and render-target draw commands.
 	 */
 	struct nkui_draw_rect_command @layout(28, 4) {
@@ -511,15 +502,6 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		height: f32 @offset(20);
 	}
 	/**
-	 * Opaque handle for a renderer and its backend resources.
-	 */
-	struct nkui_renderer @layout(4, 4) {
-		/**
-		 * Internal generation-and-slot token; treat the handle as an opaque value.
-		 */
-		id: u32 @offset(0);
-	}
-	/**
 	 * Preparation and geometry-cache counters for one renderer.
 	 */
 	struct nkui_renderer_stats @layout(64, 8) {
@@ -555,15 +537,6 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		 * Vector capacity bytes currently retained by the path geometry cache.
 		 */
 		path_geometry_bytes_retained: u64 @offset(56);
-	}
-	/**
-	 * Opaque handle for a path, paint, image, font collection, or text layout.
-	 */
-	struct nkui_resource @layout(4, 4) {
-		/**
-		 * Internal resource-kind, generation, and slot token.
-		 */
-		id: u32 @offset(0);
 	}
 	/**
 	 * Payload for NKUI_COMMAND_SET_PAINT and resource-only draw commands.
@@ -729,4 +702,16 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * 16-bit opcode identifying one display-list command record.
 	 */
 	type nkui_command_opcode = u16;
+	/**
+	 * Opaque handle for a retained display list.
+	 */
+	handle nkui_display_list : u32;
+	/**
+	 * Opaque handle for a renderer and its backend resources.
+	 */
+	handle nkui_renderer : u32;
+	/**
+	 * Opaque handle for a path, paint, image, font collection, or text layout.
+	 */
+	handle nkui_resource : u32;
 }

@@ -22,32 +22,32 @@ class SokolCommandBuffer {
 
 	public function applyPipeline(pipeline:nks_pipeline):Void {
 		header(1, 12);
-		word(pipeline.get_id());
+		word(pipeline.rawValue());
 	}
 
 	public function applyVertexBuffer(slot:Int, buffer:nks_buffer, offset:Int):Void {
 		header(2, 20);
 		word(slot);
-		word(buffer.get_id());
+		word(buffer.rawValue());
 		word(offset);
 	}
 
 	public function applyIndexBuffer(buffer:nks_buffer, offset:Int):Void {
 		header(3, 16);
-		word(buffer.get_id());
+		word(buffer.rawValue());
 		word(offset);
 	}
 
 	public function applyImage(slot:Int, image:nks_image):Void {
 		header(4, 16);
 		word(slot);
-		word(image.get_id());
+		word(image.rawValue());
 	}
 
 	public function applySampler(slot:Int, sampler:nks_sampler):Void {
 		header(5, 16);
 		word(slot);
-		word(sampler.get_id());
+		word(sampler.rawValue());
 	}
 
 	public function applyUniforms(slot:Int, data:Bytes):Void {

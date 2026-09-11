@@ -22,6 +22,15 @@ enum PreparedTextureType : int {
     PreparedTextureRgba = 0x02,
 };
 
+enum PreparedImageFlags : int {
+    PreparedImageGenerateMipmaps = 1 << 0,
+    PreparedImageRepeatX = 1 << 1,
+    PreparedImageRepeatY = 1 << 2,
+    PreparedImageFlipY = 1 << 3,
+    PreparedImagePremultiplied = 1 << 4,
+    PreparedImageNearest = 1 << 5,
+};
+
 /* NativeKit-local identity for an image used by a prepared paint.  NanoVG
  * image handles are translated to this token at the compatibility boundary;
  * they never become part of the retained path representation. */
@@ -45,13 +54,13 @@ struct PreparedColor {
 };
 
 struct PreparedPaint {
-    float xform[6]{};
+    float transform[6]{};
     float extent[2]{};
     float radius = 0.0f;
     float feather = 0.0f;
-    PreparedColor innerColor{};
-    PreparedColor outerColor{};
-    PreparedImageToken image = 0;
+    PreparedColor inner_color{};
+    PreparedColor outer_color{};
+    PreparedImageToken image_token = 0;
 };
 
 struct PreparedVertex {
@@ -76,7 +85,7 @@ struct PreparedPathOperation {
 
 struct PreparedTexture {
     PreparedImageToken token = 0;
-    int type = 0;
+    PreparedTextureType type = PreparedTextureRgba;
     int width = 0;
     int height = 0;
     int flags = 0;

@@ -59,7 +59,13 @@ extern "C" {
 /* ------------------------------------------------------------------------- */
 
 /** A NativeKit window or surface handle accepted by the Sokol adapter. */
-typedef uint32_t nks_nativekit_handle;
+#if defined(__clang__)
+#define NKS_HANDLE_ANNOTATION __attribute__((annotate("hxi:handle")))
+#else
+#define NKS_HANDLE_ANNOTATION
+#endif
+
+typedef uint32_t nks_nativekit_handle NKS_HANDLE_ANNOTATION;
 
 /** Result returned by a Sokol adapter operation; zero is success. */
 typedef int32_t nks_result;
@@ -75,13 +81,13 @@ typedef int32_t nks_result;
             id = value;                                                                            \
             return *this;                                                                          \
         }                                                                                          \
-    } name
+    } name NKS_HANDLE_ANNOTATION
 #else
 #define NKS_HANDLE(name)                                                                           \
     typedef struct name {                                                                          \
         /** Opaque generation-checked handle value owned by the Sokol backend. */                  \
         uint32_t id;                                                                               \
-    } name
+    } name NKS_HANDLE_ANNOTATION
 #endif
 /** Renderer handle returned by nks_renderer_create(). It owns the adapter resources created with it. */
 NKS_HANDLE(nks_renderer);
@@ -106,6 +112,7 @@ NKS_HANDLE(nks_image_builder);
 /** Sampler handle returned by nks_sampler_create(). */
 NKS_HANDLE(nks_sampler);
 #undef NKS_HANDLE
+#undef NKS_HANDLE_ANNOTATION
 
 /* ------------------------------------------------------------------------- */
 /* Result codes                                                              */
