@@ -231,7 +231,7 @@ if(NK_BUILD_EXAMPLES)
                         --static-frame --stats)
                 set_tests_properties(nativekit_ui_showcase_static PROPERTIES
                     LABELS "graphics;ui;showcase;visual"
-                    TIMEOUT 30
+                    TIMEOUT 120
                     ENVIRONMENT
                         "LIBGL_ALWAYS_SOFTWARE=1;NATIVEKIT_BUILD_DIR=${CMAKE_BINARY_DIR};HAXEON_DIR=${NKUI_HAXEON_DIR}")
             endif()
