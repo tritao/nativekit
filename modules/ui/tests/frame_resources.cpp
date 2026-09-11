@@ -15,7 +15,7 @@ class TestProducer final : public SurfaceProducer {
         return true;
     }
     uint32_t generation() const override { return 7; }
-    SurfaceRenderResult render(SokolBackend &, ResourceId,
+    SurfaceRenderResult render(RenderBackend &, ResourceId,
                                const SurfaceDescriptor &) override {
         return SurfaceRenderResult::Rendered;
     }

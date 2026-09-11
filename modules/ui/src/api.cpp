@@ -103,7 +103,7 @@ struct PreparedPathCacheEntry {
 };
 
 struct RendererSlot {
-    std::unique_ptr<nkui::SokolBackend> backend;
+    std::unique_ptr<nkui::RenderBackend> backend;
     nkui::Compositor compositor;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
     nkui_renderer_stats stats{};

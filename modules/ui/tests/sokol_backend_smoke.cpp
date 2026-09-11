@@ -43,7 +43,7 @@ class Mock3DSurfaceProducer final : public SurfaceProducer {
         return true;
     }
     uint32_t generation() const override { return generation_; }
-    SurfaceRenderResult render(SokolBackend &backend, ResourceId target,
+    SurfaceRenderResult render(RenderBackend &backend, ResourceId target,
                                const SurfaceDescriptor &description) override {
         if (failed_)
             return SurfaceRenderResult::Failed;

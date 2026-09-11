@@ -13,7 +13,7 @@ bool fail(RenderExecutionError *error, uint32_t pass, uint32_t command, const ch
 
 } // namespace
 
-bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
+bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
                          const FrameResources &resources, const WindowTarget &window,
                          RenderExecutionError *error) {
     if (!backend.valid() || !is_resource_id(window.id, ResourceKind::RenderTarget) ||

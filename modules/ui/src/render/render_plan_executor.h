@@ -4,7 +4,7 @@
 #include "nativekit_graphics.h"
 #include "compositor/render_plan.h"
 #include "render/frame_resources.h"
-#include "render/sokol_backend.h"
+#include "render/render_backend.h"
 
 namespace nkui {
 
@@ -19,7 +19,7 @@ struct RenderExecutionError {
     const char *message = nullptr;
 };
 
-bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
+bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
                          const FrameResources &resources, const WindowTarget &window,
                          RenderExecutionError *error = nullptr);
 

@@ -1,10 +1,7 @@
 #ifndef NATIVEKIT_UI_SOKOL_BACKEND_H
 #define NATIVEKIT_UI_SOKOL_BACKEND_H
 
-#include "nativekit_graphics.h"
-#include "display_list/display_list.h"
-#include "prepare/nanovg_path.h"
-#include "prepare/skribidi_adapter.h"
+#include "render_backend.h"
 
 #include <cstdint>
 #include <vector>
@@ -26,61 +23,49 @@ struct SolidMesh {
 bool triangulate_prepared_path(const PreparedPathData &path,
                                const PreparedPathOperation &operation, SolidMesh &mesh);
 
-struct SokolBackendStats {
-    uint32_t passes = 0;
-    uint32_t draws = 0;
-    uint32_t pipeline_changes = 0;
-    uint32_t binding_changes = 0;
-    uint32_t image_uploads = 0;
-    uint64_t uploaded_bytes = 0;
-    uint32_t atlas_full_uploads = 0;
-    uint32_t atlas_subregion_uploads = 0;
-    uint32_t atlas_reallocations = 0;
-    uint64_t atlas_dirty_bytes = 0;
-    uint64_t atlas_dirty_capacity_bytes = 0;
-    uint64_t atlas_uploaded_bytes = 0;
-    uint64_t transient_bytes = 0;
-    uint32_t gpu_resources = 0;
-};
+using SokolBackendStats = RenderBackendStats;
 
-class SokolBackend {
+class SokolBackend final : public RenderBackend {
   public:
     SokolBackend();
-    ~SokolBackend();
+    ~SokolBackend() override;
     SokolBackend(const SokolBackend &) = delete;
     SokolBackend &operator=(const SokolBackend &) = delete;
 
-    bool initialize();
-    bool valid() const;
+    bool initialize() override;
+    bool valid() const override;
     bool begin_window_pass(int width, int height, const nk_surface_frame_target &target,
-                           bool clear);
-    bool begin_target_pass(ResourceId target, int width, int height, bool load_existing);
+                           bool clear) override;
+    bool begin_target_pass(ResourceId target, int width, int height,
+                           bool load_existing) override;
     bool begin_surface_pass(ResourceId target, const SurfaceDescriptor &description,
-                            bool load_existing);
-    bool surface_has_content(ResourceId target) const;
+                            bool load_existing) override;
+    bool surface_has_content(ResourceId target) const override;
     bool surface_is_current(ResourceId target, uint32_t generation,
-                            const SurfaceDescriptor &description) const;
+                            const SurfaceDescriptor &description) const override;
     void mark_surface_current(ResourceId target, uint32_t generation,
-                              const SurfaceDescriptor &description);
+                              const SurfaceDescriptor &description) override;
     bool set_scissor(bool enabled, float x = 0.0f, float y = 0.0f, float width = 0.0f,
-                     float height = 0.0f);
+                     float height = 0.0f) override;
     bool draw_path(const PreparedPathData &path, uint32_t operation_index,
-                   float opacity = 1.0f);
+                   float opacity = 1.0f) override;
     bool draw_path_transformed(const PreparedPathData &path, uint32_t operation_index,
-                               const float transform[6], float opacity = 1.0f);
-    bool draw_paths(const PreparedPathData &path);
+                               const float transform[6], float opacity = 1.0f) override;
+    bool draw_paths(const PreparedPathData &path) override;
     bool draw_image(const PreparedTexture &image, float x, float y, float width, float height,
-                    const float transform[6], float opacity = 1.0f);
-    bool upload_atlases(SkribidiAdapter &adapter, bool include_clean = false);
-    bool draw_glyphs(const PreparedGlyphs &glyphs, float opacity = 1.0f);
+                    const float transform[6], float opacity = 1.0f) override;
+    bool upload_atlases(SkribidiAdapter &adapter, bool include_clean = false) override;
+    bool draw_glyphs(const PreparedGlyphs &glyphs, float opacity = 1.0f) override;
     bool draw_glyphs_transformed(const PreparedGlyphs &glyphs, const float transform[6],
-                                 float origin_x, float origin_y, float opacity = 1.0f);
-    bool draw_target(ResourceId target, float x, float y, float width, float height, float opacity);
-    bool end_pass();
-    bool commit_frame();
-    bool end_frame();
-    SokolBackendStats stats() const;
-    const char *last_error() const;
+                                 float origin_x, float origin_y,
+                                 float opacity = 1.0f) override;
+    bool draw_target(ResourceId target, float x, float y, float width, float height,
+                     float opacity) override;
+    bool end_pass() override;
+    bool commit_frame() override;
+    bool end_frame() override;
+    RenderBackendStats stats() const override;
+    const char *last_error() const override;
 
     struct State;
 
