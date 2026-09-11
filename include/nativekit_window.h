@@ -78,7 +78,7 @@ enum {
 /** Discriminator identifying the platform representation in nk_native_window. */
 typedef uint32_t nk_native_window_kind;
 
-enum {
+enum NK_ENUM(nk_native_window_kind) {
     /** No platform representation is available. */
     NK_NATIVE_WINDOW_UNKNOWN = 0,
     /** The native window value is a Win32 HWND. */
@@ -129,7 +129,7 @@ enum {
 /** Category of a NativeKit-owned top-level window. */
 typedef uint32_t nk_window_kind;
 
-enum {
+enum NK_ENUM(nk_window_kind) {
     /** A regular application window. */
     NK_WINDOW_NORMAL = 0,
     /** A utility or tool window. */

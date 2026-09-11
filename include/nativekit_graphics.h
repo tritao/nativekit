@@ -30,7 +30,7 @@ extern "C" {
 
 /** Graphics API requested when creating a surface. */
 typedef uint32_t nk_graphics_api;
-enum {
+enum NK_ENUM(nk_graphics_api) {
     /** Desktop or compatible OpenGL. */
     NK_GRAPHICS_OPENGL = 1,
     /** OpenGL ES, typically used on mobile or embedded systems. */

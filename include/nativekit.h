@@ -46,6 +46,8 @@
 #define NK_BORROWED_ARRAY(count_field)                                                             \
     __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
 #define NK_HANDLE __attribute__((annotate("hxi:handle")))
+/* Keeps the C typedef as the ABI source of truth while naming the enum and its HXI projection. */
+#define NK_ENUM(name) __attribute__((annotate("hxi:enum:" #name))) name##_enum
 #else
 #define NK_OUT
 #define NK_INOUT
@@ -58,6 +60,7 @@
 #define NK_BORROWED_BUFFER(length_field)
 #define NK_BORROWED_ARRAY(count_field)
 #define NK_HANDLE
+#define NK_ENUM(name) name##_enum
 #endif
 
 /* Every named NativeKit handle is a value-copyable, four-byte opaque token. */
@@ -117,7 +120,7 @@ typedef uint32_t nk_bool;
  * wrong-kind resource; INVALID_REQUEST describes a valid operation that can no
  * longer complete in its current lifecycle state.
  */
-enum {
+enum NK_ENUM(nk_result) {
     /** Operation completed successfully. */
     NK_OK = 0,
     /** The backend encountered an unspecified failure. */
@@ -148,7 +151,7 @@ enum {
 /* Event kinds                                                               */
 /* ------------------------------------------------------------------------- */
 
-enum {
+enum NK_ENUM(nk_event_kind) {
     /** No event was available when the queue was polled. */
     NK_EVENT_NONE = 0,
     /** The user requested that a window close. */

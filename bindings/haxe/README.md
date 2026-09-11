@@ -33,8 +33,10 @@ Transactional custom-editor input projects `NK_EVENT_TEXT_EDIT` to
 Unicode code-point indices; optional replacement text is copied and strictly
 validated as UTF-8 before the native event is released.
 
-HXI constants are projected through `NativeKitConstants`; handwritten bindings
-use those symbols rather than repeating numeric C ABI values.
+Fixed-width value domains marked with `NK_ENUM` in the public headers project
+as nominal Haxe enum abstracts, while their members remain available through
+`NativeKitConstants` for source compatibility. Handwritten bindings use those
+generated symbols rather than repeating numeric C ABI values.
 
 UTF-8 inputs are marked in the authoritative C headers with `NK_UTF8` or
 `NK_NULLABLE_UTF8`. The importer projects these annotations to managed Haxe

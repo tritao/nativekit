@@ -39,7 +39,7 @@ enum {
 
 /** Semantic role announced for an accessibility node. */
 typedef uint32_t nk_accessibility_role;
-enum {
+enum NK_ENUM(nk_accessibility_role) {
     /** Generic grouping node. */
     NK_ACCESSIBILITY_GROUP = 0,
     /** Activatable button. */
@@ -118,7 +118,7 @@ enum {
 
 /** Action requested by a platform accessibility service. */
 typedef uint32_t nk_accessibility_action;
-enum {
+enum NK_ENUM(nk_accessibility_action) {
     /** Activate the node. */
     NK_ACCESSIBILITY_ACTION_ACTIVATE = 1,
     /** Move accessibility focus to the node. */
@@ -145,7 +145,7 @@ enum {
 
 /** Text unit requested for a selection or navigation action. */
 typedef uint32_t nk_accessibility_text_granularity;
-enum {
+enum NK_ENUM(nk_accessibility_text_granularity) {
     /** One Unicode code point. */
     NK_ACCESSIBILITY_GRANULARITY_CHARACTER = 1,
     /** One word. */

@@ -24,7 +24,7 @@ typedef uint32_t nk_system_directory_kind;
 /** System color-scheme values returned in nk_system_appearance. */
 typedef uint32_t nk_color_scheme;
 
-enum {
+enum NK_ENUM(nk_system_directory_kind) {
     /** User home directory. */
     NK_DIRECTORY_HOME = 1,
     /** User desktop directory. */
@@ -43,7 +43,7 @@ enum {
     NK_DIRECTORY_TEMP = 8
 };
 
-enum {
+enum NK_ENUM(nk_color_scheme) {
     /** The platform did not report a color scheme. */
     NK_COLOR_SCHEME_UNKNOWN = 0,
     /** The platform is using a light color scheme. */

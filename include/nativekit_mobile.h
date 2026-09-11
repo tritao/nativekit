@@ -26,14 +26,14 @@ typedef uint32_t nk_mobile_lifecycle_state;
 /** Platform event type accepted by nk_mobile_host_dispatch_event(). */
 typedef uint32_t nk_mobile_host_event_kind;
 
-enum {
+enum NK_ENUM(nk_mobile_host_kind) {
     /** Android android.view.ViewGroup; requires Android JNI values. */
     NK_MOBILE_HOST_ANDROID_VIEW_GROUP = 1,
     /** iOS UIView container; reserved for the UIKit backend. */
     NK_MOBILE_HOST_UIKIT_VIEW = 2
 };
 
-enum {
+enum NK_ENUM(nk_mobile_lifecycle_state) {
     /** The host is active and may receive input and rendering callbacks. */
     NK_MOBILE_LIFECYCLE_ACTIVE = 1,
     /** The host is visible but temporarily inactive. */
@@ -42,7 +42,7 @@ enum {
     NK_MOBILE_LIFECYCLE_BACKGROUND = 3
 };
 
-enum {
+enum NK_ENUM(nk_mobile_host_event_kind) {
     /** Android Intent supplied with a current JNIEnv* and Intent jobject. */
     NK_MOBILE_HOST_EVENT_ANDROID_INTENT = 1
 };

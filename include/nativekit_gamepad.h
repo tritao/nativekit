@@ -21,7 +21,7 @@ extern "C" {
 
 /** Canonical button index in nk_gamepad_state and gamepad events. */
 typedef uint32_t nk_gamepad_button;
-enum {
+enum NK_ENUM(nk_gamepad_button) {
     /** South face button. */
     NK_GAMEPAD_BUTTON_A = 0,
     /** East face button. */
@@ -58,7 +58,7 @@ enum {
 
 /** Canonical axis index in nk_gamepad_state and gamepad events. */
 typedef uint32_t nk_gamepad_axis;
-enum {
+enum NK_ENUM(nk_gamepad_axis) {
     /** Left stick horizontal axis. */
     NK_GAMEPAD_AXIS_LEFT_X = 0,
     /** Left stick vertical axis. */
@@ -132,7 +132,7 @@ typedef struct nk_gamepad_options {
 
 /** Origin of the mapping currently selected for a joystick. */
 typedef uint32_t nk_gamepad_mapping_source;
-enum {
+enum NK_ENUM(nk_gamepad_mapping_source) {
     /** Mapping came from NativeKit's built-in database. */
     NK_GAMEPAD_MAPPING_BUILT_IN = 1,
     /** Mapping was supplied by the application. */

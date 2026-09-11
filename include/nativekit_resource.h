@@ -59,7 +59,7 @@ enum {
 /** Reference point used by nk_resource_seek(). */
 typedef uint32_t nk_seek_origin;
 
-enum {
+enum NK_ENUM(nk_seek_origin) {
     /** Offset from the beginning of the stream. */
     NK_SEEK_START = 0,
     /** Offset from the current stream position. */

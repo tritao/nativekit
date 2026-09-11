@@ -21,7 +21,7 @@ extern "C" {
 
 /** Transition reported for a key or pointer button. */
 typedef uint32_t nk_input_action;
-enum {
+enum NK_ENUM(nk_input_action) {
     /** The key or button was released. */
     NK_INPUT_RELEASE = 0,
     /** The key or button was pressed. */
@@ -294,7 +294,7 @@ enum {
 
 /** Mouse or pointer button identifier. */
 typedef uint32_t nk_pointer_button;
-enum {
+enum NK_ENUM(nk_pointer_button) {
     /** The primary or left pointer button. */
     NK_POINTER_BUTTON_LEFT = 0,
     /** The secondary or right pointer button. */
@@ -335,7 +335,7 @@ typedef struct nk_text_input_event {
 
 /** Operation represented by an NK_EVENT_TEXT_EDIT transaction. */
 typedef uint32_t nk_text_edit_action;
-enum {
+enum NK_ENUM(nk_text_edit_action) {
     /** Update the active composition without committing it. */
     NK_TEXT_EDIT_COMPOSE = 1,
     /** Replace the reported range with committed UTF-8 text. */
@@ -359,7 +359,7 @@ enum {
 
 /** Keyboard purpose hint for a custom text editor. */
 typedef uint32_t nk_text_input_type;
-enum {
+enum NK_ENUM(nk_text_input_type) {
     /** General text input. */
     NK_TEXT_INPUT_TEXT = 0,
     /** Email address input. */
@@ -387,7 +387,7 @@ enum {
 
 /** Action requested for the keyboard's enter or action key. */
 typedef uint32_t nk_text_input_action;
-enum {
+enum NK_ENUM(nk_text_input_action) {
     /** Use the platform or editor default action. */
     NK_TEXT_INPUT_ACTION_DEFAULT = 0,
     /** Complete the current editing operation. */
@@ -517,7 +517,7 @@ typedef struct nk_pointer_scroll_event {
 
 /** Touch contact transition. */
 typedef uint32_t nk_touch_action;
-enum {
+enum NK_ENUM(nk_touch_action) {
     /** A new touch contact began. */
     NK_TOUCH_BEGIN = 1,
     /** An existing touch contact moved. */
@@ -530,7 +530,7 @@ enum {
 
 /** Tool used for a touch contact. */
 typedef uint32_t nk_touch_tool;
-enum {
+enum NK_ENUM(nk_touch_tool) {
     /** A finger or ordinary touch contact. */
     NK_TOUCH_TOOL_FINGER = 1,
     /** A stylus or pen contact. */
@@ -569,7 +569,7 @@ typedef struct nk_touch_event {
 
 /** Standard cursor shape understood by the active platform backend. */
 typedef uint32_t nk_cursor_shape;
-enum {
+enum NK_ENUM(nk_cursor_shape) {
     /** The platform's default arrow cursor. */
     NK_CURSOR_ARROW = 1,
     /** A text-entry or I-beam cursor. */
@@ -614,7 +614,7 @@ typedef struct nk_cursor_image {
 
 /** Pointer presentation or capture mode for a window. */
 typedef uint32_t nk_cursor_mode;
-enum {
+enum NK_ENUM(nk_cursor_mode) {
     /** Show the selected cursor normally. */
     NK_CURSOR_MODE_NORMAL = 0,
     /** Hide the cursor while it is over the window. */

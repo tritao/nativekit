@@ -21,7 +21,7 @@ extern "C" {
 
 /** Operation encoded in a dialog completion event's flags. */
 typedef uint32_t nk_dialog_operation;
-enum {
+enum NK_ENUM(nk_dialog_operation) {
     /** Select one or more local files. */
     NK_DIALOG_OPEN_FILE = 1,
     /** Select a destination for a local file. */
@@ -51,7 +51,7 @@ enum {
 
 /** Visual and semantic kind of a message dialog. */
 typedef uint32_t nk_message_kind;
-enum {
+enum NK_ENUM(nk_message_kind) {
     /** Informational message. */
     NK_MESSAGE_INFO = 0,
     /** Warning message. */
@@ -77,7 +77,7 @@ enum {
 
 /** Button value returned in a message-dialog completion payload. */
 typedef uint32_t nk_message_result;
-enum {
+enum NK_ENUM(nk_message_result) {
     /** No button was selected, normally because the dialog was cancelled. */
     NK_MESSAGE_RESULT_NONE = 0,
     /** The OK button was selected. */
