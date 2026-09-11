@@ -1,6 +1,4 @@
 import NativeKit;
-import NativeKitUI;
-import NativeKitUI.Nkui_result;
 import haxe.io.Bytes;
 
 class Transaction {
