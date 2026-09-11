@@ -59,6 +59,7 @@ class GraphicsDevice {
 
     GraphicsDeviceResources resources_{};
     std::string error_;
+    bool runtime_acquired_ = false;
     bool valid_ = false;
 };
 

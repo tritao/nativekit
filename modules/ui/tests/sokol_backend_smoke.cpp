@@ -1,6 +1,9 @@
 #include "nativekit.h"
 #include "nativekit_graphics.h"
 #include "nativekit_window.h"
+#ifdef NKUI_TEST_PUBLIC_SOKOL_RUNTIME
+#include "nativekit_sokol.h"
+#endif
 
 #include "compositor/compositor.h"
 #include "prepare/nanovg_recorder.h"
@@ -97,6 +100,9 @@ int main() {
     bool producer_unavailable = false;
     bool producer_failed = false;
     bool prepared_subregion_update = false;
+#ifdef NKUI_TEST_PUBLIC_SOKOL_RUNTIME
+    nks_renderer public_renderer{};
+#endif
     auto backend = std::make_unique<SokolBackend>();
     std::unique_ptr<SokolBackend> shared_backend;
     NanoVGRecorder recorder;
@@ -156,8 +162,13 @@ int main() {
                 shared_backend = std::make_unique<SokolBackend>();
                 if (!shared_backend->initialize())
                     result = 17;
-                else
+                else {
+#ifdef NKUI_TEST_PUBLIC_SOKOL_RUNTIME
+                    if (nks_renderer_create(surface, &public_renderer) != NKS_OK)
+                        result = 19;
+#endif
                     ready = true;
+                }
             }
         } else if (event.kind == NK_EVENT_SURFACE_RESIZE && event.source == surface &&
                    event.data_size >= sizeof(nk_surface_resize_event)) {
@@ -278,6 +289,10 @@ int main() {
     if (shared_backend && !shared_backend->valid())
         result = 18;
     shared_backend.reset();
+#ifdef NKUI_TEST_PUBLIC_SOKOL_RUNTIME
+    if (public_renderer.id && nks_renderer_destroy(public_renderer) != NKS_OK)
+        result = 20;
+#endif
     nk_surface_destroy(surface);
     nk_window_destroy(window);
     nk_shutdown();

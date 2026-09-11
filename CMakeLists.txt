@@ -219,7 +219,8 @@ if(NK_BUILD_SOKOL OR NK_BUILD_UI)
     endif()
     find_package(OpenGL REQUIRED)
     add_library(nativekit_sokol_runtime SHARED modules/sokol/src/runtime.c)
-    target_include_directories(nativekit_sokol_runtime PRIVATE "${NK_VENDOR_DIR}/sokol")
+    target_include_directories(nativekit_sokol_runtime PRIVATE
+        "${NK_VENDOR_DIR}/sokol" "${CMAKE_CURRENT_SOURCE_DIR}/modules/sokol/src")
     target_link_libraries(nativekit_sokol_runtime PRIVATE OpenGL::GL)
     set_target_properties(nativekit_sokol_runtime PROPERTIES
         C_VISIBILITY_PRESET default

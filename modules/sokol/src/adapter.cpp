@@ -1,5 +1,6 @@
 #include "nativekit_sokol.h"
 #include "nativekit_graphics.h"
+#include "nativekit_sokol_runtime.h"
 
 #define SOKOL_GLCORE
 #include "sokol_gfx.h"
@@ -212,19 +213,15 @@ nks_result nks_renderer_create(nks_nativekit_handle surface, nks_renderer *out) 
         return fail(NKS_ERROR_WRONG_STATE, "multiple renderers require shared-context support");
     if (nk_surface_make_current(surface) != NK_OK)
         return fail(NKS_ERROR_UNKNOWN, "current: %s", nk_last_error());
-    if (!renderer_count) {
-        sg_desc desc{};
-        desc.environment.defaults = {.color_format = SG_PIXELFORMAT_RGBA8,
-                                     .depth_format = SG_PIXELFORMAT_NONE,
-                                     .sample_count = 1};
-        sg_setup(&desc);
-        if (!sg_isvalid())
-            return fail(NKS_ERROR_UNKNOWN, "sg_setup failed");
-    }
+    sg_desc desc{};
+    desc.environment.defaults = {.color_format = SG_PIXELFORMAT_RGBA8,
+                                 .depth_format = SG_PIXELFORMAT_NONE,
+                                 .sample_count = 1};
+    if (!nk_sokol_runtime_acquire(&desc))
+        return fail(NKS_ERROR_UNKNOWN, "Sokol graphics runtime acquisition failed");
     Handle h = renderer_pool.add(Renderer{surface});
     if (!h) {
-        if (!renderer_count)
-            sg_shutdown();
+        nk_sokol_runtime_release();
         return fail(NKS_ERROR_UNKNOWN, "renderer pool full");
     }
     ++renderer_count;
@@ -290,8 +287,7 @@ nks_result nks_renderer_destroy(nks_renderer h) {
     destroy_owned(h);
     renderer_pool.remove(*s);
     --renderer_count;
-    if (!renderer_count)
-        sg_shutdown();
+    nk_sokol_runtime_release();
     return NKS_OK;
 }
 static nks_result save_buffer(Handle owner, sg_buffer object, nks_buffer *out) {

@@ -50,6 +50,7 @@ target_include_directories(nativekit_ui
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE src)
 target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/sokol")
+target_include_directories(nativekit_ui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src")
 target_include_directories(nativekit_ui PRIVATE "${NKUI_SHADER_GENERATED_DIR}")
 target_link_libraries(nativekit_ui PRIVATE NativeKit::nativekit nkui_skribidi nkui_nanovg_core
     nativekit_sokol_runtime OpenGL::GL)
@@ -112,7 +113,8 @@ if(NK_BUILD_TESTS)
         src/render/graphics_device.cpp
         src/render/sokol_backend.cpp)
     target_include_directories(nativekit_ui_sokol_backend_mesh_test PRIVATE
-        src "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}")
+        src "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src")
     target_link_libraries(nativekit_ui_sokol_backend_mesh_test PRIVATE
         nkui_nanovg_core nkui_skribidi nativekit_sokol_runtime)
     add_test(NAME nativekit_ui_sokol_backend_mesh COMMAND nativekit_ui_sokol_backend_mesh_test)
@@ -139,13 +141,20 @@ if(NK_BUILD_TESTS)
             src/render/render_plan_executor.cpp
             src/render/sokol_backend.cpp)
         target_include_directories(nativekit_ui_sokol_backend_smoke_test PRIVATE
-            src "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}")
+            src "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src")
         target_compile_definitions(nativekit_ui_sokol_backend_smoke_test PRIVATE
             NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf"
             NKUI_TEST_COLOR_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/NotoColorEmoji-Regular.ttf")
         target_link_libraries(nativekit_ui_sokol_backend_smoke_test PRIVATE
             NativeKit::nativekit nkui_nanovg_core nkui_skribidi nativekit_sokol_runtime
             OpenGL::GL)
+        if(TARGET NativeKit::sokol)
+            target_compile_definitions(nativekit_ui_sokol_backend_smoke_test PRIVATE
+                NKUI_TEST_PUBLIC_SOKOL_RUNTIME)
+            target_link_libraries(nativekit_ui_sokol_backend_smoke_test PRIVATE
+                NativeKit::sokol)
+        endif()
         add_executable(nativekit_ui_public_renderer_smoke_test tests/public_renderer_smoke.cpp)
         target_compile_definitions(nativekit_ui_public_renderer_smoke_test PRIVATE
             NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")

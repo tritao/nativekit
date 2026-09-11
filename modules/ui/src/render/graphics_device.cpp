@@ -1,5 +1,6 @@
 #include "graphics_device.h"
 
+#include "nativekit_sokol_runtime.h"
 #include "sokol_backend.h"
 
 #include "nkui_composite.glsl.h"
@@ -233,19 +234,13 @@ bool resources_valid(const GraphicsDeviceResources &resources) {
 } // namespace
 
 GraphicsDevice::GraphicsDevice() {
-    // A valid Sokol runtime not represented by shared_device belongs to
-    // another NativeKit graphics owner. Do not shut that runtime down here.
-    if (sg_isvalid()) {
-        error_ = "Sokol runtime is already owned";
-        return;
-    }
     sg_desc desc{};
     desc.environment.defaults = {SG_PIXELFORMAT_RGBA8, SG_PIXELFORMAT_DEPTH_STENCIL, 1};
-    sg_setup(&desc);
-    if (!sg_isvalid()) {
-        error_ = "sg_setup failed";
+    if (!nk_sokol_runtime_acquire(&desc)) {
+        error_ = "Sokol graphics runtime acquisition failed";
         return;
     }
+    runtime_acquired_ = true;
 
     resources_.solid_shader = make_solid_shader();
     resources_.paint_shader = make_path_shader();
@@ -296,18 +291,20 @@ GraphicsDevice::GraphicsDevice() {
     if (!resources_valid(resources_)) {
         error_ = "UI graphics resource creation failed";
         destroy_resources(resources_);
-        sg_shutdown();
+        nk_sokol_runtime_release();
+        runtime_acquired_ = false;
         return;
     }
     valid_ = true;
 }
 
 GraphicsDevice::~GraphicsDevice() {
-    if (!valid_)
+    if (!runtime_acquired_)
         return;
     std::lock_guard<std::mutex> lock(device_mutex);
     destroy_resources(resources_);
-    sg_shutdown();
+    nk_sokol_runtime_release();
+    runtime_acquired_ = false;
 }
 
 std::shared_ptr<GraphicsDevice> GraphicsDevice::acquire(std::string *error) {
