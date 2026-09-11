@@ -1,6 +1,6 @@
 [submodule "vendor/sokol"]
 	path = vendor/sokol
-	url = https://github.com/floooh/sokol.git
+	url = https://github.com/tritao/sokol.git
 [submodule "vendor/skribidi"]
 	path = vendor/skribidi
 	url = https://github.com/memononen/Skribidi.git
