@@ -141,7 +141,7 @@ class NativeKitRequests {
 		checkStarted(name, status);
 		track(request, function(value) switch value {
 			case Resources(kind, _, result, accepted, items):
-				if (kind != NativeKit.NativeKitConstants.NK_EVENT_DIALOG_RESOURCES_COMPLETE) wrongEvent(name);
+				if (kind != NativeKit.Nk_event_kind.NK_EVENT_DIALOG_RESOURCES_COMPLETE) wrongEvent(name);
 				checkCompleted(name, result); handler(accepted, items);
 			case _: wrongEvent(name);
 		});

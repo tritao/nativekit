@@ -1,5 +1,8 @@
 import NativeKit;
 import NativeKit.NativeKitConstants;
+import NativeKit.Nk_message_kind;
+import NativeKit.Nk_result;
+import NativeKit.Nk_window_kind;
 
 /** Creates correctly sized NativeKit option structures with useful defaults. */
 class NativeKitOptions {
@@ -30,7 +33,7 @@ class NativeKitOptions {
 		value.set_title(title);
 		value.set_flags(flags == null ? NativeKitConstants.NK_WINDOW_RESIZABLE : flags);
 		value.set_owner(owner == null ? 0 : owner);
-		value.set_kind(kind == null ? NativeKitConstants.NK_WINDOW_NORMAL : kind);
+		value.set_kind(kind == null ? Nk_window_kind.NK_WINDOW_NORMAL : kind);
 		return value;
 	}
 
@@ -68,7 +71,7 @@ class NativeKitOptions {
 		value.set_struct_size(nk_message_dialog_options.size());
 		value.set_message(message);
 		value.set_title(title);
-		value.set_kind(kind == null ? NativeKitConstants.NK_MESSAGE_INFO : kind);
+		value.set_kind(kind == null ? Nk_message_kind.NK_MESSAGE_INFO : kind);
 		value.set_buttons(buttons == null ? NativeKitConstants.NK_MESSAGE_BUTTON_OK : buttons);
 		return value;
 	}
@@ -141,7 +144,7 @@ class NativeKitShareOptions {
 
 	public function submit():Void {
 		var result = NativeKit.nk_share(options);
-		if (result != NativeKitConstants.NK_OK)
+		if (result != Nk_result.NK_OK)
 			throw 'NativeKit share failed: $result';
 	}
 }

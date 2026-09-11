@@ -1375,6 +1375,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * A mobile host received dropped resources or text.
 		 */
 		NK_EVENT_RESOURCE_DROP = 802;
+		/**
+		 * An asynchronous URI resource load completed with raw byte data.
+		 */
+		NK_EVENT_RESOURCE_DATA_COMPLETE = 803;
 	}
 	/**
 	 * Canonical axis index in nk_gamepad_state and gamepad events.
@@ -2152,6 +2156,12 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Queries the readable/writable access retained for a URI resource.
 	 */
 	extern fn nk_resource_get_persisted_access(resource: ptr<const<nk_resource>>, out_flags: ptr<nk_resource_flags> @out) -> nk_result;
+	/**
+	 * Starts an asynchronous read of the complete URI resource. Completion is
+	 * delivered through NK_EVENT_RESOURCE_DATA_COMPLETE; its event data contains
+	 * the loaded bytes and its result reports the fetch outcome.
+	 */
+	extern fn nk_resource_load_async(resource: ptr<const<nk_resource>>, out_request: ptr<nk_request_id> @out) -> nk_result;
 	/**
 	 * Opens a URI-backed stream on the UI thread. Stream operations copy bytes
 	 * synchronously and may be called from worker threads. A successful read may
