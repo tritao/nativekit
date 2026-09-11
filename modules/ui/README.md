@@ -17,6 +17,8 @@ See the repository-level [`vendor/README.md`](../../vendor/README.md) for pinned
 sequence and the policy on adapting versus rewriting upstream code.
 The reusable NanoVG path API is documented in
 [`docs/nanovg-path-preparation.md`](docs/nanovg-path-preparation.md).
+The Haxe-facing graphics layering and verification strategy is documented in
+[`docs/haxe-graphics-api.md`](docs/haxe-graphics-api.md).
 
 All third-party integrations must sit behind private adapters. The public C ABI
 will use opaque handles, fixed-width values, versioned structures, and validated
