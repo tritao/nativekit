@@ -10,8 +10,12 @@ cmake -S "$nativekit_dir" -B "$build_dir" -GNinja -DCMAKE_BUILD_TYPE=Release \
     -DNK_BUILD_SOKOL=ON -DNK_BUILD_TESTS=ON -DNK_BUILD_EXAMPLES=OFF
 cmake --build "$build_dir" --target nativekit_sokol_benchmark
 
-"$haxeon_dir/scripts/haxeon-ffi-import" \
+"$haxeon_dir/scripts/haxeon-ffi-audit" \
     --target=x86_64-linux-gnu \
+    --target=x86_64-w64-windows-gnu \
+    --target=x86_64-apple-darwin \
+    --target=arm64-apple-darwin \
+    --profile=portable-abi64 \
     --library=nativekit_sokol_benchmark \
     --interface=NativeKitSokolBenchmark \
     --include="$module_dir/bench" \
