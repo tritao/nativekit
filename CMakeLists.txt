@@ -247,7 +247,7 @@ if(NK_BUILD_SOKOL OR NK_BUILD_UI)
     endif()
     function(nk_add_sokol_runtime target compile_definition symbol_prefix graphics_libraries
              graphics_include_dirs)
-        add_library(${target} SHARED modules/sokol/src/runtime.c)
+        add_library(${target} SHARED modules/sokol/src/runtime.c modules/sokol/src/api.c)
         target_include_directories(${target} PRIVATE
             "${NK_VENDOR_DIR}/sokol" "${CMAKE_CURRENT_SOURCE_DIR}/modules/sokol/src"
             ${graphics_include_dirs})
@@ -255,6 +255,7 @@ if(NK_BUILD_SOKOL OR NK_BUILD_UI)
         if(symbol_prefix)
             target_compile_definitions(${target} PRIVATE
                 SOKOL_GFX_SYMBOL_PREFIX=${symbol_prefix}
+                NK_SOKOL_API_PREFIX=${symbol_prefix}
                 NK_SOKOL_RUNTIME_PREFIX=${symbol_prefix}runtime_)
         endif()
         target_link_libraries(${target} PRIVATE ${graphics_libraries})

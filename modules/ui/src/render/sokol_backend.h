@@ -2,6 +2,7 @@
 #define NATIVEKIT_UI_SOKOL_BACKEND_H
 
 #include "render_backend.h"
+#include "nativekit_sokol_api.h"
 
 #include <cstdint>
 #include <vector>
@@ -27,7 +28,7 @@ using SokolBackendStats = RenderBackendStats;
 
 class SokolBackend final : public RenderBackend {
   public:
-    SokolBackend();
+    explicit SokolBackend(const nk_sokol_api *api);
     ~SokolBackend() override;
     SokolBackend(const SokolBackend &) = delete;
     SokolBackend &operator=(const SokolBackend &) = delete;

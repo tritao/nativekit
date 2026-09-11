@@ -54,6 +54,11 @@ target_include_directories(nativekit_ui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../
 target_include_directories(nativekit_ui PRIVATE "${NKUI_SHADER_GENERATED_DIR}")
 target_link_libraries(nativekit_ui PRIVATE NativeKit::nativekit nkui_skribidi nkui_nanovg_core
     nativekit_sokol_runtime ${NK_SOKOL_GRAPHICS_LIBRARIES})
+if(NK_BUILD_SOKOL_BACKEND_MATRIX)
+    target_link_libraries(nativekit_ui PRIVATE
+        nativekit_sokol_runtime_glcore nativekit_sokol_runtime_gles3)
+    target_compile_definitions(nativekit_ui PRIVATE NKUI_SOKOL_RUNTIME_MATRIX=1)
+endif()
 target_compile_definitions(nativekit_ui PUBLIC ${NK_SOKOL_COMPILE_DEFINITION}
     PRIVATE NKUI_BUILDING_LIBRARY)
 set_target_properties(nativekit_ui PROPERTIES

@@ -2,7 +2,6 @@
 
 #include "frame_resources.h"
 #include "graphics_device.h"
-#include "nativekit_sokol_backend_config.h"
 
 #include <algorithm>
 #include <array>
@@ -66,6 +65,7 @@ struct SokolBackend::State {
     std::unordered_map<uint32_t, PaintImage> images;
     SokolBackendStats stats{};
     std::string error;
+    const nk_sokol_api *api = nullptr;
     std::shared_ptr<GraphicsDevice> device;
     int width = 0;
     int height = 0;
@@ -223,11 +223,12 @@ bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
         return fail(state, "UI streaming buffer is unavailable");
     const sg_range vertex_data{vertices.data(), vertices.size() * sizeof(Vertex)};
     const sg_range index_data{indices.data(), indices.size() * sizeof(uint32_t)};
-    const int vertex_offset = sg_append_buffer(vertex_buffer, &vertex_data);
-    const int index_offset = sg_append_buffer(index_buffer, &index_data);
-    if (sg_query_buffer_overflow(vertex_buffer) || sg_query_buffer_overflow(index_buffer))
+    const int vertex_offset = state.api->gfx->append_buffer(vertex_buffer, &vertex_data);
+    const int index_offset = state.api->gfx->append_buffer(index_buffer, &index_data);
+    if (state.api->gfx->query_buffer_overflow(vertex_buffer) ||
+        state.api->gfx->query_buffer_overflow(index_buffer))
         return fail(state, "UI streaming buffer overflow");
-    sg_apply_pipeline(pipeline);
+    state.api->gfx->apply_pipeline(pipeline);
     ++state.stats.pipeline_changes;
     sg_bindings bindings{};
     bindings.vertex_buffers[0] = vertex_buffer;
@@ -236,7 +237,7 @@ bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
     bindings.index_buffer_offset = index_offset;
     bindings.views[0] = view;
     bindings.samplers[0] = sampler;
-    sg_apply_bindings(&bindings);
+    state.api->gfx->apply_bindings(&bindings);
     ++state.stats.binding_changes;
     // All NativeKit shader families use generated std140 uniform blocks. A
     // vec2 therefore has a 16-byte block footprint even though only the first
@@ -244,12 +245,12 @@ bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
     const std::array<float, 4> viewport = {
         static_cast<float>(state.width), static_cast<float>(state.height), 0.0f, 0.0f};
     const sg_range viewport_range{viewport.data(), sizeof(viewport)};
-    sg_apply_uniforms(0, &viewport_range);
+    state.api->gfx->apply_uniforms(0, &viewport_range);
     if (fragment_uniforms) {
         const sg_range fragment_range{fragment_uniforms, fragment_uniform_size};
-        sg_apply_uniforms(1, &fragment_range);
+        state.api->gfx->apply_uniforms(1, &fragment_range);
     }
-    sg_draw(0, static_cast<int>(indices.size()), 1);
+    state.api->gfx->draw(0, static_cast<int>(indices.size()), 1);
     ++state.stats.draws;
     state.stats.transient_bytes += vertex_data.size + index_data.size;
     return true;
@@ -343,7 +344,7 @@ bool upload_texture(SokolBackend::State &state, const PreparedTexture &source,
     }
     if (image.generation != source.generation) {
         const sg_image_data data = {.mip_levels = {{source.pixels.data(), source.pixels.size()}}};
-        sg_update_image(gpu.resolve(image.image), &data);
+        state.api->gfx->update_image(gpu.resolve(image.image), &data);
         image.generation = source.generation;
         ++state.stats.image_uploads;
         state.stats.uploaded_bytes += source.pixels.size();
@@ -504,7 +505,9 @@ bool triangulate_prepared_path(const PreparedPathData &path,
     return !mesh.indices.empty();
 }
 
-SokolBackend::SokolBackend() : state_(new State) {}
+SokolBackend::SokolBackend(const nk_sokol_api *api) : state_(new State) {
+    state_->api = api;
+}
 
 SokolBackend::~SokolBackend() {
     if (state_->device) {
@@ -546,7 +549,7 @@ bool SokolBackend::initialize() {
     if (state_->initialized)
         return fail(*state_, "Sokol backend is already initialized");
     std::string device_error;
-    state_->device = GraphicsDevice::acquire(&device_error);
+    state_->device = GraphicsDevice::acquire(state_->api, &device_error);
     if (!state_->device)
         return fail(*state_, device_error.c_str());
     auto &gpu = state_->device->gpu_resources();
@@ -579,11 +582,9 @@ bool SokolBackend::begin_window_pass(int width, int height,
                                      const nk_surface_frame_target &target, bool clear) {
     if (!valid() || state_->in_pass || width <= 0 || height <= 0)
         return fail(*state_, "invalid window pass");
-#if defined(NK_SOKOL_BACKEND_GLES3)
-    constexpr nk_graphics_api supported_api = NK_GRAPHICS_OPENGL_ES;
-#else
-    constexpr nk_graphics_api supported_api = NK_GRAPHICS_OPENGL;
-#endif
+    const nk_graphics_api supported_api =
+        state_->api->gfx->query_backend() == SG_BACKEND_GLES3 ? NK_GRAPHICS_OPENGL_ES
+                                                               : NK_GRAPHICS_OPENGL;
     if (target.struct_size < sizeof(target) || target.api != supported_api)
         return fail(*state_, "unsupported window target");
     state_->width = width;
@@ -599,7 +600,7 @@ bool SokolBackend::begin_window_pass(int width, int height,
     pass.swapchain.color_format = SG_PIXELFORMAT_RGBA8;
     pass.swapchain.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     pass.swapchain.gl.framebuffer = static_cast<uint32_t>(target.native_target);
-    sg_begin_pass(&pass);
+    state_->api->gfx->begin_pass(&pass);
     state_->in_pass = true;
     ++state_->stats.passes;
     return true;
@@ -629,7 +630,7 @@ bool SokolBackend::begin_target_pass(ResourceId target_id, int width, int height
     pass.attachments.colors[0] = state_->device->gpu_resources().resolve(target.color_attachment);
     pass.attachments.depth_stencil =
         state_->device->gpu_resources().resolve(target.depth_attachment);
-    sg_begin_pass(&pass);
+    state_->api->gfx->begin_pass(&pass);
     state_->in_pass = true;
     ++state_->stats.passes;
     return true;
@@ -683,7 +684,7 @@ bool SokolBackend::set_scissor(bool enabled, float x, float y, float width, floa
     if (!state_->in_pass)
         return fail(*state_, "scissor outside pass");
     if (!enabled) {
-        sg_apply_scissor_rect(0, 0, state_->width, state_->height, true);
+        state_->api->gfx->apply_scissor_rect(0, 0, state_->width, state_->height, true);
         return true;
     }
     if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) ||
@@ -693,7 +694,8 @@ bool SokolBackend::set_scissor(bool enabled, float x, float y, float width, floa
     const int top = std::max(0, static_cast<int>(y));
     const int right = std::min(state_->width, static_cast<int>(x + width + 0.999f));
     const int bottom = std::min(state_->height, static_cast<int>(y + height + 0.999f));
-    sg_apply_scissor_rect(left, top, std::max(0, right - left), std::max(0, bottom - top), true);
+    state_->api->gfx->apply_scissor_rect(left, top, std::max(0, right - left),
+                                         std::max(0, bottom - top), true);
     return true;
 }
 
@@ -853,7 +855,8 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
         if (full_upload) {
             const sg_image_data data = {
                 .mip_levels = {{found->second.pixels.data(), found->second.pixels.size()}}};
-            sg_update_image(state_->device->gpu_resources().resolve(found->second.image), &data);
+            state_->api->gfx->update_image(
+                state_->device->gpu_resources().resolve(found->second.image), &data);
             ++state_->stats.atlas_full_uploads;
             uploaded_bytes = found->second.pixels.size();
         } else {
@@ -871,7 +874,7 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
             data.size.width = upload.width;
             data.size.height = upload.height;
             data.size.num_slices = 1;
-            if (!sg_update_image_region(&data))
+            if (!state_->api->gfx->update_image_region(&data))
                 return fail(*state_, "atlas subregion upload failed");
             ++state_->stats.atlas_subregion_uploads;
             uploaded_bytes = dirty_bytes;
@@ -967,7 +970,7 @@ bool SokolBackend::draw_target(ResourceId target_id, float x, float y, float wid
 bool SokolBackend::end_pass() {
     if (!state_->in_pass)
         return fail(*state_, "no pass to end");
-    sg_end_pass();
+    state_->api->gfx->end_pass();
     state_->in_pass = false;
     return true;
 }
@@ -975,7 +978,7 @@ bool SokolBackend::end_pass() {
 bool SokolBackend::commit_frame() {
     if (!valid() || state_->in_pass)
         return fail(*state_, "cannot commit inside pass");
-    sg_commit();
+    state_->api->gfx->commit();
     return true;
 }
 

@@ -2,6 +2,7 @@
 #define NATIVEKIT_UI_GRAPHICS_DEVICE_H
 
 #include "nativekit_sokol_backend_config.h"
+#include "nativekit_sokol_api.h"
 #include "sokol_gfx.h"
 
 #include <cstdint>
@@ -38,7 +39,7 @@ struct GpuSamplerHandle {
 /** Device-owned registry for dynamic Sokol resources. */
 class GpuResourceRegistry {
   public:
-    GpuResourceRegistry() = default;
+    explicit GpuResourceRegistry(const nk_sokol_api *api) : api_(api) {}
     ~GpuResourceRegistry();
 
     GpuResourceRegistry(const GpuResourceRegistry &) = delete;
@@ -69,6 +70,7 @@ class GpuResourceRegistry {
     std::vector<Slot<sg_image>> images_;
     std::vector<Slot<sg_view>> views_;
     std::vector<Slot<sg_sampler>> samplers_;
+    const nk_sokol_api *api_ = nullptr;
 };
 
 /** Immutable shader, pipeline, and sampler resources shared by UI executors. */
@@ -107,7 +109,8 @@ struct GraphicsDeviceResources {
  */
 class GraphicsDevice {
   public:
-    static std::shared_ptr<GraphicsDevice> acquire(std::string *error = nullptr);
+    static std::shared_ptr<GraphicsDevice> acquire(const nk_sokol_api *api,
+                                                   std::string *error = nullptr);
 
     ~GraphicsDevice();
     GraphicsDevice(const GraphicsDevice &) = delete;
@@ -115,17 +118,19 @@ class GraphicsDevice {
 
     bool valid() const { return valid_; }
     const GraphicsDeviceResources &resources() const { return resources_; }
+    const nk_sokol_api *api() const { return api_; }
     GpuResourceRegistry &gpu_resources() { return gpu_resources_; }
     const GpuResourceRegistry &gpu_resources() const { return gpu_resources_; }
 
   private:
-    GraphicsDevice();
+    explicit GraphicsDevice(const nk_sokol_api *api);
 
     GraphicsDeviceResources resources_{};
     GpuResourceRegistry gpu_resources_;
     std::string error_;
     bool runtime_acquired_ = false;
     bool valid_ = false;
+    const nk_sokol_api *api_ = nullptr;
 };
 
 } // namespace nkui
