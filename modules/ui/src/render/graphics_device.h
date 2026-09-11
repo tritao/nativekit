@@ -4,10 +4,42 @@
 #define SOKOL_GLCORE
 #include "sokol_gfx.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace nkui {
+
+/** Generation-checked identity for a dynamic GPU buffer owned by a device. */
+struct GpuBufferHandle {
+    uint32_t value = 0;
+    explicit operator bool() const { return value != 0; }
+};
+
+/** Device-owned registry for dynamic Sokol resources. */
+class GpuResourceRegistry {
+  public:
+    GpuResourceRegistry() = default;
+    ~GpuResourceRegistry();
+
+    GpuResourceRegistry(const GpuResourceRegistry &) = delete;
+    GpuResourceRegistry &operator=(const GpuResourceRegistry &) = delete;
+
+    GpuBufferHandle create_buffer(const sg_buffer_desc &description);
+    sg_buffer resolve(GpuBufferHandle handle) const;
+    void destroy(GpuBufferHandle handle);
+    void clear();
+
+  private:
+    struct BufferSlot {
+        uint16_t generation = 1;
+        bool active = false;
+        sg_buffer value{};
+    };
+
+    std::vector<BufferSlot> buffers_;
+};
 
 /** Immutable shader, pipeline, and sampler resources shared by UI executors. */
 struct GraphicsDeviceResources {
@@ -53,11 +85,14 @@ class GraphicsDevice {
 
     bool valid() const { return valid_; }
     const GraphicsDeviceResources &resources() const { return resources_; }
+    GpuResourceRegistry &gpu_resources() { return gpu_resources_; }
+    const GpuResourceRegistry &gpu_resources() const { return gpu_resources_; }
 
   private:
     GraphicsDevice();
 
     GraphicsDeviceResources resources_{};
+    GpuResourceRegistry gpu_resources_;
     std::string error_;
     bool runtime_acquired_ = false;
     bool valid_ = false;

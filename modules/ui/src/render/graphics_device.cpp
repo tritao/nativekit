@@ -17,6 +17,24 @@ namespace {
 std::mutex device_mutex;
 std::weak_ptr<GraphicsDevice> shared_device;
 
+constexpr uint32_t kHandleSlotMask = 0xFFFFu;
+constexpr uint32_t kHandleGenerationMask = 0x0FFFu;
+
+uint32_t encode_buffer_handle(size_t slot, uint16_t generation) {
+    return (static_cast<uint32_t>(generation) << 16) |
+           static_cast<uint32_t>(slot + 1);
+}
+
+bool decode_buffer_handle(GpuBufferHandle handle, size_t &slot, uint16_t &generation) {
+    const uint32_t encoded_slot = handle.value & kHandleSlotMask;
+    const uint32_t encoded_generation = (handle.value >> 16) & kHandleGenerationMask;
+    if (!encoded_slot || !encoded_generation)
+        return false;
+    slot = encoded_slot - 1;
+    generation = static_cast<uint16_t>(encoded_generation);
+    return true;
+}
+
 struct PathVertex {
     float x;
     float y;
@@ -233,6 +251,64 @@ bool resources_valid(const GraphicsDeviceResources &resources) {
 
 } // namespace
 
+GpuResourceRegistry::~GpuResourceRegistry() {
+    clear();
+}
+
+GpuBufferHandle GpuResourceRegistry::create_buffer(const sg_buffer_desc &description) {
+    size_t slot_index = buffers_.size();
+    for (size_t index = 0; index < buffers_.size(); ++index) {
+        if (!buffers_[index].active) {
+            slot_index = index;
+            break;
+        }
+    }
+    if (slot_index >= kHandleSlotMask)
+        return {};
+    if (slot_index == buffers_.size())
+        buffers_.push_back({});
+    auto &slot = buffers_[slot_index];
+    slot.value = sg_make_buffer(&description);
+    if (sg_query_buffer_state(slot.value) != SG_RESOURCESTATE_VALID) {
+        slot.value = {};
+        return {};
+    }
+    slot.active = true;
+    return {encode_buffer_handle(slot_index, slot.generation)};
+}
+
+sg_buffer GpuResourceRegistry::resolve(GpuBufferHandle handle) const {
+    size_t slot_index = 0;
+    uint16_t generation = 0;
+    if (!decode_buffer_handle(handle, slot_index, generation) || slot_index >= buffers_.size())
+        return {};
+    const auto &slot = buffers_[slot_index];
+    return slot.active && slot.generation == generation ? slot.value : sg_buffer{};
+}
+
+void GpuResourceRegistry::destroy(GpuBufferHandle handle) {
+    size_t slot_index = 0;
+    uint16_t generation = 0;
+    if (!decode_buffer_handle(handle, slot_index, generation) || slot_index >= buffers_.size())
+        return;
+    auto &slot = buffers_[slot_index];
+    if (!slot.active || slot.generation != generation)
+        return;
+    sg_destroy_buffer(slot.value);
+    slot.value = {};
+    slot.active = false;
+    slot.generation = static_cast<uint16_t>((slot.generation % kHandleGenerationMask) + 1);
+}
+
+void GpuResourceRegistry::clear() {
+    for (auto &slot : buffers_) {
+        if (slot.active)
+            sg_destroy_buffer(slot.value);
+        slot = {};
+        slot.generation = 1;
+    }
+}
+
 GraphicsDevice::GraphicsDevice() {
     sg_desc desc{};
     desc.environment.defaults = {SG_PIXELFORMAT_RGBA8, SG_PIXELFORMAT_DEPTH_STENCIL, 1};
@@ -302,6 +378,7 @@ GraphicsDevice::~GraphicsDevice() {
     if (!runtime_acquired_)
         return;
     std::lock_guard<std::mutex> lock(device_mutex);
+    gpu_resources_.clear();
     destroy_resources(resources_);
     nk_sokol_runtime_release();
     runtime_acquired_ = false;

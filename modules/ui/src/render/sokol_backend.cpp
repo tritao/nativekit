@@ -53,10 +53,10 @@ struct SokolBackend::State {
         int flags = 0;
     };
 
-    sg_buffer solid_vertices{};
-    sg_buffer glyph_vertices{};
-    sg_buffer composite_vertices{};
-    sg_buffer indices{};
+    GpuBufferHandle solid_vertices{};
+    GpuBufferHandle glyph_vertices{};
+    GpuBufferHandle composite_vertices{};
+    GpuBufferHandle indices{};
     std::unordered_map<uint64_t, AtlasImage> atlases;
     std::unordered_map<uint32_t, Target> targets;
     std::unordered_map<uint32_t, SurfaceState> surfaces;
@@ -209,21 +209,26 @@ template <class Vertex>
 bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
                const std::vector<Vertex> &vertices, const std::vector<uint32_t> &indices,
                const void *fragment_uniforms, size_t fragment_uniform_size, sg_view view = {},
-               sg_sampler sampler = {}, sg_buffer vertex_buffer = {}) {
+               sg_sampler sampler = {}, GpuBufferHandle vertex_buffer_handle = {}) {
     if (vertices.empty() || indices.empty())
         return true;
+    const sg_buffer vertex_buffer =
+        state.device->gpu_resources().resolve(vertex_buffer_handle);
+    const sg_buffer index_buffer = state.device->gpu_resources().resolve(state.indices);
+    if (!vertex_buffer.id || !index_buffer.id)
+        return fail(state, "UI streaming buffer is unavailable");
     const sg_range vertex_data{vertices.data(), vertices.size() * sizeof(Vertex)};
     const sg_range index_data{indices.data(), indices.size() * sizeof(uint32_t)};
     const int vertex_offset = sg_append_buffer(vertex_buffer, &vertex_data);
-    const int index_offset = sg_append_buffer(state.indices, &index_data);
-    if (sg_query_buffer_overflow(vertex_buffer) || sg_query_buffer_overflow(state.indices))
+    const int index_offset = sg_append_buffer(index_buffer, &index_data);
+    if (sg_query_buffer_overflow(vertex_buffer) || sg_query_buffer_overflow(index_buffer))
         return fail(state, "UI streaming buffer overflow");
     sg_apply_pipeline(pipeline);
     ++state.stats.pipeline_changes;
     sg_bindings bindings{};
     bindings.vertex_buffers[0] = vertex_buffer;
     bindings.vertex_buffer_offsets[0] = vertex_offset;
-    bindings.index_buffer = state.indices;
+    bindings.index_buffer = index_buffer;
     bindings.index_buffer_offset = index_offset;
     bindings.views[0] = view;
     bindings.samplers[0] = sampler;
@@ -244,16 +249,6 @@ bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
     ++state.stats.draws;
     state.stats.transient_bytes += vertex_data.size + index_data.size;
     return true;
-}
-
-sg_buffer make_stream_buffer(size_t size, bool index) {
-    sg_buffer_desc desc{};
-    desc.size = size;
-    desc.usage.vertex_buffer = !index;
-    desc.usage.index_buffer = index;
-    desc.usage.immutable = false;
-    desc.usage.dynamic_update = true;
-    return sg_make_buffer(&desc);
 }
 
 void destroy_target(SokolBackend::State::Target &target) {
@@ -531,10 +526,11 @@ SokolBackend::~SokolBackend() {
             sg_destroy_view(atlas.view);
             sg_destroy_image(atlas.image);
         }
-        sg_destroy_buffer(state_->indices);
-        sg_destroy_buffer(state_->composite_vertices);
-        sg_destroy_buffer(state_->glyph_vertices);
-        sg_destroy_buffer(state_->solid_vertices);
+        auto &gpu = state_->device->gpu_resources();
+        gpu.destroy(state_->indices);
+        gpu.destroy(state_->composite_vertices);
+        gpu.destroy(state_->glyph_vertices);
+        gpu.destroy(state_->solid_vertices);
         state_->device.reset();
     }
     delete state_;
@@ -547,15 +543,23 @@ bool SokolBackend::initialize() {
     state_->device = GraphicsDevice::acquire(&device_error);
     if (!state_->device)
         return fail(*state_, device_error.c_str());
+    auto &gpu = state_->device->gpu_resources();
+    auto make_stream_buffer = [&gpu](size_t size, bool index) {
+        sg_buffer_desc description{};
+        description.size = size;
+        description.usage.vertex_buffer = !index;
+        description.usage.index_buffer = index;
+        description.usage.immutable = false;
+        description.usage.dynamic_update = true;
+        return gpu.create_buffer(description);
+    };
     state_->solid_vertices = make_stream_buffer(4 * 1024 * 1024, false);
     state_->glyph_vertices = make_stream_buffer(4 * 1024 * 1024, false);
     state_->composite_vertices = make_stream_buffer(1024 * 1024, false);
     state_->indices = make_stream_buffer(4 * 1024 * 1024, true);
     state_->initialized =
-        sg_query_buffer_state(state_->solid_vertices) == SG_RESOURCESTATE_VALID &&
-        sg_query_buffer_state(state_->glyph_vertices) == SG_RESOURCESTATE_VALID &&
-        sg_query_buffer_state(state_->composite_vertices) == SG_RESOURCESTATE_VALID &&
-        sg_query_buffer_state(state_->indices) == SG_RESOURCESTATE_VALID;
+        gpu.resolve(state_->solid_vertices).id && gpu.resolve(state_->glyph_vertices).id &&
+        gpu.resolve(state_->composite_vertices).id && gpu.resolve(state_->indices).id;
     if (state_->initialized)
         state_->stats.gpu_resources = 28;
     return state_->initialized || fail(*state_, "Sokol UI resource creation failed");
