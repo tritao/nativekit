@@ -66,15 +66,12 @@ class WebSocket:
             payload = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
         return first & 0x0F, payload
 
-    def evaluate(self, expression, identifier):
+    def command(self, method, params, identifier):
         self.send(
             {
                 "id": identifier,
-                "method": "Runtime.evaluate",
-                "params": {
-                    "expression": expression,
-                    "returnByValue": True,
-                },
+                "method": method,
+                "params": params,
             }
         )
         while True:
@@ -83,10 +80,19 @@ class WebSocket:
                 continue
             response = json.loads(payload)
             if response.get("id") == identifier:
-                result = response.get("result", {}).get("result", {})
-                if "exceptionDetails" in response.get("result", {}):
-                    raise RuntimeError(json.dumps(response["result"]))
-                return result.get("value")
+                if "error" in response:
+                    raise RuntimeError(json.dumps(response))
+                return response.get("result")
+
+    def evaluate(self, expression, identifier):
+        result = self.command(
+            "Runtime.evaluate",
+            {"expression": expression, "returnByValue": True},
+            identifier,
+        )
+        if "exceptionDetails" in result:
+            raise RuntimeError(json.dumps(result))
+        return result.get("result", {}).get("value")
 
 
 def main():
@@ -112,6 +118,9 @@ def main():
     websocket = WebSocket(page["webSocketDebuggerUrl"])
     try:
         probe_sent = False
+        pointer_sent = False
+        touch_sent = False
+        resize_sent = False
         expression = (
             "JSON.stringify({"
             "result:document.documentElement.dataset.nativekitResult || '',"
@@ -131,13 +140,49 @@ def main():
                     "inputType:'insertText'}));return true;})()",
                     2,
                 ))
+            if not resize_sent:
+                resize_sent = bool(websocket.evaluate(
+                    "(()=>{const canvas=document.getElementById('canvas');"
+                    "if(!canvas)return false;canvas.style.width='640px';"
+                    "canvas.style.height='480px';window.dispatchEvent(new Event('resize'));"
+                    "return true;})()",
+                    3,
+                ))
+            if not pointer_sent or not touch_sent:
+                rect = websocket.evaluate(
+                    "(()=>{const r=document.getElementById('canvas')?.getBoundingClientRect();"
+                    "return r?{x:r.left+r.width/2,y:r.top+r.height/2}:null;})()",
+                    4,
+                )
+                if rect:
+                    if not pointer_sent:
+                        websocket.command(
+                            "Input.dispatchMouseEvent",
+                            {"type": "mouseMoved", "x": rect["x"], "y": rect["y"]},
+                            5,
+                        )
+                        pointer_sent = True
+                    if not touch_sent:
+                        point = {"x": rect["x"], "y": rect["y"], "radiusX": 1, "radiusY": 1,
+                                 "force": 1, "id": 42}
+                        websocket.command(
+                            "Input.dispatchTouchEvent",
+                            {"type": "touchStart", "touchPoints": [point]},
+                            6,
+                        )
+                        websocket.command(
+                            "Input.dispatchTouchEvent",
+                            {"type": "touchEnd", "touchPoints": []},
+                            7,
+                        )
+                        touch_sent = True
             value = websocket.evaluate(expression, 1)
             state = json.loads(value)
             if state["result"]:
                 if state["result"] != "0":
                     raise RuntimeError(f"NativeKit browser smoke test failed: {state}")
-                if (not probe_sent or not state["webgl2"] or state["width"] <= 0 or
-                        state["height"] <= 0):
+                if (not probe_sent or not pointer_sent or not touch_sent or not resize_sent or
+                        not state["webgl2"] or state["width"] <= 0 or state["height"] <= 0):
                     raise RuntimeError(f"NativeKit browser canvas is invalid: {state}")
                 print(f"web smoke passed: {state}")
                 return 0

@@ -240,6 +240,9 @@ struct WebShowcase {
     std::vector<uint8_t> asset_bytes;
     bool surface_ready = false;
     bool text_edit_seen = false;
+    bool pointer_seen = false;
+    bool touch_seen = false;
+    bool resize_seen = false;
     int framebuffer_width = 0;
     int framebuffer_height = 0;
     int result = 0;
@@ -262,7 +265,7 @@ struct WebShowcase {
         }
         ++app.showcase.rendered_frames;
         if (app.smoke && app.showcase.rendered_frames >= 30 && app.asset_loaded &&
-            app.text_edit_seen)
+            app.text_edit_seen && app.pointer_seen && app.touch_seen && app.resize_seen)
             app.finish(0);
     }
 
@@ -380,6 +383,20 @@ struct WebShowcase {
             const auto *resize = static_cast<const nk_window_resize_event *>(event.data);
             if (nk_surface_set_bounds(surface, 0, 0, resize->width, resize->height) != NK_OK)
                 result = 6;
+            else
+                resize_seen = true;
+            return;
+        }
+        if (event.source == window && event.kind == NK_EVENT_POINTER_MOVE &&
+            event.data_size >= sizeof(nk_pointer_move_event)) {
+            pointer_seen = true;
+            return;
+        }
+        if (event.source == window && event.kind == NK_EVENT_TOUCH &&
+            event.data_size >= sizeof(nk_touch_event)) {
+            const auto *touch = static_cast<const nk_touch_event *>(event.data);
+            if (touch->action == NK_TOUCH_BEGIN || touch->action == NK_TOUCH_END)
+                touch_seen = true;
             return;
         }
         if (event.source != surface)
