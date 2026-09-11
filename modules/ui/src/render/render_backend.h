@@ -20,9 +20,12 @@ struct RenderBackendStats {
     uint32_t image_uploads = 0;
     uint64_t uploaded_bytes = 0;
     uint32_t atlas_full_uploads = 0;
+    uint32_t atlas_subregion_uploads = 0;
+    uint32_t atlas_full_upload_fallbacks = 0;
     uint32_t atlas_reallocations = 0;
     uint64_t atlas_dirty_bytes = 0;
     uint64_t atlas_dirty_capacity_bytes = 0;
+    uint64_t atlas_subregion_bytes = 0;
     uint64_t atlas_uploaded_bytes = 0;
     uint64_t transient_bytes = 0;
     uint32_t gpu_resources = 0;

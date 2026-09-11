@@ -209,6 +209,56 @@ void copy_atlas_pixels(SokolBackend::State::AtlasImage &target, const AtlasUploa
     }
 }
 
+bool valid_atlas_upload(const AtlasUpload &upload) {
+    if (!upload.pixels || upload.texture_width <= 0 || upload.texture_height <= 0 ||
+        (upload.bytes_per_pixel != 1 && upload.bytes_per_pixel != 4) || upload.row_pitch <= 0 ||
+        upload.row_pitch < upload.texture_width * upload.bytes_per_pixel || upload.x < 0 ||
+        upload.y < 0 || upload.width <= 0 || upload.height <= 0 ||
+        upload.x > upload.texture_width - upload.width ||
+        upload.y > upload.texture_height - upload.height)
+        return false;
+    return true;
+}
+
+bool update_atlas_subregion(const nk_sokol_api *api, sg_image image, const AtlasUpload &upload) {
+    if (!api || !api->gfx || !api->gfx->update_image_region || !image.id)
+        return false;
+    const size_t row_bytes = static_cast<size_t>(upload.width) * upload.bytes_per_pixel;
+    std::vector<uint8_t> pixels(row_bytes * static_cast<size_t>(upload.height));
+    for (int32_t row = 0; row < upload.height; ++row) {
+        const auto *source = upload.pixels +
+                             static_cast<size_t>(upload.y + row) * upload.row_pitch +
+                             static_cast<size_t>(upload.x) * upload.bytes_per_pixel;
+        std::memcpy(pixels.data() + static_cast<size_t>(row) * row_bytes, source, row_bytes);
+    }
+    sg_write_image_desc desc{};
+    desc.src.data = {pixels.data(), pixels.size()};
+    desc.src.bytes_per_row = static_cast<int>(row_bytes);
+    desc.src.bytes_per_slice = static_cast<int>(pixels.size());
+    desc.dst.image = image;
+    desc.dst.x = upload.x;
+    desc.dst.y = upload.y;
+    desc.size.width = upload.width;
+    desc.size.height = upload.height;
+    desc.size.num_slices = 1;
+    return api->gfx->update_image_region(&desc);
+}
+
+void retire_atlas_generations(SokolBackend::State &state, AtlasTextureId texture,
+                              uint32_t generation) {
+    auto &gpu = state.device->gpu_resources();
+    for (auto iterator = state.atlases.begin(); iterator != state.atlases.end();) {
+        if (static_cast<uint32_t>(iterator->first >> 32) != texture.value ||
+            iterator->second.generation == generation) {
+            ++iterator;
+            continue;
+        }
+        gpu.destroy(iterator->second.view);
+        gpu.destroy(iterator->second.image);
+        iterator = state.atlases.erase(iterator);
+    }
+}
+
 template <class Vertex>
 bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
                const std::vector<Vertex> &vertices, const std::vector<uint32_t> &indices,
@@ -810,6 +860,8 @@ bool SokolBackend::draw_image(const PreparedTexture &image, float x, float y, fl
 
 bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) {
     for (const auto &upload : adapter.atlas_uploads(include_clean)) {
+        if (!valid_atlas_upload(upload))
+            return fail(*state_, "invalid atlas upload region");
         const uint64_t key = atlas_key(upload.texture, upload.generation);
         auto found = state_->atlases.find(key);
         bool replacing_generation = false;
@@ -822,12 +874,7 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
                 }
             }
         }
-        // Sokol rotates dynamic-image storage on every persistent update. A
-        // subregion update therefore targets a fresh slot whose untouched
-        // glyphs are not guaranteed to contain the previous atlas contents.
-        // Upload the retained CPU mirror as a whole whenever the atlas is
-        // dirty; this is infrequent (only when new glyphs are rasterized) and
-        // keeps the operation correct on every Sokol backend.
+        const bool new_generation = found == state_->atlases.end();
         if (found == state_->atlases.end()) {
             State::AtlasImage atlas;
             if (!create_atlas_image(state_->device->gpu_resources(), atlas, upload))
@@ -851,19 +898,42 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
             state_->stats.atlas_dirty_capacity_bytes +=
                 static_cast<uint64_t>(upload.texture_width) * upload.texture_height *
                 upload.bytes_per_pixel;
-        copy_atlas_pixels(found->second, upload, true);
-        const sg_image_data data = {
-            .mip_levels = {{found->second.pixels.data(), found->second.pixels.size()}}};
-        state_->api->gfx->update_image(
-            state_->device->gpu_resources().resolve(found->second.image), &data);
-        ++state_->stats.atlas_full_uploads;
-        const uint64_t uploaded_bytes = found->second.pixels.size();
+        const bool full_upload = new_generation || !upload.dirty;
+        uint64_t uploaded_bytes = 0;
+        if (full_upload) {
+            copy_atlas_pixels(found->second, upload, true);
+            const sg_image_data data = {
+                .mip_levels = {{found->second.pixels.data(), found->second.pixels.size()}}};
+            state_->api->gfx->update_image(
+                state_->device->gpu_resources().resolve(found->second.image), &data);
+            ++state_->stats.atlas_full_uploads;
+            uploaded_bytes = found->second.pixels.size();
+        } else {
+            copy_atlas_pixels(found->second, upload, false);
+            const sg_image image = state_->device->gpu_resources().resolve(found->second.image);
+            if (update_atlas_subregion(state_->api, image, upload)) {
+                ++state_->stats.atlas_subregion_uploads;
+                state_->stats.atlas_subregion_bytes += dirty_bytes;
+                uploaded_bytes = dirty_bytes;
+            } else {
+                // Keep a correctness fallback for older or restricted Sokol
+                // runtimes. The CPU mirror already contains the new region.
+                const sg_image_data data = {
+                    .mip_levels = {{found->second.pixels.data(), found->second.pixels.size()}}};
+                state_->api->gfx->update_image(image, &data);
+                ++state_->stats.atlas_full_uploads;
+                ++state_->stats.atlas_full_upload_fallbacks;
+                uploaded_bytes = found->second.pixels.size();
+            }
+        }
         found->second.generation = upload.generation;
         ++state_->stats.image_uploads;
         state_->stats.uploaded_bytes += uploaded_bytes;
         state_->stats.atlas_uploaded_bytes += uploaded_bytes;
         if (upload.dirty && !adapter.acknowledge_atlas_upload(upload.texture, upload.dirty_epoch))
             return fail(*state_, "atlas upload acknowledgement failed");
+        if (new_generation)
+            retire_atlas_generations(*state_, upload.texture, upload.generation);
     }
     return true;
 }
