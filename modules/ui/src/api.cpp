@@ -1411,7 +1411,7 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
 
 extern "C" nkui_result nkui_layout_session_render_frame(
     nkui_renderer renderer, nkui_layout_session session, nk_handle surface,
-    const nkui_frame_info *frame_info) {
+    const nkui_frame_info *frame_info, nk_bool load_existing) {
     if (!frame_info || frame_info->struct_size < sizeof(*frame_info) ||
         !std::isfinite(frame_info->logical_width) || !std::isfinite(frame_info->logical_height) ||
         !std::isfinite(frame_info->pixel_scale) || frame_info->logical_width <= 0.0f ||
@@ -1441,7 +1441,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(
     nkui::LayoutRenderCompileError compile_error{};
     if (!session_state->compiler.compile(session_state->snapshot, main_target,
                                          frame_info->pixel_scale, session_state->frame,
-                                         &compile_error))
+                                         &compile_error, load_existing != 0))
         return NKUI_ERROR_INVALID_TRANSACTION;
     const bool new_backend = !renderer_slot->backend->valid();
     if (new_backend && !renderer_slot->backend->initialize())

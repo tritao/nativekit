@@ -157,7 +157,7 @@ bool LayoutRenderCompiler::add_system_fallbacks() {
 
 bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId main_target,
                                    float pixel_scale, LayoutRenderFrame &out,
-                                   LayoutRenderCompileError *error) const {
+                                   LayoutRenderCompileError *error, bool load_existing) const {
     if (error)
         *error = {};
     if (!is_resource_id(main_target, ResourceKind::RenderTarget) || !std::isfinite(pixel_scale) ||
@@ -166,7 +166,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
 
     out.reset();
     try {
-        out.plan_.passes.push_back({main_target, {}, false, {}});
+        out.plan_.passes.push_back({main_target, {}, load_existing, {}});
         bool has_text = false;
         for (const auto &primitive : snapshot.primitives)
             has_text = has_text || primitive.kind == LayoutPrimitiveKind::Text;

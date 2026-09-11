@@ -75,10 +75,14 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_get_event_count(
 NKUI_API nkui_result NK_CALL nkui_layout_session_get_event(
     nkui_layout_session session, uint32_t index, nkui_layout_event *out_event NK_OUT);
 
-/** Executes the submitted layout through the existing NativeKit renderer. */
+/** Executes the submitted layout through the existing NativeKit renderer.
+ *
+ * When load_existing is non-zero, the layout is composited over the current
+ * surface contents instead of clearing the frame first.
+ */
 NKUI_API nkui_result NK_CALL nkui_layout_session_render_frame(
     nkui_renderer renderer, nkui_layout_session session, nk_handle surface,
-    const nkui_frame_info *frame_info);
+    const nkui_frame_info *frame_info, nk_bool load_existing);
 
 #ifdef __cplusplus
 }

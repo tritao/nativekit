@@ -301,8 +301,11 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	extern fn nkui_layout_session_get_event_count(session: nkui_layout_session, out_count: ptr<u32> @out) -> nkui_result;
 	/**
 	 * Executes the submitted layout through the existing NativeKit renderer.
+	 *
+	 * When load_existing is non-zero, the layout is composited over the current
+	 * surface contents instead of clearing the frame first.
 	 */
-	extern fn nkui_layout_session_render_frame(renderer: nkui_renderer, session: nkui_layout_session, surface: nk_handle, frame_info: ptr<const<nkui_frame_info>>) -> nkui_result;
+	extern fn nkui_layout_session_render_frame(renderer: nkui_renderer, session: nkui_layout_session, surface: nk_handle, frame_info: ptr<const<nkui_frame_info>>, load_existing: nk_bool) -> nkui_result;
 	/**
 	 * Copies the font collection configuration into the layout session.
 	 */

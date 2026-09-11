@@ -1,4 +1,5 @@
 import NativeKit;
+import NativeKitUI;
 import NativeKit.NativeKitConstants;
 import NativeKit.NkEventKind;
 import NativeKit.NkGraphicsApi;
@@ -28,6 +29,10 @@ class Showcase {
     final list:DisplayList;
     final renderer:Renderer;
     final fonts:FontCollection;
+    final layoutSession:LayoutSession;
+    final layoutRoot:LayoutNode;
+    final layoutButton:LayoutNode;
+    final layoutLabel:LayoutNode;
     final canvas:Canvas;
     final resources:Array<NativeKitUIResource>;
 
@@ -100,6 +105,8 @@ class Showcase {
     var caretPosition:TextPosition;
     var pointerX:Float = 0.0;
     var pointerY:Float = 0.0;
+    var pointerDown:Bool = false;
+    var pointerPressedPending:Bool = false;
     var layerOpacity:Float = 0.68;
     var animate:Bool = true;
     var lightTheme:Bool = false;
@@ -111,7 +118,28 @@ class Showcase {
         renderer = Renderer.create();
         fonts = FontCollection.create();
         canvas = new Canvas(8192);
-        fonts.addSystemFallbacks();
+        if (fontPath != null)
+            fonts.add(fontPath);
+        else
+            fonts.addSystemFallbacks();
+
+        layoutSession = LayoutSession.create();
+        layoutSession.setFonts(fonts);
+        layoutRoot = LayoutNode.box(9001);
+        layoutButton = LayoutNode.button(9002);
+        layoutLabel = LayoutNode.textNode(9003, "");
+        layoutButton.style.width = LayoutAxis.fixed(210.0);
+        layoutButton.style.height = LayoutAxis.fixed(42.0);
+        layoutButton.style.padding = new Insets(10.0, 8.0, 10.0, 8.0);
+        layoutButton.style.background = Color.rgba(0.08, 0.18, 0.32, 0.94);
+        layoutButton.style.radiusTopLeft = 9.0;
+        layoutButton.style.radiusTopRight = 9.0;
+        layoutButton.style.radiusBottomLeft = 9.0;
+        layoutButton.style.radiusBottomRight = 9.0;
+        layoutLabel.textColor = Color.rgba(0.35, 0.95, 0.72, 1.0);
+        layoutLabel.fontSize = 11;
+        layoutButton.add(layoutLabel);
+        layoutRoot.add(layoutButton);
 
         background = keep(SolidPaint.create(Color.fromBytes(10, 15, 30)));
         lightBackground = keep(SolidPaint.create(Color.fromBytes(235, 240, 249)));

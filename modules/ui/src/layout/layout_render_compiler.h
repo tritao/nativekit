@@ -62,7 +62,8 @@ class LayoutRenderCompiler {
     bool add_system_fallbacks();
 
     bool compile(const LayoutSnapshot &snapshot, ResourceId main_target, float pixel_scale,
-                 LayoutRenderFrame &out, LayoutRenderCompileError *error = nullptr) const;
+                 LayoutRenderFrame &out, LayoutRenderCompileError *error = nullptr,
+                 bool load_existing = false) const;
 
   private:
     struct FontEntry {

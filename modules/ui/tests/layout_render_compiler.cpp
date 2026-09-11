@@ -208,6 +208,9 @@ int main() {
     if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error) ||
         frame.text_adapter() != text_adapter)
         return 15;
+    if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error, true) ||
+        frame.plan().passes.size() != 1 || !frame.plan().passes.front().load_existing)
+        return 16;
 
     LayoutSnapshot clipped;
     LayoutPrimitive clip_begin;
