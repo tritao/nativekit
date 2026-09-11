@@ -27,6 +27,7 @@ nkui_generate_shader(
 add_library(nativekit_ui SHARED
     src/api.cpp
     src/compositor/compositor.cpp
+    src/compositor/render_plan.cpp
     src/display_list/display_list.cpp
     src/prepare/nanovg_path.cpp
     src/prepare/skribidi_adapter.cpp
@@ -98,6 +99,7 @@ if(NK_BUILD_TESTS)
     add_executable(nativekit_ui_compositor_test
         tests/compositor.cpp
         src/compositor/compositor.cpp
+        src/compositor/render_plan.cpp
         src/display_list/display_list.cpp)
     target_include_directories(nativekit_ui_compositor_test PRIVATE src)
     add_test(NAME nativekit_ui_compositor COMMAND nativekit_ui_compositor_test)
@@ -127,6 +129,7 @@ if(NK_BUILD_TESTS)
         add_executable(nativekit_ui_sokol_backend_smoke_test
             tests/sokol_backend_smoke.cpp
             src/compositor/compositor.cpp
+            src/compositor/render_plan.cpp
             src/display_list/display_list.cpp
             src/prepare/nanovg_recorder.cpp
             src/prepare/nanovg_path.cpp

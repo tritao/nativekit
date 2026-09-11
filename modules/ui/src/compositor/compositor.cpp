@@ -47,7 +47,7 @@ RenderPass &continue_pass(RenderPlan &plan, ResourceId target) {
                 return true;
         return false;
     }();
-    plan.passes.push_back({target, seen, {}});
+    plan.passes.push_back({target, {}, seen, {}});
     return plan.passes.back();
 }
 

@@ -19,6 +19,10 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
     if (!backend.valid() || !is_resource_id(window.id, ResourceKind::RenderTarget) ||
         window.width <= 0 || window.height <= 0)
         return fail(error, 0, 0, "invalid render-plan execution input");
+    std::vector<uint32_t> pass_order;
+    RenderPlanScheduleError schedule_error{};
+    if (!schedule_render_plan(plan, pass_order, &schedule_error))
+        return fail(error, schedule_error.pass_index, 0, schedule_error.message);
     std::unordered_set<uint32_t> internal_targets;
     for (const auto &pass : plan.passes)
         internal_targets.insert(pass.target.value);
@@ -65,12 +69,17 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
         backend.mark_surface_current(dependency.producer, generation, description);
         rendered_producers.insert(dependency.producer.value);
     }
-    for (uint32_t pass_index = 0; pass_index < plan.passes.size(); ++pass_index) {
+    for (uint32_t scheduled_index = 0; scheduled_index < pass_order.size(); ++scheduled_index) {
+        const uint32_t pass_index = pass_order[scheduled_index];
         const auto &pass = plan.passes[pass_index];
+        const int pass_width = pass.target_descriptor.width > 0 ? pass.target_descriptor.width
+                                                                 : window.width;
+        const int pass_height = pass.target_descriptor.height > 0 ? pass.target_descriptor.height
+                                                                   : window.height;
         const bool window_pass = pass.target.value == window.id.value;
-        if (!(window_pass ? backend.begin_window_pass(window.width, window.height,
+        if (!(window_pass ? backend.begin_window_pass(pass_width, pass_height,
                                                       window.framebuffer, !pass.load_existing)
-                          : backend.begin_target_pass(pass.target, window.width, window.height,
+                          : backend.begin_target_pass(pass.target, pass_width, pass_height,
                                                       pass.load_existing)))
             return fail(error, pass_index, 0, backend.last_error());
         const auto fail_command = [&](uint32_t command, const char *message) {

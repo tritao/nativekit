@@ -1,6 +1,8 @@
 #include "compositor/compositor.h"
 
 #include <limits>
+#include <string>
+#include <vector>
 
 using namespace nkui;
 
@@ -19,6 +21,11 @@ int main() {
         return 2;
     if (plan.passes.size() != 3 || plan.dependencies.size() != 1)
         return 3;
+    std::vector<uint32_t> pass_order;
+    RenderPlanScheduleError schedule_error{};
+    if (!schedule_render_plan(plan, pass_order, &schedule_error) || pass_order.size() != 3 ||
+        pass_order[0] != 0 || pass_order[1] != 1 || pass_order[2] != 2)
+        return 16;
     const ResourceId first_transient = plan.passes[1].target;
     if (plan.passes[0].target.value != main_target.value ||
         plan.passes[0].commands[0].kind != RenderCommandKind::Path ||
@@ -100,5 +107,16 @@ int main() {
     if (stroke.kind != RenderCommandKind::StrokePath || stroke.stroke_width != 6.0f ||
         stroke.line_cap != 2 || stroke.line_join != 3 || stroke.miter_limit != 8.0f)
         return 15;
+
+    const auto target_a = make_resource_id(ResourceKind::RenderTarget, 1, 21);
+    const auto target_b = make_resource_id(ResourceKind::RenderTarget, 1, 22);
+    RenderPlan cyclic;
+    cyclic.passes = {{target_a, {}, false, {{RenderCommandKind::CompositeTarget, target_b}}},
+                     {target_b, {}, false, {{RenderCommandKind::CompositeTarget, target_a}}}};
+    cyclic.dependencies = {{target_b, target_a}, {target_a, target_b}};
+    if (schedule_render_plan(cyclic, pass_order, &schedule_error) ||
+        !schedule_error.message ||
+        std::string(schedule_error.message) != "render-plan dependency cycle")
+        return 17;
     return 0;
 }
