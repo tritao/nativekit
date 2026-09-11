@@ -1,6 +1,7 @@
 #ifndef NATIVEKIT_UI_SOKOL_BACKEND_H
 #define NATIVEKIT_UI_SOKOL_BACKEND_H
 
+#include "nativekit_graphics.h"
 #include "display_list/display_list.h"
 #include "prepare/nanovg_path.h"
 #include "prepare/skribidi_adapter.h"
@@ -51,7 +52,8 @@ class SokolBackend {
 
     bool initialize();
     bool valid() const;
-    bool begin_window_pass(int width, int height, uint32_t framebuffer, bool clear);
+    bool begin_window_pass(int width, int height, const nk_surface_frame_target &target,
+                           bool clear);
     bool begin_target_pass(ResourceId target, int width, int height, bool load_existing);
     bool begin_surface_pass(ResourceId target, const SurfaceDescriptor &description,
                             bool load_existing);

@@ -17,7 +17,8 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
                          const FrameResources &resources, const WindowTarget &window,
                          RenderExecutionError *error) {
     if (!backend.valid() || !is_resource_id(window.id, ResourceKind::RenderTarget) ||
-        window.width <= 0 || window.height <= 0)
+        window.frame_target.struct_size < sizeof(window.frame_target) ||
+        window.frame_target.width <= 0 || window.frame_target.height <= 0)
         return fail(error, 0, 0, "invalid render-plan execution input");
     std::vector<uint32_t> pass_order;
     RenderPlanScheduleError schedule_error{};
@@ -41,8 +42,9 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
             continue;
         }
         SurfaceDescriptor description{};
-        if (!producer->describe(window.width, window.height, description) || description.width <= 0 ||
-            description.height <= 0)
+        if (!producer->describe(window.frame_target.width, window.frame_target.height,
+                                description) ||
+            description.width <= 0 || description.height <= 0)
             return fail(error, 0, 0, "surface producer description is invalid");
         if (description.format != SurfacePixelFormat::Rgba8 ||
             (description.alpha != SurfaceAlphaMode::Opaque &&
@@ -73,12 +75,12 @@ bool execute_render_plan(SokolBackend &backend, const RenderPlan &plan,
         const uint32_t pass_index = pass_order[scheduled_index];
         const auto &pass = plan.passes[pass_index];
         const int pass_width = pass.target_descriptor.width > 0 ? pass.target_descriptor.width
-                                                                 : window.width;
+                                                                 : window.frame_target.width;
         const int pass_height = pass.target_descriptor.height > 0 ? pass.target_descriptor.height
-                                                                   : window.height;
+                                                                   : window.frame_target.height;
         const bool window_pass = pass.target.value == window.id.value;
         if (!(window_pass ? backend.begin_window_pass(pass_width, pass_height,
-                                                      window.framebuffer, !pass.load_existing)
+                                                      window.frame_target, !pass.load_existing)
                           : backend.begin_target_pass(pass.target, pass_width, pass_height,
                                                       pass.load_existing)))
             return fail(error, pass_index, 0, backend.last_error());

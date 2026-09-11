@@ -1,6 +1,7 @@
 #ifndef NATIVEKIT_UI_RENDER_PLAN_EXECUTOR_H
 #define NATIVEKIT_UI_RENDER_PLAN_EXECUTOR_H
 
+#include "nativekit_graphics.h"
 #include "compositor/render_plan.h"
 #include "render/frame_resources.h"
 #include "render/sokol_backend.h"
@@ -9,9 +10,7 @@ namespace nkui {
 
 struct WindowTarget {
     ResourceId id{};
-    int width = 0;
-    int height = 0;
-    uint32_t framebuffer = 0;
+    nk_surface_frame_target frame_target{};
 };
 
 struct RenderExecutionError {

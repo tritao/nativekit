@@ -113,7 +113,7 @@ if(NK_BUILD_TESTS)
         src/render/graphics_device.cpp
         src/render/sokol_backend.cpp)
     target_include_directories(nativekit_ui_sokol_backend_mesh_test PRIVATE
-        src "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}"
+        src "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src")
     target_link_libraries(nativekit_ui_sokol_backend_mesh_test PRIVATE
         nkui_nanovg_core nkui_skribidi nativekit_sokol_runtime)

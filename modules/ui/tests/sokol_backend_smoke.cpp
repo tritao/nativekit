@@ -145,6 +145,7 @@ int main() {
     Compositor compositor;
     if (!compositor.compile(display_list, main_target, plan))
         result = 8;
+    nk_surface_frame_target last_frame_target{};
     while (!result && frames < 30) {
         nk_event event{};
         event.struct_size = sizeof(event);
@@ -183,6 +184,14 @@ int main() {
         }
 
         nk_surface_make_current(surface);
+        nk_surface_frame_target frame_target{};
+        frame_target.struct_size = sizeof(frame_target);
+        if (nk_surface_get_frame_target(surface, &frame_target) != NK_OK ||
+            frame_target.api != NK_GRAPHICS_OPENGL || frame_target.width <= 0 ||
+            frame_target.height <= 0)
+            result = 16;
+        else
+            last_frame_target = frame_target;
         recorder.reset();
         NVGcontext *vg = recorder.context();
         nvgBeginFrame(vg, static_cast<float>(width), static_cast<float>(height), 1.0f);
@@ -206,8 +215,6 @@ int main() {
         nvgStrokeColor(vg, nvgRGBA(245, 245, 255, 255));
         nvgStroke(vg);
         nvgEndFrame(vg);
-        GLint framebuffer = 0;
-        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
         FrameResources resources;
         Mock3DSurfaceProducer producer(recorder.data(), producer_generation, producer_unavailable,
                                        producer_failed);
@@ -232,7 +239,7 @@ int main() {
             !resources.bind_surface(external_target, producer) ||
             !backend->upload_atlases(text_adapter) ||
             !execute_render_plan(*backend, plan, resources,
-                                 {main_target, width, height, static_cast<uint32_t>(framebuffer)}))
+                                 {main_target, frame_target}))
             result = 6;
         if (!result && frames == 0) {
             unsigned char filled[4]{};
@@ -268,7 +275,7 @@ int main() {
         RenderExecutionError failure_error{};
         if (!failure_resources.bind_surface(external_target, failed_producer) ||
             execute_render_plan(*backend, plan, failure_resources,
-                                {main_target, width, height, 0}, &failure_error))
+                                {main_target, last_frame_target}, &failure_error))
             result = 14;
     }
     if (!result && backend->stats().passes != 92)

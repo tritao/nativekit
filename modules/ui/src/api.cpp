@@ -1019,8 +1019,7 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
             return NKUI_ERROR_RENDERING;
     const bool executed =
         nkui::execute_render_plan(*renderer_slot->backend, plan, frame_resources,
-                                  {main_target, width, height,
-                                   static_cast<uint32_t>(frame_target.native_target)});
+                                  {main_target, frame_target});
     return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
 }
 

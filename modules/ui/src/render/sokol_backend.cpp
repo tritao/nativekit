@@ -565,9 +565,13 @@ bool SokolBackend::valid() const {
     return state_->initialized;
 }
 
-bool SokolBackend::begin_window_pass(int width, int height, uint32_t framebuffer, bool clear) {
+bool SokolBackend::begin_window_pass(int width, int height,
+                                     const nk_surface_frame_target &target, bool clear) {
     if (!valid() || state_->in_pass || width <= 0 || height <= 0)
         return fail(*state_, "invalid window pass");
+    if (target.struct_size < sizeof(target) ||
+        (target.api != NK_GRAPHICS_OPENGL && target.api != NK_GRAPHICS_OPENGL_ES))
+        return fail(*state_, "unsupported window target");
     state_->width = width;
     state_->height = height;
     sg_pass pass{};
@@ -580,7 +584,7 @@ bool SokolBackend::begin_window_pass(int width, int height, uint32_t framebuffer
     pass.swapchain.sample_count = 1;
     pass.swapchain.color_format = SG_PIXELFORMAT_RGBA8;
     pass.swapchain.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-    pass.swapchain.gl.framebuffer = framebuffer;
+    pass.swapchain.gl.framebuffer = static_cast<uint32_t>(target.native_target);
     sg_begin_pass(&pass);
     state_->in_pass = true;
     ++state_->stats.passes;
