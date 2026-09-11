@@ -19,3 +19,6 @@
 [submodule "vendor/nanovg"]
 	path = vendor/nanovg
 	url = https://github.com/memononen/nanovg.git
+[submodule "vendor/clay"]
+	path = vendor/clay
+	url = https://github.com/nicbarker/clay.git

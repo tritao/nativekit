@@ -28,6 +28,7 @@ add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/compositor/compositor.cpp
     src/compositor/render_plan.cpp
     src/display_list/display_list.cpp
+    src/layout/layout_engine.cpp
     src/prepare/nanovg_path.cpp
     src/prepare/skribidi_adapter.cpp
     src/prepare/system_fonts.cpp
@@ -43,7 +44,7 @@ add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     "${NKUI_TEXT_SHADER}"
     "${NKUI_COMPOSITE_SHADER}")
 add_library(NativeKit::ui ALIAS nativekit_ui)
-target_compile_features(nativekit_ui PRIVATE cxx_std_17)
+target_compile_features(nativekit_ui PRIVATE cxx_std_20)
 target_include_directories(nativekit_ui
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -51,6 +52,7 @@ target_include_directories(nativekit_ui
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE src)
 target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/sokol")
+target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/clay")
 target_include_directories(nativekit_ui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src")
 target_include_directories(nativekit_ui PRIVATE "${NKUI_SHADER_GENERATED_DIR}")
 target_link_libraries(nativekit_ui PRIVATE NativeKit::nativekit nkui_skribidi nkui_nanovg_core
@@ -148,6 +150,18 @@ if(NK_BUILD_TESTS)
     target_include_directories(nativekit_ui_frame_resources_test PRIVATE src)
     target_link_libraries(nativekit_ui_frame_resources_test PRIVATE nkui_nanovg_core)
     add_test(NAME nativekit_ui_frame_resources COMMAND nativekit_ui_frame_resources_test)
+    add_executable(nativekit_ui_layout_engine_test
+        tests/layout_engine.cpp
+        src/layout/layout_engine.cpp
+        src/prepare/skribidi_adapter.cpp
+        src/prepare/system_fonts.cpp)
+    target_compile_features(nativekit_ui_layout_engine_test PRIVATE cxx_std_20)
+    target_include_directories(nativekit_ui_layout_engine_test PRIVATE
+        src "${NK_VENDOR_DIR}/clay")
+    target_compile_definitions(nativekit_ui_layout_engine_test PRIVATE
+        NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+    target_link_libraries(nativekit_ui_layout_engine_test PRIVATE nkui_skribidi)
+    add_test(NAME nativekit_ui_layout_engine COMMAND nativekit_ui_layout_engine_test)
     if(NK_BUILD_EXAMPLES)
         add_executable(nativekit_ui_sokol_backend_smoke_test
             tests/sokol_backend_smoke.cpp

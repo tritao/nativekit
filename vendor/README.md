@@ -13,6 +13,7 @@ is not used.
 | Path | Revision | Purpose |
 |---|---|---|
 | `sokol` | `5e7dd21eacac60aedc7ea6d80218280d442ce50f` | Shared graphics implementation source |
+| `clay` | `e6cc36941ab2af5d81107617039d6f527a1c660b` | Private box layout engine for NativeKit UI |
 | `skribidi` | `dee63d6ba76aeddd49dea6d1b2508cf9aa391f46` | Text shaping, layout, editing, and rasterization |
 | `harfbuzz` | `ea6a172f84f2cbcfed803b5ae71064c7afb6b5c2` (`11.0.0`) | OpenType shaping |
 | `sheenbidi` | `83f77108a2873600283f6da4b326a2dca7a3a7a6` | Unicode bidi processing |

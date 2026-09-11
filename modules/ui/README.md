@@ -1,9 +1,10 @@
 # NativeKit UI
 
-NativeKit UI is the optional retained UI engine above NativeKit's platform and
-surface APIs. Haxeon will own components, application state, reconciliation,
-and resolved styles. This module will own the retained render tree, layout,
-text, hit testing, accessibility projection, and batched rendering.
+NativeKit UI is the optional UI substrate above NativeKit's platform and
+surface APIs. Haxeon owns components, application state, reconciliation, and
+resolved styles. This module owns layout, text, hit testing, accessibility
+projection, and batched rendering, while keeping the semantic transaction
+boundary language-neutral.
 
 The vendored experimental implementation stack is:
 
@@ -11,6 +12,11 @@ The vendored experimental implementation stack is:
 - Skribidi for shaping, bidirectional editing, line layout, and glyph atlases;
 - Sokol for GPU submission;
 - an internal display list which keeps those dependencies out of the public ABI.
+
+Clay is currently integrated as a private frame-scoped layout backend. The
+first native vertical slice is covered by `nativekit_ui_layout_engine`, which
+proves `Box + Text + Button`, text measurement through Skribidi, hit testing,
+and button activation without exposing a public layout ABI yet.
 
 See the repository-level [`vendor/README.md`](../../vendor/README.md) for pinned revisions and
 [`docs/integration-plan.md`](docs/integration-plan.md) for the integration

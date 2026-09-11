@@ -6,6 +6,12 @@ The public `nkui_*` ABI describes retained UI nodes, styles, transactions, and
 semantic events. Clay, Skribidi, NanoVG, and Sokol remain private.
 Haxeon owns components, state, reconciliation, and resolved style policy.
 
+The first private layout slice is now implemented in `src/layout/`. It pins
+Clay behind a NativeKit-owned `LayoutEngine`, measures text through Skribidi,
+and produces NativeKit-owned layout items and rendering primitives for a
+`Box + Text + Button` test. The public layout transaction ABI remains
+intentionally deferred until this internal boundary has more coverage.
+
 Internally, a frame flows through these stages:
 
 ```text
@@ -62,7 +68,7 @@ passes on representative screens. Only optimize after those numbers exist.
 
 ## Stage 4: layout and retained UI
 
-Add Clay behind `src/layout/clay_adapter.*` after text measurement works. A
+Extend the private Clay adapter after the initial text measurement slice. A
 text node measures through Skribidi under Clay's width constraint. Layout
 results populate retained geometry, hit testing, scrolling, focus order, and
 accessibility nodes before producing the display list.
