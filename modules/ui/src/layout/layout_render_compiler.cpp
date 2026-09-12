@@ -127,34 +127,32 @@ void LayoutRenderFrame::reset() {
     text_source_ = nullptr;
 }
 
+LayoutRenderCompiler::LayoutRenderCompiler()
+    : fonts_(std::make_shared<SkribidiFontCollection>()) {}
+
+void LayoutRenderCompiler::set_font_collection(std::shared_ptr<SkribidiFontCollection> fonts) {
+    fonts_ = std::move(fonts);
+}
+
 bool LayoutRenderCompiler::add_font(const char *path, FontFamily family) {
-    if (!path || !*path)
-        return false;
-    try {
-        fonts_.push_back({path, family, {}});
-    } catch (...) {
-        return false;
-    }
-    return true;
+    return fonts_ && fonts_->add_font(path, family);
 }
 
 bool LayoutRenderCompiler::add_font_from_data(const char *name, const void *data, std::size_t bytes,
                                               FontFamily family) {
-    if (!name || !*name || !data || !bytes)
+    if (!fonts_ || !name || !*name || !data || !bytes)
         return false;
     try {
         auto owned = std::make_shared<std::vector<uint8_t>>(
             static_cast<const uint8_t *>(data), static_cast<const uint8_t *>(data) + bytes);
-        fonts_.push_back({name, family, std::move(owned)});
+        return fonts_->add_font_from_shared_data(name, owned, family);
     } catch (...) {
         return false;
     }
-    return true;
 }
 
 bool LayoutRenderCompiler::add_system_fallbacks() {
-    system_fallbacks_ = true;
-    return true;
+    return fonts_ && fonts_->add_system_fallbacks();
 }
 
 bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId main_target,
@@ -177,30 +175,10 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
 
         if (has_text) {
             if (!text_source && !out.text_)
-                out.text_ = std::make_unique<SkribidiAdapter>();
+                out.text_ = std::make_unique<SkribidiAdapter>(fonts_);
             SkribidiAdapter *text = out.text_adapter();
             if (!text || !text->valid())
                 return fail(error, 0, "text renderer is unavailable");
-            if (!text_source) {
-                while (out.configured_font_count_ < fonts_.size()) {
-                    const auto &font = fonts_[out.configured_font_count_];
-                    const bool added = font.data
-                                           ? text->add_font_from_data(
-                                                 font.name.c_str(), font.data->data(),
-                                                 font.data->size(), font.family)
-                                           : text->add_font(font.name.c_str(), font.family);
-                    if (!added)
-                        return fail(error, 0, "layout font could not be loaded");
-                    ++out.configured_font_count_;
-                }
-                if (system_fallbacks_ && !out.configured_system_fallbacks_) {
-                    if (!text->add_system_fallbacks())
-                        return fail(error, 0, "system font fallbacks are unavailable");
-                    out.configured_system_fallbacks_ = true;
-                }
-                if (out.configured_font_count_ == 0 && !out.configured_system_fallbacks_)
-                    return fail(error, 0, "text primitives require a configured font");
-            }
         }
 
         std::vector<LayoutRect> clips;

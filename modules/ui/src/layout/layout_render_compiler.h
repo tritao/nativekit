@@ -14,6 +14,7 @@
 namespace nkui {
 
 class SkribidiAdapter;
+class SkribidiFontCollection;
 
 struct LayoutRenderCompileError {
     std::size_t primitive_index = 0;
@@ -56,13 +57,13 @@ class LayoutRenderFrame {
     SkribidiAdapter *text_source_ = nullptr;
     std::vector<std::unique_ptr<PreparedPath>> paths_;
     std::vector<std::unique_ptr<PreparedGlyphs>> glyphs_;
-    std::size_t configured_font_count_ = 0;
-    bool configured_system_fallbacks_ = false;
 };
 
 /** Compiles NativeKit-owned layout output into the backend-neutral render plan. */
 class LayoutRenderCompiler {
   public:
+    LayoutRenderCompiler();
+    void set_font_collection(std::shared_ptr<SkribidiFontCollection> fonts);
     bool add_font(const char *path, FontFamily family = FontFamily::Default);
     bool add_font_from_data(const char *name, const void *data, std::size_t bytes,
                             FontFamily family = FontFamily::Default);
@@ -73,14 +74,7 @@ class LayoutRenderCompiler {
                  bool load_existing = false, SkribidiAdapter *text_source = nullptr) const;
 
   private:
-    struct FontEntry {
-        std::string name;
-        FontFamily family = FontFamily::Default;
-        std::shared_ptr<std::vector<uint8_t>> data;
-    };
-
-    std::vector<FontEntry> fonts_;
-    bool system_fallbacks_ = false;
+    std::shared_ptr<SkribidiFontCollection> fonts_;
 };
 
 } // namespace nkui

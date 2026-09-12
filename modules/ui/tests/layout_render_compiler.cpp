@@ -106,8 +106,16 @@ int main() {
     std::cerr << "NKUI_TEST_FONT_PATH is required\n";
     return 2;
 #else
-    LayoutEngine engine;
-    if (!engine.valid() || !engine.add_font(NKUI_TEST_FONT_PATH))
+    auto shared_fonts = std::make_shared<SkribidiFontCollection>();
+    if (!shared_fonts->valid() || !shared_fonts->add_font(NKUI_TEST_FONT_PATH) ||
+        shared_fonts->font_load_count() != 1)
+        return 3;
+    SkribidiAdapter direct_layout(shared_fonts);
+    if (!direct_layout.layout_utf8("shared direct layout", 240.0f, 16.0f) ||
+        shared_fonts->font_load_count() != 1)
+        return 3;
+    LayoutEngine engine(shared_fonts);
+    if (!engine.valid())
         return 3;
 
     std::vector<LayoutNode> nodes;
@@ -147,8 +155,7 @@ int main() {
         return 4;
 
     LayoutRenderCompiler compiler;
-    if (!compiler.add_font(NKUI_TEST_FONT_PATH))
-        return 5;
+    compiler.set_font_collection(shared_fonts);
     const ResourceId main_target = make_resource_id(ResourceKind::RenderTarget, 1, 1);
     LayoutRenderFrame frame;
     LayoutRenderCompileError compile_error;
@@ -159,7 +166,7 @@ int main() {
         return 6;
     }
     if (engine.text_adapter()->layout_build_count() != layout_builds ||
-        frame.text_adapter() != engine.text_adapter())
+        frame.text_adapter() != engine.text_adapter() || shared_fonts->font_load_count() != 1)
         return 6;
     if (frame.plan().passes.size() != 1 || frame.plan().passes.front().commands.size() < 3 ||
         !frame.text_adapter())

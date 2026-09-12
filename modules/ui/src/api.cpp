@@ -1014,22 +1014,13 @@ extern "C" nkui_result nkui_layout_session_set_font_collection(nkui_layout_sessi
     if (!state || !font_slot || state->fonts_configured)
         return NKUI_ERROR_INVALID_HANDLE;
     try {
-        for (const auto &font : font_slot->fonts) {
-            const bool added_to_engine =
-                font.data ? state->engine->add_font_from_data(font.path.c_str(), font.data->data(),
-                                                               font.data->size(), font.family)
-                          : state->engine->add_font(font.path.c_str(), font.family);
-            const bool added_to_compiler =
-                font.data ? state->compiler.add_font_from_data(font.path.c_str(), font.data->data(),
-                                                                font.data->size(), font.family)
-                          : state->compiler.add_font(font.path.c_str(), font.family);
-            if (!added_to_engine || !added_to_compiler)
-                return NKUI_ERROR_INVALID_ARGUMENT;
-        }
-        if (font_slot->system_fallbacks) {
-            if (!state->engine->add_system_fallbacks() || !state->compiler.add_system_fallbacks())
-                return NKUI_ERROR_INVALID_ARGUMENT;
-        }
+        if (!font_slot->font_collection || !font_slot->font_collection->valid())
+            return NKUI_ERROR_INVALID_HANDLE;
+        const auto shared_fonts = font_slot->font_collection;
+        state->engine = std::make_unique<nkui::LayoutEngine>(shared_fonts);
+        if (!state->engine->valid())
+            return NKUI_ERROR_OUT_OF_MEMORY;
+        state->compiler.set_font_collection(shared_fonts);
         state->fonts_configured = true;
     } catch (...) {
         return NKUI_ERROR_OUT_OF_MEMORY;

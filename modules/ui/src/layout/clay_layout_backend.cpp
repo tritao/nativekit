@@ -88,7 +88,10 @@ Clay_TextAlignment clay_alignment(TextAlignment alignment) {
 } // namespace
 
 struct LayoutEngine::Impl {
-    explicit Impl(std::size_t max_nodes_value) : max_nodes(max_nodes_value) {
+    explicit Impl(std::size_t max_nodes_value,
+                  std::shared_ptr<SkribidiFontCollection> fonts = {})
+        : max_nodes(max_nodes_value), text(fonts ? std::move(fonts)
+                                                 : std::make_shared<SkribidiFontCollection>()) {
         Clay_SetMaxElementCount(static_cast<int32_t>(max_nodes + 1));
         Clay_SetMaxMeasureTextCacheWordCount(static_cast<int32_t>(max_nodes * 8 + 32));
         clay_memory.resize(Clay_MinMemorySize());
@@ -499,6 +502,9 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
 }
 
 LayoutEngine::LayoutEngine(std::size_t max_nodes) : impl_(std::make_unique<Impl>(max_nodes)) {}
+
+LayoutEngine::LayoutEngine(std::shared_ptr<SkribidiFontCollection> fonts, std::size_t max_nodes)
+    : impl_(std::make_unique<Impl>(max_nodes, std::move(fonts))) {}
 
 LayoutEngine::~LayoutEngine() = default;
 

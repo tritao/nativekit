@@ -9,6 +9,7 @@
 namespace nkui {
 
 class SkribidiAdapter;
+class SkribidiFontCollection;
 
 /**
  * Private NativeKit layout boundary. Clay and its types are deliberately
@@ -18,6 +19,8 @@ class SkribidiAdapter;
 class LayoutEngine {
   public:
     explicit LayoutEngine(std::size_t max_nodes = 512);
+    explicit LayoutEngine(std::shared_ptr<SkribidiFontCollection> fonts,
+                          std::size_t max_nodes = 512);
     ~LayoutEngine();
     LayoutEngine(const LayoutEngine &) = delete;
     LayoutEngine &operator=(const LayoutEngine &) = delete;
