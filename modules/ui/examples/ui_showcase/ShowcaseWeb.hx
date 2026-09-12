@@ -69,8 +69,13 @@ class ShowcaseWeb {
             try {
                 var fonts = FontCollection.create();
                 fonts.add("/assets/IBMPlexSans-Regular.ttf");
-                app = new Showcase(fonts,
-                    "NativeKit — Unicode text · caret");
+                var multilingualFonts = FontCollection.create();
+                multilingualFonts.add("/assets/IBMPlexSans-Regular.ttf");
+                multilingualFonts.add("/assets/IBMPlexSansArabic-Regular.ttf");
+                multilingualFonts.add("/assets/IBMPlexSansHebrew-Regular.ttf");
+                multilingualFonts.add("/assets/IBMPlexSansJP-Regular.ttf");
+                multilingualFonts.add("/assets/NotoEmoji-Regular.ttf", FontFamily.Emoji);
+                app = new Showcase(fonts, null, multilingualFonts);
             } catch (error:Dynamic) {
                 return fail(22);
             }
@@ -164,6 +169,15 @@ class ShowcaseWeb {
 
     public static function status():Int
         return result != 0 ? result : (rendered > 0 ? 0 : 1);
+
+    public static function caretOffset():Int
+        return app == null ? -1 : app.caretOffset();
+
+    public static function caretAffinity():Int
+        return app == null ? -1 : app.caretAffinity();
+
+    public static function caretDirection():Int
+        return app == null ? -1 : app.caretDirection();
 
     public static function shutdown():Void {
         running = false;

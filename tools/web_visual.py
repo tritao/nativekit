@@ -115,6 +115,9 @@ def main():
     parser.add_argument("--reference", type=pathlib.Path, required=True)
     parser.add_argument("--artifact-dir", type=pathlib.Path, required=True)
     parser.add_argument("--click")
+    parser.add_argument("--expect-offset", type=int)
+    parser.add_argument("--expect-affinity", type=int)
+    parser.add_argument("--expect-direction", type=int)
     parser.add_argument("--update", action="store_true")
     parser.add_argument("--tolerance", type=int, default=12)
     parser.add_argument("--allowed-ratio", type=float, default=0.005)
@@ -186,6 +189,16 @@ def main():
             else:
                 raise RuntimeError("showcase did not render the requested interaction")
 
+        caret = websocket.evaluate(
+            "({offset:guest['ShowcaseWeb.caretOffset'](),"
+            "affinity:guest['ShowcaseWeb.caretAffinity'](),"
+            "direction:guest['ShowcaseWeb.caretDirection']()})", 6)
+        for field, expected in (("offset", args.expect_offset),
+                                ("affinity", args.expect_affinity),
+                                ("direction", args.expect_direction)):
+            if expected is not None and caret[field] != expected:
+                raise RuntimeError(f"caret {field} changed: expected {expected}, got {caret[field]}")
+
         screenshot = websocket.command(
             "Page.captureScreenshot",
             {"format": "png", "fromSurface": True, "captureBeyondViewport": True},
@@ -224,7 +237,7 @@ def main():
                 )
             print(
                 f"visual match: {args.reference.name}: {mismatched} pixels ({ratio:.3%}), "
-                f"largest delta {largest}"
+                f"largest delta {largest}; caret {caret}"
             )
     finally:
         websocket.close()

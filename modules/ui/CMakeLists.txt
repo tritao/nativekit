@@ -362,13 +362,22 @@ if(NK_BUILD_EXAMPLES)
             target_link_libraries(nativekit_ui_haxeon PRIVATE NativeKit::ui NativeKit::nativekit
                 NativeKit::wasm_host_allocator)
             add_dependencies(nativekit_ui_haxeon nativekit_ui_haxeon_guest)
-            set(NKUI_HAXEON_FONT_PATH
-                "${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+            set(NKUI_HAXEON_FONT_DIR "${NK_VENDOR_DIR}/skribidi/example/data")
+            set(NKUI_HAXEON_FONT_PATHS
+                "${NKUI_HAXEON_FONT_DIR}/IBMPlexSans-Regular.ttf"
+                "${NKUI_HAXEON_FONT_DIR}/IBMPlexSansArabic-Regular.ttf"
+                "${NKUI_HAXEON_FONT_DIR}/IBMPlexSansHebrew-Regular.ttf"
+                "${NKUI_HAXEON_FONT_DIR}/IBMPlexSansJP-Regular.ttf"
+                "${NKUI_HAXEON_FONT_DIR}/NotoEmoji-Regular.ttf")
             target_link_options(nativekit_ui_haxeon PRIVATE
                 "-sINITIAL_MEMORY=${NKUI_HAXEON_MEMORY_LIMIT}"
                 "-sALLOW_MEMORY_GROWTH=0"
                 "-sEXPORTED_FUNCTIONS=[_main,_nk_api_version,_nk_event_release,_nk_init,_nk_last_error,_nk_poll_event,_nk_shutdown,_nk_surface_create,_nk_surface_destroy,_nk_surface_get_framebuffer_size,_nk_surface_make_current,_nk_surface_present,_nk_surface_set_bounds,_nk_window_create,_nk_window_destroy,_nk_window_get_scale,_nkui_display_list_create,_nkui_display_list_destroy,_nkui_display_list_get_info,_nkui_display_list_reset,_nkui_display_list_submit,_nkui_font_collection_add,_nkui_font_collection_add_system_fallbacks,_nkui_font_collection_create,_nkui_image_create,_nkui_paint_create_solid,_nkui_path_create,_nkui_renderer_create,_nkui_renderer_destroy,_nkui_renderer_get_stats,_nkui_renderer_render,_nkui_renderer_render_frame,_nkui_resource_destroy,_nkui_text_layout_caret,_nkui_text_layout_create,_nkui_text_layout_create_styled,_nkui_text_layout_hit_test,_nkui_text_layout_set_text,_nkui_text_layout_update,_nkui_layout_session_create,_nkui_layout_session_destroy,_nkui_layout_session_get_event,_nkui_layout_session_get_event_count,_nkui_layout_session_get_item,_nkui_layout_session_render_frame,_nkui_layout_session_set_font_collection,_nkui_layout_session_submit,_nkui_haxeon_memory_contract_status,_nkui_haxeon_memory_contract_version,_nkui_haxeon_memory_contract_page_size,_nkui_haxeon_memory_contract_host_base,_nkui_haxeon_memory_contract_host_limit,_nkui_haxeon_memory_contract_base,_nkui_haxeon_memory_contract_guest_base,_nkui_haxeon_memory_contract_guest_limit,_nkui_haxeon_memory_contract_memory_size,_nkui_haxeon_memory_contract_limit]"
-                "--preload-file=${NKUI_HAXEON_FONT_PATH}@/assets/IBMPlexSans-Regular.ttf"
+                "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSans-Regular.ttf@/assets/IBMPlexSans-Regular.ttf"
+                "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansArabic-Regular.ttf@/assets/IBMPlexSansArabic-Regular.ttf"
+                "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansHebrew-Regular.ttf@/assets/IBMPlexSansHebrew-Regular.ttf"
+                "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansJP-Regular.ttf@/assets/IBMPlexSansJP-Regular.ttf"
+                "--preload-file=${NKUI_HAXEON_FONT_DIR}/NotoEmoji-Regular.ttf@/assets/NotoEmoji-Regular.ttf"
                 "-sNO_EXIT_RUNTIME=1")
             add_custom_target(nativekit_ui_haxeon_assets
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -379,7 +388,7 @@ if(NK_BUILD_EXAMPLES)
                     "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/nativekit_ui_haxeon.html"
                 DEPENDS
                     nativekit_ui_haxeon_guest
-                    "${NKUI_HAXEON_FONT_PATH}"
+                    ${NKUI_HAXEON_FONT_PATHS}
                     "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_haxeon/web_shell.html"
                 COMMENT "Copying NativeKit Haxeon browser host")
             add_dependencies(nativekit_ui_haxeon nativekit_ui_haxeon_assets)

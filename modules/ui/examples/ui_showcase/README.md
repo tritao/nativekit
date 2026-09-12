@@ -45,6 +45,11 @@ tools/test-web-visual.sh
 tools/test-web-visual.sh --update  # intentionally refresh baselines
 ```
 
+The browser bundle packages explicit IBM Plex Latin, Arabic, Hebrew, and
+Japanese fonts plus Noto Emoji from the Skribidi test assets. Its caret cases
+assert code-point offset, affinity, and direction for Latin, Arabic, Hebrew,
+CJK, and emoji runs, so they do not depend on fonts installed on the CI host.
+
 The Web host uses version 1 of a generated shared linear-memory contract:
 
 ```text
