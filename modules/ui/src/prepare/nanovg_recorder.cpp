@@ -29,7 +29,7 @@ int render_create_texture(void *context, int type, int width, int height, int fl
     const int id = state.next_texture++;
     const size_t bytes_per_pixel = type == NVG_TEXTURE_RGBA ? 4 : 1;
     const PreparedTextureType prepared_type =
-        type == NVG_TEXTURE_RGBA ? PreparedTextureRgba : PreparedTextureAlpha;
+        type == NVG_TEXTURE_RGBA ? PreparedTextureType::Rgba : PreparedTextureType::Alpha;
     PreparedImageFlags prepared_flags = PreparedImageFlags::None;
     if (flags & NVG_IMAGE_GENERATE_MIPMAPS)
         prepared_flags |= PreparedImageFlags::GenerateMipmaps;
@@ -72,7 +72,7 @@ int render_update_texture(void *context, int image, int x, int y, int width, int
     if (found == textures.end() || !data || x < 0 || y < 0 || width < 0 || height < 0 ||
         x + width > found->width || y + height > found->height)
         return 0;
-    const size_t bytes_per_pixel = found->type == PreparedTextureRgba ? 4 : 1;
+    const size_t bytes_per_pixel = found->type == PreparedTextureType::Rgba ? 4 : 1;
     const size_t source_pitch = static_cast<size_t>(found->width) * bytes_per_pixel;
     for (int row = y; row < y + height; ++row)
         std::memcpy(found->pixels.data() +

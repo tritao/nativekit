@@ -1490,7 +1490,7 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                     break;
                 }
                 prepared->token = command.resource.value;
-                prepared->type = nkui::PreparedTextureRgba;
+                prepared->type = nkui::PreparedTextureType::Rgba;
                 prepared->width = static_cast<int>(image->image_width);
                 prepared->height = static_cast<int>(image->image_height);
                 prepared->generation = 1;

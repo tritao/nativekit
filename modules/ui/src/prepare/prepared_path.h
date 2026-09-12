@@ -18,9 +18,9 @@ enum class PathFillRule : uint8_t {
     EvenOdd = 2,
 };
 
-enum PreparedTextureType : int {
-    PreparedTextureAlpha = 0x01,
-    PreparedTextureRgba = 0x02,
+enum class PreparedTextureType : uint8_t {
+    Alpha = 0x01,
+    Rgba = 0x02,
 };
 
 enum class PreparedImageFlags : uint32_t {
@@ -101,7 +101,7 @@ struct PreparedPathOperation {
 
 struct PreparedTexture {
     PreparedImageToken token = 0;
-    PreparedTextureType type = PreparedTextureRgba;
+    PreparedTextureType type = PreparedTextureType::Rgba;
     int width = 0;
     int height = 0;
     PreparedImageFlags flags = PreparedImageFlags::None;

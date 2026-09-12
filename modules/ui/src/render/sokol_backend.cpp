@@ -49,7 +49,7 @@ struct SokolBackend::State {
         GpuViewHandle view{};
         GpuSamplerHandle sampler{};
         uint32_t generation = 0;
-        int type = 0;
+        PreparedTextureType type = PreparedTextureType::Rgba;
         PreparedImageFlags flags = PreparedImageFlags::None;
     };
 
@@ -342,8 +342,8 @@ bool upload_texture(SokolBackend::State &state, const PreparedTexture &source,
         sg_image_desc image_desc{};
         image_desc.width = source.width;
         image_desc.height = source.height;
-        image_desc.pixel_format =
-            source.type == PreparedTextureRgba ? SG_PIXELFORMAT_RGBA8 : SG_PIXELFORMAT_R8;
+        image_desc.pixel_format = source.type == PreparedTextureType::Rgba ? SG_PIXELFORMAT_RGBA8
+                                                                           : SG_PIXELFORMAT_R8;
         image_desc.usage.dynamic_update = true;
         image.image = gpu.create_image(image_desc);
         sg_view_desc view_desc{};
@@ -383,12 +383,12 @@ bool upload_texture(SokolBackend::State &state, const PreparedTexture &source,
 
 bool resolve_paint_image(SokolBackend::State &state, const PreparedPathData &path,
                          PreparedImageToken token,
-                         sg_view &view, sg_sampler &sampler, int &type,
+                         sg_view &view, sg_sampler &sampler, PreparedTextureType &type,
                          PreparedImageFlags &flags) {
     if (!token) {
         view = state.device->resources().white_view;
         sampler = state.device->resources().white_sampler;
-        type = PreparedTextureRgba;
+        type = PreparedTextureType::Rgba;
         flags = PreparedImageFlags::Premultiplied;
         return true;
     }
@@ -406,7 +406,8 @@ bool resolve_paint_image(SokolBackend::State &state, const PreparedPathData &pat
 }
 
 PathUniforms path_uniforms(const PreparedPathOperation &operation, const float transform[6],
-                           float opacity, int texture_type, PreparedImageFlags texture_flags) {
+                           float opacity, PreparedTextureType texture_type,
+                           PreparedImageFlags texture_flags) {
     PathUniforms uniforms{};
     const float inner_alpha = operation.paint.inner_color.a * opacity;
     const float outer_alpha = operation.paint.outer_color.a * opacity;
@@ -427,7 +428,7 @@ PathUniforms path_uniforms(const PreparedPathOperation &operation, const float t
     uniforms.inverse_y = {inverse[1], inverse[3], inverse[5], 0.0f};
     uniforms.mode = {operation.paint.image_token ? static_cast<float>(PathShaderMode::Image)
                                                  : static_cast<float>(PathShaderMode::Solid),
-                     texture_type == PreparedTextureAlpha ? 1.0f : 0.0f,
+                     texture_type == PreparedTextureType::Alpha ? 1.0f : 0.0f,
                      has_flag(texture_flags, PreparedImageFlags::FlipY) ? 1.0f : 0.0f,
                      has_flag(texture_flags, PreparedImageFlags::Premultiplied) ? 1.0f : 0.0f};
     const float width =
@@ -743,7 +744,7 @@ bool SokolBackend::draw_path_transformed(const PreparedPathData &path, uint32_t 
     const auto &operation = path.operations()[operation_index];
     sg_view paint_view{};
     sg_sampler paint_sampler{};
-    int texture_type = 0;
+    PreparedTextureType texture_type = PreparedTextureType::Rgba;
     PreparedImageFlags texture_flags = PreparedImageFlags::None;
     if (!resolve_paint_image(*state_, path, operation.paint.image_token, paint_view, paint_sampler,
                              texture_type, texture_flags))
@@ -817,7 +818,7 @@ bool SokolBackend::draw_paths(const PreparedPathData &path) {
 bool SokolBackend::draw_image(const PreparedTexture &image, float x, float y, float width,
                               float height, const float transform[6], float opacity) {
     if (!state_->in_pass || !transform || opacity < 0.0f || opacity > 1.0f || image.width <= 0 ||
-        image.height <= 0 || image.type != PreparedTextureRgba || image.pixels.empty())
+        image.height <= 0 || image.type != PreparedTextureType::Rgba || image.pixels.empty())
         return fail(*state_, "invalid image draw");
     auto &gpu_image = state_->images[image.token];
     if (!upload_texture(*state_, image, gpu_image))
