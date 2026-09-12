@@ -114,6 +114,7 @@ browser UI showcase with:
 ./tools/setup-web.sh
 ./tools/build-web.sh
 ./tools/test-web.sh
+./tools/benchmark-web-haxeon.sh
 python3 -m http.server --directory build-web/modules/ui 8080
 ```
 
@@ -130,6 +131,15 @@ The same Showcase source can also be compiled through Haxeon’s wasm32 backend:
 This produces a validated guest module and portable wasm32 HXI contracts. A
 browser host bridge is still required to connect those imports to Emscripten’s
 NativeKit runtime.
+
+The browser benchmark warms up the Haxeon Showcase, measures 600 rendered
+frames by default, and writes startup timings, frame-time percentiles, dropped
+frames, artifact sizes, and shared-memory size to
+`out/benchmark-web-haxeon.json`. Override the run length with
+`NATIVEKIT_WEB_BENCHMARK_WARMUP` and `NATIVEKIT_WEB_BENCHMARK_FRAMES`.
+The default runner uses headless Chrome with software WebGL for repeatability;
+its frame cost is useful for regressions, while its estimated dropped-frame
+count should not be treated as production GPU pacing.
 
 The Android library, sample applications, and Gradle wrapper live under
 [`android/`](android/). See the [Android guide](android/README.md) for SDK/NDK,

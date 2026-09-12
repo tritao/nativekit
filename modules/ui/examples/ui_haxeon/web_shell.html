@@ -18,7 +18,24 @@
   <script>
     const canvas = document.getElementById("canvas");
     const status = document.getElementById("status");
-    const smoke = new URLSearchParams(location.search).has("smoke");
+    const query = new URLSearchParams(location.search);
+    const smoke = query.has("smoke");
+    const benchmark = query.has("benchmark");
+    const benchmarkWarmupFrames = Math.max(0, Number(query.get("warmup") || 120));
+    const benchmarkMeasuredFrames = Math.max(1, Number(query.get("frames") || 600));
+    const benchmarkFrameBudgetMs = 1000 / Math.max(1, Number(query.get("fps") || 60));
+    const benchmarkStartedAt = performance.now();
+    const benchmarkFrameDurations = [];
+    const benchmarkFrameIntervals = [];
+    let benchmarkLastFrameAt = null;
+    let benchmarkHostBytes = 0;
+    let benchmarkGuestBytes = 0;
+    let benchmarkHostReadyAt = null;
+    let benchmarkGuestFetchMs = 0;
+    let benchmarkGuestCompileMs = 0;
+    let benchmarkGuestInstantiateMs = 0;
+    let benchmarkGuestInitMs = 0;
+    let benchmarkFirstFrameAt = null;
     let hostMemory = null;
     let guest = null;
     let frameCount = 0;
@@ -32,6 +49,66 @@
         ? "NativeKit Haxeon browser smoke test passed"
         : "NativeKit Haxeon browser smoke test failed (" + result + ")");
       document.documentElement.dataset.nativekitResult = String(result);
+    }
+
+    function percentile(sorted, fraction) {
+      if (!sorted.length)
+        return 0;
+      const index = Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1);
+      return sorted[index];
+    }
+
+    function summarize(samples) {
+      const sorted = [...samples].sort((left, right) => left - right);
+      const total = sorted.reduce((sum, value) => sum + value, 0);
+      return {
+        count: sorted.length,
+        mean_ms: sorted.length ? total / sorted.length : 0,
+        median_ms: percentile(sorted, 0.5),
+        p95_ms: percentile(sorted, 0.95),
+        p99_ms: percentile(sorted, 0.99),
+        min_ms: sorted[0] || 0,
+        max_ms: sorted[sorted.length - 1] || 0
+      };
+    }
+
+    function finishBenchmark() {
+      const result = guest["ShowcaseWeb.status"]();
+      const droppedFrames = benchmarkFrameIntervals.reduce((total, interval) =>
+        total + Math.max(0, Math.round(interval / benchmarkFrameBudgetMs) - 1), 0);
+      const report = {
+        version: 1,
+        benchmark: "nativekit-haxeon-showcase-web",
+        frame_budget_ms: benchmarkFrameBudgetMs,
+        warmup_frames: benchmarkWarmupFrames,
+        measured_frames: benchmarkMeasuredFrames,
+        startup: {
+          host_runtime_ready_ms: benchmarkHostReadyAt - benchmarkStartedAt,
+          guest_fetch_ms: benchmarkGuestFetchMs,
+          guest_compile_ms: benchmarkGuestCompileMs,
+          guest_instantiate_ms: benchmarkGuestInstantiateMs,
+          guest_init_ms: benchmarkGuestInitMs,
+          first_frame_ms: benchmarkFirstFrameAt - benchmarkStartedAt,
+          benchmark_complete_ms: performance.now() - benchmarkStartedAt
+        },
+        frames: summarize(benchmarkFrameDurations),
+        frame_intervals: summarize(benchmarkFrameIntervals),
+        frames_over_budget: benchmarkFrameDurations.filter(duration =>
+          duration > benchmarkFrameBudgetMs).length,
+        estimated_dropped_frames: droppedFrames,
+        artifacts: {host_wasm_bytes: benchmarkHostBytes, guest_wasm_bytes: benchmarkGuestBytes},
+        memory: {shared_bytes: hostMemory.buffer.byteLength},
+        canvas: {width: canvas.width, height: canvas.height, webgl2: !!canvas.getContext("webgl2")},
+        environment: {
+          runner: query.get("runner") || "interactive-browser",
+          hardware_concurrency: navigator.hardwareConcurrency,
+          user_agent: navigator.userAgent
+        }
+      };
+      document.documentElement.dataset.nativekitBenchmark = JSON.stringify(report);
+      guest["ShowcaseWeb.shutdown"]();
+      setResult(result, result === 0 ? "NativeKit Haxeon browser benchmark passed" :
+        "NativeKit Haxeon browser benchmark failed (" + result + ")");
     }
 
     function readNativeError() {
@@ -147,16 +224,30 @@
           __math_sin: Math.sin
         }
       };
+      const fetchStarted = performance.now();
       fetch("nativekit_ui_haxeon_guest.wasm")
         .then(response => response.arrayBuffer())
-        .then(bytes => WebAssembly.compile(bytes))
+        .then(bytes => {
+          benchmarkGuestFetchMs = performance.now() - fetchStarted;
+          benchmarkGuestBytes = bytes.byteLength;
+          const compileStarted = performance.now();
+          return WebAssembly.compile(bytes).then(module => {
+            benchmarkGuestCompileMs = performance.now() - compileStarted;
+            return module;
+          });
+        })
         .then(module => {
           validateGuestMemoryContract(module, validateMemoryContract());
-          return WebAssembly.instantiate(module, imports);
+          const instantiateStarted = performance.now();
+          return WebAssembly.instantiate(module, imports).then(instance => {
+            benchmarkGuestInstantiateMs = performance.now() - instantiateStarted;
+            return instance;
+          });
         })
         .then(instance => {
           guest = instance.exports;
           let started;
+          const initStarted = performance.now();
           try {
             started = guest["ShowcaseWeb.main"]();
           } catch (error) {
@@ -167,7 +258,8 @@
             setResult(started, "Haxeon Showcase failed to initialize (" + started + "): " + readNativeError());
             return;
           }
-          status.textContent = smoke ? "Running Haxeon browser smoke test…" :
+          benchmarkGuestInitMs = performance.now() - initStarted;
+          status.textContent = benchmark ? "Running Haxeon browser benchmark…" : smoke ? "Running Haxeon browser smoke test…" :
             "NativeKit Haxeon WebGL2 ready";
           canvas.focus();
           requestAnimationFrame(tick);
@@ -179,11 +271,25 @@
       if (finished || !guest)
         return;
       try {
+        const frameStarted = performance.now();
         const frameResult = guest["ShowcaseWeb.frame"](time);
+        const frameFinished = performance.now();
         frameCount++;
+        if (benchmarkFirstFrameAt === null)
+          benchmarkFirstFrameAt = frameFinished;
         if (frameResult < 0) {
           setResult(-frameResult, "Haxeon Showcase frame failed (" + frameResult + "): " + readNativeError());
           return;
+        }
+        if (benchmark && frameCount > benchmarkWarmupFrames) {
+          benchmarkFrameDurations.push(frameFinished - frameStarted);
+          if (benchmarkLastFrameAt !== null)
+            benchmarkFrameIntervals.push(time - benchmarkLastFrameAt);
+          benchmarkLastFrameAt = time;
+          if (benchmarkFrameDurations.length >= benchmarkMeasuredFrames) {
+            finishBenchmark();
+            return;
+          }
         }
         if (smoke && frameCount >= 60) {
           const result = guest["ShowcaseWeb.status"]();
@@ -203,10 +309,14 @@
       instantiateWasm(imports, receiveInstance) {
         fetch("nativekit_ui_haxeon.wasm")
           .then(response => response.arrayBuffer())
-          .then(bytes => WebAssembly.instantiate(bytes, imports))
+          .then(bytes => {
+            benchmarkHostBytes = bytes.byteLength;
+            return WebAssembly.instantiate(bytes, imports);
+          })
           .then(result => {
             hostMemory = Object.values(result.instance.exports)
               .find(value => value instanceof WebAssembly.Memory);
+            benchmarkHostReadyAt = performance.now();
             receiveInstance(result.instance);
           })
           .catch(error => setResult(22, "NativeKit host failed: " + error.message));
