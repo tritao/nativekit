@@ -151,7 +151,7 @@ class LayoutTransaction {
 	}
 
 	static function finite(value:Float):Bool {
-		return Math.isFinite(value);
+		return value == value && value - value == 0.0;
 	}
 
 	static function finitePositive(value:Float):Bool

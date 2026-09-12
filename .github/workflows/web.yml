@@ -32,3 +32,6 @@ jobs:
 
       - name: Run browser smoke and conformance test
         run: ./tools/test-web.sh
+
+      - name: Run Haxeon browser smoke test
+        run: ./tools/test-web-haxeon.sh
