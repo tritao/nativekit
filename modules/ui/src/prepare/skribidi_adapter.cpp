@@ -32,6 +32,7 @@ struct SkribidiAdapter::State {
         float width = 0.0f;
         TextLayoutOptions options{};
         uint64_t font_generation = 0;
+        uint64_t last_used = 0;
         TextLayoutResult result{};
         std::vector<skb_range_t> line_ranges;
     };
@@ -44,6 +45,7 @@ struct SkribidiAdapter::State {
     uint16_t texture_namespace = 1;
     TextLayoutId next_layout_id = 1;
     TextLayoutId active_layout_id = 0;
+    uint64_t layout_use_sequence = 0;
     std::unordered_map<TextLayoutId, std::unique_ptr<RetainedLayout>> layouts;
     uint32_t layout_builds = 0;
     uint64_t prepared_batch_count = 0;
@@ -399,6 +401,7 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width,
             cached.options.line_height == options.line_height &&
             cached.options.family == options.family && cached.options.wrap == options.wrap &&
             cached.options.alignment == options.alignment) {
+            cached.last_used = ++state_->layout_use_sequence;
             state_->active_layout_id = entry.first;
             if (result)
                 *result = cached.result;
@@ -440,6 +443,7 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width,
     retained->width = width;
     retained->options = options;
     retained->font_generation = font_generation;
+    retained->last_used = ++state_->layout_use_sequence;
     TextLayoutResult layout_result;
     layout_result.id = state_->next_layout_id++;
     if (!layout_result.id)
@@ -476,6 +480,34 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width,
     state_->layouts.emplace(layout_id, std::move(retained));
     ++state_->layout_builds;
     return true;
+}
+
+void SkribidiAdapter::prune_layout_cache(const std::vector<TextLayoutId> &retained_ids,
+                                         std::size_t max_entries) {
+    const uint64_t font_generation = skb_font_collection_get_generation(state_->fonts);
+    const std::unordered_set<TextLayoutId> retained(retained_ids.begin(), retained_ids.end());
+
+    for (auto entry = state_->layouts.begin(); entry != state_->layouts.end();) {
+        if (entry->second->font_generation != font_generation &&
+            retained.find(entry->first) == retained.end())
+            entry = state_->layouts.erase(entry);
+        else
+            ++entry;
+    }
+
+    while (state_->layouts.size() > max_entries) {
+        auto oldest = state_->layouts.end();
+        for (auto entry = state_->layouts.begin(); entry != state_->layouts.end(); ++entry) {
+            if (retained.find(entry->first) != retained.end())
+                continue;
+            if (oldest == state_->layouts.end() ||
+                entry->second->last_used < oldest->second->last_used)
+                oldest = entry;
+        }
+        if (oldest == state_->layouts.end())
+            break;
+        state_->layouts.erase(oldest);
+    }
 }
 
 bool SkribidiAdapter::has_layout(TextLayoutId id) const {

@@ -14,6 +14,8 @@
 namespace nkui {
 namespace {
 
+constexpr std::size_t kAutomaticTextLayoutCacheEntries = 128;
+
 Clay_Color clay_color(LayoutColor color) {
     return {color.red * 255.0f, color.green * 255.0f, color.blue * 255.0f,
             color.alpha * 255.0f};
@@ -428,8 +430,13 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
             append_primitive(out, *command);
     }
     out.text_layouts.reserve(state.text_layouts.size());
-    for (const auto &entry : state.text_layouts)
+    std::vector<TextLayoutId> retained_text_layouts;
+    retained_text_layouts.reserve(state.text_layouts.size());
+    for (const auto &entry : state.text_layouts) {
+        retained_text_layouts.push_back(entry.first);
         out.text_layouts.push_back(entry.second);
+    }
+    state.text.prune_layout_cache(retained_text_layouts, kAutomaticTextLayoutCacheEntries);
 
     if (state.previous_pointer_down && !pointer_down) {
         for (const LayoutItem &item : out.items) {

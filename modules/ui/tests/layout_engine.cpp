@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <string>
 
 using namespace nkui;
 
@@ -119,6 +120,48 @@ int main(int argc, char **argv) {
         return 8;
     if (snapshot.events.size() != 1 || snapshot.events.front().node_id != 3)
         return 9;
+
+    constexpr std::size_t text_layout_cache_limit = 128;
+    LayoutNode crowded_root = box(200, -1);
+    crowded_root.style.width = {LayoutSizing::Fixed, 420.0f};
+    crowded_root.style.height = {LayoutSizing::Fixed, 240.0f};
+    std::vector<LayoutNode> crowded_nodes{crowded_root};
+    for (std::size_t index = 0; index < text_layout_cache_limit + 2; ++index)
+        crowded_nodes.push_back(
+            text(static_cast<uint32_t>(201 + index), 0,
+                 ("visible paragraph " + std::to_string(index)).c_str()));
+    if (!engine.layout(crowded_nodes, 420.0f, 240.0f, 0.0f, 0.0f, false, 1.0f / 60.0f,
+                       snapshot, &error) ||
+        snapshot.text_layouts.size() != text_layout_cache_limit + 2)
+        return 14;
+    for (const auto &layout : snapshot.text_layouts)
+        if (!engine.text_adapter()->has_layout(layout.id))
+            return 15;
+
+    std::vector<TextLayoutId> churned_layouts;
+    churned_layouts.reserve(text_layout_cache_limit + 16);
+    LayoutNode cache_root = box(100, -1);
+    cache_root.style.width = {LayoutSizing::Fixed, 420.0f};
+    cache_root.style.height = {LayoutSizing::Fixed, 240.0f};
+    LayoutNode cache_text = text(101, 0, "cache paragraph 0");
+    std::vector<LayoutNode> cache_nodes{cache_root, cache_text};
+    for (std::size_t index = 0; index < text_layout_cache_limit + 16; ++index) {
+        cache_nodes[1].text = "cache paragraph " + std::to_string(index);
+        const float width = 300.0f + static_cast<float>(index);
+        cache_nodes[0].style.width = {LayoutSizing::Fixed, width};
+        if (!engine.layout(cache_nodes, 600.0f, 240.0f, 0.0f, 0.0f, false, 1.0f / 60.0f,
+                           snapshot, &error) ||
+            snapshot.text_layouts.size() != 1)
+            return 16;
+        churned_layouts.push_back(snapshot.text_layouts.front().id);
+        if (!engine.text_adapter()->has_layout(churned_layouts.back()))
+            return 17;
+    }
+    for (std::size_t index = 0; index < churned_layouts.size(); ++index) {
+        const bool should_be_retained = index >= 16;
+        if (engine.text_adapter()->has_layout(churned_layouts[index]) != should_be_retained)
+            return 18;
+    }
 
     std::cout << "PASS: Clay layout Box + Text + Button\n";
     return 0;
