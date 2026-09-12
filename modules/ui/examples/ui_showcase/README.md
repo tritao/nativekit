@@ -37,7 +37,8 @@ and exits, while `--stats` prints the final retained-list and path-cache
 counters.
 
 The WebGL visual regression suite captures the canonical, compact, and wide
-layout sizes with software rendering:
+layout sizes with software rendering. It also covers deterministic caret clicks,
+light theme state, and a fixed non-zero animation frame:
 
 ```sh
 tools/test-web-visual.sh

@@ -24,6 +24,7 @@
     const visual = query.has("visual");
     const visualWidth = Math.max(1, Number(query.get("width") || 900));
     const visualHeight = Math.max(1, Number(query.get("height") || 650));
+    const visualTime = Math.max(0, Number(query.get("time") || 0));
     if (visual) {
       document.body.style.padding = "0";
       canvas.width = visualWidth;
@@ -288,7 +289,8 @@
         return;
       try {
         const frameStarted = performance.now();
-        const frameResult = guest["ShowcaseWeb.frame"](visual ? 0 : time);
+        const frameResult = guest["ShowcaseWeb.frame"](
+          visual ? (frameCount === 0 ? 0 : visualTime) : time);
         const frameFinished = performance.now();
         frameCount++;
         document.documentElement.dataset.nativekitFrames = String(frameCount);

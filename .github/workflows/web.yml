@@ -38,3 +38,11 @@ jobs:
 
       - name: Run Haxeon visual regression tests
         run: ./tools/test-web-visual.sh
+
+      - name: Upload visual regression differences
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: haxeon-visual-diffs
+          path: build-web/visual-diffs/
+          if-no-files-found: ignore

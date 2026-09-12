@@ -69,6 +69,24 @@ def read_png(data, source):
     return width, height, rgb
 
 
+def write_png(path, width, height, pixels):
+    def chunk(kind, payload):
+        return (struct.pack(">I", len(payload)) + kind + payload +
+                struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF))
+
+    scanlines = b"".join(
+        b"\0" + pixels[y * width * 3:(y + 1) * width * 3]
+        for y in range(height)
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(
+        b"\x89PNG\r\n\x1a\n" +
+        chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) +
+        chunk(b"IDAT", zlib.compress(scanlines, 9)) +
+        chunk(b"IEND", b"")
+    )
+
+
 def compare(reference, width, height, actual, tolerance, allowed_ratio):
     expected_width, expected_height, expected = read_png(reference.read_bytes(), reference)
     if (width, height) != (expected_width, expected_height):
@@ -85,12 +103,7 @@ def compare(reference, width, height, actual, tolerance, allowed_ratio):
             if delta > tolerance:
                 mismatched += 1
     ratio = mismatched / (width * height)
-    if ratio > allowed_ratio:
-        raise RuntimeError(
-            f"visual mismatch: {mismatched} pixels ({ratio:.3%}) exceed tolerance {tolerance}; "
-            f"allowed {allowed_ratio:.3%}, largest delta {largest_delta}"
-        )
-    return mismatched, ratio, largest_delta
+    return mismatched, ratio, largest_delta, expected
 
 
 def main():
@@ -100,6 +113,8 @@ def main():
     parser.add_argument("--width", type=int, required=True)
     parser.add_argument("--height", type=int, required=True)
     parser.add_argument("--reference", type=pathlib.Path, required=True)
+    parser.add_argument("--artifact-dir", type=pathlib.Path, required=True)
+    parser.add_argument("--click")
     parser.add_argument("--update", action="store_true")
     parser.add_argument("--tolerance", type=int, default=12)
     parser.add_argument("--allowed-ratio", type=float, default=0.005)
@@ -150,6 +165,27 @@ def main():
         else:
             raise RuntimeError(f"showcase did not reach the requested visual frame: {state}")
 
+        if args.click:
+            click_x, click_y = (float(value) for value in args.click.split(",", 1))
+            websocket.command("Input.dispatchMouseEvent", {
+                "type": "mousePressed", "x": click_x, "y": click_y,
+                "button": "left", "buttons": 1, "clickCount": 1,
+            }, 3)
+            websocket.command("Input.dispatchMouseEvent", {
+                "type": "mouseReleased", "x": click_x, "y": click_y,
+                "button": "left", "buttons": 0, "clickCount": 1,
+            }, 4)
+            target_frames = state["frames"] + 3
+            while time.monotonic() < deadline:
+                frames = websocket.evaluate(
+                    "Number(document.documentElement.dataset.nativekitFrames||0)", 5
+                )
+                if frames >= target_frames:
+                    break
+                time.sleep(0.05)
+            else:
+                raise RuntimeError("showcase did not render the requested interaction")
+
         screenshot = websocket.command(
             "Page.captureScreenshot",
             {"format": "png", "fromSurface": True, "captureBeyondViewport": True},
@@ -164,10 +200,28 @@ def main():
             args.reference.write_bytes(png)
             print(f"updated visual baseline: {args.reference}")
         else:
-            mismatched, ratio, largest = compare(
+            mismatched, ratio, largest, expected = compare(
                 args.reference, width, height, pixels,
                 args.tolerance, args.allowed_ratio,
             )
+            if ratio > args.allowed_ratio:
+                stem = args.reference.stem
+                actual_path = args.artifact_dir / f"{stem}-actual.png"
+                diff_path = args.artifact_dir / f"{stem}-diff.png"
+                actual_path.parent.mkdir(parents=True, exist_ok=True)
+                actual_path.write_bytes(png)
+                difference = bytearray(len(pixels))
+                for index in range(0, len(pixels), 3):
+                    delta = max(abs(pixels[index + channel] - expected[index + channel])
+                                for channel in range(3))
+                    difference[index:index + 3] = (bytes((255, 32, 96)) if delta > args.tolerance
+                                                    else bytes(value // 4 for value in pixels[index:index + 3]))
+                write_png(diff_path, width, height, difference)
+                raise RuntimeError(
+                    f"visual mismatch: {mismatched} pixels ({ratio:.3%}) exceed tolerance "
+                    f"{args.tolerance}; allowed {args.allowed_ratio:.3%}, largest delta {largest}; "
+                    f"wrote {actual_path} and {diff_path}"
+                )
             print(
                 f"visual match: {args.reference.name}: {mismatched} pixels ({ratio:.3%}), "
                 f"largest delta {largest}"

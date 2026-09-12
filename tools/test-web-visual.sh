@@ -20,7 +20,19 @@ if [[ -z "$browser" ]]; then
     exit 1
 fi
 
-for size in 900x650 700x800 1400x900; do
+cases=(
+    "900x650|900x650||"
+    "700x800|700x800||"
+    "1400x900|1400x900||"
+    "caret-start|900x650||280,420"
+    "caret-middle|900x650||390,420"
+    "caret-end|900x650||510,420"
+    "light-theme|900x650||100,468"
+    "animated|900x650|time=2250|"
+)
+
+for visual_case in "${cases[@]}"; do
+    IFS='|' read -r case_name size extra_query click <<<"$visual_case"
     width=${size%x*}
     height=${size#*x}
     http_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
@@ -44,6 +56,7 @@ for size in 900x650 700x800 1400x900; do
         >"$temp_dir/http.log" 2>&1 &
     http_pid=$!
     page_url="http://127.0.0.1:${http_port}/nativekit_ui_haxeon.html?visual&width=${width}&height=${height}"
+    [[ -z "$extra_query" ]] || page_url+="&$extra_query"
     "$browser" --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu \
         --enable-unsafe-swiftshader --force-device-scale-factor=1 --no-first-run \
         --window-size="$width,$height" --user-data-dir="$temp_dir/profile" \
@@ -57,7 +70,9 @@ for size in 900x650 700x800 1400x900; do
         sleep 0.1
     done
     arguments=(--debug-port "$debug_port" --page-url "$page_url" --width "$width" --height "$height"
-        --reference "$repo_dir/modules/ui/tests/golden/showcase-${size}.png")
+        --reference "$repo_dir/modules/ui/tests/golden/showcase-${case_name}.png"
+        --artifact-dir "$repo_dir/build-web/visual-diffs")
+    [[ -z "$click" ]] || arguments+=(--click "$click")
     [[ "$update" == false ]] || arguments+=(--update)
     python3 "$repo_dir/tools/web_visual.py" "${arguments[@]}"
     cleanup_case
