@@ -69,13 +69,11 @@ class ShowcaseWeb {
             try {
                 var fonts = FontCollection.create();
                 fonts.add("/assets/IBMPlexSans-Regular.ttf");
-                var multilingualFonts = FontCollection.create();
-                multilingualFonts.add("/assets/IBMPlexSans-Regular.ttf");
-                multilingualFonts.add("/assets/IBMPlexSansArabic-Regular.ttf");
-                multilingualFonts.add("/assets/IBMPlexSansHebrew-Regular.ttf");
-                multilingualFonts.add("/assets/IBMPlexSansJP-Regular.ttf");
-                multilingualFonts.add("/assets/NotoEmoji-Regular.ttf", FontFamily.Emoji);
-                app = new Showcase(fonts, null, multilingualFonts);
+                fonts.add("/assets/IBMPlexSansArabic-Regular.ttf");
+                fonts.add("/assets/IBMPlexSansHebrew-Regular.ttf");
+                fonts.add("/assets/IBMPlexSansJP-Regular.ttf");
+                fonts.add("/assets/NotoEmoji-Regular.ttf", FontFamily.Emoji);
+                app = new Showcase(fonts);
             } catch (error:Dynamic) {
                 return fail(22);
             }

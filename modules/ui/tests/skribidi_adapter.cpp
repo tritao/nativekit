@@ -12,6 +12,22 @@
 using namespace nkui;
 
 int main() {
+    auto shared_fonts = std::make_shared<SkribidiFontCollection>();
+    if (!shared_fonts->valid() || !shared_fonts->add_font(NKUI_TEST_FONT_PATH) ||
+        shared_fonts->font_load_count() != 1)
+        return 48;
+    SkribidiAdapter shared_first(shared_fonts);
+    SkribidiAdapter shared_second(shared_fonts);
+    if (!shared_first.layout_utf8("first", 200.0f, 16.0f) ||
+        !shared_second.layout_utf8("second", 200.0f, 16.0f) ||
+        shared_fonts->font_load_count() != 1 ||
+        shared_first.font_collection_generation() != shared_second.font_collection_generation())
+        return 49;
+    PreparedGlyphs shared_glyphs;
+    if (!shared_first.prepare_glyphs(0.0f, 0.0f, 1.0f, GlyphMode::Alpha, shared_glyphs) ||
+        shared_glyphs.vertices.empty())
+        return 50;
+
     SkribidiAdapter adapter;
     if (!adapter.valid() || !adapter.add_font(NKUI_TEST_FONT_PATH) ||
         !adapter.add_font(NKUI_TEST_COLOR_FONT_PATH, FontFamily::Emoji) ||

@@ -9,6 +9,8 @@
 
 #include "layout/layout_types.h"
 
+typedef struct skb_font_collection_t skb_font_collection_t;
+
 namespace nkui {
 
 enum class GlyphMode : uint8_t {
@@ -127,9 +129,33 @@ struct SkribidiAdapterStats {
     uint64_t prepared_batch_count = 0;
 };
 
+class SkribidiFontCollection {
+  public:
+    SkribidiFontCollection();
+    ~SkribidiFontCollection();
+    SkribidiFontCollection(const SkribidiFontCollection &) = delete;
+    SkribidiFontCollection &operator=(const SkribidiFontCollection &) = delete;
+
+    bool valid() const;
+    bool add_font(const char *path, FontFamily family = FontFamily::Default);
+    bool add_font_from_shared_data(const char *name,
+                                   const std::shared_ptr<std::vector<uint8_t>> &data,
+                                   FontFamily family = FontFamily::Default);
+    bool add_system_fallbacks();
+    uint64_t generation() const;
+    uint32_t font_load_count() const;
+    skb_font_collection_t *native_handle() const;
+    struct State;
+
+  private:
+    State *state_ = nullptr;
+    friend class SkribidiAdapter;
+};
+
 class SkribidiAdapter {
   public:
     SkribidiAdapter();
+    explicit SkribidiAdapter(std::shared_ptr<SkribidiFontCollection> fonts);
     ~SkribidiAdapter();
     SkribidiAdapter(const SkribidiAdapter &) = delete;
     SkribidiAdapter &operator=(const SkribidiAdapter &) = delete;

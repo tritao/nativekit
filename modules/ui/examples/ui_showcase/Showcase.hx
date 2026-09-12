@@ -33,7 +33,6 @@ class Showcase {
     final list:DisplayList;
     final renderer:Renderer;
     final fonts:FontCollection;
-    final multilingualFonts:FontCollection;
     final layoutSession:LayoutSession;
     final layoutRoot:LayoutNode;
     final layoutSidebar:LayoutNode;
@@ -137,13 +136,11 @@ class Showcase {
     var footerBounds:Rect;
 
     /** Takes ownership of the configured font collection. */
-    function new(fonts:FontCollection, ?multilingualText:String,
-            ?multilingualFonts:FontCollection) {
+    function new(fonts:FontCollection, ?multilingualText:String) {
         resources = [];
         list = DisplayList.create();
         renderer = Renderer.create();
         this.fonts = fonts;
-        this.multilingualFonts = multilingualFonts == null ? fonts : multilingualFonts;
         canvas = new Canvas(8192);
 
         layoutSession = LayoutSession.create();
@@ -262,9 +259,8 @@ class Showcase {
         textLabel = styled("UNICODE TEXT + CARET", 580.0, 12.0);
         retainedLabel = styled("RETAINED PATH", 260.0, 12.0);
         surfaceLabel = styled("GRAPHICS SURFACE", 270.0, 12.0);
-        multilingual = keep(TextLayout.createStyled(this.multilingualFonts,
-            multilingualText == null ? "NativeKit — مرحبا — שלום — こんにちは 👋" : multilingualText,
-            580.0, new TextStyle(18.0), new ParagraphStyle()));
+        multilingual = styled(multilingualText == null ? "NativeKit — مرحبا — שלום — こんにちは 👋" : multilingualText,
+            580.0, 18.0);
         sidebarCopy = styled("A visual proof of the\nNativeKit rendering\narchitecture.", 180.0, 16.0);
         controlsLabel = styled("INTERACTIVE CONTROLS", 180.0, 11.0);
         footerLabel = styled("click the text card · move the pointer · resize the window", 560.0, 11.0);
@@ -614,8 +610,6 @@ class Showcase {
         list.dispose();
         for (resource in resources)
             resource.dispose();
-        if (multilingualFonts != fonts)
-            multilingualFonts.dispose();
         fonts.dispose();
     }
 

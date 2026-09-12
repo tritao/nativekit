@@ -90,6 +90,12 @@ int main(void) {
     if (nkui_text_layout_create_styled(fonts, "NativeKit مرحبا", 300.0f, &text_style,
                                        &paragraph_style, &layout) != NKUI_OK)
         return 7;
+    nkui_resource later_layout = {0};
+    if (nkui_font_collection_add(fonts, NKUI_TEST_FONT_PATH, NKUI_FONT_FAMILY_DEFAULT) !=
+            NKUI_OK ||
+        nkui_text_layout_create(fonts, "copy-on-write", 200.0f, 16.0f, &later_layout) != NKUI_OK ||
+        nkui_resource_destroy(later_layout) != NKUI_OK)
+        return 16;
     nkui_text_metrics metrics = {0};
     nkui_text_position position = {0};
     nkui_text_caret caret = {0};

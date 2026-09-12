@@ -65,6 +65,7 @@ struct ResourceSlot {
     bool externally_alive = true;
     uint32_t display_refs = 0;
     std::vector<FontEntry> fonts;
+    std::shared_ptr<nkui::SkribidiFontCollection> font_collection;
     bool system_fallbacks = false;
     std::unique_ptr<nkui::SkribidiAdapter> text;
     nkui::PreparedGlyphs text_glyphs;
@@ -429,25 +430,48 @@ bool text_options_from_api(const nkui_text_style *text_style,
     return true;
 }
 
+nkui_result ensure_mutable_font_collection(ResourceSlot &slot) {
+    if (!slot.font_collection)
+        return NKUI_ERROR_INVALID_HANDLE;
+    if (slot.font_collection.use_count() == 1)
+        return NKUI_OK;
+    try {
+        auto replacement = std::make_shared<nkui::SkribidiFontCollection>();
+        if (!replacement->valid())
+            return NKUI_ERROR_OUT_OF_MEMORY;
+        for (const auto &font : slot.fonts) {
+            const bool added = font.data
+                                   ? replacement->add_font_from_shared_data(
+                                         font.path.c_str(), font.data, font.family)
+                                   : replacement->add_font(font.path.c_str(), font.family);
+            if (!added)
+                return NKUI_ERROR_INVALID_ARGUMENT;
+        }
+        if (slot.system_fallbacks && !replacement->add_system_fallbacks())
+            return NKUI_ERROR_INVALID_ARGUMENT;
+        slot.font_collection = std::move(replacement);
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    return NKUI_OK;
+}
+
 nkui_result create_text_layout_locked(nkui_resource fonts, const char *text, float width,
                                       const nkui::TextLayoutOptions &options,
                                       nkui_resource *out_layout) {
     auto *font_slot = resolve(fonts, nkui::ResourceKind::FontCollection);
     if (!font_slot || (font_slot->fonts.empty() && !font_slot->system_fallbacks))
         return NKUI_ERROR_INVALID_HANDLE;
-    std::vector<FontEntry> font_entries;
-    try {
-        font_entries = font_slot->fonts;
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
-    }
+    if (!font_slot->font_collection || !font_slot->font_collection->valid())
+        return NKUI_ERROR_INVALID_HANDLE;
+    const auto shared_fonts = font_slot->font_collection;
     ResourceSlot *layout_slot = nullptr;
     const nkui_result allocated =
         allocate_resource(nkui::ResourceKind::TextLayout, out_layout, &layout_slot);
     if (allocated != NKUI_OK)
         return allocated;
     try {
-        layout_slot->text = std::make_unique<nkui::SkribidiAdapter>();
+        layout_slot->text = std::make_unique<nkui::SkribidiAdapter>(shared_fonts);
     } catch (...) {
         release_resource_slot(*layout_slot);
         out_layout->id = 0;
@@ -455,14 +479,6 @@ nkui_result create_text_layout_locked(nkui_resource fonts, const char *text, flo
     }
     bool valid = layout_slot->text->valid() &&
                  layout_slot->text->set_atlas_namespace(static_cast<uint16_t>(out_layout->id));
-    for (const auto &font : font_entries) {
-        if (font.data)
-            valid = valid && layout_slot->text->add_font_from_shared_data(font.path.c_str(), font.data,
-                                                                           font.family);
-        else
-            valid = valid && layout_slot->text->add_font(font.path.c_str(), font.family);
-    }
-    valid = valid && (!font_slot->system_fallbacks || layout_slot->text->add_system_fallbacks());
     valid = valid && layout_slot->text->layout_utf8(text, width, options);
     valid = valid && layout_slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha,
                                                        layout_slot->text_glyphs);
@@ -673,6 +689,7 @@ void release_resource_slot(ResourceSlot &slot) {
     slot.text_width = 0.0f;
     slot.text_options = {};
     slot.fonts.clear();
+    slot.font_collection.reset();
     slot.system_fallbacks = false;
     slot.path.reset();
     slot.pixels.clear();
@@ -853,7 +870,22 @@ extern "C" nkui_result nkui_display_list_get_info(nkui_display_list list,
 extern "C" nkui_result nkui_font_collection_create(nkui_resource *out_fonts) {
     std::lock_guard<std::mutex> lock(resources_mutex);
     ResourceSlot *slot = nullptr;
-    return allocate_resource(nkui::ResourceKind::FontCollection, out_fonts, &slot);
+    const auto result = allocate_resource(nkui::ResourceKind::FontCollection, out_fonts, &slot);
+    if (result != NKUI_OK)
+        return result;
+    try {
+        slot->font_collection = std::make_shared<nkui::SkribidiFontCollection>();
+    } catch (...) {
+        release_resource_slot(*slot);
+        out_fonts->id = 0;
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    if (!slot->font_collection->valid()) {
+        release_resource_slot(*slot);
+        out_fonts->id = 0;
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    return NKUI_OK;
 }
 
 extern "C" nkui_result nkui_font_collection_add(nkui_resource fonts, const char *path,
@@ -862,11 +894,19 @@ extern "C" nkui_result nkui_font_collection_add(nkui_resource fonts, const char 
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
     auto *slot = resolve(fonts, nkui::ResourceKind::FontCollection);
-    if (!slot)
+    if (!slot || !slot->font_collection)
         return NKUI_ERROR_INVALID_HANDLE;
+    const auto mutable_result = ensure_mutable_font_collection(*slot);
+    if (mutable_result != NKUI_OK)
+        return mutable_result;
     try {
         slot->fonts.push_back({path, family == NKUI_FONT_FAMILY_EMOJI ? nkui::FontFamily::Emoji
                                                                       : nkui::FontFamily::Default});
+        const auto &entry = slot->fonts.back();
+        if (!slot->font_collection->add_font(entry.path.c_str(), entry.family)) {
+            slot->fonts.pop_back();
+            return NKUI_ERROR_INVALID_ARGUMENT;
+        }
     } catch (...) {
         return NKUI_ERROR_OUT_OF_MEMORY;
     }
@@ -882,13 +922,22 @@ extern "C" nkui_result nkui_font_collection_add_data(nkui_resource fonts, const 
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
     auto *slot = resolve(fonts, nkui::ResourceKind::FontCollection);
-    if (!slot)
+    if (!slot || !slot->font_collection)
         return NKUI_ERROR_INVALID_HANDLE;
+    const auto mutable_result = ensure_mutable_font_collection(*slot);
+    if (mutable_result != NKUI_OK)
+        return mutable_result;
     try {
         auto data = std::make_shared<std::vector<uint8_t>>(font_data, font_data + font_bytes);
         slot->fonts.push_back({name, family == NKUI_FONT_FAMILY_EMOJI ? nkui::FontFamily::Emoji
                                                                        : nkui::FontFamily::Default,
                                std::move(data)});
+        const auto &entry = slot->fonts.back();
+        if (!slot->font_collection->add_font_from_shared_data(entry.path.c_str(), entry.data,
+                                                               entry.family)) {
+            slot->fonts.pop_back();
+            return NKUI_ERROR_INVALID_ARGUMENT;
+        }
     } catch (...) {
         return NKUI_ERROR_OUT_OF_MEMORY;
     }
@@ -898,8 +947,13 @@ extern "C" nkui_result nkui_font_collection_add_data(nkui_resource fonts, const 
 extern "C" nkui_result nkui_font_collection_add_system_fallbacks(nkui_resource fonts) {
     std::lock_guard<std::mutex> lock(resources_mutex);
     auto *slot = resolve(fonts, nkui::ResourceKind::FontCollection);
-    if (!slot)
+    if (!slot || !slot->font_collection)
         return NKUI_ERROR_INVALID_HANDLE;
+    const auto mutable_result = ensure_mutable_font_collection(*slot);
+    if (mutable_result != NKUI_OK)
+        return mutable_result;
+    if (!slot->font_collection->add_system_fallbacks())
+        return NKUI_ERROR_INVALID_ARGUMENT;
     slot->system_fallbacks = true;
     return NKUI_OK;
 }
