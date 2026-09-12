@@ -23,6 +23,13 @@ target_compile_features(nativekit_time_tests PRIVATE cxx_std_17)
 target_link_libraries(nativekit_time_tests PRIVATE NativeKit::nativekit)
 add_test(NAME time COMMAND nativekit_time_tests)
 
+add_executable(nativekit_wasm_host_allocator_test
+    unit/wasm_host_allocator.cpp
+    ${PROJECT_SOURCE_DIR}/src/platform/wasm/host_allocator.cpp)
+target_compile_features(nativekit_wasm_host_allocator_test PRIVATE cxx_std_17)
+target_include_directories(nativekit_wasm_host_allocator_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+add_test(NAME wasm_host_allocator COMMAND nativekit_wasm_host_allocator_test)
+
 if(NK_BACKEND_GTK_AVAILABLE)
     add_executable(nativekit_linux_joystick_uinput integration/linux_joystick_uinput.c)
     target_link_libraries(nativekit_linux_joystick_uinput PRIVATE NativeKit::nativekit m)

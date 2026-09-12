@@ -29,6 +29,9 @@ static_assert(sizeof(nkui_command_header) == sizeof(nkui::CommandHeader));
 static_assert(sizeof(nkui_text_metrics) == 5 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_position) == 2 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_caret) == 7 * sizeof(uint32_t));
+static_assert(sizeof(nkui_text_style) == 4 * sizeof(uint32_t));
+static_assert(sizeof(nkui_paragraph_style) == 5 * sizeof(uint32_t));
+static_assert(sizeof(nkui_layout_frame_input) == 7 * sizeof(uint32_t));
 static_assert(sizeof(nkui_path_element) == 7 * sizeof(uint32_t));
 static_assert(sizeof(nkui_color) == 4 * sizeof(uint32_t));
 static_assert(sizeof(nkui_transform_command) == sizeof(nkui::SetTransformCommand));
@@ -66,7 +69,7 @@ struct ResourceSlot {
     nkui::PreparedGlyphs text_glyphs;
     std::unordered_map<int32_t, nkui::PreparedGlyphs> scaled_text_glyphs;
     float text_width = 0.0f;
-    float text_font_size = 0.0f;
+    nkui::TextLayoutOptions text_options{};
     std::unique_ptr<nkui::NanoVGPath> path;
     nkui_color color{};
     uint32_t image_width = 0;
@@ -275,7 +278,12 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             uint32_t width_sizing = 0;
             uint32_t height_sizing = 0;
             uint32_t direction = 0;
+            uint32_t font_family = 0;
+            uint32_t text_wrap = 0;
+            uint32_t text_alignment = 0;
+            uint32_t text_direction = 0;
             uint32_t clip = 0;
+            uint32_t text_flags = 0;
             uint32_t text_offset = 0;
             uint32_t text_length = 0;
             if (!read_node_u32(record, 0, id) || !read_node_i32(record, 4, node.parent) ||
@@ -303,9 +311,14 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_node_float(record, 100, node.text_color.green) ||
                 !read_node_float(record, 104, node.text_color.blue) ||
                 !read_node_float(record, 108, node.text_color.alpha) ||
-                !read_u16(record, 112, node.font_id) || !read_u16(record, 116, node.font_size) ||
-                !read_u16(record, 120, node.line_height) ||
-                !read_u16(record, 124, node.letter_spacing))
+                !read_node_u32(record, 112, font_family) ||
+                !read_node_float(record, 116, node.text_style.font_size) ||
+                !read_node_float(record, 120, node.text_style.letter_spacing) ||
+                !read_node_float(record, 124, node.paragraph_style.line_height) ||
+                !read_node_u32(record, 128, text_wrap) ||
+                !read_node_u32(record, 132, text_alignment) ||
+                !read_node_u32(record, 136, text_direction) ||
+                !read_node_u32(record, 140, text_flags))
                 return false;
             if (kind < NKUI_LAYOUT_NODE_BOX || kind > NKUI_LAYOUT_NODE_BUTTON ||
                 width_sizing > NKUI_LAYOUT_SIZING_PERCENT)
@@ -315,6 +328,10 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             node.style.width.sizing = static_cast<nkui::LayoutSizing>(width_sizing);
             node.style.height.sizing = static_cast<nkui::LayoutSizing>(height_sizing);
             node.style.direction = static_cast<nkui::LayoutDirection>(direction);
+            node.text_style.family = static_cast<nkui::FontFamily>(font_family);
+            node.paragraph_style.wrap = static_cast<nkui::TextWrapMode>(text_wrap);
+            node.paragraph_style.alignment = static_cast<nkui::TextAlignment>(text_alignment);
+            node.paragraph_style.direction = static_cast<nkui::TextDirection>(text_direction);
             node.style.clip_horizontal = (clip & NKUI_LAYOUT_CLIP_HORIZONTAL) != 0;
             node.style.clip_vertical = (clip & NKUI_LAYOUT_CLIP_VERTICAL) != 0;
             const auto valid_axis = [](const nkui::LayoutAxis &axis) {
@@ -337,6 +354,15 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 node.style.radius_top_left < 0.0f || node.style.radius_top_right < 0.0f ||
                 node.style.radius_bottom_left < 0.0f || node.style.radius_bottom_right < 0.0f)
                 return false;
+            if (font_family > static_cast<uint32_t>(nkui::FontFamily::Emoji) ||
+                !std::isfinite(node.text_style.font_size) || node.text_style.font_size <= 0.0f ||
+                !std::isfinite(node.text_style.letter_spacing) ||
+                !std::isfinite(node.paragraph_style.line_height) ||
+                node.paragraph_style.line_height < 0.0f ||
+                text_wrap > static_cast<uint32_t>(nkui::TextWrapMode::WordCharacter) ||
+                text_alignment > static_cast<uint32_t>(nkui::TextAlignment::End) ||
+                text_direction > static_cast<uint32_t>(nkui::TextDirection::Rtl) || text_flags != 0)
+                return false;
             if (text_length > size - string_offset || text_offset < string_offset ||
                 text_offset - string_offset > size - string_offset - text_length)
                 return false;
@@ -348,6 +374,85 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
         return false;
     }
     return true;
+}
+
+nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
+                              ResourceSlot **out_slot);
+void release_resource_slot(ResourceSlot &slot);
+
+bool text_options_from_api(const nkui_text_style *text_style,
+                           const nkui_paragraph_style *paragraph_style,
+                           nkui::TextLayoutOptions &out) {
+    if (!text_style || !paragraph_style || text_style->struct_size < sizeof(*text_style) ||
+        paragraph_style->struct_size < sizeof(*paragraph_style))
+        return false;
+    if (text_style->family < NKUI_FONT_FAMILY_DEFAULT ||
+        text_style->family > NKUI_FONT_FAMILY_EMOJI ||
+        paragraph_style->wrap < NKUI_TEXT_WRAP_NONE ||
+        paragraph_style->wrap > NKUI_TEXT_WRAP_WORD_CHARACTER ||
+        paragraph_style->alignment < NKUI_TEXT_ALIGN_START ||
+        paragraph_style->alignment > NKUI_TEXT_ALIGN_END ||
+        paragraph_style->direction < NKUI_TEXT_DIRECTION_AUTO ||
+        paragraph_style->direction > NKUI_TEXT_DIRECTION_RTL ||
+        !std::isfinite(text_style->font_size) || text_style->font_size <= 0.0f ||
+        !std::isfinite(text_style->letter_spacing) ||
+        !std::isfinite(paragraph_style->line_height) || paragraph_style->line_height < 0.0f)
+        return false;
+    out.family = static_cast<nkui::FontFamily>(text_style->family);
+    out.font_size = text_style->font_size;
+    out.letter_spacing = text_style->letter_spacing;
+    out.line_height = paragraph_style->line_height;
+    out.wrap = static_cast<nkui::TextWrapMode>(paragraph_style->wrap);
+    out.alignment = static_cast<nkui::TextAlignment>(paragraph_style->alignment);
+    out.direction = static_cast<nkui::TextDirection>(paragraph_style->direction);
+    return true;
+}
+
+nkui_result create_text_layout_locked(nkui_resource fonts, const char *text, float width,
+                                      const nkui::TextLayoutOptions &options,
+                                      nkui_resource *out_layout) {
+    auto *font_slot = resolve(fonts, nkui::ResourceKind::FontCollection);
+    if (!font_slot || (font_slot->fonts.empty() && !font_slot->system_fallbacks))
+        return NKUI_ERROR_INVALID_HANDLE;
+    std::vector<FontEntry> font_entries;
+    try {
+        font_entries = font_slot->fonts;
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    ResourceSlot *layout_slot = nullptr;
+    const nkui_result allocated =
+        allocate_resource(nkui::ResourceKind::TextLayout, out_layout, &layout_slot);
+    if (allocated != NKUI_OK)
+        return allocated;
+    try {
+        layout_slot->text = std::make_unique<nkui::SkribidiAdapter>();
+    } catch (...) {
+        release_resource_slot(*layout_slot);
+        out_layout->id = 0;
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    bool valid = layout_slot->text->valid() &&
+                 layout_slot->text->set_atlas_namespace(static_cast<uint16_t>(out_layout->id));
+    for (const auto &font : font_entries) {
+        if (font.data)
+            valid = valid && layout_slot->text->add_font_from_shared_data(font.path.c_str(), font.data,
+                                                                           font.family);
+        else
+            valid = valid && layout_slot->text->add_font(font.path.c_str(), font.family);
+    }
+    valid = valid && (!font_slot->system_fallbacks || layout_slot->text->add_system_fallbacks());
+    valid = valid && layout_slot->text->layout_utf8(text, width, options);
+    valid = valid && layout_slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha,
+                                                       layout_slot->text_glyphs);
+    if (!valid) {
+        release_resource_slot(*layout_slot);
+        out_layout->id = 0;
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    }
+    layout_slot->text_width = width;
+    layout_slot->text_options = options;
+    return NKUI_OK;
 }
 
 bool append_path(nkui::NanoVGPath &path, const std::vector<nkui_path_element> &elements) {
@@ -545,7 +650,7 @@ void release_resource_slot(ResourceSlot &slot) {
     slot.text_glyphs = {};
     slot.scaled_text_glyphs.clear();
     slot.text_width = 0.0f;
-    slot.text_font_size = 0.0f;
+    slot.text_options = {};
     slot.fonts.clear();
     slot.system_fallbacks = false;
     slot.path.reset();
@@ -858,8 +963,10 @@ extern "C" nkui_result nkui_layout_session_set_font_collection(nkui_layout_sessi
 }
 
 extern "C" nkui_result nkui_layout_session_submit(
-    nkui_layout_session session, const uint8_t *transaction, uint32_t transaction_bytes, float width,
-    float height, float pointer_x, float pointer_y, nk_bool pointer_down, float delta_seconds) {
+    nkui_layout_session session, const uint8_t *transaction, uint32_t transaction_bytes,
+    const nkui_layout_frame_input *frame) {
+    if (!frame || frame->struct_size < sizeof(*frame))
+        return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);
     auto *state = resolve(session);
     if (!state)
@@ -874,8 +981,9 @@ extern "C" nkui_result nkui_layout_session_submit(
         return NKUI_ERROR_INVALID_ARGUMENT;
     nkui::LayoutSnapshot snapshot;
     nkui::LayoutError error{};
-    if (!state->engine->layout(nodes, width, height, pointer_x, pointer_y, pointer_down != 0,
-                               delta_seconds, snapshot, &error))
+    if (!state->engine->layout(nodes, frame->width, frame->height, frame->pointer_x,
+                               frame->pointer_y, frame->pointer_down != 0, frame->delta_seconds,
+                               snapshot, &error))
         return NKUI_ERROR_INVALID_TRANSACTION;
     state->snapshot = std::move(snapshot);
     state->submitted = true;
@@ -916,47 +1024,46 @@ extern "C" nkui_result nkui_text_layout_create(nkui_resource fonts, const char *
         width <= 0.0f || font_size <= 0.0f)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
-    auto *font_slot = resolve(fonts, nkui::ResourceKind::FontCollection);
-    if (!font_slot || (font_slot->fonts.empty() && !font_slot->system_fallbacks))
-        return NKUI_ERROR_INVALID_HANDLE;
-    std::vector<FontEntry> font_entries;
-    try {
-        font_entries = font_slot->fonts;
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
-    }
-    ResourceSlot *layout_slot = nullptr;
-    const nkui_result allocated =
-        allocate_resource(nkui::ResourceKind::TextLayout, out_layout, &layout_slot);
-    if (allocated != NKUI_OK)
-        return allocated;
-    try {
-        layout_slot->text = std::make_unique<nkui::SkribidiAdapter>();
-    } catch (...) {
-        release_resource_slot(*layout_slot);
-        out_layout->id = 0;
-        return NKUI_ERROR_OUT_OF_MEMORY;
-    }
-    bool valid = layout_slot->text->valid() &&
-                 layout_slot->text->set_atlas_namespace(static_cast<uint16_t>(out_layout->id));
-    for (const auto &font : font_entries) {
-        if (font.data)
-            valid = valid && layout_slot->text->add_font_from_shared_data(font.path.c_str(), font.data,
-                                                                           font.family);
-        else
-            valid = valid && layout_slot->text->add_font(font.path.c_str(), font.family);
-    }
-    valid = valid && (!font_slot->system_fallbacks || layout_slot->text->add_system_fallbacks());
-    valid = valid && layout_slot->text->layout_utf8(text, width, font_size);
-    valid = valid && layout_slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha,
-                                                       layout_slot->text_glyphs);
-    if (!valid) {
-        release_resource_slot(*layout_slot);
-        out_layout->id = 0;
+    nkui::TextLayoutOptions options;
+    options.font_size = font_size;
+    return create_text_layout_locked(fonts, text, width, options, out_layout);
+}
+
+extern "C" nkui_result nkui_text_layout_create_styled(
+    nkui_resource fonts, const char *text, float width, const nkui_text_style *text_style,
+    const nkui_paragraph_style *paragraph_style, nkui_resource *out_layout) {
+    if (!text || !out_layout || !std::isfinite(width) || width <= 0.0f)
         return NKUI_ERROR_INVALID_ARGUMENT;
-    }
-    layout_slot->text_width = width;
-    layout_slot->text_font_size = font_size;
+    nkui::TextLayoutOptions options;
+    if (!text_options_from_api(text_style, paragraph_style, options))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    return create_text_layout_locked(fonts, text, width, options, out_layout);
+}
+
+extern "C" nkui_result nkui_text_layout_update(
+    nkui_resource layout, const char *text, float width, const nkui_text_style *text_style,
+    const nkui_paragraph_style *paragraph_style) {
+    if (!text || !std::isfinite(width) || width <= 0.0f)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    nkui::TextLayoutOptions options;
+    if (!text_options_from_api(text_style, paragraph_style, options))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    nkui::TextLayoutResult shaped;
+    if (!slot->text->layout_utf8(text, width, options, &shaped))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    nkui::PreparedGlyphs updated;
+    if (!slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha, updated))
+        return NKUI_ERROR_RENDERING;
+    slot->text_width = width;
+    slot->text_options = options;
+    slot->text_glyphs = std::move(updated);
+    slot->scaled_text_glyphs.clear();
+    slot->text->prune_layout_cache({shaped.id}, 1);
     return NKUI_OK;
 }
 
@@ -965,15 +1072,17 @@ extern "C" nkui_result nkui_text_layout_set_text(nkui_resource layout, const cha
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
     auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
-    if (!slot || !slot->text || slot->text_width <= 0.0f || slot->text_font_size <= 0.0f)
+    if (!slot || !slot->text || slot->text_width <= 0.0f)
         return NKUI_ERROR_INVALID_HANDLE;
-    if (!slot->text->layout_utf8(text, slot->text_width, slot->text_font_size))
+    nkui::TextLayoutResult shaped;
+    if (!slot->text->layout_utf8(text, slot->text_width, slot->text_options, &shaped))
         return NKUI_ERROR_INVALID_ARGUMENT;
     nkui::PreparedGlyphs updated;
     if (!slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha, updated))
         return NKUI_ERROR_RENDERING;
     slot->text_glyphs = std::move(updated);
     slot->scaled_text_glyphs.clear();
+    slot->text->prune_layout_cache({shaped.id}, 1);
     return NKUI_OK;
 }
 

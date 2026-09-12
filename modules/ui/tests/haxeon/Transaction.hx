@@ -57,7 +57,12 @@ class Transaction {
 		if (fontPath == null)
 			return 9;
 		fonts.add(fontPath);
-		var text = TextLayout.createStyled(fonts, "NativeKit — こんにちは — مرحبا", new TextStyle(18.0), new ParagraphStyle(220.0));
+		var textStyle = new TextStyle(18.0);
+		textStyle.letterSpacing = -0.25;
+		var paragraphStyle = new ParagraphStyle();
+		paragraphStyle.wrap = TextWrap.Word;
+		var text = TextLayout.createStyled(fonts, "NativeKit — こんにちは — مرحبا", 220.0,
+			textStyle, paragraphStyle);
 		var metrics = text.measure();
 		var position = text.hitTest(16.0, 24.0);
 		var caret = text.caret(position);
@@ -87,6 +92,8 @@ class Transaction {
 		var attempts = 0;
 		while (rendered < 3 && attempts < 120) {
 			var event = new Event();
+			var eventBytes:Bytes = event;
+			for (index in 0...Event.size()) eventBytes.set(index, 0);
 			event.set_struct_size(Event.size());
 			var polled = NativeKit.nk_poll_event(event);
 			if (polled.status != Result.Ok)

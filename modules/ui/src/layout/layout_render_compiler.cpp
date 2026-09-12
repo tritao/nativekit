@@ -259,7 +259,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 if (primitive.text.empty())
                     continue;
                 SkribidiAdapter *text = out.text_adapter();
-                if (!text || primitive.font_size == 0 || transient_slot > kMaxTransientSlot)
+                if (!text || primitive.text_style.font_size <= 0.0f ||
+                    transient_slot > kMaxTransientSlot)
                     return fail(error, index, "layout text preparation input is invalid");
                 const LayoutTextLayout *text_layout = nullptr;
                 if (primitive.text_layout_id) {
@@ -277,10 +278,13 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 } else {
                     const float width = std::max(primitive.bounds.width, 1.0f);
                     TextLayoutOptions options;
-                    options.font_size = static_cast<float>(primitive.font_size);
-                    options.letter_spacing = static_cast<float>(primitive.letter_spacing);
-                    options.line_height = static_cast<float>(primitive.line_height);
+                    options.font_size = primitive.text_style.font_size;
+                    options.letter_spacing = primitive.text_style.letter_spacing;
+                    options.line_height = primitive.paragraph_style.line_height;
+                    options.family = primitive.text_style.family;
                     options.wrap = TextWrapMode::None;
+                    options.alignment = primitive.paragraph_style.alignment;
+                    options.direction = primitive.paragraph_style.direction;
                     if (!text->layout_utf8(primitive.text.c_str(), width, options))
                         return fail(error, index, "layout text shaping failed");
                 }

@@ -17,11 +17,15 @@ class LayoutSessionSmoke {
 		button.style.height = LayoutAxis.fixed(64.0);
 		button.add(LayoutNode.textNode(102, "Press"));
 		root.add(button);
+		var frame = new LayoutFrame(256.0, 192.0);
 
-		if (session.submit(root, 256.0, 192.0).length != 0)
+		if (session.submit(root, frame).length != 0)
 			return 3;
-		session.submit(root, 256.0, 192.0, 8.0, 8.0, true, 1.0 / 60.0);
-		var events = session.submit(root, 256.0, 192.0, 8.0, 8.0, false, 1.0 / 60.0);
+		frame.setPointer(8.0, 8.0, true);
+		frame.deltaSeconds = 1.0 / 60.0;
+		session.submit(root, frame);
+		frame.pointerDown = false;
+		var events = session.submit(root, frame);
 		if (events.length != 1 || !events[0].isButtonActivated() || events[0].nodeId != 101)
 			return 4;
 

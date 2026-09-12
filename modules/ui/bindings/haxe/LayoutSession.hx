@@ -6,10 +6,14 @@ import haxe.io.Bytes;
 class LayoutSession {
 	var value:nkui_layout_session;
 	var disposed:Bool;
+	final transaction:LayoutTransaction;
+	final events:Array<LayoutEvent>;
 
 	private function new(value:nkui_layout_session) {
 		this.value = value;
 		disposed = false;
+		transaction = new LayoutTransaction();
+		events = [];
 	}
 
 	public static function create():LayoutSession {
@@ -26,15 +30,18 @@ class LayoutSession {
 	}
 
 	/** Submits one tree and returns the semantic events produced for that frame. */
-	public function submit(root:LayoutNode, width:Float, height:Float, pointerX:Float = 0.0,
-			pointerY:Float = 0.0, pointerDown:Bool = false, deltaSeconds:Float = 0.0):Array<LayoutEvent> {
+	public function submit(root:LayoutNode, frame:LayoutFrame):Array<LayoutEvent> {
 		ensureLive();
-		var transaction:Bytes = LayoutTransaction.encode(root);
-		UiResult.check(NativeKitUI.nkui_layout_session_submit(value, transaction, width, height,
-			pointerX, pointerY, pointerDown ? 1 : 0, deltaSeconds), "layoutSession.submit");
+		if (frame == null)
+			throw "Layout session frame cannot be null";
+		var transactionBytes:Bytes = transaction.encodeInto(root);
+		var nativeFrame = frame.nativeValue();
+		UiResult.check(NativeKitUI.nkui_layout_session_submit_slice(value, transactionBytes, 0,
+			transaction.byteLength(), nativeFrame),
+			"layoutSession.submit");
 		var count = NativeKitUI.nkui_layout_session_get_event_count(value);
 		UiResult.check(count.status, "layoutSession.eventCount");
-		var events:Array<LayoutEvent> = [];
+		events.resize(0);
 		for (index in 0...count.out_count) {
 			var event = NativeKitUI.nkui_layout_session_get_event(value, index);
 			UiResult.check(event.status, "layoutSession.event");

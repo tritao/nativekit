@@ -55,9 +55,40 @@ int main(void) {
         return 6;
     nkui_resource fonts = {0};
     nkui_resource layout = {0};
+    nkui_text_style text_style = {sizeof(text_style), NKUI_FONT_FAMILY_DEFAULT, 24.0f, -0.25f};
+    nkui_paragraph_style paragraph_style = {sizeof(paragraph_style), 0.0f,
+                                            NKUI_TEXT_WRAP_WORD_CHARACTER,
+                                            NKUI_TEXT_ALIGN_CENTER, NKUI_TEXT_DIRECTION_AUTO};
     if (nkui_font_collection_create(&fonts) != NKUI_OK ||
-        nkui_font_collection_add(fonts, NKUI_TEST_FONT_PATH, NKUI_FONT_FAMILY_DEFAULT) != NKUI_OK ||
-        nkui_text_layout_create(fonts, "NativeKit مرحبا", 300.0f, 24.0f, &layout) != NKUI_OK)
+        nkui_font_collection_add(fonts, NKUI_TEST_FONT_PATH, NKUI_FONT_FAMILY_DEFAULT) != NKUI_OK)
+        return 7;
+    nkui_text_style invalid_text_style = text_style;
+    nkui_paragraph_style invalid_paragraph_style = paragraph_style;
+    invalid_text_style.family = (nkui_font_family)-1;
+    if (nkui_text_layout_create_styled(fonts, "NativeKit مرحبا", 300.0f,
+                                       &invalid_text_style, &paragraph_style, &layout) !=
+        NKUI_ERROR_INVALID_ARGUMENT)
+        return 12;
+    invalid_text_style = text_style;
+    invalid_paragraph_style.wrap = (nkui_text_wrap)-1;
+    if (nkui_text_layout_create_styled(fonts, "NativeKit مرحبا", 300.0f,
+                                       &invalid_text_style, &invalid_paragraph_style, &layout) !=
+        NKUI_ERROR_INVALID_ARGUMENT)
+        return 13;
+    invalid_paragraph_style = paragraph_style;
+    invalid_paragraph_style.alignment = (nkui_text_alignment)-1;
+    if (nkui_text_layout_create_styled(fonts, "NativeKit مرحبا", 300.0f,
+                                       &text_style, &invalid_paragraph_style, &layout) !=
+        NKUI_ERROR_INVALID_ARGUMENT)
+        return 14;
+    invalid_paragraph_style = paragraph_style;
+    invalid_paragraph_style.direction = (nkui_text_direction)-1;
+    if (nkui_text_layout_create_styled(fonts, "NativeKit مرحبا", 300.0f,
+                                       &text_style, &invalid_paragraph_style, &layout) !=
+        NKUI_ERROR_INVALID_ARGUMENT)
+        return 15;
+    if (nkui_text_layout_create_styled(fonts, "NativeKit مرحبا", 300.0f, &text_style,
+                                       &paragraph_style, &layout) != NKUI_OK)
         return 7;
     nkui_text_metrics metrics = {0};
     nkui_text_position position = {0};
@@ -65,6 +96,11 @@ int main(void) {
     if (nkui_text_layout_measure(layout, &metrics) != NKUI_OK || metrics.width <= 0.0f ||
         nkui_text_layout_hit_test(layout, 0.0f, 0.0f, &position) != NKUI_OK ||
         nkui_text_layout_caret(layout, position, &caret) != NKUI_OK)
+        return 8;
+    text_style.letter_spacing = 0.0f;
+    paragraph_style.alignment = NKUI_TEXT_ALIGN_START;
+    if (nkui_text_layout_update(layout, "NativeKit updated مرحبا", 280.0f, &text_style,
+                                 &paragraph_style) != NKUI_OK)
         return 8;
     if (nkui_resource_destroy(layout) != NKUI_OK ||
         nkui_text_layout_measure(layout, &metrics) != NKUI_ERROR_INVALID_HANDLE ||

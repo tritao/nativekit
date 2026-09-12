@@ -35,6 +35,25 @@ enum class TextAlignment : uint8_t {
     End,
 };
 
+enum class TextDirection : uint8_t {
+    Auto = 0,
+    Ltr,
+    Rtl,
+};
+
+struct TextStyle {
+    FontFamily family = FontFamily::Default;
+    float font_size = 16.0f;
+    float letter_spacing = 0.0f;
+};
+
+struct ParagraphStyle {
+    TextWrapMode wrap = TextWrapMode::WordCharacter;
+    TextAlignment alignment = TextAlignment::Start;
+    float line_height = 0.0f;
+    TextDirection direction = TextDirection::Auto;
+};
+
 using TextLayoutId = uint64_t;
 
 enum class LayoutDirection : uint8_t {
@@ -87,10 +106,8 @@ struct LayoutNode {
     LayoutStyle style{};
     std::string text;
     LayoutColor text_color{1.0f, 1.0f, 1.0f, 1.0f};
-    uint16_t font_id = 0;
-    uint16_t font_size = 16;
-    uint16_t line_height = 0;
-    uint16_t letter_spacing = 0;
+    TextStyle text_style{};
+    ParagraphStyle paragraph_style{};
 };
 
 struct LayoutError {
@@ -130,10 +147,8 @@ struct LayoutPrimitive {
     float radius_bottom_left = 0.0f;
     float radius_bottom_right = 0.0f;
     std::string text;
-    uint16_t font_id = 0;
-    uint16_t font_size = 0;
-    uint16_t line_height = 0;
-    uint16_t letter_spacing = 0;
+    TextStyle text_style{};
+    ParagraphStyle paragraph_style{};
     TextLayoutId text_layout_id = 0;
     uint32_t text_line_index = 0;
 };
@@ -150,13 +165,8 @@ struct LayoutTextLayout {
     std::string text;
     float width = 0.0f;
     float height = 0.0f;
-    uint16_t font_id = 0;
-    uint16_t font_size = 0;
-    uint16_t line_height = 0;
-    uint16_t letter_spacing = 0;
-    FontFamily family = FontFamily::Default;
-    TextWrapMode wrap = TextWrapMode::WordCharacter;
-    TextAlignment alignment = TextAlignment::Start;
+    TextStyle text_style{};
+    ParagraphStyle paragraph_style{};
     std::vector<LayoutTextLine> lines;
 };
 

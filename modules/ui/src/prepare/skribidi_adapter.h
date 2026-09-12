@@ -30,6 +30,7 @@ struct TextLayoutOptions {
     FontFamily family = FontFamily::Default;
     TextWrapMode wrap = TextWrapMode::WordCharacter;
     TextAlignment alignment = TextAlignment::Start;
+    TextDirection direction = TextDirection::Auto;
 };
 
 struct GlyphVertex {

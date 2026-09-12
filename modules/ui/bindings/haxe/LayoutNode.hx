@@ -5,10 +5,8 @@ class LayoutNode {
 	public final style:LayoutStyle;
 	public var text:String;
 	public var textColor:Color;
-	public var fontId:Int;
-	public var fontSize:Int;
-	public var lineHeight:Int;
-	public var letterSpacing:Int;
+	public final textStyle:TextStyle;
+	public final paragraphStyle:ParagraphStyle;
 	public final children:Array<LayoutNode>;
 
 	public function new(id:Int, kind:LayoutNodeKind = LayoutNodeKind.Box,
@@ -20,10 +18,8 @@ class LayoutNode {
 		this.style = style == null ? new LayoutStyle() : style;
 		text = "";
 		textColor = Color.rgba(1.0, 1.0, 1.0, 1.0);
-		fontId = 0;
-		fontSize = 16;
-		lineHeight = 0;
-		letterSpacing = 0;
+		textStyle = new TextStyle();
+		paragraphStyle = new ParagraphStyle();
 		children = [];
 	}
 

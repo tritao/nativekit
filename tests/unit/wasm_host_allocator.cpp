@@ -20,7 +20,7 @@ bool aligned(const void *pointer, std::size_t alignment) {
 
 bool basic_allocations() {
     alignas(64) std::array<std::byte, 16 * 1024> storage{};
-    nkui::WasmHostAllocator allocator;
+    nk::wasm::WasmHostAllocator allocator;
     if (!check(allocator.initialize(storage.data(), storage.size()), "initialize failed"))
         return false;
     auto *first = static_cast<std::uint8_t *>(allocator.allocate(31));
@@ -37,7 +37,7 @@ bool basic_allocations() {
 
 bool realloc_preserves_data() {
     alignas(64) std::array<std::byte, 16 * 1024> storage{};
-    nkui::WasmHostAllocator allocator;
+    nk::wasm::WasmHostAllocator allocator;
     if (!allocator.initialize(storage.data(), storage.size()))
         return false;
     auto *pointer = static_cast<std::uint8_t *>(allocator.allocate(64));
@@ -57,7 +57,7 @@ bool realloc_preserves_data() {
 
 bool aligned_allocations() {
     alignas(64) std::array<std::byte, 16 * 1024> storage{};
-    nkui::WasmHostAllocator allocator;
+    nk::wasm::WasmHostAllocator allocator;
     if (!allocator.initialize(storage.data(), storage.size()))
         return false;
     auto *pointer = allocator.allocate_aligned(256, 300);
@@ -69,7 +69,7 @@ bool aligned_allocations() {
 
 bool exhaustion_is_bounded() {
     alignas(64) std::array<std::byte, 4096> storage{};
-    nkui::WasmHostAllocator allocator;
+    nk::wasm::WasmHostAllocator allocator;
     if (!allocator.initialize(storage.data(), storage.size()))
         return false;
     auto *large = allocator.allocate(3900);

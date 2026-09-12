@@ -45,7 +45,9 @@ class Showcase {
     final layoutRoot:LayoutNode;
     final layoutButton:LayoutNode;
     final layoutLabel:LayoutNode;
+    final layoutFrame:LayoutFrame;
     final canvas:Canvas;
+    final frameInfo:FrameInfo;
     final resources:Array<NativeKitUIResource>;
 
     final background:Paint;
@@ -136,6 +138,9 @@ class Showcase {
 
         layoutSession = LayoutSession.create();
         layoutSession.setFonts(fonts);
+        layoutFrame = new LayoutFrame(LOGICAL_WIDTH, LOGICAL_HEIGHT);
+        frameInfo = new FrameInfo(LOGICAL_WIDTH, LOGICAL_HEIGHT, Std.int(LOGICAL_WIDTH),
+            Std.int(LOGICAL_HEIGHT), 1.0);
         layoutRoot = LayoutNode.box(9001);
         layoutButton = LayoutNode.button(9002);
         layoutLabel = LayoutNode.textNode(9003, "");
@@ -148,7 +153,7 @@ class Showcase {
         layoutButton.style.radiusBottomLeft = 9.0;
         layoutButton.style.radiusBottomRight = 9.0;
         layoutLabel.textColor = Color.rgba(0.35, 0.95, 0.72, 1.0);
-        layoutLabel.fontSize = 11;
+        layoutLabel.textStyle.fontSize = 11.0;
         layoutButton.add(layoutLabel);
         layoutRoot.add(layoutButton);
 
@@ -188,52 +193,28 @@ class Showcase {
         // diagnostic bitmap until its source texels become visible.
         image = keep(checkerImage(IMAGE_TEXTURE_SIZE, IMAGE_TEXTURE_SIZE));
 
-        title = keep(TextLayout.createStyled(fonts, "NativeKit Graphics Lab",
-            new TextStyle(29.0), new ParagraphStyle(600.0)));
-        subtitle = keep(TextLayout.createStyled(fonts,
-            "Typed Haxe graphics · retained display list · one compositor",
-            new TextStyle(14.0), new ParagraphStyle(600.0)));
-        vectorLabel = keep(TextLayout.createStyled(fonts, "VECTOR GRAPHICS",
-            new TextStyle(12.0), new ParagraphStyle(270.0)));
-        paintLabel = keep(TextLayout.createStyled(fonts, "PAINT + IMAGE",
-            new TextStyle(12.0), new ParagraphStyle(270.0)));
-        textLabel = keep(TextLayout.createStyled(fonts, "UNICODE TEXT + CARET",
-            new TextStyle(12.0), new ParagraphStyle(580.0)));
-        retainedLabel = keep(TextLayout.createStyled(fonts, "RETAINED PATH",
-            new TextStyle(12.0), new ParagraphStyle(260.0)));
-        surfaceLabel = keep(TextLayout.createStyled(fonts, "GRAPHICS SURFACE",
-            new TextStyle(12.0), new ParagraphStyle(270.0)));
-        multilingual = keep(TextLayout.createStyled(fonts,
-            multilingualText == null ? "NativeKit — مرحبا — שלום — こんにちは 👋" : multilingualText,
-            new TextStyle(18.0), new ParagraphStyle(580.0)));
-        sidebarCopy = keep(TextLayout.createStyled(fonts,
-            "A visual proof of the\nNativeKit rendering\narchitecture.",
-            new TextStyle(16.0), new ParagraphStyle(180.0)));
-        controlsLabel = keep(TextLayout.createStyled(fonts, "INTERACTIVE CONTROLS",
-            new TextStyle(11.0), new ParagraphStyle(180.0)));
-        footerLabel = keep(TextLayout.createStyled(fonts,
-            "click the text card · move the pointer · resize the window",
-            new TextStyle(11.0), new ParagraphStyle(560.0)));
-        animateOnLabel = keep(TextLayout.createStyled(fonts, "ANIMATE  ·  ON",
-            new TextStyle(11.0), new ParagraphStyle(150.0)));
-        animateOffLabel = keep(TextLayout.createStyled(fonts, "ANIMATE  ·  OFF",
-            new TextStyle(11.0), new ParagraphStyle(150.0)));
-        darkThemeLabel = keep(TextLayout.createStyled(fonts, "THEME  ·  DARK",
-            new TextStyle(11.0), new ParagraphStyle(150.0)));
-        lightThemeLabel = keep(TextLayout.createStyled(fonts, "THEME  ·  LIGHT",
-            new TextStyle(11.0), new ParagraphStyle(150.0)));
-        curveLegendLabel = keep(TextLayout.createStyled(fonts,
-            "Bezier · concave · caps / joins", new TextStyle(10.0), new ParagraphStyle(270.0)));
-        paintCaption = keep(TextLayout.createStyled(fonts,
-            "solid RGBA paints · filtered image · alpha layer", new TextStyle(10.0),
-            new ParagraphStyle(270.0)));
-        caretInstruction = keep(TextLayout.createStyled(fonts,
-            "click to query code-point offset, affinity, direction, and caret geometry",
-            new TextStyle(10.0), new ParagraphStyle(570.0)));
-        offscreenLabel = keep(TextLayout.createStyled(fonts, "offscreen 2D producer",
-            new TextStyle(10.0), new ParagraphStyle(230.0)));
-        targetLabel = keep(TextLayout.createStyled(fonts, "3D-ready render-target slot",
-            new TextStyle(10.0), new ParagraphStyle(230.0)));
+        title = styled("NativeKit Graphics Lab", 600.0, 29.0);
+        subtitle = styled("Typed Haxe graphics · retained display list · one compositor", 600.0, 14.0);
+        vectorLabel = styled("VECTOR GRAPHICS", 270.0, 12.0);
+        paintLabel = styled("PAINT + IMAGE", 270.0, 12.0);
+        textLabel = styled("UNICODE TEXT + CARET", 580.0, 12.0);
+        retainedLabel = styled("RETAINED PATH", 260.0, 12.0);
+        surfaceLabel = styled("GRAPHICS SURFACE", 270.0, 12.0);
+        multilingual = styled(multilingualText == null ? "NativeKit — مرحبا — שלום — こんにちは 👋" : multilingualText,
+            580.0, 18.0);
+        sidebarCopy = styled("A visual proof of the\nNativeKit rendering\narchitecture.", 180.0, 16.0);
+        controlsLabel = styled("INTERACTIVE CONTROLS", 180.0, 11.0);
+        footerLabel = styled("click the text card · move the pointer · resize the window", 560.0, 11.0);
+        animateOnLabel = styled("ANIMATE  ·  ON", 150.0, 11.0);
+        animateOffLabel = styled("ANIMATE  ·  OFF", 150.0, 11.0);
+        darkThemeLabel = styled("THEME  ·  DARK", 150.0, 11.0);
+        lightThemeLabel = styled("THEME  ·  LIGHT", 150.0, 11.0);
+        curveLegendLabel = styled("Bezier · concave · caps / joins", 270.0, 10.0);
+        paintCaption = styled("solid RGBA paints · filtered image · alpha layer", 270.0, 10.0);
+        caretInstruction = styled("click to query code-point offset, affinity, direction, and caret geometry",
+            570.0, 10.0);
+        offscreenLabel = styled("offscreen 2D producer", 230.0, 10.0);
+        targetLabel = styled("3D-ready render-target slot", 230.0, 10.0);
 
         caretPosition = multilingual.hitTest(160.0, 22.0);
     }
@@ -251,6 +232,10 @@ class Showcase {
         resources.push(resource);
         return resource;
     }
+
+    function styled(value:String, width:Float, fontSize:Float):TextLayout
+        return keep(TextLayout.createStyled(fonts, value, width, new TextStyle(fontSize),
+            new ParagraphStyle()));
 
     public function updatePointer(x:Float, y:Float):Void {
         pointerX = (x - sceneOffsetX) / sceneScale;
@@ -282,8 +267,11 @@ class Showcase {
         layoutRoot.style.height = LayoutAxis.fixed(logicalHeight);
         layoutRoot.style.padding = new Insets(14.0, 14.0, 0.0, 0.0);
         layoutLabel.text = animate ? "LAYOUT  ·  ANIMATE ON" : "LAYOUT  ·  ANIMATE OFF";
-        var events = layoutSession.submit(layoutRoot, logicalWidth, logicalHeight, pointerX,
-            pointerY, pointerDown || pointerPressedPending, 1.0 / TARGET_FPS);
+        layoutFrame.width = logicalWidth;
+        layoutFrame.height = logicalHeight;
+        layoutFrame.setPointer(pointerX, pointerY, pointerDown || pointerPressedPending);
+        layoutFrame.deltaSeconds = 1.0 / TARGET_FPS;
+        var events = layoutSession.submit(layoutRoot, layoutFrame);
         pointerPressedPending = false;
         for (event in events)
             if (event.nodeId == layoutButton.id && event.isButtonActivated())
@@ -312,8 +300,7 @@ class Showcase {
                 'vector paths · paints · text · image';
             if (statusText == null || status != statusText) {
                 if (statusLayout == null)
-                    statusLayout = TextLayout.createStyled(fonts, status, new TextStyle(10.0),
-                        new ParagraphStyle(240.0));
+                    statusLayout = styled(status, 240.0, 10.0);
                 else
                     statusLayout.setText(status);
                 statusText = status;
@@ -346,8 +333,7 @@ class Showcase {
             caretStatusAffinity != caretPosition.affinity) {
             var caretStatus = 'offset ${caretPosition.offset} · affinity ${caretPosition.affinity}';
             if (caretStatusLayout == null)
-                caretStatusLayout = TextLayout.createStyled(fonts, caretStatus,
-                    new TextStyle(10.0), new ParagraphStyle(570.0));
+                caretStatusLayout = styled(caretStatus, 570.0, 10.0);
             else
                 caretStatusLayout.setText(caretStatus);
             caretStatusOffset = caretPosition.offset;
@@ -355,127 +341,123 @@ class Showcase {
         }
 
         canvas.reset();
-        canvas.withState(function(canvas) {
-            var base:Paint = background;
-            if (lightTheme)
-                base = lightBackground;
-            canvas.withState(function(canvas) {
-                canvas.translate(sceneOffsetX, sceneOffsetY);
-                canvas.scale(sceneScale, sceneScale);
-                canvas.fill(backgroundPath, base);
+        var base:Paint = lightTheme ? lightBackground : background;
+        canvas.save();
+        canvas.translate(sceneOffsetX, sceneOffsetY);
+        canvas.scale(sceneScale, sceneScale);
+        canvas.fill(backgroundPath, base);
 
-                canvas.withClip(new Rect(0.0, 0.0, 220.0, LOGICAL_HEIGHT), function(canvas) {
-                canvas.fill(sidebarPath, sidebar);
-                canvas.setAlpha(0.9);
-                canvas.withState(function(canvas) {
-                    canvas.translate(28.0, 42.0);
-                    canvas.fill(dotPath, green);
-                });
-                canvas.withState(function(canvas) {
-                    canvas.translate(24.0, 68.0);
-                    canvas.drawText(title, 0.0, 0.0);
-                });
-                canvas.drawText(sidebarCopy, 24.0, 134.0);
-                canvas.drawText(controlsLabel, 24.0, 310.0);
-                canvas.fill(animationButtonPath, animate ? green : cardRaised);
-                canvas.drawText(animate ? animateOnLabel : animateOffLabel, 40.0, 375.0);
-                canvas.fill(sliderTrackPath, cardRaised);
-                canvas.withState(function(canvas) {
-                    canvas.translate(24.0, 424.0);
-                    canvas.scale(172.0 * layerOpacity, 6.0);
-                    canvas.fill(unitRectPath, cyan);
-                });
-                canvas.withState(function(canvas) {
-                    canvas.translate(24.0 + 172.0 * layerOpacity, 427.0);
-                    canvas.fill(dotPath, ink);
-                });
-                canvas.fill(themeButtonPath, lightTheme ? orange : cardRaised);
-                canvas.drawText(lightTheme ? lightThemeLabel : darkThemeLabel, 40.0, 497.0);
-            });
+        canvas.save();
+        canvas.clip(new Rect(0.0, 0.0, 220.0, LOGICAL_HEIGHT));
+        canvas.fill(sidebarPath, sidebar);
+        canvas.setAlpha(0.9);
+        canvas.save();
+        canvas.translate(28.0, 42.0);
+        canvas.fill(dotPath, green);
+        canvas.restore();
+        canvas.save();
+        canvas.translate(24.0, 68.0);
+        canvas.drawText(title, 0.0, 0.0);
+        canvas.restore();
+        canvas.drawText(sidebarCopy, 24.0, 134.0);
+        canvas.drawText(controlsLabel, 24.0, 310.0);
+        canvas.fill(animationButtonPath, animate ? green : cardRaised);
+        canvas.drawText(animate ? animateOnLabel : animateOffLabel, 40.0, 375.0);
+        canvas.fill(sliderTrackPath, cardRaised);
+        canvas.save();
+        canvas.translate(24.0, 424.0);
+        canvas.scale(172.0 * layerOpacity, 6.0);
+        canvas.fill(unitRectPath, cyan);
+        canvas.restore();
+        canvas.save();
+        canvas.translate(24.0 + 172.0 * layerOpacity, 427.0);
+        canvas.fill(dotPath, ink);
+        canvas.restore();
+        canvas.fill(themeButtonPath, lightTheme ? orange : cardRaised);
+        canvas.drawText(lightTheme ? lightThemeLabel : darkThemeLabel, 40.0, 497.0);
+        canvas.restore();
 
-            canvas.fill(headerPath, cardRaised);
-            canvas.drawText(title, HEADER_TITLE_X, HEADER_TITLE_Y);
-            canvas.drawText(subtitle, HEADER_SUBTITLE_X, HEADER_SUBTITLE_Y);
-            canvas.drawText(statusLayout, HEADER_STATUS_X, HEADER_STATUS_Y);
+        canvas.fill(headerPath, cardRaised);
+        canvas.drawText(title, HEADER_TITLE_X, HEADER_TITLE_Y);
+        canvas.drawText(subtitle, HEADER_SUBTITLE_X, HEADER_SUBTITLE_Y);
+        canvas.drawText(statusLayout, HEADER_STATUS_X, HEADER_STATUS_Y);
 
-            canvas.fill(vectorCardPath, card);
-            canvas.drawText(vectorLabel, 262.0, 132.0);
-            canvas.withState(function(canvas) {
-                canvas.translate(320.0, 218.0);
-                canvas.rotate(staticFrame ? 0.0 : seconds * 0.45);
-                canvas.fill(starPath, violet);
-                canvas.stroke(starPath, ink, 2.0, LineCap.Round, LineJoin.Round);
-            });
-            canvas.withState(function(canvas) {
-                canvas.translate(420.0, 218.0);
-                canvas.fill(donutPath, cyan);
-                canvas.stroke(donutPath, ink, 1.5, LineCap.Butt, LineJoin.Bevel);
-            });
-            canvas.withState(function(canvas) {
-                canvas.translate(500.0, 218.0);
-                canvas.rotate(staticFrame ? 0.0 : seconds * -0.6);
-                canvas.stroke(curvePath, orange, 4.0, LineCap.Round, LineJoin.Miter);
-            });
-            canvas.drawText(curveLegendLabel, 264.0, 318.0);
+        canvas.fill(vectorCardPath, card);
+        canvas.drawText(vectorLabel, 262.0, 132.0);
+        canvas.save();
+        canvas.translate(320.0, 218.0);
+        canvas.rotate(staticFrame ? 0.0 : seconds * 0.45);
+        canvas.fill(starPath, violet);
+        canvas.stroke(starPath, ink, 2.0, LineCap.Round, LineJoin.Round);
+        canvas.restore();
+        canvas.save();
+        canvas.translate(420.0, 218.0);
+        canvas.fill(donutPath, cyan);
+        canvas.stroke(donutPath, ink, 1.5, LineCap.Butt, LineJoin.Bevel);
+        canvas.restore();
+        canvas.save();
+        canvas.translate(500.0, 218.0);
+        canvas.rotate(staticFrame ? 0.0 : seconds * -0.6);
+        canvas.stroke(curvePath, orange, 4.0, LineCap.Round, LineJoin.Miter);
+        canvas.restore();
+        canvas.drawText(curveLegendLabel, 264.0, 318.0);
 
-            canvas.fill(paintCardPath, card);
-            canvas.drawText(paintLabel, 582.0, 132.0);
-            canvas.withState(function(canvas) {
-                canvas.translate(610.0, 186.0);
-                canvas.fill(circle22Path, green);
-                canvas.translate(60.0, 0.0);
-                canvas.fill(circle22Path, violet);
-                canvas.translate(60.0, 0.0);
-                canvas.fill(circle22Path, orange);
-            });
-            var paintClip = new Rect(594.0, 224.0, 252.0, 88.0);
+        canvas.fill(paintCardPath, card);
+        canvas.drawText(paintLabel, 582.0, 132.0);
+        canvas.save();
+        canvas.translate(610.0, 186.0);
+        canvas.fill(circle22Path, green);
+        canvas.translate(60.0, 0.0);
+        canvas.fill(circle22Path, violet);
+        canvas.translate(60.0, 0.0);
+        canvas.fill(circle22Path, orange);
+        canvas.restore();
+        canvas.save();
+        canvas.clip(new Rect(594.0, 224.0, 252.0, 88.0));
+        canvas.beginLayer(layerOpacity);
+        canvas.drawImage(image, new Rect(600.0, 230.0, 84.0, 84.0));
+        canvas.save();
+        canvas.translate(790.0, 270.0);
+        canvas.fill(diamondPath, cyan);
+        canvas.restore();
+        canvas.endLayer();
+        canvas.restore();
+        canvas.drawText(paintCaption, 582.0, 330.0);
+
+        canvas.fill(textCardPath, cardRaised);
+        canvas.drawText(textLabel, 262.0, 388.0);
+        canvas.drawText(multilingual, TEXT_ORIGIN_X, TEXT_ORIGIN_Y);
+        canvas.drawText(caretInstruction, 260.0, 464.0);
+        if (caretPath != null)
+            canvas.stroke(caretPath, green, 2.0, LineCap.Round, LineJoin.Round);
+        canvas.drawText(caretStatusLayout, 260.0, 495.0);
+
+        canvas.fill(retainedCardPath, card);
+        canvas.drawText(retainedLabel, 262.0, 559.0);
+        canvas.save();
+        canvas.clip(new Rect(252.0, 568.0, 290.0, 54.0));
+        for (index in 0...18) {
             canvas.save();
-            canvas.clip(paintClip);
-            canvas.withLayer(layerOpacity, function(canvas) {
-                canvas.drawImage(image, new Rect(600.0, 230.0, 84.0, 84.0));
-                canvas.withState(function(canvas) {
-                    canvas.translate(790.0, 270.0);
-                    canvas.fill(diamondPath, cyan);
-                });
-            });
+            canvas.translate(265.0 + (index % 9) * 31.0,
+                594.0 + (index < 9 ? 0.0 : 16.0));
+            canvas.setAlpha(0.25 + (index % 5) * 0.14);
+            canvas.fill(starPath, index % 2 == 0 ? green : cyan);
             canvas.restore();
-            canvas.drawText(paintCaption, 582.0, 330.0);
+        }
+        canvas.restore();
 
-            canvas.fill(textCardPath, cardRaised);
-            canvas.drawText(textLabel, 262.0, 388.0);
-            canvas.drawText(multilingual, TEXT_ORIGIN_X, TEXT_ORIGIN_Y);
-            canvas.drawText(caretInstruction, 260.0, 464.0);
-            if (caretPath != null) {
-                canvas.stroke(caretPath, green, 2.0, LineCap.Round, LineJoin.Round);
-            }
-            canvas.drawText(caretStatusLayout, 260.0, 495.0);
-
-            canvas.fill(retainedCardPath, card);
-            canvas.drawText(retainedLabel, 262.0, 559.0);
-            canvas.withClip(new Rect(252.0, 568.0, 290.0, 54.0), function(canvas) {
-                for (index in 0...18) {
-                    canvas.withState(function(instance) {
-                        instance.translate(265.0 + (index % 9) * 31.0,
-                            594.0 + (index < 9 ? 0.0 : 16.0));
-                        instance.setAlpha(0.25 + (index % 5) * 0.14);
-                        instance.fill(starPath, index % 2 == 0 ? green : cyan);
-                    });
-                }
-            });
-
-            canvas.fill(surfaceCardPath, card);
-            canvas.drawText(surfaceLabel, 582.0, 559.0);
-            canvas.drawText(offscreenLabel, 582.0, 586.0);
-            canvas.drawText(targetLabel, 582.0, 604.0);
-            canvas.withLayer(0.75, function(canvas) {
-                canvas.withState(function(canvas) {
-                    canvas.translate(836.0, 583.0);
-                    canvas.fill(diamondPath, rose);
-                });
-            });
-            canvas.drawText(footerLabel, 262.0, 643.0);
-            });
-        });
+        canvas.fill(surfaceCardPath, card);
+        canvas.drawText(surfaceLabel, 582.0, 559.0);
+        canvas.drawText(offscreenLabel, 582.0, 586.0);
+        canvas.drawText(targetLabel, 582.0, 604.0);
+        canvas.beginLayer(0.75);
+        canvas.save();
+        canvas.translate(836.0, 583.0);
+        canvas.fill(diamondPath, rose);
+        canvas.restore();
+        canvas.endLayer();
+        canvas.drawText(footerLabel, 262.0, 643.0);
+        canvas.restore();
         canvas.update(list);
         if (replacedCaret != null)
             replacedCaret.dispose();
@@ -483,11 +465,11 @@ class Showcase {
 
     public function render(surface:Int, logicalWidth:Float, logicalHeight:Float,
             framebufferWidth:Int, framebufferHeight:Int, pixelScale:Float):Void {
-        var frame = new FrameInfo(logicalWidth, logicalHeight, framebufferWidth, framebufferHeight,
+        frameInfo.set(logicalWidth, logicalHeight, framebufferWidth, framebufferHeight,
             pixelScale);
         var target = Surface.fromNativeHandle(surface);
-        renderer.renderFrame(list, target, frame);
-        layoutSession.renderOverlay(renderer, target, frame);
+        renderer.renderFrame(list, target, frameInfo);
+        layoutSession.renderOverlay(renderer, target, frameInfo);
     }
 
     public function printStats():Void {

@@ -8,34 +8,40 @@ class Canvas {
 	final commands:CanvasCommandBuffer;
 	var state:CanvasState;
 	var saved:Array<CanvasState>;
+	var savedDepth:Int;
 	var openLayers:Int;
 
 	public function new(capacity:Int = 4096) {
 		commands = new CanvasCommandBuffer(capacity);
 		state = new CanvasState();
 		saved = [];
+		savedDepth = 0;
 		openLayers = 0;
 	}
 
 	public function reset():Void {
 		commands.reset();
 		state.reset();
-		saved = [];
+		savedDepth = 0;
 		openLayers = 0;
 	}
 
 	/** Saves transform, alpha, paint, composite, and clip state. */
 	public function save():Void {
-		saved.push(state.copy());
+		if (savedDepth == saved.length)
+			saved.push(new CanvasState());
+		saved[savedDepth].copyFrom(state);
+		savedDepth++;
 		commands.save();
 	}
 
 	/** Restores the most recently saved state. */
 	public function restore():Void {
-		if (saved.length == 0)
+		if (savedDepth == 0)
 			throw "Canvas restore without a matching save";
 		commands.restore();
-		state = saved.pop();
+		savedDepth--;
+		state.copyFrom(saved[savedDepth]);
 	}
 
 	public function withState(action:Canvas->Void):Void {
@@ -50,24 +56,49 @@ class Canvas {
 	}
 
 	public function setTransform(transform:Transform2D):Void {
-		state.transform = transform;
-		commands.transform(transform.a, transform.b, transform.c, transform.d, transform.tx, transform.ty);
+		setTransformValues(transform.a, transform.b, transform.c, transform.d, transform.tx, transform.ty);
 	}
 
 	public function resetTransform():Void
-		setTransform(Transform2D.identity());
+		setTransformValues(1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
 
-	public function translate(x:Float, y:Float):Void
-		setTransform(state.transform.translated(x, y));
+	public function translate(x:Float, y:Float):Void {
+		setTransformValues(state.a, state.b, state.c, state.d,
+			state.a * x + state.c * y + state.tx,
+			state.b * x + state.d * y + state.ty);
+	}
 
 	public function scale(x:Float, y:Float):Void
-		setTransform(state.transform.scaled(x, y));
+		setTransformValues(state.a * x, state.b * x, state.c * y, state.d * y,
+			state.tx, state.ty);
 
-	public function rotate(radians:Float):Void
-		setTransform(state.transform.rotated(radians));
+	public function rotate(radians:Float):Void {
+		var cosine = Math.cos(radians);
+		var sine = Math.sin(radians);
+		setTransformValues(state.a * cosine + state.c * sine,
+			state.b * cosine + state.d * sine,
+			-state.a * sine + state.c * cosine,
+			-state.b * sine + state.d * cosine,
+			state.tx, state.ty);
+	}
 
-	public function skew(xRadians:Float, yRadians:Float):Void
-		setTransform(state.transform.skewed(xRadians, yRadians));
+	public function skew(xRadians:Float, yRadians:Float):Void {
+		var x = Math.tan(xRadians);
+		var y = Math.tan(yRadians);
+		setTransformValues(state.a + state.c * y, state.b + state.d * y,
+			state.a * x + state.c, state.b * x + state.d,
+			state.tx, state.ty);
+	}
+
+	function setTransformValues(a:Float, b:Float, c:Float, d:Float, tx:Float, ty:Float):Void {
+		state.a = a;
+		state.b = b;
+		state.c = c;
+		state.d = d;
+		state.tx = tx;
+		state.ty = ty;
+		commands.transform(a, b, c, d, tx, ty);
+	}
 
 	public function setAlpha(alpha:Float):Void {
 		if (alpha < 0.0 || alpha > 1.0)
@@ -149,14 +180,24 @@ class Canvas {
 }
 
 private class CanvasState {
-	public var transform:Transform2D;
+	public var a:Float;
+	public var b:Float;
+	public var c:Float;
+	public var d:Float;
+	public var tx:Float;
+	public var ty:Float;
 	public var alpha:Float;
 	public var paint:Null<Paint>;
 	public var composite:CompositeMode;
 	public var clip:Null<Rect>;
 
 	public function new() {
-		transform = Transform2D.identity();
+		a = 1.0;
+		b = 0.0;
+		c = 0.0;
+		d = 1.0;
+		tx = 0.0;
+		ty = 0.0;
 		alpha = 1.0;
 		paint = null;
 		composite = CompositeMode.SourceOver;
@@ -164,20 +205,28 @@ private class CanvasState {
 	}
 
 	public function reset():Void {
-		transform = Transform2D.identity();
+		a = 1.0;
+		b = 0.0;
+		c = 0.0;
+		d = 1.0;
+		tx = 0.0;
+		ty = 0.0;
 		alpha = 1.0;
 		paint = null;
 		composite = CompositeMode.SourceOver;
 		clip = null;
 	}
 
-	public function copy():CanvasState {
-		var result = new CanvasState();
-		result.transform = transform;
-		result.alpha = alpha;
-		result.paint = paint;
-		result.composite = composite;
-		result.clip = clip;
-		return result;
+	public function copyFrom(value:CanvasState):Void {
+		a = value.a;
+		b = value.b;
+		c = value.c;
+		d = value.d;
+		tx = value.tx;
+		ty = value.ty;
+		alpha = value.alpha;
+		paint = value.paint;
+		composite = value.composite;
+		clip = value.clip;
 	}
 }

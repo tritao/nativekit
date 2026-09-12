@@ -1,12 +1,10 @@
 import NativeKit.EventKind;
-import NativeKit.Event;
 import NativeKit.TextEditAction;
 
 /** Synthetic payload tests for decoder validation and fallback behavior. */
 class NativeKitEventDecoderTests {
 	public static function run():Bool {
-		var nativeEvent = new Event();
-		var zero = nativeEvent.get_request_id(), empty = haxe.io.Bytes.alloc(0);
+		var zero:haxe.Int64 = 0, empty = haxe.io.Bytes.alloc(0);
 		var unknown = new NativeKitEventContext(0x7ffffffe, 7, zero, -2, 3, 4, empty);
 		var rawOk = switch NativeKitEvent.decodeContext(unknown) {
 			case Raw(kind, source, _, result, flags, count, data): kind == 0x7ffffffe && source == 7 && result == -2 && flags == 3 && count == 4 && data == empty;

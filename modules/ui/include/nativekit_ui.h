@@ -312,6 +312,53 @@ typedef enum nkui_font_family {
     NKUI_FONT_FAMILY_EMOJI = 1
 } nkui_font_family;
 
+/** Word-breaking policy used by both explicit and automatic text layouts. */
+typedef enum nkui_text_wrap {
+    /** Do not wrap the paragraph. */
+    NKUI_TEXT_WRAP_NONE = 0,
+    /** Wrap at word boundaries. */
+    NKUI_TEXT_WRAP_WORD = 1,
+    /** Wrap at word or character boundaries. */
+    NKUI_TEXT_WRAP_WORD_CHARACTER = 2
+} nkui_text_wrap;
+
+/** Horizontal alignment of paragraph lines. */
+typedef enum nkui_text_alignment {
+    NKUI_TEXT_ALIGN_START = 0,
+    NKUI_TEXT_ALIGN_CENTER = 1,
+    NKUI_TEXT_ALIGN_END = 2
+} nkui_text_alignment;
+
+/** Base direction requested for a paragraph. */
+typedef enum nkui_text_direction {
+    NKUI_TEXT_DIRECTION_AUTO = 0,
+    NKUI_TEXT_DIRECTION_LTR = 1,
+    NKUI_TEXT_DIRECTION_RTL = 2
+} nkui_text_direction;
+
+/** Font and inline spacing inputs shared by explicit and tree-owned layouts. */
+typedef struct nkui_text_style {
+    /** Set to sizeof(nkui_text_style) or a larger compatible structure size. */
+    uint32_t struct_size;
+    /** Font role selected from the owning font collection. */
+    nkui_font_family family;
+    /** Font size in logical pixels; must be positive and finite. */
+    float font_size;
+    /** Additional horizontal spacing between adjacent characters. */
+    float letter_spacing;
+} nkui_text_style;
+
+/** Paragraph-level wrapping, alignment, and line-height inputs. */
+typedef struct nkui_paragraph_style {
+    /** Set to sizeof(nkui_paragraph_style) or a larger compatible structure size. */
+    uint32_t struct_size;
+    /** Explicit line height, or zero for the natural line height. */
+    float line_height;
+    nkui_text_wrap wrap;
+    nkui_text_alignment alignment;
+    nkui_text_direction direction;
+} nkui_paragraph_style;
+
 /** Bounding rectangle returned for a text layout. */
 typedef struct nkui_text_metrics {
     /** Set to sizeof(nkui_text_metrics) when returned by the API. */
@@ -494,6 +541,17 @@ NKUI_API nkui_result nkui_font_collection_add_system_fallbacks(nkui_resource fon
 NKUI_API nkui_result nkui_text_layout_create(nkui_resource fonts, const char *text NKUI_UTF8,
                                              float width, float font_size,
                                              nkui_resource *out_layout NKUI_OUT);
+
+/** Creates a text layout using the shared semantic text and paragraph styles. */
+NKUI_API nkui_result nkui_text_layout_create_styled(
+    nkui_resource fonts, const char *text NKUI_UTF8, float width,
+    const nkui_text_style *text_style, const nkui_paragraph_style *paragraph_style,
+    nkui_resource *out_layout NKUI_OUT);
+
+/** Re-shapes an existing layout while retaining its native resource handle. */
+NKUI_API nkui_result nkui_text_layout_update(
+    nkui_resource layout, const char *text NKUI_UTF8, float width,
+    const nkui_text_style *text_style, const nkui_paragraph_style *paragraph_style);
 
 /** Re-shapes an existing layout with new UTF-8 text while retaining its handle and style. */
 NKUI_API nkui_result nkui_text_layout_set_text(nkui_resource layout, const char *text NKUI_UTF8);

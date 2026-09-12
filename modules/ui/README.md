@@ -16,7 +16,8 @@ The vendored experimental implementation stack is:
 Clay is currently integrated as a private implementation of `LayoutEngine`.
 The first native vertical slice is covered by `nativekit_ui_layout_engine`, which
 proves `Box + Text + Button`, text measurement through Skribidi, hit testing,
-and button activation without exposing a public layout ABI yet.
+and button activation. The Haxe-facing layout bridge is a versioned v2 batch
+transaction with semantic text styles and a forward-compatible frame input.
 
 `LayoutEngine` is a NativeKit-owned facade over a private Clay implementation.
 Clay types stay inside that implementation. NativeKit registers Clay's generic

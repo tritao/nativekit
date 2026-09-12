@@ -9,8 +9,9 @@ Haxeon owns components, state, reconciliation, and resolved style policy.
 The first private layout slice is now implemented in `src/layout/`. It pins
 Clay behind a NativeKit-owned `LayoutEngine`, measures text through Skribidi,
 and produces NativeKit-owned layout items and rendering primitives for a
-`Box + Text + Button` test. The public layout transaction ABI remains
-intentionally deferred until this internal boundary has more coverage.
+`Box + Text + Button` test. The Haxe-facing layout bridge uses a versioned,
+validated batch transaction with semantic text styles; Clay and Skribidi remain
+private implementation details.
 
 Internally, a frame flows through these stages:
 

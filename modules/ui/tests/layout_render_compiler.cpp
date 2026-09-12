@@ -136,7 +136,7 @@ int main() {
     LayoutNode label = box(3, 1);
     label.kind = LayoutNodeKind::Text;
     label.text = "Compile me";
-    label.font_size = 18;
+    label.text_style.font_size = 18.0f;
     label.text_color = {0.1f, 0.15f, 0.25f, 1.0f};
     nodes.push_back(label);
 

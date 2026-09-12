@@ -64,22 +64,53 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 * Version value required in every command header.
 	 */
 	const NKUI_COMMAND_VERSION = 1;
-	const NKUI_LAYOUT_API_VERSION = 1;
+	const NKUI_LAYOUT_API_VERSION = 2;
 	const NKUI_LAYOUT_CLIP_HORIZONTAL = 1;
 	const NKUI_LAYOUT_CLIP_VERTICAL = 2;
 	const NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT = 0;
 	const NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM = 1;
 	const NKUI_LAYOUT_EVENT_BUTTON_ACTIVATED = 1;
+	const NKUI_LAYOUT_NODE_BACKGROUND_OFFSET = 52;
 	const NKUI_LAYOUT_NODE_BOX = 1;
 	const NKUI_LAYOUT_NODE_BUTTON = 3;
-	const NKUI_LAYOUT_NODE_RECORD_BYTES = 128;
+	const NKUI_LAYOUT_NODE_CHILD_GAP_OFFSET = 48;
+	const NKUI_LAYOUT_NODE_CLIP_FLAGS_OFFSET = 84;
+	const NKUI_LAYOUT_NODE_DIRECTION_OFFSET = 28;
+	const NKUI_LAYOUT_NODE_FONT_FAMILY_OFFSET = 112;
+	const NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET = 116;
+	const NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET = 20;
+	const NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET = 24;
+	const NKUI_LAYOUT_NODE_ID_OFFSET = 0;
+	const NKUI_LAYOUT_NODE_KIND_OFFSET = 8;
+	const NKUI_LAYOUT_NODE_LETTER_SPACING_OFFSET = 120;
+	const NKUI_LAYOUT_NODE_LINE_HEIGHT_OFFSET = 124;
+	const NKUI_LAYOUT_NODE_PADDING_BOTTOM_OFFSET = 44;
+	const NKUI_LAYOUT_NODE_PADDING_LEFT_OFFSET = 32;
+	const NKUI_LAYOUT_NODE_PADDING_RIGHT_OFFSET = 36;
+	const NKUI_LAYOUT_NODE_PADDING_TOP_OFFSET = 40;
+	const NKUI_LAYOUT_NODE_PARENT_OFFSET = 4;
+	const NKUI_LAYOUT_NODE_RADIUS_BOTTOM_LEFT_OFFSET = 76;
+	const NKUI_LAYOUT_NODE_RADIUS_BOTTOM_RIGHT_OFFSET = 80;
+	const NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET = 68;
+	const NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET = 72;
+	const NKUI_LAYOUT_NODE_RECORD_BYTES = 160;
+	const NKUI_LAYOUT_NODE_RESERVED_OFFSET = 144;
 	const NKUI_LAYOUT_NODE_TEXT = 2;
+	const NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET = 132;
+	const NKUI_LAYOUT_NODE_TEXT_COLOR_OFFSET = 96;
+	const NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET = 136;
+	const NKUI_LAYOUT_NODE_TEXT_FLAGS_OFFSET = 140;
+	const NKUI_LAYOUT_NODE_TEXT_LENGTH_OFFSET = 92;
+	const NKUI_LAYOUT_NODE_TEXT_OFFSET_OFFSET = 88;
+	const NKUI_LAYOUT_NODE_TEXT_WRAP_OFFSET = 128;
+	const NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET = 12;
+	const NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET = 16;
 	const NKUI_LAYOUT_SIZING_FIT = 0;
 	const NKUI_LAYOUT_SIZING_FIXED = 2;
 	const NKUI_LAYOUT_SIZING_GROW = 1;
 	const NKUI_LAYOUT_SIZING_PERCENT = 3;
 	const NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16;
-	const NKUI_LAYOUT_TRANSACTION_VERSION = 1;
+	const NKUI_LAYOUT_TRANSACTION_VERSION = 2;
 	/**
 	 * Alpha compositing mode supported by the current UI renderer.
 	 */
@@ -212,6 +243,39 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		NKUI_ERROR_RENDERING = -5;
 	}
 	/**
+	 * Horizontal alignment of paragraph lines.
+	 */
+	enum nkui_text_alignment : c_int {
+		NKUI_TEXT_ALIGN_START = 0;
+		NKUI_TEXT_ALIGN_CENTER = 1;
+		NKUI_TEXT_ALIGN_END = 2;
+	}
+	/**
+	 * Base direction requested for a paragraph.
+	 */
+	enum nkui_text_direction : c_int {
+		NKUI_TEXT_DIRECTION_AUTO = 0;
+		NKUI_TEXT_DIRECTION_LTR = 1;
+		NKUI_TEXT_DIRECTION_RTL = 2;
+	}
+	/**
+	 * Word-breaking policy used by both explicit and automatic text layouts.
+	 */
+	enum nkui_text_wrap : c_int {
+		/**
+		 * Do not wrap the paragraph.
+		 */
+		NKUI_TEXT_WRAP_NONE = 0;
+		/**
+		 * Wrap at word boundaries.
+		 */
+		NKUI_TEXT_WRAP_WORD = 1;
+		/**
+		 * Wrap at word or character boundaries.
+		 */
+		NKUI_TEXT_WRAP_WORD_CHARACTER = 2;
+	}
+	/**
 	 * Returns the UI ABI version implemented by this module.
 	 */
 	extern fn nkui_api_version() -> u32;
@@ -314,11 +378,11 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 * Submits one flat, Haxe-owned semantic tree transaction.
 	 *
 	 * The transaction is little-endian and consists of a 16-byte header, fixed
-	 * 128-byte node records, and a UTF-8 string table. Node text offsets are
+	 * 160-byte node records, and a UTF-8 string table. Node text offsets are
 	 * absolute byte offsets from the beginning of the transaction. The native
 	 * side copies all values before returning, so the input buffer may be reused.
 	 */
-	extern fn nkui_layout_session_submit(session: nkui_layout_session, transaction: ptr<const<u8>> @in_array("transaction_bytes"), transaction_bytes: u32, width: f32, height: f32, pointer_x: f32, pointer_y: f32, pointer_down: nk_bool, delta_seconds: f32) -> nkui_result;
+	extern fn nkui_layout_session_submit(session: nkui_layout_session, transaction: ptr<const<u8>> @in_array("transaction_bytes"), transaction_bytes: u32, frame: ptr<const<nkui_layout_frame_input>>) -> nkui_result;
 	/**
 	 * Creates a solid paint from four finite RGBA components.
 	 */
@@ -386,6 +450,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_text_layout_create(fonts: nkui_resource, text: utf8, width: f32, font_size: f32, out_layout: ptr<nkui_resource> @out) -> nkui_result;
 	/**
+	 * Creates a text layout using the shared semantic text and paragraph styles.
+	 */
+	extern fn nkui_text_layout_create_styled(fonts: nkui_resource, text: utf8, width: f32, text_style: ptr<const<nkui_text_style>>, paragraph_style: ptr<const<nkui_paragraph_style>>, out_layout: ptr<nkui_resource> @out) -> nkui_result;
+	/**
 	 * Converts a logical-space point into the nearest text caret position.
 	 *
 	 * On NKUI_OK, writes a code-point offset and affinity to `out_position`.
@@ -401,6 +469,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 * Re-shapes an existing layout with new UTF-8 text while retaining its handle and style.
 	 */
 	extern fn nkui_text_layout_set_text(layout: nkui_resource, text: utf8) -> nkui_result;
+	/**
+	 * Re-shapes an existing layout while retaining its native resource handle.
+	 */
+	extern fn nkui_text_layout_update(layout: nkui_resource, text: utf8, width: f32, text_style: ptr<const<nkui_text_style>>, paragraph_style: ptr<const<nkui_paragraph_style>>) -> nkui_result;
 	/**
 	 * A normalized RGBA paint color.
 	 */
@@ -533,6 +605,37 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	struct nkui_layout_event @layout(8, 4) {
 		kind: u32 @offset(0);
 		node_id: u32 @offset(4);
+	}
+	/**
+	 * Per-submission logical viewport and pointer state.
+	 */
+	struct nkui_layout_frame_input @layout(28, 4) {
+		/**
+		 * Set to sizeof(nkui_layout_frame_input) or a larger compatible size.
+		 */
+		struct_size: u32 @offset(0);
+		width: f32 @offset(4);
+		height: f32 @offset(8);
+		pointer_x: f32 @offset(12);
+		pointer_y: f32 @offset(16);
+		pointer_down: nk_bool @offset(20);
+		delta_seconds: f32 @offset(24);
+	}
+	/**
+	 * Paragraph-level wrapping, alignment, and line-height inputs.
+	 */
+	struct nkui_paragraph_style @layout(20, 4) {
+		/**
+		 * Set to sizeof(nkui_paragraph_style) or a larger compatible structure size.
+		 */
+		struct_size: u32 @offset(0);
+		/**
+		 * Explicit line height, or zero for the natural line height.
+		 */
+		line_height: f32 @offset(4);
+		wrap: nkui_text_wrap @offset(8);
+		alignment: nkui_text_alignment @offset(12);
+		direction: nkui_text_direction @offset(16);
 	}
 	/**
 	 * One path operation supplied to nkui_path_create().
@@ -734,6 +837,27 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Caret affinity returned by hit testing; pass it back unchanged to caret queries.
 		 */
 		affinity: u32 @offset(4);
+	}
+	/**
+	 * Font and inline spacing inputs shared by explicit and tree-owned layouts.
+	 */
+	struct nkui_text_style @layout(16, 4) {
+		/**
+		 * Set to sizeof(nkui_text_style) or a larger compatible structure size.
+		 */
+		struct_size: u32 @offset(0);
+		/**
+		 * Font role selected from the owning font collection.
+		 */
+		family: nkui_font_family @offset(4);
+		/**
+		 * Font size in logical pixels; must be positive and finite.
+		 */
+		font_size: f32 @offset(8);
+		/**
+		 * Additional horizontal spacing between adjacent characters.
+		 */
+		letter_spacing: f32 @offset(12);
 	}
 	/**
 	 * Summary of the command stream currently stored in a display list.

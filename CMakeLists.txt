@@ -137,6 +137,25 @@ if(EMSCRIPTEN)
     target_link_options(nativekit INTERFACE
         "-sUSE_WEBGL2=1"
         "-sEXPORTED_RUNTIME_METHODS=ccall")
+
+    set(NK_WASM_HOST_HEAP_LIMIT "134217728" CACHE STRING
+        "Exclusive byte limit of NativeKit's bounded WebAssembly host heap")
+    if(NOT NK_WASM_HOST_HEAP_LIMIT MATCHES "^[1-9][0-9]*$")
+        message(FATAL_ERROR "NK_WASM_HOST_HEAP_LIMIT must be a positive integer byte offset")
+    endif()
+
+    # This process-wide allocator belongs to the WebAssembly platform layer,
+    # not to any one NativeKit module. Link it once from the final host module
+    # when the application partitions linear memory between host and guest.
+    add_library(nativekit_wasm_host_allocator STATIC
+        src/platform/wasm/host_allocator.cpp
+        src/platform/wasm/host_allocator_wasm.cpp)
+    add_library(NativeKit::wasm_host_allocator ALIAS nativekit_wasm_host_allocator)
+    target_compile_features(nativekit_wasm_host_allocator PRIVATE cxx_std_17)
+    target_include_directories(nativekit_wasm_host_allocator PRIVATE src)
+    target_compile_definitions(nativekit_wasm_host_allocator PRIVATE
+        NK_WASM_HOST_HEAP_LIMIT=${NK_WASM_HOST_HEAP_LIMIT})
+    target_link_options(nativekit_wasm_host_allocator INTERFACE "-sMALLOC=none")
 endif()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)

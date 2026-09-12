@@ -4,7 +4,7 @@
 #include <cstring>
 #include <limits>
 
-namespace nkui {
+namespace nk::wasm {
 
 struct alignas(16) WasmHostAllocator::BlockHeader {
     uint32_t magic;
@@ -284,4 +284,4 @@ void *WasmHostAllocator::reallocate(void *pointer, std::size_t size) {
     return replacement;
 }
 
-} // namespace nkui
+} // namespace nk::wasm

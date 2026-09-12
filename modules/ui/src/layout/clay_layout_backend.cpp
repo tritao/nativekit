@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -33,6 +35,54 @@ Clay_SizingAxis clay_axis(LayoutAxis axis) {
     default:
         return CLAY_SIZING_FIT(axis.value);
     }
+}
+
+uint16_t clay_text_value(float value, bool allow_zero = false) {
+    if (!std::isfinite(value) || value <= 0.0f)
+        return allow_zero ? 0 : 1;
+    return static_cast<uint16_t>(std::min(
+        static_cast<long>(std::lround(value)), static_cast<long>(std::numeric_limits<uint16_t>::max())));
+}
+
+TextLayoutOptions text_options_for_node(const LayoutNode *node, Clay_TextElementConfig *config) {
+    TextLayoutOptions options;
+    if (node) {
+        options.font_size = node->text_style.font_size;
+        options.letter_spacing = node->text_style.letter_spacing;
+        options.line_height = node->paragraph_style.line_height;
+        options.family = node->text_style.family;
+        options.wrap = node->paragraph_style.wrap;
+        options.alignment = node->paragraph_style.alignment;
+        options.direction = node->paragraph_style.direction;
+        return options;
+    }
+    if (config) {
+        options.font_size = config->fontSize > 0 ? static_cast<float>(config->fontSize) : 16.0f;
+        options.letter_spacing = static_cast<float>(config->letterSpacing);
+        options.line_height = static_cast<float>(config->lineHeight);
+        options.family = static_cast<FontFamily>(config->fontId);
+        options.wrap = config->wrapMode == CLAY_TEXT_WRAP_NONE
+                           ? TextWrapMode::None
+                       : config->wrapMode == CLAY_TEXT_WRAP_NEWLINES ? TextWrapMode::Word
+                                                                      : TextWrapMode::WordCharacter;
+        options.alignment = config->textAlignment == CLAY_TEXT_ALIGN_CENTER
+                                ? TextAlignment::Center
+                            : config->textAlignment == CLAY_TEXT_ALIGN_RIGHT ? TextAlignment::End
+                                                                             : TextAlignment::Start;
+    }
+    return options;
+}
+
+Clay_TextElementConfigWrapMode clay_wrap(TextWrapMode wrap) {
+    return wrap == TextWrapMode::None
+               ? CLAY_TEXT_WRAP_NONE
+               : wrap == TextWrapMode::Word ? CLAY_TEXT_WRAP_NEWLINES : CLAY_TEXT_WRAP_WORDS;
+}
+
+Clay_TextAlignment clay_alignment(TextAlignment alignment) {
+    return alignment == TextAlignment::Center
+               ? CLAY_TEXT_ALIGN_CENTER
+           : alignment == TextAlignment::End ? CLAY_TEXT_ALIGN_RIGHT : CLAY_TEXT_ALIGN_LEFT;
 }
 
 } // namespace
@@ -111,10 +161,8 @@ Clay_TextIntrinsicDimensions LayoutEngine::Impl::measure_intrinsic_text(
         return result;
 
     const std::string value(text.chars ? text.chars : "", static_cast<std::size_t>(text.length));
-    TextLayoutOptions options;
-    options.font_size = config->fontSize > 0 ? static_cast<float>(config->fontSize) : 16.0f;
-    options.letter_spacing = static_cast<float>(config->letterSpacing);
-    options.line_height = static_cast<float>(config->lineHeight);
+    const auto *node = static_cast<const LayoutNode *>(config->userData);
+    TextLayoutOptions options = text_options_for_node(node, config);
     options.wrap = TextWrapMode::None;
     TextRect bounds;
     if (!state.text.measure_intrinsic_utf8(value.c_str(), options, &bounds))
@@ -139,18 +187,8 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
 
     try {
         const std::string value(text.chars ? text.chars : "", static_cast<std::size_t>(text.length));
-        TextLayoutOptions options;
-        options.font_size = config->fontSize > 0 ? static_cast<float>(config->fontSize) : 16.0f;
-        options.letter_spacing = static_cast<float>(config->letterSpacing);
-        options.line_height = static_cast<float>(config->lineHeight);
-        options.wrap = config->wrapMode == CLAY_TEXT_WRAP_NONE
-                           ? TextWrapMode::None
-                       : config->wrapMode == CLAY_TEXT_WRAP_NEWLINES ? TextWrapMode::Word
-                                                                      : TextWrapMode::WordCharacter;
-        options.alignment = config->textAlignment == CLAY_TEXT_ALIGN_CENTER
-                                ? TextAlignment::Center
-                            : config->textAlignment == CLAY_TEXT_ALIGN_RIGHT ? TextAlignment::End
-                                                                             : TextAlignment::Start;
+        const auto *node = static_cast<const LayoutNode *>(config->userData);
+        const TextLayoutOptions options = text_options_for_node(node, config);
 
         TextLayoutResult shaped;
         if (!state.text.layout_utf8(value.c_str(), available_width, options, &shaped) ||
@@ -165,12 +203,13 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
         native_layout.text = value;
         native_layout.width = available_width;
         native_layout.height = shaped.bounds.height;
-        native_layout.font_id = config->fontId;
-        native_layout.font_size = config->fontSize;
-        native_layout.line_height = config->lineHeight;
-        native_layout.letter_spacing = config->letterSpacing;
-        native_layout.wrap = options.wrap;
-        native_layout.alignment = options.alignment;
+        native_layout.text_style.family = options.family;
+        native_layout.text_style.font_size = options.font_size;
+        native_layout.text_style.letter_spacing = options.letter_spacing;
+        native_layout.paragraph_style.wrap = options.wrap;
+        native_layout.paragraph_style.alignment = options.alignment;
+        native_layout.paragraph_style.line_height = options.line_height;
+        native_layout.paragraph_style.direction = options.direction;
         native_layout.lines.reserve(shaped.lines.size());
         state.callback_lines.clear();
         state.callback_lines.reserve(shaped.lines.size());
@@ -236,10 +275,12 @@ void append_node(LayoutState &state, std::size_t index) {
         Clay_TextElementConfig text_config{};
         text_config.userData = const_cast<LayoutNode *>(&node);
         text_config.textColor = clay_color(node.text_color);
-        text_config.fontId = node.font_id;
-        text_config.fontSize = node.font_size;
-        text_config.letterSpacing = node.letter_spacing;
-        text_config.lineHeight = node.line_height;
+        text_config.fontId = static_cast<uint16_t>(node.text_style.family);
+        text_config.fontSize = clay_text_value(node.text_style.font_size);
+        text_config.letterSpacing = clay_text_value(node.text_style.letter_spacing, true);
+        text_config.lineHeight = clay_text_value(node.paragraph_style.line_height, true);
+        text_config.wrapMode = clay_wrap(node.paragraph_style.wrap);
+        text_config.textAlignment = clay_alignment(node.paragraph_style.alignment);
         Clay__OpenTextElement(
             {false, static_cast<int32_t>(node.text.size()), node.text.c_str()}, text_config);
     }
@@ -279,19 +320,28 @@ void append_primitive(LayoutSnapshot &snapshot, const Clay_RenderCommand &comman
         primitive.color = color_from(command.renderData.border.color);
         break;
     case CLAY_RENDER_COMMAND_TYPE_TEXT:
+    {
         primitive.kind = LayoutPrimitiveKind::Text;
         primitive.color = color_from(command.renderData.text.textColor);
         if (command.renderData.text.stringContents.length > 0)
             primitive.text.assign(
                 command.renderData.text.stringContents.chars,
                 static_cast<std::size_t>(command.renderData.text.stringContents.length));
-        primitive.font_id = command.renderData.text.fontId;
-        primitive.font_size = command.renderData.text.fontSize;
-        primitive.line_height = command.renderData.text.lineHeight;
-        primitive.letter_spacing = command.renderData.text.letterSpacing;
+        const auto *node = static_cast<const LayoutNode *>(command.userData);
+        if (node) {
+            primitive.text_style = node->text_style;
+            primitive.paragraph_style = node->paragraph_style;
+        } else {
+            primitive.text_style.family = static_cast<FontFamily>(command.renderData.text.fontId);
+            primitive.text_style.font_size = static_cast<float>(command.renderData.text.fontSize);
+            primitive.text_style.letter_spacing = static_cast<float>(command.renderData.text.letterSpacing);
+            primitive.paragraph_style.line_height = static_cast<float>(command.renderData.text.lineHeight);
+            primitive.paragraph_style.wrap = TextWrapMode::None;
+        }
         primitive.text_layout_id = command.renderData.text.textLayoutId;
         primitive.text_line_index = command.renderData.text.textLineIndex;
         break;
+    }
     case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:
         primitive.kind = LayoutPrimitiveKind::ClipBegin;
         break;

@@ -400,7 +400,8 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width,
             cached.options.letter_spacing == options.letter_spacing &&
             cached.options.line_height == options.line_height &&
             cached.options.family == options.family && cached.options.wrap == options.wrap &&
-            cached.options.alignment == options.alignment) {
+            cached.options.alignment == options.alignment &&
+            cached.options.direction == options.direction) {
             cached.last_used = ++state_->layout_use_sequence;
             state_->active_layout_id = entry.first;
             if (result)
@@ -420,6 +421,10 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width,
     const skb_line_height_t line_height_type = options.line_height > 0.0f
                                                    ? SKB_LINE_HEIGHT_ABSOLUTE
                                                    : SKB_LINE_HEIGHT_NORMAL;
+    const skb_text_direction_t base_direction =
+        options.direction == TextDirection::Ltr ? SKB_DIRECTION_LTR
+        : options.direction == TextDirection::Rtl ? SKB_DIRECTION_RTL
+                                                   : SKB_DIRECTION_AUTO;
     const skb_attribute_t attributes[] = {
         skb_attribute_make_font_size(options.font_size),
         skb_attribute_make_font_family(static_cast<uint8_t>(options.family)),
@@ -427,8 +432,9 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width,
         skb_attribute_make_line_height(line_height_type, options.line_height),
         skb_attribute_make_paint_color(SKB_PAINT_TEXT, SKB_PAINT_STATE_DEFAULT,
                                        skb_rgba(255, 255, 255, 255))};
-    const skb_attribute_t layout_attributes[] = {skb_attribute_make_text_wrap(wrap),
-                                                  skb_attribute_make_horizontal_align(align)};
+    const skb_attribute_t layout_attributes[] = {
+        skb_attribute_make_text_wrap(wrap), skb_attribute_make_horizontal_align(align),
+        skb_attribute_make_text_base_direction(base_direction)};
     const skb_layout_params_t params = {
         .font_collection = state_->fonts,
         .layout_width = width,

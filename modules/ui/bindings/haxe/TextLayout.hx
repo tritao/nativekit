@@ -3,27 +3,35 @@ import NativeKitUI;
 /** A shaped text layout resource with a stable handle and mutable UTF-8 content. */
 class TextLayout extends NativeKitUIResource {
 	public var text(default, null):String;
-	public final width:Float;
-	public final fontSize:Float;
+	public var width(default, null):Float;
+	public final textStyle:TextStyle;
+	public final paragraphStyle:ParagraphStyle;
 
-	private function new(value:nkui_resource, text:String, width:Float, fontSize:Float) {
+	private function new(value:nkui_resource, text:String, width:Float, textStyle:TextStyle,
+			paragraphStyle:ParagraphStyle) {
 		super(value);
 		this.text = text;
 		this.width = width;
-		this.fontSize = fontSize;
+		this.textStyle = textStyle;
+		this.paragraphStyle = paragraphStyle;
 	}
 
-	public static function create(fonts:FontCollection, text:String, width:Float, fontSize:Float):TextLayout {
-		if (text == null || width <= 0.0 || fontSize <= 0.0)
+	public static function create(fonts:FontCollection, text:String, width:Float,
+			?textStyle:TextStyle, ?paragraphStyle:ParagraphStyle):TextLayout {
+		if (text == null || width <= 0.0)
 			throw "Text layout arguments are invalid";
-		var made = NativeKitUI.nkui_text_layout_create(fonts.nativeHandle(), text, width, fontSize);
+		var actualTextStyle = textStyle == null ? new TextStyle() : textStyle;
+		var actualParagraphStyle = paragraphStyle == null ? new ParagraphStyle() : paragraphStyle;
+		var made = NativeKitUI.nkui_text_layout_create_styled(fonts.nativeHandle(), text, width,
+			nativeTextStyle(actualTextStyle), nativeParagraphStyle(actualParagraphStyle));
 		UiResult.check(made.status, "textLayout.create");
-		return new TextLayout(made.out_layout, text, width, fontSize);
+		return new TextLayout(made.out_layout, text, width, actualTextStyle, actualParagraphStyle);
 	}
 
-	/** Creates a layout from typed style objects so future text ABI growth does not add positional arguments. */
-	public static function createStyled(fonts:FontCollection, text:String, style:TextStyle, paragraph:ParagraphStyle):TextLayout
-		return create(fonts, text, paragraph.width, style.fontSize);
+	/** Creates a layout using the same semantic styles as LayoutNode. */
+	public static function createStyled(fonts:FontCollection, text:String, width:Float,
+			style:TextStyle, paragraph:ParagraphStyle):TextLayout
+		return create(fonts, text, width, style, paragraph);
 
 	/** Re-shapes this layout without replacing its native resource handle. */
 	public function setText(value:String):Void {
@@ -31,6 +39,43 @@ class TextLayout extends NativeKitUIResource {
 			throw "Text layout text cannot be null";
 		UiResult.check(NativeKitUI.nkui_text_layout_set_text(nativeHandle(), value), "textLayout.setText");
 		text = value;
+	}
+
+	/** Re-shapes this retained layout with new content, width, or semantic styles. */
+	public function update(value:String, newWidth:Float, style:TextStyle,
+			paragraph:ParagraphStyle):Void {
+		if (value == null || newWidth <= 0.0 || style == null || paragraph == null)
+			throw "Text layout update arguments are invalid";
+		UiResult.check(NativeKitUI.nkui_text_layout_update(nativeHandle(), value, newWidth,
+			nativeTextStyle(style), nativeParagraphStyle(paragraph)), "textLayout.update");
+		text = value;
+		width = newWidth;
+		textStyle.font = style.font;
+		textStyle.fontSize = style.fontSize;
+		textStyle.letterSpacing = style.letterSpacing;
+		paragraphStyle.wrap = paragraph.wrap;
+		paragraphStyle.alignment = paragraph.alignment;
+		paragraphStyle.lineHeight = paragraph.lineHeight;
+		paragraphStyle.direction = paragraph.direction;
+	}
+
+	static function nativeTextStyle(style:TextStyle):nkui_text_style {
+		var result = new nkui_text_style();
+		result.set_struct_size(nkui_text_style.size());
+		result.set_family(style.font);
+		result.set_font_size(style.fontSize);
+		result.set_letter_spacing(style.letterSpacing);
+		return result;
+	}
+
+	static function nativeParagraphStyle(style:ParagraphStyle):nkui_paragraph_style {
+		var result = new nkui_paragraph_style();
+		result.set_struct_size(nkui_paragraph_style.size());
+		result.set_line_height(style.lineHeight == null ? 0.0 : style.lineHeight);
+		result.set_wrap(style.wrap);
+		result.set_alignment(style.alignment);
+		result.set_direction(style.direction);
+		return result;
 	}
 
 	public function measure():TextMetrics {

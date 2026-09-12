@@ -3,14 +3,14 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace nkui {
+namespace nk::wasm {
 
 /**
  * A bounded first-fit allocator for a caller-owned linear-memory arena.
  *
  * The allocator never grows the arena and never accesses memory outside the
- * range supplied to initialize(). The Emscripten adapter uses it for the
- * NativeKit host partition; native tests use an aligned byte buffer.
+ * range supplied to initialize(). The Emscripten host adapter uses it for a
+ * bounded host-memory partition; native tests use an aligned byte buffer.
  */
 class WasmHostAllocator {
   public:
@@ -62,4 +62,4 @@ class WasmHostAllocator {
     bool ready_ = false;
 };
 
-} // namespace nkui
+} // namespace nk::wasm

@@ -1,23 +1,34 @@
 #include "platform/wasm/host_allocator.h"
-#include "nativekit_haxeon_memory_contract.h"
 
+#include <emscripten/heap.h>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <new>
 
+#ifndef NK_WASM_HOST_HEAP_LIMIT
+#error "NK_WASM_HOST_HEAP_LIMIT must be configured for the WebAssembly host allocator"
+#endif
+
 extern "C" unsigned char __heap_base;
 
 namespace {
 
-nkui::WasmHostAllocator allocator;
+nk::wasm::WasmHostAllocator allocator;
+bool allocator_initialization_attempted = false;
+bool allocator_ready = false;
 
 bool ensure_allocator() {
+    if (allocator_initialization_attempted)
+        return allocator_ready;
+    allocator_initialization_attempted = true;
+
     const auto base = reinterpret_cast<std::uintptr_t>(&__heap_base);
-    if (base >= NKUI_HAXEON_HOST_HEAP_LIMIT)
+    if (base >= NK_WASM_HOST_HEAP_LIMIT || emscripten_get_heap_size() < NK_WASM_HOST_HEAP_LIMIT)
         return false;
-    return allocator.initialize(&__heap_base, NKUI_HAXEON_HOST_HEAP_LIMIT - base);
+    allocator_ready = allocator.initialize(&__heap_base, NK_WASM_HOST_HEAP_LIMIT - base);
+    return allocator_ready;
 }
 
 void *allocate_zeroed(std::size_t count, std::size_t size) {
@@ -82,7 +93,7 @@ extern "C" void emscripten_builtin_free(void *pointer) {
     free(pointer);
 }
 
-extern "C" uint32_t nkui_wasm_host_allocator_status() {
+extern "C" uint32_t nk_wasm_host_allocator_status() {
     return ensure_allocator() ? 0u : 1u;
 }
 

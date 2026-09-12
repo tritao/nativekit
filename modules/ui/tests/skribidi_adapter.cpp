@@ -1,5 +1,7 @@
 #include "prepare/skribidi_adapter.h"
 
+#include <vector>
+
 #ifndef NKUI_TEST_FONT_PATH
 #error NKUI_TEST_FONT_PATH is required
 #endif
@@ -200,6 +202,31 @@ int main() {
         !adapter.prepare_glyphs_for_line(1, 0.0f, 0.0f, 1.0f, GlyphMode::Alpha, second_line) ||
         first_line.vertices.empty() || second_line.vertices.empty())
         return 40;
+
+    TextLayoutOptions direction_options;
+    direction_options.font_size = 24.0f;
+    direction_options.wrap = TextWrapMode::None;
+    TextLayoutResult automatic_direction;
+    TextLayoutResult right_to_left_direction;
+    TextLayoutResult automatic_direction_again;
+    const uint32_t direction_builds = adapter.layout_build_count();
+    if (!adapter.layout_utf8("NativeKit", 300.0f, direction_options, &automatic_direction))
+        return 44;
+    direction_options.direction = TextDirection::Rtl;
+    if (!adapter.layout_utf8("NativeKit", 300.0f, direction_options, &right_to_left_direction) ||
+        automatic_direction.id == right_to_left_direction.id ||
+        automatic_direction.lines.size() != 1 || right_to_left_direction.lines.size() != 1 ||
+        right_to_left_direction.lines.front().bounds.x <=
+            automatic_direction.lines.front().bounds.x + 1.0f ||
+        adapter.layout_build_count() != direction_builds + 2)
+        return 45;
+    direction_options.direction = TextDirection::Auto;
+    if (!adapter.layout_utf8("NativeKit", 300.0f, direction_options,
+                             &automatic_direction_again) ||
+        automatic_direction_again.id != automatic_direction.id ||
+        adapter.layout_build_count() != direction_builds + 2)
+        return 46;
+
     TextLayoutResult retained_first;
     TextLayoutResult retained_second;
     TextLayoutOptions retained_options;
@@ -223,5 +250,9 @@ int main() {
         retained_second_glyphs.layout_id != retained_second.id ||
         adapter.layout_build_count() != retained_builds)
         return 43;
+    const std::vector<TextLayoutId> kept_layouts{retained_second.id};
+    adapter.prune_layout_cache(kept_layouts, 1);
+    if (adapter.has_layout(retained_first.id) || !adapter.has_layout(retained_second.id))
+        return 47;
     return glyphs.vertices.size() % 4 == 0 && glyphs.indices.size() % 6 == 0 ? 0 : 41;
 }

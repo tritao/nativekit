@@ -41,38 +41,40 @@ std::vector<uint8_t> transaction() {
         return NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
                static_cast<std::size_t>(index) * NKUI_LAYOUT_NODE_RECORD_BYTES;
     };
-    write_u32(bytes, record(0) + 0, 1);
-    write_i32(bytes, record(0) + 4, -1);
-    write_u32(bytes, record(0) + 8, NKUI_LAYOUT_NODE_BOX);
-    write_u32(bytes, record(0) + 12, NKUI_LAYOUT_SIZING_FIXED);
-    write_float(bytes, record(0) + 16, 256.0f);
-    write_u32(bytes, record(0) + 20, NKUI_LAYOUT_SIZING_FIXED);
-    write_float(bytes, record(0) + 24, 192.0f);
-    write_u32(bytes, record(0) + 28, NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
-    write_color(bytes, record(0) + 52, 0.1f, 0.1f, 0.1f, 1.0f);
-    write_u32(bytes, record(0) + 88, string_offset);
+    write_u32(bytes, record(0) + NKUI_LAYOUT_NODE_ID_OFFSET, 1);
+    write_i32(bytes, record(0) + NKUI_LAYOUT_NODE_PARENT_OFFSET, -1);
+    write_u32(bytes, record(0) + NKUI_LAYOUT_NODE_KIND_OFFSET, NKUI_LAYOUT_NODE_BOX);
+    write_u32(bytes, record(0) + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIXED);
+    write_float(bytes, record(0) + NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET, 256.0f);
+    write_u32(bytes, record(0) + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIXED);
+    write_float(bytes, record(0) + NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET, 192.0f);
+    write_u32(bytes, record(0) + NKUI_LAYOUT_NODE_DIRECTION_OFFSET, NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
+    write_color(bytes, record(0) + NKUI_LAYOUT_NODE_BACKGROUND_OFFSET, 0.1f, 0.1f, 0.1f, 1.0f);
+    write_float(bytes, record(0) + NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET, 16.0f);
+    write_u32(bytes, record(0) + NKUI_LAYOUT_NODE_TEXT_OFFSET_OFFSET, string_offset);
 
-    write_u32(bytes, record(1) + 0, 2);
-    write_i32(bytes, record(1) + 4, 0);
-    write_u32(bytes, record(1) + 8, NKUI_LAYOUT_NODE_BUTTON);
-    write_u32(bytes, record(1) + 12, NKUI_LAYOUT_SIZING_FIXED);
-    write_float(bytes, record(1) + 16, 160.0f);
-    write_u32(bytes, record(1) + 20, NKUI_LAYOUT_SIZING_FIXED);
-    write_float(bytes, record(1) + 24, 64.0f);
-    write_u32(bytes, record(1) + 28, NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
-    write_color(bytes, record(1) + 52, 0.2f, 0.5f, 0.9f, 1.0f);
-    write_u32(bytes, record(1) + 88, string_offset);
+    write_u32(bytes, record(1) + NKUI_LAYOUT_NODE_ID_OFFSET, 2);
+    write_i32(bytes, record(1) + NKUI_LAYOUT_NODE_PARENT_OFFSET, 0);
+    write_u32(bytes, record(1) + NKUI_LAYOUT_NODE_KIND_OFFSET, NKUI_LAYOUT_NODE_BUTTON);
+    write_u32(bytes, record(1) + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIXED);
+    write_float(bytes, record(1) + NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET, 160.0f);
+    write_u32(bytes, record(1) + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIXED);
+    write_float(bytes, record(1) + NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET, 64.0f);
+    write_u32(bytes, record(1) + NKUI_LAYOUT_NODE_DIRECTION_OFFSET, NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
+    write_color(bytes, record(1) + NKUI_LAYOUT_NODE_BACKGROUND_OFFSET, 0.2f, 0.5f, 0.9f, 1.0f);
+    write_float(bytes, record(1) + NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET, 16.0f);
+    write_u32(bytes, record(1) + NKUI_LAYOUT_NODE_TEXT_OFFSET_OFFSET, string_offset);
 
-    write_u32(bytes, record(2) + 0, 3);
-    write_i32(bytes, record(2) + 4, 1);
-    write_u32(bytes, record(2) + 8, NKUI_LAYOUT_NODE_TEXT);
-    write_u32(bytes, record(2) + 12, NKUI_LAYOUT_SIZING_FIT);
-    write_u32(bytes, record(2) + 20, NKUI_LAYOUT_SIZING_FIT);
-    write_u32(bytes, record(2) + 28, NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
-    write_u32(bytes, record(2) + 88, string_offset);
-    write_u32(bytes, record(2) + 92, sizeof(text) - 1);
-    write_color(bytes, record(2) + 96, 1.0f, 1.0f, 1.0f, 1.0f);
-    write_u32(bytes, record(2) + 116, 18);
+    write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_ID_OFFSET, 3);
+    write_i32(bytes, record(2) + NKUI_LAYOUT_NODE_PARENT_OFFSET, 1);
+    write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_KIND_OFFSET, NKUI_LAYOUT_NODE_TEXT);
+    write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIT);
+    write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIT);
+    write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_DIRECTION_OFFSET, NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
+    write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_TEXT_OFFSET_OFFSET, string_offset);
+    write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_TEXT_LENGTH_OFFSET, sizeof(text) - 1);
+    write_color(bytes, record(2) + NKUI_LAYOUT_NODE_TEXT_COLOR_OFFSET, 1.0f, 1.0f, 1.0f, 1.0f);
+    write_float(bytes, record(2) + NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET, 18.0f);
     std::memcpy(bytes.data() + string_offset, text, sizeof(text) - 1);
     return bytes;
 }
@@ -93,8 +95,10 @@ int main() {
         return 3;
 
     const auto bytes = transaction();
+    nkui_layout_frame_input frame{sizeof(frame), 256.0f, 192.0f, 0.0f, 0.0f, 0,
+                                  1.0f / 60.0f};
     const nkui_result initial_status = nkui_layout_session_submit(
-        session, bytes.data(), bytes.size(), 256.0f, 192.0f, 0.0f, 0.0f, 0, 1.0f / 60.0f);
+        session, bytes.data(), bytes.size(), &frame);
     if (initial_status != NKUI_OK) {
         std::cerr << "initial submit failed: " << initial_status << "\n";
         return 4;
@@ -103,10 +107,13 @@ int main() {
     if (nkui_layout_session_get_event_count(session, &event_count) != NKUI_OK || event_count != 0)
         return 5;
 
-    if (nkui_layout_session_submit(session, bytes.data(), bytes.size(), 256.0f, 192.0f, 8.0f,
-                                    8.0f, 1, 1.0f / 60.0f) != NKUI_OK ||
-        nkui_layout_session_submit(session, bytes.data(), bytes.size(), 256.0f, 192.0f, 8.0f,
-                                    8.0f, 0, 1.0f / 60.0f) != NKUI_OK ||
+    frame.pointer_x = 8.0f;
+    frame.pointer_y = 8.0f;
+    frame.pointer_down = 1;
+    if (nkui_layout_session_submit(session, bytes.data(), bytes.size(), &frame) != NKUI_OK)
+        return 6;
+    frame.pointer_down = 0;
+    if (nkui_layout_session_submit(session, bytes.data(), bytes.size(), &frame) != NKUI_OK ||
         nkui_layout_session_get_event_count(session, &event_count) != NKUI_OK || event_count != 1)
         return 6;
 
@@ -117,8 +124,8 @@ int main() {
 
     auto invalid = bytes;
     write_u32(invalid, 0, NKUI_LAYOUT_TRANSACTION_VERSION + 1);
-    if (nkui_layout_session_submit(session, invalid.data(), invalid.size(), 256.0f, 192.0f, 0.0f,
-                                    0.0f, 0, 0.0f) != NKUI_ERROR_INVALID_TRANSACTION)
+    if (nkui_layout_session_submit(session, invalid.data(), invalid.size(), &frame) !=
+        NKUI_ERROR_INVALID_TRANSACTION)
         return 8;
     if (nkui_layout_session_destroy(session) != NKUI_OK ||
         nkui_layout_session_get_event_count(session, &event_count) != NKUI_ERROR_INVALID_HANDLE ||

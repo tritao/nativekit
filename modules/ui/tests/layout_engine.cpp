@@ -25,7 +25,7 @@ LayoutNode text(uint32_t id, int32_t parent, const char *value) {
     LayoutNode node = box(id, parent);
     node.kind = LayoutNodeKind::Text;
     node.text = value;
-    node.font_size = 18;
+    node.text_style.font_size = 18.0f;
     node.text_color = {0.1f, 0.1f, 0.1f, 1.0f};
     return node;
 }
