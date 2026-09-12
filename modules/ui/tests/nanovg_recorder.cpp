@@ -30,9 +30,16 @@ int main() {
         recorder.paths()[0].fill_count == 0 || recorder.paths()[1].stroke_count == 0)
         return 3;
     const unsigned char pixels[8] = {1, 2, 3, 4, 5, 6, 7, 8};
-    const int image = nvgCreateImageRGBA(vg, 2, 1, 0, pixels);
+    const int image_flags = NVG_IMAGE_GENERATE_MIPMAPS | NVG_IMAGE_REPEATX | NVG_IMAGE_REPEATY |
+                            NVG_IMAGE_FLIPY | NVG_IMAGE_PREMULTIPLIED | NVG_IMAGE_NEAREST;
+    const int image = nvgCreateImageRGBA(vg, 2, 1, image_flags, pixels);
+    constexpr PreparedImageFlags expected_image_flags =
+        PreparedImageFlags::GenerateMipmaps | PreparedImageFlags::RepeatX |
+        PreparedImageFlags::RepeatY | PreparedImageFlags::FlipY |
+        PreparedImageFlags::Premultiplied | PreparedImageFlags::Nearest;
     if (!image || recorder.textures().size() != 1 ||
         recorder.textures().back().token != static_cast<PreparedImageToken>(image) ||
+        recorder.textures().back().flags != expected_image_flags ||
         recorder.textures().back().pixels.size() != 8 || recorder.textures().back().pixels[7] != 8)
         return 4;
     const unsigned char updated[8] = {9, 10, 11, 12, 13, 14, 15, 16};

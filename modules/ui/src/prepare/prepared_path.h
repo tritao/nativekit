@@ -23,14 +23,29 @@ enum PreparedTextureType : int {
     PreparedTextureRgba = 0x02,
 };
 
-enum PreparedImageFlags : int {
-    PreparedImageGenerateMipmaps = 1 << 0,
-    PreparedImageRepeatX = 1 << 1,
-    PreparedImageRepeatY = 1 << 2,
-    PreparedImageFlipY = 1 << 3,
-    PreparedImagePremultiplied = 1 << 4,
-    PreparedImageNearest = 1 << 5,
+enum class PreparedImageFlags : uint32_t {
+    None = 0,
+    GenerateMipmaps = 1u << 0,
+    RepeatX = 1u << 1,
+    RepeatY = 1u << 2,
+    FlipY = 1u << 3,
+    Premultiplied = 1u << 4,
+    Nearest = 1u << 5,
 };
+
+constexpr PreparedImageFlags operator|(PreparedImageFlags lhs, PreparedImageFlags rhs) {
+    return static_cast<PreparedImageFlags>(static_cast<uint32_t>(lhs) |
+                                           static_cast<uint32_t>(rhs));
+}
+
+constexpr PreparedImageFlags &operator|=(PreparedImageFlags &lhs, PreparedImageFlags rhs) {
+    lhs = lhs | rhs;
+    return lhs;
+}
+
+constexpr bool has_flag(PreparedImageFlags flags, PreparedImageFlags flag) {
+    return (static_cast<uint32_t>(flags) & static_cast<uint32_t>(flag)) != 0;
+}
 
 /* NativeKit-local identity for an image used by a prepared paint.  NanoVG
  * image handles are translated to this token at the compatibility boundary;
@@ -89,7 +104,7 @@ struct PreparedTexture {
     PreparedTextureType type = PreparedTextureRgba;
     int width = 0;
     int height = 0;
-    int flags = 0;
+    PreparedImageFlags flags = PreparedImageFlags::None;
     uint32_t generation = 0;
     bool dirty = false;
     std::vector<uint8_t> pixels;

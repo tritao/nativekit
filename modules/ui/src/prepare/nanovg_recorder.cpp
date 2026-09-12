@@ -30,13 +30,19 @@ int render_create_texture(void *context, int type, int width, int height, int fl
     const size_t bytes_per_pixel = type == NVG_TEXTURE_RGBA ? 4 : 1;
     const PreparedTextureType prepared_type =
         type == NVG_TEXTURE_RGBA ? PreparedTextureRgba : PreparedTextureAlpha;
-    const int prepared_flags =
-        (flags & NVG_IMAGE_GENERATE_MIPMAPS ? PreparedImageGenerateMipmaps : 0) |
-        (flags & NVG_IMAGE_REPEATX ? PreparedImageRepeatX : 0) |
-        (flags & NVG_IMAGE_REPEATY ? PreparedImageRepeatY : 0) |
-        (flags & NVG_IMAGE_FLIPY ? PreparedImageFlipY : 0) |
-        (flags & NVG_IMAGE_PREMULTIPLIED ? PreparedImagePremultiplied : 0) |
-        (flags & NVG_IMAGE_NEAREST ? PreparedImageNearest : 0);
+    PreparedImageFlags prepared_flags = PreparedImageFlags::None;
+    if (flags & NVG_IMAGE_GENERATE_MIPMAPS)
+        prepared_flags |= PreparedImageFlags::GenerateMipmaps;
+    if (flags & NVG_IMAGE_REPEATX)
+        prepared_flags |= PreparedImageFlags::RepeatX;
+    if (flags & NVG_IMAGE_REPEATY)
+        prepared_flags |= PreparedImageFlags::RepeatY;
+    if (flags & NVG_IMAGE_FLIPY)
+        prepared_flags |= PreparedImageFlags::FlipY;
+    if (flags & NVG_IMAGE_PREMULTIPLIED)
+        prepared_flags |= PreparedImageFlags::Premultiplied;
+    if (flags & NVG_IMAGE_NEAREST)
+        prepared_flags |= PreparedImageFlags::Nearest;
     PreparedTexture texture{static_cast<PreparedImageToken>(id), prepared_type, width, height,
                             prepared_flags, 1, true, {}};
     texture.pixels.resize(static_cast<size_t>(width) * height * bytes_per_pixel);

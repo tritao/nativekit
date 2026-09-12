@@ -50,7 +50,7 @@ struct SokolBackend::State {
         GpuSamplerHandle sampler{};
         uint32_t generation = 0;
         int type = 0;
-        int flags = 0;
+        PreparedImageFlags flags = PreparedImageFlags::None;
     };
 
     GpuBufferHandle solid_vertices{};
@@ -350,13 +350,16 @@ bool upload_texture(SokolBackend::State &state, const PreparedTexture &source,
         view_desc.texture.image = gpu.resolve(image.image);
         image.view = gpu.create_view(view_desc);
         sg_sampler_desc sampler_desc{};
-        sampler_desc.min_filter =
-            (source.flags & PreparedImageNearest) ? SG_FILTER_NEAREST : SG_FILTER_LINEAR;
+        sampler_desc.min_filter = has_flag(source.flags, PreparedImageFlags::Nearest)
+                                      ? SG_FILTER_NEAREST
+                                      : SG_FILTER_LINEAR;
         sampler_desc.mag_filter = sampler_desc.min_filter;
-        sampler_desc.wrap_u =
-            (source.flags & PreparedImageRepeatX) ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
-        sampler_desc.wrap_v =
-            (source.flags & PreparedImageRepeatY) ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
+        sampler_desc.wrap_u = has_flag(source.flags, PreparedImageFlags::RepeatX)
+                                  ? SG_WRAP_REPEAT
+                                  : SG_WRAP_CLAMP_TO_EDGE;
+        sampler_desc.wrap_v = has_flag(source.flags, PreparedImageFlags::RepeatY)
+                                  ? SG_WRAP_REPEAT
+                                  : SG_WRAP_CLAMP_TO_EDGE;
         image.sampler = gpu.create_sampler(sampler_desc);
         if (!image.image || !image.view || !image.sampler) {
             gpu.destroy(image.sampler);
@@ -380,12 +383,13 @@ bool upload_texture(SokolBackend::State &state, const PreparedTexture &source,
 
 bool resolve_paint_image(SokolBackend::State &state, const PreparedPathData &path,
                          PreparedImageToken token,
-                         sg_view &view, sg_sampler &sampler, int &type, int &flags) {
+                         sg_view &view, sg_sampler &sampler, int &type,
+                         PreparedImageFlags &flags) {
     if (!token) {
         view = state.device->resources().white_view;
         sampler = state.device->resources().white_sampler;
         type = PreparedTextureRgba;
-        flags = PreparedImagePremultiplied;
+        flags = PreparedImageFlags::Premultiplied;
         return true;
     }
     const PreparedTexture *source = find_texture(path, token);
@@ -402,7 +406,7 @@ bool resolve_paint_image(SokolBackend::State &state, const PreparedPathData &pat
 }
 
 PathUniforms path_uniforms(const PreparedPathOperation &operation, const float transform[6],
-                           float opacity, int texture_type, int texture_flags) {
+                           float opacity, int texture_type, PreparedImageFlags texture_flags) {
     PathUniforms uniforms{};
     const float inner_alpha = operation.paint.inner_color.a * opacity;
     const float outer_alpha = operation.paint.outer_color.a * opacity;
@@ -424,8 +428,8 @@ PathUniforms path_uniforms(const PreparedPathOperation &operation, const float t
     uniforms.mode = {operation.paint.image_token ? static_cast<float>(PathShaderMode::Image)
                                                  : static_cast<float>(PathShaderMode::Solid),
                      texture_type == PreparedTextureAlpha ? 1.0f : 0.0f,
-                     (texture_flags & PreparedImageFlipY) ? 1.0f : 0.0f,
-                     (texture_flags & PreparedImagePremultiplied) ? 1.0f : 0.0f};
+                     has_flag(texture_flags, PreparedImageFlags::FlipY) ? 1.0f : 0.0f,
+                     has_flag(texture_flags, PreparedImageFlags::Premultiplied) ? 1.0f : 0.0f};
     const float width =
         operation.kind == PreparedPathKind::Stroke ? operation.stroke_width : operation.fringe;
     uniforms.coverage = {operation.kind == PreparedPathKind::Triangles ? 0.0f : 1.0f,
@@ -740,7 +744,7 @@ bool SokolBackend::draw_path_transformed(const PreparedPathData &path, uint32_t 
     sg_view paint_view{};
     sg_sampler paint_sampler{};
     int texture_type = 0;
-    int texture_flags = 0;
+    PreparedImageFlags texture_flags = PreparedImageFlags::None;
     if (!resolve_paint_image(*state_, path, operation.paint.image_token, paint_view, paint_sampler,
                              texture_type, texture_flags))
         return false;
