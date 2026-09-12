@@ -159,7 +159,11 @@ class ShowcaseDesktop {
                 app.printStats();
             result = rendered > 0 ? 0 : 17;
         } catch (error:Dynamic) {
-            Sys.println("nativekit_ui_showcase: " + Std.string(error));
+            if (Std.isOfType(error, UiError)) {
+                var uiError:UiError = cast error;
+                Sys.println('nativekit_ui_showcase: ${uiError.operation} failed with status ${uiError.status}');
+            } else
+                Sys.println("nativekit_ui_showcase: " + Std.string(error));
             result = 20;
         }
         if (app != null)

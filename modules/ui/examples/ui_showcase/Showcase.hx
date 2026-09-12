@@ -25,14 +25,6 @@ class Showcase {
     static inline var HEADER_Y:Float = 20.0;
     static inline var HEADER_WIDTH:Float = 632.0;
     static inline var HEADER_HEIGHT:Float = 76.0;
-    static inline var HEADER_TITLE_X:Float = 270.0;
-    static inline var HEADER_TITLE_Y:Float = 46.0;
-    static inline var HEADER_SUBTITLE_X:Float = 272.0;
-    static inline var HEADER_SUBTITLE_Y:Float = 74.0;
-    static inline var HEADER_STATUS_X:Float = 622.0;
-    static inline var HEADER_STATUS_Y:Float = 34.0;
-    static inline var TEXT_ORIGIN_X:Float = 260.0;
-    static inline var TEXT_ORIGIN_Y:Float = 425.0;
     static inline var IMAGE_TEXTURE_SIZE:Int = 256;
     static inline var IMAGE_TEXTURE_CELLS:Int = 6;
     public static inline var TARGET_FPS:Float = 60.0;
@@ -43,8 +35,19 @@ class Showcase {
     final fonts:FontCollection;
     final layoutSession:LayoutSession;
     final layoutRoot:LayoutNode;
+    final layoutSidebar:LayoutNode;
+    final layoutSidebarSpacer:LayoutNode;
+    final layoutMain:LayoutNode;
+    final layoutHeader:LayoutNode;
+    final layoutTopRow:LayoutNode;
+    final layoutVectorCard:LayoutNode;
+    final layoutPaintCard:LayoutNode;
+    final layoutTextCard:LayoutNode;
+    final layoutBottomRow:LayoutNode;
+    final layoutRetainedCard:LayoutNode;
+    final layoutSurfaceCard:LayoutNode;
+    final layoutFooter:LayoutNode;
     final layoutButton:LayoutNode;
-    final layoutLabel:LayoutNode;
     final layoutFrame:LayoutFrame;
     final canvas:Canvas;
     final frameInfo:FrameInfo;
@@ -63,8 +66,6 @@ class Showcase {
     final orange:Paint;
     final rose:Paint;
 
-    final backgroundPath:Path;
-    final sidebarPath:Path;
     final headerPath:Path;
     final vectorCardPath:Path;
     final paintCardPath:Path;
@@ -78,12 +79,10 @@ class Showcase {
     final circle22Path:Path;
     final diamondPath:Path;
     final unitRectPath:Path;
-    final animationButtonPath:Path;
-    final sliderTrackPath:Path;
-    final themeButtonPath:Path;
     final image:Image;
 
     final title:TextLayout;
+    final sidebarTitle:TextLayout;
     final subtitle:TextLayout;
     final vectorLabel:TextLayout;
     final paintLabel:TextLayout;
@@ -114,6 +113,8 @@ class Showcase {
     var statusPixelScale:Float = -1.0;
     var caretPathOffset:Int = -1;
     var caretPathAffinity:Int = -1;
+    var caretPathOriginX:Float = -1.0;
+    var caretPathOriginY:Float = -1.0;
     var caretStatusOffset:Int = -1;
     var caretStatusAffinity:Int = -1;
     var caretPosition:TextPosition;
@@ -124,9 +125,15 @@ class Showcase {
     var layerOpacity:Float = 0.68;
     var animate:Bool = true;
     var lightTheme:Bool = false;
-    var sceneScale:Float = 1.0;
-    var sceneOffsetX:Float = 0.0;
-    var sceneOffsetY:Float = 0.0;
+    var sidebarBounds:Rect;
+    var buttonBounds:Rect;
+    var headerBounds:Rect;
+    var vectorBounds:Rect;
+    var paintBounds:Rect;
+    var textBounds:Rect;
+    var retainedBounds:Rect;
+    var surfaceBounds:Rect;
+    var footerBounds:Rect;
 
     /** Takes ownership of the configured font collection. */
     function new(fonts:FontCollection, ?multilingualText:String) {
@@ -142,20 +149,76 @@ class Showcase {
         frameInfo = new FrameInfo(LOGICAL_WIDTH, LOGICAL_HEIGHT, Std.int(LOGICAL_WIDTH),
             Std.int(LOGICAL_HEIGHT), 1.0);
         layoutRoot = LayoutNode.box(9001);
+        layoutSidebar = LayoutNode.box(9004);
+        layoutSidebarSpacer = LayoutNode.box(9005);
+        layoutMain = LayoutNode.box(9006);
+        layoutHeader = LayoutNode.box(9007);
+        layoutTopRow = LayoutNode.box(9008);
+        layoutVectorCard = LayoutNode.box(9009);
+        layoutPaintCard = LayoutNode.box(9010);
+        layoutTextCard = LayoutNode.box(9011);
+        layoutBottomRow = LayoutNode.box(9012);
+        layoutRetainedCard = LayoutNode.box(9013);
+        layoutSurfaceCard = LayoutNode.box(9014);
+        layoutFooter = LayoutNode.box(9015);
         layoutButton = LayoutNode.button(9002);
-        layoutLabel = LayoutNode.textNode(9003, "");
-        layoutButton.style.width = LayoutAxis.fixed(210.0);
-        layoutButton.style.height = LayoutAxis.fixed(42.0);
-        layoutButton.style.padding = new Insets(10.0, 8.0, 10.0, 8.0);
-        layoutButton.style.background = Color.rgba(0.08, 0.18, 0.32, 0.94);
-        layoutButton.style.radiusTopLeft = 9.0;
-        layoutButton.style.radiusTopRight = 9.0;
-        layoutButton.style.radiusBottomLeft = 9.0;
-        layoutButton.style.radiusBottomRight = 9.0;
-        layoutLabel.textColor = Color.rgba(0.35, 0.95, 0.72, 1.0);
-        layoutLabel.textStyle.fontSize = 11.0;
-        layoutButton.add(layoutLabel);
-        layoutRoot.add(layoutButton);
+        layoutRoot.style.direction = LayoutDirection.LeftToRight;
+        layoutSidebar.style.width = LayoutAxis.fixed(220.0);
+        layoutSidebar.style.height = LayoutAxis.grow();
+        layoutSidebar.style.padding = new Insets(24.0, 0.0, 24.0, 0.0);
+        layoutSidebarSpacer.style.width = LayoutAxis.grow();
+        layoutSidebarSpacer.style.height = LayoutAxis.fixed(326.0);
+        layoutButton.style.width = LayoutAxis.grow();
+        layoutButton.style.height = LayoutAxis.fixed(40.0);
+        layoutSidebar.add(layoutSidebarSpacer);
+        layoutSidebar.add(layoutButton);
+        layoutMain.style.width = LayoutAxis.grow();
+        layoutMain.style.height = LayoutAxis.grow();
+        layoutMain.style.padding = new Insets(24.0, 12.0, 24.0, 0.0);
+        layoutMain.style.childGap = 12.0;
+        layoutHeader.style.width = LayoutAxis.grow();
+        layoutHeader.style.height = LayoutAxis.fixed(76.0);
+        layoutTopRow.style.width = LayoutAxis.grow();
+        layoutTopRow.style.height = LayoutAxis.fixed(236.0);
+        layoutTopRow.style.direction = LayoutDirection.LeftToRight;
+        layoutTopRow.style.childGap = 14.0;
+        layoutVectorCard.style.width = LayoutAxis.grow();
+        layoutVectorCard.style.height = LayoutAxis.grow();
+        layoutPaintCard.style.width = LayoutAxis.grow();
+        layoutPaintCard.style.height = LayoutAxis.grow();
+        layoutTextCard.style.width = LayoutAxis.grow();
+        layoutTextCard.style.height = LayoutAxis.fixed(154.0);
+        layoutBottomRow.style.width = LayoutAxis.grow();
+        layoutBottomRow.style.height = LayoutAxis.fixed(90.0);
+        layoutBottomRow.style.direction = LayoutDirection.LeftToRight;
+        layoutBottomRow.style.childGap = 14.0;
+        layoutRetainedCard.style.width = LayoutAxis.grow();
+        layoutRetainedCard.style.height = LayoutAxis.grow();
+        layoutSurfaceCard.style.width = LayoutAxis.grow();
+        layoutSurfaceCard.style.height = LayoutAxis.grow();
+        layoutFooter.style.width = LayoutAxis.grow();
+        layoutFooter.style.height = LayoutAxis.grow();
+        layoutTopRow.add(layoutVectorCard);
+        layoutTopRow.add(layoutPaintCard);
+        layoutBottomRow.add(layoutRetainedCard);
+        layoutBottomRow.add(layoutSurfaceCard);
+        layoutMain.add(layoutHeader);
+        layoutMain.add(layoutTopRow);
+        layoutMain.add(layoutTextCard);
+        layoutMain.add(layoutBottomRow);
+        layoutMain.add(layoutFooter);
+        layoutRoot.add(layoutSidebar);
+        layoutRoot.add(layoutMain);
+
+        sidebarBounds = new Rect(0.0, 0.0, 220.0, LOGICAL_HEIGHT);
+        buttonBounds = new Rect(24.0, 350.0, 172.0, 40.0);
+        headerBounds = new Rect(244.0, 20.0, 632.0, 76.0);
+        vectorBounds = new Rect(244.0, 108.0, 306.0, 236.0);
+        paintBounds = new Rect(564.0, 108.0, 312.0, 236.0);
+        textBounds = new Rect(244.0, 356.0, 632.0, 154.0);
+        retainedBounds = new Rect(244.0, 522.0, 306.0, 90.0);
+        surfaceBounds = new Rect(564.0, 522.0, 312.0, 90.0);
+        footerBounds = new Rect(244.0, 624.0, 632.0, 26.0);
 
         background = keep(SolidPaint.create(Color.fromBytes(10, 15, 30)));
         lightBackground = keep(SolidPaint.create(Color.fromBytes(235, 240, 249)));
@@ -170,8 +233,6 @@ class Showcase {
         orange = keep(SolidPaint.create(Color.fromBytes(247, 171, 76)));
         rose = keep(SolidPaint.create(Color.fromBytes(242, 104, 143)));
 
-        backgroundPath = keep(rectPath(0.0, 0.0, LOGICAL_WIDTH, LOGICAL_HEIGHT));
-        sidebarPath = keep(rectPath(0.0, 0.0, 220.0, LOGICAL_HEIGHT));
         headerPath = keep(roundRectPath(HEADER_X, HEADER_Y, HEADER_WIDTH, HEADER_HEIGHT, 14.0));
         vectorCardPath = keep(roundRectPath(244.0, 108.0, 306.0, 236.0, 14.0));
         paintCardPath = keep(roundRectPath(564.0, 108.0, 312.0, 236.0, 14.0));
@@ -185,15 +246,13 @@ class Showcase {
         circle22Path = keep(circle(0.0, 0.0, 22.0));
         diamondPath = keep(diamond(0.0, 0.0, 12.0));
         unitRectPath = keep(rectPath(0.0, 0.0, 1.0, 1.0));
-        animationButtonPath = keep(rectPath(24.0, 350.0, 172.0, 40.0));
-        sliderTrackPath = keep(rectPath(24.0, 424.0, 172.0, 6.0));
-        themeButtonPath = keep(rectPath(24.0, 472.0, 172.0, 40.0));
         // Keep enough source resolution for the image panel at high-DPI scales.
         // The renderer remains linear-filtered; this avoids enlarging a tiny
         // diagnostic bitmap until its source texels become visible.
         image = keep(checkerImage(IMAGE_TEXTURE_SIZE, IMAGE_TEXTURE_SIZE));
 
         title = styled("NativeKit Graphics Lab", 600.0, 29.0);
+        sidebarTitle = styled("NativeKit", 170.0, 27.0);
         subtitle = styled("Typed Haxe graphics · retained display list · one compositor", 600.0, 14.0);
         vectorLabel = styled("VECTOR GRAPHICS", 270.0, 12.0);
         paintLabel = styled("PAINT + IMAGE", 270.0, 12.0);
@@ -219,13 +278,10 @@ class Showcase {
         caretPosition = multilingual.hitTest(160.0, 22.0);
     }
 
-    /** Fits the fixed design canvas into the current logical window viewport. */
+    /** Updates the responsive layout viewport. */
     public function setViewport(width:Float, height:Float):Void {
         if (width <= 0.0 || height <= 0.0)
             return;
-        sceneScale = Math.min(width / LOGICAL_WIDTH, height / LOGICAL_HEIGHT);
-        sceneOffsetX = (width - LOGICAL_WIDTH * sceneScale) * 0.5;
-        sceneOffsetY = (height - LOGICAL_HEIGHT * sceneScale) * 0.5;
     }
 
     function keep<T:NativeKitUIResource>(resource:T):T {
@@ -238,8 +294,8 @@ class Showcase {
             new ParagraphStyle()));
 
     public function updatePointer(x:Float, y:Float):Void {
-        pointerX = (x - sceneOffsetX) / sceneScale;
-        pointerY = (y - sceneOffsetY) / sceneScale;
+        pointerX = x;
+        pointerY = y;
         updateCaret();
     }
 
@@ -250,13 +306,16 @@ class Showcase {
             pointerPressedPending = true;
         if (!pressed)
             return;
-        if (pointerX >= 24.0 && pointerX <= 196.0 && pointerY >= 350.0 && pointerY <= 398.0) {
+        if (contains(buttonBounds, pointerX, pointerY)) {
             animate = !animate;
-        } else if (pointerX >= 24.0 && pointerX <= 196.0 && pointerY >= 414.0 &&
-                pointerY <= 454.0) {
-            layerOpacity = Math.max(0.15, Math.min(1.0, (pointerX - 24.0) / 172.0));
-        } else if (pointerX >= 24.0 && pointerX <= 196.0 && pointerY >= 472.0 &&
-                pointerY <= 514.0) {
+        } else if (pointerX >= sidebarBounds.x + 24.0 &&
+                pointerX <= sidebarBounds.x + sidebarBounds.width - 24.0 &&
+                pointerY >= buttonBounds.y + 64.0 && pointerY <= buttonBounds.y + 104.0) {
+            layerOpacity = Math.max(0.15, Math.min(1.0,
+                (pointerX - sidebarBounds.x - 24.0) / (sidebarBounds.width - 48.0)));
+        } else if (pointerX >= sidebarBounds.x + 24.0 &&
+                pointerX <= sidebarBounds.x + sidebarBounds.width - 24.0 &&
+                pointerY >= buttonBounds.y + 112.0 && pointerY <= buttonBounds.y + 154.0) {
             lightTheme = !lightTheme;
         }
         updateCaret();
@@ -265,8 +324,10 @@ class Showcase {
     function submitLayoutFrame(logicalWidth:Float, logicalHeight:Float):Void {
         layoutRoot.style.width = LayoutAxis.fixed(logicalWidth);
         layoutRoot.style.height = LayoutAxis.fixed(logicalHeight);
-        layoutRoot.style.padding = new Insets(14.0, 14.0, 0.0, 0.0);
-        layoutLabel.text = animate ? "LAYOUT  ·  ANIMATE ON" : "LAYOUT  ·  ANIMATE OFF";
+        var compact = logicalWidth < 760.0;
+        layoutSidebar.style.width = LayoutAxis.fixed(compact ? 184.0 : 220.0);
+        layoutMain.style.padding = new Insets(compact ? 12.0 : 24.0, 12.0,
+            compact ? 12.0 : 24.0, 0.0);
         layoutFrame.width = logicalWidth;
         layoutFrame.height = logicalHeight;
         layoutFrame.setPointer(pointerX, pointerY, pointerDown || pointerPressedPending);
@@ -276,13 +337,31 @@ class Showcase {
         for (event in events)
             if (event.nodeId == layoutButton.id && event.isButtonActivated())
                 animate = !animate;
+        sidebarBounds = layoutSession.item(layoutSidebar);
+        buttonBounds = layoutSession.item(layoutButton);
+        headerBounds = layoutSession.item(layoutHeader);
+        vectorBounds = layoutSession.item(layoutVectorCard);
+        paintBounds = layoutSession.item(layoutPaintCard);
+        textBounds = layoutSession.item(layoutTextCard);
+        retainedBounds = layoutSession.item(layoutRetainedCard);
+        surfaceBounds = layoutSession.item(layoutSurfaceCard);
+        footerBounds = layoutSession.item(layoutFooter);
     }
 
+    static function contains(rect:Rect, x:Float, y:Float):Bool
+        return x >= rect.x && y >= rect.y && x < rect.x + rect.width && y < rect.y + rect.height;
+
     function updateCaret():Void {
-        if (pointerX < 252.0 || pointerX > 868.0 || pointerY < 392.0 || pointerY > 510.0)
+        if (!contains(textBounds, pointerX, pointerY))
             return;
-        caretPosition = multilingual.hitTest(pointerX - TEXT_ORIGIN_X, pointerY - TEXT_ORIGIN_Y);
+        caretPosition = multilingual.hitTest(pointerX - textOriginX(), pointerY - textOriginY());
     }
+
+    inline function textOriginX():Float
+        return textBounds.x + 16.0;
+
+    inline function textOriginY():Float
+        return textBounds.y + 61.0;
 
     /** Encodes one complete frame using only the typed Haxe graphics API. */
     public function encodeFrame(seconds:Float, logicalWidth:Float, logicalHeight:Float,
@@ -312,22 +391,25 @@ class Showcase {
         }
 
         var caretChanged = caretPath == null || caretPathOffset != caretPosition.offset ||
-            caretPathAffinity != caretPosition.affinity;
+            caretPathAffinity != caretPosition.affinity || caretPathOriginX != textOriginX() ||
+            caretPathOriginY != textOriginY();
         if (caretChanged) {
             var caret = multilingual.caret(caretPosition);
             replacedCaret = caretPath;
             // Skribidi reports caret.x at the baseline and a slope in
             // dx/dy form. Keep the caret in the same layout coordinate space
             // as drawing and hit testing, including italic fonts.
-            var caretX1 = TEXT_ORIGIN_X + caret.x + caret.slope * caret.ascender;
-            var caretY1 = TEXT_ORIGIN_Y + caret.y + caret.ascender;
-            var caretX2 = TEXT_ORIGIN_X + caret.x + caret.slope * caret.descender;
-            var caretY2 = TEXT_ORIGIN_Y + caret.y + caret.descender;
+            var caretX1 = textOriginX() + caret.x + caret.slope * caret.ascender;
+            var caretY1 = textOriginY() + caret.y + caret.ascender;
+            var caretX2 = textOriginX() + caret.x + caret.slope * caret.descender;
+            var caretY2 = textOriginY() + caret.y + caret.descender;
             caretPath = caretX1 != caretX2 || caretY1 != caretY2
                 ? linePath(caretX1, caretY1, caretX2, caretY2)
                 : null;
             caretPathOffset = caretPosition.offset;
             caretPathAffinity = caretPosition.affinity;
+            caretPathOriginX = textOriginX();
+            caretPathOriginY = textOriginY();
         }
         if (caretStatusLayout == null || caretStatusOffset != caretPosition.offset ||
             caretStatusAffinity != caretPosition.affinity) {
@@ -343,13 +425,11 @@ class Showcase {
         canvas.reset();
         var base:Paint = lightTheme ? lightBackground : background;
         canvas.save();
-        canvas.translate(sceneOffsetX, sceneOffsetY);
-        canvas.scale(sceneScale, sceneScale);
-        canvas.fill(backgroundPath, base);
+        fillRect(canvas, new Rect(0.0, 0.0, logicalWidth, logicalHeight), base);
 
         canvas.save();
-        canvas.clip(new Rect(0.0, 0.0, 220.0, LOGICAL_HEIGHT));
-        canvas.fill(sidebarPath, sidebar);
+        canvas.clip(sidebarBounds);
+        fillRect(canvas, sidebarBounds, sidebar);
         canvas.setAlpha(0.9);
         canvas.save();
         canvas.translate(28.0, 42.0);
@@ -357,55 +437,68 @@ class Showcase {
         canvas.restore();
         canvas.save();
         canvas.translate(24.0, 68.0);
-        canvas.drawText(title, 0.0, 0.0);
+        canvas.drawText(sidebarTitle, 0.0, 0.0);
         canvas.restore();
         canvas.drawText(sidebarCopy, 24.0, 134.0);
         canvas.drawText(controlsLabel, 24.0, 310.0);
-        canvas.fill(animationButtonPath, animate ? green : cardRaised);
-        canvas.drawText(animate ? animateOnLabel : animateOffLabel, 40.0, 375.0);
-        canvas.fill(sliderTrackPath, cardRaised);
+        fillRect(canvas, buttonBounds, animate ? green : cardRaised);
+        canvas.drawText(animate ? animateOnLabel : animateOffLabel, buttonBounds.x + 16.0,
+            buttonBounds.y + 25.0);
+        var sliderX = sidebarBounds.x + 24.0;
+        var sliderWidth = sidebarBounds.width - 48.0;
+        var sliderY = buttonBounds.y + 74.0;
+        fillRect(canvas, new Rect(sliderX, sliderY, sliderWidth, 6.0), cardRaised);
         canvas.save();
-        canvas.translate(24.0, 424.0);
-        canvas.scale(172.0 * layerOpacity, 6.0);
+        canvas.translate(sliderX, sliderY);
+        canvas.scale(sliderWidth * layerOpacity, 6.0);
         canvas.fill(unitRectPath, cyan);
         canvas.restore();
         canvas.save();
-        canvas.translate(24.0 + 172.0 * layerOpacity, 427.0);
+        canvas.translate(sliderX + sliderWidth * layerOpacity, sliderY + 3.0);
         canvas.fill(dotPath, ink);
         canvas.restore();
-        canvas.fill(themeButtonPath, lightTheme ? orange : cardRaised);
-        canvas.drawText(lightTheme ? lightThemeLabel : darkThemeLabel, 40.0, 497.0);
+        var themeBounds = new Rect(sliderX, sliderY + 48.0, sliderWidth, 40.0);
+        fillRect(canvas, themeBounds, lightTheme ? orange : cardRaised);
+        canvas.drawText(lightTheme ? lightThemeLabel : darkThemeLabel, themeBounds.x + 16.0,
+            themeBounds.y + 25.0);
         canvas.restore();
 
-        canvas.fill(headerPath, cardRaised);
-        canvas.drawText(title, HEADER_TITLE_X, HEADER_TITLE_Y);
-        canvas.drawText(subtitle, HEADER_SUBTITLE_X, HEADER_SUBTITLE_Y);
-        canvas.drawText(statusLayout, HEADER_STATUS_X, HEADER_STATUS_Y);
+        fillMapped(canvas, headerPath, HEADER_X, HEADER_Y, HEADER_WIDTH, HEADER_HEIGHT,
+            headerBounds, cardRaised);
+        canvas.drawText(title, headerBounds.x + 26.0, headerBounds.y + 26.0);
+        canvas.drawText(subtitle, headerBounds.x + 28.0, headerBounds.y + 54.0);
+        if (headerBounds.width >= 540.0)
+            canvas.drawText(statusLayout, headerBounds.x + headerBounds.width - 254.0,
+                headerBounds.y + 14.0);
 
-        canvas.fill(vectorCardPath, card);
-        canvas.drawText(vectorLabel, 262.0, 132.0);
+        fillMapped(canvas, vectorCardPath, 244.0, 108.0, 306.0, 236.0, vectorBounds, card);
+        canvas.drawText(vectorLabel, vectorBounds.x + 18.0, vectorBounds.y + 24.0);
         canvas.save();
-        canvas.translate(320.0, 218.0);
+        canvas.translate(vectorBounds.x + vectorBounds.width * 0.25,
+            vectorBounds.y + vectorBounds.height * 0.47);
         canvas.rotate(staticFrame ? 0.0 : seconds * 0.45);
         canvas.fill(starPath, violet);
         canvas.stroke(starPath, ink, 2.0, LineCap.Round, LineJoin.Round);
         canvas.restore();
         canvas.save();
-        canvas.translate(420.0, 218.0);
+        canvas.translate(vectorBounds.x + vectorBounds.width * 0.58,
+            vectorBounds.y + vectorBounds.height * 0.47);
         canvas.fill(donutPath, cyan);
         canvas.stroke(donutPath, ink, 1.5, LineCap.Butt, LineJoin.Bevel);
         canvas.restore();
         canvas.save();
-        canvas.translate(500.0, 218.0);
+        canvas.translate(vectorBounds.x + vectorBounds.width * 0.84,
+            vectorBounds.y + vectorBounds.height * 0.47);
         canvas.rotate(staticFrame ? 0.0 : seconds * -0.6);
         canvas.stroke(curvePath, orange, 4.0, LineCap.Round, LineJoin.Miter);
         canvas.restore();
-        canvas.drawText(curveLegendLabel, 264.0, 318.0);
+        canvas.drawText(curveLegendLabel, vectorBounds.x + 20.0,
+            vectorBounds.y + vectorBounds.height - 26.0);
 
-        canvas.fill(paintCardPath, card);
-        canvas.drawText(paintLabel, 582.0, 132.0);
+        fillMapped(canvas, paintCardPath, 564.0, 108.0, 312.0, 236.0, paintBounds, card);
+        canvas.drawText(paintLabel, paintBounds.x + 18.0, paintBounds.y + 24.0);
         canvas.save();
-        canvas.translate(610.0, 186.0);
+        canvas.translate(paintBounds.x + 46.0, paintBounds.y + 78.0);
         canvas.fill(circle22Path, green);
         canvas.translate(60.0, 0.0);
         canvas.fill(circle22Path, violet);
@@ -413,50 +506,55 @@ class Showcase {
         canvas.fill(circle22Path, orange);
         canvas.restore();
         canvas.save();
-        canvas.clip(new Rect(594.0, 224.0, 252.0, 88.0));
+        var imageClip = new Rect(paintBounds.x + 30.0, paintBounds.y + 116.0,
+            paintBounds.width - 60.0, 88.0);
+        canvas.clip(imageClip);
         canvas.beginLayer(layerOpacity);
-        canvas.drawImage(image, new Rect(600.0, 230.0, 84.0, 84.0));
+        canvas.drawImage(image, new Rect(imageClip.x + 6.0, imageClip.y + 6.0, 84.0, 84.0));
         canvas.save();
-        canvas.translate(790.0, 270.0);
+        canvas.translate(imageClip.x + imageClip.width - 56.0, imageClip.y + 46.0);
         canvas.fill(diamondPath, cyan);
         canvas.restore();
         canvas.endLayer();
         canvas.restore();
-        canvas.drawText(paintCaption, 582.0, 330.0);
+        canvas.drawText(paintCaption, paintBounds.x + 18.0,
+            paintBounds.y + paintBounds.height - 14.0);
 
-        canvas.fill(textCardPath, cardRaised);
-        canvas.drawText(textLabel, 262.0, 388.0);
-        canvas.drawText(multilingual, TEXT_ORIGIN_X, TEXT_ORIGIN_Y);
-        canvas.drawText(caretInstruction, 260.0, 464.0);
+        fillMapped(canvas, textCardPath, 244.0, 364.0, 632.0, 154.0, textBounds, cardRaised);
+        canvas.drawText(textLabel, textBounds.x + 18.0, textBounds.y + 24.0);
+        canvas.drawText(multilingual, textOriginX(), textOriginY());
+        canvas.drawText(caretInstruction, textBounds.x + 16.0, textBounds.y + 100.0);
         if (caretPath != null)
             canvas.stroke(caretPath, green, 2.0, LineCap.Round, LineJoin.Round);
-        canvas.drawText(caretStatusLayout, 260.0, 495.0);
+        canvas.drawText(caretStatusLayout, textBounds.x + 16.0, textBounds.y + 131.0);
 
-        canvas.fill(retainedCardPath, card);
-        canvas.drawText(retainedLabel, 262.0, 559.0);
+        fillMapped(canvas, retainedCardPath, 244.0, 538.0, 306.0, 90.0, retainedBounds, card);
+        canvas.drawText(retainedLabel, retainedBounds.x + 18.0, retainedBounds.y + 21.0);
         canvas.save();
-        canvas.clip(new Rect(252.0, 568.0, 290.0, 54.0));
+        canvas.clip(new Rect(retainedBounds.x + 8.0, retainedBounds.y + 30.0,
+            retainedBounds.width - 16.0, retainedBounds.height - 36.0));
         for (index in 0...18) {
             canvas.save();
-            canvas.translate(265.0 + (index % 9) * 31.0,
-                594.0 + (index < 9 ? 0.0 : 16.0));
+            canvas.translate(retainedBounds.x + 21.0 + (index % 9) *
+                ((retainedBounds.width - 42.0) / 8.0),
+                retainedBounds.y + 56.0 + (index < 9 ? 0.0 : 16.0));
             canvas.setAlpha(0.25 + (index % 5) * 0.14);
             canvas.fill(starPath, index % 2 == 0 ? green : cyan);
             canvas.restore();
         }
         canvas.restore();
 
-        canvas.fill(surfaceCardPath, card);
-        canvas.drawText(surfaceLabel, 582.0, 559.0);
-        canvas.drawText(offscreenLabel, 582.0, 586.0);
-        canvas.drawText(targetLabel, 582.0, 604.0);
+        fillMapped(canvas, surfaceCardPath, 564.0, 538.0, 312.0, 90.0, surfaceBounds, card);
+        canvas.drawText(surfaceLabel, surfaceBounds.x + 18.0, surfaceBounds.y + 21.0);
+        canvas.drawText(offscreenLabel, surfaceBounds.x + 18.0, surfaceBounds.y + 48.0);
+        canvas.drawText(targetLabel, surfaceBounds.x + 18.0, surfaceBounds.y + 66.0);
         canvas.beginLayer(0.75);
         canvas.save();
-        canvas.translate(836.0, 583.0);
+        canvas.translate(surfaceBounds.x + surfaceBounds.width - 40.0, surfaceBounds.y + 45.0);
         canvas.fill(diamondPath, rose);
         canvas.restore();
         canvas.endLayer();
-        canvas.drawText(footerLabel, 262.0, 643.0);
+        canvas.drawText(footerLabel, footerBounds.x + 18.0, footerBounds.y + 19.0);
         canvas.restore();
         canvas.update(list);
         if (replacedCaret != null)
@@ -508,6 +606,24 @@ class Showcase {
 
     function format(value:Float):String
         return Std.string(Math.round(value * 100.0) / 100.0);
+
+    function fillRect(canvas:Canvas, bounds:Rect, paint:Paint):Void {
+        canvas.save();
+        canvas.translate(bounds.x, bounds.y);
+        canvas.scale(bounds.width, bounds.height);
+        canvas.fill(unitRectPath, paint);
+        canvas.restore();
+    }
+
+    static function fillMapped(canvas:Canvas, path:Path, sourceX:Float, sourceY:Float,
+            sourceWidth:Float, sourceHeight:Float, bounds:Rect, paint:Paint):Void {
+        canvas.save();
+        canvas.translate(bounds.x, bounds.y);
+        canvas.scale(bounds.width / sourceWidth, bounds.height / sourceHeight);
+        canvas.translate(-sourceX, -sourceY);
+        canvas.fill(path, paint);
+        canvas.restore();
+    }
 
     static function rectPath(x:Float, y:Float, width:Float, height:Float):Path
         return new PathBuilder().moveTo(x, y).lineTo(x + width, y).lineTo(x + width, y + height)

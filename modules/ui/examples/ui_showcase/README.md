@@ -14,6 +14,11 @@ The scene demonstrates:
 - display-list and path-cache diagnostics; and
 - a render-target panel reserved for the first offscreen/3D producer.
 
+The page shell and panel grid use retained `LayoutNode` values. After each
+submission, the Canvas demonstrations query their resolved panel bounds from
+`LayoutSession`, so window resizing reflows the cards while vector and image
+content remains under the typed graphics API.
+
 Build the Haxeon artifact and run it with:
 
 ```sh
