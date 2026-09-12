@@ -6,6 +6,7 @@ import NativeKit.InputAction;
 import NativeKit.Result;
 import NativeKit.InitOptions;
 import NativeKit.SurfaceOptions;
+import NativeKit.SurfaceFlags;
 import NativeKitEvent;
 import NativeKitEventValue;
 import NativeKitOptions;
@@ -28,12 +29,21 @@ class ShowcaseWeb {
     static var result = 0;
     static var requestedWidth = 900;
     static var requestedHeight = 650;
+    static var benchmarkScenario = 0;
 
     public static function configure(width:Int, height:Int):Int {
         if (initialized || width <= 0 || height <= 0)
             return 1;
         requestedWidth = width;
         requestedHeight = height;
+        return 0;
+    }
+
+    /** Selects a repeatable workload: 0=full, 1=static, 2=text-heavy, 3=text-editing. */
+    public static function configureBenchmark(scenario:Int):Int {
+        if (initialized || scenario < 0 || scenario > 3)
+            return 1;
+        benchmarkScenario = scenario;
         return 0;
     }
 
@@ -56,8 +66,7 @@ class ShowcaseWeb {
 
             var surfaceOptions = new SurfaceOptions();
             surfaceOptions.set_struct_size(SurfaceOptions.size());
-            surfaceOptions.set_flags(NativeKitConstants.NK_SURFACE_FORWARD_COMPATIBLE |
-                NativeKitConstants.NK_SURFACE_STENCIL);
+            surfaceOptions.set_flags(SurfaceFlags.ForwardCompatible | SurfaceFlags.Stencil);
             surfaceOptions.set_api(GraphicsApi.OpenglEs);
             surfaceOptions.set_major_version(3);
             surfaceOptions.set_width(requestedWidth);
@@ -73,7 +82,16 @@ class ShowcaseWeb {
                 fonts.add("/assets/IBMPlexSansHebrew-Regular.ttf");
                 fonts.add("/assets/IBMPlexSansJP-Regular.ttf");
                 fonts.add("/assets/NotoEmoji-Regular.ttf", FontFamily.Emoji);
-                app = new Showcase(fonts);
+                var sampleText:Null<String> = null;
+                if (benchmarkScenario == 2) {
+                    var repeated = new StringBuf();
+                    for (_ in 0...8)
+                        repeated.add("NativeKit — مرحبا — שלום — こんにちは 👋 · ");
+                    sampleText = repeated.toString();
+                }
+                app = new Showcase(fonts, sampleText);
+                if (benchmarkScenario == 1)
+                    app.setBenchmarkAnimation(false);
             } catch (error:Dynamic) {
                 return fail(22);
             }
@@ -146,6 +164,8 @@ class ShowcaseWeb {
             }
 
             if (running && ready && app != null) {
+                if (benchmarkScenario == 3)
+                    app.benchmarkTextEdit(rendered);
                 if (NativeKit.nk_surface_make_current(surface) != Result.Ok)
                     return -fail(17);
                 if (started < 0.0)

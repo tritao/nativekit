@@ -32,7 +32,7 @@ enum NK_ENUM(nk_input_action) {
 
 /** Modifier keys active when an input event was generated. */
 typedef uint32_t nk_modifiers;
-enum {
+enum NK_FLAGS(nk_modifiers) {
     /** The Shift modifier is active. */
     NK_MOD_SHIFT = 1u << 0,
     /** The Control modifier is active. */
@@ -376,7 +376,7 @@ enum NK_ENUM(nk_text_input_type) {
 
 /** Optional behavior requested from the platform text input method. */
 typedef uint32_t nk_text_input_flags;
-enum {
+enum NK_FLAGS(nk_text_input_flags) {
     /** The editor accepts multiple lines. */
     NK_TEXT_INPUT_MULTILINE = 1u << 0,
     /** Ask the platform to provide autocorrection. */

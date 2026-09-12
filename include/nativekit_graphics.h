@@ -40,7 +40,8 @@ enum NK_ENUM(nk_graphics_api) {
 };
 
 /** Optional surface creation and presentation flags. */
-enum {
+typedef uint32_t nk_surface_flags;
+enum NK_FLAGS(nk_surface_flags) {
     /** Create the surface hidden until explicitly shown. */
     NK_SURFACE_HIDDEN = 1u << 0,
     /** Request an alpha-capable surface where the backend supports it. */
@@ -60,7 +61,7 @@ typedef struct nk_surface_options {
     /** Set to sizeof(nk_surface_options) or a larger compatible size. */
     uint32_t struct_size;
     /** Bitwise OR of NK_SURFACE_* flags. */
-    uint32_t flags;
+    nk_surface_flags flags;
     /** Graphics API and context family to request. */
     nk_graphics_api api;
     /** Major context/API version, when applicable. */

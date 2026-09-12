@@ -18,6 +18,7 @@ class WebSocket:
         self.socket = socket.create_connection(
             (host.split(":")[0], int(host.split(":")[1])), timeout=5
         )
+        self.errors = []
         key = base64.b64encode(os.urandom(16)).decode("ascii")
         request = (
             f"GET /{path} HTTP/1.1\r\n"
@@ -79,6 +80,24 @@ class WebSocket:
             if kind != 1:
                 continue
             response = json.loads(payload)
+            method = response.get("method")
+            params = response.get("params", {})
+            if method == "Runtime.exceptionThrown":
+                details = params.get("exceptionDetails", {})
+                exception = details.get("exception", {})
+                description = exception.get("description") or details.get("text") or "unknown exception"
+                self.errors.append(f"uncaught runtime exception: {description}")
+            elif method == "Runtime.consoleAPICalled" and params.get("type") == "error":
+                arguments = params.get("args", [])
+                message = " ".join(
+                    str(
+                        argument.get("value")
+                        if argument.get("value") is not None
+                        else argument.get("description", "")
+                    )
+                    for argument in arguments
+                )
+                self.errors.append("console.error: " + (message or "unspecified error"))
             if response.get("id") == identifier:
                 if "error" in response:
                     raise RuntimeError(json.dumps(response))
@@ -118,6 +137,10 @@ def main():
 
     websocket = WebSocket(page["webSocketDebuggerUrl"])
     try:
+        websocket.command("Runtime.enable", {}, 8)
+        websocket.command("Page.enable", {}, 9)
+        websocket.errors.clear()
+        websocket.command("Page.reload", {"ignoreCache": True}, 10)
         probe_sent = args.skip_text_input
         pointer_sent = False
         touch_sent = False
@@ -185,6 +208,10 @@ def main():
                 if (not probe_sent or not pointer_sent or not touch_sent or not resize_sent or
                         not state["webgl2"] or state["width"] <= 0 or state["height"] <= 0):
                     raise RuntimeError(f"NativeKit browser canvas is invalid: {state}")
+                time.sleep(0.1)
+                websocket.evaluate("document.documentElement.dataset.nativekitResult || ''", 11)
+                if websocket.errors:
+                    raise RuntimeError("browser reported errors: " + json.dumps(websocket.errors))
                 print(f"web smoke passed: {state}")
                 return 0
             time.sleep(0.1)

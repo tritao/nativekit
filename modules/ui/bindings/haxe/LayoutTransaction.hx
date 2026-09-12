@@ -1,4 +1,5 @@
 import haxe.io.Bytes;
+import NativeKitUI.NkuiLayoutClipFlags;
 
 /** Encodes a retained Haxe node tree into the single native frame payload. */
 @:noCompletion
@@ -72,8 +73,8 @@ class LayoutTransaction {
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET, style.radiusTopRight);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_RADIUS_BOTTOM_LEFT_OFFSET, style.radiusBottomLeft);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_RADIUS_BOTTOM_RIGHT_OFFSET, style.radiusBottomRight);
-			var clip = (style.clipHorizontal ? NativeKitUIConstants.NKUI_LAYOUT_CLIP_HORIZONTAL : 0) |
-				(style.clipVertical ? NativeKitUIConstants.NKUI_LAYOUT_CLIP_VERTICAL : 0);
+			var clip = (style.clipHorizontal ? NkuiLayoutClipFlags.Horizontal : 0) |
+				(style.clipVertical ? NkuiLayoutClipFlags.Vertical : 0);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_CLIP_FLAGS_OFFSET, clip);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TEXT_OFFSET_OFFSET, textOffset);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TEXT_LENGTH_OFFSET, this.stringBytes[index].length);

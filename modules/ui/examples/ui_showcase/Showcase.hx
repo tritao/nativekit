@@ -102,6 +102,7 @@ class Showcase {
     final caretInstruction:TextLayout;
     final offscreenLabel:TextLayout;
     final targetLabel:TextLayout;
+    final benchmarkBaseText:String;
 
     var statusLayout:Null<TextLayout>;
     var caretStatusLayout:Null<TextLayout>;
@@ -137,6 +138,7 @@ class Showcase {
 
     /** Takes ownership of the configured font collection. */
     function new(fonts:FontCollection, ?multilingualText:String) {
+        benchmarkBaseText = multilingualText == null ? "NativeKit — مرحبا — שלום — こんにちは 👋" : multilingualText;
         resources = [];
         list = DisplayList.create();
         renderer = Renderer.create();
@@ -259,8 +261,7 @@ class Showcase {
         textLabel = styled("UNICODE TEXT + CARET", 580.0, 12.0);
         retainedLabel = styled("RETAINED PATH", 260.0, 12.0);
         surfaceLabel = styled("GRAPHICS SURFACE", 270.0, 12.0);
-        multilingual = styled(multilingualText == null ? "NativeKit — مرحبا — שלום — こんにちは 👋" : multilingualText,
-            580.0, 18.0);
+        multilingual = styled(benchmarkBaseText, 580.0, 18.0);
         sidebarCopy = styled("A visual proof of the\nNativeKit rendering\narchitecture.", 180.0, 16.0);
         controlsLabel = styled("INTERACTIVE CONTROLS", 180.0, 11.0);
         footerLabel = styled("click the text card · move the pointer · resize the window", 560.0, 11.0);
@@ -296,6 +297,17 @@ class Showcase {
     public function updatePointer(x:Float, y:Float):Void {
         pointerX = x;
         pointerY = y;
+        updateCaret();
+    }
+
+    /** Benchmark-only controls keep repeatable workloads out of browser input timing. */
+    public function setBenchmarkAnimation(enabled:Bool):Void
+        animate = enabled;
+
+    public function benchmarkTextEdit(step:Int):Void {
+        multilingual.setText(benchmarkBaseText + " · " + step);
+        pointerX = textOriginX() + 18.0 + (step % 36) * 14.0;
+        pointerY = textOriginY() + 5.0;
         updateCaret();
     }
 

@@ -22,7 +22,7 @@ extern "C" {
 /** Bitmask describing the optional facilities exposed by the active backend. */
 typedef uint64_t nk_capabilities;
 
-enum {
+enum NK_FLAGS(nk_capabilities) {
     /** The backend can create and manage NativeKit-owned top-level windows. */
     NK_CAP_WINDOW = UINT64_C(1) << 0,
     /** The backend can create embedded WebViews. */
@@ -115,7 +115,8 @@ typedef struct nk_native_window {
 /* Window options and state types                                            */
 /* ------------------------------------------------------------------------- */
 
-enum {
+typedef uint32_t nk_window_flags;
+enum NK_FLAGS(nk_window_flags) {
     /** The window can be resized by the user. */
     NK_WINDOW_RESIZABLE = 1u << 0,
     /** The window is initially hidden. */
@@ -141,7 +142,7 @@ typedef struct nk_window_options {
     /** Set to sizeof(nk_window_options) before calling nk_window_create. */
     uint32_t struct_size;
     /** Combination of NK_WINDOW_* creation flags. */
-    uint32_t flags;
+    nk_window_flags flags;
     /** Initial client width in logical pixels; must be positive. */
     int32_t width;
     /** Initial client height in logical pixels; must be positive. */
@@ -218,7 +219,8 @@ typedef struct nk_window_frame_extents {
     uint64_t reserved2[2];
 } nk_window_frame_extents;
 
-enum {
+typedef uint32_t nk_window_state_flags;
+enum NK_FLAGS(nk_window_state_flags) {
     /** The window is visible. */
     NK_WINDOW_STATE_VISIBLE = 1u << 0,
     /** The window is active or focused. */
@@ -238,7 +240,7 @@ typedef struct nk_window_state {
     /** Set to sizeof(nk_window_state) before calling nk_window_get_state. */
     uint32_t struct_size;
     /** Combination of NK_WINDOW_STATE_* flags. */
-    uint32_t flags;
+    nk_window_state_flags flags;
     /** Reserved pointer-sized values; initialize to zero. */
     uint64_t reserved[2];
 } nk_window_state;

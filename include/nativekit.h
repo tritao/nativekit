@@ -48,6 +48,8 @@
 #define NK_HANDLE __attribute__((annotate("hxi:handle")))
 /* Keeps the C typedef as the ABI source of truth while naming the enum and its HXI projection. */
 #define NK_ENUM(name) __attribute__((annotate("hxi:enum:" #name))) name##_enum
+/* Marks an integer typedef and its constants as a bitmask without changing C ABI storage. */
+#define NK_FLAGS(name) __attribute__((annotate("hxi:flags:" #name))) name##_flags_enum
 #else
 #define NK_OUT
 #define NK_INOUT
@@ -61,6 +63,7 @@
 #define NK_BORROWED_ARRAY(count_field)
 #define NK_HANDLE
 #define NK_ENUM(name) name##_enum
+#define NK_FLAGS(name) name##_flags_enum
 #endif
 
 /* Every named NativeKit handle is a value-copyable, four-byte opaque token. */

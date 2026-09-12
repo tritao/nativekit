@@ -21,7 +21,7 @@ extern "C" {
 
 /** Access and persistence flags attached to a URI resource. */
 typedef uint32_t nk_resource_flags;
-enum {
+enum NK_FLAGS(nk_resource_flags) {
     /** The resource may be opened for reading. */
     NK_RESOURCE_READABLE = 1u << 0,
     /** The resource may be opened for writing. */
@@ -32,7 +32,7 @@ enum {
 
 /** Access and creation flags accepted by nk_resource_open(). */
 typedef uint32_t nk_resource_open_flags;
-enum {
+enum NK_FLAGS(nk_resource_open_flags) {
     /** Open the stream for reading. */
     NK_RESOURCE_OPEN_READ = 1u << 0,
     /** Open the stream for writing. */
@@ -45,7 +45,7 @@ enum {
 
 /** Capabilities reported for an opened resource stream. */
 typedef uint32_t nk_resource_stream_flags;
-enum {
+enum NK_FLAGS(nk_resource_stream_flags) {
     /** The stream accepts reads. */
     NK_RESOURCE_STREAM_READABLE = 1u << 0,
     /** The stream accepts writes. */

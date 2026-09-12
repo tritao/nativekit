@@ -10,11 +10,17 @@ import NativeKitOptions;
 import NativeKit.NativeKitConstants;
 import NativeKit.InitOptions;
 import NativeKit.TextInputState;
+import NativeKit.Capabilities;
 
 class Smoke {
 	static function main():Int {
 		if (NativeKit.nk_api_version() != NativeKitConstants.NK_API_VERSION)
 			return 1;
+
+		var capabilityMask = Capabilities.window().with(Capabilities.accessibility());
+		if (!capabilityMask.contains(Capabilities.window()) || !capabilityMask.contains(Capabilities.accessibility())
+			|| capabilityMask.without(Capabilities.window()).contains(Capabilities.window()))
+			return 16;
 
 		var options = new InitOptions();
 		options.set_struct_size(16);

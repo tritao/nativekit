@@ -19,7 +19,8 @@ extern "C" {
 /* Notification flags and options                                            */
 /* ------------------------------------------------------------------------- */
 
-enum {
+typedef uint32_t nk_notification_flags;
+enum NK_FLAGS(nk_notification_flags) {
     /** Do not show notification sound or vibration when supported by the backend. */
     NK_NOTIFICATION_SILENT = 1u << 0
 };
@@ -29,7 +30,7 @@ typedef struct nk_notification_options {
     /** Set to sizeof(nk_notification_options) before passing the structure. */
     uint32_t struct_size;
     /** Bitwise OR of NK_NOTIFICATION_* flags. */
-    uint32_t flags;
+    nk_notification_flags flags;
     /** Required UTF-8 notification title. */
     const char *title NK_UTF8;
     /** Optional UTF-8 notification body. */

@@ -6,6 +6,7 @@ import NativeKit.InputAction;
 import NativeKit.Result;
 import NativeKit.InitOptions;
 import NativeKit.SurfaceOptions;
+import NativeKit.SurfaceFlags;
 import NativeKitEvent;
 import NativeKitEventValue;
 import NativeKitOptions;
@@ -48,8 +49,7 @@ class ShowcaseDesktop {
 
             var surfaceOptions = new SurfaceOptions();
             surfaceOptions.set_struct_size(SurfaceOptions.size());
-            surfaceOptions.set_flags(NativeKitConstants.NK_SURFACE_FORWARD_COMPATIBLE |
-                NativeKitConstants.NK_SURFACE_STENCIL);
+            surfaceOptions.set_flags(SurfaceFlags.ForwardCompatible | SurfaceFlags.Stencil);
             surfaceOptions.set_api(GraphicsApi.Opengl);
             surfaceOptions.set_major_version(3);
             surfaceOptions.set_minor_version(3);

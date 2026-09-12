@@ -3,10 +3,41 @@
 
 import argparse
 import json
+import os
+import platform
 import time
 import urllib.request
 
 from web_smoke import WebSocket
+
+
+def host_environment():
+    cpu_model = platform.processor() or "unknown"
+    try:
+        with open("/proc/cpuinfo", encoding="utf-8") as cpu_info:
+            for line in cpu_info:
+                if line.lower().startswith("model name"):
+                    cpu_model = line.split(":", 1)[1].strip()
+                    break
+    except OSError:
+        pass
+    try:
+        load_average = os.getloadavg()
+    except OSError:
+        load_average = None
+    try:
+        affinity_cpus = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        affinity_cpus = None
+    return {
+        "system": platform.system(),
+        "release": platform.release(),
+        "machine": platform.machine(),
+        "cpu_model": cpu_model,
+        "logical_cpus": os.cpu_count(),
+        "affinity_cpus": affinity_cpus,
+        "load_average_1_5_15": list(load_average) if load_average else None,
+    }
 
 
 def main():
@@ -31,20 +62,27 @@ def main():
         raise RuntimeError(f"Chrome page did not open: {args.page_url}")
 
     websocket = WebSocket(page["webSocketDebuggerUrl"])
+    # Core benchmarks intentionally block the page while the fixed frame batch runs.
+    # The shared DevTools helper's 5-second connect timeout is too short for that read.
+    websocket.socket.settimeout(args.timeout + 5.0)
     try:
         while time.monotonic() < deadline:
             value = websocket.evaluate(
                 "JSON.stringify({result:document.documentElement.dataset.nativekitResult||'',"
+                "status:document.getElementById('status')?.textContent||'',"
                 "report:document.documentElement.dataset.nativekitBenchmark||''})",
                 1,
             )
             state = json.loads(value)
             if state["result"]:
                 if state["result"] != "0":
-                    raise RuntimeError(f"browser benchmark failed with result {state['result']}")
+                    raise RuntimeError(
+                        f"browser benchmark failed with result {state['result']}: {state['status']}"
+                    )
                 if not state["report"]:
                     raise RuntimeError("browser benchmark completed without a report")
                 report = json.loads(state["report"])
+                report["host_environment"] = host_environment()
                 with open(args.output, "w", encoding="utf-8") as output:
                     json.dump(report, output, indent=2)
                     output.write("\n")

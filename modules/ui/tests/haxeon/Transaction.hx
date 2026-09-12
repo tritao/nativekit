@@ -6,6 +6,8 @@ import NativeKit.Event;
 import NativeKit.InitOptions;
 import NativeKit.SurfaceOptions;
 import NativeKit.WindowOptions;
+import NativeKit.WindowFlags;
+import NativeKit.SurfaceFlags;
 import haxe.io.Bytes;
 
 class Transaction {
@@ -19,7 +21,7 @@ class Transaction {
 
 		var windowOptions = new WindowOptions();
 		windowOptions.set_struct_size(WindowOptions.size());
-		windowOptions.set_flags(NativeKitConstants.NK_WINDOW_RESIZABLE);
+		windowOptions.set_flags(WindowFlags.Resizable);
 		windowOptions.set_width(256);
 		windowOptions.set_height(192);
 		windowOptions.set_title("Haxeon: NativeKit UI");
@@ -31,8 +33,7 @@ class Transaction {
 		var window = createdWindow.out_window;
 		var surfaceOptions = new SurfaceOptions();
 		surfaceOptions.set_struct_size(SurfaceOptions.size());
-		surfaceOptions.set_flags(NativeKitConstants.NK_SURFACE_FORWARD_COMPATIBLE |
-			NativeKitConstants.NK_SURFACE_STENCIL);
+		surfaceOptions.set_flags(SurfaceFlags.ForwardCompatible | SurfaceFlags.Stencil);
 		surfaceOptions.set_api(GraphicsApi.Opengl);
 		surfaceOptions.set_major_version(3);
 		surfaceOptions.set_minor_version(3);

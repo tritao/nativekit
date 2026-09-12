@@ -40,7 +40,7 @@ enum NK_ENUM(nk_dialog_operation) {
 
 /** Optional behavior flags for file and resource dialogs. */
 typedef uint32_t nk_dialog_flags;
-enum {
+enum NK_FLAGS(nk_dialog_flags) {
     /** Allow selecting more than one item in an open dialog. */
     NK_DIALOG_ALLOW_MULTIPLE = 1u << 0,
     /** Ask for confirmation before replacing an existing destination. */
@@ -64,7 +64,7 @@ enum NK_ENUM(nk_message_kind) {
 
 /** Button flags accepted by a message dialog. */
 typedef uint32_t nk_message_buttons;
-enum {
+enum NK_FLAGS(nk_message_buttons) {
     /** Show an OK button. */
     NK_MESSAGE_BUTTON_OK = 1u << 0,
     /** Show a Cancel button. */

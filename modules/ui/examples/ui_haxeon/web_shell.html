@@ -21,6 +21,11 @@
     const query = new URLSearchParams(location.search);
     const smoke = query.has("smoke");
     const benchmark = query.has("benchmark");
+    const benchmarkMode = query.get("mode") || "browser";
+    const benchmarkProfile = benchmark && query.has("profile");
+    const benchmarkScenarios = {full: 0, static: 1, "text-heavy": 2, editing: 3};
+    const benchmarkScenarioName = query.get("scenario") || "full";
+    const benchmarkScenario = benchmarkScenarios[benchmarkScenarioName];
     const visual = query.has("visual");
     const visualWidth = Math.max(1, Number(query.get("width") || 900));
     const visualHeight = Math.max(1, Number(query.get("height") || 650));
@@ -39,6 +44,9 @@
     const benchmarkStartedAt = performance.now();
     const benchmarkFrameDurations = [];
     const benchmarkFrameIntervals = [];
+    const benchmarkHostApiDurations = [];
+    const benchmarkGuestResidualDurations = [];
+    const benchmarkHostApiCategories = Object.create(null);
     let benchmarkLastFrameAt = null;
     let benchmarkHostBytes = 0;
     let benchmarkGuestBytes = 0;
@@ -49,9 +57,12 @@
     let benchmarkGuestInitMs = 0;
     let benchmarkFirstFrameAt = null;
     let hostMemory = null;
+    let memoryContract = null;
+    let benchmarkAllocatorBaseline = null;
     let guest = null;
     let frameCount = 0;
     let finished = false;
+    let activeHostApiFrame = null;
 
     function setResult(result, message) {
       if (finished)
@@ -86,11 +97,15 @@
 
     function finishBenchmark() {
       const result = guest["ShowcaseWeb.status"]();
+      const allocator = readAllocatorStats();
       const droppedFrames = benchmarkFrameIntervals.reduce((total, interval) =>
         total + Math.max(0, Math.round(interval / benchmarkFrameBudgetMs) - 1), 0);
       const report = {
         version: 1,
         benchmark: "nativekit-haxeon-showcase-web",
+        mode: benchmarkMode,
+        scenario: benchmarkScenarioName,
+        schedule: benchmarkMode === "core" ? "synchronous-fixed-time" : "requestAnimationFrame",
         frame_budget_ms: benchmarkFrameBudgetMs,
         warmup_frames: benchmarkWarmupFrames,
         measured_frames: benchmarkMeasuredFrames,
@@ -109,7 +124,18 @@
           duration > benchmarkFrameBudgetMs).length,
         estimated_dropped_frames: droppedFrames,
         artifacts: {host_wasm_bytes: benchmarkHostBytes, guest_wasm_bytes: benchmarkGuestBytes},
-        memory: {shared_bytes: hostMemory.buffer.byteLength},
+        memory: {
+          shared_capacity_bytes: hostMemory.buffer.byteLength,
+          host_partition_bytes: memoryContract.hostLimit - memoryContract.hostBase,
+          guest_partition_bytes: memoryContract.guestLimit - memoryContract.guestBase,
+          allocator: allocator && benchmarkAllocatorBaseline ? {
+            measured_allocation_calls: (allocator.allocation_count - benchmarkAllocatorBaseline.allocation_count) >>> 0,
+            measured_allocated_bytes: (allocator.allocated_bytes - benchmarkAllocatorBaseline.allocated_bytes) >>> 0,
+            heap_high_water_bytes: allocator.heap_top - allocator.heap_base,
+            heap_growth_during_measurement_bytes: allocator.heap_top - benchmarkAllocatorBaseline.heap_top,
+            live_gc_metadata_bytes: allocator.metadata_top - allocator.metadata_base
+          } : null
+        },
         canvas: {width: canvas.width, height: canvas.height, webgl2: !!canvas.getContext("webgl2")},
         environment: {
           runner: query.get("runner") || "interactive-browser",
@@ -117,6 +143,23 @@
           user_agent: navigator.userAgent
         }
       };
+      if (benchmarkProfile) {
+        const categories = {};
+        for (const [name, values] of Object.entries(benchmarkHostApiCategories))
+          categories[name] = {
+            calls: values.calls,
+            total_ms: values.total_ms,
+            per_frame_ms: summarize(values.frame_ms),
+            max_call_ms: values.max_call_ms
+          };
+        report.profile = {
+          measured_frames: benchmarkFrameDurations.length,
+          imported_api_calls: benchmarkHostApiCategoriesTotalCalls(),
+          imported_api_ms_per_frame: summarize(benchmarkHostApiDurations),
+          wasm_and_host_residual_ms_per_frame: summarize(benchmarkGuestResidualDurations),
+          imported_api_categories: categories
+        };
+      }
       document.documentElement.dataset.nativekitBenchmark = JSON.stringify(report);
       guest["ShowcaseWeb.shutdown"]();
       setResult(result, result === 0 ? "NativeKit Haxeon browser benchmark passed" :
@@ -158,6 +201,13 @@
       return contract;
     }
 
+    function readAllocatorStats() {
+      const names = ["heap_base", "heap_top", "metadata_base", "metadata_top", "allocation_count", "allocated_bytes"];
+      if (!guest || names.some(name => typeof guest["haxeon.memory." + name] !== "function"))
+        return null;
+      return Object.fromEntries(names.map(name => [name, guest["haxeon.memory." + name]() >>> 0]));
+    }
+
     function readGuestMemoryContract(module) {
       const sections = WebAssembly.Module.customSections(module, "haxeon.memory.contract");
       if (sections.length !== 1)
@@ -189,8 +239,102 @@
         const value = Module["_" + name];
         if (typeof value !== "function")
           throw new Error("Emscripten did not export " + name);
-        return [name, (...args) => value(...args)];
+        return [name, (...args) => {
+          const frame = activeHostApiFrame;
+          if (!frame)
+            return value(...args);
+          const startedAt = performance.now();
+          try {
+            return value(...args);
+          } finally {
+            const duration = performance.now() - startedAt;
+            const category = hostApiCategory(name);
+            const entry = frame.categories[category] || (frame.categories[category] = {calls: 0, total_ms: 0, max_call_ms: 0});
+            frame.calls++;
+            frame.total_ms += duration;
+            entry.calls++;
+            entry.total_ms += duration;
+            entry.max_call_ms = Math.max(entry.max_call_ms, duration);
+          }
+        }];
       }));
+    }
+
+    function hostApiCategory(name) {
+      if (name === "nkui_layout_session_submit") return "layout_submission";
+      if (name.startsWith("nkui_text_layout_") || name.startsWith("nkui_font_collection_")) return "text_layout_and_shaping";
+      if (name.startsWith("nkui_renderer_") || name === "nkui_layout_session_render_frame") return "native_rendering";
+      if (name.startsWith("nkui_display_list_")) return "display_list";
+      if (name.startsWith("nk_")) return "platform_and_surface";
+      return "other_native_api";
+    }
+
+    function benchmarkHostApiCategoriesTotalCalls() {
+      return Object.values(benchmarkHostApiCategories).reduce((total, value) => total + value.calls, 0);
+    }
+
+    function invokeShowcaseFrame(time) {
+      const frameProfile = benchmarkProfile ? {calls: 0, total_ms: 0, categories: Object.create(null)} : null;
+      activeHostApiFrame = frameProfile;
+      const startedAt = performance.now();
+      let result;
+      try {
+        result = guest["ShowcaseWeb.frame"](time);
+      } finally {
+        activeHostApiFrame = null;
+      }
+      return {result, duration_ms: performance.now() - startedAt, profile: frameProfile};
+    }
+
+    function recordBenchmarkFrame(sample, animationTime) {
+      benchmarkFrameDurations.push(sample.duration_ms);
+      if (benchmarkProfile && sample.profile) {
+        benchmarkHostApiDurations.push(sample.profile.total_ms);
+        benchmarkGuestResidualDurations.push(Math.max(0, sample.duration_ms - sample.profile.total_ms));
+        for (const [name, value] of Object.entries(sample.profile.categories)) {
+          const total = benchmarkHostApiCategories[name] || (benchmarkHostApiCategories[name] = {
+            calls: 0, total_ms: 0, max_call_ms: 0, frame_ms: []
+          });
+          total.calls += value.calls;
+          total.total_ms += value.total_ms;
+          total.max_call_ms = Math.max(total.max_call_ms, value.max_call_ms);
+          total.frame_ms.push(value.total_ms);
+        }
+      }
+      if (benchmarkMode !== "core") {
+        if (benchmarkLastFrameAt !== null)
+          benchmarkFrameIntervals.push(animationTime - benchmarkLastFrameAt);
+        benchmarkLastFrameAt = animationTime;
+      }
+    }
+
+    function runCoreBenchmark() {
+      const totalFrames = benchmarkWarmupFrames + benchmarkMeasuredFrames;
+      const fixedStepMs = benchmarkFrameBudgetMs;
+      try {
+        if (benchmarkWarmupFrames === 0)
+          benchmarkAllocatorBaseline = readAllocatorStats();
+        for (let index = 0; index < totalFrames; index++) {
+          const sample = invokeShowcaseFrame(index * fixedStepMs);
+          frameCount++;
+          if (benchmarkFirstFrameAt === null)
+            benchmarkFirstFrameAt = performance.now();
+          if (sample.result < 0) {
+            setResult(-sample.result, "Haxeon Showcase frame failed (" + sample.result + "): " + readNativeError());
+            return;
+          }
+          if (index + 1 === benchmarkWarmupFrames)
+            benchmarkAllocatorBaseline = readAllocatorStats();
+          if (index >= benchmarkWarmupFrames)
+            recordBenchmarkFrame(sample, index * fixedStepMs);
+        }
+        document.documentElement.dataset.nativekitFrames = String(frameCount);
+        finishBenchmark();
+      } catch (error) {
+        const allocator = readAllocatorStats();
+        setResult(21, "Haxeon core benchmark failed: " + (error.stack || error.message) +
+          (allocator ? " | allocator=" + JSON.stringify(allocator) : ""));
+      }
     }
 
     function nativekitImports() {
@@ -262,8 +406,20 @@
           let started;
           const initStarted = performance.now();
           try {
+            if (benchmark && (benchmarkMode !== "browser" && benchmarkMode !== "core")) {
+              setResult(27, "Unsupported benchmark mode: " + benchmarkMode);
+              return;
+            }
+            if (benchmark && benchmarkScenario === undefined) {
+              setResult(27, "Unsupported benchmark scenario: " + benchmarkScenarioName);
+              return;
+            }
             if (guest["ShowcaseWeb.configure"](visualWidth, visualHeight) !== 0) {
               setResult(26, "Haxeon guest rejected the initial canvas size");
+              return;
+            }
+            if (benchmark && guest["ShowcaseWeb.configureBenchmark"](benchmarkScenario) !== 0) {
+              setResult(27, "Haxeon guest rejected the benchmark scenario");
               return;
             }
             started = guest["ShowcaseWeb.main"]();
@@ -276,10 +432,15 @@
             return;
           }
           benchmarkGuestInitMs = performance.now() - initStarted;
+          if (benchmark && benchmarkWarmupFrames === 0)
+            benchmarkAllocatorBaseline = readAllocatorStats();
           status.textContent = benchmark ? "Running Haxeon browser benchmark…" : smoke ? "Running Haxeon browser smoke test…" :
             "NativeKit Haxeon WebGL2 ready";
           canvas.focus();
-          requestAnimationFrame(tick);
+          if (benchmark && benchmarkMode === "core")
+            runCoreBenchmark();
+          else
+            requestAnimationFrame(tick);
         })
         .catch(error => setResult(24, "Haxeon guest failed: " + error.message));
     }
@@ -288,23 +449,20 @@
       if (finished || !guest)
         return;
       try {
-        const frameStarted = performance.now();
-        const frameResult = guest["ShowcaseWeb.frame"](
-          visual ? (frameCount === 0 ? 0 : visualTime) : time);
-        const frameFinished = performance.now();
+        const sample = invokeShowcaseFrame(visual ? (frameCount === 0 ? 0 : visualTime) : time);
+        const frameResult = sample.result;
         frameCount++;
         document.documentElement.dataset.nativekitFrames = String(frameCount);
         if (benchmarkFirstFrameAt === null)
-          benchmarkFirstFrameAt = frameFinished;
+          benchmarkFirstFrameAt = performance.now();
         if (frameResult < 0) {
           setResult(-frameResult, "Haxeon Showcase frame failed (" + frameResult + "): " + readNativeError());
           return;
         }
+        if (benchmark && frameCount === benchmarkWarmupFrames)
+          benchmarkAllocatorBaseline = readAllocatorStats();
         if (benchmark && frameCount > benchmarkWarmupFrames) {
-          benchmarkFrameDurations.push(frameFinished - frameStarted);
-          if (benchmarkLastFrameAt !== null)
-            benchmarkFrameIntervals.push(time - benchmarkLastFrameAt);
-          benchmarkLastFrameAt = time;
+          recordBenchmarkFrame(sample, time);
           if (benchmarkFrameDurations.length >= benchmarkMeasuredFrames) {
             finishBenchmark();
             return;
@@ -318,7 +476,9 @@
         }
         requestAnimationFrame(tick);
       } catch (error) {
-        setResult(21, "Haxeon Showcase frame failed: " + error.message);
+        const allocator = readAllocatorStats();
+        setResult(21, "Haxeon Showcase frame failed: " + (error.stack || error.message) +
+          (allocator ? " | allocator=" + JSON.stringify(allocator) : ""));
       }
     }
 
@@ -347,7 +507,7 @@
           return;
         }
         try {
-          validateMemoryContract();
+          memoryContract = validateMemoryContract();
         } catch (error) {
           setResult(26, "NativeKit shared memory contract failed: " + error.message);
           return;

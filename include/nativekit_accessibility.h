@@ -70,7 +70,7 @@ enum NK_ENUM(nk_accessibility_role) {
 
 /** Bit flags describing the current state of an accessibility node. */
 typedef uint32_t nk_accessibility_states;
-enum {
+enum NK_FLAGS(nk_accessibility_states) {
     /** The node can receive accessibility focus. */
     NK_ACCESSIBILITY_FOCUSABLE = 1u << 0,
     /** The node currently has accessibility focus. */
@@ -93,7 +93,7 @@ enum {
 
 /** Bit flags describing actions supported by an accessibility node. */
 typedef uint32_t nk_accessibility_actions;
-enum {
+enum NK_FLAGS(nk_accessibility_actions) {
     /** The node accepts NK_ACCESSIBILITY_ACTION_ACTIVATE. */
     NK_ACCESSIBILITY_CAN_ACTIVATE = 1u << 0,
     /** The node accepts focus and clear-focus actions. */
@@ -250,7 +250,7 @@ typedef struct nk_accessibility_action_event {
 
 /** Flags selecting optional parts of an accessibility tree update. */
 typedef uint32_t nk_accessibility_update_flags;
-enum {
+enum NK_FLAGS(nk_accessibility_update_flags) {
     /** Apply the `focus` field as part of the same atomic update. */
     NK_ACCESSIBILITY_UPDATE_FOCUS = 1u << 0
 };

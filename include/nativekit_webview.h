@@ -19,7 +19,8 @@ extern "C" {
 /* WebView flags and navigation errors                                       */
 /* ------------------------------------------------------------------------- */
 
-enum {
+typedef uint32_t nk_webview_flags;
+enum NK_FLAGS(nk_webview_flags) {
     /** Enable the platform's WebView developer tools or inspector when supported. */
     NK_WEBVIEW_DEVTOOLS = 1u << 0,
     /** Create the WebView hidden until nk_webview_show() enables it. */
@@ -55,7 +56,7 @@ typedef struct nk_webview_options {
     /** Set to sizeof(nk_webview_options) before creating the WebView. */
     uint32_t struct_size;
     /** Bitwise OR of NK_WEBVIEW_* flags. */
-    uint32_t flags;
+    nk_webview_flags flags;
     /** Child position in the parent's logical coordinates. */
     int32_t x;
     /** Child position in the parent's logical coordinates. */

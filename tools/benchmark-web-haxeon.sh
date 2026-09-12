@@ -6,6 +6,9 @@ artifact_dir=${NATIVEKIT_WEB_ARTIFACT_DIR:-"$repo_dir/build-web/modules/ui"}
 output=${NATIVEKIT_WEB_BENCHMARK_JSON:-"$repo_dir/out/benchmark-web-haxeon.json"}
 warmup=${NATIVEKIT_WEB_BENCHMARK_WARMUP:-120}
 frames=${NATIVEKIT_WEB_BENCHMARK_FRAMES:-600}
+mode=${NATIVEKIT_WEB_BENCHMARK_MODE:-browser}
+scenario=${NATIVEKIT_WEB_BENCHMARK_SCENARIO:-full}
+profile=${NATIVEKIT_WEB_BENCHMARK_PROFILE:-0}
 browser=${NK_WEB_BROWSER:-}
 
 if [[ ! -f "$artifact_dir/nativekit_ui_haxeon.html" ]]; then
@@ -54,7 +57,10 @@ trap cleanup EXIT
 
 python3 -m http.server "$http_port" --bind 127.0.0.1 --directory "$artifact_dir" >"$temp_dir/http.log" 2>&1 &
 http_pid=$!
-page_url="http://127.0.0.1:${http_port}/nativekit_ui_haxeon.html?benchmark&runner=headless-software-webgl&warmup=${warmup}&frames=${frames}"
+page_url="http://127.0.0.1:${http_port}/nativekit_ui_haxeon.html?benchmark&runner=headless-software-webgl&mode=${mode}&scenario=${scenario}&warmup=${warmup}&frames=${frames}"
+if [[ "$profile" == "1" ]]; then
+    page_url+="&profile"
+fi
 "$browser" --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu \
     --enable-unsafe-swiftshader --no-first-run --user-data-dir="$temp_dir/profile" \
     --remote-debugging-port="$debug_port" --remote-allow-origins='*' \

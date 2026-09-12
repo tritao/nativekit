@@ -5,6 +5,7 @@ repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 emsdk_dir="$repo_dir/.tools/emsdk"
 build_dir=${NATIVEKIT_WEB_BUILD_DIR:-"$repo_dir/build-web"}
 build_type=${CMAKE_BUILD_TYPE:-Release}
+memory_stats=${NKUI_HAXEON_MEMORY_STATS:-OFF}
 
 if [[ ! -f "$emsdk_dir/emsdk_env.sh" ]]; then
     echo "Emscripten is not installed. Run tools/setup-web.sh first." >&2
@@ -39,6 +40,7 @@ emcmake cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
     -DNK_BUILD_EXAMPLES=ON \
     -DNK_BUILD_SOKOL=OFF \
     -DNK_BUILD_UI=ON \
+    -DNKUI_HAXEON_MEMORY_STATS="$memory_stats" \
     -DNK_SOKOL_BACKEND=gles3 \
     -DNK_SOKOL_SHDC="$shdc"
 cmake --build "$build_dir" --target nativekit_ui_c_api nativekit_ui_haxeon

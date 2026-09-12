@@ -1,8 +1,12 @@
 import NativeKit;
-import NativeKit.NativeKitConstants;
 import NativeKit.MessageKind;
+import NativeKit.MessageButtons;
 import NativeKit.Result;
 import NativeKit.WindowKind;
+import NativeKit.WindowFlags;
+import NativeKit.DialogFlags;
+import NativeKit.WebviewFlags;
+import NativeKit.ResourceFlags;
 import NativeKit.DialogFilter;
 import NativeKit.FileDialogOptions;
 import NativeKit.MessageDialogOptions;
@@ -16,7 +20,7 @@ import NativeKit.WindowOptions;
 class NativeKitOptions {
 	/** Attaches a managed contiguous filter array and keeps it alive with the options. */
 	public static function filteredFileDialog(filters:Array<DialogFilter>, ?title:String,
-			?initialPath:String, ?suggestedName:String, ?flags:Int):NativeKitFileDialogOptions {
+			?initialPath:String, ?suggestedName:String, ?flags:DialogFlags):NativeKitFileDialogOptions {
 		var options = rawFileDialog(title, initialPath, suggestedName, flags);
 		var storage = DialogFilter.array(filters);
 		if (filters.length > 0) options.set_filters(storage);
@@ -32,21 +36,21 @@ class NativeKitOptions {
 		return value;
 	}
 
-	public static function window(width:Int, height:Int, ?title:String, ?flags:Int,
+	public static function window(width:Int, height:Int, ?title:String, ?flags:WindowFlags,
 			?owner:Int, ?kind:Int):WindowOptions {
 		var value = new WindowOptions();
 		value.set_struct_size(WindowOptions.size());
 		value.set_width(width);
 		value.set_height(height);
 		value.set_title(title);
-		value.set_flags(flags == null ? NativeKitConstants.NK_WINDOW_RESIZABLE : flags);
+		value.set_flags(flags == null ? WindowFlags.Resizable : flags);
 		value.set_owner(owner == null ? 0 : owner);
 		value.set_kind(kind == null ? WindowKind.Normal : kind);
 		return value;
 	}
 
 	public static function webview(x:Int, y:Int, width:Int, height:Int,
-			?initialUrl:String, ?flags:Int):WebviewOptions {
+			?initialUrl:String, ?flags:WebviewFlags):WebviewOptions {
 		var value = new WebviewOptions();
 		value.set_struct_size(WebviewOptions.size());
 		value.set_x(x);
@@ -59,11 +63,11 @@ class NativeKitOptions {
 	}
 
 	public static function fileDialog(?title:String, ?initialPath:String,
-			?suggestedName:String, ?flags:Int):NativeKitFileDialogOptions
+			?suggestedName:String, ?flags:DialogFlags):NativeKitFileDialogOptions
 		return filteredFileDialog([], title, initialPath, suggestedName, flags);
 
 	static function rawFileDialog(?title:String, ?initialPath:String,
-		?suggestedName:String, ?flags:Int):FileDialogOptions {
+		?suggestedName:String, ?flags:DialogFlags):FileDialogOptions {
 		var value = new FileDialogOptions();
 		value.set_struct_size(FileDialogOptions.size());
 		value.set_title(title);
@@ -74,18 +78,18 @@ class NativeKitOptions {
 	}
 
 	public static function messageDialog(message:String, ?title:String, ?kind:Int,
-			?buttons:Int):MessageDialogOptions {
+			?buttons:MessageButtons):MessageDialogOptions {
 		var value = new MessageDialogOptions();
 		value.set_struct_size(MessageDialogOptions.size());
 		value.set_message(message);
 		value.set_title(title);
 		value.set_kind(kind == null ? MessageKind.Info : kind);
-		value.set_buttons(buttons == null ? NativeKitConstants.NK_MESSAGE_BUTTON_OK : buttons);
+		value.set_buttons(buttons == null ? MessageButtons.Ok : buttons);
 		return value;
 	}
 
 	public static function resource(uri:String, ?mimeType:String, ?displayName:String,
-			?flags:Int):Resource {
+			?flags:ResourceFlags):Resource {
 		var value = new Resource();
 		value.set_struct_size(Resource.size());
 		value.set_uri(uri);

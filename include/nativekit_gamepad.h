@@ -105,7 +105,7 @@ typedef struct nk_gamepad_button_event {
 
 /** Options controlling canonical gamepad normalization. */
 typedef uint32_t nk_gamepad_flags;
-enum {
+enum NK_FLAGS(nk_gamepad_flags) {
     /** Report trigger axes in [0, 1] instead of the default [-1, 1]. */
     NK_GAMEPAD_TRIGGER_ZERO_TO_ONE = 1u << 0
 };

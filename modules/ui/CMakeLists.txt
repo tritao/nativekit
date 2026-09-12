@@ -310,6 +310,8 @@ if(NK_BUILD_EXAMPLES)
         endif()
 
         if(EMSCRIPTEN)
+            option(NKUI_HAXEON_MEMORY_STATS
+                "Export Haxeon guest allocator counters for Wasm benchmark profiling" OFF)
             file(GLOB NKUI_HAXEON_GUEST_HX_DEPS CONFIGURE_DEPENDS
                 "${CMAKE_CURRENT_SOURCE_DIR}/bindings/haxe/*.hx"
                 "${PROJECT_SOURCE_DIR}/bindings/haxe/*.hx")
@@ -332,11 +334,16 @@ if(NK_BUILD_EXAMPLES)
                 "${NKUI_HAXEON_MEMORY_CONTRACT_HEADER}" @ONLY)
             set(NKUI_HAXEON_GUEST_WASM
                 "${CMAKE_CURRENT_BINARY_DIR}/nativekit_ui_showcase_wasm32.wasm")
+            set(NKUI_HAXEON_MEMORY_STATS_VALUE 0)
+            if(NKUI_HAXEON_MEMORY_STATS)
+                set(NKUI_HAXEON_MEMORY_STATS_VALUE 1)
+            endif()
             add_custom_command(OUTPUT "${NKUI_HAXEON_GUEST_WASM}"
                 COMMAND ${CMAKE_COMMAND} -E env
                     "NATIVEKIT_WASM_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
                     "HAXEON_DIR=${NKUI_HAXEON_DIR}"
                     "NATIVEKIT_HAXEON_MEMORY_CONTRACT=${NKUI_HAXEON_MEMORY_CONTRACT}"
+                    "NATIVEKIT_HAXEON_MEMORY_STATS=${NKUI_HAXEON_MEMORY_STATS_VALUE}"
                     "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase-wasm.sh"
                 DEPENDS
                     "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase-wasm.sh"

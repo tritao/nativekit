@@ -39,6 +39,40 @@ jobs:
       - name: Run Haxeon visual regression tests
         run: ./tools/test-web-visual.sh
 
+      - name: Benchmark production Haxeon Showcase
+        run: |
+          mkdir -p out/web-benchmarks
+          NATIVEKIT_WEB_BENCHMARK_MODE=core \
+          NATIVEKIT_WEB_BENCHMARK_JSON=out/web-benchmarks/core-full.json \
+            ./tools/benchmark-web-haxeon.sh
+          NATIVEKIT_WEB_BENCHMARK_MODE=browser \
+          NATIVEKIT_WEB_BENCHMARK_JSON=out/web-benchmarks/browser-full.json \
+            ./tools/benchmark-web-haxeon.sh
+
+      - name: Build allocator-instrumented Haxeon Showcase
+        run: NKUI_HAXEON_MEMORY_STATS=ON NATIVEKIT_WEB_BUILD_DIR=build-web ./tools/build-web.sh
+
+      - name: Profile representative Haxeon workloads
+        run: |
+          for scenario in static text-heavy editing full; do
+            NATIVEKIT_WEB_ARTIFACT_DIR=build-web/modules/ui \
+            NATIVEKIT_WEB_BENCHMARK_MODE=core \
+            NATIVEKIT_WEB_BENCHMARK_PROFILE=1 \
+            NATIVEKIT_WEB_BENCHMARK_SCENARIO="$scenario" \
+            NATIVEKIT_WEB_BENCHMARK_WARMUP=30 \
+            NATIVEKIT_WEB_BENCHMARK_FRAMES=120 \
+            NATIVEKIT_WEB_BENCHMARK_JSON="out/web-benchmarks/profile-$scenario.json" \
+              ./tools/benchmark-web-haxeon.sh
+          done
+
+      - name: Upload Wasm benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: haxeon-wasm-benchmarks
+          path: out/web-benchmarks/*.json
+          if-no-files-found: ignore
+
       - name: Upload visual regression differences
         if: failure()
         uses: actions/upload-artifact@v4

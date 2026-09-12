@@ -24,7 +24,8 @@ enum {
 };
 
 /** Bit flags stored in each node's clip-flags field. */
-enum {
+typedef uint32_t nkui_layout_clip_flags;
+enum NK_FLAGS(nkui_layout_clip_flags) {
     NKUI_LAYOUT_CLIP_HORIZONTAL = 1u << 0,
     NKUI_LAYOUT_CLIP_VERTICAL = 1u << 1
 };
