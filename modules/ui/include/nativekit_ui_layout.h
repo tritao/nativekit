@@ -17,7 +17,7 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 2,
+    NKUI_LAYOUT_API_VERSION = 3,
     NKUI_LAYOUT_TRANSACTION_VERSION = 2,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
     NKUI_LAYOUT_NODE_RECORD_BYTES = 160
@@ -99,6 +99,17 @@ typedef struct nkui_layout_event {
     uint32_t node_id;
 } nkui_layout_event;
 
+/** Resolved bounds for one node in the most recently submitted layout. */
+typedef struct nkui_layout_item {
+    /** Set to sizeof(nkui_layout_item) or a larger compatible size. */
+    uint32_t struct_size;
+    uint32_t node_id;
+    float x;
+    float y;
+    float width;
+    float height;
+} nkui_layout_item;
+
 /** Per-submission logical viewport and pointer state. */
 typedef struct nkui_layout_frame_input {
     /** Set to sizeof(nkui_layout_frame_input) or a larger compatible size. */
@@ -141,6 +152,10 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_get_event_count(
 /** Reads one event from the most recent submission. */
 NKUI_API nkui_result NK_CALL nkui_layout_session_get_event(
     nkui_layout_session session, uint32_t index, nkui_layout_event *out_event NK_OUT);
+
+/** Returns resolved bounds for a node from the most recent submission. */
+NKUI_API nkui_result NK_CALL nkui_layout_session_get_item(
+    nkui_layout_session session, uint32_t node_id, nkui_layout_item *out_item NK_INOUT);
 
 /** Executes the submitted layout through the existing NativeKit renderer.
  *

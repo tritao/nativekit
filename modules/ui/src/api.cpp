@@ -43,6 +43,7 @@ static_assert(sizeof(nkui_draw_rect_command) == sizeof(nkui::DrawRectResourceCom
 static_assert(sizeof(nkui_layer_command) == sizeof(nkui::BeginLayerCommand));
 static_assert(sizeof(nkui_stroke_path_command) == sizeof(nkui::StrokePathCommand));
 static_assert(sizeof(nkui_layout_event) == sizeof(uint32_t) * 2);
+static_assert(sizeof(nkui_layout_item) == 24);
 
 namespace {
 
@@ -1035,6 +1036,27 @@ extern "C" nkui_result nkui_layout_session_get_event(nkui_layout_session session
     const auto &event = state->snapshot.events[index];
     out_event->kind = static_cast<uint32_t>(event.kind);
     out_event->node_id = event.node_id;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_layout_session_get_item(nkui_layout_session session, uint32_t node_id,
+                                                      nkui_layout_item *out_item) {
+    if (!out_item || out_item->struct_size < sizeof(*out_item) || !node_id)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    auto *state = resolve(session);
+    if (!state)
+        return NKUI_ERROR_INVALID_HANDLE;
+    if (!state->submitted)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    const auto *item = state->snapshot.find(node_id);
+    if (!item)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    out_item->node_id = item->id;
+    out_item->x = item->bounds.x;
+    out_item->y = item->bounds.y;
+    out_item->width = item->bounds.width;
+    out_item->height = item->bounds.height;
     return NKUI_OK;
 }
 

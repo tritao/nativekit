@@ -64,7 +64,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 * Version value required in every command header.
 	 */
 	const NKUI_COMMAND_VERSION = 1;
-	const NKUI_LAYOUT_API_VERSION = 2;
+	const NKUI_LAYOUT_API_VERSION = 3;
 	const NKUI_LAYOUT_CLIP_HORIZONTAL = 1;
 	const NKUI_LAYOUT_CLIP_VERTICAL = 2;
 	const NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT = 0;
@@ -364,6 +364,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_layout_session_get_event_count(session: nkui_layout_session, out_count: ptr<u32> @out) -> nkui_result;
 	/**
+	 * Returns resolved bounds for a node from the most recent submission.
+	 */
+	extern fn nkui_layout_session_get_item(session: nkui_layout_session, node_id: u32, out_item: ptr<nkui_layout_item> @inout) -> nkui_result;
+	/**
 	 * Executes the submitted layout through the existing NativeKit renderer.
 	 *
 	 * When load_existing is non-zero, the layout is composited over the current
@@ -620,6 +624,20 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		pointer_y: f32 @offset(16);
 		pointer_down: nk_bool @offset(20);
 		delta_seconds: f32 @offset(24);
+	}
+	/**
+	 * Resolved bounds for one node in the most recently submitted layout.
+	 */
+	struct nkui_layout_item @layout(24, 4) {
+		/**
+		 * Set to sizeof(nkui_layout_item) or a larger compatible size.
+		 */
+		struct_size: u32 @offset(0);
+		node_id: u32 @offset(4);
+		x: f32 @offset(8);
+		y: f32 @offset(12);
+		width: f32 @offset(16);
+		height: f32 @offset(20);
 	}
 	/**
 	 * Paragraph-level wrapping, alignment, and line-height inputs.

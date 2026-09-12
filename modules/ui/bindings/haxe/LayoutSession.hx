@@ -50,6 +50,19 @@ class LayoutSession {
 		return events;
 	}
 
+	/** Returns the resolved bounds of a node after the latest submission. */
+	public function item(node:LayoutNode):Rect {
+		ensureLive();
+		if (node == null)
+			throw "Layout item node cannot be null";
+		var nativeItem = new nkui_layout_item();
+		nativeItem.set_struct_size(nkui_layout_item.size());
+		var result = NativeKitUI.nkui_layout_session_get_item(value, node.id, nativeItem);
+		UiResult.check(result.status, 'layoutSession.item(${node.id})');
+		return new Rect(result.out_item.get_x(), result.out_item.get_y(),
+			result.out_item.get_width(), result.out_item.get_height());
+	}
+
 	/** Executes the last submitted tree through the existing renderer backend. */
 	public function render(renderer:Renderer, surface:Surface, frame:FrameInfo):Void {
 		ensureLive();

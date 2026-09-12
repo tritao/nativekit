@@ -23,10 +23,12 @@
 
 #if defined(__clang__)
 #define NKUI_OUT __attribute__((annotate("hxi:out")))
+#define NKUI_INOUT __attribute__((annotate("hxi:inout")))
 #define NKUI_IN_ARRAY(count_parameter) __attribute__((annotate("hxi:in_array")))
 #define NKUI_UTF8 __attribute__((annotate("hxi:utf8")))
 #else
 #define NKUI_OUT
+#define NKUI_INOUT
 #define NKUI_IN_ARRAY(count_parameter)
 #define NKUI_UTF8
 #endif

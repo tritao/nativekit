@@ -97,6 +97,13 @@ int main() {
     const auto bytes = transaction();
     nkui_layout_frame_input frame{sizeof(frame), 256.0f, 192.0f, 0.0f, 0.0f, 0,
                                   1.0f / 60.0f};
+    nkui_layout_item unresolved_item{static_cast<uint32_t>(sizeof(nkui_layout_item))};
+    nkui_layout_item undersized_item{};
+    if (nkui_layout_session_get_item(session, 1, &unresolved_item) !=
+            NKUI_ERROR_INVALID_ARGUMENT ||
+        nkui_layout_session_get_item(session, 1, &undersized_item) !=
+            NKUI_ERROR_INVALID_ARGUMENT)
+        return 12;
     const nkui_result initial_status = nkui_layout_session_submit(
         session, bytes.data(), bytes.size(), &frame);
     if (initial_status != NKUI_OK) {
@@ -106,6 +113,17 @@ int main() {
     uint32_t event_count = 0;
     if (nkui_layout_session_get_event_count(session, &event_count) != NKUI_OK || event_count != 0)
         return 5;
+    nkui_layout_item root_item{static_cast<uint32_t>(sizeof(nkui_layout_item))};
+    nkui_layout_item button_item{static_cast<uint32_t>(sizeof(nkui_layout_item))};
+    if (nkui_layout_session_get_item(session, 1, &root_item) != NKUI_OK ||
+        nkui_layout_session_get_item(session, 2, &button_item) != NKUI_OK ||
+        root_item.node_id != 1 || root_item.width != 256.0f || root_item.height != 192.0f ||
+        button_item.node_id != 2 || button_item.width <= 0.0f || button_item.height <= 0.0f)
+        return 10;
+    nkui_layout_item missing_item{static_cast<uint32_t>(sizeof(nkui_layout_item))};
+    if (nkui_layout_session_get_item(session, 999, &missing_item) !=
+        NKUI_ERROR_INVALID_ARGUMENT)
+        return 11;
 
     frame.pointer_x = 8.0f;
     frame.pointer_y = 8.0f;
