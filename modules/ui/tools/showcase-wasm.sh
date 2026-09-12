@@ -57,6 +57,7 @@ HAXEON_DIR="$haxeon_dir" "$module_dir/tools/update-haxeon-wasm-hxi.sh" --check
     --wasm-import-memory \
     --wasm-memory-contract="$memory_contract" \
     --export=ShowcaseWeb.main \
+    --export=ShowcaseWeb.configure \
     --export=ShowcaseWeb.frame \
     --export=ShowcaseWeb.status \
     --export=ShowcaseWeb.shutdown \

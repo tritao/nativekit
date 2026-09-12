@@ -26,6 +26,16 @@ class ShowcaseWeb {
     static var started = -1.0;
     static var rendered = 0;
     static var result = 0;
+    static var requestedWidth = 900;
+    static var requestedHeight = 650;
+
+    public static function configure(width:Int, height:Int):Int {
+        if (initialized || width <= 0 || height <= 0)
+            return 1;
+        requestedWidth = width;
+        requestedHeight = height;
+        return 0;
+    }
 
     public static function main():Int {
         try {
@@ -37,7 +47,8 @@ class ShowcaseWeb {
                 return fail(10);
             initialized = true;
 
-            var windowOptions = NativeKitOptions.window(900, 650, "NativeKit Haxeon Showcase");
+            var windowOptions = NativeKitOptions.window(requestedWidth, requestedHeight,
+                "NativeKit Haxeon Showcase");
             var createdWindow = NativeKit.nk_window_create(windowOptions);
             if (createdWindow.status != Result.Ok)
                 return fail(11);
@@ -49,8 +60,8 @@ class ShowcaseWeb {
                 NativeKitConstants.NK_SURFACE_STENCIL);
             surfaceOptions.set_api(GraphicsApi.OpenglEs);
             surfaceOptions.set_major_version(3);
-            surfaceOptions.set_width(900);
-            surfaceOptions.set_height(650);
+            surfaceOptions.set_width(requestedWidth);
+            surfaceOptions.set_height(requestedHeight);
             var createdSurface = NativeKit.nk_surface_create(window, surfaceOptions);
             if (createdSurface.status != Result.Ok)
                 return fail(12);

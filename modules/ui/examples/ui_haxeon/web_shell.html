@@ -21,6 +21,17 @@
     const query = new URLSearchParams(location.search);
     const smoke = query.has("smoke");
     const benchmark = query.has("benchmark");
+    const visual = query.has("visual");
+    const visualWidth = Math.max(1, Number(query.get("width") || 900));
+    const visualHeight = Math.max(1, Number(query.get("height") || 650));
+    if (visual) {
+      document.body.style.padding = "0";
+      canvas.width = visualWidth;
+      canvas.height = visualHeight;
+      canvas.style.width = visualWidth + "px";
+      canvas.style.height = visualHeight + "px";
+      status.style.display = "none";
+    }
     const benchmarkWarmupFrames = Math.max(0, Number(query.get("warmup") || 120));
     const benchmarkMeasuredFrames = Math.max(1, Number(query.get("frames") || 600));
     const benchmarkFrameBudgetMs = 1000 / Math.max(1, Number(query.get("fps") || 60));
@@ -205,6 +216,7 @@
         "nkui_text_layout_set_text", "nkui_text_layout_update",
         "nkui_layout_session_create", "nkui_layout_session_destroy",
         "nkui_layout_session_get_event", "nkui_layout_session_get_event_count",
+        "nkui_layout_session_get_item",
         "nkui_layout_session_render_frame", "nkui_layout_session_set_font_collection",
         "nkui_layout_session_submit"
       ]);
@@ -249,6 +261,10 @@
           let started;
           const initStarted = performance.now();
           try {
+            if (guest["ShowcaseWeb.configure"](visualWidth, visualHeight) !== 0) {
+              setResult(26, "Haxeon guest rejected the initial canvas size");
+              return;
+            }
             started = guest["ShowcaseWeb.main"]();
           } catch (error) {
             setResult(25, "Haxeon guest main failed: " + error.message);
@@ -272,9 +288,10 @@
         return;
       try {
         const frameStarted = performance.now();
-        const frameResult = guest["ShowcaseWeb.frame"](time);
+        const frameResult = guest["ShowcaseWeb.frame"](visual ? 0 : time);
         const frameFinished = performance.now();
         frameCount++;
+        document.documentElement.dataset.nativekitFrames = String(frameCount);
         if (benchmarkFirstFrameAt === null)
           benchmarkFirstFrameAt = frameFinished;
         if (frameResult < 0) {

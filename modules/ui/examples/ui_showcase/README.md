@@ -36,6 +36,14 @@ modules/ui/tools/showcase.sh --smoke-test
 and exits, while `--stats` prints the final retained-list and path-cache
 counters.
 
+The WebGL visual regression suite captures the canonical, compact, and wide
+layout sizes with software rendering:
+
+```sh
+tools/test-web-visual.sh
+tools/test-web-visual.sh --update  # intentionally refresh baselines
+```
+
 The Web host uses version 1 of a generated shared linear-memory contract:
 
 ```text

@@ -35,3 +35,6 @@ jobs:
 
       - name: Run Haxeon browser smoke test
         run: ./tools/test-web-haxeon.sh
+
+      - name: Run Haxeon visual regression tests
+        run: ./tools/test-web-visual.sh
