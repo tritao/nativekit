@@ -1,5 +1,6 @@
 import NativeKit;
 import NativeKit.EventKind;
+import NativeKit.GraphicsApi;
 import NativeKit.InitOptions;
 import NativeKit.NativeKitConstants;
 import NativeKitEvent;
@@ -128,6 +129,7 @@ class Triangle {
 		var running = true;
 		var ready = false;
 		var frames = 0;
+		var retainedTargetImage:GraphicsImageRef = null;
 		var immediateMs = 0.0;
 		var batchedMs = 0.0;
 		var commandBuffer = new SokolCommandBuffer(64);
@@ -142,6 +144,16 @@ class Triangle {
 					var madeRenderer = NativeKitSokol.nks_renderer_create(surface);
 					checked(madeRenderer.status);
 					renderer = madeRenderer.out_renderer;
+
+					var target = SokolRenderTarget.create(renderer, 32, 32);
+					target.begin();
+					target.end();
+					retainedTargetImage = target.sampledImage();
+					if (retainedTargetImage.width != 32 || retainedTargetImage.height != 32 ||
+						(retainedTargetImage.api != GraphicsApi.Opengl &&
+							retainedTargetImage.api != GraphicsApi.OpenglEs))
+						throw "offscreen target image metadata mismatch";
+					target.dispose();
 
 					buffer = createVertexBuffer(renderer);
 					indexBuffer = createIndexBuffer(renderer);
@@ -167,6 +179,7 @@ class Triangle {
 					checked(NativeKitSokol.nks_pipeline_attribute(builder, 0, 0, 0, 2));
 					checked(NativeKitSokol.nks_pipeline_attribute(builder, 1, 0, 8, 3));
 					checked(NativeKitSokol.nks_pipeline_attribute(builder, 2, 0, 20, 2));
+					checked(NativeKitSokol.nks_pipeline_depth_stencil(builder, 0));
 					checked(NativeKitSokol.nks_pipeline_index_type(builder, 1));
 					var madePipeline = NativeKitSokol.nks_pipeline_end(builder);
 					checked(madePipeline.status);
@@ -208,6 +221,9 @@ class Triangle {
 			checked(NativeKitSokol.nks_buffer_destroy(renderer, indexBuffer));
 			checked(NativeKitSokol.nks_buffer_destroy(renderer, buffer));
 			checked(NativeKitSokol.nks_renderer_destroy(renderer));
+			if (NativeKitSokol.nks_surface_destroy(surface) == 0)
+				throw "surface was destroyed while a sampled image still retained its device";
+			retainedTargetImage.dispose();
 		}
 		checked(NativeKitSokol.nks_surface_destroy(surface));
 		NativeKit.nk_window_destroy(window);

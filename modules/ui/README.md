@@ -57,8 +57,12 @@ default to `glsl410:glsl300es:hlsl5:metal_macos:metal_ios:metal_sim:wgsl:spirv_v
 The generated descriptors are therefore ready for the intended Sokol backend
 families. Select the compiled Sokol variant with `-DNK_SOKOL_BACKEND=glcore`
 or `-DNK_SOKOL_BACKEND=gles3`; the default is `glcore` on desktop Linux and
-`gles3` on Android. A build contains one Sokol backend variant at a time, so
-this is not yet simultaneous OpenGL/GLES/Vulkan support in one process.
+`gles3` on Android. A normal build contains the selected variant. On desktop
+Linux, `-DNK_BUILD_SOKOL_BACKEND_MATRIX=ON` includes both GLCore and GLES3 and
+dispatches each UI renderer according to its surface API, allowing both to be
+used in one process. Calls remain graphics-thread serialized with one active
+pass at a time. This matrix does not imply Vulkan/Metal support; those require
+their own Sokol runtime and NativeKit surface adapters.
 
 Build it with:
 

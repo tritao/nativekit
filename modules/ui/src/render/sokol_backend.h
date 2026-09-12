@@ -28,11 +28,12 @@ bool triangulate_prepared_path(const PreparedPathData &path,
 using SokolBackendStats = RenderBackendStats;
 
 /** Creates the renderer implementation compatible with a surface API. */
-std::unique_ptr<RenderBackend> create_render_backend(nk_graphics_api api);
+std::unique_ptr<RenderBackend> create_render_backend(nk_graphics_api api,
+                                                     nk_graphics_device device);
 
 class SokolBackend final : public RenderBackend {
   public:
-    explicit SokolBackend(const nk_sokol_api *api);
+    SokolBackend(const nk_sokol_api *api, nk_graphics_device device);
     ~SokolBackend() override;
     SokolBackend(const SokolBackend &) = delete;
     SokolBackend &operator=(const SokolBackend &) = delete;
@@ -67,6 +68,8 @@ class SokolBackend final : public RenderBackend {
                                  float opacity = 1.0f) override;
     bool draw_target(ResourceId target, float x, float y, float width, float height,
                      const float transform[6], float opacity) override;
+    bool draw_graphics_image(nk_graphics_image image, float x, float y, float width,
+                             float height, const float transform[6], float opacity) override;
     bool end_pass() override;
     bool commit_frame() override;
     bool end_frame() override;

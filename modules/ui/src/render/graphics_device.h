@@ -111,6 +111,7 @@ struct GraphicsDeviceResources {
 class GraphicsDevice {
   public:
     static std::shared_ptr<GraphicsDevice> acquire(const nk_sokol_api *api,
+                                                   nk_graphics_device device,
                                                    std::string *error = nullptr);
 
     ~GraphicsDevice();
@@ -120,18 +121,21 @@ class GraphicsDevice {
     bool valid() const { return valid_; }
     const GraphicsDeviceResources &resources() const { return resources_; }
     const nk_sokol_api *api() const { return api_; }
+    nk_graphics_device device() const { return device_; }
     GpuResourceRegistry &gpu_resources() { return gpu_resources_; }
     const GpuResourceRegistry &gpu_resources() const { return gpu_resources_; }
 
   private:
-    explicit GraphicsDevice(const nk_sokol_api *api);
+    GraphicsDevice(const nk_sokol_api *api, nk_graphics_device device);
 
     GraphicsDeviceResources resources_{};
     GpuResourceRegistry gpu_resources_;
     std::string error_;
     bool runtime_acquired_ = false;
+    bool device_retained_ = false;
     bool valid_ = false;
     const nk_sokol_api *api_ = nullptr;
+    nk_graphics_device device_{};
 };
 
 } // namespace nkui

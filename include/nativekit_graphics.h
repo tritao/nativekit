@@ -15,6 +15,12 @@
 extern "C" {
 #endif
 
+/** Opaque sampled image shared between NativeKit graphics producers and consumers. */
+NK_DECLARE_HANDLE(nk_graphics_image);
+
+/** Identity of a graphics context and its explicitly shared contexts. */
+NK_DECLARE_HANDLE(nk_graphics_device);
+
 /**
  * NativeKit's graphics-surface API.
  *
@@ -38,6 +44,22 @@ enum NK_ENUM(nk_graphics_api) {
     /** Vulkan presentation surface. */
     NK_GRAPHICS_VULKAN = 3
 };
+
+/** Backend-neutral metadata for a sampled graphics image. */
+typedef struct nk_graphics_image_info {
+    /** Set to sizeof(nk_graphics_image_info) before calling the query API. */
+    uint32_t struct_size;
+    /** Graphics backend that owns the image. */
+    nk_graphics_api api;
+    /** Context-sharing device that owns the image. */
+    nk_graphics_device device;
+    /** Sampled image width in pixels. */
+    int32_t width;
+    /** Sampled image height in pixels. */
+    int32_t height;
+    /** Reserved for future image metadata; set to zero. */
+    uint32_t reserved[2];
+} nk_graphics_image_info;
 
 /** Optional surface creation and presentation flags. */
 typedef uint32_t nk_surface_flags;
@@ -129,8 +151,10 @@ typedef struct nk_surface_frame_target {
     int32_t height;
     /** Backend-native target token; opaque to NativeKit callers. */
     uint64_t native_target;
+    /** Identity of the graphics context/share group current for this target. */
+    nk_graphics_device device;
     /** Reserved for future target metadata; set to zero. */
-    uint64_t reserved[2];
+    uint32_t reserved[3];
 } nk_surface_frame_target;
 
 /* ------------------------------------------------------------------------- */
@@ -198,6 +222,22 @@ NK_API nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle surface,
 /** Returns the current backend-native render target for a surface frame. */
 NK_API nk_result NK_CALL nk_surface_get_frame_target(
     nk_handle surface, nk_surface_frame_target *out_target NK_OUT);
+
+/** Retains a sampled image reference. Each successful retain requires one release. */
+NK_API nk_result NK_CALL nk_graphics_image_retain(nk_graphics_image image);
+
+/** Releases a sampled image reference; the handle becomes invalid after its final release. */
+NK_API nk_result NK_CALL nk_graphics_image_release(nk_graphics_image image);
+
+/** Queries backend, owning context/share group, and dimensions for a sampled image. */
+NK_API nk_result NK_CALL nk_graphics_image_get_info(
+    nk_graphics_image image, nk_graphics_image_info *out_info NK_OUT);
+
+/** Retains a graphics device; its root NativeKit surface cannot be destroyed until release. */
+NK_API nk_result NK_CALL nk_graphics_device_retain(nk_graphics_device device);
+
+/** Releases a graphics-device reference acquired by nk_graphics_device_retain(). */
+NK_API nk_result NK_CALL nk_graphics_device_release(nk_graphics_device device);
 
 /**
  * Resolves a graphics function for the current surface context.

@@ -10,7 +10,14 @@ cmake -S "$nativekit_dir" -B "$build_dir" -GNinja -DCMAKE_BUILD_TYPE=Debug \
     -DNK_BUILD_SOKOL=ON -DNK_BUILD_TESTS=ON -DNK_BUILD_EXAMPLES=ON
 cmake --build "$build_dir"
 "$module_dir/tools/check-hxi.sh"
-"$haxeon_dir/scripts/build-runtime.sh"
+if [[ -x "$haxeon_dir/scripts/build-runtime.sh" ]]; then
+	"$haxeon_dir/scripts/build-runtime.sh"
+elif [[ -x "$haxeon_dir/scripts/build-native.sh" ]]; then
+	(cd "$haxeon_dir" && ./scripts/build-native.sh)
+else
+	echo "test-haxeon: Haxeon runtime build script not found" >&2
+	exit 2
+fi
 
 (cd "$haxeon_dir" && .tools/haxe/haxe -cp src --run compiler.tools.HaxeonCompiler \
     --output="$build_dir/haxeon-triangle.hl" \
@@ -21,8 +28,12 @@ cmake --build "$build_dir"
     --ffi-interface="$nativekit_dir/bindings/haxe/nativekit.hxi" \
     --ffi-projection="$nativekit_dir/bindings/haxe/nativekit.hxmap" \
     --ffi-interface="$module_dir/bindings/nativekit-sokol.hxi" \
+    --ffi-projection="$module_dir/bindings/nativekit-sokol.hxmap" \
     "$module_dir/tests/haxeon/Triangle.hx" \
     "$module_dir/bindings/haxe/SokolCommandBuffer.hx" \
+    "$module_dir/bindings/haxe/SokolResult.hx" \
+    "$module_dir/bindings/haxe/SokolRenderTarget.hx" \
+    "$nativekit_dir/bindings/haxe/GraphicsImageRef.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEvent.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEventValue.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEventContext.hx" \

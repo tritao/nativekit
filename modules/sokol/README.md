@@ -5,17 +5,20 @@ context, framebuffer sizing, and presentation. `sokol_gfx.h` owns only
 rendering resources and draw submission. It deliberately does not use
 `sokol_app.h`.
 
-The Sokol variant is selected at configure time with `NK_SOKOL_BACKEND=glcore`
-or `NK_SOKOL_BACKEND=gles3`. The default is `glcore` on desktop Linux and
-`gles3` on Android. Each build uses one Sokol backend variant; simultaneous
-OpenGL/GLES/Vulkan runtime support will require separate backend runtimes.
-Sokol is pinned in `CMakeLists.txt` so that changes to its source-level API
-cannot silently change the experiment.
+`NK_SOKOL_BACKEND=glcore` or `NK_SOKOL_BACKEND=gles3` selects the default
+surface API and the single runtime used by a normal build. The default is
+`glcore` on desktop Linux and `gles3` on Android. Sokol is pinned in
+`CMakeLists.txt` so changes to its source-level API cannot silently change the
+adapter.
 
-To build the first two independent prefixed runtimes together on desktop
-Linux, enable `-DNK_BUILD_SOKOL_BACKEND_MATRIX=ON`. This builds separate
-`glcore` and `gles3` runtime artifacts and a link test; the UI renderer still
-uses the selected single-backend runtime until backend dispatch is completed.
+On desktop Linux, `-DNK_BUILD_SOKOL_BACKEND_MATRIX=ON` includes independent
+GLCore and GLES3 runtimes in the same binary. `nks_surface_create_for_api()`
+then selects a runtime from each surface's actual graphics API, so both kinds
+of renderer may coexist. Renderer calls are graphics-thread serialized and
+only one pass may be active at a time; resources remain owned by the renderer
+that created them. The backend-matrix test alternates frame submission between
+both runtime variants. Other graphics APIs (including Vulkan and Metal) still
+require their own Sokol runtimes/adapters and are not enabled by this option.
 
 Build and run from the NativeKit repository root:
 
@@ -86,8 +89,10 @@ The GTK backend renders through a `GtkGLArea`. Its framebuffer is not assumed to
 be zero: the prototype queries the current draw framebuffer after NativeKit
 makes the surface current and passes that value in Sokol's `sg_swapchain`.
 
-Next steps after this native seam is verified:
-
-1. Exercise multiple pipelines and resource sets in a larger rendered scene.
-2. Design shared-context surface creation before enabling multiple renderers.
-3. Add backend adapters independently, beginning with Vulkan or Metal.
+The generic NativeKit graphics-image API lets a producer expose a retained
+sampled image to consumers such as the UI compositor without exposing
+Sokol-specific handles. `SokolRenderTarget` is the Haxe-facing typed wrapper
+for Sokol offscreen targets; its sampled image can be imported with
+`GraphicsSurface.fromImage()` and outlives the target while retained. This is
+the intended seam for future render producers (for example a 3D viewport),
+while backend-specific resource creation stays in the Sokol module.

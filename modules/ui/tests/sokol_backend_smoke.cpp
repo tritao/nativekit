@@ -118,7 +118,14 @@ int main() {
 #ifdef NKUI_TEST_PUBLIC_SOKOL_RUNTIME
     nks_renderer public_renderer{};
 #endif
-    auto backend = std::make_unique<SokolBackend>(nk_sokol_get_api());
+    nk_graphics_device device{};
+    if (nk_surface_make_current(surface) == NK_OK) {
+        nk_surface_frame_target target{};
+        target.struct_size = sizeof(target);
+        if (nk_surface_get_frame_target(surface, &target) == NK_OK)
+            device = target.device;
+    }
+    auto backend = std::make_unique<SokolBackend>(nk_sokol_get_api(), device);
     std::unique_ptr<SokolBackend> shared_backend;
     NanoVGRecorder recorder;
     const unsigned char image_pixel[4] = {40, 120, 220, 220};
@@ -188,7 +195,7 @@ int main() {
                     // Multiple UI renderers retain one process-local Sokol
                     // device. This exercises shared setup and release without
                     // changing the single-renderer draw sequence below.
-                    shared_backend = std::make_unique<SokolBackend>(nk_sokol_get_api());
+                    shared_backend = std::make_unique<SokolBackend>(nk_sokol_get_api(), device);
                     if (!shared_backend->initialize())
                         result = 17;
                     else

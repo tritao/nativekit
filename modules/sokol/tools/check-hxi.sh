@@ -14,8 +14,13 @@ output=${1:-"$module_dir/bindings/nativekit-sokol.hxi"}
     --profile=portable-abi64 \
     --library=nativekit_sokol \
     --interface=NativeKitSokol \
+    --depends=NativeKit \
+    --dependency-hxi="$repo_dir/bindings/haxe/nativekit.hxi" \
     --include="$module_dir/include" \
     --include="$module_dir/bindings" \
+    --include="$repo_dir/include" \
+    --exclude-header="$repo_dir/include/nativekit.h" \
+    --exclude-header="$repo_dir/include/nativekit_graphics.h" \
     --source-label=modules/sokol/bindings/nativekit_sokol_import.h \
     --output="$output" \
     "$module_dir/bindings/nativekit_sokol_import.h"

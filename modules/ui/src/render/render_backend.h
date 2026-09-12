@@ -86,6 +86,17 @@ class RenderBackend {
                                          float opacity = 1.0f) = 0;
     virtual bool draw_target(ResourceId target, float x, float y, float width, float height,
                              const float transform[6], float opacity) = 0;
+    virtual bool draw_graphics_image(nk_graphics_image image, float x, float y, float width,
+                                     float height, const float transform[6], float opacity) {
+        (void)image;
+        (void)x;
+        (void)y;
+        (void)width;
+        (void)height;
+        (void)transform;
+        (void)opacity;
+        return false;
+    }
     virtual bool end_pass() = 0;
     virtual bool commit_frame() = 0;
     virtual bool end_frame() = 0;

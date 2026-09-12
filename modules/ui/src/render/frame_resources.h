@@ -2,6 +2,7 @@
 #define NATIVEKIT_UI_FRAME_RESOURCES_H
 
 #include "display_list/display_list.h"
+#include "nativekit_graphics.h"
 #include "prepare/nanovg_path.h"
 #include "prepare/skribidi_adapter.h"
 
@@ -81,10 +82,12 @@ class FrameResources {
     bool bind_image(ResourceId id, const PreparedTexture &image);
     bool bind_text(ResourceId id, const PreparedGlyphs &glyphs);
     bool bind_surface(ResourceId id, SurfaceProducer &producer);
+    bool bind_graphics_image(ResourceId id, nk_graphics_image image);
     const PreparedPathRef *path(ResourceId id) const;
     const PreparedImageRef *image(ResourceId id) const;
     const PreparedGlyphs *text(ResourceId id) const;
     SurfaceProducer *surface(ResourceId id) const;
+    const nk_graphics_image *graphics_image(ResourceId id) const;
     void reset();
 
   private:
@@ -92,6 +95,7 @@ class FrameResources {
     std::unordered_map<uint32_t, PreparedImageRef> images_;
     std::unordered_map<uint32_t, const PreparedGlyphs *> texts_;
     std::unordered_map<uint32_t, SurfaceProducer *> surfaces_;
+    std::unordered_map<uint32_t, nk_graphics_image> graphics_images_;
 };
 
 } // namespace nkui

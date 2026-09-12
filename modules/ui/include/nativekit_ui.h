@@ -5,7 +5,7 @@
 /* Dependencies                                                              */
 /* ------------------------------------------------------------------------- */
 
-#include "nativekit.h"
+#include "nativekit_graphics.h"
 
 /* ------------------------------------------------------------------------- */
 /* Export visibility                                                         */
@@ -609,6 +609,10 @@ NKUI_API nkui_result nkui_paint_create_solid(nkui_color color, nkui_resource *ou
 NKUI_API nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_image_format format,
                                        const uint8_t *pixels NKUI_IN_ARRAY(pixel_bytes),
                                        uint32_t pixel_bytes, nkui_resource *out_image NKUI_OUT);
+
+/** Imports a sampled NativeKit graphics image as a compositable Canvas surface. */
+NKUI_API nkui_result nkui_graphics_surface_create(nk_graphics_image image,
+                                                  nkui_resource *out_surface NKUI_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Renderer APIs                                                             */

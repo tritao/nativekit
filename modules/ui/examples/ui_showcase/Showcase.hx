@@ -255,7 +255,7 @@ class Showcase {
         // The renderer remains linear-filtered; this avoids enlarging a tiny
         // diagnostic bitmap until its source texels become visible.
         image = keep(checkerImage(IMAGE_TEXTURE_SIZE, IMAGE_TEXTURE_SIZE));
-        cubeSurface = keep(GraphicsSurface.createShowcaseCube());
+        cubeSurface = keep(ShowcaseCube.create());
 
         title = styled("NativeKit Graphics Lab", 600.0, 29.0);
         sidebarTitle = styled("NativeKit", 170.0, 27.0);
@@ -397,7 +397,7 @@ class Showcase {
         else if (animate)
             cubeRotation += Math.max(0.0, seconds - previousAnimationTime) * 0.8;
         previousAnimationTime = seconds;
-        cubeSurface.setShowcaseCubeRotation(cubeRotation);
+        ShowcaseCube.setRotation(cubeSurface, cubeRotation);
         setViewport(logicalWidth, logicalHeight);
         submitLayoutFrame(logicalWidth, logicalHeight);
         var replacedCaret:Null<Path> = null;

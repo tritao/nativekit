@@ -27,6 +27,7 @@ class NativeKitUIResource {
 	@:allow(DisplayList)
 	@:allow(FontCollection)
 	@:allow(GraphicsSurface)
+	@:allow(ShowcaseCube)
 	@:allow(TextLayout)
 	@:allow(LayoutSession)
 	private function nativeHandle():nkui_resource {

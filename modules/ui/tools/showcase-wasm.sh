@@ -100,6 +100,8 @@ compiler_args=(
 	--ffi-interface="$module_dir/bindings/nativekit-ui-showcase-wasm.hxi"
 	"$module_dir/examples/ui_showcase/Showcase.hx"
 	"$module_dir/examples/ui_showcase/ShowcaseWeb.hx"
+	"$module_dir/examples/ui_showcase/ShowcaseCube.hx"
+	"$repo_dir/bindings/haxe/GraphicsImageRef.hx"
 	"$module_dir/bindings/haxe/"*.hx
 	"$repo_dir/bindings/haxe/NativeKitEvent.hx"
 	"$repo_dir/bindings/haxe/NativeKitEventValue.hx"

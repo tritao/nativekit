@@ -8,6 +8,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "nativekit_graphics.h"
+
 /* ------------------------------------------------------------------------- */
 /* Export visibility                                                         */
 /* ------------------------------------------------------------------------- */
@@ -44,13 +46,18 @@ extern "C" {
 
 /**
  * NativeKit's Sokol adapter for rendering through a NativeKit OpenGL or GLES3
- * surface, selected by the build's NK_SOKOL_BACKEND option.
+ * surface. A normal build includes the configured NK_SOKOL_BACKEND; desktop
+ * Linux builds with NK_BUILD_SOKOL_BACKEND_MATRIX include both GLCore and
+ * GLES3 runtimes and dispatch according to each surface's graphics API.
  *
- * Create a NativeKit window and surface first, then create one Sokol renderer
- * for that surface. Resources belong to the renderer that created them. Each
- * frame must be enclosed by nks_begin_frame() and nks_end_frame(). The current
- * adapter supports one renderer at a time and initializes the selected
- * graphics context for the surface.
+ * Create a NativeKit window and surface first, then create a Sokol renderer
+ * for that surface. Renderer handles may coexist when their surfaces use a
+ * compatible graphics device/share group; calls and frames are serialized on
+ * the graphics thread, with at most one active frame at a time. Resources
+ * belong to the renderer that created them. Each window frame must be enclosed
+ * by nks_begin_frame() and nks_end_frame(). The selected runtime backend is
+ * derived from the surface's graphics API, not from a global build-time choice
+ * when the backend matrix is enabled.
  *
  * Functions return NKS_OK on success. On failure, call nks_last_error()
  * immediately for a diagnostic string. Handles are value types; do not free,
@@ -108,6 +115,8 @@ NKS_HANDLE(nks_image);
 NKS_HANDLE(nks_image_builder);
 /** Sampler handle returned by nks_sampler_create(). */
 NKS_HANDLE(nks_sampler);
+/** Offscreen render target owned by a renderer. */
+NKS_HANDLE(nks_render_target);
 #undef NKS_HANDLE
 #undef NKS_HANDLE_ANNOTATION
 
@@ -126,6 +135,13 @@ enum {
     NKS_ERROR_INVALID_HANDLE = -3,
 /** The operation is not valid in the current renderer or frame state. */
     NKS_ERROR_WRONG_STATE = -4,
+};
+
+/** Backend selected when the Sokol adapter was built. */
+typedef uint32_t nks_backend;
+enum {
+    NKS_BACKEND_GLCORE = 1,
+    NKS_BACKEND_GLES3 = 2,
 };
 
 /* ------------------------------------------------------------------------- */
@@ -255,6 +271,12 @@ enum {
  */
 NKS_API const char *nks_last_error(void) NKS_RETURNS_BORROWED_UTF8;
 
+/** Returns the backend selected for this renderer's NativeKit surface. */
+NKS_API nks_backend nks_query_backend(nks_renderer renderer);
+
+/** Returns the NativeKit graphics API selected for this renderer's surface. */
+NKS_API nk_graphics_api nks_query_graphics_api(nks_renderer renderer);
+
 /* ------------------------------------------------------------------------- */
 /* Surface and renderer lifecycle                                            */
 /* ------------------------------------------------------------------------- */
@@ -267,10 +289,20 @@ NKS_API const char *nks_last_error(void) NKS_RETURNS_BORROWED_UTF8;
  * `height` must be positive. The current adapter requests the configured
  * OpenGL or GLES3 surface. On NKS_OK, writes the NativeKit surface handle to
  * `out_surface`; destroy it with nks_surface_destroy() after destroying its
- * renderer.
+ * renderer. This convenience call requests the build's default API.
  */
 NKS_API nks_result nks_surface_create(nks_nativekit_handle nativekit_window, int32_t width,
                                       int32_t height, nks_nativekit_handle *out_surface NKS_OUT);
+
+/**
+ * Creates a child surface with an explicit graphics API. The matching runtime
+ * must be included in this build; with the backend matrix enabled, GLCore and
+ * GLES3 surfaces can coexist.
+ */
+NKS_API nks_result nks_surface_create_for_api(nks_nativekit_handle nativekit_window,
+                                              nk_graphics_api api, int32_t width,
+                                              int32_t height,
+                                              nks_nativekit_handle *out_surface NKS_OUT);
 
 /**
  * Requests a new size for a Sokol surface.
@@ -292,9 +324,11 @@ NKS_API nks_result nks_surface_destroy(nks_nativekit_handle surface);
 /**
  * Creates the Sokol renderer for a ready NativeKit surface.
  *
- * The current adapter supports one renderer at a time. On NKS_OK, writes a
- * renderer handle to `out_renderer`; all buffers, shaders, pipelines, images,
- * samplers, and builders created through it belong to that renderer.
+ * Multiple renderer handles may coexist for compatible graphics devices.
+ * Calls are serialized on the graphics thread, and only one renderer may have
+ * an active frame at a time. On NKS_OK, writes a renderer handle to
+ * `out_renderer`; all buffers, shaders, pipelines, images, samplers, and
+ * builders created through it belong to that renderer.
  */
 NKS_API nks_result nks_renderer_create(nks_nativekit_handle nativekit_surface,
                                        nks_renderer *out_renderer NKS_OUT);
@@ -306,6 +340,27 @@ NKS_API nks_result nks_renderer_create(nks_nativekit_handle nativekit_surface,
  * builders, so retain a resource handle only while its renderer is alive.
  */
 NKS_API nks_result nks_renderer_destroy(nks_renderer renderer);
+
+/** Creates a sampled RGBA8 offscreen target, optionally with depth/stencil storage. */
+NKS_API nks_result nks_render_target_create(nks_renderer renderer, uint32_t width,
+                                            uint32_t height, uint32_t depth_stencil,
+                                            nks_render_target *out_target NKS_OUT);
+
+/** Returns a borrowed generic image handle for the target's sampled color attachment. */
+NKS_API nks_result nks_render_target_get_image(nks_renderer renderer,
+                                               nks_render_target target,
+                                               nk_graphics_image *out_image NKS_OUT);
+
+/** Destroys a render target; imported image references remain valid until released. */
+NKS_API nks_result nks_render_target_destroy(nks_renderer renderer,
+                                             nks_render_target target);
+
+/** Begins drawing to an offscreen target without clearing or presenting the window surface. */
+NKS_API nks_result nks_begin_render_target(nks_renderer renderer, nks_render_target target,
+                                           uint32_t clear);
+
+/** Ends and commits the offscreen target pass without presenting the window surface. */
+NKS_API nks_result nks_end_render_target(nks_renderer renderer);
 
 /* ------------------------------------------------------------------------- */
 /* Buffer APIs                                                               */
@@ -466,6 +521,13 @@ NKS_API nks_result nks_pipeline_begin(nks_renderer renderer, nks_shader shader, 
 NKS_API nks_result nks_pipeline_attribute(nks_pipeline_builder builder, uint32_t location,
                                           uint32_t buffer_index, uint32_t offset,
                                           nks_vertex_format format);
+
+/**
+ * Configures depth/stencil compatibility for a pipeline. Disabled by default,
+ * matching window passes; enable only when drawing to a target created with
+ * depth/stencil storage.
+ */
+NKS_API nks_result nks_pipeline_depth_stencil(nks_pipeline_builder builder, uint32_t enabled);
 
 /**
  * Selects how the pipeline interprets an applied index buffer.

@@ -20,6 +20,7 @@ output=${1:-"$module_dir/bindings/nativekit-ui.hxi"}
     --include="$module_dir/bindings" \
     --include="$repo_dir/include" \
     --exclude-header="$repo_dir/include/nativekit.h" \
+    --exclude-header="$repo_dir/include/nativekit_graphics.h" \
     --source-label=modules/ui/bindings/nativekit_ui_import.h \
     --output="$output" \
     "$module_dir/bindings/nativekit_ui_import.h"

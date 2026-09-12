@@ -24,7 +24,7 @@ option(NK_BUILD_TESTS "Build NativeKit tests" ${BUILD_TESTING})
 option(NK_BUILD_EXAMPLES "Build NativeKit examples" ON)
 option(NK_BUILD_SOKOL "Build the experimental Sokol graphics module" OFF)
 option(NK_BUILD_SOKOL_BACKEND_MATRIX
-    "Build independent prefixed Sokol runtimes for glcore and gles3" OFF)
+    "Enable runtime GLCore/GLES3 Sokol dispatch (desktop Linux only)" OFF)
 option(NK_BUILD_UI "Build the experimental retained UI module" OFF)
 option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
@@ -95,6 +95,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/graphics_android_callback.cpp
     src/core/gamepad.cpp
     src/core/gamepad_mapping.cpp
+    src/core/graphics_image.cpp
     src/core/handle_registry.cpp
     src/core/input.cpp
     src/core/joystick.cpp
@@ -295,7 +296,8 @@ if(NK_BUILD_SOKOL OR NK_BUILD_UI)
              graphics_include_dirs)
         add_library(${target} ${NK_LIBRARY_TYPE} modules/sokol/src/runtime.c modules/sokol/src/api.c)
         target_include_directories(${target} PRIVATE
-            "${NK_VENDOR_DIR}/sokol" "${CMAKE_CURRENT_SOURCE_DIR}/modules/sokol/src"
+            "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/sokol"
+            "${CMAKE_CURRENT_SOURCE_DIR}/modules/sokol/src"
             ${graphics_include_dirs})
         target_compile_definitions(${target} PRIVATE ${compile_definition})
         if(symbol_prefix)
@@ -338,7 +340,7 @@ if(NK_BUILD_SOKOL OR NK_BUILD_UI)
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
     endif()
 endif()
-if(NK_BUILD_SOKOL)
+if(NK_BUILD_SOKOL OR NK_BUILD_UI)
     add_subdirectory(modules/sokol)
 endif()
 if(NK_BUILD_UI)

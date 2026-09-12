@@ -59,6 +59,7 @@ target_include_directories(nativekit_ui
 target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/sokol")
 target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/clay")
 target_include_directories(nativekit_ui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src")
+target_include_directories(nativekit_ui PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_include_directories(nativekit_ui PRIVATE "${NKUI_SHADER_GENERATED_DIR}")
 target_link_libraries(nativekit_ui PRIVATE NativeKit::nativekit nkui_skribidi nkui_nanovg_core
     nativekit_sokol_runtime ${NK_SOKOL_GRAPHICS_LIBRARIES})
@@ -140,11 +141,13 @@ if(NK_BUILD_TESTS)
         src/prepare/system_fonts.cpp
         src/render/graphics_device.cpp
         src/render/sokol_backend.cpp)
+    target_compile_features(nativekit_ui_sokol_backend_mesh_test PRIVATE cxx_std_20)
     target_include_directories(nativekit_ui_sokol_backend_mesh_test PRIVATE
-        src "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}"
+        src "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/src"
+        "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src" ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
     target_link_libraries(nativekit_ui_sokol_backend_mesh_test PRIVATE
-        nkui_nanovg_core nkui_skribidi nativekit_sokol_runtime)
+        NativeKit::nativekit nkui_nanovg_core nkui_skribidi nativekit_sokol_runtime)
     add_test(NAME nativekit_ui_sokol_backend_mesh COMMAND nativekit_ui_sokol_backend_mesh_test)
     add_executable(nativekit_ui_frame_resources_test
         tests/frame_resources.cpp
@@ -152,7 +155,8 @@ if(NK_BUILD_TESTS)
         src/prepare/nanovg_recorder.cpp
         src/prepare/nanovg_path.cpp
         src/render/frame_resources.cpp)
-    target_include_directories(nativekit_ui_frame_resources_test PRIVATE src)
+    target_include_directories(nativekit_ui_frame_resources_test PRIVATE
+        src "${PROJECT_SOURCE_DIR}/include")
     target_link_libraries(nativekit_ui_frame_resources_test PRIVATE nkui_nanovg_core)
     add_test(NAME nativekit_ui_frame_resources COMMAND nativekit_ui_frame_resources_test)
     add_executable(nativekit_ui_layout_engine_test
@@ -217,7 +221,8 @@ if(NK_BUILD_TESTS)
             "${NKUI_COMPOSITE_SHADER}"
             "${NKUI_SURFACE_MESH_SHADER}")
         target_include_directories(nativekit_ui_sokol_backend_smoke_test PRIVATE
-            src "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}"
+            src "${PROJECT_SOURCE_DIR}/src" "${NK_VENDOR_DIR}/sokol"
+            "${NKUI_SHADER_GENERATED_DIR}"
             "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src")
         target_compile_definitions(nativekit_ui_sokol_backend_smoke_test PRIVATE
             NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf"
@@ -418,43 +423,45 @@ if(NK_BUILD_EXAMPLES)
             add_dependencies(nativekit_ui_haxeon nativekit_ui_haxeon_assets)
         endif()
     endif()
-    if(NK_BUILD_SOKOL_BACKEND_MATRIX AND NK_BUILD_TESTS)
-        add_executable(nativekit_ui_sokol_backend_matrix_smoke_test
-            tests/sokol_backend_matrix_smoke.cpp
-            src/display_list/display_list.cpp
-            src/prepare/nanovg_recorder.cpp
-            src/prepare/nanovg_path.cpp
-            src/prepare/skribidi_adapter.cpp
-            src/prepare/system_fonts.cpp
-            src/render/graphics_device.cpp
-            src/render/sokol_backend.cpp
-            "${NKUI_TOOLCHAIN_PROBE_SHADER}"
-            "${NKUI_PATH_SHADER}"
-            "${NKUI_SOLID_SHADER}"
-            "${NKUI_TEXT_SHADER}"
-            "${NKUI_COMPOSITE_SHADER}")
-        target_include_directories(nativekit_ui_sokol_backend_matrix_smoke_test PRIVATE
-            src "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/sokol"
-            "${NKUI_SHADER_GENERATED_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src"
-            ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
-        target_compile_definitions(nativekit_ui_sokol_backend_matrix_smoke_test PRIVATE
-            NKUI_SOKOL_RUNTIME_MATRIX=1)
-        target_link_libraries(nativekit_ui_sokol_backend_matrix_smoke_test PRIVATE
-            NativeKit::nativekit nkui_nanovg_core nkui_skribidi
-            nativekit_sokol_runtime_glcore nativekit_sokol_runtime_gles3
-            OpenGL::GL "${NK_SOKOL_MATRIX_GLES3_LIBRARY}")
-        find_program(NKUI_MATRIX_XVFB_RUN xvfb-run)
-        if(NKUI_MATRIX_XVFB_RUN)
-            add_test(NAME nativekit_ui_sokol_backend_matrix_smoke
-                COMMAND ${NKUI_MATRIX_XVFB_RUN} -a
-                    $<TARGET_FILE:nativekit_ui_sokol_backend_matrix_smoke_test>)
-            set_tests_properties(nativekit_ui_sokol_backend_matrix_smoke PROPERTIES
-                LABELS "graphics;ui;sokol;matrix"
-                TIMEOUT 15
-                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
-        endif()
-    endif()
+endif()
 
+if(NK_BUILD_SOKOL_BACKEND_MATRIX AND NK_BUILD_TESTS)
+    add_executable(nativekit_ui_sokol_backend_matrix_smoke_test
+        tests/sokol_backend_matrix_smoke.cpp
+        src/display_list/display_list.cpp
+        src/prepare/nanovg_recorder.cpp
+        src/prepare/nanovg_path.cpp
+        src/prepare/skribidi_adapter.cpp
+        src/prepare/system_fonts.cpp
+        src/render/graphics_device.cpp
+        src/render/sokol_backend.cpp
+        "${NKUI_TOOLCHAIN_PROBE_SHADER}"
+        "${NKUI_PATH_SHADER}"
+        "${NKUI_SOLID_SHADER}"
+        "${NKUI_TEXT_SHADER}"
+        "${NKUI_COMPOSITE_SHADER}"
+        "${NKUI_SURFACE_MESH_SHADER}")
+    target_compile_features(nativekit_ui_sokol_backend_matrix_smoke_test PRIVATE cxx_std_20)
+    target_include_directories(nativekit_ui_sokol_backend_matrix_smoke_test PRIVATE
+        src "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/src"
+        "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src" ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
+    target_compile_definitions(nativekit_ui_sokol_backend_matrix_smoke_test PRIVATE
+        NKUI_SOKOL_RUNTIME_MATRIX=1)
+    target_link_libraries(nativekit_ui_sokol_backend_matrix_smoke_test PRIVATE
+        NativeKit::nativekit NativeKit::sokol nkui_nanovg_core nkui_skribidi
+        nativekit_sokol_runtime_glcore nativekit_sokol_runtime_gles3
+        OpenGL::GL "${NK_SOKOL_MATRIX_GLES3_LIBRARY}")
+    find_program(NKUI_MATRIX_XVFB_RUN xvfb-run)
+    if(NKUI_MATRIX_XVFB_RUN)
+        add_test(NAME nativekit_ui_sokol_backend_matrix_smoke
+            COMMAND ${NKUI_MATRIX_XVFB_RUN} -a
+                $<TARGET_FILE:nativekit_ui_sokol_backend_matrix_smoke_test>)
+        set_tests_properties(nativekit_ui_sokol_backend_matrix_smoke PROPERTIES
+            LABELS "graphics;ui;sokol;matrix"
+            TIMEOUT 15
+            ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+    endif()
 endif()
 
 if(NOT EMSCRIPTEN)

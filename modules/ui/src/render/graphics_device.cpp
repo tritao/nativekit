@@ -16,7 +16,21 @@ namespace nkui {
 namespace {
 
 std::mutex device_mutex;
-std::unordered_map<const nk_sokol_api *, std::weak_ptr<GraphicsDevice>> shared_devices;
+struct GraphicsDeviceKey {
+    const nk_sokol_api *api = nullptr;
+    uint32_t device = 0;
+    bool operator==(const GraphicsDeviceKey &other) const {
+        return api == other.api && device == other.device;
+    }
+};
+struct GraphicsDeviceKeyHash {
+    size_t operator()(const GraphicsDeviceKey &key) const {
+        return std::hash<const nk_sokol_api *>{}(key.api) ^
+               (static_cast<size_t>(key.device) * 0x9E3779B1u);
+    }
+};
+std::unordered_map<GraphicsDeviceKey, std::weak_ptr<GraphicsDevice>, GraphicsDeviceKeyHash>
+    shared_devices;
 
 constexpr uint32_t kHandleSlotMask = 0xFFFFu;
 constexpr uint32_t kHandleGenerationMask = 0x0FFFu;
@@ -503,16 +517,24 @@ void GpuResourceRegistry::clear() {
     }
 }
 
-GraphicsDevice::GraphicsDevice(const nk_sokol_api *api)
-    : gpu_resources_(api), api_(api) {
-    if (!api_) {
+GraphicsDevice::GraphicsDevice(const nk_sokol_api *api, nk_graphics_device device)
+    : gpu_resources_(api), api_(api), device_(device) {
+    if (!api_ || !device_.id) {
         error_ = "Sokol graphics API is unavailable";
         return;
     }
+    if (nk_surface_make_current(device_.id) != NK_OK ||
+        nk_graphics_device_retain(device_) != NK_OK) {
+        error_ = "NativeKit graphics device is unavailable";
+        return;
+    }
+    device_retained_ = true;
     sg_desc desc{};
     desc.environment.defaults = {SG_PIXELFORMAT_RGBA8, SG_PIXELFORMAT_DEPTH_STENCIL, 1};
-    if (!api_->runtime_acquire(&desc)) {
+    if (!api_->runtime_acquire(&desc, device_)) {
         error_ = "Sokol graphics runtime acquisition failed";
+        nk_graphics_device_release(device_);
+        device_retained_ = false;
         return;
     }
     runtime_acquired_ = true;
@@ -570,6 +592,8 @@ GraphicsDevice::GraphicsDevice(const nk_sokol_api *api)
         destroy_resources(resources_, api_);
         api_->runtime_release();
         runtime_acquired_ = false;
+        nk_graphics_device_release(device_);
+        device_retained_ = false;
         return;
     }
     valid_ = true;
@@ -578,30 +602,38 @@ GraphicsDevice::GraphicsDevice(const nk_sokol_api *api)
 GraphicsDevice::~GraphicsDevice() {
     if (!runtime_acquired_)
         return;
+    nk_surface_make_current(device_.id);
     std::lock_guard<std::mutex> lock(device_mutex);
     gpu_resources_.clear();
     destroy_resources(resources_, api_);
     api_->runtime_release();
     runtime_acquired_ = false;
+    if (device_retained_) {
+        nk_graphics_device_release(device_);
+        device_retained_ = false;
+    }
 }
 
 std::shared_ptr<GraphicsDevice> GraphicsDevice::acquire(const nk_sokol_api *api,
+                                                        nk_graphics_device device,
                                                         std::string *error) {
     std::lock_guard<std::mutex> lock(device_mutex);
-    if (!api)
+    if (!api || !device.id)
         return nullptr;
-    auto &shared_device = shared_devices[api];
+    const GraphicsDeviceKey key{api, device.id};
+    auto &shared_device = shared_devices[key];
     if (auto device = shared_device.lock())
         return device;
-    auto device = std::shared_ptr<GraphicsDevice>(new GraphicsDevice(api));
-    if (!device->valid_) {
+    auto graphics_device = std::shared_ptr<GraphicsDevice>(new GraphicsDevice(api, device));
+    if (!graphics_device->valid_) {
         if (error)
-            *error = device->error_.empty() ? "Sokol graphics device initialization failed"
-                                             : device->error_;
+            *error = graphics_device->error_.empty()
+                         ? "Sokol graphics device initialization failed"
+                         : graphics_device->error_;
         return nullptr;
     }
-    shared_device = device;
-    return device;
+    shared_device = graphics_device;
+    return graphics_device;
 }
 
 } // namespace nkui

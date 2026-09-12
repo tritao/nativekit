@@ -2099,6 +2099,26 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	extern fn nk_get_capabilities() -> nk_capabilities;
 	/**
+	 * Releases a graphics-device reference acquired by nk_graphics_device_retain().
+	 */
+	extern fn nk_graphics_device_release(device: nk_graphics_device) -> nk_result;
+	/**
+	 * Retains a graphics device; its root NativeKit surface cannot be destroyed until release.
+	 */
+	extern fn nk_graphics_device_retain(device: nk_graphics_device) -> nk_result;
+	/**
+	 * Queries backend, owning context/share group, and dimensions for a sampled image.
+	 */
+	extern fn nk_graphics_image_get_info(image: nk_graphics_image, out_info: ptr<nk_graphics_image_info> @out) -> nk_result;
+	/**
+	 * Releases a sampled image reference; the handle becomes invalid after its final release.
+	 */
+	extern fn nk_graphics_image_release(image: nk_graphics_image) -> nk_result;
+	/**
+	 * Retains a sampled image reference. Each successful retain requires one release.
+	 */
+	extern fn nk_graphics_image_retain(image: nk_graphics_image) -> nk_result;
+	/**
 	 * Initializes NativeKit on the calling thread. That thread becomes the UI
 	 * thread until nk_shutdown(). Exactly one initialization may be active.
 	 *
@@ -3137,6 +3157,35 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		reserved: array<u64, 4> @offset(48);
 	}
 	/**
+	 * Backend-neutral metadata for a sampled graphics image.
+	 */
+	struct nk_graphics_image_info @layout(28, 4) {
+		/**
+		 * Set to sizeof(nk_graphics_image_info) before calling the query API.
+		 */
+		struct_size: u32 @offset(0);
+		/**
+		 * Graphics backend that owns the image.
+		 */
+		api: nk_graphics_api @offset(4);
+		/**
+		 * Context-sharing device that owns the image.
+		 */
+		device: nk_graphics_device @offset(8);
+		/**
+		 * Sampled image width in pixels.
+		 */
+		width: i32 @offset(12);
+		/**
+		 * Sampled image height in pixels.
+		 */
+		height: i32 @offset(16);
+		/**
+		 * Reserved for future image metadata; set to zero.
+		 */
+		reserved: array<u32, 2> @offset(20);
+	}
+	/**
 	 * Options used to start one NativeKit runtime generation.
 	 */
 	struct nk_init_options @layout(16, 4) {
@@ -3686,9 +3735,13 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 */
 		native_target: u64 @offset(16);
 		/**
+		 * Identity of the graphics context/share group current for this target.
+		 */
+		device: nk_graphics_device @offset(24);
+		/**
 		 * Reserved for future target metadata; set to zero.
 		 */
-		reserved: array<u64, 2> @offset(24);
+		reserved: array<u32, 3> @offset(28);
 	}
 	/**
 	 * Options used to create a NativeKit graphics surface.
@@ -4241,6 +4294,14 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * true; NativeKit normalizes boolean outputs to zero or one.
 	 */
 	type nk_bool = u32;
+	/**
+	 * Identity of a graphics context and its explicitly shared contexts.
+	 */
+	handle nk_graphics_device : u32;
+	/**
+	 * Opaque sampled image shared between NativeKit graphics producers and consumers.
+	 */
+	handle nk_graphics_image : u32;
 	/**
 	 * Function-pointer type returned by nk_surface_get_proc_address().
 	 */

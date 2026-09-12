@@ -14,6 +14,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/graphics_image_registry.h"
 #include "core/gamepad_events.hpp"
 #include "core/runtime.hpp"
 #include "android/nativekit_android_internal.hpp"
@@ -678,6 +679,14 @@ nk_result destroy_surface(nk_handle handle) {
     auto resource = found->second;
     if (resource->share_dependents) {
         nk::core::set_error("graphics surface is still shared by another surface");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    auto device_surface = resource.get();
+    while (device_surface->shared_surface)
+        device_surface = device_surface->shared_surface.get();
+    if (device_surface == resource.get() &&
+        nk_core_graphics_device_has_references(nk_graphics_device{resource->handle})) {
+        nk::core::set_error("graphics surface still owns retained sampled images");
         return NK_ERROR_INVALID_REQUEST;
     }
     resource->destroying = true;
@@ -2630,6 +2639,10 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
     out_target->width = width;
     out_target->height = height;
     out_target->native_target = static_cast<uint64_t>(static_cast<uint32_t>(framebuffer));
+    auto device_surface = resource.get();
+    while (device_surface->shared_surface)
+        device_surface = device_surface->shared_surface.get();
+    out_target->device.id = device_surface->handle;
     return NK_OK;
 }
 

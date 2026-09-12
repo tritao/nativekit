@@ -1,6 +1,7 @@
 {
   "interface": "NativeKitUI",
   "typeNames": {
-    "nk_handle": "NativeKit.Handle"
+    "nk_handle": "NativeKit.Handle",
+    "nk_graphics_image": "NativeKit.GraphicsImage"
   }
 }

@@ -2,6 +2,7 @@
 
 #include "frame_resources.h"
 #include "graphics_device.h"
+#include "core/graphics_image_registry.h"
 
 #include <algorithm>
 #include <array>
@@ -68,6 +69,7 @@ struct SokolBackend::State {
     SokolBackendStats stats{};
     std::string error;
     const nk_sokol_api *api = nullptr;
+    nk_graphics_device device_identity{};
     std::shared_ptr<GraphicsDevice> device;
     int width = 0;
     int height = 0;
@@ -538,12 +540,15 @@ bool triangulate_prepared_path(const PreparedPathData &path,
     return !mesh.indices.empty();
 }
 
-SokolBackend::SokolBackend(const nk_sokol_api *api) : state_(new State) {
+SokolBackend::SokolBackend(const nk_sokol_api *api, nk_graphics_device device)
+    : state_(new State) {
     state_->api = api;
+    state_->device_identity = device;
 }
 
 SokolBackend::~SokolBackend() {
     if (state_->device) {
+        nk_surface_make_current(state_->device_identity.id);
         auto &gpu = state_->device->gpu_resources();
         for (auto &[owner, images] : state_->paint_images) {
             (void)owner;
@@ -583,7 +588,8 @@ bool SokolBackend::initialize() {
     if (state_->initialized)
         return fail(*state_, "Sokol backend is already initialized");
     std::string device_error;
-    state_->device = GraphicsDevice::acquire(state_->api, &device_error);
+    state_->device = GraphicsDevice::acquire(state_->api, state_->device_identity,
+                                             &device_error);
     if (!state_->device)
         return fail(*state_, device_error.c_str());
     auto &gpu = state_->device->gpu_resources();
@@ -621,7 +627,8 @@ bool SokolBackend::begin_window_pass(int width, int height,
     const nk_graphics_api supported_api =
         state_->api->gfx->query_backend() == SG_BACKEND_GLES3 ? NK_GRAPHICS_OPENGL_ES
                                                                : NK_GRAPHICS_OPENGL;
-    if (target.struct_size < sizeof(target) || target.api != supported_api)
+    if (target.struct_size < sizeof(target) || target.api != supported_api ||
+        target.device.id != state_->device_identity.id)
         return fail(*state_, "unsupported window target");
     state_->width = width;
     state_->height = height;
@@ -1033,6 +1040,49 @@ bool SokolBackend::draw_target(ResourceId target_id, float x, float y, float wid
                      state_->composite_vertices);
 }
 
+bool SokolBackend::draw_graphics_image(nk_graphics_image image, float x, float y, float width,
+                                       float height, const float transform[6], float opacity) {
+    if (!state_->in_pass || !image.id || !transform || opacity < 0.0f || opacity > 1.0f ||
+        !state_->api->external_image_resolve)
+        return fail(*state_, "invalid external graphics-image composite");
+    for (int index = 0; index < 6; ++index)
+        if (!std::isfinite(transform[index]))
+            return fail(*state_, "external graphics-image transform is not finite");
+    sg_view view{};
+    int32_t image_width = 0;
+    int32_t image_height = 0;
+    nk_graphics_image_info info{};
+    info.struct_size = sizeof(info);
+    const void *runtime = nullptr;
+    uint64_t backend_image = 0;
+    const nk_graphics_api supported_api =
+        state_->api->gfx->query_backend() == SG_BACKEND_GLES3 ? NK_GRAPHICS_OPENGL_ES
+                                                               : NK_GRAPHICS_OPENGL;
+    if (nk_core_graphics_image_get_backend(image, &info, &runtime, &backend_image) != NK_OK ||
+        runtime != state_->api || info.api != supported_api ||
+        info.device.id != state_->device_identity.id || !backend_image ||
+        !state_->api->external_image_resolve(static_cast<uint32_t>(backend_image), &view,
+                                             &image_width, &image_height))
+        return fail(*state_, "external image belongs to another runtime or graphics device");
+    if (width <= 0.0f)
+        width = static_cast<float>(image_width);
+    if (height <= 0.0f)
+        height = static_cast<float>(image_height);
+    const auto point = [transform](float px, float py, float u, float v) {
+        return TextureVertex{px * transform[0] + py * transform[2] + transform[4],
+                             px * transform[1] + py * transform[3] + transform[5], u, v};
+    };
+    const std::vector<TextureVertex> vertices = {
+        point(x, y, 0.0f, 1.0f), point(x + width, y, 1.0f, 1.0f),
+        point(x + width, y + height, 1.0f, 0.0f), point(x, y + height, 0.0f, 0.0f)};
+    const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
+    const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
+    return draw_mesh(*state_, state_->device->resources().composite_pipeline, vertices, indices,
+                     tint.data(), sizeof(tint), view,
+                     state_->device->resources().surface_sampler,
+                     state_->composite_vertices);
+}
+
 bool SokolBackend::end_pass() {
     if (!state_->in_pass)
         return fail(*state_, "no pass to end");
@@ -1060,7 +1110,10 @@ const char *SokolBackend::last_error() const {
     return state_->error.c_str();
 }
 
-std::unique_ptr<RenderBackend> create_render_backend(nk_graphics_api api) {
+std::unique_ptr<RenderBackend> create_render_backend(nk_graphics_api api,
+                                                     nk_graphics_device device) {
+    if (!device.id)
+        return nullptr;
 #if defined(NKUI_SOKOL_RUNTIME_MATRIX)
     const nk_sokol_api *sokol_api = nullptr;
     switch (api) {
@@ -1090,7 +1143,7 @@ std::unique_ptr<RenderBackend> create_render_backend(nk_graphics_api api) {
     #endif
     const nk_sokol_api *sokol_api = nk_sokol_get_api();
 #endif
-    return sokol_api ? std::make_unique<SokolBackend>(sokol_api) : nullptr;
+    return sokol_api ? std::make_unique<SokolBackend>(sokol_api, device) : nullptr;
 }
 
 } // namespace nkui

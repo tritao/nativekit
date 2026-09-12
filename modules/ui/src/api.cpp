@@ -72,6 +72,7 @@ struct ResourceSlot {
     bool system_fallbacks = false;
     std::unique_ptr<nkui::SkribidiAdapter> text;
     std::unique_ptr<nkui::SurfaceProducer> surface;
+    nk_graphics_image graphics_image{};
     nkui::PreparedGlyphs text_glyphs;
     std::unordered_map<int32_t, nkui::PreparedGlyphs> scaled_text_glyphs;
     float text_width = 0.0f;
@@ -123,6 +124,7 @@ struct PreparedPathCacheEntry {
 struct RendererSlot {
     std::unique_ptr<nkui::RenderBackend> backend;
     nk_graphics_api backend_api = 0;
+    nk_graphics_device backend_device{};
     bool active = false;
     nkui::Compositor compositor;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
@@ -697,6 +699,10 @@ nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
 }
 
 void release_resource_slot(ResourceSlot &slot) {
+    if (slot.graphics_image.id) {
+        nk_graphics_image_release(slot.graphics_image);
+        slot.graphics_image = {};
+    }
     slot.surface.reset();
     slot.text.reset();
     slot.text_glyphs = {};
@@ -1374,6 +1380,29 @@ extern "C" nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_i
     return NKUI_OK;
 }
 
+extern "C" nkui_result nkui_graphics_surface_create(nk_graphics_image image,
+                                                     nkui_resource *out_surface) {
+    if (!out_surface || !image.id)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    out_surface->id = 0;
+    nk_graphics_image_info info{};
+    info.struct_size = sizeof(info);
+    if (nk_graphics_image_get_info(image, &info) != NK_OK || !info.device.id || info.width <= 0 ||
+        info.height <= 0)
+        return NKUI_ERROR_INVALID_HANDLE;
+    if (nk_graphics_image_retain(image) != NK_OK)
+        return NKUI_ERROR_INVALID_HANDLE;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    ResourceSlot *slot = nullptr;
+    const auto result = allocate_resource(nkui::ResourceKind::RenderTarget, out_surface, &slot);
+    if (result != NKUI_OK) {
+        nk_graphics_image_release(image);
+        return result;
+    }
+    slot->graphics_image = image;
+    return NKUI_OK;
+}
+
 extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
     if (!out_renderer)
         return NKUI_ERROR_INVALID_ARGUMENT;
@@ -1385,6 +1414,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
             if (!slot.active) {
                 slot.backend.reset();
                 slot.backend_api = 0;
+                slot.backend_device = {};
                 slot.active = true;
                 slot.stats = {};
                 out_renderer->id = make_handle(slot.generation, static_cast<uint16_t>(index + 1));
@@ -1411,6 +1441,7 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
         return NKUI_ERROR_INVALID_HANDLE;
     slot->backend.reset();
     slot->backend_api = 0;
+    slot->backend_device = {};
     slot->active = false;
     clear_path_cache(*slot);
     slot->stats = {};
@@ -1455,12 +1486,14 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
     auto *list_slot = resolve(list);
     if (!renderer_slot || !list_slot)
         return NKUI_ERROR_INVALID_HANDLE;
-    if (!renderer_slot->backend || renderer_slot->backend_api != frame_target.api) {
-        auto backend = nkui::create_render_backend(frame_target.api);
+    if (!renderer_slot->backend || renderer_slot->backend_api != frame_target.api ||
+        renderer_slot->backend_device.id != frame_target.device.id) {
+        auto backend = nkui::create_render_backend(frame_target.api, frame_target.device);
         if (!backend)
             return NKUI_ERROR_RENDERING;
         renderer_slot->backend = std::move(backend);
         renderer_slot->backend_api = frame_target.api;
+        renderer_slot->backend_device = frame_target.device;
     }
     const nkui::ResourceId main_target =
         nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);
@@ -1622,11 +1655,20 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                 if (target_slot < 0x8000u) {
                     auto *surface_slot = resolve_retained(
                         nkui_resource{command.resource.value}, nkui::ResourceKind::RenderTarget);
-                    if (!surface_slot || !surface_slot->surface ||
-                        !frame_resources.bind_surface(command.resource, *surface_slot->surface)) {
+                    if (!surface_slot) {
                         valid = false;
                         break;
                     }
+                    if (surface_slot->graphics_image.id) {
+                        valid = frame_resources.bind_graphics_image(command.resource,
+                                                                    surface_slot->graphics_image);
+                    } else {
+                        valid = surface_slot->surface &&
+                                frame_resources.bind_surface(command.resource,
+                                                             *surface_slot->surface);
+                    }
+                    if (!valid)
+                        break;
                 }
                 if (command.width > 0.0f && command.height > 0.0f) {
                     command.transform = device_transform(command.transform,
@@ -1684,12 +1726,14 @@ extern "C" nkui_result nkui_layout_session_render_frame(
     auto *session_state = resolve(session);
     if (!renderer_slot || !session_state || !session_state->submitted)
         return NKUI_ERROR_INVALID_HANDLE;
-    if (!renderer_slot->backend || renderer_slot->backend_api != frame_target.api) {
-        auto backend = nkui::create_render_backend(frame_target.api);
+    if (!renderer_slot->backend || renderer_slot->backend_api != frame_target.api ||
+        renderer_slot->backend_device.id != frame_target.device.id) {
+        auto backend = nkui::create_render_backend(frame_target.api, frame_target.device);
         if (!backend)
             return NKUI_ERROR_RENDERING;
         renderer_slot->backend = std::move(backend);
         renderer_slot->backend_api = frame_target.api;
+        renderer_slot->backend_device = frame_target.device;
     }
     const nkui::ResourceId main_target =
         nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);

@@ -1,6 +1,7 @@
 #include "nativekit_sokol.h"
 #include "nativekit_graphics.h"
-#include "nativekit_sokol_runtime.h"
+#include "nativekit_sokol_api.h"
+#include "core/graphics_image_registry.h"
 
 #include "sokol_gfx.h"
 
@@ -22,7 +23,8 @@ enum Kind : uint32_t {
     UniformBuilderKind,
     ImageKind,
     ImageBuilderKind,
-    SamplerKind
+    SamplerKind,
+    RenderTargetKind
 };
 using Handle = uint32_t;
 
@@ -58,8 +60,13 @@ template <class T, Kind K, size_t N> struct Pool {
 
 struct Renderer {
     nks_nativekit_handle surface = 0;
+    const nk_sokol_api *api = nullptr;
+    nk_graphics_api graphics_api = 0;
+    nk_graphics_device device{};
     sg_bindings bindings{};
     bool in_frame = false;
+    bool in_pass = false;
+    Handle active_target = 0;
 };
 struct Buffer {
     Handle owner = 0;
@@ -112,6 +119,16 @@ struct Sampler {
     Handle owner = 0;
     sg_sampler object{};
 };
+struct RenderTarget {
+    Handle owner = 0;
+    nk_graphics_image image{};
+    sg_image color{};
+    sg_view color_attachment{};
+    sg_image depth{};
+    sg_view depth_attachment{};
+    int32_t width = 0;
+    int32_t height = 0;
+};
 
 static Pool<Renderer, RendererKind, 8> renderer_pool;
 static Pool<Buffer, BufferKind, 256> buffer_pool;
@@ -124,9 +141,105 @@ static Pool<UniformBuilder, UniformBuilderKind, 16> uniform_builder_pool;
 static Pool<Image, ImageKind, 256> image_pool;
 static Pool<ImageBuilder, ImageBuilderKind, 16> image_builder_pool;
 static Pool<Sampler, SamplerKind, 256> sampler_pool;
-static uint32_t renderer_count = 0;
+static Pool<RenderTarget, RenderTargetKind, 128> render_target_pool;
 static Handle active_renderer = 0;
+static Handle selected_renderer = 0;
+static const nk_sokol_api *selected_api = nullptr;
 static char error_message[256];
+static nks_result fail(nks_result code, const char *format, ...);
+
+static const sg_api *runtime_gfx() {
+    return selected_api ? selected_api->gfx : nullptr;
+}
+
+static nks_result activate_renderer(Handle handle) {
+    auto *slot = renderer_pool.get(handle);
+    if (!slot)
+        return fail(NKS_ERROR_INVALID_HANDLE, "stale renderer");
+    if (active_renderer && active_renderer != handle)
+        return fail(NKS_ERROR_WRONG_STATE, "another renderer has an active frame");
+    if (!slot->value.in_frame && nk_surface_make_current(slot->value.surface) != NK_OK)
+        return fail(NKS_ERROR_UNKNOWN, "current: %s", nk_last_error());
+    selected_renderer = handle;
+    selected_api = slot->value.api;
+    return NKS_OK;
+}
+
+#define sg_apply_bindings(...) (runtime_gfx()->apply_bindings(__VA_ARGS__))
+#define sg_apply_pipeline(...) (runtime_gfx()->apply_pipeline(__VA_ARGS__))
+#define sg_apply_uniforms(...) (runtime_gfx()->apply_uniforms(__VA_ARGS__))
+#define sg_begin_pass(...) (runtime_gfx()->begin_pass(__VA_ARGS__))
+#define sg_commit(...) (runtime_gfx()->commit(__VA_ARGS__))
+#define sg_destroy_buffer(...) (runtime_gfx()->destroy_buffer(__VA_ARGS__))
+#define sg_destroy_image(...) (runtime_gfx()->destroy_image(__VA_ARGS__))
+#define sg_destroy_pipeline(...) (runtime_gfx()->destroy_pipeline(__VA_ARGS__))
+#define sg_destroy_sampler(...) (runtime_gfx()->destroy_sampler(__VA_ARGS__))
+#define sg_destroy_shader(...) (runtime_gfx()->destroy_shader(__VA_ARGS__))
+#define sg_destroy_view(...) (runtime_gfx()->destroy_view(__VA_ARGS__))
+#define sg_draw(...) (runtime_gfx()->draw(__VA_ARGS__))
+#define sg_end_pass(...) (runtime_gfx()->end_pass(__VA_ARGS__))
+#define sg_make_buffer(...) (runtime_gfx()->make_buffer(__VA_ARGS__))
+#define sg_make_image(...) (runtime_gfx()->make_image(__VA_ARGS__))
+#define sg_make_pipeline(...) (runtime_gfx()->make_pipeline(__VA_ARGS__))
+#define sg_make_sampler(...) (runtime_gfx()->make_sampler(__VA_ARGS__))
+#define sg_make_shader(...) (runtime_gfx()->make_shader(__VA_ARGS__))
+#define sg_make_view(...) (runtime_gfx()->make_view(__VA_ARGS__))
+#define sg_query_buffer_state(...) (runtime_gfx()->query_buffer_state(__VA_ARGS__))
+#define sg_query_image_state(...) (runtime_gfx()->query_image_state(__VA_ARGS__))
+#define sg_query_pipeline_state(...) (runtime_gfx()->query_pipeline_state(__VA_ARGS__))
+#define sg_query_sampler_state(...) (runtime_gfx()->query_sampler_state(__VA_ARGS__))
+#define sg_query_shader_state(...) (runtime_gfx()->query_shader_state(__VA_ARGS__))
+#define sg_query_view_state(...) (runtime_gfx()->query_view_state(__VA_ARGS__))
+#define sg_reset_state_cache(...) (runtime_gfx()->reset_state_cache(__VA_ARGS__))
+
+static const nk_sokol_api *api_for_graphics_api(nk_graphics_api api) {
+#if defined(NK_SOKOL_RUNTIME_MATRIX)
+    switch (api) {
+    case NK_GRAPHICS_OPENGL:
+        return nk_sokol_glcore_get_api();
+    case NK_GRAPHICS_OPENGL_ES:
+        return nk_sokol_gles3_get_api();
+    default:
+        return nullptr;
+    }
+#else
+    const nk_sokol_api *runtime = nk_sokol_get_api();
+    if (!runtime || !runtime->gfx)
+        return nullptr;
+    #if defined(NK_SOKOL_BACKEND_GLES3)
+        #if defined(__EMSCRIPTEN__)
+    return (api == NK_GRAPHICS_OPENGL || api == NK_GRAPHICS_OPENGL_ES) ? runtime : nullptr;
+        #else
+    return api == NK_GRAPHICS_OPENGL_ES ? runtime : nullptr;
+        #endif
+    #else
+    return api == NK_GRAPHICS_OPENGL ? runtime : nullptr;
+    #endif
+#endif
+}
+
+static nks_backend convert_backend(const nk_sokol_api *api) {
+    if (!api || !api->gfx)
+        return 0;
+    switch (api->gfx->query_backend()) {
+    case SG_BACKEND_GLCORE:
+        return NKS_BACKEND_GLCORE;
+    case SG_BACKEND_GLES3:
+        return NKS_BACKEND_GLES3;
+    default:
+        return 0;
+    }
+}
+
+static int release_graphics_image(const void *runtime, nk_graphics_device device,
+                                  uint64_t backend_image) {
+    auto *api = static_cast<const nk_sokol_api *>(runtime);
+    if (!api || !api->external_image_release || !device.id || !backend_image ||
+        nk_surface_make_current(device.id) != NK_OK)
+        return 0;
+    api->external_image_release(static_cast<uint32_t>(backend_image));
+    return 1;
+}
 
 static nks_result fail(nks_result code, const char *format, ...) {
     va_list args;
@@ -178,22 +291,40 @@ const char *nks_last_error(void) {
     return error_message;
 }
 
+nks_backend nks_query_backend(nks_renderer renderer) {
+    auto *slot = renderer_pool.get(renderer);
+    return slot ? convert_backend(slot->value.api) : 0;
+}
+
+nk_graphics_api nks_query_graphics_api(nks_renderer renderer) {
+    auto *slot = renderer_pool.get(renderer);
+    return slot ? slot->value.graphics_api : static_cast<nk_graphics_api>(0);
+}
+
 nks_result nks_surface_create(nks_nativekit_handle window, int32_t width, int32_t height,
                               nks_nativekit_handle *out) {
+    #if defined(NK_SOKOL_BACKEND_GLES3)
+    return nks_surface_create_for_api(window, NK_GRAPHICS_OPENGL_ES, width, height, out);
+    #else
+    return nks_surface_create_for_api(window, NK_GRAPHICS_OPENGL, width, height, out);
+    #endif
+}
+
+nks_result nks_surface_create_for_api(nks_nativekit_handle window, nk_graphics_api api,
+                                      int32_t width, int32_t height,
+                                      nks_nativekit_handle *out) {
     if (!window || width <= 0 || height <= 0 || !out)
         return fail(NKS_ERROR_INVALID_ARGUMENT, "invalid surface arguments");
+    if (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES)
+        return fail(NKS_ERROR_INVALID_ARGUMENT, "unsupported graphics API request");
+    if (!api_for_graphics_api(api))
+        return fail(NKS_ERROR_UNKNOWN, "requested Sokol runtime backend is unavailable");
     nk_surface_options o{};
     o.struct_size = sizeof(o);
-    o.flags = NK_SURFACE_FORWARD_COMPATIBLE;
-#if defined(NK_SOKOL_BACKEND_GLES3)
-    o.api = NK_GRAPHICS_OPENGL_ES;
+    o.flags = api == NK_GRAPHICS_OPENGL ? NK_SURFACE_FORWARD_COMPATIBLE : 0;
+    o.api = api;
     o.major_version = 3;
-    o.minor_version = 0;
-#else
-    o.api = NK_GRAPHICS_OPENGL;
-    o.major_version = 3;
-    o.minor_version = 3;
-#endif
+    o.minor_version = api == NK_GRAPHICS_OPENGL ? 3 : 0;
     o.width = width;
     o.height = height;
     return nk_surface_create(window, &o, out) == NK_OK
@@ -213,26 +344,59 @@ nks_result nks_surface_destroy(nks_nativekit_handle s) {
 nks_result nks_renderer_create(nks_nativekit_handle surface, nks_renderer *out) {
     if (!surface || !out)
         return fail(NKS_ERROR_INVALID_ARGUMENT, "invalid renderer arguments");
-    if (renderer_count)
-        return fail(NKS_ERROR_WRONG_STATE, "multiple renderers require shared-context support");
+    if (active_renderer)
+        return fail(NKS_ERROR_WRONG_STATE, "cannot create a renderer during an active frame");
     if (nk_surface_make_current(surface) != NK_OK)
         return fail(NKS_ERROR_UNKNOWN, "current: %s", nk_last_error());
+    nk_surface_frame_target target{};
+    target.struct_size = sizeof(target);
+    if (nk_surface_get_frame_target(surface, &target) != NK_OK || !target.device.id)
+        return fail(NKS_ERROR_UNKNOWN, "surface has no graphics-device identity");
+    const nk_sokol_api *api = api_for_graphics_api(target.api);
+    if (!api || !api->runtime_acquire || !api->runtime_release || !api->gfx)
+        return fail(NKS_ERROR_UNKNOWN, "surface graphics backend is unavailable");
     sg_desc desc{};
     desc.environment.defaults = {.color_format = SG_PIXELFORMAT_RGBA8,
                                  .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
                                  .sample_count = 1};
-    if (!nk_sokol_runtime_acquire(&desc))
+    if (nk_graphics_device_retain(target.device) != NK_OK)
+        return fail(NKS_ERROR_UNKNOWN, "graphics device retention failed");
+    if (!api->runtime_acquire(&desc, target.device)) {
+        nk_graphics_device_release(target.device);
         return fail(NKS_ERROR_UNKNOWN, "Sokol graphics runtime acquisition failed");
-    Handle h = renderer_pool.add(Renderer{surface});
+    }
+    Renderer renderer_state{};
+    renderer_state.surface = surface;
+    renderer_state.api = api;
+    renderer_state.graphics_api = target.api;
+    renderer_state.device = target.device;
+    Handle h = renderer_pool.add(renderer_state);
     if (!h) {
-        nk_sokol_runtime_release();
+        api->runtime_release();
+        nk_graphics_device_release(target.device);
         return fail(NKS_ERROR_UNKNOWN, "renderer pool full");
     }
-    ++renderer_count;
+    selected_renderer = h;
+    selected_api = api;
     *out = h;
     return NKS_OK;
 }
+static void destroy_render_target(Pool<RenderTarget, RenderTargetKind, 128>::Slot &slot) {
+    auto &target = slot.value;
+    if (target.depth_attachment.id)
+        sg_destroy_view(target.depth_attachment);
+    if (target.color_attachment.id)
+        sg_destroy_view(target.color_attachment);
+    if (target.depth.id)
+        sg_destroy_image(target.depth);
+    if (target.image.id)
+        nk_graphics_image_release(target.image);
+    render_target_pool.remove(slot);
+}
 static void destroy_owned(Handle owner) {
+    for (auto &s : render_target_pool.slots)
+        if (s.active && s.value.owner == owner)
+            destroy_render_target(s);
     for (auto &s : sampler_pool.slots)
         if (s.active && s.value.owner == owner) {
             sg_destroy_sampler(s.value.object);
@@ -287,11 +451,190 @@ nks_result nks_renderer_destroy(nks_renderer h) {
         return fail(NKS_ERROR_INVALID_HANDLE, "stale renderer");
     if (s->value.in_frame)
         return fail(NKS_ERROR_WRONG_STATE, "renderer has active frame");
-    nk_surface_make_current(s->value.surface);
+    const nks_result activated = activate_renderer(h);
+    if (activated != NKS_OK)
+        return activated;
+    const nk_sokol_api *api = s->value.api;
+    const nk_graphics_device device = s->value.device;
     destroy_owned(h);
     renderer_pool.remove(*s);
-    --renderer_count;
-    nk_sokol_runtime_release();
+    api->runtime_release();
+    nk_graphics_device_release(device);
+    if (selected_renderer == h) {
+        selected_renderer = 0;
+        selected_api = nullptr;
+    }
+    return NKS_OK;
+}
+nks_result nks_render_target_create(nks_renderer renderer, uint32_t width, uint32_t height,
+                                    uint32_t depth_stencil, nks_render_target *out) {
+    auto *owner = renderer_pool.get(renderer);
+    if (!owner || !width || !height || !out || depth_stencil > 1 ||
+        width > static_cast<uint32_t>(INT32_MAX) || height > static_cast<uint32_t>(INT32_MAX) ||
+        owner->value.in_frame)
+        return fail(NKS_ERROR_INVALID_ARGUMENT, "invalid render-target arguments");
+    const nks_result activated = activate_renderer(renderer);
+    if (activated != NKS_OK)
+        return activated;
+
+    RenderTarget target{};
+    target.owner = renderer;
+    target.width = static_cast<int32_t>(width);
+    target.height = static_cast<int32_t>(height);
+    sg_image_desc color_desc{};
+    color_desc.width = static_cast<int>(width);
+    color_desc.height = static_cast<int>(height);
+    color_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    color_desc.usage.color_attachment = true;
+    target.color = sg_make_image(&color_desc);
+    if (sg_query_image_state(target.color) != SG_RESOURCESTATE_VALID)
+        return fail(NKS_ERROR_UNKNOWN, "render-target color image creation failed");
+
+    sg_view_desc sampled_view_desc{};
+    sampled_view_desc.texture.image = target.color;
+    const sg_view sampled_view = sg_make_view(&sampled_view_desc);
+    if (sg_query_view_state(sampled_view) != SG_RESOURCESTATE_VALID) {
+        sg_destroy_image(target.color);
+        return fail(NKS_ERROR_UNKNOWN, "render-target sampled view creation failed");
+    }
+
+    sg_view_desc color_attachment_desc{};
+    color_attachment_desc.color_attachment.image = target.color;
+    target.color_attachment = sg_make_view(&color_attachment_desc);
+    if (sg_query_view_state(target.color_attachment) != SG_RESOURCESTATE_VALID) {
+        sg_destroy_view(sampled_view);
+        sg_destroy_image(target.color);
+        return fail(NKS_ERROR_UNKNOWN, "render-target color attachment creation failed");
+    }
+
+    if (depth_stencil) {
+        sg_image_desc depth_desc{};
+        depth_desc.width = static_cast<int>(width);
+        depth_desc.height = static_cast<int>(height);
+        depth_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+        depth_desc.usage.depth_stencil_attachment = true;
+        target.depth = sg_make_image(&depth_desc);
+        if (sg_query_image_state(target.depth) == SG_RESOURCESTATE_VALID) {
+            sg_view_desc depth_attachment_desc{};
+            depth_attachment_desc.depth_stencil_attachment.image = target.depth;
+            target.depth_attachment = sg_make_view(&depth_attachment_desc);
+        }
+        if (sg_query_image_state(target.depth) != SG_RESOURCESTATE_VALID ||
+            sg_query_view_state(target.depth_attachment) != SG_RESOURCESTATE_VALID) {
+            if (target.depth_attachment.id)
+                sg_destroy_view(target.depth_attachment);
+            if (target.depth.id)
+                sg_destroy_image(target.depth);
+            sg_destroy_view(target.color_attachment);
+            sg_destroy_view(sampled_view);
+            sg_destroy_image(target.color);
+            return fail(NKS_ERROR_UNKNOWN, "render-target depth attachment creation failed");
+        }
+    }
+
+    const uint32_t backend_image = owner->value.api->external_image_create(
+        target.color, sampled_view, static_cast<int32_t>(width), static_cast<int32_t>(height));
+    if (!backend_image) {
+        if (target.depth_attachment.id)
+            sg_destroy_view(target.depth_attachment);
+        if (target.depth.id)
+            sg_destroy_image(target.depth);
+        sg_destroy_view(target.color_attachment);
+        sg_destroy_view(sampled_view);
+        sg_destroy_image(target.color);
+        return fail(NKS_ERROR_UNKNOWN, "Sokol sampled image registry is full");
+    }
+    const nk_result image_result = nk_core_graphics_image_register(
+        owner->value.graphics_api, owner->value.device, static_cast<int32_t>(width),
+        static_cast<int32_t>(height), owner->value.api, backend_image, release_graphics_image,
+        &target.image);
+    if (image_result != NK_OK) {
+        owner->value.api->external_image_release(backend_image);
+        if (target.depth_attachment.id)
+            sg_destroy_view(target.depth_attachment);
+        if (target.depth.id)
+            sg_destroy_image(target.depth);
+        sg_destroy_view(target.color_attachment);
+        return fail(NKS_ERROR_UNKNOWN, "NativeKit graphics image registration failed");
+    }
+
+    const Handle handle = render_target_pool.add(target);
+    if (!handle) {
+        if (target.depth_attachment.id)
+            sg_destroy_view(target.depth_attachment);
+        if (target.depth.id)
+            sg_destroy_image(target.depth);
+        sg_destroy_view(target.color_attachment);
+        nk_graphics_image_release(target.image);
+        return fail(NKS_ERROR_UNKNOWN, "render-target pool full");
+    }
+    *out = handle;
+    return NKS_OK;
+}
+nks_result nks_render_target_get_image(nks_renderer renderer, nks_render_target handle,
+                                       nk_graphics_image *out) {
+    auto *owner = renderer_pool.get(renderer);
+    auto *target = render_target_pool.get(handle);
+    if (!owner || !target || target->value.owner != renderer || !out)
+        return fail(NKS_ERROR_INVALID_HANDLE, "invalid render-target image request");
+    *out = target->value.image;
+    return NKS_OK;
+}
+nks_result nks_render_target_destroy(nks_renderer renderer, nks_render_target handle) {
+    auto *owner = renderer_pool.get(renderer);
+    auto *target = render_target_pool.get(handle);
+    if (!owner || !target || target->value.owner != renderer)
+        return fail(NKS_ERROR_INVALID_HANDLE, "invalid render-target handle/state");
+    if (owner->value.in_frame || owner->value.active_target == handle)
+        return fail(NKS_ERROR_WRONG_STATE, "cannot destroy a render target during an active pass");
+    const nks_result activated = activate_renderer(renderer);
+    if (activated != NKS_OK)
+        return activated;
+    destroy_render_target(*target);
+    return NKS_OK;
+}
+nks_result nks_begin_render_target(nks_renderer renderer, nks_render_target handle,
+                                   uint32_t clear) {
+    auto *owner = renderer_pool.get(renderer);
+    auto *target = render_target_pool.get(handle);
+    if (!owner || !target || target->value.owner != renderer || clear > 1 || owner->value.in_frame ||
+        active_renderer)
+        return fail(NKS_ERROR_WRONG_STATE, "invalid render-target frame state");
+    const nks_result activated = activate_renderer(renderer);
+    if (activated != NKS_OK)
+        return activated;
+    sg_reset_state_cache();
+    sg_pass pass{};
+    pass.action.colors[0].load_action = clear ? SG_LOADACTION_CLEAR : SG_LOADACTION_LOAD;
+    pass.action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (target->value.depth.id) {
+        pass.action.depth = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 1.0f};
+        pass.action.stencil = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 0};
+        pass.attachments.depth_stencil = target->value.depth_attachment;
+    }
+    pass.attachments.colors[0] = target->value.color_attachment;
+    sg_begin_pass(&pass);
+    owner->value.in_frame = true;
+    owner->value.in_pass = true;
+    owner->value.active_target = handle;
+    owner->value.bindings = {};
+    active_renderer = renderer;
+    return NKS_OK;
+}
+nks_result nks_end_render_target(nks_renderer renderer) {
+    auto *owner = renderer_pool.get(renderer);
+    if (!owner || !owner->value.in_frame || !owner->value.in_pass ||
+        !owner->value.active_target || active_renderer != renderer)
+        return fail(NKS_ERROR_WRONG_STATE, "no active render-target pass");
+    const nks_result activated = activate_renderer(renderer);
+    if (activated != NKS_OK)
+        return activated;
+    sg_end_pass();
+    sg_commit();
+    owner->value.in_frame = false;
+    owner->value.in_pass = false;
+    owner->value.active_target = 0;
+    active_renderer = 0;
     return NKS_OK;
 }
 static nks_result save_buffer(Handle owner, sg_buffer object, nks_buffer *out) {
@@ -306,6 +649,9 @@ static nks_result save_buffer(Handle owner, sg_buffer object, nks_buffer *out) {
 nks_result nks_buffer_create(nks_renderer r, const uint8_t *data, uint32_t size, nks_buffer *out) {
     if (!renderer_pool.get(r) || !data || !size || !out)
         return fail(NKS_ERROR_INVALID_ARGUMENT, "invalid buffer arguments");
+    const nks_result activated = activate_renderer(r);
+    if (activated != NKS_OK)
+        return activated;
     sg_buffer_desc desc{};
     desc.data = {data, size};
     sg_buffer b = sg_make_buffer(&desc);
@@ -353,6 +699,9 @@ nks_result nks_buffer_end(nks_buffer_builder h, nks_buffer *out) {
     if (!s || !out)
         return fail(NKS_ERROR_INVALID_HANDLE, "stale buffer builder");
     auto owner = s->value.owner;
+    const nks_result activated = activate_renderer(owner);
+    if (activated != NKS_OK)
+        return activated;
     sg_buffer_desc desc{};
     desc.data = {s->value.data, s->value.size};
     desc.usage.index_buffer = s->value.index;
@@ -368,6 +717,9 @@ nks_result nks_buffer_destroy(nks_renderer r, nks_buffer h) {
     auto *s = buffer_pool.get(h);
     if (!renderer_pool.get(r) || !s || s->value.owner != r)
         return fail(NKS_ERROR_INVALID_HANDLE, "stale/foreign buffer");
+    const nks_result activated = activate_renderer(r);
+    if (activated != NKS_OK)
+        return activated;
     sg_destroy_buffer(s->value.object);
     buffer_pool.remove(*s);
     return NKS_OK;
@@ -375,6 +727,9 @@ nks_result nks_buffer_destroy(nks_renderer r, nks_buffer h) {
 nks_result nks_shader_create(nks_renderer r, const char *vs, const char *fs, nks_shader *out) {
     if (!renderer_pool.get(r) || !vs || !fs || !out)
         return fail(NKS_ERROR_INVALID_ARGUMENT, "invalid shader arguments");
+    const nks_result activated = activate_renderer(r);
+    if (activated != NKS_OK)
+        return activated;
     sg_shader_desc desc{};
     desc.vertex_func.source = vs;
     desc.fragment_func.source = fs;
@@ -393,6 +748,9 @@ nks_result nks_shader_destroy(nks_renderer r, nks_shader h) {
     auto *s = shader_pool.get(h);
     if (!renderer_pool.get(r) || !s || s->value.owner != r)
         return fail(NKS_ERROR_INVALID_HANDLE, "stale/foreign shader");
+    const nks_result activated = activate_renderer(r);
+    if (activated != NKS_OK)
+        return activated;
     sg_destroy_shader(s->value.object);
     shader_pool.remove(*s);
     return NKS_OK;
@@ -465,6 +823,9 @@ nks_result nks_shader_end(nks_shader_builder h, nks_shader *out) {
     if (!s || !out)
         return fail(NKS_ERROR_INVALID_HANDLE, "stale shader builder");
     Handle owner = s->value.owner;
+    const nks_result activated = activate_renderer(owner);
+    if (activated != NKS_OK)
+        return activated;
     sg_shader object = sg_make_shader(&s->value.desc);
     shader_builder_pool.remove(*s);
     if (sg_query_shader_state(object) != SG_RESOURCESTATE_VALID)
@@ -486,6 +847,7 @@ nks_result nks_pipeline_begin(nks_renderer r, nks_shader shader, uint32_t stride
     b.owner = r;
     b.desc.shader = sh->value.object;
     b.desc.layout.buffers[0].stride = (int)stride;
+    b.desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
     Handle h = pipeline_builder_pool.add(b);
     if (!h)
         return fail(NKS_ERROR_UNKNOWN, "builder pool full");
@@ -514,11 +876,23 @@ nks_result nks_pipeline_index_type(nks_pipeline_builder h, nks_index_type type) 
                                                               : SG_INDEXTYPE_NONE;
     return NKS_OK;
 }
+nks_result nks_pipeline_depth_stencil(nks_pipeline_builder h, uint32_t enabled) {
+    auto *s = pipeline_builder_pool.get(h);
+    if (!s || enabled > 1)
+        return fail(NKS_ERROR_INVALID_ARGUMENT, "invalid pipeline depth/stencil state");
+    s->value.desc.depth.pixel_format = enabled ? SG_PIXELFORMAT_DEPTH_STENCIL : SG_PIXELFORMAT_NONE;
+    s->value.desc.depth.write_enabled = enabled != 0;
+    s->value.desc.depth.compare = enabled ? SG_COMPAREFUNC_LESS_EQUAL : SG_COMPAREFUNC_ALWAYS;
+    return NKS_OK;
+}
 nks_result nks_pipeline_end(nks_pipeline_builder h, nks_pipeline *out) {
     auto *s = pipeline_builder_pool.get(h);
     if (!s || !out)
         return fail(NKS_ERROR_INVALID_HANDLE, "stale pipeline builder");
     auto owner = s->value.owner;
+    const nks_result activated = activate_renderer(owner);
+    if (activated != NKS_OK)
+        return activated;
     sg_pipeline object = sg_make_pipeline(&s->value.desc);
     pipeline_builder_pool.remove(*s);
     if (sg_query_pipeline_state(object) != SG_RESOURCESTATE_VALID)
@@ -535,6 +909,9 @@ nks_result nks_pipeline_destroy(nks_renderer r, nks_pipeline h) {
     auto *s = pipeline_pool.get(h);
     if (!renderer_pool.get(r) || !s || s->value.owner != r)
         return fail(NKS_ERROR_INVALID_HANDLE, "stale/foreign pipeline");
+    const nks_result activated = activate_renderer(r);
+    if (activated != NKS_OK)
+        return activated;
     sg_destroy_pipeline(s->value.object);
     pipeline_pool.remove(*s);
     return NKS_OK;
@@ -543,19 +920,16 @@ nks_result nks_begin_frame(nks_renderer h) {
     auto *s = renderer_pool.get(h);
     if (!s || active_renderer)
         return fail(NKS_ERROR_WRONG_STATE, "invalid renderer/frame active");
-    if (nk_surface_make_current(s->value.surface) != NK_OK)
-        return fail(NKS_ERROR_UNKNOWN, "current: %s", nk_last_error());
+    const nks_result activated = activate_renderer(h);
+    if (activated != NKS_OK)
+        return activated;
     sg_reset_state_cache();
     nk_surface_frame_target target{};
     target.struct_size = sizeof(target);
     if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK || target.width <= 0 ||
         target.height <= 0 ||
-#if defined(NK_SOKOL_BACKEND_GLES3)
-        target.api != NK_GRAPHICS_OPENGL_ES)
-#else
-        target.api != NK_GRAPHICS_OPENGL)
-#endif
-        return fail(NKS_ERROR_UNKNOWN, "framebuffer size failed");
+        target.api != s->value.graphics_api || target.device.id != s->value.device.id)
+        return fail(NKS_ERROR_UNKNOWN, "framebuffer target does not match renderer device");
     sg_pass pass{};
     pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
     pass.action.colors[0].clear_value = {.035f, .055f, .11f, 1};
@@ -567,6 +941,8 @@ nks_result nks_begin_frame(nks_renderer h) {
                       .gl = {.framebuffer = static_cast<uint32_t>(target.native_target)}};
     sg_begin_pass(&pass);
     s->value.in_frame = true;
+    s->value.in_pass = true;
+    s->value.active_target = 0;
     active_renderer = h;
     s->value.bindings = {};
     return NKS_OK;
@@ -574,7 +950,8 @@ nks_result nks_begin_frame(nks_renderer h) {
 nks_result nks_apply_pipeline(nks_renderer r, nks_pipeline h) {
     auto *rs = renderer_pool.get(r);
     auto *p = pipeline_pool.get(h);
-    if (!rs || !rs->value.in_frame || active_renderer != r || !p || p->value.owner != r)
+    if (!rs || !rs->value.in_frame || !rs->value.in_pass || active_renderer != r || !p ||
+        p->value.owner != r)
         return fail(NKS_ERROR_INVALID_HANDLE, "invalid pipeline/frame");
     sg_apply_pipeline(p->value.object);
     return NKS_OK;
@@ -582,7 +959,8 @@ nks_result nks_apply_pipeline(nks_renderer r, nks_pipeline h) {
 nks_result nks_apply_vertex_buffer(nks_renderer r, uint32_t slot, nks_buffer h, uint32_t offset) {
     auto *rs = renderer_pool.get(r);
     auto *b = buffer_pool.get(h);
-    if (!rs || !rs->value.in_frame || active_renderer != r || !b || b->value.owner != r ||
+    if (!rs || !rs->value.in_frame || !rs->value.in_pass || active_renderer != r || !b ||
+        b->value.owner != r ||
         slot >= SG_MAX_VERTEXBUFFER_BINDSLOTS)
         return fail(NKS_ERROR_INVALID_HANDLE, "invalid buffer/frame");
     rs->value.bindings.vertex_buffers[slot] = b->value.object;
@@ -592,7 +970,8 @@ nks_result nks_apply_vertex_buffer(nks_renderer r, uint32_t slot, nks_buffer h, 
 nks_result nks_apply_index_buffer(nks_renderer r, nks_buffer h, uint32_t offset) {
     auto *rs = renderer_pool.get(r);
     auto *b = buffer_pool.get(h);
-    if (!rs || !rs->value.in_frame || active_renderer != r || !b || b->value.owner != r)
+    if (!rs || !rs->value.in_frame || !rs->value.in_pass || active_renderer != r || !b ||
+        b->value.owner != r)
         return fail(NKS_ERROR_INVALID_HANDLE, "invalid index buffer/frame");
     rs->value.bindings.index_buffer = b->value.object;
     rs->value.bindings.index_buffer_offset = (int)offset;
@@ -622,7 +1001,8 @@ nks_result nks_uniforms_write_f32(nks_uniform_builder h, uint32_t offset, float 
 nks_result nks_apply_uniforms(nks_renderer r, uint32_t slot, nks_uniform_builder h) {
     auto *rs = renderer_pool.get(r);
     auto *u = uniform_builder_pool.get(h);
-    if (!rs || !rs->value.in_frame || active_renderer != r || !u || u->value.owner != r)
+    if (!rs || !rs->value.in_frame || !rs->value.in_pass || active_renderer != r || !u ||
+        u->value.owner != r)
         return fail(NKS_ERROR_INVALID_HANDLE, "invalid uniforms/frame");
     sg_range range{u->value.data, u->value.size};
     sg_apply_uniforms((int)slot, &range);
@@ -663,6 +1043,9 @@ nks_result nks_image_end(nks_image_builder h, nks_image *out) {
     if (!s || !out)
         return fail(NKS_ERROR_INVALID_HANDLE, "stale image builder");
     const Handle owner = s->value.owner;
+    const nks_result activated = activate_renderer(owner);
+    if (activated != NKS_OK)
+        return activated;
     sg_image_desc desc{};
     desc.width = (int)s->value.width;
     desc.height = (int)s->value.height;
@@ -693,6 +1076,9 @@ nks_result nks_image_destroy(nks_renderer r, nks_image h) {
     auto *s = image_pool.get(h);
     if (!renderer_pool.get(r) || !s || s->value.owner != r)
         return fail(NKS_ERROR_INVALID_HANDLE, "stale/foreign image");
+    const nks_result activated = activate_renderer(r);
+    if (activated != NKS_OK)
+        return activated;
     sg_destroy_view(s->value.view);
     sg_destroy_image(s->value.object);
     image_pool.remove(*s);
@@ -703,6 +1089,9 @@ nks_result nks_sampler_create(nks_renderer r, nks_filter min_filter, nks_filter 
     if (!renderer_pool.get(r) || !out || min_filter < 1 || min_filter > 2 || mag_filter < 1 ||
         mag_filter > 2 || wrap_u < 1 || wrap_u > 2 || wrap_v < 1 || wrap_v > 2)
         return fail(NKS_ERROR_INVALID_ARGUMENT, "invalid sampler arguments");
+    const nks_result activated = activate_renderer(r);
+    if (activated != NKS_OK)
+        return activated;
     sg_sampler_desc desc{};
     desc.min_filter = min_filter == NKS_FILTER_LINEAR ? SG_FILTER_LINEAR : SG_FILTER_NEAREST;
     desc.mag_filter = mag_filter == NKS_FILTER_LINEAR ? SG_FILTER_LINEAR : SG_FILTER_NEAREST;
@@ -723,6 +1112,9 @@ nks_result nks_sampler_destroy(nks_renderer r, nks_sampler h) {
     auto *s = sampler_pool.get(h);
     if (!renderer_pool.get(r) || !s || s->value.owner != r)
         return fail(NKS_ERROR_INVALID_HANDLE, "stale/foreign sampler");
+    const nks_result activated = activate_renderer(r);
+    if (activated != NKS_OK)
+        return activated;
     sg_destroy_sampler(s->value.object);
     sampler_pool.remove(*s);
     return NKS_OK;
@@ -730,7 +1122,8 @@ nks_result nks_sampler_destroy(nks_renderer r, nks_sampler h) {
 nks_result nks_apply_image(nks_renderer r, uint32_t slot, nks_image h) {
     auto *rs = renderer_pool.get(r);
     auto *image = image_pool.get(h);
-    if (!rs || !rs->value.in_frame || active_renderer != r || !image || image->value.owner != r ||
+    if (!rs || !rs->value.in_frame || !rs->value.in_pass || active_renderer != r || !image ||
+        image->value.owner != r ||
         slot >= SG_MAX_VIEW_BINDSLOTS)
         return fail(NKS_ERROR_INVALID_HANDLE, "invalid image/frame");
     rs->value.bindings.views[slot] = image->value.view;
@@ -739,7 +1132,7 @@ nks_result nks_apply_image(nks_renderer r, uint32_t slot, nks_image h) {
 nks_result nks_apply_sampler(nks_renderer r, uint32_t slot, nks_sampler h) {
     auto *rs = renderer_pool.get(r);
     auto *sampler = sampler_pool.get(h);
-    if (!rs || !rs->value.in_frame || active_renderer != r || !sampler ||
+    if (!rs || !rs->value.in_frame || !rs->value.in_pass || active_renderer != r || !sampler ||
         sampler->value.owner != r || slot >= SG_MAX_SAMPLER_BINDSLOTS)
         return fail(NKS_ERROR_INVALID_HANDLE, "invalid sampler/frame");
     rs->value.bindings.samplers[slot] = sampler->value.object;
@@ -747,7 +1140,8 @@ nks_result nks_apply_sampler(nks_renderer r, uint32_t slot, nks_sampler h) {
 }
 nks_result nks_draw(nks_renderer r, uint32_t base, uint32_t count, uint32_t instances) {
     auto *rs = renderer_pool.get(r);
-    if (!rs || !rs->value.in_frame || active_renderer != r || !count || !instances)
+    if (!rs || !rs->value.in_frame || !rs->value.in_pass || active_renderer != r || !count ||
+        !instances)
         return fail(NKS_ERROR_WRONG_STATE, "invalid draw/frame");
     sg_apply_bindings(&rs->value.bindings);
     sg_draw((int)base, (int)count, (int)instances);
@@ -783,7 +1177,8 @@ static nks_result submit_command(nks_renderer r, uint32_t opcode, const uint8_t 
         if (size < 8 || size - 8 != read_u32(payload + 4))
             return NKS_ERROR_INVALID_ARGUMENT;
         auto *renderer = renderer_pool.get(r);
-        if (!renderer || !renderer->value.in_frame || active_renderer != r)
+        if (!renderer || !renderer->value.in_frame || !renderer->value.in_pass ||
+            active_renderer != r)
             return NKS_ERROR_WRONG_STATE;
         sg_range range{payload + 8, size - 8};
         sg_apply_uniforms(read_u32(payload), &range);
@@ -799,7 +1194,7 @@ static nks_result submit_command(nks_renderer r, uint32_t opcode, const uint8_t 
 }
 nks_result nks_submit_commands(nks_renderer r, const uint8_t *commands, uint32_t size) {
     auto *renderer = renderer_pool.get(r);
-    if (!renderer || !renderer->value.in_frame || active_renderer != r)
+    if (!renderer || !renderer->value.in_frame || !renderer->value.in_pass || active_renderer != r)
         return fail(NKS_ERROR_WRONG_STATE, "no active frame for command submission");
     if (!commands || !size)
         return fail(NKS_ERROR_INVALID_ARGUMENT, "empty command stream");
@@ -820,11 +1215,13 @@ nks_result nks_submit_commands(nks_renderer r, const uint8_t *commands, uint32_t
 }
 nks_result nks_end_frame(nks_renderer r) {
     auto *rs = renderer_pool.get(r);
-    if (!rs || !rs->value.in_frame || active_renderer != r)
+    if (!rs || !rs->value.in_frame || !rs->value.in_pass || active_renderer != r ||
+        rs->value.active_target)
         return fail(NKS_ERROR_WRONG_STATE, "no active frame");
     sg_end_pass();
     sg_commit();
     rs->value.in_frame = false;
+    rs->value.in_pass = false;
     active_renderer = 0;
     return nk_surface_present(rs->value.surface) == NK_OK
                ? NKS_OK

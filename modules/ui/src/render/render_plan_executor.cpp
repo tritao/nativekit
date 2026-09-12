@@ -64,6 +64,10 @@ bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
         if (internal_targets.count(dependency.producer.value) ||
             rendered_producers.count(dependency.producer.value))
             continue;
+        if (resources.graphics_image(dependency.producer)) {
+            rendered_producers.insert(dependency.producer.value);
+            continue;
+        }
         SurfaceProducer *producer = resources.surface(dependency.producer);
         if (!producer)
             return fail(error, 0, 0, "surface producer is unavailable");
@@ -144,9 +148,14 @@ bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
                 break;
             }
             case RenderCommandKind::CompositeTarget:
-                rendered = backend.draw_target(command.resource, command.x, command.y,
-                                               command.width, command.height,
-                                               command.transform.data(), command.opacity);
+                if (const auto *image = resources.graphics_image(command.resource))
+                    rendered = backend.draw_graphics_image(*image, command.x, command.y,
+                                                           command.width, command.height,
+                                                           command.transform.data(), command.opacity);
+                else
+                    rendered = backend.draw_target(command.resource, command.x, command.y,
+                                                   command.width, command.height,
+                                                   command.transform.data(), command.opacity);
                 break;
             case RenderCommandKind::Image:
                 {

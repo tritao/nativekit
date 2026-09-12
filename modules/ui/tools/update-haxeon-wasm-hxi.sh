@@ -27,6 +27,7 @@ HAXEON_DIR="$haxeon_dir" "$haxeon_dir/scripts/haxeon-ffi-audit" \
     --include="$module_dir/bindings" \
     --include="$repo_dir/include" \
     --exclude-header="$repo_dir/include/nativekit.h" \
+    --exclude-header="$repo_dir/include/nativekit_graphics.h" \
     --source-label=modules/ui/bindings/nativekit_ui_import.h \
     --output="$destination" \
     "$module_dir/bindings/nativekit_ui_import.h"

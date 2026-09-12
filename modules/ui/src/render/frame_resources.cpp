@@ -37,6 +37,13 @@ bool FrameResources::bind_surface(ResourceId id, SurfaceProducer &producer) {
     return true;
 }
 
+bool FrameResources::bind_graphics_image(ResourceId id, nk_graphics_image image) {
+    if (!is_resource_id(id, ResourceKind::RenderTarget) || !image.id)
+        return false;
+    graphics_images_[id.value] = image;
+    return true;
+}
+
 const PreparedPathRef *FrameResources::path(ResourceId id) const {
     const auto found = paths_.find(id.value);
     return found == paths_.end() ? nullptr : &found->second;
@@ -57,11 +64,17 @@ SurfaceProducer *FrameResources::surface(ResourceId id) const {
     return found == surfaces_.end() ? nullptr : found->second;
 }
 
+const nk_graphics_image *FrameResources::graphics_image(ResourceId id) const {
+    const auto found = graphics_images_.find(id.value);
+    return found == graphics_images_.end() ? nullptr : &found->second;
+}
+
 void FrameResources::reset() {
     paths_.clear();
     images_.clear();
     texts_.clear();
     surfaces_.clear();
+    graphics_images_.clear();
 }
 
 } // namespace nkui

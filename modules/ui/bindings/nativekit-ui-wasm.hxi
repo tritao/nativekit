@@ -345,6 +345,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_font_collection_create(out_fonts: ptr<nkui_resource> @out) -> nkui_result;
 	/**
+	 * Imports a sampled NativeKit graphics image as a compositable Canvas surface.
+	 */
+	extern fn nkui_graphics_surface_create(image: nk_graphics_image, out_surface: ptr<nkui_resource> @out) -> nkui_result;
+	/**
 	 * Creates an image by copying a tightly packed pixel array.
 	 *
 	 * For NKUI_IMAGE_R8, `pixel_bytes` must equal width*height. For

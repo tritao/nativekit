@@ -6,6 +6,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
 #include "platform/web/host.h"
 
@@ -1066,6 +1067,8 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
     auto surface = get_surface(handle);
     if (!surface)
         return invalid_handle("invalid web surface handle");
+    if (nk_core_graphics_device_has_references(nk_graphics_device{handle}))
+        return NK_ERROR_INVALID_REQUEST;
     if (surface->text_input_active) {
         if (auto window = get_window(surface->parent)) {
             if (window->text_input_surface == surface->handle) {
@@ -1261,8 +1264,13 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
     if (!surface)
         return invalid_handle("invalid web surface handle");
     const auto size = out_target->struct_size;
-    *out_target = {size, NK_GRAPHICS_OPENGL_ES, surface->framebuffer_width,
-                   surface->framebuffer_height, 0, {0, 0}};
+    *out_target = {size,
+                   NK_GRAPHICS_OPENGL_ES,
+                   surface->framebuffer_width,
+                   surface->framebuffer_height,
+                   0,
+                   nk_graphics_device{surface->handle},
+                   {0, 0, 0}};
     return NK_OK;
 }
 

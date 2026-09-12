@@ -1,21 +1,29 @@
+import NativeKit;
+import NativeKit.GraphicsImage;
 import NativeKitUI;
-import NativeKitUIShowcase;
+import GraphicsImageRef;
 
 /** Typed compositable surface produced by NativeKit's renderer. */
 class GraphicsSurface extends NativeKitUIResource {
+	@:allow(ShowcaseCube)
 	private function new(value:nkui_resource)
 		super(value);
 
-	/** Creates the animated 3D surface used by the Graphics Lab example. */
-	public static function createShowcaseCube():GraphicsSurface {
-		var made = NativeKitUIShowcase.nkui_showcase_cube_create();
-		UiResult.check(made.status, "graphicsSurface.createShowcaseCube");
-		return new GraphicsSurface(made.out_surface);
+	/** Imports a sampled image/target produced by NativeKit.Graphics. */
+	public static function fromGraphicsImage(image:GraphicsImage):GraphicsSurface {
+		return fromHandle(image);
 	}
 
-	/** Sets the cube's angle; the producer redraws only when this value changes. */
-	public function setShowcaseCubeRotation(radians:Float):Void {
-		UiResult.check(NativeKitUIShowcase.nkui_showcase_cube_set_rotation(nativeHandle(), radians),
-			"graphicsSurface.setShowcaseCubeRotation");
+	/** Imports a retained backend-neutral image produced by NativeKit.Graphics. */
+	public static function fromImage(image:GraphicsImageRef):GraphicsSurface {
+		if (image == null)
+			throw "graphicsSurface.fromImage requires an image";
+		return fromHandle(image.nativeHandle());
+	}
+
+	static function fromHandle(image:GraphicsImage):GraphicsSurface {
+		var made = NativeKitUI.nkui_graphics_surface_create(image);
+		UiResult.check(made.status, "graphicsSurface.fromGraphicsImage");
+		return new GraphicsSurface(made.out_surface);
 	}
 }
