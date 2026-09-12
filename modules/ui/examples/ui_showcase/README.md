@@ -12,7 +12,8 @@ The scene demonstrates:
 - pointer-driven text hit testing with a visible caret;
 - the same retained star path rendered repeatedly with different translations;
 - display-list and path-cache diagnostics; and
-- a render-target panel reserved for the first offscreen/3D producer.
+- a realtime, depth-tested indexed cube rendered offscreen and composited through
+  the same Canvas clipping, opacity, and ordering path as the rest of the UI.
 
 The page shell and panel grid use retained `LayoutNode` values. After each
 submission, the Canvas demonstrations query their resolved panel bounds from
@@ -32,9 +33,9 @@ modules/ui/tools/showcase.sh --static-frame --stats
 modules/ui/tools/showcase.sh --smoke-test
 ```
 
-`--static-frame` renders one canonical frame. `--smoke-test` renders 30 frames
-and exits, while `--stats` prints the final retained-list and path-cache
-counters.
+`--static-frame` renders one canonical frame, including a fixed three-face cube
+view. `--smoke-test` renders 30 frames and exits, while `--stats` prints the
+final retained-list and path-cache counters.
 
 The WebGL visual regression suite captures the canonical, compact, and wide
 layout sizes with software rendering. It also covers deterministic caret clicks,

@@ -5,6 +5,7 @@
 #include "nkui_composite.glsl.h"
 #include "nkui_path.glsl.h"
 #include "nkui_solid.glsl.h"
+#include "nkui_surface_mesh.glsl.h"
 #include "nkui_text.glsl.h"
 
 #include <cstddef>
@@ -95,6 +96,27 @@ sg_shader make_glyph_shader(const nk_sokol_api *api, GlyphMode mode) {
 sg_shader make_composite_shader(const nk_sokol_api *api) {
     const sg_shader_desc *desc = nkui_composite_composite_shader_desc(api->gfx->query_backend());
     return desc ? api->gfx->make_shader(desc) : sg_shader{};
+}
+
+sg_shader make_surface_mesh_shader(const nk_sokol_api *api) {
+    const sg_shader_desc *desc =
+        nkui_surface_mesh_surface_mesh_shader_desc(api->gfx->query_backend());
+    return desc ? api->gfx->make_shader(desc) : sg_shader{};
+}
+
+sg_pipeline make_surface_mesh_pipeline(const nk_sokol_api *api, sg_shader shader) {
+    sg_pipeline_desc desc{};
+    desc.shader = shader;
+    desc.layout.buffers[0].stride = sizeof(SurfaceMeshVertex);
+    desc.layout.attrs[0] = {0, offsetof(SurfaceMeshVertex, x), SG_VERTEXFORMAT_FLOAT3};
+    desc.layout.attrs[1] = {0, offsetof(SurfaceMeshVertex, red), SG_VERTEXFORMAT_UBYTE4N};
+    desc.index_type = SG_INDEXTYPE_UINT32;
+    desc.cull_mode = SG_CULLMODE_BACK;
+    desc.face_winding = SG_FACEWINDING_CCW;
+    desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+    desc.depth.write_enabled = true;
+    return api->gfx->make_pipeline(&desc);
 }
 
 sg_pipeline make_solid_pipeline(const nk_sokol_api *api, sg_shader shader) {
@@ -217,6 +239,8 @@ sg_pipeline make_composite_pipeline(const nk_sokol_api *api, sg_shader shader) {
 
 void destroy_resources(GraphicsDeviceResources &resources, const nk_sokol_api *api) {
     api->gfx->destroy_sampler(resources.white_sampler);
+    api->gfx->destroy_pipeline(resources.surface_mesh_pipeline);
+    api->gfx->destroy_shader(resources.surface_mesh_shader);
     api->gfx->destroy_view(resources.white_view);
     api->gfx->destroy_image(resources.white_image);
     api->gfx->destroy_sampler(resources.surface_sampler);
@@ -242,7 +266,9 @@ void destroy_resources(GraphicsDeviceResources &resources, const nk_sokol_api *a
 }
 
 bool resources_valid(const GraphicsDeviceResources &resources, const nk_sokol_api *api) {
-    return api->gfx->query_shader_state(resources.solid_shader) == SG_RESOURCESTATE_VALID &&
+    return api->gfx->query_shader_state(resources.surface_mesh_shader) == SG_RESOURCESTATE_VALID &&
+           api->gfx->query_pipeline_state(resources.surface_mesh_pipeline) == SG_RESOURCESTATE_VALID &&
+           api->gfx->query_shader_state(resources.solid_shader) == SG_RESOURCESTATE_VALID &&
            api->gfx->query_pipeline_state(resources.solid_pipeline) == SG_RESOURCESTATE_VALID &&
            api->gfx->query_pipeline_state(resources.fill_stencil_pipeline) == SG_RESOURCESTATE_VALID &&
            api->gfx->query_pipeline_state(resources.fill_stencil_even_odd_pipeline) ==
@@ -497,6 +523,7 @@ GraphicsDevice::GraphicsDevice(const nk_sokol_api *api)
     resources_.sdf_glyph_shader = make_glyph_shader(api_, GlyphMode::Sdf);
     resources_.color_glyph_shader = make_glyph_shader(api_, GlyphMode::Color);
     resources_.composite_shader = make_composite_shader(api_);
+    resources_.surface_mesh_shader = make_surface_mesh_shader(api_);
     resources_.solid_pipeline = make_solid_pipeline(api_, resources_.solid_shader);
     resources_.fill_stencil_pipeline = make_fill_stencil_pipeline(api_, resources_.solid_shader);
     resources_.fill_stencil_even_odd_pipeline =
@@ -509,6 +536,7 @@ GraphicsDevice::GraphicsDevice(const nk_sokol_api *api)
     resources_.sdf_glyph_pipeline = make_glyph_pipeline(api_, resources_.sdf_glyph_shader);
     resources_.color_glyph_pipeline = make_glyph_pipeline(api_, resources_.color_glyph_shader);
     resources_.composite_pipeline = make_composite_pipeline(api_, resources_.composite_shader);
+    resources_.surface_mesh_pipeline = make_surface_mesh_pipeline(api_, resources_.surface_mesh_shader);
 
     sg_sampler_desc sampler_desc{};
     sampler_desc.min_filter = SG_FILTER_NEAREST;

@@ -38,6 +38,10 @@ class RecordingBackend final : public RenderBackend {
         ++pass_count;
         return true;
     }
+    bool draw_surface_mesh(const SurfaceMeshView &) override {
+        ++surface_mesh_count;
+        return true;
+    }
     bool surface_has_content(ResourceId) const override { return false; }
     bool surface_is_current(ResourceId, uint32_t, const SurfaceDescriptor &) const override {
         return false;
@@ -80,7 +84,9 @@ class RecordingBackend final : public RenderBackend {
         ++text_count;
         return true;
     }
-    bool draw_target(ResourceId, float, float, float, float, float) override { return true; }
+    bool draw_target(ResourceId, float, float, float, float, const float[6], float) override {
+        return true;
+    }
     bool end_pass() override { return true; }
     bool commit_frame() override {
         ++commit_count;
@@ -93,6 +99,7 @@ class RecordingBackend final : public RenderBackend {
     uint32_t pass_count = 0;
     uint32_t path_count = 0;
     uint32_t text_count = 0;
+    uint32_t surface_mesh_count = 0;
     uint32_t commit_count = 0;
     bool last_scissor_enabled = false;
     std::array<float, 4> last_scissor{};

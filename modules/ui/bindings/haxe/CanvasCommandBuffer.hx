@@ -57,6 +57,10 @@ class CanvasCommandBuffer {
 		height:Float):Void
 		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_IMAGE, image, x, y, width, height);
 
+	public function drawSurface(surface:GraphicsSurface, x:Float, y:Float, width:Float,
+		height:Float):Void
+		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_RENDER_TARGET, surface, x, y, width, height);
+
 	public function drawText(layout:TextLayout, x:Float, y:Float):Void
 		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_TEXT_LAYOUT, layout, x, y, 0.0, 0.0);
 

@@ -8,6 +8,7 @@
 #include "compositor/compositor.h"
 #include "prepare/nanovg_recorder.h"
 #include "prepare/skribidi_adapter.h"
+#include "render/cube_surface_producer.h"
 #include "render/frame_resources.h"
 #include "render/render_plan_executor.h"
 #include "render/sokol_backend.h"
@@ -23,6 +24,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <memory>
 #include <thread>
@@ -33,20 +35,18 @@ using namespace nkui;
 #error NKUI_TEST_FONT_PATH is required
 #endif
 
-class Mock3DSurfaceProducer final : public SurfaceProducer {
+class TestCubeSurfaceProducer final : public SurfaceProducer {
   public:
-    Mock3DSurfaceProducer(const PreparedPathData &path, uint32_t &generation,
-                          bool &unavailable, bool &failed)
-        : path_(path), generation_(generation), unavailable_(unavailable),
+    TestCubeSurfaceProducer(uint32_t &generation, bool &unavailable, bool &failed)
+        : generation_(generation), unavailable_(unavailable),
           failed_(failed) {}
     bool ready() const override { return true; }
     bool describe(int requested_width, int requested_height,
                   SurfaceDescriptor &description) const override {
-        description = {std::max(1, requested_width / 2), std::max(1, requested_height / 2),
-                       SurfacePixelFormat::Rgba8,
-                       SurfaceAlphaMode::Premultiplied, SurfaceFilter::Linear,
-                       SurfaceColorSpace::Linear};
-        return true;
+        described_width_ = requested_width;
+        described_height_ = requested_height;
+        return cube_.describe(std::max(1, requested_width / 2),
+                              std::max(1, requested_height / 2), description);
     }
     uint32_t generation() const override { return generation_; }
     SurfaceRenderResult render(RenderBackend &backend, ResourceId target,
@@ -55,17 +55,19 @@ class Mock3DSurfaceProducer final : public SurfaceProducer {
             return SurfaceRenderResult::Failed;
         if (unavailable_)
             return SurfaceRenderResult::Unavailable;
-        if (!backend.begin_surface_pass(target, description, false) ||
-            !backend.draw_path(path_, 2) || !backend.end_pass())
-            return SurfaceRenderResult::Failed;
-        return SurfaceRenderResult::Rendered;
+        return cube_.render(backend, target, description);
     }
+    void set_rotation(float radians) { cube_.set_rotation(radians); }
+    int described_width() const { return described_width_; }
+    int described_height() const { return described_height_; }
 
   private:
-    const PreparedPathData &path_;
+    CubeSurfaceProducer cube_;
     uint32_t &generation_;
     bool &unavailable_;
     bool &failed_;
+    mutable int described_width_ = 0;
+    mutable int described_height_ = 0;
 };
 #ifndef NKUI_TEST_COLOR_FONT_PATH
 #error NKUI_TEST_COLOR_FONT_PATH is required
@@ -109,6 +111,9 @@ int main() {
     uint32_t producer_generation = 1;
     bool producer_unavailable = false;
     bool producer_failed = false;
+    TestCubeSurfaceProducer producer(producer_generation, producer_unavailable, producer_failed);
+    std::array<uint8_t, 64 * 64 * 4> first_cube_frame{};
+    bool captured_cube_frame = false;
     bool prepared_text_update = false;
 #ifdef NKUI_TEST_PUBLIC_SOKOL_RUNTIME
     nks_renderer public_renderer{};
@@ -145,7 +150,11 @@ int main() {
     display_list.draw_path(background);
     display_list.draw_text_layout(title, 20.0f, 35.0f);
     display_list.draw_text_layout(color_text, 250.0f, 55.0f);
+    const float surface_transform[6] = {1.05f, 0.0f, 0.0f, 1.05f, 2.0f, 1.0f};
+    const float identity_transform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    display_list.set_transform(surface_transform);
     display_list.draw_render_target(external_target, 205.0f, 145.0f, 90.0f, 70.0f);
+    display_list.set_transform(identity_transform);
     display_list.begin_layer(0.6f);
     display_list.draw_path(layer_path);
     display_list.draw_text_layout(layer_text, 58.0f, 105.0f);
@@ -231,8 +240,10 @@ int main() {
         nvgStroke(vg);
         nvgEndFrame(vg);
         FrameResources resources;
-        Mock3DSurfaceProducer producer(recorder.data(), producer_generation, producer_unavailable,
-                                       producer_failed);
+        if (!producer_unavailable) {
+            ++producer_generation;
+            producer.set_rotation(0.65f + static_cast<float>(frames) * 0.18f);
+        }
         if (!prepared_text_update && frames == 1) {
             PreparedGlyphs updated_title;
             if (!text_adapter.layout_utf8("NativeKit direct text: retained atlas update 123", 280.0f,
@@ -256,20 +267,58 @@ int main() {
             !execute_render_plan(*backend, plan, resources,
                                  {main_target, frame_target}))
             result = 6;
+        if (!result && frames == 0 &&
+            (producer.described_width() != 95 || producer.described_height() != 74))
+            result = 23;
         if (!result && frames == 0) {
             unsigned char filled[4]{};
             unsigned char notch[4]{};
             unsigned char gradient_left[4]{};
             unsigned char gradient_right[4]{};
+            unsigned char cube_pixel[4]{};
             glReadPixels(60, height - 85, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, filled);
             glReadPixels(170, height - 85, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, notch);
             glReadPixels(10, height - 200, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gradient_left);
             glReadPixels(width - 10, height - 200, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gradient_right);
+            glReadPixels(264, height - 190, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, cube_pixel);
+            glReadPixels(217, 14, 64, 64, GL_RGBA, GL_UNSIGNED_BYTE,
+                         first_cube_frame.data());
+            captured_cube_frame = true;
+            bool cyan_face = false;
+            bool orange_face = false;
+            bool purple_face = false;
+            for (size_t index = 0; index < first_cube_frame.size(); index += 4) {
+                const int red = first_cube_frame[index];
+                const int green = first_cube_frame[index + 1];
+                const int blue = first_cube_frame[index + 2];
+                cyan_face |= blue > red + 80 && green > red + 80;
+                orange_face |= red > green + 60 && green > blue + 30;
+                purple_face |= blue > red + 60 && red > green + 20;
+            }
             if (filled[2] <= notch[2] + 30)
                 result = 11;
             if (!result && (gradient_left[0] <= gradient_right[0] + 15 ||
                             gradient_right[1] <= gradient_left[1] + 15))
                 result = 13;
+            if (!result && std::max({cube_pixel[0], cube_pixel[1], cube_pixel[2]}) < 140)
+                result = 21;
+            if (!result && !(cyan_face && orange_face && purple_face))
+                result = 24;
+        }
+        if (!result && frames == 3) {
+            std::array<uint8_t, 64 * 64 * 4> cube_frame{};
+            glReadPixels(217, 14, 64, 64, GL_RGBA, GL_UNSIGNED_BYTE, cube_frame.data());
+            bool changed = false;
+            for (size_t index = 0; index < cube_frame.size(); ++index) {
+                const int difference = static_cast<int>(cube_frame[index]) -
+                                       static_cast<int>(first_cube_frame[index]);
+                if (difference > 20 || difference < -20) {
+                    changed = true;
+                    break;
+                }
+            }
+            if (!captured_cube_frame || !changed)
+                result = 22;
         }
         if (!result && nk_surface_present(surface) != NK_OK)
             result = 6;
@@ -284,8 +333,8 @@ int main() {
     if (!result) {
         ++producer_generation;
         producer_failed = true;
-        Mock3DSurfaceProducer failed_producer(recorder.data(), producer_generation,
-                                              producer_unavailable, producer_failed);
+        TestCubeSurfaceProducer failed_producer(producer_generation, producer_unavailable,
+                                                producer_failed);
         FrameResources failure_resources;
         RenderExecutionError failure_error{};
         if (!failure_resources.bind_surface(external_target, failed_producer) ||
@@ -293,9 +342,9 @@ int main() {
                                 {main_target, last_frame_target}, &failure_error))
             result = 14;
     }
-    if (!result && backend->stats().passes != 92)
+    if (!result && backend->stats().passes != 118)
         result = 7;
-    if (!result && (backend->stats().draws != 302 || backend->stats().image_uploads < 2))
+    if (!result && (backend->stats().draws != 328 || backend->stats().image_uploads < 2))
         result = 10;
     if (!result) {
         const auto atlas_stats = backend->stats();

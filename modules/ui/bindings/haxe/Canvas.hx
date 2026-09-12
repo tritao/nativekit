@@ -139,6 +139,10 @@ class Canvas {
 	public function drawImage(image:Image, rect:Rect):Void
 		commands.drawImage(image, rect.x, rect.y, rect.width, rect.height);
 
+	/** Composites an offscreen graphics surface into this canvas. */
+	public function drawSurface(surface:GraphicsSurface, rect:Rect):Void
+		commands.drawSurface(surface, rect.x, rect.y, rect.width, rect.height);
+
 	public function drawText(layout:TextLayout, x:Float, y:Float):Void
 		commands.drawText(layout, x, y);
 

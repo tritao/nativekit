@@ -80,6 +80,7 @@ class Showcase {
     final diamondPath:Path;
     final unitRectPath:Path;
     final image:Image;
+    final cubeSurface:GraphicsSurface;
 
     final title:TextLayout;
     final sidebarTitle:TextLayout;
@@ -125,6 +126,8 @@ class Showcase {
     var pointerPressedPending:Bool = false;
     var layerOpacity:Float = 0.68;
     var animate:Bool = true;
+    var cubeRotation:Float = 0.65;
+    var previousAnimationTime:Float = 0.0;
     var lightTheme:Bool = false;
     var sidebarBounds:Rect;
     var buttonBounds:Rect;
@@ -252,6 +255,7 @@ class Showcase {
         // The renderer remains linear-filtered; this avoids enlarging a tiny
         // diagnostic bitmap until its source texels become visible.
         image = keep(checkerImage(IMAGE_TEXTURE_SIZE, IMAGE_TEXTURE_SIZE));
+        cubeSurface = keep(GraphicsSurface.createShowcaseCube());
 
         title = styled("NativeKit Graphics Lab", 600.0, 29.0);
         sidebarTitle = styled("NativeKit", 170.0, 27.0);
@@ -273,8 +277,8 @@ class Showcase {
         paintCaption = styled("solid RGBA paints · filtered image · alpha layer", 270.0, 10.0);
         caretInstruction = styled("click to query code-point offset, affinity, direction, and caret geometry",
             570.0, 10.0);
-        offscreenLabel = styled("offscreen 2D producer", 230.0, 10.0);
-        targetLabel = styled("3D-ready render-target slot", 230.0, 10.0);
+        offscreenLabel = styled("realtime indexed cube", 190.0, 10.0);
+        targetLabel = styled("depth tested · shared compositor", 190.0, 10.0);
 
         caretPosition = multilingual.hitTest(160.0, 22.0);
     }
@@ -388,6 +392,12 @@ class Showcase {
     public function encodeFrame(seconds:Float, logicalWidth:Float, logicalHeight:Float,
             framebufferWidth:Int, framebufferHeight:Int, pixelScale:Float,
             staticFrame:Bool):Void {
+        if (staticFrame)
+            cubeRotation = 0.65;
+        else if (animate)
+            cubeRotation += Math.max(0.0, seconds - previousAnimationTime) * 0.8;
+        previousAnimationTime = seconds;
+        cubeSurface.setShowcaseCubeRotation(cubeRotation);
         setViewport(logicalWidth, logicalHeight);
         submitLayoutFrame(logicalWidth, logicalHeight);
         var replacedCaret:Null<Path> = null;
@@ -566,15 +576,16 @@ class Showcase {
         canvas.restore();
 
         fillMapped(canvas, surfaceCardPath, 564.0, 538.0, 312.0, 90.0, surfaceBounds, card);
+        var cubeRect = new Rect(surfaceBounds.x + surfaceBounds.width - 88.0,
+            surfaceBounds.y + 5.0, 80.0, 80.0);
+        canvas.withClip(surfaceBounds, function(c) {
+            c.withLayer(layerOpacity, function(c) {
+                c.drawSurface(cubeSurface, cubeRect);
+            });
+        });
         canvas.drawText(surfaceLabel, surfaceBounds.x + 18.0, surfaceBounds.y + 21.0);
         canvas.drawText(offscreenLabel, surfaceBounds.x + 18.0, surfaceBounds.y + 48.0);
         canvas.drawText(targetLabel, surfaceBounds.x + 18.0, surfaceBounds.y + 66.0);
-        canvas.beginLayer(0.75);
-        canvas.save();
-        canvas.translate(surfaceBounds.x + surfaceBounds.width - 40.0, surfaceBounds.y + 45.0);
-        canvas.fill(diamondPath, rose);
-        canvas.restore();
-        canvas.endLayer();
         canvas.drawText(footerLabel, footerBounds.x + 18.0, footerBounds.y + 19.0);
         canvas.restore();
         canvas.update(list);

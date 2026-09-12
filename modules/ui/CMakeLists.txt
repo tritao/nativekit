@@ -22,6 +22,10 @@ nkui_generate_shader(
     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/composite.glsl"
     nkui_composite.glsl.h
     NKUI_COMPOSITE_SHADER)
+nkui_generate_shader(
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/surface_mesh.glsl"
+    nkui_surface_mesh.glsl.h
+    NKUI_SURFACE_MESH_SHADER)
 
 add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/api.cpp
@@ -42,7 +46,8 @@ add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     "${NKUI_PATH_SHADER}"
     "${NKUI_SOLID_SHADER}"
     "${NKUI_TEXT_SHADER}"
-    "${NKUI_COMPOSITE_SHADER}")
+    "${NKUI_COMPOSITE_SHADER}"
+    "${NKUI_SURFACE_MESH_SHADER}")
 add_library(NativeKit::ui ALIAS nativekit_ui)
 target_compile_features(nativekit_ui PRIVATE cxx_std_20)
 target_include_directories(nativekit_ui
@@ -199,9 +204,18 @@ if(NK_BUILD_TESTS)
             src/prepare/skribidi_adapter.cpp
             src/prepare/system_fonts.cpp
             src/render/graphics_device.cpp
+            src/render/cube_surface_producer.cpp
             src/render/frame_resources.cpp
             src/render/render_plan_executor.cpp
             src/render/sokol_backend.cpp)
+        target_compile_features(nativekit_ui_sokol_backend_smoke_test PRIVATE cxx_std_20)
+        target_sources(nativekit_ui_sokol_backend_smoke_test PRIVATE
+            "${NKUI_TOOLCHAIN_PROBE_SHADER}"
+            "${NKUI_PATH_SHADER}"
+            "${NKUI_SOLID_SHADER}"
+            "${NKUI_TEXT_SHADER}"
+            "${NKUI_COMPOSITE_SHADER}"
+            "${NKUI_SURFACE_MESH_SHADER}")
         target_include_directories(nativekit_ui_sokol_backend_smoke_test PRIVATE
             src "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}"
             "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src")
@@ -247,6 +261,8 @@ if(NK_BUILD_TESTS)
 endif()
 
 if(NK_BUILD_EXAMPLES)
+    target_sources(nativekit_ui PRIVATE src/render/cube_surface_producer.cpp)
+    target_compile_definitions(nativekit_ui PRIVATE NKUI_ENABLE_SHOWCASE_PRODUCER=1)
     add_executable(nativekit_ui_c_api examples/ui_c_api/showcase.cpp)
     set(NKUI_C_API_FONT_PATH
         "${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
@@ -351,6 +367,7 @@ if(NK_BUILD_EXAMPLES)
                     "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/Showcase.hx"
                     "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/ShowcaseWeb.hx"
                     "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui-wasm.hxi"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui-showcase-wasm.hxi"
                     "${PROJECT_SOURCE_DIR}/bindings/haxe/nativekit-wasm.hxi"
                     "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui.hxmap"
                     "${PROJECT_SOURCE_DIR}/bindings/haxe/nativekit.hxmap"
@@ -379,7 +396,7 @@ if(NK_BUILD_EXAMPLES)
             target_link_options(nativekit_ui_haxeon PRIVATE
                 "-sINITIAL_MEMORY=${NKUI_HAXEON_MEMORY_LIMIT}"
                 "-sALLOW_MEMORY_GROWTH=0"
-                "-sEXPORTED_FUNCTIONS=[_main,_nk_api_version,_nk_event_release,_nk_init,_nk_last_error,_nk_poll_event,_nk_shutdown,_nk_surface_create,_nk_surface_destroy,_nk_surface_get_framebuffer_size,_nk_surface_make_current,_nk_surface_present,_nk_surface_set_bounds,_nk_window_create,_nk_window_destroy,_nk_window_get_scale,_nkui_display_list_create,_nkui_display_list_destroy,_nkui_display_list_get_info,_nkui_display_list_reset,_nkui_display_list_submit,_nkui_font_collection_add,_nkui_font_collection_add_system_fallbacks,_nkui_font_collection_create,_nkui_image_create,_nkui_paint_create_solid,_nkui_path_create,_nkui_renderer_create,_nkui_renderer_destroy,_nkui_renderer_get_stats,_nkui_renderer_render,_nkui_renderer_render_frame,_nkui_resource_destroy,_nkui_text_layout_caret,_nkui_text_layout_create,_nkui_text_layout_create_styled,_nkui_text_layout_hit_test,_nkui_text_layout_set_text,_nkui_text_layout_update,_nkui_layout_session_create,_nkui_layout_session_destroy,_nkui_layout_session_get_event,_nkui_layout_session_get_event_count,_nkui_layout_session_get_item,_nkui_layout_session_render_frame,_nkui_layout_session_set_font_collection,_nkui_layout_session_submit,_nkui_haxeon_memory_contract_status,_nkui_haxeon_memory_contract_version,_nkui_haxeon_memory_contract_page_size,_nkui_haxeon_memory_contract_host_base,_nkui_haxeon_memory_contract_host_limit,_nkui_haxeon_memory_contract_base,_nkui_haxeon_memory_contract_guest_base,_nkui_haxeon_memory_contract_guest_limit,_nkui_haxeon_memory_contract_memory_size,_nkui_haxeon_memory_contract_limit]"
+                "-sEXPORTED_FUNCTIONS=[_main,_nk_api_version,_nk_event_release,_nk_init,_nk_last_error,_nk_poll_event,_nk_shutdown,_nk_surface_create,_nk_surface_destroy,_nk_surface_get_framebuffer_size,_nk_surface_make_current,_nk_surface_present,_nk_surface_set_bounds,_nk_window_create,_nk_window_destroy,_nk_window_get_scale,_nkui_display_list_create,_nkui_display_list_destroy,_nkui_display_list_get_info,_nkui_display_list_reset,_nkui_display_list_submit,_nkui_font_collection_add,_nkui_font_collection_add_system_fallbacks,_nkui_font_collection_create,_nkui_image_create,_nkui_paint_create_solid,_nkui_path_create,_nkui_renderer_create,_nkui_renderer_destroy,_nkui_renderer_get_stats,_nkui_renderer_render,_nkui_renderer_render_frame,_nkui_resource_destroy,_nkui_text_layout_caret,_nkui_text_layout_create,_nkui_text_layout_create_styled,_nkui_text_layout_hit_test,_nkui_text_layout_set_text,_nkui_text_layout_update,_nkui_layout_session_create,_nkui_layout_session_destroy,_nkui_layout_session_get_event,_nkui_layout_session_get_event_count,_nkui_layout_session_get_item,_nkui_layout_session_render_frame,_nkui_layout_session_set_font_collection,_nkui_layout_session_submit,_nkui_showcase_cube_create,_nkui_showcase_cube_set_rotation,_nkui_haxeon_memory_contract_status,_nkui_haxeon_memory_contract_version,_nkui_haxeon_memory_contract_page_size,_nkui_haxeon_memory_contract_host_base,_nkui_haxeon_memory_contract_host_limit,_nkui_haxeon_memory_contract_base,_nkui_haxeon_memory_contract_guest_base,_nkui_haxeon_memory_contract_guest_limit,_nkui_haxeon_memory_contract_memory_size,_nkui_haxeon_memory_contract_limit]"
                 "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSans-Regular.ttf@/assets/IBMPlexSans-Regular.ttf"
                 "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansArabic-Regular.ttf@/assets/IBMPlexSansArabic-Regular.ttf"
                 "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansHebrew-Regular.ttf@/assets/IBMPlexSansHebrew-Regular.ttf"

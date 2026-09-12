@@ -1,6 +1,9 @@
 #include "render_plan_executor.h"
 
+#include <algorithm>
+#include <cmath>
 #include <unordered_set>
+#include <utility>
 
 namespace nkui {
 namespace {
@@ -9,6 +12,35 @@ bool fail(RenderExecutionError *error, uint32_t pass, uint32_t command, const ch
     if (error)
         *error = {pass, command, message};
     return false;
+}
+
+std::pair<int, int> surface_request_size(const RenderPlan &plan, ResourceId surface,
+                                        const nk_surface_frame_target &window) {
+    float requested_width = 0.0f;
+    float requested_height = 0.0f;
+    for (const auto &pass : plan.passes) {
+        for (const auto &command : pass.commands) {
+            if (command.kind != RenderCommandKind::CompositeTarget ||
+                command.resource.value != surface.value || command.width <= 0.0f ||
+                command.height <= 0.0f)
+                continue;
+            const auto &m = command.transform;
+            const float width = std::abs(m[0]) * command.width + std::abs(m[2]) * command.height;
+            const float height = std::abs(m[1]) * command.width + std::abs(m[3]) * command.height;
+            if (std::isfinite(width) && std::isfinite(height)) {
+                requested_width = std::max(requested_width, width);
+                requested_height = std::max(requested_height, height);
+            }
+        }
+    }
+    if (!(requested_width > 0.0f) || !(requested_height > 0.0f))
+        return {window.width, window.height};
+    const auto bounded_extent = [](float value, int maximum) {
+        const double rounded = std::ceil(static_cast<double>(value));
+        return static_cast<int>(std::clamp(rounded, 1.0, static_cast<double>(maximum)));
+    };
+    return {bounded_extent(requested_width, window.width),
+            bounded_extent(requested_height, window.height)};
 }
 
 } // namespace
@@ -42,8 +74,9 @@ bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
             continue;
         }
         SurfaceDescriptor description{};
-        if (!producer->describe(window.frame_target.width, window.frame_target.height,
-                                description) ||
+        const auto requested = surface_request_size(plan, dependency.producer,
+                                                    window.frame_target);
+        if (!producer->describe(requested.first, requested.second, description) ||
             description.width <= 0 || description.height <= 0)
             return fail(error, 0, 0, "surface producer description is invalid");
         if (description.format != SurfacePixelFormat::Rgba8 ||
@@ -112,7 +145,8 @@ bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
             }
             case RenderCommandKind::CompositeTarget:
                 rendered = backend.draw_target(command.resource, command.x, command.y,
-                                               command.width, command.height, command.opacity);
+                                               command.width, command.height,
+                                               command.transform.data(), command.opacity);
                 break;
             case RenderCommandKind::Image:
                 {

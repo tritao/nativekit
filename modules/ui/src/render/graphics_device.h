@@ -74,6 +74,8 @@ class GpuResourceRegistry {
 
 /** Immutable shader, pipeline, and sampler resources shared by UI executors. */
 struct GraphicsDeviceResources {
+    sg_shader surface_mesh_shader{};
+    sg_pipeline surface_mesh_pipeline{};
     sg_shader solid_shader{};
     sg_pipeline solid_pipeline{};
     sg_pipeline fill_stencil_pipeline{};

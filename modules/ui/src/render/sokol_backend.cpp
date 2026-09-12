@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <unordered_map>
 
@@ -56,6 +57,7 @@ struct SokolBackend::State {
     GpuBufferHandle solid_vertices{};
     GpuBufferHandle glyph_vertices{};
     GpuBufferHandle composite_vertices{};
+    GpuBufferHandle surface_mesh_vertices{};
     GpuBufferHandle indices{};
     std::unordered_map<uint64_t, AtlasImage> atlases;
     std::unordered_map<uint32_t, Target> targets;
@@ -569,6 +571,7 @@ SokolBackend::~SokolBackend() {
         }
         gpu.destroy(state_->indices);
         gpu.destroy(state_->composite_vertices);
+        gpu.destroy(state_->surface_mesh_vertices);
         gpu.destroy(state_->glyph_vertices);
         gpu.destroy(state_->solid_vertices);
         state_->device.reset();
@@ -596,12 +599,14 @@ bool SokolBackend::initialize() {
     state_->solid_vertices = make_stream_buffer(4 * 1024 * 1024, false);
     state_->glyph_vertices = make_stream_buffer(4 * 1024 * 1024, false);
     state_->composite_vertices = make_stream_buffer(1024 * 1024, false);
+    state_->surface_mesh_vertices = make_stream_buffer(1024 * 1024, false);
     state_->indices = make_stream_buffer(4 * 1024 * 1024, true);
     state_->initialized =
         gpu.resolve(state_->solid_vertices).id && gpu.resolve(state_->glyph_vertices).id &&
-        gpu.resolve(state_->composite_vertices).id && gpu.resolve(state_->indices).id;
+        gpu.resolve(state_->composite_vertices).id &&
+        gpu.resolve(state_->surface_mesh_vertices).id && gpu.resolve(state_->indices).id;
     if (state_->initialized)
-        state_->stats.gpu_resources = 28;
+        state_->stats.gpu_resources = 31;
     return state_->initialized || fail(*state_, "Sokol UI resource creation failed");
 }
 
@@ -678,6 +683,49 @@ bool SokolBackend::begin_surface_pass(ResourceId target_id, const SurfaceDescrip
         description.color_space != SurfaceColorSpace::Linear)
         return fail(*state_, "invalid surface descriptor");
     return begin_target_pass(target_id, description.width, description.height, load_existing);
+}
+
+bool SokolBackend::draw_surface_mesh(const SurfaceMeshView &mesh) {
+    if (!state_->in_pass || mesh.vertices.empty() || mesh.indices.empty() ||
+        mesh.indices.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+        return fail(*state_, "invalid surface mesh draw");
+    for (const float value : mesh.model_view_projection)
+        if (!std::isfinite(value))
+            return fail(*state_, "surface mesh transform is not finite");
+    for (const auto &vertex : mesh.vertices)
+        if (!std::isfinite(vertex.x) || !std::isfinite(vertex.y) || !std::isfinite(vertex.z))
+            return fail(*state_, "surface mesh position is not finite");
+    for (const uint32_t index : mesh.indices)
+        if (index >= mesh.vertices.size())
+            return fail(*state_, "surface mesh index is out of range");
+    auto &gpu = state_->device->gpu_resources();
+    const sg_buffer vertex_buffer = gpu.resolve(state_->surface_mesh_vertices);
+    const sg_buffer index_buffer = gpu.resolve(state_->indices);
+    if (!vertex_buffer.id || !index_buffer.id)
+        return fail(*state_, "surface mesh streaming buffer is unavailable");
+    const sg_range vertex_data{mesh.vertices.data(), mesh.vertices.size_bytes()};
+    const sg_range index_data{mesh.indices.data(), mesh.indices.size_bytes()};
+    const int vertex_offset = state_->api->gfx->append_buffer(vertex_buffer, &vertex_data);
+    const int index_offset = state_->api->gfx->append_buffer(index_buffer, &index_data);
+    if (state_->api->gfx->query_buffer_overflow(vertex_buffer) ||
+        state_->api->gfx->query_buffer_overflow(index_buffer))
+        return fail(*state_, "surface mesh streaming buffer overflow");
+    state_->api->gfx->apply_pipeline(state_->device->resources().surface_mesh_pipeline);
+    ++state_->stats.pipeline_changes;
+    sg_bindings bindings{};
+    bindings.vertex_buffers[0] = vertex_buffer;
+    bindings.vertex_buffer_offsets[0] = vertex_offset;
+    bindings.index_buffer = index_buffer;
+    bindings.index_buffer_offset = index_offset;
+    state_->api->gfx->apply_bindings(&bindings);
+    ++state_->stats.binding_changes;
+    const sg_range uniforms{mesh.model_view_projection.data(),
+                            sizeof(mesh.model_view_projection)};
+    state_->api->gfx->apply_uniforms(0, &uniforms);
+    state_->api->gfx->draw(0, static_cast<int>(mesh.indices.size()), 1);
+    ++state_->stats.draws;
+    state_->stats.transient_bytes += vertex_data.size + index_data.size;
+    return true;
 }
 
 bool SokolBackend::surface_has_content(ResourceId target_id) const {
@@ -949,9 +997,12 @@ bool SokolBackend::draw_glyphs_transformed(const PreparedGlyphs &glyphs, const f
 }
 
 bool SokolBackend::draw_target(ResourceId target_id, float x, float y, float width, float height,
-                               float opacity) {
-    if (!state_->in_pass || opacity < 0.0f || opacity > 1.0f)
+                               const float transform[6], float opacity) {
+    if (!state_->in_pass || !transform || opacity < 0.0f || opacity > 1.0f)
         return fail(*state_, "invalid target composite");
+    for (int index = 0; index < 6; ++index)
+        if (!std::isfinite(transform[index]))
+            return fail(*state_, "target transform is not finite");
     const auto found = state_->targets.find(target_id.value);
     if (found == state_->targets.end())
         return fail(*state_, "target was not rendered");
@@ -959,12 +1010,13 @@ bool SokolBackend::draw_target(ResourceId target_id, float x, float y, float wid
         width = static_cast<float>(found->second.width);
     if (height <= 0.0f)
         height = static_cast<float>(found->second.height);
-    const std::vector<TextureVertex> vertices = {
-        {x, y, 0.0f, 1.0f},
-        {x + width, y, 1.0f, 1.0f},
-        {x + width, y + height, 1.0f, 0.0f},
-        {x, y + height, 0.0f, 0.0f},
+    const auto point = [transform](float px, float py, float u, float v) {
+        return TextureVertex{px * transform[0] + py * transform[2] + transform[4],
+                             px * transform[1] + py * transform[3] + transform[5], u, v};
     };
+    const std::vector<TextureVertex> vertices = {
+        point(x, y, 0.0f, 1.0f), point(x + width, y, 1.0f, 1.0f),
+        point(x + width, y + height, 1.0f, 0.0f), point(x, y + height, 0.0f, 0.0f)};
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
     sg_sampler sampler = state_->device->resources().sampler;

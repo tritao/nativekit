@@ -6,7 +6,9 @@
 #include "prepare/nanovg_path.h"
 #include "prepare/skribidi_adapter.h"
 
+#include <array>
 #include <cstdint>
+#include <span>
 
 namespace nkui {
 
@@ -31,6 +33,24 @@ struct RenderBackendStats {
     uint32_t gpu_resources = 0;
 };
 
+/** Vertex format available to offscreen surface producers. */
+struct SurfaceMeshVertex {
+    float x;
+    float y;
+    float z;
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+    uint8_t alpha;
+};
+
+/** Immutable indexed mesh and clip-space transform for one producer draw. */
+struct SurfaceMeshView {
+    std::span<const SurfaceMeshVertex> vertices;
+    std::span<const uint32_t> indices;
+    std::array<float, 16> model_view_projection{};
+};
+
 /** Backend-neutral rendering contract used by the compositor executor. */
 class RenderBackend {
   public:
@@ -44,6 +64,7 @@ class RenderBackend {
                                    bool load_existing) = 0;
     virtual bool begin_surface_pass(ResourceId target, const SurfaceDescriptor &description,
                                     bool load_existing) = 0;
+    virtual bool draw_surface_mesh(const SurfaceMeshView &mesh) = 0;
     virtual bool surface_has_content(ResourceId target) const = 0;
     virtual bool surface_is_current(ResourceId target, uint32_t generation,
                                     const SurfaceDescriptor &description) const = 0;
@@ -64,7 +85,7 @@ class RenderBackend {
                                          float origin_x, float origin_y,
                                          float opacity = 1.0f) = 0;
     virtual bool draw_target(ResourceId target, float x, float y, float width, float height,
-                             float opacity) = 0;
+                             const float transform[6], float opacity) = 0;
     virtual bool end_pass() = 0;
     virtual bool commit_frame() = 0;
     virtual bool end_frame() = 0;

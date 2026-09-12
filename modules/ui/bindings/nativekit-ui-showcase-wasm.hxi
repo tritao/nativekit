@@ -1,0 +1,6 @@
+interface NativeKitUIShowcase @target("portable-abi32") @library("nativekit_ui") @depends("NativeKitUI") {
+	/** Creates the native cube producer used only by the Graphics Lab example. */
+	extern fn nkui_showcase_cube_create(out_surface: ptr<nkui_resource> @out) -> nkui_result;
+	/** Updates the showcase cube's deterministic rotation angle in radians. */
+	extern fn nkui_showcase_cube_set_rotation(surface: nkui_resource, radians: f32) -> nkui_result;
+}

@@ -41,6 +41,7 @@ fi
     --ffi-projection="$repo_dir/bindings/haxe/nativekit.hxmap" \
     --ffi-interface="$module_dir/bindings/nativekit-ui.hxi" \
     --ffi-projection="$module_dir/bindings/nativekit-ui.hxmap" \
+    --ffi-interface="$module_dir/bindings/nativekit-ui-showcase.hxi" \
     "$module_dir/examples/ui_showcase/ShowcaseDesktop.hx" \
     "$module_dir/examples/ui_showcase/Showcase.hx" \
     "$module_dir/bindings/haxe/"*.hx \

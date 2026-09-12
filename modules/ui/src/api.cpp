@@ -9,6 +9,9 @@
 #include "layout/layout_render_compiler.h"
 #include "prepare/nanovg_path.h"
 #include "prepare/skribidi_adapter.h"
+#if defined(NKUI_ENABLE_SHOWCASE_PRODUCER)
+#include "render/cube_surface_producer.h"
+#endif
 #include "render/frame_resources.h"
 #include "render/render_plan_executor.h"
 #include "render/sokol_backend.h"
@@ -68,6 +71,7 @@ struct ResourceSlot {
     std::shared_ptr<nkui::SkribidiFontCollection> font_collection;
     bool system_fallbacks = false;
     std::unique_ptr<nkui::SkribidiAdapter> text;
+    std::unique_ptr<nkui::SurfaceProducer> surface;
     nkui::PreparedGlyphs text_glyphs;
     std::unordered_map<int32_t, nkui::PreparedGlyphs> scaled_text_glyphs;
     float text_width = 0.0f;
@@ -654,7 +658,10 @@ nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
     if (!out)
         return NKUI_ERROR_INVALID_ARGUMENT;
     out->id = 0;
-    for (uint32_t index = 0; index < resources.size(); ++index) {
+    const uint32_t slot_limit = kind == nkui::ResourceKind::RenderTarget ? 0x7FFFu : UINT16_MAX;
+    const uint32_t first_slot = kind == nkui::ResourceKind::RenderTarget ? 1u : 0u;
+    const uint32_t reusable_slots = std::min<uint32_t>(resources.size(), slot_limit);
+    for (uint32_t index = first_slot; index < reusable_slots; ++index) {
         auto &entry = resources[index];
         if (entry.kind == nkui::ResourceKind{}) {
             entry.kind = kind;
@@ -667,7 +674,14 @@ nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
             return NKUI_OK;
         }
     }
-    if (resources.size() >= UINT16_MAX)
+    if (kind == nkui::ResourceKind::RenderTarget && resources.empty()) {
+        try {
+            resources.emplace_back(); // Slot one is reserved for the window render target.
+        } catch (...) {
+            return NKUI_ERROR_OUT_OF_MEMORY;
+        }
+    }
+    if (resources.size() >= slot_limit)
         return NKUI_ERROR_OUT_OF_MEMORY;
     try {
         resources.emplace_back();
@@ -683,6 +697,7 @@ nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
 }
 
 void release_resource_slot(ResourceSlot &slot) {
+    slot.surface.reset();
     slot.text.reset();
     slot.text_glyphs = {};
     slot.scaled_text_glyphs.clear();
@@ -705,8 +720,6 @@ void release_resource_slot(ResourceSlot &slot) {
 
 bool retain_display_resource(nkui::ResourceId id) {
     const auto kind = static_cast<nkui::ResourceKind>(id.value >> 28);
-    if (kind == nkui::ResourceKind::RenderTarget)
-        return true;
     auto *slot = resolve(nkui_resource{id.value}, kind);
     if (!slot)
         return false;
@@ -716,8 +729,6 @@ bool retain_display_resource(nkui::ResourceId id) {
 
 void release_display_resource(nkui::ResourceId id) {
     const auto kind = static_cast<nkui::ResourceKind>(id.value >> 28);
-    if (kind == nkui::ResourceKind::RenderTarget)
-        return;
     auto *slot = resolve_retained(nkui_resource{id.value}, kind);
     if (!slot || !slot->display_refs)
         return;
@@ -774,6 +785,40 @@ bool collect_display_resources(const uint8_t *data, size_t size,
 extern "C" uint32_t nkui_api_version(void) {
     return NKUI_API_VERSION;
 }
+
+#if defined(NKUI_ENABLE_SHOWCASE_PRODUCER)
+extern "C" NKUI_API nkui_result nkui_showcase_cube_create(nkui_resource *out_surface) {
+    if (!out_surface)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    ResourceSlot *slot = nullptr;
+    const nkui_result allocated =
+        allocate_resource(nkui::ResourceKind::RenderTarget, out_surface, &slot);
+    if (allocated != NKUI_OK)
+        return allocated;
+    try {
+        slot->surface = std::make_unique<nkui::CubeSurfaceProducer>();
+    } catch (...) {
+        release_resource_slot(*slot);
+        out_surface->id = 0;
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    return NKUI_OK;
+}
+
+extern "C" NKUI_API nkui_result nkui_showcase_cube_set_rotation(nkui_resource surface,
+                                                                  float radians) {
+    if (!std::isfinite(radians))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(surface, nkui::ResourceKind::RenderTarget);
+    auto *cube = slot ? dynamic_cast<nkui::CubeSurfaceProducer *>(slot->surface.get()) : nullptr;
+    if (!cube)
+        return NKUI_ERROR_INVALID_HANDLE;
+    cube->set_rotation(radians);
+    return NKUI_OK;
+}
+#endif
 
 extern "C" nkui_result nkui_display_list_create(nkui_display_list *out_list) {
     if (!out_list)
@@ -1573,10 +1618,25 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                 valid = false;
                 break;
             } else if (command.kind == nkui::RenderCommandKind::CompositeTarget) {
-                command.x *= frame_info->pixel_scale;
-                command.y *= frame_info->pixel_scale;
-                command.width *= frame_info->pixel_scale;
-                command.height *= frame_info->pixel_scale;
+                const uint16_t target_slot = static_cast<uint16_t>(command.resource.value);
+                if (target_slot < 0x8000u) {
+                    auto *surface_slot = resolve_retained(
+                        nkui_resource{command.resource.value}, nkui::ResourceKind::RenderTarget);
+                    if (!surface_slot || !surface_slot->surface ||
+                        !frame_resources.bind_surface(command.resource, *surface_slot->surface)) {
+                        valid = false;
+                        break;
+                    }
+                }
+                if (command.width > 0.0f && command.height > 0.0f) {
+                    command.transform = device_transform(command.transform,
+                                                         frame_info->pixel_scale);
+                } else {
+                    command.x *= frame_info->pixel_scale;
+                    command.y *= frame_info->pixel_scale;
+                    command.width *= frame_info->pixel_scale;
+                    command.height *= frame_info->pixel_scale;
+                }
             }
         }
         if (!valid)

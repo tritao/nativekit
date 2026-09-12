@@ -45,6 +45,7 @@ class SokolBackend final : public RenderBackend {
                            bool load_existing) override;
     bool begin_surface_pass(ResourceId target, const SurfaceDescriptor &description,
                             bool load_existing) override;
+    bool draw_surface_mesh(const SurfaceMeshView &mesh) override;
     bool surface_has_content(ResourceId target) const override;
     bool surface_is_current(ResourceId target, uint32_t generation,
                             const SurfaceDescriptor &description) const override;
@@ -65,7 +66,7 @@ class SokolBackend final : public RenderBackend {
                                  float origin_x, float origin_y,
                                  float opacity = 1.0f) override;
     bool draw_target(ResourceId target, float x, float y, float width, float height,
-                     float opacity) override;
+                     const float transform[6], float opacity) override;
     bool end_pass() override;
     bool commit_frame() override;
     bool end_frame() override;

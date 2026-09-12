@@ -97,6 +97,7 @@ compiler_args=(
 	--ffi-projection="$repo_dir/bindings/haxe/nativekit.hxmap"
 	--ffi-interface="$module_dir/bindings/nativekit-ui-wasm.hxi"
 	--ffi-projection="$module_dir/bindings/nativekit-ui.hxmap"
+	--ffi-interface="$module_dir/bindings/nativekit-ui-showcase-wasm.hxi"
 	"$module_dir/examples/ui_showcase/Showcase.hx"
 	"$module_dir/examples/ui_showcase/ShowcaseWeb.hx"
 	"$module_dir/bindings/haxe/"*.hx
