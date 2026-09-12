@@ -15,24 +15,48 @@
 extern "C" {
 #endif
 
+/** Layout bridge and wire-format versions and fixed sizes. */
 enum {
     NKUI_LAYOUT_API_VERSION = 2,
     NKUI_LAYOUT_TRANSACTION_VERSION = 2,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
-    NKUI_LAYOUT_NODE_RECORD_BYTES = 160,
+    NKUI_LAYOUT_NODE_RECORD_BYTES = 160
+};
+
+/** Bit flags stored in each node's clip-flags field. */
+enum {
     NKUI_LAYOUT_CLIP_HORIZONTAL = 1u << 0,
-    NKUI_LAYOUT_CLIP_VERTICAL = 1u << 1,
+    NKUI_LAYOUT_CLIP_VERTICAL = 1u << 1
+};
+
+/** Node kinds encoded in the transaction. */
+enum {
     NKUI_LAYOUT_NODE_BOX = 1,
     NKUI_LAYOUT_NODE_TEXT = 2,
-    NKUI_LAYOUT_NODE_BUTTON = 3,
+    NKUI_LAYOUT_NODE_BUTTON = 3
+};
+
+/** Sizing modes encoded for each node axis. */
+enum {
     NKUI_LAYOUT_SIZING_FIT = 0,
     NKUI_LAYOUT_SIZING_GROW = 1,
     NKUI_LAYOUT_SIZING_FIXED = 2,
-    NKUI_LAYOUT_SIZING_PERCENT = 3,
-    NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT = 0,
-    NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM = 1,
-    NKUI_LAYOUT_EVENT_BUTTON_ACTIVATED = 1,
+    NKUI_LAYOUT_SIZING_PERCENT = 3
+};
 
+/** Child flow directions encoded in node styles. */
+enum {
+    NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT = 0,
+    NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM = 1
+};
+
+/** Semantic event kinds returned by the layout session. */
+enum {
+    NKUI_LAYOUT_EVENT_BUTTON_ACTIVATED = 1
+};
+
+/** Byte offsets within each fixed-size node record. */
+enum {
     NKUI_LAYOUT_NODE_ID_OFFSET = 0,
     NKUI_LAYOUT_NODE_PARENT_OFFSET = 4,
     NKUI_LAYOUT_NODE_KIND_OFFSET = 8,
