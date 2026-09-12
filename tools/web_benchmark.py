@@ -82,6 +82,15 @@ def main():
                 if not state["report"]:
                     raise RuntimeError("browser benchmark completed without a report")
                 report = json.loads(state["report"])
+                webgl = websocket.evaluate(
+                    "(()=>{const gl=document.getElementById('canvas')?.getContext('webgl2');"
+                    "if(!gl)return null;const ext=gl.getExtension('WEBGL_debug_renderer_info');"
+                    "return JSON.stringify({version:gl.getParameter(gl.VERSION),"
+                    "vendor:ext?gl.getParameter(ext.UNMASKED_VENDOR_WEBGL):gl.getParameter(gl.VENDOR),"
+                    "renderer:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER)})})()",
+                    2,
+                )
+                report["webgl"] = json.loads(webgl) if webgl else None
                 report["host_environment"] = host_environment()
                 with open(args.output, "w", encoding="utf-8") as output:
                     json.dump(report, output, indent=2)

@@ -131,6 +131,7 @@
           allocator: allocator && benchmarkAllocatorBaseline ? {
             measured_allocation_calls: (allocator.allocation_count - benchmarkAllocatorBaseline.allocation_count) >>> 0,
             measured_allocated_bytes: (allocator.allocated_bytes - benchmarkAllocatorBaseline.allocated_bytes) >>> 0,
+            collections_during_measurement: (allocator.collection_count - benchmarkAllocatorBaseline.collection_count) >>> 0,
             heap_high_water_bytes: allocator.heap_top - allocator.heap_base,
             heap_growth_during_measurement_bytes: allocator.heap_top - benchmarkAllocatorBaseline.heap_top,
             live_gc_metadata_bytes: allocator.metadata_top - allocator.metadata_base
@@ -202,7 +203,7 @@
     }
 
     function readAllocatorStats() {
-      const names = ["heap_base", "heap_top", "metadata_base", "metadata_top", "allocation_count", "allocated_bytes"];
+      const names = ["heap_base", "heap_top", "metadata_base", "metadata_top", "allocation_count", "allocated_bytes", "collection_count"];
       if (!guest || names.some(name => typeof guest["haxeon.memory." + name] !== "function"))
         return null;
       return Object.fromEntries(names.map(name => [name, guest["haxeon.memory." + name]() >>> 0]));

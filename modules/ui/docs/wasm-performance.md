@@ -53,6 +53,11 @@ each frame. Set `NATIVEKIT_WEB_BENCHMARK_WARMUP` and
 with frame percentiles, startup costs, artifact sizes, memory partition capacity,
 browser details, CPU model, CPU affinity, and host load average.
 
+Set `NATIVEKIT_WEB_BENCHMARK_GPU=hardware` to exercise the physical GPU instead
+of SwiftShader. Reports include the unmasked WebGL vendor and renderer for
+verification; the default `software` mode remains useful for repeatable
+headless runs.
+
 The text-heavy baseline uses eight repetitions of the multilingual sample. The
 previous eight-repeat trap was a stale nullable field in a GC-reused Wasm heap
 block: newly grown memory was zeroed, but the free-list reuse path was not.
@@ -61,6 +66,29 @@ Haxeon's allocator now zero-fills recycled blocks, and its focused
 into a fresh object's default-null field, and that recycled array elements and
 `Bytes` storage are zeroed. The Showcase passed 4×, 8×, 16×, and 32× text-repeat
 smoke runs; 16× and 32× were one-frame stress checks, not timing baselines.
+
+## Hardware-GPU regression check
+
+The browser benchmark can exercise the real GPU path and records the WebGL
+renderer in its JSON report:
+
+```sh
+NATIVEKIT_WEB_BENCHMARK_GPU=hardware ./tools/benchmark-web-haxeon.sh
+```
+
+On Chrome 136 with an NVIDIA GTX 1060, a 600-frame full-Showcase run of the
+pre-optimization artifact measured 33.4 ms median / 45.0 ms p95 guest-frame
+time, with 663 estimated dropped frames. After Haxeon stopped scanning numeric
+array backing stores and `Bytes` payloads as if they contained references, three
+hardware runs measured 3.3–3.6 ms median and 8.3–19.9 ms p95 guest-frame time.
+In a fixed-time 120-frame core comparison (20 warmup frames), median/p95 fell
+from 32.2 / 42.7 ms to 2.0 / 2.5 ms on the same hardware renderer.
+Two runs had no estimated drops and request-animation-frame intervals stayed
+near 16.7 ms through p95; one noisier run estimated 40 drops and had long-tail
+jitter. The improvement is large enough to make the Showcase a credible 60 Hz
+workload on this machine, but the outliers mean this is not a universal
+performance guarantee. Collection still runs before each allocation; the
+unvalidated deferred-collection experiment is not part of this result.
 
 ## Local release-build sample
 
@@ -74,10 +102,16 @@ samples, not a CI performance gate: the host's load average was around 5.8 on
 presentation. JSON reports are retained under ignored `out/web-benchmarks/`
 for this workspace.
 
-The separate stats-enabled 8× text-heavy sample recorded 16,928 guest
-allocations / 1.44 MB allocated, with a 1.94 MB heap high-water mark. Imported
-NativeKit API time was median 2.3 ms / p95 3.1 ms per frame. This instrumented
-run is useful for attribution, not as a release-timing comparison.
+The latest stats-enabled full browser sample recorded 16,936 guest allocations
+/ 1.44 MB allocated, a 2.01 MB heap high-water mark, and 16,936 collections
+across 120 measured frames. A call-level profile attributed a 1.0 ms median /
+1.6 ms p95 to Wasm plus host-wrapper residual time; native rendering calls were
+the largest measured category (1.6 ms median / 14.0 ms p95). A separate Chrome
+sampling capture, excluding idle samples, attributed 29.4% of active CPU samples
+to `__haxeon_gc_mark`, 1.7% to collection, and 35.6% to WebGL framebuffer
+checks. Marking remains worth optimizing, but no longer dominates the frame;
+reference-layout-aware tracing and the render-call long tail are the next
+targets. Instrumented results are for attribution, not release timing.
 
 For allocator counters and time spent inside imported NativeKit APIs, build the
 separate instrumented artifact and run a short profile sample:

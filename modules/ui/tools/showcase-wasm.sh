@@ -133,7 +133,8 @@ if (!exports.includes('main') || (!exports.includes('memory') && !importsMemory)
 if (process.env.NATIVEKIT_HAXEON_MEMORY_STATS === '1') {
   for (const name of ['haxeon.memory.heap_base', 'haxeon.memory.heap_top',
       'haxeon.memory.metadata_base', 'haxeon.memory.metadata_top',
-      'haxeon.memory.allocation_count', 'haxeon.memory.allocated_bytes'])
+      'haxeon.memory.allocation_count', 'haxeon.memory.allocated_bytes',
+      'haxeon.memory.collection_count'])
     if (!exports.includes(name)) throw new Error(`Showcase wasm is missing allocator diagnostic ${name}`);
 }
 console.log(`showcase-wasm: built ${path} (${imports.length} imports; exports ${exports.join(', ')})`);

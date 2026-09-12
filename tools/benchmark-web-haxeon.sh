@@ -9,6 +9,7 @@ frames=${NATIVEKIT_WEB_BENCHMARK_FRAMES:-600}
 mode=${NATIVEKIT_WEB_BENCHMARK_MODE:-browser}
 scenario=${NATIVEKIT_WEB_BENCHMARK_SCENARIO:-full}
 profile=${NATIVEKIT_WEB_BENCHMARK_PROFILE:-0}
+gpu=${NATIVEKIT_WEB_BENCHMARK_GPU:-software}
 browser=${NK_WEB_BROWSER:-}
 
 if [[ ! -f "$artifact_dir/nativekit_ui_haxeon.html" ]]; then
@@ -29,6 +30,21 @@ if [[ -z "$browser" ]]; then
 fi
 
 mkdir -p "$(dirname "$output")"
+browser_flags=(--headless=new --no-sandbox --disable-dev-shm-usage --no-first-run)
+case "$gpu" in
+    software)
+        runner=headless-software-webgl
+        browser_flags+=(--disable-gpu --enable-unsafe-swiftshader)
+        ;;
+    hardware)
+        runner=headless-hardware-webgl
+        browser_flags+=(--enable-gpu --ignore-gpu-blocklist --disable-gpu-sandbox --use-gl=angle --use-angle=gl)
+        ;;
+    *)
+        echo "NATIVEKIT_WEB_BENCHMARK_GPU must be software or hardware" >&2
+        exit 2
+        ;;
+esac
 http_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
 debug_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
 temp_dir=$(mktemp -d)
@@ -57,12 +73,11 @@ trap cleanup EXIT
 
 python3 -m http.server "$http_port" --bind 127.0.0.1 --directory "$artifact_dir" >"$temp_dir/http.log" 2>&1 &
 http_pid=$!
-page_url="http://127.0.0.1:${http_port}/nativekit_ui_haxeon.html?benchmark&runner=headless-software-webgl&mode=${mode}&scenario=${scenario}&warmup=${warmup}&frames=${frames}"
+page_url="http://127.0.0.1:${http_port}/nativekit_ui_haxeon.html?benchmark&runner=${runner}&mode=${mode}&scenario=${scenario}&warmup=${warmup}&frames=${frames}"
 if [[ "$profile" == "1" ]]; then
     page_url+="&profile"
 fi
-"$browser" --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu \
-    --enable-unsafe-swiftshader --no-first-run --user-data-dir="$temp_dir/profile" \
+"$browser" "${browser_flags[@]}" --user-data-dir="$temp_dir/profile" \
     --remote-debugging-port="$debug_port" --remote-allow-origins='*' \
     "$page_url" >"$temp_dir/browser.log" 2>&1 &
 browser_pid=$!
