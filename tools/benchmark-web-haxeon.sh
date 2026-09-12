@@ -33,6 +33,7 @@ http_pid=""
 browser_pid=""
 
 cleanup() {
+    local status=$?
     if [[ -n "$browser_pid" ]]; then
         kill "$browser_pid" 2>/dev/null || true
         wait "$browser_pid" 2>/dev/null || true
@@ -41,7 +42,13 @@ cleanup() {
         kill "$http_pid" 2>/dev/null || true
         wait "$http_pid" 2>/dev/null || true
     fi
-    rm -r -- "$temp_dir"
+    # Chrome may briefly leave profile workers behind after its parent exits.
+    # Cleanup must never replace a successful benchmark result with a trap error.
+    for _ in $(seq 1 10); do
+        rm -rf -- "$temp_dir" 2>/dev/null && break
+        sleep 0.1
+    done
+    return "$status"
 }
 trap cleanup EXIT
 
