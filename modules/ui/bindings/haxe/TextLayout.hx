@@ -20,8 +20,8 @@ class TextLayout extends NativeKitUIResource {
 			?textStyle:TextStyle, ?paragraphStyle:ParagraphStyle):TextLayout {
 		if (text == null || width <= 0.0)
 			throw "Text layout arguments are invalid";
-		var actualTextStyle = textStyle == null ? new TextStyle() : textStyle;
-		var actualParagraphStyle = paragraphStyle == null ? new ParagraphStyle() : paragraphStyle;
+		var actualTextStyle = textStyle == null ? new TextStyle() : copyTextStyle(textStyle);
+		var actualParagraphStyle = paragraphStyle == null ? new ParagraphStyle() : copyParagraphStyle(paragraphStyle);
 		var made = NativeKitUI.nkui_text_layout_create_styled(fonts.nativeHandle(), text, width,
 			nativeTextStyle(actualTextStyle), nativeParagraphStyle(actualParagraphStyle));
 		UiResult.check(made.status, "textLayout.create");
@@ -46,18 +46,26 @@ class TextLayout extends NativeKitUIResource {
 			paragraph:ParagraphStyle):Void {
 		if (value == null || newWidth <= 0.0 || style == null || paragraph == null)
 			throw "Text layout update arguments are invalid";
+		var ownedTextStyle = copyTextStyle(style);
+		var ownedParagraphStyle = copyParagraphStyle(paragraph);
 		UiResult.check(NativeKitUI.nkui_text_layout_update(nativeHandle(), value, newWidth,
-			nativeTextStyle(style), nativeParagraphStyle(paragraph)), "textLayout.update");
+			nativeTextStyle(ownedTextStyle), nativeParagraphStyle(ownedParagraphStyle)), "textLayout.update");
 		text = value;
 		width = newWidth;
-		textStyle.font = style.font;
-		textStyle.fontSize = style.fontSize;
-		textStyle.letterSpacing = style.letterSpacing;
-		paragraphStyle.wrap = paragraph.wrap;
-		paragraphStyle.alignment = paragraph.alignment;
-		paragraphStyle.lineHeight = paragraph.lineHeight;
-		paragraphStyle.direction = paragraph.direction;
+		textStyle.font = ownedTextStyle.font;
+		textStyle.fontSize = ownedTextStyle.fontSize;
+		textStyle.letterSpacing = ownedTextStyle.letterSpacing;
+		paragraphStyle.wrap = ownedParagraphStyle.wrap;
+		paragraphStyle.alignment = ownedParagraphStyle.alignment;
+		paragraphStyle.lineHeight = ownedParagraphStyle.lineHeight;
+		paragraphStyle.direction = ownedParagraphStyle.direction;
 	}
+
+	static function copyTextStyle(style:TextStyle):TextStyle
+		return new TextStyle(style.fontSize, style.font, style.letterSpacing);
+
+	static function copyParagraphStyle(style:ParagraphStyle):ParagraphStyle
+		return new ParagraphStyle(style.wrap, style.alignment, style.lineHeight, style.direction);
 
 	static function nativeTextStyle(style:TextStyle):nkui_text_style {
 		var result = new nkui_text_style();

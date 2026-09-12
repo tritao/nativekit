@@ -1,4 +1,13 @@
 class LayoutSessionSmoke {
+	static function rejectsInvalidTextStyle(node:LayoutNode):Bool {
+		try {
+			LayoutTransaction.encode(node);
+			return false;
+		} catch (_:Dynamic) {
+			return true;
+		}
+	}
+
 	static function main():Int {
 		var fontPath = Sys.getEnv("NKUI_TEST_FONT_PATH");
 		if (fontPath == null)
@@ -6,6 +15,17 @@ class LayoutSessionSmoke {
 
 		var fonts = FontCollection.create();
 		fonts.add(fontPath);
+		var infinity = Math.pow(2.0, 1024.0);
+		var infiniteFontSize = LayoutNode.textNode(90, "font size");
+		infiniteFontSize.textStyle.fontSize = infinity;
+		var infiniteLetterSpacing = LayoutNode.textNode(91, "letter spacing");
+		infiniteLetterSpacing.textStyle.letterSpacing = -infinity;
+		var infiniteLineHeight = LayoutNode.textNode(92, "line height");
+		infiniteLineHeight.paragraphStyle.lineHeight = infinity;
+		if (!rejectsInvalidTextStyle(infiniteFontSize) ||
+			!rejectsInvalidTextStyle(infiniteLetterSpacing) ||
+			!rejectsInvalidTextStyle(infiniteLineHeight))
+			return 5;
 		var session = LayoutSession.create();
 		session.setFonts(fonts);
 

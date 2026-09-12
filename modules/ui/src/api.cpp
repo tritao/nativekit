@@ -260,6 +260,12 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
     const auto read_node_float = [&](size_t record, size_t field, float &out) {
         return read_float(bytes, size, record + field, out);
     };
+    const auto read_node_color = [&](size_t record, size_t field, nkui::LayoutColor &out) {
+        return read_node_float(record, field, out.red) &&
+               read_node_float(record, field + sizeof(float), out.green) &&
+               read_node_float(record, field + 2 * sizeof(float), out.blue) &&
+               read_node_float(record, field + 3 * sizeof(float), out.alpha);
+    };
     const auto read_u16 = [&](size_t record, size_t field, uint16_t &out) {
         uint32_t value = 0;
         if (!read_node_u32(record, field, value) || value > UINT16_MAX)
@@ -286,39 +292,53 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             uint32_t text_flags = 0;
             uint32_t text_offset = 0;
             uint32_t text_length = 0;
-            if (!read_node_u32(record, 0, id) || !read_node_i32(record, 4, node.parent) ||
-                !read_node_u32(record, 8, kind) || !read_node_u32(record, 12, width_sizing) ||
-                !read_node_float(record, 16, node.style.width.value) ||
-                !read_node_u32(record, 20, height_sizing) || height_sizing > 3 ||
-                !read_node_float(record, 24, node.style.height.value) ||
-                !read_node_u32(record, 28, direction) || direction > 1 ||
-                !read_u16(record, 32, node.style.padding_left) ||
-                !read_u16(record, 36, node.style.padding_right) ||
-                !read_u16(record, 40, node.style.padding_top) ||
-                !read_u16(record, 44, node.style.padding_bottom) ||
-                !read_u16(record, 48, node.style.child_gap) ||
-                !read_node_float(record, 52, node.style.background.red) ||
-                !read_node_float(record, 56, node.style.background.green) ||
-                !read_node_float(record, 60, node.style.background.blue) ||
-                !read_node_float(record, 64, node.style.background.alpha) ||
-                !read_node_float(record, 68, node.style.radius_top_left) ||
-                !read_node_float(record, 72, node.style.radius_top_right) ||
-                !read_node_float(record, 76, node.style.radius_bottom_left) ||
-                !read_node_float(record, 80, node.style.radius_bottom_right) ||
-                !read_node_u32(record, 84, clip) || clip > (NKUI_LAYOUT_CLIP_HORIZONTAL | NKUI_LAYOUT_CLIP_VERTICAL) ||
-                !read_node_u32(record, 88, text_offset) || !read_node_u32(record, 92, text_length) ||
-                !read_node_float(record, 96, node.text_color.red) ||
-                !read_node_float(record, 100, node.text_color.green) ||
-                !read_node_float(record, 104, node.text_color.blue) ||
-                !read_node_float(record, 108, node.text_color.alpha) ||
-                !read_node_u32(record, 112, font_family) ||
-                !read_node_float(record, 116, node.text_style.font_size) ||
-                !read_node_float(record, 120, node.text_style.letter_spacing) ||
-                !read_node_float(record, 124, node.paragraph_style.line_height) ||
-                !read_node_u32(record, 128, text_wrap) ||
-                !read_node_u32(record, 132, text_alignment) ||
-                !read_node_u32(record, 136, text_direction) ||
-                !read_node_u32(record, 140, text_flags))
+            if (!read_node_u32(record, NKUI_LAYOUT_NODE_ID_OFFSET, id) ||
+                !read_node_i32(record, NKUI_LAYOUT_NODE_PARENT_OFFSET, node.parent) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_KIND_OFFSET, kind) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET, width_sizing) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET,
+                                 node.style.width.value) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET, height_sizing) ||
+                height_sizing > NKUI_LAYOUT_SIZING_PERCENT ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET,
+                                 node.style.height.value) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_DIRECTION_OFFSET, direction) ||
+                direction > NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM ||
+                !read_u16(record, NKUI_LAYOUT_NODE_PADDING_LEFT_OFFSET,
+                          node.style.padding_left) ||
+                !read_u16(record, NKUI_LAYOUT_NODE_PADDING_RIGHT_OFFSET,
+                          node.style.padding_right) ||
+                !read_u16(record, NKUI_LAYOUT_NODE_PADDING_TOP_OFFSET, node.style.padding_top) ||
+                !read_u16(record, NKUI_LAYOUT_NODE_PADDING_BOTTOM_OFFSET,
+                          node.style.padding_bottom) ||
+                !read_u16(record, NKUI_LAYOUT_NODE_CHILD_GAP_OFFSET, node.style.child_gap) ||
+                !read_node_color(record, NKUI_LAYOUT_NODE_BACKGROUND_OFFSET,
+                                 node.style.background) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET,
+                                 node.style.radius_top_left) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET,
+                                 node.style.radius_top_right) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_RADIUS_BOTTOM_LEFT_OFFSET,
+                                 node.style.radius_bottom_left) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_RADIUS_BOTTOM_RIGHT_OFFSET,
+                                 node.style.radius_bottom_right) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_CLIP_FLAGS_OFFSET, clip) ||
+                clip > (NKUI_LAYOUT_CLIP_HORIZONTAL | NKUI_LAYOUT_CLIP_VERTICAL) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_OFFSET_OFFSET, text_offset) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_LENGTH_OFFSET, text_length) ||
+                !read_node_color(record, NKUI_LAYOUT_NODE_TEXT_COLOR_OFFSET, node.text_color) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_FONT_FAMILY_OFFSET, font_family) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET,
+                                 node.text_style.font_size) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_LETTER_SPACING_OFFSET,
+                                 node.text_style.letter_spacing) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_LINE_HEIGHT_OFFSET,
+                                 node.paragraph_style.line_height) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_WRAP_OFFSET, text_wrap) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET,
+                               text_alignment) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET, text_direction) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_FLAGS_OFFSET, text_flags))
                 return false;
             if (kind < NKUI_LAYOUT_NODE_BOX || kind > NKUI_LAYOUT_NODE_BUTTON ||
                 width_sizing > NKUI_LAYOUT_SIZING_PERCENT)

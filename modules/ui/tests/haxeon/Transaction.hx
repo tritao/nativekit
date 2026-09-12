@@ -63,6 +63,24 @@ class Transaction {
 		paragraphStyle.wrap = TextWrap.Word;
 		var text = TextLayout.createStyled(fonts, "NativeKit — こんにちは — مرحبا", 220.0,
 			textStyle, paragraphStyle);
+		textStyle.fontSize = 30.0;
+		paragraphStyle.wrap = TextWrap.None;
+		if (text.textStyle.fontSize != 18.0 || text.textStyle.letterSpacing != -0.25 ||
+			text.paragraphStyle.wrap != TextWrap.Word)
+			return 18;
+		var updatedTextStyle = new TextStyle(19.5, FontFamily.Default, -0.5);
+		var updatedParagraphStyle = new ParagraphStyle(TextWrap.WordCharacter,
+			TextAlignment.Center, 22.0, TextDirection.Rtl);
+		text.update("Updated — こんにちは — مرحبا", 220.0, updatedTextStyle,
+			updatedParagraphStyle);
+		updatedTextStyle.fontSize = 28.0;
+		updatedParagraphStyle.alignment = TextAlignment.End;
+		if (text.textStyle.fontSize != 19.5 || text.textStyle.letterSpacing != -0.5 ||
+			text.paragraphStyle.alignment != TextAlignment.Center ||
+			text.paragraphStyle.lineHeight != 22.0 ||
+			text.paragraphStyle.direction != TextDirection.Rtl || textStyle.fontSize != 30.0 ||
+			paragraphStyle.wrap != TextWrap.None)
+			return 19;
 		var metrics = text.measure();
 		var position = text.hitTest(16.0, 24.0);
 		var caret = text.caret(position);
