@@ -193,6 +193,7 @@ EM_BOOL frame_callback_adapter(double time, void *) {
 
 } // namespace
 
+// Preserve JavaScript operators in the embedded EM_JS bodies.
 // clang-format off
 EM_JS(void, nk_web_set_canvas_css_size, (const char *selector, int width, int height), {
     const canvas = document.querySelector(UTF8ToString(selector));
