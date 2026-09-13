@@ -18,14 +18,15 @@ class TextLayout extends NativeKitUIResource {
 
 	public static function create(fonts:FontCollection, text:String, width:Float,
 			?textStyle:TextStyle, ?paragraphStyle:ParagraphStyle):TextLayout {
-		if (text == null || width <= 0.0)
+		if (width <= 0.0)
 			throw "Text layout arguments are invalid";
+		var actualText = text == null ? "" : text;
 		var actualTextStyle = textStyle == null ? new TextStyle() : copyTextStyle(textStyle);
 		var actualParagraphStyle = paragraphStyle == null ? new ParagraphStyle() : copyParagraphStyle(paragraphStyle);
-		var made = NativeKitUI.nkui_text_layout_create_styled(fonts.nativeHandle(), text, width,
+		var made = NativeKitUI.nkui_text_layout_create_styled(fonts.nativeHandle(), actualText, width,
 			nativeTextStyle(actualTextStyle), nativeParagraphStyle(actualParagraphStyle));
 		UiResult.check(made.status, "textLayout.create");
-		return new TextLayout(made.out_layout, text, width, actualTextStyle, actualParagraphStyle);
+		return new TextLayout(made.out_layout, actualText, width, actualTextStyle, actualParagraphStyle);
 	}
 
 	/** Creates a layout using the same semantic styles as LayoutNode. */
@@ -35,22 +36,22 @@ class TextLayout extends NativeKitUIResource {
 
 	/** Re-shapes this layout without replacing its native resource handle. */
 	public function setText(value:String):Void {
-		if (value == null)
-			throw "Text layout text cannot be null";
-		UiResult.check(NativeKitUI.nkui_text_layout_set_text(nativeHandle(), value), "textLayout.setText");
-		text = value;
+		var actualText = value == null ? "" : value;
+		UiResult.check(NativeKitUI.nkui_text_layout_set_text(nativeHandle(), actualText), "textLayout.setText");
+		text = actualText;
 	}
 
 	/** Re-shapes this retained layout with new content, width, or semantic styles. */
 	public function update(value:String, newWidth:Float, style:TextStyle,
 			paragraph:ParagraphStyle):Void {
-		if (value == null || newWidth <= 0.0 || style == null || paragraph == null)
+		if (newWidth <= 0.0 || style == null || paragraph == null)
 			throw "Text layout update arguments are invalid";
+		var actualText = value == null ? "" : value;
 		var ownedTextStyle = copyTextStyle(style);
 		var ownedParagraphStyle = copyParagraphStyle(paragraph);
-		UiResult.check(NativeKitUI.nkui_text_layout_update(nativeHandle(), value, newWidth,
+		UiResult.check(NativeKitUI.nkui_text_layout_update(nativeHandle(), actualText, newWidth,
 			nativeTextStyle(ownedTextStyle), nativeParagraphStyle(ownedParagraphStyle)), "textLayout.update");
-		text = value;
+		text = actualText;
 		width = newWidth;
 		textStyle.font = ownedTextStyle.font;
 		textStyle.fontSize = ownedTextStyle.fontSize;

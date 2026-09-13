@@ -3927,9 +3927,9 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		flags: nk_text_input_flags @offset(4);
 		/**
-		 * NUL-terminated UTF-8 window into the document, used during the call.
+		 * NUL-terminated UTF-8 window into the document; null represents an empty window.
 		 */
-		text: utf8 @offset(8);
+		text: nullable<utf8> @offset(8);
 		/**
 		 * Absolute code-point index of the first code point in text.
 		 */

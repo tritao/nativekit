@@ -490,13 +490,13 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * `fonts` must be a valid collection containing at least one font. `width` and
 	 * `font_size` are positive logical-pixel values. On NKUI_OK, writes a text
 	 * layout resource to `out_layout`; the input string is consumed while the
-	 * layout is built.
+	 * layout is built. A null text pointer represents an empty UTF-8 string.
 	 */
-	extern fn nkui_text_layout_create(fonts: nkui_resource, text: utf8, width: f32, font_size: f32, out_layout: ptr<nkui_resource> @out) -> nkui_result;
+	extern fn nkui_text_layout_create(fonts: nkui_resource, text: nullable<utf8>, width: f32, font_size: f32, out_layout: ptr<nkui_resource> @out) -> nkui_result;
 	/**
-	 * Creates a text layout using the shared semantic text and paragraph styles.
+	 * Creates a text layout using the shared semantic text and paragraph styles; null text is empty.
 	 */
-	extern fn nkui_text_layout_create_styled(fonts: nkui_resource, text: utf8, width: f32, text_style: ptr<const<nkui_text_style>>, paragraph_style: ptr<const<nkui_paragraph_style>>, out_layout: ptr<nkui_resource> @out) -> nkui_result;
+	extern fn nkui_text_layout_create_styled(fonts: nkui_resource, text: nullable<utf8>, width: f32, text_style: ptr<const<nkui_text_style>>, paragraph_style: ptr<const<nkui_paragraph_style>>, out_layout: ptr<nkui_resource> @out) -> nkui_result;
 	/**
 	 * Returns the visual rectangles covered by a code-point selection.
 	 *
@@ -526,13 +526,13 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_text_layout_previous_grapheme(layout: nkui_resource, offset: i32, out_offset: ptr<i32> @out) -> nkui_result;
 	/**
-	 * Re-shapes an existing layout with new UTF-8 text while retaining its handle and style.
+	 * Re-shapes an existing layout with new UTF-8 text while retaining its handle and style; null text is empty.
 	 */
-	extern fn nkui_text_layout_set_text(layout: nkui_resource, text: utf8) -> nkui_result;
+	extern fn nkui_text_layout_set_text(layout: nkui_resource, text: nullable<utf8>) -> nkui_result;
 	/**
-	 * Re-shapes an existing layout while retaining its native resource handle.
+	 * Re-shapes an existing layout while retaining its native resource handle; null text is empty.
 	 */
-	extern fn nkui_text_layout_update(layout: nkui_resource, text: utf8, width: f32, text_style: ptr<const<nkui_text_style>>, paragraph_style: ptr<const<nkui_paragraph_style>>) -> nkui_result;
+	extern fn nkui_text_layout_update(layout: nkui_resource, text: nullable<utf8>, width: f32, text_style: ptr<const<nkui_text_style>>, paragraph_style: ptr<const<nkui_paragraph_style>>) -> nkui_result;
 	/**
 	 * A normalized RGBA paint color.
 	 */

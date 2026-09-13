@@ -444,8 +444,8 @@ typedef struct nk_text_input_state {
     uint32_t struct_size;
     /** Text-input behavior requested from the platform IME. */
     nk_text_input_flags flags;
-    /** NUL-terminated UTF-8 window into the document, used during the call. */
-    const char *text NK_UTF8;
+    /** NUL-terminated UTF-8 window into the document; null represents an empty window. */
+    const char *text NK_NULLABLE_UTF8;
     /** Absolute code-point index of the first code point in text. */
     nk_text_position text_start;
     /** Total document length in Unicode code points. */

@@ -1179,13 +1179,13 @@ extern "C" nkui_result nkui_layout_session_get_resolved_items(nkui_layout_sessio
 
 extern "C" nkui_result nkui_text_layout_create(nkui_resource fonts, const char *text, float width,
                                                float font_size, nkui_resource *out_layout) {
-    if (!text || !out_layout || !std::isfinite(width) || !std::isfinite(font_size) ||
+    if (!out_layout || !std::isfinite(width) || !std::isfinite(font_size) ||
         width <= 0.0f || font_size <= 0.0f)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
     nkui::TextLayoutOptions options;
     options.font_size = font_size;
-    return create_text_layout_locked(fonts, text, width, options, out_layout);
+    return create_text_layout_locked(fonts, text ? text : "", width, options, out_layout);
 }
 
 extern "C" nkui_result nkui_text_layout_create_styled(nkui_resource fonts, const char *text,
@@ -1193,19 +1193,19 @@ extern "C" nkui_result nkui_text_layout_create_styled(nkui_resource fonts, const
                                                       const nkui_text_style *text_style,
                                                       const nkui_paragraph_style *paragraph_style,
                                                       nkui_resource *out_layout) {
-    if (!text || !out_layout || !std::isfinite(width) || width <= 0.0f)
+    if (!out_layout || !std::isfinite(width) || width <= 0.0f)
         return NKUI_ERROR_INVALID_ARGUMENT;
     nkui::TextLayoutOptions options;
     if (!text_options_from_api(text_style, paragraph_style, options))
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
-    return create_text_layout_locked(fonts, text, width, options, out_layout);
+    return create_text_layout_locked(fonts, text ? text : "", width, options, out_layout);
 }
 
 extern "C" nkui_result nkui_text_layout_update(nkui_resource layout, const char *text, float width,
                                                const nkui_text_style *text_style,
                                                const nkui_paragraph_style *paragraph_style) {
-    if (!text || !std::isfinite(width) || width <= 0.0f)
+    if (!std::isfinite(width) || width <= 0.0f)
         return NKUI_ERROR_INVALID_ARGUMENT;
     nkui::TextLayoutOptions options;
     if (!text_options_from_api(text_style, paragraph_style, options))
@@ -1215,7 +1215,7 @@ extern "C" nkui_result nkui_text_layout_update(nkui_resource layout, const char 
     if (!slot || !slot->text)
         return NKUI_ERROR_INVALID_HANDLE;
     nkui::TextLayoutResult shaped;
-    if (!slot->text->layout_utf8(text, width, options, &shaped))
+    if (!slot->text->layout_utf8(text ? text : "", width, options, &shaped))
         return NKUI_ERROR_INVALID_ARGUMENT;
     nkui::PreparedGlyphs updated;
     if (!slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha, updated))
@@ -1229,14 +1229,12 @@ extern "C" nkui_result nkui_text_layout_update(nkui_resource layout, const char 
 }
 
 extern "C" nkui_result nkui_text_layout_set_text(nkui_resource layout, const char *text) {
-    if (!text)
-        return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
     auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
     if (!slot || !slot->text || slot->text_width <= 0.0f)
         return NKUI_ERROR_INVALID_HANDLE;
     nkui::TextLayoutResult shaped;
-    if (!slot->text->layout_utf8(text, slot->text_width, slot->text_options, &shaped))
+    if (!slot->text->layout_utf8(text ? text : "", slot->text_width, slot->text_options, &shaped))
         return NKUI_ERROR_INVALID_ARGUMENT;
     nkui::PreparedGlyphs updated;
     if (!slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha, updated))

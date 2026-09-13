@@ -27,12 +27,14 @@
 #define NKUI_OUT_BUFFER(size_parameter) __attribute__((annotate("hxi:out_buffer")))
 #define NKUI_IN_ARRAY(count_parameter) __attribute__((annotate("hxi:in_array")))
 #define NKUI_UTF8 __attribute__((annotate("hxi:utf8")))
+#define NKUI_NULLABLE_UTF8 __attribute__((annotate("hxi:nullable_utf8")))
 #else
 #define NKUI_OUT
 #define NKUI_INOUT
 #define NKUI_OUT_BUFFER(size_parameter)
 #define NKUI_IN_ARRAY(count_parameter)
 #define NKUI_UTF8
+#define NKUI_NULLABLE_UTF8
 #endif
 
 /* ------------------------------------------------------------------------- */
@@ -550,25 +552,25 @@ NKUI_API nkui_result nkui_font_collection_add_system_fallbacks(nkui_resource fon
  * `fonts` must be a valid collection containing at least one font. `width` and
  * `font_size` are positive logical-pixel values. On NKUI_OK, writes a text
  * layout resource to `out_layout`; the input string is consumed while the
- * layout is built.
+ * layout is built. A null text pointer represents an empty UTF-8 string.
  */
-NKUI_API nkui_result nkui_text_layout_create(nkui_resource fonts, const char *text NKUI_UTF8,
+NKUI_API nkui_result nkui_text_layout_create(nkui_resource fonts, const char *text NKUI_NULLABLE_UTF8,
                                              float width, float font_size,
                                              nkui_resource *out_layout NKUI_OUT);
 
-/** Creates a text layout using the shared semantic text and paragraph styles. */
-NKUI_API nkui_result nkui_text_layout_create_styled(nkui_resource fonts, const char *text NKUI_UTF8,
+/** Creates a text layout using the shared semantic text and paragraph styles; null text is empty. */
+NKUI_API nkui_result nkui_text_layout_create_styled(nkui_resource fonts, const char *text NKUI_NULLABLE_UTF8,
                                                     float width, const nkui_text_style *text_style,
                                                     const nkui_paragraph_style *paragraph_style,
                                                     nkui_resource *out_layout NKUI_OUT);
 
-/** Re-shapes an existing layout while retaining its native resource handle. */
-NKUI_API nkui_result nkui_text_layout_update(nkui_resource layout, const char *text NKUI_UTF8,
+/** Re-shapes an existing layout while retaining its native resource handle; null text is empty. */
+NKUI_API nkui_result nkui_text_layout_update(nkui_resource layout, const char *text NKUI_NULLABLE_UTF8,
                                              float width, const nkui_text_style *text_style,
                                              const nkui_paragraph_style *paragraph_style);
 
-/** Re-shapes an existing layout with new UTF-8 text while retaining its handle and style. */
-NKUI_API nkui_result nkui_text_layout_set_text(nkui_resource layout, const char *text NKUI_UTF8);
+/** Re-shapes an existing layout with new UTF-8 text while retaining its handle and style; null text is empty. */
+NKUI_API nkui_result nkui_text_layout_set_text(nkui_resource layout, const char *text NKUI_NULLABLE_UTF8);
 
 /** Returns the layout bounds in `out_metrics`. */
 NKUI_API nkui_result nkui_text_layout_measure(nkui_resource layout,

@@ -33,6 +33,8 @@ import nativekit.ui.widgets.Row;
 import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollView;
 import nativekit.ui.widgets.Text;
+import nativekit.ui.widgets.TextEditorState;
+import nativekit.ui.widgets.Utf8Text;
 
 class FrameworkSmoke {
 	static function main():Int {
@@ -45,6 +47,28 @@ class FrameworkSmoke {
 		var context = new UiContext(session, fonts);
 		if (context.buildContext.fonts != fonts)
 			return 30;
+		var emptyEditor = new TextEditorState(fonts, "");
+		if (Utf8Text.length(emptyEditor.text) != 0)
+			return 38;
+		emptyEditor.dispose();
+		var editor = new TextEditorState(fonts, "á🙂");
+		if (Utf8Text.length(editor.text) != 3)
+			return 32;
+		if (Utf8Text.slice(editor.text, 0, 2) != "á")
+			return 34;
+		if (!editor.moveCaret(-1, false) || editor.selectionFocus != 2)
+			return 35;
+		if (!editor.deleteForward() || editor.text != "á")
+			return 36;
+		if (!editor.deleteBackward() || editor.text != "")
+			return 37;
+		editor.insert("hi");
+		var composition = new NativeKitTextEdit(TextEditAction.Compose, "á", 2, 2,
+			4, 4, 2, 4);
+		if (!editor.applyTextEdit(composition) || editor.text != "hiá" ||
+			editor.selectionEnd != 4 || editor.compositionStart != 2 || editor.compositionEnd != 4)
+			return 33;
+		editor.dispose();
 		if (!NativeKitEventDecoderTests.run())
 			return 27;
 		var frame = new LayoutFrame(256.0, 192.0);

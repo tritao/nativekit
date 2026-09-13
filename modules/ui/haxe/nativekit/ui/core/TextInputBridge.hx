@@ -49,7 +49,7 @@ class TextInputBridge {
 		ensureLive();
 		if (surface == null || surface.isDisposed() || !requestedActive || cursor == null)
 			return;
-		NativeKitTextInput.update(surface, text, 0, documentLength, selectionStart,
+		NativeKitTextInput.update(surface, text == null ? "" : text, 0, documentLength, selectionStart,
 			selectionEnd, compositionStart, compositionEnd, cast inputType, cast flags,
 			null, cursor.x, cursor.y, cursor.width, cursor.height);
 	}

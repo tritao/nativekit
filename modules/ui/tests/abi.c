@@ -62,6 +62,14 @@ int main(void) {
     if (nkui_font_collection_create(&fonts) != NKUI_OK ||
         nkui_font_collection_add(fonts, NKUI_TEST_FONT_PATH, NKUI_FONT_FAMILY_DEFAULT) != NKUI_OK)
         return 7;
+    nkui_resource empty_layout = {0};
+    if (nkui_text_layout_create_styled(fonts, NULL, 120.0f, &text_style,
+                                       &paragraph_style, &empty_layout) != NKUI_OK ||
+        nkui_text_layout_set_text(empty_layout, NULL) != NKUI_OK ||
+        nkui_text_layout_update(empty_layout, NULL, 120.0f, &text_style,
+                                &paragraph_style) != NKUI_OK ||
+        nkui_resource_destroy(empty_layout) != NKUI_OK)
+        return 21;
     nkui_text_style invalid_text_style = text_style;
     nkui_paragraph_style invalid_paragraph_style = paragraph_style;
     invalid_text_style.family = (nkui_font_family)-1;

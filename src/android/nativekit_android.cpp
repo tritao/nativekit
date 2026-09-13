@@ -1766,12 +1766,13 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
     auto resource = surface(handle);
     if (!resource)
         return NK_ERROR_INVALID_HANDLE;
-    if (!state || state->struct_size < sizeof(nk_text_input_state) || !state->text) {
+    if (!state || state->struct_size < sizeof(nk_text_input_state)) {
         nk::core::set_error("text input state is missing or too small");
         return NK_ERROR_INVALID_ARGUMENT;
     }
+    const char *text = state->text ? state->text : "";
     uint32_t codepoints = 0;
-    for (const auto *cursor = reinterpret_cast<const unsigned char *>(state->text); *cursor;
+    for (const auto *cursor = reinterpret_cast<const unsigned char *>(text); *cursor;
          ++cursor)
         codepoints += (*cursor & 0xc0u) != 0x80u;
     const uint64_t text_end = static_cast<uint64_t>(state->text_start) + codepoints;
@@ -1797,12 +1798,12 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
         return NK_ERROR_INVALID_ARGUMENT;
     }
     auto *env = environment();
-    auto text = env ? from_utf8(env, state->text) : nullptr;
-    if (!env || !text)
+    auto java_text = env ? from_utf8(env, text) : nullptr;
+    if (!env || !java_text)
         return NK_ERROR_OUT_OF_MEMORY;
     jvalue arguments[15]{};
     arguments[0].l = resource->view;
-    arguments[1].l = text;
+    arguments[1].l = java_text;
     arguments[2].i = static_cast<jint>(state->text_start);
     arguments[3].i = static_cast<jint>(state->document_length);
     arguments[4].i = static_cast<jint>(state->selection_start);
@@ -1823,7 +1824,7 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
     const auto result = java_void_surface(
         resource, "setSurfaceTextInputState",
         "(Landroid/view/SurfaceView;Ljava/lang/String;IIIIIIIIIFFFF)V", arguments);
-    env->DeleteLocalRef(text);
+    env->DeleteLocalRef(java_text);
     return result;
 }
 
