@@ -195,15 +195,29 @@ final class NativeKitBridge {
             return depth;
         }
 
+        private void addSemanticChildren(AccessibilityNodeInfo info, int parentId) {
+            ArrayList<SemanticNode> children = new ArrayList<>();
+            for (SemanticNode child : semanticNodes.values()) {
+                if (child.parent == parentId)
+                    children.add(child);
+            }
+            Collections.sort(children, new Comparator<SemanticNode>() {
+                @Override
+                public int compare(SemanticNode left, SemanticNode right) {
+                    return Integer.compare(left.childIndex, right.childIndex);
+                }
+            });
+            for (SemanticNode child : children)
+                info.addChild(NativeSurfaceView.this, child.id);
+        }
+
         private final class SemanticProvider extends AccessibilityNodeProvider {
             @Override
             public AccessibilityNodeInfo createAccessibilityNodeInfo(int virtualId) {
                 if (virtualId == View.NO_ID) {
                     AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain(NativeSurfaceView.this);
                     onInitializeAccessibilityNodeInfo(info);
-                    semanticNodes.values().stream().filter(node -> node.parent == 0)
-                        .sorted(Comparator.comparingInt(node -> node.childIndex))
-                        .forEach(node -> info.addChild(NativeSurfaceView.this, node.id));
+                    addSemanticChildren(info, 0);
                     return info;
                 }
                 SemanticNode node = semanticNodes.get(virtualId);
@@ -216,9 +230,7 @@ final class NativeKitBridge {
                     info.setParent(NativeSurfaceView.this);
                 else
                     info.setParent(NativeSurfaceView.this, node.parent);
-                semanticNodes.values().stream().filter(child -> child.parent == node.id)
-                    .sorted(Comparator.comparingInt(child -> child.childIndex))
-                    .forEach(child -> info.addChild(NativeSurfaceView.this, child.id));
+                addSemanticChildren(info, node.id);
                 populateNodeInfo(info, node);
                 return info;
             }

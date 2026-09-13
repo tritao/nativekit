@@ -68,13 +68,15 @@ public final class NativeKitHostTest {
             NativeKitEvent messageEvent = find(events, EVENT_WEBVIEW_MESSAGE);
             assertEquals("\"" + message + "\"", messageEvent.text());
 
-            NativeKitEvent geometry = events.stream()
-                                          .filter(event -> event.kind == EVENT_HOST_GEOMETRY_CHANGED)
-                                          .filter(event -> event.data != null)
-                                          .filter(event -> geometryData(event).getInt(4) > 0)
-                                          .filter(event -> geometryData(event).getInt(8) > 0)
-                                          .reduce((first, last) -> last)
-                                          .orElseThrow();
+            NativeKitEvent geometry = null;
+            for (NativeKitEvent event : events) {
+                if (event.kind == EVENT_HOST_GEOMETRY_CHANGED && event.data != null) {
+                    ByteBuffer data = geometryData(event);
+                    if (data.getInt(4) > 0 && data.getInt(8) > 0)
+                        geometry = event;
+                }
+            }
+            assertNotNull(geometry);
             assertEquals(handles[0], geometry.source);
             assertNotNull(geometry.data);
             assertTrue(geometry.data.length >= 36);
@@ -201,8 +203,16 @@ public final class NativeKitHostTest {
                     events.add(event);
             });
             boolean complete = true;
-            for (int kind : kinds)
-                complete &= events.stream().anyMatch(event -> event.kind == kind);
+            for (int kind : kinds) {
+                boolean found = false;
+                for (NativeKitEvent event : events) {
+                    if (event.kind == kind) {
+                        found = true;
+                        break;
+                    }
+                }
+                complete &= found;
+            }
             if (complete)
                 return events;
             Thread.sleep(50);
@@ -319,6 +329,10 @@ public final class NativeKitHostTest {
     }
 
     private static NativeKitEvent find(List<NativeKitEvent> events, int kind) {
-        return events.stream().filter(event -> event.kind == kind).findFirst().orElseThrow();
+        for (NativeKitEvent event : events) {
+            if (event.kind == kind)
+                return event;
+        }
+        throw new AssertionError("missing NativeKit event of kind " + kind);
     }
 }
