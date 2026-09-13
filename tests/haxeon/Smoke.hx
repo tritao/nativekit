@@ -13,6 +13,7 @@ import NativeKit.NativeKitConstants;
 import NativeKit.InitOptions;
 import NativeKit.TextInputState;
 import NativeKit.Capabilities;
+import NativeKit.MessageButtons;
 import NativeKit.NotificationFlags;
 import NativeKitRequestOutcome;
 
@@ -61,8 +62,28 @@ class Smoke {
 				if (completed)
 					break;
 			}
-			payloadOk = payloadOk && completed && requests.pending() == 0 && !requests.cancel(request);
+			payloadOk = payloadOk && completed && requests.pending() == 0
+				&& !requests.cancelDialog(request) && !requests.forget(request);
 			payloadOk = payloadOk && requests.pending() == 0;
+
+			var forgottenCallbackCalled = false;
+			var forgottenRequest = requests.readClipboardText(function(_) {
+				forgottenCallbackCalled = true;
+			});
+			var forgottenRequestRemoved = requests.forget(forgottenRequest);
+			var forgottenEventSeen = false;
+			for (_ in 0...1000) {
+				var value = requests.poll();
+				forgottenEventSeen = switch value {
+					case ClipboardText(completedRequest, _, _)
+						if (Std.string(completedRequest) == Std.string(forgottenRequest)): true;
+					case _: false;
+				};
+				if (forgottenEventSeen)
+					break;
+			}
+			payloadOk = payloadOk && forgottenRequestRemoved && forgottenEventSeen
+				&& !forgottenCallbackCalled && requests.pending() == 0;
 		}
 		var fileArrayResult = NativeKit.nk_clipboard_set_files(["/tmp/nativekit-a", "/tmp/nativekit-b"]);
 		if (fileArrayResult != 0 && fileArrayResult != Result.ErrorUnsupported)
@@ -99,13 +120,63 @@ class Smoke {
 		if (textState.get_text() != "olá 👋" || textState.get_struct_size() != TextInputState.size())
 			return 11;
 		var windowOk = false;
+		var windowCreated = false;
+		var dialogCancellationOk = true;
 		try {
 			var window = runtime.createWindow(windowOptions);
+			windowCreated = true;
 			windowOk = window.nativeHandle().isValid();
+			var backendCapabilities:Capabilities = NativeKit.nk_get_capabilities();
+			if (windowOk && backendCapabilities.contains(Capabilities.fileDialog())) {
+				var requests = new NativeKitRequests();
+				var fileCompleted = false, fileCancelled = false;
+				var fileRequest = requests.openFile(window, NativeKitOptions.fileDialog("Cancellation smoke"),
+					function(outcome) {
+						fileCancelled = switch outcome {
+							case Cancelled: true;
+							case _: false;
+						};
+						fileCompleted = true;
+					});
+				var fileCancelStarted = requests.cancelDialog(fileRequest);
+				var repeatedFileCancelRejected = !requests.cancelDialog(fileRequest);
+				var polls = 0;
+				while (!fileCompleted && polls < 1000) {
+					requests.poll();
+					polls++;
+				}
+				dialogCancellationOk = fileCancelStarted && repeatedFileCancelRejected
+					&& fileCompleted && fileCancelled && requests.pending() == 0
+					&& !requests.cancelDialog(fileRequest) && !requests.forget(fileRequest);
+
+				if (dialogCancellationOk) {
+					var messageCompleted = false, messageCancelled = false;
+					var messageRequest = requests.messageDialog(window,
+						NativeKitOptions.messageDialog("Cancellation smoke", null, null,
+							MessageButtons.Yes | MessageButtons.No),
+						function(outcome) {
+							messageCancelled = switch outcome {
+								case Cancelled: true;
+								case _: false;
+							};
+							messageCompleted = true;
+						});
+					var messageCancelStarted = requests.cancelDialog(messageRequest);
+					polls = 0;
+					while (!messageCompleted && polls < 1000) {
+						requests.poll();
+						polls++;
+					}
+					dialogCancellationOk = messageCancelStarted && messageCompleted
+						&& messageCancelled && requests.pending() == 0;
+				}
+			}
 			window.dispose();
 			windowOk = windowOk && window.isDisposed();
 		} catch (error:Dynamic) {
-			windowOk = Std.string(error).indexOf("(-4)") >= 0;
+			var unsupported = Std.string(error).indexOf("(-4)") >= 0;
+			windowOk = !windowCreated && unsupported;
+			if (windowCreated || !unsupported) dialogCancellationOk = false;
 		}
 		var primary = NativeKit.nk_monitor_get_primary();
 		var monitorOk = primary.status == -4;
@@ -120,6 +191,8 @@ class Smoke {
 			return 3;
 		if (!windowOk)
 			return 4;
+		if (!dialogCancellationOk)
+			return 19;
 		if (!diagnosticOk)
 			return 5;
 		if (!monitorOk)

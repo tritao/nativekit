@@ -12,7 +12,8 @@ import NativeKitWindow;
 
 /** Maps asynchronous NativeKit request IDs to one-shot typed completions. */
 class NativeKitRequests {
-	final handlers:Map<String, NativeKitEventValue->Void> = [];
+	final handlers:Map<String, NativeKitEventValue->Bool->Void> = [];
+	final dialogCancellationRequested:Map<String, Bool> = [];
 
 	public function new() {}
 
@@ -90,9 +91,9 @@ class NativeKitRequests {
 		handler:NativeKitRequestOutcome<MessageResult>->Void):haxe.Int64 {
 		var started = NativeKit.nk_dialog_message(parent.nativeHandle(), options);
 		checkStarted("message dialog", started.status);
-		track(started.out_request, function(value) switch value {
+		trackDialogRequest(started.out_request, function(value, cancellationRequested) switch value {
 			case DialogMessage(_, result, button):
-				handler(acceptedOutcome(result, button != MessageResult.None, button));
+				handler(messageOutcome(result, button, cancellationRequested));
 			case _: wrongEvent("message dialog");
 		});
 		return started.out_request;
@@ -113,19 +114,43 @@ class NativeKitRequests {
 	public function track(request:haxe.Int64, handler:NativeKitEventValue->Void):Void {
 		var key = Std.string(request);
 		if (handlers.exists(key)) throw "NativeKit request is already tracked";
-		handlers.set(key, handler);
+		handlers.set(key, function(value, _cancelRequested) {
+			handler(value);
+		});
 	}
 
-	public function cancel(request:haxe.Int64):Bool
-		return handlers.remove(Std.string(request));
+	/**
+	 * Cancels a dialog started by this manager. Its completion remains tracked
+	 * and is delivered as Cancelled. Returns false if it is not tracked here or
+	 * cancellation has already been requested; native errors are thrown.
+	 */
+	public function cancelDialog(request:haxe.Int64):Bool {
+		var key = Std.string(request);
+		if (!handlers.exists(key) || !dialogCancellationRequested.exists(key)
+			|| dialogCancellationRequested.get(key))
+			return false;
+		var result = NativeKit.nk_dialog_cancel(request);
+		NativeKitResult.check(result, "dialog.cancel");
+		dialogCancellationRequested.set(key, true);
+		return true;
+	}
+
+	/** Stops dispatching a tracked completion without cancelling native work. */
+	public function forget(request:haxe.Int64):Bool {
+		var key = Std.string(request);
+		dialogCancellationRequested.remove(key);
+		return handlers.remove(key);
+	}
 
 	/** Polls, decodes, releases, and dispatches one terminal request event. */
 	public function poll():NativeKitEventValue {
 		var event = NativeKitEvent.poll(), value = event.take(), key = Std.string(event.request);
 		var handler = handlers.get(key);
 		if (handler != null) {
+			var cancellationRequested = dialogCancellationRequested.get(key) == true;
 			handlers.remove(key);
-			handler(value);
+			dialogCancellationRequested.remove(key);
+			handler(value, cancellationRequested);
 		}
 		return value;
 	}
@@ -139,7 +164,7 @@ class NativeKitRequests {
 	function trackDialog(name:String, status:Result, request:haxe.Int64,
 		handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
 		checkStarted(name, status);
-		track(request, function(value) switch value {
+		trackDialogRequest(request, function(value, _cancelRequested) switch value {
 			case DialogPaths(_, result, accepted, paths):
 				handler(acceptedOutcome(result, accepted, paths));
 			case _: wrongEvent(name);
@@ -150,13 +175,21 @@ class NativeKitRequests {
 	function trackResourceDialog(name:String, status:Result, request:haxe.Int64,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
 		checkStarted(name, status);
-		track(request, function(value) switch value {
+		trackDialogRequest(request, function(value, _cancelRequested) switch value {
 			case Resources(kind, _, result, accepted, items):
 				if (kind != NativeKit.EventKind.DialogResourcesComplete) wrongEvent(name);
 				handler(acceptedOutcome(result, accepted, items));
 			case _: wrongEvent(name);
 		});
 		return request;
+	}
+
+	function trackDialogRequest(request:haxe.Int64,
+		handler:NativeKitEventValue->Bool->Void):Void {
+		var key = Std.string(request);
+		if (handlers.exists(key)) throw "NativeKit request is already tracked";
+		handlers.set(key, handler);
+		dialogCancellationRequested.set(key, false);
 	}
 
 	static function checkStarted(name:String, result:Result):Void
@@ -172,6 +205,13 @@ class NativeKitRequests {
 		if (result != Result.Ok)
 			return Failure(result, null);
 		return accepted ? Success(value) : Cancelled;
+	}
+
+	static function messageOutcome(result:Result, button:MessageResult,
+		cancellationRequested:Bool):NativeKitRequestOutcome<MessageResult> {
+		if (result != Result.Ok)
+			return Failure(result, null);
+		return cancellationRequested || button == MessageResult.None ? Cancelled : Success(button);
 	}
 
 	static function wrongEvent(name:String):Void

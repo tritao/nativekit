@@ -53,8 +53,10 @@ Callbacks receive `Success(value)`, `Cancelled`, or `Failure(result, message)`;
 dialogs use `Cancelled` when dismissed. Expected asynchronous failures are
 delivered as values instead of being thrown from `poll()`. Synchronous failures
 to start a request still throw with the NativeKit diagnostic. `poll()` decodes
-and releases the native event before invoking a matching handler; `cancel()`
-only removes local tracking and does not cancel native work.
+and releases the native event before invoking a matching handler.
+`cancelDialog(request)` asks NativeKit to cancel a tracked native dialog and
+keeps its handler until the resulting `Cancelled` completion is dispatched.
+`forget(request)` only removes local tracking; it does not cancel native work.
 
 Run the end-to-end smoke test with:
 
