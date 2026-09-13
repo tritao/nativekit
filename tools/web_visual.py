@@ -112,6 +112,7 @@ def main():
     parser.add_argument("--page-url", required=True)
     parser.add_argument("--width", type=int, required=True)
     parser.add_argument("--height", type=int, required=True)
+    parser.add_argument("--scale", type=float, default=1.0)
     parser.add_argument("--reference", type=pathlib.Path, required=True)
     parser.add_argument("--artifact-dir", type=pathlib.Path, required=True)
     parser.add_argument("--click")
@@ -134,6 +135,9 @@ def main():
         time.sleep(0.1)
     if not page:
         raise RuntimeError(f"Chrome page did not open: {args.page_url}")
+
+    expected_width = int(args.width * args.scale + 0.5)
+    expected_height = int(args.height * args.scale + 0.5)
 
     websocket = WebSocket(page["webSocketDebuggerUrl"])
     websocket.socket.settimeout(args.timeout)
@@ -162,7 +166,8 @@ def main():
             state = json.loads(value)
             if state["result"] and state["result"] != "0":
                 raise RuntimeError(f"showcase failed before capture: {state}")
-            if state["frames"] >= 3 and state["width"] == args.width and state["height"] == args.height:
+            if (state["frames"] >= 3 and state["width"] == expected_width and
+                    state["height"] == expected_height):
                 break
             time.sleep(0.05)
         else:
@@ -206,8 +211,14 @@ def main():
         )
         png = base64.b64decode(screenshot["data"])
         width, height, pixels = read_png(png, "Chrome screenshot")
-        if (width, height) != (args.width, args.height):
-            raise RuntimeError(f"screenshot size changed: expected {args.width}x{args.height}, got {width}x{height}")
+        width_matches = width == expected_width or (
+            args.scale > 1.0 and width == expected_width - 1
+        )
+        if not width_matches or height != expected_height:
+            raise RuntimeError(
+                f"screenshot size changed: expected {expected_width}x{expected_height}, "
+                f"got {width}x{height}"
+            )
         if args.update or not args.reference.exists():
             args.reference.parent.mkdir(parents=True, exist_ok=True)
             args.reference.write_bytes(png)
