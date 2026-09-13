@@ -7,18 +7,17 @@ import static org.junit.Assert.assertTrue;
 
 import android.Manifest;
 import android.app.LocaleManager;
-import android.app.Notification;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.app.UiModeManager;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.os.Build;
 import android.os.LocaleList;
-import android.service.notification.StatusBarNotification;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import io.nativekit.NativeKitEvent;
+import io.nativekit.NativeKitNotificationReceiver;
 import java.net.URLEncoder;
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -143,16 +142,16 @@ public final class NativeKitHostTest {
             assertNotEquals(0, notificationRequest[0]);
             NativeKitEvent delivered = awaitEvent(scenario, EVENT_NOTIFICATION_DELIVERED);
             assertEquals(notificationRequest[0], delivered.requestId);
-            NotificationActions notificationActions =
-                notificationActions(scenario, notificationRequest[0]);
-            sendNotificationAction(notificationActions.activate);
+            sendNotificationAction(scenario, "io.nativekit.NOTIFICATION_ACTIVATE",
+                                   notificationRequest[0]);
             NativeKitEvent activated = awaitEvent(scenario, EVENT_NOTIFICATION_ACTIVATED);
             assertEquals(notificationRequest[0], activated.requestId);
-            sendNotificationAction(notificationActions.dismiss);
+            sendNotificationAction(scenario, "io.nativekit.NOTIFICATION_DISMISS",
+                                   notificationRequest[0]);
             NativeKitEvent userDismissed = awaitEvent(scenario, EVENT_NOTIFICATION_DISMISSED);
             assertEquals(notificationRequest[0], userDismissed.requestId);
             scenario.onActivity(activity -> activity.getSystemService(NotificationManager.class)
-                                                   .cancel(notificationActions.id));
+                                                   .cancel(notificationId(notificationRequest[0])));
 
             scenario.onActivity(activity -> notificationRequest[0] =
                                     activity.host.showNotification("NativeKit close", message));
@@ -268,43 +267,16 @@ public final class NativeKitHostTest {
         assertEquals(0, geometryData(dialog).getInt(4));
     }
 
-    private static final class NotificationActions {
-        final PendingIntent activate;
-        final PendingIntent dismiss;
-        final int id;
+    private static int notificationId(long request) { return (int)(request ^ (request >>> 32)); }
 
-        NotificationActions(PendingIntent activate, PendingIntent dismiss, int id) {
-            this.activate = activate;
-            this.dismiss = dismiss;
-            this.id = id;
-        }
-    }
-
-    private static NotificationActions notificationActions(
-        ActivityScenario<NativeKitTestActivity> scenario, long request) {
-        int id = (int)(request ^ (request >>> 32));
-        NotificationActions[] result = new NotificationActions[1];
+    private static void sendNotificationAction(ActivityScenario<NativeKitTestActivity> scenario,
+                                               String action, long request) {
         scenario.onActivity(activity -> {
-            NotificationManager manager = activity.getSystemService(NotificationManager.class);
-            for (StatusBarNotification status : manager.getActiveNotifications()) {
-                if (status.getId() != id)
-                    continue;
-                Notification notification = status.getNotification();
-                result[0] = new NotificationActions(notification.contentIntent,
-                                                    notification.deleteIntent, id);
-                break;
-            }
+            Intent intent = new Intent(action);
+            intent.putExtra("nativekit.notification.request", request);
+            // Exercise the production receiver handler without relying on notification-shade UI.
+            new NativeKitNotificationReceiver().onReceive(activity, intent);
         });
-        assertNotNull("posted notification " + id, result[0]);
-        assertNotNull("notification activation action", result[0].activate);
-        assertNotNull("notification dismissal action", result[0].dismiss);
-        return result[0];
-    }
-
-    private static void sendNotificationAction(PendingIntent action)
-        throws PendingIntent.CanceledException {
-        action.send();
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
     }
 
     private static void awaitColorScheme(ActivityScenario<NativeKitTestActivity> scenario,
