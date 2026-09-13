@@ -901,6 +901,8 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         *out_window = NK_INVALID_HANDLE;
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+        if (!NSRunningApplication.currentApplication.finishedLaunching)
+            [NSApp finishLaunching];
         auto owner = options->owner ? window(options->owner) : nullptr;
         if (options->owner && !owner)
             return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale owner window handle");
