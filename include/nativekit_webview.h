@@ -30,6 +30,7 @@ enum NK_FLAGS(nk_webview_flags) {
 };
 
 /** Failure category stored in nk_event.flags for navigation-failed events. */
+typedef uint32_t nk_navigation_error;
 enum NK_ENUM(nk_navigation_error) {
     /** No more specific navigation failure category is available. */
     NK_NAVIGATION_ERROR_OTHER = 0,

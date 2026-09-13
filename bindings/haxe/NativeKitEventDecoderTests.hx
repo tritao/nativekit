@@ -1,4 +1,9 @@
 import NativeKit.EventKind;
+import NativeKit.InputAction;
+import NativeKit.JoystickHatFlags;
+import NativeKit.Key;
+import NativeKit.Modifiers;
+import NativeKit.NavigationError;
 import NativeKit.TextEditAction;
 
 /** Synthetic payload tests for decoder validation and fallback behavior. */
@@ -61,10 +66,36 @@ class NativeKitEventDecoderTests {
 		putU32(invalidUtf8, 4, 48); putU32(invalidUtf8, 8, 2);
 		invalidUtf8.set(48, 0xc0); invalidUtf8.set(49, 0x80);
 
+		var keyPayload = haxe.io.Bytes.alloc(16);
+		putU32(keyPayload, 0, Key.Escape); putU32(keyPayload, 4, 41);
+		putU32(keyPayload, 8, InputAction.Press); putU32(keyPayload, 12, Modifiers.Control);
+		var keyContext = new NativeKitEventContext(EventKind.Key, 12, zero, 0, 0, 0, keyPayload);
+		var typedKeyOk = switch NativeKitEvent.decodeContext(keyContext) {
+			case Key(source, key, scancode, action, modifiers):
+				source == 12 && key == Key.Escape && scancode == 41 && action == InputAction.Press
+					&& (modifiers & Modifiers.Control) != 0;
+			case _: false;
+		};
+		var hatPayload = haxe.io.Bytes.alloc(8);
+		putU32(hatPayload, 0, 2); putU32(hatPayload, 4, JoystickHatFlags.Up | JoystickHatFlags.Left);
+		var hatContext = new NativeKitEventContext(EventKind.JoystickHat, 13, zero, 0, 0, 0, hatPayload);
+		var typedHatOk = switch NativeKitEvent.decodeContext(hatContext) {
+			case JoystickHat(source, hat, value):
+				source == 13 && hat == 2 && (value & JoystickHatFlags.Up) != 0
+					&& (value & JoystickHatFlags.Left) != 0;
+			case _: false;
+		};
+		var navigationContext = new NativeKitEventContext(EventKind.WebviewNavigationFailed, 14, zero, 0,
+			NavigationError.NotFound, 0, empty);
+		var typedNavigationOk = switch NativeKitEvent.decodeContext(navigationContext) {
+			case WebViewNavigationFailed(source, category, _): source == 14 && category == NavigationError.NotFound;
+			case _: false;
+		};
+
 		if (!pathsOk) throw "path completion decoding failed";
 		if (!messageOk) throw "message completion decoding failed";
 		if (!resourcesOk) throw "resource completion decoding failed";
-		return rawOk && nonMatch && editOk
+		return rawOk && nonMatch && editOk && typedKeyOk && typedHatOk && typedNavigationOk
 			&& throws(function() { NativeKitEventBytes.requireSize(haxe.io.Bytes.alloc(3), 4); })
 			&& throws(function() { NativeKitEventBytes.readU32(haxe.io.Bytes.alloc(3), 0); })
 			&& throws(function() { NativeKitEventBytes.decodeDialogPaths(badDialog); })

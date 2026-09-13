@@ -13,534 +13,6 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	const NK_API_VERSION = 2;
 	/**
-	 * The hat is centered; no direction is active.
-	 */
-	const NK_JOYSTICK_HAT_CENTERED = 0;
-	/**
-	 * The hat is pressed downward.
-	 */
-	const NK_JOYSTICK_HAT_DOWN = 4;
-	/**
-	 * The hat is pressed to the left.
-	 */
-	const NK_JOYSTICK_HAT_LEFT = 8;
-	/**
-	 * The hat is pressed to the right.
-	 */
-	const NK_JOYSTICK_HAT_RIGHT = 2;
-	/**
-	 * The hat is pressed upward.
-	 */
-	const NK_JOYSTICK_HAT_UP = 1;
-	/**
-	 * The 0 key.
-	 */
-	const NK_KEY_0 = 48;
-	/**
-	 * The 1 key.
-	 */
-	const NK_KEY_1 = 49;
-	/**
-	 * The 2 key.
-	 */
-	const NK_KEY_2 = 50;
-	/**
-	 * The 3 key.
-	 */
-	const NK_KEY_3 = 51;
-	/**
-	 * The 4 key.
-	 */
-	const NK_KEY_4 = 52;
-	/**
-	 * The 5 key.
-	 */
-	const NK_KEY_5 = 53;
-	/**
-	 * The 6 key.
-	 */
-	const NK_KEY_6 = 54;
-	/**
-	 * The 7 key.
-	 */
-	const NK_KEY_7 = 55;
-	/**
-	 * The 8 key.
-	 */
-	const NK_KEY_8 = 56;
-	/**
-	 * The 9 key.
-	 */
-	const NK_KEY_9 = 57;
-	/**
-	 * The A key.
-	 */
-	const NK_KEY_A = 65;
-	/**
-	 * The apostrophe key.
-	 */
-	const NK_KEY_APOSTROPHE = 39;
-	/**
-	 * The B key.
-	 */
-	const NK_KEY_B = 66;
-	/**
-	 * The backslash key.
-	 */
-	const NK_KEY_BACKSLASH = 92;
-	/**
-	 * The Backspace key.
-	 */
-	const NK_KEY_BACKSPACE = 259;
-	/**
-	 * The C key.
-	 */
-	const NK_KEY_C = 67;
-	/**
-	 * The Caps Lock key.
-	 */
-	const NK_KEY_CAPS_LOCK = 280;
-	/**
-	 * The comma key.
-	 */
-	const NK_KEY_COMMA = 44;
-	/**
-	 * The D key.
-	 */
-	const NK_KEY_D = 68;
-	/**
-	 * The Delete key.
-	 */
-	const NK_KEY_DELETE = 261;
-	/**
-	 * The Down Arrow key.
-	 */
-	const NK_KEY_DOWN = 264;
-	/**
-	 * The E key.
-	 */
-	const NK_KEY_E = 69;
-	/**
-	 * The End key.
-	 */
-	const NK_KEY_END = 269;
-	/**
-	 * The Enter or Return key.
-	 */
-	const NK_KEY_ENTER = 257;
-	/**
-	 * The equals key.
-	 */
-	const NK_KEY_EQUAL = 61;
-	/**
-	 * The Escape key.
-	 */
-	const NK_KEY_ESCAPE = 256;
-	/**
-	 * The F key.
-	 */
-	const NK_KEY_F = 70;
-	/**
-	 * The F1 key.
-	 */
-	const NK_KEY_F1 = 290;
-	/**
-	 * The F10 key.
-	 */
-	const NK_KEY_F10 = 299;
-	/**
-	 * The F11 key.
-	 */
-	const NK_KEY_F11 = 300;
-	/**
-	 * The F12 key.
-	 */
-	const NK_KEY_F12 = 301;
-	/**
-	 * The F13 key.
-	 */
-	const NK_KEY_F13 = 302;
-	/**
-	 * The F14 key.
-	 */
-	const NK_KEY_F14 = 303;
-	/**
-	 * The F15 key.
-	 */
-	const NK_KEY_F15 = 304;
-	/**
-	 * The F16 key.
-	 */
-	const NK_KEY_F16 = 305;
-	/**
-	 * The F17 key.
-	 */
-	const NK_KEY_F17 = 306;
-	/**
-	 * The F18 key.
-	 */
-	const NK_KEY_F18 = 307;
-	/**
-	 * The F19 key.
-	 */
-	const NK_KEY_F19 = 308;
-	/**
-	 * The F2 key.
-	 */
-	const NK_KEY_F2 = 291;
-	/**
-	 * The F20 key.
-	 */
-	const NK_KEY_F20 = 309;
-	/**
-	 * The F21 key.
-	 */
-	const NK_KEY_F21 = 310;
-	/**
-	 * The F22 key.
-	 */
-	const NK_KEY_F22 = 311;
-	/**
-	 * The F23 key.
-	 */
-	const NK_KEY_F23 = 312;
-	/**
-	 * The F24 key.
-	 */
-	const NK_KEY_F24 = 313;
-	/**
-	 * The F25 key.
-	 */
-	const NK_KEY_F25 = 314;
-	/**
-	 * The F3 key.
-	 */
-	const NK_KEY_F3 = 292;
-	/**
-	 * The F4 key.
-	 */
-	const NK_KEY_F4 = 293;
-	/**
-	 * The F5 key.
-	 */
-	const NK_KEY_F5 = 294;
-	/**
-	 * The F6 key.
-	 */
-	const NK_KEY_F6 = 295;
-	/**
-	 * The F7 key.
-	 */
-	const NK_KEY_F7 = 296;
-	/**
-	 * The F8 key.
-	 */
-	const NK_KEY_F8 = 297;
-	/**
-	 * The F9 key.
-	 */
-	const NK_KEY_F9 = 298;
-	/**
-	 * The G key.
-	 */
-	const NK_KEY_G = 71;
-	/**
-	 * The grave-accent key.
-	 */
-	const NK_KEY_GRAVE_ACCENT = 96;
-	/**
-	 * The H key.
-	 */
-	const NK_KEY_H = 72;
-	/**
-	 * The Home key.
-	 */
-	const NK_KEY_HOME = 268;
-	/**
-	 * The I key.
-	 */
-	const NK_KEY_I = 73;
-	/**
-	 * The Insert key.
-	 */
-	const NK_KEY_INSERT = 260;
-	/**
-	 * The J key.
-	 */
-	const NK_KEY_J = 74;
-	/**
-	 * The K key.
-	 */
-	const NK_KEY_K = 75;
-	/**
-	 * The numeric keypad 0 key.
-	 */
-	const NK_KEY_KP_0 = 320;
-	/**
-	 * The numeric keypad 1 key.
-	 */
-	const NK_KEY_KP_1 = 321;
-	/**
-	 * The numeric keypad 2 key.
-	 */
-	const NK_KEY_KP_2 = 322;
-	/**
-	 * The numeric keypad 3 key.
-	 */
-	const NK_KEY_KP_3 = 323;
-	/**
-	 * The numeric keypad 4 key.
-	 */
-	const NK_KEY_KP_4 = 324;
-	/**
-	 * The numeric keypad 5 key.
-	 */
-	const NK_KEY_KP_5 = 325;
-	/**
-	 * The numeric keypad 6 key.
-	 */
-	const NK_KEY_KP_6 = 326;
-	/**
-	 * The numeric keypad 7 key.
-	 */
-	const NK_KEY_KP_7 = 327;
-	/**
-	 * The numeric keypad 8 key.
-	 */
-	const NK_KEY_KP_8 = 328;
-	/**
-	 * The numeric keypad 9 key.
-	 */
-	const NK_KEY_KP_9 = 329;
-	/**
-	 * The numeric keypad add key.
-	 */
-	const NK_KEY_KP_ADD = 334;
-	/**
-	 * The numeric keypad decimal key.
-	 */
-	const NK_KEY_KP_DECIMAL = 330;
-	/**
-	 * The numeric keypad divide key.
-	 */
-	const NK_KEY_KP_DIVIDE = 331;
-	/**
-	 * The numeric keypad Enter key.
-	 */
-	const NK_KEY_KP_ENTER = 335;
-	/**
-	 * The numeric keypad equals key.
-	 */
-	const NK_KEY_KP_EQUAL = 336;
-	/**
-	 * The numeric keypad multiply key.
-	 */
-	const NK_KEY_KP_MULTIPLY = 332;
-	/**
-	 * The numeric keypad subtract key.
-	 */
-	const NK_KEY_KP_SUBTRACT = 333;
-	/**
-	 * The L key.
-	 */
-	const NK_KEY_L = 76;
-	/**
-	 * Highest key value; useful for sizing key-state arrays.
-	 */
-	const NK_KEY_LAST = 348;
-	/**
-	 * The Left Arrow key.
-	 */
-	const NK_KEY_LEFT = 263;
-	/**
-	 * The left Alt key.
-	 */
-	const NK_KEY_LEFT_ALT = 342;
-	/**
-	 * The left bracket key.
-	 */
-	const NK_KEY_LEFT_BRACKET = 91;
-	/**
-	 * The left Control key.
-	 */
-	const NK_KEY_LEFT_CONTROL = 341;
-	/**
-	 * The left Shift key.
-	 */
-	const NK_KEY_LEFT_SHIFT = 340;
-	/**
-	 * The left Super, Command, or Windows key.
-	 */
-	const NK_KEY_LEFT_SUPER = 343;
-	/**
-	 * The M key.
-	 */
-	const NK_KEY_M = 77;
-	/**
-	 * The Menu or context-menu key.
-	 */
-	const NK_KEY_MENU = 348;
-	/**
-	 * The minus key.
-	 */
-	const NK_KEY_MINUS = 45;
-	/**
-	 * The N key.
-	 */
-	const NK_KEY_N = 78;
-	/**
-	 * The Num Lock key.
-	 */
-	const NK_KEY_NUM_LOCK = 282;
-	/**
-	 * The O key.
-	 */
-	const NK_KEY_O = 79;
-	/**
-	 * The P key.
-	 */
-	const NK_KEY_P = 80;
-	/**
-	 * The Page Down key.
-	 */
-	const NK_KEY_PAGE_DOWN = 267;
-	/**
-	 * The Page Up key.
-	 */
-	const NK_KEY_PAGE_UP = 266;
-	/**
-	 * The Pause key.
-	 */
-	const NK_KEY_PAUSE = 284;
-	/**
-	 * The period key.
-	 */
-	const NK_KEY_PERIOD = 46;
-	/**
-	 * The Print Screen key.
-	 */
-	const NK_KEY_PRINT_SCREEN = 283;
-	/**
-	 * The Q key.
-	 */
-	const NK_KEY_Q = 81;
-	/**
-	 * The R key.
-	 */
-	const NK_KEY_R = 82;
-	/**
-	 * The Right Arrow key.
-	 */
-	const NK_KEY_RIGHT = 262;
-	/**
-	 * The right Alt key.
-	 */
-	const NK_KEY_RIGHT_ALT = 346;
-	/**
-	 * The right bracket key.
-	 */
-	const NK_KEY_RIGHT_BRACKET = 93;
-	/**
-	 * The right Control key.
-	 */
-	const NK_KEY_RIGHT_CONTROL = 345;
-	/**
-	 * The right Shift key.
-	 */
-	const NK_KEY_RIGHT_SHIFT = 344;
-	/**
-	 * The right Super, Command, or Windows key.
-	 */
-	const NK_KEY_RIGHT_SUPER = 347;
-	/**
-	 * The S key.
-	 */
-	const NK_KEY_S = 83;
-	/**
-	 * The Scroll Lock key.
-	 */
-	const NK_KEY_SCROLL_LOCK = 281;
-	/**
-	 * The semicolon key.
-	 */
-	const NK_KEY_SEMICOLON = 59;
-	/**
-	 * The slash key.
-	 */
-	const NK_KEY_SLASH = 47;
-	/**
-	 * The Space key.
-	 */
-	const NK_KEY_SPACE = 32;
-	/**
-	 * The T key.
-	 */
-	const NK_KEY_T = 84;
-	/**
-	 * The Tab key.
-	 */
-	const NK_KEY_TAB = 258;
-	/**
-	 * The U key.
-	 */
-	const NK_KEY_U = 85;
-	/**
-	 * No supported key could be identified.
-	 */
-	const NK_KEY_UNKNOWN = 0;
-	/**
-	 * The Up Arrow key.
-	 */
-	const NK_KEY_UP = 265;
-	/**
-	 * The V key.
-	 */
-	const NK_KEY_V = 86;
-	/**
-	 * The W key.
-	 */
-	const NK_KEY_W = 87;
-	/**
-	 * The X key.
-	 */
-	const NK_KEY_X = 88;
-	/**
-	 * The Y key.
-	 */
-	const NK_KEY_Y = 89;
-	/**
-	 * The Z key.
-	 */
-	const NK_KEY_Z = 90;
-	/**
-	 * Authentication was required or rejected.
-	 */
-	const NK_NAVIGATION_ERROR_AUTH = 2;
-	/**
-	 * The navigation was cancelled.
-	 */
-	const NK_NAVIGATION_ERROR_CANCELLED = 6;
-	/**
-	 * The connection failed.
-	 */
-	const NK_NAVIGATION_ERROR_CONNECTION = 5;
-	/**
-	 * The requested resource was not found.
-	 */
-	const NK_NAVIGATION_ERROR_NOT_FOUND = 4;
-	/**
-	 * No more specific navigation failure category is available.
-	 */
-	const NK_NAVIGATION_ERROR_OTHER = 0;
-	/**
-	 * The request was malformed or rejected before transport.
-	 */
-	const NK_NAVIGATION_ERROR_REQUEST = 1;
-	/**
-	 * The request was blocked by a security policy.
-	 */
-	const NK_NAVIGATION_ERROR_SECURITY = 3;
-	/**
 	 * Sentinel meaning that a position, such as an absent composition, is not present.
 	 */
 	const NK_TEXT_POSITION_NONE = -1;
@@ -1383,6 +855,509 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 */
 		NK_INPUT_REPEAT = 2;
 	}
+	flags nk_joystick_hat_flags : u32 {
+		/**
+		 * The hat is centered; no direction is active.
+		 */
+		NK_JOYSTICK_HAT_CENTERED = 0;
+		/**
+		 * The hat is pressed upward.
+		 */
+		NK_JOYSTICK_HAT_UP = 1;
+		/**
+		 * The hat is pressed to the right.
+		 */
+		NK_JOYSTICK_HAT_RIGHT = 2;
+		/**
+		 * The hat is pressed downward.
+		 */
+		NK_JOYSTICK_HAT_DOWN = 4;
+		/**
+		 * The hat is pressed to the left.
+		 */
+		NK_JOYSTICK_HAT_LEFT = 8;
+	}
+	/**
+	 * Normalized physical or logical keyboard key identifier.
+	 */
+	enum nk_key : u32 {
+		/**
+		 * No supported key could be identified.
+		 */
+		NK_KEY_UNKNOWN = 0;
+		/**
+		 * The Space key.
+		 */
+		NK_KEY_SPACE = 32;
+		/**
+		 * The apostrophe key.
+		 */
+		NK_KEY_APOSTROPHE = 39;
+		/**
+		 * The comma key.
+		 */
+		NK_KEY_COMMA = 44;
+		/**
+		 * The minus key.
+		 */
+		NK_KEY_MINUS = 45;
+		/**
+		 * The period key.
+		 */
+		NK_KEY_PERIOD = 46;
+		/**
+		 * The slash key.
+		 */
+		NK_KEY_SLASH = 47;
+		/**
+		 * The 0 key.
+		 */
+		NK_KEY_0 = 48;
+		/**
+		 * The 1 key.
+		 */
+		NK_KEY_1 = 49;
+		/**
+		 * The 2 key.
+		 */
+		NK_KEY_2 = 50;
+		/**
+		 * The 3 key.
+		 */
+		NK_KEY_3 = 51;
+		/**
+		 * The 4 key.
+		 */
+		NK_KEY_4 = 52;
+		/**
+		 * The 5 key.
+		 */
+		NK_KEY_5 = 53;
+		/**
+		 * The 6 key.
+		 */
+		NK_KEY_6 = 54;
+		/**
+		 * The 7 key.
+		 */
+		NK_KEY_7 = 55;
+		/**
+		 * The 8 key.
+		 */
+		NK_KEY_8 = 56;
+		/**
+		 * The 9 key.
+		 */
+		NK_KEY_9 = 57;
+		/**
+		 * The semicolon key.
+		 */
+		NK_KEY_SEMICOLON = 59;
+		/**
+		 * The equals key.
+		 */
+		NK_KEY_EQUAL = 61;
+		/**
+		 * The A key.
+		 */
+		NK_KEY_A = 65;
+		/**
+		 * The B key.
+		 */
+		NK_KEY_B = 66;
+		/**
+		 * The C key.
+		 */
+		NK_KEY_C = 67;
+		/**
+		 * The D key.
+		 */
+		NK_KEY_D = 68;
+		/**
+		 * The E key.
+		 */
+		NK_KEY_E = 69;
+		/**
+		 * The F key.
+		 */
+		NK_KEY_F = 70;
+		/**
+		 * The G key.
+		 */
+		NK_KEY_G = 71;
+		/**
+		 * The H key.
+		 */
+		NK_KEY_H = 72;
+		/**
+		 * The I key.
+		 */
+		NK_KEY_I = 73;
+		/**
+		 * The J key.
+		 */
+		NK_KEY_J = 74;
+		/**
+		 * The K key.
+		 */
+		NK_KEY_K = 75;
+		/**
+		 * The L key.
+		 */
+		NK_KEY_L = 76;
+		/**
+		 * The M key.
+		 */
+		NK_KEY_M = 77;
+		/**
+		 * The N key.
+		 */
+		NK_KEY_N = 78;
+		/**
+		 * The O key.
+		 */
+		NK_KEY_O = 79;
+		/**
+		 * The P key.
+		 */
+		NK_KEY_P = 80;
+		/**
+		 * The Q key.
+		 */
+		NK_KEY_Q = 81;
+		/**
+		 * The R key.
+		 */
+		NK_KEY_R = 82;
+		/**
+		 * The S key.
+		 */
+		NK_KEY_S = 83;
+		/**
+		 * The T key.
+		 */
+		NK_KEY_T = 84;
+		/**
+		 * The U key.
+		 */
+		NK_KEY_U = 85;
+		/**
+		 * The V key.
+		 */
+		NK_KEY_V = 86;
+		/**
+		 * The W key.
+		 */
+		NK_KEY_W = 87;
+		/**
+		 * The X key.
+		 */
+		NK_KEY_X = 88;
+		/**
+		 * The Y key.
+		 */
+		NK_KEY_Y = 89;
+		/**
+		 * The Z key.
+		 */
+		NK_KEY_Z = 90;
+		/**
+		 * The left bracket key.
+		 */
+		NK_KEY_LEFT_BRACKET = 91;
+		/**
+		 * The backslash key.
+		 */
+		NK_KEY_BACKSLASH = 92;
+		/**
+		 * The right bracket key.
+		 */
+		NK_KEY_RIGHT_BRACKET = 93;
+		/**
+		 * The grave-accent key.
+		 */
+		NK_KEY_GRAVE_ACCENT = 96;
+		/**
+		 * The Escape key.
+		 */
+		NK_KEY_ESCAPE = 256;
+		/**
+		 * The Enter or Return key.
+		 */
+		NK_KEY_ENTER = 257;
+		/**
+		 * The Tab key.
+		 */
+		NK_KEY_TAB = 258;
+		/**
+		 * The Backspace key.
+		 */
+		NK_KEY_BACKSPACE = 259;
+		/**
+		 * The Insert key.
+		 */
+		NK_KEY_INSERT = 260;
+		/**
+		 * The Delete key.
+		 */
+		NK_KEY_DELETE = 261;
+		/**
+		 * The Right Arrow key.
+		 */
+		NK_KEY_RIGHT = 262;
+		/**
+		 * The Left Arrow key.
+		 */
+		NK_KEY_LEFT = 263;
+		/**
+		 * The Down Arrow key.
+		 */
+		NK_KEY_DOWN = 264;
+		/**
+		 * The Up Arrow key.
+		 */
+		NK_KEY_UP = 265;
+		/**
+		 * The Page Up key.
+		 */
+		NK_KEY_PAGE_UP = 266;
+		/**
+		 * The Page Down key.
+		 */
+		NK_KEY_PAGE_DOWN = 267;
+		/**
+		 * The Home key.
+		 */
+		NK_KEY_HOME = 268;
+		/**
+		 * The End key.
+		 */
+		NK_KEY_END = 269;
+		/**
+		 * The Caps Lock key.
+		 */
+		NK_KEY_CAPS_LOCK = 280;
+		/**
+		 * The Scroll Lock key.
+		 */
+		NK_KEY_SCROLL_LOCK = 281;
+		/**
+		 * The Num Lock key.
+		 */
+		NK_KEY_NUM_LOCK = 282;
+		/**
+		 * The Print Screen key.
+		 */
+		NK_KEY_PRINT_SCREEN = 283;
+		/**
+		 * The Pause key.
+		 */
+		NK_KEY_PAUSE = 284;
+		/**
+		 * The F1 key.
+		 */
+		NK_KEY_F1 = 290;
+		/**
+		 * The F2 key.
+		 */
+		NK_KEY_F2 = 291;
+		/**
+		 * The F3 key.
+		 */
+		NK_KEY_F3 = 292;
+		/**
+		 * The F4 key.
+		 */
+		NK_KEY_F4 = 293;
+		/**
+		 * The F5 key.
+		 */
+		NK_KEY_F5 = 294;
+		/**
+		 * The F6 key.
+		 */
+		NK_KEY_F6 = 295;
+		/**
+		 * The F7 key.
+		 */
+		NK_KEY_F7 = 296;
+		/**
+		 * The F8 key.
+		 */
+		NK_KEY_F8 = 297;
+		/**
+		 * The F9 key.
+		 */
+		NK_KEY_F9 = 298;
+		/**
+		 * The F10 key.
+		 */
+		NK_KEY_F10 = 299;
+		/**
+		 * The F11 key.
+		 */
+		NK_KEY_F11 = 300;
+		/**
+		 * The F12 key.
+		 */
+		NK_KEY_F12 = 301;
+		/**
+		 * The F13 key.
+		 */
+		NK_KEY_F13 = 302;
+		/**
+		 * The F14 key.
+		 */
+		NK_KEY_F14 = 303;
+		/**
+		 * The F15 key.
+		 */
+		NK_KEY_F15 = 304;
+		/**
+		 * The F16 key.
+		 */
+		NK_KEY_F16 = 305;
+		/**
+		 * The F17 key.
+		 */
+		NK_KEY_F17 = 306;
+		/**
+		 * The F18 key.
+		 */
+		NK_KEY_F18 = 307;
+		/**
+		 * The F19 key.
+		 */
+		NK_KEY_F19 = 308;
+		/**
+		 * The F20 key.
+		 */
+		NK_KEY_F20 = 309;
+		/**
+		 * The F21 key.
+		 */
+		NK_KEY_F21 = 310;
+		/**
+		 * The F22 key.
+		 */
+		NK_KEY_F22 = 311;
+		/**
+		 * The F23 key.
+		 */
+		NK_KEY_F23 = 312;
+		/**
+		 * The F24 key.
+		 */
+		NK_KEY_F24 = 313;
+		/**
+		 * The F25 key.
+		 */
+		NK_KEY_F25 = 314;
+		/**
+		 * The numeric keypad 0 key.
+		 */
+		NK_KEY_KP_0 = 320;
+		/**
+		 * The numeric keypad 1 key.
+		 */
+		NK_KEY_KP_1 = 321;
+		/**
+		 * The numeric keypad 2 key.
+		 */
+		NK_KEY_KP_2 = 322;
+		/**
+		 * The numeric keypad 3 key.
+		 */
+		NK_KEY_KP_3 = 323;
+		/**
+		 * The numeric keypad 4 key.
+		 */
+		NK_KEY_KP_4 = 324;
+		/**
+		 * The numeric keypad 5 key.
+		 */
+		NK_KEY_KP_5 = 325;
+		/**
+		 * The numeric keypad 6 key.
+		 */
+		NK_KEY_KP_6 = 326;
+		/**
+		 * The numeric keypad 7 key.
+		 */
+		NK_KEY_KP_7 = 327;
+		/**
+		 * The numeric keypad 8 key.
+		 */
+		NK_KEY_KP_8 = 328;
+		/**
+		 * The numeric keypad 9 key.
+		 */
+		NK_KEY_KP_9 = 329;
+		/**
+		 * The numeric keypad decimal key.
+		 */
+		NK_KEY_KP_DECIMAL = 330;
+		/**
+		 * The numeric keypad divide key.
+		 */
+		NK_KEY_KP_DIVIDE = 331;
+		/**
+		 * The numeric keypad multiply key.
+		 */
+		NK_KEY_KP_MULTIPLY = 332;
+		/**
+		 * The numeric keypad subtract key.
+		 */
+		NK_KEY_KP_SUBTRACT = 333;
+		/**
+		 * The numeric keypad add key.
+		 */
+		NK_KEY_KP_ADD = 334;
+		/**
+		 * The numeric keypad Enter key.
+		 */
+		NK_KEY_KP_ENTER = 335;
+		/**
+		 * The numeric keypad equals key.
+		 */
+		NK_KEY_KP_EQUAL = 336;
+		/**
+		 * The left Shift key.
+		 */
+		NK_KEY_LEFT_SHIFT = 340;
+		/**
+		 * The left Control key.
+		 */
+		NK_KEY_LEFT_CONTROL = 341;
+		/**
+		 * The left Alt key.
+		 */
+		NK_KEY_LEFT_ALT = 342;
+		/**
+		 * The left Super, Command, or Windows key.
+		 */
+		NK_KEY_LEFT_SUPER = 343;
+		/**
+		 * The right Shift key.
+		 */
+		NK_KEY_RIGHT_SHIFT = 344;
+		/**
+		 * The right Control key.
+		 */
+		NK_KEY_RIGHT_CONTROL = 345;
+		/**
+		 * The right Alt key.
+		 */
+		NK_KEY_RIGHT_ALT = 346;
+		/**
+		 * The right Super, Command, or Windows key.
+		 */
+		NK_KEY_RIGHT_SUPER = 347;
+		/**
+		 * The Menu or context-menu key.
+		 */
+		NK_KEY_MENU = 348;
+	}
 	/**
 	 * Button flags accepted by a message dialog.
 	 */
@@ -1503,6 +1478,39 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * The display and window values identify a Wayland display and surface.
 		 */
 		NK_NATIVE_WINDOW_WAYLAND = 4;
+	}
+	/**
+	 * Failure category stored in nk_event.flags for navigation-failed events.
+	 */
+	enum nk_navigation_error : u32 {
+		/**
+		 * No more specific navigation failure category is available.
+		 */
+		NK_NAVIGATION_ERROR_OTHER = 0;
+		/**
+		 * The request was malformed or rejected before transport.
+		 */
+		NK_NAVIGATION_ERROR_REQUEST = 1;
+		/**
+		 * Authentication was required or rejected.
+		 */
+		NK_NAVIGATION_ERROR_AUTH = 2;
+		/**
+		 * The request was blocked by a security policy.
+		 */
+		NK_NAVIGATION_ERROR_SECURITY = 3;
+		/**
+		 * The requested resource was not found.
+		 */
+		NK_NAVIGATION_ERROR_NOT_FOUND = 4;
+		/**
+		 * The connection failed.
+		 */
+		NK_NAVIGATION_ERROR_CONNECTION = 5;
+		/**
+		 * The navigation was cancelled.
+		 */
+		NK_NAVIGATION_ERROR_CANCELLED = 6;
 	}
 	flags nk_notification_flags : u32 {
 		/**
@@ -3243,7 +3251,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		/**
 		 * Bitwise OR of NK_JOYSTICK_HAT_* direction values.
 		 */
-		value: u32 @offset(4);
+		value: nk_joystick_hat_flags @offset(4);
 	}
 	/**
 	 * Payload of NK_EVENT_KEY. Scancodes remain platform-specific.
@@ -4310,10 +4318,6 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * Opaque generation-checked identifier for a live NativeKit resource.
 	 */
 	handle nk_handle : u32;
-	/**
-	 * Normalized physical or logical keyboard key identifier.
-	 */
-	type nk_key = u32;
 	type nk_nullable_surface_frame_callback = nullable<nk_surface_frame_callback>;
 	/**
 	 * Identifier for one asynchronous operation; it is not a resource handle.
