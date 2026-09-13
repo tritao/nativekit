@@ -1,4 +1,7 @@
 {
   "interface": "NativeKit",
-  "typePrefix": "nk_"
+  "typePrefix": "nk_",
+  "enumValuePrefixes": [
+    "NK_NOTIFICATION_"
+  ]
 }

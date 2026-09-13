@@ -18,6 +18,7 @@ import NativeKit.DialogFilter;
 import NativeKit.FileDialogOptions;
 import NativeKit.MessageDialogOptions;
 import NativeKit.NotificationOptions;
+import NativeKit.NotificationFlags;
 import NativeKit.Resource;
 import NativeKit.ShareOptions;
 import NativeKit.WebviewOptions;
@@ -130,23 +131,23 @@ class NativeKitOptions {
 		return value;
 	}
 
-	public static function textShare(text:String, ?title:String, ?flags:Int):ShareOptions {
+	public static function textShare(text:String, ?title:String):ShareOptions {
 		var value = new ShareOptions();
 		value.set_struct_size(ShareOptions.size());
 		value.set_text(text);
 		value.set_title(title);
-		value.set_flags(flags == null ? 0 : flags);
+		value.set_flags(0);
 		return value;
 	}
 
 	/** Attaches managed contiguous resources and keeps them alive with the share options. */
 	public static function resourceShare(resources:Array<Resource>, ?text:String,
-			?title:String, ?flags:Int):NativeKitShareOptions {
+		?title:String):NativeKitShareOptions {
 		var options = new ShareOptions();
 		options.set_struct_size(ShareOptions.size());
 		options.set_text(text);
 		options.set_title(title);
-		options.set_flags(flags == null ? 0 : flags);
+		options.set_flags(0);
 		var storage = Resource.array(resources);
 		if (resources.length > 0) options.set_resources(storage);
 		options.set_resource_count(resources.length);
@@ -154,7 +155,7 @@ class NativeKitOptions {
 	}
 
 	public static function notification(title:String, ?body:String, ?icon:String,
-			?timeoutMs:Int, ?flags:Int):NotificationOptions {
+			?timeoutMs:Int, ?flags:NotificationFlags):NotificationOptions {
 		var value = new NotificationOptions();
 		value.set_struct_size(NotificationOptions.size());
 		value.set_title(title);

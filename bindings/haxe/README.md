@@ -48,9 +48,13 @@ UTF-8 inputs are marked in the authoritative C headers with `NK_UTF8` or
 `NK_NULLABLE_UTF8`. The importer projects these annotations to managed Haxe
 strings, so the binding import header does not redeclare public functions.
 
-`NativeKitRequests` maps request IDs to one-shot typed completion callbacks. Its
-`poll()` method decodes and releases the native event before invoking a matching
-handler; `cancel()` only removes local tracking and does not cancel native work.
+`NativeKitRequests` maps request IDs to one-shot typed completion callbacks.
+Callbacks receive `Success(value)`, `Cancelled`, or `Failure(result, message)`;
+dialogs use `Cancelled` when dismissed. Expected asynchronous failures are
+delivered as values instead of being thrown from `poll()`. Synchronous failures
+to start a request still throw with the NativeKit diagnostic. `poll()` decodes
+and releases the native event before invoking a matching handler; `cancel()`
+only removes local tracking and does not cancel native work.
 
 Run the end-to-end smoke test with:
 
