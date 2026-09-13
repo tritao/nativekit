@@ -87,13 +87,10 @@ content extents to implement hit testing, scrolling, focus, and accessibility.
 The render compiler consumes the same snapshot and applies its transforms and
 clips when producing display commands.
 
-The active NativeUI sequence is generic visual kinds, complete geometry
-snapshots, clipping/transforms/content metrics, shared-frame rendering, and
-text caret/selection geometry. The Haxe framework then adds a render tree with
-stable identity, state storage, input/event propagation, focus, gestures,
-scrolling, accessibility projection, themes, animation, and compositional
-widgets. NativeKit raw input is delivered to Haxe without passing through the
-layout transaction.
+The original NativeUI and Haxe framework sequence is implemented through the
+capabilities listed below. Future UI behavior should continue to enter through
+Haxe composition and state. NativeKit raw input is delivered to Haxe directly;
+the layout transaction remains independent of input and widget semantics.
 
 ## Rewrite and unification policy
 
@@ -120,6 +117,45 @@ Unify ownership and scheduling, not upstream data structures. NativeKit UI
 should own one frame, one display list, one Sokol device, explicit texture
 lifetimes, allocator hooks, and instrumentation. Skribidi and NanoVG should
 remain replaceable engines behind that boundary.
+
+## Implemented NativeUI and Haxe boundary
+
+The rendering/layout boundary is implemented without native widget or
+interaction node kinds. NativeUI transactions describe `Box`, `Text`, `Image`,
+and `Custom` visuals. Layout supports flow and parent-relative floating
+positioning, child-axis alignment, visibility, affine transforms, clipping,
+and z-order. One resolved batch returns every node's bounds, effective clip,
+visibility, transform, baseline, and content extents; rendering consumes the
+same submitted frame. Absolute children report the same parent clipping used by
+rendering, so Haxe hit testing and accessibility geometry agree with pixels.
+
+The Haxe framework lives separately from the low-level generated bindings in
+`haxe/nativekit/ui/`. Its current foundation includes:
+
+- rebuilt `View` trees, one `RenderNode` per visual/interactive identity,
+  scoped keys, duplicate-ID checks, and persistent `State<T>` storage;
+- NativeKit pointer, touch, scroll, keyboard, committed-text, IME, and clipboard
+  adaptation, with capture/target/bubble routing, pointer capture, hover paths,
+  focus traversal, and modal focus restoration;
+- Haxe-owned scroll state, text selection/editing, grapheme navigation, IME
+  cursor synchronization, semantic projection, themes, gesture recognizers,
+  tween/spring animation, tree inspection, and accessibility audits;
+- compositional row/column/stack/padding/alignment views, buttons, checkboxes,
+  radios, toggles, sliders, progress bars, image/canvas views, scroll views,
+  fixed-row virtual lists, tabs, text fields/areas, popups, menus, tooltips, and
+  dialogs.
+
+Widgets remain Haxe compositions over render primitives. Callbacks, focus
+policy, gesture decisions, scroll physics, animation values, and semantic state
+do not cross the NativeUI ABI. The focused Haxe framework smoke test exercises
+these behaviors headlessly; native layout tests cover parent-relative floating
+geometry, clipping, and stacking order.
+
+Current scope limits are explicit: `VirtualList` uses fixed-height rows, the
+NativeKit accessibility role set does not yet include dedicated menu/tab/dialog
+roles, and visual effects beyond the current path/image/display-list primitives
+remain future rendering work. Those limits do not require native widget
+implementations.
 
 ## Exit criteria before public ABI expansion
 
