@@ -78,6 +78,8 @@ import nativekit.ui.widgets.TabItem;
 import nativekit.ui.animation.AnimationController;
 import nativekit.ui.animation.SpringController;
 import nativekit.ui.animation.Easing;
+import nativekit.ui.debug.UiInspector;
+import nativekit.ui.debug.AccessibilityAudit;
 
 class FrameworkSmoke {
 	static function main():Int {
@@ -737,6 +739,15 @@ class FrameworkSmoke {
 		themedRoot = context.submit(themedButton, themedFrame);
 		if (themedRoot.layout.style.background.red != 0.2)
 			return 85;
+		var inspected = context.inspect();
+		if (inspected.length != 2 || inspected[0].label != "Themed" ||
+			inspected[1].parentId != inspected[0].id || context.dumpTree().length == 0 ||
+			context.auditAccessibility().length != 0)
+			return 99;
+		var unnamedSemantics:Semantics = cast themedRoot.semantics;
+		unnamedSemantics.label = "";
+		if (AccessibilityAudit.isValid(themedRoot))
+			return 100;
 
 		var taps = 0;
 		var doubleTaps = 0;

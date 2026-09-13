@@ -17,6 +17,10 @@ import nativekit.ui.semantics.Semantics;
 import nativekit.ui.theme.Theme;
 import nativekit.ui.gestures.GestureArena;
 import nativekit.ui.animation.AnimationScheduler;
+import nativekit.ui.debug.AccessibilityAudit;
+import nativekit.ui.debug.AccessibilityIssue;
+import nativekit.ui.debug.UiInspector;
+import nativekit.ui.debug.UiNodeSnapshot;
 
 /** Owns the frame-local render tree and the Haxe-side UI subsystems. */
 class UiContext {
@@ -307,6 +311,24 @@ class UiContext {
 
 	public function isDirty():Bool
 		return stateStore.revision != submittedStateRevision;
+
+	/** Returns a deterministic headless snapshot of the most recently submitted tree. */
+	public function inspect():Array<UiNodeSnapshot> {
+		ensureLive();
+		return UiInspector.snapshot(root, focus.focusedId);
+	}
+
+	/** Formats the current render and semantic tree for logs or developer tools. */
+	public function dumpTree():String {
+		ensureLive();
+		return UiInspector.dump(root, focus.focusedId);
+	}
+
+	/** Audits common accessibility naming and focus-geometry mistakes. */
+	public function auditAccessibility():Array<AccessibilityIssue> {
+		ensureLive();
+		return AccessibilityAudit.inspect(root);
+	}
 
 	public function dispose():Void {
 		if (disposed)
