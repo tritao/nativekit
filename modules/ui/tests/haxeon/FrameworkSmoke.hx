@@ -43,6 +43,7 @@ import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollView;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TextEditorState;
+import nativekit.ui.widgets.TextArea;
 import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.Spacer;
 import nativekit.ui.widgets.Slider;
@@ -138,6 +139,17 @@ class FrameworkSmoke {
 		context.key(UiEventKind.KeyDown, UiKey.Enter);
 		if (submittedValue != "done")
 			return 50;
+		var areaChanged = "";
+		var area = new TextArea("area-smoke", "line", function(next) { areaChanged = next; });
+		var areaRoot = context.submit(area, new LayoutFrame(256.0, 192.0));
+		var areaSemantics:Semantics = cast areaRoot.semantics;
+		var areaGeometry:ResolvedLayoutItem = cast areaRoot.resolved;
+		if ((areaSemantics.states & AccessibilityState.Multiline) == 0 || areaGeometry.height < 100.0 ||
+			!context.focusWidget(areaRoot.id))
+			return 62;
+		context.key(UiEventKind.KeyDown, UiKey.Enter);
+		if (area.value != "line\n" || areaChanged != "line\n")
+			return 63;
 		var alignStyle = new LayoutStyle();
 		alignStyle.width = LayoutAxis.fixed(160.0);
 		alignStyle.height = LayoutAxis.fixed(80.0);

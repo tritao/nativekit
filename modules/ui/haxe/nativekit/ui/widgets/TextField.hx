@@ -34,6 +34,7 @@ class TextField implements View {
 	public final key:String;
 	public var value:String;
 	public var label:Null<String>;
+	public final multiline:Bool;
 	public final style:LayoutStyle;
 	public final textStyle:TextStyle;
 	public final textColor:Color;
@@ -42,7 +43,8 @@ class TextField implements View {
 	public var onSubmit:Null<String->Void>;
 
 	public function new(key:String, value:String = "", ?onChange:String->Void,
-			?style:LayoutStyle, ?label:String, ?textStyle:TextStyle, ?textColor:Color) {
+			?style:LayoutStyle, ?label:String, ?textStyle:TextStyle, ?textColor:Color,
+			multiline:Bool = false) {
 		if (key == null || key.length == 0)
 			throw "Text fields require a stable key";
 		this.key = key;
@@ -50,7 +52,8 @@ class TextField implements View {
 		this.onChange = onChange;
 		this.onSubmit = null;
 		this.label = label;
-		this.style = style == null ? defaultStyle() : style.copy();
+		this.multiline = multiline;
+		this.style = style == null ? defaultStyle(multiline) : style.copy();
 		this.textStyle = textStyle == null ? new TextStyle() :
 			new TextStyle(textStyle.fontSize, textStyle.font, textStyle.letterSpacing);
 		this.textColor = textColor == null ? Color.rgba(0.96, 0.97, 0.99, 1.0) : textColor;
@@ -60,7 +63,7 @@ class TextField implements View {
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
 			var id = context.id("field");
-			var stored:State<TextEditorState> = acquireState(context, id, value, textStyle);
+			var stored:State<TextEditorState> = acquireState(context, id, value, textStyle, multiline);
 			var editor:TextEditorState = cast stored.value;
 			editor.syncExternal(value);
 
@@ -78,14 +81,22 @@ class TextField implements View {
 				semantics.states |= AccessibilityState.Disabled;
 			if (editor.focused)
 				semantics.states |= AccessibilityState.Focused;
+			if (multiline)
+				semantics.states |= AccessibilityState.Multiline;
 			node.semantics = semantics;
 
-			var textStyle = new LayoutStyle();
-			textStyle.width = LayoutAxis.grow();
-			textStyle.height = LayoutAxis.grow();
-			var textNode = new RenderNode(context.id("text"), LayoutVisualKind.Text, textStyle);
+			var textNodeStyle = new LayoutStyle();
+			textNodeStyle.width = LayoutAxis.grow();
+			textNodeStyle.height = LayoutAxis.grow();
+			var textNode = new RenderNode(context.id("text"), LayoutVisualKind.Text, textNodeStyle);
 			textNode.layout.text = editor.layoutText();
 			textNode.layout.textColor = textColor;
+			textNode.layout.textStyle.font = textStyle.font;
+			textNode.layout.textStyle.fontSize = textStyle.fontSize;
+			textNode.layout.textStyle.letterSpacing = textStyle.letterSpacing;
+			textNode.layout.paragraphStyle.wrap = editor.paragraphStyle.wrap;
+			textNode.layout.paragraphStyle.alignment = editor.paragraphStyle.alignment;
+			textNode.layout.paragraphStyle.direction = editor.paragraphStyle.direction;
 			node.add(textNode);
 
 			var updateState = function() {
@@ -210,7 +221,9 @@ class TextField implements View {
 				else if (event.key == UiKey.Delete)
 					changed = editor.deleteForward();
 				else if (event.key == UiKey.Enter) {
-					if (onSubmit != null)
+					if (multiline)
+						changed = editor.insert("\n");
+					else if (onSubmit != null)
 						onSubmit(editor.layoutText());
 				} else
 					handled = false;
@@ -252,13 +265,13 @@ class TextField implements View {
 	}
 
 	static function acquireState(context:BuildContext, id:nativekit.ui.core.WidgetId,
-			value:String, textStyle:TextStyle):State<TextEditorState> {
+			value:String, textStyle:TextStyle, multiline:Bool):State<TextEditorState> {
 		if (context.stateStore.contains(id))
 			return context.existingState(id);
 		if (context.fonts == null || context.fonts.isDisposed())
 			throw "Text fields require fonts on their build context";
 		var paragraph = new ParagraphStyle();
-		paragraph.wrap = TextWrap.None;
+		paragraph.wrap = multiline ? TextWrap.WordCharacter : TextWrap.None;
 		var editor = new TextEditorState(cast context.fonts, value, textStyle, paragraph);
 		var stored:State<TextEditorState> = cast context.state(id, editor);
 		var owned:TextEditorState = editor;
@@ -302,10 +315,10 @@ class TextField implements View {
 	static inline function absolute(value:Float):Float
 		return value < 0.0 ? -value : value;
 
-	static function defaultStyle():LayoutStyle {
+	static function defaultStyle(multiline:Bool):LayoutStyle {
 		var result = new LayoutStyle();
 		result.width = LayoutAxis.fixed(240.0);
-		result.height = LayoutAxis.fixed(40.0);
+		result.height = LayoutAxis.fixed(multiline ? 120.0 : 40.0);
 		result.padding = new Insets(10.0, 8.0, 10.0, 8.0);
 		result.background = Color.rgba(0.11, 0.13, 0.17, 1.0);
 		result.radiusTopLeft = result.radiusTopRight = 5.0;
