@@ -253,6 +253,9 @@ Clay_ElementDeclaration declaration_for(const LayoutNode &node) {
     declaration.layout.padding = {node.style.padding_left, node.style.padding_right,
                                   node.style.padding_top, node.style.padding_bottom};
     declaration.layout.childGap = node.style.child_gap;
+    declaration.layout.childAlignment = {
+        static_cast<Clay_LayoutAlignmentX>(node.style.child_align_x),
+        static_cast<Clay_LayoutAlignmentY>(node.style.child_align_y)};
     declaration.backgroundColor = clay_color(node.style.background);
     declaration.cornerRadius = {node.style.radius_top_left, node.style.radius_top_right,
                                 node.style.radius_bottom_left, node.style.radius_bottom_right};

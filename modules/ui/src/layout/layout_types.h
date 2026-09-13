@@ -99,6 +99,8 @@ struct LayoutStyle {
     uint16_t padding_top = 0;
     uint16_t padding_bottom = 0;
     uint16_t child_gap = 0;
+    uint8_t child_align_x = 0;
+    uint8_t child_align_y = 0;
     LayoutColor background{};
     float radius_top_left = 0.0f;
     float radius_top_right = 0.0f;

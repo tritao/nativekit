@@ -300,7 +300,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             uint32_t text_offset = 0;
             uint32_t text_length = 0;
             uint32_t node_flags = 0;
-            uint32_t reserved = 0;
+            uint32_t child_alignment = 0;
             std::array<float, 6> transform{};
             if (!read_node_u32(record, NKUI_LAYOUT_NODE_ID_OFFSET, id) ||
                 !read_node_i32(record, NKUI_LAYOUT_NODE_PARENT_OFFSET, node.parent) ||
@@ -354,11 +354,17 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET, transform[4]) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET, transform[5]) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_FLAGS_OFFSET, node_flags) ||
-                !read_node_u32(record, NKUI_LAYOUT_NODE_RESERVED_OFFSET, reserved))
+                !read_node_u32(record, NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET,
+                               child_alignment))
                 return false;
+            const uint32_t child_align_x = child_alignment & 0xffu;
+            const uint32_t child_align_y = (child_alignment >> 8u) & 0xffu;
             if (visual_kind < NKUI_LAYOUT_VISUAL_BOX ||
                 visual_kind > NKUI_LAYOUT_VISUAL_CUSTOM ||
-                reserved != 0 || (node_flags & ~NKUI_LAYOUT_NODE_VISIBLE) != 0 ||
+                (child_alignment & 0xffff0000u) != 0 ||
+                child_align_x > NKUI_LAYOUT_ALIGNMENT_CENTER ||
+                child_align_y > NKUI_LAYOUT_ALIGNMENT_CENTER ||
+                (node_flags & ~NKUI_LAYOUT_NODE_VISIBLE) != 0 ||
                 width_sizing > NKUI_LAYOUT_SIZING_PERCENT)
                 return false;
             const float determinant = transform[0] * transform[3] - transform[1] * transform[2];
@@ -374,6 +380,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             node.style.width.sizing = static_cast<nkui::LayoutSizing>(width_sizing);
             node.style.height.sizing = static_cast<nkui::LayoutSizing>(height_sizing);
             node.style.direction = static_cast<nkui::LayoutDirection>(direction);
+            node.style.child_align_x = static_cast<uint8_t>(child_align_x);
+            node.style.child_align_y = static_cast<uint8_t>(child_align_y);
             node.text_style.family = static_cast<nkui::FontFamily>(font_family);
             node.paragraph_style.wrap = static_cast<nkui::TextWrapMode>(text_wrap);
             node.paragraph_style.alignment = static_cast<nkui::TextAlignment>(text_alignment);

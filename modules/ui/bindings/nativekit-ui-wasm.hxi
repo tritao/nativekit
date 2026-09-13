@@ -64,11 +64,18 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 * Version value required in every command header.
 	 */
 	const NKUI_COMMAND_VERSION = 1;
-	const NKUI_LAYOUT_API_VERSION = 5;
+	const NKUI_LAYOUT_ALIGNMENT_CENTER = 2;
+	const NKUI_LAYOUT_ALIGNMENT_END = 1;
+	const NKUI_LAYOUT_ALIGNMENT_START = 0;
+	const NKUI_LAYOUT_API_VERSION = 6;
 	const NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT = 0;
 	const NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM = 1;
 	const NKUI_LAYOUT_MAX_NODES = 512;
 	const NKUI_LAYOUT_NODE_BACKGROUND_OFFSET = 52;
+	/**
+	 * Packed child alignment: x in bits 0..7, y in bits 8..15.
+	 */
+	const NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET = 172;
 	const NKUI_LAYOUT_NODE_CHILD_GAP_OFFSET = 48;
 	const NKUI_LAYOUT_NODE_CLIP_FLAGS_OFFSET = 84;
 	const NKUI_LAYOUT_NODE_DIRECTION_OFFSET = 28;
@@ -90,7 +97,6 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET = 68;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET = 72;
 	const NKUI_LAYOUT_NODE_RECORD_BYTES = 176;
-	const NKUI_LAYOUT_NODE_RESERVED_OFFSET = 172;
 	const NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET = 132;
 	const NKUI_LAYOUT_NODE_TEXT_COLOR_OFFSET = 96;
 	const NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET = 136;
@@ -113,7 +119,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_SIZING_GROW = 1;
 	const NKUI_LAYOUT_SIZING_PERCENT = 3;
 	const NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16;
-	const NKUI_LAYOUT_TRANSACTION_VERSION = 4;
+	const NKUI_LAYOUT_TRANSACTION_VERSION = 5;
 	const NKUI_LAYOUT_VISUAL_BOX = 1;
 	const NKUI_LAYOUT_VISUAL_CUSTOM = 4;
 	const NKUI_LAYOUT_VISUAL_IMAGE = 3;

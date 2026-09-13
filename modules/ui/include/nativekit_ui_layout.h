@@ -17,8 +17,8 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 5,
-    NKUI_LAYOUT_TRANSACTION_VERSION = 4,
+    NKUI_LAYOUT_API_VERSION = 6,
+    NKUI_LAYOUT_TRANSACTION_VERSION = 5,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
     NKUI_LAYOUT_NODE_RECORD_BYTES = 176,
     NKUI_LAYOUT_MAX_NODES = 512,
@@ -64,6 +64,13 @@ enum {
 /** Child flow directions encoded in node styles. */
 enum { NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT = 0, NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM = 1 };
 
+/** Child alignment values shared by the horizontal and vertical axes. */
+enum {
+    NKUI_LAYOUT_ALIGNMENT_START = 0,
+    NKUI_LAYOUT_ALIGNMENT_END = 1,
+    NKUI_LAYOUT_ALIGNMENT_CENTER = 2
+};
+
 /** Byte offsets within each fixed-size node record. */
 enum {
     NKUI_LAYOUT_NODE_ID_OFFSET = 0,
@@ -103,7 +110,8 @@ enum {
     NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET = 160,
     NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET = 164,
     NKUI_LAYOUT_NODE_FLAGS_OFFSET = 168,
-    NKUI_LAYOUT_NODE_RESERVED_OFFSET = 172
+    /** Packed child alignment: x in bits 0..7, y in bits 8..15. */
+    NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET = 172
 };
 
 /** Opaque retained layout session used by a Haxe-owned component tree. */

@@ -3,6 +3,8 @@ class LayoutStyle {
 	public var width:LayoutAxis;
 	public var height:LayoutAxis;
 	public var direction:LayoutDirection;
+	public var childAlignX:LayoutAlignment;
+	public var childAlignY:LayoutAlignment;
 	public var padding:Insets;
 	public var childGap:Float;
 	public var background:Color;
@@ -19,6 +21,8 @@ class LayoutStyle {
 		width = LayoutAxis.fit();
 		height = LayoutAxis.fit();
 		direction = LayoutDirection.TopToBottom;
+		childAlignX = LayoutAlignment.Start;
+		childAlignY = LayoutAlignment.Start;
 		padding = new Insets(0.0, 0.0, 0.0, 0.0);
 		childGap = 0.0;
 		background = Color.rgba(0.0, 0.0, 0.0, 0.0);
@@ -38,6 +42,8 @@ class LayoutStyle {
 		result.width = width;
 		result.height = height;
 		result.direction = direction;
+		result.childAlignX = childAlignX;
+		result.childAlignY = childAlignY;
 		result.padding = new Insets(padding.left, padding.top, padding.right, padding.bottom);
 		result.childGap = childGap;
 		result.background = background;

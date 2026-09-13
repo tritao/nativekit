@@ -1,5 +1,6 @@
 #include "nativekit_ui_layout.h"
 
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <vector>
@@ -147,9 +148,24 @@ int main() {
         undersized_bytes != resolved.size())
         return 11;
 
-    auto hidden = bytes;
+    auto centered = bytes;
     const std::size_t panel_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
                                      NKUI_LAYOUT_NODE_RECORD_BYTES;
+    write_u32(centered, panel_record + NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET,
+              NKUI_LAYOUT_ALIGNMENT_CENTER | (NKUI_LAYOUT_ALIGNMENT_CENTER << 8));
+    if (nkui_layout_session_submit(session, centered.data(), centered.size(), &frame) != NKUI_OK ||
+        nkui_layout_session_get_resolved_items(session, resolved.data(), &resolved_bytes) !=
+            NKUI_OK)
+        return 16;
+    std::memcpy(&button_item, resolved.data() + sizeof(root_item), sizeof(button_item));
+    std::memcpy(&text_item, resolved.data() + 2 * sizeof(root_item), sizeof(text_item));
+    if (std::abs(text_item.x -
+                 (button_item.x + (button_item.width - text_item.width) * 0.5f)) > 0.01f ||
+        std::abs(text_item.y -
+                 (button_item.y + (button_item.height - text_item.height) * 0.5f)) > 0.01f)
+        return 17;
+
+    auto hidden = bytes;
     write_u32(hidden, panel_record + NKUI_LAYOUT_NODE_FLAGS_OFFSET, 0);
     if (nkui_layout_session_submit(session, hidden.data(), hidden.size(), &frame) != NKUI_OK ||
         nkui_layout_session_get_resolved_items(session, resolved.data(), &resolved_bytes) !=
@@ -167,9 +183,8 @@ int main() {
         NKUI_ERROR_INVALID_TRANSACTION)
         return 8;
     invalid = bytes;
-    const std::size_t reserved_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
-                                        NKUI_LAYOUT_NODE_RECORD_BYTES;
-    write_u32(invalid, reserved_record + NKUI_LAYOUT_NODE_RESERVED_OFFSET, 1);
+    write_u32(invalid, panel_record + NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET,
+              NKUI_LAYOUT_ALIGNMENT_CENTER | (3u << 8));
     if (nkui_layout_session_submit(session, invalid.data(), invalid.size(), &frame) !=
         NKUI_ERROR_INVALID_TRANSACTION)
         return 13;

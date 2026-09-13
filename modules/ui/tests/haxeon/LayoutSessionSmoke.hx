@@ -48,6 +48,8 @@ class LayoutSessionSmoke {
 		var panel = LayoutNode.box(101);
 		panel.style.width = LayoutAxis.fixed(160.0);
 		panel.style.height = LayoutAxis.fixed(64.0);
+		panel.style.childAlignX = LayoutAlignment.Center;
+		panel.style.childAlignY = LayoutAlignment.Center;
 		panel.style.transform = Transform2D.identity().translated(100.0, 20.0);
 		panel.add(LayoutNode.textNode(102, "Press"));
 		root.add(panel);
@@ -63,7 +65,11 @@ class LayoutSessionSmoke {
 		resolved = session.submit(root, frame);
 		if (resolved.length != 3 || resolved[2].id != 102 || resolved[2].width <= 0.0 ||
 			resolved[2].transform.tx != 100.0 || resolved[2].clipBounds.width != 256.0 ||
-			!resolved[2].hasBaseline)
+			!resolved[2].hasBaseline ||
+			resolved[2].x < resolved[1].x + (resolved[1].width - resolved[2].width) * 0.5 - 0.1 ||
+			resolved[2].x > resolved[1].x + (resolved[1].width - resolved[2].width) * 0.5 + 0.1 ||
+			resolved[2].y < resolved[1].y + (resolved[1].height - resolved[2].height) * 0.5 - 0.1 ||
+			resolved[2].y > resolved[1].y + (resolved[1].height - resolved[2].height) * 0.5 + 0.1)
 			return 4;
 
 		session.dispose();

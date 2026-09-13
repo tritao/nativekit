@@ -57,6 +57,11 @@ class LayoutTransaction {
 				throw "Layout text style values are invalid";
 			var determinant = style.transform.a * style.transform.d -
 				style.transform.b * style.transform.c;
+			var childAlignX:Int = cast style.childAlignX;
+			var childAlignY:Int = cast style.childAlignY;
+			if (childAlignX < LayoutAlignment.Start || childAlignX > LayoutAlignment.Center ||
+				childAlignY < LayoutAlignment.Start || childAlignY > LayoutAlignment.Center)
+				throw "Layout child alignment is invalid";
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_ID_OFFSET, node.id);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PARENT_OFFSET, parents[index]);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET,
@@ -103,7 +108,8 @@ class LayoutTransaction {
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET, transform.ty);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_FLAGS_OFFSET,
 				style.visible ? 1 : 0);
-			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_RESERVED_OFFSET, 0);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET,
+				childAlignX | (childAlignY << 8));
 			if (textOffset < 0 || textOffset + this.stringBytes[index].length > output.length)
 				throw 'Layout string table write is out of range: ${textOffset} + ${this.stringBytes[index].length} > ${output.length}';
 			for (byteIndex in 0...this.stringBytes[index].length)
