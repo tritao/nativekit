@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <cfloat>
 #include <cstring>
@@ -1428,11 +1429,18 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
             [resource->view
                 evaluateJavaScript:wrapped
                  completionHandler:^(id value, NSError *error) {
-                   if (!nk::core::is_runtime_generation(generation))
+                   std::fprintf(stderr, "WebKit evaluation callback %llu error=%s\n",
+                                static_cast<unsigned long long>(request),
+                                error.localizedDescription.UTF8String ?: "(none)");
+                   if (!nk::core::is_runtime_generation(generation)) {
+                       std::fprintf(stderr, "WebKit evaluation callback has stale generation\n");
                        return;
+                   }
                    const auto pending = evaluations.find(request);
-                   if (pending == evaluations.end() || pending->second != handle)
+                   if (pending == evaluations.end() || pending->second != handle) {
+                       std::fprintf(stderr, "WebKit evaluation callback has no pending request\n");
                        return;
+                   }
                    evaluations.erase(pending);
                    if (error)
                        emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
