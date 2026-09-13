@@ -298,7 +298,9 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             uint32_t text_flags = 0;
             uint32_t text_offset = 0;
             uint32_t text_length = 0;
-            std::array<uint32_t, 4> reserved{};
+            uint32_t node_flags = 0;
+            uint32_t reserved = 0;
+            std::array<float, 6> transform{};
             if (!read_node_u32(record, NKUI_LAYOUT_NODE_ID_OFFSET, id) ||
                 !read_node_i32(record, NKUI_LAYOUT_NODE_PARENT_OFFSET, node.parent) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET, visual_kind) ||
@@ -344,19 +346,30 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET, text_alignment) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET, text_direction) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_FLAGS_OFFSET, text_flags) ||
-                !read_node_u32(record, NKUI_LAYOUT_NODE_RESERVED0_OFFSET, reserved[0]) ||
-                !read_node_u32(record, NKUI_LAYOUT_NODE_RESERVED1_OFFSET, reserved[1]) ||
-                !read_node_u32(record, NKUI_LAYOUT_NODE_RESERVED2_OFFSET, reserved[2]) ||
-                !read_node_u32(record, NKUI_LAYOUT_NODE_RESERVED3_OFFSET, reserved[3]))
+                !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_A_OFFSET, transform[0]) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_B_OFFSET, transform[1]) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_C_OFFSET, transform[2]) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_D_OFFSET, transform[3]) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET, transform[4]) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET, transform[5]) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_FLAGS_OFFSET, node_flags) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_RESERVED_OFFSET, reserved))
                 return false;
             if (visual_kind < NKUI_LAYOUT_VISUAL_BOX ||
                 visual_kind > NKUI_LAYOUT_VISUAL_CUSTOM ||
-                std::any_of(reserved.begin(), reserved.end(),
-                            [](uint32_t value) { return value != 0; }) ||
+                reserved != 0 || (node_flags & ~NKUI_LAYOUT_NODE_VISIBLE) != 0 ||
                 width_sizing > NKUI_LAYOUT_SIZING_PERCENT)
+                return false;
+            const float determinant = transform[0] * transform[3] - transform[1] * transform[2];
+            if (std::any_of(transform.begin(), transform.end(),
+                            [](float value) { return !std::isfinite(value); }) ||
+                !std::isfinite(determinant) || std::abs(determinant) < 0.000001f)
                 return false;
             node.id = id;
             node.visual_kind = static_cast<nkui::LayoutVisualKind>(visual_kind);
+            node.style.visible = (node_flags & NKUI_LAYOUT_NODE_VISIBLE) != 0;
+            node.style.transform = {transform[0], transform[1], transform[2], transform[3],
+                                    transform[4], transform[5]};
             node.style.width.sizing = static_cast<nkui::LayoutSizing>(width_sizing);
             node.style.height.sizing = static_cast<nkui::LayoutSizing>(height_sizing);
             node.style.direction = static_cast<nkui::LayoutDirection>(direction);
@@ -1133,12 +1146,30 @@ extern "C" nkui_result nkui_layout_session_get_resolved_items(nkui_layout_sessio
     }
     for (size_t index = 0; index < state->snapshot.items.size(); ++index) {
         const auto &resolved = state->snapshot.items[index];
-        const nkui_layout_item item{static_cast<uint32_t>(sizeof(nkui_layout_item)),
-                                    resolved.id,
-                                    resolved.bounds.x,
-                                    resolved.bounds.y,
-                                    resolved.bounds.width,
-                                    resolved.bounds.height};
+        nkui_layout_item item{};
+        item.struct_size = sizeof(item);
+        item.node_id = resolved.id;
+        item.flags = (resolved.visible ? NKUI_LAYOUT_RESOLVED_VISIBLE : 0u) |
+                     (resolved.has_baseline ? NKUI_LAYOUT_RESOLVED_HAS_BASELINE : 0u);
+        item.x = resolved.bounds.x;
+        item.y = resolved.bounds.y;
+        item.width = resolved.bounds.width;
+        item.height = resolved.bounds.height;
+        item.clip_x = resolved.clip_bounds.x;
+        item.clip_y = resolved.clip_bounds.y;
+        item.clip_width = resolved.clip_bounds.width;
+        item.clip_height = resolved.clip_bounds.height;
+        item.content_x = resolved.content_bounds.x;
+        item.content_y = resolved.content_bounds.y;
+        item.content_width = resolved.content_bounds.width;
+        item.content_height = resolved.content_bounds.height;
+        item.transform[0] = resolved.transform.a;
+        item.transform[1] = resolved.transform.b;
+        item.transform[2] = resolved.transform.c;
+        item.transform[3] = resolved.transform.d;
+        item.transform[4] = resolved.transform.tx;
+        item.transform[5] = resolved.transform.ty;
+        item.baseline = resolved.baseline;
         std::memcpy(out_buffer + index * sizeof(item), &item, sizeof(item));
     }
     *inout_bytes = required;

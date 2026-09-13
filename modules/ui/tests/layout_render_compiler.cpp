@@ -142,6 +142,10 @@ int main() {
     button.style.height = {LayoutSizing::Fit, 0.0f};
     button.style.padding_left = button.style.padding_right = 12;
     button.style.padding_top = button.style.padding_bottom = 8;
+    button.style.transform.tx = 10.0f;
+    button.style.transform.ty = 6.0f;
+    button.style.clip_horizontal = true;
+    button.style.clip_vertical = true;
     button.style.background = {0.2f, 0.5f, 0.9f, 1.0f};
     button.style.radius_top_left = button.style.radius_top_right = 8.0f;
     button.style.radius_bottom_left = button.style.radius_bottom_right = 8.0f;
@@ -180,6 +184,9 @@ int main() {
 
     uint32_t path_commands = 0;
     uint32_t text_commands = 0;
+    const LayoutItem *button_item = snapshot.find(2);
+    if (!button_item)
+        return 8;
     for (const auto &command : frame.plan().passes.front().commands) {
         if (command.kind == RenderCommandKind::Path) {
             const auto *path = frame.resources().path(command.resource);
@@ -189,6 +196,12 @@ int main() {
         } else if (command.kind == RenderCommandKind::GlyphBatch) {
             const auto *text = frame.resources().text(command.resource);
             if (!text || text->vertices.empty() || command.transform[0] != 1.5f)
+                return 9;
+            const float clip_x = (button_item->bounds.x + 10.0f) * 1.5f;
+            const float clip_y = (button_item->bounds.y + 6.0f) * 1.5f;
+            if (!command.has_scissor || command.scissor_x != clip_x || command.scissor_y != clip_y ||
+                command.scissor_width != button_item->bounds.width * 1.5f ||
+                command.scissor_height != button_item->bounds.height * 1.5f)
                 return 9;
             if (text->vertices.front().red != 26 || text->vertices.front().green != 38 ||
                 text->vertices.front().blue != 64)
@@ -227,8 +240,7 @@ int main() {
         return 13;
 
     const auto *text_adapter = frame.text_adapter();
-    const LayoutItem *button_item = snapshot.find(2);
-    if (!button_item)
+    if (button_item->transform.tx != 10.0f || button_item->transform.ty != 6.0f)
         return 13;
     if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error, false,
                           engine.text_adapter()) ||
@@ -243,9 +255,13 @@ int main() {
     LayoutPrimitive clip_begin;
     clip_begin.kind = LayoutPrimitiveKind::ClipBegin;
     clip_begin.bounds = {10.0f, 20.0f, 100.0f, 80.0f};
+    clip_begin.transform.tx = 5.0f;
+    clip_begin.transform.ty = 6.0f;
     LayoutPrimitive rectangle;
     rectangle.kind = LayoutPrimitiveKind::Rectangle;
     rectangle.bounds = {0.0f, 0.0f, 200.0f, 200.0f};
+    rectangle.transform.tx = 20.0f;
+    rectangle.transform.ty = 30.0f;
     rectangle.color = {1.0f, 0.0f, 0.0f, 1.0f};
     LayoutPrimitive clip_end;
     clip_end.kind = LayoutPrimitiveKind::ClipEnd;
@@ -254,10 +270,22 @@ int main() {
         frame.plan().passes.front().commands.size() != 1)
         return 16;
     const auto &clipped_command = frame.plan().passes.front().commands.front();
-    if (!clipped_command.has_scissor || clipped_command.scissor_x != 15.0f ||
-        clipped_command.scissor_y != 30.0f || clipped_command.scissor_width != 150.0f ||
+    if (!clipped_command.has_scissor || clipped_command.scissor_x != 22.5f ||
+        clipped_command.scissor_y != 39.0f || clipped_command.scissor_width != 150.0f ||
         clipped_command.scissor_height != 120.0f)
         return 17;
+    const auto *transformed_path = frame.resources().path(clipped_command.resource);
+    if (!transformed_path ||
+        transformed_path->path->operations()[transformed_path->operation_index].bounds[0] != 30.0f ||
+        transformed_path->path->operations()[transformed_path->operation_index].bounds[1] != 45.0f)
+        return 18;
+
+    LayoutSnapshot hidden_snapshot;
+    rectangle.visible = false;
+    hidden_snapshot.primitives.push_back(rectangle);
+    if (!compiler.compile(hidden_snapshot, main_target, 1.5f, frame, &compile_error) ||
+        !frame.plan().passes.front().commands.empty())
+        return 19;
 
     std::cout << "PASS: layout snapshot compiles through NativeKit render plan\n";
     return 0;

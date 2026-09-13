@@ -4,6 +4,7 @@
 #include "prepare/skribidi_adapter.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -115,6 +116,33 @@ void set_scissor(RenderCommand &command, const LayoutRect &clip, float pixel_sca
     command.scissor_height = clip.height * pixel_scale;
 }
 
+std::array<float, 6> device_transform(const LayoutTransform &transform, float pixel_scale) {
+    return {transform.a * pixel_scale,  transform.b * pixel_scale,
+            transform.c * pixel_scale,  transform.d * pixel_scale,
+            transform.tx * pixel_scale, transform.ty * pixel_scale};
+}
+
+LayoutRect transform_bounds(LayoutRect rect, const LayoutTransform &transform) {
+    const auto x = [&](float px, float py) {
+        return transform.a * px + transform.c * py + transform.tx;
+    };
+    const auto y = [&](float px, float py) {
+        return transform.b * px + transform.d * py + transform.ty;
+    };
+    const float x0 = x(rect.x, rect.y);
+    const float x1 = x(rect.x + rect.width, rect.y);
+    const float x2 = x(rect.x, rect.y + rect.height);
+    const float x3 = x(rect.x + rect.width, rect.y + rect.height);
+    const float y0 = y(rect.x, rect.y);
+    const float y1 = y(rect.x + rect.width, rect.y);
+    const float y2 = y(rect.x, rect.y + rect.height);
+    const float y3 = y(rect.x + rect.width, rect.y + rect.height);
+    const float left = std::min({x0, x1, x2, x3});
+    const float top = std::min({y0, y1, y2, y3});
+    return {left, top, std::max({x0, x1, x2, x3}) - left,
+            std::max({y0, y1, y2, y3}) - top};
+}
+
 } // namespace
 
 void LayoutRenderFrame::reset() {
@@ -186,7 +214,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             if (primitive.kind == LayoutPrimitiveKind::ClipBegin) {
                 if (!finite_rect(primitive.bounds))
                     return fail(error, index, "layout clip rectangle is invalid");
-                LayoutRect clip = primitive.bounds;
+                LayoutRect clip = transform_bounds(primitive.bounds, primitive.transform);
                 if (!clips.empty())
                     clip = intersect(clips.back(), clip);
                 clips.push_back(clip);
@@ -200,6 +228,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             }
             if (primitive.kind == LayoutPrimitiveKind::Border)
                 return fail(error, index, "layout borders are not supported yet");
+            if (!primitive.visible)
+                continue;
             if (!finite_rect(primitive.bounds) || !valid_color(primitive.color) ||
                 (primitive.kind == LayoutPrimitiveKind::Rectangle && !valid_radii(primitive)))
                 return fail(error, index, "layout primitive is invalid");
@@ -213,7 +243,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 append_rounded_rect(path, primitive.bounds, primitive);
                 PathPreparationParams params;
                 params.device_pixel_ratio = pixel_scale;
-                params.transform = {pixel_scale, 0.0f, 0.0f, pixel_scale, 0.0f, 0.0f};
+                params.transform = device_transform(primitive.transform, pixel_scale);
                 PreparedGeometry geometry;
                 if (!path.valid() || !prepared || !prepare_fill(path, params, geometry) ||
                     !prepared->set(PreparedPathKind::Fill, geometry, solid_paint(primitive.color)))
@@ -283,7 +313,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                                       primitive.bounds.y,
                                       primitive.bounds.width,
                                       primitive.bounds.height};
-                command.transform = {pixel_scale, 0.0f, 0.0f, pixel_scale, 0.0f, 0.0f};
+                command.transform = device_transform(primitive.transform, pixel_scale);
                 if (!clips.empty())
                     set_scissor(command, clips.back(), pixel_scale);
                 commands.push_back(command);

@@ -17,12 +17,12 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 4,
-    NKUI_LAYOUT_TRANSACTION_VERSION = 3,
+    NKUI_LAYOUT_API_VERSION = 5,
+    NKUI_LAYOUT_TRANSACTION_VERSION = 4,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
-    NKUI_LAYOUT_NODE_RECORD_BYTES = 160,
+    NKUI_LAYOUT_NODE_RECORD_BYTES = 176,
     NKUI_LAYOUT_MAX_NODES = 512,
-    NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 24
+    NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96
 };
 
 /** Bit flags stored in each node's clip-flags field. */
@@ -30,6 +30,19 @@ typedef uint32_t nkui_layout_clip_flags;
 enum NK_FLAGS(nkui_layout_clip_flags) {
     NKUI_LAYOUT_CLIP_HORIZONTAL = 1u << 0,
     NKUI_LAYOUT_CLIP_VERTICAL = 1u << 1
+};
+
+/** Node flags stored at NKUI_LAYOUT_NODE_FLAGS_OFFSET. */
+typedef uint32_t nkui_layout_node_flags;
+enum NK_FLAGS(nkui_layout_node_flags) {
+    NKUI_LAYOUT_NODE_VISIBLE = 1u << 0
+};
+
+/** Flags returned with each resolved item. */
+typedef uint32_t nkui_layout_resolved_flags;
+enum NK_FLAGS(nkui_layout_resolved_flags) {
+    NKUI_LAYOUT_RESOLVED_VISIBLE = 1u << 0,
+    NKUI_LAYOUT_RESOLVED_HAS_BASELINE = 1u << 1
 };
 
 /** Visual content kinds encoded in the transaction. */
@@ -83,24 +96,45 @@ enum {
     NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET = 132,
     NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET = 136,
     NKUI_LAYOUT_NODE_TEXT_FLAGS_OFFSET = 140,
-    NKUI_LAYOUT_NODE_RESERVED0_OFFSET = 144,
-    NKUI_LAYOUT_NODE_RESERVED1_OFFSET = 148,
-    NKUI_LAYOUT_NODE_RESERVED2_OFFSET = 152,
-    NKUI_LAYOUT_NODE_RESERVED3_OFFSET = 156
+    NKUI_LAYOUT_NODE_TRANSFORM_A_OFFSET = 144,
+    NKUI_LAYOUT_NODE_TRANSFORM_B_OFFSET = 148,
+    NKUI_LAYOUT_NODE_TRANSFORM_C_OFFSET = 152,
+    NKUI_LAYOUT_NODE_TRANSFORM_D_OFFSET = 156,
+    NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET = 160,
+    NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET = 164,
+    NKUI_LAYOUT_NODE_FLAGS_OFFSET = 168,
+    NKUI_LAYOUT_NODE_RESERVED_OFFSET = 172
 };
 
 /** Opaque retained layout session used by a Haxe-owned component tree. */
 NK_DECLARE_HANDLE(nkui_layout_session);
 
-/** Resolved bounds for one node in the most recently submitted layout. */
+/** Resolved geometry for one node in the most recently submitted layout. */
 typedef struct nkui_layout_item {
     /** Set to sizeof(nkui_layout_item) or a larger compatible size. */
     uint32_t struct_size;
     uint32_t node_id;
+    uint32_t flags;
+    /** Layout bounds before the returned world transform is applied. */
     float x;
     float y;
     float width;
     float height;
+    /** Effective ancestor clip in viewport coordinates, after transforms. */
+    float clip_x;
+    float clip_y;
+    float clip_width;
+    float clip_height;
+    /** Union of direct child bounds, relative to this node's content origin. */
+    float content_x;
+    float content_y;
+    float content_width;
+    float content_height;
+    /** World affine transform using x'=a*x+c*y+tx, y'=b*x+d*y+ty. */
+    float transform[6];
+    /** First text-line baseline in layout coordinates when HAS_BASELINE is set. */
+    float baseline;
+    uint32_t reserved[2];
 } nkui_layout_item;
 
 /** Per-submission logical viewport and layout timing. */
@@ -126,9 +160,11 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_set_font_collection(nkui_layout
  * Submits one flat, Haxe-owned render/layout tree transaction.
  *
  * The transaction is little-endian and consists of a 16-byte header, fixed
- * 160-byte node records, and a UTF-8 string table. Node text offsets are
+ * 176-byte node records, and a UTF-8 string table. Node text offsets are
  * absolute byte offsets from the beginning of the transaction. The native
  * side copies all values before returning, so the input buffer may be reused.
+ * Each node transform is applied about that node's top-left layout origin;
+ * clipped nodes must have an axis-aligned cumulative transform.
  */
 NKUI_API nkui_result NK_CALL nkui_layout_session_submit(
     nkui_layout_session session, const uint8_t *transaction NKUI_IN_ARRAY(transaction_bytes),
@@ -136,8 +172,12 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_submit(
 
 /** Copies the resolved geometry for every node in submission order.
  *
- * The buffer contains `nkui_layout_item` records with `struct_size` set. Pass
- * NULL to query the required byte count, then pass a buffer of that size.
+ * The buffer contains `nkui_layout_item` records with `struct_size` set.
+ * Bounds remain in pre-transform layout coordinates; `transform` maps them to
+ * viewport coordinates. `clip_*` is the effective inherited clip, and
+ * `content_*` describes the union of direct children relative to the node's
+ * padded content origin. Pass NULL to query the required byte count, then
+ * pass a buffer of that size.
  */
 NKUI_API nkui_result NK_CALL nkui_layout_session_get_resolved_items(
     nkui_layout_session session, uint8_t *out_buffer NK_OUT_BUFFER(inout_bytes),

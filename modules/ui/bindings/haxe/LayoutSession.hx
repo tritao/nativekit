@@ -51,7 +51,7 @@ class LayoutSession {
 		return resolved;
 	}
 
-	/** Returns the resolved bounds of a node after the latest submission. */
+	/** Returns pre-transform layout bounds of a node after the latest submission. */
 	public function item(node:LayoutNode):Rect {
 		ensureLive();
 		if (node == null)

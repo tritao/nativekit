@@ -107,6 +107,47 @@ int main(int argc, char **argv) {
     if (!panel_item || snapshot.items.size() != nodes.size())
         return 13;
 
+    LayoutNode geometry_root = box(300, -1);
+    geometry_root.style.width = {LayoutSizing::Fixed, 100.0f};
+    geometry_root.style.height = {LayoutSizing::Fixed, 80.0f};
+    geometry_root.style.clip_horizontal = true;
+    geometry_root.style.clip_vertical = true;
+    LayoutNode geometry_child = box(301, 0);
+    geometry_child.style.width = {LayoutSizing::Fixed, 40.0f};
+    geometry_child.style.height = {LayoutSizing::Fixed, 30.0f};
+    geometry_child.style.transform.tx = 10.0f;
+    geometry_child.style.transform.ty = 15.0f;
+    LayoutNode hidden_child = box(302, 1);
+    hidden_child.style.width = {LayoutSizing::Fixed, 8.0f};
+    hidden_child.style.height = {LayoutSizing::Fixed, 8.0f};
+    hidden_child.style.background = {1.0f, 0.0f, 0.0f, 1.0f};
+    hidden_child.style.visible = false;
+    std::vector<LayoutNode> geometry_nodes{geometry_root, geometry_child, hidden_child};
+    if (!engine.layout(geometry_nodes, 100.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 19;
+    const LayoutItem *geometry_root_item = snapshot.find(300);
+    const LayoutItem *geometry_child_item = snapshot.find(301);
+    const LayoutItem *hidden_child_item = snapshot.find(302);
+    if (!geometry_root_item || !geometry_child_item || !hidden_child_item ||
+        geometry_root_item->content_bounds.width != 40.0f ||
+        geometry_root_item->content_bounds.height != 30.0f ||
+        geometry_child_item->transform.tx != 10.0f || geometry_child_item->transform.ty != 15.0f ||
+        geometry_child_item->clip_bounds.width != 100.0f ||
+        geometry_child_item->clip_bounds.height != 80.0f || hidden_child_item->visible)
+        return 20;
+    const auto hidden_primitive = std::find_if(
+        snapshot.primitives.begin(), snapshot.primitives.end(),
+        [](const LayoutPrimitive &primitive) { return primitive.node_id == 302; });
+    if (hidden_primitive == snapshot.primitives.end() || hidden_primitive->visible)
+        return 21;
+
+    geometry_nodes[1].style.clip_horizontal = true;
+    geometry_nodes[1].style.transform.b = 1.0f;
+    geometry_nodes[1].style.transform.c = -1.0f;
+    if (engine.layout(geometry_nodes, 100.0f, 80.0f, 1.0f / 60.0f, snapshot, &error) ||
+        !error.message || std::string(error.message) != "rotated or skewed clipping is not supported")
+        return 22;
+
     constexpr std::size_t text_layout_cache_limit = 128;
     LayoutNode crowded_root = box(200, -1);
     crowded_root.style.width = {LayoutSizing::Fixed, 420.0f};
@@ -149,7 +190,7 @@ int main(int argc, char **argv) {
             return 18;
     }
 
-    std::cout << "PASS: Clay layout Box + Text + Button\n";
+    std::cout << "PASS: Clay layout boxes, text, transforms, and geometry\n";
     return 0;
 #endif
 }

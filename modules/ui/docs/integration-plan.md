@@ -14,7 +14,9 @@ The first private layout slice is implemented in `src/layout/`. It pins Clay
 behind a NativeKit-owned `LayoutEngine`, measures text through Skribidi, and
 produces NativeKit-owned geometry and rendering primitives. The Haxe-facing
 layout bridge uses a versioned, validated batch render-tree transaction; the
-resolved geometry for all submitted nodes returns in one snapshot. Clay and
+resolved geometry for all submitted nodes returns in one snapshot, including
+inherited clipping, visibility, affine transforms, baselines, and child content
+extents. Clipped subtrees currently require axis-aligned transforms. Clay and
 Skribidi remain private implementation details.
 
 An interactive frame flows through these stages:
@@ -82,7 +84,8 @@ The private Clay adapter provides intrinsic measurement and external paragraph
 layout through Skribidi. It returns layout geometry only. Haxe consumes a batch
 of resolved node bounds, clip/visibility data, transforms, baselines, and
 content extents to implement hit testing, scrolling, focus, and accessibility.
-NativeUI renders from the exact snapshot that produced those results.
+The render compiler consumes the same snapshot and applies its transforms and
+clips when producing display commands.
 
 The active NativeUI sequence is generic visual kinds, complete geometry
 snapshots, clipping/transforms/content metrics, shared-frame rendering, and

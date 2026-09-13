@@ -1,4 +1,4 @@
-/** Haxe-owned layout and paint policy for a semantic node. */
+/** Haxe-owned layout, paint, visibility, and transform data. */
 class LayoutStyle {
 	public var width:LayoutAxis;
 	public var height:LayoutAxis;
@@ -12,6 +12,8 @@ class LayoutStyle {
 	public var radiusBottomRight:Float;
 	public var clipHorizontal:Bool;
 	public var clipVertical:Bool;
+	public var visible:Bool;
+	public var transform:Transform2D;
 
 	public function new() {
 		width = LayoutAxis.fit();
@@ -26,5 +28,7 @@ class LayoutStyle {
 		radiusBottomRight = 0.0;
 		clipHorizontal = false;
 		clipVertical = false;
+		visible = true;
+		transform = Transform2D.identity();
 	}
 }

@@ -197,6 +197,9 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
         native_layout.text = value;
         native_layout.width = available_width;
         native_layout.height = shaped.bounds.height;
+        const TextCaret first_caret = state.text.caret({0, 0});
+        native_layout.first_line_baseline = first_caret.y;
+        native_layout.has_baseline = std::isfinite(first_caret.y);
         native_layout.text_style.family = options.family;
         native_layout.text_style.font_size = options.font_size;
         native_layout.text_style.letter_spacing = options.letter_spacing;
@@ -287,6 +290,64 @@ template <typename LayoutState> void append_node(LayoutState &state, std::size_t
 
 LayoutRect rect_from(Clay_BoundingBox bounds) {
     return {bounds.x, bounds.y, bounds.width, bounds.height};
+}
+
+LayoutTransform compose(LayoutTransform parent, LayoutTransform local) {
+    return {parent.a * local.a + parent.c * local.b,
+            parent.b * local.a + parent.d * local.b,
+            parent.a * local.c + parent.c * local.d,
+            parent.b * local.c + parent.d * local.d,
+            parent.a * local.tx + parent.c * local.ty + parent.tx,
+            parent.b * local.tx + parent.d * local.ty + parent.ty};
+}
+
+LayoutTransform translated(float x, float y) {
+    return {1.0f, 0.0f, 0.0f, 1.0f, x, y};
+}
+
+bool finite_transform(const LayoutTransform &transform) {
+    return std::isfinite(transform.a) && std::isfinite(transform.b) &&
+           std::isfinite(transform.c) && std::isfinite(transform.d) &&
+           std::isfinite(transform.tx) && std::isfinite(transform.ty);
+}
+
+bool axis_aligned(const LayoutTransform &transform) {
+    return std::abs(transform.b) <= 0.00001f && std::abs(transform.c) <= 0.00001f;
+}
+
+LayoutRect transform_bounds(LayoutRect rect, LayoutTransform transform) {
+    const auto x = [&](float px, float py) {
+        return transform.a * px + transform.c * py + transform.tx;
+    };
+    const auto y = [&](float px, float py) {
+        return transform.b * px + transform.d * py + transform.ty;
+    };
+    const float x0 = x(rect.x, rect.y);
+    const float x1 = x(rect.x + rect.width, rect.y);
+    const float x2 = x(rect.x, rect.y + rect.height);
+    const float x3 = x(rect.x + rect.width, rect.y + rect.height);
+    const float y0 = y(rect.x, rect.y);
+    const float y1 = y(rect.x + rect.width, rect.y);
+    const float y2 = y(rect.x, rect.y + rect.height);
+    const float y3 = y(rect.x + rect.width, rect.y + rect.height);
+    const float left = std::min({x0, x1, x2, x3});
+    const float top = std::min({y0, y1, y2, y3});
+    return {left, top, std::max({x0, x1, x2, x3}) - left,
+            std::max({y0, y1, y2, y3}) - top};
+}
+
+LayoutRect intersect_axes(LayoutRect clip, LayoutRect bounds, bool horizontal, bool vertical) {
+    if (horizontal) {
+        const float right = std::min(clip.x + clip.width, bounds.x + bounds.width);
+        clip.x = std::max(clip.x, bounds.x);
+        clip.width = std::max(0.0f, right - clip.x);
+    }
+    if (vertical) {
+        const float bottom = std::min(clip.y + clip.height, bounds.y + bounds.height);
+        clip.y = std::max(clip.y, bounds.y);
+        clip.height = std::max(0.0f, bottom - clip.y);
+    }
+    return clip;
 }
 
 LayoutColor color_from(Clay_Color color) {
@@ -456,19 +517,19 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         return false;
     }
 
+    std::vector<LayoutRect> node_bounds(nodes.size());
     for (std::size_t index = 0; index < nodes.size(); ++index) {
         const Clay_ElementData data = Clay_GetElementData(state.element_ids[index]);
-        if (!data.found)
-            continue;
-        out.items.push_back({nodes[index].id, nodes[index].visual_kind,
-                             rect_from(data.boundingBox)});
+        if (!data.found) {
+            if (error) {
+                error->node_index = index;
+                error->message = "layout engine did not resolve a submitted node";
+            }
+            return false;
+        }
+        node_bounds[index] = rect_from(data.boundingBox);
     }
-    for (int32_t index = 0; index < commands.length; ++index) {
-        const Clay_RenderCommand *command =
-            Clay_RenderCommandArray_Get(const_cast<Clay_RenderCommandArray *>(&commands), index);
-        if (command)
-            append_primitive(out, *command);
-    }
+
     out.text_layouts.reserve(state.text_layouts.size());
     std::vector<TextLayoutId> retained_text_layouts;
     retained_text_layouts.reserve(state.text_layouts.size());
@@ -476,7 +537,117 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         retained_text_layouts.push_back(entry.first);
         out.text_layouts.push_back(entry.second);
     }
+
+    out.items.resize(nodes.size());
+    const LayoutRect viewport{0.0f, 0.0f, width, height};
+    const auto resolve_geometry = [&](auto &&self, std::size_t index,
+                                      LayoutTransform parent_transform, bool parent_visible,
+                                      LayoutRect parent_clip) -> bool {
+        const auto &node = nodes[index];
+        const LayoutRect node_bounds_rect = node_bounds[index];
+        const LayoutTransform to_origin = translated(node_bounds_rect.x, node_bounds_rect.y);
+        const LayoutTransform from_origin = translated(-node_bounds_rect.x, -node_bounds_rect.y);
+        const LayoutTransform local_transform =
+            compose(compose(to_origin, node.style.transform), from_origin);
+        const LayoutTransform transform = compose(parent_transform, local_transform);
+        const bool visible = parent_visible && node.style.visible;
+        const LayoutRect transformed = transform_bounds(node_bounds[index], transform);
+        LayoutItem item{};
+        item.id = node.id;
+        item.visual_kind = node.visual_kind;
+        item.bounds = node_bounds[index];
+        item.clip_bounds = parent_clip;
+        item.transform = transform;
+        item.visible = visible;
+        const float determinant = transform.a * transform.d - transform.b * transform.c;
+        if (!finite_transform(transform) || !std::isfinite(determinant) ||
+            std::abs(determinant) < 0.000001f || !std::isfinite(transformed.x) ||
+            !std::isfinite(transformed.y) || !std::isfinite(transformed.width) ||
+            !std::isfinite(transformed.height)) {
+            if (error) {
+                error->node_index = index;
+                error->message = "layout transform is not finite and invertible";
+            }
+            return false;
+        }
+        if (!axis_aligned(transform)) {
+            if (node.style.clip_horizontal || node.style.clip_vertical) {
+                if (error) {
+                    error->node_index = index;
+                    error->message = "rotated or skewed clipping is not supported";
+                }
+                return false;
+            }
+        }
+        const float content_x = node_bounds[index].x + node.style.padding_left;
+        const float content_y = node_bounds[index].y + node.style.padding_top;
+        bool has_child = false;
+        float left = 0.0f;
+        float top = 0.0f;
+        float right = 0.0f;
+        float bottom = 0.0f;
+        for (const std::size_t child : state.children[index]) {
+            const LayoutRect bounds = node_bounds[child];
+            const float child_left = bounds.x - content_x;
+            const float child_top = bounds.y - content_y;
+            if (!has_child) {
+                left = child_left;
+                top = child_top;
+                right = child_left + bounds.width;
+                bottom = child_top + bounds.height;
+                has_child = true;
+            } else {
+                left = std::min(left, child_left);
+                top = std::min(top, child_top);
+                right = std::max(right, child_left + bounds.width);
+                bottom = std::max(bottom, child_top + bounds.height);
+            }
+        }
+        if (has_child)
+            item.content_bounds = {left, top, right - left, bottom - top};
+        const auto text_layout =
+            std::find_if(out.text_layouts.begin(), out.text_layouts.end(),
+                         [&](const LayoutTextLayout &layout) {
+                             return layout.node_id == node.id && layout.has_baseline;
+                         });
+        if (text_layout != out.text_layouts.end()) {
+            item.has_baseline = true;
+            item.baseline = item.bounds.y + text_layout->first_line_baseline;
+        }
+        out.items[index] = item;
+
+        LayoutRect child_clip = parent_clip;
+        if (node.style.clip_horizontal || node.style.clip_vertical) {
+            child_clip = intersect_axes(child_clip, transformed, node.style.clip_horizontal,
+                                        node.style.clip_vertical);
+        }
+        for (const std::size_t child : state.children[index]) {
+            if (!self(self, child, transform, visible, child_clip))
+                return false;
+        }
+        return true;
+    };
+    if (!resolve_geometry(resolve_geometry, root, LayoutTransform{}, true, viewport))
+        return false;
+
     state.text.prune_layout_cache(retained_text_layouts, kAutomaticTextLayoutCacheEntries);
+
+    for (int32_t index = 0; index < commands.length; ++index) {
+        const Clay_RenderCommand *command =
+            Clay_RenderCommandArray_Get(const_cast<Clay_RenderCommandArray *>(&commands), index);
+        if (command) {
+            append_primitive(out, *command);
+            auto &primitive = out.primitives.back();
+            const auto item = std::find_if(out.items.begin(), out.items.end(),
+                                           [&](const LayoutItem &value) {
+                                               return value.id == primitive.node_id;
+                                           });
+            if (item != out.items.end()) {
+                primitive.transform = item->transform;
+                primitive.visible = item->visible;
+            }
+        }
+    }
 
     return true;
 }

@@ -81,6 +81,15 @@ struct LayoutColor {
     float alpha = 0.0f;
 };
 
+struct LayoutTransform {
+    float a = 1.0f;
+    float b = 0.0f;
+    float c = 0.0f;
+    float d = 1.0f;
+    float tx = 0.0f;
+    float ty = 0.0f;
+};
+
 struct LayoutStyle {
     LayoutAxis width{};
     LayoutAxis height{};
@@ -97,6 +106,8 @@ struct LayoutStyle {
     float radius_bottom_right = 0.0f;
     bool clip_horizontal = false;
     bool clip_vertical = false;
+    bool visible = true;
+    LayoutTransform transform{};
 };
 
 /** A flat, frame-scoped render/layout tree. Parent indices refer to this array. */
@@ -127,6 +138,12 @@ struct LayoutItem {
     uint32_t id = 0;
     LayoutVisualKind visual_kind = LayoutVisualKind::Box;
     LayoutRect bounds{};
+    LayoutRect clip_bounds{};
+    LayoutRect content_bounds{};
+    LayoutTransform transform{};
+    float baseline = 0.0f;
+    bool visible = true;
+    bool has_baseline = false;
 };
 
 enum class LayoutPrimitiveKind : uint8_t {
@@ -141,6 +158,8 @@ struct LayoutPrimitive {
     LayoutPrimitiveKind kind = LayoutPrimitiveKind::Rectangle;
     uint32_t node_id = 0;
     LayoutRect bounds{};
+    LayoutTransform transform{};
+    bool visible = true;
     LayoutColor color{};
     float radius_top_left = 0.0f;
     float radius_top_right = 0.0f;
@@ -165,6 +184,8 @@ struct LayoutTextLayout {
     std::string text;
     float width = 0.0f;
     float height = 0.0f;
+    float first_line_baseline = 0.0f;
+    bool has_baseline = false;
     TextStyle text_style{};
     ParagraphStyle paragraph_style{};
     std::vector<LayoutTextLine> lines;

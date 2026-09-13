@@ -37,6 +37,14 @@ std::vector<uint8_t> transaction() {
     write_u32(bytes, 8, NKUI_LAYOUT_NODE_RECORD_BYTES);
     write_u32(bytes, 12, string_offset);
 
+    for (uint32_t index = 0; index < node_count; ++index) {
+        const std::size_t offset = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
+                                   static_cast<std::size_t>(index) * NKUI_LAYOUT_NODE_RECORD_BYTES;
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_TRANSFORM_A_OFFSET, 1.0f);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_TRANSFORM_D_OFFSET, 1.0f);
+        write_u32(bytes, offset + NKUI_LAYOUT_NODE_FLAGS_OFFSET, NKUI_LAYOUT_NODE_VISIBLE);
+    }
+
     const auto record = [&](uint32_t index) {
         return NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
                static_cast<std::size_t>(index) * NKUI_LAYOUT_NODE_RECORD_BYTES;
@@ -61,6 +69,8 @@ std::vector<uint8_t> transaction() {
     write_u32(bytes, record(1) + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIXED);
     write_float(bytes, record(1) + NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET, 64.0f);
     write_u32(bytes, record(1) + NKUI_LAYOUT_NODE_DIRECTION_OFFSET, NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
+    write_float(bytes, record(1) + NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET, 12.0f);
+    write_float(bytes, record(1) + NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET, 20.0f);
     write_color(bytes, record(1) + NKUI_LAYOUT_NODE_BACKGROUND_OFFSET, 0.2f, 0.5f, 0.9f, 1.0f);
     write_float(bytes, record(1) + NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET, 16.0f);
     write_u32(bytes, record(1) + NKUI_LAYOUT_NODE_TEXT_OFFSET_OFFSET, string_offset);
@@ -122,14 +132,34 @@ int main() {
     std::memcpy(&text_item, resolved.data() + 2 * sizeof(root_item), sizeof(text_item));
     if (root_item.struct_size != sizeof(root_item) || root_item.node_id != 1 ||
         root_item.width != 256.0f || root_item.height != 192.0f ||
+        root_item.content_width != 160.0f || root_item.content_height != 64.0f ||
         button_item.node_id != 2 || button_item.width != 160.0f || button_item.height != 64.0f ||
-        text_item.node_id != 3 || text_item.width <= 0.0f || text_item.height <= 0.0f)
+        button_item.transform[4] != 12.0f || button_item.transform[5] != 20.0f ||
+        button_item.clip_x != 0.0f || button_item.clip_y != 0.0f ||
+        button_item.clip_width != 256.0f || button_item.clip_height != 192.0f ||
+        !(button_item.flags & NKUI_LAYOUT_RESOLVED_VISIBLE) || text_item.node_id != 3 ||
+        text_item.width <= 0.0f || text_item.height <= 0.0f ||
+        !(text_item.flags & NKUI_LAYOUT_RESOLVED_HAS_BASELINE))
         return 10;
     uint32_t undersized_bytes = 1;
     if (nkui_layout_session_get_resolved_items(session, resolved.data(), &undersized_bytes) !=
             NKUI_ERROR_INVALID_ARGUMENT ||
         undersized_bytes != resolved.size())
         return 11;
+
+    auto hidden = bytes;
+    const std::size_t panel_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
+                                     NKUI_LAYOUT_NODE_RECORD_BYTES;
+    write_u32(hidden, panel_record + NKUI_LAYOUT_NODE_FLAGS_OFFSET, 0);
+    if (nkui_layout_session_submit(session, hidden.data(), hidden.size(), &frame) != NKUI_OK ||
+        nkui_layout_session_get_resolved_items(session, resolved.data(), &resolved_bytes) !=
+            NKUI_OK)
+        return 14;
+    std::memcpy(&button_item, resolved.data() + sizeof(root_item), sizeof(button_item));
+    std::memcpy(&text_item, resolved.data() + 2 * sizeof(root_item), sizeof(text_item));
+    if ((button_item.flags & NKUI_LAYOUT_RESOLVED_VISIBLE) ||
+        (text_item.flags & NKUI_LAYOUT_RESOLVED_VISIBLE))
+        return 15;
 
     auto invalid = bytes;
     write_u32(invalid, 0, NKUI_LAYOUT_TRANSACTION_VERSION + 1);
@@ -139,7 +169,7 @@ int main() {
     invalid = bytes;
     const std::size_t reserved_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
                                         NKUI_LAYOUT_NODE_RECORD_BYTES;
-    write_u32(invalid, reserved_record + NKUI_LAYOUT_NODE_RESERVED2_OFFSET, 1);
+    write_u32(invalid, reserved_record + NKUI_LAYOUT_NODE_RESERVED_OFFSET, 1);
     if (nkui_layout_session_submit(session, invalid.data(), invalid.size(), &frame) !=
         NKUI_ERROR_INVALID_TRANSACTION)
         return 13;
