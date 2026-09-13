@@ -2,6 +2,8 @@ import Color;
 import Canvas;
 import DisplayList;
 import FontCollection;
+import Insets;
+import LayoutAlignment;
 import LayoutAxis;
 import LayoutDirection;
 import LayoutFrame;
@@ -30,13 +32,16 @@ import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.AccessibilityRequest;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
+import nativekit.ui.widgets.Align;
 import nativekit.ui.widgets.KeyedView;
+import nativekit.ui.widgets.Padding;
 import nativekit.ui.widgets.Row;
 import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollView;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TextEditorState;
 import nativekit.ui.widgets.TextField;
+import nativekit.ui.widgets.Spacer;
 import nativekit.ui.widgets.Utf8Text;
 
 class FrameworkSmoke {
@@ -128,6 +133,48 @@ class FrameworkSmoke {
 		context.key(UiEventKind.KeyDown, UiKey.Enter);
 		if (submittedValue != "done")
 			return 50;
+		var alignStyle = new LayoutStyle();
+		alignStyle.width = LayoutAxis.fixed(160.0);
+		alignStyle.height = LayoutAxis.fixed(80.0);
+		var alignRoot = context.submit(new Align("align-smoke", new Text("Centered"),
+			LayoutAlignment.Center, LayoutAlignment.Center, alignStyle),
+			new LayoutFrame(256.0, 192.0));
+		var alignParentGeometry:ResolvedLayoutItem = cast alignRoot.resolved;
+		var alignChildGeometry:ResolvedLayoutItem = cast alignRoot.children[0].resolved;
+		if (alignChildGeometry.x < alignParentGeometry.x +
+			(alignParentGeometry.width - alignChildGeometry.width) * 0.5 - 0.1 ||
+			alignChildGeometry.x > alignParentGeometry.x +
+			(alignParentGeometry.width - alignChildGeometry.width) * 0.5 + 0.1 ||
+			alignChildGeometry.y < alignParentGeometry.y +
+			(alignParentGeometry.height - alignChildGeometry.height) * 0.5 - 0.1 ||
+			alignChildGeometry.y > alignParentGeometry.y +
+			(alignParentGeometry.height - alignChildGeometry.height) * 0.5 + 0.1)
+			return 51;
+		var paddingStyle = new LayoutStyle();
+		paddingStyle.width = LayoutAxis.fixed(100.0);
+		paddingStyle.height = LayoutAxis.fixed(60.0);
+		var paddingRoot = context.submit(new Padding("padding-smoke", new Text("Inset"),
+			new Insets(7.0, 9.0, 11.0, 13.0), paddingStyle),
+			new LayoutFrame(256.0, 192.0));
+		var paddingParentGeometry:ResolvedLayoutItem = cast paddingRoot.resolved;
+		var paddingChildGeometry:ResolvedLayoutItem = cast paddingRoot.children[0].resolved;
+		if (paddingChildGeometry.x != paddingParentGeometry.x + 7.0 ||
+			paddingChildGeometry.y != paddingParentGeometry.y + 9.0)
+			return 52;
+		var spacerRowStyle = new LayoutStyle();
+		spacerRowStyle.width = LayoutAxis.fixed(200.0);
+		spacerRowStyle.height = LayoutAxis.fixed(36.0);
+		var spacerRow = new Row("spacer-row", [
+			new KeyedView("left", new Text("L")),
+			new KeyedView("gap", new Spacer("gap", LayoutAxis.grow(), LayoutAxis.fit())),
+			new KeyedView("right", new Text("R"))
+		], spacerRowStyle);
+		var spacerRoot = context.submit(spacerRow, new LayoutFrame(256.0, 192.0));
+		var spacerGeometry:ResolvedLayoutItem = cast spacerRoot.children[1].resolved;
+		var leftTextGeometry:ResolvedLayoutItem = cast spacerRoot.children[0].resolved;
+		var rightTextGeometry:ResolvedLayoutItem = cast spacerRoot.children[2].resolved;
+		if (spacerGeometry.width <= 0.0 || rightTextGeometry.x <= leftTextGeometry.x)
+			return 53;
 		if (!NativeKitEventDecoderTests.run())
 			return 27;
 		var frame = new LayoutFrame(256.0, 192.0);
