@@ -84,9 +84,11 @@ if(WIN32)
 endif()
 
 if(APPLE)
-    add_executable(nativekit_osx_integration integration/osx_create_destroy.c)
+    add_executable(nativekit_osx_integration MACOSX_BUNDLE integration/osx_create_destroy.c)
     target_link_libraries(nativekit_osx_integration PRIVATE NativeKit::nativekit)
-    set_target_properties(nativekit_osx_integration PROPERTIES LINKER_LANGUAGE OBJCXX)
+    set_target_properties(nativekit_osx_integration PROPERTIES
+        LINKER_LANGUAGE OBJCXX
+        MACOSX_BUNDLE_GUI_IDENTIFIER "org.nativekit.integration-tests")
     add_test(NAME osx_create_destroy COMMAND nativekit_osx_integration)
     set_tests_properties(osx_create_destroy PROPERTIES LABELS "macos")
 endif()
