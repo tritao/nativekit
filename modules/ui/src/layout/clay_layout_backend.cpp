@@ -555,7 +555,7 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
     const LayoutRect viewport{0.0f, 0.0f, width, height};
     const auto resolve_geometry = [&](auto &&self, std::size_t index,
                                       LayoutTransform parent_transform, bool parent_visible,
-                                      LayoutRect parent_clip) -> bool {
+                                      LayoutRect parent_clip, LayoutRect parent_bounds) -> bool {
         const auto &node = nodes[index];
         const LayoutRect node_bounds_rect = node_bounds[index];
         const LayoutTransform to_origin = translated(node_bounds_rect.x, node_bounds_rect.y);
@@ -565,11 +565,17 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         const LayoutTransform transform = compose(parent_transform, local_transform);
         const bool visible = parent_visible && node.style.visible;
         const LayoutRect transformed = transform_bounds(node_bounds[index], transform);
+        LayoutRect item_clip = parent_clip;
+        if (node.style.positioning == LayoutPositioning::Absolute && node.style.clip_to_parent) {
+            const LayoutRect transformed_parent_bounds =
+                transform_bounds(parent_bounds, parent_transform);
+            item_clip = intersect_axes(item_clip, transformed_parent_bounds, true, true);
+        }
         LayoutItem item{};
         item.id = node.id;
         item.visual_kind = node.visual_kind;
         item.bounds = node_bounds[index];
-        item.clip_bounds = parent_clip;
+        item.clip_bounds = item_clip;
         item.transform = transform;
         item.visible = visible;
         const float determinant = transform.a * transform.d - transform.b * transform.c;
@@ -629,18 +635,18 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         }
         out.items[index] = item;
 
-        LayoutRect child_clip = parent_clip;
+        LayoutRect child_clip = item_clip;
         if (node.style.clip_horizontal || node.style.clip_vertical) {
             child_clip = intersect_axes(child_clip, transformed, node.style.clip_horizontal,
                                         node.style.clip_vertical);
         }
         for (const std::size_t child : state.children[index]) {
-            if (!self(self, child, transform, visible, child_clip))
+            if (!self(self, child, transform, visible, child_clip, node_bounds_rect))
                 return false;
         }
         return true;
     };
-    if (!resolve_geometry(resolve_geometry, root, LayoutTransform{}, true, viewport))
+    if (!resolve_geometry(resolve_geometry, root, LayoutTransform{}, true, viewport, viewport))
         return false;
 
     state.text.prune_layout_cache(retained_text_layouts, kAutomaticTextLayoutCacheEntries);

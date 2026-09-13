@@ -141,6 +141,73 @@ int main(int argc, char **argv) {
     if (hidden_primitive == snapshot.primitives.end() || hidden_primitive->visible)
         return 21;
 
+    LayoutNode stack_root = box(400, -1);
+    stack_root.style.width = {LayoutSizing::Fixed, 100.0f};
+    stack_root.style.height = {LayoutSizing::Fixed, 80.0f};
+    LayoutNode lower_layer = box(401, 0);
+    lower_layer.style.positioning = LayoutPositioning::Absolute;
+    lower_layer.style.position_x = 10.0f;
+    lower_layer.style.position_y = 12.0f;
+    lower_layer.style.width = {LayoutSizing::Fixed, 40.0f};
+    lower_layer.style.height = {LayoutSizing::Fixed, 30.0f};
+    lower_layer.style.z_index = 1;
+    lower_layer.style.background = {1.0f, 0.0f, 0.0f, 1.0f};
+    LayoutNode upper_layer = lower_layer;
+    upper_layer.id = 402;
+    upper_layer.style.position_x = 18.0f;
+    upper_layer.style.position_y = 16.0f;
+    upper_layer.style.z_index = 5;
+    upper_layer.style.background = {0.0f, 0.0f, 1.0f, 1.0f};
+    std::vector<LayoutNode> stack_nodes{stack_root, lower_layer, upper_layer};
+    if (!engine.layout(stack_nodes, 100.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 23;
+    const auto lower_draw = std::find_if(
+        snapshot.primitives.begin(), snapshot.primitives.end(),
+        [](const LayoutPrimitive &primitive) {
+            return primitive.node_id == 401 && primitive.kind == LayoutPrimitiveKind::Rectangle;
+        });
+    const auto upper_draw = std::find_if(
+        snapshot.primitives.begin(), snapshot.primitives.end(),
+        [](const LayoutPrimitive &primitive) {
+            return primitive.node_id == 402 && primitive.kind == LayoutPrimitiveKind::Rectangle;
+        });
+    const auto *lower_item = snapshot.find(401);
+    const auto *upper_item = snapshot.find(402);
+    if (lower_draw == snapshot.primitives.end() || upper_draw == snapshot.primitives.end() ||
+        lower_draw >= upper_draw || !lower_item || !upper_item ||
+        lower_item->bounds.x != 10.0f || lower_item->bounds.y != 12.0f ||
+        upper_item->bounds.x != 18.0f || upper_item->bounds.y != 16.0f)
+        return 24;
+
+    LayoutNode clip_root = box(410, -1);
+    clip_root.style.width = {LayoutSizing::Fixed, 100.0f};
+    clip_root.style.height = {LayoutSizing::Fixed, 80.0f};
+    LayoutNode clip_parent = box(411, 0);
+    clip_parent.style.width = {LayoutSizing::Fixed, 40.0f};
+    clip_parent.style.height = {LayoutSizing::Fixed, 30.0f};
+    LayoutNode clipped_layer = box(412, 1);
+    clipped_layer.style.positioning = LayoutPositioning::Absolute;
+    clipped_layer.style.position_x = 30.0f;
+    clipped_layer.style.position_y = 20.0f;
+    clipped_layer.style.width = {LayoutSizing::Fixed, 40.0f};
+    clipped_layer.style.height = {LayoutSizing::Fixed, 30.0f};
+    clipped_layer.style.clip_to_parent = true;
+    std::vector<LayoutNode> clip_nodes{clip_root, clip_parent, clipped_layer};
+    if (!engine.layout(clip_nodes, 100.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 25;
+    const auto *clipped_item = snapshot.find(412);
+    if (!clipped_item || clipped_item->clip_bounds.x != 0.0f ||
+        clipped_item->clip_bounds.y != 0.0f || clipped_item->clip_bounds.width != 40.0f ||
+        clipped_item->clip_bounds.height != 30.0f)
+        return 26;
+    clip_nodes[2].style.clip_to_parent = false;
+    if (!engine.layout(clip_nodes, 100.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 27;
+    clipped_item = snapshot.find(412);
+    if (!clipped_item || clipped_item->clip_bounds.width != 100.0f ||
+        clipped_item->clip_bounds.height != 80.0f)
+        return 28;
+
     geometry_nodes[1].style.clip_horizontal = true;
     geometry_nodes[1].style.transform.b = 1.0f;
     geometry_nodes[1].style.transform.c = -1.0f;
