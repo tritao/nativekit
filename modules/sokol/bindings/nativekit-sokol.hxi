@@ -360,7 +360,7 @@ interface NativeKitSokol @target("portable-abi64") @library("nativekit_sokol") @
 	 * `out_renderer`; all buffers, shaders, pipelines, images, samplers, and
 	 * builders created through it belong to that renderer.
 	 */
-	extern fn nks_renderer_create(nativekit_surface: nks_nativekit_handle, out_renderer: ptr<nks_renderer> @out) -> nks_result;
+	extern fn nks_renderer_create(nativekit_surface: nk_handle, out_renderer: ptr<nks_renderer> @out) -> nks_result;
 	/**
 	 * Destroys a renderer and all resources still owned by it.
 	 *
@@ -451,20 +451,20 @@ interface NativeKitSokol @target("portable-abi64") @library("nativekit_sokol") @
 	 * `out_surface`; destroy it with nks_surface_destroy() after destroying its
 	 * renderer. This convenience call requests the build's default API.
 	 */
-	extern fn nks_surface_create(nativekit_window: nks_nativekit_handle, width: i32, height: i32, out_surface: ptr<nks_nativekit_handle> @out) -> nks_result;
+	extern fn nks_surface_create(nativekit_window: nk_handle, width: i32, height: i32, out_surface: ptr<nk_handle> @out) -> nks_result;
 	/**
 	 * Creates a child surface with an explicit graphics API. The matching runtime
 	 * must be included in this build; with the backend matrix enabled, GLCore and
 	 * GLES3 surfaces can coexist.
 	 */
-	extern fn nks_surface_create_for_api(nativekit_window: nks_nativekit_handle, api: nk_graphics_api, width: i32, height: i32, out_surface: ptr<nks_nativekit_handle> @out) -> nks_result;
+	extern fn nks_surface_create_for_api(nativekit_window: nk_handle, api: nk_graphics_api, width: i32, height: i32, out_surface: ptr<nk_handle> @out) -> nks_result;
 	/**
 	 * Destroys a Sokol surface.
 	 *
 	 * Destroy the renderer first. The surface handle becomes invalid after this
 	 * call and must not be reused.
 	 */
-	extern fn nks_surface_destroy(surface: nks_nativekit_handle) -> nks_result;
+	extern fn nks_surface_destroy(surface: nk_handle) -> nks_result;
 	/**
 	 * Requests a new size for a Sokol surface.
 	 *
@@ -472,7 +472,7 @@ interface NativeKitSokol @target("portable-abi64") @library("nativekit_sokol") @
 	 * positive. The framebuffer may have a different pixel size; begin each frame
 	 * with nks_begin_frame() so the adapter can query the current framebuffer.
 	 */
-	extern fn nks_surface_resize(surface: nks_nativekit_handle, width: i32, height: i32) -> nks_result;
+	extern fn nks_surface_resize(surface: nk_handle, width: i32, height: i32) -> nks_result;
 	/**
 	 * Starts a zero-initialized uniform byte block of `size` bytes.
 	 *
@@ -522,9 +522,9 @@ interface NativeKitSokol @target("portable-abi64") @library("nativekit_sokol") @
 	 */
 	type nks_index_type = u32;
 	/**
-	 * A NativeKit window or surface handle accepted by the Sokol adapter.
+	 * Source-compatible alias for a NativeKit window or surface handle.
 	 */
-	type nks_nativekit_handle = u32;
+	type nks_nativekit_handle = nk_handle;
 	/**
 	 * Pipeline handle returned by nks_pipeline_end().
 	 */

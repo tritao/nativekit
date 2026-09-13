@@ -1,9 +1,10 @@
 {
   "interface": "NativeKitSokol",
-  "enumNames": {
-    "nk_graphics_api": "NativeKit.GraphicsApi"
-  },
-  "typeNames": {
-    "nk_graphics_image": "NativeKit.GraphicsImage"
-  }
+	"enumNames": {
+		"nk_graphics_api": "NativeKit.GraphicsApi"
+	},
+	"typeNames": {
+		"nk_graphics_image": "NativeKit.GraphicsImage",
+		"nk_handle": "NativeKit.Handle"
+	}
 }

@@ -68,8 +68,8 @@ extern "C" {
 /* Handles and core types                                                    */
 /* ------------------------------------------------------------------------- */
 
-/** A NativeKit window or surface handle accepted by the Sokol adapter. */
-typedef uint32_t nks_nativekit_handle;
+/** Source-compatible alias for a NativeKit window or surface handle. */
+typedef nk_handle nks_nativekit_handle;
 
 /** Result returned by a Sokol adapter operation; zero is success. */
 typedef int32_t nks_result;
@@ -291,18 +291,18 @@ NKS_API nk_graphics_api nks_query_graphics_api(nks_renderer renderer);
  * `out_surface`; destroy it with nks_surface_destroy() after destroying its
  * renderer. This convenience call requests the build's default API.
  */
-NKS_API nks_result nks_surface_create(nks_nativekit_handle nativekit_window, int32_t width,
-                                      int32_t height, nks_nativekit_handle *out_surface NKS_OUT);
+NKS_API nks_result nks_surface_create(nk_handle nativekit_window, int32_t width,
+                                      int32_t height, nk_handle *out_surface NKS_OUT);
 
 /**
  * Creates a child surface with an explicit graphics API. The matching runtime
  * must be included in this build; with the backend matrix enabled, GLCore and
  * GLES3 surfaces can coexist.
  */
-NKS_API nks_result nks_surface_create_for_api(nks_nativekit_handle nativekit_window,
+NKS_API nks_result nks_surface_create_for_api(nk_handle nativekit_window,
                                               nk_graphics_api api, int32_t width,
                                               int32_t height,
-                                              nks_nativekit_handle *out_surface NKS_OUT);
+                                              nk_handle *out_surface NKS_OUT);
 
 /**
  * Requests a new size for a Sokol surface.
@@ -311,7 +311,7 @@ NKS_API nks_result nks_surface_create_for_api(nks_nativekit_handle nativekit_win
  * positive. The framebuffer may have a different pixel size; begin each frame
  * with nks_begin_frame() so the adapter can query the current framebuffer.
  */
-NKS_API nks_result nks_surface_resize(nks_nativekit_handle surface, int32_t width, int32_t height);
+NKS_API nks_result nks_surface_resize(nk_handle surface, int32_t width, int32_t height);
 
 /**
  * Destroys a Sokol surface.
@@ -319,7 +319,7 @@ NKS_API nks_result nks_surface_resize(nks_nativekit_handle surface, int32_t widt
  * Destroy the renderer first. The surface handle becomes invalid after this
  * call and must not be reused.
  */
-NKS_API nks_result nks_surface_destroy(nks_nativekit_handle surface);
+NKS_API nks_result nks_surface_destroy(nk_handle surface);
 
 /**
  * Creates the Sokol renderer for a ready NativeKit surface.
@@ -330,7 +330,7 @@ NKS_API nks_result nks_surface_destroy(nks_nativekit_handle surface);
  * `out_renderer`; all buffers, shaders, pipelines, images, samplers, and
  * builders created through it belong to that renderer.
  */
-NKS_API nks_result nks_renderer_create(nks_nativekit_handle nativekit_surface,
+NKS_API nks_result nks_renderer_create(nk_handle nativekit_surface,
                                        nks_renderer *out_renderer NKS_OUT);
 
 /**

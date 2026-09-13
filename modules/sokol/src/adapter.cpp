@@ -59,7 +59,7 @@ template <class T, Kind K, size_t N> struct Pool {
 };
 
 struct Renderer {
-    nks_nativekit_handle surface = 0;
+    nk_handle surface = 0;
     const nk_sokol_api *api = nullptr;
     nk_graphics_api graphics_api = 0;
     nk_graphics_device device{};
@@ -301,8 +301,8 @@ nk_graphics_api nks_query_graphics_api(nks_renderer renderer) {
     return slot ? slot->value.graphics_api : static_cast<nk_graphics_api>(0);
 }
 
-nks_result nks_surface_create(nks_nativekit_handle window, int32_t width, int32_t height,
-                              nks_nativekit_handle *out) {
+nks_result nks_surface_create(nk_handle window, int32_t width, int32_t height,
+                              nk_handle *out) {
     #if defined(NK_SOKOL_BACKEND_GLES3)
     return nks_surface_create_for_api(window, NK_GRAPHICS_OPENGL_ES, width, height, out);
     #else
@@ -310,9 +310,9 @@ nks_result nks_surface_create(nks_nativekit_handle window, int32_t width, int32_
     #endif
 }
 
-nks_result nks_surface_create_for_api(nks_nativekit_handle window, nk_graphics_api api,
+nks_result nks_surface_create_for_api(nk_handle window, nk_graphics_api api,
                                       int32_t width, int32_t height,
-                                      nks_nativekit_handle *out) {
+                                      nk_handle *out) {
     if (!window || width <= 0 || height <= 0 || !out)
         return fail(NKS_ERROR_INVALID_ARGUMENT, "invalid surface arguments");
     if (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES)
@@ -331,17 +331,17 @@ nks_result nks_surface_create_for_api(nks_nativekit_handle window, nk_graphics_a
                ? NKS_OK
                : fail(NKS_ERROR_UNKNOWN, "surface: %s", nk_last_error());
 }
-nks_result nks_surface_resize(nks_nativekit_handle s, int32_t w, int32_t h) {
+nks_result nks_surface_resize(nk_handle s, int32_t w, int32_t h) {
     return nk_surface_set_bounds(s, 0, 0, w, h) == NK_OK
                ? NKS_OK
                : fail(NKS_ERROR_UNKNOWN, "resize: %s", nk_last_error());
 }
-nks_result nks_surface_destroy(nks_nativekit_handle s) {
+nks_result nks_surface_destroy(nk_handle s) {
     return nk_surface_destroy(s) == NK_OK
                ? NKS_OK
                : fail(NKS_ERROR_UNKNOWN, "destroy surface: %s", nk_last_error());
 }
-nks_result nks_renderer_create(nks_nativekit_handle surface, nks_renderer *out) {
+nks_result nks_renderer_create(nk_handle surface, nks_renderer *out) {
     if (!surface || !out)
         return fail(NKS_ERROR_INVALID_ARGUMENT, "invalid renderer arguments");
     if (active_renderer)

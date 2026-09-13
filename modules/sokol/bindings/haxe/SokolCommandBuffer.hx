@@ -1,12 +1,15 @@
 import haxe.io.Bytes;
 
 class SokolCommandBuffer {
+	final renderer:SokolRenderer;
 	var bytes:Bytes;
 	var length:Int;
 
-	public function new(capacity:Int) {
+	@:allow(SokolRenderer)
+	private function new(renderer:SokolRenderer, capacity:Int) {
 		if (capacity <= 0)
 			throw "command buffer capacity must be positive";
+		this.renderer = renderer;
 		bytes = Bytes.alloc(capacity);
 		length = 0;
 	}
@@ -20,37 +23,58 @@ class SokolCommandBuffer {
 	public function size():Int
 		return length;
 
-	public function applyPipeline(pipeline:nks_pipeline):Void {
-		header(1, 12);
-		word(pipeline.rawValue());
+	@:allow(SokolRenderer)
+	function ensureRenderer(owner:SokolRenderer):Void {
+		if (renderer != owner)
+			throw "Sokol command buffer belongs to a different renderer";
 	}
 
-	public function applyVertexBuffer(slot:Int, buffer:nks_buffer, offset:Int):Void {
+	public function applyPipeline(pipeline:SokolPipeline):Void {
+		ensureRenderer(pipeline.rendererOwner());
+		header(1, 12);
+		word(pipeline.nativeHandle().rawValue());
+	}
+
+	public function applyVertexBuffer(slot:Int, buffer:SokolBuffer, offset:Int):Void {
+		ensureRenderer(buffer.rendererOwner());
+		if (slot < 0 || offset < 0)
+			throw "Sokol vertex-buffer slot and offset must be non-negative";
 		header(2, 20);
 		word(slot);
-		word(buffer.rawValue());
+		word(buffer.nativeHandle().rawValue());
 		word(offset);
 	}
 
-	public function applyIndexBuffer(buffer:nks_buffer, offset:Int):Void {
+	public function applyIndexBuffer(buffer:SokolBuffer, offset:Int):Void {
+		ensureRenderer(buffer.rendererOwner());
+		if (offset < 0)
+			throw "Sokol index-buffer offset must be non-negative";
 		header(3, 16);
-		word(buffer.rawValue());
+		word(buffer.nativeHandle().rawValue());
 		word(offset);
 	}
 
-	public function applyImage(slot:Int, image:nks_image):Void {
+	public function applyImage(slot:Int, image:SokolImage):Void {
+		ensureRenderer(image.rendererOwner());
+		if (slot < 0)
+			throw "Sokol image slot must be non-negative";
 		header(4, 16);
 		word(slot);
-		word(image.rawValue());
+		word(image.nativeHandle().rawValue());
 	}
 
-	public function applySampler(slot:Int, sampler:nks_sampler):Void {
+	public function applySampler(slot:Int, sampler:SokolSampler):Void {
+		ensureRenderer(sampler.rendererOwner());
+		if (slot < 0)
+			throw "Sokol sampler slot must be non-negative";
 		header(5, 16);
 		word(slot);
-		word(sampler.rawValue());
+		word(sampler.nativeHandle().rawValue());
 	}
 
 	public function applyUniforms(slot:Int, data:Bytes):Void {
+		if (slot < 0 || data == null)
+			throw "Sokol uniform slot and data are invalid";
 		header(6, 16 + data.length);
 		word(slot);
 		word(data.length);
@@ -61,6 +85,8 @@ class SokolCommandBuffer {
 	}
 
 	public function applyUniform2f(slot:Int, x:Float, y:Float):Void {
+		if (slot < 0)
+			throw "Sokol uniform slot must be non-negative";
 		header(6, 24);
 		word(slot);
 		word(8);
@@ -70,6 +96,8 @@ class SokolCommandBuffer {
 	}
 
 	public function draw(baseElement:Int, elementCount:Int, instanceCount:Int):Void {
+		if (baseElement < 0 || elementCount <= 0 || instanceCount <= 0)
+			throw "Sokol draw range and instance count must be positive";
 		header(7, 20);
 		word(baseElement);
 		word(elementCount);

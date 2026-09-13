@@ -30,7 +30,16 @@ fi
     --ffi-interface="$module_dir/bindings/nativekit-sokol.hxi" \
     --ffi-projection="$module_dir/bindings/nativekit-sokol.hxmap" \
     "$module_dir/tests/haxeon/Triangle.hx" \
+    "$module_dir/bindings/haxe/SokolBuffer.hx" \
     "$module_dir/bindings/haxe/SokolCommandBuffer.hx" \
+    "$module_dir/bindings/haxe/SokolEnums.hx" \
+    "$module_dir/bindings/haxe/SokolImage.hx" \
+    "$module_dir/bindings/haxe/SokolPipeline.hx" \
+    "$module_dir/bindings/haxe/SokolRenderer.hx" \
+    "$module_dir/bindings/haxe/SokolSampler.hx" \
+    "$module_dir/bindings/haxe/SokolShader.hx" \
+    "$module_dir/bindings/haxe/SokolSurface.hx" \
+    "$module_dir/bindings/haxe/SokolUniforms.hx" \
     "$module_dir/bindings/haxe/SokolResult.hx" \
     "$module_dir/bindings/haxe/SokolRenderTarget.hx" \
     "$nativekit_dir/bindings/haxe/GraphicsImageRef.hx" \
