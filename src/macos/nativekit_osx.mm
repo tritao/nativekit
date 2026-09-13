@@ -16,7 +16,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdio>
 #include <cstdlib>
 #include <cfloat>
 #include <cstring>
@@ -301,9 +300,6 @@ void cancel_navigation_decisions(nk_handle source) {
 }
 
 void cancel_evaluations(nk_handle source) noexcept {
-    std::fprintf(stderr, "cancel evaluations source=%llu count=%zu main=%d\n",
-                 static_cast<unsigned long long>(source), evaluations.size(),
-                 NSThread.isMainThread);
     for (auto item = evaluations.begin(); item != evaluations.end();) {
         if (source && item->second != source) {
             ++item;
@@ -841,7 +837,6 @@ void pump_events() noexcept {
                                              dequeue:YES]))
             [NSApp sendEvent:event];
         [NSApp updateWindows];
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, true);
     }
 }
 
@@ -905,8 +900,6 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         *out_window = NK_INVALID_HANDLE;
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-        if (!NSRunningApplication.currentApplication.finishedLaunching)
-            [NSApp finishLaunching];
         auto owner = options->owner ? window(options->owner) : nullptr;
         if (options->owner && !owner)
             return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale owner window handle");
@@ -1426,42 +1419,24 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
             NSString *wrapped = javascript_json_wrapper(source);
             if (!wrapped)
                 return fail(NK_ERROR_OUT_OF_MEMORY, "could not encode JavaScript source");
+            const nk_handle webview_handle = handle;
             const auto request = nk::core::next_request_id();
             const auto generation = nk::core::runtime_generation();
-            const auto inserted = evaluations.emplace(request, handle).second;
-            std::fprintf(stderr, "WebKit evaluation queued %llu inserted=%d count=%zu main=%d\n",
-                         static_cast<unsigned long long>(request), inserted, evaluations.size(),
-                         NSThread.isMainThread);
+            evaluations.emplace(request, webview_handle);
             [resource->view
                 evaluateJavaScript:wrapped
                  completionHandler:^(id value, NSError *error) {
-                   std::fprintf(stderr, "WebKit evaluation callback %llu error=%s main=%d\n",
-                                static_cast<unsigned long long>(request),
-                                error.localizedDescription.UTF8String ?: "(none)",
-                                NSThread.isMainThread);
-                   if (!nk::core::is_runtime_generation(generation)) {
-                       std::fprintf(stderr, "WebKit evaluation callback has stale generation\n");
+                   if (!nk::core::is_runtime_generation(generation))
                        return;
-                   }
                    const auto pending = evaluations.find(request);
-                   std::fprintf(
-                       stderr,
-                       "WebKit evaluation lookup %llu found=%d stored=%llu expected=%llu "
-                       "count=%zu\n",
-                       static_cast<unsigned long long>(request), pending != evaluations.end(),
-                       static_cast<unsigned long long>(
-                           pending == evaluations.end() ? NK_INVALID_HANDLE : pending->second),
-                       static_cast<unsigned long long>(handle), evaluations.size());
-                   if (pending == evaluations.end() || pending->second != handle) {
-                       std::fprintf(stderr, "WebKit evaluation callback has no pending request\n");
+                   if (pending == evaluations.end() || pending->second != webview_handle)
                        return;
-                   }
                    evaluations.erase(pending);
                    if (error)
-                       emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
+                       emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, webview_handle,
                                          error.localizedDescription, NK_ERROR_UNKNOWN, 0, request);
                    else
-                       emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
+                       emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, webview_handle,
                                          [value isKindOfClass:[NSString class]] ? value : @"",
                                          NK_OK, 0, request);
                  }];

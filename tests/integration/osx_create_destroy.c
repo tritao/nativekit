@@ -20,9 +20,6 @@ static nk_event wait_for_event(nk_event_kind kind, nk_request_id request) {
         assert(nk_poll_event(&event) == NK_OK);
         if (event.kind == kind && event.request_id == request)
             return event;
-        if (event.kind >= NK_EVENT_WEBVIEW_NAVIGATED)
-            fprintf(stderr, "observed WebView event kind %d request %llu result %d\n", event.kind,
-                    (unsigned long long)event.request_id, event.result);
         last_kind = event.kind;
         last_request = event.request_id;
         nk_event_release(&event);
@@ -133,7 +130,6 @@ int main(void) {
     assert(nk_window_set_drop_enabled(window, 1) == NK_OK);
     assert(nk_window_set_drop_enabled(window, 0) == NK_OK);
 
-    assert(nk_window_show(window, 1) == NK_OK);
     nk_webview_options web_options = {0};
     web_options.struct_size = sizeof(web_options);
     web_options.flags = NK_WEBVIEW_HIDDEN;
