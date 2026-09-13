@@ -294,10 +294,12 @@ if(NK_BUILD_SOKOL OR NK_BUILD_UI)
     endif()
     function(nk_add_sokol_runtime target compile_definition symbol_prefix graphics_libraries
              graphics_include_dirs)
-        add_library(${target} ${NK_LIBRARY_TYPE} modules/sokol/src/runtime.c modules/sokol/src/api.c)
+        add_library(${target} ${NK_LIBRARY_TYPE}
+            src/graphics/sokol/runtime.c
+            src/graphics/sokol/api.c)
         target_include_directories(${target} PRIVATE
             "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/sokol"
-            "${CMAKE_CURRENT_SOURCE_DIR}/modules/sokol/src"
+            "${PROJECT_SOURCE_DIR}/src/graphics/sokol"
             ${graphics_include_dirs})
         target_compile_definitions(${target} PRIVATE ${compile_definition})
         if(symbol_prefix)
@@ -340,7 +342,7 @@ if(NK_BUILD_SOKOL OR NK_BUILD_UI)
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
     endif()
 endif()
-if(NK_BUILD_SOKOL OR NK_BUILD_UI)
+if(NK_BUILD_SOKOL)
     add_subdirectory(modules/sokol)
 endif()
 if(NK_BUILD_UI)
