@@ -118,7 +118,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug-port", type=int, required=True)
     parser.add_argument("--page-url", required=True)
-    parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--skip-text-input", action="store_true")
     parser.add_argument("--skip-resize", action="store_true")
     parser.add_argument("--skip-pointer", action="store_true")
