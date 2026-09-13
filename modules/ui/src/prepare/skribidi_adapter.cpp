@@ -668,6 +668,15 @@ TextPosition SkribidiAdapter::hit_test(float x, float y) const {
     return {value.offset, static_cast<uint8_t>(value.affinity)};
 }
 
+int32_t SkribidiAdapter::offset_from_position(TextPosition position) const {
+    const auto *layout = active_layout(*state_);
+    if (!layout)
+        return 0;
+    const skb_text_position_t value = {
+        position.offset, static_cast<skb_caret_affinity_t>(position.affinity)};
+    return skb_layout_get_offset_from_text_position(layout->layout, value);
+}
+
 TextCaret SkribidiAdapter::caret(TextPosition position) const {
     const auto *layout = active_layout(*state_);
     if (!layout)
@@ -676,6 +685,26 @@ TextCaret SkribidiAdapter::caret(TextPosition position) const {
                                        static_cast<skb_caret_affinity_t>(position.affinity)};
     const skb_caret_info_t result = skb_layout_get_caret_info_at(layout->layout, value);
     return {result.x, result.y, result.ascender, result.descender, result.slope, result.direction};
+}
+
+TextPosition SkribidiAdapter::word_start(TextPosition position) const {
+    const auto *layout = active_layout(*state_);
+    if (!layout)
+        return {};
+    const skb_text_position_t input = {position.offset,
+                                       static_cast<skb_caret_affinity_t>(position.affinity)};
+    const skb_text_position_t result = skb_layout_get_word_start_at(layout->layout, input);
+    return {result.offset, static_cast<uint8_t>(result.affinity)};
+}
+
+TextPosition SkribidiAdapter::word_end(TextPosition position) const {
+    const auto *layout = active_layout(*state_);
+    if (!layout)
+        return {};
+    const skb_text_position_t input = {position.offset,
+                                       static_cast<skb_caret_affinity_t>(position.affinity)};
+    const skb_text_position_t result = skb_layout_get_word_end_at(layout->layout, input);
+    return {result.offset, static_cast<uint8_t>(result.affinity)};
 }
 
 int32_t SkribidiAdapter::next_grapheme(int32_t offset) const {

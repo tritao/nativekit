@@ -98,6 +98,32 @@ class TextLayout extends NativeKitUIResource {
 		return new TextPosition(hit.out_position.get_offset(), hit.out_position.get_affinity());
 	}
 
+	/** Converts a shaped caret position into the editor's code-point insertion offset. */
+	public function offsetFromPosition(position:TextPosition):Int {
+		if (position == null)
+			throw "Text position cannot be null";
+		var result = NativeKitUI.nkui_text_layout_position_offset(nativeHandle(),
+			nativePosition(position));
+		UiResult.check(result.status, "textLayout.positionOffset");
+		return result.out_offset;
+	}
+
+	/** Returns the code-point range for the word surrounding a hit-tested position. */
+	public function wordRange(position:TextPosition):Array<Int> {
+		if (position == null)
+			throw "Word lookup requires a text position";
+		var result = NativeKitUI.nkui_text_layout_word_range(nativeHandle(), nativePosition(position));
+		UiResult.check(result.status, "textLayout.wordRange");
+		return [result.out_start, result.out_end];
+	}
+
+	static function nativePosition(position:TextPosition):nkui_text_position {
+		var result = new nkui_text_position();
+		result.set_offset(position.offset);
+		result.set_affinity(position.affinity);
+		return result;
+	}
+
 	public function caret(position:TextPosition):TextCaret {
 		var caret = new nkui_text_position();
 		caret.set_offset(position.offset);

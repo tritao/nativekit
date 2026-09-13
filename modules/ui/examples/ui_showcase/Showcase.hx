@@ -1,12 +1,10 @@
 import NativeKit;
-import NativeKit.Handle;
 import NativeKitUI;
 import NativeKit.NativeKitConstants;
 import NativeKit.EventKind;
 import NativeKit.GraphicsApi;
 import NativeKit.InputAction;
 import NativeKit.Result;
-import NativeKit.Handle;
 import NativeKit.SurfaceHandle;
 import NativeKitEvent;
 import NativeKitEventValue;
@@ -590,7 +588,7 @@ class Showcase {
             framebufferWidth:Int, framebufferHeight:Int, pixelScale:Float):Void {
         frameInfo.set(logicalWidth, logicalHeight, framebufferWidth, framebufferHeight,
             pixelScale);
-        var target = Surface.fromNativeHandle(new Handle(surface.rawValue()));
+        var target = Surface.fromNativeHandle(surface);
         renderer.renderFrame(list, target, frameInfo);
         layoutSession.renderOverlay(renderer, target, frameInfo);
     }

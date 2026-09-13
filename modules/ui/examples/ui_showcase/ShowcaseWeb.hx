@@ -185,7 +185,7 @@ class ShowcaseWeb {
                         framebufferHeight, scale);
                 } else if (explorer != null) {
                     failureStage = 100 + explorer.getDiagnosticStage();
-                    explorer.render(new Handle(surface.rawValue()), elapsed);
+                    explorer.render(surface, elapsed);
                 }
                 failureStage = 4;
                 if (NativeKit.nk_surface_present(surface) != Result.Ok)

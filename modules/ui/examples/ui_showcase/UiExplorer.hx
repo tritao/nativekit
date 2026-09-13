@@ -8,6 +8,7 @@ import LayoutDirection;
 import LayoutFrame;
 import LayoutStyle;
 import NativeKit.Handle;
+import NativeKit.SurfaceHandle;
 import NativeKitEvents;
 import NativeKitSurface;
 import Renderer;
@@ -232,7 +233,7 @@ class UiExplorer {
 		return true;
 	}
 
-	public function render(surface:Handle, timeSeconds:Float):Void {
+	public function render(surface:SurfaceHandle, timeSeconds:Float):Void {
 		diagnosticStage = 1;
 		frame.setViewport(width, height);
 		frame.deltaSeconds = previousTime < 0.0 ? 1.0 / TARGET_FPS :

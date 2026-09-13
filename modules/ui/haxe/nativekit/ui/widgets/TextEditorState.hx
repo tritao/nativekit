@@ -5,17 +5,10 @@ import NativeKit.TextEditAction;
 import NativeKitEventValue.NativeKitTextEdit;
 import ParagraphStyle;
 import TextLayout;
-import TextLayout.TextRange;
 import TextStyle;
 
 /** Persistent editable text, selection and IME composition state for one widget ID. */
 class TextEditorState {
-	static inline var DoubleClickInterval:Float = 0.4;
-	static inline var ClickSlop:Float = 5.0;
-	static inline var DragCharacters:Int = 0;
-	static inline var DragWords:Int = 1;
-	static inline var DragLines:Int = 2;
-
 	public var text(default, null):String;
 	public var selectionStart(default, null):Int;
 	public var selectionEnd(default, null):Int;
@@ -23,6 +16,10 @@ class TextEditorState {
 	public var compositionEnd(default, null):Int;
 	public var selectionAnchor(default, null):Int;
 	public var selectionFocus(default, null):Int;
+	public var selectionAnchorLayoutOffset(default, null):Int;
+	public var selectionFocusLayoutOffset(default, null):Int;
+	public var selectionAnchorAffinity(default, null):Int;
+	public var selectionFocusAffinity(default, null):Int;
 	public var focused:Bool;
 	public var draggingSelection:Bool;
 	public final layout:TextLayout;
@@ -30,15 +27,14 @@ class TextEditorState {
 	public final paragraphStyle:ParagraphStyle;
 	var lastLayoutWidth:Float;
 	var lastLayoutText:String;
-	var lastClickTime:Float;
-	var lastClickX:Float;
-	var lastClickY:Float;
-	var clickCount:Int;
-	var dragSelectionKind:Int;
-	var dragInitialStart:Int;
-	var dragInitialEnd:Int;
-	var pointerDownX:Float;
-	var pointerDownY:Float;
+	var lastPointerClickTime:Float;
+	var lastPointerClickX:Float;
+	var lastPointerClickY:Float;
+	var lastPointerWordStart:Int;
+	var lastPointerWordEnd:Int;
+	var lastPointerClickCount:Int;
+	var lastPointerClickArmed:Bool;
+	var pointerClickPending:Bool;
 	var disposed:Bool;
 
 	public function new(fonts:FontCollection, text:String, ?textStyle:TextStyle,
@@ -53,22 +49,25 @@ class TextEditorState {
 		selectionEnd = end;
 		selectionAnchor = end;
 		selectionFocus = end;
+		selectionAnchorLayoutOffset = end;
+		selectionFocusLayoutOffset = end;
+		selectionAnchorAffinity = 0;
+		selectionFocusAffinity = 0;
 		compositionStart = -1;
 		compositionEnd = -1;
 		focused = false;
 		draggingSelection = false;
-		lastClickTime = -1.0;
-		lastClickX = 0.0;
-		lastClickY = 0.0;
-		clickCount = 0;
-		dragSelectionKind = DragCharacters;
-		dragInitialStart = end;
-		dragInitialEnd = end;
-		pointerDownX = 0.0;
-		pointerDownY = 0.0;
 		layout = TextLayout.create(fonts, layoutText(), 1.0, this.textStyle, this.paragraphStyle);
 		lastLayoutWidth = 1.0;
 		lastLayoutText = layoutText();
+		lastPointerClickTime = -1.0;
+		lastPointerClickX = 0.0;
+		lastPointerClickY = 0.0;
+		lastPointerWordStart = -1;
+		lastPointerWordEnd = -1;
+		lastPointerClickCount = 0;
+		lastPointerClickArmed = false;
+		pointerClickPending = false;
 		disposed = false;
 	}
 
@@ -77,14 +76,18 @@ class TextEditorState {
 		var next = value == null ? "" : value;
 		if (next == text)
 			return false;
+		cancelPointerClick();
 		text = next;
 		var caret = Utf8Text.length(text);
 		selectionStart = caret;
 		selectionEnd = caret;
 		selectionAnchor = caret;
 		selectionFocus = caret;
+		selectionAnchorLayoutOffset = caret;
+		selectionFocusLayoutOffset = caret;
+		selectionAnchorAffinity = 0;
+		selectionFocusAffinity = 0;
 		clearComposition();
-		resetClickSequence();
 		layout.setText(layoutText());
 		lastLayoutText = layoutText();
 		return true;
@@ -122,14 +125,18 @@ class TextEditorState {
 		var next = Utf8Text.replace(text, first, last, value == null ? "" : value);
 		if (next == text && first == last)
 			return false;
+		cancelPointerClick();
 		text = next;
 		var caret = first + Utf8Text.length(value == null ? "" : value);
 		selectionStart = caret;
 		selectionEnd = caret;
 		selectionAnchor = caret;
 		selectionFocus = caret;
+		selectionAnchorLayoutOffset = caret;
+		selectionFocusLayoutOffset = caret;
+		selectionAnchorAffinity = 0;
+		selectionFocusAffinity = 0;
 		clearComposition();
-		resetClickSequence();
 		layout.setText(layoutText());
 		lastLayoutText = layoutText();
 		return true;
@@ -180,37 +187,62 @@ class TextEditorState {
 			last = swap;
 		}
 		var changed = first != selectionStart || last != selectionEnd ||
-			selectionAnchor != first || selectionFocus != last;
+			selectionAnchor != first || selectionFocus != last ||
+			selectionAnchorLayoutOffset != first || selectionFocusLayoutOffset != last ||
+			selectionAnchorAffinity != 0 || selectionFocusAffinity != 0;
 		selectionStart = first;
 		selectionEnd = last;
 		selectionAnchor = first;
 		selectionFocus = last;
+		selectionAnchorLayoutOffset = first;
+		selectionFocusLayoutOffset = last;
+		selectionAnchorAffinity = 0;
+		selectionFocusAffinity = 0;
 		return changed;
 	}
 
 	public function selectAll():Bool {
 		var first = selectionStart != 0 || selectionEnd != Utf8Text.length(text) ||
-			selectionAnchor != 0 || selectionFocus != Utf8Text.length(text);
+			selectionAnchor != 0 || selectionFocus != Utf8Text.length(text) ||
+			selectionAnchorLayoutOffset != 0 ||
+			selectionFocusLayoutOffset != Utf8Text.length(text) ||
+			selectionAnchorAffinity != 0 || selectionFocusAffinity != 0;
 		selectionAnchor = 0;
 		selectionFocus = Utf8Text.length(text);
+		selectionAnchorLayoutOffset = 0;
+		selectionFocusLayoutOffset = selectionFocus;
 		selectionStart = 0;
 		selectionEnd = selectionFocus;
+		selectionAnchorAffinity = 0;
+		selectionFocusAffinity = 0;
 		return first;
 	}
 
 	/** Places a caret and optionally extends the existing anchored selection. */
-	public function placeCaret(offset:Int, extend:Bool):Bool {
+	public function placeCaret(offset:Int, extend:Bool, affinity:Int = 0):Bool {
 		ensureLive();
 		var next = clamp(layout.alignGrapheme(clamp(offset, 0, Utf8Text.length(text))),
 			0, Utf8Text.length(text));
-		if (!extend)
+		var previousFocusLayoutOffset = selectionFocusLayoutOffset;
+		var previousAnchorLayoutOffset = selectionAnchorLayoutOffset;
+		if (!extend) {
 			selectionAnchor = next;
-		else if (selectionStart == selectionEnd)
+			selectionAnchorLayoutOffset = next;
+			selectionAnchorAffinity = affinity;
+		} else if (selectionStart == selectionEnd) {
 			selectionAnchor = selectionFocus;
+			selectionAnchorLayoutOffset = previousFocusLayoutOffset;
+			selectionAnchorAffinity = selectionFocusAffinity;
+		}
 		selectionFocus = next;
+		selectionFocusLayoutOffset = next;
+		var changed = selectionAnchorLayoutOffset != previousAnchorLayoutOffset ||
+			selectionFocusLayoutOffset != previousFocusLayoutOffset ||
+			selectionAnchorAffinity != affinity || selectionFocusAffinity != affinity;
+		selectionFocusAffinity = affinity;
 		var first = selectionAnchor < next ? selectionAnchor : next;
 		var last = selectionAnchor > next ? selectionAnchor : next;
-		var changed = first != selectionStart || last != selectionEnd;
+		changed = changed || first != selectionStart || last != selectionEnd;
 		selectionStart = first;
 		selectionEnd = last;
 		return changed;
@@ -226,7 +258,7 @@ class TextEditorState {
 			next = direction < 0 ? selectionStart : selectionEnd;
 		else
 			next = direction < 0 ? layout.previousGrapheme(selectionFocus) : layout.nextGrapheme(selectionFocus);
-		resetClickSequence();
+		cancelPointerClick();
 		return moveFocusTo(next, extend);
 	}
 
@@ -238,7 +270,7 @@ class TextEditorState {
 		var next = !extend && selectionStart != selectionEnd
 			? (direction < 0 ? selectionStart : selectionEnd)
 			: layout.moveWord(selectionFocus, direction, macStyle);
-		resetClickSequence();
+		cancelPointerClick();
 		return moveFocusTo(next, extend);
 	}
 
@@ -251,122 +283,33 @@ class TextEditorState {
 		var next = !extend && selectionStart != selectionEnd
 			? (direction < 0 ? selectionStart : selectionEnd)
 			: layout.moveParagraph(selectionFocus, direction, macStyle);
-		resetClickSequence();
+		cancelPointerClick();
 		return moveFocusTo(next, extend);
 	}
 
 	function moveFocusTo(next:Int, extend:Bool):Bool {
-		if (!extend)
+		var previousFocusLayoutOffset = selectionFocusLayoutOffset;
+		var wasCollapsed = selectionStart == selectionEnd;
+		if (!extend) {
 			selectionAnchor = next;
-		else if (selectionStart == selectionEnd)
+			selectionAnchorLayoutOffset = next;
+		} else if (wasCollapsed) {
 			selectionAnchor = selectionFocus;
+			selectionAnchorLayoutOffset = previousFocusLayoutOffset;
+		}
 		var first = extend ? (selectionAnchor < next ? selectionAnchor : next) : next;
 		var last = extend ? (selectionAnchor > next ? selectionAnchor : next) : next;
-		var changed = first != selectionStart || last != selectionEnd;
+		var changed = first != selectionStart || last != selectionEnd ||
+			selectionFocusLayoutOffset != next || selectionFocusAffinity != 0;
 		selectionFocus = next;
+		selectionFocusLayoutOffset = next;
+		selectionFocusAffinity = 0;
+		if (!extend) {
+			selectionAnchorAffinity = 0;
+		}
 		selectionStart = first;
 		selectionEnd = last;
 		return changed;
-	}
-
-	/** Places a caret or selects a word/visual line on successive clicks. */
-	public function pointerDown(offset:Int, x:Float, y:Float, extend:Bool, time:Float):Bool {
-		ensureLive();
-		draggingSelection = true;
-		pointerDownX = x;
-		pointerDownY = y;
-		if (extend) {
-			resetClickSequence();
-			dragSelectionKind = DragCharacters;
-			var changed = placeCaret(offset, true);
-			dragInitialStart = selectionStart;
-			dragInitialEnd = selectionEnd;
-			return changed;
-		}
-
-		var dx = x - lastClickX;
-		var dy = y - lastClickY;
-		var isMultiClick = clickCount > 0 && time >= lastClickTime &&
-			time - lastClickTime <= DoubleClickInterval &&
-			dx * dx + dy * dy <= ClickSlop * ClickSlop;
-		clickCount = isMultiClick ? (clickCount >= 3 ? 1 : clickCount + 1) : 1;
-		lastClickTime = time;
-		lastClickX = x;
-		lastClickY = y;
-
-		var changed = false;
-		switch (clickCount) {
-			case 2:
-				var word = layout.wordRangeAt(offset);
-				if (word.end > word.start) {
-					dragSelectionKind = DragWords;
-					changed = setSelection(word.start, word.end);
-				} else {
-					dragSelectionKind = DragCharacters;
-					changed = placeCaret(offset, false);
-				}
-			case 3:
-				var line = layout.lineRangeAt(offset);
-				if (line.end > line.start) {
-					dragSelectionKind = DragLines;
-					changed = setSelection(line.start, line.end);
-				} else {
-					dragSelectionKind = DragCharacters;
-					changed = placeCaret(offset, false);
-				}
-			case _:
-				dragSelectionKind = DragCharacters;
-				changed = placeCaret(offset, false);
-		}
-		dragInitialStart = selectionStart;
-		dragInitialEnd = selectionEnd;
-		return changed;
-	}
-
-	/** Extends a character, word, or line selection while dragging. */
-	public function pointerMove(offset:Int, x:Float, y:Float):Bool {
-		ensureLive();
-		var dx = x - pointerDownX;
-		var dy = y - pointerDownY;
-		if (dx * dx + dy * dy > ClickSlop * ClickSlop)
-			resetClickSequence();
-		if (dragSelectionKind == DragWords)
-			return extendGranularSelection(layout.wordRangeAt(offset));
-		if (dragSelectionKind == DragLines)
-			return extendGranularSelection(layout.lineRangeAt(offset));
-		return placeCaret(offset, true);
-	}
-
-	public function pointerUp():Void {
-		draggingSelection = false;
-		dragSelectionKind = DragCharacters;
-	}
-
-	public function cancelPointer():Void {
-		pointerUp();
-		resetClickSequence();
-	}
-
-	function extendGranularSelection(range:TextRange):Bool {
-		if (range == null || range.start == range.end)
-			return false;
-		var nextStart = range.start < dragInitialStart ? range.start : dragInitialStart;
-		var nextEnd = range.end > dragInitialEnd ? range.end : dragInitialEnd;
-		var nextAnchor = range.start < dragInitialStart ? dragInitialEnd : dragInitialStart;
-		var nextFocus = range.start < dragInitialStart ? range.start :
-			range.end > dragInitialEnd ? range.end : dragInitialEnd;
-		var changed = nextStart != selectionStart || nextEnd != selectionEnd ||
-			nextAnchor != selectionAnchor || nextFocus != selectionFocus;
-		selectionStart = nextStart;
-		selectionEnd = nextEnd;
-		selectionAnchor = nextAnchor;
-		selectionFocus = nextFocus;
-		return changed;
-	}
-
-	function resetClickSequence():Void {
-		clickCount = 0;
-		lastClickTime = -1.0;
 	}
 
 	public function deleteBackward():Bool {
@@ -388,9 +331,118 @@ class TextEditorState {
 		return replace(selectionEnd, next, "");
 	}
 
-	public function hitTest(x:Float, y:Float):Int {
+	public function hitTest(x:Float, y:Float):TextPosition {
 		ensureLive();
-		return layout.alignGrapheme(layout.hitTest(x, y).offset);
+		var hit = layout.hitTest(x, y);
+		return new TextPosition(layout.alignGrapheme(hit.offset), hit.affinity);
+	}
+
+	/** Places the caret from a shaping-engine hit while keeping its visual affinity. */
+	public function placeCaretAt(position:TextPosition, extend:Bool):Bool {
+		ensureLive();
+		if (position == null)
+			return false;
+		var previousFocusLayoutOffset = selectionFocusLayoutOffset;
+		var previousFocusAffinity = selectionFocusAffinity;
+		var wasCollapsed = selectionStart == selectionEnd;
+		var next = layout.offsetFromPosition(position);
+		var changed = placeCaret(next, extend, position.affinity);
+		selectionFocusLayoutOffset = position.offset;
+		if (!extend)
+			selectionAnchorLayoutOffset = position.offset;
+		else if (wasCollapsed) {
+			selectionAnchorLayoutOffset = previousFocusLayoutOffset;
+			selectionAnchorAffinity = previousFocusAffinity;
+		}
+		return changed || previousFocusLayoutOffset != selectionFocusLayoutOffset;
+	}
+
+	public function focusPosition():TextPosition
+		return new TextPosition(selectionFocusLayoutOffset, selectionFocusAffinity);
+
+	public function anchorPosition():TextPosition
+		return new TextPosition(selectionAnchorLayoutOffset, selectionAnchorAffinity);
+
+	/** Selects the word under a pointer position using the shaped text engine's boundaries. */
+	public function selectWordAt(position:TextPosition):Bool {
+		ensureLive();
+		if (position == null || Utf8Text.length(text) == 0)
+			return false;
+		var range = layout.wordRange(position);
+		return setSelection(range[0], range[1]);
+	}
+
+	/** Selects the visual line under a pointer position. */
+	public function selectLineAt(position:TextPosition):Bool {
+		ensureLive();
+		if (position == null || Utf8Text.length(text) == 0)
+			return false;
+		var range = layout.lineRangeAt(position.offset);
+		return setSelection(range.start, range.end);
+	}
+
+	/** Returns 1 for a single click, 2 for a double click, and 3 for a triple click. */
+	public function registerPointerClick(position:TextPosition, timestamp:Float,
+			x:Float, y:Float):Int {
+		ensureLive();
+		if (position == null || !finite(timestamp) || !finite(x) || !finite(y)) {
+			cancelPointerClick();
+			return 1;
+		}
+		var range = layout.wordRange(position);
+		var dx = x - lastPointerClickX;
+		var dy = y - lastPointerClickY;
+		var sameSequence = lastPointerClickTime >= 0.0 && timestamp >= lastPointerClickTime &&
+			timestamp - lastPointerClickTime <= 0.5 && range[0] == lastPointerWordStart &&
+			range[1] == lastPointerWordEnd && dx * dx + dy * dy <= 36.0 && lastPointerClickArmed;
+		lastPointerClickCount = sameSequence
+			? (lastPointerClickCount >= 3 ? 1 : lastPointerClickCount + 1)
+			: 1;
+		lastPointerClickTime = timestamp;
+		lastPointerClickX = x;
+		lastPointerClickY = y;
+		lastPointerWordStart = range[0];
+		lastPointerWordEnd = range[1];
+		lastPointerClickArmed = false;
+		pointerClickPending = true;
+		return lastPointerClickCount;
+	}
+
+	/** Arms a click for a possible double click only after a nearby pointer release. */
+	public function completePointerClick(x:Float, y:Float):Void {
+		if (!pointerClickPending || !finite(x) || !finite(y)) {
+			cancelPointerClick();
+			return;
+		}
+		var dx = x - lastPointerClickX;
+		var dy = y - lastPointerClickY;
+		if (dx * dx + dy * dy > 36.0) {
+			cancelPointerClick();
+			return;
+		}
+		pointerClickPending = false;
+		lastPointerClickArmed = true;
+	}
+
+	/** Cancels click recognition once movement exceeds the platform-independent slop. */
+	public function cancelPointerClickIfMoved(x:Float, y:Float):Void {
+		if (!pointerClickPending)
+			return;
+		var dx = x - lastPointerClickX;
+		var dy = y - lastPointerClickY;
+		if (dx * dx + dy * dy > 36.0)
+			cancelPointerClick();
+	}
+
+	public function cancelPointerClick():Void {
+		lastPointerClickTime = -1.0;
+		lastPointerClickX = 0.0;
+		lastPointerClickY = 0.0;
+		lastPointerWordStart = -1;
+		lastPointerWordEnd = -1;
+		lastPointerClickCount = 0;
+		lastPointerClickArmed = false;
+		pointerClickPending = false;
 	}
 
 	public function dispose():Void {
@@ -427,6 +479,9 @@ class TextEditorState {
 		if (disposed)
 			throw "Text editor state has been disposed";
 	}
+
+	static inline function finite(value:Float):Bool
+		return value == value && value - value == 0.0;
 
 	/** Native text services interpret Haxeon's null representation of empty strings as empty UTF-8. */
 	public function layoutText():String

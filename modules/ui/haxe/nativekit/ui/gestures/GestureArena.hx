@@ -60,6 +60,10 @@ class GestureArena {
 		elapsedSeconds = 0.0;
 	}
 
+	/** Monotonic UI time accumulated from submitted frame deltas. */
+	public function timeSeconds():Float
+		return elapsedSeconds;
+
 	public function pointerDown(target:WidgetId, event:UiEvent,
 			recognizers:Array<GestureRecognizer>):Void {
 		if (target == null || event == null || recognizers == null)

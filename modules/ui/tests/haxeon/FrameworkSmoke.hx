@@ -14,6 +14,7 @@ import LayoutVisualKind;
 import Rect;
 import ResolvedLayoutItem;
 import TextLayout;
+import TextWrap;
 import NativeKit.InputAction;
 import NativeKit.TouchAction;
 import NativeKit.TouchTool;
@@ -181,6 +182,31 @@ class FrameworkSmoke {
 		if (fieldEditor.selectionStart != 0 || fieldEditor.selectionEnd <= 0 ||
 			fieldEditor.selectionEnd > 4)
 			return 49;
+		var endCaret = fieldEditor.layout.caret(new TextPosition(4, 0));
+		var endX = fieldTextGeometry.x + endCaret.x + 3.0;
+		context.pointerDown(endX, fieldY, 0);
+		context.pointerUp(endX, fieldY, 0);
+		if (fieldEditor.selectionStart != 4 || fieldEditor.selectionEnd != 4 ||
+			fieldEditor.selectionFocus != 4)
+			return 98;
+		var placedCaret = fieldEditor.layout.caret(fieldEditor.focusPosition());
+		var caretDelta = placedCaret.x - endCaret.x;
+		if (caretDelta < -0.1 || caretDelta > 0.1)
+			return 104;
+		var clickFrame = new LayoutFrame(256.0, 192.0);
+		clickFrame.deltaSeconds = 0.1;
+		fieldRoot = context.submit(field, clickFrame);
+		fieldTextGeometry = cast fieldRoot.children[0].resolved;
+		var wordX = fieldTextGeometry.x + fieldEditor.layout.measure().width * 0.5;
+		context.pointerDown(wordX, fieldY, 0);
+		context.pointerUp(wordX, fieldY, 0);
+		clickFrame = new LayoutFrame(256.0, 192.0);
+		clickFrame.deltaSeconds = 0.1;
+		fieldRoot = context.submit(field, clickFrame);
+		context.pointerDown(wordX, fieldY, 0);
+		context.pointerUp(wordX, fieldY, 0);
+		if (fieldEditor.selectionStart != 0 || fieldEditor.selectionEnd != 4)
+			return 99;
 		context.key(UiEventKind.KeyDown, UiKey.Enter);
 		if (submittedValue != "done")
 			return 50;
@@ -266,6 +292,30 @@ class FrameworkSmoke {
 		if (wordEditor.selectionFocus != 8)
 			return 198;
 		#end
+		var clickField = new TextField("single-double-click", "first last", null,
+			null, "Click selection");
+		var clickFieldRoot = context.submit(clickField, new LayoutFrame(256.0, 192.0));
+		var clickFieldState:State<TextEditorState> = context.buildContext.existingState(clickFieldRoot.id);
+		var clickEditor:TextEditorState = cast clickFieldState.value;
+		var clickTextGeometry:ResolvedLayoutItem = cast clickFieldRoot.children[0].resolved;
+		var clickY = clickTextGeometry.y + clickTextGeometry.height * 0.5;
+		var clickX = clickTextGeometry.x + clickTextGeometry.width - 2.0;
+		var clickPosition = clickEditor.hitTest(clickX - clickTextGeometry.x,
+			clickY - clickTextGeometry.y);
+		var clickOffset = clickEditor.layout.offsetFromPosition(clickPosition);
+		if (clickOffset != 10)
+			return 105;
+		context.pointerDown(clickX, clickY, 0);
+		context.pointerUp(clickX, clickY, 0);
+		if (clickEditor.selectionStart != 10 || clickEditor.selectionEnd != 10)
+			return 106;
+		var doubleClickFrame = new LayoutFrame(256.0, 192.0);
+		doubleClickFrame.deltaSeconds = 0.1;
+		clickFieldRoot = context.submit(clickField, doubleClickFrame);
+		context.pointerDown(clickX, clickY, 0);
+		context.pointerUp(clickX, clickY, 0);
+		if (clickEditor.selectionStart != 6 || clickEditor.selectionEnd != 10)
+			return 107;
 		var areaChanged = "";
 		var area = new TextArea("area-smoke", "line", function(next) { areaChanged = next; });
 		var areaRoot = context.submit(area, new LayoutFrame(256.0, 192.0));
@@ -351,6 +401,13 @@ class FrameworkSmoke {
 		if (!checkbox.checked || !checkboxChanged ||
 			(checkboxSemantics.states & AccessibilityState.Checked) == 0)
 			return 55;
+		var narrowButtonStyle = new LayoutStyle();
+		narrowButtonStyle.width = LayoutAxis.fixed(88.0);
+		narrowButtonStyle.height = LayoutAxis.fixed(38.0);
+		var narrowButtonRoot = context.submit(new Button("Selected", narrowButtonStyle),
+			new LayoutFrame(256.0, 192.0));
+		if (narrowButtonRoot.children[0].layout.paragraphStyle.wrap != TextWrap.None)
+			return 102;
 		var toggleChanged = false;
 		var toggle = new Toggle("toggle-smoke", "Enabled", false,
 			function(next) { toggleChanged = next; });
@@ -386,6 +443,15 @@ class FrameworkSmoke {
 		context.pointerUp(sliderX, sliderY, 0);
 		if (slider.value < 0.29 || slider.value > 0.31)
 			return 60;
+		sliderX = sliderGeometry.x + 10.0 + (sliderGeometry.width - 20.0) * 0.25;
+		context.pointerDown(sliderX, sliderY, 0);
+		sliderRoot = context.submit(slider, new LayoutFrame(256.0, 192.0));
+		sliderGeometry = cast sliderRoot.resolved;
+		var dragX = sliderGeometry.x + 10.0 + (sliderGeometry.width - 20.0) * 0.85;
+		context.pointerMove(dragX, sliderY);
+		if (slider.value < 0.89 || slider.value > 0.91)
+			return 100;
+		context.pointerUp(dragX, sliderY, 0);
 		var progressRoot = context.submit(new ProgressBar("progress-smoke", 0.75,
 			0.0, 1.0, "Transfer"), new LayoutFrame(256.0, 192.0));
 		var progressSemantics:Semantics = cast progressRoot.semantics;
@@ -816,9 +882,12 @@ class FrameworkSmoke {
 		var tooltipFrame = new LayoutFrame(256.0, 192.0);
 		var tooltipRoot = context.submit(tooltip, tooltipFrame);
 		var tooltipGeometry:ResolvedLayoutItem = cast tooltipRoot.children[1].resolved;
+		var tooltipRootGeometry:ResolvedLayoutItem = cast tooltipRoot.resolved;
+		var anchorGeometry:ResolvedLayoutItem = cast tooltipRoot.children[0].resolved;
+		if (tooltipRootGeometry.height < anchorGeometry.height)
+			return 101;
 		if (tooltipGeometry.visible)
 			return 76;
-		var anchorGeometry:ResolvedLayoutItem = cast tooltipRoot.children[0].resolved;
 		context.pointerMove(anchorGeometry.x + 4.0, anchorGeometry.y + 4.0);
 		tooltipRoot = context.submit(tooltip, tooltipFrame);
 		tooltipGeometry = cast tooltipRoot.children[1].resolved;
@@ -829,6 +898,22 @@ class FrameworkSmoke {
 		tooltipGeometry = cast tooltipRoot.children[1].resolved;
 		if (tooltipGeometry.visible)
 			return 78;
+		var tooltipCardStyle = new LayoutStyle();
+		tooltipCardStyle.width = LayoutAxis.fixed(220.0);
+		tooltipCardStyle.height = LayoutAxis.fit();
+		tooltipCardStyle.padding = new Insets(12.0, 12.0, 12.0, 12.0);
+		tooltipCardStyle.childGap = 6.0;
+		var tooltipCard = new Column("tooltip-card", [
+			new KeyedView("heading", new Text("Open an overlay")),
+			new KeyedView("anchor", new Tooltip("tooltip-in-card",
+				new Button("Hover for tooltip"), new Text("Hint")))
+		], tooltipCardStyle);
+		var tooltipCardRoot = context.submit(tooltipCard, tooltipFrame);
+		var tooltipCardGeometry:ResolvedLayoutItem = cast tooltipCardRoot.resolved;
+		var tooltipCardAnchor:ResolvedLayoutItem = cast tooltipCardRoot.children[1].children[0].resolved;
+		if (tooltipCardAnchor.y + tooltipCardAnchor.height >
+			tooltipCardGeometry.y + tooltipCardGeometry.height - 12.0 + 0.1)
+			return 103;
 
 		var radioChanges = 0;
 		var radioValue = "";

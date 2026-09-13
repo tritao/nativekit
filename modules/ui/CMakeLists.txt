@@ -220,6 +220,7 @@ if(NK_BUILD_EXAMPLES)
                 "HAXEON_DIR=${NKUI_HAXEON_DIR}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase.sh" --build-only
             DEPENDS nativekit_ui
+                "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui-showcase.hxmap"
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
             USES_TERMINAL)
 
@@ -299,6 +300,7 @@ if(NK_BUILD_EXAMPLES)
                     "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/UiExplorer.hx"
                     "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui-wasm.hxi"
                     "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui-showcase-wasm.hxi"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui-showcase.hxmap"
                     "${PROJECT_SOURCE_DIR}/bindings/haxe/nativekit-wasm.hxi"
                     "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui.hxmap"
                     "${PROJECT_SOURCE_DIR}/bindings/haxe/nativekit.hxmap"
@@ -384,10 +386,12 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_text_layout_move_paragraph
                 _nkui_text_layout_move_word
                 _nkui_text_layout_next_grapheme
+                _nkui_text_layout_position_offset
                 _nkui_text_layout_previous_grapheme
                 _nkui_text_layout_set_text
                 _nkui_text_layout_update
                 _nkui_text_layout_word_range_at
+                _nkui_text_layout_word_range
                 _nkui_showcase_cube_create
                 _nkui_showcase_cube_set_rotation
                 _nkui_haxeon_memory_contract_status

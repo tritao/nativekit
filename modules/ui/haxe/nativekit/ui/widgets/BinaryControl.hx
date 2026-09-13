@@ -67,6 +67,8 @@ class BinaryControl implements View {
 			var indicatorStyle = new LayoutStyle();
 			indicatorStyle.width = LayoutAxis.fixed(toggle ? 34.0 : 19.0);
 			indicatorStyle.height = LayoutAxis.fixed(toggle ? 19.0 : 19.0);
+			var indicator = new RenderNode(context.id("indicator"),
+				toggle ? LayoutVisualKind.Box : LayoutVisualKind.Custom, indicatorStyle);
 			if (!toggle) {
 				indicatorStyle.background = context.theme.controlColor(checked, enabled);
 				indicatorStyle.radiusTopLeft = indicatorStyle.radiusTopRight = 4.0;
@@ -75,23 +77,29 @@ class BinaryControl implements View {
 				indicatorStyle.background = context.theme.controlColor(checked, enabled);
 				indicatorStyle.radiusTopLeft = indicatorStyle.radiusTopRight = 10.0;
 				indicatorStyle.radiusBottomLeft = indicatorStyle.radiusBottomRight = 10.0;
+				indicatorStyle.padding = new Insets(2.0, 2.0, 2.0, 2.0);
+				indicatorStyle.childAlignX = checked ? LayoutAlignment.End : LayoutAlignment.Start;
+				indicatorStyle.childAlignY = LayoutAlignment.Center;
+				var thumbStyle = new LayoutStyle();
+				thumbStyle.width = LayoutAxis.fixed(15.0);
+				thumbStyle.height = LayoutAxis.fixed(15.0);
+				thumbStyle.background = Color.rgba(0.98, 0.98, 0.99, 1.0);
+				thumbStyle.radiusTopLeft = thumbStyle.radiusTopRight = 7.5;
+				thumbStyle.radiusBottomLeft = thumbStyle.radiusBottomRight = 7.5;
+				indicator.add(new RenderNode(context.id("thumb"), LayoutVisualKind.Box, thumbStyle));
 			}
-			var indicator = new RenderNode(context.id("indicator"), LayoutVisualKind.Custom,
-				indicatorStyle);
-			if (toggle) {
-				indicator.onPaint(function(canvas, geometry) {
-					var thumbX = checked ? geometry.width - 16.0 : 2.0;
-					canvas.fillRect(new Rect(thumbX, 2.0, 15.0, 15.0),
-						Color.rgba(0.98, 0.98, 0.99, 1.0));
-				});
-			} else {
+			if (!toggle) {
 				indicator.onPaint(function(canvas, _) {
 					if (!checked)
 						return;
-					canvas.fillRect(new Rect(4.0, 9.0, 5.0, 2.0),
-						Color.rgba(1.0, 1.0, 1.0, 1.0));
-					canvas.fillRect(new Rect(8.0, 5.0, 7.0, 2.0),
-						Color.rgba(1.0, 1.0, 1.0, 1.0));
+					var mark = Color.rgba(1.0, 1.0, 1.0, 1.0);
+					// Keep this as filled geometry rather than transformed strokes: the
+					// custom-control paint path currently doesn't preserve local rotation.
+					canvas.fillRect(new Rect(3.0, 8.0, 3.0, 3.0), mark);
+					canvas.fillRect(new Rect(5.0, 10.0, 3.0, 3.0), mark);
+					canvas.fillRect(new Rect(7.0, 8.0, 3.0, 3.0), mark);
+					canvas.fillRect(new Rect(9.0, 6.0, 3.0, 3.0), mark);
+					canvas.fillRect(new Rect(11.0, 4.0, 3.0, 3.0), mark);
 				});
 			}
 			node.add(indicator);

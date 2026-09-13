@@ -605,6 +605,10 @@ NKUI_API nkui_result nkui_text_layout_measure(nkui_resource layout,
  */
 NKUI_API nkui_result nkui_text_layout_hit_test(nkui_resource layout, float x, float y,
                                                nkui_text_position *out_position NKUI_OUT);
+/** Converts a shaped text position to its affinity-aware code-point insertion offset. */
+NKUI_API nkui_result nkui_text_layout_position_offset(nkui_resource layout,
+                                                       nkui_text_position position,
+                                                       int32_t *out_offset NKUI_OUT);
 
 /**
  * Returns visual caret geometry for a text position.
@@ -663,6 +667,12 @@ NKUI_API nkui_result nkui_text_layout_move_paragraph(nkui_resource layout, int32
                                                      int32_t direction,
                                                      nkui_text_navigation_behavior behavior,
                                                      int32_t *out_offset NKUI_OUT);
+
+/** Returns a half-open insertion-offset range for the word under a hit-tested position. */
+NKUI_API nkui_result nkui_text_layout_word_range(nkui_resource layout,
+                                                 nkui_text_position position,
+                                                 int32_t *out_start NKUI_OUT,
+                                                 int32_t *out_end NKUI_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Path, paint, and image APIs                                                */

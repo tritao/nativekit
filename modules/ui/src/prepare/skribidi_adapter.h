@@ -192,7 +192,10 @@ class SkribidiAdapter {
     bool prepared_glyphs_current(const PreparedGlyphs &glyphs) const;
     TextRect bounds() const;
     TextPosition hit_test(float x, float y) const;
+    int32_t offset_from_position(TextPosition position) const;
     TextCaret caret(TextPosition position) const;
+    TextPosition word_start(TextPosition position) const;
+    TextPosition word_end(TextPosition position) const;
     int32_t next_grapheme(int32_t offset) const;
     int32_t previous_grapheme(int32_t offset) const;
     int32_t align_grapheme(int32_t offset) const;

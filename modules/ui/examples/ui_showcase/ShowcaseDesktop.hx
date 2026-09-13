@@ -205,7 +205,7 @@ class ShowcaseDesktop {
                     } else if (explorer != null) {
                         if (uiSmoke)
                             explorer.setSmokeFrame(rendered);
-                        explorer.render(new Handle(surface.rawValue()), elapsed);
+                        explorer.render(surface, elapsed);
                     }
                     if (NativeKit.nk_surface_present(surface) != Result.Ok)
                         throw "surface present failed";

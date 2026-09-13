@@ -63,7 +63,7 @@ class Slider implements View {
 			node.semantics = semantics;
 
 			var invalidation:State<Float> = context.state(node.id, value);
-			var dragging = false;
+			var dragging:State<Bool> = context.state(context.id("dragging"), false);
 			var setValue = function(next:Float) {
 				if (!enabled || !finite(next))
 					return false;
@@ -106,17 +106,18 @@ class Slider implements View {
 			});
 			node.on(UiEventKind.PointerDown, function(event) {
 				if (enabled && event.button == 0) {
-					dragging = true;
+					dragging.update(true);
 					valueAtPointer(event);
 					event.preventDefault();
 				}
 			});
 			node.on(UiEventKind.PointerMove, function(event) {
-				if (dragging)
+				var isDragging:Bool = cast dragging.value;
+				if (isDragging)
 					valueAtPointer(event);
 			});
-			node.on(UiEventKind.PointerUp, function(_) { dragging = false; });
-			node.on(UiEventKind.PointerCancel, function(_) { dragging = false; });
+			node.on(UiEventKind.PointerUp, function(_) { dragging.update(false); });
+			node.on(UiEventKind.PointerCancel, function(_) { dragging.update(false); });
 
 			var handleKey = function(event:UiEvent) {
 				if (!enabled)

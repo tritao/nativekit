@@ -135,7 +135,7 @@ class TextField implements View {
 			var syncCursor = function(geometry:ResolvedLayoutItem) {
 				if (!editor.focused || context.platformSurface == null || context.platformSurface.isDisposed())
 					return;
-				var caret = editor.layout.caret(new TextPosition(editor.selectionFocus, 0));
+				var caret = editor.layout.caret(editor.focusPosition());
 				var topX = geometry.x + caret.x + caret.ascender * caret.slope;
 				var topY = geometry.y + caret.y + caret.ascender;
 				var bottomX = geometry.x + caret.x + caret.descender * caret.slope;
@@ -170,7 +170,8 @@ class TextField implements View {
 				if (!editor.focused && !editor.draggingSelection)
 					return;
 				editor.focused = false;
-				editor.cancelPointer();
+				editor.draggingSelection = false;
+				editor.cancelPointerClick();
 				semantics.states &= ~AccessibilityState.Focused;
 				stored.update(editor);
 				context.textInput.deactivate();
@@ -183,26 +184,42 @@ class TextField implements View {
 					return;
 				var geometry:ResolvedLayoutItem = cast textNode.resolved;
 				var point = geometry.viewportToLayout(event.x, event.y);
-				var textX = point.x - geometry.x;
-				var textY = point.y - geometry.y;
-				var offset = editor.hitTest(textX, textY);
-				if (editor.pointerDown(offset, textX, textY,
-					(event.modifiers & UiModifier.Shift) != 0, event.timestamp))
+				var position = editor.hitTest(point.x - geometry.x, point.y - geometry.y);
+				var extend = (event.modifiers & UiModifier.Shift) != 0;
+				if (extend)
+					editor.cancelPointerClick();
+				var clickCount = extend ? 1 : editor.registerPointerClick(position,
+					context.gestures.timeSeconds(), event.x, event.y);
+				var changed = switch (clickCount) {
+					case 2: editor.selectWordAt(position);
+					case 3: editor.selectLineAt(position);
+					case _: editor.placeCaretAt(position, extend);
+				};
+				if (changed)
 					updateState();
+				editor.draggingSelection = true;
 				event.preventDefault();
 			});
 			node.on(UiEventKind.PointerMove, function(event) {
 				if (!enabled || !editor.draggingSelection || textNode.resolved == null)
 					return;
+				editor.cancelPointerClickIfMoved(event.x, event.y);
 				var geometry:ResolvedLayoutItem = cast textNode.resolved;
 				var point = geometry.viewportToLayout(event.x, event.y);
-				var textX = point.x - geometry.x;
-				var textY = point.y - geometry.y;
-				if (editor.pointerMove(editor.hitTest(textX, textY), textX, textY))
+				var position = editor.hitTest(point.x - geometry.x, point.y - geometry.y);
+				if (editor.placeCaretAt(position, true)) {
+					editor.cancelPointerClick();
 					updateState();
+				}
 			});
-			node.on(UiEventKind.PointerUp, function(_) { editor.pointerUp(); });
-			node.on(UiEventKind.PointerCancel, function(_) { editor.cancelPointer(); });
+			node.on(UiEventKind.PointerUp, function(event) {
+				editor.completePointerClick(event.x, event.y);
+				editor.draggingSelection = false;
+			});
+			node.on(UiEventKind.PointerCancel, function(_) {
+				editor.cancelPointerClick();
+				editor.draggingSelection = false;
+			});
 
 			var handleKey = function(event:UiEvent) {
 				if (!enabled)
@@ -332,8 +349,7 @@ class TextField implements View {
 
 	static function paintEditor(canvas:Canvas, editor:TextEditorState):Void {
 		if (editor.selectionStart != editor.selectionEnd) {
-			for (rect in editor.layout.selectionRects(new TextPosition(editor.selectionStart, 0),
-					new TextPosition(editor.selectionEnd, 0)))
+			for (rect in editor.layout.selectionRects(editor.anchorPosition(), editor.focusPosition()))
 				canvas.fillRect(rect, Color.rgba(0.2, 0.43, 0.82, 0.55));
 		}
 		if (editor.compositionStart >= 0 && editor.compositionStart != editor.compositionEnd) {
@@ -343,7 +359,7 @@ class TextField implements View {
 					Color.rgba(0.95, 0.75, 0.24, 1.0));
 		}
 		if (editor.focused && editor.selectionStart == editor.selectionEnd) {
-			var caret = editor.layout.caret(new TextPosition(editor.selectionFocus, 0));
+			var caret = editor.layout.caret(editor.focusPosition());
 			var topX = caret.x + caret.ascender * caret.slope;
 			var topY = caret.y + caret.ascender;
 			var bottomX = caret.x + caret.descender * caret.slope;

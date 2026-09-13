@@ -1372,6 +1372,20 @@ extern "C" nkui_result nkui_text_layout_hit_test(nkui_resource layout, float x, 
     return NKUI_OK;
 }
 
+extern "C" nkui_result nkui_text_layout_position_offset(nkui_resource layout,
+                                                         nkui_text_position position,
+                                                         int32_t *out_offset) {
+    if (!out_offset || position.offset < 0 || position.affinity > 4u)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    *out_offset = slot->text->offset_from_position(
+        {position.offset, static_cast<uint8_t>(position.affinity)});
+    return NKUI_OK;
+}
+
 extern "C" nkui_result nkui_text_layout_caret(nkui_resource layout, nkui_text_position position,
                                               nkui_text_caret *out_caret) {
     if (!out_caret || position.offset < 0 || position.affinity > 4)
@@ -1523,6 +1537,21 @@ extern "C" nkui_result nkui_text_layout_move_paragraph(nkui_resource layout, int
         return NKUI_ERROR_INVALID_HANDLE;
     *out_offset = slot->text->move_paragraph(
         offset, direction, behavior == NKUI_TEXT_NAVIGATION_BEHAVIOR_MACOS);
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_text_layout_word_range(nkui_resource layout,
+                                                      nkui_text_position position,
+                                                      int32_t *out_start, int32_t *out_end) {
+    if (!out_start || !out_end || position.offset < 0 || position.affinity > 4u)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    const nkui::TextPosition input{position.offset, static_cast<uint8_t>(position.affinity)};
+    *out_start = slot->text->offset_from_position(slot->text->word_start(input));
+    *out_end = slot->text->offset_from_position(slot->text->word_end(input));
     return NKUI_OK;
 }
 
