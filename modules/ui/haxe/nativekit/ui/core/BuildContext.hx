@@ -1,17 +1,38 @@
 package nativekit.ui.core;
 
+import FontCollection;
+import NativeKitSurface;
+
 /** Frame-local identity scopes backed by a persistent UiContext state store. */
 class BuildContext {
 	public final stateStore:StateStore;
+	public var fonts(default, null):Null<FontCollection>;
+	public var platformSurface(default, null):Null<NativeKitSurface>;
 	final claimed:Map<Int, String>;
 	var scope:KeyScope;
 
-	public function new(stateStore:StateStore) {
+	public function new(stateStore:StateStore, ?fonts:FontCollection) {
 		if (stateStore == null)
 			throw "Build context requires a state store";
 		this.stateStore = stateStore;
+		this.fonts = fonts;
+		platformSurface = null;
 		claimed = new Map();
 		scope = new KeyScope();
+	}
+
+	/** Provides the font collection used by text-layout-backed widgets. */
+	public function setFonts(fonts:FontCollection):Void {
+		if (fonts == null || fonts.isDisposed())
+			throw "Build context requires a live font collection";
+		this.fonts = fonts;
+	}
+
+	/** Provides the NativeKit surface used for IME and other platform services. */
+	public function setPlatformSurface(surface:NativeKitSurface):Void {
+		if (surface == null || surface.isDisposed())
+			throw "Build context requires a live NativeKit surface";
+		platformSurface = surface;
 	}
 
 	public function beginFrame():Void {

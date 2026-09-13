@@ -42,8 +42,9 @@ class FrameworkSmoke {
 		var fonts = FontCollection.create();
 		fonts.add(fontPath);
 		var session = LayoutSession.create();
-		session.setFonts(fonts);
-		var context = new UiContext(session);
+		var context = new UiContext(session, fonts);
+		if (context.buildContext.fonts != fonts)
+			return 30;
 		if (!NativeKitEventDecoderTests.run())
 			return 27;
 		var frame = new LayoutFrame(256.0, 192.0);
@@ -269,7 +270,13 @@ class FrameworkSmoke {
 		overlayList.clear();
 		overlayList.dispose();
 
+		var cleaned = 0;
+		context.stateStore.onDispose(initialId, function() {
+			cleaned++;
+		});
 		context.dispose();
+		if (cleaned != 1)
+			return 31;
 		fonts.dispose();
 		Sys.println("PASS: Haxe framework and NativeKit pointer, touch, keyboard, and text input routing");
 		return 0;

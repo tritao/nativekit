@@ -8,7 +8,9 @@ import Renderer;
 import Surface;
 import FrameInfo;
 import ResolvedLayoutItem;
+import FontCollection;
 import NativeKitSurface;
+import NativeKitTextInput;
 import nativekit.ui.semantics.AccessibilityBridge;
 import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRequest;
@@ -28,11 +30,15 @@ class UiContext {
 	var overlayList:Null<DisplayList>;
 	var accessibilityBridge:Null<AccessibilityBridge>;
 	var accessibilitySurface:Null<NativeKitSurface>;
+	var platformSurface:Null<NativeKitSurface>;
+	var textInputActive:Bool;
 
-	public function new(?session:LayoutSession) {
+	public function new(?session:LayoutSession, ?fonts:FontCollection) {
 		this.session = session == null ? LayoutSession.create() : session;
 		stateStore = new StateStore();
-		buildContext = new BuildContext(stateStore);
+		buildContext = new BuildContext(stateStore, fonts);
+		if (fonts != null)
+			this.session.setFonts(fonts);
 		focus = new FocusManager();
 		events = new EventDispatcher(focus);
 		root = null;
@@ -42,6 +48,26 @@ class UiContext {
 		overlayList = null;
 		accessibilityBridge = null;
 		accessibilitySurface = null;
+		platformSurface = null;
+		textInputActive = false;
+	}
+
+	/** Sets fonts for text-aware widgets and the native layout session. */
+	public function setFonts(fonts:FontCollection):Void {
+		ensureLive();
+		if (fonts == null || fonts.isDisposed())
+			throw "UI context requires a live font collection";
+		session.setFonts(fonts);
+		buildContext.setFonts(fonts);
+	}
+
+	/** Attaches the host surface used by platform text-input synchronization. */
+	public function attachPlatformSurface(surface:NativeKitSurface):Void {
+		ensureLive();
+		if (surface == null || surface.isDisposed())
+			throw "UI context requires a live NativeKit surface";
+		platformSurface = surface;
+		buildContext.setPlatformSurface(surface);
 	}
 
 	/** Builds a fresh view tree, resolves native layout, and reconnects geometry by stable ID. */
@@ -269,8 +295,13 @@ class UiContext {
 		if (disposed)
 			return;
 		session.dispose();
+		if (textInputActive && platformSurface != null && !platformSurface.isDisposed()) {
+			NativeKitTextInput.setActive(platformSurface, false);
+			textInputActive = false;
+		}
 		if (accessibilityBridge != null)
 			accessibilityBridge.dispose();
+		stateStore.dispose();
 		if (overlayCanvas != null)
 			overlayCanvas.reset();
 		if (overlayList != null)
@@ -279,6 +310,7 @@ class UiContext {
 		root = null;
 		accessibilityBridge = null;
 		accessibilitySurface = null;
+		platformSurface = null;
 	}
 
 	function dispatchFocusChange(previous:Null<WidgetId>, next:Null<WidgetId>):Void {
