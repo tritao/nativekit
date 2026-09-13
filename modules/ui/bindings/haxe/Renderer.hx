@@ -27,6 +27,13 @@ class Renderer {
 		UiResult.check(NativeKitUI.nkui_renderer_render_frame(value, list.nativeHandle(), surface.nativeHandle(), frame.nativeValue()), "renderer.renderFrame");
 	}
 
+	/** Composites a display list over contents already rendered in the current frame. */
+	public function renderFrameOverlay(list:DisplayList, surface:Surface, frame:FrameInfo):Void {
+		ensureLive();
+		UiResult.check(NativeKitUI.nkui_renderer_render_frame_overlay(value, list.nativeHandle(),
+			surface.nativeHandle(), frame.nativeValue()), "renderer.renderFrameOverlay");
+	}
+
 	public function stats():RendererStats {
 		ensureLive();
 		var result = NativeKitUI.nkui_renderer_get_stats(value);

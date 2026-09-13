@@ -136,6 +136,33 @@ class TextLayout extends NativeKitUIResource {
 		return rectangles;
 	}
 
+	/** Returns the next grapheme boundary at or after a code-point offset. */
+	public function nextGrapheme(offset:Int):Int {
+		if (offset < 0)
+			throw "Text position cannot be negative";
+		var result = NativeKitUI.nkui_text_layout_next_grapheme(nativeHandle(), offset);
+		UiResult.check(result.status, "textLayout.nextGrapheme");
+		return result.out_offset;
+	}
+
+	/** Returns the previous grapheme boundary at or before a code-point offset. */
+	public function previousGrapheme(offset:Int):Int {
+		if (offset < 0)
+			throw "Text position cannot be negative";
+		var result = NativeKitUI.nkui_text_layout_previous_grapheme(nativeHandle(), offset);
+		UiResult.check(result.status, "textLayout.previousGrapheme");
+		return result.out_offset;
+	}
+
+	/** Aligns a code-point offset to its nearest grapheme boundary. */
+	public function alignGrapheme(offset:Int):Int {
+		if (offset < 0)
+			throw "Text position cannot be negative";
+		var result = NativeKitUI.nkui_text_layout_align_grapheme(nativeHandle(), offset);
+		UiResult.check(result.status, "textLayout.alignGrapheme");
+		return result.out_offset;
+	}
+
 	static inline function readFloat(bytes:haxe.io.Bytes, offset:Int):Float
 		return floatFromBits(bytes.getInt32(offset));
 

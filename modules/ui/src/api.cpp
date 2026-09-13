@@ -1330,6 +1330,43 @@ extern "C" nkui_result nkui_text_layout_get_selection_rects(
     return NKUI_OK;
 }
 
+extern "C" nkui_result nkui_text_layout_next_grapheme(nkui_resource layout, int32_t offset,
+                                                       int32_t *out_offset) {
+    if (!out_offset || offset < 0)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    *out_offset = slot->text->next_grapheme(offset);
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_text_layout_previous_grapheme(nkui_resource layout,
+                                                           int32_t offset,
+                                                           int32_t *out_offset) {
+    if (!out_offset || offset < 0)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    *out_offset = slot->text->previous_grapheme(offset);
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_text_layout_align_grapheme(nkui_resource layout, int32_t offset,
+                                                        int32_t *out_offset) {
+    if (!out_offset || offset < 0)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    *out_offset = slot->text->align_grapheme(offset);
+    return NKUI_OK;
+}
+
 extern "C" nkui_result nkui_resource_destroy(nkui_resource resource) {
     std::lock_guard<std::mutex> lock(resources_mutex);
     const uint16_t slot_index = static_cast<uint16_t>(resource.id);
@@ -1529,9 +1566,10 @@ extern "C" nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_display_list list,
-                                                  nk_handle surface,
-                                                  const nkui_frame_info *frame_info) {
+static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_display_list list,
+                                              nk_handle surface,
+                                              const nkui_frame_info *frame_info,
+                                              bool load_existing) {
     if (!frame_info || frame_info->struct_size < sizeof(*frame_info) ||
         !std::isfinite(frame_info->logical_width) || !std::isfinite(frame_info->logical_height) ||
         !std::isfinite(frame_info->pixel_scale) || frame_info->logical_width <= 0.0f ||
@@ -1565,6 +1603,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
     nkui::RenderPlan plan;
     if (!renderer_slot->compositor.compile(*list_slot->list, main_target, plan))
         return NKUI_ERROR_INVALID_TRANSACTION;
+    if (load_existing && !plan.passes.empty())
+        plan.passes.front().load_existing = true;
 
     nkui::FrameResources frame_resources;
     std::vector<std::unique_ptr<nkui::PreparedPath>> prepared_paths;
@@ -1764,6 +1804,18 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
     const bool executed = nkui::execute_render_plan(*renderer_slot->backend, plan, frame_resources,
                                                     {main_target, frame_target});
     return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
+}
+
+extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_display_list list,
+                                                  nk_handle surface,
+                                                  const nkui_frame_info *frame_info) {
+    return renderer_render_frame_impl(renderer, list, surface, frame_info, false);
+}
+
+extern "C" nkui_result nkui_renderer_render_frame_overlay(
+    nkui_renderer renderer, nkui_display_list list, nk_handle surface,
+    const nkui_frame_info *frame_info) {
+    return renderer_render_frame_impl(renderer, list, surface, frame_info, true);
 }
 
 extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,

@@ -3,7 +3,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	/**
 	 * Current UI ABI version.
 	 */
-	const NKUI_API_VERSION = 3;
+	const NKUI_API_VERSION = 4;
 	/**
 	 * Start a composited layer with an opacity and composite mode.
 	 */
@@ -461,6 +461,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_renderer_render_frame(renderer: nkui_renderer, list: nkui_display_list, surface: nk_handle, frame_info: ptr<const<nkui_frame_info>>) -> nkui_result;
 	/**
+	 * Renders a display list over the currently presented frame without clearing it.
+	 */
+	extern fn nkui_renderer_render_frame_overlay(renderer: nkui_renderer, list: nkui_display_list, surface: nk_handle, frame_info: ptr<const<nkui_frame_info>>) -> nkui_result;
+	/**
 	 * Releases the caller's ownership of a UI resource.
 	 *
 	 * A submitted display list keeps a referenced resource alive until that list
@@ -468,6 +472,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 * in a new command stream, even if an existing list still retains it.
 	 */
 	extern fn nkui_resource_destroy(resource: nkui_resource) -> nkui_result;
+	/**
+	 * Returns the nearest grapheme boundary to `offset`.
+	 */
+	extern fn nkui_text_layout_align_grapheme(layout: nkui_resource, offset: i32, out_offset: ptr<i32> @out) -> nkui_result;
 	/**
 	 * Returns visual caret geometry for a text position.
 	 *
@@ -509,6 +517,14 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 * Returns the layout bounds in `out_metrics`.
 	 */
 	extern fn nkui_text_layout_measure(layout: nkui_resource, out_metrics: ptr<nkui_text_metrics> @out) -> nkui_result;
+	/**
+	 * Returns the next grapheme boundary at or after `offset`.
+	 */
+	extern fn nkui_text_layout_next_grapheme(layout: nkui_resource, offset: i32, out_offset: ptr<i32> @out) -> nkui_result;
+	/**
+	 * Returns the previous grapheme boundary at or before `offset`.
+	 */
+	extern fn nkui_text_layout_previous_grapheme(layout: nkui_resource, offset: i32, out_offset: ptr<i32> @out) -> nkui_result;
 	/**
 	 * Re-shapes an existing layout with new UTF-8 text while retaining its handle and style.
 	 */

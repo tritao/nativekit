@@ -2,6 +2,8 @@ package nativekit.ui.core;
 
 import LayoutFrame;
 import LayoutSession;
+import Canvas;
+import DisplayList;
 import Renderer;
 import Surface;
 import FrameInfo;
@@ -17,6 +19,8 @@ class UiContext {
 	public var root(default, null):Null<RenderNode>;
 	var submittedStateRevision:Int;
 	var disposed:Bool;
+	var overlayCanvas:Null<Canvas>;
+	var overlayList:Null<DisplayList>;
 
 	public function new(?session:LayoutSession) {
 		this.session = session == null ? LayoutSession.create() : session;
@@ -27,6 +31,8 @@ class UiContext {
 		root = null;
 		submittedStateRevision = -1;
 		disposed = false;
+		overlayCanvas = null;
+		overlayList = null;
 	}
 
 	/** Builds a fresh view tree, resolves native layout, and reconnects geometry by stable ID. */
@@ -69,6 +75,34 @@ class UiContext {
 		if (root == null)
 			throw "Submit a view before rendering the UI context";
 		session.render(renderer, surface, frame);
+		if (root == null)
+			return;
+		if (overlayCanvas == null)
+			overlayCanvas = new Canvas();
+		var canvas:Canvas = cast overlayCanvas;
+		canvas.reset();
+		var painted = false;
+		root.walk(function(node) {
+			if (!node.hasPaintHandler() || node.resolved == null ||
+				node.resolved.clipBounds.width <= 0.0 || node.resolved.clipBounds.height <= 0.0)
+				return;
+			var geometry:ResolvedLayoutItem = cast node.resolved;
+			canvas.withState(function(target) {
+				target.resetTransform();
+				target.clip(geometry.clipBounds);
+				target.setTransform(geometry.transform);
+				target.translate(geometry.x, geometry.y);
+				node.paint(target);
+			});
+			painted = true;
+		});
+		if (painted) {
+			if (overlayList == null)
+				overlayList = DisplayList.create();
+			var displayList:DisplayList = cast overlayList;
+			canvas.update(displayList);
+			renderer.renderFrameOverlay(displayList, surface, frame);
+		}
 	}
 
 	public function focusWidget(id:WidgetId):Bool {
@@ -165,6 +199,10 @@ class UiContext {
 		if (disposed)
 			return;
 		session.dispose();
+		if (overlayCanvas != null)
+			overlayCanvas.reset();
+		if (overlayList != null)
+			overlayList.dispose();
 		disposed = true;
 		root = null;
 	}

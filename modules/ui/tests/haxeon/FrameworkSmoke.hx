@@ -1,9 +1,12 @@
 import Color;
+import Canvas;
+import DisplayList;
 import FontCollection;
 import LayoutAxis;
 import LayoutDirection;
 import LayoutFrame;
 import LayoutStyle;
+import Rect;
 import ResolvedLayoutItem;
 import NativeKit.InputAction;
 import NativeKit.TouchAction;
@@ -231,6 +234,15 @@ class FrameworkSmoke {
 		scrollView.controller.jumpTo(0.0, 500.0);
 		if (scrollView.controller.offsetY != 320.0 || !context.isDirty())
 			return 28;
+
+		var overlayCanvas = new Canvas();
+		var overlayList = DisplayList.create();
+		overlayCanvas.fillRect(new Rect(2.0, 3.0, 12.0, 8.0), Color.rgba(0.2, 0.4, 0.8, 0.5));
+		overlayCanvas.update(overlayList);
+		if (overlayList.info().commandCount != 2)
+			return 29;
+		overlayList.clear();
+		overlayList.dispose();
 
 		context.dispose();
 		fonts.dispose();

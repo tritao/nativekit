@@ -35,7 +35,8 @@ class LayoutSessionSmoke {
 		var selection = textLayout.selectionRects(new TextPosition(0, 0), new TextPosition(9, 0));
 		var collapsedSelection = textLayout.selectionRects(new TextPosition(4, 0), new TextPosition(4, 0));
 		if (selection.length == 0 || selection[0].width <= 0.0 ||
-			collapsedSelection.length != 0)
+			collapsedSelection.length != 0 || textLayout.nextGrapheme(1) != 2 ||
+			textLayout.previousGrapheme(2) != 1 || textLayout.alignGrapheme(2) != 2)
 			return 6;
 		textLayout.dispose();
 

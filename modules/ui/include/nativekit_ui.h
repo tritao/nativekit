@@ -63,7 +63,7 @@ extern "C" {
 /** Version of the stable NativeKit UI C ABI. */
 enum {
     /** Current UI ABI version. */
-    NKUI_API_VERSION = 3
+    NKUI_API_VERSION = 4
 };
 
 /** Result returned by a NativeKit UI operation. */
@@ -605,6 +605,18 @@ NKUI_API nkui_result nkui_text_layout_get_selection_rects(
     nkui_resource layout, nkui_text_position start, nkui_text_position end,
     uint8_t *out_buffer NKUI_OUT_BUFFER(inout_bytes), uint32_t *inout_bytes NKUI_INOUT);
 
+/** Returns the next grapheme boundary at or after `offset`. */
+NKUI_API nkui_result nkui_text_layout_next_grapheme(nkui_resource layout, int32_t offset,
+                                                    int32_t *out_offset NKUI_OUT);
+
+/** Returns the previous grapheme boundary at or before `offset`. */
+NKUI_API nkui_result nkui_text_layout_previous_grapheme(nkui_resource layout, int32_t offset,
+                                                        int32_t *out_offset NKUI_OUT);
+
+/** Returns the nearest grapheme boundary to `offset`. */
+NKUI_API nkui_result nkui_text_layout_align_grapheme(nkui_resource layout, int32_t offset,
+                                                     int32_t *out_offset NKUI_OUT);
+
 /* ------------------------------------------------------------------------- */
 /* Path, paint, and image APIs                                                */
 /* ------------------------------------------------------------------------- */
@@ -672,6 +684,11 @@ NKUI_API nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_l
 NKUI_API nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_display_list list,
                                                 nk_handle surface,
                                                 const nkui_frame_info *frame_info);
+
+/** Renders a display list over the currently presented frame without clearing it. */
+NKUI_API nkui_result nkui_renderer_render_frame_overlay(
+    nkui_renderer renderer, nkui_display_list list, nk_handle surface,
+    const nkui_frame_info *frame_info);
 
 /**
  * Releases the caller's ownership of a UI resource.

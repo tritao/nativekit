@@ -10,6 +10,7 @@ class Canvas {
 	var saved:Array<CanvasState>;
 	var savedDepth:Int;
 	var openLayers:Int;
+	final transientResources:Array<NativeKitUIResource>;
 
 	public function new(capacity:Int = 4096) {
 		commands = new CanvasCommandBuffer(capacity);
@@ -17,9 +18,11 @@ class Canvas {
 		saved = [];
 		savedDepth = 0;
 		openLayers = 0;
+		transientResources = [];
 	}
 
 	public function reset():Void {
+		releaseTransientResources();
 		commands.reset();
 		state.reset();
 		savedDepth = 0;
@@ -136,6 +139,29 @@ class Canvas {
 		commands.strokePath(path, width, cap, join, miterLimit);
 	}
 
+	/** Adds one filled rectangle using a transient path and solid paint resource. */
+	public function fillRect(rect:Rect, color:Color):Void {
+		if (rect == null || color == null || rect.width <= 0.0 || rect.height <= 0.0)
+			throw "Filled rectangle requires positive bounds and a color";
+		var path = new PathBuilder().moveTo(rect.x, rect.y).lineTo(rect.x + rect.width, rect.y)
+			.lineTo(rect.x + rect.width, rect.y + rect.height).lineTo(rect.x, rect.y + rect.height)
+			.close().build();
+		try {
+			var paint = SolidPaint.create(color);
+			try {
+				fill(path, paint);
+				transientResources.push(path);
+				transientResources.push(paint);
+			} catch (error:Dynamic) {
+				paint.dispose();
+				throw error;
+			}
+		} catch (error:Dynamic) {
+			path.dispose();
+			throw error;
+		}
+	}
+
 	public function drawImage(image:Image, rect:Rect):Void
 		commands.drawImage(image, rect.x, rect.y, rect.width, rect.height);
 
@@ -179,7 +205,19 @@ class Canvas {
 	private function submitTo(list:nkui_display_list):Void {
 		if (openLayers != 0)
 			throw "Canvas update with an open layer";
-		UiResult.check(commands.submit(list), "displayList.update");
+		try {
+			UiResult.check(commands.submit(list), "displayList.update");
+		} catch (error:Dynamic) {
+			releaseTransientResources();
+			throw error;
+		}
+		releaseTransientResources();
+	}
+
+	function releaseTransientResources():Void {
+		for (resource in transientResources)
+			resource.dispose();
+		transientResources.resize(0);
 	}
 }
 

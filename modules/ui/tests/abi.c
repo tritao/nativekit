@@ -129,6 +129,19 @@ int main(void) {
                                              NULL, &collapsed_bytes) !=
             NKUI_ERROR_INVALID_ARGUMENT)
         return 19;
+    nkui_resource grapheme_layout = {0};
+    int32_t grapheme_next = -1;
+    int32_t grapheme_previous = -1;
+    const char grapheme_text[] = "a\xcc\x81" "b";
+    if (nkui_text_layout_create(fonts, grapheme_text, 120.0f, 18.0f,
+                                &grapheme_layout) != NKUI_OK ||
+        nkui_text_layout_next_grapheme(grapheme_layout, 0, &grapheme_next) != NKUI_OK ||
+        nkui_text_layout_previous_grapheme(grapheme_layout, 2, &grapheme_previous) != NKUI_OK ||
+        grapheme_next != 2 || grapheme_previous != 0 ||
+        nkui_text_layout_next_grapheme(grapheme_layout, -1, &grapheme_next) !=
+            NKUI_ERROR_INVALID_ARGUMENT ||
+        nkui_resource_destroy(grapheme_layout) != NKUI_OK)
+        return 20;
     text_style.letter_spacing = 0.0f;
     paragraph_style.alignment = NKUI_TEXT_ALIGN_START;
     if (nkui_text_layout_update(layout, "NativeKit updated مرحبا", 280.0f, &text_style,

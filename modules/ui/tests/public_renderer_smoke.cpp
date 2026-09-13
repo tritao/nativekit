@@ -195,6 +195,9 @@ int main() {
             std::fprintf(stderr, "public render result %d\n", render_result);
             result = 7;
         } else if (frames == 0) {
+            if (nkui_renderer_render_frame_overlay(renderer, list, surface, &frame_info) !=
+                NKUI_OK)
+                result = 18;
             uint8_t background[4]{};
             uint8_t image_sample[4]{};
             glReadPixels(24, height - 24, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, background);

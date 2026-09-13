@@ -3,6 +3,7 @@ package nativekit.ui.core;
 import LayoutNode;
 import LayoutStyle;
 import LayoutVisualKind;
+import Canvas;
 import ResolvedLayoutItem;
 
 /** One Haxe-owned node joins visual layout, interaction, focus, and state identity. */
@@ -17,6 +18,7 @@ class RenderNode {
 	public var tabIndex:Int;
 	final handlers:Map<String, Array<UiEvent->Void>>;
 	final resolvedHandlers:Array<ResolvedLayoutItem->Void>;
+	final paintHandlers:Array<Canvas->ResolvedLayoutItem->Void>;
 
 	public function new(id:WidgetId, kind:LayoutVisualKind = LayoutVisualKind.Box, ?style:LayoutStyle) {
 		if (id == null)
@@ -31,6 +33,7 @@ class RenderNode {
 		tabIndex = 0;
 		handlers = new Map();
 		resolvedHandlers = [];
+		paintHandlers = [];
 	}
 
 	public function add(child:RenderNode):RenderNode {
@@ -66,12 +69,32 @@ class RenderNode {
 		return this;
 	}
 
+	public function onPaint(handler:Canvas->ResolvedLayoutItem->Void):RenderNode {
+		if (handler == null)
+			throw "Render paint handlers cannot be null";
+		paintHandlers.push(handler);
+		return this;
+	}
+
+	@:allow(nativekit.ui.core.UiContext)
+	function hasPaintHandler():Bool
+		return paintHandlers.length > 0;
+
 	@:allow(nativekit.ui.core.UiContext)
 	function setResolved(item:Null<ResolvedLayoutItem>):Void {
 		resolved = item;
 		if (item != null)
 			for (handler in resolvedHandlers)
 				handler(item);
+	}
+
+	@:allow(nativekit.ui.core.UiContext)
+	function paint(canvas:Canvas):Bool {
+		if (resolved == null || !resolved.visible || paintHandlers.length == 0)
+			return false;
+		for (handler in paintHandlers)
+			handler(canvas, resolved);
+		return true;
 	}
 
 	@:allow(nativekit.ui.core.EventDispatcher)
