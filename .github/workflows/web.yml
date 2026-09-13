@@ -8,16 +8,44 @@ jobs:
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      HAXEON_DIR: ${{ github.workspace }}/haxeon
+      HAXEON_REF: 92f414676ecd3fc40dc0d01b114dc3665a617c58
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
+      - uses: actions/checkout@v4
+        with:
+          repository: tritao/haxeon
+          ref: ${{ env.HAXEON_REF }}
+          path: haxeon
+          submodules: false
+
+      - name: Initialize public Haxeon dependencies
+        working-directory: haxeon
+        run: |
+          # The pinned Haxeon revision currently references two unpublished
+          # profiler commits. NativeKit's browser build only needs the latest
+          # public integrated runtime, so keep this checkout reproducible.
+          git update-index --cacheinfo 160000,d1eaefbbb92509ea22fde068a0bbe81f1cbf83b2,vendor/hashlink
+          git submodule update --init vendor/hashlink vendor/hashlink-debugger vendor/libffi vendor/utest
+
+      - name: Install Haxeon build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libffi-dev
+
       - name: Cache web toolchain
         uses: actions/cache@v4
         with:
-          path: .tools
-          key: web-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/setup-emscripten.sh', 'tools/setup-web.sh') }}
+          path: |
+            .tools
+            haxeon/.tools
+          key: web-tools-${{ runner.os }}-${{ runner.arch }}-${{ env.HAXEON_REF }}-${{ hashFiles('tools/setup-emscripten.sh', 'tools/setup-web.sh', 'haxeon/cmake/Bootstrap.cmake') }}
+
+      - name: Install Haxeon toolchain
+        working-directory: haxeon
+        run: ./scripts/bootstrap-tools.sh
 
       - name: Install Chrome
         uses: browser-actions/setup-chrome@v1
