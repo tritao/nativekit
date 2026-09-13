@@ -99,19 +99,21 @@ public final class NativeKitHostTest {
             assertTrue(failure.flags >= 0 && failure.flags <= 6);
             assertNotNull(failure.text());
 
-            long[] crashedWebView = new long[1];
-            scenario.onActivity(activity -> crashedWebView[0] =
-                                    activity.host.createWebView(16, 16, "chrome://crash"));
-            NativeKitEvent terminated =
-                awaitEventForSource(scenario, EVENT_WEBVIEW_PROCESS_TERMINATED, crashedWebView[0]);
-            assertEquals(1, terminated.flags);
+            if (Build.VERSION.SDK_INT >= 26) {
+                long[] crashedWebView = new long[1];
+                scenario.onActivity(activity -> crashedWebView[0] =
+                                        activity.host.createWebView(16, 16, "chrome://crash"));
+                NativeKitEvent terminated = awaitEventForSource(
+                    scenario, EVENT_WEBVIEW_PROCESS_TERMINATED, crashedWebView[0]);
+                assertEquals(1, terminated.flags);
 
-            long[] recoveredWebView = new long[1];
-            scenario.onActivity(activity -> recoveredWebView[0] = activity.host.createWebView(
-                                    16, 16, "data:text/html,<title>recovered</title>"));
-            NativeKitEvent recovered =
-                awaitEventForSource(scenario, EVENT_WEBVIEW_NAVIGATED, recoveredWebView[0]);
-            assertEquals(recoveredWebView[0], recovered.source);
+                long[] recoveredWebView = new long[1];
+                scenario.onActivity(activity -> recoveredWebView[0] = activity.host.createWebView(
+                                        16, 16, "data:text/html,<title>recovered</title>"));
+                NativeKitEvent recovered = awaitEventForSource(
+                    scenario, EVENT_WEBVIEW_NAVIGATED, recoveredWebView[0]);
+                assertEquals(recoveredWebView[0], recovered.source);
+            }
 
             long[] clipboardRequest = new long[1];
             scenario.onActivity(activity -> {
