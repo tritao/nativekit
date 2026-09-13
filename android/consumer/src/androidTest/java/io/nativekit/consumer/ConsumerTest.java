@@ -61,9 +61,10 @@ public final class ConsumerTest {
             waitForIdle();
             scenario.onActivity(activity -> {
                 assertNotEquals(0, activity.graphicsSurfaceHandle());
-                assertEquals(0, activity.graphicsSurfaceProbe());
+                assertEquals("initial graphics surface probe", 0,
+                             activity.graphicsSurfaceProbe());
                 activity.dispatchInputForTest();
-                assertEquals(0, activity.inputProbe());
+                assertEquals("graphics surface input probe", 0, activity.inputProbe());
             });
             UiAutomation automation =
                 androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
@@ -81,40 +82,50 @@ public final class ConsumerTest {
                 event -> event.getEventType() == AccessibilityEvent.TYPE_VIEW_HOVER_ENTER,
                 3000);
             scenario.onActivity(activity -> {
-                assertEquals(0, activity.accessibilityProbe());
-                assertEquals(0, activity.setGraphicsSurfaceVisible(false));
+                assertEquals("graphics surface accessibility probe", 0,
+                             activity.accessibilityProbe());
+                assertEquals("hide graphics surface", 0,
+                             activity.setGraphicsSurfaceVisible(false));
             });
             waitForIdle();
             scenario.onActivity(activity -> {
-                assertEquals(0, activity.graphicsSurfaceLifecycleProbe(702));
-                assertEquals(0, activity.setGraphicsSurfaceVisible(true));
+                assertEquals("graphics surface lost event", 0,
+                             activity.graphicsSurfaceLifecycleProbe(702));
+                assertEquals("show graphics surface", 0,
+                             activity.setGraphicsSurfaceVisible(true));
             });
             waitForIdle();
             scenario.onActivity(activity ->
-                assertEquals(0, activity.graphicsSurfaceLifecycleProbe(700)));
+                assertEquals("graphics surface restored after visibility", 0,
+                             activity.graphicsSurfaceLifecycleProbe(700)));
 
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
             waitForIdle();
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
             waitForIdle();
             scenario.onActivity(activity ->
-                assertEquals(0, activity.graphicsSurfaceLifecycleProbe(700)));
+                assertEquals("graphics surface restored after activity resume", 0,
+                             activity.graphicsSurfaceLifecycleProbe(700)));
 
             scenario.onActivity(MainActivity::createVulkanSurfaceProbe);
             waitForIdle();
             scenario.onActivity(activity -> {
                 assertNotEquals(0, activity.vulkanSurfaceHandle());
-                assertEquals(0, activity.vulkanSurfaceProbe());
-                assertEquals(0, activity.setVulkanSurfaceVisible(false));
+                assertEquals("Vulkan surface probe", 0, activity.vulkanSurfaceProbe());
+                assertEquals("hide Vulkan surface", 0,
+                             activity.setVulkanSurfaceVisible(false));
             });
             waitForIdle();
             scenario.onActivity(activity -> {
-                assertEquals(0, activity.vulkanSurfaceLostProbe());
-                assertEquals(0, activity.setVulkanSurfaceVisible(true));
+                assertEquals("Vulkan surface lost event", 0,
+                             activity.vulkanSurfaceLostProbe());
+                assertEquals("show Vulkan surface", 0,
+                             activity.setVulkanSurfaceVisible(true));
             });
             waitForIdle();
             scenario.onActivity(activity ->
-                assertEquals(0, activity.vulkanSurfaceRecreatedProbe()));
+                assertEquals("Vulkan surface recreated", 0,
+                             activity.vulkanSurfaceRecreatedProbe()));
 
             scenario.recreate();
             waitForIdle();
@@ -122,7 +133,8 @@ public final class ConsumerTest {
             waitForIdle();
             scenario.onActivity(activity -> {
                 assertNotEquals(0, activity.graphicsSurfaceHandle());
-                assertEquals(0, activity.graphicsSurfaceProbe());
+                assertEquals("graphics surface after activity recreation", 0,
+                             activity.graphicsSurfaceProbe());
             });
         }
     }
