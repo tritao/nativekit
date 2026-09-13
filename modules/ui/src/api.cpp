@@ -1729,17 +1729,22 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                 const auto transform = device_transform(command.transform, frame_info->pixel_scale);
                 if (!uniform_scale(transform, requested_scale))
                     requested_scale = 1.0f;
-                const int32_t scale_bucket =
-                    std::max(1, static_cast<int32_t>(std::round(requested_scale * 8.0f)));
-                const float raster_scale = scale_bucket / 8.0f;
+                // Coarse 1/8-scale steps can rasterize a fractional-DPR glyph
+                // atlas a full texel larger than its destination, shifting thin
+                // strokes under nearest sampling at browser zoom levels.
+                constexpr int32_t raster_scale_precision = 1024;
+                const int32_t raster_scale_key = std::max(
+                    1, static_cast<int32_t>(std::round(requested_scale * raster_scale_precision)));
+                const float raster_scale =
+                    static_cast<float>(raster_scale_key) / raster_scale_precision;
                 nkui::PreparedGlyphs *glyphs = nullptr;
-                if (scale_bucket == 8) {
+                if (raster_scale_key == raster_scale_precision) {
                     glyphs = &layout->text_glyphs;
                     if (!layout->text->prepared_glyphs_current(*glyphs))
                         valid = layout->text->prepare_glyphs(0.0f, 0.0f, raster_scale,
                                                              nkui::GlyphMode::Alpha, *glyphs);
                 } else {
-                    auto found = layout->scaled_text_glyphs.find(scale_bucket);
+                    auto found = layout->scaled_text_glyphs.find(raster_scale_key);
                     if (found == layout->scaled_text_glyphs.end()) {
                         nkui::PreparedGlyphs prepared;
                         valid = layout->text->prepare_glyphs(0.0f, 0.0f, raster_scale,
@@ -1747,7 +1752,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                         if (!valid)
                             break;
                         found =
-                            layout->scaled_text_glyphs.emplace(scale_bucket, std::move(prepared))
+                            layout->scaled_text_glyphs.emplace(raster_scale_key,
+                                                               std::move(prepared))
                                 .first;
                     }
                     glyphs = &found->second;

@@ -31,10 +31,12 @@ cases=(
     "caret-emoji|900x650||575,420|33,1,1"
     "light-theme|900x650||100,468|16,1,2"
     "animated|900x650|time=2250||16,1,2"
+    "zoom-110|900x650|||16,1,2|1.1"
 )
 
 for visual_case in "${cases[@]}"; do
-    IFS='|' read -r case_name size extra_query click caret <<<"$visual_case"
+    IFS='|' read -r case_name size extra_query click caret device_scale <<<"$visual_case"
+    device_scale=${device_scale:-1}
     width=${size%x*}
     height=${size#*x}
     http_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
@@ -60,7 +62,7 @@ for visual_case in "${cases[@]}"; do
     page_url="http://127.0.0.1:${http_port}/nativekit_ui_haxeon.html?visual&width=${width}&height=${height}"
     [[ -z "$extra_query" ]] || page_url+="&$extra_query"
     "$browser" --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu \
-        --enable-unsafe-swiftshader --force-device-scale-factor=1 --no-first-run \
+        --enable-unsafe-swiftshader --force-device-scale-factor="$device_scale" --no-first-run \
         --window-size="$width,$height" --user-data-dir="$temp_dir/profile" \
         --remote-debugging-port="$debug_port" --remote-allow-origins='*' \
         "$page_url" >"$temp_dir/browser.log" 2>&1 &
@@ -72,6 +74,7 @@ for visual_case in "${cases[@]}"; do
         sleep 0.1
     done
     arguments=(--debug-port "$debug_port" --page-url "$page_url" --width "$width" --height "$height"
+        --scale "$device_scale"
         --reference "$repo_dir/modules/ui/tests/golden/showcase-${case_name}.png"
         --artifact-dir "$repo_dir/build-web/visual-diffs")
     [[ -z "$click" ]] || arguments+=(--click "$click")
