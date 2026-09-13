@@ -266,6 +266,7 @@ public final class NativeKitHostTest {
 
     private static void sendNotificationAction(ActivityScenario<NativeKitTestActivity> scenario,
                                                String action, long request) {
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
         scenario.onActivity(activity -> {
             Intent intent = new Intent(action);
             intent.setComponent(
@@ -273,6 +274,7 @@ public final class NativeKitHostTest {
             intent.putExtra("nativekit.notification.request", request);
             activity.sendBroadcast(intent);
         });
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
     }
 
     private static void awaitColorScheme(ActivityScenario<NativeKitTestActivity> scenario,
