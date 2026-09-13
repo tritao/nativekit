@@ -78,6 +78,7 @@ jobs:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
           target: google_apis
+          ram-size: ${{ matrix.api-level == 36 && '4096M' || '' }}
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: cd android && ./gradlew :sample:connectedDebugAndroidTest :consumer:connectedDebugAndroidTest || { adb logcat -d -t 2000 '*:W'; exit 1; }
