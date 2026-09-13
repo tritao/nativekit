@@ -72,6 +72,11 @@ jobs:
           "platforms;android-${ANDROID_COMPILE_SDK}"
           "ndk;${ANDROID_NDK_VERSION}"
           "cmake;${ANDROID_CMAKE_VERSION}"
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Run emulator instrumentation
         uses: reactivecircus/android-emulator-runner@v2
         with:
