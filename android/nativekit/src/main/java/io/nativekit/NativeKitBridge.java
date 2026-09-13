@@ -23,8 +23,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.Handler;
-import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
@@ -52,7 +50,6 @@ import android.text.Selection;
 import android.text.SpannableStringBuilder;
 import android.view.DragAndDropPermissions;
 import android.view.DragEvent;
-import android.webkit.JavascriptInterface;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -970,20 +967,6 @@ final class NativeKitBridge {
 
         private float logical(float value) {
             return value / getResources().getDisplayMetrics().density;
-        }
-    }
-
-    private static final class NativeKitMessageBridge {
-        private final long handle;
-        private final Handler mainHandler = new Handler(Looper.getMainLooper());
-
-        NativeKitMessageBridge(long handle) {
-            this.handle = handle;
-        }
-
-        @JavascriptInterface
-        public void postMessage(String message) {
-            mainHandler.post(() -> nativeOnMessage(handle, message));
         }
     }
 
@@ -1963,7 +1946,7 @@ final class NativeKitBridge {
         }
     }
 
-    private static native void nativeOnMessage(long handle, @Nullable String json);
+    static native void nativeOnMessage(long handle, @Nullable String json);
     private static native void nativeOnNavigated(long handle, @Nullable String url,
                                                  @Nullable String title);
     private static native void nativeOnEvaluation(long handle, long request,
