@@ -159,6 +159,27 @@ def main():
         )
         state = {}
         while time.monotonic() < deadline:
+            value = websocket.evaluate(expression, 1)
+            state = json.loads(value)
+            if state["result"]:
+                if state["result"] != "0":
+                    raise RuntimeError(f"NativeKit browser smoke test failed: {state}")
+                if (not probe_sent or not pointer_sent or not touch_sent or not resize_sent or
+                        not state["webgl2"] or state["width"] <= 0 or state["height"] <= 0):
+                    raise RuntimeError(f"NativeKit browser canvas is invalid: {state}")
+                time.sleep(0.1)
+                websocket.evaluate("document.documentElement?.dataset.nativekitResult || ''", 11)
+                if websocket.errors:
+                    raise RuntimeError("browser reported errors: " + json.dumps(websocket.errors))
+                print(f"web smoke passed: {state}")
+                return 0
+
+            # Wait for Emscripten's onRuntimeInitialized callback before generating events;
+            # the canvas exists in the shell before NativeKit has installed its event loop.
+            if not state["status"].startswith("Running "):
+                time.sleep(0.1)
+                continue
+
             if not probe_sent:
                 probe_sent = bool(websocket.evaluate(
                     "(()=>{const input=document.getElementById('__nativekit_text_input');"
@@ -203,20 +224,6 @@ def main():
                             7,
                         )
                         touch_sent = True
-            value = websocket.evaluate(expression, 1)
-            state = json.loads(value)
-            if state["result"]:
-                if state["result"] != "0":
-                    raise RuntimeError(f"NativeKit browser smoke test failed: {state}")
-                if (not probe_sent or not pointer_sent or not touch_sent or not resize_sent or
-                        not state["webgl2"] or state["width"] <= 0 or state["height"] <= 0):
-                    raise RuntimeError(f"NativeKit browser canvas is invalid: {state}")
-                time.sleep(0.1)
-                websocket.evaluate("document.documentElement?.dataset.nativekitResult || ''", 11)
-                if websocket.errors:
-                    raise RuntimeError("browser reported errors: " + json.dumps(websocket.errors))
-                print(f"web smoke passed: {state}")
-                return 0
             time.sleep(0.1)
         raise RuntimeError(f"NativeKit browser smoke test timed out: {state}")
     finally:
