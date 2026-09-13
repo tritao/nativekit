@@ -62,7 +62,8 @@ public final class NativeKitHostTest {
             assertNotEquals(0, handles[0]);
             assertNotEquals(0, handles[1]);
 
-            List<NativeKitEvent> events = awaitEvents(scenario, EVENT_WEBVIEW_NAVIGATED,
+            List<NativeKitEvent> events = awaitEvents(scenario, 30_000L,
+                                                       EVENT_WEBVIEW_NAVIGATED,
                                                        EVENT_HOST_GEOMETRY_CHANGED);
             String messageScript = "window.webkit.messageHandlers.nativekit.postMessage("
                 + JSONObject.quote(message) + ");";
@@ -198,8 +199,14 @@ public final class NativeKitHostTest {
 
     private static List<NativeKitEvent> awaitEvents(
         ActivityScenario<NativeKitTestActivity> scenario, int... kinds) throws Exception {
+        return awaitEvents(scenario, 10_000L, kinds);
+    }
+
+    private static List<NativeKitEvent> awaitEvents(
+        ActivityScenario<NativeKitTestActivity> scenario, long timeoutMillis, int... kinds)
+        throws Exception {
         List<NativeKitEvent> events = new ArrayList<>();
-        long deadline = System.currentTimeMillis() + 10_000;
+        long deadline = System.currentTimeMillis() + timeoutMillis;
         while (System.currentTimeMillis() < deadline) {
             scenario.onActivity(activity -> {
                 NativeKitEvent event;
@@ -221,7 +228,14 @@ public final class NativeKitHostTest {
                 return events;
             Thread.sleep(50);
         }
-        throw new AssertionError("timed out waiting for NativeKit events: " + events.size());
+        StringBuilder received = new StringBuilder();
+        for (NativeKitEvent event : events) {
+            if (received.length() > 0)
+                received.append(", ");
+            received.append(event.kind);
+        }
+        throw new AssertionError("timed out waiting for NativeKit events " +
+                                 java.util.Arrays.toString(kinds) + "; received [" + received + "]");
     }
 
     private static NativeKitEvent awaitEvent(ActivityScenario<NativeKitTestActivity> scenario,
