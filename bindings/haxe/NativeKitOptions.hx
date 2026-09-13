@@ -1,9 +1,16 @@
 import NativeKit;
+import NativeKit.InitOptions;
+import NativeKit.NativeKitConstants;
 import NativeKit.MessageKind;
 import NativeKit.MessageButtons;
 import NativeKit.Result;
 import NativeKit.WindowKind;
 import NativeKit.WindowFlags;
+import NativeKit.SurfaceFlags;
+import NativeKit.GraphicsApi;
+import NativeKit.TextInputFlags;
+import NativeKitSurface;
+import NativeKitWindow;
 import NativeKit.DialogFlags;
 import NativeKit.WebviewFlags;
 import NativeKit.ResourceFlags;
@@ -18,6 +25,14 @@ import NativeKit.WindowOptions;
 
 /** Creates correctly sized NativeKit option structures with useful defaults. */
 class NativeKitOptions {
+	public static function init(?eventQueueCapacity:Int):InitOptions {
+		var value = new InitOptions();
+		value.set_struct_size(InitOptions.size());
+		value.set_api_version(NativeKitConstants.NK_API_VERSION);
+		value.set_event_queue_capacity(eventQueueCapacity == null ? 0 : eventQueueCapacity);
+		return value;
+	}
+
 	/** Attaches a managed contiguous filter array and keeps it alive with the options. */
 	public static function filteredFileDialog(filters:Array<DialogFilter>, ?title:String,
 			?initialPath:String, ?suggestedName:String, ?flags:DialogFlags):NativeKitFileDialogOptions {
@@ -37,15 +52,31 @@ class NativeKitOptions {
 	}
 
 	public static function window(width:Int, height:Int, ?title:String, ?flags:WindowFlags,
-			?owner:Int, ?kind:Int):WindowOptions {
+			?owner:NativeKitWindow, ?kind:WindowKind):WindowOptions {
 		var value = new WindowOptions();
 		value.set_struct_size(WindowOptions.size());
 		value.set_width(width);
 		value.set_height(height);
 		value.set_title(title);
 		value.set_flags(flags == null ? WindowFlags.Resizable : flags);
-		value.set_owner(owner == null ? 0 : owner);
+		value.set_owner(owner == null ? 0 : owner.nativeHandle());
 		value.set_kind(kind == null ? WindowKind.Normal : kind);
+		return value;
+	}
+
+	public static function surface(api:GraphicsApi, x:Int, y:Int, width:Int, height:Int,
+			?flags:SurfaceFlags, ?majorVersion:Int, ?minorVersion:Int, ?shareSurface:NativeKitSurface):SurfaceOptions {
+		var value = new SurfaceOptions();
+		value.set_struct_size(SurfaceOptions.size());
+		value.set_flags(flags == null ? 0 : flags);
+		value.set_api(api);
+		value.set_major_version(majorVersion == null ? 0 : majorVersion);
+		value.set_minor_version(minorVersion == null ? 0 : minorVersion);
+		value.set_x(x);
+		value.set_y(y);
+		value.set_width(width);
+		value.set_height(height);
+		value.set_share_surface(shareSurface == null ? 0 : shareSurface.nativeHandle());
 		return value;
 	}
 
@@ -77,7 +108,7 @@ class NativeKitOptions {
 		return value;
 	}
 
-	public static function messageDialog(message:String, ?title:String, ?kind:Int,
+	public static function messageDialog(message:String, ?title:String, ?kind:MessageKind,
 			?buttons:MessageButtons):MessageDialogOptions {
 		var value = new MessageDialogOptions();
 		value.set_struct_size(MessageDialogOptions.size());

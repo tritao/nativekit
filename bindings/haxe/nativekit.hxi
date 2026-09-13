@@ -2419,7 +2419,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * call nk_surface_present() recursively from it. Pass NULL to detach it; the
 	 * `user_data` value is not retained after the callback is removed.
 	 */
-	extern fn nk_surface_set_frame_callback(surface: nk_handle, callback: nk_surface_frame_callback, user_data: ptr<void>) -> nk_result;
+	extern fn nk_surface_set_frame_callback(surface: nk_handle, callback: nk_nullable_surface_frame_callback @retained, user_data: nullable<ptr<void>>) -> nk_result;
 	/**
 	 * Shows or hides the software keyboard for a custom graphics surface.
 	 */
@@ -4314,6 +4314,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Normalized physical or logical keyboard key identifier.
 	 */
 	type nk_key = u32;
+	type nk_nullable_surface_frame_callback = nullable<nk_surface_frame_callback>;
 	/**
 	 * Identifier for one asynchronous operation; it is not a resource handle.
 	 */

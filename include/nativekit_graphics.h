@@ -119,6 +119,7 @@ typedef void(NK_CALL *nk_surface_frame_callback)(nk_handle surface,
                                                  int32_t framebuffer_width,
                                                  int32_t framebuffer_height,
                                                  void *user_data);
+typedef nk_surface_frame_callback NK_NULLABLE nk_nullable_surface_frame_callback;
 
 /** Payload of NK_EVENT_SURFACE_RESIZE. */
 typedef struct nk_surface_resize_event {
@@ -208,7 +209,8 @@ NK_API nk_result NK_CALL nk_surface_present(nk_handle surface);
  * `user_data` value is not retained after the callback is removed.
  */
 NK_API nk_result NK_CALL nk_surface_set_frame_callback(
-    nk_handle surface, nk_surface_frame_callback callback, void *user_data);
+    nk_handle surface, nk_nullable_surface_frame_callback callback NK_RETAINED,
+    void *NK_NULLABLE user_data);
 
 /* ------------------------------------------------------------------------- */
 /* Surface queries                                                           */

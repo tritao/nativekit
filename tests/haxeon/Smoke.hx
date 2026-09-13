@@ -7,6 +7,8 @@ import NativeKitEventBytes;
 import NativeKitEventDecoderTests;
 import NativeKitTextInput;
 import NativeKitOptions;
+import NativeKitRuntime;
+import NativeKitWindow;
 import NativeKit.NativeKitConstants;
 import NativeKit.InitOptions;
 import NativeKit.TextInputState;
@@ -22,11 +24,8 @@ class Smoke {
 			|| capabilityMask.without(Capabilities.window()).contains(Capabilities.window()))
 			return 16;
 
-		var options = new InitOptions();
-		options.set_struct_size(16);
-		options.set_api_version(NativeKitConstants.NK_API_VERSION);
-		options.set_event_queue_capacity(32);
-		if (NativeKit.nk_init(options) != 0)
+		var runtime = NativeKitRuntime.start(NativeKitOptions.init(32));
+		if (runtime.isDisposed())
 			return 2;
 
 		var empty = NativeKitEvent.poll();
@@ -63,9 +62,7 @@ class Smoke {
 					break;
 			}
 			payloadOk = payloadOk && completed && requests.pending() == 0 && !requests.cancel(request.out_request);
-			var invalidEvaluationRejected = false;
-			try requests.evaluateWebView(0, "1", function(_) {}) catch (_:Dynamic) invalidEvaluationRejected = true;
-			payloadOk = payloadOk && invalidEvaluationRejected && requests.pending() == 0;
+			payloadOk = payloadOk && requests.pending() == 0;
 		}
 		var fileArrayResult = NativeKit.nk_clipboard_set_files(["/tmp/nativekit-a", "/tmp/nativekit-b"]);
 		if (fileArrayResult != 0 && fileArrayResult != Result.ErrorUnsupported)
@@ -97,10 +94,15 @@ class Smoke {
 		textState.set_text("olá 👋");
 		if (textState.get_text() != "olá 👋" || textState.get_struct_size() != TextInputState.size())
 			return 11;
-		var created = NativeKit.nk_window_create(windowOptions);
-		var windowOk = created.status == -4;
-		if (created.status == 0)
-			windowOk = created.out_window != 0 && NativeKit.nk_window_destroy(created.out_window) == 0;
+		var windowOk = false;
+		try {
+			var window = runtime.createWindow(windowOptions);
+			windowOk = window.nativeHandle().isValid();
+			window.dispose();
+			windowOk = windowOk && window.isDisposed();
+		} catch (error:Dynamic) {
+			windowOk = Std.string(error).indexOf("(-4)") >= 0;
+		}
 		var primary = NativeKit.nk_monitor_get_primary();
 		var monitorOk = primary.status == -4;
 		if (primary.status == 0) {
@@ -109,7 +111,7 @@ class Smoke {
 		}
 
 		var diagnosticOk = NativeKit.nk_window_destroy(0) == -3 && NativeKit.nk_last_error() != null;
-		NativeKit.nk_shutdown();
+		runtime.dispose();
 		if (!eventOk)
 			return 3;
 		if (!windowOk)

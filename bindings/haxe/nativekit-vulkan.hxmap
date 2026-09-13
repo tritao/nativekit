@@ -1,0 +1,6 @@
+{
+  "interface": "NativeKitVulkan",
+  "typePrefix": "nk_",
+  "functionPrefix": "nk_vulkan_",
+  "functionCase": "camel"
+}

@@ -18,6 +18,7 @@ cleanup() {
 trap cleanup EXIT
 
 HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-hxi.sh" --check
+HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-vulkan-hxi.sh" --check
 
 cmake -S "$repo_dir" -B "$test_root/build" -GNinja \
     -DCMAKE_BUILD_TYPE=Debug -DNK_BUILD_SHARED=ON \
@@ -41,6 +42,8 @@ fi
         --root="$repo_dir/bindings/haxe" \
         --ffi-interface="$repo_dir/bindings/haxe/nativekit.hxi" \
         --ffi-projection="$repo_dir/bindings/haxe/nativekit.hxmap" \
+        --ffi-interface="$repo_dir/bindings/haxe/nativekit-vulkan.hxi" \
+        --ffi-projection="$repo_dir/bindings/haxe/nativekit-vulkan.hxmap" \
         "$repo_dir/tests/haxeon/Smoke.hx" \
         "$repo_dir/bindings/haxe/NativeKitEvent.hx" \
         "$repo_dir/bindings/haxe/NativeKitEventValue.hx" \
@@ -50,7 +53,13 @@ fi
         "$repo_dir/bindings/haxe/NativeKitWindowEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitInputEvents.hx" \
 		"$repo_dir/bindings/haxe/NativeKitTextInput.hx" \
-		"$repo_dir/bindings/haxe/NativeKitOptions.hx" \
+        "$repo_dir/bindings/haxe/NativeKitOptions.hx" \
+        "$repo_dir/bindings/haxe/NativeKitRuntime.hx" \
+        "$repo_dir/bindings/haxe/NativeKitWindow.hx" \
+        "$repo_dir/bindings/haxe/NativeKitSurface.hx" \
+        "$repo_dir/bindings/haxe/NativeKitWebView.hx" \
+        "$repo_dir/bindings/haxe/NativeKitResult.hx" \
+        "$repo_dir/bindings/haxe/NativeKitVulkanExtensions.hx" \
         "$repo_dir/bindings/haxe/NativeKitServiceEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitResourceEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitRequests.hx"

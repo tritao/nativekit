@@ -31,9 +31,6 @@ class NativeKitEvent {
 	/** Polls one event. `None` is represented as an owned empty event. */
 	public static function poll():NativeKitEvent {
 		var event = new Event();
-		var storage:haxe.io.Bytes = event;
-		// Haxeon allocates projected structs without zeroing their ABI storage.
-		for (index in 0...Event.size()) storage.set(index, 0);
 		event.set_struct_size(Event.size());
 		var polled = NativeKit.nk_poll_event(event);
 		if (polled.status != 0)

@@ -4,13 +4,14 @@ import NativeKit.NativeKitConstants;
 import NativeKit.Result;
 import NativeKit.TextInputAction;
 import NativeKit.TextInputType;
+import NativeKitSurface;
 
 /** Builds and submits owned text-input state for custom native surfaces. */
 class NativeKitTextInput {
 	/** Creates a complete IME state. Omitted composition positions mean no active composition. */
 	public static function state(text:String, textStart:Int, documentLength:Int,
 			selectionStart:Int, selectionEnd:Int, ?compositionStart:Int, ?compositionEnd:Int,
-			?inputType:Int, ?flags:Int, ?action:Int, ?cursorX:Float, ?cursorY:Float,
+			?inputType:TextInputType, ?flags:TextInputFlags, ?action:TextInputAction, ?cursorX:Float, ?cursorY:Float,
 			?cursorWidth:Float, ?cursorHeight:Float):TextInputState {
 		var value = new TextInputState();
 		value.set_struct_size(TextInputState.size());
@@ -32,11 +33,11 @@ class NativeKitTextInput {
 	}
 
 	/** Synchronizes the platform IME with the editor's current state. */
-	public static function update(surface:Int, text:String, textStart:Int, documentLength:Int,
+	public static function update(surface:NativeKitSurface, text:String, textStart:Int, documentLength:Int,
 			selectionStart:Int, selectionEnd:Int, ?compositionStart:Int, ?compositionEnd:Int,
-			?inputType:Int, ?flags:Int, ?action:Int, ?cursorX:Float, ?cursorY:Float,
+			?inputType:TextInputType, ?flags:TextInputFlags, ?action:TextInputAction, ?cursorX:Float, ?cursorY:Float,
 			?cursorWidth:Float, ?cursorHeight:Float):Void {
-		var result = NativeKit.nk_surface_set_text_input_state(surface,
+		var result = NativeKit.nk_surface_set_text_input_state(surface.nativeHandle(),
 			state(text, textStart, documentLength, selectionStart, selectionEnd,
 				compositionStart, compositionEnd, inputType, flags, action,
 				cursorX, cursorY, cursorWidth, cursorHeight));
@@ -45,8 +46,8 @@ class NativeKitTextInput {
 	}
 
 	/** Shows or hides the platform text-input UI for a custom surface. */
-	public static function setActive(surface:Int, active:Bool):Void {
-		var result = NativeKit.nk_surface_set_text_input_active(surface, active ? 1 : 0);
+	public static function setActive(surface:NativeKitSurface, active:Bool):Void {
+		var result = NativeKit.nk_surface_set_text_input_active(surface.nativeHandle(), active ? 1 : 0);
 		if (result != Result.Ok)
 			throw 'NativeKit text-input activation failed: $result';
 	}
