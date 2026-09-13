@@ -13,6 +13,8 @@ import NativeKit.NativeKitConstants;
 import NativeKit.InitOptions;
 import NativeKit.TextInputState;
 import NativeKit.Capabilities;
+import NativeKit.NotificationFlags;
+import NativeKitRequestOutcome;
 
 class Smoke {
 	static function main():Int {
@@ -42,26 +44,24 @@ class Smoke {
 			eventOk = false;
 		} catch (_:Dynamic) {}
 		var payloadOk = true;
-		if (NativeKit.nk_clipboard_set_text("nativekit ffi") == 0) {
-			var request = NativeKit.nk_clipboard_read_text();
-			payloadOk = request.status == 0;
+		if (NativeKit.nk_clipboard_set_text("nativekit ffi") == Result.Ok) {
 			var completed = false, requests = new NativeKitRequests();
-			requests.track(request.out_request, function(value) {
-				payloadOk = switch value {
-					case ClipboardText(completedRequest, completedResult, text): completedResult == 0 && text == "nativekit ffi";
+			var request = requests.readClipboardText(function(outcome) {
+				payloadOk = switch outcome {
+					case Success(text): text == "nativekit ffi";
 					case _: false;
 				};
 				completed = true;
 			});
 			var duplicateRejected = false;
-			try requests.track(request.out_request, function(_) {}) catch (_:Dynamic) duplicateRejected = true;
+			try requests.track(request, function(_) {}) catch (_:Dynamic) duplicateRejected = true;
 			payloadOk = payloadOk && duplicateRejected && requests.pending() == 1;
 			for (_ in 0...1000) {
 				requests.poll();
 				if (completed)
 					break;
 			}
-			payloadOk = payloadOk && completed && requests.pending() == 0 && !requests.cancel(request.out_request);
+			payloadOk = payloadOk && completed && requests.pending() == 0 && !requests.cancel(request);
 			payloadOk = payloadOk && requests.pending() == 0;
 		}
 		var fileArrayResult = NativeKit.nk_clipboard_set_files(["/tmp/nativekit-a", "/tmp/nativekit-b"]);
@@ -83,8 +83,12 @@ class Smoke {
 		var share = NativeKitOptions.resourceShare([
 			NativeKitOptions.resource("file:///tmp/nativekit.txt", "text/plain", "nativekit.txt")
 		], "hello");
-		if (share.options.get_resource_count() != 1)
+		if (share.options.get_resource_count() != 1 || share.options.get_flags() != 0)
 			return 13;
+		var notification = NativeKitOptions.notification("NativeKit smoke", null, null, null,
+			NotificationFlags.Silent);
+		if (notification.get_flags() != NotificationFlags.Silent)
+			return 18;
 		if (windowOptions.get_title() != "NativeKit smoke")
 			return 9;
 		windowOptions.set_title(null);
