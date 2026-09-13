@@ -301,6 +301,9 @@ void cancel_navigation_decisions(nk_handle source) {
 }
 
 void cancel_evaluations(nk_handle source) noexcept {
+    std::fprintf(stderr, "cancel evaluations source=%llu count=%zu main=%d\n",
+                 static_cast<unsigned long long>(source), evaluations.size(),
+                 NSThread.isMainThread);
     for (auto item = evaluations.begin(); item != evaluations.end();) {
         if (source && item->second != source) {
             ++item;
@@ -1425,13 +1428,17 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
                 return fail(NK_ERROR_OUT_OF_MEMORY, "could not encode JavaScript source");
             const auto request = nk::core::next_request_id();
             const auto generation = nk::core::runtime_generation();
-            evaluations.emplace(request, handle);
+            const auto inserted = evaluations.emplace(request, handle).second;
+            std::fprintf(stderr, "WebKit evaluation queued %llu inserted=%d count=%zu main=%d\n",
+                         static_cast<unsigned long long>(request), inserted, evaluations.size(),
+                         NSThread.isMainThread);
             [resource->view
                 evaluateJavaScript:wrapped
                  completionHandler:^(id value, NSError *error) {
-                   std::fprintf(stderr, "WebKit evaluation callback %llu error=%s\n",
+                   std::fprintf(stderr, "WebKit evaluation callback %llu error=%s main=%d\n",
                                 static_cast<unsigned long long>(request),
-                                error.localizedDescription.UTF8String ?: "(none)");
+                                error.localizedDescription.UTF8String ?: "(none)",
+                                NSThread.isMainThread);
                    if (!nk::core::is_runtime_generation(generation)) {
                        std::fprintf(stderr, "WebKit evaluation callback has stale generation\n");
                        return;
