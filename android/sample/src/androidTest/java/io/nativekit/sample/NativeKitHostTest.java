@@ -101,7 +101,9 @@ public final class NativeKitHostTest {
             assertTrue(failure.flags >= 0 && failure.flags <= 6);
             assertNotNull(failure.text());
 
-            if (Build.VERSION.SDK_INT >= 26) {
+            // The API 36 emulator kills instrumentation for chrome://crash instead of reporting
+            // renderer loss. Keep this destructive renderer probe on supported older providers.
+            if (Build.VERSION.SDK_INT >= 26 && Build.VERSION.SDK_INT < 36) {
                 long[] crashedWebView = new long[1];
                 scenario.onActivity(activity -> crashedWebView[0] =
                                         activity.host.createWebView(16, 16, "chrome://crash"));
