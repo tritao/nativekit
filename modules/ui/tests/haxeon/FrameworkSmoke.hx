@@ -52,6 +52,8 @@ import nativekit.ui.widgets.TextArea;
 import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.Spacer;
 import nativekit.ui.widgets.Slider;
+import nativekit.ui.widgets.Stack;
+import nativekit.ui.widgets.StackChild;
 import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualList;
@@ -198,6 +200,25 @@ class FrameworkSmoke {
 		var rightTextGeometry:ResolvedLayoutItem = cast spacerRoot.children[2].resolved;
 		if (spacerGeometry.width <= 0.0 || rightTextGeometry.x <= leftTextGeometry.x)
 			return 53;
+		var lowerLayerClicks = 0;
+		var upperLayerClicks = 0;
+		var stack = new Stack("stack-smoke", [
+			new StackChild("lower", new Button("Lower", null,
+				function() { lowerLayerClicks++; }), 20.0, 20.0, 1),
+			new StackChild("upper", new Button("Upper", null,
+				function() { upperLayerClicks++; }), 20.0, 20.0, 5)
+		]);
+		var stackRoot = context.submit(stack, new LayoutFrame(256.0, 192.0));
+		var lowerGeometry:ResolvedLayoutItem = cast stackRoot.children[0].resolved;
+		var upperGeometry:ResolvedLayoutItem = cast stackRoot.children[1].resolved;
+		if (lowerGeometry.x != upperGeometry.x || lowerGeometry.y != upperGeometry.y)
+			return 64;
+		var stackX = upperGeometry.x + 1.0;
+		var stackY = upperGeometry.y + 1.0;
+		context.pointerDown(stackX, stackY, 0);
+		context.pointerUp(stackX, stackY, 0);
+		if (lowerLayerClicks != 0 || upperLayerClicks != 1)
+			return 65;
 		var checkboxChanged = false;
 		var checkbox = new Checkbox("check-smoke", "Remember", false,
 			function(next) { checkboxChanged = next; });
