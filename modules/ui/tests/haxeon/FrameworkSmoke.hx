@@ -51,6 +51,7 @@ import nativekit.ui.widgets.Row;
 import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollController;
 import nativekit.ui.widgets.ScrollView;
+import nativekit.ui.widgets.SizedBox;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TextEditorState;
 import nativekit.ui.widgets.TextArea;
@@ -64,6 +65,12 @@ import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualList;
 import nativekit.ui.theme.Theme;
+import nativekit.ui.gestures.GestureEvent;
+import nativekit.ui.gestures.TapRecognizer;
+import nativekit.ui.gestures.DoubleTapRecognizer;
+import nativekit.ui.gestures.LongPressRecognizer;
+import nativekit.ui.gestures.DragRecognizer;
+import nativekit.ui.widgets.GestureDetector;
 
 class FrameworkSmoke {
 	static function main():Int {
@@ -674,6 +681,50 @@ class FrameworkSmoke {
 		themedRoot = context.submit(themedButton, themedFrame);
 		if (themedRoot.layout.style.background.red != 0.2)
 			return 85;
+
+		var taps = 0;
+		var doubleTaps = 0;
+		var longPresses = 0;
+		var dragStarts = 0;
+		var dragMoves = 0;
+		var dragEnds = 0;
+		var gestures = new GestureDetector("gesture-smoke",
+			new SizedBox("gesture-area", new Text("Drag here"), LayoutAxis.fixed(100.0),
+				LayoutAxis.fixed(60.0)), [
+			new TapRecognizer(function(_:GestureEvent) { taps++; }),
+			new DoubleTapRecognizer(function(_:GestureEvent) { doubleTaps++; }),
+			new LongPressRecognizer(function(_:GestureEvent) { longPresses++; }),
+			new DragRecognizer(6.0,
+				function(_:GestureEvent) { dragStarts++; },
+				function(_:GestureEvent) { dragMoves++; },
+				function(_:GestureEvent) { dragEnds++; })
+		]);
+		var gestureFrame = new LayoutFrame(256.0, 192.0);
+		var gestureRoot = context.submit(gestures, gestureFrame);
+		var gestureGeometry:ResolvedLayoutItem = cast gestureRoot.children[0].resolved;
+		var gestureX = gestureGeometry.x + 10.0;
+		var gestureY = gestureGeometry.y + 10.0;
+		context.pointerDown(gestureX, gestureY, 0);
+		context.pointerUp(gestureX, gestureY, 0);
+		gestureFrame.deltaSeconds = 0.1;
+		gestureRoot = context.submit(gestures, gestureFrame);
+		gestureFrame.deltaSeconds = 0.0;
+		context.pointerDown(gestureX, gestureY, 0);
+		context.pointerUp(gestureX, gestureY, 0);
+		if (taps != 2 || doubleTaps != 1)
+			return 86;
+		context.pointerDown(gestureX, gestureY, 0);
+		gestureFrame.deltaSeconds = 0.6;
+		gestureRoot = context.submit(gestures, gestureFrame);
+		gestureFrame.deltaSeconds = 0.0;
+		context.pointerUp(gestureX, gestureY, 0);
+		if (longPresses != 1 || taps != 2)
+			return 87;
+		context.pointerDown(gestureX, gestureY, 0);
+		context.pointerMove(gestureX + 20.0, gestureY + 10.0);
+		context.pointerUp(gestureX + 20.0, gestureY + 10.0, 0);
+		if (dragStarts != 1 || dragMoves == 0 || dragEnds != 1 || taps != 2)
+			return 88;
 
 		var overlayCanvas = new Canvas();
 		var overlayList = DisplayList.create();

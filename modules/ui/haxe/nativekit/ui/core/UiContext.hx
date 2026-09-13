@@ -15,6 +15,7 @@ import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRequest;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.theme.Theme;
+import nativekit.ui.gestures.GestureArena;
 
 /** Owns the frame-local render tree and the Haxe-side UI subsystems. */
 class UiContext {
@@ -24,6 +25,7 @@ class UiContext {
 	public final buildContext:BuildContext;
 	public final focus:FocusManager;
 	public final events:EventDispatcher;
+	public final gestures:GestureArena;
 	public var root(default, null):Null<RenderNode>;
 	var submittedStateRevision:Int;
 	var disposed:Bool;
@@ -38,7 +40,8 @@ class UiContext {
 		stateStore = new StateStore();
 		clipboard = new ClipboardService();
 		textInput = new TextInputBridge();
-		buildContext = new BuildContext(stateStore, fonts, textInput, clipboard, theme);
+		gestures = new GestureArena();
+		buildContext = new BuildContext(stateStore, fonts, textInput, clipboard, theme, gestures);
 		if (fonts != null)
 			this.session.setFonts(fonts);
 		focus = new FocusManager();
@@ -80,6 +83,7 @@ class UiContext {
 		ensureLive();
 		if (view == null || frame == null)
 			throw "A UI frame requires a view and layout frame";
+		gestures.advance(frame.deltaSeconds);
 		buildContext.beginFrame();
 		var next = buildContext.withScope(new Key("root"), function() return view.build(buildContext));
 		if (next == null || next.parent != null)
@@ -104,6 +108,7 @@ class UiContext {
 			events.focusEvent(previousFocus, UiEventKind.Blur);
 		root = next;
 		events.setRoot(next);
+		gestures.setRoot(next);
 		if (nextFocus != null && (previousFocus == null || !previousFocus.equals(nextFocus)))
 			events.focusEvent(nextFocus, UiEventKind.Focus);
 		submittedStateRevision = resolvedStateRevision;
@@ -242,6 +247,7 @@ class UiContext {
 	public function windowFocusLost():Void {
 		ensureLive();
 		events.cancelPointers();
+		gestures.cancelAll();
 		var previous = focus.focusedId;
 		if (previous != null)
 			events.focusEvent(previous, UiEventKind.FocusLost);
@@ -302,6 +308,7 @@ class UiContext {
 		session.dispose();
 		clipboard.dispose();
 		textInput.dispose();
+		gestures.cancelAll();
 		if (accessibilityBridge != null)
 			accessibilityBridge.dispose();
 		stateStore.dispose();

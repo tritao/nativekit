@@ -3,6 +3,7 @@ package nativekit.ui.core;
 import FontCollection;
 import NativeKitSurface;
 import nativekit.ui.theme.Theme;
+import nativekit.ui.gestures.GestureArena;
 
 /** Frame-local identity scopes backed by a persistent UiContext state store. */
 class BuildContext {
@@ -11,12 +12,13 @@ class BuildContext {
 	public var platformSurface(default, null):Null<NativeKitSurface>;
 	public final textInput:TextInputBridge;
 	public final clipboard:ClipboardService;
+	public final gestures:GestureArena;
 	public var theme(default, null):Theme;
 	final claimed:Map<Int, String>;
 	var scope:KeyScope;
 
 	public function new(stateStore:StateStore, ?fonts:FontCollection, ?textInput:TextInputBridge,
-			?clipboard:ClipboardService, ?theme:Theme) {
+			?clipboard:ClipboardService, ?theme:Theme, ?gestures:GestureArena) {
 		if (stateStore == null)
 			throw "Build context requires a state store";
 		this.stateStore = stateStore;
@@ -24,6 +26,7 @@ class BuildContext {
 		platformSurface = null;
 		this.textInput = textInput == null ? new TextInputBridge() : textInput;
 		this.clipboard = clipboard == null ? new ClipboardService() : clipboard;
+		this.gestures = gestures == null ? new GestureArena() : gestures;
 		this.theme = theme == null ? new Theme() : theme;
 		claimed = new Map();
 		scope = new KeyScope();
