@@ -1,8 +1,8 @@
 #include "nativekit.h"
 #include "nativekit_graphics.h"
 #include "nativekit_window.h"
-#ifdef NKUI_TEST_PUBLIC_SOKOL_RUNTIME
-#include "nativekit_sokol.h"
+#ifdef NKUI_TEST_PUBLIC_GPU_RUNTIME
+#include "nativekit_gpu.h"
 #endif
 
 #include "compositor/compositor.h"
@@ -115,8 +115,8 @@ int main() {
     std::array<uint8_t, 64 * 64 * 4> first_cube_frame{};
     bool captured_cube_frame = false;
     bool prepared_text_update = false;
-#ifdef NKUI_TEST_PUBLIC_SOKOL_RUNTIME
-    nks_renderer public_renderer{};
+#ifdef NKUI_TEST_PUBLIC_GPU_RUNTIME
+    nkgpu_renderer public_renderer{};
 #endif
     nk_graphics_device device{};
     if (nk_surface_make_current(surface) == NK_OK) {
@@ -182,11 +182,11 @@ int main() {
                 nk_surface_get_framebuffer_size(surface, &width, &height) != NK_OK)
                 result = 5;
             else {
-#ifdef NKUI_TEST_PUBLIC_SOKOL_RUNTIME
+#ifdef NKUI_TEST_PUBLIC_GPU_RUNTIME
                 // Exercise the reverse ownership order: the public Sokol
                 // adapter acquires the NativeKit-wide runtime first, then
                 // UI backends retain the same compatible lease.
-                if (nks_renderer_create(surface, &public_renderer) != NKS_OK)
+                if (nkgpu_renderer_create(surface, &public_renderer) != NKGPU_OK)
                     result = 19;
 #endif
                 if (!result && !backend->initialize())
@@ -369,7 +369,7 @@ int main() {
         result = 18;
     shared_backend.reset();
 #ifdef NKUI_TEST_PUBLIC_SOKOL_RUNTIME
-    if (public_renderer.id && nks_renderer_destroy(public_renderer) != NKS_OK)
+    if (public_renderer.id && nkgpu_renderer_destroy(public_renderer) != NKGPU_OK)
         result = 20;
 #endif
     nk_surface_destroy(surface);

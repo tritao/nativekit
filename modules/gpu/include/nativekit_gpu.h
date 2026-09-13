@@ -1,0 +1,685 @@
+#ifndef NATIVEKIT_GPU_H
+#define NATIVEKIT_GPU_H
+
+/* ------------------------------------------------------------------------- */
+/* Dependencies                                                              */
+/* ------------------------------------------------------------------------- */
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "nativekit_graphics.h"
+
+/* ------------------------------------------------------------------------- */
+/* Export visibility                                                         */
+/* ------------------------------------------------------------------------- */
+
+#if defined(_WIN32)
+#define NKGPU_API __declspec(dllexport)
+#else
+#define NKGPU_API __attribute__((visibility("default")))
+#endif
+
+/* ------------------------------------------------------------------------- */
+/* Binding annotations                                                       */
+/* ------------------------------------------------------------------------- */
+
+#if defined(__clang__)
+#define NKGPU_OUT __attribute__((annotate("hxi:out")))
+#define NKGPU_UTF8 __attribute__((annotate("hxi:utf8")))
+#define NKGPU_RETURNS_BORROWED_UTF8 __attribute__((annotate("hxi:returns_borrowed_utf8")))
+#define NKGPU_HANDLE_ANNOTATION __attribute__((annotate("hxi:handle")))
+#else
+#define NKGPU_OUT
+#define NKGPU_UTF8
+#define NKGPU_RETURNS_BORROWED_UTF8
+#define NKGPU_HANDLE_ANNOTATION
+#endif
+
+/* ------------------------------------------------------------------------- */
+/* C linkage                                                                 */
+/* ------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * NativeKit's GPU adapter for rendering through a NativeKit OpenGL or GLES3
+ * surface. A normal build includes the configured graphics backend; desktop
+ * Linux builds with NK_BUILD_GPU_BACKEND_MATRIX include both GLCore and
+ * GLES3 runtimes and dispatch according to each surface's graphics API.
+ *
+ * Create a NativeKit window and surface first, then create a GPU renderer
+ * for that surface. Renderer handles may coexist when their surfaces use a
+ * compatible graphics device/share group; calls and frames are serialized on
+ * the graphics thread, with at most one active frame at a time. Resources
+ * belong to the renderer that created them. Each window frame must be enclosed
+ * by nkgpu_begin_frame() and nkgpu_end_frame(). The selected runtime backend is
+ * derived from the surface's graphics API, not from a global build-time choice
+ * when the backend matrix is enabled.
+ *
+ * Functions return NKGPU_OK on success. On failure, call nkgpu_last_error()
+ * immediately for a diagnostic string. Handles are value types; do not free,
+ * modify, or compare their internal id fields as pointers.
+ */
+
+/* ------------------------------------------------------------------------- */
+/* Handles and core types                                                    */
+/* ------------------------------------------------------------------------- */
+
+/** Source-compatible alias for a NativeKit window or surface handle. */
+typedef nk_handle nkgpu_nativekit_handle;
+
+/** Result returned by a GPU adapter operation; zero is success. */
+typedef int32_t nkgpu_result;
+#ifdef __cplusplus
+#define NKGPU_HANDLE(name)                                                                           \
+    typedef struct name {                                                                          \
+        /** Opaque generation-checked handle value owned by the GPU backend. */                    \
+        uint32_t id;                                                                               \
+        operator uint32_t() const {                                                                \
+            return id;                                                                             \
+        }                                                                                          \
+        name &operator=(uint32_t value) {                                                          \
+            id = value;                                                                            \
+            return *this;                                                                          \
+        }                                                                                          \
+    } name NKGPU_HANDLE_ANNOTATION
+#else
+#define NKGPU_HANDLE(name)                                                                           \
+    typedef struct name {                                                                          \
+        /** Opaque generation-checked handle value owned by the GPU backend. */                    \
+        uint32_t id;                                                                               \
+    } name NKGPU_HANDLE_ANNOTATION
+#endif
+/** Renderer handle returned by nkgpu_renderer_create(). It owns the adapter resources created with
+ * it. */
+NKGPU_HANDLE(nkgpu_renderer);
+/** Buffer handle returned by nkgpu_buffer_create() or nkgpu_buffer_end(). */
+NKGPU_HANDLE(nkgpu_buffer);
+/** Shader handle returned by nkgpu_shader_create() or nkgpu_shader_end(). */
+NKGPU_HANDLE(nkgpu_shader);
+/** Pipeline handle returned by nkgpu_pipeline_end(). */
+NKGPU_HANDLE(nkgpu_pipeline);
+/** Temporary builder handle returned by nkgpu_buffer_begin_kind(). */
+NKGPU_HANDLE(nkgpu_buffer_builder);
+/** Temporary builder handle returned by nkgpu_shader_begin(). */
+NKGPU_HANDLE(nkgpu_shader_builder);
+/** Temporary builder handle returned by nkgpu_pipeline_begin(). */
+NKGPU_HANDLE(nkgpu_pipeline_builder);
+/** Temporary builder handle returned by nkgpu_uniforms_begin(). */
+NKGPU_HANDLE(nkgpu_uniform_builder);
+/** Image handle returned by nkgpu_image_end(). */
+NKGPU_HANDLE(nkgpu_image);
+/** Temporary builder handle returned by nkgpu_image_begin(). */
+NKGPU_HANDLE(nkgpu_image_builder);
+/** Sampler handle returned by nkgpu_sampler_create(). */
+NKGPU_HANDLE(nkgpu_sampler);
+/** Offscreen render target owned by a renderer. */
+NKGPU_HANDLE(nkgpu_render_target);
+#undef NKGPU_HANDLE
+#undef NKGPU_HANDLE_ANNOTATION
+
+/* ------------------------------------------------------------------------- */
+/* Result codes                                                              */
+/* ------------------------------------------------------------------------- */
+
+enum {
+    /** The operation completed successfully. */
+    NKGPU_OK = 0,
+    /** An unexpected NativeKit or graphics backend failure occurred. */
+    NKGPU_ERROR_UNKNOWN = -1,
+    /** An argument was null, zero, out of range, or otherwise invalid. */
+    NKGPU_ERROR_INVALID_ARGUMENT = -2,
+    /** A handle is stale, invalid, or belongs to a different renderer. */
+    NKGPU_ERROR_INVALID_HANDLE = -3,
+    /** The operation is not valid in the current renderer or frame state. */
+    NKGPU_ERROR_WRONG_STATE = -4,
+};
+
+/** Backend selected when the GPU module was built. */
+typedef uint32_t nkgpu_backend;
+enum {
+    /** Desktop OpenGL core runtime. */
+    NKGPU_BACKEND_GLCORE = 1,
+    /** OpenGL ES 3 runtime. */
+    NKGPU_BACKEND_GLES3 = 2,
+};
+
+/* ------------------------------------------------------------------------- */
+/* Graphics and command types                                                */
+/* ------------------------------------------------------------------------- */
+
+/** Vertex attribute data format used by nkgpu_pipeline_attribute(). */
+typedef uint32_t nkgpu_vertex_format;
+
+enum {
+    /** A single 32-bit floating-point vertex component. */
+    NKGPU_VERTEXFORMAT_FLOAT = 1,
+    /** Two 32-bit floating-point vertex components. */
+    NKGPU_VERTEXFORMAT_FLOAT2 = 2,
+    /** Three 32-bit floating-point vertex components. */
+    NKGPU_VERTEXFORMAT_FLOAT3 = 3,
+    /** Four 32-bit floating-point vertex components. */
+    NKGPU_VERTEXFORMAT_FLOAT4 = 4,
+};
+
+/** The intended use of a buffer created by nkgpu_buffer_begin_kind(). */
+typedef uint32_t nkgpu_buffer_usage;
+
+enum {
+    /** Use the buffer as vertex data. */
+    NKGPU_BUFFER_VERTEX = 1,
+    /** Use the buffer as index data. */
+    NKGPU_BUFFER_INDEX = 2,
+};
+
+/** How an applied index buffer is interpreted by the pipeline. */
+typedef uint32_t nkgpu_index_type;
+
+enum {
+    /** Do not use indexed drawing for the pipeline. */
+    NKGPU_INDEXTYPE_NONE = 0,
+    /** Interpret index elements as unsigned 16-bit values. */
+    NKGPU_INDEXTYPE_UINT16 = 1,
+    /** Interpret index elements as unsigned 32-bit values. */
+    NKGPU_INDEXTYPE_UINT32 = 2,
+};
+
+/** Shader stage associated with a uniform block or texture binding. */
+typedef uint32_t nkgpu_shader_stage;
+
+enum {
+    /** The vertex shader stage. */
+    NKGPU_SHADERSTAGE_VERTEX = 1,
+    /** The fragment shader stage. */
+    NKGPU_SHADERSTAGE_FRAGMENT = 2,
+};
+
+/** Data type used to describe a shader uniform member. */
+typedef uint32_t nkgpu_uniform_type;
+
+enum {
+    /** One floating-point value. */
+    NKGPU_UNIFORMTYPE_FLOAT = 1,
+    /** Two floating-point values. */
+    NKGPU_UNIFORMTYPE_FLOAT2 = 2,
+    /** Three floating-point values. */
+    NKGPU_UNIFORMTYPE_FLOAT3 = 3,
+    /** Four floating-point values. */
+    NKGPU_UNIFORMTYPE_FLOAT4 = 4,
+    /** One integer value. */
+    NKGPU_UNIFORMTYPE_INT = 5,
+    /** Two integer values. */
+    NKGPU_UNIFORMTYPE_INT2 = 6,
+    /** Three integer values. */
+    NKGPU_UNIFORMTYPE_INT3 = 7,
+    /** Four integer values. */
+    NKGPU_UNIFORMTYPE_INT4 = 8,
+    /** A 4-by-4 matrix of floating-point values. */
+    NKGPU_UNIFORMTYPE_MAT4 = 9,
+};
+
+/** Texture minification or magnification filter. */
+typedef uint32_t nkgpu_filter;
+
+enum {
+    /** Choose the nearest texel when sampling. */
+    NKGPU_FILTER_NEAREST = 1,
+    /** Interpolate neighboring texels when sampling. */
+    NKGPU_FILTER_LINEAR = 2,
+};
+
+/** Texture-coordinate behavior outside the [0, 1] range. */
+typedef uint32_t nkgpu_wrap;
+
+enum {
+    /** Repeat the texture at integer coordinate boundaries. */
+    NKGPU_WRAP_REPEAT = 1,
+    /** Clamp texture coordinates to the edge texels. */
+    NKGPU_WRAP_CLAMP_TO_EDGE = 2,
+};
+
+/** Opcode stored in the first word of a packed command record. */
+typedef uint32_t nkgpu_command;
+
+enum {
+    /** Apply a pipeline; payload: one nkgpu_pipeline handle. */
+    NKGPU_COMMAND_APPLY_PIPELINE = 1,
+    /** Apply a vertex buffer; payload: slot, buffer handle, and byte offset. */
+    NKGPU_COMMAND_APPLY_VERTEX_BUFFER = 2,
+    /** Apply an index buffer; payload: buffer handle and byte offset. */
+    NKGPU_COMMAND_APPLY_INDEX_BUFFER = 3,
+    /** Apply an image; payload: view slot and image handle. */
+    NKGPU_COMMAND_APPLY_IMAGE = 4,
+    /** Apply a sampler; payload: sampler slot and sampler handle. */
+    NKGPU_COMMAND_APPLY_SAMPLER = 5,
+    /** Apply uniform bytes; payload: block slot, byte count, and uniform bytes. */
+    NKGPU_COMMAND_APPLY_UNIFORMS = 6,
+    /** Draw primitives; payload: base element, element count, and instance count. */
+    NKGPU_COMMAND_DRAW = 7,
+};
+
+/* ------------------------------------------------------------------------- */
+/* Diagnostics                                                               */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Returns the most recent adapter diagnostic.
+ *
+ * The returned UTF-8 string is borrowed and is overwritten by a later failed
+ * call. It remains owned by the adapter; do not free it. Call this immediately
+ * after any operation that does not return NKGPU_OK.
+ */
+NKGPU_API const char *nkgpu_last_error(void) NKGPU_RETURNS_BORROWED_UTF8;
+
+/** Returns the backend selected for this renderer's NativeKit surface. */
+NKGPU_API nkgpu_backend nkgpu_query_backend(nkgpu_renderer renderer);
+
+/** Returns the NativeKit graphics API selected for this renderer's surface. */
+NKGPU_API nk_graphics_api nkgpu_query_graphics_api(nkgpu_renderer renderer);
+
+/* ------------------------------------------------------------------------- */
+/* Surface and renderer lifecycle                                            */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Creates a surface for the selected graphics backend associated with a
+ * NativeKit window.
+ *
+ * `nativekit_window` must be a valid NativeKit window handle, and `width` and
+ * `height` must be positive. The current adapter requests the configured
+ * OpenGL or GLES3 surface. On NKGPU_OK, writes the NativeKit surface handle to
+ * `out_surface`; destroy it with nkgpu_surface_destroy() after destroying its
+ * renderer. This convenience call requests the build's default API.
+ */
+NKGPU_API nkgpu_result nkgpu_surface_create(nk_handle nativekit_window, int32_t width, int32_t height,
+                                      nk_handle *out_surface NKGPU_OUT);
+
+/**
+ * Creates a child surface with an explicit graphics API. The matching runtime
+ * must be included in this build; with the backend matrix enabled, GLCore and
+ * GLES3 surfaces can coexist.
+ */
+NKGPU_API nkgpu_result nkgpu_surface_create_for_api(nk_handle nativekit_window, nk_graphics_api api,
+                                              int32_t width, int32_t height,
+                                              nk_handle *out_surface NKGPU_OUT);
+
+/**
+ * Requests a new size for a GPU surface.
+ *
+ * `width` and `height` are the surface's logical dimensions and must be
+ * positive. The framebuffer may have a different pixel size; begin each frame
+ * with nkgpu_begin_frame() so the adapter can query the current framebuffer.
+ */
+NKGPU_API nkgpu_result nkgpu_surface_resize(nk_handle surface, int32_t width, int32_t height);
+
+/**
+ * Destroys a GPU surface.
+ *
+ * Destroy the renderer first. The surface handle becomes invalid after this
+ * call and must not be reused.
+ */
+NKGPU_API nkgpu_result nkgpu_surface_destroy(nk_handle surface);
+
+/**
+ * Creates the GPU renderer for a ready NativeKit surface.
+ *
+ * Multiple renderer handles may coexist for compatible graphics devices.
+ * Calls are serialized on the graphics thread, and only one renderer may have
+ * an active frame at a time. On NKGPU_OK, writes a renderer handle to
+ * `out_renderer`; all buffers, shaders, pipelines, images, samplers, and
+ * builders created through it belong to that renderer.
+ */
+NKGPU_API nkgpu_result nkgpu_renderer_create(nk_handle nativekit_surface,
+                                       nkgpu_renderer *out_renderer NKGPU_OUT);
+
+/**
+ * Destroys a renderer and all resources still owned by it.
+ *
+ * The renderer must not have an active frame. This also releases unfinished
+ * builders, so retain a resource handle only while its renderer is alive.
+ */
+NKGPU_API nkgpu_result nkgpu_renderer_destroy(nkgpu_renderer renderer);
+
+/** Creates a sampled RGBA8 offscreen target, optionally with depth/stencil storage. */
+NKGPU_API nkgpu_result nkgpu_render_target_create(nkgpu_renderer renderer, uint32_t width, uint32_t height,
+                                            uint32_t depth_stencil,
+                                            nkgpu_render_target *out_target NKGPU_OUT);
+
+/** Returns a borrowed generic image handle for the target's sampled color attachment. */
+NKGPU_API nkgpu_result nkgpu_render_target_get_image(nkgpu_renderer renderer, nkgpu_render_target target,
+                                               nk_graphics_image *out_image NKGPU_OUT);
+
+/** Destroys a render target; imported image references remain valid until released. */
+NKGPU_API nkgpu_result nkgpu_render_target_destroy(nkgpu_renderer renderer, nkgpu_render_target target);
+
+/** Begins drawing to an offscreen target without clearing or presenting the window surface. */
+NKGPU_API nkgpu_result nkgpu_begin_render_target(nkgpu_renderer renderer, nkgpu_render_target target,
+                                           uint32_t clear);
+
+/** Ends and commits the offscreen target pass without presenting the window surface. */
+NKGPU_API nkgpu_result nkgpu_end_render_target(nkgpu_renderer renderer);
+
+/* ------------------------------------------------------------------------- */
+/* Buffer APIs                                                               */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Creates a GPU buffer from an existing byte array.
+ *
+ * The adapter copies `size` bytes from `data`. Both must be non-null and
+ * non-zero. Use nkgpu_buffer_begin_kind() when the buffer must be explicitly
+ * marked as a vertex or index buffer. On NKGPU_OK, writes the new handle to
+ * `out_buffer`.
+ */
+NKGPU_API nkgpu_result nkgpu_buffer_create(nkgpu_renderer renderer, const uint8_t *data, uint32_t size,
+                                     nkgpu_buffer *out_buffer NKGPU_OUT);
+
+/**
+ * Starts building a zero-initialized vertex buffer of `size` bytes.
+ *
+ * This is shorthand for nkgpu_buffer_begin_kind() with NKGPU_BUFFER_VERTEX. Fill
+ * the builder with nkgpu_buffer_write_f32() or nkgpu_buffer_write_u16(), then call
+ * nkgpu_buffer_end(), which consumes the builder and creates the GPU buffer.
+ */
+NKGPU_API nkgpu_result nkgpu_buffer_begin(nkgpu_renderer renderer, uint32_t size,
+                                    nkgpu_buffer_builder *out_builder NKGPU_OUT);
+
+/**
+ * Starts building a zero-initialized vertex or index buffer.
+ *
+ * `usage` must be NKGPU_BUFFER_VERTEX or NKGPU_BUFFER_INDEX. The returned builder
+ * owns a temporary `size`-byte array until nkgpu_buffer_end() or renderer
+ * destruction. On NKGPU_OK, writes the builder handle to `out_builder`.
+ */
+NKGPU_API nkgpu_result nkgpu_buffer_begin_kind(nkgpu_renderer renderer, uint32_t size,
+                                         nkgpu_buffer_usage usage,
+                                         nkgpu_buffer_builder *out_builder NKGPU_OUT);
+
+/**
+ * Writes one 32-bit floating-point value at a byte offset in a buffer builder.
+ *
+ * The four-byte write must fit within the builder's allocated range. The
+ * offset is relative to the beginning of the buffer and is not adjusted for
+ * vertex layout or alignment.
+ */
+NKGPU_API nkgpu_result nkgpu_buffer_write_f32(nkgpu_buffer_builder builder, uint32_t offset, float value);
+
+/**
+ * Writes one unsigned 16-bit value at a byte offset in a buffer builder.
+ *
+ * `value` must be at most 65535, and the two-byte write must fit within the
+ * builder's allocated range. The value is passed as uint32_t so bindings can
+ * use one common integer type for pixel and buffer writes.
+ */
+NKGPU_API nkgpu_result nkgpu_buffer_write_u16(nkgpu_buffer_builder builder, uint32_t offset,
+                                        uint32_t value);
+
+/**
+ * Uploads a completed buffer and consumes its builder.
+ *
+ * On NKGPU_OK, writes the GPU buffer handle to `out_buffer`. The builder is no
+ * longer valid after this call, including when GPU creation reports an error.
+ */
+NKGPU_API nkgpu_result nkgpu_buffer_end(nkgpu_buffer_builder builder, nkgpu_buffer *out_buffer NKGPU_OUT);
+
+/** Destroys a buffer owned by `renderer`; the handle becomes invalid. */
+NKGPU_API nkgpu_result nkgpu_buffer_destroy(nkgpu_renderer renderer, nkgpu_buffer buffer);
+
+/* ------------------------------------------------------------------------- */
+/* Shader APIs                                                               */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Creates a shader from NUL-terminated vertex and fragment shader source.
+ *
+ * The source strings are UTF-8 GLSL for the configured OpenGL or GLES3
+ * backend. Both stages are required. On NKGPU_OK, writes the shader handle to
+ * `out_shader`.
+ */
+NKGPU_API nkgpu_result nkgpu_shader_create(nkgpu_renderer renderer, const char *vertex_source NKGPU_UTF8,
+                                     const char *fragment_source NKGPU_UTF8,
+                                     nkgpu_shader *out_shader NKGPU_OUT);
+
+/** Destroys a shader owned by `renderer`; the handle becomes invalid. */
+NKGPU_API nkgpu_result nkgpu_shader_destroy(nkgpu_renderer renderer, nkgpu_shader shader);
+
+/**
+ * Starts building a shader with UTF-8 vertex and fragment source strings.
+ *
+ * Unlike nkgpu_shader_create(), this lets you describe uniform blocks, members,
+ * and texture bindings before nkgpu_shader_end() creates the shader. The source
+ * strings are copied, so they may be released after this call succeeds.
+ */
+NKGPU_API nkgpu_result nkgpu_shader_begin(nkgpu_renderer renderer, const char *vertex_source NKGPU_UTF8,
+                                    const char *fragment_source NKGPU_UTF8,
+                                    nkgpu_shader_builder *out_builder NKGPU_OUT);
+
+/**
+ * Describes one shader uniform block in a shader builder.
+ *
+ * `slot` is the block binding slot, `stage` selects the vertex or fragment
+ * shader, and `size` is the block's byte size. The uniform data later supplied
+ * to nkgpu_apply_uniforms() must use the same layout and size.
+ */
+NKGPU_API nkgpu_result nkgpu_shader_uniform_block(nkgpu_shader_builder builder, uint32_t slot,
+                                            nkgpu_shader_stage stage, uint32_t size);
+
+/**
+ * Describes one member of a shader uniform block.
+ *
+ * `name` is the UTF-8 GLSL uniform member name. `array_count` describes an
+ * array and zero is treated as one element. The member's byte layout still
+ * follows the shader backend's uniform packing rules.
+ */
+NKGPU_API nkgpu_result nkgpu_shader_uniform(nkgpu_shader_builder builder, uint32_t block_slot,
+                                      uint32_t member_index, const char *name NKGPU_UTF8,
+                                      nkgpu_uniform_type type, uint32_t array_count);
+
+/**
+ * Describes a 2D filtering texture binding in a shader builder.
+ *
+ * `view_slot` and `sampler_slot` are the slots used later by nkgpu_apply_image()
+ * and nkgpu_apply_sampler(). `name` is the UTF-8 GLSL combined texture/sampler
+ * name, and `stage` selects the vertex or fragment shader.
+ */
+NKGPU_API nkgpu_result nkgpu_shader_texture(nkgpu_shader_builder builder, uint32_t view_slot,
+                                      uint32_t sampler_slot, nkgpu_shader_stage stage,
+                                      const char *name NKGPU_UTF8);
+
+/**
+ * Creates a shader from a shader builder and consumes the builder.
+ *
+ * On NKGPU_OK, writes the shader handle to `out_shader`. The builder is no
+ * longer valid after this call, including when shader creation fails.
+ */
+NKGPU_API nkgpu_result nkgpu_shader_end(nkgpu_shader_builder builder, nkgpu_shader *out_shader NKGPU_OUT);
+
+/* ------------------------------------------------------------------------- */
+/* Pipeline APIs                                                             */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Starts building a pipeline for a shader.
+ *
+ * `stride` is the byte distance between vertices in vertex buffer slot zero.
+ * The shader must belong to `renderer`. Add vertex attributes and, when
+ * needed, an index type before calling nkgpu_pipeline_end().
+ */
+NKGPU_API nkgpu_result nkgpu_pipeline_begin(nkgpu_renderer renderer, nkgpu_shader shader, uint32_t stride,
+                                      nkgpu_pipeline_builder *out_builder NKGPU_OUT);
+
+/**
+ * Configures one vertex attribute in a pipeline builder.
+ *
+ * `location` is the shader attribute location, `buffer_index` selects the
+ * vertex buffer slot, and `offset` is the attribute's byte offset within one
+ * vertex. Call this once for each attribute consumed by the shader.
+ */
+NKGPU_API nkgpu_result nkgpu_pipeline_attribute(nkgpu_pipeline_builder builder, uint32_t location,
+                                          uint32_t buffer_index, uint32_t offset,
+                                          nkgpu_vertex_format format);
+
+/**
+ * Configures depth/stencil compatibility for a pipeline. Disabled by default,
+ * matching window passes; enable only when drawing to a target created with
+ * depth/stencil storage.
+ */
+NKGPU_API nkgpu_result nkgpu_pipeline_depth_stencil(nkgpu_pipeline_builder builder, uint32_t enabled);
+
+/**
+ * Selects how the pipeline interprets an applied index buffer.
+ *
+ * Use NKGPU_INDEXTYPE_NONE for non-indexed drawing, or select the element width
+ * used by the buffer passed to nkgpu_apply_index_buffer().
+ */
+NKGPU_API nkgpu_result nkgpu_pipeline_index_type(nkgpu_pipeline_builder builder, nkgpu_index_type type);
+
+/**
+ * Creates a pipeline from a pipeline builder and consumes the builder.
+ *
+ * On NKGPU_OK, writes the pipeline handle to `out_pipeline`. The builder is no
+ * longer valid after this call, including when pipeline creation fails.
+ */
+NKGPU_API nkgpu_result nkgpu_pipeline_end(nkgpu_pipeline_builder builder,
+                                    nkgpu_pipeline *out_pipeline NKGPU_OUT);
+
+/** Destroys a pipeline owned by `renderer`; the handle becomes invalid. */
+NKGPU_API nkgpu_result nkgpu_pipeline_destroy(nkgpu_renderer renderer, nkgpu_pipeline pipeline);
+
+/* ------------------------------------------------------------------------- */
+/* Frame and resource APIs                                                   */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Begins a frame for a renderer.
+ *
+ * This makes the renderer's surface current, refreshes its framebuffer size,
+ * clears the frame, and resets resource bindings. Only one renderer may have
+ * an active frame. Pair every successful call with nkgpu_end_frame(), and use
+ * the apply and draw functions only between those calls.
+ */
+NKGPU_API nkgpu_result nkgpu_begin_frame(nkgpu_renderer renderer);
+
+/** Applies a pipeline to the currently active frame. */
+NKGPU_API nkgpu_result nkgpu_apply_pipeline(nkgpu_renderer renderer, nkgpu_pipeline pipeline);
+
+/**
+ * Binds a vertex buffer to a slot in the currently active frame.
+ *
+ * `offset` is a byte offset into the buffer. The slot must match the buffer
+ * index configured with nkgpu_pipeline_attribute().
+ */
+NKGPU_API nkgpu_result nkgpu_apply_vertex_buffer(nkgpu_renderer renderer, uint32_t slot, nkgpu_buffer buffer,
+                                           uint32_t offset);
+
+/** Binds an index buffer and byte offset to the currently active frame. */
+NKGPU_API nkgpu_result nkgpu_apply_index_buffer(nkgpu_renderer renderer, nkgpu_buffer buffer,
+                                          uint32_t offset);
+
+/**
+ * Starts a zero-initialized uniform byte block of `size` bytes.
+ *
+ * Fill it with nkgpu_uniforms_write_f32(), then pass it to
+ * nkgpu_apply_uniforms(), which consumes the builder. The bytes must match the
+ * uniform block layout declared for the shader.
+ */
+NKGPU_API nkgpu_result nkgpu_uniforms_begin(nkgpu_renderer renderer, uint32_t size,
+                                      nkgpu_uniform_builder *out_builder NKGPU_OUT);
+
+/** Writes one 32-bit floating-point uniform value at a byte offset. */
+NKGPU_API nkgpu_result nkgpu_uniforms_write_f32(nkgpu_uniform_builder builder, uint32_t offset,
+                                          float value);
+
+/**
+ * Applies a uniform builder to a block slot in the active frame.
+ *
+ * `slot` must be the block slot described with nkgpu_shader_uniform_block(). On
+ * success, the builder's bytes have been submitted and the builder is
+ * consumed; do not use it again.
+ */
+NKGPU_API nkgpu_result nkgpu_apply_uniforms(nkgpu_renderer renderer, uint32_t slot,
+                                      nkgpu_uniform_builder builder);
+
+/** Starts building a zero-initialized RGBA8 image of the requested size. */
+NKGPU_API nkgpu_result nkgpu_image_begin(nkgpu_renderer renderer, uint32_t width, uint32_t height,
+                                   nkgpu_image_builder *out_builder NKGPU_OUT);
+
+/**
+ * Writes one RGBA8 pixel into an image builder.
+ *
+ * `x` and `y` are zero-based pixel coordinates. Each color component must be
+ * in the inclusive range 0..255.
+ */
+NKGPU_API nkgpu_result nkgpu_image_write_rgba8(nkgpu_image_builder builder, uint32_t x, uint32_t y,
+                                         uint32_t red, uint32_t green, uint32_t blue,
+                                         uint32_t alpha);
+
+/**
+ * Uploads an image and creates its texture view, consuming the builder.
+ *
+ * On NKGPU_OK, writes the image handle to `out_image`. The image can then be
+ * bound with nkgpu_apply_image().
+ */
+NKGPU_API nkgpu_result nkgpu_image_end(nkgpu_image_builder builder, nkgpu_image *out_image NKGPU_OUT);
+
+/** Destroys an image and its texture view; the handle becomes invalid. */
+NKGPU_API nkgpu_result nkgpu_image_destroy(nkgpu_renderer renderer, nkgpu_image image);
+
+/**
+ * Creates a texture sampler with independent minification and magnification
+ * filters and U/V wrap modes.
+ *
+ * On NKGPU_OK, writes the sampler handle to `out_sampler`; bind it with
+ * nkgpu_apply_sampler().
+ */
+NKGPU_API nkgpu_result nkgpu_sampler_create(nkgpu_renderer renderer, nkgpu_filter min_filter,
+                                      nkgpu_filter mag_filter, nkgpu_wrap wrap_u, nkgpu_wrap wrap_v,
+                                      nkgpu_sampler *out_sampler NKGPU_OUT);
+
+/** Destroys a sampler owned by `renderer`; the handle becomes invalid. */
+NKGPU_API nkgpu_result nkgpu_sampler_destroy(nkgpu_renderer renderer, nkgpu_sampler sampler);
+
+/** Binds an image view to a slot in the currently active frame. */
+NKGPU_API nkgpu_result nkgpu_apply_image(nkgpu_renderer renderer, uint32_t slot, nkgpu_image image);
+
+/** Binds a sampler to a slot in the currently active frame. */
+NKGPU_API nkgpu_result nkgpu_apply_sampler(nkgpu_renderer renderer, uint32_t slot, nkgpu_sampler sampler);
+
+/**
+ * Draws `element_count` elements for `instance_count` instances.
+ *
+ * A pipeline and the buffers required by it must already be applied in the
+ * active frame. `base_element` is the first vertex or index to draw. The
+ * binding state is submitted when this function is called.
+ */
+NKGPU_API nkgpu_result nkgpu_draw(nkgpu_renderer renderer, uint32_t base_element, uint32_t element_count,
+                            uint32_t instance_count);
+
+/**
+ * Submits a packed little-endian command stream in the active frame.
+ *
+ * Each record starts with two little-endian uint32 values: an opcode and the
+ * record's total byte size, including its 8-byte header. The payload layouts
+ * are documented by the NKGPU_COMMAND_* constants. A uniform record contains
+ * slot, byte count, and that many uniform bytes. The stream must contain whole
+ * records with no trailing bytes; submission stops at the first invalid record.
+ */
+NKGPU_API nkgpu_result nkgpu_submit_commands(nkgpu_renderer renderer, const uint8_t *commands,
+                                       uint32_t size);
+
+/**
+ * Ends the active frame, commits its GPU commands, and presents the surface.
+ *
+ * This must be called after a successful nkgpu_begin_frame(). The renderer is
+ * ready for another frame only after this call succeeds.
+ */
+NKGPU_API nkgpu_result nkgpu_end_frame(nkgpu_renderer renderer);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

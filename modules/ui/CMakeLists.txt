@@ -75,13 +75,13 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
 elseif(APPLE)
     target_link_libraries(nativekit_ui PRIVATE "-framework CoreText" "-framework CoreFoundation")
 endif()
-if(NK_BUILD_SOKOL_BACKEND_MATRIX)
+if(NK_BUILD_GPU_BACKEND_MATRIX)
     target_link_libraries(nativekit_ui PRIVATE
         nativekit_sokol_runtime_glcore nativekit_sokol_runtime_gles3)
     target_compile_definitions(nativekit_ui PRIVATE NKUI_SOKOL_RUNTIME_MATRIX=1)
 endif()
-target_compile_definitions(nativekit_ui PUBLIC ${NK_SOKOL_COMPILE_DEFINITION}
-    PRIVATE NKUI_BUILDING_LIBRARY)
+target_compile_definitions(nativekit_ui PRIVATE ${NK_SOKOL_COMPILE_DEFINITION}
+    NKUI_BUILDING_LIBRARY)
 set_target_properties(nativekit_ui PROPERTIES
     EXPORT_NAME ui
     CXX_VISIBILITY_PRESET hidden
@@ -239,19 +239,19 @@ if(NK_BUILD_TESTS)
             ${NK_SOKOL_GRAPHICS_LIBRARIES})
         target_compile_definitions(nativekit_ui_sokol_backend_smoke_test PRIVATE
             ${NK_SOKOL_COMPILE_DEFINITION})
-        if(TARGET NativeKit::sokol)
+        if(TARGET NativeKit::gpu)
             target_compile_definitions(nativekit_ui_sokol_backend_smoke_test PRIVATE
-                NKUI_TEST_PUBLIC_SOKOL_RUNTIME)
+                NKUI_TEST_PUBLIC_GPU_RUNTIME)
             target_link_libraries(nativekit_ui_sokol_backend_smoke_test PRIVATE
-                NativeKit::sokol)
+                NativeKit::gpu)
         endif()
-        if(TARGET NativeKit::sokol)
+        if(TARGET NativeKit::gpu)
             add_executable(nativekit_ui_public_renderer_smoke_test
                 tests/public_renderer_smoke.cpp)
             target_compile_definitions(nativekit_ui_public_renderer_smoke_test PRIVATE
                 NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
             target_link_libraries(nativekit_ui_public_renderer_smoke_test PRIVATE
-                NativeKit::ui NativeKit::nativekit NativeKit::sokol
+                NativeKit::ui NativeKit::nativekit NativeKit::gpu
                 ${NK_SOKOL_GRAPHICS_LIBRARIES})
             target_compile_definitions(nativekit_ui_public_renderer_smoke_test PRIVATE
                 ${NK_SOKOL_COMPILE_DEFINITION})
@@ -438,7 +438,7 @@ if(NK_BUILD_EXAMPLES)
     endif()
 endif()
 
-if(NK_BUILD_SOKOL AND NK_BUILD_SOKOL_BACKEND_MATRIX AND NK_BUILD_TESTS)
+if(NK_BUILD_GPU AND NK_BUILD_GPU_BACKEND_MATRIX AND NK_BUILD_TESTS)
     add_executable(nativekit_ui_sokol_backend_matrix_smoke_test
         tests/sokol_backend_matrix_smoke.cpp
         src/display_list/display_list.cpp
@@ -462,7 +462,7 @@ if(NK_BUILD_SOKOL AND NK_BUILD_SOKOL_BACKEND_MATRIX AND NK_BUILD_TESTS)
     target_compile_definitions(nativekit_ui_sokol_backend_matrix_smoke_test PRIVATE
         NKUI_SOKOL_RUNTIME_MATRIX=1)
     target_link_libraries(nativekit_ui_sokol_backend_matrix_smoke_test PRIVATE
-        NativeKit::nativekit NativeKit::sokol nkui_nanovg_core nkui_skribidi
+        NativeKit::nativekit NativeKit::gpu nkui_nanovg_core nkui_skribidi
         nativekit_sokol_runtime_glcore nativekit_sokol_runtime_gles3
         OpenGL::GL "${NK_SOKOL_MATRIX_GLES3_LIBRARY}")
     find_program(NKUI_MATRIX_XVFB_RUN xvfb-run)
