@@ -2,6 +2,7 @@ import NativeKit;
 import NativeKit.EventKind;
 import NativeKit.Event;
 import NativeKit.Handle;
+import NativeKit.Result;
 import NativeKitEventContext;
 import NativeKitEventValue;
 import NativeKitInputEvents;
@@ -12,10 +13,10 @@ import NativeKitWindowEvents;
 /** Owns one polled NativeKit event and releases its native payload exactly once. */
 class NativeKitEvent {
 	final event:Event;
-	public final kind:Int;
+	public final kind:EventKind;
 	public final source:Handle;
 	public final request:haxe.Int64;
-	public final result:Int;
+	public final result:Result;
 	public final flags:Int;
 	public final dataCount:Int;
 	public final dataSize:haxe.Int64;
