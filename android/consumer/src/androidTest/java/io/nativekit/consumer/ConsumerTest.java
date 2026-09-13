@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.app.UiAutomation;
 import android.accessibilityservice.AccessibilityServiceInfo;
+import android.os.Build;
 import android.view.accessibility.AccessibilityEvent;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -106,25 +107,27 @@ public final class ConsumerTest {
                 assertEquals("graphics surface restored after activity resume", 0,
                              activity.graphicsSurfaceLifecycleProbe(700)));
 
-            scenario.onActivity(MainActivity::createVulkanSurfaceProbe);
-            waitForIdle();
-            scenario.onActivity(activity -> {
-                assertNotEquals(0, activity.vulkanSurfaceHandle());
-                assertEquals("Vulkan surface probe", 0, activity.vulkanSurfaceProbe());
-                assertEquals("hide Vulkan surface", 0,
-                             activity.setVulkanSurfaceVisible(false));
-            });
-            waitForIdle();
-            scenario.onActivity(activity -> {
-                assertEquals("Vulkan surface lost event", 0,
-                             activity.vulkanSurfaceLostProbe());
-                assertEquals("show Vulkan surface", 0,
-                             activity.setVulkanSurfaceVisible(true));
-            });
-            waitForIdle();
-            scenario.onActivity(activity ->
-                assertEquals("Vulkan surface recreated", 0,
-                             activity.vulkanSurfaceRecreatedProbe()));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                scenario.onActivity(MainActivity::createVulkanSurfaceProbe);
+                waitForIdle();
+                scenario.onActivity(activity -> {
+                    assertNotEquals(0, activity.vulkanSurfaceHandle());
+                    assertEquals("Vulkan surface probe", 0, activity.vulkanSurfaceProbe());
+                    assertEquals("hide Vulkan surface", 0,
+                                 activity.setVulkanSurfaceVisible(false));
+                });
+                waitForIdle();
+                scenario.onActivity(activity -> {
+                    assertEquals("Vulkan surface lost event", 0,
+                                 activity.vulkanSurfaceLostProbe());
+                    assertEquals("show Vulkan surface", 0,
+                                 activity.setVulkanSurfaceVisible(true));
+                });
+                waitForIdle();
+                scenario.onActivity(activity ->
+                    assertEquals("Vulkan surface recreated", 0,
+                                 activity.vulkanSurfaceRecreatedProbe()));
+            }
 
             scenario.recreate();
             waitForIdle();
