@@ -71,6 +71,7 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     if(TARGET PkgConfig::FONTCONFIG)
         target_link_libraries(nativekit_ui PRIVATE PkgConfig::FONTCONFIG)
         target_compile_definitions(nativekit_ui PRIVATE NKUI_HAS_FONTCONFIG=1)
+        set(NKUI_HAS_FONTCONFIG ON PARENT_SCOPE)
     endif()
 elseif(APPLE)
     target_link_libraries(nativekit_ui PRIVATE "-framework CoreText" "-framework CoreFoundation")
@@ -481,6 +482,18 @@ if(NOT EMSCRIPTEN)
     install(TARGETS nativekit_ui EXPORT NativeKitTargets
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
+if(NOT EMSCRIPTEN AND NK_LIBRARY_TYPE STREQUAL "STATIC")
+    set_target_properties(harfbuzz PROPERTIES EXPORT_NAME ui_harfbuzz)
+    set_target_properties(nkui_sheenbidi PROPERTIES EXPORT_NAME ui_sheenbidi)
+    set_target_properties(nkui_libunibreak PROPERTIES EXPORT_NAME ui_libunibreak)
+    set_target_properties(nkui_budouxc PROPERTIES EXPORT_NAME ui_budouxc)
+    set_target_properties(nkui_skribidi PROPERTIES EXPORT_NAME ui_skribidi)
+    set_target_properties(nkui_nanovg_core PROPERTIES EXPORT_NAME ui_nanovg_core)
+    install(TARGETS harfbuzz nkui_sheenbidi nkui_libunibreak nkui_budouxc
+            nkui_skribidi nkui_nanovg_core
+        EXPORT NativeKitTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

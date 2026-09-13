@@ -9,15 +9,23 @@ set(HB_BUILD_SUBSET OFF CACHE BOOL "" FORCE)
 set(HB_BUILD_UTILS OFF CACHE BOOL "" FORCE)
 set(HB_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(HB_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-add_subdirectory("${NK_VENDOR_DIR}/harfbuzz"
-    "${CMAKE_CURRENT_BINARY_DIR}/third_party/harfbuzz" EXCLUDE_FROM_ALL)
+set(SKIP_INSTALL_LIBRARIES ON)
+set(NKUI_HARFBUZZ_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/third_party/harfbuzz")
+set(NKUI_SAVED_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
+set(BUILD_SHARED_LIBS OFF)
+add_subdirectory("${NK_VENDOR_DIR}/harfbuzz" "${NKUI_HARFBUZZ_BUILD_DIR}" EXCLUDE_FROM_ALL)
+set(BUILD_SHARED_LIBS "${NKUI_SAVED_BUILD_SHARED_LIBS}")
+unset(NKUI_SAVED_BUILD_SHARED_LIBS)
 set_target_properties(harfbuzz PROPERTIES POSITION_INDEPENDENT_CODE YES)
+set_property(TARGET harfbuzz PROPERTY INTERFACE_INCLUDE_DIRECTORIES
+    "$<BUILD_INTERFACE:${NK_VENDOR_DIR}/harfbuzz/src>"
+    "$<BUILD_INTERFACE:${NKUI_HARFBUZZ_BUILD_DIR}/src>")
 
 add_library(nkui_sheenbidi STATIC
     "${NK_VENDOR_DIR}/sheenbidi/Source/SheenBidi.c")
 target_compile_definitions(nkui_sheenbidi PRIVATE SB_CONFIG_UNITY)
 target_include_directories(nkui_sheenbidi
-    PUBLIC "${NK_VENDOR_DIR}/sheenbidi/Headers"
+    PUBLIC "$<BUILD_INTERFACE:${NK_VENDOR_DIR}/sheenbidi/Headers>"
     PRIVATE "${NK_VENDOR_DIR}/sheenbidi/Source")
 
 add_library(nkui_libunibreak STATIC
@@ -36,13 +44,13 @@ add_library(nkui_libunibreak STATIC
     "${NK_VENDOR_DIR}/libunibreak/src/wordbreak.c"
     "${NK_VENDOR_DIR}/libunibreak/src/wordbreakdata.c")
 target_include_directories(nkui_libunibreak PUBLIC
-    "${NK_VENDOR_DIR}/libunibreak/src")
+    "$<BUILD_INTERFACE:${NK_VENDOR_DIR}/libunibreak/src>")
 
 add_library(nkui_budouxc STATIC
     "${NK_VENDOR_DIR}/budouxc/src/budoux.c")
 target_compile_features(nkui_budouxc PUBLIC c_std_17)
 target_include_directories(nkui_budouxc
-    PUBLIC "${NK_VENDOR_DIR}/budouxc/include"
+    PUBLIC "$<BUILD_INTERFACE:${NK_VENDOR_DIR}/budouxc/include>"
     PRIVATE "${NK_VENDOR_DIR}/budouxc/src")
 
 set(NKUI_SKRIBIDI_DIR "${NK_VENDOR_DIR}/skribidi")
@@ -64,10 +72,12 @@ add_library(nkui_skribidi STATIC
     "${NKUI_SKRIBIDI_DIR}/src/skb_text.c")
 target_compile_features(nkui_skribidi PUBLIC c_std_17)
 target_include_directories(nkui_skribidi
-    PUBLIC "${NKUI_SKRIBIDI_DIR}/include"
+    PUBLIC "$<BUILD_INTERFACE:${NKUI_SKRIBIDI_DIR}/include>"
     PRIVATE "${NKUI_SKRIBIDI_DIR}/src")
 target_link_libraries(nkui_skribidi PRIVATE
-    harfbuzz nkui_sheenbidi nkui_libunibreak nkui_budouxc)
+    "$<BUILD_INTERFACE:harfbuzz>"
+    "$<INSTALL_INTERFACE:NativeKit::ui_harfbuzz>"
+    nkui_sheenbidi nkui_libunibreak nkui_budouxc)
 if(NOT WIN32)
     target_link_libraries(nkui_skribidi PRIVATE m)
 endif()

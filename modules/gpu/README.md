@@ -51,6 +51,39 @@ For a bounded 30-frame run (suitable for Xvfb):
 xvfb-run -a ./build-gpu/modules/gpu/nativekit_gpu_triangle --smoke-test
 ```
 
+## Validation matrix
+
+Set `NK_BUILD_TESTS=ON`, then build and run CTest for each configuration:
+
+| Configuration | `NK_BUILD_GPU` | `NK_BUILD_UI` |
+| --- | --- | --- |
+| Core only | `OFF` | `OFF` |
+| GPU only | `ON` | `OFF` |
+| UI only | `OFF` | `ON` |
+| GPU + UI | `ON` | `ON` |
+
+Use `NK_BUILD_SHARED=ON` and `OFF` to cover shared and static libraries. On
+desktop Linux, use `NK_SOKOL_BACKEND=glcore` or `gles3` for a single runtime;
+`NK_BUILD_GPU_BACKEND_MATRIX=ON` builds both runtime variants together. The
+matrix configuration includes `nativekit_ui_sokol_backend_matrix_smoke`, which
+creates a public GPU render target, exports its `GraphicsImage`, and draws it
+through the UI backend.
+
+`nativekit_gpu_contract_smoke` covers shader-language validation, renderer
+ownership, renderer cleanup, and the window/offscreen frame state machine.
+`modules/gpu/tools/test-haxeon.sh` compiles and runs the Haxe wrappers, including
+wrong-renderer checks, resource disposal, drawing into an offscreen target, and
+the retained `GraphicsImage` lifetime. `modules/gpu/tools/check-hxi.sh` checks
+the generated binding contract. The UI C API Showcase smoke test remains the
+end-to-end UI rendering check.
+
+For each build directory, run:
+
+```sh
+cmake --build build-gpu
+ctest --test-dir build-gpu --output-on-failure
+```
+
 Generate the curated HXI binding for the adapter:
 
 ```sh

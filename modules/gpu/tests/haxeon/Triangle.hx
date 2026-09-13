@@ -149,6 +149,18 @@ class Triangle {
 					Wrap.Repeat, Wrap.Repeat);
 				shader = createShader(renderer);
 				pipeline = createPipeline(renderer, shader);
+				var peerRenderer = surface.createRenderer();
+				var wrongShaderRendererRejected = false;
+				try Pipeline.begin(peerRenderer, shader, 28) catch (_:Dynamic) wrongShaderRendererRejected = true;
+				if (!wrongShaderRendererRejected)
+					throw "GPU pipeline accepted a shader from another renderer";
+				peerRenderer.beginFrame();
+				var wrongCommandRendererRejected = false;
+				try peerRenderer.submit(commandBuffer) catch (_:Dynamic) wrongCommandRendererRejected = true;
+				if (!wrongCommandRendererRejected)
+					throw "GPU renderer accepted a command buffer from another renderer";
+				peerRenderer.endFrame();
+				peerRenderer.dispose();
 
 				var target = RenderTarget.create(renderer, 32, 32);
 				target.begin();
@@ -195,14 +207,18 @@ class Triangle {
 
 		var stalePipeline = pipeline.nativeHandle();
 		sampler.dispose();
+		sampler.dispose();
 		image.dispose();
 		pipeline.dispose();
 		if (NativeKitGpu.nkgpu_pipeline_destroy(renderer.nativeHandle(), stalePipeline) != -3)
 			throw "stale pipeline handle was accepted";
 		shader.dispose();
 		indexBuffer.dispose();
-		buffer.dispose();
 		renderer.dispose();
+		if (!buffer.isDisposed())
+			throw "GPU renderer did not dispose its remaining resources";
+		buffer.dispose();
+		buffer.dispose();
 		var blockedRuntimeShutdown = false;
 		try runtime.dispose() catch (_:Dynamic) blockedRuntimeShutdown = true;
 		if (!blockedRuntimeShutdown || runtime.isDisposed())

@@ -9,7 +9,7 @@ if(UNIX AND NOT APPLE AND NOT ANDROID)
     add_library(nkui_nanovg_core STATIC
         "${NK_VENDOR_DIR}/nanovg/src/nanovg.c")
     target_include_directories(nkui_nanovg_core
-        PUBLIC "${NK_VENDOR_DIR}/nanovg/src"
+        PUBLIC "$<BUILD_INTERFACE:${NK_VENDOR_DIR}/nanovg/src>"
     )
     target_compile_definitions(nkui_nanovg_core PUBLIC NVG_NO_TEXT=1)
     set_target_properties(nkui_nanovg_core PROPERTIES
