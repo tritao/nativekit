@@ -212,7 +212,7 @@ def main():
                         not state["webgl2"] or state["width"] <= 0 or state["height"] <= 0):
                     raise RuntimeError(f"NativeKit browser canvas is invalid: {state}")
                 time.sleep(0.1)
-                websocket.evaluate("document.documentElement.dataset.nativekitResult || ''", 11)
+                websocket.evaluate("document.documentElement?.dataset.nativekitResult || ''", 11)
                 if websocket.errors:
                     raise RuntimeError("browser reported errors: " + json.dumps(websocket.errors))
                 print(f"web smoke passed: {state}")

@@ -181,7 +181,7 @@ def main():
             target_frames = state["frames"] + 3
             while time.monotonic() < deadline:
                 frames = websocket.evaluate(
-                    "Number(document.documentElement.dataset.nativekitFrames||0)", 5
+                    "Number(document.documentElement?.dataset.nativekitFrames||0)", 5
                 )
                 if frames >= target_frames:
                     break

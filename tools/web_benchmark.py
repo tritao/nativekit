@@ -68,9 +68,9 @@ def main():
     try:
         while time.monotonic() < deadline:
             value = websocket.evaluate(
-                "JSON.stringify({result:document.documentElement.dataset.nativekitResult||'',"
+                "JSON.stringify({result:document.documentElement?.dataset.nativekitResult||'',"
                 "status:document.getElementById('status')?.textContent||'',"
-                "report:document.documentElement.dataset.nativekitBenchmark||''})",
+                "report:document.documentElement?.dataset.nativekitBenchmark||''})",
                 1,
             )
             state = json.loads(value)
