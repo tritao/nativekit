@@ -130,6 +130,7 @@ int main(void) {
     assert(nk_window_set_drop_enabled(window, 1) == NK_OK);
     assert(nk_window_set_drop_enabled(window, 0) == NK_OK);
 
+    assert(nk_window_show(window, 1) == NK_OK);
     nk_webview_options web_options = {0};
     web_options.struct_size = sizeof(web_options);
     web_options.flags = NK_WEBVIEW_HIDDEN;
