@@ -1222,6 +1222,7 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
 
         auto resource = std::make_shared<MacWebViewResource>();
         resource->parent = parent_handle;
+        resource->navigation_policy = (options->flags & NK_WEBVIEW_NAVIGATION_POLICY) != 0;
         resource->generation = nk::core::runtime_generation();
         resource->content_controller = [WKUserContentController new];
         resource->delegate = [NKWebViewDelegate new];
