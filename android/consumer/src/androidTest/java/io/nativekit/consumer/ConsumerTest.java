@@ -11,6 +11,7 @@ import android.accessibilityservice.AccessibilityServiceInfo;
 import android.view.accessibility.AccessibilityEvent;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import java.util.concurrent.TimeoutException;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -72,15 +73,13 @@ public final class ConsumerTest {
             AccessibilityServiceInfo service = automation.getServiceInfo();
             service.flags |= AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
             automation.setServiceInfo(service);
-            automation.executeAndWaitForEvent(
-                () -> scenario.onActivity(MainActivity::dispatchAccessibilityForTest),
-                event -> event.getEventType() ==
-                         AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-                3000);
-            automation.executeAndWaitForEvent(
+            executeAndWaitForAccessibilityEvent(
+                automation, () -> scenario.onActivity(MainActivity::dispatchAccessibilityForTest),
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, "window content changed");
+            executeAndWaitForAccessibilityEvent(
+                automation,
                 () -> scenario.onActivity(MainActivity::dispatchAccessibilityHoverForTest),
-                event -> event.getEventType() == AccessibilityEvent.TYPE_VIEW_HOVER_ENTER,
-                3000);
+                AccessibilityEvent.TYPE_VIEW_HOVER_ENTER, "view hover enter");
             scenario.onActivity(activity -> {
                 assertEquals("graphics surface accessibility probe", 0,
                              activity.accessibilityProbe());
@@ -141,5 +140,17 @@ public final class ConsumerTest {
 
     private static void waitForIdle() {
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+    }
+
+    private static void executeAndWaitForAccessibilityEvent(UiAutomation automation,
+                                                             Runnable action, int eventType,
+                                                             String description) throws Exception {
+        try {
+            automation.executeAndWaitForEvent(action,
+                event -> event.getEventType() == eventType, 10_000);
+        } catch (TimeoutException error) {
+            throw new AssertionError("timed out waiting for accessibility event " + description,
+                                     error);
+        }
     }
 }
