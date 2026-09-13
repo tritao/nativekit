@@ -213,16 +213,19 @@ elseif(WIN32)
                 "${NK_WEBVIEW2_LOADER_DLL}" "$<TARGET_FILE_DIR:nativekit>")
     endif()
     target_sources(nativekit PRIVATE src/windows/nativekit_win.cpp)
-    target_link_libraries(nativekit PRIVATE user32 shell32 ole32 advapi32)
+    target_compile_definitions(nativekit PRIVATE NK_BACKEND_WINDOWS=1)
+    target_link_libraries(nativekit PRIVATE user32 shell32 ole32 advapi32 imm32)
 elseif(APPLE)
     target_sources(nativekit PRIVATE src/macos/nativekit_osx.mm)
+    target_compile_definitions(nativekit PRIVATE NK_BACKEND_MACOS=1)
     set_target_properties(nativekit PROPERTIES
         OBJCXX_STANDARD 17
         OBJCXX_STANDARD_REQUIRED YES)
     target_compile_options(nativekit PRIVATE
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
-    target_link_libraries(nativekit PRIVATE "-framework Cocoa" "-framework WebKit"
+    target_link_libraries(nativekit PRIVATE "-framework Cocoa" "-framework Carbon"
+        "-framework CoreGraphics" "-framework WebKit"
         "-framework UserNotifications")
 elseif(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)

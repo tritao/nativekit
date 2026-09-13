@@ -160,12 +160,12 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_RESOURCE_DROP` | mobile host | none | `nk_resource_drop` followed by its resource list and optional text |
 | `NK_EVENT_KEY` | window or graphics surface | none | `nk_key_event` |
 | `NK_EVENT_TEXT_INPUT` | window or graphics surface | none | `nk_text_input_event` |
-| `NK_EVENT_TEXT_EDIT` | graphics surface | none | `nk_text_edit_event` followed by UTF-8 text |
+| `NK_EVENT_TEXT_EDIT` | window or graphics surface | none | `nk_text_edit_event` followed by UTF-8 text |
 | `NK_EVENT_POINTER_MOVE` | window or graphics surface | none | `nk_pointer_move_event` |
 | `NK_EVENT_POINTER_BUTTON` | window or graphics surface | none | `nk_pointer_button_event` |
 | `NK_EVENT_POINTER_SCROLL` | window or graphics surface | none | `nk_pointer_scroll_event` |
 | `NK_EVENT_POINTER_ENTER` | window or graphics surface | none | empty; `flags` is one on enter and zero on leave |
-| `NK_EVENT_TOUCH` | graphics surface | none | `nk_touch_event` |
+| `NK_EVENT_TOUCH` | window or graphics surface | none | `nk_touch_event` |
 | `NK_EVENT_WINDOW_MOVE` | window | none | `nk_window_move_event` |
 | `NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE` | window | none | `nk_window_framebuffer_resize_event` |
 | `NK_EVENT_MONITOR_CONNECTED` | monitor | none | empty |
@@ -193,13 +193,17 @@ Keyboard events report a normalized key and the platform scancode separately.
 Text input is delivered as Unicode code points and is distinct from physical key
 transitions. Pointer coordinates are logical pixels relative to the window
 content. Consecutive pointer-move events may be coalesced; key and button
-transitions are never coalesced.
+transitions are never coalesced. Windows and macOS release held keys and pointer
+buttons with synthetic events when a window loses focus; those releases set
+`event.flags` to one. Windows converts client pixels to logical pixels using the
+window DPI, while Cocoa reports view points directly.
 
-The GTK backend routes key events through a per-window input-method context, so
-dead-key composition, active keyboard layouts, and IME committed text are
-reported through `NK_EVENT_TEXT_INPUT`.
+GTK, Windows, and macOS route physical key events through their platform text
+input services. Dead keys and committed text are reported as Unicode code points
+through `NK_EVENT_TEXT_INPUT` for compatibility clients. Windows uses IMM32 and
+Cocoa implements `NSTextInputClient` for custom-rendered editors.
 
-Custom-rendered Android editors opt into transactional IME input by calling
+Custom-rendered editors opt into transactional IME input by calling
 `nk_surface_set_text_input_state()` with a bounded UTF-8 window, its absolute
 document start and length, the absolute selection, and an optional absolute
 composition range, then `nk_surface_set_text_input_active()`. The supplied window
@@ -213,6 +217,9 @@ the operation to its text model and publishes the resulting state again. Use
 supports multi-stage IMEs, autocorrection, emoji, and surrounding-text deletion
 without exposing Android UTF-16 indices. Committed `NK_EVENT_TEXT_INPUT` remains
 the compatibility path for clients that do not publish structured editor state.
+On Windows and macOS, pass a NativeKit window handle to these two functions; the
+window's client view receives IME composition and committed-text transactions.
+Android and Web continue to use graphics-surface handles.
 
 The state also declares keyboard purpose, capitalization, autocorrection,
 multiline behavior, enter-key action, and a logical-pixel caret rectangle. These
@@ -250,9 +257,12 @@ paragraph, or page granularity.
 
 Cursor resources may be standard platform shapes or copied RGBA8 images.
 Destroying a cursor handle does not invalidate a cursor already selected by a
-window. GTK supports normal, hidden, and captured pointer modes. Disabled
-relative-pointer mode and raw motion are reported as unsupported because GTK 3
-cannot provide consistent behavior across X11 and Wayland.
+window. Windows supports normal, hidden, and captured pointer modes; disabled
+relative-pointer mode and raw motion are reported as unsupported. macOS supports
+normal, hidden, captured, and disabled modes through Cocoa and CoreGraphics, but
+does not report raw motion. GTK supports normal, hidden, and captured pointer
+modes. Disabled relative-pointer mode and raw motion are reported as unsupported
+because GTK 3 cannot provide consistent behavior across X11 and Wayland.
 
 Window content sizes use logical pixels while framebuffer sizes use device
 pixels. Content scale is available per axis. Move, logical resize, and
@@ -330,7 +340,9 @@ Input delivery is independent of GTK window focus.
 zones, and optional `[0, 1]` trigger output. The same normalization applies to
 state queries and generated gamepad events.
 
-Android graphics surfaces accept multi-touch, stylus, mouse, hardware-keyboard,
+Windows windows accept touch and pen contacts when the OS reports them through
+WM_POINTER. macOS reports direct-touch contacts and tablet stylus events where
+available. Android graphics surfaces accept multi-touch, stylus, mouse, hardware-keyboard,
 IME text, and game-controller input. Touch contacts use gesture-scoped pointer
 IDs and report logical coordinates, pressure, tool type, and two-dimensional
 tilt. Mouse input uses the existing pointer events. Android controllers are

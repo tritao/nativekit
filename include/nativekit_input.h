@@ -643,10 +643,14 @@ NK_API nk_result NK_CALL nk_pointer_button_get_state(nk_handle window, nk_pointe
 /** On NK_OK, returns the current pointer position in surface-local logical pixels. */
 NK_API nk_result NK_CALL nk_pointer_get_position(nk_handle window, double *out_x, double *out_y);
 
-/** Synchronizes a custom editor with the platform IME using absolute code-point positions. */
+/**
+ * Synchronizes a custom editor with the platform IME using absolute code-point positions.
+ * Android and Web use a graphics-surface handle. Windows and macOS accept a window handle
+ * because those backends do not yet expose graphics surfaces.
+ */
 NK_API nk_result NK_CALL nk_surface_set_text_input_state(nk_handle surface,
                                                          const nk_text_input_state *state);
-/** Shows or hides the software keyboard for a custom graphics surface. */
+/** Activates or deactivates custom text input for the target surface or desktop window. */
 NK_API nk_result NK_CALL nk_surface_set_text_input_active(nk_handle surface, nk_bool active);
 
 /* ------------------------------------------------------------------------- */

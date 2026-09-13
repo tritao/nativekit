@@ -1,5 +1,6 @@
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_input.h"
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
@@ -12,11 +13,16 @@
 
 #define UNICODE
 #define _UNICODE
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0602
+#endif
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <imm.h>
+#include <windowsx.h>
 #include <shobjidl.h>
 #include <shlobj.h>
 #include <shellapi.h>
@@ -28,7 +34,9 @@
 
 #include <atomic>
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <cmath>
 #include <cwchar>
 #include <cstring>
 #include <functional>
@@ -50,6 +58,8 @@ constexpr wchar_t window_class_name[] = L"NativeKitWindow";
 constexpr UINT notification_message = WM_APP + 42;
 ATOM window_class = 0;
 HWND notification_window = nullptr;
+
+UINT query_window_dpi(HWND window);
 
 struct WinNotification {
     nk_request_id request = NK_INVALID_REQUEST_ID;
@@ -190,11 +200,41 @@ struct WinWindowResource final : nk::core::Resource {
     LONG_PTR windowed_style = 0;
     int32_t min_width = 0, min_height = 0, max_width = 0, max_height = 0;
     bool drops_enabled = false;
+    std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
+    std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> pointer_buttons{};
+    double pointer_x = 0.0;
+    double pointer_y = 0.0;
+    nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
+    std::shared_ptr<struct WinCursorResource> cursor;
+    bool pointer_captured = false;
+    bool pointer_tracking = false;
+    std::string text_input_text;
+    nk_text_input_state text_input_state{};
+    bool text_input_active = false;
+    bool text_composing = false;
+    nk_text_position text_composition_start = NK_TEXT_POSITION_NONE;
+    nk_text_position text_composition_end = NK_TEXT_POSITION_NONE;
+    wchar_t pending_high_surrogate = 0;
+    uint32_t skip_ime_characters = 0;
+    std::unordered_map<uint32_t, nk_touch_tool> active_touch_pointers;
     std::vector<nk_handle> children;
     std::vector<nk_handle> owned_windows;
     ~WinWindowResource() override {
+        if (pointer_captured && GetCapture() == window)
+            ReleaseCapture();
         if (window && IsWindow(window))
             DestroyWindow(window);
+    }
+};
+
+struct WinCursorResource final : nk::core::Resource {
+    HCURSOR cursor = nullptr;
+    nk_handle handle = NK_INVALID_HANDLE;
+    bool owned = false;
+
+    ~WinCursorResource() override {
+        if (owned && cursor)
+            DestroyCursor(cursor);
     }
 };
 
@@ -262,6 +302,629 @@ std::wstring html_attribute(const std::wstring &value) {
 template <typename T> std::vector<std::byte> bytes_of(const T &value) {
     const auto *first = reinterpret_cast<const std::byte *>(&value);
     return {first, first + sizeof(value)};
+}
+
+void queue_input_event(nk_event_kind kind, nk_handle source, std::vector<std::byte> data,
+                       uint32_t flags = 0) {
+    nk::core::QueuedEvent event;
+    event.kind = kind;
+    event.source = source;
+    event.flags = flags;
+    event.data = std::move(data);
+    nk::core::push_event(std::move(event));
+}
+
+nk_modifiers current_modifiers() {
+    nk_modifiers result = 0;
+    if (GetKeyState(VK_SHIFT) & 0x8000)
+        result |= NK_MOD_SHIFT;
+    if (GetKeyState(VK_CONTROL) & 0x8000)
+        result |= NK_MOD_CONTROL;
+    if (GetKeyState(VK_MENU) & 0x8000)
+        result |= NK_MOD_ALT;
+    if ((GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000)
+        result |= NK_MOD_SUPER;
+    if (GetKeyState(VK_CAPITAL) & 1)
+        result |= NK_MOD_CAPS_LOCK;
+    if (GetKeyState(VK_NUMLOCK) & 1)
+        result |= NK_MOD_NUM_LOCK;
+    return result;
+}
+
+nk_key key_from_windows(WPARAM virtual_key, LPARAM message_data) {
+    if (virtual_key >= '0' && virtual_key <= '9')
+        return static_cast<nk_key>(NK_KEY_0 + virtual_key - '0');
+    if (virtual_key >= 'A' && virtual_key <= 'Z')
+        return static_cast<nk_key>(NK_KEY_A + virtual_key - 'A');
+    if (virtual_key >= VK_F1 && virtual_key <= VK_F24)
+        return static_cast<nk_key>(NK_KEY_F1 + virtual_key - VK_F1);
+    if (virtual_key >= VK_NUMPAD0 && virtual_key <= VK_NUMPAD9)
+        return static_cast<nk_key>(NK_KEY_KP_0 + virtual_key - VK_NUMPAD0);
+    switch (virtual_key) {
+    case VK_SPACE:
+        return NK_KEY_SPACE;
+    case VK_OEM_7:
+        return NK_KEY_APOSTROPHE;
+    case VK_OEM_COMMA:
+        return NK_KEY_COMMA;
+    case VK_OEM_MINUS:
+        return NK_KEY_MINUS;
+    case VK_OEM_PERIOD:
+        return NK_KEY_PERIOD;
+    case VK_OEM_2:
+        return NK_KEY_SLASH;
+    case VK_OEM_1:
+        return NK_KEY_SEMICOLON;
+    case VK_OEM_PLUS:
+        return NK_KEY_EQUAL;
+    case VK_OEM_4:
+        return NK_KEY_LEFT_BRACKET;
+    case VK_OEM_5:
+        return NK_KEY_BACKSLASH;
+    case VK_OEM_6:
+        return NK_KEY_RIGHT_BRACKET;
+    case VK_OEM_3:
+        return NK_KEY_GRAVE_ACCENT;
+    case VK_ESCAPE:
+        return NK_KEY_ESCAPE;
+    case VK_RETURN:
+        return (message_data & (1ll << 24)) ? NK_KEY_KP_ENTER : NK_KEY_ENTER;
+    case VK_TAB:
+        return NK_KEY_TAB;
+    case VK_BACK:
+        return NK_KEY_BACKSPACE;
+    case VK_INSERT:
+        return NK_KEY_INSERT;
+    case VK_DELETE:
+        return NK_KEY_DELETE;
+    case VK_RIGHT:
+        return NK_KEY_RIGHT;
+    case VK_LEFT:
+        return NK_KEY_LEFT;
+    case VK_DOWN:
+        return NK_KEY_DOWN;
+    case VK_UP:
+        return NK_KEY_UP;
+    case VK_PRIOR:
+        return NK_KEY_PAGE_UP;
+    case VK_NEXT:
+        return NK_KEY_PAGE_DOWN;
+    case VK_HOME:
+        return NK_KEY_HOME;
+    case VK_END:
+        return NK_KEY_END;
+    case VK_CAPITAL:
+        return NK_KEY_CAPS_LOCK;
+    case VK_SCROLL:
+        return NK_KEY_SCROLL_LOCK;
+    case VK_NUMLOCK:
+        return NK_KEY_NUM_LOCK;
+    case VK_SNAPSHOT:
+        return NK_KEY_PRINT_SCREEN;
+    case VK_PAUSE:
+        return NK_KEY_PAUSE;
+    case VK_DECIMAL:
+        return NK_KEY_KP_DECIMAL;
+    case VK_DIVIDE:
+        return NK_KEY_KP_DIVIDE;
+    case VK_MULTIPLY:
+        return NK_KEY_KP_MULTIPLY;
+    case VK_SUBTRACT:
+        return NK_KEY_KP_SUBTRACT;
+    case VK_ADD:
+        return NK_KEY_KP_ADD;
+    case VK_OEM_NEC_EQUAL:
+        return NK_KEY_KP_EQUAL;
+    case VK_LSHIFT:
+        return NK_KEY_LEFT_SHIFT;
+    case VK_RSHIFT:
+        return NK_KEY_RIGHT_SHIFT;
+    case VK_SHIFT: {
+        const UINT key = MapVirtualKeyW(static_cast<UINT>((message_data >> 16) & 0xff),
+                                        MAPVK_VSC_TO_VK_EX);
+        return key == VK_RSHIFT ? NK_KEY_RIGHT_SHIFT : NK_KEY_LEFT_SHIFT;
+    }
+    case VK_LCONTROL:
+        return NK_KEY_LEFT_CONTROL;
+    case VK_RCONTROL:
+        return NK_KEY_RIGHT_CONTROL;
+    case VK_CONTROL:
+        return (message_data & (1ll << 24)) ? NK_KEY_RIGHT_CONTROL : NK_KEY_LEFT_CONTROL;
+    case VK_LMENU:
+        return NK_KEY_LEFT_ALT;
+    case VK_RMENU:
+        return NK_KEY_RIGHT_ALT;
+    case VK_MENU:
+        return (message_data & (1ll << 24)) ? NK_KEY_RIGHT_ALT : NK_KEY_LEFT_ALT;
+    case VK_LWIN:
+        return NK_KEY_LEFT_SUPER;
+    case VK_RWIN:
+        return NK_KEY_RIGHT_SUPER;
+    case VK_APPS:
+        return NK_KEY_MENU;
+    default:
+        return NK_KEY_UNKNOWN;
+    }
+}
+
+uint32_t windows_scancode(LPARAM message_data) {
+    const uint32_t scancode = static_cast<uint32_t>((message_data >> 16) & 0xff);
+    return scancode | ((message_data & (1ll << 24)) ? 0x100u : 0u);
+}
+
+bool decode_utf8(std::string_view text, std::vector<uint32_t> *out = nullptr) {
+    if (out)
+        out->clear();
+    for (std::size_t index = 0; index < text.size();) {
+        const auto first = static_cast<uint8_t>(text[index]);
+        uint32_t value = 0;
+        std::size_t count = 0;
+        if (first < 0x80) {
+            value = first;
+            count = 1;
+        } else if (first >= 0xc2 && first <= 0xdf) {
+            value = first & 0x1fu;
+            count = 2;
+        } else if (first >= 0xe0 && first <= 0xef) {
+            value = first & 0x0fu;
+            count = 3;
+        } else if (first >= 0xf0 && first <= 0xf4) {
+            value = first & 0x07u;
+            count = 4;
+        } else {
+            return false;
+        }
+        if (index + count > text.size())
+            return false;
+        for (std::size_t offset = 1; offset < count; ++offset) {
+            const auto next = static_cast<uint8_t>(text[index + offset]);
+            if ((next & 0xc0u) != 0x80u)
+                return false;
+            value = (value << 6) | (next & 0x3fu);
+        }
+        if ((count == 2 && value < 0x80) || (count == 3 && value < 0x800) ||
+            (count == 4 && value < 0x10000) || value > 0x10ffff ||
+            (value >= 0xd800 && value <= 0xdfff))
+            return false;
+        if (out)
+            out->push_back(value);
+        index += count;
+    }
+    return true;
+}
+
+void emit_text_codepoint(WinWindowResource &resource, uint32_t codepoint) {
+    if (!codepoint || codepoint > 0x10ffff || (codepoint >= 0xd800 && codepoint <= 0xdfff))
+        return;
+    const nk_text_input_event payload{codepoint, 0};
+    queue_input_event(NK_EVENT_TEXT_INPUT, resource.handle, bytes_of(payload));
+}
+
+void emit_text_edit(WinWindowResource &resource, nk_text_edit_event payload,
+                    const std::string &text = {}) {
+    payload.text_offset = text.empty() ? 0u : sizeof(payload);
+    payload.text_length = static_cast<uint32_t>(text.size());
+    std::vector<std::byte> bytes(sizeof(payload) + text.size() + (text.empty() ? 0u : 1u));
+    std::memcpy(bytes.data(), &payload, sizeof(payload));
+    if (!text.empty())
+        std::memcpy(bytes.data() + sizeof(payload), text.c_str(), text.size() + 1);
+    queue_input_event(NK_EVENT_TEXT_EDIT, resource.handle, std::move(bytes));
+}
+
+nk_modifiers modifiers_after_key(nk_key key, nk_input_action action) {
+    auto result = current_modifiers();
+    const bool down = action != NK_INPUT_RELEASE;
+    auto set = [&](nk_modifiers modifier, bool value) {
+        if (value)
+            result |= modifier;
+        else
+            result &= ~modifier;
+    };
+    switch (key) {
+    case NK_KEY_LEFT_SHIFT:
+    case NK_KEY_RIGHT_SHIFT:
+        set(NK_MOD_SHIFT, down);
+        break;
+    case NK_KEY_LEFT_CONTROL:
+    case NK_KEY_RIGHT_CONTROL:
+        set(NK_MOD_CONTROL, down);
+        break;
+    case NK_KEY_LEFT_ALT:
+    case NK_KEY_RIGHT_ALT:
+        set(NK_MOD_ALT, down);
+        break;
+    case NK_KEY_LEFT_SUPER:
+    case NK_KEY_RIGHT_SUPER:
+        set(NK_MOD_SUPER, down);
+        break;
+    default:
+        break;
+    }
+    return result;
+}
+
+double dpi_scale(HWND window) {
+    return std::max(1.0, static_cast<double>(query_window_dpi(window)) / 96.0);
+}
+
+nk_pointer_button pointer_button_from_windows(UINT message, WPARAM wparam) {
+    switch (message) {
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+        return NK_POINTER_BUTTON_LEFT;
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+        return NK_POINTER_BUTTON_RIGHT;
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+        return NK_POINTER_BUTTON_MIDDLE;
+    case WM_XBUTTONDOWN:
+    case WM_XBUTTONUP:
+        return HIWORD(wparam) == XBUTTON1 ? NK_POINTER_BUTTON_4 : NK_POINTER_BUTTON_5;
+    default:
+        return UINT32_MAX;
+    }
+}
+
+bool pointer_button_message(UINT message) {
+    return message == WM_LBUTTONDOWN || message == WM_LBUTTONUP ||
+           message == WM_RBUTTONDOWN || message == WM_RBUTTONUP ||
+           message == WM_MBUTTONDOWN || message == WM_MBUTTONUP ||
+           message == WM_XBUTTONDOWN || message == WM_XBUTTONUP;
+}
+
+void update_pointer_position(WinWindowResource &resource, LPARAM coordinates) {
+    const auto scale = dpi_scale(resource.window);
+    resource.pointer_x = static_cast<double>(GET_X_LPARAM(coordinates)) / scale;
+    resource.pointer_y = static_cast<double>(GET_Y_LPARAM(coordinates)) / scale;
+}
+
+void emit_pointer_button(WinWindowResource &resource, nk_pointer_button button,
+                         nk_input_action action, nk_modifiers modifiers) {
+    if (button > NK_POINTER_BUTTON_LAST)
+        return;
+    resource.pointer_buttons[button] = action;
+    const nk_pointer_button_event payload{button, action, modifiers, 0,
+                                          resource.pointer_x, resource.pointer_y};
+    queue_input_event(NK_EVENT_POINTER_BUTTON, resource.handle, bytes_of(payload));
+}
+
+void apply_cursor(WinWindowResource &resource) {
+    if (resource.cursor_mode == NK_CURSOR_MODE_HIDDEN ||
+        resource.cursor_mode == NK_CURSOR_MODE_DISABLED)
+        SetCursor(nullptr);
+    else
+        SetCursor(resource.cursor ? resource.cursor->cursor : LoadCursorW(nullptr, IDC_ARROW));
+}
+
+void emit_window_state(WinWindowResource &resource) {
+    nk_window_state state{sizeof(state), 0, {0, 0}};
+    if (IsWindowVisible(resource.window))
+        state.flags |= NK_WINDOW_STATE_VISIBLE;
+    if (GetForegroundWindow() == resource.window)
+        state.flags |= NK_WINDOW_STATE_ACTIVE;
+    if (IsIconic(resource.window))
+        state.flags |= NK_WINDOW_STATE_MINIMIZED;
+    if (IsZoomed(resource.window))
+        state.flags |= NK_WINDOW_STATE_MAXIMIZED;
+    if (resource.fullscreen)
+        state.flags |= NK_WINDOW_STATE_FULLSCREEN;
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_WINDOW_STATE_CHANGED;
+    event.source = resource.handle;
+    event.data = bytes_of(state);
+    nk::core::push_event(std::move(event));
+}
+
+uint32_t codepoint_count(std::string_view text) {
+    std::vector<uint32_t> values;
+    return decode_utf8(text, &values) ? static_cast<uint32_t>(values.size()) : 0u;
+}
+
+uint32_t codepoint_count(std::wstring_view text) {
+    uint32_t count = 0;
+    for (std::size_t index = 0; index < text.size(); ++count, ++index) {
+        if (text[index] >= 0xd800 && text[index] <= 0xdbff && index + 1 < text.size() &&
+            text[index + 1] >= 0xdc00 && text[index + 1] <= 0xdfff)
+            ++index;
+    }
+    return count;
+}
+
+void apply_text_edit_state(WinWindowResource &resource, nk_text_edit_action action,
+                           nk_text_position replace_start, nk_text_position replace_end,
+                           std::string_view text, nk_text_position selection_start,
+                           nk_text_position selection_end, nk_text_position composition_start,
+                           nk_text_position composition_end) {
+    resource.text_input_state.selection_start = selection_start;
+    resource.text_input_state.selection_end = selection_end;
+    resource.text_input_state.composition_start = composition_start;
+    resource.text_input_state.composition_end = composition_end;
+    resource.text_composing = composition_start != NK_TEXT_POSITION_NONE;
+    resource.text_composition_start = composition_start;
+    resource.text_composition_end = composition_end;
+    nk_text_edit_event payload{};
+    payload.action = action;
+    payload.replace_start = replace_start;
+    payload.replace_end = replace_end;
+    payload.selection_start = selection_start;
+    payload.selection_end = selection_end;
+    payload.composition_start = composition_start;
+    payload.composition_end = composition_end;
+    emit_text_edit(resource, payload, std::string(text));
+}
+
+void emit_text_deletion(WinWindowResource &resource, bool backward) {
+    auto start = std::min(resource.text_input_state.selection_start,
+                          resource.text_input_state.selection_end);
+    auto end = std::max(resource.text_input_state.selection_start,
+                        resource.text_input_state.selection_end);
+    if (start == end) {
+        if (backward && start > 0)
+            --start;
+        else if (!backward && end < resource.text_input_state.document_length)
+            ++end;
+    }
+    if (start == end)
+        return;
+    apply_text_edit_state(resource, NK_TEXT_EDIT_DELETE, start, end, {}, start, start,
+                          NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+}
+
+nk_text_position text_replacement_start(const WinWindowResource &resource) {
+    return resource.text_composing ? resource.text_composition_start
+                                   : resource.text_input_state.selection_start;
+}
+
+nk_text_position text_replacement_end(const WinWindowResource &resource) {
+    return resource.text_composing ? resource.text_composition_end
+                                   : resource.text_input_state.selection_end;
+}
+
+void emit_committed_utf8(WinWindowResource &resource, const std::string &text) {
+    std::vector<uint32_t> codepoints;
+    if (!decode_utf8(text, &codepoints))
+        return;
+    if (!resource.text_input_active) {
+        for (const auto codepoint : codepoints)
+            emit_text_codepoint(resource, codepoint);
+        return;
+    }
+    const auto start = text_replacement_start(resource);
+    const auto end = text_replacement_end(resource);
+    const auto cursor = static_cast<nk_text_position>(start + codepoints.size());
+    apply_text_edit_state(resource, NK_TEXT_EDIT_COMMIT, start, end, text, cursor, cursor,
+                          NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+}
+
+void finish_text_composition(WinWindowResource &resource) {
+    if (!resource.text_composing)
+        return;
+    auto selection_start = resource.text_input_state.selection_start;
+    auto selection_end = resource.text_input_state.selection_end;
+    if (selection_start == NK_TEXT_POSITION_NONE)
+        selection_start = selection_end = resource.text_composition_end;
+    apply_text_edit_state(resource, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
+                          NK_TEXT_POSITION_NONE, {}, selection_start, selection_end,
+                          NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+}
+
+bool get_ime_string(HIMC context, DWORD index, std::wstring &value) {
+    const LONG bytes = ImmGetCompositionStringW(context, index, nullptr, 0);
+    if (bytes < 0 || (bytes % static_cast<LONG>(sizeof(wchar_t))) != 0)
+        return false;
+    value.resize(static_cast<std::size_t>(bytes) / sizeof(wchar_t));
+    return !bytes || ImmGetCompositionStringW(context, index, value.data(),
+                                               static_cast<DWORD>(bytes)) == bytes;
+}
+
+void emit_key_transition(WinWindowResource &resource, WPARAM virtual_key, LPARAM message_data,
+                         nk_input_action action) {
+    const nk_key key = key_from_windows(virtual_key, message_data);
+    if (key != NK_KEY_UNKNOWN)
+        resource.keys[key] = action == NK_INPUT_RELEASE ? NK_INPUT_RELEASE : NK_INPUT_PRESS;
+    const nk_key_event payload{key, windows_scancode(message_data), action,
+                               modifiers_after_key(key, action)};
+    queue_input_event(NK_EVENT_KEY, resource.handle, bytes_of(payload));
+}
+
+void reset_window_input(WinWindowResource &resource) {
+    finish_text_composition(resource);
+    resource.pending_high_surrogate = 0;
+    for (nk_key key = 1; key <= NK_KEY_LAST; ++key) {
+        if (resource.keys[key] != NK_INPUT_PRESS)
+            continue;
+        resource.keys[key] = NK_INPUT_RELEASE;
+        const nk_key_event payload{key, 0, NK_INPUT_RELEASE, 0};
+        queue_input_event(NK_EVENT_KEY, resource.handle, bytes_of(payload), 1u);
+    }
+    for (nk_pointer_button button = 0; button <= NK_POINTER_BUTTON_LAST; ++button) {
+        if (resource.pointer_buttons[button] != NK_INPUT_PRESS)
+            continue;
+        resource.pointer_buttons[button] = NK_INPUT_RELEASE;
+        const nk_pointer_button_event payload{button, NK_INPUT_RELEASE, 0, 0,
+                                              resource.pointer_x, resource.pointer_y};
+        queue_input_event(NK_EVENT_POINTER_BUTTON, resource.handle, bytes_of(payload), 1u);
+    }
+    for (const auto &[pointer_id, tool] : resource.active_touch_pointers) {
+        const nk_touch_event payload{pointer_id, NK_TOUCH_CANCEL, tool, 0, resource.pointer_x,
+                                     resource.pointer_y, 0.f, 0.f, 0.f, 0};
+        queue_input_event(NK_EVENT_TOUCH, resource.handle, bytes_of(payload), 1u);
+    }
+    resource.active_touch_pointers.clear();
+    if (resource.pointer_captured) {
+        resource.pointer_captured = false;
+        if (GetCapture() == resource.window)
+            ReleaseCapture();
+    }
+}
+
+void emit_text_character(WinWindowResource &resource, wchar_t character) {
+    if (character >= 0xd800 && character <= 0xdbff) {
+        if (resource.pending_high_surrogate)
+            emit_committed_utf8(resource, "\xef\xbf\xbd");
+        resource.pending_high_surrogate = character;
+        return;
+    }
+    uint32_t codepoint = character;
+    if (character >= 0xdc00 && character <= 0xdfff) {
+        if (!resource.pending_high_surrogate) {
+            emit_committed_utf8(resource, "\xef\xbf\xbd");
+            return;
+        }
+        codepoint = 0x10000u + ((resource.pending_high_surrogate - 0xd800u) << 10) +
+                    (character - 0xdc00u);
+        resource.pending_high_surrogate = 0;
+    } else if (resource.pending_high_surrogate) {
+        emit_committed_utf8(resource, "\xef\xbf\xbd");
+        resource.pending_high_surrogate = 0;
+    }
+    if (codepoint == '\r')
+        codepoint = '\n';
+    std::string text;
+    if (codepoint < 0x80)
+        text.push_back(static_cast<char>(codepoint));
+    else if (codepoint < 0x800) {
+        text.push_back(static_cast<char>(0xc0u | (codepoint >> 6)));
+        text.push_back(static_cast<char>(0x80u | (codepoint & 0x3fu)));
+    } else if (codepoint < 0x10000) {
+        text.push_back(static_cast<char>(0xe0u | (codepoint >> 12)));
+        text.push_back(static_cast<char>(0x80u | ((codepoint >> 6) & 0x3fu)));
+        text.push_back(static_cast<char>(0x80u | (codepoint & 0x3fu)));
+    } else {
+        text.push_back(static_cast<char>(0xf0u | (codepoint >> 18)));
+        text.push_back(static_cast<char>(0x80u | ((codepoint >> 12) & 0x3fu)));
+        text.push_back(static_cast<char>(0x80u | ((codepoint >> 6) & 0x3fu)));
+        text.push_back(static_cast<char>(0x80u | (codepoint & 0x3fu)));
+    }
+    emit_committed_utf8(resource, text);
+}
+
+bool is_promoted_pointer_mouse() {
+    constexpr ULONG_PTR pointer_signature = 0xff515700u;
+    return (GetMessageExtraInfo() & 0xffffff00u) == pointer_signature;
+}
+
+bool handle_pointer_message(WinWindowResource &resource, UINT message, WPARAM wparam) {
+    if (message != WM_POINTERDOWN && message != WM_POINTERUPDATE && message != WM_POINTERUP)
+        return false;
+    const UINT32 pointer_id = GET_POINTERID_WPARAM(wparam);
+    POINTER_INPUT_TYPE type = PT_POINTER;
+    if (!GetPointerType(pointer_id, &type) || type == PT_MOUSE)
+        return false;
+    POINTER_INFO pointer{};
+    if (!GetPointerInfo(pointer_id, &pointer))
+        return true;
+    POINT point = pointer.ptPixelLocation;
+    ScreenToClient(resource.window, &point);
+    const auto scale = dpi_scale(resource.window);
+    const double x = point.x / scale;
+    const double y = point.y / scale;
+    resource.pointer_x = x;
+    resource.pointer_y = y;
+    nk_touch_tool tool = type == PT_PEN ? NK_TOUCH_TOOL_STYLUS : NK_TOUCH_TOOL_FINGER;
+    float pressure = type == PT_PEN ? 0.f : 1.f;
+    float tilt_x = 0.f;
+    float tilt_y = 0.f;
+    if (type == PT_PEN) {
+        POINTER_PEN_INFO pen{};
+        if (GetPointerPenInfo(pointer_id, &pen)) {
+            if (pen.penFlags & (PEN_FLAG_ERASER | PEN_FLAG_INVERTED))
+                tool = NK_TOUCH_TOOL_ERASER;
+            if (pen.penMask & PEN_MASK_PRESSURE)
+                pressure = static_cast<float>(pen.pressure) / 1024.f;
+            if (pen.penMask & PEN_MASK_TILT_X)
+                tilt_x = static_cast<float>(pen.tiltX) / 90.f;
+            if (pen.penMask & PEN_MASK_TILT_Y)
+                tilt_y = static_cast<float>(pen.tiltY) / 90.f;
+        }
+    } else if (type == PT_TOUCH) {
+        POINTER_TOUCH_INFO touch{};
+        if (GetPointerTouchInfo(pointer_id, &touch) && (touch.touchMask & TOUCH_MASK_PRESSURE))
+            pressure = static_cast<float>(touch.pressure) / 1024.f;
+    }
+    nk_modifiers modifiers = 0;
+    if (pointer.dwKeyStates & MK_SHIFT)
+        modifiers |= NK_MOD_SHIFT;
+    if (pointer.dwKeyStates & MK_CONTROL)
+        modifiers |= NK_MOD_CONTROL;
+    if (GetKeyState(VK_MENU) & 0x8000)
+        modifiers |= NK_MOD_ALT;
+    if ((GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000)
+        modifiers |= NK_MOD_SUPER;
+    if (GetKeyState(VK_CAPITAL) & 1)
+        modifiers |= NK_MOD_CAPS_LOCK;
+    if (GetKeyState(VK_NUMLOCK) & 1)
+        modifiers |= NK_MOD_NUM_LOCK;
+
+    auto found = resource.active_touch_pointers.find(pointer_id);
+    nk_touch_action action = NK_TOUCH_MOVE;
+    if ((pointer.pointerFlags & POINTER_FLAG_CANCELED) != 0) {
+        if (found == resource.active_touch_pointers.end())
+            return true;
+        action = NK_TOUCH_CANCEL;
+    } else if (message == WM_POINTERDOWN) {
+        action = NK_TOUCH_BEGIN;
+        resource.active_touch_pointers[pointer_id] = tool;
+    } else if (message == WM_POINTERUP) {
+        action = NK_TOUCH_END;
+        if (found == resource.active_touch_pointers.end())
+            return true;
+        tool = found->second;
+    } else if ((pointer.pointerFlags & POINTER_FLAG_INCONTACT) == 0) {
+        return true;
+    } else if (found == resource.active_touch_pointers.end()) {
+        action = NK_TOUCH_BEGIN;
+        resource.active_touch_pointers[pointer_id] = tool;
+    } else {
+        tool = found->second;
+    }
+    const nk_touch_event payload{pointer_id, action, tool, modifiers, x, y, pressure, tilt_x,
+                                 tilt_y, 0};
+    queue_input_event(NK_EVENT_TOUCH, resource.handle, bytes_of(payload));
+    if (action == NK_TOUCH_END || action == NK_TOUCH_CANCEL)
+        resource.active_touch_pointers.erase(pointer_id);
+    return true;
+}
+
+void handle_ime_composition(WinWindowResource &resource, LPARAM flags) {
+    HIMC context = ImmGetContext(resource.window);
+    if (!context)
+        return;
+    if (flags & GCS_RESULTSTR) {
+        std::wstring result;
+        if (get_ime_string(context, GCS_RESULTSTR, result)) {
+            resource.skip_ime_characters += static_cast<uint32_t>(result.size());
+            const auto committed = utf8(result.c_str());
+            emit_committed_utf8(resource, committed);
+            resource.text_composing = false;
+            resource.text_composition_start = NK_TEXT_POSITION_NONE;
+            resource.text_composition_end = NK_TEXT_POSITION_NONE;
+            resource.text_input_state.composition_start = NK_TEXT_POSITION_NONE;
+            resource.text_input_state.composition_end = NK_TEXT_POSITION_NONE;
+        }
+    } else if ((flags & GCS_COMPSTR) && resource.text_input_active) {
+        std::wstring composing;
+        if (get_ime_string(context, GCS_COMPSTR, composing)) {
+            const auto value = utf8(composing.c_str());
+            const auto start = text_replacement_start(resource);
+            const auto end = text_replacement_end(resource);
+            LONG cursor_units = static_cast<LONG>(composing.size());
+            if (flags & GCS_CURSORPOS) {
+                const LONG current = ImmGetCompositionStringW(context, GCS_CURSORPOS, nullptr, 0);
+                if (current >= 0)
+                    cursor_units = current;
+            }
+            cursor_units = std::max<LONG>(0, std::min<LONG>(cursor_units,
+                                                static_cast<LONG>(composing.size())));
+            const auto cursor = static_cast<nk_text_position>(
+                start + codepoint_count(std::wstring_view(composing).substr(0, cursor_units)));
+            const auto finish = static_cast<nk_text_position>(start + codepoint_count(composing));
+            apply_text_edit_state(resource, NK_TEXT_EDIT_COMPOSE, start, end, value, cursor,
+                                  cursor, start, finish);
+        }
+    }
+    ImmReleaseContext(resource.window, context);
 }
 
 std::vector<std::byte> text_bytes(const std::string &value) {
@@ -398,6 +1061,148 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(resource));
     }
     if (resource && resource->handle != NK_INVALID_HANDLE) {
+        if (message == WM_SETFOCUS) {
+            if (resource->cursor_mode == NK_CURSOR_MODE_CAPTURED) {
+                SetCapture(window);
+                resource->pointer_captured = GetCapture() == window;
+            }
+            nk::core::callback_boundary([&] { emit_window_state(*resource); });
+        }
+        if (message == WM_KILLFOCUS) {
+            nk::core::callback_boundary([&] {
+                reset_window_input(*resource);
+                emit_window_state(*resource);
+            });
+        }
+        if (message == WM_CAPTURECHANGED && reinterpret_cast<HWND>(lparam) != window)
+            resource->pointer_captured = false;
+        bool pointer_handled = false;
+        nk::core::callback_boundary([&] {
+            pointer_handled = handle_pointer_message(*resource, message, wparam);
+        });
+        if (pointer_handled)
+            return 0;
+        if (is_promoted_pointer_mouse() &&
+            (message == WM_MOUSEMOVE || pointer_button_message(message) ||
+             message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL))
+            return message == WM_XBUTTONDOWN || message == WM_XBUTTONUP ? TRUE : 0;
+        if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN || message == WM_KEYUP ||
+            message == WM_SYSKEYUP) {
+            nk::core::callback_boundary([&] {
+                const bool released = message == WM_KEYUP || message == WM_SYSKEYUP;
+                const nk_key key = key_from_windows(wparam, lparam);
+                nk_input_action action = released ? NK_INPUT_RELEASE : NK_INPUT_PRESS;
+                if (!released && (lparam & (1ll << 30)) && key != NK_KEY_UNKNOWN)
+                    action = NK_INPUT_REPEAT;
+                emit_key_transition(*resource, wparam, lparam, action);
+                if (!released && resource->text_input_active) {
+                    if (key == NK_KEY_BACKSPACE)
+                        emit_text_deletion(*resource, true);
+                    else if (key == NK_KEY_DELETE)
+                        emit_text_deletion(*resource, false);
+                }
+            });
+            if (message == WM_KEYDOWN || message == WM_KEYUP)
+                return 0;
+        }
+        if (message == WM_CHAR) {
+            if (wparam == '\b')
+                return 0;
+            nk::core::callback_boundary([&] {
+                emit_text_character(*resource, static_cast<wchar_t>(wparam));
+            });
+            return 0;
+        }
+        if (message == WM_UNICHAR) {
+            if (wparam == UNICODE_NOCHAR)
+                return TRUE;
+            nk::core::callback_boundary([&] {
+                const auto codepoint = static_cast<uint32_t>(wparam);
+                if (codepoint <= 0xffff) {
+                    emit_text_character(*resource, static_cast<wchar_t>(codepoint));
+                    return;
+                }
+                const uint32_t value = codepoint - 0x10000;
+                emit_text_character(*resource, static_cast<wchar_t>(0xd800u + (value >> 10)));
+                emit_text_character(*resource,
+                                    static_cast<wchar_t>(0xdc00u + (value & 0x3ffu)));
+            });
+            return 0;
+        }
+        if (message == WM_IME_STARTCOMPOSITION) {
+            resource->text_composing = false;
+            resource->skip_ime_characters = 0;
+        }
+        if (message == WM_IME_COMPOSITION) {
+            nk::core::callback_boundary([&] {
+                handle_ime_composition(*resource, lparam);
+            });
+            return 0;
+        }
+        if (message == WM_IME_ENDCOMPOSITION) {
+            nk::core::callback_boundary([&] { finish_text_composition(*resource); });
+        }
+        if (message == WM_IME_CHAR) {
+            nk::core::callback_boundary([&] {
+                if (resource->skip_ime_characters)
+                    --resource->skip_ime_characters;
+                else
+                    emit_text_character(*resource, static_cast<wchar_t>(wparam));
+            });
+            return 0;
+        }
+        if (message == WM_MOUSEMOVE) {
+            nk::core::callback_boundary([&] {
+                if (!resource->pointer_tracking) {
+                    TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, window, 0};
+                    TrackMouseEvent(&tracking);
+                    resource->pointer_tracking = true;
+                    queue_input_event(NK_EVENT_POINTER_ENTER, resource->handle, {}, 1u);
+                }
+                update_pointer_position(*resource, lparam);
+                const nk_pointer_move_event payload{resource->pointer_x, resource->pointer_y};
+                queue_input_event(NK_EVENT_POINTER_MOVE, resource->handle, bytes_of(payload));
+            });
+            return 0;
+        }
+        if (message == WM_MOUSELEAVE) {
+            resource->pointer_tracking = false;
+            nk::core::callback_boundary([&] {
+                queue_input_event(NK_EVENT_POINTER_ENTER, resource->handle, {}, 0u);
+            });
+            return 0;
+        }
+        if (pointer_button_message(message)) {
+            nk::core::callback_boundary([&] {
+                update_pointer_position(*resource, lparam);
+                const bool released = message == WM_LBUTTONUP || message == WM_RBUTTONUP ||
+                                      message == WM_MBUTTONUP || message == WM_XBUTTONUP;
+                emit_pointer_button(*resource, pointer_button_from_windows(message, wparam),
+                                    released ? NK_INPUT_RELEASE : NK_INPUT_PRESS,
+                                    current_modifiers());
+            });
+            return message == WM_XBUTTONDOWN || message == WM_XBUTTONUP ? TRUE : 0;
+        }
+        if (message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL) {
+            nk::core::callback_boundary([&] {
+                POINT position{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+                ScreenToClient(window, &position);
+                const auto scale = dpi_scale(window);
+                resource->pointer_x = position.x / scale;
+                resource->pointer_y = position.y / scale;
+                const double amount = static_cast<double>(GET_WHEEL_DELTA_WPARAM(wparam)) /
+                                     static_cast<double>(WHEEL_DELTA);
+                const nk_pointer_scroll_event payload =
+                    message == WM_MOUSEWHEEL ? nk_pointer_scroll_event{0.0, -amount}
+                                             : nk_pointer_scroll_event{amount, 0.0};
+                queue_input_event(NK_EVENT_POINTER_SCROLL, resource->handle, bytes_of(payload));
+            });
+            return 0;
+        }
+        if (message == WM_SETCURSOR && LOWORD(lparam) == HTCLIENT) {
+            apply_cursor(*resource);
+            return TRUE;
+        }
         if (message == WM_GETMINMAXINFO) {
             auto *info = reinterpret_cast<MINMAXINFO *>(lparam);
             if (resource->min_width)
@@ -508,6 +1313,11 @@ void copy_notification_text(wchar_t (&destination)[Size], const std::wstring &so
 std::shared_ptr<WinWindowResource> get_window(nk_handle handle) {
     return std::dynamic_pointer_cast<WinWindowResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::window));
+}
+
+std::shared_ptr<WinCursorResource> get_cursor(nk_handle handle) {
+    return std::dynamic_pointer_cast<WinCursorResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::cursor));
 }
 
 UINT query_window_dpi(HWND window) {
@@ -1468,7 +2278,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
     nk_capabilities capabilities = NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
                                    NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
                                    NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
-                                   NK_CAP_RESOURCE_IO;
+                                   NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR |
+                                   NK_CAP_POINTER_CAPTURE;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
@@ -1664,6 +2475,325 @@ nk_result NK_CALL nk_window_is_visible(nk_handle h, uint32_t *out_visible) {
         *out_visible = (state.flags & NK_WINDOW_STATE_VISIBLE) ? 1u : 0u;
     return result;
 }
+
+nk_result NK_CALL nk_key_get_state(nk_handle handle, nk_key key, nk_input_action *out_action) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_action || key == NK_KEY_UNKNOWN || key > NK_KEY_LAST)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid key state query");
+    auto resource = get_window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    *out_action = resource->keys[key];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_pointer_button_get_state(nk_handle handle, nk_pointer_button button,
+                                              nk_input_action *out_action) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_action || button > NK_POINTER_BUTTON_LAST)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid pointer button state query");
+    auto resource = get_window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    *out_action = resource->pointer_buttons[button];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_pointer_get_position(nk_handle handle, double *out_x, double *out_y) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_x || !out_y)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "pointer position outputs must not be null");
+    auto resource = get_window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    *out_x = resource->pointer_x;
+    *out_y = resource->pointer_y;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_handle *out_cursor) {
+    return nk::core::result_boundary(
+        "unexpected error while creating standard cursor", [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!out_cursor)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "cursor output must not be null");
+        *out_cursor = NK_INVALID_HANDLE;
+        LPCWSTR identifier = nullptr;
+        switch (shape) {
+        case NK_CURSOR_ARROW:
+            identifier = IDC_ARROW;
+            break;
+        case NK_CURSOR_IBEAM:
+            identifier = IDC_IBEAM;
+            break;
+        case NK_CURSOR_CROSSHAIR:
+            identifier = IDC_CROSS;
+            break;
+        case NK_CURSOR_HAND:
+            identifier = IDC_HAND;
+            break;
+        case NK_CURSOR_HORIZONTAL_RESIZE:
+            identifier = IDC_SIZEWE;
+            break;
+        case NK_CURSOR_VERTICAL_RESIZE:
+            identifier = IDC_SIZENS;
+            break;
+        case NK_CURSOR_NWSE_RESIZE:
+            identifier = IDC_SIZENWSE;
+            break;
+        case NK_CURSOR_NESW_RESIZE:
+            identifier = IDC_SIZENESW;
+            break;
+        case NK_CURSOR_MOVE:
+            identifier = IDC_SIZEALL;
+            break;
+        case NK_CURSOR_NOT_ALLOWED:
+            identifier = IDC_NO;
+            break;
+        default:
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid standard cursor shape");
+        }
+        auto resource = std::make_shared<WinCursorResource>();
+        resource->cursor = LoadCursorW(nullptr, identifier);
+        if (!resource->cursor)
+            return fail(NK_ERROR_UNSUPPORTED, "Windows does not provide the requested cursor");
+        resource->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
+        if (resource->handle == NK_INVALID_HANDLE)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
+        *out_cursor = resource->handle;
+        return NK_OK;
+
+    });
+}
+
+nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image, nk_handle *out_cursor) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!image || image->struct_size < sizeof(*image) || !out_cursor || !image->rgba ||
+            image->width <= 0 || image->height <= 0 || image->width > INT_MAX / 4 ||
+            image->stride < image->width * 4 || image->hotspot_x < 0 || image->hotspot_y < 0 ||
+            image->hotspot_x >= image->width || image->hotspot_y >= image->height)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid custom cursor image");
+        *out_cursor = NK_INVALID_HANDLE;
+        BITMAPV5HEADER header{};
+        header.bV5Size = sizeof(header);
+        header.bV5Width = image->width;
+        header.bV5Height = -image->height;
+        header.bV5Planes = 1;
+        header.bV5BitCount = 32;
+        header.bV5Compression = BI_BITFIELDS;
+        header.bV5RedMask = 0x00ff0000;
+        header.bV5GreenMask = 0x0000ff00;
+        header.bV5BlueMask = 0x000000ff;
+        header.bV5AlphaMask = 0xff000000;
+        void *pixels = nullptr;
+        HDC device = GetDC(nullptr);
+        HBITMAP color = CreateDIBSection(device, reinterpret_cast<BITMAPINFO *>(&header),
+                                         DIB_RGB_COLORS, &pixels, nullptr, 0);
+        if (device)
+            ReleaseDC(nullptr, device);
+        if (!color || !pixels) {
+            if (color)
+                DeleteObject(color);
+            return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate custom cursor pixels");
+        }
+        const auto *source = static_cast<const uint8_t *>(image->rgba);
+        auto *destination = static_cast<uint8_t *>(pixels);
+        for (int32_t y = 0; y < image->height; ++y) {
+            const auto *source_row = source + static_cast<std::size_t>(y) * image->stride;
+            auto *destination_row = destination + static_cast<std::size_t>(y) * image->width * 4;
+            for (int32_t x = 0; x < image->width; ++x) {
+                destination_row[x * 4 + 0] = source_row[x * 4 + 2];
+                destination_row[x * 4 + 1] = source_row[x * 4 + 1];
+                destination_row[x * 4 + 2] = source_row[x * 4 + 0];
+                destination_row[x * 4 + 3] = source_row[x * 4 + 3];
+            }
+        }
+        HBITMAP mask = CreateBitmap(image->width, image->height, 1, 1, nullptr);
+        if (!mask) {
+            DeleteObject(color);
+            return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate custom cursor mask");
+        }
+        ICONINFO info{};
+        info.fIcon = FALSE;
+        info.xHotspot = static_cast<DWORD>(image->hotspot_x);
+        info.yHotspot = static_cast<DWORD>(image->hotspot_y);
+        info.hbmMask = mask;
+        info.hbmColor = color;
+        HCURSOR native = static_cast<HCURSOR>(CreateIconIndirect(&info));
+        DeleteObject(mask);
+        DeleteObject(color);
+        if (!native)
+            return fail(NK_ERROR_UNSUPPORTED, "Windows could not create the custom cursor");
+        auto resource = std::make_shared<WinCursorResource>();
+        resource->cursor = native;
+        resource->owned = true;
+        resource->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
+        if (resource->handle == NK_INVALID_HANDLE)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
+        *out_cursor = resource->handle;
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while creating custom cursor");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while creating custom cursor");
+    }
+}
+
+nk_result NK_CALL nk_cursor_destroy(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!get_cursor(handle))
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale cursor handle");
+    nk::core::handles().erase(handle, nk::core::ResourceType::cursor);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_cursor(nk_handle window_handle, nk_handle cursor_handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = get_window(window_handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    auto selected = cursor_handle == NK_INVALID_HANDLE ? nullptr : get_cursor(cursor_handle);
+    if (cursor_handle != NK_INVALID_HANDLE && !selected)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale cursor handle");
+    resource->cursor = std::move(selected);
+    apply_cursor(*resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_cursor_mode(nk_handle handle, nk_cursor_mode mode) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (mode > NK_CURSOR_MODE_DISABLED)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid cursor mode");
+    if (mode == NK_CURSOR_MODE_DISABLED)
+        return fail(NK_ERROR_UNSUPPORTED, "Windows backend does not provide raw relative motion");
+    auto resource = get_window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    if (mode == NK_CURSOR_MODE_CAPTURED) {
+        SetCapture(resource->window);
+        if (GetCapture() != resource->window)
+            return fail(NK_ERROR_UNSUPPORTED, "Windows could not capture the pointer");
+        resource->pointer_captured = true;
+    } else if (resource->pointer_captured) {
+        resource->pointer_captured = false;
+        if (GetCapture() == resource->window)
+            ReleaseCapture();
+    }
+    resource->cursor_mode = mode;
+    apply_cursor(*resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_cursor_mode(nk_handle handle, nk_cursor_mode *out_mode) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_mode)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "cursor mode output must not be null");
+    auto resource = get_window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    *out_mode = resource->cursor_mode;
+    return NK_OK;
+}
+
+uint32_t NK_CALL nk_raw_pointer_motion_supported(void) { return 0; }
+
+nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
+                                                  const nk_text_input_state *state) {
+    return nk::core::result_boundary(
+        "unexpected error while setting text input state", [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!state || state->struct_size < sizeof(*state) || !state->text)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid text input state");
+        std::vector<uint32_t> codepoints;
+        const std::string_view text(state->text);
+        if (!decode_utf8(text, &codepoints))
+            return fail(NK_ERROR_INVALID_ARGUMENT, "text input state text is not valid UTF-8");
+        const uint64_t text_end = static_cast<uint64_t>(state->text_start) + codepoints.size();
+        const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
+                                    state->composition_end == NK_TEXT_POSITION_NONE;
+        const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
+                                       state->composition_end != NK_TEXT_POSITION_NONE &&
+                                       state->composition_start <= state->composition_end &&
+                                       state->composition_start >= state->text_start &&
+                                       state->composition_end <= text_end;
+        const bool valid_cursor = std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
+                                  std::isfinite(state->cursor_width) &&
+                                  std::isfinite(state->cursor_height) && state->cursor_width >= 0.f &&
+                                  state->cursor_height >= 0.f;
+        if ((state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
+                              NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) ||
+            state->text_start > state->document_length || text_end > state->document_length ||
+            state->selection_start > state->selection_end ||
+            state->selection_start < state->text_start || state->selection_end > text_end ||
+            (!no_composition && !valid_composition) || state->input_type > NK_TEXT_INPUT_PASSWORD ||
+            state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "text input state ranges or hints are invalid");
+        auto resource = get_window(handle);
+        if (!resource)
+            return fail(NK_ERROR_INVALID_HANDLE,
+                        "text input state requires a desktop window on this backend");
+        resource->text_input_text = text;
+        resource->text_input_state = *state;
+        resource->text_input_state.text = resource->text_input_text.c_str();
+        resource->text_composition_start = state->composition_start;
+        resource->text_composition_end = state->composition_end;
+        resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
+        HIMC context = ImmGetContext(resource->window);
+        if (context) {
+            const auto scale = dpi_scale(resource->window);
+            COMPOSITIONFORM composition{};
+            composition.dwStyle = CFS_POINT;
+            composition.ptCurrentPos.x = static_cast<LONG>(std::lround(state->cursor_x * scale));
+            composition.ptCurrentPos.y = static_cast<LONG>(std::lround(state->cursor_y * scale));
+            ImmSetCompositionWindow(context, &composition);
+            CANDIDATEFORM candidate{};
+            candidate.dwIndex = 0;
+            candidate.dwStyle = CFS_CANDIDATEPOS;
+            candidate.ptCurrentPos = composition.ptCurrentPos;
+            ImmSetCandidateWindow(context, &candidate);
+            ImmReleaseContext(resource->window, context);
+        }
+        return NK_OK;
+
+    });
+}
+
+nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t active) {
+    return nk::core::result_boundary(
+        "unexpected error while changing text input", [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (active > 1)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "text input active state must be zero or one");
+        auto resource = get_window(handle);
+        if (!resource)
+            return fail(NK_ERROR_INVALID_HANDLE,
+                        "text input activation requires a desktop window on this backend");
+        resource->text_input_active = active != 0;
+        if (!resource->text_input_active) {
+            HIMC context = ImmGetContext(resource->window);
+            if (context) {
+                ImmNotifyIME(context, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
+                ImmReleaseContext(resource->window, context);
+            }
+            finish_text_composition(*resource);
+        }
+        return NK_OK;
+
+    });
+}
+
 nk_result NK_CALL nk_window_minimize(nk_handle h) {
     if (const auto r = enter_ui(); r != NK_OK)
         return r;

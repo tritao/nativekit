@@ -49,7 +49,7 @@ optional system components and build configuration can affect availability.
 | Dialogs and system services | ✅ | ✅ | ✅ | ✅ | 🚧 |
 | Clipboard and drag/drop | ✅ | ✅ | ✅ | ✅ | 🚧 |
 | Notifications | ✅ | ✅ | ✅ | ✅ | 🚧 |
-| Input, cursors, and capture | ✅ | — | — | Partial | Partial |
+| Input, cursors, and capture | ✅ | ✅ | ✅ | Partial | Partial |
 | Monitors and fullscreen modes | ✅ | — | — | — | — |
 | Joysticks and gamepads | ✅ | — | — | ✅ | 🚧 |
 | OpenGL / OpenGL ES | ✅ | — | — | GLES | Partial |

@@ -1,9 +1,12 @@
 #import <Cocoa/Cocoa.h>
+#import <Carbon/Carbon.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <UserNotifications/UserNotifications.h>
 #import <WebKit/WebKit.h>
 
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_input.h"
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
@@ -15,9 +18,12 @@
 #include "core/runtime.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <cfloat>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -26,6 +32,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -33,7 +40,7 @@
 @property(nonatomic, assign) void *resource;
 @end
 
-@interface NKContentView : NSView <NSDraggingDestination>
+@interface NKContentView : NSView <NSDraggingDestination, NSTextInputClient>
 @property(nonatomic, assign) void *resource;
 @end
 
@@ -46,6 +53,8 @@
 
 namespace {
 
+struct MacCursorResource;
+
 struct MacWindowResource final : nk::core::Resource {
     __strong NSWindow *window = nil;
     __strong NKContentView *content = nil;
@@ -55,9 +64,37 @@ struct MacWindowResource final : nk::core::Resource {
     bool modal = false;
     bool sheet_active = false;
     bool child_attached = false;
+    std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
+    std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> pointer_buttons{};
+    double pointer_x = 0.0;
+    double pointer_y = 0.0;
+    nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
+    std::shared_ptr<MacCursorResource> cursor;
+    bool pointer_captured = false;
+    bool cursor_hidden = false;
+    std::string text_input_text;
+    nk_text_input_state text_input_state{};
+    bool text_input_active = false;
+    bool text_composing = false;
+    nk_text_position text_composition_start = NK_TEXT_POSITION_NONE;
+    nk_text_position text_composition_end = NK_TEXT_POSITION_NONE;
+    std::string marked_text;
+    NSRange marked_native_range{NSNotFound, 0};
+    NSRange selected_native_range{0, 0};
+    uint32_t next_touch_pointer_id = 1;
+    std::unordered_map<NSUInteger, uint32_t> touch_pointers;
+    std::unordered_map<uint64_t, uint32_t> tablet_pointers;
     std::vector<nk_handle> children;
     std::vector<nk_handle> owned_windows;
     ~MacWindowResource() override {
+        if (pointer_captured) {
+            CGAssociateMouseAndMouseCursorPosition(true);
+            pointer_captured = false;
+        }
+        if (cursor_hidden) {
+            [NSCursor unhide];
+            cursor_hidden = false;
+        }
         if (window) {
             content.resource = nullptr;
             window.delegate = nil;
@@ -65,6 +102,11 @@ struct MacWindowResource final : nk::core::Resource {
             [window close];
         }
     }
+};
+
+struct MacCursorResource final : nk::core::Resource {
+    __strong NSCursor *cursor = nil;
+    nk_handle handle = NK_INVALID_HANDLE;
 };
 
 struct MacWebViewResource final : nk::core::Resource {
@@ -263,6 +305,619 @@ bool emit_drop(MacWindowResource &resource, id<NSDraggingInfo> information) noex
 std::shared_ptr<MacWindowResource> window(nk_handle handle) {
     return std::dynamic_pointer_cast<MacWindowResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::window));
+}
+
+std::shared_ptr<MacCursorResource> cursor(nk_handle handle) {
+    return std::dynamic_pointer_cast<MacCursorResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::cursor));
+}
+
+void queue_input_event(nk_event_kind kind, nk_handle source, std::vector<std::byte> data,
+                       uint32_t flags = 0) {
+    nk::core::QueuedEvent event;
+    event.kind = kind;
+    event.source = source;
+    event.flags = flags;
+    event.data = std::move(data);
+    nk::core::push_event(std::move(event));
+}
+
+bool decode_utf8(std::string_view text, std::vector<uint32_t> &codepoints) {
+    codepoints.clear();
+    for (std::size_t index = 0; index < text.size();) {
+        const auto first = static_cast<uint8_t>(text[index]);
+        uint32_t value = 0;
+        std::size_t count = 0;
+        if (first < 0x80) {
+            value = first;
+            count = 1;
+        } else if (first >= 0xc2 && first <= 0xdf) {
+            value = first & 0x1fu;
+            count = 2;
+        } else if (first >= 0xe0 && first <= 0xef) {
+            value = first & 0x0fu;
+            count = 3;
+        } else if (first >= 0xf0 && first <= 0xf4) {
+            value = first & 0x07u;
+            count = 4;
+        } else {
+            return false;
+        }
+        if (index + count > text.size())
+            return false;
+        for (std::size_t part = 1; part < count; ++part) {
+            const auto next = static_cast<uint8_t>(text[index + part]);
+            if ((next & 0xc0u) != 0x80u)
+                return false;
+            value = (value << 6) | (next & 0x3fu);
+        }
+        if ((count == 2 && value < 0x80) || (count == 3 && value < 0x800) ||
+            (count == 4 && value < 0x10000) || value > 0x10ffff ||
+            (value >= 0xd800 && value <= 0xdfff))
+            return false;
+        codepoints.push_back(value);
+        index += count;
+    }
+    return true;
+}
+
+NSUInteger utf16_offset_for_codepoint(const std::vector<uint32_t> &codepoints,
+                                      uint32_t codepoint_index) {
+    NSUInteger result = 0;
+    const auto count = std::min<std::size_t>(codepoint_index, codepoints.size());
+    for (std::size_t index = 0; index < count; ++index)
+        result += codepoints[index] > 0xffff ? 2u : 1u;
+    return result;
+}
+
+uint32_t codepoint_index_for_utf16(const std::vector<uint32_t> &codepoints, NSUInteger utf16_index) {
+    NSUInteger offset = 0;
+    uint32_t result = 0;
+    for (const auto codepoint : codepoints) {
+        const NSUInteger units = codepoint > 0xffff ? 2u : 1u;
+        if (offset + units > utf16_index)
+            break;
+        offset += units;
+        ++result;
+    }
+    return result;
+}
+
+std::vector<uint32_t> current_text_codepoints(const MacWindowResource &resource) {
+    std::vector<uint32_t> result;
+    decode_utf8(resource.text_input_text, result);
+    return result;
+}
+
+NSRange native_range_for_positions(const MacWindowResource &resource, nk_text_position start,
+                                   nk_text_position end) {
+    const auto points = current_text_codepoints(resource);
+    const auto local_start = start == NK_TEXT_POSITION_NONE || start < resource.text_input_state.text_start
+                                 ? 0u
+                                 : start - resource.text_input_state.text_start;
+    const auto local_end = end == NK_TEXT_POSITION_NONE || end < resource.text_input_state.text_start
+                               ? local_start
+                               : end - resource.text_input_state.text_start;
+    const NSUInteger start_offset = utf16_offset_for_codepoint(points, local_start);
+    const NSUInteger end_offset = utf16_offset_for_codepoint(points, local_end);
+    return NSMakeRange(start_offset, end_offset >= start_offset ? end_offset - start_offset : 0);
+}
+
+bool codepoint_range_for_native_range(const MacWindowResource &resource, NSRange range,
+                                      nk_text_position &out_start, nk_text_position &out_end) {
+    if (range.location == NSNotFound)
+        return false;
+    const auto points = current_text_codepoints(resource);
+    const auto total_units = utf16_offset_for_codepoint(points, static_cast<uint32_t>(points.size()));
+    const uint64_t range_end = static_cast<uint64_t>(range.location) + range.length;
+    if (range_end > total_units)
+        return false;
+    const auto local_start = codepoint_index_for_utf16(points, range.location);
+    const auto local_end = codepoint_index_for_utf16(points, static_cast<NSUInteger>(range_end));
+    out_start = static_cast<nk_text_position>(resource.text_input_state.text_start + local_start);
+    out_end = static_cast<nk_text_position>(resource.text_input_state.text_start + local_end);
+    return true;
+}
+
+void update_text_snapshot(MacWindowResource &resource, nk_text_position replace_start,
+                          nk_text_position replace_end, std::string_view inserted) {
+    std::vector<uint32_t> old_codepoints;
+    if (!decode_utf8(resource.text_input_text, old_codepoints) ||
+        replace_start < resource.text_input_state.text_start ||
+        replace_end < replace_start ||
+        static_cast<uint64_t>(replace_end) >
+            static_cast<uint64_t>(resource.text_input_state.text_start) + old_codepoints.size())
+        return;
+    std::vector<uint32_t> inserted_codepoints;
+    if (!decode_utf8(inserted, inserted_codepoints))
+        return;
+    const auto first = static_cast<std::size_t>(replace_start - resource.text_input_state.text_start);
+    const auto last = static_cast<std::size_t>(replace_end - resource.text_input_state.text_start);
+    const auto byte_offset = [&](std::size_t codepoint_index) {
+        std::size_t bytes = 0;
+        for (std::size_t index = 0; index < codepoint_index; ++index) {
+            const auto value = old_codepoints[index];
+            bytes += value < 0x80 ? 1u : (value < 0x800 ? 2u : (value < 0x10000 ? 3u : 4u));
+        }
+        return bytes;
+    };
+    std::string updated = resource.text_input_text;
+    const auto first_byte = byte_offset(first);
+    const auto last_byte = byte_offset(last);
+    updated.replace(first_byte, last_byte - first_byte, inserted.data(), inserted.size());
+    const int64_t delta = static_cast<int64_t>(inserted_codepoints.size()) -
+                          static_cast<int64_t>(last - first);
+    resource.text_input_text = std::move(updated);
+    resource.text_input_state.text = resource.text_input_text.c_str();
+    resource.text_input_state.document_length = static_cast<nk_text_position>(
+        std::max<int64_t>(0, static_cast<int64_t>(resource.text_input_state.document_length) + delta));
+}
+
+void emit_text_edit(MacWindowResource &resource, nk_text_edit_event payload,
+                    const std::string &text = {}) {
+    payload.text_offset = text.empty() ? 0u : sizeof(payload);
+    payload.text_length = static_cast<uint32_t>(text.size());
+    std::vector<std::byte> data(sizeof(payload) + text.size() + (text.empty() ? 0u : 1u));
+    std::memcpy(data.data(), &payload, sizeof(payload));
+    if (!text.empty())
+        std::memcpy(data.data() + sizeof(payload), text.c_str(), text.size() + 1);
+    queue_input_event(NK_EVENT_TEXT_EDIT, resource.handle, std::move(data));
+}
+
+void apply_text_edit_state(MacWindowResource &resource, nk_text_edit_action action,
+                           nk_text_position replace_start, nk_text_position replace_end,
+                           const std::string &text, nk_text_position selection_start,
+                           nk_text_position selection_end, nk_text_position composition_start,
+                           nk_text_position composition_end) {
+    if (replace_start != NK_TEXT_POSITION_NONE && replace_end != NK_TEXT_POSITION_NONE)
+        update_text_snapshot(resource, replace_start, replace_end, text);
+    resource.text_input_state.selection_start = selection_start;
+    resource.text_input_state.selection_end = selection_end;
+    resource.text_input_state.composition_start = composition_start;
+    resource.text_input_state.composition_end = composition_end;
+    resource.text_composing = composition_start != NK_TEXT_POSITION_NONE;
+    resource.text_composition_start = composition_start;
+    resource.text_composition_end = composition_end;
+    if (resource.text_composing) {
+        resource.marked_text = text;
+        resource.marked_native_range = native_range_for_positions(resource, composition_start,
+                                                                  composition_end);
+    } else {
+        resource.marked_text.clear();
+        resource.marked_native_range = NSMakeRange(NSNotFound, 0);
+    }
+    resource.selected_native_range = native_range_for_positions(
+        resource, selection_start, selection_end);
+    nk_text_edit_event payload{};
+    payload.action = action;
+    payload.replace_start = replace_start;
+    payload.replace_end = replace_end;
+    payload.selection_start = selection_start;
+    payload.selection_end = selection_end;
+    payload.composition_start = composition_start;
+    payload.composition_end = composition_end;
+    emit_text_edit(resource, payload, text);
+}
+
+nk_text_position text_replacement_start(const MacWindowResource &resource) {
+    return resource.text_composing ? resource.text_composition_start
+                                   : resource.text_input_state.selection_start;
+}
+
+nk_text_position text_replacement_end(const MacWindowResource &resource) {
+    return resource.text_composing ? resource.text_composition_end
+                                   : resource.text_input_state.selection_end;
+}
+
+void emit_committed_text(MacWindowResource &resource, const std::string &text) {
+    std::vector<uint32_t> points;
+    if (!decode_utf8(text, points))
+        return;
+    if (!resource.text_input_active) {
+        for (const auto point : points) {
+            const nk_text_input_event payload{point, 0};
+            queue_input_event(NK_EVENT_TEXT_INPUT, resource.handle, bytes_of(payload));
+        }
+        resource.text_composing = false;
+        resource.text_composition_start = NK_TEXT_POSITION_NONE;
+        resource.text_composition_end = NK_TEXT_POSITION_NONE;
+        resource.text_input_state.composition_start = NK_TEXT_POSITION_NONE;
+        resource.text_input_state.composition_end = NK_TEXT_POSITION_NONE;
+        resource.marked_text.clear();
+        resource.marked_native_range = NSMakeRange(NSNotFound, 0);
+        return;
+    }
+    const auto start = text_replacement_start(resource);
+    const auto end = text_replacement_end(resource);
+    const auto selection = static_cast<nk_text_position>(start + points.size());
+    apply_text_edit_state(resource, NK_TEXT_EDIT_COMMIT, start, end, text, selection, selection,
+                          NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+}
+
+void finish_text_composition(MacWindowResource &resource) {
+    if (!resource.text_composing)
+        return;
+    auto selection_start = resource.text_input_state.selection_start;
+    auto selection_end = resource.text_input_state.selection_end;
+    if (selection_start == NK_TEXT_POSITION_NONE)
+        selection_start = selection_end = resource.text_composition_end;
+    apply_text_edit_state(resource, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
+                          NK_TEXT_POSITION_NONE, {}, selection_start, selection_end,
+                          NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+}
+
+nk_modifiers modifiers_from_native(NSEventModifierFlags flags) {
+    nk_modifiers result = 0;
+    if (flags & NSEventModifierFlagShift)
+        result |= NK_MOD_SHIFT;
+    if (flags & NSEventModifierFlagControl)
+        result |= NK_MOD_CONTROL;
+    if (flags & NSEventModifierFlagOption)
+        result |= NK_MOD_ALT;
+    if (flags & NSEventModifierFlagCommand)
+        result |= NK_MOD_SUPER;
+    if (flags & NSEventModifierFlagCapsLock)
+        result |= NK_MOD_CAPS_LOCK;
+    return result;
+}
+
+nk_key key_from_cocoa(unsigned short code) {
+    switch (code) {
+    case kVK_ANSI_A: return NK_KEY_A;
+    case kVK_ANSI_S: return NK_KEY_S;
+    case kVK_ANSI_D: return NK_KEY_D;
+    case kVK_ANSI_F: return NK_KEY_F;
+    case kVK_ANSI_H: return NK_KEY_H;
+    case kVK_ANSI_G: return NK_KEY_G;
+    case kVK_ANSI_Z: return NK_KEY_Z;
+    case kVK_ANSI_X: return NK_KEY_X;
+    case kVK_ANSI_C: return NK_KEY_C;
+    case kVK_ANSI_V: return NK_KEY_V;
+    case kVK_ANSI_B: return NK_KEY_B;
+    case kVK_ANSI_Q: return NK_KEY_Q;
+    case kVK_ANSI_W: return NK_KEY_W;
+    case kVK_ANSI_E: return NK_KEY_E;
+    case kVK_ANSI_R: return NK_KEY_R;
+    case kVK_ANSI_Y: return NK_KEY_Y;
+    case kVK_ANSI_T: return NK_KEY_T;
+    case kVK_ANSI_1: return NK_KEY_1;
+    case kVK_ANSI_2: return NK_KEY_2;
+    case kVK_ANSI_3: return NK_KEY_3;
+    case kVK_ANSI_4: return NK_KEY_4;
+    case kVK_ANSI_6: return NK_KEY_6;
+    case kVK_ANSI_5: return NK_KEY_5;
+    case kVK_ANSI_Equal: return NK_KEY_EQUAL;
+    case kVK_ANSI_9: return NK_KEY_9;
+    case kVK_ANSI_7: return NK_KEY_7;
+    case kVK_ANSI_Minus: return NK_KEY_MINUS;
+    case kVK_ANSI_8: return NK_KEY_8;
+    case kVK_ANSI_0: return NK_KEY_0;
+    case kVK_ANSI_RightBracket: return NK_KEY_RIGHT_BRACKET;
+    case kVK_ANSI_O: return NK_KEY_O;
+    case kVK_ANSI_U: return NK_KEY_U;
+    case kVK_ANSI_LeftBracket: return NK_KEY_LEFT_BRACKET;
+    case kVK_ANSI_I: return NK_KEY_I;
+    case kVK_ANSI_P: return NK_KEY_P;
+    case kVK_Return: return NK_KEY_ENTER;
+    case kVK_ANSI_L: return NK_KEY_L;
+    case kVK_ANSI_J: return NK_KEY_J;
+    case kVK_ANSI_Quote: return NK_KEY_APOSTROPHE;
+    case kVK_ANSI_K: return NK_KEY_K;
+    case kVK_ANSI_Semicolon: return NK_KEY_SEMICOLON;
+    case kVK_ANSI_Backslash: return NK_KEY_BACKSLASH;
+    case kVK_ANSI_Comma: return NK_KEY_COMMA;
+    case kVK_ANSI_Slash: return NK_KEY_SLASH;
+    case kVK_ANSI_N: return NK_KEY_N;
+    case kVK_ANSI_M: return NK_KEY_M;
+    case kVK_ANSI_Period: return NK_KEY_PERIOD;
+    case kVK_Tab: return NK_KEY_TAB;
+    case kVK_Space: return NK_KEY_SPACE;
+    case kVK_ANSI_Grave: return NK_KEY_GRAVE_ACCENT;
+    case kVK_Delete: return NK_KEY_BACKSPACE;
+    case kVK_Escape: return NK_KEY_ESCAPE;
+    case kVK_RightCommand: return NK_KEY_RIGHT_SUPER;
+    case kVK_Command: return NK_KEY_LEFT_SUPER;
+    case kVK_Shift: return NK_KEY_LEFT_SHIFT;
+    case kVK_CapsLock: return NK_KEY_CAPS_LOCK;
+    case kVK_Option: return NK_KEY_LEFT_ALT;
+    case kVK_Control: return NK_KEY_LEFT_CONTROL;
+    case kVK_RightShift: return NK_KEY_RIGHT_SHIFT;
+    case kVK_RightOption: return NK_KEY_RIGHT_ALT;
+    case kVK_RightControl: return NK_KEY_RIGHT_CONTROL;
+    case kVK_F17: return NK_KEY_F17;
+    case kVK_ANSI_KeypadDecimal: return NK_KEY_KP_DECIMAL;
+    case kVK_ANSI_KeypadMultiply: return NK_KEY_KP_MULTIPLY;
+    case kVK_ANSI_KeypadPlus: return NK_KEY_KP_ADD;
+    case kVK_ANSI_KeypadClear: return NK_KEY_NUM_LOCK;
+    case kVK_ANSI_KeypadDivide: return NK_KEY_KP_DIVIDE;
+    case kVK_ANSI_KeypadEnter: return NK_KEY_KP_ENTER;
+    case kVK_ANSI_KeypadMinus: return NK_KEY_KP_SUBTRACT;
+    case kVK_F18: return NK_KEY_F18;
+    case kVK_F19: return NK_KEY_F19;
+    case kVK_ANSI_KeypadEquals: return NK_KEY_KP_EQUAL;
+    case kVK_ANSI_Keypad0: return NK_KEY_KP_0;
+    case kVK_ANSI_Keypad1: return NK_KEY_KP_1;
+    case kVK_ANSI_Keypad2: return NK_KEY_KP_2;
+    case kVK_ANSI_Keypad3: return NK_KEY_KP_3;
+    case kVK_ANSI_Keypad4: return NK_KEY_KP_4;
+    case kVK_ANSI_Keypad5: return NK_KEY_KP_5;
+    case kVK_ANSI_Keypad6: return NK_KEY_KP_6;
+    case kVK_ANSI_Keypad7: return NK_KEY_KP_7;
+    case kVK_F20: return NK_KEY_F20;
+    case kVK_ANSI_Keypad8: return NK_KEY_KP_8;
+    case kVK_ANSI_Keypad9: return NK_KEY_KP_9;
+    case kVK_F5: return NK_KEY_F5;
+    case kVK_F6: return NK_KEY_F6;
+    case kVK_F7: return NK_KEY_F7;
+    case kVK_F3: return NK_KEY_F3;
+    case kVK_F8: return NK_KEY_F8;
+    case kVK_F9: return NK_KEY_F9;
+    case kVK_F11: return NK_KEY_F11;
+    case kVK_F13: return NK_KEY_F13;
+    case kVK_F16: return NK_KEY_F16;
+    case kVK_F14: return NK_KEY_F14;
+    case kVK_F10: return NK_KEY_F10;
+    case kVK_F12: return NK_KEY_F12;
+    case kVK_F15: return NK_KEY_F15;
+    case kVK_Help: return NK_KEY_INSERT;
+    case kVK_Home: return NK_KEY_HOME;
+    case kVK_PageUp: return NK_KEY_PAGE_UP;
+    case kVK_ForwardDelete: return NK_KEY_DELETE;
+    case kVK_F4: return NK_KEY_F4;
+    case kVK_End: return NK_KEY_END;
+    case kVK_F2: return NK_KEY_F2;
+    case kVK_PageDown: return NK_KEY_PAGE_DOWN;
+    case kVK_F1: return NK_KEY_F1;
+    case kVK_LeftArrow: return NK_KEY_LEFT;
+    case kVK_RightArrow: return NK_KEY_RIGHT;
+    case kVK_DownArrow: return NK_KEY_DOWN;
+    case kVK_UpArrow: return NK_KEY_UP;
+    default: return NK_KEY_UNKNOWN;
+    }
+}
+
+void emit_key_transition(MacWindowResource &resource, NSEvent *event, nk_input_action action) {
+    const auto key = key_from_cocoa(event.keyCode);
+    if (key != NK_KEY_UNKNOWN)
+        resource.keys[key] = action == NK_INPUT_RELEASE ? NK_INPUT_RELEASE : NK_INPUT_PRESS;
+    const nk_key_event payload{key, event.keyCode, action,
+                               modifiers_from_native(event.modifierFlags)};
+    queue_input_event(NK_EVENT_KEY, resource.handle, bytes_of(payload));
+}
+
+void emit_pointer_enter(MacWindowResource &resource, bool entered) {
+    queue_input_event(NK_EVENT_POINTER_ENTER, resource.handle, {}, entered ? 1u : 0u);
+}
+
+NSPoint local_pointer_position(NKContentView *view, NSEvent *event) {
+    return [view convertPoint:event.locationInWindow fromView:nil];
+}
+
+nk_pointer_button pointer_button_from_cocoa(NSEvent *event) {
+    if (event.type == NSEventTypeLeftMouseDown || event.type == NSEventTypeLeftMouseUp ||
+        event.type == NSEventTypeLeftMouseDragged)
+        return NK_POINTER_BUTTON_LEFT;
+    if (event.type == NSEventTypeRightMouseDown || event.type == NSEventTypeRightMouseUp ||
+        event.type == NSEventTypeRightMouseDragged)
+        return NK_POINTER_BUTTON_RIGHT;
+    const NSInteger button = event.buttonNumber;
+    if (button == 2)
+        return NK_POINTER_BUTTON_MIDDLE;
+    if (button >= 3 && button <= 7)
+        return static_cast<nk_pointer_button>(button);
+    return UINT32_MAX;
+}
+
+void emit_pointer_button(MacWindowResource &resource, nk_pointer_button button,
+                         nk_input_action action, nk_modifiers modifiers) {
+    if (button > NK_POINTER_BUTTON_LAST)
+        return;
+    resource.pointer_buttons[button] = action;
+    const nk_pointer_button_event payload{button, action, modifiers, 0, resource.pointer_x,
+                                          resource.pointer_y};
+    queue_input_event(NK_EVENT_POINTER_BUTTON, resource.handle, bytes_of(payload));
+}
+
+void emit_touch(MacWindowResource &resource, uint32_t pointer_id, nk_touch_action action,
+                nk_touch_tool tool, NSPoint location, nk_modifiers modifiers, float pressure = 1.f,
+                float tilt_x = 0.f, float tilt_y = 0.f, uint32_t flags = 0) {
+    const nk_touch_event payload{pointer_id, action, tool, modifiers, location.x, location.y,
+                                 pressure, tilt_x, tilt_y, 0};
+    queue_input_event(NK_EVENT_TOUCH, resource.handle, bytes_of(payload), flags);
+}
+
+void set_cursor_hidden(MacWindowResource &resource, bool hidden) {
+    if (resource.cursor_hidden == hidden)
+        return;
+    if (hidden)
+        [NSCursor hide];
+    else
+        [NSCursor unhide];
+    resource.cursor_hidden = hidden;
+}
+
+void apply_cursor(MacWindowResource &resource) {
+    if (resource.cursor_mode == NK_CURSOR_MODE_HIDDEN ||
+        resource.cursor_mode == NK_CURSOR_MODE_DISABLED)
+        set_cursor_hidden(resource, true);
+    else {
+        set_cursor_hidden(resource, false);
+        NSCursor *selected = resource.cursor ? resource.cursor->cursor : [NSCursor arrowCursor];
+        [selected set];
+    }
+}
+
+NSCursor *diagonal_resize_cursor(bool northwest_southeast) {
+    NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(32, 32)];
+    [image lockFocus];
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    path.lineWidth = 2.0;
+    if (northwest_southeast) {
+        [path moveToPoint:NSMakePoint(5, 5)];
+        [path lineToPoint:NSMakePoint(27, 27)];
+        [path moveToPoint:NSMakePoint(5, 5)];
+        [path lineToPoint:NSMakePoint(5, 12)];
+        [path moveToPoint:NSMakePoint(5, 5)];
+        [path lineToPoint:NSMakePoint(12, 5)];
+        [path moveToPoint:NSMakePoint(27, 27)];
+        [path lineToPoint:NSMakePoint(20, 27)];
+        [path moveToPoint:NSMakePoint(27, 27)];
+        [path lineToPoint:NSMakePoint(27, 20)];
+    } else {
+        [path moveToPoint:NSMakePoint(5, 27)];
+        [path lineToPoint:NSMakePoint(27, 5)];
+        [path moveToPoint:NSMakePoint(5, 27)];
+        [path lineToPoint:NSMakePoint(5, 20)];
+        [path moveToPoint:NSMakePoint(5, 27)];
+        [path lineToPoint:NSMakePoint(12, 27)];
+        [path moveToPoint:NSMakePoint(27, 5)];
+        [path lineToPoint:NSMakePoint(20, 5)];
+        [path moveToPoint:NSMakePoint(27, 5)];
+        [path lineToPoint:NSMakePoint(27, 12)];
+    }
+    [[NSColor whiteColor] setStroke];
+    path.lineWidth = 5.0;
+    [path stroke];
+    [[NSColor blackColor] setStroke];
+    path.lineWidth = 2.0;
+    [path stroke];
+    [image unlockFocus];
+    return [[NSCursor alloc] initWithImage:image hotSpot:NSMakePoint(16, 16)];
+}
+
+void release_cursor_capture(MacWindowResource &resource) {
+    if (resource.pointer_captured) {
+        CGAssociateMouseAndMouseCursorPosition(true);
+        resource.pointer_captured = false;
+    }
+    set_cursor_hidden(resource, false);
+}
+
+bool apply_cursor_mode(MacWindowResource &resource, nk_cursor_mode mode) {
+    const auto old_mode = resource.cursor_mode;
+    if (resource.pointer_captured && mode != NK_CURSOR_MODE_CAPTURED &&
+        mode != NK_CURSOR_MODE_DISABLED) {
+        CGAssociateMouseAndMouseCursorPosition(true);
+        resource.pointer_captured = false;
+    }
+    if ((mode == NK_CURSOR_MODE_CAPTURED || mode == NK_CURSOR_MODE_DISABLED) &&
+        !resource.pointer_captured) {
+        if (CGAssociateMouseAndMouseCursorPosition(false) != kCGErrorSuccess) {
+            resource.cursor_mode = old_mode;
+            if (resource.cursor_mode != NK_CURSOR_MODE_NORMAL)
+                set_cursor_hidden(resource, true);
+            return false;
+        }
+        resource.pointer_captured = true;
+    }
+    resource.cursor_mode = mode;
+    apply_cursor(resource);
+    return true;
+}
+
+void reset_window_input(MacWindowResource &resource) {
+    if (resource.text_input_active) {
+        finish_text_composition(resource);
+    } else {
+        resource.text_composing = false;
+        resource.text_composition_start = NK_TEXT_POSITION_NONE;
+        resource.text_composition_end = NK_TEXT_POSITION_NONE;
+        resource.text_input_state.composition_start = NK_TEXT_POSITION_NONE;
+        resource.text_input_state.composition_end = NK_TEXT_POSITION_NONE;
+        resource.marked_text.clear();
+        resource.marked_native_range = NSMakeRange(NSNotFound, 0);
+    }
+    for (nk_key key = 1; key <= NK_KEY_LAST; ++key) {
+        if (resource.keys[key] != NK_INPUT_PRESS)
+            continue;
+        resource.keys[key] = NK_INPUT_RELEASE;
+        const nk_key_event payload{key, 0, NK_INPUT_RELEASE, 0};
+        queue_input_event(NK_EVENT_KEY, resource.handle, bytes_of(payload), 1u);
+    }
+    for (nk_pointer_button button = 0; button <= NK_POINTER_BUTTON_LAST; ++button) {
+        if (resource.pointer_buttons[button] != NK_INPUT_PRESS)
+            continue;
+        resource.pointer_buttons[button] = NK_INPUT_RELEASE;
+        const nk_pointer_button_event payload{button, NK_INPUT_RELEASE, 0, 0,
+                                              resource.pointer_x, resource.pointer_y};
+        queue_input_event(NK_EVENT_POINTER_BUTTON, resource.handle, bytes_of(payload), 1u);
+    }
+    for (const auto &[identity, pointer_id] : resource.touch_pointers) {
+        (void)identity;
+        const nk_touch_event payload{pointer_id, NK_TOUCH_CANCEL, NK_TOUCH_TOOL_FINGER, 0,
+                                     resource.pointer_x, resource.pointer_y, 0.f, 0.f, 0.f, 0};
+        queue_input_event(NK_EVENT_TOUCH, resource.handle, bytes_of(payload), 1u);
+    }
+    resource.touch_pointers.clear();
+    for (const auto &[device, pointer_id] : resource.tablet_pointers) {
+        (void)device;
+        emit_touch(resource, pointer_id, NK_TOUCH_CANCEL, NK_TOUCH_TOOL_STYLUS,
+                   NSMakePoint(resource.pointer_x, resource.pointer_y), 0, 0.f, 0.f, 0.f, 1u);
+    }
+    resource.tablet_pointers.clear();
+    release_cursor_capture(resource);
+}
+
+void emit_touch_event(NKContentView *view, NSEvent *event, nk_touch_action action) {
+    auto *resource = static_cast<MacWindowResource *>(view.resource);
+    if (!resource)
+        return;
+    for (NSTouch *touch in [event touchesMatchingPhase:NSTouchPhaseAny inView:view]) {
+        if (touch.type != NSTouchTypeDirect)
+            continue;
+        const NSUInteger identity = touch.identity.hash;
+        auto found = resource->touch_pointers.find(identity);
+        if (action == NK_TOUCH_BEGIN) {
+            if (found == resource->touch_pointers.end()) {
+                uint32_t pointer_id = resource->next_touch_pointer_id++;
+                if (!pointer_id)
+                    pointer_id = resource->next_touch_pointer_id++;
+                found = resource->touch_pointers.emplace(identity, pointer_id).first;
+            }
+        } else if (found == resource->touch_pointers.end()) {
+            continue;
+        }
+        const auto location = [touch locationInView:view];
+        emit_touch(*resource, found->second, action, NK_TOUCH_TOOL_FINGER, location,
+                   modifiers_from_native(event.modifierFlags));
+        if (action == NK_TOUCH_END || action == NK_TOUCH_CANCEL)
+            resource->touch_pointers.erase(found);
+    }
+}
+
+void emit_tablet_event(NKContentView *view, NSEvent *event) {
+    auto *resource = static_cast<MacWindowResource *>(view.resource);
+    if (!resource)
+        return;
+    const uint64_t device = static_cast<uint64_t>(event.deviceID);
+    auto found = resource->tablet_pointers.find(device);
+    bool began = false;
+    if (event.pressure > 0.f) {
+        if (found == resource->tablet_pointers.end()) {
+            uint32_t pointer_id = resource->next_touch_pointer_id++;
+            if (!pointer_id)
+                pointer_id = resource->next_touch_pointer_id++;
+            found = resource->tablet_pointers.emplace(device, pointer_id).first;
+            began = true;
+        }
+    } else if (found == resource->tablet_pointers.end()) {
+        return;
+    }
+    const auto location = local_pointer_position(view, event);
+    resource->pointer_x = location.x;
+    resource->pointer_y = location.y;
+    const auto tool = event.pointingDeviceType == NSPointingDeviceTypeEraser
+                          ? NK_TOUCH_TOOL_ERASER
+                          : NK_TOUCH_TOOL_STYLUS;
+    const float pressure = std::max(0.f, std::min(1.f, event.pressure));
+    const auto action = event.pressure > 0.f ? (began ? NK_TOUCH_BEGIN : NK_TOUCH_MOVE)
+                                              : NK_TOUCH_END;
+    const auto tilt = event.tilt;
+    emit_touch(*resource, found->second, action, tool, location,
+               modifiers_from_native(event.modifierFlags), pressure,
+               static_cast<float>(tilt.x), static_cast<float>(tilt.y));
+    if (action == NK_TOUCH_END)
+        resource->tablet_pointers.erase(found);
 }
 
 std::shared_ptr<MacWebViewResource> webview(nk_handle handle) {
@@ -691,14 +1346,22 @@ void emit_window_state(MacWindowResource &resource) noexcept {
 - (void)windowDidBecomeKey:(NSNotification *)notification {
     (void)notification;
     auto *r = static_cast<MacWindowResource *>(_resource);
-    if (r)
+    if (r) {
+        nk::core::callback_boundary([&] {
+            apply_cursor_mode(*r, r->cursor_mode);
+            if (r->text_input_active)
+                [r->window makeFirstResponder:r->content];
+        });
         emit_window_state(*r);
+    }
 }
 - (void)windowDidResignKey:(NSNotification *)notification {
     (void)notification;
     auto *r = static_cast<MacWindowResource *>(_resource);
-    if (r)
+    if (r) {
+        nk::core::callback_boundary([&] { reset_window_input(*r); });
         emit_window_state(*r);
+    }
 }
 - (void)windowDidChangeBackingProperties:(NSNotification *)notification {
     (void)notification;
@@ -717,6 +1380,408 @@ void emit_window_state(MacWindowResource &resource) noexcept {
 @implementation NKContentView
 - (BOOL)isFlipped {
     return YES;
+}
+- (BOOL)acceptsFirstResponder {
+    return YES;
+}
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    for (NSTrackingArea *area in self.trackingAreas)
+        [self removeTrackingArea:area];
+    const NSTrackingAreaOptions options = NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved |
+                                          NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect;
+    [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect
+                                                       options:options
+                                                         owner:self
+                                                      userInfo:nil]];
+}
+- (void)mouseEntered:(NSEvent *)event {
+    (void)event;
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (resource) {
+        nk::core::callback_boundary([&] {
+            apply_cursor(*resource);
+            emit_pointer_enter(*resource, true);
+        });
+    }
+}
+- (void)mouseExited:(NSEvent *)event {
+    (void)event;
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (resource)
+        nk::core::callback_boundary([&] { emit_pointer_enter(*resource, false); });
+}
+- (void)mouseMoved:(NSEvent *)event {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        if (resource->pointer_captured) {
+            resource->pointer_x += event.deltaX;
+            resource->pointer_y -= event.deltaY;
+        } else {
+            const NSPoint point = local_pointer_position(self, event);
+            resource->pointer_x = point.x;
+            resource->pointer_y = point.y;
+        }
+        const nk_pointer_move_event payload{resource->pointer_x, resource->pointer_y};
+        queue_input_event(NK_EVENT_POINTER_MOVE, resource->handle, bytes_of(payload));
+    });
+}
+- (void)mouseDragged:(NSEvent *)event {
+    [self mouseMoved:event];
+}
+- (void)rightMouseDragged:(NSEvent *)event {
+    [self mouseMoved:event];
+}
+- (void)otherMouseDragged:(NSEvent *)event {
+    [self mouseMoved:event];
+}
+- (void)mouseDown:(NSEvent *)event {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        const NSPoint point = local_pointer_position(self, event);
+        resource->pointer_x = point.x;
+        resource->pointer_y = point.y;
+        emit_pointer_button(*resource, NK_POINTER_BUTTON_LEFT, NK_INPUT_PRESS,
+                            modifiers_from_native(event.modifierFlags));
+    });
+}
+- (void)mouseUp:(NSEvent *)event {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        const NSPoint point = local_pointer_position(self, event);
+        resource->pointer_x = point.x;
+        resource->pointer_y = point.y;
+        emit_pointer_button(*resource, NK_POINTER_BUTTON_LEFT, NK_INPUT_RELEASE,
+                            modifiers_from_native(event.modifierFlags));
+    });
+}
+- (void)rightMouseDown:(NSEvent *)event {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        const NSPoint point = local_pointer_position(self, event);
+        resource->pointer_x = point.x;
+        resource->pointer_y = point.y;
+        emit_pointer_button(*resource, NK_POINTER_BUTTON_RIGHT, NK_INPUT_PRESS,
+                            modifiers_from_native(event.modifierFlags));
+    });
+}
+- (void)rightMouseUp:(NSEvent *)event {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        const NSPoint point = local_pointer_position(self, event);
+        resource->pointer_x = point.x;
+        resource->pointer_y = point.y;
+        emit_pointer_button(*resource, NK_POINTER_BUTTON_RIGHT, NK_INPUT_RELEASE,
+                            modifiers_from_native(event.modifierFlags));
+    });
+}
+- (void)otherMouseDown:(NSEvent *)event {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    const auto button = pointer_button_from_cocoa(event);
+    if (!resource || button > NK_POINTER_BUTTON_LAST)
+        return;
+    nk::core::callback_boundary([&] {
+        const NSPoint point = local_pointer_position(self, event);
+        resource->pointer_x = point.x;
+        resource->pointer_y = point.y;
+        emit_pointer_button(*resource, button, NK_INPUT_PRESS,
+                            modifiers_from_native(event.modifierFlags));
+    });
+}
+- (void)otherMouseUp:(NSEvent *)event {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    const auto button = pointer_button_from_cocoa(event);
+    if (!resource || button > NK_POINTER_BUTTON_LAST)
+        return;
+    nk::core::callback_boundary([&] {
+        const NSPoint point = local_pointer_position(self, event);
+        resource->pointer_x = point.x;
+        resource->pointer_y = point.y;
+        emit_pointer_button(*resource, button, NK_INPUT_RELEASE,
+                            modifiers_from_native(event.modifierFlags));
+    });
+}
+- (void)scrollWheel:(NSEvent *)event {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        const NSPoint point = local_pointer_position(self, event);
+        resource->pointer_x = point.x;
+        resource->pointer_y = point.y;
+        const double x = event.hasPreciseScrollingDeltas ? event.scrollingDeltaX : event.deltaX;
+        const double y = event.hasPreciseScrollingDeltas ? -event.scrollingDeltaY : -event.deltaY;
+        const nk_pointer_scroll_event payload{x, y};
+        queue_input_event(NK_EVENT_POINTER_SCROLL, resource->handle, bytes_of(payload));
+    });
+}
+- (void)keyDown:(NSEvent *)event {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        emit_key_transition(*resource, event,
+                            event.isARepeat ? NK_INPUT_REPEAT : NK_INPUT_PRESS);
+        [self interpretKeyEvents:@[ event ]];
+    });
+}
+- (void)keyUp:(NSEvent *)event {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (resource)
+        nk::core::callback_boundary([&] {
+            emit_key_transition(*resource, event, NK_INPUT_RELEASE);
+        });
+}
+- (void)flagsChanged:(NSEvent *)event {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        const auto key = key_from_cocoa(event.keyCode);
+        if (key == NK_KEY_UNKNOWN)
+            return;
+        const auto action = resource->keys[key] == NK_INPUT_PRESS ? NK_INPUT_RELEASE
+                                                                  : NK_INPUT_PRESS;
+        emit_key_transition(*resource, event, action);
+    });
+}
+- (void)tabletPoint:(NSEvent *)event {
+    nk::core::callback_boundary([&] { emit_tablet_event(self, event); });
+}
+- (void)touchesBeganWithEvent:(NSEvent *)event {
+    nk::core::callback_boundary([&] { emit_touch_event(self, event, NK_TOUCH_BEGIN); });
+}
+- (void)touchesMovedWithEvent:(NSEvent *)event {
+    nk::core::callback_boundary([&] { emit_touch_event(self, event, NK_TOUCH_MOVE); });
+}
+- (void)touchesEndedWithEvent:(NSEvent *)event {
+    nk::core::callback_boundary([&] { emit_touch_event(self, event, NK_TOUCH_END); });
+}
+- (void)touchesCancelledWithEvent:(NSEvent *)event {
+    nk::core::callback_boundary([&] { emit_touch_event(self, event, NK_TOUCH_CANCEL); });
+}
+- (BOOL)hasMarkedText {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    return resource && resource->text_composing;
+}
+- (NSRange)markedRange {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource || !resource->text_composing)
+        return NSMakeRange(NSNotFound, 0);
+    if (resource->text_input_state.text &&
+        resource->text_composition_start != NK_TEXT_POSITION_NONE)
+        return native_range_for_positions(*resource, resource->text_composition_start,
+                                          resource->text_composition_end);
+    return resource->marked_native_range;
+}
+- (NSRange)selectedRange {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return NSMakeRange(NSNotFound, 0);
+    if (resource->text_input_state.text &&
+        resource->text_input_state.selection_start != NK_TEXT_POSITION_NONE)
+        return native_range_for_positions(*resource, resource->text_input_state.selection_start,
+                                          resource->text_input_state.selection_end);
+    return resource->selected_native_range;
+}
+- (void)setMarkedText:(id)value selectedRange:(NSRange)selectionRange
+      replacementRange:(NSRange)replacementRange {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        NSString *text_value = [value isKindOfClass:[NSAttributedString class]]
+                                   ? [(NSAttributedString *)value string]
+                                   : ([value isKindOfClass:[NSString class]] ? value
+                                                                            : [value description]);
+        const auto text = utf8(text_value ?: @"");
+        std::vector<uint32_t> points;
+        if (!decode_utf8(text, points))
+            return;
+        nk_text_position start = 0;
+        nk_text_position end = 0;
+        if (!codepoint_range_for_native_range(*resource, replacementRange, start, end)) {
+            start = text_replacement_start(*resource);
+            end = text_replacement_end(*resource);
+        }
+        const auto selection_begin = selectionRange.location == NSNotFound
+                                         ? points.size()
+                                         : codepoint_index_for_utf16(
+                                               points, std::min<NSUInteger>(selectionRange.location,
+                                                   utf16_offset_for_codepoint(points, points.size())));
+        const auto selection_finish = selectionRange.location == NSNotFound
+                                          ? selection_begin
+                                          : codepoint_index_for_utf16(
+                                                points, std::min<NSUInteger>(
+                                                    selectionRange.location + selectionRange.length,
+                                                    utf16_offset_for_codepoint(points, points.size())));
+        const auto composition_end = static_cast<nk_text_position>(start + points.size());
+        const auto absolute_selection_start = static_cast<nk_text_position>(start + selection_begin);
+        const auto absolute_selection_end = static_cast<nk_text_position>(start + selection_finish);
+        if (resource->text_input_active) {
+            apply_text_edit_state(*resource, NK_TEXT_EDIT_COMPOSE, start, end, text,
+                                  absolute_selection_start, absolute_selection_end, start,
+                                  composition_end);
+        } else {
+            update_text_snapshot(*resource, start, end, text);
+            resource->text_composing = true;
+            resource->text_composition_start = start;
+            resource->text_composition_end = composition_end;
+            resource->text_input_state.composition_start = start;
+            resource->text_input_state.composition_end = composition_end;
+            resource->text_input_state.selection_start = absolute_selection_start;
+            resource->text_input_state.selection_end = absolute_selection_end;
+            resource->marked_text = text;
+            resource->marked_native_range = NSMakeRange(replacementRange.location == NSNotFound
+                                                            ? 0
+                                                            : replacementRange.location,
+                                                        text_value.length);
+            resource->selected_native_range = NSMakeRange(
+                resource->marked_native_range.location +
+                    (selectionRange.location == NSNotFound ? text_value.length
+                                                           : selectionRange.location),
+                selectionRange.location == NSNotFound ? 0 : selectionRange.length);
+        }
+    });
+}
+- (void)unmarkText {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        if (resource->text_input_active)
+            finish_text_composition(*resource);
+        else {
+            resource->text_composing = false;
+            resource->text_composition_start = NK_TEXT_POSITION_NONE;
+            resource->text_composition_end = NK_TEXT_POSITION_NONE;
+            resource->text_input_state.composition_start = NK_TEXT_POSITION_NONE;
+            resource->text_input_state.composition_end = NK_TEXT_POSITION_NONE;
+            resource->marked_text.clear();
+            resource->marked_native_range = NSMakeRange(NSNotFound, 0);
+        }
+    });
+}
+- (NSArray<NSString *> *)validAttributesForMarkedText {
+    return @[];
+}
+- (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range
+                                                actualRange:(NSRangePointer)actualRange {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource || !resource->text_input_state.text || range.location == NSNotFound)
+        return nil;
+    NSString *text = string(resource->text_input_text.c_str());
+    if (static_cast<uint64_t>(range.location) + range.length > text.length)
+        return nil;
+    if (actualRange)
+        *actualRange = range;
+    return [[NSAttributedString alloc] initWithString:[text substringWithRange:range]];
+}
+- (void)insertText:(id)value replacementRange:(NSRange)replacementRange {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        NSString *text_value = [value isKindOfClass:[NSAttributedString class]]
+                                   ? [(NSAttributedString *)value string]
+                                   : ([value isKindOfClass:[NSString class]] ? value
+                                                                            : [value description]);
+        const auto text = utf8(text_value ?: @"");
+        std::vector<uint32_t> points;
+        if (!decode_utf8(text, points))
+            return;
+        if (resource->text_input_active) {
+            nk_text_position start = 0;
+            nk_text_position end = 0;
+            if (!codepoint_range_for_native_range(*resource, replacementRange, start, end)) {
+                start = text_replacement_start(*resource);
+                end = text_replacement_end(*resource);
+            }
+            const auto selection = static_cast<nk_text_position>(start + points.size());
+            apply_text_edit_state(*resource, NK_TEXT_EDIT_COMMIT, start, end, text, selection,
+                                  selection, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+        } else {
+            emit_committed_text(*resource, text);
+        }
+    });
+}
+- (NSUInteger)characterIndexForPoint:(NSPoint)screenPoint {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return NSNotFound;
+    const NSPoint windowPoint = [self.window convertPointFromScreen:screenPoint];
+    const NSPoint localPoint = [self convertPoint:windowPoint fromView:nil];
+    const NSRect caret = NSMakeRect(resource->text_input_state.cursor_x,
+                                    resource->text_input_state.cursor_y,
+                                    std::max(1.f, resource->text_input_state.cursor_width),
+                                    std::max(1.f, resource->text_input_state.cursor_height));
+    if (!NSPointInRect(localPoint, caret))
+        return NSNotFound;
+    return self.selectedRange.location;
+}
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource || !self.window)
+        return NSZeroRect;
+    if (actualRange)
+        *actualRange = range;
+    NSRect rect = NSMakeRect(resource->text_input_state.cursor_x,
+                             resource->text_input_state.cursor_y,
+                             std::max(1.f, resource->text_input_state.cursor_width),
+                             std::max(1.f, resource->text_input_state.cursor_height));
+    return [self.window convertRectToScreen:[self convertRect:rect toView:nil]];
+}
+- (void)doCommandBySelector:(SEL)selector {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource || !resource->text_input_active)
+        return;
+    nk::core::callback_boundary([&] {
+        const auto start = resource->text_input_state.selection_start;
+        const auto end = resource->text_input_state.selection_end;
+        if (selector == @selector(deleteBackward:) || selector == @selector(deleteForward:)) {
+            const bool backward = selector == @selector(deleteBackward:);
+            nk_text_position replace_start = std::min(start, end);
+            nk_text_position replace_end = std::max(start, end);
+            if (replace_start == replace_end) {
+                if (backward && replace_start > 0)
+                    --replace_start;
+                else if (!backward && replace_end < resource->text_input_state.document_length)
+                    ++replace_end;
+            }
+            if (replace_start != replace_end)
+                apply_text_edit_state(*resource, NK_TEXT_EDIT_DELETE, replace_start, replace_end,
+                                      {}, replace_start, replace_start, NK_TEXT_POSITION_NONE,
+                                      NK_TEXT_POSITION_NONE);
+        } else if (selector == @selector(insertNewline:)) {
+            apply_text_edit_state(*resource, NK_TEXT_EDIT_COMMIT, text_replacement_start(*resource),
+                                  text_replacement_end(*resource), "\n",
+                                  text_replacement_start(*resource) + 1,
+                                  text_replacement_start(*resource) + 1,
+                                  NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+        } else if (selector == @selector(insertTab:)) {
+            apply_text_edit_state(*resource, NK_TEXT_EDIT_COMMIT, text_replacement_start(*resource),
+                                  text_replacement_end(*resource), "\t",
+                                  text_replacement_start(*resource) + 1,
+                                  text_replacement_start(*resource) + 1,
+                                  NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+        }
+    });
+}
+- (NSInteger)conversationIdentifier {
+    return static_cast<NSInteger>(reinterpret_cast<uintptr_t>(self));
+}
+- (NSWindowLevel)windowLevel {
+    return self.window.level;
 }
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
     NSPasteboard *pasteboard = sender.draggingPasteboard;
@@ -884,7 +1949,8 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_WEBVIEW |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-           NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO;
+           NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO |
+           NK_CAP_INPUT | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -929,6 +1995,9 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             [[NKContentView alloc] initWithFrame:NSMakeRect(0, 0, options->width, options->height)];
         resource->content.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         resource->content.resource = resource.get();
+        resource->content.acceptsTouchEvents = YES;
+        resource->content.wantsRestingTouches = YES;
+        resource->window.acceptsMouseMovedEvents = YES;
         resource->window.contentView = resource->content;
         resource->delegate = [NKWindowDelegate new];
         resource->delegate.resource = resource.get();
@@ -1102,6 +2171,298 @@ nk_result NK_CALL nk_window_is_visible(nk_handle h, uint32_t *out_visible) {
         *out_visible = (state.flags & NK_WINDOW_STATE_VISIBLE) ? 1u : 0u;
     return result;
 }
+
+nk_result NK_CALL nk_key_get_state(nk_handle handle, nk_key key, nk_input_action *out_action) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_action || key == NK_KEY_UNKNOWN || key > NK_KEY_LAST)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid key state query");
+    auto resource = window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    *out_action = resource->keys[key];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_pointer_button_get_state(nk_handle handle, nk_pointer_button button,
+                                              nk_input_action *out_action) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_action || button > NK_POINTER_BUTTON_LAST)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid pointer button state query");
+    auto resource = window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    *out_action = resource->pointer_buttons[button];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_pointer_get_position(nk_handle handle, double *out_x, double *out_y) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_x || !out_y)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "pointer position outputs must not be null");
+    auto resource = window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    *out_x = resource->pointer_x;
+    *out_y = resource->pointer_y;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_handle *out_cursor) {
+    return nk::core::result_boundary(
+        "unexpected error while creating standard cursor", [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!out_cursor)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "cursor output must not be null");
+        *out_cursor = NK_INVALID_HANDLE;
+        NSCursor *native = nil;
+        switch (shape) {
+        case NK_CURSOR_ARROW:
+            native = [NSCursor arrowCursor];
+            break;
+        case NK_CURSOR_IBEAM:
+            native = [NSCursor IBeamCursor];
+            break;
+        case NK_CURSOR_CROSSHAIR:
+            native = [NSCursor crosshairCursor];
+            break;
+        case NK_CURSOR_HAND:
+            native = [NSCursor pointingHandCursor];
+            break;
+        case NK_CURSOR_HORIZONTAL_RESIZE:
+            native = [NSCursor resizeLeftRightCursor];
+            break;
+        case NK_CURSOR_VERTICAL_RESIZE:
+            native = [NSCursor resizeUpDownCursor];
+            break;
+        case NK_CURSOR_NWSE_RESIZE:
+            native = diagonal_resize_cursor(true);
+            break;
+        case NK_CURSOR_NESW_RESIZE:
+            native = diagonal_resize_cursor(false);
+            break;
+        case NK_CURSOR_MOVE:
+            native = [NSCursor closedHandCursor];
+            break;
+        case NK_CURSOR_NOT_ALLOWED:
+            native = [NSCursor operationNotAllowedCursor];
+            break;
+        default:
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid standard cursor shape");
+        }
+        auto resource = std::make_shared<MacCursorResource>();
+        resource->cursor = native;
+        resource->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
+        if (resource->handle == NK_INVALID_HANDLE)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
+        *out_cursor = resource->handle;
+        return NK_OK;
+
+    });
+}
+
+nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image, nk_handle *out_cursor) {
+    return nk::core::result_boundary("unexpected error while creating custom cursor",
+                                     [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!image || image->struct_size < sizeof(*image) || !out_cursor || !image->rgba ||
+            image->width <= 0 || image->height <= 0 || image->width > INT_MAX / 4 ||
+            image->stride < image->width * 4 || image->hotspot_x < 0 || image->hotspot_y < 0 ||
+            image->hotspot_x >= image->width || image->hotspot_y >= image->height)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid custom cursor image");
+        *out_cursor = NK_INVALID_HANDLE;
+        NSBitmapImageRep *bitmap =
+            [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nil
+                                                    pixelsWide:image->width
+                                                    pixelsHigh:image->height
+                                                 bitsPerSample:8
+                                               samplesPerPixel:4
+                                                      hasAlpha:YES
+                                                      isPlanar:NO
+                                                colorSpaceName:NSDeviceRGBColorSpace
+                                                   bytesPerRow:0
+                                                  bitsPerPixel:0];
+        if (!bitmap)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate custom cursor pixels");
+        const auto *source = static_cast<const uint8_t *>(image->rgba);
+        auto *destination = bitmap.bitmapData;
+        const int stride = static_cast<int>(bitmap.bytesPerRow);
+        for (int32_t y = 0; y < image->height; ++y) {
+            const auto *source_row = source + static_cast<std::size_t>(y) * image->stride;
+            auto *destination_row = destination + static_cast<std::size_t>(y) * stride;
+            for (int32_t x = 0; x < image->width; ++x) {
+                const uint32_t alpha = source_row[x * 4 + 3];
+                destination_row[x * 4 + 0] =
+                    static_cast<uint8_t>(source_row[x * 4 + 0] * alpha / 255u);
+                destination_row[x * 4 + 1] =
+                    static_cast<uint8_t>(source_row[x * 4 + 1] * alpha / 255u);
+                destination_row[x * 4 + 2] =
+                    static_cast<uint8_t>(source_row[x * 4 + 2] * alpha / 255u);
+                destination_row[x * 4 + 3] = static_cast<uint8_t>(alpha);
+            }
+        }
+        NSImage *native_image =
+            [[NSImage alloc] initWithSize:NSMakeSize(image->width, image->height)];
+        [native_image addRepresentation:bitmap];
+        auto resource = std::make_shared<MacCursorResource>();
+        resource->cursor = [[NSCursor alloc]
+            initWithImage:native_image
+                  hotSpot:NSMakePoint(image->hotspot_x, image->height - image->hotspot_y)];
+        if (!resource->cursor)
+            return fail(NK_ERROR_UNSUPPORTED, "macOS could not create the custom cursor");
+        resource->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
+        if (resource->handle == NK_INVALID_HANDLE)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
+        *out_cursor = resource->handle;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_cursor_destroy(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!cursor(handle))
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale cursor handle");
+    nk::core::handles().erase(handle, nk::core::ResourceType::cursor);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_cursor(nk_handle window_handle, nk_handle cursor_handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = window(window_handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    auto selected = cursor_handle == NK_INVALID_HANDLE ? nullptr : cursor(cursor_handle);
+    if (cursor_handle != NK_INVALID_HANDLE && !selected)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale cursor handle");
+    resource->cursor = std::move(selected);
+    apply_cursor(*resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_cursor_mode(nk_handle handle, nk_cursor_mode mode) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (mode > NK_CURSOR_MODE_DISABLED)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid cursor mode");
+    auto resource = window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    if (!apply_cursor_mode(*resource, mode))
+        return fail(NK_ERROR_UNSUPPORTED, "macOS could not capture the pointer");
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_cursor_mode(nk_handle handle, nk_cursor_mode *out_mode) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_mode)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "cursor mode output must not be null");
+    auto resource = window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    *out_mode = resource->cursor_mode;
+    return NK_OK;
+}
+
+uint32_t NK_CALL nk_raw_pointer_motion_supported(void) { return 0; }
+
+nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
+                                                  const nk_text_input_state *state) {
+    return nk::core::result_boundary(
+        "unexpected error while setting text input state", [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!state || state->struct_size < sizeof(*state) || !state->text)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid text input state");
+        NSString *native_text = string(state->text);
+        std::vector<uint32_t> points;
+        if (!native_text || !decode_utf8(state->text, points))
+            return fail(NK_ERROR_INVALID_ARGUMENT, "text input state text is not valid UTF-8");
+        const uint64_t text_end = static_cast<uint64_t>(state->text_start) + points.size();
+        const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
+                                    state->composition_end == NK_TEXT_POSITION_NONE;
+        const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
+                                       state->composition_end != NK_TEXT_POSITION_NONE &&
+                                       state->composition_start <= state->composition_end &&
+                                       state->composition_start >= state->text_start &&
+                                       state->composition_end <= text_end;
+        const bool valid_cursor = std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
+                                  std::isfinite(state->cursor_width) &&
+                                  std::isfinite(state->cursor_height) && state->cursor_width >= 0.f &&
+                                  state->cursor_height >= 0.f;
+        if ((state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
+                              NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) ||
+            state->text_start > state->document_length || text_end > state->document_length ||
+            state->selection_start > state->selection_end ||
+            state->selection_start < state->text_start || state->selection_end > text_end ||
+            (!no_composition && !valid_composition) || state->input_type > NK_TEXT_INPUT_PASSWORD ||
+            state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "text input state ranges or hints are invalid");
+        auto resource = window(handle);
+        if (!resource)
+            return fail(NK_ERROR_INVALID_HANDLE,
+                        "text input state requires a desktop window on this backend");
+        resource->text_input_text = state->text;
+        resource->text_input_state = *state;
+        resource->text_input_state.text = resource->text_input_text.c_str();
+        resource->text_composition_start = state->composition_start;
+        resource->text_composition_end = state->composition_end;
+        resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
+        resource->marked_native_range =
+            resource->text_composing
+                ? native_range_for_positions(*resource, state->composition_start, state->composition_end)
+                : NSMakeRange(NSNotFound, 0);
+        resource->selected_native_range =
+            native_range_for_positions(*resource, state->selection_start, state->selection_end);
+        if (resource->text_composing) {
+            const auto first = state->composition_start - state->text_start;
+            const auto last = state->composition_end - state->text_start;
+            const NSUInteger native_start = utf16_offset_for_codepoint(points, first);
+            const NSUInteger native_end = utf16_offset_for_codepoint(points, last);
+            NSString *state_string = string(resource->text_input_text.c_str());
+            resource->marked_text =
+                utf8([state_string substringWithRange:NSMakeRange(native_start, native_end - native_start)]);
+        } else {
+            resource->marked_text.clear();
+        }
+        [[resource->content inputContext] invalidateCharacterCoordinates];
+        return NK_OK;
+
+    });
+}
+
+nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t active) {
+    return nk::core::result_boundary(
+        "unexpected error while changing text input", [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (active > 1)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "text input active state must be zero or one");
+        auto resource = window(handle);
+        if (!resource)
+            return fail(NK_ERROR_INVALID_HANDLE,
+                        "text input activation requires a desktop window on this backend");
+        if (active) {
+            resource->text_input_active = true;
+            [resource->window makeFirstResponder:resource->content];
+        } else {
+            if (resource->text_input_active)
+                finish_text_composition(*resource);
+            resource->text_input_active = false;
+            if (resource->text_composing)
+                [resource->content unmarkText];
+        }
+        return NK_OK;
+
+    });
+}
+
 nk_result NK_CALL nk_window_minimize(nk_handle h) {
     if (const auto r = enter_ui(); r != NK_OK)
         return r;
