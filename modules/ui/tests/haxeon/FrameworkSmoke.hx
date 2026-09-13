@@ -44,6 +44,7 @@ import nativekit.ui.widgets.Padding;
 import nativekit.ui.widgets.ProgressBar;
 import nativekit.ui.widgets.Row;
 import nativekit.ui.widgets.ScrollAxis;
+import nativekit.ui.widgets.ScrollController;
 import nativekit.ui.widgets.ScrollView;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TextEditorState;
@@ -53,6 +54,7 @@ import nativekit.ui.widgets.Spacer;
 import nativekit.ui.widgets.Slider;
 import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Utf8Text;
+import nativekit.ui.widgets.VirtualList;
 
 class FrameworkSmoke {
 	static function main():Int {
@@ -510,6 +512,26 @@ class FrameworkSmoke {
 		scrollView.controller.jumpTo(0.0, 500.0);
 		if (scrollView.controller.offsetY != 320.0 || !context.isDirty())
 			return 28;
+		var builtRows:Array<Int> = [];
+		var listController = new ScrollController();
+		var virtualStyle = new LayoutStyle();
+		virtualStyle.width = LayoutAxis.fixed(256.0);
+		virtualStyle.height = LayoutAxis.fixed(80.0);
+		var virtualList = new VirtualList("virtual-smoke", 100, 20.0, function(index) {
+			builtRows.push(index);
+			return new Text('Row $index');
+		}, virtualStyle, null, listController, 80.0);
+		var virtualRoot = context.submit(virtualList, new LayoutFrame(256.0, 80.0));
+		var virtualSemantics:Semantics = cast virtualRoot.semantics;
+		if (virtualSemantics.role != AccessibilityRole.List || builtRows.length >= 12 ||
+			listController.maxScrollY != 1920.0)
+			return 67;
+		listController.jumpTo(0.0, 500.0);
+		builtRows.resize(0);
+		virtualRoot = context.submit(virtualList, new LayoutFrame(256.0, 80.0));
+		if (builtRows.length >= 12 || builtRows.length == 0 || builtRows[0] < 24 ||
+			builtRows[0] > 25 || listController.offsetY != 500.0)
+			return 68;
 
 		var overlayCanvas = new Canvas();
 		var overlayList = DisplayList.create();
