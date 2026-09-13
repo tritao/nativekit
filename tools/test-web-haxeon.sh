@@ -60,4 +60,4 @@ for _ in $(seq 1 100); do
 done
 
 python3 "$repo_dir/tools/web_smoke.py" --debug-port "$debug_port" \
-    --page-url "$page_url" --skip-text-input
+    --page-url "$page_url" --skip-text-input "$@"

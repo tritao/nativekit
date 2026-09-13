@@ -120,6 +120,9 @@ def main():
     parser.add_argument("--page-url", required=True)
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--skip-text-input", action="store_true")
+    parser.add_argument("--skip-resize", action="store_true")
+    parser.add_argument("--skip-pointer", action="store_true")
+    parser.add_argument("--skip-touch", action="store_true")
     args = parser.parse_args()
 
     deadline = time.monotonic() + args.timeout
@@ -142,12 +145,12 @@ def main():
         websocket.errors.clear()
         websocket.command("Page.reload", {"ignoreCache": True}, 10)
         probe_sent = args.skip_text_input
-        pointer_sent = False
-        touch_sent = False
-        resize_sent = False
+        pointer_sent = args.skip_pointer
+        touch_sent = args.skip_touch
+        resize_sent = args.skip_resize
         expression = (
             "JSON.stringify({"
-            "result:document.documentElement.dataset.nativekitResult || '',"
+            "result:document.documentElement?.dataset.nativekitResult || '',"
             "status:document.getElementById('status')?.textContent || '',"
             "webgl2:!!document.getElementById('canvas')?.getContext('webgl2'),"
             "width:document.getElementById('canvas')?.width || 0,"

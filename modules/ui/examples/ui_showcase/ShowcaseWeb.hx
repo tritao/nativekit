@@ -1,4 +1,5 @@
 import NativeKit;
+import NativeKit.Handle;
 import NativeKit.NativeKitConstants;
 import NativeKit.EventKind;
 import NativeKit.GraphicsApi;
@@ -17,8 +18,8 @@ class ShowcaseWeb {
     static var initialized = false;
     static var running = false;
     static var ready = false;
-    static var window:Int = 0;
-    static var surface:Int = 0;
+    static var window:Handle = 0;
+    static var surface:Handle = 0;
     static var logicalWidth:Float = Showcase.LOGICAL_WIDTH;
     static var logicalHeight:Float = Showcase.LOGICAL_HEIGHT;
     static var framebufferWidth = 0;

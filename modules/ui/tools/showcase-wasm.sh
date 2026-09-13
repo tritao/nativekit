@@ -135,8 +135,9 @@ if (!exports.includes('main') || (!exports.includes('memory') && !importsMemory)
     throw new Error('Showcase wasm is missing the main export or memory contract');
 if (process.env.NATIVEKIT_HAXEON_MEMORY_STATS === '1') {
   for (const name of ['haxeon.memory.heap_base', 'haxeon.memory.heap_top',
+      'haxeon.memory.root_base', 'haxeon.memory.root_top', 'haxeon.memory.root_limit',
       'haxeon.memory.metadata_base', 'haxeon.memory.metadata_top',
-      'haxeon.memory.allocation_count', 'haxeon.memory.allocated_bytes',
+      'haxeon.memory.allocation_count', 'haxeon.memory.allocated_bytes', 'haxeon.memory.largest_allocation_bytes',
       'haxeon.memory.collection_count'])
     if (!exports.includes(name)) throw new Error(`Showcase wasm is missing allocator diagnostic ${name}`);
 }
