@@ -34,7 +34,7 @@ static_assert(sizeof(nkui_text_position) == 2 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_caret) == 7 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_style) == 4 * sizeof(uint32_t));
 static_assert(sizeof(nkui_paragraph_style) == 5 * sizeof(uint32_t));
-static_assert(sizeof(nkui_layout_frame_input) == 7 * sizeof(uint32_t));
+static_assert(sizeof(nkui_layout_frame_input) == 4 * sizeof(uint32_t));
 static_assert(sizeof(nkui_path_element) == 7 * sizeof(uint32_t));
 static_assert(sizeof(nkui_color) == 4 * sizeof(uint32_t));
 static_assert(sizeof(nkui_transform_command) == sizeof(nkui::SetTransformCommand));
@@ -45,8 +45,7 @@ static_assert(sizeof(nkui_rect_command) == sizeof(nkui::ClipRectCommand));
 static_assert(sizeof(nkui_draw_rect_command) == sizeof(nkui::DrawRectResourceCommand));
 static_assert(sizeof(nkui_layer_command) == sizeof(nkui::BeginLayerCommand));
 static_assert(sizeof(nkui_stroke_path_command) == sizeof(nkui::StrokePathCommand));
-static_assert(sizeof(nkui_layout_event) == sizeof(uint32_t) * 2);
-static_assert(sizeof(nkui_layout_item) == 24);
+static_assert(sizeof(nkui_layout_item) == NKUI_LAYOUT_RESOLVED_ITEM_BYTES);
 
 namespace {
 
@@ -239,7 +238,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                              std::vector<nkui::LayoutNode> &nodes) {
     constexpr size_t header_bytes = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES;
     constexpr size_t record_bytes = NKUI_LAYOUT_NODE_RECORD_BYTES;
-    constexpr size_t max_nodes = 512;
+    constexpr size_t max_nodes = NKUI_LAYOUT_MAX_NODES;
     if (!bytes || byte_count < header_bytes)
         return false;
     const size_t size = byte_count;
@@ -287,7 +286,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             const size_t record = header_bytes + static_cast<size_t>(index) * record_bytes;
             nkui::LayoutNode node;
             uint32_t id = 0;
-            uint32_t kind = 0;
+            uint32_t visual_kind = 0;
             uint32_t width_sizing = 0;
             uint32_t height_sizing = 0;
             uint32_t direction = 0;
@@ -299,9 +298,10 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             uint32_t text_flags = 0;
             uint32_t text_offset = 0;
             uint32_t text_length = 0;
+            std::array<uint32_t, 4> reserved{};
             if (!read_node_u32(record, NKUI_LAYOUT_NODE_ID_OFFSET, id) ||
                 !read_node_i32(record, NKUI_LAYOUT_NODE_PARENT_OFFSET, node.parent) ||
-                !read_node_u32(record, NKUI_LAYOUT_NODE_KIND_OFFSET, kind) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET, visual_kind) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET, width_sizing) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET,
                                  node.style.width.value) ||
@@ -343,13 +343,20 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_WRAP_OFFSET, text_wrap) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET, text_alignment) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET, text_direction) ||
-                !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_FLAGS_OFFSET, text_flags))
+                !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_FLAGS_OFFSET, text_flags) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_RESERVED0_OFFSET, reserved[0]) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_RESERVED1_OFFSET, reserved[1]) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_RESERVED2_OFFSET, reserved[2]) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_RESERVED3_OFFSET, reserved[3]))
                 return false;
-            if (kind < NKUI_LAYOUT_NODE_BOX || kind > NKUI_LAYOUT_NODE_BUTTON ||
+            if (visual_kind < NKUI_LAYOUT_VISUAL_BOX ||
+                visual_kind > NKUI_LAYOUT_VISUAL_CUSTOM ||
+                std::any_of(reserved.begin(), reserved.end(),
+                            [](uint32_t value) { return value != 0; }) ||
                 width_sizing > NKUI_LAYOUT_SIZING_PERCENT)
                 return false;
             node.id = id;
-            node.kind = static_cast<nkui::LayoutNodeKind>(kind);
+            node.visual_kind = static_cast<nkui::LayoutVisualKind>(visual_kind);
             node.style.width.sizing = static_cast<nkui::LayoutSizing>(width_sizing);
             node.style.height.sizing = static_cast<nkui::LayoutSizing>(height_sizing);
             node.style.direction = static_cast<nkui::LayoutDirection>(direction);
@@ -1086,14 +1093,13 @@ extern "C" nkui_result nkui_layout_session_submit(nkui_layout_session session,
     if (!read_layout_transaction(transaction, transaction_bytes, nodes))
         return NKUI_ERROR_INVALID_TRANSACTION;
     const bool has_text = std::any_of(nodes.begin(), nodes.end(), [](const nkui::LayoutNode &node) {
-        return node.kind == nkui::LayoutNodeKind::Text && !node.text.empty();
+        return node.visual_kind == nkui::LayoutVisualKind::Text && !node.text.empty();
     });
     if (has_text && !state->fonts_configured)
         return NKUI_ERROR_INVALID_ARGUMENT;
     nkui::LayoutSnapshot snapshot;
     nkui::LayoutError error{};
-    if (!state->engine->layout(nodes, frame->width, frame->height, frame->pointer_x,
-                               frame->pointer_y, frame->pointer_down != 0, frame->delta_seconds,
+    if (!state->engine->layout(nodes, frame->width, frame->height, frame->delta_seconds,
                                snapshot, &error))
         return NKUI_ERROR_INVALID_TRANSACTION;
     state->snapshot = std::move(snapshot);
@@ -1101,37 +1107,10 @@ extern "C" nkui_result nkui_layout_session_submit(nkui_layout_session session,
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_layout_session_get_event_count(nkui_layout_session session,
-                                                           uint32_t *out_count) {
-    if (!out_count)
-        return NKUI_ERROR_INVALID_ARGUMENT;
-    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
-    auto *state = resolve(session);
-    if (!state)
-        return NKUI_ERROR_INVALID_HANDLE;
-    *out_count = static_cast<uint32_t>(state->snapshot.events.size());
-    return NKUI_OK;
-}
-
-extern "C" nkui_result nkui_layout_session_get_event(nkui_layout_session session, uint32_t index,
-                                                     nkui_layout_event *out_event) {
-    if (!out_event)
-        return NKUI_ERROR_INVALID_ARGUMENT;
-    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
-    auto *state = resolve(session);
-    if (!state)
-        return NKUI_ERROR_INVALID_HANDLE;
-    if (index >= state->snapshot.events.size())
-        return NKUI_ERROR_INVALID_ARGUMENT;
-    const auto &event = state->snapshot.events[index];
-    out_event->kind = static_cast<uint32_t>(event.kind);
-    out_event->node_id = event.node_id;
-    return NKUI_OK;
-}
-
-extern "C" nkui_result nkui_layout_session_get_item(nkui_layout_session session, uint32_t node_id,
-                                                    nkui_layout_item *out_item) {
-    if (!out_item || out_item->struct_size < sizeof(*out_item) || !node_id)
+extern "C" nkui_result nkui_layout_session_get_resolved_items(nkui_layout_session session,
+                                                              uint8_t *out_buffer,
+                                                              uint32_t *inout_bytes) {
+    if (!inout_bytes)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);
     auto *state = resolve(session);
@@ -1139,14 +1118,30 @@ extern "C" nkui_result nkui_layout_session_get_item(nkui_layout_session session,
         return NKUI_ERROR_INVALID_HANDLE;
     if (!state->submitted)
         return NKUI_ERROR_INVALID_ARGUMENT;
-    const auto *item = state->snapshot.find(node_id);
-    if (!item)
+
+    const size_t required_bytes = state->snapshot.items.size() * sizeof(nkui_layout_item);
+    if (required_bytes > UINT32_MAX)
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    const uint32_t required = static_cast<uint32_t>(required_bytes);
+    if (!out_buffer) {
+        *inout_bytes = required;
+        return NKUI_OK;
+    }
+    if (*inout_bytes < required) {
+        *inout_bytes = required;
         return NKUI_ERROR_INVALID_ARGUMENT;
-    out_item->node_id = item->id;
-    out_item->x = item->bounds.x;
-    out_item->y = item->bounds.y;
-    out_item->width = item->bounds.width;
-    out_item->height = item->bounds.height;
+    }
+    for (size_t index = 0; index < state->snapshot.items.size(); ++index) {
+        const auto &resolved = state->snapshot.items[index];
+        const nkui_layout_item item{static_cast<uint32_t>(sizeof(nkui_layout_item)),
+                                    resolved.id,
+                                    resolved.bounds.x,
+                                    resolved.bounds.y,
+                                    resolved.bounds.width,
+                                    resolved.bounds.height};
+        std::memcpy(out_buffer + index * sizeof(item), &item, sizeof(item));
+    }
+    *inout_bytes = required;
     return NKUI_OK;
 }
 

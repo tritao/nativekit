@@ -10,10 +10,11 @@
 
 namespace nkui {
 
-enum class LayoutNodeKind : uint8_t {
+enum class LayoutVisualKind : uint8_t {
     Box = 1,
     Text,
-    Button,
+    Image,
+    Custom,
 };
 
 // NativeKit-owned font family selector. Concrete text engines translate this
@@ -98,11 +99,11 @@ struct LayoutStyle {
     bool clip_vertical = false;
 };
 
-/** A flat, frame-scoped semantic UI tree. Parent indices refer to this array. */
+/** A flat, frame-scoped render/layout tree. Parent indices refer to this array. */
 struct LayoutNode {
     uint32_t id = 0;
     int32_t parent = -1;
-    LayoutNodeKind kind = LayoutNodeKind::Box;
+    LayoutVisualKind visual_kind = LayoutVisualKind::Box;
     LayoutStyle style{};
     std::string text;
     LayoutColor text_color{1.0f, 1.0f, 1.0f, 1.0f};
@@ -124,9 +125,8 @@ struct LayoutRect {
 
 struct LayoutItem {
     uint32_t id = 0;
-    LayoutNodeKind kind = LayoutNodeKind::Box;
+    LayoutVisualKind visual_kind = LayoutVisualKind::Box;
     LayoutRect bounds{};
-    bool hovered = false;
 };
 
 enum class LayoutPrimitiveKind : uint8_t {
@@ -170,20 +170,10 @@ struct LayoutTextLayout {
     std::vector<LayoutTextLine> lines;
 };
 
-struct LayoutEvent {
-    enum class Kind : uint8_t {
-        ButtonActivated = 1,
-    };
-
-    Kind kind = Kind::ButtonActivated;
-    uint32_t node_id = 0;
-};
-
 struct LayoutSnapshot {
     std::vector<LayoutItem> items;
     std::vector<LayoutPrimitive> primitives;
     std::vector<LayoutTextLayout> text_layouts;
-    std::vector<LayoutEvent> events;
 
     const LayoutItem *find(uint32_t id) const {
         const auto found = std::find_if(items.begin(), items.end(),
@@ -191,21 +181,6 @@ struct LayoutSnapshot {
         return found == items.end() ? nullptr : &*found;
     }
 
-    std::optional<uint32_t> hit_test(float x, float y) const {
-        const auto contains = [x, y](const LayoutItem &item) {
-            return x >= item.bounds.x && y >= item.bounds.y &&
-                   x < item.bounds.x + item.bounds.width && y < item.bounds.y + item.bounds.height;
-        };
-        for (auto item = items.rbegin(); item != items.rend(); ++item) {
-            if (item->kind == LayoutNodeKind::Button && contains(*item))
-                return item->id;
-        }
-        for (auto item = items.rbegin(); item != items.rend(); ++item) {
-            if (contains(*item))
-                return item->id;
-        }
-        return std::nullopt;
-    }
 };
 
 } // namespace nkui

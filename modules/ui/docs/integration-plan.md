@@ -2,24 +2,30 @@
 
 ## Boundaries
 
-The public `nkui_*` ABI describes retained UI nodes, styles, transactions, and
-semantic events. Clay, Skribidi, NanoVG, and Sokol remain private.
-Haxeon owns components, state, reconciliation, and resolved style policy.
+The public `nkui_*` ABI describes render/layout primitives, styled text,
+versioned tree transactions, text geometry, and resolved layout snapshots.
+NativeUI owns layout, text, and rendering mechanics. It does not own widgets,
+input routing, focus, scrolling policy, accessibility semantics, or retained
+interaction state. NativeKit provides raw input, IME, clipboard, platform
+accessibility, and graphics surfaces; Haxe owns the UI framework, state, and
+interaction policy. Clay, Skribidi, NanoVG, and Sokol remain private.
 
-The first private layout slice is now implemented in `src/layout/`. It pins
-Clay behind a NativeKit-owned `LayoutEngine`, measures text through Skribidi,
-and produces NativeKit-owned layout items and rendering primitives for a
-`Box + Text + Button` test. The Haxe-facing layout bridge uses a versioned,
-validated batch transaction with semantic text styles; Clay and Skribidi remain
-private implementation details.
+The first private layout slice is implemented in `src/layout/`. It pins Clay
+behind a NativeKit-owned `LayoutEngine`, measures text through Skribidi, and
+produces NativeKit-owned geometry and rendering primitives. The Haxe-facing
+layout bridge uses a versioned, validated batch render-tree transaction; the
+resolved geometry for all submitted nodes returns in one snapshot. Clay and
+Skribidi remain private implementation details.
 
-Internally, a frame flows through these stages:
+An interactive frame flows through these stages:
 
 ```text
-validated tree transaction
+Haxe view/render tree
+    -> validated NativeUI layout transaction
     -> box layout and text measurement
-    -> retained geometry and hit-test data
-    -> ordered display list
+    -> batched resolved geometry and text layouts
+    -> Haxe hit testing, event routing, focus, and state updates
+    -> NativeUI renders the same resolved frame
     -> NanoVG shape batches + Skribidi glyph batches
     -> Sokol pass on a NativeKit surface
 ```
@@ -55,9 +61,9 @@ authority, and ordinary images bypass NanoVG entirely.
 5. Translate Skribidi glyph atlas creation and dirty rectangles into Sokol
    textures and partial uploads. Render its `skb_quad_t` output with dedicated
    alpha, color, and SDF pipelines.
-6. Translate caret, grapheme, selection, and line geometry into NativeKit IME
-   and accessibility state. Haxeon receives transactional UTF-8 edits, not
-   glyph or byte-index manipulation.
+6. Expose grapheme-safe point-to-caret, caret-rectangle, and selection-rectangle
+   queries to Haxe. Haxe owns the editing model; NativeKit delivers committed
+   text/IME transactions and receives cursor geometry from the focused field.
 
 ## Stage 3: preserve display-list ordering
 
@@ -70,16 +76,21 @@ This is simpler and more correct than forcing Skribidi atlas data through
 NanoVG's image/text APIs. Measure flush count, vertices, atlas uploads, and GPU
 passes on representative screens. Only optimize after those numbers exist.
 
-## Stage 4: layout and retained UI
+## Stage 4: layout and resolved geometry
 
-The private Clay adapter now provides both intrinsic measurement and external
-paragraph layout through Skribidi. Clay's box solver still produces retained
-geometry, hit testing, scrolling, focus order, and accessibility bounds, while
-the text engine owns line breaks and glyph geometry before the display list is
-produced.
+The private Clay adapter provides intrinsic measurement and external paragraph
+layout through Skribidi. It returns layout geometry only. Haxe consumes a batch
+of resolved node bounds, clip/visibility data, transforms, baselines, and
+content extents to implement hit testing, scrolling, focus, and accessibility.
+NativeUI renders from the exact snapshot that produced those results.
 
-The first end-to-end slice is `Box + Text + Button`: nested box layout, shaped
-text, pointer activation, keyboard focus, and a NativeKit accessibility node.
+The active NativeUI sequence is generic visual kinds, complete geometry
+snapshots, clipping/transforms/content metrics, shared-frame rendering, and
+text caret/selection geometry. The Haxe framework then adds a render tree with
+stable identity, state storage, input/event propagation, focus, gestures,
+scrolling, accessibility projection, themes, animation, and compositional
+widgets. NativeKit raw input is delivered to Haxe without passing through the
+layout transaction.
 
 ## Rewrite and unification policy
 

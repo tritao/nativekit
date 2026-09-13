@@ -138,7 +138,6 @@ int main() {
     nodes.push_back(root);
 
     LayoutNode button = box(2, 0);
-    button.kind = LayoutNodeKind::Button;
     button.style.width = {LayoutSizing::Fixed, 160.0f};
     button.style.height = {LayoutSizing::Fit, 0.0f};
     button.style.padding_left = button.style.padding_right = 12;
@@ -149,7 +148,7 @@ int main() {
     nodes.push_back(button);
 
     LayoutNode label = box(3, 1);
-    label.kind = LayoutNodeKind::Text;
+    label.visual_kind = LayoutVisualKind::Text;
     label.text = "Compile me";
     label.text_style.font_size = 18.0f;
     label.text_color = {0.1f, 0.15f, 0.25f, 1.0f};
@@ -157,7 +156,7 @@ int main() {
 
     LayoutSnapshot snapshot;
     LayoutError layout_error;
-    if (!engine.layout(nodes, 320.0f, 200.0f, 0.0f, 0.0f, false, 1.0f / 60.0f, snapshot,
+    if (!engine.layout(nodes, 320.0f, 200.0f, 1.0f / 60.0f, snapshot,
                        &layout_error))
         return 4;
 
@@ -231,14 +230,6 @@ int main() {
     const LayoutItem *button_item = snapshot.find(2);
     if (!button_item)
         return 13;
-    const float click_x = button_item->bounds.x + button_item->bounds.width * 0.5f;
-    const float click_y = button_item->bounds.y + button_item->bounds.height * 0.5f;
-    if (!engine.layout(nodes, 320.0f, 200.0f, click_x, click_y, true, 1.0f / 60.0f, snapshot,
-                       &layout_error) ||
-        !engine.layout(nodes, 320.0f, 200.0f, click_x, click_y, false, 1.0f / 60.0f, snapshot,
-                       &layout_error) ||
-        snapshot.events.size() != 1 || snapshot.events.front().node_id != 2)
-        return 14;
     if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error, false,
                           engine.text_adapter()) ||
         frame.text_adapter() != text_adapter)

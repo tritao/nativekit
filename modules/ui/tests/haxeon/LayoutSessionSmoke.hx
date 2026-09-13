@@ -32,21 +32,19 @@ class LayoutSessionSmoke {
 		var root = LayoutNode.box(100);
 		root.style.width = LayoutAxis.fixed(256.0);
 		root.style.height = LayoutAxis.fixed(192.0);
-		var button = LayoutNode.button(101);
-		button.style.width = LayoutAxis.fixed(160.0);
-		button.style.height = LayoutAxis.fixed(64.0);
-		button.add(LayoutNode.textNode(102, "Press"));
-		root.add(button);
+		var panel = LayoutNode.box(101);
+		panel.style.width = LayoutAxis.fixed(160.0);
+		panel.style.height = LayoutAxis.fixed(64.0);
+		panel.add(LayoutNode.textNode(102, "Press"));
+		root.add(panel);
 		var frame = new LayoutFrame(256.0, 192.0);
 
-		if (session.submit(root, frame).length != 0)
+		var resolved = session.submit(root, frame);
+		if (resolved.length != 3 || resolved[1].id != 101 || resolved[1].width != 160.0)
 			return 3;
-		frame.setPointer(8.0, 8.0, true);
 		frame.deltaSeconds = 1.0 / 60.0;
-		session.submit(root, frame);
-		frame.pointerDown = false;
-		var events = session.submit(root, frame);
-		if (events.length != 1 || !events[0].isButtonActivated() || events[0].nodeId != 101)
+		resolved = session.submit(root, frame);
+		if (resolved.length != 3 || resolved[2].id != 102 || resolved[2].width <= 0.0)
 			return 4;
 
 		session.dispose();

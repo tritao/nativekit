@@ -115,9 +115,8 @@ struct LayoutEngine::Impl {
     bool add_font_from_data(const char *name, const void *data, std::size_t bytes,
                             FontFamily family);
     bool add_system_fallbacks();
-    bool layout(const std::vector<LayoutNode> &nodes, float width, float height, float pointer_x,
-                float pointer_y, bool pointer_down, float delta_seconds, LayoutSnapshot &out,
-                LayoutError *error);
+    bool layout(const std::vector<LayoutNode> &nodes, float width, float height,
+                float delta_seconds, LayoutSnapshot &out, LayoutError *error);
 
     static Clay_Dimensions measure_text(Clay_StringSlice text, Clay_TextElementConfig *config,
                                         void *user_data);
@@ -136,7 +135,6 @@ struct LayoutEngine::Impl {
     std::unordered_map<TextLayoutId, LayoutTextLayout> text_layouts;
     std::vector<Clay_TextLayoutLine> callback_lines;
     std::string clay_error;
-    bool previous_pointer_down = false;
 };
 
 Clay_Dimensions LayoutEngine::Impl::measure_text(Clay_StringSlice text,
@@ -267,7 +265,7 @@ template <typename LayoutState> void append_node(LayoutState &state, std::size_t
     Clay__OpenElementWithId(id);
     Clay__ConfigureOpenElement(declaration_for(node));
 
-    if (node.kind == LayoutNodeKind::Text) {
+    if (node.visual_kind == LayoutVisualKind::Text) {
         Clay_TextElementConfig text_config{};
         text_config.userData = const_cast<LayoutNode *>(&node);
         text_config.textColor = clay_color(node.text_color);
@@ -370,14 +368,13 @@ bool LayoutEngine::Impl::add_system_fallbacks() {
 }
 
 bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float width, float height,
-                                float pointer_x, float pointer_y, bool pointer_down,
                                 float delta_seconds, LayoutSnapshot &out, LayoutError *error) {
     if (error)
         *error = {};
     out = {};
     if (!valid() || nodes.empty() || !std::isfinite(width) || !std::isfinite(height) ||
-        !std::isfinite(pointer_x) || !std::isfinite(pointer_y) || !std::isfinite(delta_seconds) ||
-        width <= 0.0f || height <= 0.0f || nodes.size() > max_nodes) {
+        !std::isfinite(delta_seconds) || width <= 0.0f || height <= 0.0f ||
+        nodes.size() > max_nodes) {
         if (error)
             error->message = "invalid layout input";
         return false;
@@ -450,7 +447,6 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
     }
 
     Clay_SetLayoutDimensions({width, height});
-    Clay_SetPointerState({pointer_x, pointer_y}, pointer_down);
     Clay_BeginLayout();
     append_node(state, root);
     const Clay_RenderCommandArray commands = Clay_EndLayout(delta_seconds);
@@ -464,8 +460,8 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         const Clay_ElementData data = Clay_GetElementData(state.element_ids[index]);
         if (!data.found)
             continue;
-        out.items.push_back({nodes[index].id, nodes[index].kind, rect_from(data.boundingBox),
-                             Clay_PointerOver(state.element_ids[index])});
+        out.items.push_back({nodes[index].id, nodes[index].visual_kind,
+                             rect_from(data.boundingBox)});
     }
     for (int32_t index = 0; index < commands.length; ++index) {
         const Clay_RenderCommand *command =
@@ -482,13 +478,6 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
     }
     state.text.prune_layout_cache(retained_text_layouts, kAutomaticTextLayoutCacheEntries);
 
-    if (state.previous_pointer_down && !pointer_down) {
-        for (const LayoutItem &item : out.items) {
-            if (item.kind == LayoutNodeKind::Button && item.hovered)
-                out.events.push_back({LayoutEvent::Kind::ButtonActivated, item.id});
-        }
-    }
-    state.previous_pointer_down = pointer_down;
     return true;
 }
 
@@ -525,15 +514,13 @@ bool LayoutEngine::add_system_fallbacks() {
 }
 
 bool LayoutEngine::layout(const std::vector<LayoutNode> &nodes, float width, float height,
-                          float pointer_x, float pointer_y, bool pointer_down, float delta_seconds,
-                          LayoutSnapshot &out, LayoutError *error) {
+                          float delta_seconds, LayoutSnapshot &out, LayoutError *error) {
     if (!impl_) {
         if (error)
             error->message = "layout implementation is unavailable";
         return false;
     }
-    return impl_->layout(nodes, width, height, pointer_x, pointer_y, pointer_down, delta_seconds,
-                         out, error);
+    return impl_->layout(nodes, width, height, delta_seconds, out, error);
 }
 
 } // namespace nkui

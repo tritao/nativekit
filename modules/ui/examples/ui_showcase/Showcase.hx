@@ -122,8 +122,6 @@ class Showcase {
     var caretPosition:TextPosition;
     var pointerX:Float = 0.0;
     var pointerY:Float = 0.0;
-    var pointerDown:Bool = false;
-    var pointerPressedPending:Bool = false;
     var layerOpacity:Float = 0.68;
     var animate:Bool = true;
     var cubeRotation:Float = 0.65;
@@ -166,7 +164,7 @@ class Showcase {
         layoutRetainedCard = LayoutNode.box(9013);
         layoutSurfaceCard = LayoutNode.box(9014);
         layoutFooter = LayoutNode.box(9015);
-        layoutButton = LayoutNode.button(9002);
+        layoutButton = LayoutNode.box(9002);
         layoutRoot.style.direction = LayoutDirection.LeftToRight;
         layoutSidebar.style.width = LayoutAxis.fixed(220.0);
         layoutSidebar.style.height = LayoutAxis.grow();
@@ -317,9 +315,6 @@ class Showcase {
 
     public function pointerButton(x:Float, y:Float, pressed:Bool):Void {
         updatePointer(x, y);
-        pointerDown = pressed;
-        if (pressed)
-            pointerPressedPending = true;
         if (!pressed)
             return;
         if (contains(buttonBounds, pointerX, pointerY)) {
@@ -355,13 +350,8 @@ class Showcase {
             compact ? 12.0 : 24.0, 0.0);
         layoutFrame.width = logicalWidth;
         layoutFrame.height = logicalHeight;
-        layoutFrame.setPointer(pointerX, pointerY, pointerDown || pointerPressedPending);
         layoutFrame.deltaSeconds = 1.0 / TARGET_FPS;
-        var events = layoutSession.submit(layoutRoot, layoutFrame);
-        pointerPressedPending = false;
-        for (event in events)
-            if (event.nodeId == layoutButton.id && event.isButtonActivated())
-                animate = !animate;
+        layoutSession.submit(layoutRoot, layoutFrame);
         sidebarBounds = layoutSession.item(layoutSidebar);
         buttonBounds = layoutSession.item(layoutButton);
         headerBounds = layoutSession.item(layoutHeader);

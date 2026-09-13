@@ -1,7 +1,7 @@
-/** Retained semantic node owned by the Haxe component tree. */
+/** Render/layout node submitted to NativeUI. Haxe semantics live above it. */
 class LayoutNode {
 	public final id:Int;
-	public var kind:LayoutNodeKind;
+	public var visualKind:LayoutVisualKind;
 	public final style:LayoutStyle;
 	public var text:String;
 	public var textColor:Color;
@@ -9,12 +9,12 @@ class LayoutNode {
 	public final paragraphStyle:ParagraphStyle;
 	public final children:Array<LayoutNode>;
 
-	public function new(id:Int, kind:LayoutNodeKind = LayoutNodeKind.Box,
+	public function new(id:Int, visualKind:LayoutVisualKind = LayoutVisualKind.Box,
 			?style:LayoutStyle) {
 		if (id <= 0)
 			throw "Layout node IDs must be positive";
 		this.id = id;
-		this.kind = kind;
+		this.visualKind = visualKind;
 		this.style = style == null ? new LayoutStyle() : style;
 		text = "";
 		textColor = Color.rgba(1.0, 1.0, 1.0, 1.0);
@@ -31,13 +31,10 @@ class LayoutNode {
 	}
 
 	public static function box(id:Int, ?style:LayoutStyle):LayoutNode
-		return new LayoutNode(id, LayoutNodeKind.Box, style);
-
-	public static function button(id:Int, ?style:LayoutStyle):LayoutNode
-		return new LayoutNode(id, LayoutNodeKind.Button, style);
+		return new LayoutNode(id, LayoutVisualKind.Box, style);
 
 	public static function textNode(id:Int, value:String, ?style:LayoutStyle):LayoutNode {
-		var node = new LayoutNode(id, LayoutNodeKind.Text, style);
+		var node = new LayoutNode(id, LayoutVisualKind.Text, style);
 		node.text = value == null ? "" : value;
 		return node;
 	}

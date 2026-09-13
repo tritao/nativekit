@@ -57,7 +57,8 @@ class LayoutTransaction {
 				throw "Layout text style values are invalid";
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_ID_OFFSET, node.id);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PARENT_OFFSET, parents[index]);
-			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_KIND_OFFSET, cast node.kind);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET,
+				cast node.visualKind);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET, cast style.width.sizing);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET, style.width.value);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET, cast style.height.sizing);
@@ -87,6 +88,10 @@ class LayoutTransaction {
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TEXT_WRAP_OFFSET, cast node.paragraphStyle.wrap);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET, cast node.paragraphStyle.alignment);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET, cast node.paragraphStyle.direction);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_RESERVED0_OFFSET, 0);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_RESERVED1_OFFSET, 0);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_RESERVED2_OFFSET, 0);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_RESERVED3_OFFSET, 0);
 			if (textOffset < 0 || textOffset + this.stringBytes[index].length > output.length)
 				throw 'Layout string table write is out of range: ${textOffset} + ${this.stringBytes[index].length} > ${output.length}';
 			for (byteIndex in 0...this.stringBytes[index].length)
