@@ -256,6 +256,16 @@ Clay_ElementDeclaration declaration_for(const LayoutNode &node) {
     declaration.layout.childAlignment = {
         static_cast<Clay_LayoutAlignmentX>(node.style.child_align_x),
         static_cast<Clay_LayoutAlignmentY>(node.style.child_align_y)};
+    if (node.style.positioning == LayoutPositioning::Absolute) {
+        declaration.floating.offset = {node.style.position_x, node.style.position_y};
+        declaration.floating.zIndex = static_cast<int16_t>(node.style.z_index);
+        declaration.floating.attachPoints = {
+            CLAY_ATTACH_POINT_LEFT_TOP, CLAY_ATTACH_POINT_LEFT_TOP};
+        declaration.floating.attachTo = CLAY_ATTACH_TO_PARENT;
+        declaration.floating.clipTo = node.style.clip_to_parent
+            ? CLAY_CLIP_TO_ATTACHED_PARENT
+            : CLAY_CLIP_TO_NONE;
+    }
     declaration.backgroundColor = clay_color(node.style.background);
     declaration.cornerRadius = {node.style.radius_top_left, node.style.radius_top_right,
                                 node.style.radius_bottom_left, node.style.radius_bottom_right};

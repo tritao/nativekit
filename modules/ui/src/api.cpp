@@ -301,7 +301,10 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             uint32_t text_length = 0;
             uint32_t node_flags = 0;
             uint32_t child_alignment = 0;
+            int32_t z_index = 0;
             std::array<float, 6> transform{};
+            float position_x = 0.0f;
+            float position_y = 0.0f;
             if (!read_node_u32(record, NKUI_LAYOUT_NODE_ID_OFFSET, id) ||
                 !read_node_i32(record, NKUI_LAYOUT_NODE_PARENT_OFFSET, node.parent) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET, visual_kind) ||
@@ -355,16 +358,26 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET, transform[5]) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_FLAGS_OFFSET, node_flags) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET,
-                               child_alignment))
+                               child_alignment) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_POSITION_X_OFFSET, position_x) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_POSITION_Y_OFFSET, position_y) ||
+                !read_node_i32(record, NKUI_LAYOUT_NODE_Z_INDEX_OFFSET, z_index))
                 return false;
             const uint32_t child_align_x = child_alignment & 0xffu;
             const uint32_t child_align_y = (child_alignment >> 8u) & 0xffu;
+            const bool floating = (node_flags & NKUI_LAYOUT_NODE_FLOATING) != 0;
+            const bool clip_to_parent = (node_flags & NKUI_LAYOUT_NODE_CLIP_TO_PARENT) != 0;
             if (visual_kind < NKUI_LAYOUT_VISUAL_BOX ||
                 visual_kind > NKUI_LAYOUT_VISUAL_CUSTOM ||
                 (child_alignment & 0xffff0000u) != 0 ||
                 child_align_x > NKUI_LAYOUT_ALIGNMENT_CENTER ||
                 child_align_y > NKUI_LAYOUT_ALIGNMENT_CENTER ||
-                (node_flags & ~NKUI_LAYOUT_NODE_VISIBLE) != 0 ||
+                (node_flags & ~(NKUI_LAYOUT_NODE_VISIBLE | NKUI_LAYOUT_NODE_FLOATING |
+                                NKUI_LAYOUT_NODE_CLIP_TO_PARENT)) != 0 ||
+                (clip_to_parent && !floating) ||
+                z_index < std::numeric_limits<int16_t>::min() ||
+                z_index > std::numeric_limits<int16_t>::max() ||
+                !std::isfinite(position_x) || !std::isfinite(position_y) ||
                 width_sizing > NKUI_LAYOUT_SIZING_PERCENT)
                 return false;
             const float determinant = transform[0] * transform[3] - transform[1] * transform[2];
@@ -382,6 +395,12 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             node.style.direction = static_cast<nkui::LayoutDirection>(direction);
             node.style.child_align_x = static_cast<uint8_t>(child_align_x);
             node.style.child_align_y = static_cast<uint8_t>(child_align_y);
+            node.style.positioning = floating ? nkui::LayoutPositioning::Absolute :
+                nkui::LayoutPositioning::Flow;
+            node.style.position_x = position_x;
+            node.style.position_y = position_y;
+            node.style.z_index = z_index;
+            node.style.clip_to_parent = clip_to_parent;
             node.text_style.family = static_cast<nkui::FontFamily>(font_family);
             node.paragraph_style.wrap = static_cast<nkui::TextWrapMode>(text_wrap);
             node.paragraph_style.alignment = static_cast<nkui::TextAlignment>(text_alignment);

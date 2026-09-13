@@ -62,6 +62,11 @@ enum class LayoutDirection : uint8_t {
     TopToBottom,
 };
 
+enum class LayoutPositioning : uint8_t {
+    Flow = 0,
+    Absolute,
+};
+
 enum class LayoutSizing : uint8_t {
     Fit = 0,
     Grow,
@@ -101,6 +106,11 @@ struct LayoutStyle {
     uint16_t child_gap = 0;
     uint8_t child_align_x = 0;
     uint8_t child_align_y = 0;
+    LayoutPositioning positioning = LayoutPositioning::Flow;
+    float position_x = 0.0f;
+    float position_y = 0.0f;
+    int32_t z_index = 0;
+    bool clip_to_parent = true;
     LayoutColor background{};
     float radius_top_left = 0.0f;
     float radius_top_right = 0.0f;

@@ -59,9 +59,13 @@ class LayoutTransaction {
 				style.transform.b * style.transform.c;
 			var childAlignX:Int = cast style.childAlignX;
 			var childAlignY:Int = cast style.childAlignY;
+			var positioning:Int = cast style.positioning;
 			if (childAlignX < LayoutAlignment.Start || childAlignX > LayoutAlignment.Center ||
-				childAlignY < LayoutAlignment.Start || childAlignY > LayoutAlignment.Center)
-				throw "Layout child alignment is invalid";
+				childAlignY < LayoutAlignment.Start || childAlignY > LayoutAlignment.Center ||
+				(positioning != LayoutPositioning.Flow && positioning != LayoutPositioning.Absolute) ||
+				!finite(style.positionX) || !finite(style.positionY) ||
+				style.zIndex < -32768 || style.zIndex > 32767)
+				throw "Layout alignment or positioning is invalid";
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_ID_OFFSET, node.id);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PARENT_OFFSET, parents[index]);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET,
@@ -106,10 +110,21 @@ class LayoutTransaction {
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TRANSFORM_D_OFFSET, transform.d);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET, transform.tx);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET, transform.ty);
-			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_FLAGS_OFFSET,
-				style.visible ? 1 : 0);
+			var nodeFlags = style.visible ? 1 : 0;
+			if (positioning == LayoutPositioning.Absolute) {
+				nodeFlags |= 1 << 1;
+				if (style.clipToParent)
+					nodeFlags |= 1 << 2;
+			}
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_FLAGS_OFFSET, nodeFlags);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET,
 				childAlignX | (childAlignY << 8));
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_X_OFFSET,
+				style.positionX);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_Y_OFFSET,
+				style.positionY);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_Z_INDEX_OFFSET,
+				style.zIndex);
 			if (textOffset < 0 || textOffset + this.stringBytes[index].length > output.length)
 				throw 'Layout string table write is out of range: ${textOffset} + ${this.stringBytes[index].length} > ${output.length}';
 			for (byteIndex in 0...this.stringBytes[index].length)

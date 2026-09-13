@@ -5,6 +5,11 @@ class LayoutStyle {
 	public var direction:LayoutDirection;
 	public var childAlignX:LayoutAlignment;
 	public var childAlignY:LayoutAlignment;
+	public var positioning:LayoutPositioning;
+	public var positionX:Float;
+	public var positionY:Float;
+	public var zIndex:Int;
+	public var clipToParent:Bool;
 	public var padding:Insets;
 	public var childGap:Float;
 	public var background:Color;
@@ -23,6 +28,11 @@ class LayoutStyle {
 		direction = LayoutDirection.TopToBottom;
 		childAlignX = LayoutAlignment.Start;
 		childAlignY = LayoutAlignment.Start;
+		positioning = LayoutPositioning.Flow;
+		positionX = 0.0;
+		positionY = 0.0;
+		zIndex = 0;
+		clipToParent = true;
 		padding = new Insets(0.0, 0.0, 0.0, 0.0);
 		childGap = 0.0;
 		background = Color.rgba(0.0, 0.0, 0.0, 0.0);
@@ -44,6 +54,11 @@ class LayoutStyle {
 		result.direction = direction;
 		result.childAlignX = childAlignX;
 		result.childAlignY = childAlignY;
+		result.positioning = positioning;
+		result.positionX = positionX;
+		result.positionY = positionY;
+		result.zIndex = zIndex;
+		result.clipToParent = clipToParent;
 		result.padding = new Insets(padding.left, padding.top, padding.right, padding.bottom);
 		result.childGap = childGap;
 		result.background = background;

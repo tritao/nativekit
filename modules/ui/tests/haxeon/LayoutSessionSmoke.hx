@@ -71,6 +71,14 @@ class LayoutSessionSmoke {
 			resolved[2].y < resolved[1].y + (resolved[1].height - resolved[2].height) * 0.5 - 0.1 ||
 			resolved[2].y > resolved[1].y + (resolved[1].height - resolved[2].height) * 0.5 + 0.1)
 			return 4;
+		var floatingText = panel.children[0];
+		floatingText.style.positioning = LayoutPositioning.Absolute;
+		floatingText.style.positionX = 20.0;
+		floatingText.style.positionY = 10.0;
+		floatingText.style.zIndex = 9;
+		resolved = session.submit(root, frame);
+		if (resolved[2].x != resolved[1].x + 20.0 || resolved[2].y != resolved[1].y + 10.0)
+			return 7;
 
 		session.dispose();
 		fonts.dispose();

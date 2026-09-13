@@ -165,6 +165,26 @@ int main() {
                  (button_item.y + (button_item.height - text_item.height) * 0.5f)) > 0.01f)
         return 17;
 
+    auto floating = bytes;
+    const std::size_t text_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
+                                    2 * NKUI_LAYOUT_NODE_RECORD_BYTES;
+    write_u32(floating, text_record + NKUI_LAYOUT_NODE_FLAGS_OFFSET,
+              NKUI_LAYOUT_NODE_VISIBLE | NKUI_LAYOUT_NODE_FLOATING |
+                  NKUI_LAYOUT_NODE_CLIP_TO_PARENT);
+    write_float(floating, text_record + NKUI_LAYOUT_NODE_POSITION_X_OFFSET, 20.0f);
+    write_float(floating, text_record + NKUI_LAYOUT_NODE_POSITION_Y_OFFSET, 10.0f);
+    write_i32(floating, text_record + NKUI_LAYOUT_NODE_Z_INDEX_OFFSET, 9);
+    if (nkui_layout_session_submit(session, floating.data(), floating.size(), &frame) != NKUI_OK ||
+        nkui_layout_session_get_resolved_items(session, resolved.data(), &resolved_bytes) !=
+            NKUI_OK)
+        return 18;
+    std::memcpy(&button_item, resolved.data() + sizeof(root_item), sizeof(button_item));
+    std::memcpy(&text_item, resolved.data() + 2 * sizeof(root_item), sizeof(text_item));
+    if (std::abs(text_item.x - button_item.x - 20.0f) > 0.01f ||
+        std::abs(text_item.y - button_item.y - 10.0f) > 0.01f ||
+        !(text_item.flags & NKUI_LAYOUT_RESOLVED_VISIBLE))
+        return 19;
+
     auto hidden = bytes;
     write_u32(hidden, panel_record + NKUI_LAYOUT_NODE_FLAGS_OFFSET, 0);
     if (nkui_layout_session_submit(session, hidden.data(), hidden.size(), &frame) != NKUI_OK ||

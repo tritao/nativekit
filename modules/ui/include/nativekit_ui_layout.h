@@ -17,10 +17,10 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 6,
-    NKUI_LAYOUT_TRANSACTION_VERSION = 5,
+    NKUI_LAYOUT_API_VERSION = 7,
+    NKUI_LAYOUT_TRANSACTION_VERSION = 6,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
-    NKUI_LAYOUT_NODE_RECORD_BYTES = 176,
+    NKUI_LAYOUT_NODE_RECORD_BYTES = 188,
     NKUI_LAYOUT_MAX_NODES = 512,
     NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96
 };
@@ -35,7 +35,9 @@ enum NK_FLAGS(nkui_layout_clip_flags) {
 /** Node flags stored at NKUI_LAYOUT_NODE_FLAGS_OFFSET. */
 typedef uint32_t nkui_layout_node_flags;
 enum NK_FLAGS(nkui_layout_node_flags) {
-    NKUI_LAYOUT_NODE_VISIBLE = 1u << 0
+    NKUI_LAYOUT_NODE_VISIBLE = 1u << 0,
+    NKUI_LAYOUT_NODE_FLOATING = 1u << 1,
+    NKUI_LAYOUT_NODE_CLIP_TO_PARENT = 1u << 2
 };
 
 /** Flags returned with each resolved item. */
@@ -111,7 +113,13 @@ enum {
     NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET = 164,
     NKUI_LAYOUT_NODE_FLAGS_OFFSET = 168,
     /** Packed child alignment: x in bits 0..7, y in bits 8..15. */
-    NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET = 172
+    NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET = 172,
+    /** Parent-relative x offset for absolute-positioned nodes. */
+    NKUI_LAYOUT_NODE_POSITION_X_OFFSET = 176,
+    /** Parent-relative y offset for absolute-positioned nodes. */
+    NKUI_LAYOUT_NODE_POSITION_Y_OFFSET = 180,
+    /** Stacking order for absolute-positioned nodes, encoded as signed int32. */
+    NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184
 };
 
 /** Opaque retained layout session used by a Haxe-owned component tree. */
