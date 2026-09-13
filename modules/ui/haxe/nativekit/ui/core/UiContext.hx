@@ -37,7 +37,7 @@ class UiContext {
 		stateStore = new StateStore();
 		clipboard = new ClipboardService();
 		textInput = new TextInputBridge();
-		buildContext = new BuildContext(stateStore, fonts, textInput);
+		buildContext = new BuildContext(stateStore, fonts, textInput, clipboard);
 		if (fonts != null)
 			this.session.setFonts(fonts);
 		focus = new FocusManager();

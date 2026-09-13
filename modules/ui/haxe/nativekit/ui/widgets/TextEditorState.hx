@@ -243,6 +243,9 @@ class TextEditorState {
 		disposed = true;
 	}
 
+	public function isDisposed():Bool
+		return disposed;
+
 	function setComposition(start:Int, end:Int):Bool {
 		var count = Utf8Text.length(text);
 		if (start < 0 || end < start || start > count || end > count) {

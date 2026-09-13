@@ -9,16 +9,19 @@ class BuildContext {
 	public var fonts(default, null):Null<FontCollection>;
 	public var platformSurface(default, null):Null<NativeKitSurface>;
 	public final textInput:TextInputBridge;
+	public final clipboard:ClipboardService;
 	final claimed:Map<Int, String>;
 	var scope:KeyScope;
 
-	public function new(stateStore:StateStore, ?fonts:FontCollection, ?textInput:TextInputBridge) {
+	public function new(stateStore:StateStore, ?fonts:FontCollection, ?textInput:TextInputBridge,
+			?clipboard:ClipboardService) {
 		if (stateStore == null)
 			throw "Build context requires a state store";
 		this.stateStore = stateStore;
 		this.fonts = fonts;
 		platformSurface = null;
 		this.textInput = textInput == null ? new TextInputBridge() : textInput;
+		this.clipboard = clipboard == null ? new ClipboardService() : clipboard;
 		claimed = new Map();
 		scope = new KeyScope();
 	}
@@ -68,6 +71,14 @@ class BuildContext {
 
 	public function state<T>(id:WidgetId, initial:T):State<T> {
 		stateStore.initialize(id, initial);
+		var value:State<Dynamic> = new State<Dynamic>(stateStore, id);
+		return cast value;
+	}
+
+	/** Opens an already initialized value without supplying an unused placeholder. */
+	public function existingState<T>(id:WidgetId):State<T> {
+		if (!stateStore.contains(id))
+			throw "Widget state has not been initialized";
 		var value:State<Dynamic> = new State<Dynamic>(stateStore, id);
 		return cast value;
 	}

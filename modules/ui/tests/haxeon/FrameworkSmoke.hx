@@ -8,6 +8,7 @@ import LayoutFrame;
 import LayoutStyle;
 import Rect;
 import ResolvedLayoutItem;
+import TextLayout;
 import NativeKit.InputAction;
 import NativeKit.TouchAction;
 import NativeKit.TouchTool;
@@ -26,6 +27,7 @@ import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityBridge;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
+import nativekit.ui.semantics.AccessibilityRequest;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
@@ -34,6 +36,7 @@ import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollView;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TextEditorState;
+import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.Utf8Text;
 
 class FrameworkSmoke {
@@ -69,6 +72,62 @@ class FrameworkSmoke {
 			editor.selectionEnd != 4 || editor.compositionStart != 2 || editor.compositionEnd != 4)
 			return 33;
 		editor.dispose();
+		var editedValue = "";
+		var submittedValue = "";
+		var field = new TextField("entry", "hello", function(next) { editedValue = next; },
+			null, "Message");
+		field.onSubmit = function(next) { submittedValue = next; };
+		var fieldRoot = context.submit(field, new LayoutFrame(256.0, 192.0));
+		if (fieldRoot.semantics == null || fieldRoot.semantics.role != AccessibilityRole.TextField ||
+			fieldRoot.semantics.label != "Message" || !fieldRoot.focusable)
+			return 40;
+		var fieldState:State<TextEditorState> = context.buildContext.existingState(fieldRoot.id);
+		var fieldEditor:TextEditorState = cast fieldState.value;
+		if (!context.focusWidget(fieldRoot.id))
+			return 41;
+		context.key(UiEventKind.KeyDown, UiKey.A, UiModifier.Control);
+		context.text(UiEventKind.TextInput, "á🙂");
+		if (field.value != "á🙂" || editedValue != "á🙂" || fieldEditor.selectionEnd != 3)
+			return 42;
+		fieldRoot = context.submit(field, new LayoutFrame(256.0, 192.0));
+		context.key(UiEventKind.KeyDown, UiKey.Left);
+		context.key(UiEventKind.KeyDown, UiKey.Backspace);
+		if (field.value != "🙂" || fieldEditor.selectionEnd != 0)
+			return 43;
+		var compositionEdit = new NativeKitTextEdit(TextEditAction.Compose, "x", 1, 1,
+			2, 2, 1, 2);
+		context.text(UiEventKind.TextEdit, null, compositionEdit);
+		if (field.value != "🙂x" || fieldEditor.compositionStart != 1 ||
+			fieldEditor.compositionEnd != 2)
+			return 44;
+		var commitEdit = new NativeKitTextEdit(TextEditAction.Commit, "x", 1, 2,
+			2, 2, -1, -1);
+		context.text(UiEventKind.TextEdit, null, commitEdit);
+		if (fieldEditor.compositionStart != -1 || field.value != "🙂x")
+			return 45;
+		if (!context.accessibilityAction(fieldRoot.id.value, AccessibilityRequest.SetSelection,
+			null, 0, 1, 2) || fieldEditor.selectionStart != 0 || fieldEditor.selectionEnd != 1)
+			return 46;
+		if (!context.accessibilityAction(fieldRoot.id.value, AccessibilityRequest.SetValue,
+			"done", -1, -1, 1) || field.value != "done")
+			return 47;
+		fieldRoot = context.submit(field, new LayoutFrame(256.0, 192.0));
+		fieldEditor = cast fieldState.value;
+		if (fieldEditor.layout.selectionRects(new TextPosition(0, 0), new TextPosition(4, 0)).length == 0)
+			return 48;
+		var fieldTextGeometry:ResolvedLayoutItem = cast fieldRoot.children[0].resolved;
+		var fieldY = fieldTextGeometry.y + fieldTextGeometry.height * 0.5;
+		var fieldLeft = fieldTextGeometry.x + 0.5;
+		var fieldRight = fieldTextGeometry.x + fieldTextGeometry.width - 0.5;
+		context.pointerDown(fieldLeft, fieldY, 0);
+		context.pointerMove(fieldRight, fieldY);
+		context.pointerUp(fieldRight, fieldY, 0);
+		if (fieldEditor.selectionStart != 0 || fieldEditor.selectionEnd <= 0 ||
+			fieldEditor.selectionEnd > 4)
+			return 49;
+		context.key(UiEventKind.KeyDown, UiKey.Enter);
+		if (submittedValue != "done")
+			return 50;
 		if (!NativeKitEventDecoderTests.run())
 			return 27;
 		var frame = new LayoutFrame(256.0, 192.0);
@@ -103,6 +162,8 @@ class FrameworkSmoke {
 		}
 
 		var root = context.submit(makeView(true), frame);
+		if (context.isDirty())
+			root = context.submit(makeView(true), frame);
 		root.on(UiEventKind.Click, function(_) {
 			bubbled++;
 		});
