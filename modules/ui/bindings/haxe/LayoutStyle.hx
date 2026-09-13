@@ -31,4 +31,25 @@ class LayoutStyle {
 		visible = true;
 		transform = Transform2D.identity();
 	}
+
+	/** Returns an independent style value for compositional widget builders. */
+	public function copy():LayoutStyle {
+		var result = new LayoutStyle();
+		result.width = width;
+		result.height = height;
+		result.direction = direction;
+		result.padding = new Insets(padding.left, padding.top, padding.right, padding.bottom);
+		result.childGap = childGap;
+		result.background = background;
+		result.radiusTopLeft = radiusTopLeft;
+		result.radiusTopRight = radiusTopRight;
+		result.radiusBottomLeft = radiusBottomLeft;
+		result.radiusBottomRight = radiusBottomRight;
+		result.clipHorizontal = clipHorizontal;
+		result.clipVertical = clipVertical;
+		result.visible = visible;
+		result.transform = new Transform2D(transform.a, transform.b, transform.c,
+			transform.d, transform.tx, transform.ty);
+		return result;
+	}
 }
