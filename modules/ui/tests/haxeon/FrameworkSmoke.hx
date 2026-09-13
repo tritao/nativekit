@@ -2,6 +2,8 @@ import Color;
 import Canvas;
 import DisplayList;
 import FontCollection;
+import Image;
+import ImageFormat;
 import Insets;
 import LayoutAlignment;
 import LayoutAxis;
@@ -34,7 +36,9 @@ import nativekit.ui.semantics.Semantics;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.Align;
+import nativekit.ui.widgets.CanvasView;
 import nativekit.ui.widgets.Checkbox;
+import nativekit.ui.widgets.ImageView;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Padding;
 import nativekit.ui.widgets.ProgressBar;
@@ -247,6 +251,38 @@ class FrameworkSmoke {
 			(progressSemantics.states & AccessibilityState.ReadOnly) == 0 ||
 			progressSemantics.numericValue != 0.75)
 			return 61;
+		var imageBytes = haxe.io.Bytes.alloc(16);
+		for (index in 0...16)
+			imageBytes.set(index, 255);
+		var image = Image.create(2, 2, ImageFormat.RGBA8, imageBytes);
+		var imageRoot = context.submit(new ImageView("image-smoke", image, "Picture"),
+			new LayoutFrame(256.0, 192.0));
+		var imageSemantics:Semantics = cast imageRoot.semantics;
+		var imageGeometry:ResolvedLayoutItem = cast imageRoot.resolved;
+		if (imageSemantics.role != AccessibilityRole.Image || imageSemantics.label != "Picture" ||
+			imageGeometry.width != 2.0 || imageGeometry.height != 2.0)
+			return 64;
+		var imageCanvas = new Canvas();
+		var imageList = DisplayList.create();
+		imageCanvas.drawImage(image, new Rect(1.0, 2.0, 20.0, 12.0));
+		imageCanvas.update(imageList);
+		if (imageList.info().commandCount != 1)
+			return 65;
+		imageList.clear();
+		imageList.dispose();
+		image.dispose();
+		var canvasEvents = 0;
+		var canvasView = new CanvasView("canvas-smoke", function(canvas, geometry) {
+			canvas.fillRect(new Rect(0.0, 0.0, geometry.width, geometry.height),
+				Color.rgba(0.3, 0.4, 0.5, 1.0));
+		}, null, "Drawing region");
+		canvasView.on(UiEventKind.PointerDown, function(_) { canvasEvents++; });
+		var canvasRoot = context.submit(canvasView, new LayoutFrame(256.0, 192.0));
+		var canvasGeometry:ResolvedLayoutItem = cast canvasRoot.resolved;
+		var canvasSemantics:Semantics = cast canvasRoot.semantics;
+		context.pointerDown(canvasGeometry.x + 10.0, canvasGeometry.y + 10.0, 0);
+		if (canvasEvents != 1 || canvasSemantics.role != AccessibilityRole.Group)
+			return 66;
 		if (!NativeKitEventDecoderTests.run())
 			return 27;
 		var frame = new LayoutFrame(256.0, 192.0);
