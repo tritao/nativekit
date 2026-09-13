@@ -12,6 +12,7 @@ class Theme {
 	public var buttonHover:Color;
 	public var buttonPressed:Color;
 	public var buttonFocused:Color;
+	public var buttonSelected:Color;
 	public var buttonDisabled:Color;
 	public var controlSelected:Color;
 	public var controlUnselected:Color;
@@ -28,6 +29,7 @@ class Theme {
 		buttonHover = Color.rgba(0.21, 0.46, 0.84, 1.0);
 		buttonPressed = Color.rgba(0.13, 0.34, 0.67, 1.0);
 		buttonFocused = Color.rgba(0.27, 0.52, 0.91, 1.0);
+		buttonSelected = Color.rgba(0.17, 0.37, 0.68, 1.0);
 		buttonDisabled = Color.rgba(0.22, 0.24, 0.28, 1.0);
 		controlSelected = accent;
 		controlUnselected = Color.rgba(0.16, 0.18, 0.22, 1.0);
@@ -48,6 +50,8 @@ class Theme {
 			result.background = buttonHover;
 		else if (InteractionState.contains(flags, InteractionState.Focused))
 			result.background = buttonFocused;
+		else if (InteractionState.contains(flags, InteractionState.Selected))
+			result.background = buttonSelected;
 		return result;
 	}
 

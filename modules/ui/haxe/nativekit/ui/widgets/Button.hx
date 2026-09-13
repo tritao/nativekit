@@ -13,6 +13,7 @@ import nativekit.ui.core.State;
 import nativekit.ui.core.View;
 import nativekit.ui.core.Key;
 import nativekit.ui.theme.InteractionState;
+import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
@@ -23,6 +24,7 @@ class Button implements View {
 	public final label:String;
 	public final style:LayoutStyle;
 	public var enabled:Bool;
+	public var selected:Bool;
 	public var onClick:Void->Void;
 
 	public function new(label:String, ?style:LayoutStyle, ?onClick:Void->Void, ?key:String) {
@@ -33,6 +35,7 @@ class Button implements View {
 		this.style = style == null ? defaultStyle() : style.copy();
 		this.onClick = onClick;
 		enabled = true;
+		selected = false;
 	}
 
 	public function build(context:BuildContext):RenderNode {
@@ -43,12 +46,15 @@ class Button implements View {
 		var id = context.id("button");
 		var interaction:State<Int> = context.state(id, 0);
 		var flags:Int = cast interaction.value;
+		flags = InteractionState.with(flags, InteractionState.Selected, selected);
 		var resolvedStyle = context.theme.resolveButtonStyle(style, flags, enabled);
 		var node = new RenderNode(id, LayoutVisualKind.Box, resolvedStyle);
 		node.focusable = true;
 		node.enabled = enabled;
 		var semantics = new Semantics(AccessibilityRole.Button, label);
 		semantics.actions = AccessibilityAction.Activate;
+		if (selected)
+			semantics.states |= AccessibilityState.Selected;
 		node.semantics = semantics;
 		if (enabled && onClick != null) {
 			var activate = function(_:UiEvent) {

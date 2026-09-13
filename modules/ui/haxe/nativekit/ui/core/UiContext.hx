@@ -53,6 +53,7 @@ class UiContext {
 		root = null;
 		submittedStateRevision = -1;
 		disposed = false;
+		buildContext.setFocusRequester(function(id) { return focusWidget(id); });
 		overlayCanvas = null;
 		overlayList = null;
 		accessibilityBridge = null;

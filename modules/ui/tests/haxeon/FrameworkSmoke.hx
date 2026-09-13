@@ -71,6 +71,10 @@ import nativekit.ui.gestures.DoubleTapRecognizer;
 import nativekit.ui.gestures.LongPressRecognizer;
 import nativekit.ui.gestures.DragRecognizer;
 import nativekit.ui.widgets.GestureDetector;
+import nativekit.ui.widgets.RadioGroup;
+import nativekit.ui.widgets.RadioOption;
+import nativekit.ui.widgets.Tabs;
+import nativekit.ui.widgets.TabItem;
 import nativekit.ui.animation.AnimationController;
 import nativekit.ui.animation.SpringController;
 import nativekit.ui.animation.Easing;
@@ -650,6 +654,55 @@ class FrameworkSmoke {
 		tooltipGeometry = cast tooltipRoot.children[1].resolved;
 		if (tooltipGeometry.visible)
 			return 78;
+
+		var radioChanges = 0;
+		var radioValue = "";
+		var radioGroup = new RadioGroup("radio-smoke", [
+			new RadioOption("red", "Red", "red"),
+			new RadioOption("blocked", "Blocked", "blocked", false),
+			new RadioOption("green", "Green", "green")
+		], "red", function(next) { radioChanges++; radioValue = next; });
+		var radioFrame = new LayoutFrame(256.0, 192.0);
+		var radioRoot = context.submit(radioGroup, radioFrame);
+		if (radioRoot.children.length != 3 ||
+			(cast(radioRoot.children[0].semantics, Semantics).states & AccessibilityState.Selected) == 0 ||
+			!context.focusWidget(radioRoot.children[0].id))
+			return 92;
+		context.key(UiEventKind.KeyDown, UiKey.Right);
+		if (radioGroup.value != "green" || radioValue != "green" || radioChanges != 1 ||
+			context.focus.focusedId == null ||
+			!context.focus.focusedId.equals(radioRoot.children[2].id))
+			return 93;
+		radioRoot = context.submit(radioGroup, radioFrame);
+		if ((cast(radioRoot.children[2].semantics, Semantics).states & AccessibilityState.Selected) == 0)
+			return 94;
+
+		var tabChanges = 0;
+		var tabs = new Tabs("tabs-smoke", [
+			new TabItem("first", "First", new Text("First page")),
+			new TabItem("second", "Second", new Text("Second page")),
+			new TabItem("locked", "Locked", new Text("Locked page"), false)
+		], "first", function(_) { tabChanges++; });
+		var tabsFrame = new LayoutFrame(256.0, 192.0);
+		var tabsRoot = context.submit(tabs, tabsFrame);
+		var secondTab = tabsRoot.children[0].children[1];
+		var secondTabGeometry:ResolvedLayoutItem = cast secondTab.resolved;
+		context.pointerDown(secondTabGeometry.x + 2.0, secondTabGeometry.y + 2.0, 0);
+		context.pointerUp(secondTabGeometry.x + 2.0, secondTabGeometry.y + 2.0, 0);
+		if (tabs.selectedKey != "second" || tabChanges != 1)
+			return 95;
+		tabsRoot = context.submit(tabs, tabsFrame);
+		var secondPage:Semantics = cast tabsRoot.children[1].semantics;
+		if (secondPage.label != "Second page" ||
+			(cast(tabsRoot.children[0].children[1].semantics, Semantics).states &
+			AccessibilityState.Selected) == 0)
+			return 96;
+		if (!context.focusWidget(tabsRoot.children[0].children[1].id))
+			return 97;
+		context.key(UiEventKind.KeyDown, UiKey.Left);
+		if (tabs.selectedKey != "first" || context.focus.focusedId == null ||
+			!context.focus.focusedId.equals(tabsRoot.children[0].children[0].id))
+			return 98;
 
 		var theme = new Theme();
 		theme.buttonHover = Color.rgba(0.8, 0.1, 0.1, 1.0);

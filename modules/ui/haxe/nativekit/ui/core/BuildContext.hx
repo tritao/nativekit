@@ -16,6 +16,7 @@ class BuildContext {
 	public final gestures:GestureArena;
 	public final animations:AnimationScheduler;
 	public var theme(default, null):Theme;
+	var focusRequester:WidgetId->Bool;
 	final claimed:Map<Int, String>;
 	var scope:KeyScope;
 
@@ -32,6 +33,7 @@ class BuildContext {
 		this.gestures = gestures == null ? new GestureArena() : gestures;
 		this.animations = animations == null ? new AnimationScheduler() : animations;
 		this.theme = theme == null ? new Theme() : theme;
+		focusRequester = function(_) { return false; };
 		claimed = new Map();
 		scope = new KeyScope();
 	}
@@ -42,6 +44,16 @@ class BuildContext {
 			throw "Build context requires a theme";
 		this.theme = theme;
 	}
+
+	/** Installs the UiContext focus route used by composite keyboard widgets. */
+	public function setFocusRequester(requester:WidgetId->Bool):Void {
+		if (requester == null)
+			throw "Build context requires a focus request route";
+		focusRequester = requester;
+	}
+
+	public function requestFocus(id:WidgetId):Bool
+		return id != null && focusRequester(id);
 
 	/** Provides the font collection used by text-layout-backed widgets. */
 	public function setFonts(fonts:FontCollection):Void {
