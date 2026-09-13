@@ -23,6 +23,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
@@ -50,6 +52,7 @@ import android.text.Selection;
 import android.text.SpannableStringBuilder;
 import android.view.DragAndDropPermissions;
 import android.view.DragEvent;
+import android.webkit.JavascriptInterface;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -970,6 +973,20 @@ final class NativeKitBridge {
         }
     }
 
+    private static final class NativeKitMessageBridge {
+        private final long handle;
+        private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+        NativeKitMessageBridge(long handle) {
+            this.handle = handle;
+        }
+
+        @JavascriptInterface
+        public void postMessage(String message) {
+            mainHandler.post(() -> nativeOnMessage(handle, message));
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     static WebView create(ViewGroup parent, long handle, int flags, int x, int y, int width,
                           int height, @Nullable String initialUrl) {
@@ -982,16 +999,18 @@ final class NativeKitBridge {
         setBounds(view, x, y, width, height);
         parent.removeView(view);
 
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            throw new UnsupportedOperationException(
-                "Android System WebView lacks WebMessageListener");
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            WebViewCompat.addWebMessageListener(
+                view, "nativekitBridge", Collections.singleton("*"),
+                (webView, message, sourceOrigin, isMainFrame, replyProxy) -> {
+                    if (isMainFrame)
+                        nativeOnMessage(handle, message.getData());
+                });
+        } else {
+            // Older WebView providers lack origin-aware messaging; expose only event delivery and
+            // marshal callbacks to the UI thread before accessing NativeKit state.
+            view.addJavascriptInterface(new NativeKitMessageBridge(handle), "nativekitBridge");
         }
-        WebViewCompat.addWebMessageListener(
-            view, "nativekitBridge", Collections.singleton("*"),
-            (webView, message, sourceOrigin, isMainFrame, replyProxy) -> {
-                if (isMainFrame)
-                    nativeOnMessage(handle, message.getData());
-            });
 
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(view, pageBridgeScript(),
