@@ -130,6 +130,8 @@ class ShowcaseWeb {
                     case WindowResize(source, width, height) if (source == window):
                         if (NativeKit.nk_surface_set_bounds(surface, 0, 0, width, height) != Result.Ok)
                             return -fail(13);
+                    case WindowScaleChanged(source, newScale) if (source == window):
+                        scale = newScale;
                     case SurfaceReady(source) if (source == surface):
                         if (NativeKit.nk_surface_make_current(surface) != Result.Ok)
                             return -fail(14);
