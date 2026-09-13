@@ -70,7 +70,6 @@ class TextLayout extends NativeKitUIResource {
 
 	static function nativeTextStyle(style:TextStyle):nkui_text_style {
 		var result = new nkui_text_style();
-		result.set_struct_size(nkui_text_style.size());
 		result.set_family(style.font);
 		result.set_font_size(style.fontSize);
 		result.set_letter_spacing(style.letterSpacing);
@@ -79,7 +78,6 @@ class TextLayout extends NativeKitUIResource {
 
 	static function nativeParagraphStyle(style:ParagraphStyle):nkui_paragraph_style {
 		var result = new nkui_paragraph_style();
-		result.set_struct_size(nkui_paragraph_style.size());
 		result.set_line_height(style.lineHeight == null ? 0.0 : style.lineHeight);
 		result.set_wrap(style.wrap);
 		result.set_alignment(style.alignment);

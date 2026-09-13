@@ -5,6 +5,7 @@ import NativeKit.Result;
 import NativeKit.TextInputAction;
 import NativeKit.TextInputType;
 import NativeKitSurface;
+import NativeKitWindow;
 
 /** Builds and submits owned text-input state for custom native surfaces. */
 class NativeKitTextInput {
@@ -14,7 +15,6 @@ class NativeKitTextInput {
 			?inputType:TextInputType, ?flags:TextInputFlags, ?action:TextInputAction, ?cursorX:Float, ?cursorY:Float,
 			?cursorWidth:Float, ?cursorHeight:Float):TextInputState {
 		var value = new TextInputState();
-		value.set_struct_size(TextInputState.size());
 		value.set_text(text);
 		value.set_text_start(textStart);
 		value.set_document_length(documentLength);
@@ -37,7 +37,26 @@ class NativeKitTextInput {
 			selectionStart:Int, selectionEnd:Int, ?compositionStart:Int, ?compositionEnd:Int,
 			?inputType:TextInputType, ?flags:TextInputFlags, ?action:TextInputAction, ?cursorX:Float, ?cursorY:Float,
 			?cursorWidth:Float, ?cursorHeight:Float):Void {
-		var result = NativeKit.nk_surface_set_text_input_state(surface.nativeHandle(),
+		updateTarget(new Handle(surface.nativeHandle().rawValue()), text, textStart, documentLength,
+			selectionStart, selectionEnd, compositionStart, compositionEnd, inputType, flags, action,
+			cursorX, cursorY, cursorWidth, cursorHeight);
+	}
+
+	/** Synchronizes desktop IME input when the platform backend targets a window directly. */
+	public static function updateWindow(window:NativeKitWindow, text:String, textStart:Int, documentLength:Int,
+			selectionStart:Int, selectionEnd:Int, ?compositionStart:Int, ?compositionEnd:Int,
+			?inputType:TextInputType, ?flags:TextInputFlags, ?action:TextInputAction, ?cursorX:Float, ?cursorY:Float,
+			?cursorWidth:Float, ?cursorHeight:Float):Void {
+		updateTarget(new Handle(window.nativeHandle().rawValue()), text, textStart, documentLength,
+			selectionStart, selectionEnd, compositionStart, compositionEnd, inputType, flags, action,
+			cursorX, cursorY, cursorWidth, cursorHeight);
+	}
+
+	static function updateTarget(target:Handle, text:String, textStart:Int, documentLength:Int,
+			selectionStart:Int, selectionEnd:Int, ?compositionStart:Int, ?compositionEnd:Int,
+			?inputType:TextInputType, ?flags:TextInputFlags, ?action:TextInputAction, ?cursorX:Float, ?cursorY:Float,
+			?cursorWidth:Float, ?cursorHeight:Float):Void {
+		var result = NativeKit.nk_surface_set_text_input_state(target,
 			state(text, textStart, documentLength, selectionStart, selectionEnd,
 				compositionStart, compositionEnd, inputType, flags, action,
 				cursorX, cursorY, cursorWidth, cursorHeight));
@@ -47,7 +66,16 @@ class NativeKitTextInput {
 
 	/** Shows or hides the platform text-input UI for a custom surface. */
 	public static function setActive(surface:NativeKitSurface, active:Bool):Void {
-		var result = NativeKit.nk_surface_set_text_input_active(surface.nativeHandle(), active ? 1 : 0);
+		setTargetActive(new Handle(surface.nativeHandle().rawValue()), active);
+	}
+
+	/** Shows or hides the platform text-input UI when the backend targets a window directly. */
+	public static function setWindowActive(window:NativeKitWindow, active:Bool):Void {
+		setTargetActive(new Handle(window.nativeHandle().rawValue()), active);
+	}
+
+	static function setTargetActive(target:Handle, active:Bool):Void {
+		var result = NativeKit.nk_surface_set_text_input_active(target, active);
 		if (result != Result.Ok)
 			throw 'NativeKit text-input activation failed: $result';
 	}

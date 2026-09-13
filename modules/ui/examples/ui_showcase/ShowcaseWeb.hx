@@ -7,6 +7,8 @@ import NativeKit.InputAction;
 import NativeKit.Key;
 import NativeKit.Result;
 import NativeKit.InitOptions;
+import NativeKit.WindowHandle;
+import NativeKit.SurfaceHandle;
 import NativeKit.SurfaceOptions;
 import NativeKit.SurfaceFlags;
 import NativeKitEventValue;
@@ -20,8 +22,8 @@ class ShowcaseWeb {
     static var initialized = false;
     static var running = false;
     static var ready = false;
-    static var window:Handle = 0;
-    static var surface:Handle = 0;
+    static var window:WindowHandle = WindowHandle.invalid();
+    static var surface:SurfaceHandle = SurfaceHandle.invalid();
     static var logicalWidth:Float = Showcase.LOGICAL_WIDTH;
     static var logicalHeight:Float = Showcase.LOGICAL_HEIGHT;
     static var framebufferWidth = 0;
@@ -53,7 +55,6 @@ class ShowcaseWeb {
     public static function main():Int {
         try {
             var init = new InitOptions();
-            init.set_struct_size(InitOptions.size());
             init.set_api_version(NativeKit.nk_api_version());
             init.set_event_queue_capacity(64);
             if (NativeKit.nk_init(init) != Result.Ok)
@@ -68,7 +69,6 @@ class ShowcaseWeb {
             window = createdWindow.out_window;
 
             var surfaceOptions = new SurfaceOptions();
-            surfaceOptions.set_struct_size(SurfaceOptions.size());
             surfaceOptions.set_flags(SurfaceFlags.ForwardCompatible | SurfaceFlags.Stencil);
             surfaceOptions.set_api(GraphicsApi.OpenglEs);
             surfaceOptions.set_major_version(3);
@@ -157,12 +157,12 @@ class ShowcaseWeb {
         if (app != null)
             app.dispose();
         app = null;
-        if (surface != 0)
+        if (surface.isValid())
             NativeKit.nk_surface_destroy(surface);
-        surface = 0;
-        if (window != 0)
+        surface = SurfaceHandle.invalid();
+        if (window.isValid())
             NativeKit.nk_window_destroy(window);
-        window = 0;
+        window = WindowHandle.invalid();
         if (initialized)
             NativeKit.nk_shutdown();
         initialized = false;
@@ -177,16 +177,16 @@ class ShowcaseWeb {
 
     static function handleEvent(value:NativeKitEventValue):Void {
         switch (value) {
-            case WindowClose(source) if (source == window):
+            case WindowClose(source) if (source.rawValue() == window.rawValue()):
                 running = false;
-            case WindowResize(source, width, height) if (source == window):
+            case WindowResize(source, width, height) if (source.rawValue() == window.rawValue()):
                 if (NativeKit.nk_surface_set_bounds(surface, 0, 0, width, height) != Result.Ok) {
                     fail(13);
                     return;
                 }
-            case WindowScaleChanged(source, newScale) if (source == window):
+            case WindowScaleChanged(source, newScale) if (source.rawValue() == window.rawValue()):
                 scale = newScale;
-            case SurfaceReady(source) if (source == surface):
+            case SurfaceReady(source) if (source.rawValue() == surface.rawValue()):
                 if (NativeKit.nk_surface_make_current(surface) != Result.Ok) {
                     fail(14);
                     return;
@@ -206,19 +206,19 @@ class ShowcaseWeb {
                 scale = windowScale.out_scale;
                 ready = framebufferWidth > 0 && framebufferHeight > 0;
             case SurfaceResize(source, width, height, newFramebufferWidth, newFramebufferHeight)
-                if (source == surface):
+                if (source.rawValue() == surface.rawValue()):
                 logicalWidth = width;
                 logicalHeight = height;
                 framebufferWidth = newFramebufferWidth;
                 framebufferHeight = newFramebufferHeight;
                 ready = framebufferWidth > 0 && framebufferHeight > 0;
-            case SurfaceLost(source) if (source == surface):
+            case SurfaceLost(source) if (source.rawValue() == surface.rawValue()):
                 ready = false;
-            case PointerMove(source, x, y) if (source == window && app != null):
+            case PointerMove(source, x, y) if (source.rawValue() == window.rawValue() && app != null):
                 app.updatePointer(x, y);
-            case PointerButton(source, _, action, _, x, y) if (source == window && app != null):
+            case PointerButton(source, _, action, _, x, y) if (source.rawValue() == window.rawValue() && app != null):
                 app.pointerButton(x, y, action == InputAction.Press);
-            case Key(source, key, _, action, _) if (source == window &&
+            case Key(source, key, _, action, _) if (source.rawValue() == window.rawValue() &&
                     action == InputAction.Press && key == Key.Escape):
                 running = false;
             case _:

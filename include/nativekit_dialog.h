@@ -105,7 +105,7 @@ typedef struct nk_dialog_filter {
 /** Options shared by local-file and URI-resource dialogs. */
 typedef struct nk_file_dialog_options {
     /** Set to sizeof(nk_file_dialog_options) before starting the dialog. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Bitwise OR of NK_DIALOG_* flags. */
     nk_dialog_flags flags;
     /** Optional dialog title. */
@@ -125,7 +125,7 @@ typedef struct nk_file_dialog_options {
 /** Options for a native message dialog. */
 typedef struct nk_message_dialog_options {
     /** Set to sizeof(nk_message_dialog_options) before starting the dialog. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Message presentation kind. */
     nk_message_kind kind;
     /** Bitwise OR of NK_MESSAGE_BUTTON_* values; zero defaults to OK. */

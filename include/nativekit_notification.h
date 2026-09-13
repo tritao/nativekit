@@ -28,7 +28,7 @@ enum NK_FLAGS(nk_notification_flags) {
 /** Options for an asynchronous desktop notification request. */
 typedef struct nk_notification_options {
     /** Set to sizeof(nk_notification_options) before passing the structure. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Bitwise OR of NK_NOTIFICATION_* flags. */
     nk_notification_flags flags;
     /** Required UTF-8 notification title. */

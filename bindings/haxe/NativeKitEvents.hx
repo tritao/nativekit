@@ -16,7 +16,6 @@ class NativeKitEvents {
 	/** Polls and releases one native event, then routes its managed snapshot. */
 	public function poll():Bool {
 		var nativeEvent = new Event();
-		nativeEvent.set_struct_size(Event.size());
 		var polled = NativeKit.nk_poll_event(nativeEvent);
 		if (polled.status != Result.Ok)
 			throw 'NativeKit event poll failed: ${polled.status}';

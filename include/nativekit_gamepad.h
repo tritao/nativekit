@@ -78,7 +78,7 @@ enum NK_ENUM(nk_gamepad_axis) {
 /** Normalized canonical gamepad state for one mapped joystick. */
 typedef struct nk_gamepad_state {
     /** Set to sizeof(nk_gamepad_state) before requesting state. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Canonical button states, each normalized to zero or one. */
     uint8_t buttons[NK_GAMEPAD_BUTTON_COUNT];
     /** Canonical axis values, normally normalized to [-1, 1]. */
@@ -113,7 +113,7 @@ enum NK_FLAGS(nk_gamepad_flags) {
 /** Process-wide normalization options for mapped gamepads. */
 typedef struct nk_gamepad_options {
     /** Set to sizeof(nk_gamepad_options) before setting or getting options. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Radial dead-zone fraction for both sticks, in [0, 1). */
     float stick_dead_zone;
     /** Dead-zone fraction for both triggers, in [0, 1). */
@@ -147,18 +147,18 @@ NK_API nk_result NK_CALL nk_gamepad_add_mapping(const char *mapping NK_UTF8);
  */
 NK_API nk_result NK_CALL nk_gamepad_add_mappings(const char *database NK_UTF8, uint32_t *out_added);
 /** Reports whether a joystick has an active canonical gamepad mapping. */
-NK_API nk_result NK_CALL nk_gamepad_is_mapped(nk_handle joystick, nk_bool *out_mapped);
+NK_API nk_result NK_CALL nk_gamepad_is_mapped(nk_joystick joystick, nk_bool *out_mapped);
 /** Reports whether the active mapping is built-in or application-supplied. */
-NK_API nk_result NK_CALL nk_gamepad_get_mapping_source(nk_handle joystick,
+NK_API nk_result NK_CALL nk_gamepad_get_mapping_source(nk_joystick joystick,
                                                        nk_gamepad_mapping_source *out_source);
 /** Returns the pinned SDL_GameControllerDB Git revision used for built-ins. */
 NK_API nk_result NK_CALL nk_gamepad_get_builtin_database_revision(char *buffer,
                                                                   uint32_t *inout_size);
 /** Copies the mapped gamepad name into a caller-owned UTF-8 buffer. */
-NK_API nk_result NK_CALL nk_gamepad_get_name(nk_handle joystick, char *buffer,
+NK_API nk_result NK_CALL nk_gamepad_get_name(nk_joystick joystick, char *buffer,
                                              uint32_t *inout_size);
 /** Returns the current normalized state of a mapped joystick. */
-NK_API nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick, nk_gamepad_state *out_state);
+NK_API nk_result NK_CALL nk_gamepad_get_state(nk_joystick joystick, nk_gamepad_state *out_state);
 /** Sets process-wide normalization used by state queries and gamepad events. */
 NK_API nk_result NK_CALL nk_gamepad_set_options(const nk_gamepad_options *options);
 /** Returns the process-wide gamepad normalization options. */

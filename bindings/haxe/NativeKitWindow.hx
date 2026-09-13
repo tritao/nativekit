@@ -1,5 +1,6 @@
 import NativeKit;
 import NativeKit.Handle;
+import NativeKit.WindowHandle;
 import NativeKit.WindowOptions;
 import NativeKit.SurfaceOptions;
 import NativeKit.WebviewOptions;
@@ -9,17 +10,17 @@ import NativeKitWebView;
 
 /** Owns one NativeKit top-level window and resources created inside it. */
 class NativeKitWindow {
-	final value:Handle;
+	final value:WindowHandle;
 	final surfaces:Array<NativeKitSurface> = [];
 	final webviews:Array<NativeKitWebView> = [];
 	final dependentDisposers:Array<Void->Void> = [];
 	var disposed:Bool = false;
 
 	@:allow(NativeKitRuntime)
-	private function new(value:Handle)
+	private function new(value:WindowHandle)
 		this.value = value;
 
-	public function nativeHandle():Handle {
+	public function nativeHandle():WindowHandle {
 		ensureLive();
 		return value;
 	}
@@ -35,7 +36,7 @@ class NativeKitWindow {
 
 	public function createWebView(options:WebviewOptions):NativeKitWebView {
 		ensureLive();
-		var created = NativeKit.nk_webview_create(value, options);
+		var created = NativeKit.nk_webview_create(new Handle(value.rawValue()), options);
 		NativeKitResult.check(created.status, "webview.create");
 		var webview = new NativeKitWebView(created.out_webview);
 		webviews.push(webview);
@@ -44,7 +45,7 @@ class NativeKitWindow {
 
 	public function show(visible:Bool = true):Void {
 		ensureLive();
-		NativeKitResult.check(NativeKit.nk_window_show(value, visible ? 1 : 0), "window.show");
+		NativeKitResult.check(NativeKit.nk_window_show(value, visible), "window.show");
 	}
 
 	/** Registers an adapter-owned child that must be released before this window. */

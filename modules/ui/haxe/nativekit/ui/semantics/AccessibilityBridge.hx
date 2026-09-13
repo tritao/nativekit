@@ -87,7 +87,6 @@ class AccessibilityBridge {
 	function setNode(item:AccessibilitySnapshotNode):Void {
 		var value = item.semantics;
 		var node = new NativeKit.AccessibilityNode();
-		node.set_struct_size(NativeKit.AccessibilityNode.size());
 		node.set_id(item.id);
 		node.set_parent_id(item.parentId);
 		node.set_child_index(item.childIndex);

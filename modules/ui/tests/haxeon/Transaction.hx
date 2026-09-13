@@ -13,14 +13,12 @@ import NativeKitEventValue;
 class Transaction {
 	static function main():Int {
 		var init = new InitOptions();
-		init.set_struct_size(InitOptions.size());
 		init.set_api_version(NativeKitConstants.NK_API_VERSION);
 		init.set_event_queue_capacity(32);
 		if (NativeKit.nk_init(init) != Result.Ok)
 			return 10;
 
 		var windowOptions = new WindowOptions();
-		windowOptions.set_struct_size(WindowOptions.size());
 		windowOptions.set_flags(WindowFlags.Resizable);
 		windowOptions.set_width(256);
 		windowOptions.set_height(192);
@@ -32,7 +30,6 @@ class Transaction {
 		}
 		var window = createdWindow.out_window;
 		var surfaceOptions = new SurfaceOptions();
-		surfaceOptions.set_struct_size(SurfaceOptions.size());
 		surfaceOptions.set_flags(SurfaceFlags.ForwardCompatible | SurfaceFlags.Stencil);
 		surfaceOptions.set_api(GraphicsApi.Opengl);
 		surfaceOptions.set_major_version(3);
@@ -111,7 +108,7 @@ class Transaction {
 		var attempts = 0;
 		var events = new NativeKitEvents();
 		events.addListener(function(value) switch value {
-			case SurfaceReady(source) if (source == surface): ready = true;
+			case SurfaceReady(source) if (source.rawValue() == surface.rawValue()): ready = true;
 			case _:
 		});
 		while (rendered < 3 && attempts < 120) {
@@ -126,7 +123,7 @@ class Transaction {
 					return 15;
 				var frame = new FrameInfo(256.0, 192.0, size.out_width, size.out_height, scale.out_scale);
 				try {
-					renderer.renderFrame(list, Surface.fromNativeHandle(surface), frame);
+					renderer.renderFrame(list, Surface.fromNativeHandle(new NativeKit.Handle(surface.rawValue())), frame);
 				} catch (_:Dynamic) {
 					return 16;
 				}

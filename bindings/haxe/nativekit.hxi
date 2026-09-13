@@ -2012,15 +2012,15 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Creates a cursor from copied RGBA8 pixels, with the first row at the top.
 	 */
-	extern fn nk_cursor_create_custom(image: ptr<const<nk_cursor_image>>, out_cursor: ptr<nk_handle>) -> nk_result;
+	extern fn nk_cursor_create_custom(image: ptr<const<nk_cursor_image>>, out_cursor: ptr<nk_cursor>) -> nk_result;
 	/**
 	 * Creates a standard platform cursor and returns its NativeKit handle.
 	 */
-	extern fn nk_cursor_create_standard(shape: nk_cursor_shape, out_cursor: ptr<nk_handle>) -> nk_result;
+	extern fn nk_cursor_create_standard(shape: nk_cursor_shape, out_cursor: ptr<nk_cursor>) -> nk_result;
 	/**
 	 * Destroys a cursor handle; a cursor already selected by a window remains usable.
 	 */
-	extern fn nk_cursor_destroy(cursor: nk_handle) -> nk_result;
+	extern fn nk_cursor_destroy(cursor: nk_cursor) -> nk_result;
 	/**
 	 * Cancels a pending dialog. Its completion event is still emitted.
 	 */
@@ -2087,11 +2087,11 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Reports whether the active mapping is built-in or application-supplied.
 	 */
-	extern fn nk_gamepad_get_mapping_source(joystick: nk_handle, out_source: ptr<nk_gamepad_mapping_source>) -> nk_result;
+	extern fn nk_gamepad_get_mapping_source(joystick: nk_joystick, out_source: ptr<nk_gamepad_mapping_source>) -> nk_result;
 	/**
 	 * Copies the mapped gamepad name into a caller-owned UTF-8 buffer.
 	 */
-	extern fn nk_gamepad_get_name(joystick: nk_handle, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
+	extern fn nk_gamepad_get_name(joystick: nk_joystick, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
 	/**
 	 * Returns the process-wide gamepad normalization options.
 	 */
@@ -2099,11 +2099,11 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Returns the current normalized state of a mapped joystick.
 	 */
-	extern fn nk_gamepad_get_state(joystick: nk_handle, out_state: ptr<nk_gamepad_state>) -> nk_result;
+	extern fn nk_gamepad_get_state(joystick: nk_joystick, out_state: ptr<nk_gamepad_state>) -> nk_result;
 	/**
 	 * Reports whether a joystick has an active canonical gamepad mapping.
 	 */
-	extern fn nk_gamepad_is_mapped(joystick: nk_handle, out_mapped: ptr<nk_bool>) -> nk_result;
+	extern fn nk_gamepad_is_mapped(joystick: nk_joystick, out_mapped: ptr<nk_bool>) -> nk_result;
 	/**
 	 * Sets process-wide normalization used by state queries and gamepad events.
 	 */
@@ -2146,11 +2146,11 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Each state function accepts NULL to query its element count. Axis values are
 	 * normalized to [-1, 1], buttons are 0 or 1, and hats use NK_JOYSTICK_HAT_*.
 	 */
-	extern fn nk_joystick_get_axes(joystick: nk_handle, axes: ptr<f32>, inout_count: ptr<u32>) -> nk_result;
+	extern fn nk_joystick_get_axes(joystick: nk_joystick, axes: ptr<f32>, inout_count: ptr<u32>) -> nk_result;
 	/**
 	 * Copies the current button states as zero or one bytes.
 	 */
-	extern fn nk_joystick_get_buttons(joystick: nk_handle, buttons: ptr<u8>, inout_count: ptr<u32>) -> nk_result;
+	extern fn nk_joystick_get_buttons(joystick: nk_joystick, buttons: ptr<u8>, inout_count: ptr<u32>) -> nk_result;
 	/**
 	 * Returns a transport warning, such as a missing /dev/input directory,
 	 * insufficient device permissions, or unavailable inotify monitoring. An
@@ -2160,25 +2160,25 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Returns a 32-character SDL-compatible device GUID plus a trailing NUL.
 	 */
-	extern fn nk_joystick_get_guid(joystick: nk_handle, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
+	extern fn nk_joystick_get_guid(joystick: nk_joystick, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
 	/**
 	 * Copies the current hat direction flags.
 	 */
-	extern fn nk_joystick_get_hats(joystick: nk_handle, hats: ptr<u8>, inout_count: ptr<u32>) -> nk_result;
+	extern fn nk_joystick_get_hats(joystick: nk_joystick, hats: ptr<u8>, inout_count: ptr<u32>) -> nk_result;
 	/**
 	 * Copies the device name into a caller-owned UTF-8 buffer.
 	 */
-	extern fn nk_joystick_get_name(joystick: nk_handle, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
+	extern fn nk_joystick_get_name(joystick: nk_joystick, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
 	/**
 	 * Writes connected joystick handles. Pass NULL to query the required count.
 	 * Hotplug is reported with NK_EVENT_JOYSTICK_CONNECTED and
 	 * NK_EVENT_JOYSTICK_DISCONNECTED.
 	 */
-	extern fn nk_joystick_list(joysticks: ptr<nk_handle>, inout_count: ptr<u32>) -> nk_result;
+	extern fn nk_joystick_list(joysticks: ptr<nk_joystick>, inout_count: ptr<u32>) -> nk_result;
 	/**
 	 * On NK_OK, returns the current action state for a key. Call on the UI thread.
 	 */
-	extern fn nk_key_get_state(window: nk_handle, key: nk_key, out_action: ptr<nk_input_action>) -> nk_result;
+	extern fn nk_key_get_state(window: nk_window, key: nk_key, out_action: ptr<nk_input_action>) -> nk_result;
 	/**
 	 * Returns a thread-local UTF-8 diagnostic for the most recent failing call.
 	 * The pointer remains valid until the next NativeKit call on this thread.
@@ -2188,30 +2188,30 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Returns the mode currently selected by the monitor compositor.
 	 */
-	extern fn nk_monitor_get_current_mode(monitor: nk_handle, out_mode: ptr<nk_video_mode> @out) -> nk_result;
+	extern fn nk_monitor_get_current_mode(monitor: nk_monitor, out_mode: ptr<nk_video_mode> @out) -> nk_result;
 	/**
 	 * Returns the monitor geometry in logical desktop coordinates.
 	 */
-	extern fn nk_monitor_get_geometry(monitor: nk_handle, out_geometry: ptr<nk_monitor_geometry> @out) -> nk_result;
+	extern fn nk_monitor_get_geometry(monitor: nk_monitor, out_geometry: ptr<nk_monitor_geometry> @out) -> nk_result;
 	/**
 	 * GTK 3 exposes only the current compositor mode, so this currently returns a
 	 * one-element list.
 	 */
-	extern fn nk_monitor_get_modes(monitor: nk_handle, modes: ptr<nk_video_mode>, inout_count: ptr<u32>) -> nk_result;
+	extern fn nk_monitor_get_modes(monitor: nk_monitor, modes: ptr<nk_video_mode>, inout_count: ptr<u32>) -> nk_result;
 	/**
 	 * Copies the monitor name into a caller-owned UTF-8 buffer.
 	 */
-	extern fn nk_monitor_get_name(monitor: nk_handle, buffer: nullable<ptr<c_char>> @out_buffer("inout_size"), inout_size: ptr<u32> @inout) -> nk_result;
+	extern fn nk_monitor_get_name(monitor: nk_monitor, buffer: nullable<ptr<c_char>> @out_buffer("inout_size"), inout_size: ptr<u32> @inout) -> nk_result;
 	/**
 	 * Returns the primary monitor handle.
 	 */
-	extern fn nk_monitor_get_primary(out_monitor: ptr<nk_handle> @out) -> nk_result;
+	extern fn nk_monitor_get_primary(out_monitor: ptr<nk_monitor> @out) -> nk_result;
 	/**
 	 * Writes connected monitor handles in GDK display order. Pass NULL to query
 	 * the required count. A missing or undersized array returns
 	 * NK_ERROR_BUFFER_TOO_SMALL and updates inout_count.
 	 */
-	extern fn nk_monitor_list(monitors: ptr<nk_handle>, inout_count: ptr<u32>) -> nk_result;
+	extern fn nk_monitor_list(monitors: ptr<nk_monitor>, inout_count: ptr<u32>) -> nk_result;
 	/**
 	 * Removes a delivered notification. A successful close emits DISMISSED.
 	 */
@@ -2226,11 +2226,11 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * On NK_OK, returns the current action state of one pointer button.
 	 */
-	extern fn nk_pointer_button_get_state(window: nk_handle, button: nk_pointer_button, out_action: ptr<nk_input_action>) -> nk_result;
+	extern fn nk_pointer_button_get_state(window: nk_window, button: nk_pointer_button, out_action: ptr<nk_input_action>) -> nk_result;
 	/**
 	 * On NK_OK, returns the current pointer position in surface-local logical pixels.
 	 */
-	extern fn nk_pointer_get_position(window: nk_handle, out_x: ptr<f64>, out_y: ptr<f64>) -> nk_result;
+	extern fn nk_pointer_get_position(window: nk_window, out_x: ptr<f64>, out_y: ptr<f64>) -> nk_result;
 	/**
 	 * Polls one event on the UI thread. Returns NK_OK with NK_EVENT_NONE when the
 	 * queue is empty. `event` must be zero-initialized with struct_size set.
@@ -2250,7 +2250,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Closes a resource stream and invalidates its handle.
 	 */
-	extern fn nk_resource_close(stream: nk_handle) -> nk_result;
+	extern fn nk_resource_close(stream: nk_resource_stream) -> nk_result;
 	/**
 	 * Returns optional UTF-8 text from a resource-drop event.
 	 */
@@ -2274,15 +2274,15 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * synchronously and may be called from worker threads. A successful read may
 	 * return fewer bytes than requested; zero bytes means end of stream.
 	 */
-	extern fn nk_resource_open(resource: ptr<const<nk_resource>>, flags: nk_resource_open_flags, out_stream: ptr<nk_handle> @out) -> nk_result;
+	extern fn nk_resource_open(resource: ptr<const<nk_resource>>, flags: nk_resource_open_flags, out_stream: ptr<nk_resource_stream> @out) -> nk_result;
 	/**
 	 * Reads up to `size` bytes; a successful read may return fewer bytes.
 	 */
-	extern fn nk_resource_read(stream: nk_handle, buffer: ptr<void>, size: u64, out_read: ptr<u64>) -> nk_result;
+	extern fn nk_resource_read(stream: nk_resource_stream, buffer: ptr<void>, size: u64, out_read: ptr<u64>) -> nk_result;
 	/**
 	 * Moves the stream position and returns the resulting absolute byte offset.
 	 */
-	extern fn nk_resource_seek(stream: nk_handle, offset: i64, origin: nk_seek_origin, out_position: ptr<u64>) -> nk_result;
+	extern fn nk_resource_seek(stream: nk_resource_stream, offset: i64, origin: nk_seek_origin, out_position: ptr<u64>) -> nk_result;
 	/**
 	 * Controls durable URI access on platforms that support it. access_flags is a
 	 * combination of NK_RESOURCE_READABLE and NK_RESOURCE_WRITABLE; zero releases
@@ -2293,11 +2293,11 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Returns capabilities and size information for a resource stream.
 	 */
-	extern fn nk_resource_stream_info_get(stream: nk_handle, out_info: ptr<nk_resource_stream_info>) -> nk_result;
+	extern fn nk_resource_stream_info_get(stream: nk_resource_stream, out_info: ptr<nk_resource_stream_info>) -> nk_result;
 	/**
 	 * Writes up to `size` bytes; a successful write may transfer fewer bytes.
 	 */
-	extern fn nk_resource_write(stream: nk_handle, buffer: ptr<const<void>>, size: u64, out_written: ptr<u64>) -> nk_result;
+	extern fn nk_resource_write(stream: nk_resource_stream, buffer: ptr<const<void>>, size: u64, out_written: ptr<u64>) -> nk_result;
 	/**
 	 * Launches the platform share UI with optional text and URI resources.
 	 */
@@ -2336,21 +2336,21 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Removes all virtual nodes from a surface's accessibility tree.
 	 */
-	extern fn nk_surface_accessibility_clear(surface: nk_handle) -> nk_result;
+	extern fn nk_surface_accessibility_clear(surface: nk_surface) -> nk_result;
 	/**
 	 * Removes a virtual node and all of its descendants.
 	 *
 	 * `node` must identify an existing non-root node. The operation runs on the UI
 	 * thread and requires NK_CAP_ACCESSIBILITY.
 	 */
-	extern fn nk_surface_accessibility_remove_node(surface: nk_handle, node: nk_accessibility_node_id) -> nk_result;
+	extern fn nk_surface_accessibility_remove_node(surface: nk_surface, node: nk_accessibility_node_id) -> nk_result;
 	/**
 	 * Moves accessibility focus to a virtual node.
 	 *
 	 * Pass NK_ACCESSIBILITY_ROOT to clear virtual focus. Any non-root node must
 	 * already exist in the surface's tree.
 	 */
-	extern fn nk_surface_accessibility_set_focus(surface: nk_handle, node: nk_accessibility_node_id) -> nk_result;
+	extern fn nk_surface_accessibility_set_focus(surface: nk_surface, node: nk_accessibility_node_id) -> nk_result;
 	/**
 	 * Inserts or replaces one virtual semantic node.
 	 *
@@ -2359,7 +2359,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * must describe the supplied value window. Requires the UI thread and
 	 * NK_CAP_ACCESSIBILITY.
 	 */
-	extern fn nk_surface_accessibility_set_node(surface: nk_handle, node: ptr<const<nk_accessibility_node>>) -> nk_result;
+	extern fn nk_surface_accessibility_set_node(surface: nk_surface, node: ptr<const<nk_accessibility_node>>) -> nk_result;
 	/**
 	 * Supplies screen-reader geometry for text ranges in a node's value.
 	 *
@@ -2367,7 +2367,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * ordered, non-overlapping, non-empty, and use document code-point offsets.
 	 * Pass a zero count to clear the node's current range geometry.
 	 */
-	extern fn nk_surface_accessibility_set_text_ranges(surface: nk_handle, node: nk_accessibility_node_id, ranges: ptr<const<nk_accessibility_text_range>>, range_count: u32) -> nk_result;
+	extern fn nk_surface_accessibility_set_text_ranges(surface: nk_surface, node: nk_accessibility_node_id, ranges: ptr<const<nk_accessibility_text_range>>, range_count: u32) -> nk_result;
 	/**
 	 * Applies node replacements, recursive removals, and optional focus atomically.
 	 *
@@ -2377,7 +2377,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * NK_ACCESSIBILITY_UPDATE_FOCUS to apply `focus`, where ROOT clears focus.
 	 * Invalid input leaves the previous tree unchanged.
 	 */
-	extern fn nk_surface_accessibility_update(surface: nk_handle, update: ptr<const<nk_accessibility_update>>) -> nk_result;
+	extern fn nk_surface_accessibility_update(surface: nk_surface, update: ptr<const<nk_accessibility_update>>) -> nk_result;
 	/**
 	 * Creates a graphics surface inside a NativeKit window or mobile host.
 	 *
@@ -2387,19 +2387,19 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * been destroyed. Vulkan views do not support GL context flags or sharing.
 	 * On NK_OK, writes the new surface handle to `out_surface`.
 	 */
-	extern fn nk_surface_create(window: nk_handle, options: ptr<const<nk_surface_options>>, out_surface: ptr<nk_handle> @out) -> nk_result;
+	extern fn nk_surface_create(window: nk_window, options: ptr<const<nk_surface_options>>, out_surface: ptr<nk_surface> @out) -> nk_result;
 	/**
 	 * Destroys a graphics surface; its handle becomes invalid.
 	 */
-	extern fn nk_surface_destroy(surface: nk_handle) -> nk_result;
+	extern fn nk_surface_destroy(surface: nk_surface) -> nk_result;
 	/**
 	 * Returns the current backend-native render target for a surface frame.
 	 */
-	extern fn nk_surface_get_frame_target(surface: nk_handle, out_target: ptr<nk_surface_frame_target> @out) -> nk_result;
+	extern fn nk_surface_get_frame_target(surface: nk_surface, out_target: ptr<nk_surface_frame_target> @out) -> nk_result;
 	/**
 	 * Returns the current framebuffer size in device pixels.
 	 */
-	extern fn nk_surface_get_framebuffer_size(surface: nk_handle, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
+	extern fn nk_surface_get_framebuffer_size(surface: nk_surface, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
 	/**
 	 * Resolves a graphics function for the current surface context.
 	 *
@@ -2407,25 +2407,25 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * function pointer to `out_proc`; the pointer remains valid only while the
 	 * associated graphics context and loader remain valid.
 	 */
-	extern fn nk_surface_get_proc_address(surface: nk_handle, name: utf8, out_proc: ptr<nk_graphics_proc>) -> nk_result;
+	extern fn nk_surface_get_proc_address(surface: nk_surface, name: utf8, out_proc: ptr<nk_graphics_proc>) -> nk_result;
 	/**
 	 * Makes the surface's graphics context and framebuffer current on the UI thread.
 	 */
-	extern fn nk_surface_make_current(surface: nk_handle) -> nk_result;
+	extern fn nk_surface_make_current(surface: nk_surface) -> nk_result;
 	/**
 	 * Presents drawing performed since the last make-current call.
 	 *
 	 * On GTK this schedules composition of the GtkGLArea framebuffer instead of
 	 * swapping a caller-owned native surface.
 	 */
-	extern fn nk_surface_present(surface: nk_handle) -> nk_result;
+	extern fn nk_surface_present(surface: nk_surface) -> nk_result;
 	/**
 	 * Changes a surface's logical position and size within its parent.
 	 *
 	 * Width and height must be positive. The backend reports resulting framebuffer
 	 * dimensions through NK_EVENT_SURFACE_RESIZE or the frame callback.
 	 */
-	extern fn nk_surface_set_bounds(surface: nk_handle, x: i32, y: i32, width: i32, height: i32) -> nk_result;
+	extern fn nk_surface_set_bounds(surface: nk_surface, x: i32, y: i32, width: i32, height: i32) -> nk_result;
 	/**
 	 * Installs or removes the surface's frame callback.
 	 *
@@ -2433,19 +2433,21 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * call nk_surface_present() recursively from it. Pass NULL to detach it; the
 	 * `user_data` value is not retained after the callback is removed.
 	 */
-	extern fn nk_surface_set_frame_callback(surface: nk_handle, callback: nk_nullable_surface_frame_callback @retained, user_data: nullable<ptr<void>>) -> nk_result;
+	extern fn nk_surface_set_frame_callback(surface: nk_surface, callback: nk_nullable_surface_frame_callback @retained, user_data: nullable<ptr<void>>) -> nk_result;
 	/**
-	 * Shows or hides the software keyboard for a custom graphics surface.
+	 * Activates or deactivates custom text input for the target surface or desktop window.
 	 */
-	extern fn nk_surface_set_text_input_active(surface: nk_handle, active: nk_bool) -> nk_result;
+	extern fn nk_surface_set_text_input_active(target: nk_handle, active: nk_bool) -> nk_result;
 	/**
 	 * Synchronizes a custom editor with the platform IME using absolute code-point positions.
+	 * Android and Web use a graphics-surface handle. Windows and macOS accept a window handle
+	 * because those backends do not yet expose graphics surfaces.
 	 */
-	extern fn nk_surface_set_text_input_state(surface: nk_handle, state: ptr<const<nk_text_input_state>>) -> nk_result;
+	extern fn nk_surface_set_text_input_state(target: nk_handle, state: ptr<const<nk_text_input_state>>) -> nk_result;
 	/**
 	 * Shows or hides a surface without destroying it.
 	 */
-	extern fn nk_surface_show(surface: nk_handle, visible: nk_bool) -> nk_result;
+	extern fn nk_surface_show(surface: nk_surface, visible: nk_bool) -> nk_result;
 	/**
 	 * Writes a NUL-terminated UTF-8 value. `inout_size` is the buffer capacity on
 	 * entry and receives the required size including NUL on every valid call. Pass
@@ -2468,11 +2470,11 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Reports whether the WebView currently has a back-history entry.
 	 */
-	extern fn nk_webview_can_go_back(webview: nk_handle, out_can_go_back: ptr<nk_bool> @out) -> nk_result;
+	extern fn nk_webview_can_go_back(webview: nk_webview, out_can_go_back: ptr<nk_bool> @out) -> nk_result;
 	/**
 	 * Reports whether the WebView currently has a forward-history entry.
 	 */
-	extern fn nk_webview_can_go_forward(webview: nk_handle, out_can_go_forward: ptr<nk_bool> @out) -> nk_result;
+	extern fn nk_webview_can_go_forward(webview: nk_webview, out_can_go_forward: ptr<nk_bool> @out) -> nk_result;
 	/**
 	 * Creates a native child WebView inside `parent`. Bounds are logical pixels;
 	 * width and height must be positive. `initial_url` is nullable UTF-8. Creation
@@ -2480,11 +2482,11 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * controller can display content. Operations issued before readiness are
 	 * retained in call order by asynchronous backends.
 	 */
-	extern fn nk_webview_create(parent: nk_handle, options: ptr<const<nk_webview_options>>, out_webview: ptr<nk_handle> @out) -> nk_result;
+	extern fn nk_webview_create(parent: nk_handle, options: ptr<const<nk_webview_options>>, out_webview: ptr<nk_webview> @out) -> nk_result;
 	/**
 	 * Destroys a WebView and cancels its pending evaluations and navigation decisions.
 	 */
-	extern fn nk_webview_destroy(webview: nk_handle) -> nk_result;
+	extern fn nk_webview_destroy(webview: nk_webview) -> nk_result;
 	/**
 	 * Starts JavaScript evaluation. Completion is reported as
 	 * NK_EVENT_WEBVIEW_EVAL_COMPLETE with the returned request ID. Event data is
@@ -2496,19 +2498,19 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Destroying the WebView before completion emits exactly one final event with
 	 * NK_ERROR_INVALID_REQUEST, allowing consumers to settle pending futures.
 	 */
-	extern fn nk_webview_eval(webview: nk_handle, script: utf8, out_request: ptr<nk_request_id> @out) -> nk_result;
+	extern fn nk_webview_eval(webview: nk_webview, script: utf8, out_request: ptr<nk_request_id> @out) -> nk_result;
 	/**
 	 * Submits a request to navigate to the previous history entry.
 	 */
-	extern fn nk_webview_go_back(webview: nk_handle) -> nk_result;
+	extern fn nk_webview_go_back(webview: nk_webview) -> nk_result;
 	/**
 	 * Submits a request to navigate to the next history entry.
 	 */
-	extern fn nk_webview_go_forward(webview: nk_handle) -> nk_result;
+	extern fn nk_webview_go_forward(webview: nk_webview) -> nk_result;
 	/**
 	 * Starts loading a UTF-8 URL in the WebView.
 	 */
-	extern fn nk_webview_navigate(webview: nk_handle, url: utf8) -> nk_result;
+	extern fn nk_webview_navigate(webview: nk_webview, url: utf8) -> nk_result;
 	/**
 	 * Resolves an NK_EVENT_WEBVIEW_NAVIGATION_REQUEST. Navigation-policy events
 	 * are emitted only for WebViews created with NK_WEBVIEW_NAVIGATION_POLICY.
@@ -2519,27 +2521,27 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Reloads the current WebView document.
 	 */
-	extern fn nk_webview_reload(webview: nk_handle) -> nk_result;
+	extern fn nk_webview_reload(webview: nk_webview) -> nk_result;
 	/**
 	 * Changes a WebView's logical position and size within its parent.
 	 */
-	extern fn nk_webview_set_bounds(webview: nk_handle, x: i32, y: i32, width: i32, height: i32) -> nk_result;
+	extern fn nk_webview_set_bounds(webview: nk_webview, x: i32, y: i32, width: i32, height: i32) -> nk_result;
 	/**
 	 * Replaces the document with UTF-8 HTML, using an optional base URL.
 	 */
-	extern fn nk_webview_set_html(webview: nk_handle, html: utf8, base_url: nullable<utf8>) -> nk_result;
+	extern fn nk_webview_set_html(webview: nk_webview, html: utf8, base_url: nullable<utf8>) -> nk_result;
 	/**
 	 * Shows or hides a WebView without destroying it.
 	 */
-	extern fn nk_webview_show(webview: nk_handle, visible: nk_bool) -> nk_result;
+	extern fn nk_webview_show(webview: nk_webview, visible: nk_bool) -> nk_result;
 	/**
 	 * Stops the current WebView load.
 	 */
-	extern fn nk_webview_stop(webview: nk_handle) -> nk_result;
+	extern fn nk_webview_stop(webview: nk_webview) -> nk_result;
 	/**
 	 * Requests activation and focus for the window.
 	 */
-	extern fn nk_window_activate(window: nk_handle) -> nk_result;
+	extern fn nk_window_activate(window: nk_window) -> nk_result;
 	/**
 	 * Creates a NativeKit-owned top-level window on the UI thread. Dimensions are
 	 * logical pixels and must be positive. `title` is nullable UTF-8. On success,
@@ -2548,7 +2550,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * their owner. Modal windows require an owner. Window ownership is deliberately
 	 * shallow and does not introduce a general-purpose widget hierarchy.
 	 */
-	extern fn nk_window_create(options: ptr<const<nk_window_options>>, out_window: ptr<nk_handle> @out) -> nk_result;
+	extern fn nk_window_create(options: ptr<const<nk_window_options>>, out_window: ptr<nk_window> @out) -> nk_result;
 	/**
 	 * Destroys a NativeKit-owned window and recursively destroys its owned windows.
 	 * The handle and any child WebView handles become invalid after this call.
@@ -2556,139 +2558,139 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * @param window Window handle to destroy.
 	 * @return NK_OK, or an error such as NK_ERROR_INVALID_HANDLE.
 	 */
-	extern fn nk_window_destroy(window: nk_handle) -> nk_result;
+	extern fn nk_window_destroy(window: nk_window) -> nk_result;
 	/**
 	 * On NK_OK, fills in the current horizontal and vertical content scale factors.
 	 */
-	extern fn nk_window_get_content_scale(window: nk_handle, out_scale: ptr<nk_window_content_scale> @out) -> nk_result;
+	extern fn nk_window_get_content_scale(window: nk_window, out_scale: ptr<nk_window_content_scale> @out) -> nk_result;
 	/**
 	 * On NK_OK, returns the window's current pointer presentation mode.
 	 */
-	extern fn nk_window_get_cursor_mode(window: nk_handle, out_mode: ptr<nk_cursor_mode>) -> nk_result;
+	extern fn nk_window_get_cursor_mode(window: nk_window, out_mode: ptr<nk_cursor_mode>) -> nk_result;
 	/**
 	 * On NK_OK, fills in the non-client frame extents in logical screen pixels.
 	 */
-	extern fn nk_window_get_frame_extents(window: nk_handle, out_extents: ptr<nk_window_frame_extents> @out) -> nk_result;
+	extern fn nk_window_get_frame_extents(window: nk_window, out_extents: ptr<nk_window_frame_extents> @out) -> nk_result;
 	/**
 	 * On NK_OK, fills in the framebuffer width and height in device pixels.
 	 */
-	extern fn nk_window_get_framebuffer_size(window: nk_handle, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
+	extern fn nk_window_get_framebuffer_size(window: nk_window, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
 	/**
 	 * Sets `*out_hovered` to 1 when the pointer is over the window, and 0 otherwise.
 	 */
-	extern fn nk_window_get_hovered(window: nk_handle, out_hovered: ptr<nk_bool> @out) -> nk_result;
+	extern fn nk_window_get_hovered(window: nk_window, out_hovered: ptr<nk_bool> @out) -> nk_result;
 	/**
 	 * Returns a borrowed platform descriptor. Its pointer-sized values are valid
 	 * only while the NativeKit window is alive and must never be freed by callers.
 	 * This is an explicit interoperability escape hatch, not a portable resource.
 	 */
-	extern fn nk_window_get_native(window: nk_handle, out_native: ptr<nk_native_window> @out) -> nk_result;
+	extern fn nk_window_get_native(window: nk_window, out_native: ptr<nk_native_window> @out) -> nk_result;
 	/**
 	 * On NK_OK, fills in the window's logical screen position.
 	 */
-	extern fn nk_window_get_position(window: nk_handle, out_x: ptr<i32> @out, out_y: ptr<i32> @out) -> nk_result;
+	extern fn nk_window_get_position(window: nk_window, out_x: ptr<i32> @out, out_y: ptr<i32> @out) -> nk_result;
 	/**
 	 * Writes the current logical-to-device-pixel scale. UI thread only.
 	 */
-	extern fn nk_window_get_scale(window: nk_handle, out_scale: ptr<f32> @out) -> nk_result;
+	extern fn nk_window_get_scale(window: nk_window, out_scale: ptr<f32> @out) -> nk_result;
 	/**
 	 * On NK_OK, fills in the window's logical client width and height.
 	 */
-	extern fn nk_window_get_size(window: nk_handle, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
+	extern fn nk_window_get_size(window: nk_window, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
 	/**
 	 * On NK_OK, fills in the current NK_WINDOW_STATE_* flags.
 	 */
-	extern fn nk_window_get_state(window: nk_handle, out_state: ptr<nk_window_state> @out) -> nk_result;
+	extern fn nk_window_get_state(window: nk_window, out_state: ptr<nk_window_state> @out) -> nk_result;
 	/**
 	 * Sets `*out_focused` to 1 if the window has focus, and 0 otherwise.
 	 */
-	extern fn nk_window_is_focused(window: nk_handle, out_focused: ptr<nk_bool> @out) -> nk_result;
+	extern fn nk_window_is_focused(window: nk_window, out_focused: ptr<nk_bool> @out) -> nk_result;
 	/**
 	 * Sets `*out_visible` to 1 if the window is visible, and 0 otherwise.
 	 */
-	extern fn nk_window_is_visible(window: nk_handle, out_visible: ptr<nk_bool> @out) -> nk_result;
+	extern fn nk_window_is_visible(window: nk_window, out_visible: ptr<nk_bool> @out) -> nk_result;
 	/**
 	 * Requests that the window manager maximize the window.
 	 */
-	extern fn nk_window_maximize(window: nk_handle) -> nk_result;
+	extern fn nk_window_maximize(window: nk_window) -> nk_result;
 	/**
 	 * Requests that the window manager minimize the window.
 	 */
-	extern fn nk_window_minimize(window: nk_handle) -> nk_result;
+	extern fn nk_window_minimize(window: nk_window) -> nk_result;
 	/**
 	 * Requests that the window manager draw the user's attention to the window.
 	 */
-	extern fn nk_window_request_attention(window: nk_handle) -> nk_result;
+	extern fn nk_window_request_attention(window: nk_window) -> nk_result;
 	/**
 	 * Requests that the window manager restore a minimized or maximized window.
 	 */
-	extern fn nk_window_restore(window: nk_handle) -> nk_result;
+	extern fn nk_window_restore(window: nk_window) -> nk_result;
 	/**
 	 * Passing zero for both values disables the aspect-ratio constraint.
 	 */
-	extern fn nk_window_set_aspect_ratio(window: nk_handle, numerator: i32, denominator: i32) -> nk_result;
+	extern fn nk_window_set_aspect_ratio(window: nk_window, numerator: i32, denominator: i32) -> nk_result;
 	/**
 	 * Moves and resizes a top-level window in logical pixels. UI thread only.
 	 */
-	extern fn nk_window_set_bounds(window: nk_handle, x: i32, y: i32, width: i32, height: i32) -> nk_result;
+	extern fn nk_window_set_bounds(window: nk_window, x: i32, y: i32, width: i32, height: i32) -> nk_result;
 	/**
 	 * Selects a cursor for a window; NK_INVALID_HANDLE restores the platform default.
 	 */
-	extern fn nk_window_set_cursor(window: nk_handle, cursor: nk_handle) -> nk_result;
+	extern fn nk_window_set_cursor(window: nk_window, cursor: nk_cursor) -> nk_result;
 	/**
 	 * Changes how the window displays or captures the pointer.
 	 */
-	extern fn nk_window_set_cursor_mode(window: nk_handle, mode: nk_cursor_mode) -> nk_result;
+	extern fn nk_window_set_cursor_mode(window: nk_window, mode: nk_cursor_mode) -> nk_result;
 	/**
 	 * Enables or disables standard native window decorations.
 	 */
-	extern fn nk_window_set_decorated(window: nk_handle, enabled: nk_bool) -> nk_result;
+	extern fn nk_window_set_decorated(window: nk_window, enabled: nk_bool) -> nk_result;
 	/**
 	 * Enables or disables the text and/or local-file drop formats supported by the backend.
 	 */
-	extern fn nk_window_set_drop_enabled(window: nk_handle, enabled: nk_bool) -> nk_result;
+	extern fn nk_window_set_drop_enabled(window: nk_window, enabled: nk_bool) -> nk_result;
 	/**
 	 * Enables or disables keeping the window above its peers.
 	 */
-	extern fn nk_window_set_floating(window: nk_handle, enabled: nk_bool) -> nk_result;
+	extern fn nk_window_set_floating(window: nk_window, enabled: nk_bool) -> nk_result;
 	/**
 	 * Requests entering fullscreen when enabled is non-zero, or leaving it otherwise.
 	 */
-	extern fn nk_window_set_fullscreen(window: nk_handle, enabled: nk_bool) -> nk_result;
+	extern fn nk_window_set_fullscreen(window: nk_window, enabled: nk_bool) -> nk_result;
 	/**
 	 * An invalid monitor handle leaves fullscreen and restores windowed placement.
 	 */
-	extern fn nk_window_set_fullscreen_monitor(window: nk_handle, monitor: nk_handle) -> nk_result;
+	extern fn nk_window_set_fullscreen_monitor(window: nk_window, monitor: nk_monitor) -> nk_result;
 	/**
 	 * Enables or disables passing pointer input through the window.
 	 */
-	extern fn nk_window_set_mouse_passthrough(window: nk_handle, enabled: nk_bool) -> nk_result;
+	extern fn nk_window_set_mouse_passthrough(window: nk_window, enabled: nk_bool) -> nk_result;
 	/**
 	 * Sets the window opacity; supported backends accept values from zero to one.
 	 */
-	extern fn nk_window_set_opacity(window: nk_handle, opacity: f32) -> nk_result;
+	extern fn nk_window_set_opacity(window: nk_window, opacity: f32) -> nk_result;
 	/**
 	 * Enables or disables user resizing of the window.
 	 */
-	extern fn nk_window_set_resizable(window: nk_handle, enabled: nk_bool) -> nk_result;
+	extern fn nk_window_set_resizable(window: nk_window, enabled: nk_bool) -> nk_result;
 	/**
 	 * Zero disables the corresponding constraint; maxima must not be below minima.
 	 */
-	extern fn nk_window_set_size_limits(window: nk_handle, limits: ptr<const<nk_window_size_limits>>) -> nk_result;
+	extern fn nk_window_set_size_limits(window: nk_window, limits: ptr<const<nk_window_size_limits>>) -> nk_result;
 	/**
 	 * Copies the nullable UTF-8 title before returning. UI thread only.
 	 */
-	extern fn nk_window_set_title(window: nk_handle, title: utf8) -> nk_result;
+	extern fn nk_window_set_title(window: nk_window, title: utf8) -> nk_result;
 	/**
 	 * Shows when `visible` is non-zero and hides otherwise. UI thread only.
 	 */
-	extern fn nk_window_show(window: nk_handle, visible: nk_bool) -> nk_result;
+	extern fn nk_window_show(window: nk_window, visible: nk_bool) -> nk_result;
 	/**
 	 * Attaches NativeKit to a caller-owned native window. Destroying the returned
 	 * handle only detaches NativeKit. Backends return NK_ERROR_UNSUPPORTED until
 	 * they can guarantee correct event and ownership behavior for the given kind.
 	 */
-	extern fn nk_window_wrap_native(native: ptr<const<nk_native_window>>, out_window: ptr<nk_handle> @out) -> nk_result;
+	extern fn nk_window_wrap_native(native: ptr<const<nk_native_window>>, out_window: ptr<nk_window> @out) -> nk_result;
 	/**
 	 * Payload of NK_EVENT_ACCESSIBILITY_ACTION.
 	 *
@@ -2742,7 +2744,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_accessibility_node) or a larger compatible size.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Stable positive ID chosen by the application.
 		 */
@@ -2865,7 +2867,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_accessibility_update) or a larger compatible size.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Optional NK_ACCESSIBILITY_UPDATE_* flags.
 		 */
@@ -2915,7 +2917,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_cursor_image) before calling nk_cursor_create_custom.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Image width in pixels.
 		 */
@@ -3019,7 +3021,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Size of this structure in bytes; must be set before polling.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Event kind; use this to select the payload interpretation.
 		 */
@@ -3064,7 +3066,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_file_dialog_options) before starting the dialog.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Bitwise OR of NK_DIALOG_* flags.
 		 */
@@ -3127,7 +3129,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_gamepad_options) before setting or getting options.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Radial dead-zone fraction for both sticks, in [0, 1).
 		 */
@@ -3156,7 +3158,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_gamepad_state) before requesting state.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Canonical button states, each normalized to zero or one.
 		 */
@@ -3177,7 +3179,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_graphics_image_info) before calling the query API.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Graphics backend that owns the image.
 		 */
@@ -3206,7 +3208,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Size of this structure in bytes; must be at least sizeof(nk_init_options).
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * ABI version requested by the caller; normally NK_API_VERSION.
 		 */
@@ -3287,7 +3289,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_message_dialog_options) before starting the dialog.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Message presentation kind.
 		 */
@@ -3316,7 +3318,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_monitor_geometry) before passing the structure.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Monitor origin in logical desktop coordinates.
 		 */
@@ -3377,7 +3379,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_native_window) before passing this structure to NativeKit.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Identifies which platform-specific fields are populated.
 		 */
@@ -3414,7 +3416,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_notification_options) before passing the structure.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Bitwise OR of NK_NOTIFICATION_* flags.
 		 */
@@ -3527,7 +3529,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_resource) before passing the structure.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Access and persistence flags known by the producer.
 		 */
@@ -3627,7 +3629,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_resource_stream_info) before querying.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Bitwise OR of NK_RESOURCE_STREAM_* capabilities.
 		 */
@@ -3648,7 +3650,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_resource_view) before decoding an item.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Access and persistence flags for this resource.
 		 */
@@ -3689,7 +3691,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_share_options) before sharing.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Reserved; set to zero.
 		 */
@@ -3731,7 +3733,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_surface_frame_target) or a larger compatible size.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Graphics API that owns the target.
 		 */
@@ -3764,7 +3766,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_surface_options) or a larger compatible size.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Bitwise OR of NK_SURFACE_* flags.
 		 */
@@ -3800,7 +3802,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Optional compatible surface whose graphics context should be shared.
 		 */
-		share_surface: nk_handle @offset(36);
+		share_surface: nk_surface @offset(36);
 		/**
 		 * Reserved; set to zero.
 		 */
@@ -3838,7 +3840,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_system_appearance) before the query.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Current platform color scheme.
 		 */
@@ -3921,7 +3923,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_text_input_state) before calling NativeKit.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Text-input behavior requested from the platform IME.
 		 */
@@ -4035,7 +4037,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_video_mode) before passing the structure.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Mode width in physical pixels.
 		 */
@@ -4076,7 +4078,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_webview_options) before creating the WebView.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Bitwise OR of NK_WEBVIEW_* flags.
 		 */
@@ -4113,7 +4115,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_window_content_scale) before calling the query API.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Horizontal logical-to-device-pixel scale factor.
 		 */
@@ -4138,7 +4140,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_window_frame_extents) before calling the query API.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Distance from the client area's left edge to the window frame.
 		 */
@@ -4197,7 +4199,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_window_options) before calling nk_window_create.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Combination of NK_WINDOW_* creation flags.
 		 */
@@ -4217,7 +4219,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Optional owner window; owned windows are destroyed with their owner.
 		 */
-		owner: nk_handle @offset(24);
+		owner: nk_window @offset(24);
 		/**
 		 * Window category, such as NK_WINDOW_NORMAL or NK_WINDOW_UTILITY.
 		 */
@@ -4256,7 +4258,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_window_size_limits) before passing it to NativeKit.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Minimum client width; zero disables the minimum.
 		 */
@@ -4285,7 +4287,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		/**
 		 * Set to sizeof(nk_window_state) before calling nk_window_get_state.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Combination of NK_WINDOW_STATE_* flags.
 		 */
@@ -4307,7 +4309,8 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Boolean value used by the NativeKit ABI. Zero is false; non-zero input is
 	 * true; NativeKit normalizes boolean outputs to zero or one.
 	 */
-	type nk_bool = u32;
+	type nk_bool = bool32;
+	handle nk_cursor : u32;
 	/**
 	 * Identity of a graphics context and its explicitly shared contexts.
 	 */
@@ -4324,20 +4327,27 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Opaque generation-checked identifier for a live NativeKit resource.
 	 */
 	handle nk_handle : u32;
+	handle nk_joystick : u32;
+	handle nk_mobile_host : u32;
+	handle nk_monitor : u32;
 	type nk_nullable_surface_frame_callback = nullable<nk_surface_frame_callback>;
 	/**
 	 * Identifier for one asynchronous operation; it is not a resource handle.
 	 */
 	type nk_request_id = u64;
+	handle nk_resource_stream : u32;
+	handle nk_surface : u32;
 	/**
 	 * Callback invoked while a surface framebuffer is current and ready to draw.
 	 *
 	 * The callback runs on the UI thread. `user_data` is the value supplied to
 	 * nk_surface_set_frame_callback().
 	 */
-	callback nk_surface_frame_callback = fn(arg0: nk_handle, arg1: i32, arg2: i32, arg3: ptr<void>) -> void;
+	callback nk_surface_frame_callback = fn(arg0: nk_surface, arg1: i32, arg2: i32, arg3: ptr<void>) -> void;
 	/**
 	 * Absolute Unicode code-point position used by the text-input API.
 	 */
 	type nk_text_position = u32;
+	handle nk_webview : u32;
+	handle nk_window : u32;
 }

@@ -128,7 +128,7 @@ NK_DECLARE_HANDLE(nkui_layout_session);
 /** Resolved geometry for one node in the most recently submitted layout. */
 typedef struct nkui_layout_item {
     /** Set to sizeof(nkui_layout_item) or a larger compatible size. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     uint32_t node_id;
     uint32_t flags;
     /** Layout bounds before the returned world transform is applied. */
@@ -156,7 +156,7 @@ typedef struct nkui_layout_item {
 /** Per-submission logical viewport and layout timing. */
 typedef struct nkui_layout_frame_input {
     /** Set to sizeof(nkui_layout_frame_input) or a larger compatible size. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     float width;
     float height;
     float delta_seconds;

@@ -1,26 +1,26 @@
 import NativeKit;
-import NativeKit.Handle;
+import NativeKit.SurfaceHandle;
 import NativeKit.SurfaceFrameCallbackCallback;
 import NativeKitResult;
 
 /** Owns one graphics surface attached to a NativeKit window. */
 class NativeKitSurface {
-	final value:Handle;
+	final value:SurfaceHandle;
 	var disposed:Bool = false;
 	var frameSubscription:Null<NativeKitSurfaceFrameSubscription>;
 
 	@:allow(NativeKitWindow)
-	private function new(value:Handle)
+	private function new(value:SurfaceHandle)
 		this.value = value;
 
-	public function nativeHandle():Handle {
+	public function nativeHandle():SurfaceHandle {
 		ensureLive();
 		return value;
 	}
 
 	public function show(visible:Bool = true):Void {
 		ensureLive();
-		NativeKitResult.check(NativeKit.nk_surface_show(value, visible ? 1 : 0), "surface.show");
+		NativeKitResult.check(NativeKit.nk_surface_show(value, visible), "surface.show");
 	}
 
 	public function makeCurrent():Void {
@@ -129,6 +129,6 @@ private class NativeKitSurfaceFrameHandler {
 	public function new(handler:Int->Int->Void)
 		this.handler = handler;
 
-	public function invoke(_surface:Handle, width:Int, height:Int, _userData:hl.Abstract<"native_pointer">):Void
+	public function invoke(_surface:SurfaceHandle, width:Int, height:Int, _userData:hl.Abstract<"native_pointer">):Void
 		handler(width, height);
 }

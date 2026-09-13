@@ -1,24 +1,24 @@
 import NativeKit;
-import NativeKit.Handle;
+import NativeKit.WebViewHandle;
 import NativeKitResult;
 
 /** Owns one native child WebView. */
 class NativeKitWebView {
-	final value:Handle;
+	final value:WebViewHandle;
 	var disposed:Bool = false;
 
 	@:allow(NativeKitWindow)
-	private function new(value:Handle)
+	private function new(value:WebViewHandle)
 		this.value = value;
 
-	public function nativeHandle():Handle {
+	public function nativeHandle():WebViewHandle {
 		ensureLive();
 		return value;
 	}
 
 	public function show(visible:Bool = true):Void {
 		ensureLive();
-		NativeKitResult.check(NativeKit.nk_webview_show(value, visible ? 1 : 0), "webview.show");
+		NativeKitResult.check(NativeKit.nk_webview_show(value, visible), "webview.show");
 	}
 
 	public function navigate(url:String):Void {

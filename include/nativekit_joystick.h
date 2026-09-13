@@ -66,24 +66,24 @@ typedef struct nk_joystick_hat_event {
  * Hotplug is reported with NK_EVENT_JOYSTICK_CONNECTED and
  * NK_EVENT_JOYSTICK_DISCONNECTED.
  */
-NK_API nk_result NK_CALL nk_joystick_list(nk_handle *joysticks, uint32_t *inout_count);
+NK_API nk_result NK_CALL nk_joystick_list(nk_joystick *joysticks, uint32_t *inout_count);
 /** Copies the device name into a caller-owned UTF-8 buffer. */
-NK_API nk_result NK_CALL nk_joystick_get_name(nk_handle joystick, char *buffer,
+NK_API nk_result NK_CALL nk_joystick_get_name(nk_joystick joystick, char *buffer,
                                               uint32_t *inout_size);
 /** Returns a 32-character SDL-compatible device GUID plus a trailing NUL. */
-NK_API nk_result NK_CALL nk_joystick_get_guid(nk_handle joystick, char *buffer,
+NK_API nk_result NK_CALL nk_joystick_get_guid(nk_joystick joystick, char *buffer,
                                               uint32_t *inout_size);
 /**
  * Each state function accepts NULL to query its element count. Axis values are
  * normalized to [-1, 1], buttons are 0 or 1, and hats use NK_JOYSTICK_HAT_*.
  */
-NK_API nk_result NK_CALL nk_joystick_get_axes(nk_handle joystick, float *axes,
+NK_API nk_result NK_CALL nk_joystick_get_axes(nk_joystick joystick, float *axes,
                                               uint32_t *inout_count);
 /** Copies the current button states as zero or one bytes. */
-NK_API nk_result NK_CALL nk_joystick_get_buttons(nk_handle joystick, uint8_t *buttons,
+NK_API nk_result NK_CALL nk_joystick_get_buttons(nk_joystick joystick, uint8_t *buttons,
                                                  uint32_t *inout_count);
 /** Copies the current hat direction flags. */
-NK_API nk_result NK_CALL nk_joystick_get_hats(nk_handle joystick, uint8_t *hats,
+NK_API nk_result NK_CALL nk_joystick_get_hats(nk_joystick joystick, uint8_t *hats,
                                               uint32_t *inout_count);
 
 /* ------------------------------------------------------------------------- */

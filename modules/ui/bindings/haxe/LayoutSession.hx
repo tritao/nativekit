@@ -82,14 +82,14 @@ class LayoutSession {
 	public function render(renderer:Renderer, surface:Surface, frame:FrameInfo):Void {
 		ensureLive();
 		UiResult.check(NativeKitUI.nkui_layout_session_render_frame(renderer.nativeHandle(), value,
-			surface.nativeHandle(), frame.nativeValue(), 0), "layoutSession.render");
+			surface.nativeHandle(), frame.nativeValue(), false), "layoutSession.render");
 	}
 
 	/** Composites the last submitted tree over the current surface contents. */
 	public function renderOverlay(renderer:Renderer, surface:Surface, frame:FrameInfo):Void {
 		ensureLive();
 		UiResult.check(NativeKitUI.nkui_layout_session_render_frame(renderer.nativeHandle(), value,
-			surface.nativeHandle(), frame.nativeValue(), 1), "layoutSession.renderOverlay");
+			surface.nativeHandle(), frame.nativeValue(), true), "layoutSession.renderOverlay");
 	}
 
 	public function dispose():Void {

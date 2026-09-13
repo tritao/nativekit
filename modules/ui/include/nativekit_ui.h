@@ -100,7 +100,7 @@ NK_DECLARE_HANDLE(nkui_renderer);
 /** Describes the logical layout space and physical framebuffer target for one render. */
 typedef struct nkui_frame_info {
     /** Set to sizeof(nkui_frame_info) or a larger compatible structure size. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Width of the UI's logical coordinate space in logical pixels. */
     float logical_width;
     /** Height of the UI's logical coordinate space in logical pixels. */
@@ -116,7 +116,7 @@ typedef struct nkui_frame_info {
 /** Preparation and geometry-cache counters for one renderer. */
 typedef struct nkui_renderer_stats {
     /** Set to sizeof(nkui_renderer_stats) when returned by the API. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Number of NanoVG fill/stroke preparations performed after cache misses. */
     uint64_t path_preparations;
     /** Number of retained path geometry cache hits. */
@@ -189,7 +189,7 @@ typedef struct nkui_command_header {
 /** Summary of the command stream currently stored in a display list. */
 typedef struct nkui_transaction_info {
     /** Set to sizeof(nkui_transaction_info) when returned by the API. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** UI ABI version that produced this summary. */
     uint32_t api_version;
     /** Number of command-stream bytes currently stored. */
@@ -345,7 +345,7 @@ typedef enum nkui_text_direction {
 /** Font and inline spacing inputs shared by explicit and tree-owned layouts. */
 typedef struct nkui_text_style {
     /** Set to sizeof(nkui_text_style) or a larger compatible structure size. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Font role selected from the owning font collection. */
     nkui_font_family family;
     /** Font size in logical pixels; must be positive and finite. */
@@ -357,7 +357,7 @@ typedef struct nkui_text_style {
 /** Paragraph-level wrapping, alignment, and line-height inputs. */
 typedef struct nkui_paragraph_style {
     /** Set to sizeof(nkui_paragraph_style) or a larger compatible structure size. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Explicit line height, or zero for the natural line height. */
     float line_height;
     nkui_text_wrap wrap;
@@ -368,7 +368,7 @@ typedef struct nkui_paragraph_style {
 /** Bounding rectangle returned for a text layout. */
 typedef struct nkui_text_metrics {
     /** Set to sizeof(nkui_text_metrics) when returned by the API. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Left edge of the bounds in layout coordinates. */
     float x;
     /** Top edge of the bounds in layout coordinates. */
@@ -390,7 +390,7 @@ typedef struct nkui_text_position {
 /** Visual geometry and direction for a text caret. */
 typedef struct nkui_text_caret {
     /** Set to sizeof(nkui_text_caret) when returned by the API. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** X coordinate of the caret baseline origin. */
     float x;
     /** Y coordinate of the caret baseline origin. */
@@ -408,7 +408,7 @@ typedef struct nkui_text_caret {
 /** One visual rectangle covered by a text selection. */
 typedef struct nkui_text_rect {
     /** Set to sizeof(nkui_text_rect) in the returned buffer. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     float x;
     float y;
     float width;

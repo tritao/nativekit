@@ -55,7 +55,7 @@ enum NK_ENUM(nk_navigation_error) {
 /** Options used to create a native child WebView. */
 typedef struct nk_webview_options {
     /** Set to sizeof(nk_webview_options) before creating the WebView. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Bitwise OR of NK_WEBVIEW_* flags. */
     nk_webview_flags flags;
     /** Child position in the parent's logical coordinates. */
@@ -95,33 +95,33 @@ typedef struct nk_webview_options {
  * retained in call order by asynchronous backends.
  */
 NK_API nk_result NK_CALL nk_webview_create(nk_handle parent, const nk_webview_options *options,
-                                           nk_handle *out_webview NK_OUT);
+                                           nk_webview *out_webview NK_OUT);
 /** Destroys a WebView and cancels its pending evaluations and navigation decisions. */
-NK_API nk_result NK_CALL nk_webview_destroy(nk_handle webview);
+NK_API nk_result NK_CALL nk_webview_destroy(nk_webview webview);
 
 /** Shows or hides a WebView without destroying it. */
-NK_API nk_result NK_CALL nk_webview_show(nk_handle webview, nk_bool visible);
+NK_API nk_result NK_CALL nk_webview_show(nk_webview webview, nk_bool visible);
 /** Changes a WebView's logical position and size within its parent. */
-NK_API nk_result NK_CALL nk_webview_set_bounds(nk_handle webview, int32_t x, int32_t y,
+NK_API nk_result NK_CALL nk_webview_set_bounds(nk_webview webview, int32_t x, int32_t y,
                                                int32_t width, int32_t height);
 /** Starts loading a UTF-8 URL in the WebView. */
-NK_API nk_result NK_CALL nk_webview_navigate(nk_handle webview, const char *url NK_UTF8);
+NK_API nk_result NK_CALL nk_webview_navigate(nk_webview webview, const char *url NK_UTF8);
 /** Replaces the document with UTF-8 HTML, using an optional base URL. */
-NK_API nk_result NK_CALL nk_webview_set_html(nk_handle webview, const char *html NK_UTF8,
+NK_API nk_result NK_CALL nk_webview_set_html(nk_webview webview, const char *html NK_UTF8,
                                              const char *base_url NK_NULLABLE_UTF8);
 /** Reports whether the WebView currently has a back-history entry. */
-NK_API nk_result NK_CALL nk_webview_can_go_back(nk_handle webview, nk_bool *out_can_go_back NK_OUT);
+NK_API nk_result NK_CALL nk_webview_can_go_back(nk_webview webview, nk_bool *out_can_go_back NK_OUT);
 /** Reports whether the WebView currently has a forward-history entry. */
-NK_API nk_result NK_CALL nk_webview_can_go_forward(nk_handle webview,
+NK_API nk_result NK_CALL nk_webview_can_go_forward(nk_webview webview,
                                                    nk_bool *out_can_go_forward NK_OUT);
 /** Submits a request to navigate to the previous history entry. */
-NK_API nk_result NK_CALL nk_webview_go_back(nk_handle webview);
+NK_API nk_result NK_CALL nk_webview_go_back(nk_webview webview);
 /** Submits a request to navigate to the next history entry. */
-NK_API nk_result NK_CALL nk_webview_go_forward(nk_handle webview);
+NK_API nk_result NK_CALL nk_webview_go_forward(nk_webview webview);
 /** Reloads the current WebView document. */
-NK_API nk_result NK_CALL nk_webview_reload(nk_handle webview);
+NK_API nk_result NK_CALL nk_webview_reload(nk_webview webview);
 /** Stops the current WebView load. */
-NK_API nk_result NK_CALL nk_webview_stop(nk_handle webview);
+NK_API nk_result NK_CALL nk_webview_stop(nk_webview webview);
 
 /* ------------------------------------------------------------------------- */
 /* WebView scripting and navigation policy                                   */
@@ -138,7 +138,7 @@ NK_API nk_result NK_CALL nk_webview_stop(nk_handle webview);
  * Destroying the WebView before completion emits exactly one final event with
  * NK_ERROR_INVALID_REQUEST, allowing consumers to settle pending futures.
  */
-NK_API nk_result NK_CALL nk_webview_eval(nk_handle webview, const char *script NK_UTF8,
+NK_API nk_result NK_CALL nk_webview_eval(nk_webview webview, const char *script NK_UTF8,
                                          nk_request_id *out_request NK_OUT);
 
 /**

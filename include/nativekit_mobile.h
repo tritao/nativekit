@@ -54,7 +54,7 @@ enum NK_ENUM(nk_mobile_host_event_kind) {
 /** Platform values used to attach a caller-owned mobile container. */
 typedef struct nk_mobile_host_options {
     /** Set to sizeof(nk_mobile_host_options) before attaching. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Kind of native container described by the remaining fields. */
     nk_mobile_host_kind kind;
     /** Platform context used only during attachment, such as Android JNIEnv*. */
@@ -68,7 +68,7 @@ typedef struct nk_mobile_host_options {
 /** Payload of NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED, in logical pixels. */
 typedef struct nk_mobile_host_geometry {
     /** Set to sizeof(nk_mobile_host_geometry). */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Host width in logical pixels. */
     int32_t width;
     /** Host height in logical pixels. */
@@ -92,7 +92,7 @@ typedef struct nk_mobile_host_geometry {
 /** Platform-owned event values forwarded by a mobile host. */
 typedef struct nk_mobile_host_event {
     /** Set to sizeof(nk_mobile_host_event) before dispatching. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Platform event kind. */
     nk_mobile_host_event_kind kind;
     /** Platform context used while dispatching, such as Android JNIEnv*. */
@@ -116,13 +116,13 @@ typedef struct nk_mobile_host_event {
  * only during this call; NativeKit retains its own global reference.
  */
 NK_API nk_result NK_CALL nk_mobile_host_attach(const nk_mobile_host_options *options,
-                                               nk_handle *out_host);
+                                               nk_mobile_host *out_host);
 
 /** Destroys all child WebViews, releases native references, and detaches. */
-NK_API nk_result NK_CALL nk_mobile_host_destroy(nk_handle host);
+NK_API nk_result NK_CALL nk_mobile_host_destroy(nk_mobile_host host);
 
 /** Mirrors the lifecycle state owned by the host Activity or view controller. */
-NK_API nk_result NK_CALL nk_mobile_host_set_lifecycle(nk_handle host,
+NK_API nk_result NK_CALL nk_mobile_host_set_lifecycle(nk_mobile_host host,
                                                       nk_mobile_lifecycle_state state);
 
 /* ------------------------------------------------------------------------- */
@@ -134,11 +134,11 @@ NK_API nk_result NK_CALL nk_mobile_host_set_lifecycle(nk_handle host,
  * current JNIEnv* and an Intent jobject. Recognized content is copied into the
  * NativeKit event queue before this function returns.
  */
-NK_API nk_result NK_CALL nk_mobile_host_dispatch_event(nk_handle host,
+NK_API nk_result NK_CALL nk_mobile_host_dispatch_event(nk_mobile_host host,
                                                        const nk_mobile_host_event *event);
 
 /** Enables or disables URI/text drops onto the caller-owned host container. */
-NK_API nk_result NK_CALL nk_mobile_host_set_drop_enabled(nk_handle host, nk_bool enabled);
+NK_API nk_result NK_CALL nk_mobile_host_set_drop_enabled(nk_mobile_host host, nk_bool enabled);
 
 #ifdef __cplusplus
 }

@@ -94,7 +94,7 @@ enum NK_ENUM(nk_native_window_kind) {
 /** Borrowed platform handles for interoperating with a NativeKit window. */
 typedef struct nk_native_window {
     /** Set to sizeof(nk_native_window) before passing this structure to NativeKit. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Identifies which platform-specific fields are populated. */
     nk_native_window_kind kind;
     /** Reserved for future platform-neutral interoperation flags; initialize to zero. */
@@ -140,7 +140,7 @@ enum NK_ENUM(nk_window_kind) {
 /** Options for creating a NativeKit-owned top-level window. */
 typedef struct nk_window_options {
     /** Set to sizeof(nk_window_options) before calling nk_window_create. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Combination of NK_WINDOW_* creation flags. */
     nk_window_flags flags;
     /** Initial client width in logical pixels; must be positive. */
@@ -150,7 +150,7 @@ typedef struct nk_window_options {
     /** Optional NUL-terminated UTF-8 title, copied by the create call. */
     const char *title NK_NULLABLE_UTF8;
     /** Optional owner window; owned windows are destroyed with their owner. */
-    nk_handle owner;
+    nk_window owner;
     /** Window category, such as NK_WINDOW_NORMAL or NK_WINDOW_UTILITY. */
     nk_window_kind kind;
     /** Reserved for future options; initialize to zero. */
@@ -190,7 +190,7 @@ typedef struct nk_window_scale_event {
 /** Per-axis content scale returned for a window. */
 typedef struct nk_window_content_scale {
     /** Set to sizeof(nk_window_content_scale) before calling the query API. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Horizontal logical-to-device-pixel scale factor. */
     float x;
     /** Vertical logical-to-device-pixel scale factor. */
@@ -204,7 +204,7 @@ typedef struct nk_window_content_scale {
 /** Non-client frame extents returned in logical screen pixels. */
 typedef struct nk_window_frame_extents {
     /** Set to sizeof(nk_window_frame_extents) before calling the query API. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Distance from the client area's left edge to the window frame. */
     int32_t left;
     /** Distance from the client area's top edge to the window frame. */
@@ -238,7 +238,7 @@ enum NK_FLAGS(nk_window_state_flags) {
 /** Current window state flags returned by nk_window_get_state. */
 typedef struct nk_window_state {
     /** Set to sizeof(nk_window_state) before calling nk_window_get_state. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Combination of NK_WINDOW_STATE_* flags. */
     nk_window_state_flags flags;
     /** Reserved pointer-sized values; initialize to zero. */
@@ -248,7 +248,7 @@ typedef struct nk_window_state {
 /** Logical-pixel size constraints for a window. */
 typedef struct nk_window_size_limits {
     /** Set to sizeof(nk_window_size_limits) before passing it to NativeKit. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Minimum client width; zero disables the minimum. */
     int32_t min_width;
     /** Minimum client height; zero disables the minimum. */
@@ -277,7 +277,7 @@ NK_API nk_capabilities NK_CALL nk_get_capabilities(void);
  * shallow and does not introduce a general-purpose widget hierarchy.
  */
 NK_API nk_result NK_CALL nk_window_create(const nk_window_options *options,
-                                          nk_handle *out_window NK_OUT);
+                                          nk_window *out_window NK_OUT);
 
 /**
  * Destroys a NativeKit-owned window and recursively destroys its owned windows.
@@ -286,100 +286,100 @@ NK_API nk_result NK_CALL nk_window_create(const nk_window_options *options,
  * @param window Window handle to destroy.
  * @return NK_OK, or an error such as NK_ERROR_INVALID_HANDLE.
  */
-NK_API nk_result NK_CALL nk_window_destroy(nk_handle window);
+NK_API nk_result NK_CALL nk_window_destroy(nk_window window);
 
 /* ------------------------------------------------------------------------- */
 /* Window visibility, geometry, and state APIs                                */
 /* ------------------------------------------------------------------------- */
 
 /** Shows when `visible` is non-zero and hides otherwise. UI thread only. */
-NK_API nk_result NK_CALL nk_window_show(nk_handle window, nk_bool visible);
+NK_API nk_result NK_CALL nk_window_show(nk_window window, nk_bool visible);
 
 /** Copies the nullable UTF-8 title before returning. UI thread only. */
-NK_API nk_result NK_CALL nk_window_set_title(nk_handle window, const char *title NK_UTF8);
+NK_API nk_result NK_CALL nk_window_set_title(nk_window window, const char *title NK_UTF8);
 
 /** Moves and resizes a top-level window in logical pixels. UI thread only. */
-NK_API nk_result NK_CALL nk_window_set_bounds(nk_handle window, int32_t x, int32_t y, int32_t width,
+NK_API nk_result NK_CALL nk_window_set_bounds(nk_window window, int32_t x, int32_t y, int32_t width,
                                               int32_t height);
 
 /** Writes the current logical-to-device-pixel scale. UI thread only. */
-NK_API nk_result NK_CALL nk_window_get_scale(nk_handle window, float *out_scale NK_OUT);
+NK_API nk_result NK_CALL nk_window_get_scale(nk_window window, float *out_scale NK_OUT);
 
 /** On NK_OK, fills in the current horizontal and vertical content scale factors. */
-NK_API nk_result NK_CALL nk_window_get_content_scale(nk_handle window,
+NK_API nk_result NK_CALL nk_window_get_content_scale(nk_window window,
                                                      nk_window_content_scale *out_scale NK_OUT);
 
 /** On NK_OK, fills in the window's logical screen position. */
-NK_API nk_result NK_CALL nk_window_get_position(nk_handle window, int32_t *out_x NK_OUT,
+NK_API nk_result NK_CALL nk_window_get_position(nk_window window, int32_t *out_x NK_OUT,
                                                 int32_t *out_y NK_OUT);
 
 /** On NK_OK, fills in the window's logical client width and height. */
-NK_API nk_result NK_CALL nk_window_get_size(nk_handle window, int32_t *out_width NK_OUT,
+NK_API nk_result NK_CALL nk_window_get_size(nk_window window, int32_t *out_width NK_OUT,
                                             int32_t *out_height NK_OUT);
 
 /** On NK_OK, fills in the framebuffer width and height in device pixels. */
-NK_API nk_result NK_CALL nk_window_get_framebuffer_size(nk_handle window, int32_t *out_width NK_OUT,
+NK_API nk_result NK_CALL nk_window_get_framebuffer_size(nk_window window, int32_t *out_width NK_OUT,
                                                         int32_t *out_height NK_OUT);
 
 /** On NK_OK, fills in the non-client frame extents in logical screen pixels. */
-NK_API nk_result NK_CALL nk_window_get_frame_extents(nk_handle window,
+NK_API nk_result NK_CALL nk_window_get_frame_extents(nk_window window,
                                                      nk_window_frame_extents *out_extents NK_OUT);
 
 /** On NK_OK, fills in the current NK_WINDOW_STATE_* flags. */
-NK_API nk_result NK_CALL nk_window_get_state(nk_handle window, nk_window_state *out_state NK_OUT);
+NK_API nk_result NK_CALL nk_window_get_state(nk_window window, nk_window_state *out_state NK_OUT);
 
 /** Sets `*out_focused` to 1 if the window has focus, and 0 otherwise. */
-NK_API nk_result NK_CALL nk_window_is_focused(nk_handle window, nk_bool *out_focused NK_OUT);
+NK_API nk_result NK_CALL nk_window_is_focused(nk_window window, nk_bool *out_focused NK_OUT);
 
 /** Sets `*out_visible` to 1 if the window is visible, and 0 otherwise. */
-NK_API nk_result NK_CALL nk_window_is_visible(nk_handle window, nk_bool *out_visible NK_OUT);
+NK_API nk_result NK_CALL nk_window_is_visible(nk_window window, nk_bool *out_visible NK_OUT);
 
 /** Requests that the window manager minimize the window. */
-NK_API nk_result NK_CALL nk_window_minimize(nk_handle window);
+NK_API nk_result NK_CALL nk_window_minimize(nk_window window);
 
 /** Requests that the window manager maximize the window. */
-NK_API nk_result NK_CALL nk_window_maximize(nk_handle window);
+NK_API nk_result NK_CALL nk_window_maximize(nk_window window);
 
 /** Requests that the window manager restore a minimized or maximized window. */
-NK_API nk_result NK_CALL nk_window_restore(nk_handle window);
+NK_API nk_result NK_CALL nk_window_restore(nk_window window);
 
 /** Requests activation and focus for the window. */
-NK_API nk_result NK_CALL nk_window_activate(nk_handle window);
+NK_API nk_result NK_CALL nk_window_activate(nk_window window);
 
 /** Requests entering fullscreen when enabled is non-zero, or leaving it otherwise. */
-NK_API nk_result NK_CALL nk_window_set_fullscreen(nk_handle window, nk_bool enabled);
+NK_API nk_result NK_CALL nk_window_set_fullscreen(nk_window window, nk_bool enabled);
 
 /** Requests that the window manager draw the user's attention to the window. */
-NK_API nk_result NK_CALL nk_window_request_attention(nk_handle window);
+NK_API nk_result NK_CALL nk_window_request_attention(nk_window window);
 
 /* ------------------------------------------------------------------------- */
 /* Window styling and constraints                                             */
 /* ------------------------------------------------------------------------- */
 
 /** Zero disables the corresponding constraint; maxima must not be below minima. */
-NK_API nk_result NK_CALL nk_window_set_size_limits(nk_handle window,
+NK_API nk_result NK_CALL nk_window_set_size_limits(nk_window window,
                                                    const nk_window_size_limits *limits);
 /** Passing zero for both values disables the aspect-ratio constraint. */
-NK_API nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle window, int32_t numerator,
+NK_API nk_result NK_CALL nk_window_set_aspect_ratio(nk_window window, int32_t numerator,
                                                     int32_t denominator);
 
 /** Enables or disables user resizing of the window. */
-NK_API nk_result NK_CALL nk_window_set_resizable(nk_handle window, nk_bool enabled);
+NK_API nk_result NK_CALL nk_window_set_resizable(nk_window window, nk_bool enabled);
 
 /** Enables or disables standard native window decorations. */
-NK_API nk_result NK_CALL nk_window_set_decorated(nk_handle window, nk_bool enabled);
+NK_API nk_result NK_CALL nk_window_set_decorated(nk_window window, nk_bool enabled);
 
 /** Enables or disables keeping the window above its peers. */
-NK_API nk_result NK_CALL nk_window_set_floating(nk_handle window, nk_bool enabled);
+NK_API nk_result NK_CALL nk_window_set_floating(nk_window window, nk_bool enabled);
 
 /** Sets the window opacity; supported backends accept values from zero to one. */
-NK_API nk_result NK_CALL nk_window_set_opacity(nk_handle window, float opacity);
+NK_API nk_result NK_CALL nk_window_set_opacity(nk_window window, float opacity);
 
 /** Enables or disables passing pointer input through the window. */
-NK_API nk_result NK_CALL nk_window_set_mouse_passthrough(nk_handle window, nk_bool enabled);
+NK_API nk_result NK_CALL nk_window_set_mouse_passthrough(nk_window window, nk_bool enabled);
 
 /** Sets `*out_hovered` to 1 when the pointer is over the window, and 0 otherwise. */
-NK_API nk_result NK_CALL nk_window_get_hovered(nk_handle window, nk_bool *out_hovered NK_OUT);
+NK_API nk_result NK_CALL nk_window_get_hovered(nk_window window, nk_bool *out_hovered NK_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Native-window interoperability                                            */
@@ -390,7 +390,7 @@ NK_API nk_result NK_CALL nk_window_get_hovered(nk_handle window, nk_bool *out_ho
  * only while the NativeKit window is alive and must never be freed by callers.
  * This is an explicit interoperability escape hatch, not a portable resource.
  */
-NK_API nk_result NK_CALL nk_window_get_native(nk_handle window,
+NK_API nk_result NK_CALL nk_window_get_native(nk_window window,
                                               nk_native_window *out_native NK_OUT);
 
 /**
@@ -399,7 +399,7 @@ NK_API nk_result NK_CALL nk_window_get_native(nk_handle window,
  * they can guarantee correct event and ownership behavior for the given kind.
  */
 NK_API nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native,
-                                               nk_handle *out_window NK_OUT);
+                                               nk_window *out_window NK_OUT);
 
 #ifdef __cplusplus
 }

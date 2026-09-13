@@ -48,7 +48,7 @@ enum NK_ENUM(nk_graphics_api) {
 /** Backend-neutral metadata for a sampled graphics image. */
 typedef struct nk_graphics_image_info {
     /** Set to sizeof(nk_graphics_image_info) before calling the query API. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Graphics backend that owns the image. */
     nk_graphics_api api;
     /** Context-sharing device that owns the image. */
@@ -81,7 +81,7 @@ enum NK_FLAGS(nk_surface_flags) {
 /** Options used to create a NativeKit graphics surface. */
 typedef struct nk_surface_options {
     /** Set to sizeof(nk_surface_options) or a larger compatible size. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Bitwise OR of NK_SURFACE_* flags. */
     nk_surface_flags flags;
     /** Graphics API and context family to request. */
@@ -99,7 +99,7 @@ typedef struct nk_surface_options {
     /** Initial logical height; must be positive. */
     int32_t height;
     /** Optional compatible surface whose graphics context should be shared. */
-    nk_handle share_surface;
+    nk_surface share_surface;
     /** Reserved; set to zero. */
     uint32_t reserved;
     /** Reserved for future options; set all elements to zero. */
@@ -115,7 +115,7 @@ typedef void(NK_CALL *nk_graphics_proc)(void);
  * The callback runs on the UI thread. `user_data` is the value supplied to
  * nk_surface_set_frame_callback().
  */
-typedef void(NK_CALL *nk_surface_frame_callback)(nk_handle surface, int32_t framebuffer_width,
+typedef void(NK_CALL *nk_surface_frame_callback)(nk_surface surface, int32_t framebuffer_width,
                                                  int32_t framebuffer_height, void *user_data);
 typedef nk_surface_frame_callback NK_NULLABLE nk_nullable_surface_frame_callback;
 
@@ -141,7 +141,7 @@ typedef struct nk_surface_resize_event {
  */
 typedef struct nk_surface_frame_target {
     /** Set to sizeof(nk_surface_frame_target) or a larger compatible size. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Graphics API that owns the target. */
     nk_graphics_api api;
     /** Current framebuffer width in device pixels. */
@@ -169,14 +169,14 @@ typedef struct nk_surface_frame_target {
  * been destroyed. Vulkan views do not support GL context flags or sharing.
  * On NK_OK, writes the new surface handle to `out_surface`.
  */
-NK_API nk_result NK_CALL nk_surface_create(nk_handle window, const nk_surface_options *options,
-                                           nk_handle *out_surface NK_OUT);
+NK_API nk_result NK_CALL nk_surface_create(nk_window window, const nk_surface_options *options,
+                                           nk_surface *out_surface NK_OUT);
 
 /** Destroys a graphics surface; its handle becomes invalid. */
-NK_API nk_result NK_CALL nk_surface_destroy(nk_handle surface);
+NK_API nk_result NK_CALL nk_surface_destroy(nk_surface surface);
 
 /** Shows or hides a surface without destroying it. */
-NK_API nk_result NK_CALL nk_surface_show(nk_handle surface, nk_bool visible);
+NK_API nk_result NK_CALL nk_surface_show(nk_surface surface, nk_bool visible);
 
 /**
  * Changes a surface's logical position and size within its parent.
@@ -184,11 +184,11 @@ NK_API nk_result NK_CALL nk_surface_show(nk_handle surface, nk_bool visible);
  * Width and height must be positive. The backend reports resulting framebuffer
  * dimensions through NK_EVENT_SURFACE_RESIZE or the frame callback.
  */
-NK_API nk_result NK_CALL nk_surface_set_bounds(nk_handle surface, int32_t x, int32_t y,
+NK_API nk_result NK_CALL nk_surface_set_bounds(nk_surface surface, int32_t x, int32_t y,
                                                int32_t width, int32_t height);
 
 /** Makes the surface's graphics context and framebuffer current on the UI thread. */
-NK_API nk_result NK_CALL nk_surface_make_current(nk_handle surface);
+NK_API nk_result NK_CALL nk_surface_make_current(nk_surface surface);
 
 /**
  * Presents drawing performed since the last make-current call.
@@ -196,7 +196,7 @@ NK_API nk_result NK_CALL nk_surface_make_current(nk_handle surface);
  * On GTK this schedules composition of the GtkGLArea framebuffer instead of
  * swapping a caller-owned native surface.
  */
-NK_API nk_result NK_CALL nk_surface_present(nk_handle surface);
+NK_API nk_result NK_CALL nk_surface_present(nk_surface surface);
 
 /**
  * Installs or removes the surface's frame callback.
@@ -206,7 +206,7 @@ NK_API nk_result NK_CALL nk_surface_present(nk_handle surface);
  * `user_data` value is not retained after the callback is removed.
  */
 NK_API nk_result NK_CALL nk_surface_set_frame_callback(
-    nk_handle surface, nk_nullable_surface_frame_callback callback NK_RETAINED,
+    nk_surface surface, nk_nullable_surface_frame_callback callback NK_RETAINED,
     void *NK_NULLABLE user_data);
 
 /* ------------------------------------------------------------------------- */
@@ -214,12 +214,12 @@ NK_API nk_result NK_CALL nk_surface_set_frame_callback(
 /* ------------------------------------------------------------------------- */
 
 /** Returns the current framebuffer size in device pixels. */
-NK_API nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle surface,
+NK_API nk_result NK_CALL nk_surface_get_framebuffer_size(nk_surface surface,
                                                          int32_t *out_width NK_OUT,
                                                          int32_t *out_height NK_OUT);
 
 /** Returns the current backend-native render target for a surface frame. */
-NK_API nk_result NK_CALL nk_surface_get_frame_target(nk_handle surface,
+NK_API nk_result NK_CALL nk_surface_get_frame_target(nk_surface surface,
                                                      nk_surface_frame_target *out_target NK_OUT);
 
 /** Retains a sampled image reference. Each successful retain requires one release. */
@@ -245,7 +245,7 @@ NK_API nk_result NK_CALL nk_graphics_device_release(nk_graphics_device device);
  * function pointer to `out_proc`; the pointer remains valid only while the
  * associated graphics context and loader remain valid.
  */
-NK_API nk_result NK_CALL nk_surface_get_proc_address(nk_handle surface, const char *name NK_UTF8,
+NK_API nk_result NK_CALL nk_surface_get_proc_address(nk_surface surface, const char *name NK_UTF8,
                                                      nk_graphics_proc *out_proc);
 
 #ifdef __cplusplus

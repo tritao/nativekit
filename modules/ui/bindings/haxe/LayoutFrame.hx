@@ -26,7 +26,6 @@ class LayoutFrame {
 
 	@:allow(LayoutSession)
 	private function nativeValue():nkui_layout_frame_input {
-		nativeFrame.set_struct_size(nkui_layout_frame_input.size());
 		nativeFrame.set_width(width);
 		nativeFrame.set_height(height);
 		nativeFrame.set_delta_seconds(deltaSeconds);

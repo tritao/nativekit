@@ -1,7 +1,17 @@
 {
   "interface": "NativeKit",
   "typePrefix": "nk_",
-  "enumValuePrefixes": [
-    "NK_NOTIFICATION_"
-  ]
+	"enumValuePrefixes": [
+		"NK_NOTIFICATION_"
+	],
+	"typeNames": {
+		"nk_window": "WindowHandle",
+		"nk_surface": "SurfaceHandle",
+		"nk_webview": "WebViewHandle",
+		"nk_monitor": "MonitorHandle",
+		"nk_cursor": "CursorHandle",
+		"nk_joystick": "JoystickHandle",
+		"nk_mobile_host": "MobileHostHandle",
+		"nk_resource_stream": "ResourceStreamHandle"
+	}
 }

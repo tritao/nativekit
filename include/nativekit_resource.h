@@ -71,7 +71,7 @@ enum NK_ENUM(nk_seek_origin) {
 /** URI identity and metadata for a resource. */
 typedef struct nk_resource {
     /** Set to sizeof(nk_resource) before passing the structure. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Access and persistence flags known by the producer. */
     nk_resource_flags flags;
     /** Required absolute UTF-8 URI; this is not necessarily a filesystem path. */
@@ -89,7 +89,7 @@ typedef struct nk_resource {
 /** Text and URI resources supplied to the platform share UI. */
 typedef struct nk_share_options {
     /** Set to sizeof(nk_share_options) before sharing. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Reserved; set to zero. */
     uint32_t flags;
     /** Optional title shown by the share UI. */
@@ -137,7 +137,7 @@ typedef struct nk_resource_item {
 /** Borrowed resource metadata decoded from an event payload. */
 typedef struct nk_resource_view {
     /** Set to sizeof(nk_resource_view) before decoding an item. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Access and persistence flags for this resource. */
     nk_resource_flags flags;
     /** Borrowed UTF-8 URI; valid until nk_event_release(). */
@@ -159,7 +159,7 @@ typedef struct nk_resource_view {
 /** Capabilities and size information for an opened resource stream. */
 typedef struct nk_resource_stream_info {
     /** Set to sizeof(nk_resource_stream_info) before querying. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Bitwise OR of NK_RESOURCE_STREAM_* capabilities. */
     nk_resource_stream_flags flags;
     /** Size in bytes, or UINT64_MAX when the provider cannot report it. */
@@ -265,7 +265,7 @@ NK_API nk_result NK_CALL nk_resource_get_persisted_access(const nk_resource *res
  * return fewer bytes than requested; zero bytes means end of stream.
  */
 NK_API nk_result NK_CALL nk_resource_open(const nk_resource *resource, nk_resource_open_flags flags,
-                                          nk_handle *out_stream NK_OUT);
+                                          nk_resource_stream *out_stream NK_OUT);
 /**
  * Starts an asynchronous read of the complete URI resource. Completion is
  * delivered through NK_EVENT_RESOURCE_DATA_COMPLETE; its event data contains
@@ -274,19 +274,19 @@ NK_API nk_result NK_CALL nk_resource_open(const nk_resource *resource, nk_resour
 NK_API nk_result NK_CALL nk_resource_load_async(const nk_resource *resource,
                                                 nk_request_id *out_request NK_OUT);
 /** Returns capabilities and size information for a resource stream. */
-NK_API nk_result NK_CALL nk_resource_stream_info_get(nk_handle stream,
+NK_API nk_result NK_CALL nk_resource_stream_info_get(nk_resource_stream stream,
                                                      nk_resource_stream_info *out_info);
 /** Reads up to `size` bytes; a successful read may return fewer bytes. */
-NK_API nk_result NK_CALL nk_resource_read(nk_handle stream, void *buffer, uint64_t size,
+NK_API nk_result NK_CALL nk_resource_read(nk_resource_stream stream, void *buffer, uint64_t size,
                                           uint64_t *out_read);
 /** Writes up to `size` bytes; a successful write may transfer fewer bytes. */
-NK_API nk_result NK_CALL nk_resource_write(nk_handle stream, const void *buffer, uint64_t size,
+NK_API nk_result NK_CALL nk_resource_write(nk_resource_stream stream, const void *buffer, uint64_t size,
                                            uint64_t *out_written);
 /** Moves the stream position and returns the resulting absolute byte offset. */
-NK_API nk_result NK_CALL nk_resource_seek(nk_handle stream, int64_t offset, nk_seek_origin origin,
+NK_API nk_result NK_CALL nk_resource_seek(nk_resource_stream stream, int64_t offset, nk_seek_origin origin,
                                           uint64_t *out_position);
 /** Closes a resource stream and invalidates its handle. */
-NK_API nk_result NK_CALL nk_resource_close(nk_handle stream);
+NK_API nk_result NK_CALL nk_resource_close(nk_resource_stream stream);
 
 #ifdef __cplusplus
 }

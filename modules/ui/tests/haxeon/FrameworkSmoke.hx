@@ -441,7 +441,7 @@ class FrameworkSmoke {
 		buttonNode.on(UiEventKind.TextEdit, function(event) {
 			editSeen = event.data != null && event.text == "compose";
 		});
-		var source:NativeKit.Handle = 17;
+		var source = new NativeKit.Handle(17);
 		var input = new NativeInputAdapter(context, source);
 		var eventPump = new NativeKitEvents();
 		var pumpEvents = 0;
@@ -465,7 +465,7 @@ class FrameworkSmoke {
 			pastedText != "from clipboard" ||
 			input.consume(ClipboardText(clipboardRequest, NativeKit.Result.Ok, "duplicate")))
 			return 39;
-		if (input.consume(PointerMove(18, 4.0, 4.0)))
+		if (input.consume(PointerMove(new NativeKit.Handle(18), 4.0, 4.0)))
 			return 12;
 		if (!input.consume(PointerMove(source, 4.0, 4.0)) || hoverEnters == 0 ||
 			!input.consume(PointerScroll(source, 1.5, -24.0)) || scrollEvents != 1)

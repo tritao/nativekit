@@ -61,7 +61,7 @@ template <class T, Kind K, size_t N> struct Pool {
 };
 
 struct Renderer {
-    nk_handle surface = 0;
+    nk_surface surface = 0;
     const nk_sokol_api *api = nullptr;
     nk_graphics_api graphics_api = 0;
     nk_graphics_device device{};
@@ -381,12 +381,12 @@ nk_graphics_api nkgpu_query_graphics_api(nkgpu_renderer renderer) {
     return slot ? slot->value.graphics_api : static_cast<nk_graphics_api>(0);
 }
 
-nkgpu_result nkgpu_surface_create(nk_handle window, int32_t width, int32_t height, nk_handle *out) {
+nkgpu_result nkgpu_surface_create(nk_window window, int32_t width, int32_t height, nk_surface *out) {
     return nkgpu_surface_create_for_api(window, nkgpu_default_graphics_api(), width, height, out);
 }
 
-nkgpu_result nkgpu_surface_create_for_api(nk_handle window, nk_graphics_api api, int32_t width,
-                                      int32_t height, nk_handle *out) {
+nkgpu_result nkgpu_surface_create_for_api(nk_window window, nk_graphics_api api, int32_t width,
+                                      int32_t height, nk_surface *out) {
     if (!window || width <= 0 || height <= 0 || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid surface arguments");
     if (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES)
@@ -405,17 +405,17 @@ nkgpu_result nkgpu_surface_create_for_api(nk_handle window, nk_graphics_api api,
                ? NKGPU_OK
                : fail(NKGPU_ERROR_UNKNOWN, "surface: %s", nk_last_error());
 }
-nkgpu_result nkgpu_surface_resize(nk_handle s, int32_t w, int32_t h) {
+nkgpu_result nkgpu_surface_resize(nk_surface s, int32_t w, int32_t h) {
     return nk_surface_set_bounds(s, 0, 0, w, h) == NK_OK
                ? NKGPU_OK
                : fail(NKGPU_ERROR_UNKNOWN, "resize: %s", nk_last_error());
 }
-nkgpu_result nkgpu_surface_destroy(nk_handle s) {
+nkgpu_result nkgpu_surface_destroy(nk_surface s) {
     return nk_surface_destroy(s) == NK_OK
                ? NKGPU_OK
                : fail(NKGPU_ERROR_UNKNOWN, "destroy surface: %s", nk_last_error());
 }
-nkgpu_result nkgpu_renderer_create(nk_handle surface, nkgpu_renderer *out) {
+nkgpu_result nkgpu_renderer_create(nk_surface surface, nkgpu_renderer *out) {
     if (!surface || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid renderer arguments");
     if (active_renderer)
@@ -1036,6 +1036,7 @@ nkgpu_result nkgpu_pipeline_begin(nkgpu_renderer r, nkgpu_shader shader, uint32_
     b.owner = r;
     b.desc.shader = sh->value.object;
     b.desc.layout.buffers[0].stride = (int)stride;
+    b.desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     Handle h = pipeline_builder_pool.add(b);
     if (!h)
         return fail(NKGPU_ERROR_UNKNOWN, "builder pool full");

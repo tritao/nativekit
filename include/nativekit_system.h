@@ -55,7 +55,7 @@ enum NK_ENUM(nk_color_scheme) {
 /** Current system appearance reported by the attached platform. */
 typedef struct nk_system_appearance {
     /** Set to sizeof(nk_system_appearance) before the query. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Current platform color scheme. */
     nk_color_scheme color_scheme;
     /** Non-zero when the platform's high-contrast mode is enabled. */

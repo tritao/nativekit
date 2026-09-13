@@ -68,7 +68,7 @@ class Triangle {
 			.attribute(0, 0, 0, VertexFormat.Float2)
 			.attribute(1, 0, 8, VertexFormat.Float3)
 			.attribute(2, 0, 20, VertexFormat.Float2)
-			.depthStencil(false)
+			.depthStencil(true)
 			.indexType(IndexType.UInt16)
 			.build();
 
@@ -165,7 +165,7 @@ class Triangle {
 				peerRenderer.endFrame();
 				peerRenderer.dispose();
 
-				var target = RenderTarget.create(renderer, 32, 32);
+				var target = RenderTarget.create(renderer, 32, 32, true);
 				target.begin();
 				var endFrameRejected = false;
 				try renderer.endFrame() catch (_:Dynamic) endFrameRejected = true;

@@ -410,9 +410,9 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_pipeline_cull_mode(builder: nkgpu_pipeline_builder, mode: nkgpu_cull_mode, winding: nkgpu_face_winding) -> nkgpu_result;
 	/**
-	 * Configures depth/stencil compatibility for a pipeline. Disabled by default,
-	 * matching window passes; enable only when drawing to a target created with
-	 * depth/stencil storage.
+	 * Enables depth testing and writing for a pipeline. Pipelines target the window
+	 * pass depth/stencil format by default, with depth testing and writing disabled.
+	 * Call with `enabled = 0` when drawing to an offscreen target without depth storage.
 	 */
 	extern fn nkgpu_pipeline_depth_stencil(builder: nkgpu_pipeline_builder, enabled: u32) -> nkgpu_result;
 	/**
@@ -466,7 +466,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * `out_renderer`; all buffers, shaders, pipelines, images, samplers, and
 	 * builders created through it belong to that renderer.
 	 */
-	extern fn nkgpu_renderer_create(nativekit_surface: nk_handle, out_renderer: ptr<nkgpu_renderer> @out) -> nkgpu_result;
+	extern fn nkgpu_renderer_create(nativekit_surface: nk_surface, out_renderer: ptr<nkgpu_renderer> @out) -> nkgpu_result;
 	/**
 	 * Destroys a renderer and all resources still owned by it.
 	 *
@@ -561,20 +561,20 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * `out_surface`; destroy it with nkgpu_surface_destroy() after destroying its
 	 * renderer. This convenience call requests the build's default API.
 	 */
-	extern fn nkgpu_surface_create(nativekit_window: nk_handle, width: i32, height: i32, out_surface: ptr<nk_handle> @out) -> nkgpu_result;
+	extern fn nkgpu_surface_create(nativekit_window: nk_window, width: i32, height: i32, out_surface: ptr<nk_surface> @out) -> nkgpu_result;
 	/**
 	 * Creates a child surface with an explicit graphics API. The matching runtime
 	 * must be included in this build; with the backend matrix enabled, GLCore and
 	 * GLES3 surfaces can coexist.
 	 */
-	extern fn nkgpu_surface_create_for_api(nativekit_window: nk_handle, api: nk_graphics_api, width: i32, height: i32, out_surface: ptr<nk_handle> @out) -> nkgpu_result;
+	extern fn nkgpu_surface_create_for_api(nativekit_window: nk_window, api: nk_graphics_api, width: i32, height: i32, out_surface: ptr<nk_surface> @out) -> nkgpu_result;
 	/**
 	 * Destroys a GPU surface.
 	 *
 	 * Destroy the renderer first. The surface handle becomes invalid after this
 	 * call and must not be reused.
 	 */
-	extern fn nkgpu_surface_destroy(surface: nk_handle) -> nkgpu_result;
+	extern fn nkgpu_surface_destroy(surface: nk_surface) -> nkgpu_result;
 	/**
 	 * Requests a new size for a GPU surface.
 	 *
@@ -582,7 +582,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * positive. The framebuffer may have a different pixel size; begin each frame
 	 * with nkgpu_begin_frame() so the adapter can query the current framebuffer.
 	 */
-	extern fn nkgpu_surface_resize(surface: nk_handle, width: i32, height: i32) -> nkgpu_result;
+	extern fn nkgpu_surface_resize(surface: nk_surface, width: i32, height: i32) -> nkgpu_result;
 	/**
 	 * Starts a zero-initialized uniform byte block of `size` bytes.
 	 *

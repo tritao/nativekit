@@ -1,16 +1,15 @@
 package nativekit.gpu;
 
 import NativeKit.GraphicsApi;
-import NativeKit.Handle;
 
 /** Owns a GPU-adapter surface associated with a NativeKit window. */
 class Surface {
 	final window:NativeKitWindow;
 	final renderers:Array<Renderer> = [];
-	var value:Handle;
+	var value:NativeKit.SurfaceHandle;
 	var disposed:Bool = false;
 
-	private function new(window:NativeKitWindow, value:Handle) {
+	private function new(window:NativeKitWindow, value:NativeKit.SurfaceHandle) {
 		this.window = window;
 		this.value = value;
 		window.registerDependent(function() {
@@ -34,7 +33,7 @@ class Surface {
 		return new Surface(window, made.out_surface);
 	}
 
-	public function nativeHandle():Handle {
+	public function nativeHandle():NativeKit.SurfaceHandle {
 		ensureLive();
 		return value;
 	}

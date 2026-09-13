@@ -413,17 +413,17 @@ NKGPU_API nk_graphics_api nkgpu_query_graphics_api(nkgpu_renderer renderer);
  * `out_surface`; destroy it with nkgpu_surface_destroy() after destroying its
  * renderer. This convenience call requests the build's default API.
  */
-NKGPU_API nkgpu_result nkgpu_surface_create(nk_handle nativekit_window, int32_t width, int32_t height,
-                                      nk_handle *out_surface NKGPU_OUT);
+NKGPU_API nkgpu_result nkgpu_surface_create(nk_window nativekit_window, int32_t width, int32_t height,
+                                      nk_surface *out_surface NKGPU_OUT);
 
 /**
  * Creates a child surface with an explicit graphics API. The matching runtime
  * must be included in this build; with the backend matrix enabled, GLCore and
  * GLES3 surfaces can coexist.
  */
-NKGPU_API nkgpu_result nkgpu_surface_create_for_api(nk_handle nativekit_window, nk_graphics_api api,
+NKGPU_API nkgpu_result nkgpu_surface_create_for_api(nk_window nativekit_window, nk_graphics_api api,
                                               int32_t width, int32_t height,
-                                              nk_handle *out_surface NKGPU_OUT);
+                                              nk_surface *out_surface NKGPU_OUT);
 
 /**
  * Requests a new size for a GPU surface.
@@ -432,7 +432,7 @@ NKGPU_API nkgpu_result nkgpu_surface_create_for_api(nk_handle nativekit_window, 
  * positive. The framebuffer may have a different pixel size; begin each frame
  * with nkgpu_begin_frame() so the adapter can query the current framebuffer.
  */
-NKGPU_API nkgpu_result nkgpu_surface_resize(nk_handle surface, int32_t width, int32_t height);
+NKGPU_API nkgpu_result nkgpu_surface_resize(nk_surface surface, int32_t width, int32_t height);
 
 /**
  * Destroys a GPU surface.
@@ -440,7 +440,7 @@ NKGPU_API nkgpu_result nkgpu_surface_resize(nk_handle surface, int32_t width, in
  * Destroy the renderer first. The surface handle becomes invalid after this
  * call and must not be reused.
  */
-NKGPU_API nkgpu_result nkgpu_surface_destroy(nk_handle surface);
+NKGPU_API nkgpu_result nkgpu_surface_destroy(nk_surface surface);
 
 /**
  * Creates the GPU renderer for a ready NativeKit surface.
@@ -451,7 +451,7 @@ NKGPU_API nkgpu_result nkgpu_surface_destroy(nk_handle surface);
  * `out_renderer`; all buffers, shaders, pipelines, images, samplers, and
  * builders created through it belong to that renderer.
  */
-NKGPU_API nkgpu_result nkgpu_renderer_create(nk_handle nativekit_surface,
+NKGPU_API nkgpu_result nkgpu_renderer_create(nk_surface nativekit_surface,
                                        nkgpu_renderer *out_renderer NKGPU_OUT);
 
 /**
@@ -654,9 +654,9 @@ NKGPU_API nkgpu_result nkgpu_pipeline_attribute(nkgpu_pipeline_builder builder, 
                                           nkgpu_vertex_format format);
 
 /**
- * Configures depth/stencil compatibility for a pipeline. Disabled by default,
- * matching window passes; enable only when drawing to a target created with
- * depth/stencil storage.
+ * Enables depth testing and writing for a pipeline. Pipelines target the window
+ * pass depth/stencil format by default, with depth testing and writing disabled.
+ * Call with `enabled = 0` when drawing to an offscreen target without depth storage.
  */
 NKGPU_API nkgpu_result nkgpu_pipeline_depth_stencil(nkgpu_pipeline_builder builder, uint32_t enabled);
 

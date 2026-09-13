@@ -48,10 +48,10 @@ class NativeKitInputEvents {
 		case EventKind.PointerEnter: PointerEnter(c.source,c.flags!=0);
 		case EventKind.Touch: NativeKitEventBytes.requireSize(c.data,48); var v:TouchEvent=c.data; Touch(c.source,v.get_pointer_id(),v.get_action(),v.get_tool(),v.get_modifiers(),v.get_x(),v.get_y(),v.get_pressure(),v.get_tilt_x(),v.get_tilt_y());
 		case EventKind.JoystickAxis: NativeKitEventBytes.requireSize(c.data,8); var v:JoystickAxisEvent=c.data; JoystickAxis(c.source,v.get_axis(),v.get_value());
-		case EventKind.JoystickButton: NativeKitEventBytes.requireSize(c.data,8); var v:JoystickButtonEvent=c.data; JoystickButton(c.source,v.get_button(),v.get_pressed()!=0);
+		case EventKind.JoystickButton: NativeKitEventBytes.requireSize(c.data,8); var v:JoystickButtonEvent=c.data; JoystickButton(c.source,v.get_button(),v.get_pressed());
 		case EventKind.JoystickHat: NativeKitEventBytes.requireSize(c.data,8); var v:JoystickHatEvent=c.data; JoystickHat(c.source,v.get_hat(),v.get_value());
 		case EventKind.GamepadAxis: NativeKitEventBytes.requireSize(c.data,8); var v:GamepadAxisEvent=c.data; GamepadAxis(c.source,v.get_axis(),v.get_value());
-		case EventKind.GamepadButton: NativeKitEventBytes.requireSize(c.data,8); var v:GamepadButtonEvent=c.data; GamepadButton(c.source,v.get_button(),v.get_pressed()!=0);
+		case EventKind.GamepadButton: NativeKitEventBytes.requireSize(c.data,8); var v:GamepadButtonEvent=c.data; GamepadButton(c.source,v.get_button(),v.get_pressed());
 		default: null;
 	}
 }

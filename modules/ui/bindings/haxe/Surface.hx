@@ -13,7 +13,7 @@ class Surface {
 		return new Surface(handle);
 
 	public static function fromNativeSurface(surface:NativeKitSurface):Surface
-		return new Surface(surface.nativeHandle());
+		return new Surface(new Handle(surface.nativeHandle().rawValue()));
 
 	@:allow(Renderer)
 	@:allow(LayoutSession)

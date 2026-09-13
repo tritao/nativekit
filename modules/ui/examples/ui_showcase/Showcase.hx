@@ -5,6 +5,8 @@ import NativeKit.EventKind;
 import NativeKit.GraphicsApi;
 import NativeKit.InputAction;
 import NativeKit.Result;
+import NativeKit.Handle;
+import NativeKit.SurfaceHandle;
 import NativeKitEvent;
 import NativeKitEventValue;
 import NativeKitOptions;
@@ -583,11 +585,11 @@ class Showcase {
             replacedCaret.dispose();
     }
 
-    public function render(surface:Int, logicalWidth:Float, logicalHeight:Float,
+    public function render(surface:SurfaceHandle, logicalWidth:Float, logicalHeight:Float,
             framebufferWidth:Int, framebufferHeight:Int, pixelScale:Float):Void {
         frameInfo.set(logicalWidth, logicalHeight, framebufferWidth, framebufferHeight,
             pixelScale);
-        var target = Surface.fromNativeHandle(surface);
+        var target = Surface.fromNativeHandle(new Handle(surface.rawValue()));
         renderer.renderFrame(list, target, frameInfo);
         layoutSession.renderOverlay(renderer, target, frameInfo);
     }

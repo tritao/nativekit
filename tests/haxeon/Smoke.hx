@@ -110,10 +110,10 @@ class Smoke {
 		var monitorOk = primary.status == -4;
 		if (primary.status == 0) {
 			var name = NativeKit.nk_monitor_get_name(primary.out_monitor);
-			monitorOk = primary.out_monitor != 0 && name.status == 0 && name.buffer != null;
+			monitorOk = primary.out_monitor.isValid() && name.status == 0 && name.buffer != null;
 		}
 
-		var diagnosticOk = NativeKit.nk_window_destroy(0) == -3 && NativeKit.nk_last_error() != null;
+		var diagnosticOk = NativeKit.nk_window_destroy(NativeKit.WindowHandle.invalid()) == -3 && NativeKit.nk_last_error() != null;
 		runtime.dispose();
 		if (!eventOk)
 			return 3;

@@ -5,6 +5,8 @@ import NativeKit.GraphicsApi;
 import NativeKit.InputAction;
 import NativeKit.Result;
 import NativeKit.InitOptions;
+import NativeKit.WindowHandle;
+import NativeKit.SurfaceHandle;
 import NativeKit.SurfaceOptions;
 import NativeKit.SurfaceFlags;
 import NativeKitEventValue;
@@ -26,13 +28,12 @@ class ShowcaseDesktop {
                 return 2;
 
         var initialized = false;
-        var window:Int = 0;
-        var surface:Int = 0;
+        var window = WindowHandle.invalid();
+        var surface = SurfaceHandle.invalid();
         var app:Null<Showcase> = null;
         var result = 0;
         try {
             var init = new InitOptions();
-            init.set_struct_size(InitOptions.size());
             init.set_api_version(NativeKit.nk_api_version());
             init.set_event_queue_capacity(64);
             if (NativeKit.nk_init(init) != Result.Ok)
@@ -48,7 +49,6 @@ class ShowcaseDesktop {
             window = createdWindow.out_window;
 
             var surfaceOptions = new SurfaceOptions();
-            surfaceOptions.set_struct_size(SurfaceOptions.size());
             surfaceOptions.set_flags(SurfaceFlags.ForwardCompatible | SurfaceFlags.Stencil);
             surfaceOptions.set_api(GraphicsApi.Opengl);
             surfaceOptions.set_major_version(3);
@@ -86,14 +86,14 @@ class ShowcaseDesktop {
             var events = new NativeKitEvents();
             events.addListener(function(value) {
                 switch (value) {
-                    case WindowClose(source) if (source == window):
+                    case WindowClose(source) if (source.rawValue() == window.rawValue()):
                         running = false;
-                    case WindowResize(source, width, height) if (source == window):
+                    case WindowResize(source, width, height) if (source.rawValue() == window.rawValue()):
                         if (NativeKit.nk_surface_set_bounds(surface, 0, 0, width, height) !=
                             Result.Ok)
                             throw "surface resize failed";
                         app.setViewport(width, height);
-                    case SurfaceReady(source) if (source == surface):
+                    case SurfaceReady(source) if (source.rawValue() == surface.rawValue()):
                         ready = true;
                         var size = NativeKit.nk_surface_get_framebuffer_size(surface);
                         if (size.status != Result.Ok)
@@ -105,19 +105,19 @@ class ShowcaseDesktop {
                             throw "window scale query failed";
                         scale = windowScale.out_scale;
                     case SurfaceResize(source, width, height, newFramebufferWidth, newFramebufferHeight)
-                        if (source == surface):
+                        if (source.rawValue() == surface.rawValue()):
                         logicalWidth = width;
                         logicalHeight = height;
                         framebufferWidth = newFramebufferWidth;
                         framebufferHeight = newFramebufferHeight;
                         app.setViewport(logicalWidth, logicalHeight);
-                    case SurfaceLost(source) if (source == surface):
+                    case SurfaceLost(source) if (source.rawValue() == surface.rawValue()):
                         ready = false;
-                    case PointerMove(source, x, y) if (source == window):
+                    case PointerMove(source, x, y) if (source.rawValue() == window.rawValue()):
                         app.updatePointer(x, y);
-                    case PointerButton(source, _, action, _, x, y) if (source == window):
+                    case PointerButton(source, _, action, _, x, y) if (source.rawValue() == window.rawValue()):
                         app.pointerButton(x, y, action == InputAction.Press);
-                    case Key(source, key, _, action, _) if (source == window &&
+                    case Key(source, key, _, action, _) if (source.rawValue() == window.rawValue() &&
                             action == InputAction.Press && key == Key.Escape):
                         running = false;
                     case _:
@@ -168,9 +168,9 @@ class ShowcaseDesktop {
         }
         if (app != null)
             app.dispose();
-        if (surface != 0)
+        if (surface.isValid())
             NativeKit.nk_surface_destroy(surface);
-        if (window != 0)
+        if (window.isValid())
             NativeKit.nk_window_destroy(window);
         if (initialized)
             NativeKit.nk_shutdown();

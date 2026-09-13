@@ -37,7 +37,6 @@ class FrameInfo {
 	@:allow(Renderer)
 	@:allow(LayoutSession)
 	private function nativeValue():nkui_frame_info {
-		nativeFrame.set_struct_size(nkui_frame_info.size());
 		nativeFrame.set_logical_width(logicalWidth);
 		nativeFrame.set_logical_height(logicalHeight);
 		nativeFrame.set_framebuffer_width(framebufferWidth);

@@ -36,7 +36,7 @@ NK_API nk_bool NK_CALL nk_vulkan_supported(void);
  * The returned string pointers have process lifetime. Pass NULL to query count.
  */
 NK_API nk_result NK_CALL nk_vulkan_get_required_instance_extensions(
-    nk_handle window, const char **NK_NULLABLE extensions NK_OUT_UTF8_ARRAY(inout_count),
+    nk_window window, const char **NK_NULLABLE extensions NK_OUT_UTF8_ARRAY(inout_count),
     uint32_t *inout_count NK_INOUT);
 
 /* ------------------------------------------------------------------------- */
@@ -49,7 +49,7 @@ NK_API nk_result NK_CALL nk_vulkan_get_required_instance_extensions(
  * may point to VkAllocationCallbacks. The application owns the returned surface
  * and must destroy it before destroying the VkInstance.
  */
-NK_API nk_result NK_CALL nk_vulkan_create_surface(nk_handle window, void *instance,
+NK_API nk_result NK_CALL nk_vulkan_create_surface(nk_window window, void *instance,
                                                   const void *allocator,
                                                   nk_vulkan_surface *out_surface NK_OUT);
 /** Destroys an application-owned Vulkan surface before its VkInstance. */

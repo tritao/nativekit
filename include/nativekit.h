@@ -49,6 +49,8 @@
 #define NK_BORROWED_ARRAY(count_field)                                                             \
     __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
 #define NK_HANDLE __attribute__((annotate("hxi:handle")))
+#define NK_BOOL32 __attribute__((annotate("hxi:bool32")))
+#define NK_STRUCT_SIZE __attribute__((annotate("hxi:struct_size")))
 #define NK_NULLABLE _Nullable
 /* Keeps the C typedef as the ABI source of truth while naming the enum and its HXI projection. */
 #define NK_ENUM(name) __attribute__((annotate("hxi:enum:" #name))) name##_enum
@@ -68,6 +70,8 @@
 #define NK_BORROWED_BUFFER(length_field)
 #define NK_BORROWED_ARRAY(count_field)
 #define NK_HANDLE
+#define NK_BOOL32
+#define NK_STRUCT_SIZE
 #define NK_NULLABLE
 #define NK_ENUM(name) name##_enum
 #define NK_FLAGS(name) name##_flags_enum
@@ -102,6 +106,17 @@ enum {
 /** Sentinel meaning that an asynchronous request ID is not present. */
 #define NK_INVALID_REQUEST_ID ((nk_request_id)0)
 
+/* Typed resource identifiers. These aliases keep the same four-byte ABI as
+ * nk_handle while allowing HXI to preserve each resource kind nominally. */
+typedef uint32_t nk_window NK_HANDLE;
+typedef uint32_t nk_surface NK_HANDLE;
+typedef uint32_t nk_webview NK_HANDLE;
+typedef uint32_t nk_monitor NK_HANDLE;
+typedef uint32_t nk_cursor NK_HANDLE;
+typedef uint32_t nk_joystick NK_HANDLE;
+typedef uint32_t nk_mobile_host NK_HANDLE;
+typedef uint32_t nk_resource_stream NK_HANDLE;
+
 /** Opaque generation-checked identifier for a live NativeKit resource. */
 typedef uint32_t nk_handle NK_HANDLE;
 
@@ -118,7 +133,7 @@ typedef uint32_t nk_event_kind;
  * Boolean value used by the NativeKit ABI. Zero is false; non-zero input is
  * true; NativeKit normalizes boolean outputs to zero or one.
  */
-typedef uint32_t nk_bool;
+typedef uint32_t nk_bool NK_BOOL32;
 
 /* ------------------------------------------------------------------------- */
 /* Result codes                                                              */
@@ -277,7 +292,7 @@ enum NK_ENUM(nk_event_kind) {
 /** Options used to start one NativeKit runtime generation. */
 typedef struct nk_init_options {
     /** Size of this structure in bytes; must be at least sizeof(nk_init_options). */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** ABI version requested by the caller; normally NK_API_VERSION. */
     uint32_t api_version;
     /** Event queue capacity; zero selects the backend default. */
@@ -294,7 +309,7 @@ typedef struct nk_init_options {
  */
 typedef struct nk_event {
     /** Size of this structure in bytes; must be set before polling. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Event kind; use this to select the payload interpretation. */
     nk_event_kind kind;
     /** Originating resource handle, or NK_INVALID_HANDLE for global events. */

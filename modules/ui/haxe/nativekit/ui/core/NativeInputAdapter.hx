@@ -18,7 +18,7 @@ class NativeInputAdapter {
 	var pointerY:Float;
 
 	public function new(context:UiContext, source:Handle, ?accessibilitySource:Handle) {
-		if (context == null || source == 0)
+		if (context == null || !source.isValid())
 			throw "Native input requires a UI context and window handle";
 		this.context = context;
 		this.source = source;

@@ -23,12 +23,13 @@ import NativeKit.Resource;
 import NativeKit.ShareOptions;
 import NativeKit.WebviewOptions;
 import NativeKit.WindowOptions;
+import NativeKit.WindowHandle;
+import NativeKit.SurfaceHandle;
 
 /** Creates correctly sized NativeKit option structures with useful defaults. */
 class NativeKitOptions {
 	public static function init(?eventQueueCapacity:Int):InitOptions {
 		var value = new InitOptions();
-		value.set_struct_size(InitOptions.size());
 		value.set_api_version(NativeKitConstants.NK_API_VERSION);
 		value.set_event_queue_capacity(eventQueueCapacity == null ? 0 : eventQueueCapacity);
 		return value;
@@ -55,12 +56,11 @@ class NativeKitOptions {
 	public static function window(width:Int, height:Int, ?title:String, ?flags:WindowFlags,
 			?owner:NativeKitWindow, ?kind:WindowKind):WindowOptions {
 		var value = new WindowOptions();
-		value.set_struct_size(WindowOptions.size());
 		value.set_width(width);
 		value.set_height(height);
 		value.set_title(title);
 		value.set_flags(flags == null ? WindowFlags.Resizable : flags);
-		value.set_owner(owner == null ? 0 : owner.nativeHandle());
+		value.set_owner(owner == null ? WindowHandle.invalid() : owner.nativeHandle());
 		value.set_kind(kind == null ? WindowKind.Normal : kind);
 		return value;
 	}
@@ -68,7 +68,6 @@ class NativeKitOptions {
 	public static function surface(api:GraphicsApi, x:Int, y:Int, width:Int, height:Int,
 			?flags:SurfaceFlags, ?majorVersion:Int, ?minorVersion:Int, ?shareSurface:NativeKitSurface):SurfaceOptions {
 		var value = new SurfaceOptions();
-		value.set_struct_size(SurfaceOptions.size());
 		value.set_flags(flags == null ? 0 : flags);
 		value.set_api(api);
 		value.set_major_version(majorVersion == null ? 0 : majorVersion);
@@ -77,14 +76,13 @@ class NativeKitOptions {
 		value.set_y(y);
 		value.set_width(width);
 		value.set_height(height);
-		value.set_share_surface(shareSurface == null ? 0 : shareSurface.nativeHandle());
+		value.set_share_surface(shareSurface == null ? SurfaceHandle.invalid() : shareSurface.nativeHandle());
 		return value;
 	}
 
 	public static function webview(x:Int, y:Int, width:Int, height:Int,
 			?initialUrl:String, ?flags:WebviewFlags):WebviewOptions {
 		var value = new WebviewOptions();
-		value.set_struct_size(WebviewOptions.size());
 		value.set_x(x);
 		value.set_y(y);
 		value.set_width(width);
@@ -101,7 +99,6 @@ class NativeKitOptions {
 	static function rawFileDialog(?title:String, ?initialPath:String,
 		?suggestedName:String, ?flags:DialogFlags):FileDialogOptions {
 		var value = new FileDialogOptions();
-		value.set_struct_size(FileDialogOptions.size());
 		value.set_title(title);
 		value.set_initial_path(initialPath);
 		value.set_suggested_name(suggestedName);
@@ -112,7 +109,6 @@ class NativeKitOptions {
 	public static function messageDialog(message:String, ?title:String, ?kind:MessageKind,
 			?buttons:MessageButtons):MessageDialogOptions {
 		var value = new MessageDialogOptions();
-		value.set_struct_size(MessageDialogOptions.size());
 		value.set_message(message);
 		value.set_title(title);
 		value.set_kind(kind == null ? MessageKind.Info : kind);
@@ -123,7 +119,6 @@ class NativeKitOptions {
 	public static function resource(uri:String, ?mimeType:String, ?displayName:String,
 			?flags:ResourceFlags):Resource {
 		var value = new Resource();
-		value.set_struct_size(Resource.size());
 		value.set_uri(uri);
 		value.set_mime_type(mimeType);
 		value.set_display_name(displayName);
@@ -133,7 +128,6 @@ class NativeKitOptions {
 
 	public static function textShare(text:String, ?title:String):ShareOptions {
 		var value = new ShareOptions();
-		value.set_struct_size(ShareOptions.size());
 		value.set_text(text);
 		value.set_title(title);
 		value.set_flags(0);
@@ -144,7 +138,6 @@ class NativeKitOptions {
 	public static function resourceShare(resources:Array<Resource>, ?text:String,
 		?title:String):NativeKitShareOptions {
 		var options = new ShareOptions();
-		options.set_struct_size(ShareOptions.size());
 		options.set_text(text);
 		options.set_title(title);
 		options.set_flags(0);
@@ -157,7 +150,6 @@ class NativeKitOptions {
 	public static function notification(title:String, ?body:String, ?icon:String,
 			?timeoutMs:Int, ?flags:NotificationFlags):NotificationOptions {
 		var value = new NotificationOptions();
-		value.set_struct_size(NotificationOptions.size());
 		value.set_title(title);
 		value.set_body(body);
 		value.set_icon(icon);

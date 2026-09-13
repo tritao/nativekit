@@ -441,7 +441,7 @@ typedef struct nk_text_edit_event {
 /** State published by a custom editor to synchronize the platform IME. */
 typedef struct nk_text_input_state {
     /** Set to sizeof(nk_text_input_state) before calling NativeKit. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Text-input behavior requested from the platform IME. */
     nk_text_input_flags flags;
     /** NUL-terminated UTF-8 window into the document; null represents an empty window. */
@@ -598,7 +598,7 @@ enum NK_ENUM(nk_cursor_shape) {
 /** RGBA8 pixels used to create a custom cursor. */
 typedef struct nk_cursor_image {
     /** Set to sizeof(nk_cursor_image) before calling nk_cursor_create_custom. */
-    uint32_t struct_size;
+    uint32_t struct_size NK_STRUCT_SIZE;
     /** Image width in pixels. */
     int32_t width;
     /** Image height in pixels. */
@@ -633,48 +633,48 @@ enum NK_ENUM(nk_cursor_mode) {
 /* ------------------------------------------------------------------------- */
 
 /** On NK_OK, returns the current action state for a key. Call on the UI thread. */
-NK_API nk_result NK_CALL nk_key_get_state(nk_handle window, nk_key key,
+NK_API nk_result NK_CALL nk_key_get_state(nk_window window, nk_key key,
                                           nk_input_action *out_action);
 
 /** On NK_OK, returns the current action state of one pointer button. */
-NK_API nk_result NK_CALL nk_pointer_button_get_state(nk_handle window, nk_pointer_button button,
+NK_API nk_result NK_CALL nk_pointer_button_get_state(nk_window window, nk_pointer_button button,
                                                      nk_input_action *out_action);
 
 /** On NK_OK, returns the current pointer position in surface-local logical pixels. */
-NK_API nk_result NK_CALL nk_pointer_get_position(nk_handle window, double *out_x, double *out_y);
+NK_API nk_result NK_CALL nk_pointer_get_position(nk_window window, double *out_x, double *out_y);
 
 /**
  * Synchronizes a custom editor with the platform IME using absolute code-point positions.
  * Android and Web use a graphics-surface handle. Windows and macOS accept a window handle
  * because those backends do not yet expose graphics surfaces.
  */
-NK_API nk_result NK_CALL nk_surface_set_text_input_state(nk_handle surface,
+NK_API nk_result NK_CALL nk_surface_set_text_input_state(nk_handle target,
                                                          const nk_text_input_state *state);
 /** Activates or deactivates custom text input for the target surface or desktop window. */
-NK_API nk_result NK_CALL nk_surface_set_text_input_active(nk_handle surface, nk_bool active);
+NK_API nk_result NK_CALL nk_surface_set_text_input_active(nk_handle target, nk_bool active);
 
 /* ------------------------------------------------------------------------- */
 /* Cursor APIs                                                               */
 /* ------------------------------------------------------------------------- */
 
 /** Creates a standard platform cursor and returns its NativeKit handle. */
-NK_API nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_handle *out_cursor);
+NK_API nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_cursor *out_cursor);
 
 /** Creates a cursor from copied RGBA8 pixels, with the first row at the top. */
 NK_API nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image,
-                                                 nk_handle *out_cursor);
+                                                 nk_cursor *out_cursor);
 
 /** Destroys a cursor handle; a cursor already selected by a window remains usable. */
-NK_API nk_result NK_CALL nk_cursor_destroy(nk_handle cursor);
+NK_API nk_result NK_CALL nk_cursor_destroy(nk_cursor cursor);
 
 /** Selects a cursor for a window; NK_INVALID_HANDLE restores the platform default. */
-NK_API nk_result NK_CALL nk_window_set_cursor(nk_handle window, nk_handle cursor);
+NK_API nk_result NK_CALL nk_window_set_cursor(nk_window window, nk_cursor cursor);
 
 /** Changes how the window displays or captures the pointer. */
-NK_API nk_result NK_CALL nk_window_set_cursor_mode(nk_handle window, nk_cursor_mode mode);
+NK_API nk_result NK_CALL nk_window_set_cursor_mode(nk_window window, nk_cursor_mode mode);
 
 /** On NK_OK, returns the window's current pointer presentation mode. */
-NK_API nk_result NK_CALL nk_window_get_cursor_mode(nk_handle window, nk_cursor_mode *out_mode);
+NK_API nk_result NK_CALL nk_window_get_cursor_mode(nk_window window, nk_cursor_mode *out_mode);
 
 /** Returns non-zero when the active backend provides raw relative pointer motion. */
 NK_API nk_bool NK_CALL nk_raw_pointer_motion_supported(void);

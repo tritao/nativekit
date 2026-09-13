@@ -5,6 +5,8 @@
 	},
 	"typeNames": {
 		"nk_graphics_image": "NativeKit.GraphicsImage",
-		"nk_handle": "NativeKit.Handle"
+		"nk_handle": "NativeKit.Handle",
+		"nk_window": "NativeKit.WindowHandle",
+		"nk_surface": "NativeKit.SurfaceHandle"
 	}
 }

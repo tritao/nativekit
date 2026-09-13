@@ -652,7 +652,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		/**
 		 * Set to sizeof(nkui_frame_info) or a larger compatible structure size.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Width of the UI's logical coordinate space in logical pixels.
 		 */
@@ -698,7 +698,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		/**
 		 * Set to sizeof(nkui_layout_frame_input) or a larger compatible size.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		width: f32 @offset(4);
 		height: f32 @offset(8);
 		delta_seconds: f32 @offset(12);
@@ -710,7 +710,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		/**
 		 * Set to sizeof(nkui_layout_item) or a larger compatible size.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		node_id: u32 @offset(4);
 		flags: u32 @offset(8);
 		/**
@@ -751,7 +751,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		/**
 		 * Set to sizeof(nkui_paragraph_style) or a larger compatible structure size.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Explicit line height, or zero for the natural line height.
 		 */
@@ -805,7 +805,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		/**
 		 * Set to sizeof(nkui_renderer_stats) when returned by the API.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Number of NanoVG fill/stroke preparations performed after cache misses.
 		 */
@@ -897,7 +897,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		/**
 		 * Set to sizeof(nkui_text_caret) when returned by the API.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * X coordinate of the caret baseline origin.
 		 */
@@ -930,7 +930,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		/**
 		 * Set to sizeof(nkui_text_metrics) when returned by the API.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Left edge of the bounds in layout coordinates.
 		 */
@@ -968,7 +968,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		/**
 		 * Set to sizeof(nkui_text_rect) in the returned buffer.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		x: f32 @offset(4);
 		y: f32 @offset(8);
 		width: f32 @offset(12);
@@ -981,7 +981,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		/**
 		 * Set to sizeof(nkui_text_style) or a larger compatible structure size.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * Font role selected from the owning font collection.
 		 */
@@ -1002,7 +1002,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		/**
 		 * Set to sizeof(nkui_transaction_info) when returned by the API.
 		 */
-		struct_size: u32 @offset(0);
+		struct_size: u32 @offset(0) @struct_size;
 		/**
 		 * UI ABI version that produced this summary.
 		 */

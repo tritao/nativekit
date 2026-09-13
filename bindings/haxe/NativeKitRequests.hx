@@ -51,43 +51,43 @@ class NativeKitRequests {
 
 	public function openFile(parent:NativeKitWindow, configured:NativeKitFileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_open_file(parent.nativeHandle(), configured.options);
+		var started = NativeKit.nk_dialog_open_file(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured.options);
 		return trackDialog("open-file dialog", started.status, started.out_request, handler);
 	}
 
 	public function saveFile(parent:NativeKitWindow, configured:NativeKitFileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_save_file(parent.nativeHandle(), configured.options);
+		var started = NativeKit.nk_dialog_save_file(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured.options);
 		return trackDialog("save-file dialog", started.status, started.out_request, handler);
 	}
 
 	public function selectDirectory(parent:NativeKitWindow, configured:NativeKitFileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_select_directory(parent.nativeHandle(), configured.options);
+		var started = NativeKit.nk_dialog_select_directory(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured.options);
 		return trackDialog("directory dialog", started.status, started.out_request, handler);
 	}
 
 	public function openResource(parent:NativeKitWindow, configured:NativeKitFileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_open_resource(parent.nativeHandle(), configured.options);
+		var started = NativeKit.nk_dialog_open_resource(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured.options);
 		return trackResourceDialog("open-resource dialog", started.status, started.out_request, handler);
 	}
 
 	public function saveResource(parent:NativeKitWindow, configured:NativeKitFileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_save_resource(parent.nativeHandle(), configured.options);
+		var started = NativeKit.nk_dialog_save_resource(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured.options);
 		return trackResourceDialog("save-resource dialog", started.status, started.out_request, handler);
 	}
 
 	public function selectResourceDirectory(parent:NativeKitWindow, configured:NativeKitFileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_select_resource_directory(parent.nativeHandle(), configured.options);
+		var started = NativeKit.nk_dialog_select_resource_directory(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured.options);
 		return trackResourceDialog("resource-directory dialog", started.status, started.out_request, handler);
 	}
 
 	public function messageDialog(parent:NativeKitWindow, options:MessageDialogOptions,
 		handler:NativeKitRequestOutcome<MessageResult>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_message(parent.nativeHandle(), options);
+		var started = NativeKit.nk_dialog_message(new NativeKit.Handle(parent.nativeHandle().rawValue()), options);
 		checkStarted("message dialog", started.status);
 		track(started.out_request, function(value) switch value {
 			case DialogMessage(_, result, button):
