@@ -114,6 +114,32 @@ class WebSocket:
         return result.get("result", {}).get("value")
 
 
+def wait_for_page(debug_port, page_url, timeout):
+    deadline = time.monotonic() + timeout
+    endpoint_reachable = False
+    last_error = None
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{debug_port}/json/list", timeout=2
+            ) as response:
+                pages = json.load(response)
+            endpoint_reachable = True
+        except OSError as error:
+            last_error = error
+            time.sleep(0.1)
+            continue
+        page = next((item for item in pages if item.get("url") == page_url), None)
+        if page:
+            return page
+        time.sleep(0.1)
+    if not endpoint_reachable and last_error:
+        raise RuntimeError(
+            f"Chrome DevTools endpoint did not become available: {last_error}"
+        )
+    raise RuntimeError(f"Chrome page did not open: {page_url}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug-port", type=int, required=True)
@@ -126,18 +152,7 @@ def main():
     args = parser.parse_args()
 
     deadline = time.monotonic() + args.timeout
-    page = None
-    while time.monotonic() < deadline:
-        pages = json.load(
-            urllib.request.urlopen(f"http://127.0.0.1:{args.debug_port}/json/list")
-        )
-        page = next((item for item in pages if item.get("url") == args.page_url), None)
-        if page:
-            break
-        time.sleep(0.1)
-    if not page:
-        raise RuntimeError(f"Chrome page did not open: {args.page_url}")
-
+    page = wait_for_page(args.debug_port, args.page_url, args.timeout)
     websocket = WebSocket(page["webSocketDebuggerUrl"])
     try:
         websocket.command("Runtime.enable", {}, 8)

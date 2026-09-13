@@ -6,9 +6,8 @@ import json
 import os
 import platform
 import time
-import urllib.request
 
-from web_smoke import WebSocket
+from web_smoke import WebSocket, wait_for_page
 
 
 def host_environment():
@@ -49,18 +48,7 @@ def main():
     args = parser.parse_args()
 
     deadline = time.monotonic() + args.timeout
-    page = None
-    while time.monotonic() < deadline:
-        pages = json.load(
-            urllib.request.urlopen(f"http://127.0.0.1:{args.debug_port}/json/list")
-        )
-        page = next((item for item in pages if item.get("url") == args.page_url), None)
-        if page:
-            break
-        time.sleep(0.1)
-    if not page:
-        raise RuntimeError(f"Chrome page did not open: {args.page_url}")
-
+    page = wait_for_page(args.debug_port, args.page_url, args.timeout)
     websocket = WebSocket(page["webSocketDebuggerUrl"])
     # Core benchmarks intentionally block the page while the fixed frame batch runs.
     # The shared DevTools helper's 5-second connect timeout is too short for that read.

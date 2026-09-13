@@ -7,10 +7,9 @@ import json
 import pathlib
 import struct
 import time
-import urllib.request
 import zlib
 
-from web_smoke import WebSocket
+from web_smoke import WebSocket, wait_for_page
 
 
 def read_png(data, source):
@@ -125,16 +124,7 @@ def main():
     args = parser.parse_args()
 
     deadline = time.monotonic() + args.timeout
-    page = None
-    while time.monotonic() < deadline:
-        pages = json.load(urllib.request.urlopen(f"http://127.0.0.1:{args.debug_port}/json/list"))
-        page = next((item for item in pages if item.get("url") == args.page_url), None)
-        if page:
-            break
-        time.sleep(0.1)
-    if not page:
-        raise RuntimeError(f"Chrome page did not open: {args.page_url}")
-
+    page = wait_for_page(args.debug_port, args.page_url, args.timeout)
     websocket = WebSocket(page["webSocketDebuggerUrl"])
     websocket.socket.settimeout(args.timeout)
     try:
@@ -151,13 +141,11 @@ def main():
             except (OSError, RuntimeError):
                 websocket.close()
                 time.sleep(0.05)
-                pages = json.load(
-                    urllib.request.urlopen(f"http://127.0.0.1:{args.debug_port}/json/list")
+                page = wait_for_page(
+                    args.debug_port, args.page_url, max(0.1, deadline - time.monotonic())
                 )
-                page = next((item for item in pages if item.get("url") == args.page_url), None)
-                if page:
-                    websocket = WebSocket(page["webSocketDebuggerUrl"])
-                    websocket.socket.settimeout(args.timeout)
+                websocket = WebSocket(page["webSocketDebuggerUrl"])
+                websocket.socket.settimeout(args.timeout)
                 continue
             state = json.loads(value)
             if state["result"] and state["result"] != "0":

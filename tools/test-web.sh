@@ -52,11 +52,26 @@ page_url="http://127.0.0.1:${http_port}/nativekit_ui_c_api.html?smoke"
     "$page_url" >"$temp_dir/browser.log" 2>&1 &
 browser_pid=$!
 
-for _ in $(seq 1 100); do
+debug_ready=0
+for _ in $(seq 1 300); do
     if curl --silent --fail "http://127.0.0.1:${debug_port}/json/version" >/dev/null 2>&1; then
+        debug_ready=1
+        break
+    fi
+    if ! kill -0 "$browser_pid" 2>/dev/null; then
         break
     fi
     sleep 0.1
 done
+if [[ "$debug_ready" != 1 ]]; then
+    echo "Chrome DevTools endpoint did not become ready" >&2
+    cat "$temp_dir/browser.log" >&2 || true
+    cat "$temp_dir/http.log" >&2 || true
+    exit 1
+fi
 
-python3 "$repo_dir/tools/web_smoke.py" --debug-port "$debug_port" --page-url "$page_url"
+if ! python3 "$repo_dir/tools/web_smoke.py" --debug-port "$debug_port" --page-url "$page_url"; then
+    cat "$temp_dir/browser.log" >&2 || true
+    cat "$temp_dir/http.log" >&2 || true
+    exit 1
+fi
