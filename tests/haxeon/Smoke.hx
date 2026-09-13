@@ -1,8 +1,7 @@
 import NativeKit;
 import NativeKit.Result;
-import NativeKitEvent;
 import NativeKitEventValue;
-import NativeKitRequests;
+import NativeKitEvents;
 import NativeKitEventBytes;
 import NativeKitEventDecoderTests;
 import NativeKitTextInput;
@@ -30,22 +29,16 @@ class Smoke {
 		if (runtime.isDisposed())
 			return 2;
 
-		var empty = NativeKitEvent.poll();
-		var eventOk = switch empty.take() {
-			case None: empty.isReleased() && !empty.release();
-			case _: false;
-		};
-		try {
-			empty.payload();
-			eventOk = false;
-		} catch (_:Dynamic) {}
+		var events = runtime.events;
+		var eventOk = !events.poll();
 		try {
 			NativeKitEventBytes.decodeClipboardFiles(haxe.io.Bytes.alloc(4), 0);
 			eventOk = false;
 		} catch (_:Dynamic) {}
 		var payloadOk = true;
 		if (NativeKit.nk_clipboard_set_text("nativekit ffi") == Result.Ok) {
-			var completed = false, requests = new NativeKitRequests();
+			var completed = false, requestSeenByListener = false;
+			var requests = events.requests;
 			var request = requests.readClipboardText(function(outcome) {
 				payloadOk = switch outcome {
 					case Success(text): text == "nativekit ffi";
@@ -53,15 +46,21 @@ class Smoke {
 				};
 				completed = true;
 			});
+			events.addListener(function(value) switch value {
+				case ClipboardText(id, _, _) if (Std.string(id) == Std.string(request)):
+					requestSeenByListener = completed;
+				case _:
+			});
 			var duplicateRejected = false;
 			try requests.track(request, function(_) {}) catch (_:Dynamic) duplicateRejected = true;
 			payloadOk = payloadOk && duplicateRejected && requests.pending() == 1;
 			for (_ in 0...1000) {
-				requests.poll();
+				events.poll();
 				if (completed)
 					break;
 			}
-			payloadOk = payloadOk && completed && requests.pending() == 0 && !requests.cancel(request);
+			payloadOk = payloadOk && completed && requestSeenByListener && requests.pending() == 0
+				&& !requests.cancel(request);
 			payloadOk = payloadOk && requests.pending() == 0;
 		}
 		var fileArrayResult = NativeKit.nk_clipboard_set_files(["/tmp/nativekit-a", "/tmp/nativekit-b"]);

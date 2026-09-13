@@ -19,6 +19,7 @@ import NativeKit.TouchTool;
 import NativeKit.TextEditAction;
 import NativeKitEventValue;
 import NativeKitEventValue.NativeKitTextEdit;
+import NativeKitEvents;
 import NativeKitEventDecoderTests;
 import nativekit.ui.core.NativeInputAdapter;
 import nativekit.ui.core.State;
@@ -441,6 +442,18 @@ class FrameworkSmoke {
 		});
 		var source:NativeKit.Handle = 17;
 		var input = new NativeInputAdapter(context, source);
+		var eventPump = new NativeKitEvents();
+		var pumpEvents = 0;
+		eventPump.addListener(function(_) { pumpEvents++; });
+		input.attach(eventPump);
+		input.attach(eventPump);
+		eventPump.dispatch(PointerMove(source, 4.0, 4.0));
+		if (pumpEvents != 1 || hoverEnters != 1)
+			return 101;
+		input.detach();
+		eventPump.dispatch(PointerEnter(source, false));
+		if (pumpEvents != 2 || hoverLeaves != 0)
+			return 102;
 		var pastedText = "";
 		var clipboardRequestInt = 49;
 		var clipboardRequest:haxe.Int64 = clipboardRequestInt;

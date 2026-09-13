@@ -22,11 +22,12 @@ can parse them.
 
 ## Typed events
 
-`NativeKitEvent.poll()` owns the returned native event. Call `release()` when
-inspecting it manually, or prefer `take()`, which decodes and releases it in one
-operation. Release is idempotent. Any `Bytes` returned by `payload()` and all
-values returned by `decode()` are copies and remain valid after release.
-`snapshot()` returns the immutable managed context used by domain decoders.
+`NativeKitRuntime.events` is the managed owner of the native event queue. Each
+`events.poll()` performs one native poll, decodes and releases that event, routes
+request completions, then notifies event listeners. It returns `false` when the
+queue is empty, so an application can drain events with `while (events.poll())`.
+The low-level `NativeKitEvent` wrapper still provides `release()`, `take()`,
+`payload()`, and `snapshot()` for code that already owns a raw event value.
 
 Known WebView, notification, dialog, clipboard, and drop payloads project to typed
 `NativeKitEventValue` cases. Unknown kinds project to `Raw`, preserving metadata
@@ -48,13 +49,18 @@ UTF-8 inputs are marked in the authoritative C headers with `NK_UTF8` or
 `NK_NULLABLE_UTF8`. The importer projects these annotations to managed Haxe
 strings, so the binding import header does not redeclare public functions.
 
-`NativeKitRequests` maps request IDs to one-shot typed completion callbacks.
+`NativeKitRequests` is a request registry owned by the event pump; it never polls
+the native queue. Access it as `runtime.events.requests`. The Haxe UI
+`NativeInputAdapter` can attach to the same pump with `attach(events)` and stop
+receiving events with `detach()`.
+
+Request IDs map to one-shot typed completion callbacks.
 Callbacks receive `Success(value)`, `Cancelled`, or `Failure(result, message)`;
 dialogs use `Cancelled` when dismissed. Expected asynchronous failures are
-delivered as values instead of being thrown from `poll()`. Synchronous failures
-to start a request still throw with the NativeKit diagnostic. `poll()` decodes
-and releases the native event before invoking a matching handler; `cancel()`
-only removes local tracking and does not cancel native work.
+delivered as values instead of being thrown from event polling. Synchronous
+failures to start a request still throw with the NativeKit diagnostic. The pump
+releases each event before invoking request handlers or application listeners;
+`cancel()` only removes local tracking and does not cancel native work.
 
 Run the end-to-end smoke test with:
 

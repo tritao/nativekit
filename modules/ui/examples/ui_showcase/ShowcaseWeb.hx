@@ -2,7 +2,6 @@ import NativeKit;
 import NativeKit.Key;
 import NativeKit.Handle;
 import NativeKit.NativeKitConstants;
-import NativeKit.EventKind;
 import NativeKit.GraphicsApi;
 import NativeKit.InputAction;
 import NativeKit.Key;
@@ -10,13 +9,14 @@ import NativeKit.Result;
 import NativeKit.InitOptions;
 import NativeKit.SurfaceOptions;
 import NativeKit.SurfaceFlags;
-import NativeKitEvent;
 import NativeKitEventValue;
+import NativeKitEvents;
 import NativeKitOptions;
 
 /** Browser host entry points for the Haxeon Showcase wasm guest. */
 class ShowcaseWeb {
     static var app:Null<Showcase>;
+    static var events:Null<NativeKitEvents>;
     static var initialized = false;
     static var running = false;
     static var ready = false;
@@ -98,6 +98,8 @@ class ShowcaseWeb {
             } catch (error:Dynamic) {
                 return fail(22);
             }
+            events = new NativeKitEvents();
+            events.addListener(handleEvent);
             running = true;
             return 0;
         } catch (error:Dynamic) {
@@ -110,63 +112,9 @@ class ShowcaseWeb {
         if (!running)
             return 0;
         try {
-            var eventKind = EventKind.None;
-            while (running) {
-                var event = NativeKitEvent.poll();
-                var context = event.snapshot();
-                var value:NativeKitEventValue = event.kind == EventKind.None
-                    ? None
-                    : NativeKitEvent.decodeContext(context);
-                eventKind = event.kind;
-                event.release();
-
-                // The browser backend emits surface-ready as a native event with no
-                // payload; keep the explicit value mapping at this host boundary.
-                if (eventKind == EventKind.SurfaceReady)
-                    value = SurfaceReady(event.source);
-
-                switch (value) {
-                    case WindowClose(source) if (source == window):
-                        running = false;
-                    case WindowResize(source, width, height) if (source == window):
-                        if (NativeKit.nk_surface_set_bounds(surface, 0, 0, width, height) != Result.Ok)
-                            return -fail(13);
-                    case WindowScaleChanged(source, newScale) if (source == window):
-                        scale = newScale;
-                    case SurfaceReady(source) if (source == surface):
-                        if (NativeKit.nk_surface_make_current(surface) != Result.Ok)
-                            return -fail(14);
-                        var size = NativeKit.nk_surface_get_framebuffer_size(surface);
-                        if (size.status != Result.Ok)
-                            return -fail(15);
-                        framebufferWidth = size.out_width;
-                        framebufferHeight = size.out_height;
-                        var windowScale = NativeKit.nk_window_get_scale(window);
-                        if (windowScale.status != Result.Ok)
-                            return -fail(16);
-                        scale = windowScale.out_scale;
-                        ready = framebufferWidth > 0 && framebufferHeight > 0;
-                    case SurfaceResize(source, width, height, newFramebufferWidth, newFramebufferHeight)
-                        if (source == surface):
-                        logicalWidth = width;
-                        logicalHeight = height;
-                        framebufferWidth = newFramebufferWidth;
-                        framebufferHeight = newFramebufferHeight;
-                        ready = framebufferWidth > 0 && framebufferHeight > 0;
-                    case SurfaceLost(source) if (source == surface):
-                        ready = false;
-                    case PointerMove(source, x, y) if (source == window && app != null):
-                        app.updatePointer(x, y);
-                    case PointerButton(source, _, action, _, x, y) if (source == window && app != null):
-                        app.pointerButton(x, y, action == InputAction.Press);
-                    case Key(source, key, _, action, _) if (source == window &&
-                            action == InputAction.Press && key == Key.Escape):
-                        running = false;
-                    default:
-                }
-                if (eventKind == EventKind.None)
-                    break;
-            }
+            while (running && events != null && events.poll()) {}
+            if (result != 0)
+                return -result;
 
             if (running && ready && app != null) {
                 if (benchmarkScenario == 3)
@@ -205,6 +153,7 @@ class ShowcaseWeb {
     public static function shutdown():Void {
         running = false;
         ready = false;
+        events = null;
         if (app != null)
             app.dispose();
         app = null;
@@ -224,5 +173,55 @@ class ShowcaseWeb {
             result = code;
         running = false;
         return result;
+    }
+
+    static function handleEvent(value:NativeKitEventValue):Void {
+        switch (value) {
+            case WindowClose(source) if (source == window):
+                running = false;
+            case WindowResize(source, width, height) if (source == window):
+                if (NativeKit.nk_surface_set_bounds(surface, 0, 0, width, height) != Result.Ok) {
+                    fail(13);
+                    return;
+                }
+            case WindowScaleChanged(source, newScale) if (source == window):
+                scale = newScale;
+            case SurfaceReady(source) if (source == surface):
+                if (NativeKit.nk_surface_make_current(surface) != Result.Ok) {
+                    fail(14);
+                    return;
+                }
+                var size = NativeKit.nk_surface_get_framebuffer_size(surface);
+                if (size.status != Result.Ok) {
+                    fail(15);
+                    return;
+                }
+                framebufferWidth = size.out_width;
+                framebufferHeight = size.out_height;
+                var windowScale = NativeKit.nk_window_get_scale(window);
+                if (windowScale.status != Result.Ok) {
+                    fail(16);
+                    return;
+                }
+                scale = windowScale.out_scale;
+                ready = framebufferWidth > 0 && framebufferHeight > 0;
+            case SurfaceResize(source, width, height, newFramebufferWidth, newFramebufferHeight)
+                if (source == surface):
+                logicalWidth = width;
+                logicalHeight = height;
+                framebufferWidth = newFramebufferWidth;
+                framebufferHeight = newFramebufferHeight;
+                ready = framebufferWidth > 0 && framebufferHeight > 0;
+            case SurfaceLost(source) if (source == surface):
+                ready = false;
+            case PointerMove(source, x, y) if (source == window && app != null):
+                app.updatePointer(x, y);
+            case PointerButton(source, _, action, _, x, y) if (source == window && app != null):
+                app.pointerButton(x, y, action == InputAction.Press);
+            case Key(source, key, _, action, _) if (source == window &&
+                    action == InputAction.Press && key == Key.Escape):
+                running = false;
+            case _:
+        }
     }
 }

@@ -5,12 +5,15 @@ import NativeKit.InputAction;
 import NativeKit.TouchAction;
 import NativeKit.WindowStateFlags;
 import NativeKitEventValue;
+import NativeKitEvents;
 
 /** Routes decoded NativeKit window input into one Haxe UiContext. */
 class NativeInputAdapter {
 	final context:UiContext;
 	final source:Handle;
 	final accessibilitySource:Handle;
+	var attachedEvents:Null<NativeKitEvents>;
+	final eventListener:NativeKitEventValue->Void;
 	var pointerX:Float;
 	var pointerY:Float;
 
@@ -20,8 +23,29 @@ class NativeInputAdapter {
 		this.context = context;
 		this.source = source;
 		this.accessibilitySource = accessibilitySource == null ? source : accessibilitySource;
+		attachedEvents = null;
+		eventListener = function(event) { consume(event); };
 		pointerX = 0.0;
 		pointerY = 0.0;
+	}
+
+	/** Subscribes this adapter to the runtime's shared event pump. */
+	public function attach(events:NativeKitEvents):Void {
+		if (events == null)
+			throw "Native input requires a NativeKit event pump";
+		if (attachedEvents == events)
+			return;
+		detach();
+		events.addListener(eventListener);
+		attachedEvents = events;
+	}
+
+	/** Stops routing events from the attached pump. */
+	public function detach():Void {
+		if (attachedEvents == null)
+			return;
+		attachedEvents.removeListener(eventListener);
+		attachedEvents = null;
 	}
 
 	/** Consumes recognized input for this window; other event kinds/sources pass through. */

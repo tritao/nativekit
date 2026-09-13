@@ -1,4 +1,3 @@
-import NativeKitEvent;
 import NativeKitEventValue;
 import NativeKit;
 import NativeKit.MessageDialogOptions;
@@ -119,15 +118,17 @@ class NativeKitRequests {
 	public function cancel(request:haxe.Int64):Bool
 		return handlers.remove(Std.string(request));
 
-	/** Polls, decodes, releases, and dispatches one terminal request event. */
-	public function poll():NativeKitEventValue {
-		var event = NativeKitEvent.poll(), value = event.take(), key = Std.string(event.request);
+	/** Routes a decoded event to its matching one-shot request handler. */
+	public function handle(value:NativeKitEventValue):Bool {
+		var key = requestKey(value);
+		if (key == null)
+			return false;
 		var handler = handlers.get(key);
-		if (handler != null) {
-			handlers.remove(key);
-			handler(value);
-		}
-		return value;
+		if (handler == null)
+			return false;
+		handlers.remove(key);
+		handler(value);
+		return true;
 	}
 
 	public function pending():Int {
@@ -157,6 +158,22 @@ class NativeKitRequests {
 			case _: wrongEvent(name);
 		});
 		return request;
+	}
+
+	static function requestKey(value:NativeKitEventValue):Null<String> {
+		var key:Null<String> = switch value {
+			case ClipboardText(id, _, _): Std.string(id);
+			case ClipboardFiles(id, _, _): Std.string(id);
+			case DialogPaths(id, _, _, _): Std.string(id);
+			case DialogMessage(id, _, _): Std.string(id);
+			case WebViewEvaluation(_, id, _, _): Std.string(id);
+			case WebViewNavigationRequest(_, id, _): Std.string(id);
+			case NotificationActivated(id, _): Std.string(id);
+			case NotificationFailed(id, _): Std.string(id);
+			case Resources(_, id, _, _, _): Std.string(id);
+			case _: null;
+		};
+		return key == "0" ? null : key;
 	}
 
 	static function checkStarted(name:String, result:Result):Void

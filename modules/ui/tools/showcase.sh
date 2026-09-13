@@ -48,6 +48,7 @@ fi
     "$repo_dir/bindings/haxe/GraphicsImageRef.hx" \
     "$module_dir/bindings/haxe/"*.hx \
     "$repo_dir/bindings/haxe/NativeKitEvent.hx" \
+    "$repo_dir/bindings/haxe/NativeKitEvents.hx" \
     "$repo_dir/bindings/haxe/NativeKitEventValue.hx" \
     "$repo_dir/bindings/haxe/NativeKitEventContext.hx" \
     "$repo_dir/bindings/haxe/NativeKitEventBytes.hx" \
@@ -55,7 +56,12 @@ fi
     "$repo_dir/bindings/haxe/NativeKitInputEvents.hx" \
     "$repo_dir/bindings/haxe/NativeKitServiceEvents.hx" \
     "$repo_dir/bindings/haxe/NativeKitResourceEvents.hx" \
-    "$repo_dir/bindings/haxe/NativeKitOptions.hx")
+    "$repo_dir/bindings/haxe/NativeKitOptions.hx" \
+    "$repo_dir/bindings/haxe/NativeKitRequests.hx" \
+    "$repo_dir/bindings/haxe/NativeKitRequestOutcome.hx" \
+    "$repo_dir/bindings/haxe/NativeKitResult.hx" \
+    "$repo_dir/bindings/haxe/NativeKitWindow.hx" \
+    "$repo_dir/bindings/haxe/NativeKitWebView.hx")
 
 echo "showcase: built $artifact"
 if [[ "$build_only" == true ]]; then

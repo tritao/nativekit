@@ -1,16 +1,14 @@
 import NativeKit;
 import NativeKit.Key;
 import NativeKit.NativeKitConstants;
-import NativeKit.EventKind;
 import NativeKit.GraphicsApi;
 import NativeKit.InputAction;
-import NativeKit.Key;
 import NativeKit.Result;
 import NativeKit.InitOptions;
 import NativeKit.SurfaceOptions;
 import NativeKit.SurfaceFlags;
-import NativeKitEvent;
 import NativeKitEventValue;
+import NativeKitEvents;
 import NativeKitOptions;
 
 /** Desktop frame-loop host for the shared Showcase scene. */
@@ -85,12 +83,8 @@ class ShowcaseDesktop {
             var nextFrameAt:Float = started;
             app.setViewport(logicalWidth, logicalHeight);
 
-            while (running) {
-                var event = NativeKitEvent.poll();
-                var value = event.decode();
-                var eventKind = event.kind;
-                var eventSource = event.source;
-                event.release();
+            var events = new NativeKitEvents();
+            events.addListener(function(value) {
                 switch (value) {
                     case WindowClose(source) if (source == window):
                         running = false;
@@ -126,8 +120,12 @@ class ShowcaseDesktop {
                     case Key(source, key, _, action, _) if (source == window &&
                             action == InputAction.Press && key == Key.Escape):
                         running = false;
-                    default:
+                    case _:
                 }
+            });
+
+            while (running) {
+                var hadEvent = events.poll();
 
                 if (ready && running) {
                     if (!staticFrame && !smoke) {
@@ -153,7 +151,7 @@ class ShowcaseDesktop {
                         if (nextFrameAt < afterFrame)
                             nextFrameAt = afterFrame;
                     }
-                } else if (eventKind == EventKind.None) {
+                } else if (!hadEvent) {
                     Sys.sleep(0.002);
                 }
             }

@@ -4,13 +4,17 @@ import NativeKit.WindowOptions;
 import NativeKitOptions;
 import NativeKitResult;
 import NativeKitWindow;
+import NativeKitEvents;
 
 /** Owns one initialized NativeKit generation and all windows created through it. */
 class NativeKitRuntime {
 	final windows:Array<NativeKitWindow> = [];
+	public final events:NativeKitEvents;
 	var disposed:Bool = false;
 
-	private function new() {}
+	private function new() {
+		events = new NativeKitEvents();
+	}
 
 	public static function start(?options:InitOptions):NativeKitRuntime {
 		var configured = options == null ? NativeKitOptions.init() : options;

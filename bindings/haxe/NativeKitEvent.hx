@@ -29,16 +29,6 @@ class NativeKitEvent {
 		released = false;
 	}
 
-	/** Polls one event. `None` is represented as an owned empty event. */
-	public static function poll():NativeKitEvent {
-		var event = new Event();
-		event.set_struct_size(Event.size());
-		var polled = NativeKit.nk_poll_event(event);
-		if (polled.status != 0)
-			throw 'NativeKit event poll failed: ${polled.status}';
-		return new NativeKitEvent(polled.event);
-	}
-
 	/** Copies the native payload. The returned bytes remain valid after release. */
 	public function payload():haxe.io.Bytes {
 		ensureOpen();

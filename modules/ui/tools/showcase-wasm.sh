@@ -104,6 +104,7 @@ compiler_args=(
 	"$repo_dir/bindings/haxe/GraphicsImageRef.hx"
 	"$module_dir/bindings/haxe/"*.hx
 	"$repo_dir/bindings/haxe/NativeKitEvent.hx"
+	"$repo_dir/bindings/haxe/NativeKitEvents.hx"
 	"$repo_dir/bindings/haxe/NativeKitEventValue.hx"
 	"$repo_dir/bindings/haxe/NativeKitEventContext.hx"
 	"$repo_dir/bindings/haxe/NativeKitEventBytes.hx"
@@ -112,6 +113,11 @@ compiler_args=(
 	"$repo_dir/bindings/haxe/NativeKitServiceEvents.hx"
 	"$repo_dir/bindings/haxe/NativeKitResourceEvents.hx"
 	"$repo_dir/bindings/haxe/NativeKitOptions.hx"
+	"$repo_dir/bindings/haxe/NativeKitRequests.hx"
+	"$repo_dir/bindings/haxe/NativeKitRequestOutcome.hx"
+	"$repo_dir/bindings/haxe/NativeKitResult.hx"
+	"$repo_dir/bindings/haxe/NativeKitWindow.hx"
+	"$repo_dir/bindings/haxe/NativeKitWebView.hx"
 )
 if [[ ${NATIVEKIT_HAXEON_MEMORY_STATS:-0} == 1 ]]; then
 	compiler_args+=(--wasm-memory-stats)

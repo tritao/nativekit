@@ -1,14 +1,14 @@
 import NativeKit;
-import NativeKit.EventKind;
 import NativeKit.GraphicsApi;
 import NativeKit.Result;
-import NativeKit.Event;
 import NativeKit.InitOptions;
 import NativeKit.SurfaceOptions;
 import NativeKit.WindowOptions;
 import NativeKit.WindowFlags;
 import NativeKit.SurfaceFlags;
 import haxe.io.Bytes;
+import NativeKitEvents;
+import NativeKitEventValue;
 
 class Transaction {
 	static function main():Int {
@@ -109,19 +109,13 @@ class Transaction {
 		var ready = false;
 		var rendered = 0;
 		var attempts = 0;
+		var events = new NativeKitEvents();
+		events.addListener(function(value) switch value {
+			case SurfaceReady(source) if (source == surface): ready = true;
+			case _:
+		});
 		while (rendered < 3 && attempts < 120) {
-			var event = new Event();
-			var eventBytes:Bytes = event;
-			for (index in 0...Event.size()) eventBytes.set(index, 0);
-			event.set_struct_size(Event.size());
-			var polled = NativeKit.nk_poll_event(event);
-			if (polled.status != Result.Ok)
-				return 14;
-			var eventKind = polled.event.get_kind();
-			var eventSource = polled.event.get_source();
-			NativeKit.nk_event_release(polled.event);
-			if (eventKind == EventKind.SurfaceReady && eventSource == surface)
-				ready = true;
+			events.poll();
 			if (ready) {
 				var size = NativeKit.nk_surface_get_framebuffer_size(surface);
 				if (size.status != Result.Ok || size.out_width <= 0 ||

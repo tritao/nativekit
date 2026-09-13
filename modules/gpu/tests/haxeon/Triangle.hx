@@ -1,6 +1,5 @@
-import NativeKit.EventKind;
 import NativeKit.GraphicsApi;
-import NativeKitEvent;
+import NativeKitEventValue;
 import NativeKitOptions;
 import NativeKitRuntime;
 import NativeKitWindow;
@@ -129,16 +128,20 @@ class Triangle {
 		var immediateMs = 0.0;
 		var batchedMs = 0.0;
 		var commandBuffer:Null<CommandBuffer> = null;
+		var surfaceReady = false;
+		runtime.events.addListener(function(value) switch value {
+			case WindowClose(source)
+				if (source.rawValue() == window.nativeHandle().rawValue()):
+				running = false;
+			case SurfaceReady(source)
+				if (source.rawValue() == surface.nativeHandle().rawValue()):
+				surfaceReady = true;
+			case _:
+		});
 
 		while (running) {
-			var event = NativeKitEvent.poll();
-			var eventKind = event.kind;
-			var eventSource = event.source;
-			event.release();
-			if (eventKind == EventKind.WindowClose && eventSource.rawValue() == window.nativeHandle().rawValue())
-				running = false;
-			if (!ready && eventKind == EventKind.SurfaceReady
-				&& eventSource.rawValue() == surface.nativeHandle().rawValue()) {
+			runtime.events.poll();
+			if (!ready && surfaceReady) {
 				renderer = surface.createRenderer();
 				commandBuffer = renderer.commandBuffer(64);
 

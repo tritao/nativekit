@@ -44,6 +44,7 @@ fi
     "$module_dir/bindings/haxe/nativekit/gpu/RenderTarget.hx" \
     "$nativekit_dir/bindings/haxe/GraphicsImageRef.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEvent.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitEvents.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEventValue.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEventContext.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEventBytes.hx" \
@@ -51,7 +52,13 @@ fi
     "$nativekit_dir/bindings/haxe/NativeKitInputEvents.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitServiceEvents.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitResourceEvents.hx" \
-    "$nativekit_dir/bindings/haxe/NativeKitOptions.hx")
+    "$nativekit_dir/bindings/haxe/NativeKitOptions.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitRequests.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitRequestOutcome.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitResult.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitWindow.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitWebView.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitRuntime.hx")
 
 set +e
 (cd "$haxeon_dir/out" && \
