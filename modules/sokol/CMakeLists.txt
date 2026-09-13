@@ -6,6 +6,7 @@ target_include_directories(nativekit_sokol
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE "${PROJECT_SOURCE_DIR}/src" "${NK_VENDOR_DIR}/sokol"
+        "${PROJECT_SOURCE_DIR}/src/graphics/sokol"
         ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
 target_compile_definitions(nativekit_sokol PUBLIC ${NK_SOKOL_COMPILE_DEFINITION})
 target_link_libraries(nativekit_sokol PRIVATE NativeKit::nativekit)
@@ -34,7 +35,7 @@ if(NK_BUILD_SOKOL_BACKEND_MATRIX AND NK_BUILD_TESTS)
     add_executable(nativekit_sokol_runtime_matrix_test tests/runtime_matrix.c)
     target_include_directories(nativekit_sokol_runtime_matrix_test PRIVATE
         "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/sokol"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src")
+        "${PROJECT_SOURCE_DIR}/src/graphics/sokol")
     target_link_libraries(nativekit_sokol_runtime_matrix_test PRIVATE
         nativekit_sokol_runtime_glcore nativekit_sokol_runtime_gles3)
     add_test(NAME nativekit_sokol_runtime_matrix
@@ -45,7 +46,7 @@ endif()
 if(NK_BUILD_EXAMPLES)
     add_executable(nativekit_sokol_triangle examples/triangle.c)
     target_include_directories(nativekit_sokol_triangle PRIVATE
-        "${NK_VENDOR_DIR}/sokol" "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${NK_VENDOR_DIR}/sokol" "${PROJECT_SOURCE_DIR}/src/graphics/sokol"
         ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
     target_compile_definitions(nativekit_sokol_triangle PRIVATE ${NK_SOKOL_COMPILE_DEFINITION})
     target_link_libraries(nativekit_sokol_triangle PRIVATE NativeKit::nativekit

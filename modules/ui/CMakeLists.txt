@@ -58,7 +58,7 @@ target_include_directories(nativekit_ui
     PRIVATE src)
 target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/sokol")
 target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/clay")
-target_include_directories(nativekit_ui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src")
+target_include_directories(nativekit_ui PRIVATE "${PROJECT_SOURCE_DIR}/src/graphics/sokol")
 target_include_directories(nativekit_ui PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_include_directories(nativekit_ui PRIVATE "${NKUI_SHADER_GENERATED_DIR}")
 target_link_libraries(nativekit_ui PRIVATE NativeKit::nativekit nkui_skribidi nkui_nanovg_core
@@ -141,11 +141,18 @@ if(NK_BUILD_TESTS)
         src/prepare/system_fonts.cpp
         src/render/graphics_device.cpp
         src/render/sokol_backend.cpp)
+    target_sources(nativekit_ui_sokol_backend_mesh_test PRIVATE
+        "${NKUI_TOOLCHAIN_PROBE_SHADER}"
+        "${NKUI_PATH_SHADER}"
+        "${NKUI_SOLID_SHADER}"
+        "${NKUI_TEXT_SHADER}"
+        "${NKUI_COMPOSITE_SHADER}"
+        "${NKUI_SURFACE_MESH_SHADER}")
     target_compile_features(nativekit_ui_sokol_backend_mesh_test PRIVATE cxx_std_20)
     target_include_directories(nativekit_ui_sokol_backend_mesh_test PRIVATE
         src "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/src"
         "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src" ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
+        "${PROJECT_SOURCE_DIR}/src/graphics/sokol" ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
     target_link_libraries(nativekit_ui_sokol_backend_mesh_test PRIVATE
         NativeKit::nativekit nkui_nanovg_core nkui_skribidi nativekit_sokol_runtime)
     add_test(NAME nativekit_ui_sokol_backend_mesh COMMAND nativekit_ui_sokol_backend_mesh_test)
@@ -223,7 +230,7 @@ if(NK_BUILD_TESTS)
         target_include_directories(nativekit_ui_sokol_backend_smoke_test PRIVATE
             src "${PROJECT_SOURCE_DIR}/src" "${NK_VENDOR_DIR}/sokol"
             "${NKUI_SHADER_GENERATED_DIR}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src")
+            "${PROJECT_SOURCE_DIR}/src/graphics/sokol")
         target_compile_definitions(nativekit_ui_sokol_backend_smoke_test PRIVATE
             NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf"
             NKUI_TEST_COLOR_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/NotoColorEmoji-Regular.ttf")
@@ -238,13 +245,17 @@ if(NK_BUILD_TESTS)
             target_link_libraries(nativekit_ui_sokol_backend_smoke_test PRIVATE
                 NativeKit::sokol)
         endif()
-        add_executable(nativekit_ui_public_renderer_smoke_test tests/public_renderer_smoke.cpp)
-        target_compile_definitions(nativekit_ui_public_renderer_smoke_test PRIVATE
-            NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
-        target_link_libraries(nativekit_ui_public_renderer_smoke_test PRIVATE
-            NativeKit::ui NativeKit::nativekit ${NK_SOKOL_GRAPHICS_LIBRARIES})
-        target_compile_definitions(nativekit_ui_public_renderer_smoke_test PRIVATE
-            ${NK_SOKOL_COMPILE_DEFINITION})
+        if(TARGET NativeKit::sokol)
+            add_executable(nativekit_ui_public_renderer_smoke_test
+                tests/public_renderer_smoke.cpp)
+            target_compile_definitions(nativekit_ui_public_renderer_smoke_test PRIVATE
+                NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+            target_link_libraries(nativekit_ui_public_renderer_smoke_test PRIVATE
+                NativeKit::ui NativeKit::nativekit NativeKit::sokol
+                ${NK_SOKOL_GRAPHICS_LIBRARIES})
+            target_compile_definitions(nativekit_ui_public_renderer_smoke_test PRIVATE
+                ${NK_SOKOL_COMPILE_DEFINITION})
+        endif()
         find_program(NKUI_BACKEND_XVFB_RUN xvfb-run)
         if(NKUI_BACKEND_XVFB_RUN)
             add_test(NAME nativekit_ui_sokol_backend_smoke
@@ -254,13 +265,15 @@ if(NK_BUILD_TESTS)
                 LABELS "graphics;ui"
                 TIMEOUT 15
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
-            add_test(NAME nativekit_ui_public_renderer_smoke
-                COMMAND ${NKUI_BACKEND_XVFB_RUN} -a
-                    $<TARGET_FILE:nativekit_ui_public_renderer_smoke_test>)
-            set_tests_properties(nativekit_ui_public_renderer_smoke PROPERTIES
-                LABELS "graphics;ui"
-                TIMEOUT 15
-                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+            if(TARGET nativekit_ui_public_renderer_smoke_test)
+                add_test(NAME nativekit_ui_public_renderer_smoke
+                    COMMAND ${NKUI_BACKEND_XVFB_RUN} -a
+                        $<TARGET_FILE:nativekit_ui_public_renderer_smoke_test>)
+                set_tests_properties(nativekit_ui_public_renderer_smoke PROPERTIES
+                    LABELS "graphics;ui"
+                    TIMEOUT 15
+                    ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+            endif()
         endif()
     endif()
 endif()
@@ -425,7 +438,7 @@ if(NK_BUILD_EXAMPLES)
     endif()
 endif()
 
-if(NK_BUILD_SOKOL_BACKEND_MATRIX AND NK_BUILD_TESTS)
+if(NK_BUILD_SOKOL AND NK_BUILD_SOKOL_BACKEND_MATRIX AND NK_BUILD_TESTS)
     add_executable(nativekit_ui_sokol_backend_matrix_smoke_test
         tests/sokol_backend_matrix_smoke.cpp
         src/display_list/display_list.cpp
@@ -445,7 +458,7 @@ if(NK_BUILD_SOKOL_BACKEND_MATRIX AND NK_BUILD_TESTS)
     target_include_directories(nativekit_ui_sokol_backend_matrix_smoke_test PRIVATE
         src "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/src"
         "${NK_VENDOR_DIR}/sokol" "${NKUI_SHADER_GENERATED_DIR}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../sokol/src" ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
+        "${PROJECT_SOURCE_DIR}/src/graphics/sokol" ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
     target_compile_definitions(nativekit_ui_sokol_backend_matrix_smoke_test PRIVATE
         NKUI_SOKOL_RUNTIME_MATRIX=1)
     target_link_libraries(nativekit_ui_sokol_backend_matrix_smoke_test PRIVATE
