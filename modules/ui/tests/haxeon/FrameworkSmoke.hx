@@ -30,11 +30,14 @@ import nativekit.ui.semantics.AccessibilityBridge;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.AccessibilityRequest;
+import nativekit.ui.semantics.Semantics;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.Align;
+import nativekit.ui.widgets.Checkbox;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Padding;
+import nativekit.ui.widgets.ProgressBar;
 import nativekit.ui.widgets.Row;
 import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollView;
@@ -42,6 +45,8 @@ import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TextEditorState;
 import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.Spacer;
+import nativekit.ui.widgets.Slider;
+import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Utf8Text;
 
 class FrameworkSmoke {
@@ -175,6 +180,61 @@ class FrameworkSmoke {
 		var rightTextGeometry:ResolvedLayoutItem = cast spacerRoot.children[2].resolved;
 		if (spacerGeometry.width <= 0.0 || rightTextGeometry.x <= leftTextGeometry.x)
 			return 53;
+		var checkboxChanged = false;
+		var checkbox = new Checkbox("check-smoke", "Remember", false,
+			function(next) { checkboxChanged = next; });
+		var checkboxRoot = context.submit(checkbox, new LayoutFrame(256.0, 192.0));
+		var checkboxSemantics:Semantics = cast checkboxRoot.semantics;
+		if (checkboxSemantics == null || checkboxSemantics.role != AccessibilityRole.Checkbox ||
+			(checkboxSemantics.states & AccessibilityState.Checked) != 0 ||
+			!context.focusWidget(checkboxRoot.id))
+			return 54;
+		context.key(UiEventKind.KeyDown, UiKey.Space);
+		if (!checkbox.checked || !checkboxChanged ||
+			(checkboxSemantics.states & AccessibilityState.Checked) == 0)
+			return 55;
+		var toggleChanged = false;
+		var toggle = new Toggle("toggle-smoke", "Enabled", false,
+			function(next) { toggleChanged = next; });
+		var toggleRoot = context.submit(toggle, new LayoutFrame(256.0, 192.0));
+		var toggleSemantics:Semantics = cast toggleRoot.semantics;
+		var toggleGeometry:ResolvedLayoutItem = cast toggleRoot.resolved;
+		context.pointerDown(toggleGeometry.x + toggleGeometry.width * 0.5,
+			toggleGeometry.y + toggleGeometry.height * 0.5, 0);
+		context.pointerUp(toggleGeometry.x + toggleGeometry.width * 0.5,
+			toggleGeometry.y + toggleGeometry.height * 0.5, 0);
+		if (!toggle.checked || !toggleChanged || toggleSemantics.role != AccessibilityRole.Checkbox)
+			return 56;
+		var sliderChanged = 0.0;
+		var slider = new Slider("slider-smoke", "Level", 0.5, 0.0, 1.0, 0.1,
+			function(next) { sliderChanged = next; });
+		var sliderRoot = context.submit(slider, new LayoutFrame(256.0, 192.0));
+		var sliderSemantics:Semantics = cast sliderRoot.semantics;
+		if (sliderSemantics == null || sliderSemantics.role != AccessibilityRole.Slider ||
+			!context.focusWidget(sliderRoot.id))
+			return 57;
+		context.key(UiEventKind.KeyDown, UiKey.Right);
+		if (slider.value < 0.59 || slider.value > 0.61 || sliderChanged != slider.value)
+			return 58;
+		if (!context.accessibilityAction(sliderRoot.id.value, AccessibilityRequest.SetValue,
+			"0.8", -1, -1, 1) || slider.value < 0.79 || slider.value > 0.81)
+			return 59;
+		sliderRoot = context.submit(slider, new LayoutFrame(256.0, 192.0));
+		var sliderGeometry:ResolvedLayoutItem = cast sliderRoot.resolved;
+		var sliderY = sliderGeometry.y + sliderGeometry.height * 0.5;
+		var pointerValue = 0.25;
+		var sliderX = sliderGeometry.x + 10.0 + (sliderGeometry.width - 20.0) * pointerValue;
+		context.pointerDown(sliderX, sliderY, 0);
+		context.pointerUp(sliderX, sliderY, 0);
+		if (slider.value < 0.29 || slider.value > 0.31)
+			return 60;
+		var progressRoot = context.submit(new ProgressBar("progress-smoke", 0.75,
+			0.0, 1.0, "Transfer"), new LayoutFrame(256.0, 192.0));
+		var progressSemantics:Semantics = cast progressRoot.semantics;
+		if (progressSemantics == null || progressSemantics.role != AccessibilityRole.Group ||
+			(progressSemantics.states & AccessibilityState.ReadOnly) == 0 ||
+			progressSemantics.numericValue != 0.75)
+			return 61;
 		if (!NativeKitEventDecoderTests.run())
 			return 27;
 		var frame = new LayoutFrame(256.0, 192.0);
