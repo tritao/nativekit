@@ -29,10 +29,13 @@ class Button implements View {
 		var node = new RenderNode(context.id("button"), LayoutVisualKind.Box, style);
 		node.focusable = true;
 		node.enabled = enabled;
-		if (enabled && onClick != null)
-			node.on(UiEventKind.Click, function(_:UiEvent) {
+		if (enabled && onClick != null) {
+			var activate = function(_:UiEvent) {
 				onClick();
-			});
+			};
+			node.on(UiEventKind.Click, activate);
+			node.on(UiEventKind.Activate, activate);
+		}
 		var labelNode = context.withScope(new Key("label"), function() {
 			var text = new RenderNode(context.id("label"), LayoutVisualKind.Text);
 			text.layout.text = label;

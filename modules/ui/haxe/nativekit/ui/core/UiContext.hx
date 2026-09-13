@@ -102,19 +102,44 @@ class UiContext {
 		dispatchFocusChange(previous, null);
 	}
 
-	public function pointerMove(x:Float, y:Float, modifiers:Int = 0):Void {
+	/** Clears transient pointer state and reports loss of platform window focus. */
+	public function windowFocusLost():Void {
 		ensureLive();
-		events.pointerMove(x, y, modifiers);
+		events.cancelPointers();
+		var previous = focus.focusedId;
+		if (previous != null)
+			events.focusEvent(previous, UiEventKind.FocusLost);
+		focus.focus(null);
+		dispatchFocusChange(previous, null);
 	}
 
-	public function pointerDown(x:Float, y:Float, button:Int, modifiers:Int = 0):Void {
+	public function pointerMove(x:Float, y:Float, modifiers:Int = 0,
+			pointerId:Int = 0, data:Dynamic = null):Void {
 		ensureLive();
-		events.pointerDown(x, y, button, modifiers);
+		events.pointerMove(x, y, modifiers, pointerId, data);
 	}
 
-	public function pointerUp(x:Float, y:Float, button:Int, modifiers:Int = 0):Void {
+	public function pointerDown(x:Float, y:Float, button:Int, modifiers:Int = 0,
+			pointerId:Int = 0, data:Dynamic = null):Void {
 		ensureLive();
-		events.pointerUp(x, y, button, modifiers);
+		events.pointerDown(x, y, button, modifiers, pointerId, data);
+	}
+
+	public function pointerUp(x:Float, y:Float, button:Int, modifiers:Int = 0,
+			pointerId:Int = 0, data:Dynamic = null):Void {
+		ensureLive();
+		events.pointerUp(x, y, button, modifiers, pointerId, data);
+	}
+
+	public function pointerCancel(pointerId:Int, x:Float, y:Float,
+			modifiers:Int = 0, data:Dynamic = null):Void {
+		ensureLive();
+		events.pointerCancel(pointerId, x, y, modifiers, data);
+	}
+
+	public function pointerLeave(pointerId:Int = 0):Void {
+		ensureLive();
+		events.clearPointer(pointerId);
 	}
 
 	public function scroll(x:Float, y:Float, deltaX:Float, deltaY:Float, modifiers:Int = 0):Void {
@@ -122,9 +147,9 @@ class UiContext {
 		events.scroll(x, y, deltaX, deltaY, modifiers);
 	}
 
-	public function key(kind:String, key:Int, modifiers:Int = 0):Void {
+	public function key(kind:String, key:Int, modifiers:Int = 0, scancode:Int = 0):Void {
 		ensureLive();
-		events.key(kind, key, modifiers);
+		events.key(kind, key, modifiers, scancode);
 	}
 
 	public function text(kind:String, value:Null<String>, data:Dynamic = null):Void {

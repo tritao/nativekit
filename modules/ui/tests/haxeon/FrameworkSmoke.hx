@@ -4,9 +4,19 @@ import LayoutAxis;
 import LayoutDirection;
 import LayoutFrame;
 import LayoutStyle;
+import NativeKit.InputAction;
+import NativeKit.TouchAction;
+import NativeKit.TouchTool;
+import NativeKit.TextEditAction;
+import NativeKitEventValue;
+import NativeKitEventValue.NativeKitTextEdit;
+import nativekit.ui.core.NativeInputAdapter;
 import nativekit.ui.core.State;
 import nativekit.ui.core.UiContext;
 import nativekit.ui.core.UiEventKind;
+import nativekit.ui.core.UiKey;
+import nativekit.ui.core.UiModifier;
+import nativekit.ui.core.UiTouchData;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
@@ -27,6 +37,17 @@ class FrameworkSmoke {
 		var clicks = 0;
 		var bubbled = 0;
 		var captured = 0;
+		var scrollEvents = 0;
+		var keyEvents = 0;
+		var repeatEvents = 0;
+		var hoverEnters = 0;
+		var hoverLeaves = 0;
+		var cancelEvents = 0;
+		var focusLostEvents = 0;
+		var blurEvents = 0;
+		var touchPressure = 0.0;
+		var committedText = "";
+		var editSeen = false;
 
 		function makeView(buttonEnabled:Bool = true):Column {
 			var style = new LayoutStyle();
@@ -38,6 +59,7 @@ class FrameworkSmoke {
 			button.enabled = buttonEnabled;
 			return new Column("main", [
 				new KeyedView("increment", button),
+				new KeyedView("next", new Button("Next")),
 				new KeyedView("status", new Text("Ready", null, Color.rgba(1.0, 1.0, 1.0, 1.0)))
 			], style);
 		}
@@ -52,7 +74,7 @@ class FrameworkSmoke {
 		var buttonNode = root.children[0];
 		var initialId = buttonNode.id;
 		var state:State<Int> = context.buildContext.state(buttonNode.id, 0);
-		if (root.children.length != 2 || buttonNode.resolved == null ||
+		if (root.children.length != 3 || buttonNode.resolved == null ||
 			!buttonNode.focusable || !buttonNode.resolved.hitTest(4.0, 4.0) || context.isDirty())
 			return 3;
 
@@ -72,13 +94,99 @@ class FrameworkSmoke {
 			context.focus.focusedId == null || !context.focus.focusedId.equals(initialId))
 			return 6;
 
+		buttonNode.on(UiEventKind.Scroll, function(_) {
+			scrollEvents++;
+		});
+		buttonNode.on(UiEventKind.KeyDown, function(event) {
+			if (event.key == UiKey.Enter && event.scancode == 28)
+				keyEvents++;
+		});
+		buttonNode.on(UiEventKind.KeyRepeat, function(_) {
+			repeatEvents++;
+		});
+		buttonNode.on(UiEventKind.HoverEnter, function(_) {
+			hoverEnters++;
+		});
+		buttonNode.on(UiEventKind.HoverLeave, function(_) {
+			hoverLeaves++;
+		});
+		buttonNode.on(UiEventKind.PointerDown, function(event) {
+			if (event.pointerId != 0 && event.data != null) {
+				var touchData:UiTouchData = cast event.data;
+				touchPressure = touchData.pressure;
+			}
+		});
+		buttonNode.on(UiEventKind.PointerCancel, function(_) {
+			cancelEvents++;
+		});
+		buttonNode.on(UiEventKind.FocusLost, function(_) {
+			focusLostEvents++;
+		});
+		buttonNode.on(UiEventKind.Blur, function(_) {
+			blurEvents++;
+		});
+		buttonNode.on(UiEventKind.TextInput, function(event) {
+			committedText = event.text;
+		});
+		buttonNode.on(UiEventKind.TextEdit, function(event) {
+			editSeen = event.data != null && event.text == "compose";
+		});
+		var source:NativeKit.Handle = 17;
+		var input = new NativeInputAdapter(context, source);
+		if (input.consume(PointerMove(18, 4.0, 4.0)))
+			return 12;
+		if (!input.consume(PointerMove(source, 4.0, 4.0)) || hoverEnters == 0 ||
+			!input.consume(PointerScroll(source, 1.5, -24.0)) || scrollEvents != 1)
+			return 13;
+		if (!input.consume(PointerButton(source, 0, InputAction.Press, 0, 4.0, 4.0)) ||
+			!input.consume(PointerButton(source, 0, InputAction.Release, 0, 4.0, 4.0)) || clicks != 2)
+			return 14;
+		if (!input.consume(Key(source, UiKey.Enter, 28, InputAction.Press, 0)) ||
+			!input.consume(Key(source, UiKey.Enter, 28, InputAction.Repeat, 0)) ||
+			keyEvents != 1 || repeatEvents != 1 || clicks != 3)
+			return 15;
+		var nextId = root.children[1].id;
+		if (!input.consume(Key(source, UiKey.Tab, 15, InputAction.Press, 0)) ||
+			context.focus.focusedId == null || !context.focus.focusedId.equals(nextId) ||
+			!input.consume(Key(source, UiKey.Tab, 15, InputAction.Press, UiModifier.Shift)) ||
+			context.focus.focusedId == null || !context.focus.focusedId.equals(initialId))
+			return 24;
+		if (!input.consume(TextInput(source, 0x1f642)) || committedText != "🙂")
+			return 16;
+		var edit = new NativeKitTextEdit(TextEditAction.Compose, "compose", 0, 0,
+			0, 0, 0, 7);
+		if (!input.consume(TextEdit(source, edit)) || !editSeen)
+			return 17;
+		if (!input.consume(PointerEnter(source, false)) || hoverLeaves == 0)
+			return 18;
+		if (!input.consume(Touch(source, 3, TouchAction.Begin, TouchTool.Finger,
+			0, 4.0, 4.0, 0.75, 0.0, 0.0)) ||
+			!input.consume(Touch(source, 3, TouchAction.End, TouchTool.Finger,
+			0, 4.0, 4.0, 0.0, 0.0, 0.0)) || clicks != 4 || touchPressure != 0.75)
+			return 19;
+		input.consume(Touch(source, 4, TouchAction.Begin, TouchTool.Finger,
+			0, 4.0, 4.0, 0.5, 0.0, 0.0));
+		input.consume(Touch(source, 4, TouchAction.Cancel, TouchTool.Finger,
+			0, 4.0, 4.0, 0.0, 0.0, 0.0));
+		if (cancelEvents != 1 || clicks != 4)
+			return 20;
+		input.consume(WindowStateChanged(source, 0));
+		if (focusLostEvents != 1 || blurEvents != 2 || context.focus.focusedId != null)
+			return 21;
+
 		context.clearFocus();
 		context.focusNext();
 		if (context.focus.focusedId == null || !context.focus.focusedId.equals(initialId))
 			return 7;
+		context.focusNext();
+		if (context.focus.focusedId == null || !context.focus.focusedId.equals(nextId))
+			return 22;
+		context.focusPrevious();
+		if (context.focus.focusedId == null || !context.focus.focusedId.equals(initialId))
+			return 23;
 		context.pointerDown(4.0, 4.0, 0);
 		context.pointerUp(500.0, 500.0, 0);
-		if (clicks != 1)
+		if (clicks != 4)
 			return 8;
 
 		var sharedStyle = new LayoutStyle();
@@ -92,12 +200,12 @@ class FrameworkSmoke {
 			return 10;
 		context.pointerDown(4.0, 4.0, 0);
 		context.pointerUp(4.0, 4.0, 0);
-		if (clicks != 1)
+		if (clicks != 4)
 			return 11;
 
 		context.dispose();
 		fonts.dispose();
-		Sys.println("PASS: Haxe views, stable IDs, state, events, hit testing, and focus");
+		Sys.println("PASS: Haxe framework and NativeKit pointer, touch, keyboard, and text input routing");
 		return 0;
 	}
 }

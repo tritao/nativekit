@@ -10,10 +10,13 @@ class UiEventKind {
 	public static inline var KeyDown:String = "keyDown";
 	public static inline var KeyUp:String = "keyUp";
 	public static inline var KeyRepeat:String = "keyRepeat";
+	public static inline var Activate:String = "activate";
 	public static inline var TextInput:String = "textInput";
 	public static inline var TextEdit:String = "textEdit";
 	public static inline var HoverEnter:String = "hoverEnter";
 	public static inline var HoverLeave:String = "hoverLeave";
 	public static inline var Focus:String = "focus";
+	public static inline var FocusLost:String = "focusLost";
 	public static inline var Blur:String = "blur";
+	public static inline var PointerCancel:String = "pointerCancel";
 }
