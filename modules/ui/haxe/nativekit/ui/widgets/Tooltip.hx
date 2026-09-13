@@ -34,7 +34,7 @@ class Tooltip implements View {
 			var state:State<Bool> = context.state(context.id("visible"), false);
 			var tooltipStyle = new LayoutStyle();
 			tooltipStyle.padding = new Insets(6.0, 6.0, 4.0, 4.0);
-			tooltipStyle.background = Color.rgba(0.08, 0.09, 0.11, 0.96);
+			tooltipStyle.background = context.theme.tooltipBackground;
 			var tooltip = new AnonymousTooltipContent(content, tooltipStyle);
 			var stack = new Stack("layers", [
 				new StackChild("anchor", anchor, 0.0, 0.0, 0),

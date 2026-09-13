@@ -68,13 +68,11 @@ class BinaryControl implements View {
 			indicatorStyle.width = LayoutAxis.fixed(toggle ? 34.0 : 19.0);
 			indicatorStyle.height = LayoutAxis.fixed(toggle ? 19.0 : 19.0);
 			if (!toggle) {
-				indicatorStyle.background = checked ? Color.rgba(0.18, 0.43, 0.82, 1.0) :
-					Color.rgba(0.16, 0.18, 0.22, 1.0);
+				indicatorStyle.background = context.theme.controlColor(checked, enabled);
 				indicatorStyle.radiusTopLeft = indicatorStyle.radiusTopRight = 4.0;
 				indicatorStyle.radiusBottomLeft = indicatorStyle.radiusBottomRight = 4.0;
 			} else {
-				indicatorStyle.background = checked ? Color.rgba(0.18, 0.55, 0.35, 1.0) :
-					Color.rgba(0.24, 0.26, 0.3, 1.0);
+				indicatorStyle.background = context.theme.controlColor(checked, enabled);
 				indicatorStyle.radiusTopLeft = indicatorStyle.radiusTopRight = 10.0;
 				indicatorStyle.radiusBottomLeft = indicatorStyle.radiusBottomRight = 10.0;
 			}
@@ -99,7 +97,7 @@ class BinaryControl implements View {
 			node.add(indicator);
 			var labelNode = new RenderNode(context.id("label"), LayoutVisualKind.Text);
 			labelNode.layout.text = label;
-			labelNode.layout.textColor = Color.rgba(0.95, 0.96, 0.98, 1.0);
+			labelNode.layout.textColor = context.theme.textColor(enabled);
 			node.add(labelNode);
 
 			var invalidation:State<Bool> = context.state(node.id, checked);

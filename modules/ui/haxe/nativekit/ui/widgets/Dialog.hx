@@ -55,7 +55,7 @@ class Dialog implements View {
 			backdropStyle.width = LayoutAxis.grow();
 			backdropStyle.height = LayoutAxis.grow();
 			backdropStyle.positioning = LayoutPositioning.Absolute;
-			backdropStyle.background = Color.rgba(0.0, 0.0, 0.0, 0.48);
+			backdropStyle.background = context.theme.overlayBackdrop;
 			var backdrop = new RenderNode(context.id("backdrop"), LayoutVisualKind.Box,
 				backdropStyle);
 			if (dismissOnOutside && hasDismissHandler)
@@ -78,7 +78,7 @@ class Dialog implements View {
 			panelStyle.width = LayoutAxis.fixed(width);
 			panelStyle.padding = new Insets(24.0, 24.0, 24.0, 24.0);
 			panelStyle.childGap = 16.0;
-			panelStyle.background = Color.rgba(0.13, 0.14, 0.17, 1.0);
+			panelStyle.background = context.theme.panelBackground;
 			panelStyle.radiusTopLeft = panelStyle.radiusTopRight = 8.0;
 			panelStyle.radiusBottomLeft = panelStyle.radiusBottomRight = 8.0;
 			var panel = new RenderNode(context.id("dialog-panel"), LayoutVisualKind.Box,
@@ -87,6 +87,7 @@ class Dialog implements View {
 				var heading = context.withScope(new Key("title"), function() {
 					var node = new RenderNode(context.id("heading"), LayoutVisualKind.Text);
 					node.layout.text = title;
+					node.layout.textColor = context.theme.text;
 					node.semantics = new Semantics(AccessibilityRole.Heading, title);
 					return node;
 				});

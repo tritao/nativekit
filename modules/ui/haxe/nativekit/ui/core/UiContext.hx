@@ -14,6 +14,7 @@ import nativekit.ui.semantics.AccessibilityBridge;
 import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRequest;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.theme.Theme;
 
 /** Owns the frame-local render tree and the Haxe-side UI subsystems. */
 class UiContext {
@@ -32,12 +33,12 @@ class UiContext {
 	var accessibilitySurface:Null<NativeKitSurface>;
 	public final textInput:TextInputBridge;
 
-	public function new(?session:LayoutSession, ?fonts:FontCollection) {
+	public function new(?session:LayoutSession, ?fonts:FontCollection, ?theme:Theme) {
 		this.session = session == null ? LayoutSession.create() : session;
 		stateStore = new StateStore();
 		clipboard = new ClipboardService();
 		textInput = new TextInputBridge();
-		buildContext = new BuildContext(stateStore, fonts, textInput, clipboard);
+		buildContext = new BuildContext(stateStore, fonts, textInput, clipboard, theme);
 		if (fonts != null)
 			this.session.setFonts(fonts);
 		focus = new FocusManager();
@@ -58,6 +59,12 @@ class UiContext {
 			throw "UI context requires a live font collection";
 		session.setFonts(fonts);
 		buildContext.setFonts(fonts);
+	}
+
+	/** Sets the palette used by subsequent view builds. */
+	public function setTheme(theme:Theme):Void {
+		ensureLive();
+		buildContext.setTheme(theme);
 	}
 
 	/** Attaches the host surface used by platform text-input synchronization. */

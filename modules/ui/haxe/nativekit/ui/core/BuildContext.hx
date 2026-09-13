@@ -2,6 +2,7 @@ package nativekit.ui.core;
 
 import FontCollection;
 import NativeKitSurface;
+import nativekit.ui.theme.Theme;
 
 /** Frame-local identity scopes backed by a persistent UiContext state store. */
 class BuildContext {
@@ -10,11 +11,12 @@ class BuildContext {
 	public var platformSurface(default, null):Null<NativeKitSurface>;
 	public final textInput:TextInputBridge;
 	public final clipboard:ClipboardService;
+	public var theme(default, null):Theme;
 	final claimed:Map<Int, String>;
 	var scope:KeyScope;
 
 	public function new(stateStore:StateStore, ?fonts:FontCollection, ?textInput:TextInputBridge,
-			?clipboard:ClipboardService) {
+			?clipboard:ClipboardService, ?theme:Theme) {
 		if (stateStore == null)
 			throw "Build context requires a state store";
 		this.stateStore = stateStore;
@@ -22,8 +24,16 @@ class BuildContext {
 		platformSurface = null;
 		this.textInput = textInput == null ? new TextInputBridge() : textInput;
 		this.clipboard = clipboard == null ? new ClipboardService() : clipboard;
+		this.theme = theme == null ? new Theme() : theme;
 		claimed = new Map();
 		scope = new KeyScope();
+	}
+
+	/** Replaces the palette used by subsequently built widgets. */
+	public function setTheme(theme:Theme):Void {
+		if (theme == null)
+			throw "Build context requires a theme";
+		this.theme = theme;
 	}
 
 	/** Provides the font collection used by text-layout-backed widgets. */

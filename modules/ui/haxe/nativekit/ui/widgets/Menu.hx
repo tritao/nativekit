@@ -40,7 +40,7 @@ class Menu implements View {
 					item.onSelect();
 				if (hasDismissHandler)
 					onDismiss();
-			});
+			}, item.key);
 			button.enabled = item.enabled;
 			children.push(new KeyedView(item.key, button));
 		}

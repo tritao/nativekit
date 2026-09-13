@@ -63,6 +63,7 @@ import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualList;
+import nativekit.ui.theme.Theme;
 
 class FrameworkSmoke {
 	static function main():Int {
@@ -639,6 +640,40 @@ class FrameworkSmoke {
 		tooltipGeometry = cast tooltipRoot.children[1].resolved;
 		if (tooltipGeometry.visible)
 			return 78;
+
+		var theme = new Theme();
+		theme.buttonHover = Color.rgba(0.8, 0.1, 0.1, 1.0);
+		theme.buttonPressed = Color.rgba(0.7, 0.05, 0.05, 1.0);
+		theme.buttonFocused = Color.rgba(0.4, 0.2, 0.8, 1.0);
+		theme.buttonDisabled = Color.rgba(0.2, 0.2, 0.2, 1.0);
+		context.setTheme(theme);
+		var themedClicks = 0;
+		var themedButton = new Button("Themed", null, function() { themedClicks++; }, "theme-key");
+		var themedFrame = new LayoutFrame(256.0, 192.0);
+		var themedRoot = context.submit(themedButton, themedFrame);
+		if (!context.focusWidget(themedRoot.id))
+			return 80;
+		themedRoot = context.submit(themedButton, themedFrame);
+		if (themedRoot.layout.style.background.red != 0.4)
+			return 81;
+		var themedGeometry:ResolvedLayoutItem = cast themedRoot.resolved;
+		var themedX = themedGeometry.x + 2.0;
+		var themedY = themedGeometry.y + 2.0;
+		context.pointerMove(themedX, themedY);
+		themedRoot = context.submit(themedButton, themedFrame);
+		if (themedRoot.layout.style.background.red != 0.8)
+			return 82;
+		context.pointerDown(themedX, themedY, 0);
+		themedRoot = context.submit(themedButton, themedFrame);
+		if (themedRoot.layout.style.background.red != 0.7)
+			return 83;
+		context.pointerUp(themedX, themedY, 0);
+		if (themedClicks != 1)
+			return 84;
+		themedButton.enabled = false;
+		themedRoot = context.submit(themedButton, themedFrame);
+		if (themedRoot.layout.style.background.red != 0.2)
+			return 85;
 
 		var overlayCanvas = new Canvas();
 		var overlayList = DisplayList.create();

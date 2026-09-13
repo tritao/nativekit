@@ -27,9 +27,10 @@ class Popup implements View {
 	public var modal:Bool;
 	public var dismissOnOutside:Bool;
 	public var dismissOnEscape:Bool;
-	public var backdropColor:Color;
+	public var backdropColor:Null<Color>;
 	public var onDismiss:Void->Void;
 	public var hasDismissHandler(default, null):Bool;
+	final customStyle:Bool;
 
 	public function new(key:String, child:View, x:Float = 0.0, y:Float = 0.0,
 			?style:LayoutStyle, ?onDismiss:Void->Void) {
@@ -39,12 +40,13 @@ class Popup implements View {
 		this.child = child;
 		this.x = x;
 		this.y = y;
+		customStyle = style != null;
 		this.style = style == null ? defaultPanelStyle() : style.copy();
 		label = null;
 		modal = true;
 		dismissOnOutside = true;
 		dismissOnEscape = true;
-		backdropColor = Color.rgba(0.0, 0.0, 0.0, 0.20);
+		backdropColor = null;
 		hasDismissHandler = onDismiss != null;
 		this.onDismiss = onDismiss == null ? function() {} : onDismiss;
 	}
@@ -65,7 +67,8 @@ class Popup implements View {
 			backdropStyle.height = LayoutAxis.grow();
 			backdropStyle.positioning = LayoutPositioning.Absolute;
 			backdropStyle.visible = modal || dismissOnOutside;
-			backdropStyle.background = modal ? backdropColor : Color.rgba(0.0, 0.0, 0.0, 0.0);
+			var color = backdropColor == null ? context.theme.overlayBackdrop : cast backdropColor;
+			backdropStyle.background = modal ? color : Color.rgba(0.0, 0.0, 0.0, 0.0);
 			var backdrop = new RenderNode(context.id("backdrop"), LayoutVisualKind.Box,
 				backdropStyle);
 			if (dismissOnOutside && hasDismissHandler)
@@ -76,6 +79,8 @@ class Popup implements View {
 			root.add(backdrop);
 
 			var panelStyle = style.copy();
+			if (!customStyle)
+				panelStyle.background = context.theme.panelBackground;
 			panelStyle.positioning = LayoutPositioning.Absolute;
 			panelStyle.positionX = x;
 			panelStyle.positionY = y;

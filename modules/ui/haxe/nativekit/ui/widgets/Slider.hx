@@ -89,17 +89,20 @@ class Slider implements View {
 				var fraction = clamp((point.x - geometry.x - 10.0) / usableWidth, 0.0, 1.0);
 				return setValue(minimum + fraction * (maximum - minimum));
 			};
-		node.onPaint(function(canvas, geometry) {
+			node.onPaint(function(canvas, geometry) {
+				var accent = enabled ? context.theme.accent : context.theme.controlDisabled;
+				var muted = context.theme.controlColor(false, enabled);
+				var foreground = context.theme.textColor(enabled);
 				var y = geometry.height * 0.5;
 				var start = 10.0;
 				var end = Math.max(start + 1.0, geometry.width - 10.0);
 				var knob = start + (end - start) * ((value - minimum) / (maximum - minimum));
 				canvas.fillRect(new Rect(start, y - 2.0, end - start, 4.0),
-					Color.rgba(0.23, 0.25, 0.29, 1.0));
+					muted);
 				canvas.fillRect(new Rect(start, y - 2.0, Math.max(1.0, knob - start), 4.0),
-					Color.rgba(0.22, 0.48, 0.86, 1.0));
+					accent);
 				canvas.fillRect(new Rect(knob - 6.0, y - 8.0, 12.0, 16.0),
-					Color.rgba(0.96, 0.97, 0.99, 1.0));
+					foreground);
 			});
 			node.on(UiEventKind.PointerDown, function(event) {
 				if (enabled && event.button == 0) {

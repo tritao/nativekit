@@ -9,27 +9,42 @@ import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
+import nativekit.ui.core.State;
 import nativekit.ui.core.View;
+import nativekit.ui.core.Key;
+import nativekit.ui.theme.InteractionState;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
 
 /** Compositional Haxe button; the native engine sees only box and text nodes. */
 class Button implements View {
+	public final key:String;
 	public final label:String;
 	public final style:LayoutStyle;
 	public var enabled:Bool;
 	public var onClick:Void->Void;
 
-	public function new(label:String, ?style:LayoutStyle, ?onClick:Void->Void) {
+	public function new(label:String, ?style:LayoutStyle, ?onClick:Void->Void, ?key:String) {
 		this.label = label == null ? "" : label;
-		this.style = style == null ? defaultStyle() : style;
+		this.key = key == null || key.length == 0
+			? (this.label.length == 0 ? "button" : this.label)
+			: key;
+		this.style = style == null ? defaultStyle() : style.copy();
 		this.onClick = onClick;
 		enabled = true;
 	}
 
 	public function build(context:BuildContext):RenderNode {
-		var node = new RenderNode(context.id("button"), LayoutVisualKind.Box, style);
+		return context.withScope(new Key(key), function() return buildScoped(context));
+	}
+
+	function buildScoped(context:BuildContext):RenderNode {
+		var id = context.id("button");
+		var interaction:State<Int> = context.state(id, 0);
+		var flags:Int = cast interaction.value;
+		var resolvedStyle = context.theme.resolveButtonStyle(style, flags, enabled);
+		var node = new RenderNode(id, LayoutVisualKind.Box, resolvedStyle);
 		node.focusable = true;
 		node.enabled = enabled;
 		var semantics = new Semantics(AccessibilityRole.Button, label);
@@ -42,10 +57,27 @@ class Button implements View {
 			node.on(UiEventKind.Click, activate);
 			node.on(UiEventKind.Activate, activate);
 		}
+		var setState = function(flag:Int, value:Bool) {
+			var current:Int = cast interaction.value;
+			var next = InteractionState.with(current, flag, value);
+			if (next != current)
+				interaction.update(next);
+		};
+		node.on(UiEventKind.HoverEnter, function(_) { if (enabled) setState(InteractionState.Hovered, true); });
+		node.on(UiEventKind.HoverLeave, function(_) { setState(InteractionState.Hovered, false); });
+		node.on(UiEventKind.PointerDown, function(event) {
+			if (enabled && event.button == 0)
+				setState(InteractionState.Pressed, true);
+		});
+		node.on(UiEventKind.PointerUp, function(_) { setState(InteractionState.Pressed, false); });
+		node.on(UiEventKind.PointerCancel, function(_) { setState(InteractionState.Pressed, false); });
+		node.on(UiEventKind.Focus, function(_) { setState(InteractionState.Focused, true); });
+		node.on(UiEventKind.Blur, function(_) { setState(InteractionState.Focused, false); });
+		node.on(UiEventKind.FocusLost, function(_) { setState(InteractionState.Focused, false); });
 		var labelNode = context.withScope(new Key("label"), function() {
 			var text = new RenderNode(context.id("label"), LayoutVisualKind.Text);
 			text.layout.text = label;
-			text.layout.textColor = Color.rgba(1.0, 1.0, 1.0, 1.0);
+			text.layout.textColor = context.theme.textColor(enabled);
 			return text;
 		});
 		node.add(labelNode);
