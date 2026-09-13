@@ -10,6 +10,9 @@ import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.View;
+import nativekit.ui.semantics.AccessibilityAction;
+import nativekit.ui.semantics.AccessibilityRole;
+import nativekit.ui.semantics.Semantics;
 
 /** Compositional Haxe button; the native engine sees only box and text nodes. */
 class Button implements View {
@@ -29,6 +32,9 @@ class Button implements View {
 		var node = new RenderNode(context.id("button"), LayoutVisualKind.Box, style);
 		node.focusable = true;
 		node.enabled = enabled;
+		var semantics = new Semantics(AccessibilityRole.Button, label);
+		semantics.actions = AccessibilityAction.Activate;
+		node.semantics = semantics;
 		if (enabled && onClick != null) {
 			var activate = function(_:UiEvent) {
 				onClick();

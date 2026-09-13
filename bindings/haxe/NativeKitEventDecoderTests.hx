@@ -66,6 +66,24 @@ class NativeKitEventDecoderTests {
 		putU32(invalidUtf8, 4, 48); putU32(invalidUtf8, 8, 2);
 		invalidUtf8.set(48, 0xc0); invalidUtf8.set(49, 0x80);
 
+		var accessibilityPayload = haxe.io.Bytes.alloc(35);
+		putU32(accessibilityPayload, 0, 77); putU32(accessibilityPayload, 4, 1);
+		putU32(accessibilityPayload, 8, 32); putU32(accessibilityPayload, 12, 2);
+		putU32(accessibilityPayload, 16, -1); putU32(accessibilityPayload, 20, -1);
+		putU32(accessibilityPayload, 24, 1);
+		accessibilityPayload.set(32, 0x6f); accessibilityPayload.set(33, 0x6b);
+		var accessibilityContext = new NativeKitEventContext(EventKind.AccessibilityAction,
+			15, zero, 0, 0, 0, accessibilityPayload);
+		var accessibilityOk = switch NativeKitEvent.decodeContext(accessibilityContext) {
+			case AccessibilityAction(source, nodeId, action, value, selectionStart, selectionEnd, granularity):
+				source == 15 && nodeId == 77 && action == 1 && value == "ok" &&
+				selectionStart == -1 && selectionEnd == -1 && granularity == 1;
+			case _: false;
+		};
+		var unterminatedAccessibility = accessibilityPayload.sub(0, 34);
+		var unterminatedAccessibilityContext = new NativeKitEventContext(EventKind.AccessibilityAction,
+			15, zero, 0, 0, 0, unterminatedAccessibility);
+
 		var keyPayload = haxe.io.Bytes.alloc(16);
 		putU32(keyPayload, 0, Key.Escape); putU32(keyPayload, 4, 41);
 		putU32(keyPayload, 8, InputAction.Press); putU32(keyPayload, 12, Modifiers.Control);
@@ -95,7 +113,7 @@ class NativeKitEventDecoderTests {
 		if (!pathsOk) throw "path completion decoding failed";
 		if (!messageOk) throw "message completion decoding failed";
 		if (!resourcesOk) throw "resource completion decoding failed";
-		return rawOk && nonMatch && editOk && typedKeyOk && typedHatOk && typedNavigationOk
+		return rawOk && nonMatch && editOk && typedKeyOk && typedHatOk && typedNavigationOk && accessibilityOk
 			&& throws(function() { NativeKitEventBytes.requireSize(haxe.io.Bytes.alloc(3), 4); })
 			&& throws(function() { NativeKitEventBytes.readU32(haxe.io.Bytes.alloc(3), 0); })
 			&& throws(function() { NativeKitEventBytes.decodeDialogPaths(badDialog); })
@@ -103,6 +121,7 @@ class NativeKitEventDecoderTests {
 			&& throws(function() { NativeKitEventBytes.decodeResourceList(badResource, 0); })
 			&& throws(function() { NativeKitInputEvents.decode(shortKey); })
 			&& throws(function() { NativeKitInputEvents.decode(shortEdit); })
+			&& throws(function() { NativeKitInputEvents.decode(unterminatedAccessibilityContext); })
 			&& throws(function() { NativeKitWindowEvents.decode(shortWindow); })
 			&& throws(function() { NativeKitEventBytes.readUtf8Slice(invalidUtf8,48,2,48); });
 	}

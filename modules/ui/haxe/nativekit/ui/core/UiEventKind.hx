@@ -19,4 +19,10 @@ class UiEventKind {
 	public static inline var FocusLost:String = "focusLost";
 	public static inline var Blur:String = "blur";
 	public static inline var PointerCancel:String = "pointerCancel";
+	public static inline var AccessibilitySetValue:String = "accessibilitySetValue";
+	public static inline var AccessibilitySetSelection:String = "accessibilitySetSelection";
+	public static inline var AccessibilityIncrement:String = "accessibilityIncrement";
+	public static inline var AccessibilityDecrement:String = "accessibilityDecrement";
+	public static inline var AccessibilityMoveNext:String = "accessibilityMoveNext";
+	public static inline var AccessibilityMovePrevious:String = "accessibilityMovePrevious";
 }

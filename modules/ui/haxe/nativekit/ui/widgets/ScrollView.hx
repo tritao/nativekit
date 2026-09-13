@@ -11,6 +11,9 @@ import nativekit.ui.core.State;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.View;
+import nativekit.ui.semantics.AccessibilityAction;
+import nativekit.ui.semantics.AccessibilityRole;
+import nativekit.ui.semantics.Semantics;
 
 /** Clipped Haxe scroll container translated from its persistent controller offset. */
 class ScrollView implements View {
@@ -37,6 +40,9 @@ class ScrollView implements View {
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(key, function() {
 			var viewport = new RenderNode(context.id("scroll"), LayoutVisualKind.Box, style.copy());
+			var semantics = new Semantics(AccessibilityRole.ScrollArea);
+			semantics.actions = AccessibilityAction.ScrollForward | AccessibilityAction.ScrollBackward;
+			viewport.semantics = semantics;
 			viewport.layout.style.clipHorizontal = viewport.layout.style.clipHorizontal ||
 				axis == ScrollAxis.Horizontal || axis == ScrollAxis.Both;
 			viewport.layout.style.clipVertical = viewport.layout.style.clipVertical ||

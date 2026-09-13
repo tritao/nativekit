@@ -124,6 +124,19 @@ class EventDispatcher {
 				0.0, 0.0, 0, 0, 0, text, data));
 	}
 
+	/** Dispatches a platform semantic action from its addressed node through capture and bubble. */
+	public function targetEvent(kind:String, id:WidgetId, text:Null<String> = null,
+			deltaX:Float = 0.0, deltaY:Float = 0.0, data:Dynamic = null):Bool {
+		if (root == null || id == null)
+			return false;
+		var path = HitTest.pathTo(root.find(id));
+		if (path.length == 0)
+			return false;
+		dispatchPath(path, new UiEvent(kind, id, 0.0, 0.0, deltaX, deltaY,
+			0, 0, 0, text, data));
+		return true;
+	}
+
 	public function clearPointer(pointerId:Int = 0):Void {
 		updateHover(pointerId, [], 0.0, 0.0);
 		capturedIds.remove(pointerId);

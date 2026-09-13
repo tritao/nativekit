@@ -10,14 +10,16 @@ import NativeKitEventValue;
 class NativeInputAdapter {
 	final context:UiContext;
 	final source:Handle;
+	final accessibilitySource:Handle;
 	var pointerX:Float;
 	var pointerY:Float;
 
-	public function new(context:UiContext, source:Handle) {
+	public function new(context:UiContext, source:Handle, ?accessibilitySource:Handle) {
 		if (context == null || source == 0)
 			throw "Native input requires a UI context and window handle";
 		this.context = context;
 		this.source = source;
+		this.accessibilitySource = accessibilitySource == null ? source : accessibilitySource;
 		pointerX = 0.0;
 		pointerY = 0.0;
 	}
@@ -65,6 +67,11 @@ class NativeInputAdapter {
 				true;
 			case TextEdit(eventSource, edit) if (matches(eventSource)):
 				context.text(UiEventKind.TextEdit, edit.text, edit);
+				true;
+			case AccessibilityAction(eventSource, nodeId, action, value, selectionStart,
+				selectionEnd, granularity) if (eventSource == accessibilitySource):
+				context.accessibilityAction(nodeId, action, value, selectionStart,
+					selectionEnd, granularity);
 				true;
 			case Touch(eventSource, pointerId, action, tool, modifiers, x, y, pressure, tiltX, tiltY)
 				if (matches(eventSource)):

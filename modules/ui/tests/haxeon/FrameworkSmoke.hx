@@ -14,6 +14,7 @@ import NativeKit.TouchTool;
 import NativeKit.TextEditAction;
 import NativeKitEventValue;
 import NativeKitEventValue.NativeKitTextEdit;
+import NativeKitEventDecoderTests;
 import nativekit.ui.core.NativeInputAdapter;
 import nativekit.ui.core.State;
 import nativekit.ui.core.UiContext;
@@ -21,6 +22,10 @@ import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
 import nativekit.ui.core.UiModifier;
 import nativekit.ui.core.UiTouchData;
+import nativekit.ui.semantics.AccessibilityAction;
+import nativekit.ui.semantics.AccessibilityBridge;
+import nativekit.ui.semantics.AccessibilityRole;
+import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
@@ -39,6 +44,8 @@ class FrameworkSmoke {
 		var session = LayoutSession.create();
 		session.setFonts(fonts);
 		var context = new UiContext(session);
+		if (!NativeKitEventDecoderTests.run())
+			return 27;
 		var frame = new LayoutFrame(256.0, 192.0);
 		var clicks = 0;
 		var bubbled = 0;
@@ -83,6 +90,14 @@ class FrameworkSmoke {
 		if (root.children.length != 3 || buttonNode.resolved == null ||
 			!buttonNode.focusable || !buttonNode.resolved.hitTest(4.0, 4.0) || context.isDirty())
 			return 3;
+		var semanticTree = AccessibilityBridge.project(root, buttonNode.id);
+		if (semanticTree.length != 3 || semanticTree[0].id != buttonNode.id.value ||
+			semanticTree[0].parentId != 0 || semanticTree[0].role != AccessibilityRole.Button ||
+			(semanticTree[0].states & (AccessibilityState.Focusable | AccessibilityState.Focused)) !=
+			(AccessibilityState.Focusable | AccessibilityState.Focused) ||
+			(semanticTree[0].actions & AccessibilityAction.Activate) == 0 ||
+			semanticTree[0].semantics.label != "Increment")
+			return 25;
 
 		context.pointerDown(4.0, 4.0, 0);
 		context.pointerUp(4.0, 4.0, 0);
@@ -194,6 +209,13 @@ class FrameworkSmoke {
 		context.pointerUp(500.0, 500.0, 0);
 		if (clicks != 4)
 			return 8;
+		if (!context.accessibilityAction(initialId.value, 1, null, -1, -1, 1) || clicks != 5)
+			return 28;
+		if (!context.accessibilityAction(initialId.value, 2, null, -1, -1, 1) ||
+			context.focus.focusedId == null || !context.focus.focusedId.equals(initialId) ||
+			!context.accessibilityAction(initialId.value, 3, null, -1, -1, 1) ||
+			context.focus.focusedId != null)
+			return 29;
 
 		var sharedStyle = new LayoutStyle();
 		new Row("style-copy", [], sharedStyle);
@@ -202,11 +224,14 @@ class FrameworkSmoke {
 
 		root = context.submit(makeView(false), frame);
 		buttonNode = root.children[0];
+		semanticTree = AccessibilityBridge.project(root, null);
+		if ((semanticTree[0].states & AccessibilityState.Disabled) == 0)
+			return 26;
 		if (context.focus.focusedId != null || context.focusWidget(buttonNode.id))
 			return 10;
 		context.pointerDown(4.0, 4.0, 0);
 		context.pointerUp(4.0, 4.0, 0);
-		if (clicks != 4)
+		if (clicks != 5 || context.accessibilityAction(buttonNode.id.value, 1, null, -1, -1, 1))
 			return 11;
 
 		var viewportStyle = new LayoutStyle();

@@ -8,6 +8,11 @@ import Renderer;
 import Surface;
 import FrameInfo;
 import ResolvedLayoutItem;
+import NativeKitSurface;
+import nativekit.ui.semantics.AccessibilityBridge;
+import nativekit.ui.semantics.AccessibilityActionData;
+import nativekit.ui.semantics.AccessibilityRequest;
+import nativekit.ui.semantics.Semantics;
 
 /** Owns the frame-local render tree and the Haxe-side UI subsystems. */
 class UiContext {
@@ -21,6 +26,8 @@ class UiContext {
 	var disposed:Bool;
 	var overlayCanvas:Null<Canvas>;
 	var overlayList:Null<DisplayList>;
+	var accessibilityBridge:Null<AccessibilityBridge>;
+	var accessibilitySurface:Null<NativeKitSurface>;
 
 	public function new(?session:LayoutSession) {
 		this.session = session == null ? LayoutSession.create() : session;
@@ -33,6 +40,8 @@ class UiContext {
 		disposed = false;
 		overlayCanvas = null;
 		overlayList = null;
+		accessibilityBridge = null;
+		accessibilitySurface = null;
 	}
 
 	/** Builds a fresh view tree, resolves native layout, and reconnects geometry by stable ID. */
@@ -67,7 +76,23 @@ class UiContext {
 		if (nextFocus != null && (previousFocus == null || !previousFocus.equals(nextFocus)))
 			events.focusEvent(nextFocus, UiEventKind.Focus);
 		submittedStateRevision = resolvedStateRevision;
+		if (accessibilityBridge != null)
+			accessibilityBridge.update(next, focus.focusedId);
 		return next;
+	}
+
+	/** Connects this frame's semantic projection to a NativeKit platform surface. */
+	public function updateAccessibility(surface:NativeKitSurface):Void {
+		ensureLive();
+		if (surface == null || surface.isDisposed())
+			throw "Accessibility projection requires a live NativeKit surface";
+		if (accessibilitySurface != surface) {
+			if (accessibilityBridge != null)
+				accessibilityBridge.dispose();
+			accessibilitySurface = surface;
+			accessibilityBridge = new AccessibilityBridge(surface);
+		}
+		accessibilityBridge.update(root, focus.focusedId);
 	}
 
 	public function render(renderer:Renderer, surface:Surface, frame:FrameInfo):Void {
@@ -137,6 +162,51 @@ class UiContext {
 		dispatchFocusChange(previous, null);
 	}
 
+	/** Routes a NativeKit platform accessibility action to the addressed semantic node. */
+	public function accessibilityAction(id:Int, action:Int, value:Null<String>,
+			selectionStart:Int, selectionEnd:Int, granularity:Int):Bool {
+		ensureLive();
+		if (root == null || id <= 0)
+			return false;
+		var widgetId = new WidgetId(id);
+		var node = root.find(widgetId);
+		if (node == null || node.semantics == null || node.resolved == null || !node.resolved.visible)
+			return false;
+		var semantics:Semantics = cast node.semantics;
+		var request = AccessibilityRequest.create(action, value, selectionStart,
+			selectionEnd, granularity);
+		if (request == null)
+			return false;
+		var enabled = enabledAlongPath(node);
+		var actions = semantics.actions;
+		if (node.focusable && enabled)
+			actions |= nativekit.ui.semantics.AccessibilityAction.Focus;
+		if (!enabled)
+			actions = 0;
+		if ((actions & request.capability) == 0)
+			return false;
+		var geometry:ResolvedLayoutItem = cast node.resolved;
+		if (action == AccessibilityRequest.Focus)
+			return focusWidget(widgetId);
+		if (action == AccessibilityRequest.ClearFocus) {
+			if (focus.focusedId != null && focus.focusedId.equals(widgetId))
+				clearFocus();
+			return true;
+		}
+		var deltaX = 0.0;
+		var deltaY = 0.0;
+		if (action == AccessibilityRequest.ScrollForward)
+			deltaY = -geometry.height;
+		else if (action == AccessibilityRequest.ScrollBackward)
+			deltaY = geometry.height;
+		if (action == AccessibilityRequest.ScrollForward ||
+			action == AccessibilityRequest.ScrollBackward)
+			return events.targetEvent(UiEventKind.Scroll, widgetId, null, deltaX,
+				deltaY, new AccessibilityActionData(action, selectionStart, selectionEnd, granularity));
+		return events.targetEvent(request.kind, widgetId, request.value, 0.0, 0.0,
+			new AccessibilityActionData(action, selectionStart, selectionEnd, granularity));
+	}
+
 	/** Clears transient pointer state and reports loss of platform window focus. */
 	public function windowFocusLost():Void {
 		ensureLive();
@@ -199,12 +269,16 @@ class UiContext {
 		if (disposed)
 			return;
 		session.dispose();
+		if (accessibilityBridge != null)
+			accessibilityBridge.dispose();
 		if (overlayCanvas != null)
 			overlayCanvas.reset();
 		if (overlayList != null)
 			overlayList.dispose();
 		disposed = true;
 		root = null;
+		accessibilityBridge = null;
+		accessibilitySurface = null;
 	}
 
 	function dispatchFocusChange(previous:Null<WidgetId>, next:Null<WidgetId>):Void {
@@ -217,5 +291,16 @@ class UiContext {
 	function ensureLive():Void {
 		if (disposed)
 			throw "UI context has been disposed";
+	}
+
+	static function enabledAlongPath(node:RenderNode):Bool {
+		var current:Null<RenderNode> = node;
+		while (current != null) {
+			var present:RenderNode = cast current;
+			if (!present.enabled)
+				return false;
+			current = present.parent;
+		}
+		return true;
 	}
 }

@@ -5,6 +5,7 @@ import LayoutStyle;
 import LayoutVisualKind;
 import Canvas;
 import ResolvedLayoutItem;
+import nativekit.ui.semantics.Semantics;
 
 /** One Haxe-owned node joins visual layout, interaction, focus, and state identity. */
 class RenderNode {
@@ -16,6 +17,7 @@ class RenderNode {
 	public var focusable:Bool;
 	public var enabled:Bool;
 	public var tabIndex:Int;
+	public var semantics:Null<Semantics>;
 	final handlers:Map<String, Array<UiEvent->Void>>;
 	final resolvedHandlers:Array<ResolvedLayoutItem->Void>;
 	final paintHandlers:Array<Canvas->ResolvedLayoutItem->Void>;
@@ -31,6 +33,7 @@ class RenderNode {
 		focusable = false;
 		enabled = true;
 		tabIndex = 0;
+		semantics = null;
 		handlers = new Map();
 		resolvedHandlers = [];
 		paintHandlers = [];

@@ -6,6 +6,8 @@ import LayoutStyle;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.View;
+import nativekit.ui.semantics.AccessibilityRole;
+import nativekit.ui.semantics.Semantics;
 
 /** Text view backed by the NativeUI/Skribidi text layout primitive. */
 class Text implements View {
@@ -23,6 +25,7 @@ class Text implements View {
 		var node = new RenderNode(context.id("text"), LayoutVisualKind.Text, style);
 		node.layout.text = value;
 		node.layout.textColor = color;
+		node.semantics = new Semantics(AccessibilityRole.Text, value);
 		return node;
 	}
 }
