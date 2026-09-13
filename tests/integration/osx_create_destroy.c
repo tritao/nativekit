@@ -6,20 +6,29 @@
 #include "nativekit_window.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 static nk_event wait_for_event(nk_event_kind kind, nk_request_id request) {
+    nk_event_kind last_kind = NK_EVENT_NONE;
+    nk_request_id last_request = NK_INVALID_REQUEST_ID;
     for (int attempt = 0; attempt < 500; ++attempt) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
         if (event.kind == kind && event.request_id == request)
             return event;
+        last_kind = event.kind;
+        last_request = event.request_id;
         nk_event_release(&event);
         usleep(10000);
     }
+    fprintf(
+        stderr,
+        "timed out waiting for event kind %d request %llu; last event was kind %d request %llu\n",
+        kind, (unsigned long long)request, last_kind, (unsigned long long)last_request);
     assert(!"timed out waiting for event");
     nk_event unreachable = {0};
     return unreachable;

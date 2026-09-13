@@ -7,11 +7,11 @@
 #include "nativekit_window.h"
 
 #include <assert.h>
+#include <windows.h>
 #include <shellapi.h>
 #include <shlobj.h>
 #include <stdlib.h>
 #include <string.h>
-#include <windows.h>
 
 static nk_event wait_for_dialog(nk_request_id request) {
     for (int attempt = 0; attempt < 1000; ++attempt) {

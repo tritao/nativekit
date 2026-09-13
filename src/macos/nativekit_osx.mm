@@ -110,6 +110,7 @@ std::unordered_map<nk_request_id, nk_handle> evaluations;
 std::mutex notifications_mutex;
 std::unordered_map<nk_request_id, uint64_t> notifications;
 __strong NKNotificationDelegate *notification_delegate = nil;
+bool notification_center_initialized = false;
 
 void cancel_dialog_context(const std::shared_ptr<DialogContext> &context) {
     if ([context->dialog isKindOfClass:[NSSavePanel class]])
@@ -849,12 +850,16 @@ void shutdown() noexcept {
         }
         notifications.clear();
     }
-    UNUserNotificationCenter *notification_center =
-        UNUserNotificationCenter.currentNotificationCenter;
-    [notification_center removePendingNotificationRequestsWithIdentifiers:notification_identifiers];
-    [notification_center removeDeliveredNotificationsWithIdentifiers:notification_identifiers];
-    if (notification_center.delegate == notification_delegate)
-        notification_center.delegate = nil;
+    if (notification_center_initialized) {
+        UNUserNotificationCenter *notification_center =
+            UNUserNotificationCenter.currentNotificationCenter;
+        [notification_center
+            removePendingNotificationRequestsWithIdentifiers:notification_identifiers];
+        [notification_center removeDeliveredNotificationsWithIdentifiers:notification_identifiers];
+        if (notification_center.delegate == notification_delegate)
+            notification_center.delegate = nil;
+        notification_center_initialized = false;
+    }
     notification_delegate = nil;
     std::vector<std::shared_ptr<DialogContext>> pending;
     {
@@ -1774,6 +1779,8 @@ nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
             !options->title || !*options->title || !valid_utf8(options->title) ||
             !valid_utf8(options->body) || !valid_utf8(options->icon))
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid notification options");
+        if (!NSBundle.mainBundle.bundleIdentifier.length)
+            return fail(NK_ERROR_UNSUPPORTED, "notifications require a bundled macOS application");
         *out_request = NK_INVALID_REQUEST_ID;
         NSString *title = string(options->title);
         NSString *body = string(options->body) ?: @"";
@@ -1804,6 +1811,7 @@ nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
             notifications.emplace(request, generation);
         }
         UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
+        notification_center_initialized = true;
         if (!notification_delegate)
             notification_delegate = [NKNotificationDelegate new];
         center.delegate = notification_delegate;
