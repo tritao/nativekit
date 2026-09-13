@@ -297,37 +297,6 @@ if(NK_BUILD_GPU OR NK_BUILD_UI)
         message(FATAL_ERROR
             "Unsupported NK_SOKOL_BACKEND='${NK_SOKOL_BACKEND}'; choose glcore or gles3")
     endif()
-    function(nk_add_sokol_runtime target compile_definition symbol_prefix graphics_libraries
-             graphics_include_dirs)
-        add_library(${target} ${NK_LIBRARY_TYPE}
-            src/graphics/sokol/runtime.c
-            src/graphics/sokol/api.c)
-        target_include_directories(${target} PRIVATE
-            "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/sokol"
-            "${PROJECT_SOURCE_DIR}/src/graphics/sokol"
-            ${graphics_include_dirs})
-        target_compile_definitions(${target} PRIVATE ${compile_definition})
-        if(symbol_prefix)
-            target_compile_definitions(${target} PRIVATE
-                SOKOL_GFX_SYMBOL_PREFIX=${symbol_prefix}
-                NK_SOKOL_API_PREFIX=${symbol_prefix}
-                NK_SOKOL_RUNTIME_PREFIX=${symbol_prefix}runtime_)
-        endif()
-        target_link_libraries(${target} PRIVATE ${graphics_libraries})
-        set_target_properties(${target} PROPERTIES
-            C_VISIBILITY_PRESET default
-            VERSION ${PROJECT_VERSION}
-            SOVERSION 0)
-    endfunction()
-
-    nk_add_sokol_runtime(nativekit_sokol_runtime ${NK_SOKOL_COMPILE_DEFINITION} ""
-        "${NK_SOKOL_GRAPHICS_LIBRARIES}" "${NK_SOKOL_GRAPHICS_INCLUDE_DIRS}")
-    target_compile_definitions(nativekit_sokol_runtime PRIVATE ${NK_SOKOL_COMPILE_DEFINITION})
-    install(TARGETS nativekit_sokol_runtime EXPORT NativeKitTargets
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-
     if(NK_BUILD_GPU_BACKEND_MATRIX)
         if(EMSCRIPTEN OR NOT UNIX OR APPLE OR ANDROID)
             message(FATAL_ERROR "NativeKit Sokol backend matrix requires desktop Linux")
@@ -335,19 +304,9 @@ if(NK_BUILD_GPU OR NK_BUILD_UI)
         find_package(OpenGL REQUIRED)
         find_path(NK_SOKOL_MATRIX_GLES3_INCLUDE_DIR GLES3/gl3.h REQUIRED)
         find_library(NK_SOKOL_MATRIX_GLES3_LIBRARY NAMES GLESv2 REQUIRED)
-        nk_add_sokol_runtime(nativekit_sokol_runtime_glcore NK_SOKOL_BACKEND_GLCORE=1
-            nk_sokol_glcore_ "OpenGL::GL" "")
-        nk_add_sokol_runtime(nativekit_sokol_runtime_gles3 NK_SOKOL_BACKEND_GLES3=1
-            nk_sokol_gles3_ "${NK_SOKOL_MATRIX_GLES3_LIBRARY}"
-            "${NK_SOKOL_MATRIX_GLES3_INCLUDE_DIR}")
-        install(TARGETS nativekit_sokol_runtime_glcore nativekit_sokol_runtime_gles3
-            EXPORT NativeKitTargets
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
     endif()
 endif()
-if(NK_BUILD_GPU)
+if(NK_BUILD_GPU OR NK_BUILD_UI)
     add_subdirectory(modules/gpu)
 endif()
 if(NK_BUILD_UI)

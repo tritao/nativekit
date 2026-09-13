@@ -49,6 +49,7 @@ class DisplayList {
 
 	@:allow(Renderer)
 	@:allow(Canvas)
+	@:allow(LayoutSession)
 	private function nativeHandle():nkui_display_list {
 		ensureLive();
 		return value;

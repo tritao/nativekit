@@ -22,6 +22,7 @@ import NativeKitEventValue.NativeKitTextEdit;
 import NativeKitEvents;
 import NativeKitEventDecoderTests;
 import nativekit.ui.core.NativeInputAdapter;
+import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
 import nativekit.ui.core.UiContext;
 import nativekit.ui.core.UiEventKind;
@@ -590,6 +591,71 @@ class FrameworkSmoke {
 			builtRows[0] > 25 || listController.offsetY != 500.0)
 			return 68;
 
+		// Exercise the session capacity and the framework as one realistic,
+		// nested settings tree. The custom painter sits between ordinary text
+		// siblings inside the clipped, scrollable content.
+		var pressureCanvasStyle = new LayoutStyle();
+		pressureCanvasStyle.width = LayoutAxis.grow();
+		pressureCanvasStyle.height = LayoutAxis.fixed(24.0);
+		var pressureChildren:Array<KeyedView> = [
+			new KeyedView("before-custom", new Text("Before custom canvas")),
+			new KeyedView("custom-canvas", new CanvasView("custom-canvas-view",
+				function(canvas, geometry) {
+					canvas.fillRect(new Rect(0.0, 0.0, geometry.width, geometry.height),
+						Color.rgba(0.2, 0.4, 0.7, 1.0));
+				}, pressureCanvasStyle, "Custom settings illustration")),
+			new KeyedView("after-custom", new Text("After custom canvas"))
+		];
+		for (index in 0...2000) {
+			var row = new SizedBox("row", new Text('Setting $index'), LayoutAxis.grow(),
+				LayoutAxis.fixed(24.0));
+			pressureChildren.push(new KeyedView('setting:$index', row));
+		}
+		var pressureContentStyle = new LayoutStyle();
+		pressureContentStyle.width = LayoutAxis.grow();
+		var pressureContent = new Column("pressure-settings", pressureChildren,
+			pressureContentStyle);
+		var innerViewportStyle = new LayoutStyle();
+		innerViewportStyle.width = LayoutAxis.fixed(256.0);
+		innerViewportStyle.height = LayoutAxis.fixed(128.0);
+		var innerController = new ScrollController();
+		var innerScroll = new ScrollView("pressure-inner-scroll", pressureContent,
+			innerViewportStyle, ScrollAxis.Vertical, innerController);
+		var outerContentStyle = new LayoutStyle();
+		outerContentStyle.width = LayoutAxis.fixed(256.0);
+		outerContentStyle.height = LayoutAxis.fit();
+		var outerContent = new Column("pressure-outer-content", [
+			new KeyedView("pressure-heading", new Text("Settings")),
+			new KeyedView("pressure-inner", innerScroll),
+			new KeyedView("pressure-tail", new SizedBox("tail", new Text("End of section"),
+				LayoutAxis.grow(), LayoutAxis.fixed(500.0)))
+		], outerContentStyle);
+		var outerViewportStyle = new LayoutStyle();
+		outerViewportStyle.width = LayoutAxis.fixed(256.0);
+		outerViewportStyle.height = LayoutAxis.fixed(192.0);
+		var outerController = new ScrollController();
+		var pressureView = new ScrollView("pressure-outer-scroll", outerContent,
+			outerViewportStyle, ScrollAxis.Vertical, outerController);
+		var pressureRoot = context.submit(pressureView, new LayoutFrame(256.0, 192.0));
+		var pressureNodeCount = 0;
+		pressureRoot.walk(function(_) { pressureNodeCount++; });
+		var innerNode = pressureRoot.children[0].children[0].children[1];
+		var innerGeometry:ResolvedLayoutItem = cast innerNode.resolved;
+		var customNode = innerNode.children[0].children[0].children[1];
+		var customParent:RenderNode = cast customNode.parent;
+		if (pressureNodeCount < 4000 || innerGeometry.height != 128.0 ||
+			innerController.maxScrollY < 47000.0 || outerController.maxScrollY < 300.0 ||
+			customParent == null || customNode.layout.visualKind != LayoutVisualKind.Custom ||
+			customParent.children[0].layout.visualKind != LayoutVisualKind.Text ||
+			customParent.children[2].layout.visualKind != LayoutVisualKind.Text)
+			return 101;
+		context.scroll(innerGeometry.x + 4.0, innerGeometry.y + 4.0, 0.0, -60.0);
+		if (innerController.offsetY != 60.0 || outerController.offsetY != 0.0)
+			return 102;
+		context.scroll(4.0, 180.0, 0.0, -50.0);
+		if (outerController.offsetY != 50.0)
+			return 103;
+
 		var returnFocusView = new Button("Return focus");
 		var returnFocusRoot = context.submit(returnFocusView, new LayoutFrame(256.0, 192.0));
 		if (!context.focusWidget(returnFocusRoot.id))
@@ -845,7 +911,7 @@ class FrameworkSmoke {
 		if (cleaned != 1)
 			return 31;
 		fonts.dispose();
-		Sys.println("PASS: Haxe framework and NativeKit pointer, touch, keyboard, and text input routing");
+		Sys.println("PASS: Haxe framework, 4,000-node layout pressure, and NativeKit input routing");
 		return 0;
 	}
 }

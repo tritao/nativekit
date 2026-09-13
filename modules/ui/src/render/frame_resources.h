@@ -11,7 +11,7 @@
 
 namespace nkui {
 
-class RenderBackend;
+class UiRenderer;
 
 enum class SurfacePixelFormat : uint8_t {
     Rgba8 = 1,
@@ -62,7 +62,7 @@ class SurfaceProducer {
     // the target while this revision and the resolved descriptor remain unchanged.
     virtual uint32_t generation() const = 0;
     // Return Unavailable for a transient synchronization miss; Failed aborts the frame.
-    virtual SurfaceRenderResult render(RenderBackend &backend, ResourceId target,
+    virtual SurfaceRenderResult render(UiRenderer &renderer, ResourceId target,
                                        const SurfaceDescriptor &description) = 0;
 };
 

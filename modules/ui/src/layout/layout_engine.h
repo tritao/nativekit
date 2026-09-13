@@ -18,9 +18,9 @@ class SkribidiFontCollection;
  */
 class LayoutEngine {
   public:
-    explicit LayoutEngine(std::size_t max_nodes = 512);
+    explicit LayoutEngine(std::size_t initial_capacity = 512);
     explicit LayoutEngine(std::shared_ptr<SkribidiFontCollection> fonts,
-                          std::size_t max_nodes = 512);
+                          std::size_t initial_capacity = 512);
     ~LayoutEngine();
     LayoutEngine(const LayoutEngine &) = delete;
     LayoutEngine &operator=(const LayoutEngine &) = delete;

@@ -1,25 +1,49 @@
 add_library(nativekit_gpu ${NK_LIBRARY_TYPE} src/adapter.cpp)
 add_library(NativeKit::gpu ALIAS nativekit_gpu)
 target_compile_features(nativekit_gpu PRIVATE cxx_std_17)
+target_compile_definitions(nativekit_gpu PRIVATE NKGPU_BUILDING_LIBRARY)
 target_include_directories(nativekit_gpu
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE "${PROJECT_SOURCE_DIR}/src" "${NK_VENDOR_DIR}/sokol"
-        "${PROJECT_SOURCE_DIR}/src/graphics/sokol"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/sokol"
         ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
 target_compile_definitions(nativekit_gpu PRIVATE ${NK_SOKOL_COMPILE_DEFINITION})
-target_link_libraries(nativekit_gpu PRIVATE NativeKit::nativekit)
+target_link_libraries(nativekit_gpu PUBLIC NativeKit::nativekit)
 if(NK_BUILD_GPU_BACKEND_MATRIX)
+    function(nk_add_gpu_sokol_backend_objects target backend symbol_prefix graphics_include_dirs)
+        add_library(${target} OBJECT src/sokol/runtime.c src/sokol/api.c)
+        target_include_directories(${target} PRIVATE
+            "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/sokol"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/sokol" ${graphics_include_dirs})
+        target_compile_definitions(${target} PRIVATE ${backend}
+            SOKOL_GFX_SYMBOL_PREFIX=${symbol_prefix}
+            NK_SOKOL_API_PREFIX=${symbol_prefix}
+            NK_SOKOL_RUNTIME_PREFIX=${symbol_prefix}runtime_)
+        set_target_properties(${target} PROPERTIES
+            POSITION_INDEPENDENT_CODE ON
+            C_VISIBILITY_PRESET hidden)
+    endfunction()
+
+    nk_add_gpu_sokol_backend_objects(nativekit_gpu_sokol_glcore_objects
+        NK_SOKOL_BACKEND_GLCORE=1 nk_sokol_glcore_ "")
+    nk_add_gpu_sokol_backend_objects(nativekit_gpu_sokol_gles3_objects
+        NK_SOKOL_BACKEND_GLES3=1 nk_sokol_gles3_ "${NK_SOKOL_MATRIX_GLES3_INCLUDE_DIR}")
+    target_sources(nativekit_gpu PRIVATE
+        $<TARGET_OBJECTS:nativekit_gpu_sokol_glcore_objects>
+        $<TARGET_OBJECTS:nativekit_gpu_sokol_gles3_objects>)
     target_compile_definitions(nativekit_gpu PRIVATE NK_SOKOL_RUNTIME_MATRIX=1)
-    target_link_libraries(nativekit_gpu PRIVATE
-        nativekit_sokol_runtime_glcore nativekit_sokol_runtime_gles3)
+    target_link_libraries(nativekit_gpu PRIVATE OpenGL::GL
+        "${NK_SOKOL_MATRIX_GLES3_LIBRARY}")
 else()
-    target_link_libraries(nativekit_gpu PRIVATE nativekit_sokol_runtime
+    target_sources(nativekit_gpu PRIVATE src/sokol/runtime.c src/sokol/api.c)
+    target_link_libraries(nativekit_gpu PRIVATE
         ${NK_SOKOL_GRAPHICS_LIBRARIES})
 endif()
 set_target_properties(nativekit_gpu PROPERTIES
     EXPORT_NAME gpu
+    C_VISIBILITY_PRESET hidden
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES
     VERSION ${PROJECT_VERSION}
@@ -51,9 +75,12 @@ if(NK_BUILD_GPU_BACKEND_MATRIX AND NK_BUILD_TESTS)
     add_executable(nativekit_sokol_runtime_matrix_test tests/runtime_matrix.c)
     target_include_directories(nativekit_sokol_runtime_matrix_test PRIVATE
         "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/sokol"
-        "${PROJECT_SOURCE_DIR}/src/graphics/sokol")
-    target_link_libraries(nativekit_sokol_runtime_matrix_test PRIVATE
-        nativekit_sokol_runtime_glcore nativekit_sokol_runtime_gles3)
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/sokol")
+    target_sources(nativekit_sokol_runtime_matrix_test PRIVATE
+        $<TARGET_OBJECTS:nativekit_gpu_sokol_glcore_objects>
+        $<TARGET_OBJECTS:nativekit_gpu_sokol_gles3_objects>)
+    target_link_libraries(nativekit_sokol_runtime_matrix_test PRIVATE OpenGL::GL
+        "${NK_SOKOL_MATRIX_GLES3_LIBRARY}")
     add_test(NAME nativekit_sokol_runtime_matrix
         COMMAND nativekit_sokol_runtime_matrix_test)
     set_tests_properties(nativekit_sokol_runtime_matrix PROPERTIES LABELS "graphics;sokol")
@@ -61,12 +88,7 @@ endif()
 
 if(NK_BUILD_EXAMPLES)
     add_executable(nativekit_gpu_triangle examples/triangle.c)
-    target_include_directories(nativekit_gpu_triangle PRIVATE
-        "${NK_VENDOR_DIR}/sokol" "${PROJECT_SOURCE_DIR}/src/graphics/sokol"
-        ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
-    target_compile_definitions(nativekit_gpu_triangle PRIVATE ${NK_SOKOL_COMPILE_DEFINITION})
-    target_link_libraries(nativekit_gpu_triangle PRIVATE NativeKit::nativekit
-        nativekit_sokol_runtime ${NK_SOKOL_GRAPHICS_LIBRARIES})
+    target_link_libraries(nativekit_gpu_triangle PRIVATE NativeKit::gpu)
     set_target_properties(nativekit_gpu_triangle PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 

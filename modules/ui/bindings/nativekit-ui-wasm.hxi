@@ -70,7 +70,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_API_VERSION = 7;
 	const NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT = 0;
 	const NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM = 1;
-	const NKUI_LAYOUT_MAX_NODES = 512;
+	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	const NKUI_LAYOUT_NODE_BACKGROUND_OFFSET = 52;
 	/**
 	 * Packed child alignment: x in bits 0..7, y in bits 8..15.
@@ -399,6 +399,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_image_create(width: u32, height: u32, format: nkui_image_format, pixels: ptr<const<u8>> @in_array("pixel_bytes"), pixel_bytes: u32, out_image: ptr<nkui_resource> @out) -> nkui_result;
 	/**
+	 * Clears all custom-paint display lists attached to the session.
+	 */
+	extern fn nkui_layout_session_clear_custom_paints(session: nkui_layout_session) -> nkui_result;
+	/**
 	 * Creates a private layout session.
 	 */
 	extern fn nkui_layout_session_create(out_session: ptr<nkui_layout_session> @out) -> nkui_result;
@@ -425,16 +429,24 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_layout_session_render_frame(renderer: nkui_renderer, session: nkui_layout_session, surface: nk_handle, frame_info: ptr<const<nkui_frame_info>>, load_existing: nk_bool) -> nkui_result;
 	/**
+	 * Associates a retained display list with a custom-visual node from the most
+	 * recently submitted tree. The session retains the list until it is replaced,
+	 * cleared, or the session is destroyed.
+	 */
+	extern fn nkui_layout_session_set_custom_paint(session: nkui_layout_session, node_id: u32, display_list: nkui_display_list) -> nkui_result;
+	/**
 	 * Copies the font collection configuration into the layout session.
 	 */
 	extern fn nkui_layout_session_set_font_collection(session: nkui_layout_session, fonts: nkui_resource) -> nkui_result;
 	/**
 	 * Submits one flat, Haxe-owned render/layout tree transaction.
 	 *
-	 * The transaction is little-endian and consists of a 16-byte header, fixed
-	 * 176-byte node records, and a UTF-8 string table. Node text offsets are
-	 * absolute byte offsets from the beginning of the transaction. The native
-	 * side copies all values before returning, so the input buffer may be reused.
+	 * The transaction is little-endian and consists of a fixed header, node
+	 * records of NKUI_LAYOUT_NODE_RECORD_BYTES bytes, and a UTF-8 string table.
+	 * Node text offsets are absolute byte offsets from the beginning of the
+	 * transaction. The native side copies all values before returning, so the
+	 * input buffer may be reused. The transaction is bounded by
+	 * NKUI_LAYOUT_MAX_TRANSACTION_BYTES; node capacity grows with submitted data.
 	 * Each node transform is applied about that node's top-left layout origin;
 	 * clipped nodes must have an axis-aligned cumulative transform.
 	 */

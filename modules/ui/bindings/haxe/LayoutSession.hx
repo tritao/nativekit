@@ -62,6 +62,22 @@ class LayoutSession {
 		throw 'Layout item ${node.id} is not present in the latest resolved frame';
 	}
 
+	/** Removes all Haxe custom-paint display lists from this session. */
+	public function clearCustomPaints():Void {
+		ensureLive();
+		UiResult.check(NativeKitUI.nkui_layout_session_clear_custom_paints(value),
+			"layoutSession.clearCustomPaints");
+	}
+
+	/** Attaches a custom display list to a Custom layout node for ordered rendering. */
+	public function setCustomPaint(nodeId:Int, displayList:DisplayList):Void {
+		ensureLive();
+		if (nodeId <= 0 || displayList == null || displayList.isDisposed())
+			throw "Custom paint requires a live display list and node ID";
+		UiResult.check(NativeKitUI.nkui_layout_session_set_custom_paint(value, nodeId,
+			displayList.nativeHandle()), "layoutSession.setCustomPaint");
+	}
+
 	/** Executes the last submitted tree through the existing renderer backend. */
 	public function render(renderer:Renderer, surface:Surface, frame:FrameInfo):Void {
 		ensureLive();

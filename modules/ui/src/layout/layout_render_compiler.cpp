@@ -122,6 +122,13 @@ std::array<float, 6> device_transform(const LayoutTransform &transform, float pi
             transform.tx * pixel_scale, transform.ty * pixel_scale};
 }
 
+std::array<float, 6> device_transform(const std::array<float, 6> &transform, float pixel_scale) {
+    auto result = transform;
+    for (float &value : result)
+        value *= pixel_scale;
+    return result;
+}
+
 LayoutRect transform_bounds(LayoutRect rect, const LayoutTransform &transform) {
     const auto x = [&](float px, float py) {
         return transform.a * px + transform.c * py + transform.tx;
@@ -183,7 +190,8 @@ bool LayoutRenderCompiler::add_system_fallbacks() {
 bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId main_target,
                                    float pixel_scale, LayoutRenderFrame &out,
                                    LayoutRenderCompileError *error, bool load_existing,
-                                   SkribidiAdapter *text_source) const {
+                                   SkribidiAdapter *text_source,
+                                   const CustomPaintPlans *custom_paints) const {
     if (error)
         *error = {};
     if (!is_resource_id(main_target, ResourceKind::RenderTarget) || !std::isfinite(pixel_scale) ||
@@ -193,6 +201,14 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
     out.reset();
     out.text_source_ = text_source;
     try {
+        std::size_t pass_capacity = 1;
+        if (custom_paints)
+            for (const auto &[node_id, custom_plan] : *custom_paints) {
+                (void)node_id;
+                if (custom_plan)
+                    pass_capacity += custom_plan->passes.size();
+            }
+        out.plan_.passes.reserve(pass_capacity);
         out.plan_.passes.push_back({main_target, {}, load_existing, {}});
         bool has_text = false;
         for (const auto &primitive : snapshot.primitives)
@@ -208,7 +224,70 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
 
         std::vector<LayoutRect> clips;
         uint32_t transient_slot = 1;
+        uint32_t transient_target_slot = 0x8000;
         auto &commands = out.plan_.passes.front().commands;
+        const auto append_custom_plan = [&](const RenderPlan &custom_plan,
+                                            std::size_t primitive_index) -> bool {
+            std::unordered_map<uint32_t, ResourceId> remapped_targets;
+            for (const auto &pass : custom_plan.passes) {
+                if (pass.target.value == main_target.value ||
+                    remapped_targets.contains(pass.target.value))
+                    continue;
+                if (transient_target_slot > std::numeric_limits<uint16_t>::max())
+                    return fail(error, primitive_index, "custom render-target limit exceeded");
+                remapped_targets.emplace(
+                    pass.target.value,
+                    make_resource_id(ResourceKind::RenderTarget, 1,
+                                     static_cast<uint16_t>(transient_target_slot++)));
+            }
+            const auto remap = [&remapped_targets](ResourceId id) {
+                const auto found = remapped_targets.find(id.value);
+                return found == remapped_targets.end() ? id : found->second;
+            };
+            for (const auto &source_pass : custom_plan.passes) {
+                if (!is_resource_id(source_pass.target, ResourceKind::RenderTarget))
+                    return fail(error, primitive_index, "custom render target is invalid");
+                if (source_pass.target.value == main_target.value) {
+                    for (auto command : source_pass.commands) {
+                        command.resource = remap(command.resource);
+                        command.transform = device_transform(command.transform, pixel_scale);
+                        command.scissor_x *= pixel_scale;
+                        command.scissor_y *= pixel_scale;
+                        command.scissor_width *= pixel_scale;
+                        command.scissor_height *= pixel_scale;
+                        if (command.kind == RenderCommandKind::CompositeTarget &&
+                            (command.width <= 0.0f || command.height <= 0.0f)) {
+                            command.x *= pixel_scale;
+                            command.y *= pixel_scale;
+                            command.width *= pixel_scale;
+                            command.height *= pixel_scale;
+                            // Zero-sized composites use the target's physical
+                            // extent, so their default transform remains identity.
+                            command.transform = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+                        }
+                        command.custom_payload = true;
+                        commands.push_back(std::move(command));
+                    }
+                    continue;
+                }
+                RenderPass pass = source_pass;
+                pass.target = remap(pass.target);
+                for (auto &command : pass.commands) {
+                    command.resource = remap(command.resource);
+                    command.transform = device_transform(command.transform, pixel_scale);
+                    command.scissor_x *= pixel_scale;
+                    command.scissor_y *= pixel_scale;
+                    command.scissor_width *= pixel_scale;
+                    command.scissor_height *= pixel_scale;
+                    command.custom_payload = true;
+                }
+                out.plan_.passes.push_back(std::move(pass));
+            }
+            for (const auto &dependency : custom_plan.dependencies)
+                out.plan_.dependencies.push_back(
+                    {remap(dependency.producer), remap(dependency.consumer)});
+            return true;
+        };
         for (std::size_t index = 0; index < snapshot.primitives.size(); ++index) {
             const auto &primitive = snapshot.primitives[index];
             if (primitive.kind == LayoutPrimitiveKind::ClipBegin) {
@@ -233,6 +312,15 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             if (!finite_rect(primitive.bounds) || !valid_color(primitive.color) ||
                 (primitive.kind == LayoutPrimitiveKind::Rectangle && !valid_radii(primitive)))
                 return fail(error, index, "layout primitive is invalid");
+            if (primitive.kind == LayoutPrimitiveKind::Custom) {
+                if (custom_paints) {
+                    const auto found = custom_paints->find(primitive.node_id);
+                    if (found != custom_paints->end() && found->second &&
+                        !append_custom_plan(*found->second, index))
+                        return false;
+                }
+                continue;
+            }
             if (primitive.kind == LayoutPrimitiveKind::Rectangle) {
                 if (primitive.bounds.width <= 0.0f || primitive.bounds.height <= 0.0f)
                     continue;

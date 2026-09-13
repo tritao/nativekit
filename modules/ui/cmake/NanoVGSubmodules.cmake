@@ -1,4 +1,4 @@
-foreach(dependency IN ITEMS sokol nanovg)
+foreach(dependency IN ITEMS nanovg)
     if(NOT EXISTS "${NK_VENDOR_DIR}/${dependency}/.git")
         message(FATAL_ERROR
             "${dependency} submodule is missing; run git submodule update --init")

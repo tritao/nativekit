@@ -8,6 +8,11 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * OpenGL ES 3 runtime.
 	 */
 	const NKGPU_BACKEND_GLES3 = 2;
+	const NKGPU_BLENDFACTOR_ONE = 2;
+	const NKGPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA = 4;
+	const NKGPU_BLENDFACTOR_SRC_ALPHA = 3;
+	const NKGPU_BLENDFACTOR_ZERO = 1;
+	const NKGPU_BLENDOP_ADD = 1;
 	/**
 	 * Use the buffer as index data.
 	 */
@@ -16,6 +21,12 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Use the buffer as vertex data.
 	 */
 	const NKGPU_BUFFER_VERTEX = 1;
+	const NKGPU_COLORMASK_A = 8;
+	const NKGPU_COLORMASK_B = 4;
+	const NKGPU_COLORMASK_G = 2;
+	const NKGPU_COLORMASK_NONE = 0;
+	const NKGPU_COLORMASK_R = 1;
+	const NKGPU_COLORMASK_RGBA = 15;
 	/**
 	 * Apply an image; payload: view slot and image handle.
 	 */
@@ -44,6 +55,12 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Draw primitives; payload: base element, element count, and instance count.
 	 */
 	const NKGPU_COMMAND_DRAW = 7;
+	const NKGPU_COMPAREFUNC_ALWAYS = 1;
+	const NKGPU_COMPAREFUNC_EQUAL = 3;
+	const NKGPU_COMPAREFUNC_LESS_EQUAL = 2;
+	const NKGPU_COMPAREFUNC_NOT_EQUAL = 4;
+	const NKGPU_CULLMODE_BACK = 2;
+	const NKGPU_CULLMODE_NONE = 1;
 	/**
 	 * An argument was null, zero, out of range, or otherwise invalid.
 	 */
@@ -60,6 +77,8 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * The operation is not valid in the current renderer or frame state.
 	 */
 	const NKGPU_ERROR_WRONG_STATE = -4;
+	const NKGPU_FACEWINDING_CCW = 1;
+	const NKGPU_FACEWINDING_CW = 2;
 	/**
 	 * Interpolate neighboring texels when sampling.
 	 */
@@ -68,6 +87,8 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Choose the nearest texel when sampling.
 	 */
 	const NKGPU_FILTER_NEAREST = 1;
+	const NKGPU_IMAGEFORMAT_R8 = 1;
+	const NKGPU_IMAGEFORMAT_RGBA8 = 2;
 	/**
 	 * Do not use indexed drawing for the pipeline.
 	 */
@@ -96,6 +117,11 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * The vertex shader stage.
 	 */
 	const NKGPU_SHADERSTAGE_VERTEX = 1;
+	const NKGPU_STENCILOP_DECREMENT_WRAP = 5;
+	const NKGPU_STENCILOP_INCREMENT_WRAP = 4;
+	const NKGPU_STENCILOP_INVERT = 3;
+	const NKGPU_STENCILOP_KEEP = 1;
+	const NKGPU_STENCILOP_ZERO = 2;
 	/**
 	 * One floating-point value.
 	 */
@@ -149,6 +175,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	const NKGPU_VERTEXFORMAT_FLOAT4 = 4;
 	/**
+	 * Four normalized unsigned-byte vertex components.
+	 */
+	const NKGPU_VERTEXFORMAT_UBYTE4N = 5;
+	/**
 	 * Clamp texture coordinates to the edge texels.
 	 */
 	const NKGPU_WRAP_CLAMP_TO_EDGE = 2;
@@ -156,6 +186,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Repeat the texture at integer coordinate boundaries.
 	 */
 	const NKGPU_WRAP_REPEAT = 1;
+	/**
+	 * Applies a NativeKit graphics image after validating its runtime and device.
+	 */
+	extern fn nkgpu_apply_graphics_image(renderer: nkgpu_renderer, slot: u32, image: nk_graphics_image) -> nkgpu_result;
 	/**
 	 * Binds an image view to a slot in the currently active frame.
 	 */
@@ -172,6 +206,14 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Binds a sampler to a slot in the currently active frame.
 	 */
 	extern fn nkgpu_apply_sampler(renderer: nkgpu_renderer, slot: u32, sampler: nkgpu_sampler) -> nkgpu_result;
+	/**
+	 * Applies a framebuffer-pixel scissor rectangle, or disables scissoring.
+	 */
+	extern fn nkgpu_apply_scissor(renderer: nkgpu_renderer, enabled: u32, x: i32, y: i32, width: i32, height: i32) -> nkgpu_result;
+	/**
+	 * Applies caller-owned uniform bytes to a block in the active pass.
+	 */
+	extern fn nkgpu_apply_uniform_data(renderer: nkgpu_renderer, slot: u32, data: ptr<const<u8>>, size: u32) -> nkgpu_result;
 	/**
 	 * Applies a uniform builder to a block slot in the active frame.
 	 *
@@ -203,6 +245,18 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_begin_render_target(renderer: nkgpu_renderer, target: nkgpu_render_target, clear: u32) -> nkgpu_result;
 	/**
+	 * Begins an offscreen target pass inside a frame.
+	 */
+	extern fn nkgpu_begin_target_pass(renderer: nkgpu_renderer, target: nkgpu_render_target, clear: u32) -> nkgpu_result;
+	/**
+	 * Begins a window-surface pass inside a frame.
+	 */
+	extern fn nkgpu_begin_window_pass(renderer: nkgpu_renderer, width: u32, height: u32, clear: u32) -> nkgpu_result;
+	/**
+	 * Appends bytes to a stream buffer and returns their byte offset.
+	 */
+	extern fn nkgpu_buffer_append(renderer: nkgpu_renderer, buffer: nkgpu_buffer, data: ptr<const<u8>>, size: u32, out_offset: ptr<u32> @out) -> nkgpu_result;
+	/**
 	 * Starts building a zero-initialized vertex buffer of `size` bytes.
 	 *
 	 * This is shorthand for nkgpu_buffer_begin_kind() with NKGPU_BUFFER_VERTEX. Fill
@@ -227,6 +281,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * `out_buffer`.
 	 */
 	extern fn nkgpu_buffer_create(renderer: nkgpu_renderer, data: ptr<const<u8>>, size: u32, out_buffer: ptr<nkgpu_buffer> @out) -> nkgpu_result;
+	/**
+	 * Creates an uninitialized stream buffer for appends during an active pass.
+	 */
+	extern fn nkgpu_buffer_create_stream(renderer: nkgpu_renderer, capacity: u32, usage: nkgpu_buffer_usage, out_buffer: ptr<nkgpu_buffer> @out) -> nkgpu_result;
 	/**
 	 * Destroys a buffer owned by `renderer`; the handle becomes invalid.
 	 */
@@ -255,6 +313,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_buffer_write_u16(builder: nkgpu_buffer_builder, offset: u32, value: u32) -> nkgpu_result;
 	/**
+	 * Returns the build's default graphics API for a GPU-backed surface.
+	 */
+	extern fn nkgpu_default_graphics_api() -> nk_graphics_api;
+	/**
 	 * Draws `element_count` elements for `instance_count` instances.
 	 *
 	 * A pipeline and the buffers required by it must already be applied in the
@@ -270,13 +332,25 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_end_frame(renderer: nkgpu_renderer) -> nkgpu_result;
 	/**
+	 * Ends the active pass while keeping the frame open.
+	 */
+	extern fn nkgpu_end_pass(renderer: nkgpu_renderer) -> nkgpu_result;
+	/**
 	 * Ends and commits the active offscreen target pass without presenting.
 	 */
 	extern fn nkgpu_end_render_target(renderer: nkgpu_renderer) -> nkgpu_result;
 	/**
+	 * Begins a frame without opening a pass, for plans that contain several passes.
+	 */
+	extern fn nkgpu_frame_begin(renderer: nkgpu_renderer) -> nkgpu_result;
+	/**
 	 * Starts building a zero-initialized RGBA8 image of the requested size.
 	 */
 	extern fn nkgpu_image_begin(renderer: nkgpu_renderer, width: u32, height: u32, out_builder: ptr<nkgpu_image_builder> @out) -> nkgpu_result;
+	/**
+	 * Creates an image from tightly packed R8 or RGBA8 pixels.
+	 */
+	extern fn nkgpu_image_create(renderer: nkgpu_renderer, width: u32, height: u32, format: nkgpu_image_format, pixels: ptr<const<u8>>, size: u32, dynamic_update: u32, out_image: ptr<nkgpu_image> @out) -> nkgpu_result;
 	/**
 	 * Destroys an image and its texture view; the handle becomes invalid.
 	 */
@@ -288,6 +362,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * bound with nkgpu_apply_image().
 	 */
 	extern fn nkgpu_image_end(builder: nkgpu_image_builder, out_image: ptr<nkgpu_image> @out) -> nkgpu_result;
+	/**
+	 * Updates an image rectangle from rows with the supplied byte pitch.
+	 */
+	extern fn nkgpu_image_update(renderer: nkgpu_renderer, image: nkgpu_image, x: u32, y: u32, width: u32, height: u32, pixels: ptr<const<u8>>, row_pitch: u32) -> nkgpu_result;
 	/**
 	 * Writes one RGBA8 pixel into an image builder.
 	 *
@@ -320,6 +398,18 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_pipeline_begin(renderer: nkgpu_renderer, shader: nkgpu_shader, stride: u32, out_builder: ptr<nkgpu_pipeline_builder> @out) -> nkgpu_result;
 	/**
+	 * Sets independent RGB and alpha blend operations for a pipeline.
+	 */
+	extern fn nkgpu_pipeline_blend(builder: nkgpu_pipeline_builder, state: ptr<const<nkgpu_blend_state>>) -> nkgpu_result;
+	/**
+	 * Selects the color channels written by a pipeline.
+	 */
+	extern fn nkgpu_pipeline_color_write_mask(builder: nkgpu_pipeline_builder, mask: nkgpu_color_write_mask) -> nkgpu_result;
+	/**
+	 * Selects the front-face culling mode and winding for a pipeline.
+	 */
+	extern fn nkgpu_pipeline_cull_mode(builder: nkgpu_pipeline_builder, mode: nkgpu_cull_mode, winding: nkgpu_face_winding) -> nkgpu_result;
+	/**
 	 * Configures depth/stencil compatibility for a pipeline. Disabled by default,
 	 * matching window passes; enable only when drawing to a target created with
 	 * depth/stencil storage.
@@ -343,6 +433,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * used by the buffer passed to nkgpu_apply_index_buffer().
 	 */
 	extern fn nkgpu_pipeline_index_type(builder: nkgpu_pipeline_builder, type: nkgpu_index_type) -> nkgpu_result;
+	/**
+	 * Sets per-face stencil testing and operations for a pipeline.
+	 */
+	extern fn nkgpu_pipeline_stencil(builder: nkgpu_pipeline_builder, state: ptr<const<nkgpu_stencil_state>>) -> nkgpu_result;
 	/**
 	 * Returns the backend selected for this renderer's NativeKit surface.
 	 */
@@ -502,9 +596,49 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_uniforms_write_f32(builder: nkgpu_uniform_builder, offset: u32, value: f32) -> nkgpu_result;
 	/**
+	 * Blend configuration for one color attachment.
+	 */
+	struct nkgpu_blend_state @layout(28, 4) {
+		enabled: u32 @offset(0);
+		src_rgb: nkgpu_blend_factor @offset(4);
+		dst_rgb: nkgpu_blend_factor @offset(8);
+		op_rgb: nkgpu_blend_op @offset(12);
+		src_alpha: nkgpu_blend_factor @offset(16);
+		dst_alpha: nkgpu_blend_factor @offset(20);
+		op_alpha: nkgpu_blend_op @offset(24);
+	}
+	/**
+	 * Operations applied to one stencil face.
+	 */
+	struct nkgpu_stencil_face_state @layout(16, 4) {
+		compare: nkgpu_compare_func @offset(0);
+		fail_op: nkgpu_stencil_op @offset(4);
+		depth_fail_op: nkgpu_stencil_op @offset(8);
+		pass_op: nkgpu_stencil_op @offset(12);
+	}
+	/**
+	 * Stencil test configuration for both polygon faces.
+	 */
+	struct nkgpu_stencil_state @layout(40, 4) {
+		enabled: u32 @offset(0);
+		read_mask: u8 @offset(4);
+		write_mask: u8 @offset(5);
+		reserved: array<u8, 2> @offset(6);
+		front: nkgpu_stencil_face_state @offset(8);
+		back: nkgpu_stencil_face_state @offset(24);
+	}
+	/**
 	 * Backend selected when the GPU module was built.
 	 */
 	type nkgpu_backend = u32;
+	/**
+	 * Blend factors accepted by generic pipeline state.
+	 */
+	type nkgpu_blend_factor = u32;
+	/**
+	 * Blend operations accepted by generic pipeline state.
+	 */
+	type nkgpu_blend_op = u32;
 	/**
 	 * Buffer handle returned by nkgpu_buffer_create() or nkgpu_buffer_end().
 	 */
@@ -518,9 +652,25 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	type nkgpu_buffer_usage = u32;
 	/**
+	 * Color channels written by a pipeline.
+	 */
+	type nkgpu_color_write_mask = u32;
+	/**
 	 * Opcode stored in the first word of a packed command record.
 	 */
 	type nkgpu_command = u32;
+	/**
+	 * Comparison function used by depth and stencil state.
+	 */
+	type nkgpu_compare_func = u32;
+	/**
+	 * Culling mode for a generic graphics pipeline.
+	 */
+	type nkgpu_cull_mode = u32;
+	/**
+	 * Front-face winding used with back-face culling.
+	 */
+	type nkgpu_face_winding = u32;
 	/**
 	 * Texture minification or magnification filter.
 	 */
@@ -533,6 +683,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Temporary builder handle returned by nkgpu_image_begin().
 	 */
 	handle nkgpu_image_builder : u32;
+	/**
+	 * Pixel storage accepted by nkgpu_image_create().
+	 */
+	type nkgpu_image_format = u32;
 	/**
 	 * How an applied index buffer is interpreted by the pipeline.
 	 */
@@ -583,6 +737,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Shader stage associated with a uniform block or texture binding.
 	 */
 	type nkgpu_shader_stage = u32;
+	/**
+	 * Stencil operation used when a fragment passes or fails a test.
+	 */
+	type nkgpu_stencil_op = u32;
 	/**
 	 * Temporary builder handle returned by nkgpu_uniforms_begin().
 	 */

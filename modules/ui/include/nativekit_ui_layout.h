@@ -21,7 +21,7 @@ enum {
     NKUI_LAYOUT_TRANSACTION_VERSION = 6,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
     NKUI_LAYOUT_NODE_RECORD_BYTES = 188,
-    NKUI_LAYOUT_MAX_NODES = 512,
+    NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16 * 1024 * 1024,
     NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96
 };
 
@@ -172,13 +172,27 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_destroy(nkui_layout_session ses
 NKUI_API nkui_result NK_CALL nkui_layout_session_set_font_collection(nkui_layout_session session,
                                                                      nkui_resource fonts);
 
+/** Clears all custom-paint display lists attached to the session. */
+NKUI_API nkui_result NK_CALL nkui_layout_session_clear_custom_paints(
+    nkui_layout_session session);
+
+/**
+ * Associates a retained display list with a custom-visual node from the most
+ * recently submitted tree. The session retains the list until it is replaced,
+ * cleared, or the session is destroyed.
+ */
+NKUI_API nkui_result NK_CALL nkui_layout_session_set_custom_paint(
+    nkui_layout_session session, uint32_t node_id, nkui_display_list display_list);
+
 /**
  * Submits one flat, Haxe-owned render/layout tree transaction.
  *
- * The transaction is little-endian and consists of a 16-byte header, fixed
- * 176-byte node records, and a UTF-8 string table. Node text offsets are
- * absolute byte offsets from the beginning of the transaction. The native
- * side copies all values before returning, so the input buffer may be reused.
+ * The transaction is little-endian and consists of a fixed header, node
+ * records of NKUI_LAYOUT_NODE_RECORD_BYTES bytes, and a UTF-8 string table.
+ * Node text offsets are absolute byte offsets from the beginning of the
+ * transaction. The native side copies all values before returning, so the
+ * input buffer may be reused. The transaction is bounded by
+ * NKUI_LAYOUT_MAX_TRANSACTION_BYTES; node capacity grows with submitted data.
  * Each node transform is applied about that node's top-left layout origin;
  * clipped nodes must have an axis-aligned cumulative transform.
  */

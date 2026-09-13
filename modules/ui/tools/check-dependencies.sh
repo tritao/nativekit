@@ -4,7 +4,7 @@ set -euo pipefail
 module_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 repo_dir=$(cd "$module_dir/../.." && pwd)
 
-dependencies=(budouxc clay harfbuzz libunibreak nanovg sheenbidi skribidi sokol)
+dependencies=(budouxc clay harfbuzz libunibreak nanovg sheenbidi skribidi)
 licenses=(
     budouxc/LICENSE
     clay/LICENSE.md
@@ -13,7 +13,6 @@ licenses=(
     nanovg/LICENSE.txt
     sheenbidi/LICENSE
     skribidi/LICENSE
-    sokol/LICENSE
 )
 
 for dependency in "${dependencies[@]}"; do

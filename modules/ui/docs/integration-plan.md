@@ -1,5 +1,10 @@
 # NativeKit UI rendering and text integration plan
 
+> Historical implementation plan. Its UI-owned Sokol backend and sibling
+> module assumptions were superseded by [ADR 0007](../../../docs/decisions/0007-optional-modules.md)
+> and [ADR 0008](../../../docs/decisions/0008-ui-rendering-ownership.md):
+> Sokol belongs to NativeKit GPU, and UI renders through `nkgpu_*`.
+
 ## Boundaries
 
 The public `nkui_*` ABI describes render/layout primitives, styled text,

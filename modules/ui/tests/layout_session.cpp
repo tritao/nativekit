@@ -5,6 +5,10 @@
 #include <iostream>
 #include <vector>
 
+static_assert(NKUI_LAYOUT_NODE_RECORD_BYTES ==
+                  NKUI_LAYOUT_NODE_Z_INDEX_OFFSET + sizeof(int32_t),
+              "layout node record size must include every defined field");
+
 namespace {
 
 void write_u32(std::vector<uint8_t> &bytes, std::size_t offset, uint32_t value) {
@@ -90,6 +94,38 @@ std::vector<uint8_t> transaction() {
     return bytes;
 }
 
+std::vector<uint8_t> transaction_with_nodes(uint32_t node_count) {
+    const std::size_t string_offset = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
+                                      NKUI_LAYOUT_NODE_RECORD_BYTES * node_count;
+    std::vector<uint8_t> bytes(string_offset);
+    write_u32(bytes, 0, NKUI_LAYOUT_TRANSACTION_VERSION);
+    write_u32(bytes, 4, node_count);
+    write_u32(bytes, 8, NKUI_LAYOUT_NODE_RECORD_BYTES);
+    write_u32(bytes, 12, static_cast<uint32_t>(string_offset));
+    for (uint32_t index = 0; index < node_count; ++index) {
+        const std::size_t offset = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
+                                   static_cast<std::size_t>(index) *
+                                       NKUI_LAYOUT_NODE_RECORD_BYTES;
+        write_u32(bytes, offset + NKUI_LAYOUT_NODE_ID_OFFSET, index + 1);
+        write_i32(bytes, offset + NKUI_LAYOUT_NODE_PARENT_OFFSET, index == 0 ? -1 : 0);
+        write_u32(bytes, offset + NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET, NKUI_LAYOUT_VISUAL_BOX);
+        write_u32(bytes, offset + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIXED);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET,
+                    index == 0 ? 256.0f : 1.0f);
+        write_u32(bytes, offset + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET,
+                  NKUI_LAYOUT_SIZING_FIXED);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET,
+                    index == 0 ? 192.0f : 1.0f);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET, 16.0f);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_TRANSFORM_A_OFFSET, 1.0f);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_TRANSFORM_D_OFFSET, 1.0f);
+        write_u32(bytes, offset + NKUI_LAYOUT_NODE_FLAGS_OFFSET, NKUI_LAYOUT_NODE_VISIBLE);
+        write_u32(bytes, offset + NKUI_LAYOUT_NODE_TEXT_OFFSET_OFFSET,
+                  static_cast<uint32_t>(string_offset));
+    }
+    return bytes;
+}
+
 } // namespace
 
 int main() {
@@ -117,6 +153,32 @@ int main() {
         std::cerr << "initial submit failed: " << initial_status << "\n";
         return 4;
     }
+
+    // Custom-paint lists are retained by their layout session, and only
+    // custom-visual nodes in the latest submission may own one.
+    auto custom_tree = bytes;
+    const std::size_t custom_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
+                                      NKUI_LAYOUT_NODE_RECORD_BYTES;
+    write_u32(custom_tree, custom_record + NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET,
+              NKUI_LAYOUT_VISUAL_CUSTOM);
+    if (nkui_layout_session_submit(session, custom_tree.data(), custom_tree.size(), &frame) !=
+        NKUI_OK)
+        return 24;
+    nkui_display_list custom_list{};
+    if (nkui_display_list_create(&custom_list) != NKUI_OK ||
+        nkui_layout_session_set_custom_paint(session, 2, custom_list) != NKUI_OK ||
+        nkui_layout_session_set_custom_paint(session, 3, custom_list) !=
+            NKUI_ERROR_INVALID_ARGUMENT ||
+        nkui_display_list_destroy(custom_list) != NKUI_ERROR_INVALID_ARGUMENT ||
+        nkui_layout_session_clear_custom_paints(session) != NKUI_OK ||
+        nkui_display_list_destroy(custom_list) != NKUI_OK)
+        return 25;
+
+    if (nkui_display_list_create(&custom_list) != NKUI_OK ||
+        nkui_layout_session_set_custom_paint(session, 2, custom_list) != NKUI_OK ||
+        nkui_layout_session_submit(session, bytes.data(), bytes.size(), &frame) != NKUI_OK ||
+        nkui_display_list_destroy(custom_list) != NKUI_OK)
+        return 26;
     if (nkui_layout_session_get_resolved_items(session, nullptr, &resolved_bytes) != NKUI_OK ||
         resolved_bytes != 3 * NKUI_LAYOUT_RESOLVED_ITEM_BYTES)
         return 5;
@@ -147,6 +209,26 @@ int main() {
             NKUI_ERROR_INVALID_ARGUMENT ||
         undersized_bytes != resolved.size())
         return 11;
+
+    constexpr uint32_t large_node_count = 2000;
+    const auto large = transaction_with_nodes(large_node_count);
+    if (large.size() > NKUI_LAYOUT_MAX_TRANSACTION_BYTES ||
+        nkui_layout_session_submit(session, large.data(), static_cast<uint32_t>(large.size()),
+                                   &frame) != NKUI_OK)
+        return 20;
+    uint32_t large_resolved_bytes = 0;
+    if (nkui_layout_session_get_resolved_items(session, nullptr, &large_resolved_bytes) !=
+            NKUI_OK ||
+        large_resolved_bytes != large_node_count * NKUI_LAYOUT_RESOLVED_ITEM_BYTES)
+        return 21;
+    std::vector<uint8_t> large_resolved(large_resolved_bytes);
+    if (nkui_layout_session_get_resolved_items(session, large_resolved.data(),
+                                               &large_resolved_bytes) != NKUI_OK)
+        return 22;
+    if (nkui_layout_session_submit(session, large.data(),
+                                   NKUI_LAYOUT_MAX_TRANSACTION_BYTES + 1u, &frame) !=
+        NKUI_ERROR_INVALID_TRANSACTION)
+        return 23;
 
     auto centered = bytes;
     const std::size_t panel_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +

@@ -1,14 +1,13 @@
 #include "nativekit.h"
 #include "nativekit_graphics.h"
+#include "nativekit_gpu.h"
 #include "nativekit_ui.h"
 #include "nativekit_window.h"
 
-#if defined(NK_SOKOL_BACKEND_GLES3)
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 #include <GLES3/gl3.h>
-#define NKUI_TEST_SURFACE_API NK_GRAPHICS_OPENGL_ES
 #else
 #include <GL/gl.h>
-#define NKUI_TEST_SURFACE_API NK_GRAPHICS_OPENGL
 #endif
 
 #include <algorithm>
@@ -54,14 +53,13 @@ int main() {
         return 2;
     nk_surface_options surface_options{};
     surface_options.struct_size = sizeof(surface_options);
-    surface_options.flags = NK_SURFACE_FORWARD_COMPATIBLE | NK_SURFACE_STENCIL;
-    surface_options.api = NKUI_TEST_SURFACE_API;
+    surface_options.api = nkgpu_default_graphics_api();
+    surface_options.flags = NK_SURFACE_STENCIL;
+    if (surface_options.api == NK_GRAPHICS_OPENGL)
+        surface_options.flags |= NK_SURFACE_FORWARD_COMPATIBLE;
     surface_options.major_version = 3;
-#if defined(NK_SOKOL_BACKEND_GLES3)
-    surface_options.minor_version = 0;
-#else
-    surface_options.minor_version = 3;
-#endif
+    if (surface_options.api == NK_GRAPHICS_OPENGL)
+        surface_options.minor_version = 3;
     surface_options.width = window_options.width;
     surface_options.height = window_options.height;
     nk_handle surface = NK_INVALID_HANDLE;

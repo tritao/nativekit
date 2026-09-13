@@ -101,8 +101,9 @@ ctest --test-dir build --output-on-failure
 
 Experimental higher-level modules live in the same repository but remain
 optional so the core platform library stays compact. Enable the low-level GPU
-module with `-DNK_BUILD_GPU=ON`, or the retained UI-engine scaffold with
-`-DNK_BUILD_UI=ON`. Their design and build notes live under [`modules/`](modules/).
+module with `-DNK_BUILD_GPU=ON`, or the retained UI module with
+`-DNK_BUILD_UI=ON` (which also builds its GPU dependency). Their architecture
+and build notes live under [`modules/`](modules/).
 
 ### Web / WASM preview
 

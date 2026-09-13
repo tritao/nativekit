@@ -15,7 +15,7 @@ class CubeSurfaceProducer final : public SurfaceProducer {
     bool describe(int requested_width, int requested_height,
                   SurfaceDescriptor &description) const override;
     uint32_t generation() const override { return generation_; }
-    SurfaceRenderResult render(RenderBackend &backend, ResourceId target,
+    SurfaceRenderResult render(UiRenderer &renderer, ResourceId target,
                                const SurfaceDescriptor &description) override;
 
     /** Selects a deterministic rotation angle and invalidates the retained target. */

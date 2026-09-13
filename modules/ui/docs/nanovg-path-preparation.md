@@ -1,8 +1,9 @@
 # NanoVG path preparation
 
-NativeKit uses NanoVG as a path construction and tessellation library. NanoVG
-does not own NativeKit text, render targets, compositor ordering, Sokol
-resources, or final draw submission.
+NativeKit UI uses NanoVG as a path construction and tessellation library.
+NanoVG does not own NativeKit text, render targets, compositor ordering, GPU
+resources, or final draw submission. Prepared path operations enter UI's
+`RenderPlan`; `UiRenderer` submits them through NativeKit GPU.
 
 ## Reusable paths
 
@@ -131,8 +132,8 @@ The geometry cache is keyed by path, the tessellation-affecting transform,
 device scale, and stroke style when applicable, not by paint, so recoloring a
 retained path does not retessellate it. Paint is attached when a
 `PreparedPath` operation is created and is consumed by the NativeKit
-compositor and Sokol backend. Canvas clipping and compositing remain on the
-render-plan command; they are not retained in prepared path data.
+compositor and GPU through `UiRenderer`. Canvas clipping and compositing remain
+on the render-plan command; they are not retained in prepared path data.
 
 The public NativeKit display list uses `NKUI_COMMAND_DRAW_PATH` for fills and
 `NKUI_COMMAND_STROKE_PATH` for strokes. A stroke command carries its logical
@@ -148,7 +149,7 @@ NativeKit Path
     -> NVGpathBuilder
     -> nvgPrepareFill / nvgPrepareStroke
     -> NativeKit PreparedGeometry
-    -> compositor / Sokol backend
+    -> RenderPlan -> UiRenderer -> NativeKit GPU (`nkgpu_*`)
 ```
 
 Skribidi remains NativeKit's text authority. Ordinary `DrawImage` operations

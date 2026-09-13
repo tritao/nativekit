@@ -14,7 +14,7 @@ import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
 
-/** Accessible image view that records its image draw into the Haxe overlay list. */
+/** Accessible image view that records its draw in the node's custom display list. */
 class ImageView implements View {
 	public final key:String;
 	public final image:Image;

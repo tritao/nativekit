@@ -15,7 +15,13 @@
 /* ------------------------------------------------------------------------- */
 
 #if defined(_WIN32)
+#if defined(NK_STATIC)
+#define NKGPU_API
+#elif defined(NKGPU_BUILDING_LIBRARY)
 #define NKGPU_API __declspec(dllexport)
+#else
+#define NKGPU_API __declspec(dllimport)
+#endif
 #else
 #define NKGPU_API __attribute__((visibility("default")))
 #endif
@@ -64,7 +70,9 @@ extern "C" {
  * frame must end with nkgpu_end_frame(); an offscreen pass must end with
  * nkgpu_end_render_target(). These end operations are not interchangeable.
  * Drawing and binding operations require either active pass. Resource creation
- * and destruction are idle-only. Destroying an idle renderer invalidates all
+ * and destruction are idle-only, except image and sampler creation and image
+ * updates, which may also occur inside the active renderer's pass for streaming
+ * texture workloads. Destroying an idle renderer invalidates all
  * of its remaining resources and unfinished builders; destroying a resource
  * with a different renderer returns NKGPU_ERROR_INVALID_HANDLE.
  *
@@ -173,6 +181,8 @@ enum {
     NKGPU_VERTEXFORMAT_FLOAT3 = 3,
     /** Four 32-bit floating-point vertex components. */
     NKGPU_VERTEXFORMAT_FLOAT4 = 4,
+    /** Four normalized unsigned-byte vertex components. */
+    NKGPU_VERTEXFORMAT_UBYTE4N = 5,
 };
 
 /** The intended use of a buffer created by nkgpu_buffer_begin_kind(). */
@@ -195,6 +205,94 @@ enum {
     NKGPU_INDEXTYPE_UINT16 = 1,
     /** Interpret index elements as unsigned 32-bit values. */
     NKGPU_INDEXTYPE_UINT32 = 2,
+};
+
+/** Blend factors accepted by generic pipeline state. */
+typedef uint32_t nkgpu_blend_factor;
+enum {
+    NKGPU_BLENDFACTOR_ZERO = 1,
+    NKGPU_BLENDFACTOR_ONE = 2,
+    NKGPU_BLENDFACTOR_SRC_ALPHA = 3,
+    NKGPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA = 4,
+};
+
+/** Blend operations accepted by generic pipeline state. */
+typedef uint32_t nkgpu_blend_op;
+enum { NKGPU_BLENDOP_ADD = 1 };
+
+/** Comparison function used by depth and stencil state. */
+typedef uint32_t nkgpu_compare_func;
+enum {
+    NKGPU_COMPAREFUNC_ALWAYS = 1,
+    NKGPU_COMPAREFUNC_LESS_EQUAL = 2,
+    NKGPU_COMPAREFUNC_EQUAL = 3,
+    NKGPU_COMPAREFUNC_NOT_EQUAL = 4,
+};
+
+/** Stencil operation used when a fragment passes or fails a test. */
+typedef uint32_t nkgpu_stencil_op;
+enum {
+    NKGPU_STENCILOP_KEEP = 1,
+    NKGPU_STENCILOP_ZERO = 2,
+    NKGPU_STENCILOP_INVERT = 3,
+    NKGPU_STENCILOP_INCREMENT_WRAP = 4,
+    NKGPU_STENCILOP_DECREMENT_WRAP = 5,
+};
+
+/** Culling mode for a generic graphics pipeline. */
+typedef uint32_t nkgpu_cull_mode;
+enum { NKGPU_CULLMODE_NONE = 1, NKGPU_CULLMODE_BACK = 2 };
+
+/** Front-face winding used with back-face culling. */
+typedef uint32_t nkgpu_face_winding;
+enum { NKGPU_FACEWINDING_CCW = 1, NKGPU_FACEWINDING_CW = 2 };
+
+/** Color channels written by a pipeline. */
+typedef uint32_t nkgpu_color_write_mask;
+enum {
+    NKGPU_COLORMASK_NONE = 0,
+    NKGPU_COLORMASK_R = 1u << 0,
+    NKGPU_COLORMASK_G = 1u << 1,
+    NKGPU_COLORMASK_B = 1u << 2,
+    NKGPU_COLORMASK_A = 1u << 3,
+    NKGPU_COLORMASK_RGBA = NKGPU_COLORMASK_R | NKGPU_COLORMASK_G |
+                           NKGPU_COLORMASK_B | NKGPU_COLORMASK_A,
+};
+
+/** Blend configuration for one color attachment. */
+typedef struct nkgpu_blend_state {
+    uint32_t enabled;
+    nkgpu_blend_factor src_rgb;
+    nkgpu_blend_factor dst_rgb;
+    nkgpu_blend_op op_rgb;
+    nkgpu_blend_factor src_alpha;
+    nkgpu_blend_factor dst_alpha;
+    nkgpu_blend_op op_alpha;
+} nkgpu_blend_state;
+
+/** Operations applied to one stencil face. */
+typedef struct nkgpu_stencil_face_state {
+    nkgpu_compare_func compare;
+    nkgpu_stencil_op fail_op;
+    nkgpu_stencil_op depth_fail_op;
+    nkgpu_stencil_op pass_op;
+} nkgpu_stencil_face_state;
+
+/** Stencil test configuration for both polygon faces. */
+typedef struct nkgpu_stencil_state {
+    uint32_t enabled;
+    uint8_t read_mask;
+    uint8_t write_mask;
+    uint8_t reserved[2];
+    nkgpu_stencil_face_state front;
+    nkgpu_stencil_face_state back;
+} nkgpu_stencil_state;
+
+/** Pixel storage accepted by nkgpu_image_create(). */
+typedef uint32_t nkgpu_image_format;
+enum {
+    NKGPU_IMAGEFORMAT_R8 = 1,
+    NKGPU_IMAGEFORMAT_RGBA8 = 2,
 };
 
 /** Shader stage associated with a uniform block or texture binding. */
@@ -291,6 +389,9 @@ enum {
  * after any operation that does not return NKGPU_OK.
  */
 NKGPU_API const char *nkgpu_last_error(void) NKGPU_RETURNS_BORROWED_UTF8;
+
+/** Returns the build's default graphics API for a GPU-backed surface. */
+NKGPU_API nk_graphics_api nkgpu_default_graphics_api(void);
 
 /** Returns the backend selected for this renderer's NativeKit surface. */
 NKGPU_API nkgpu_backend nkgpu_query_backend(nkgpu_renderer renderer);
@@ -559,6 +660,23 @@ NKGPU_API nkgpu_result nkgpu_pipeline_attribute(nkgpu_pipeline_builder builder, 
  */
 NKGPU_API nkgpu_result nkgpu_pipeline_depth_stencil(nkgpu_pipeline_builder builder, uint32_t enabled);
 
+/** Sets independent RGB and alpha blend operations for a pipeline. */
+NKGPU_API nkgpu_result nkgpu_pipeline_blend(nkgpu_pipeline_builder builder,
+                                            const nkgpu_blend_state *state);
+
+/** Sets per-face stencil testing and operations for a pipeline. */
+NKGPU_API nkgpu_result nkgpu_pipeline_stencil(nkgpu_pipeline_builder builder,
+                                              const nkgpu_stencil_state *state);
+
+/** Selects the front-face culling mode and winding for a pipeline. */
+NKGPU_API nkgpu_result nkgpu_pipeline_cull_mode(nkgpu_pipeline_builder builder,
+                                                nkgpu_cull_mode mode,
+                                                nkgpu_face_winding winding);
+
+/** Selects the color channels written by a pipeline. */
+NKGPU_API nkgpu_result nkgpu_pipeline_color_write_mask(nkgpu_pipeline_builder builder,
+                                                       nkgpu_color_write_mask mask);
+
 /**
  * Selects how the pipeline interprets an applied index buffer.
  *
@@ -579,6 +697,16 @@ NKGPU_API nkgpu_result nkgpu_pipeline_end(nkgpu_pipeline_builder builder,
 /** Destroys a pipeline owned by `renderer`; the handle becomes invalid. */
 NKGPU_API nkgpu_result nkgpu_pipeline_destroy(nkgpu_renderer renderer, nkgpu_pipeline pipeline);
 
+/** Creates an uninitialized stream buffer for appends during an active pass. */
+NKGPU_API nkgpu_result nkgpu_buffer_create_stream(nkgpu_renderer renderer, uint32_t capacity,
+                                                  nkgpu_buffer_usage usage,
+                                                  nkgpu_buffer *out_buffer NKGPU_OUT);
+
+/** Appends bytes to a stream buffer and returns their byte offset. */
+NKGPU_API nkgpu_result nkgpu_buffer_append(nkgpu_renderer renderer, nkgpu_buffer buffer,
+                                           const uint8_t *data, uint32_t size,
+                                           uint32_t *out_offset NKGPU_OUT);
+
 /* ------------------------------------------------------------------------- */
 /* Frame and resource APIs                                                   */
 /* ------------------------------------------------------------------------- */
@@ -592,6 +720,25 @@ NKGPU_API nkgpu_result nkgpu_pipeline_destroy(nkgpu_renderer renderer, nkgpu_pip
  * the apply and draw functions only between those calls.
  */
 NKGPU_API nkgpu_result nkgpu_begin_frame(nkgpu_renderer renderer);
+
+/** Begins a frame without opening a pass, for plans that contain several passes. */
+NKGPU_API nkgpu_result nkgpu_frame_begin(nkgpu_renderer renderer);
+
+/** Begins a window-surface pass inside a frame. */
+NKGPU_API nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer renderer, uint32_t width,
+                                               uint32_t height, uint32_t clear);
+
+/** Begins an offscreen target pass inside a frame. */
+NKGPU_API nkgpu_result nkgpu_begin_target_pass(nkgpu_renderer renderer,
+                                               nkgpu_render_target target, uint32_t clear);
+
+/** Ends the active pass while keeping the frame open. */
+NKGPU_API nkgpu_result nkgpu_end_pass(nkgpu_renderer renderer);
+
+/** Applies a framebuffer-pixel scissor rectangle, or disables scissoring. */
+NKGPU_API nkgpu_result nkgpu_apply_scissor(nkgpu_renderer renderer, uint32_t enabled,
+                                            int32_t x, int32_t y, int32_t width,
+                                            int32_t height);
 
 /** Applies a pipeline to the currently active frame. */
 NKGPU_API nkgpu_result nkgpu_apply_pipeline(nkgpu_renderer renderer, nkgpu_pipeline pipeline);
@@ -622,6 +769,10 @@ NKGPU_API nkgpu_result nkgpu_uniforms_begin(nkgpu_renderer renderer, uint32_t si
 /** Writes one 32-bit floating-point uniform value at a byte offset. */
 NKGPU_API nkgpu_result nkgpu_uniforms_write_f32(nkgpu_uniform_builder builder, uint32_t offset,
                                           float value);
+
+/** Applies caller-owned uniform bytes to a block in the active pass. */
+NKGPU_API nkgpu_result nkgpu_apply_uniform_data(nkgpu_renderer renderer, uint32_t slot,
+                                                const uint8_t *data, uint32_t size);
 
 /**
  * Applies a uniform builder to a block slot in the active frame.
@@ -655,6 +806,19 @@ NKGPU_API nkgpu_result nkgpu_image_write_rgba8(nkgpu_image_builder builder, uint
  */
 NKGPU_API nkgpu_result nkgpu_image_end(nkgpu_image_builder builder, nkgpu_image *out_image NKGPU_OUT);
 
+/** Creates an image from tightly packed R8 or RGBA8 pixels. */
+NKGPU_API nkgpu_result nkgpu_image_create(nkgpu_renderer renderer, uint32_t width,
+                                          uint32_t height, nkgpu_image_format format,
+                                          const uint8_t *pixels, uint32_t size,
+                                          uint32_t dynamic_update,
+                                          nkgpu_image *out_image NKGPU_OUT);
+
+/** Updates an image rectangle from rows with the supplied byte pitch. */
+NKGPU_API nkgpu_result nkgpu_image_update(nkgpu_renderer renderer, nkgpu_image image,
+                                          uint32_t x, uint32_t y, uint32_t width,
+                                          uint32_t height, const uint8_t *pixels,
+                                          uint32_t row_pitch);
+
 /** Destroys an image and its texture view; the handle becomes invalid. */
 NKGPU_API nkgpu_result nkgpu_image_destroy(nkgpu_renderer renderer, nkgpu_image image);
 
@@ -674,6 +838,10 @@ NKGPU_API nkgpu_result nkgpu_sampler_destroy(nkgpu_renderer renderer, nkgpu_samp
 
 /** Binds an image view to a slot in the currently active frame. */
 NKGPU_API nkgpu_result nkgpu_apply_image(nkgpu_renderer renderer, uint32_t slot, nkgpu_image image);
+
+/** Applies a NativeKit graphics image after validating its runtime and device. */
+NKGPU_API nkgpu_result nkgpu_apply_graphics_image(nkgpu_renderer renderer, uint32_t slot,
+                                                  nk_graphics_image image);
 
 /** Binds a sampler to a slot in the currently active frame. */
 NKGPU_API nkgpu_result nkgpu_apply_sampler(nkgpu_renderer renderer, uint32_t slot, nkgpu_sampler sampler);

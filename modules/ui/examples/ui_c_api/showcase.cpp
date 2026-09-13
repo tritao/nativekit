@@ -2,6 +2,7 @@
 #include "nativekit_resource.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
+#include "nativekit_gpu.h"
 #include "nativekit_ui.h"
 #include "nativekit_window.h"
 
@@ -511,14 +512,10 @@ int main(int argc, char **argv) {
     nk_surface_options surface_options{};
     surface_options.struct_size = sizeof(surface_options);
     surface_options.flags = NK_SURFACE_FORWARD_COMPATIBLE | NK_SURFACE_STENCIL;
-#if defined(NK_SOKOL_BACKEND_GLES3)
-    surface_options.api = NK_GRAPHICS_OPENGL_ES;
+    surface_options.api = nkgpu_default_graphics_api();
     surface_options.major_version = 3;
-#else
-    surface_options.api = NK_GRAPHICS_OPENGL;
-    surface_options.major_version = 3;
-    surface_options.minor_version = 3;
-#endif
+    if (surface_options.api == NK_GRAPHICS_OPENGL)
+        surface_options.minor_version = 3;
     surface_options.width = window_options.width;
     surface_options.height = window_options.height;
     nk_handle surface = NK_INVALID_HANDLE;

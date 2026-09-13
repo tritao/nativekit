@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace nkui {
@@ -37,6 +38,7 @@ class LayoutRenderFrame {
     LayoutRenderFrame &operator=(const LayoutRenderFrame &) = delete;
 
     const RenderPlan &plan() const { return plan_; }
+    RenderPlan &plan() { return plan_; }
     const FrameResources &resources() const { return resources_; }
     FrameResources &resources() { return resources_; }
     // A shared source is owned by the layout engine and must outlive this
@@ -62,6 +64,8 @@ class LayoutRenderFrame {
 /** Compiles NativeKit-owned layout output into the backend-neutral render plan. */
 class LayoutRenderCompiler {
   public:
+    using CustomPaintPlans = std::unordered_map<uint32_t, const RenderPlan *>;
+
     LayoutRenderCompiler();
     void set_font_collection(std::shared_ptr<SkribidiFontCollection> fonts);
     bool add_font(const char *path, FontFamily family = FontFamily::Default);
@@ -71,7 +75,8 @@ class LayoutRenderCompiler {
 
     bool compile(const LayoutSnapshot &snapshot, ResourceId main_target, float pixel_scale,
                  LayoutRenderFrame &out, LayoutRenderCompileError *error = nullptr,
-                 bool load_existing = false, SkribidiAdapter *text_source = nullptr) const;
+                 bool load_existing = false, SkribidiAdapter *text_source = nullptr,
+                 const CustomPaintPlans *custom_paints = nullptr) const;
 
   private:
     std::shared_ptr<SkribidiFontCollection> fonts_;

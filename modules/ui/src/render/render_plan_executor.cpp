@@ -45,10 +45,10 @@ std::pair<int, int> surface_request_size(const RenderPlan &plan, ResourceId surf
 
 } // namespace
 
-bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
+bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
                          const FrameResources &resources, const WindowTarget &window,
                          RenderExecutionError *error) {
-    if (!backend.valid() || !is_resource_id(window.id, ResourceKind::RenderTarget) ||
+    if (!renderer.valid() || !is_resource_id(window.id, ResourceKind::RenderTarget) ||
         window.frame_target.struct_size < sizeof(window.frame_target) ||
         window.frame_target.width <= 0 || window.frame_target.height <= 0)
         return fail(error, 0, 0, "invalid render-plan execution input");
@@ -56,6 +56,16 @@ bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
     RenderPlanScheduleError schedule_error{};
     if (!schedule_render_plan(plan, pass_order, &schedule_error))
         return fail(error, schedule_error.pass_index, 0, schedule_error.message);
+    if (!renderer.beginFrame())
+        return fail(error, 0, 0, renderer.lastError());
+    struct FrameGuard {
+        UiRenderer &renderer;
+        bool complete = false;
+        ~FrameGuard() {
+            if (!complete)
+                renderer.endFrame();
+        }
+    } frame_guard{renderer};
     std::unordered_set<uint32_t> internal_targets;
     for (const auto &pass : plan.passes)
         internal_targets.insert(pass.target.value);
@@ -72,7 +82,7 @@ bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
         if (!producer)
             return fail(error, 0, 0, "surface producer is unavailable");
         if (!producer->ready()) {
-            if (!backend.surface_has_content(dependency.producer))
+            if (!renderer.surfaceHasContent(dependency.producer))
                 return fail(error, 0, 0, "surface producer is unavailable");
             rendered_producers.insert(dependency.producer.value);
             continue;
@@ -90,21 +100,21 @@ bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
             description.color_space != SurfaceColorSpace::Linear)
             return fail(error, 0, 0, "surface producer descriptor is unsupported");
         const uint32_t generation = producer->generation();
-        if (backend.surface_is_current(dependency.producer, generation, description)) {
+        if (renderer.surfaceIsCurrent(dependency.producer, generation, description)) {
             rendered_producers.insert(dependency.producer.value);
             continue;
         }
         const SurfaceRenderResult render_result =
-            producer->render(backend, dependency.producer, description);
+            producer->render(renderer, dependency.producer, description);
         if (render_result == SurfaceRenderResult::Unavailable) {
-            if (!backend.surface_has_content(dependency.producer))
+            if (!renderer.surfaceHasContent(dependency.producer))
                 return fail(error, 0, 0, "surface producer has no fallback content");
             rendered_producers.insert(dependency.producer.value);
             continue;
         }
         if (render_result != SurfaceRenderResult::Rendered)
             return fail(error, 0, 0, "surface producer render failed");
-        backend.mark_surface_current(dependency.producer, generation, description);
+        renderer.markSurfaceCurrent(dependency.producer, generation, description);
         rendered_producers.insert(dependency.producer.value);
     }
     for (uint32_t scheduled_index = 0; scheduled_index < pass_order.size(); ++scheduled_index) {
@@ -115,63 +125,64 @@ bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
         const int pass_height = pass.target_descriptor.height > 0 ? pass.target_descriptor.height
                                                                   : window.frame_target.height;
         const bool window_pass = pass.target.value == window.id.value;
-        if (!(window_pass ? backend.begin_window_pass(pass_width, pass_height, window.frame_target,
-                                                      !pass.load_existing)
-                          : backend.begin_target_pass(pass.target, pass_width, pass_height,
-                                                      pass.load_existing)))
-            return fail(error, pass_index, 0, backend.last_error());
+        if (!(window_pass ? renderer.beginWindowPass(pass_width, pass_height,
+                                                     !pass.load_existing)
+                          : renderer.beginTargetPass(pass.target, pass_width, pass_height,
+                                                     pass.load_existing)))
+            return fail(error, pass_index, 0, renderer.lastError());
         const auto fail_command = [&](uint32_t command, const char *message) {
-            backend.end_pass();
+            renderer.endPass();
             return fail(error, pass_index, command, message);
         };
         for (uint32_t command_index = 0; command_index < pass.commands.size(); ++command_index) {
             const auto &command = pass.commands[command_index];
-            if (!backend.set_scissor(command.has_scissor, command.scissor_x, command.scissor_y,
+            if (!renderer.setScissor(command.has_scissor, command.scissor_x, command.scissor_y,
                                      command.scissor_width, command.scissor_height))
-                return fail(error, pass_index, command_index, backend.last_error());
+                return fail(error, pass_index, command_index, renderer.lastError());
             bool rendered = false;
             switch (command.kind) {
             case RenderCommandKind::Path:
             case RenderCommandKind::StrokePath: {
                 const auto *path = resources.path(command.resource);
                 rendered = path &&
-                           backend.draw_path_transformed(*path->path, path->operation_index,
-                                                         command.transform.data(), command.opacity);
+                           renderer.drawPath(*path->path, path->operation_index,
+                                              command.transform.data(), command.opacity);
                 break;
             }
             case RenderCommandKind::GlyphBatch: {
                 const auto *text = resources.text(command.resource);
                 rendered =
-                    text && backend.draw_glyphs_transformed(*text, command.transform.data(),
-                                                            command.x, command.y, command.opacity);
+                    text && renderer.drawGlyphs(*text, command.transform.data(),
+                                                command.x, command.y, command.opacity);
                 break;
             }
             case RenderCommandKind::CompositeTarget:
                 if (const auto *image = resources.graphics_image(command.resource))
-                    rendered = backend.draw_graphics_image(
+                    rendered = renderer.compositeImage(
                         *image, command.x, command.y, command.width, command.height,
                         command.transform.data(), command.opacity);
                 else
-                    rendered = backend.draw_target(command.resource, command.x, command.y,
-                                                   command.width, command.height,
-                                                   command.transform.data(), command.opacity);
+                    rendered = renderer.compositeImage(command.resource, command.x, command.y,
+                                                       command.width, command.height,
+                                                       command.transform.data(), command.opacity);
                 break;
             case RenderCommandKind::Image: {
                 const auto *image = resources.image(command.resource);
-                rendered = image && backend.draw_image(*image->image, command.x, command.y,
+                rendered = image && renderer.drawImage(*image->image, command.x, command.y,
                                                        command.width, command.height,
                                                        command.transform.data(), command.opacity);
             } break;
             }
             if (!rendered)
-                return fail_command(command_index, backend.last_error());
+                return fail_command(command_index, renderer.lastError());
         }
-        if (!backend.end_pass())
+        if (!renderer.endPass())
             return fail(error, pass_index, static_cast<uint32_t>(pass.commands.size()),
-                        backend.last_error());
+                        renderer.lastError());
     }
-    if (!backend.commit_frame())
-        return fail(error, static_cast<uint32_t>(plan.passes.size()), 0, backend.last_error());
+    if (!renderer.endFrame())
+        return fail(error, static_cast<uint32_t>(plan.passes.size()), 0, renderer.lastError());
+    frame_guard.complete = true;
     if (error)
         *error = {};
     return true;

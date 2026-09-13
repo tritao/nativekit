@@ -1,227 +1,178 @@
 #include "nativekit.h"
-#include "nativekit_graphics.h"
+#include "nativekit_gpu.h"
+#include "nativekit_time.h"
 #include "nativekit_window.h"
 
-#if !defined(__linux__) && !defined(__ANDROID__)
-#error "The NativeKit/Sokol prototype currently targets Linux or Android."
-#endif
-
-#include "nativekit_sokol_backend_config.h"
-#include "sokol_gfx.h"
-
-#if defined(NK_SOKOL_BACKEND_GLES3)
-#include <GLES3/gl3.h>
-#else
-#include <GL/gl.h>
-#endif
 #include <stdio.h>
-#include <string.h>
-#include <time.h>
 
-typedef struct prototype_renderer {
-    sg_buffer vertices;
-    sg_shader shader;
-    sg_pipeline pipeline;
-    sg_bindings bindings;
-    int framebuffer_width;
-    int framebuffer_height;
-} prototype_renderer;
+typedef struct triangle_renderer {
+    nkgpu_renderer renderer;
+    nkgpu_buffer vertices;
+    nkgpu_shader shader;
+    nkgpu_pipeline pipeline;
+} triangle_renderer;
 
-static void sleep_milliseconds(unsigned milliseconds) {
-    const struct timespec delay = {(time_t)(milliseconds / 1000),
-                                   (long)(milliseconds % 1000) * 1000000L};
-    nanosleep(&delay, NULL);
+static int report_gpu_error(const char *operation, nkgpu_result result) {
+    if (result == NKGPU_OK)
+        return 0;
+    fprintf(stderr, "%s failed (%d): %s\n", operation, result, nkgpu_last_error());
+    return 1;
 }
 
-static int renderer_init(prototype_renderer *renderer) {
-    sg_setup(&(sg_desc){
-        .environment.defaults =
-            {
-                .color_format = SG_PIXELFORMAT_RGBA8,
-                .depth_format = SG_PIXELFORMAT_NONE,
-                .sample_count = 1,
-            },
-    });
-    if (!sg_isvalid()) {
-        fprintf(stderr, "sg_setup failed\n");
+static int triangle_renderer_create(nk_handle surface, triangle_renderer *graphics) {
+    static const float vertex_data[] = {
+        -0.72f, -0.62f, 0.96f, 0.30f, 0.24f,
+         0.72f, -0.62f, 0.26f, 0.82f, 0.43f,
+         0.00f,  0.72f, 0.25f, 0.48f, 0.98f,
+    };
+    static const char vertex_gl[] =
+        "#version 330\n"
+        "layout(location=0) in vec2 position;\n"
+        "layout(location=1) in vec3 color;\n"
+        "out vec3 vertex_color;\n"
+        "void main(){ vertex_color=color; gl_Position=vec4(position,0.0,1.0); }\n";
+    static const char fragment_gl[] =
+        "#version 330\n"
+        "in vec3 vertex_color;\n"
+        "out vec4 fragment_color;\n"
+        "void main(){ fragment_color=vec4(vertex_color,1.0); }\n";
+    static const char vertex_gles[] =
+        "#version 300 es\n"
+        "layout(location=0) in vec2 position;\n"
+        "layout(location=1) in vec3 color;\n"
+        "out vec3 vertex_color;\n"
+        "void main(){ vertex_color=color; gl_Position=vec4(position,0.0,1.0); }\n";
+    static const char fragment_gles[] =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "in vec3 vertex_color;\n"
+        "out vec4 fragment_color;\n"
+        "void main(){ fragment_color=vec4(vertex_color,1.0); }\n";
+    const int gles = nkgpu_query_graphics_api(graphics->renderer) == NK_GRAPHICS_OPENGL_ES;
+    nkgpu_pipeline_builder builder = {0};
+
+    if (report_gpu_error("nkgpu_renderer_create",
+                         nkgpu_renderer_create(surface, &graphics->renderer)))
+        return 0;
+    if (report_gpu_error("nkgpu_buffer_create",
+                         nkgpu_buffer_create(graphics->renderer,
+                                             (const uint8_t *)vertex_data,
+                                             sizeof(vertex_data), &graphics->vertices)) ||
+        report_gpu_error("nkgpu_shader_create",
+                         nkgpu_shader_create(graphics->renderer, NKGPU_SHADERLANGUAGE_GLSL,
+                                             gles ? vertex_gles : vertex_gl,
+                                             gles ? fragment_gles : fragment_gl,
+                                             &graphics->shader)) ||
+        report_gpu_error("nkgpu_pipeline_begin",
+                         nkgpu_pipeline_begin(graphics->renderer, graphics->shader,
+                                              5u * (uint32_t)sizeof(float), &builder)) ||
+        report_gpu_error("nkgpu_pipeline_attribute(position)",
+                         nkgpu_pipeline_attribute(builder, 0, 0, 0,
+                                                  NKGPU_VERTEXFORMAT_FLOAT2)) ||
+        report_gpu_error("nkgpu_pipeline_attribute(color)",
+                         nkgpu_pipeline_attribute(builder, 1, 0,
+                                                  2u * (uint32_t)sizeof(float),
+                                                  NKGPU_VERTEXFORMAT_FLOAT3)) ||
+        report_gpu_error("nkgpu_pipeline_end",
+                         nkgpu_pipeline_end(builder, &graphics->pipeline)))
+        return 0;
+    return 1;
+}
+
+static int triangle_renderer_draw(triangle_renderer *graphics) {
+    if (report_gpu_error("nkgpu_begin_frame", nkgpu_begin_frame(graphics->renderer)))
+        return 0;
+    if (report_gpu_error("nkgpu_apply_pipeline",
+                         nkgpu_apply_pipeline(graphics->renderer, graphics->pipeline)) ||
+        report_gpu_error("nkgpu_apply_vertex_buffer",
+                         nkgpu_apply_vertex_buffer(graphics->renderer, 0,
+                                                   graphics->vertices, 0)) ||
+        report_gpu_error("nkgpu_draw", nkgpu_draw(graphics->renderer, 0, 3, 1))) {
+        nkgpu_end_frame(graphics->renderer);
         return 0;
     }
-
-    static const float vertices[] = {
-        0.0f,  0.72f, 1.0f,  0.30f,  0.35f, -0.72f, -0.58f, 0.25f,
-        0.85f, 0.55f, 0.72f, -0.58f, 0.30f, 0.55f,  1.0f,
-    };
-    renderer->vertices = sg_make_buffer(&(sg_buffer_desc){.data = SG_RANGE(vertices)});
-    renderer->shader = sg_make_shader(&(sg_shader_desc){
-#if defined(NK_SOKOL_BACKEND_GLES3)
-        .vertex_func.source = "#version 300 es\nprecision highp float;\n"
-#else
-        .vertex_func.source = "#version 330\n"
-#endif
-                              "layout(location=0) in vec2 position;\n"
-                              "layout(location=1) in vec3 color0;\n"
-                              "out vec3 color;\n"
-                              "void main(){ color=color0; gl_Position=vec4(position,0.0,1.0); }\n",
-#if defined(NK_SOKOL_BACKEND_GLES3)
-        .fragment_func.source = "#version 300 es\nprecision mediump float;\n"
-#else
-        .fragment_func.source = "#version 330\n"
-#endif
-                                "in vec3 color; out vec4 frag_color;\n"
-                                "void main(){ frag_color=vec4(color,1.0); }\n",
-    });
-    renderer->pipeline = sg_make_pipeline(&(sg_pipeline_desc){
-        .shader = renderer->shader,
-        .layout.attrs =
-            {
-                [0].format = SG_VERTEXFORMAT_FLOAT2,
-                [1].format = SG_VERTEXFORMAT_FLOAT3,
-            },
-    });
-    renderer->bindings.vertex_buffers[0] = renderer->vertices;
-
-    return sg_query_buffer_state(renderer->vertices) == SG_RESOURCESTATE_VALID &&
-           sg_query_shader_state(renderer->shader) == SG_RESOURCESTATE_VALID &&
-           sg_query_pipeline_state(renderer->pipeline) == SG_RESOURCESTATE_VALID;
+    return !report_gpu_error("nkgpu_end_frame", nkgpu_end_frame(graphics->renderer));
 }
 
-static void renderer_draw(const prototype_renderer *renderer) {
-    GLint framebuffer = 0;
-    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
-
-    const sg_pass pass = {
-        .action.colors[0] =
-            {
-                .load_action = SG_LOADACTION_CLEAR,
-                .clear_value = {0.035f, 0.055f, 0.11f, 1.0f},
-            },
-        .swapchain =
-            {
-                .width = renderer->framebuffer_width,
-                .height = renderer->framebuffer_height,
-                .sample_count = 1,
-                .color_format = SG_PIXELFORMAT_RGBA8,
-                .depth_format = SG_PIXELFORMAT_NONE,
-                .gl.framebuffer = (uint32_t)framebuffer,
-            },
-    };
-    sg_begin_pass(&pass);
-    sg_apply_pipeline(renderer->pipeline);
-    sg_apply_bindings(&renderer->bindings);
-    sg_draw(0, 3, 1);
-    sg_end_pass();
-    sg_commit();
-}
-
-int main(int argc, char **argv) {
-    const int smoke_test = argc == 2 && strcmp(argv[1], "--smoke-test") == 0;
-    if (argc > 1 && !smoke_test) {
-        fprintf(stderr, "Usage: %s [--smoke-test]\n", argv[0]);
-        return 2;
-    }
-
-    nk_init_options init = {.struct_size = sizeof(init), .api_version = NK_API_VERSION};
+int main(void) {
+    nk_init_options init = {0};
+    init.struct_size = sizeof(init);
+    init.api_version = NK_API_VERSION;
     if (nk_init(&init) != NK_OK) {
         fprintf(stderr, "nk_init failed: %s\n", nk_last_error());
         return 1;
     }
 
-    nk_window_options window_options = {
-        .struct_size = sizeof(window_options),
-        .flags = NK_WINDOW_RESIZABLE,
-        .width = 800,
-        .height = 600,
-        .title = "Sokol over NativeKit",
-    };
+    int result = 0;
+    int running = 1;
+    int ready = 0;
+    int window_created = 0;
+    int surface_created = 0;
+    nk_window_options window_options = {0};
+    window_options.struct_size = sizeof(window_options);
+    window_options.flags = NK_WINDOW_RESIZABLE;
+    window_options.width = 800;
+    window_options.height = 600;
+    window_options.title = "NativeKit GPU Triangle";
     nk_handle window = NK_INVALID_HANDLE;
+    nk_handle surface = NK_INVALID_HANDLE;
+    triangle_renderer graphics = {0};
+
     if (nk_window_create(&window_options, &window) != NK_OK) {
         fprintf(stderr, "nk_window_create failed: %s\n", nk_last_error());
-        nk_shutdown();
-        return 1;
+        result = 1;
+        goto cleanup;
     }
-
-    nk_surface_options surface_options = {
-        .struct_size = sizeof(surface_options),
-        .flags = NK_SURFACE_FORWARD_COMPATIBLE,
-#if defined(NK_SOKOL_BACKEND_GLES3)
-        .api = NK_GRAPHICS_OPENGL_ES,
-#else
-        .api = NK_GRAPHICS_OPENGL,
-#endif
-        .major_version = 3,
-#if defined(NK_SOKOL_BACKEND_GLES3)
-        .minor_version = 0,
-#else
-        .minor_version = 3,
-#endif
-        .width = window_options.width,
-        .height = window_options.height,
-    };
-    nk_handle surface = NK_INVALID_HANDLE;
-    if (nk_surface_create(window, &surface_options, &surface) != NK_OK) {
-        fprintf(stderr, "nk_surface_create failed: %s\n", nk_last_error());
-        nk_window_destroy(window);
-        nk_shutdown();
-        return 1;
+    window_created = 1;
+    if (nkgpu_surface_create(window, window_options.width, window_options.height,
+                             &surface) != NKGPU_OK) {
+        fprintf(stderr, "nkgpu_surface_create failed: %s\n", nkgpu_last_error());
+        result = 1;
+        goto cleanup;
     }
+    surface_created = 1;
 
-    prototype_renderer renderer = {0};
-    int ready = 0;
-    int running = 1;
-    unsigned rendered_frames = 0;
     while (running) {
-        nk_event event = {.struct_size = sizeof(event)};
-        if (nk_poll_event(&event) != NK_OK) {
-            fprintf(stderr, "nk_poll_event failed: %s\n", nk_last_error());
-            running = 0;
-        } else if (event.kind == NK_EVENT_WINDOW_CLOSE && event.source == window) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        if (nk_wait_events_timeout(0.016) != NK_OK || nk_poll_event(&event) != NK_OK) {
+            fprintf(stderr, "NativeKit event wait failed: %s\n", nk_last_error());
+            result = 1;
+            break;
+        }
+        if (event.kind == NK_EVENT_WINDOW_CLOSE && event.source == window) {
             running = 0;
         } else if (event.kind == NK_EVENT_WINDOW_RESIZE && event.source == window &&
                    event.data_size >= sizeof(nk_window_resize_event)) {
-            const nk_window_resize_event *size = event.data;
-            nk_surface_set_bounds(surface, 0, 0, size->width, size->height);
+            const nk_window_resize_event *size = (const nk_window_resize_event *)event.data;
+            if (nkgpu_surface_resize(surface, size->width, size->height) != NKGPU_OK) {
+                fprintf(stderr, "nkgpu_surface_resize failed: %s\n", nkgpu_last_error());
+                result = 1;
+                running = 0;
+            }
         } else if (event.kind == NK_EVENT_SURFACE_READY && event.source == surface) {
-            if (nk_surface_make_current(surface) != NK_OK || !renderer_init(&renderer)) {
-                fprintf(stderr, "Could not initialize Sokol renderer: %s\n", nk_last_error());
+            if (!triangle_renderer_create(surface, &graphics)) {
+                result = 1;
                 running = 0;
             } else {
-                nk_surface_get_framebuffer_size(surface, &renderer.framebuffer_width,
-                                                &renderer.framebuffer_height);
                 ready = 1;
             }
-        } else if (event.kind == NK_EVENT_SURFACE_RESIZE && event.source == surface &&
-                   event.data_size >= sizeof(nk_surface_resize_event)) {
-            const nk_surface_resize_event *size = event.data;
-            renderer.framebuffer_width = size->framebuffer_width;
-            renderer.framebuffer_height = size->framebuffer_height;
         }
-        const int queue_was_empty = event.kind == NK_EVENT_NONE;
         nk_event_release(&event);
 
-        if (ready && running) {
-            if (nk_surface_make_current(surface) != NK_OK) {
-                fprintf(stderr, "nk_surface_make_current failed: %s\n", nk_last_error());
-                break;
-            }
-            renderer_draw(&renderer);
-            if (nk_surface_present(surface) != NK_OK) {
-                fprintf(stderr, "nk_surface_present failed: %s\n", nk_last_error());
-                break;
-            }
-            if (smoke_test && ++rendered_frames >= 30)
-                running = 0;
-            sleep_milliseconds(16);
-        } else if (queue_was_empty) {
-            sleep_milliseconds(8);
+        if (ready && running && !triangle_renderer_draw(&graphics)) {
+            result = 1;
+            break;
         }
     }
 
-    if (ready) {
-        nk_surface_make_current(surface);
-        sg_shutdown();
-    }
-    nk_surface_destroy(surface);
-    nk_window_destroy(window);
+cleanup:
+    if (graphics.renderer.id)
+        nkgpu_renderer_destroy(graphics.renderer);
+    if (surface_created)
+        nkgpu_surface_destroy(surface);
+    if (window_created)
+        nk_window_destroy(window);
     nk_shutdown();
-    return 0;
+    return result;
 }

@@ -14,7 +14,7 @@
 #endif
 #include "render/frame_resources.h"
 #include "render/render_plan_executor.h"
-#include "render/sokol_backend.h"
+#include "render/ui_renderer.h"
 
 #include <algorithm>
 #include <array>
@@ -53,6 +53,7 @@ namespace {
 struct DisplayListSlot {
     std::unique_ptr<nkui::DisplayList> list;
     std::vector<nkui::ResourceId> resources;
+    uint32_t custom_refs = 0;
     uint16_t generation = 1;
 };
 
@@ -122,9 +123,10 @@ struct PreparedPathCacheEntry {
 };
 
 struct RendererSlot {
-    std::unique_ptr<nkui::RenderBackend> backend;
+    std::unique_ptr<nkui::UiRenderer> renderer;
     nk_graphics_api backend_api = 0;
     nk_graphics_device backend_device{};
+    nk_handle backend_surface = 0;
     bool active = false;
     nkui::Compositor compositor;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
@@ -137,6 +139,7 @@ struct LayoutSessionState {
     nkui::LayoutRenderCompiler compiler;
     nkui::LayoutRenderFrame frame;
     nkui::LayoutSnapshot snapshot;
+    std::unordered_map<uint32_t, nkui_display_list> custom_paints;
     bool fonts_configured = false;
     bool submitted = false;
 };
@@ -239,8 +242,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                              std::vector<nkui::LayoutNode> &nodes) {
     constexpr size_t header_bytes = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES;
     constexpr size_t record_bytes = NKUI_LAYOUT_NODE_RECORD_BYTES;
-    constexpr size_t max_nodes = NKUI_LAYOUT_MAX_NODES;
-    if (!bytes || byte_count < header_bytes)
+    if (!bytes || byte_count < header_bytes ||
+        byte_count > NKUI_LAYOUT_MAX_TRANSACTION_BYTES)
         return false;
     const size_t size = byte_count;
     uint32_t version = 0;
@@ -250,7 +253,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
     if (!read_u32(bytes, size, 0, version) || !read_u32(bytes, size, 4, node_count) ||
         !read_u32(bytes, size, 8, encoded_record_bytes) ||
         !read_u32(bytes, size, 12, string_offset) || version != NKUI_LAYOUT_TRANSACTION_VERSION ||
-        !node_count || node_count > max_nodes || encoded_record_bytes != record_bytes)
+        !node_count || encoded_record_bytes != record_bytes)
         return false;
     if (node_count > (std::numeric_limits<size_t>::max() - header_bytes) / record_bytes)
         return false;
@@ -790,6 +793,16 @@ void release_display_resources(DisplayListSlot &list) {
     list.resources.clear();
 }
 
+void release_custom_paints(LayoutSessionState &session) {
+    for (const auto &[node_id, handle] : session.custom_paints) {
+        (void)node_id;
+        auto *list = resolve(handle);
+        if (list && list->custom_refs)
+            --list->custom_refs;
+    }
+    session.custom_paints.clear();
+}
+
 bool collect_display_resources(const uint8_t *data, size_t size,
                                std::vector<nkui::ResourceId> &out) {
     size_t offset = 0;
@@ -882,7 +895,7 @@ extern "C" nkui_result nkui_display_list_create(nkui_display_list *out_list) {
         }
         if (lists.size() >= UINT16_MAX)
             return NKUI_ERROR_OUT_OF_MEMORY;
-        lists.push_back({std::make_unique<nkui::DisplayList>(), {}, 1});
+        lists.push_back({std::make_unique<nkui::DisplayList>(), {}, 0, 1});
         out_list->id = make_handle(1, static_cast<uint16_t>(lists.size()));
         return NKUI_OK;
     } catch (...) {
@@ -895,6 +908,8 @@ extern "C" nkui_result nkui_display_list_destroy(nkui_display_list list) {
     auto *slot = resolve(list);
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
+    if (slot->custom_refs)
+        return NKUI_ERROR_INVALID_ARGUMENT;
     release_display_resources(*slot);
     slot->list.reset();
     if (++slot->generation == 0)
@@ -1085,12 +1100,13 @@ extern "C" nkui_result nkui_layout_session_create(nkui_layout_session *out_sessi
 }
 
 extern "C" nkui_result nkui_layout_session_destroy(nkui_layout_session session) {
-    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    std::scoped_lock lock(layout_sessions_mutex, lists_mutex);
     const uint16_t slot_index = static_cast<uint16_t>(session.id);
     auto *state = resolve(session);
     if (!state || !slot_index)
         return NKUI_ERROR_INVALID_HANDLE;
     auto &slot = layout_sessions[slot_index - 1];
+    release_custom_paints(*state);
     slot.session.reset();
     slot.generation = static_cast<uint16_t>(slot.generation + 1);
     if (!slot.generation)
@@ -1120,13 +1136,60 @@ extern "C" nkui_result nkui_layout_session_set_font_collection(nkui_layout_sessi
     return NKUI_OK;
 }
 
+extern "C" nkui_result nkui_layout_session_clear_custom_paints(
+    nkui_layout_session session) {
+    std::scoped_lock lock(layout_sessions_mutex, lists_mutex);
+    auto *state = resolve(session);
+    if (!state)
+        return NKUI_ERROR_INVALID_HANDLE;
+    release_custom_paints(*state);
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_layout_session_set_custom_paint(nkui_layout_session session,
+                                                            uint32_t node_id,
+                                                            nkui_display_list display_list) {
+    if (!node_id || !display_list.id)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::scoped_lock lock(layout_sessions_mutex, lists_mutex);
+    auto *state = resolve(session);
+    auto *list = resolve(display_list);
+    if (!state || !list)
+        return NKUI_ERROR_INVALID_HANDLE;
+    const auto *item = state->submitted ? state->snapshot.find(node_id) : nullptr;
+    if (!item || item->visual_kind != nkui::LayoutVisualKind::Custom)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    const auto existing = state->custom_paints.find(node_id);
+    if (existing != state->custom_paints.end() && existing->second.id == display_list.id)
+        return NKUI_OK;
+    const bool replacing = existing != state->custom_paints.end();
+    const nkui_display_list previous_handle = replacing ? existing->second : nkui_display_list{};
+    if (list->custom_refs == std::numeric_limits<uint32_t>::max())
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    try {
+        if (!replacing)
+            state->custom_paints.emplace(node_id, display_list);
+        else
+            state->custom_paints.find(node_id)->second = display_list;
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    ++list->custom_refs;
+    if (replacing) {
+        auto *previous = resolve(previous_handle);
+        if (previous && previous->custom_refs)
+            --previous->custom_refs;
+    }
+    return NKUI_OK;
+}
+
 extern "C" nkui_result nkui_layout_session_submit(nkui_layout_session session,
                                                   const uint8_t *transaction,
                                                   uint32_t transaction_bytes,
                                                   const nkui_layout_frame_input *frame) {
     if (!frame || frame->struct_size < sizeof(*frame))
         return NKUI_ERROR_INVALID_ARGUMENT;
-    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    std::scoped_lock lock(layout_sessions_mutex, lists_mutex);
     auto *state = resolve(session);
     if (!state)
         return NKUI_ERROR_INVALID_HANDLE;
@@ -1145,6 +1208,17 @@ extern "C" nkui_result nkui_layout_session_submit(nkui_layout_session session,
         return NKUI_ERROR_INVALID_TRANSACTION;
     state->snapshot = std::move(snapshot);
     state->submitted = true;
+    for (auto it = state->custom_paints.begin(); it != state->custom_paints.end();) {
+        const auto *item = state->snapshot.find(it->first);
+        if (item && item->visual_kind == nkui::LayoutVisualKind::Custom) {
+            ++it;
+            continue;
+        }
+        auto *list = resolve(it->second);
+        if (list && list->custom_refs)
+            --list->custom_refs;
+        it = state->custom_paints.erase(it);
+    }
     return NKUI_OK;
 }
 
@@ -1539,9 +1613,10 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
         for (uint32_t index = 0; index < renderers.size(); ++index) {
             auto &slot = renderers[index];
             if (!slot.active) {
-                slot.backend.reset();
+                slot.renderer.reset();
                 slot.backend_api = 0;
                 slot.backend_device = {};
+                slot.backend_surface = 0;
                 slot.active = true;
                 slot.stats = {};
                 out_renderer->id = make_handle(slot.generation, static_cast<uint16_t>(index + 1));
@@ -1566,9 +1641,10 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     auto *slot = resolve(renderer);
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
-    slot->backend.reset();
+    slot->renderer.reset();
     slot->backend_api = 0;
     slot->backend_device = {};
+    slot->backend_surface = 0;
     slot->active = false;
     clear_path_cache(*slot);
     slot->stats = {};
@@ -1614,14 +1690,16 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     auto *list_slot = resolve(list);
     if (!renderer_slot || !list_slot)
         return NKUI_ERROR_INVALID_HANDLE;
-    if (!renderer_slot->backend || renderer_slot->backend_api != frame_target.api ||
-        renderer_slot->backend_device.id != frame_target.device.id) {
-        auto backend = nkui::create_render_backend(frame_target.api, frame_target.device);
-        if (!backend)
+    if (!renderer_slot->renderer || renderer_slot->backend_api != frame_target.api ||
+        renderer_slot->backend_device.id != frame_target.device.id ||
+        renderer_slot->backend_surface != surface) {
+        auto ui_renderer = nkui::create_ui_renderer(surface);
+        if (!ui_renderer)
             return NKUI_ERROR_RENDERING;
-        renderer_slot->backend = std::move(backend);
+        renderer_slot->renderer = std::move(ui_renderer);
         renderer_slot->backend_api = frame_target.api;
         renderer_slot->backend_device = frame_target.device;
+        renderer_slot->backend_surface = surface;
     }
     const nkui::ResourceId main_target =
         nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);
@@ -1826,13 +1904,13 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     }
     if (!valid)
         return NKUI_ERROR_RENDERING;
-    const bool new_backend = !renderer_slot->backend->valid();
-    if (new_backend && !renderer_slot->backend->initialize())
+    const bool new_backend = !renderer_slot->renderer->valid();
+    if (new_backend && !renderer_slot->renderer->initialize())
         return NKUI_ERROR_RENDERING;
     for (auto *adapter : text_adapters)
-        if (!renderer_slot->backend->upload_atlases(*adapter, new_backend))
+        if (!renderer_slot->renderer->uploadAtlases(*adapter, new_backend))
             return NKUI_ERROR_RENDERING;
-    const bool executed = nkui::execute_render_plan(*renderer_slot->backend, plan, frame_resources,
+    const bool executed = nkui::execute_render_plan(*renderer_slot->renderer, plan, frame_resources,
                                                     {main_target, frame_target});
     return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
 }
@@ -1866,36 +1944,234 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     frame_target.struct_size = sizeof(frame_target);
     if (nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
         return NKUI_ERROR_RENDERING;
-    std::scoped_lock lock(renderers_mutex, layout_sessions_mutex);
+    std::scoped_lock lock(renderers_mutex, lists_mutex, resources_mutex, layout_sessions_mutex);
     auto *renderer_slot = resolve(renderer);
     auto *session_state = resolve(session);
     if (!renderer_slot || !session_state || !session_state->submitted)
         return NKUI_ERROR_INVALID_HANDLE;
-    if (!renderer_slot->backend || renderer_slot->backend_api != frame_target.api ||
-        renderer_slot->backend_device.id != frame_target.device.id) {
-        auto backend = nkui::create_render_backend(frame_target.api, frame_target.device);
-        if (!backend)
+    if (!renderer_slot->renderer || renderer_slot->backend_api != frame_target.api ||
+        renderer_slot->backend_device.id != frame_target.device.id ||
+        renderer_slot->backend_surface != surface) {
+        auto ui_renderer = nkui::create_ui_renderer(surface);
+        if (!ui_renderer)
             return NKUI_ERROR_RENDERING;
-        renderer_slot->backend = std::move(backend);
+        renderer_slot->renderer = std::move(ui_renderer);
         renderer_slot->backend_api = frame_target.api;
         renderer_slot->backend_device = frame_target.device;
+        renderer_slot->backend_surface = surface;
     }
     const nkui::ResourceId main_target =
         nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);
+    std::vector<std::pair<uint32_t, nkui::RenderPlan>> custom_plan_storage;
+    nkui::LayoutRenderCompiler::CustomPaintPlans custom_plans;
+    try {
+        custom_plan_storage.reserve(session_state->custom_paints.size());
+        for (const auto &[node_id, list_handle] : session_state->custom_paints) {
+            const auto *item = session_state->snapshot.find(node_id);
+            auto *list_slot = resolve(list_handle);
+            if (!item || item->visual_kind != nkui::LayoutVisualKind::Custom || !list_slot)
+                return NKUI_ERROR_INVALID_HANDLE;
+            nkui::RenderPlan custom_plan;
+            nkui::Compositor custom_compositor;
+            nkui::CompositorError compositor_error{};
+            if (!custom_compositor.compile(*list_slot->list, main_target, custom_plan,
+                                           &compositor_error))
+                return NKUI_ERROR_INVALID_TRANSACTION;
+            custom_plan_storage.emplace_back(node_id, std::move(custom_plan));
+        }
+        custom_plans.reserve(custom_plan_storage.size());
+        for (const auto &[node_id, custom_plan] : custom_plan_storage)
+            custom_plans.emplace(node_id, &custom_plan);
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
     nkui::LayoutRenderCompileError compile_error{};
     if (!session_state->compiler.compile(
             session_state->snapshot, main_target, frame_info->pixel_scale, session_state->frame,
-            &compile_error, load_existing != 0, session_state->engine->text_adapter()))
+            &compile_error, load_existing != 0, session_state->engine->text_adapter(),
+            &custom_plans))
         return NKUI_ERROR_INVALID_TRANSACTION;
-    const bool new_backend = !renderer_slot->backend->valid();
-    if (new_backend && !renderer_slot->backend->initialize())
+
+    auto &plan = session_state->frame.plan();
+    auto &frame_resources = session_state->frame.resources();
+    std::vector<std::unique_ptr<nkui::PreparedPath>> custom_paths;
+    std::vector<std::unique_ptr<nkui::PreparedTexture>> custom_images;
+    std::vector<nkui::SkribidiAdapter *> text_adapters;
+    std::vector<std::pair<nkui::SkribidiAdapter *, nkui::PreparedGlyphs *>> prepared_texts;
+    uint32_t prepared_slot = 1;
+    bool valid = true;
+    for (auto &pass : plan.passes) {
+        for (auto &command : pass.commands) {
+            if (!command.custom_payload)
+                continue;
+            if (command.kind == nkui::RenderCommandKind::Path ||
+                command.kind == nkui::RenderCommandKind::StrokePath) {
+                auto *path = resolve_retained(nkui_resource{command.resource.value},
+                                              nkui::ResourceKind::Path);
+                auto *paint = command.paint.value
+                                  ? resolve_retained(nkui_resource{command.paint.value},
+                                                     nkui::ResourceKind::Paint)
+                                  : nullptr;
+                if (!path || (command.paint.value && !paint) ||
+                    prepared_slot > std::numeric_limits<uint16_t>::max()) {
+                    valid = false;
+                    break;
+                }
+                const auto transform = command.transform;
+                const auto tessellation = tessellation_transform(transform);
+                const nkui_resource path_handle{command.resource.value};
+                const auto cached = prepare_cached_path(*renderer_slot, path_handle, *path,
+                                                        tessellation, frame_info->pixel_scale,
+                                                        command);
+                if (!cached) {
+                    valid = false;
+                    break;
+                }
+                auto prepared = std::make_unique<nkui::PreparedPath>();
+                const auto kind = command.kind == nkui::RenderCommandKind::StrokePath
+                                      ? nkui::PreparedPathKind::Stroke
+                                      : nkui::PreparedPathKind::Fill;
+                if (!prepared || !prepared->set_view(kind, cached->geometry, paint_color(paint))) {
+                    valid = false;
+                    break;
+                }
+                auto *prepared_path = prepared.get();
+                custom_paths.push_back(std::move(prepared));
+                const auto prepared_id = nkui::make_resource_id(
+                    nkui::ResourceKind::Path, 0x0FFD, static_cast<uint16_t>(prepared_slot++));
+                command.resource = prepared_id;
+                command.transform = placement_transform(transform);
+                valid = frame_resources.bind_path(prepared_id, *prepared_path, 0);
+            } else if (command.kind == nkui::RenderCommandKind::Image) {
+                auto *image = resolve_retained(nkui_resource{command.resource.value},
+                                               nkui::ResourceKind::Image);
+                if (!image || prepared_slot > std::numeric_limits<uint16_t>::max()) {
+                    valid = false;
+                    break;
+                }
+                auto prepared = std::make_unique<nkui::PreparedTexture>();
+                if (!prepared) {
+                    valid = false;
+                    break;
+                }
+                prepared->token = command.resource.value;
+                prepared->type = nkui::PreparedTextureType::Rgba;
+                prepared->width = static_cast<int>(image->image_width);
+                prepared->height = static_cast<int>(image->image_height);
+                prepared->generation = 1;
+                prepared->dirty = true;
+                if (image->image_format == NKUI_IMAGE_R8) {
+                    prepared->pixels.resize(image->pixels.size() * 4);
+                    for (size_t index = 0; index < image->pixels.size(); ++index) {
+                        prepared->pixels[index * 4 + 0] = 255;
+                        prepared->pixels[index * 4 + 1] = 255;
+                        prepared->pixels[index * 4 + 2] = 255;
+                        prepared->pixels[index * 4 + 3] = image->pixels[index];
+                    }
+                } else {
+                    prepared->pixels = image->pixels;
+                }
+                auto *prepared_image = prepared.get();
+                custom_images.push_back(std::move(prepared));
+                const auto prepared_id = nkui::make_resource_id(
+                    nkui::ResourceKind::Image, 0x0FFD, static_cast<uint16_t>(prepared_slot++));
+                command.resource = prepared_id;
+                valid = frame_resources.bind_image(prepared_id, *prepared_image);
+            } else if (command.kind == nkui::RenderCommandKind::GlyphBatch) {
+                auto *layout = resolve_retained(nkui_resource{command.resource.value},
+                                                nkui::ResourceKind::TextLayout);
+                if (!layout || !layout->text ||
+                    prepared_slot > std::numeric_limits<uint16_t>::max()) {
+                    valid = false;
+                    break;
+                }
+                float requested_scale = 1.0f;
+                if (!uniform_scale(command.transform, requested_scale))
+                    requested_scale = 1.0f;
+                constexpr int32_t raster_scale_precision = 1024;
+                const int32_t raster_scale_key = std::max(
+                    1, static_cast<int32_t>(std::round(requested_scale * raster_scale_precision)));
+                const float raster_scale =
+                    static_cast<float>(raster_scale_key) / raster_scale_precision;
+                nkui::PreparedGlyphs *glyphs = nullptr;
+                if (raster_scale_key == raster_scale_precision) {
+                    glyphs = &layout->text_glyphs;
+                    if (!layout->text->prepared_glyphs_current(*glyphs))
+                        valid = layout->text->prepare_glyphs(
+                            0.0f, 0.0f, raster_scale, nkui::GlyphMode::Alpha, *glyphs);
+                } else {
+                    auto found = layout->scaled_text_glyphs.find(raster_scale_key);
+                    if (found == layout->scaled_text_glyphs.end()) {
+                        nkui::PreparedGlyphs prepared;
+                        valid = layout->text->prepare_glyphs(
+                            0.0f, 0.0f, raster_scale, nkui::GlyphMode::Alpha, prepared);
+                        if (!valid)
+                            break;
+                        found = layout->scaled_text_glyphs.emplace(raster_scale_key,
+                                                                   std::move(prepared)).first;
+                    }
+                    glyphs = &found->second;
+                    if (valid && !layout->text->prepared_glyphs_current(*glyphs))
+                        valid = layout->text->prepare_glyphs(
+                            0.0f, 0.0f, raster_scale, nkui::GlyphMode::Alpha, *glyphs);
+                }
+                if (!valid)
+                    break;
+                prepared_texts.push_back({layout->text.get(), glyphs});
+                const auto prepared_id = nkui::make_resource_id(
+                    nkui::ResourceKind::TextLayout, 0x0FFD,
+                    static_cast<uint16_t>(prepared_slot++));
+                valid = frame_resources.bind_text(prepared_id, *glyphs);
+                command.resource = prepared_id;
+                if (std::find(text_adapters.begin(), text_adapters.end(), layout->text.get()) ==
+                    text_adapters.end())
+                    text_adapters.push_back(layout->text.get());
+            } else if (command.kind == nkui::RenderCommandKind::CompositeTarget) {
+                if (!nkui::is_resource_id(command.resource, nkui::ResourceKind::RenderTarget)) {
+                    valid = false;
+                    break;
+                }
+                const uint16_t target_slot = static_cast<uint16_t>(command.resource.value);
+                if (target_slot < 0x8000u) {
+                    auto *surface_slot = resolve_retained(nkui_resource{command.resource.value},
+                                                          nkui::ResourceKind::RenderTarget);
+                    if (!surface_slot) {
+                        valid = false;
+                        break;
+                    }
+                    if (surface_slot->graphics_image.id) {
+                        valid = frame_resources.bind_graphics_image(command.resource,
+                                                                    surface_slot->graphics_image);
+                    } else {
+                        valid = surface_slot->surface && frame_resources.bind_surface(
+                                    command.resource, *surface_slot->surface);
+                    }
+                }
+            }
+            if (!valid)
+                break;
+        }
+        if (!valid)
+            break;
+    }
+    if (!valid)
+        return NKUI_ERROR_INVALID_HANDLE;
+    for (auto &[adapter, glyphs] : prepared_texts)
+        if (!adapter->prepared_glyphs_current(*glyphs) &&
+            !adapter->prepare_glyphs(glyphs->origin_x, glyphs->origin_y, glyphs->pixel_scale,
+                                     glyphs->mode, *glyphs))
+            return NKUI_ERROR_RENDERING;
+    const bool new_backend = !renderer_slot->renderer->valid();
+    if (new_backend && !renderer_slot->renderer->initialize())
         return NKUI_ERROR_RENDERING;
     if (auto *adapter = session_state->frame.text_adapter())
-        if (!renderer_slot->backend->upload_atlases(*adapter, new_backend))
+        if (!renderer_slot->renderer->uploadAtlases(*adapter, new_backend))
             return NKUI_ERROR_RENDERING;
-    const bool executed =
-        nkui::execute_render_plan(*renderer_slot->backend, session_state->frame.plan(),
-                                  session_state->frame.resources(), {main_target, frame_target});
+    for (auto *adapter : text_adapters)
+        if (!renderer_slot->renderer->uploadAtlases(*adapter, new_backend))
+            return NKUI_ERROR_RENDERING;
+    const bool executed = nkui::execute_render_plan(*renderer_slot->renderer, plan,
+                                                    frame_resources, {main_target, frame_target});
     return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
 }
 

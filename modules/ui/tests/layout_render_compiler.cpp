@@ -1,6 +1,7 @@
 #include "layout/layout_engine.h"
 #include "layout/layout_render_compiler.h"
 #include "render/render_plan_executor.h"
+#include "render/ui_renderer.h"
 
 #include <algorithm>
 #include <array>
@@ -21,81 +22,76 @@ LayoutNode box(uint32_t id, int32_t parent) {
     return node;
 }
 
-class RecordingBackend final : public RenderBackend {
+class RecordingRenderer final : public UiRenderer {
   public:
     bool initialize() override { return true; }
     bool valid() const override { return true; }
-
-    bool begin_window_pass(int, int, const nk_surface_frame_target &, bool) override {
+    bool beginFrame() override { ++frame_count; return true; }
+    bool beginWindowPass(int, int, bool) override {
         ++pass_count;
         return true;
     }
-    bool begin_target_pass(ResourceId, int, int, bool) override {
+    bool beginTargetPass(ResourceId, int, int, bool) override {
         ++pass_count;
         return true;
     }
-    bool begin_surface_pass(ResourceId, const SurfaceDescriptor &, bool) override {
+    bool beginSurfacePass(ResourceId, const SurfaceDescriptor &, bool) override {
         ++pass_count;
         return true;
     }
-    bool draw_surface_mesh(const SurfaceMeshView &) override {
+    bool drawSurfaceMesh(const SurfaceMeshView &) override {
         ++surface_mesh_count;
         return true;
     }
-    bool surface_has_content(ResourceId) const override { return false; }
-    bool surface_is_current(ResourceId, uint32_t, const SurfaceDescriptor &) const override {
+    bool surfaceHasContent(ResourceId) const override { return false; }
+    bool surfaceIsCurrent(ResourceId, uint32_t, const SurfaceDescriptor &) const override {
         return false;
     }
-    void mark_surface_current(ResourceId, uint32_t, const SurfaceDescriptor &) override {}
+    void markSurfaceCurrent(ResourceId, uint32_t, const SurfaceDescriptor &) override {}
 
-    bool set_scissor(bool enabled, float x, float y, float width, float height) override {
+    bool setScissor(bool enabled, float x, float y, float width, float height) override {
         last_scissor_enabled = enabled;
         last_scissor = {x, y, width, height};
         return true;
     }
-    bool draw_path(const PreparedPathData &, uint32_t, float) override {
+    bool drawPath(const PreparedPathData &, uint32_t, float) override {
         ++path_count;
         return true;
     }
-    bool draw_path_transformed(const PreparedPathData &path, uint32_t operation_index,
-                               const float[6], float) override {
+    bool drawPath(const PreparedPathData &path, uint32_t operation_index,
+                  const float[6], float) override {
         if (operation_index >= path.operations().size())
             return false;
         ++path_count;
         return true;
     }
-    bool draw_paths(const PreparedPathData &) override {
-        ++path_count;
+    bool drawImage(const PreparedTexture &, float, float, float, float, const float[6],
+                   float) override {
         return true;
     }
-    bool draw_image(const PreparedTexture &, float, float, float, float, const float[6],
-                    float) override {
-        return true;
-    }
-    bool upload_atlases(SkribidiAdapter &, bool) override { return true; }
-    bool draw_glyphs(const PreparedGlyphs &, float) override {
+    bool uploadAtlases(SkribidiAdapter &, bool) override { return true; }
+    bool drawGlyphs(const PreparedGlyphs &, float) override {
         ++text_count;
         return true;
     }
-    bool draw_glyphs_transformed(const PreparedGlyphs &glyphs, const float[6], float, float,
-                                 float) override {
+    bool drawGlyphs(const PreparedGlyphs &glyphs, const float[6], float, float,
+                    float) override {
         if (glyphs.vertices.empty())
             return false;
         ++text_count;
         return true;
     }
-    bool draw_target(ResourceId, float, float, float, float, const float[6], float) override {
+    bool compositeImage(ResourceId, float, float, float, float, const float[6], float) override {
         return true;
     }
-    bool end_pass() override { return true; }
-    bool commit_frame() override {
-        ++commit_count;
-        return true;
-    }
-    bool end_frame() override { return true; }
-    RenderBackendStats stats() const override { return {}; }
-    const char *last_error() const override { return error.c_str(); }
+    bool compositeImage(nk_graphics_image, float, float, float, float, const float[6],
+                        float) override { return true; }
+    bool endPass() override { return true; }
+    bool endFrame() override { ++commit_count; return true; }
+    UiRendererStats stats() const override { return {}; }
+    const char *lastError() const override { return error.c_str(); }
 
+    uint32_t frame_count = 0;
     uint32_t pass_count = 0;
     uint32_t path_count = 0;
     uint32_t text_count = 0;
@@ -216,7 +212,51 @@ int main() {
     if (path_commands < 2 || text_commands != expected_text_commands)
         return 11;
 
-    RecordingBackend backend;
+    // Custom display-list commands join the ordered layout stream at the
+    // node marker, before that node's descendants.
+    LayoutSnapshot ordered_snapshot = snapshot;
+    const auto label_primitive = std::find_if(
+        ordered_snapshot.primitives.begin(), ordered_snapshot.primitives.end(),
+        [](const LayoutPrimitive &primitive) { return primitive.kind == LayoutPrimitiveKind::Text; });
+    if (label_primitive == ordered_snapshot.primitives.end())
+        return 20;
+    LayoutPrimitive custom_marker;
+    custom_marker.kind = LayoutPrimitiveKind::Custom;
+    custom_marker.node_id = 2;
+    custom_marker.bounds = button_item->bounds;
+    custom_marker.transform = button_item->transform;
+    ordered_snapshot.primitives.insert(label_primitive, custom_marker);
+    RenderPlan custom_plan;
+    custom_plan.passes.push_back({main_target, {}, false, {}});
+    const ResourceId custom_path = make_resource_id(ResourceKind::Path, 1, 444);
+    RenderCommand custom_command{RenderCommandKind::Path, custom_path};
+    custom_command.transform = {2.0f, 0.0f, 0.0f, 2.0f, 10.0f, 20.0f};
+    custom_command.has_scissor = true;
+    custom_command.scissor_x = 1.0f;
+    custom_command.scissor_y = 2.0f;
+    custom_command.scissor_width = 3.0f;
+    custom_command.scissor_height = 4.0f;
+    custom_plan.passes.front().commands.push_back(custom_command);
+    LayoutRenderCompiler::CustomPaintPlans custom_paints{{2, &custom_plan}};
+    LayoutRenderFrame ordered_frame;
+    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, ordered_frame, &compile_error,
+                          false, engine.text_adapter(), &custom_paints))
+        return 21;
+    const auto &ordered_commands = ordered_frame.plan().passes.front().commands;
+    const auto custom_position = std::find_if(
+        ordered_commands.begin(), ordered_commands.end(),
+        [](const RenderCommand &command) { return command.custom_payload; });
+    if (custom_position == ordered_commands.end() || custom_position == ordered_commands.begin() ||
+        custom_position + 1 == ordered_commands.end() ||
+        (custom_position - 1)->kind != RenderCommandKind::Path ||
+        custom_position->resource.value != custom_path.value ||
+        (custom_position + 1)->kind != RenderCommandKind::GlyphBatch ||
+        custom_position->transform != std::array<float, 6>{3.0f, 0.0f, 0.0f, 3.0f, 15.0f, 30.0f} ||
+        custom_position->scissor_x != 1.5f || custom_position->scissor_y != 3.0f ||
+        custom_position->scissor_width != 4.5f || custom_position->scissor_height != 6.0f)
+        return 22;
+
+    RecordingRenderer backend;
     nk_surface_frame_target frame_target{};
     frame_target.struct_size = sizeof(frame_target);
     frame_target.api = NK_GRAPHICS_OPENGL;

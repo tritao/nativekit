@@ -5,12 +5,14 @@
 
 #include "sokol_gfx.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 enum Kind : uint32_t {
     RendererKind = 1,
@@ -67,10 +69,14 @@ struct Renderer {
     bool in_frame = false;
     bool in_pass = false;
     Handle active_target = 0;
+    bool standalone_target_pass = false;
+    int32_t pass_width = 0;
+    int32_t pass_height = 0;
 };
 struct Buffer {
     Handle owner = 0;
     sg_buffer object{};
+    bool stream = false;
 };
 struct Shader {
     Handle owner = 0;
@@ -109,6 +115,12 @@ struct Image {
     Handle owner = 0;
     sg_image object{};
     sg_view view{};
+    uint32_t width = 0;
+    uint32_t height = 0;
+    nkgpu_image_format format = NKGPU_IMAGEFORMAT_RGBA8;
+    bool dynamic_update = false;
+    bool external = false;
+    std::vector<uint8_t> pixels;
 };
 struct ImageBuilder {
     Handle owner = 0;
@@ -170,14 +182,26 @@ static nkgpu_result require_idle_renderer(Handle handle) {
     auto *slot = renderer_pool.get(handle);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
-    if (slot->value.in_frame || active_renderer)
-        return fail(NKGPU_ERROR_WRONG_STATE, "GPU resources can only change while all renderers are idle");
+    if (slot->value.in_pass || (active_renderer && active_renderer != handle))
+        return fail(NKGPU_ERROR_WRONG_STATE,
+                    "GPU resources can only change outside a render pass");
+    return NKGPU_OK;
+}
+
+static nkgpu_result require_streaming_resource_access(Handle handle) {
+    auto *slot = renderer_pool.get(handle);
+    if (!slot)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (active_renderer && active_renderer != handle)
+        return fail(NKGPU_ERROR_WRONG_STATE, "another renderer has an active frame");
     return NKGPU_OK;
 }
 
 #define sg_apply_bindings(...) (runtime_gfx()->apply_bindings(__VA_ARGS__))
 #define sg_apply_pipeline(...) (runtime_gfx()->apply_pipeline(__VA_ARGS__))
+#define sg_apply_scissor_rect(...) (runtime_gfx()->apply_scissor_rect(__VA_ARGS__))
 #define sg_apply_uniforms(...) (runtime_gfx()->apply_uniforms(__VA_ARGS__))
+#define sg_append_buffer(...) (runtime_gfx()->append_buffer(__VA_ARGS__))
 #define sg_begin_pass(...) (runtime_gfx()->begin_pass(__VA_ARGS__))
 #define sg_commit(...) (runtime_gfx()->commit(__VA_ARGS__))
 #define sg_destroy_buffer(...) (runtime_gfx()->destroy_buffer(__VA_ARGS__))
@@ -268,9 +292,47 @@ static sg_vertex_format convert_format(nkgpu_vertex_format f) {
         return SG_VERTEXFORMAT_FLOAT3;
     case 4:
         return SG_VERTEXFORMAT_FLOAT4;
+    case NKGPU_VERTEXFORMAT_UBYTE4N:
+        return SG_VERTEXFORMAT_UBYTE4N;
     default:
         return SG_VERTEXFORMAT_INVALID;
     }
+}
+
+static sg_blend_factor convert_blend_factor(nkgpu_blend_factor value) {
+    switch (value) {
+    case NKGPU_BLENDFACTOR_ZERO: return SG_BLENDFACTOR_ZERO;
+    case NKGPU_BLENDFACTOR_ONE: return SG_BLENDFACTOR_ONE;
+    case NKGPU_BLENDFACTOR_SRC_ALPHA: return SG_BLENDFACTOR_SRC_ALPHA;
+    case NKGPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA: return SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    default: return _SG_BLENDFACTOR_DEFAULT;
+    }
+}
+
+static sg_compare_func convert_compare(nkgpu_compare_func value) {
+    switch (value) {
+    case NKGPU_COMPAREFUNC_ALWAYS: return SG_COMPAREFUNC_ALWAYS;
+    case NKGPU_COMPAREFUNC_LESS_EQUAL: return SG_COMPAREFUNC_LESS_EQUAL;
+    case NKGPU_COMPAREFUNC_EQUAL: return SG_COMPAREFUNC_EQUAL;
+    case NKGPU_COMPAREFUNC_NOT_EQUAL: return SG_COMPAREFUNC_NOT_EQUAL;
+    default: return _SG_COMPAREFUNC_DEFAULT;
+    }
+}
+
+static sg_stencil_op convert_stencil_op(nkgpu_stencil_op value) {
+    switch (value) {
+    case NKGPU_STENCILOP_KEEP: return SG_STENCILOP_KEEP;
+    case NKGPU_STENCILOP_ZERO: return SG_STENCILOP_ZERO;
+    case NKGPU_STENCILOP_INVERT: return SG_STENCILOP_INVERT;
+    case NKGPU_STENCILOP_INCREMENT_WRAP: return SG_STENCILOP_INCR_WRAP;
+    case NKGPU_STENCILOP_DECREMENT_WRAP: return SG_STENCILOP_DECR_WRAP;
+    default: return _SG_STENCILOP_DEFAULT;
+    }
+}
+
+static sg_stencil_face_state convert_stencil_face(const nkgpu_stencil_face_state &value) {
+    return {convert_compare(value.compare), convert_stencil_op(value.fail_op),
+            convert_stencil_op(value.depth_fail_op), convert_stencil_op(value.pass_op)};
 }
 static sg_uniform_type convert_uniform(nkgpu_uniform_type t) {
     switch (t) {
@@ -301,6 +363,14 @@ const char *nkgpu_last_error(void) {
     return error_message;
 }
 
+nk_graphics_api nkgpu_default_graphics_api(void) {
+#if defined(NK_SOKOL_BACKEND_GLES3)
+    return NK_GRAPHICS_OPENGL_ES;
+#else
+    return NK_GRAPHICS_OPENGL;
+#endif
+}
+
 nkgpu_backend nkgpu_query_backend(nkgpu_renderer renderer) {
     auto *slot = renderer_pool.get(renderer);
     return slot ? convert_backend(slot->value.api) : 0;
@@ -312,11 +382,7 @@ nk_graphics_api nkgpu_query_graphics_api(nkgpu_renderer renderer) {
 }
 
 nkgpu_result nkgpu_surface_create(nk_handle window, int32_t width, int32_t height, nk_handle *out) {
-#if defined(NK_SOKOL_BACKEND_GLES3)
-    return nkgpu_surface_create_for_api(window, NK_GRAPHICS_OPENGL_ES, width, height, out);
-#else
-    return nkgpu_surface_create_for_api(window, NK_GRAPHICS_OPENGL, width, height, out);
-#endif
+    return nkgpu_surface_create_for_api(window, nkgpu_default_graphics_api(), width, height, out);
 }
 
 nkgpu_result nkgpu_surface_create_for_api(nk_handle window, nk_graphics_api api, int32_t width,
@@ -636,6 +702,9 @@ nkgpu_result nkgpu_begin_render_target(nkgpu_renderer renderer, nkgpu_render_tar
     owner->value.in_frame = true;
     owner->value.in_pass = true;
     owner->value.active_target = handle;
+    owner->value.standalone_target_pass = true;
+    owner->value.pass_width = target->value.width;
+    owner->value.pass_height = target->value.height;
     owner->value.bindings = {};
     active_renderer = renderer;
     return NKGPU_OK;
@@ -655,6 +724,7 @@ nkgpu_result nkgpu_end_render_target(nkgpu_renderer renderer) {
     owner->value.in_frame = false;
     owner->value.in_pass = false;
     owner->value.active_target = 0;
+    owner->value.standalone_target_pass = false;
     active_renderer = 0;
     return NKGPU_OK;
 }
@@ -665,6 +735,51 @@ static nkgpu_result save_buffer(Handle owner, sg_buffer object, nkgpu_buffer *ou
         return fail(NKGPU_ERROR_UNKNOWN, "buffer pool full");
     }
     *out = h;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_buffer_create_stream(nkgpu_renderer r, uint32_t capacity,
+                                        nkgpu_buffer_usage usage, nkgpu_buffer *out) {
+    if (!capacity || capacity > static_cast<uint32_t>(INT32_MAX) || !out ||
+        (usage != NKGPU_BUFFER_VERTEX && usage != NKGPU_BUFFER_INDEX))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid stream buffer arguments");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
+    const nkgpu_result activated = activate_renderer(r);
+    if (activated != NKGPU_OK)
+        return activated;
+    sg_buffer_desc desc{};
+    desc.size = capacity;
+    desc.usage.vertex_buffer = usage == NKGPU_BUFFER_VERTEX;
+    desc.usage.index_buffer = usage == NKGPU_BUFFER_INDEX;
+    desc.usage.immutable = false;
+    desc.usage.dynamic_update = true;
+    const sg_buffer object = sg_make_buffer(&desc);
+    if (sg_query_buffer_state(object) != SG_RESOURCESTATE_VALID)
+        return fail(NKGPU_ERROR_UNKNOWN, "stream buffer creation failed");
+    const Handle handle = buffer_pool.add(Buffer{r, object, true});
+    if (!handle) {
+        sg_destroy_buffer(object);
+        return fail(NKGPU_ERROR_UNKNOWN, "buffer pool full");
+    }
+    *out = handle;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_buffer_append(nkgpu_renderer r, nkgpu_buffer h, const uint8_t *data,
+                                 uint32_t size, uint32_t *out_offset) {
+    auto *renderer = renderer_pool.get(r);
+    auto *buffer = buffer_pool.get(h);
+    if (!renderer || !buffer || buffer->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign stream buffer");
+    if (!renderer->value.in_frame || !renderer->value.in_pass || active_renderer != r)
+        return fail(NKGPU_ERROR_WRONG_STATE, "stream append requires an active render pass");
+    if (!buffer->value.stream || !data || !size || !out_offset)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid stream append arguments");
+    const sg_range range{data, size};
+    const int offset = sg_append_buffer(buffer->value.object, &range);
+    if (offset < 0 || runtime_gfx()->query_buffer_overflow(buffer->value.object))
+        return fail(NKGPU_ERROR_UNKNOWN, "stream buffer capacity exceeded");
+    *out_offset = static_cast<uint32_t>(offset);
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_buffer_create(nkgpu_renderer r, const uint8_t *data, uint32_t size, nkgpu_buffer *out) {
@@ -921,7 +1036,6 @@ nkgpu_result nkgpu_pipeline_begin(nkgpu_renderer r, nkgpu_shader shader, uint32_
     b.owner = r;
     b.desc.shader = sh->value.object;
     b.desc.layout.buffers[0].stride = (int)stride;
-    b.desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
     Handle h = pipeline_builder_pool.add(b);
     if (!h)
         return fail(NKGPU_ERROR_UNKNOWN, "builder pool full");
@@ -968,6 +1082,83 @@ nkgpu_result nkgpu_pipeline_depth_stencil(nkgpu_pipeline_builder h, uint32_t ena
     s->value.desc.depth.compare = enabled ? SG_COMPAREFUNC_LESS_EQUAL : SG_COMPAREFUNC_ALWAYS;
     return NKGPU_OK;
 }
+nkgpu_result nkgpu_pipeline_blend(nkgpu_pipeline_builder h, const nkgpu_blend_state *state) {
+    auto *s = pipeline_builder_pool.get(h);
+    if (!s || !state || state->enabled > 1 || state->op_rgb != NKGPU_BLENDOP_ADD ||
+        state->op_alpha != NKGPU_BLENDOP_ADD ||
+        convert_blend_factor(state->src_rgb) == _SG_BLENDFACTOR_DEFAULT ||
+        convert_blend_factor(state->dst_rgb) == _SG_BLENDFACTOR_DEFAULT ||
+        convert_blend_factor(state->src_alpha) == _SG_BLENDFACTOR_DEFAULT ||
+        convert_blend_factor(state->dst_alpha) == _SG_BLENDFACTOR_DEFAULT)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline blend state");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    auto &blend = s->value.desc.colors[0].blend;
+    blend.enabled = state->enabled != 0;
+    blend.src_factor_rgb = convert_blend_factor(state->src_rgb);
+    blend.dst_factor_rgb = convert_blend_factor(state->dst_rgb);
+    blend.op_rgb = SG_BLENDOP_ADD;
+    blend.src_factor_alpha = convert_blend_factor(state->src_alpha);
+    blend.dst_factor_alpha = convert_blend_factor(state->dst_alpha);
+    blend.op_alpha = SG_BLENDOP_ADD;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_pipeline_stencil(nkgpu_pipeline_builder h, const nkgpu_stencil_state *state) {
+    auto *s = pipeline_builder_pool.get(h);
+    if (!s || !state || state->enabled > 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline stencil state");
+    const auto valid_face = [](const nkgpu_stencil_face_state &face) {
+        return convert_compare(face.compare) != _SG_COMPAREFUNC_DEFAULT &&
+               convert_stencil_op(face.fail_op) != _SG_STENCILOP_DEFAULT &&
+               convert_stencil_op(face.depth_fail_op) != _SG_STENCILOP_DEFAULT &&
+               convert_stencil_op(face.pass_op) != _SG_STENCILOP_DEFAULT;
+    };
+    if (state->enabled && (!valid_face(state->front) || !valid_face(state->back)))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid stencil face state");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    auto &stencil = s->value.desc.stencil;
+    stencil.enabled = state->enabled != 0;
+    stencil.read_mask = state->read_mask;
+    stencil.write_mask = state->write_mask;
+    stencil.front = convert_stencil_face(state->front);
+    stencil.back = convert_stencil_face(state->back);
+    if (state->enabled && s->value.desc.depth.pixel_format == SG_PIXELFORMAT_NONE)
+        s->value.desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_pipeline_cull_mode(nkgpu_pipeline_builder h, nkgpu_cull_mode mode,
+                                      nkgpu_face_winding winding) {
+    auto *s = pipeline_builder_pool.get(h);
+    if (!s || (mode != NKGPU_CULLMODE_NONE && mode != NKGPU_CULLMODE_BACK) ||
+        (winding != NKGPU_FACEWINDING_CCW && winding != NKGPU_FACEWINDING_CW))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline cull state");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    s->value.desc.cull_mode = mode == NKGPU_CULLMODE_BACK ? SG_CULLMODE_BACK : SG_CULLMODE_NONE;
+    s->value.desc.face_winding = winding == NKGPU_FACEWINDING_CCW ? SG_FACEWINDING_CCW
+                                                                   : SG_FACEWINDING_CW;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_pipeline_color_write_mask(nkgpu_pipeline_builder h,
+                                             nkgpu_color_write_mask mask) {
+    auto *s = pipeline_builder_pool.get(h);
+    if (!s || (mask & ~NKGPU_COLORMASK_RGBA))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline color write mask");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    uint32_t native_mask = SG_COLORMASK_NONE;
+    if (mask & NKGPU_COLORMASK_R) native_mask |= SG_COLORMASK_R;
+    if (mask & NKGPU_COLORMASK_G) native_mask |= SG_COLORMASK_G;
+    if (mask & NKGPU_COLORMASK_B) native_mask |= SG_COLORMASK_B;
+    if (mask & NKGPU_COLORMASK_A) native_mask |= SG_COLORMASK_A;
+    s->value.desc.colors[0].write_mask = static_cast<sg_color_mask>(native_mask);
+    return NKGPU_OK;
+}
 nkgpu_result nkgpu_pipeline_end(nkgpu_pipeline_builder h, nkgpu_pipeline *out) {
     auto *s = pipeline_builder_pool.get(h);
     if (!s || !out)
@@ -1006,6 +1197,22 @@ nkgpu_result nkgpu_pipeline_destroy(nkgpu_renderer r, nkgpu_pipeline h) {
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_begin_frame(nkgpu_renderer h) {
+    const nkgpu_result result = nkgpu_frame_begin(h);
+    if (result != NKGPU_OK)
+        return result;
+    auto *s = renderer_pool.get(h);
+    nk_surface_frame_target target{};
+    target.struct_size = sizeof(target);
+    if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK || target.width <= 0 ||
+        target.height <= 0) {
+        s->value.in_frame = false;
+        active_renderer = 0;
+        return fail(NKGPU_ERROR_UNKNOWN, "surface framebuffer is unavailable");
+    }
+    return nkgpu_begin_window_pass(h, static_cast<uint32_t>(target.width),
+                                   static_cast<uint32_t>(target.height), 1);
+}
+nkgpu_result nkgpu_frame_begin(nkgpu_renderer h) {
     auto *s = renderer_pool.get(h);
     if (!s)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
@@ -1015,6 +1222,23 @@ nkgpu_result nkgpu_begin_frame(nkgpu_renderer h) {
     if (activated != NKGPU_OK)
         return activated;
     sg_reset_state_cache();
+    s->value.in_frame = true;
+    s->value.in_pass = false;
+    s->value.active_target = 0;
+    s->value.bindings = {};
+    active_renderer = h;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t height,
+                                     uint32_t clear) {
+    auto *s = renderer_pool.get(h);
+    if (!s || !width || !height || width > INT32_MAX || height > INT32_MAX || clear > 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid window-pass arguments");
+    if (!s->value.in_frame || s->value.in_pass || active_renderer != h)
+        return fail(NKGPU_ERROR_WRONG_STATE, "window pass requires a frame with no active pass");
+    const nkgpu_result activated = activate_renderer(h);
+    if (activated != NKGPU_OK)
+        return activated;
     nk_surface_frame_target target{};
     target.struct_size = sizeof(target);
     if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK || target.width <= 0 ||
@@ -1022,20 +1246,91 @@ nkgpu_result nkgpu_begin_frame(nkgpu_renderer h) {
         target.device.id != s->value.device.id)
         return fail(NKGPU_ERROR_UNKNOWN, "framebuffer target does not match renderer device");
     sg_pass pass{};
-    pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
-    pass.action.colors[0].clear_value = {.035f, .055f, .11f, 1};
-    pass.swapchain = {.width = target.width,
-                      .height = target.height,
+    pass.action.colors[0].load_action = clear ? SG_LOADACTION_CLEAR : SG_LOADACTION_LOAD;
+    pass.action.colors[0].clear_value = {.025f, .035f, .07f, 1};
+    pass.action.depth = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 1.0f};
+    pass.action.stencil = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 0};
+    pass.swapchain = {.width = static_cast<int>(width),
+                      .height = static_cast<int>(height),
                       .sample_count = 1,
                       .color_format = SG_PIXELFORMAT_RGBA8,
-                      .depth_format = SG_PIXELFORMAT_NONE,
+                      .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
                       .gl = {.framebuffer = static_cast<uint32_t>(target.native_target)}};
     sg_begin_pass(&pass);
-    s->value.in_frame = true;
     s->value.in_pass = true;
     s->value.active_target = 0;
-    active_renderer = h;
+    s->value.pass_width = static_cast<int32_t>(width);
+    s->value.pass_height = static_cast<int32_t>(height);
     s->value.bindings = {};
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_begin_target_pass(nkgpu_renderer h, nkgpu_render_target target_handle,
+                                     uint32_t clear) {
+    auto *renderer = renderer_pool.get(h);
+    auto *target = render_target_pool.get(target_handle);
+    if (!renderer || !target || target->value.owner != h)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign render target");
+    if (clear > 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid target clear flag");
+    if (!renderer->value.in_frame || renderer->value.in_pass || active_renderer != h)
+        return fail(NKGPU_ERROR_WRONG_STATE, "target pass requires a frame with no active pass");
+    const nkgpu_result activated = activate_renderer(h);
+    if (activated != NKGPU_OK)
+        return activated;
+    sg_pass pass{};
+    pass.action.colors[0].load_action = clear ? SG_LOADACTION_CLEAR : SG_LOADACTION_LOAD;
+    pass.action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (target->value.depth.id) {
+        pass.action.depth = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 1.0f};
+        pass.action.stencil = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 0};
+        pass.attachments.depth_stencil = target->value.depth_attachment;
+    }
+    pass.attachments.colors[0] = target->value.color_attachment;
+    sg_begin_pass(&pass);
+    renderer->value.in_pass = true;
+    renderer->value.active_target = target_handle;
+    renderer->value.standalone_target_pass = false;
+    renderer->value.pass_width = target->value.width;
+    renderer->value.pass_height = target->value.height;
+    renderer->value.bindings = {};
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_end_pass(nkgpu_renderer h) {
+    auto *renderer = renderer_pool.get(h);
+    if (!renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (!renderer->value.in_frame || !renderer->value.in_pass || active_renderer != h)
+        return fail(NKGPU_ERROR_WRONG_STATE, "no active pass");
+    sg_end_pass();
+    renderer->value.in_pass = false;
+    renderer->value.active_target = 0;
+    renderer->value.bindings = {};
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_apply_scissor(nkgpu_renderer h, uint32_t enabled, int32_t x, int32_t y,
+                                 int32_t width, int32_t height) {
+    auto *renderer = renderer_pool.get(h);
+    if (!renderer || !renderer->value.in_frame || !renderer->value.in_pass ||
+        active_renderer != h)
+        return fail(NKGPU_ERROR_WRONG_STATE, "scissor requires an active render pass");
+    if (enabled > 1 || (enabled && (width < 0 || height < 0)))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid scissor rectangle");
+    if (!enabled) {
+        sg_apply_scissor_rect(0, 0, renderer->value.pass_width,
+                              renderer->value.pass_height, true);
+        return NKGPU_OK;
+    }
+    const int64_t right = static_cast<int64_t>(x) + width;
+    const int64_t bottom = static_cast<int64_t>(y) + height;
+    const int32_t left_clamped = std::clamp(x, 0, renderer->value.pass_width);
+    const int32_t top_clamped = std::clamp(y, 0, renderer->value.pass_height);
+    const int32_t right_clamped = static_cast<int32_t>(std::clamp<int64_t>(
+        right, 0, renderer->value.pass_width));
+    const int32_t bottom_clamped = static_cast<int32_t>(std::clamp<int64_t>(
+        bottom, 0, renderer->value.pass_height));
+    sg_apply_scissor_rect(left_clamped, top_clamped,
+                          std::max(0, right_clamped - left_clamped),
+                          std::max(0, bottom_clamped - top_clamped), true);
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_apply_pipeline(nkgpu_renderer r, nkgpu_pipeline h) {
@@ -1086,6 +1381,18 @@ nkgpu_result nkgpu_uniforms_write_f32(nkgpu_uniform_builder h, uint32_t offset, 
     if (!s || offset > s->value.size || s->value.size - offset < sizeof(value))
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale/out-of-range uniform builder");
     memcpy(s->value.data + offset, &value, sizeof(value));
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_apply_uniform_data(nkgpu_renderer r, uint32_t slot, const uint8_t *data,
+                                      uint32_t size) {
+    auto *renderer = renderer_pool.get(r);
+    if (!renderer || !renderer->value.in_frame || !renderer->value.in_pass ||
+        active_renderer != r)
+        return fail(NKGPU_ERROR_WRONG_STATE, "uniform upload requires an active render pass");
+    if (!data || !size)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "uniform data is empty");
+    const sg_range range{data, size};
+    sg_apply_uniforms(static_cast<int>(slot), &range);
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_apply_uniforms(nkgpu_renderer r, uint32_t slot, nkgpu_uniform_builder h) {
@@ -1151,6 +1458,16 @@ nkgpu_result nkgpu_image_end(nkgpu_image_builder h, nkgpu_image *out) {
     desc.pixel_format = SG_PIXELFORMAT_RGBA8;
     desc.data.mip_levels[0] = {s->value.data, (size_t)s->value.width * s->value.height * 4};
     const sg_image image = sg_make_image(&desc);
+    Image image_value{};
+    image_value.owner = owner;
+    image_value.object = image;
+    image_value.width = s->value.width;
+    image_value.height = s->value.height;
+    image_value.format = NKGPU_IMAGEFORMAT_RGBA8;
+    image_value.dynamic_update = false;
+    image_value.pixels.assign(s->value.data,
+                              s->value.data + static_cast<size_t>(s->value.width) *
+                                                  s->value.height * 4);
     free(s->value.data);
     image_builder_pool.remove(*s);
     if (sg_query_image_state(image) != SG_RESOURCESTATE_VALID)
@@ -1162,13 +1479,124 @@ nkgpu_result nkgpu_image_end(nkgpu_image_builder h, nkgpu_image *out) {
         sg_destroy_image(image);
         return fail(NKGPU_ERROR_UNKNOWN, "texture view creation failed");
     }
-    Handle result = image_pool.add(Image{owner, image, view});
+    image_value.view = view;
+    Handle result = image_pool.add(image_value);
     if (!result) {
         sg_destroy_view(view);
         sg_destroy_image(image);
         return fail(NKGPU_ERROR_UNKNOWN, "image pool full");
     }
     *out = result;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_image_create(nkgpu_renderer r, uint32_t width, uint32_t height,
+                                nkgpu_image_format format, const uint8_t *pixels,
+                                uint32_t size, uint32_t dynamic_update, nkgpu_image *out) {
+    const uint32_t bytes_per_pixel = format == NKGPU_IMAGEFORMAT_R8 ? 1
+                                     : format == NKGPU_IMAGEFORMAT_RGBA8 ? 4
+                                                                         : 0;
+    if (!width || !height || width > INT32_MAX || height > INT32_MAX || !bytes_per_pixel ||
+        !pixels || !out || dynamic_update > 1 ||
+        static_cast<uint64_t>(width) * height * bytes_per_pixel != size)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image creation arguments");
+    const nkgpu_result access = require_streaming_resource_access(r);
+    if (access != NKGPU_OK)
+        return access;
+    const nkgpu_result activated = activate_renderer(r);
+    if (activated != NKGPU_OK)
+        return activated;
+    sg_image_desc desc{};
+    desc.width = static_cast<int>(width);
+    desc.height = static_cast<int>(height);
+    desc.pixel_format = format == NKGPU_IMAGEFORMAT_R8 ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
+    // Keep the public update contract independent of Sokol's per-frame
+    // dynamic-image update restriction. Mutable images are replaced from
+    // their CPU mirror when updated; every Sokol image starts with valid data.
+    desc.data.mip_levels[0] = {pixels, size};
+    const sg_image object = sg_make_image(&desc);
+    if (sg_query_image_state(object) != SG_RESOURCESTATE_VALID)
+        return fail(NKGPU_ERROR_UNKNOWN, "image creation failed");
+    sg_view_desc view_desc{};
+    view_desc.texture.image = object;
+    const sg_view view = sg_make_view(&view_desc);
+    if (sg_query_view_state(view) != SG_RESOURCESTATE_VALID) {
+        sg_destroy_image(object);
+        return fail(NKGPU_ERROR_UNKNOWN, "texture view creation failed");
+    }
+    Image image_value{};
+    image_value.owner = r;
+    image_value.object = object;
+    image_value.view = view;
+    image_value.width = width;
+    image_value.height = height;
+    image_value.format = format;
+    image_value.dynamic_update = dynamic_update != 0;
+    image_value.pixels.assign(pixels, pixels + size);
+    const Handle handle = image_pool.add(image_value);
+    if (!handle) {
+        sg_destroy_view(view);
+        sg_destroy_image(object);
+        return fail(NKGPU_ERROR_UNKNOWN, "image pool full");
+    }
+    *out = handle;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_image_update(nkgpu_renderer r, nkgpu_image h, uint32_t x, uint32_t y,
+                                uint32_t width, uint32_t height, const uint8_t *pixels,
+                                uint32_t row_pitch) {
+    auto *image = image_pool.get(h);
+    if (!renderer_pool.get(r) || !image || image->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign image");
+    const uint32_t bytes_per_pixel = image->value.format == NKGPU_IMAGEFORMAT_R8 ? 1 : 4;
+    if (!image->value.dynamic_update || !pixels || !width || !height || x > image->value.width ||
+        y > image->value.height || width > image->value.width - x ||
+        height > image->value.height - y ||
+        row_pitch < static_cast<uint64_t>(width) * bytes_per_pixel ||
+        row_pitch % bytes_per_pixel != 0 || row_pitch > INT32_MAX)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image update region");
+    const uint64_t source_size = static_cast<uint64_t>(row_pitch) * (height - 1) +
+                                 static_cast<uint64_t>(width) * bytes_per_pixel;
+    if (source_size > SIZE_MAX)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image update size overflow");
+    const nkgpu_result access = require_streaming_resource_access(r);
+    if (access != NKGPU_OK)
+        return access;
+    const nkgpu_result activated = activate_renderer(r);
+    if (activated != NKGPU_OK)
+        return activated;
+    std::vector<uint8_t> next_pixels;
+    try {
+        next_pixels = image->value.pixels;
+    } catch (...) {
+        return fail(NKGPU_ERROR_UNKNOWN, "image update allocation failed");
+    }
+    for (uint32_t row = 0; row < height; ++row) {
+        const auto *source = pixels + static_cast<size_t>(row) * row_pitch;
+        auto *destination = next_pixels.data() +
+            (static_cast<size_t>(y + row) * image->value.width + x) * bytes_per_pixel;
+        memcpy(destination, source, static_cast<size_t>(width) * bytes_per_pixel);
+    }
+    sg_image_desc desc{};
+    desc.width = static_cast<int>(image->value.width);
+    desc.height = static_cast<int>(image->value.height);
+    desc.pixel_format = image->value.format == NKGPU_IMAGEFORMAT_R8 ? SG_PIXELFORMAT_R8
+                                                                    : SG_PIXELFORMAT_RGBA8;
+    desc.data.mip_levels[0] = {next_pixels.data(), next_pixels.size()};
+    const sg_image object = sg_make_image(&desc);
+    if (sg_query_image_state(object) != SG_RESOURCESTATE_VALID)
+        return fail(NKGPU_ERROR_UNKNOWN, "updated image creation failed");
+    sg_view_desc view_desc{};
+    view_desc.texture.image = object;
+    const sg_view view = sg_make_view(&view_desc);
+    if (sg_query_view_state(view) != SG_RESOURCESTATE_VALID) {
+        sg_destroy_image(object);
+        return fail(NKGPU_ERROR_UNKNOWN, "updated image view creation failed");
+    }
+    sg_destroy_view(image->value.view);
+    sg_destroy_image(image->value.object);
+    image->value.object = object;
+    image->value.view = view;
+    image->value.pixels = std::move(next_pixels);
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_image_destroy(nkgpu_renderer r, nkgpu_image h) {
@@ -1191,9 +1619,9 @@ nkgpu_result nkgpu_sampler_create(nkgpu_renderer r, nkgpu_filter min_filter, nkg
     if (!out || min_filter < 1 || min_filter > 2 || mag_filter < 1 ||
         mag_filter > 2 || wrap_u < 1 || wrap_u > 2 || wrap_v < 1 || wrap_v > 2)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid sampler arguments");
-    const nkgpu_result idle = require_idle_renderer(r);
-    if (idle != NKGPU_OK)
-        return idle;
+    const nkgpu_result access = require_streaming_resource_access(r);
+    if (access != NKGPU_OK)
+        return access;
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
@@ -1234,6 +1662,32 @@ nkgpu_result nkgpu_apply_image(nkgpu_renderer r, uint32_t slot, nkgpu_image h) {
         image->value.owner != r || slot >= SG_MAX_VIEW_BINDSLOTS)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid image/frame");
     rs->value.bindings.views[slot] = image->value.view;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_apply_graphics_image(nkgpu_renderer r, uint32_t slot,
+                                        nk_graphics_image image) {
+    auto *renderer = renderer_pool.get(r);
+    if (!renderer || !renderer->value.in_frame || !renderer->value.in_pass ||
+        active_renderer != r || !image.id || slot >= SG_MAX_VIEW_BINDSLOTS)
+        return fail(NKGPU_ERROR_WRONG_STATE, "graphics-image bind requires an active render pass");
+    if (!renderer->value.api->external_image_resolve)
+        return fail(NKGPU_ERROR_UNKNOWN, "external graphics images are unavailable");
+    nk_graphics_image_info info{};
+    info.struct_size = sizeof(info);
+    const void *runtime = nullptr;
+    uint64_t backend_image = 0;
+    sg_view view{};
+    int32_t width = 0;
+    int32_t height = 0;
+    if (nk_core_graphics_image_get_backend(image, &info, &runtime, &backend_image) != NK_OK ||
+        runtime != renderer->value.api || info.api != renderer->value.graphics_api ||
+        info.device.id != renderer->value.device.id || !backend_image ||
+        !renderer->value.api->external_image_resolve(static_cast<uint32_t>(backend_image), &view,
+                                                      &width, &height) || !view.id || width <= 0 ||
+        height <= 0)
+        return fail(NKGPU_ERROR_INVALID_HANDLE,
+                    "graphics image belongs to another runtime or device");
+    renderer->value.bindings.views[slot] = view;
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_apply_sampler(nkgpu_renderer r, uint32_t slot, nkgpu_sampler h) {
@@ -1324,13 +1778,17 @@ nkgpu_result nkgpu_end_frame(nkgpu_renderer r) {
     auto *rs = renderer_pool.get(r);
     if (!rs)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
-    if (!rs->value.in_frame || !rs->value.in_pass || active_renderer != r ||
-        rs->value.active_target)
+    if (!rs->value.in_frame || active_renderer != r || rs->value.standalone_target_pass)
         return fail(NKGPU_ERROR_WRONG_STATE, "no active frame");
-    sg_end_pass();
+    if (rs->value.in_pass)
+        sg_end_pass();
     sg_commit();
     rs->value.in_frame = false;
     rs->value.in_pass = false;
+    rs->value.active_target = 0;
+    rs->value.standalone_target_pass = false;
+    rs->value.pass_width = 0;
+    rs->value.pass_height = 0;
     active_renderer = 0;
     return nk_surface_present(rs->value.surface) == NK_OK
                ? NKGPU_OK

@@ -4,15 +4,16 @@ NativeKit's platform ABI remains independent of rendering and UI-framework
 policy. Experimental higher layers live in the same repository for atomic
 changes and shared CI, but build as optional targets.
 
-`NativeKit::gpu` is the low-level, Haxeon-callable graphics adapter.
-`NativeKit::ui` is the retained UI engine. UI and GPU have no dependency on
-each other's public modules; either may use the same private Sokol runtime. UI
-keeps its own rendering implementation and does not issue fine-grained work
-through the Haxe-facing GPU ABI.
+`NativeKit::gpu` is the low-level, Haxeon-callable graphics adapter and owns
+the Sokol implementation. `NativeKit::ui` is the retained UI engine and depends
+on `NativeKit::gpu` for all GPU work. UI retains layout, text shaping, render
+preparation, and the render plan; it does not own a graphics runtime or issue
+backend-specific calls.
 
 Haxeon UI depends on NativeKit UI, and Haxeon GPU depends on NativeKit GPU;
 both optional modules depend on NativeKit core. NativeKit core never depends on
-either optional module. Clay, Skribidi, NanoVG, and Sokol remain private
+either optional module. Building NativeKit UI enables the GPU dependency.
+Clay, Skribidi, NanoVG, and Sokol remain private
 implementation dependencies whose types do not cross public ABIs.
 
 The Haxeon interfaces follow the same direction: `NativeKitGpu` and

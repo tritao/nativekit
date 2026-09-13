@@ -1,5 +1,11 @@
 # NativeKit 2D graphics and compositor implementation plan
 
+> Historical implementation plan from before the GPU/UI ownership split.
+> Current ownership is defined by [ADR 0007](../../../docs/decisions/0007-optional-modules.md)
+> and [ADR 0008](../../../docs/decisions/0008-ui-rendering-ownership.md):
+> NativeKit GPU owns backend resources and submission; UI compiles an ordered
+> `RenderPlan` and submits it through `nkgpu_*`.
+
 ## Objective
 
 Build one NativeKit-owned graphics pipeline for immediate Canvas drawing,

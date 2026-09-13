@@ -1,73 +1,40 @@
 # NativeKit UI
 
-NativeKit UI is the optional UI substrate above NativeKit's platform and
-surface APIs. Haxeon owns components, application state, reconciliation, and
-resolved styles. This module owns layout, text, hit testing, accessibility
-projection, and batched rendering, while keeping the semantic transaction
-boundary language-neutral.
+NativeKit UI is the retained UI layer above NativeKit core and GPU. NativeKit
+core owns windows, surfaces, input, IME, and shared graphics-image handles.
+`NativeKit::gpu` owns the public `nkgpu_*` rendering contract and its Sokol
+implementation. `NativeKit::ui` owns layout, text preparation, retained display
+lists, `RenderPlan`, and `UiRenderer`, which submits UI work through
+`nkgpu_*`. The Haxe framework owns `View`, `RenderNode`, state, focus, events,
+gestures, semantics, animation, and widgets.
 
-The vendored experimental implementation stack is:
+Clay, Skribidi, and NanoVG remain private implementation dependencies. Clay's
+custom render command carries the custom node identity and participates in its
+normal ordering. Haxe paint callbacks record one retained display list per
+custom node; the layout compiler inserts those commands at the matching marker
+so custom drawing shares the same transforms, clipping, and sibling order as
+boxes, text, and images. The vendored Clay source is unchanged.
 
-- Clay for box layout;
-- Skribidi for shaping, bidirectional editing, line layout, and glyph atlases;
-- Sokol for GPU submission;
-- an internal display list which keeps those dependencies out of the public ABI.
+The C layout bridge uses a versioned transaction with fixed node records of
+`NKUI_LAYOUT_NODE_RECORD_BYTES` bytes and a 16 MiB transaction bound. Node
+capacity grows with submitted data rather than imposing a small framework node
+limit. Resolved geometry is returned as one dynamically sized snapshot. The
+bridge validates record sizes, transaction bounds, text ranges, IDs, and
+geometry before replacing the submitted snapshot.
 
-Clay is currently integrated as a private implementation of `LayoutEngine`.
-The first native vertical slice is covered by `nativekit_ui_layout_engine`, which
-proves box and text layout, Skribidi measurement, and resolved geometry. Its
-visual kinds are box, text, image, and custom content; buttons and other
-widgets are Haxe compositions over those primitives. The Haxe-facing layout
-bridge is version 5 and uses a versioned v4 batch transaction with styled text,
-visibility, local affine transforms, and viewport/timing input. Each submission
-returns layout bounds, inherited clipping, transformed geometry, baseline, and
-content extents for all nodes in one snapshot. Haxe uses this data for hit
-testing and interaction. Clipped nodes currently require axis-aligned transforms.
+The layout facade keeps Clay types private and uses its external paragraph
+layout callback: Skribidi provides shaping, bidirectional text, line breaks,
+and glyph atlases; Clay contributes box constraints and line placement.
+`LayoutRenderCompiler` turns the resolved snapshot and attached custom paints
+into one ordered render plan. `UiRenderer` owns UI-specific drawing vocabulary
+such as paths, glyphs, images, and image composition, while NativeKit GPU owns
+passes, resources, GPU state, and backend submission.
 
-`LayoutEngine` is a NativeKit-owned facade over a private Clay implementation.
-Clay types stay inside that implementation. NativeKit registers Clay's generic
-external paragraph-layout callback:
-Skribidi supplies intrinsic metrics, line breaks, bidi/shaping geometry, and an
-opaque `TextLayoutId`; Clay contributes box constraints and line placement but
-does not run its internal word wrapping. The resulting snapshot carries the
-ID and line index through to glyph preparation.
-
-See the repository-level [`vendor/README.md`](../../vendor/README.md) for pinned revisions and
-[`docs/integration-plan.md`](docs/integration-plan.md) for the integration
-sequence and the policy on adapting versus rewriting upstream code.
-The reusable NanoVG path API is documented in
-[`docs/nanovg-path-preparation.md`](docs/nanovg-path-preparation.md).
-The Haxe-facing graphics layering and verification strategy is documented in
-[`docs/haxe-graphics-api.md`](docs/haxe-graphics-api.md).
-The Wasm runtime ownership and benchmark methodology are documented in
-[`docs/wasm-performance.md`](docs/wasm-performance.md).
-
-All third-party integrations must sit behind private adapters. The public C ABI
-will use opaque handles, fixed-width values, versioned structures, and validated
-batched transactions. It must not expose Clay, Skribidi, NanoVG, or Sokol types.
-
-The module now has a validated semantic display list, reusable NanoVG fill and
-stroke path preparation, direct Skribidi glyph batches, a NativeKit compositor,
-and a NativeKit-owned Sokol backend. Public rendering uses opaque NativeKit UI
-resources and `nkui_renderer_render`; NanoVG does not own text or GPU
-submission.
-
-UI shader sources use `sokol-shdc`; generated headers are written below the
-build directory and are never checked into the source tree. Configure the UI
-build with `-DNK_SOKOL_SHDC=/path/to/sokol-shdc`, or put `sokol-shdc` on `PATH`.
-The current generator languages are selected by `NKUI_SHADER_LANGUAGES` and
-default to `glsl410:glsl300es:hlsl5:metal_macos:metal_ios:metal_sim:wgsl:spirv_vk`.
-The generated descriptors are therefore ready for the intended Sokol backend
-families. Select the compiled Sokol variant with `-DNK_SOKOL_BACKEND=glcore`
-or `-DNK_SOKOL_BACKEND=gles3`; the default is `glcore` on desktop Linux and
-`gles3` on Android. A normal build contains the selected variant. On desktop
-Linux, `-DNK_BUILD_GPU_BACKEND_MATRIX=ON` includes both GLCore and GLES3 and
-dispatches each UI renderer according to its surface API, allowing both to be
-used in one process. Calls remain graphics-thread serialized with one active
-pass at a time. This matrix does not imply Vulkan/Metal support; those require
-their own Sokol runtime and NativeKit surface adapters.
-
-Build it with:
+Configure with `-DNK_BUILD_UI=ON`; this also builds the GPU dependency. The
+public CMake targets are `NativeKit::nativekit`, `NativeKit::gpu`, and
+`NativeKit::ui`. Sokol headers, configuration, runtime ownership, and resource
+handles stay inside `modules/gpu`; UI shader sources are embedded at build time
+and do not require `sokol-shdc`.
 
 ```sh
 cmake -S . -B build-ui -GNinja -DNK_BUILD_UI=ON
@@ -75,19 +42,21 @@ cmake --build build-ui
 ctest --test-dir build-ui --output-on-failure
 ```
 
-Run the interactive public-API showcase with:
+With examples enabled, run the C API showcase with:
 
 ```sh
-./build-ui/modules/ui/nativekit_ui_showcase
+./build-ui/modules/ui/nativekit_ui_c_api
 ```
 
-The same executable supports `--smoke-test`, which renders 30 frames and exits.
+It supports `--smoke-test` for a bounded rendering run. The Haxe framework
+showcase and framework tests live under `modules/ui/examples/ui_haxeon` and
+`modules/ui/tests/haxeon`; generated bindings are checked with
+`modules/ui/tools/check-hxi.sh`.
 
 ## Web / WASM
 
-The first browser backend uses Emscripten, WebGL2, and the GLES3 Sokol
-backend. Emscripten and the pinned `sokol-shdc` binary are kept under `.tools`
-and ignored by Git:
+The browser backend uses Emscripten and WebGL2 through NativeKit core and GPU.
+Set up Emscripten, then build and test with:
 
 ```sh
 ./tools/setup-web.sh
@@ -96,7 +65,5 @@ and ignored by Git:
 python3 -m http.server --directory build-web/modules/ui 8080
 ```
 
-Open `http://localhost:8080/nativekit_ui_c_api.html` for the interactive C ABI
-showcase, or append `?smoke` to run its 30-frame browser smoke test. The
-browser owns the frame loop through `nk_surface_set_frame_callback()`; no
-Emscripten types appear in NativeKit's public headers.
+The browser owns the frame loop through `nk_surface_set_frame_callback()`;
+Emscripten types do not appear in NativeKit's public headers.

@@ -1,6 +1,6 @@
 #include "cube_surface_producer.h"
 
-#include "render_backend.h"
+#include "ui_renderer.h"
 
 #include <algorithm>
 #include <array>
@@ -118,21 +118,21 @@ void CubeSurfaceProducer::set_rotation(float radians) {
         generation_ = 1;
 }
 
-SurfaceRenderResult CubeSurfaceProducer::render(RenderBackend &backend, ResourceId target,
+SurfaceRenderResult CubeSurfaceProducer::render(UiRenderer &renderer, ResourceId target,
                                                 const SurfaceDescriptor &description) {
     if (description.width <= 0 || description.height <= 0)
         return SurfaceRenderResult::Failed;
-    if (!backend.begin_surface_pass(target, description, false))
+    if (!renderer.beginSurfacePass(target, description, false))
         return SurfaceRenderResult::Failed;
     SurfaceMeshView mesh{
         cube_vertices, cube_indices,
         model_view_projection(rotation_, static_cast<float>(description.width) /
                                              static_cast<float>(description.height))};
-    if (!backend.draw_surface_mesh(mesh)) {
-        backend.end_pass();
+    if (!renderer.drawSurfaceMesh(mesh)) {
+        renderer.endPass();
         return SurfaceRenderResult::Failed;
     }
-    return backend.end_pass() ? SurfaceRenderResult::Rendered : SurfaceRenderResult::Failed;
+    return renderer.endPass() ? SurfaceRenderResult::Rendered : SurfaceRenderResult::Failed;
 }
 
 } // namespace nkui

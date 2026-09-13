@@ -35,8 +35,8 @@ class UiContext {
 	public var root(default, null):Null<RenderNode>;
 	var submittedStateRevision:Int;
 	var disposed:Bool;
-	var overlayCanvas:Null<Canvas>;
-	var overlayList:Null<DisplayList>;
+	var customCanvases:Map<Int, Canvas>;
+	var customLists:Map<Int, DisplayList>;
 	var accessibilityBridge:Null<AccessibilityBridge>;
 	var accessibilitySurface:Null<NativeKitSurface>;
 	public final textInput:TextInputBridge;
@@ -58,8 +58,8 @@ class UiContext {
 		submittedStateRevision = -1;
 		disposed = false;
 		buildContext.setFocusRequester(function(id) { return focusWidget(id); });
-		overlayCanvas = null;
-		overlayList = null;
+		customCanvases = new Map();
+		customLists = new Map();
 		accessibilityBridge = null;
 		accessibilitySurface = null;
 	}
@@ -145,18 +145,19 @@ class UiContext {
 		ensureLive();
 		if (root == null)
 			throw "Submit a view before rendering the UI context";
-		session.render(renderer, surface, frame);
-		if (root == null)
-			return;
-		if (overlayCanvas == null)
-			overlayCanvas = new Canvas();
-		var canvas:Canvas = cast overlayCanvas;
-		canvas.reset();
-		var painted = false;
+		session.clearCustomPaints();
+		var painted = new Map<Int, Bool>();
 		root.walk(function(node) {
 			if (!node.hasPaintHandler() || node.resolved == null ||
 				node.resolved.clipBounds.width <= 0.0 || node.resolved.clipBounds.height <= 0.0)
 				return;
+			var nodeId = node.id.value;
+			var canvas = customCanvases.get(nodeId);
+			if (canvas == null) {
+				canvas = new Canvas();
+				customCanvases.set(nodeId, canvas);
+			}
+			canvas.reset();
 			var geometry:ResolvedLayoutItem = cast node.resolved;
 			canvas.withState(function(target) {
 				target.resetTransform();
@@ -165,15 +166,30 @@ class UiContext {
 				target.translate(geometry.x, geometry.y);
 				node.paint(target);
 			});
-			painted = true;
-		});
-		if (painted) {
-			if (overlayList == null)
-				overlayList = DisplayList.create();
-			var displayList:DisplayList = cast overlayList;
+			var displayList = customLists.get(nodeId);
+			if (displayList == null) {
+				displayList = DisplayList.create();
+				customLists.set(nodeId, displayList);
+			}
 			canvas.update(displayList);
-			renderer.renderFrameOverlay(displayList, surface, frame);
+			session.setCustomPaint(nodeId, displayList);
+			painted.set(nodeId, true);
+		});
+		var stale:Array<Int> = [];
+		for (nodeId in customLists.keys())
+			if (!painted.exists(nodeId))
+				stale.push(nodeId);
+		for (nodeId in stale) {
+			var canvas = customCanvases.get(nodeId);
+			if (canvas != null)
+				canvas.reset();
+			var displayList = customLists.get(nodeId);
+			if (displayList != null)
+				displayList.dispose();
+			customCanvases.remove(nodeId);
+			customLists.remove(nodeId);
 		}
+		session.render(renderer, surface, frame);
 	}
 
 	public function focusWidget(id:WidgetId):Bool {
@@ -333,6 +349,19 @@ class UiContext {
 	public function dispose():Void {
 		if (disposed)
 			return;
+		session.clearCustomPaints();
+		for (nodeId in customCanvases.keys()) {
+			var canvas = customCanvases.get(nodeId);
+			if (canvas != null)
+				canvas.reset();
+		}
+		for (nodeId in customLists.keys()) {
+			var displayList = customLists.get(nodeId);
+			if (displayList != null)
+				displayList.dispose();
+		}
+		customCanvases = new Map();
+		customLists = new Map();
 		session.dispose();
 		clipboard.dispose();
 		textInput.dispose();
@@ -341,10 +370,6 @@ class UiContext {
 		if (accessibilityBridge != null)
 			accessibilityBridge.dispose();
 		stateStore.dispose();
-		if (overlayCanvas != null)
-			overlayCanvas.reset();
-		if (overlayList != null)
-			overlayList.dispose();
 		disposed = true;
 		root = null;
 		accessibilityBridge = null;

@@ -59,6 +59,8 @@ struct RenderCommand {
     uint32_t line_cap = 0;
     uint32_t line_join = 4;
     float miter_limit = 10.0f;
+    /** Set while commands originate from Haxe custom-paint display lists. */
+    bool custom_payload = false;
 };
 
 struct RenderPass {

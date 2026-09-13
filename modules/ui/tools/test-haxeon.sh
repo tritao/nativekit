@@ -36,4 +36,4 @@ fi
     LD_LIBRARY_PATH="$build_dir/modules/ui:$build_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
     xvfb-run -a "$haxeon_dir/vendor/hashlink/hl" "$build_dir/haxeon-ui-transaction.hl")
 
-echo "PASS: Haxeon rendered a validated Canvas transaction through NativeKit UI and Sokol"
+echo "PASS: Haxeon rendered a validated Canvas transaction through NativeKit UI and NativeKit GPU"

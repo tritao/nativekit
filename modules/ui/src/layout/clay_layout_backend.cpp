@@ -85,15 +85,37 @@ Clay_TextAlignment clay_alignment(TextAlignment alignment) {
 } // namespace
 
 struct LayoutEngine::Impl {
-    explicit Impl(std::size_t max_nodes_value, std::shared_ptr<SkribidiFontCollection> fonts = {})
-        : max_nodes(max_nodes_value),
-          text(fonts ? std::move(fonts) : std::make_shared<SkribidiFontCollection>()) {
-        Clay_SetMaxElementCount(static_cast<int32_t>(max_nodes + 1));
-        Clay_SetMaxMeasureTextCacheWordCount(static_cast<int32_t>(max_nodes * 8 + 32));
-        clay_memory.resize(Clay_MinMemorySize());
-        if (clay_memory.empty())
-            return;
+    explicit Impl(std::size_t initial_capacity,
+                  std::shared_ptr<SkribidiFontCollection> fonts = {})
+        : text(fonts ? std::move(fonts) : std::make_shared<SkribidiFontCollection>()) {
+        initialize_context(initial_capacity);
+    }
 
+    ~Impl() {
+        if (context && Clay_GetCurrentContext() == context)
+            Clay_SetCurrentContext(nullptr);
+    }
+
+    bool initialize_context(std::size_t capacity) {
+        constexpr std::size_t max_capacity =
+            static_cast<std::size_t>(std::numeric_limits<int32_t>::max()) - 1;
+        if (capacity == 0 || capacity > max_capacity)
+            return false;
+        element_capacity = capacity;
+        Clay_SetCurrentContext(nullptr);
+        context = nullptr;
+        Clay_SetMaxElementCount(static_cast<int32_t>(capacity + 1));
+        const std::size_t cache_words =
+            capacity > (max_capacity - 32) / 8 ? max_capacity : capacity * 8 + 32;
+        Clay_SetMaxMeasureTextCacheWordCount(static_cast<int32_t>(cache_words));
+        try {
+            clay_memory.resize(Clay_MinMemorySize());
+        } catch (...) {
+            clay_memory.clear();
+            return false;
+        }
+        if (clay_memory.empty())
+            return false;
         Clay_ErrorHandler error_handler{};
         error_handler.errorHandlerFunction = [](Clay_ErrorData data) {
             auto *state = static_cast<Impl *>(data.userData);
@@ -103,11 +125,30 @@ struct LayoutEngine::Impl {
         context = Clay_Initialize(
             Clay_CreateArenaWithCapacityAndMemory(clay_memory.size(), clay_memory.data()),
             {1.0f, 1.0f}, error_handler);
-        if (context) {
-            Clay_SetMeasureTextFunction(measure_text, this);
-            Clay_SetMeasureTextIntrinsicFunction(measure_intrinsic_text, this);
-            Clay_SetLayoutTextFunction(layout_text, this);
+        if (!context)
+            return false;
+        Clay_SetMeasureTextFunction(measure_text, this);
+        Clay_SetMeasureTextIntrinsicFunction(measure_intrinsic_text, this);
+        Clay_SetLayoutTextFunction(layout_text, this);
+        return true;
+    }
+
+    bool reserve_elements(std::size_t count) {
+        if (count <= element_capacity)
+            return true;
+        constexpr std::size_t max_capacity =
+            static_cast<std::size_t>(std::numeric_limits<int32_t>::max()) - 1;
+        if (count > max_capacity)
+            return false;
+        std::size_t capacity = element_capacity ? element_capacity : 1;
+        while (capacity < count) {
+            if (capacity > max_capacity / 2) {
+                capacity = max_capacity;
+                break;
+            }
+            capacity *= 2;
         }
+        return initialize_context(capacity);
     }
 
     bool valid() const;
@@ -125,7 +166,7 @@ struct LayoutEngine::Impl {
     static Clay_TextLayoutResult layout_text(Clay_StringSlice text, Clay_TextElementConfig *config,
                                              float available_width, void *user_data);
 
-    std::size_t max_nodes = 0;
+    std::size_t element_capacity = 0;
     std::vector<char> clay_memory;
     Clay_Context *context = nullptr;
     SkribidiAdapter text;
@@ -269,6 +310,8 @@ Clay_ElementDeclaration declaration_for(const LayoutNode &node) {
     declaration.backgroundColor = clay_color(node.style.background);
     declaration.cornerRadius = {node.style.radius_top_left, node.style.radius_top_right,
                                 node.style.radius_bottom_left, node.style.radius_bottom_right};
+    if (node.visual_kind == LayoutVisualKind::Custom)
+        declaration.custom.customData = const_cast<LayoutNode *>(&node);
     declaration.clip.horizontal = node.style.clip_horizontal;
     declaration.clip.vertical = node.style.clip_vertical;
     declaration.userData = const_cast<LayoutNode *>(&node);
@@ -410,6 +453,9 @@ void append_primitive(LayoutSnapshot &snapshot, const Clay_RenderCommand &comman
         primitive.text_line_index = command.renderData.text.textLineIndex;
         break;
     }
+    case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
+        primitive.kind = LayoutPrimitiveKind::Custom;
+        break;
     case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:
         primitive.kind = LayoutPrimitiveKind::ClipBegin;
         break;
@@ -447,14 +493,38 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         *error = {};
     out = {};
     if (!valid() || nodes.empty() || !std::isfinite(width) || !std::isfinite(height) ||
-        !std::isfinite(delta_seconds) || width <= 0.0f || height <= 0.0f ||
-        nodes.size() > max_nodes) {
+        !std::isfinite(delta_seconds) || width <= 0.0f || height <= 0.0f) {
         if (error)
             error->message = "invalid layout input";
         return false;
     }
 
     auto &state = *this;
+    std::size_t required_elements = nodes.size();
+    for (const auto &node : nodes) {
+        if (node.visual_kind == LayoutVisualKind::Text) {
+            if (required_elements == std::numeric_limits<std::size_t>::max()) {
+                if (error)
+                    error->message = "layout element count overflow";
+                return false;
+            }
+            ++required_elements;
+        }
+    }
+    // Clay also allocates its root container, and its array keeps one slot
+    // available while checking capacity during OpenElement.
+    if (required_elements == std::numeric_limits<std::size_t>::max()) {
+        if (error)
+            error->message = "layout element count overflow";
+        return false;
+    }
+    ++required_elements;
+    if (!state.reserve_elements(required_elements)) {
+        if (error)
+            error->message = "layout capacity could not grow for this submission";
+        return false;
+    }
+    Clay_SetCurrentContext(state.context);
     state.nodes = &nodes;
     state.children.assign(nodes.size(), {});
     state.element_ids.resize(nodes.size());
@@ -668,13 +738,35 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         }
     }
 
+    // Clay emits a custom-element marker before that element's clip and
+    // background commands. Move each marker to the end of its own contiguous
+    // command group so custom content appears above its box and before its
+    // children, while preserving Clay's z-index ordering.
+    for (std::size_t index = 0; index < out.primitives.size(); ++index) {
+        if (out.primitives[index].kind != LayoutPrimitiveKind::Custom)
+            continue;
+        const uint32_t node_id = out.primitives[index].node_id;
+        std::size_t insertion = index + 1;
+        while (insertion < out.primitives.size() &&
+               out.primitives[insertion].node_id == node_id)
+            ++insertion;
+        if (insertion > index + 1) {
+            auto marker = std::move(out.primitives[index]);
+            out.primitives.erase(out.primitives.begin() + index);
+            out.primitives.insert(out.primitives.begin() + insertion - 1, std::move(marker));
+            index = insertion - 1;
+        }
+    }
+
     return true;
 }
 
-LayoutEngine::LayoutEngine(std::size_t max_nodes) : impl_(std::make_unique<Impl>(max_nodes)) {}
+LayoutEngine::LayoutEngine(std::size_t initial_capacity)
+    : impl_(std::make_unique<Impl>(initial_capacity)) {}
 
-LayoutEngine::LayoutEngine(std::shared_ptr<SkribidiFontCollection> fonts, std::size_t max_nodes)
-    : impl_(std::make_unique<Impl>(max_nodes, std::move(fonts))) {}
+LayoutEngine::LayoutEngine(std::shared_ptr<SkribidiFontCollection> fonts,
+                           std::size_t initial_capacity)
+    : impl_(std::make_unique<Impl>(initial_capacity, std::move(fonts))) {}
 
 LayoutEngine::~LayoutEngine() = default;
 
@@ -710,7 +802,13 @@ bool LayoutEngine::layout(const std::vector<LayoutNode> &nodes, float width, flo
             error->message = "layout implementation is unavailable";
         return false;
     }
-    return impl_->layout(nodes, width, height, delta_seconds, out, error);
+    try {
+        return impl_->layout(nodes, width, height, delta_seconds, out, error);
+    } catch (...) {
+        if (error)
+            error->message = "layout ran out of memory";
+        return false;
+    }
 }
 
 } // namespace nkui

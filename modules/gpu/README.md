@@ -59,15 +59,15 @@ Set `NK_BUILD_TESTS=ON`, then build and run CTest for each configuration:
 | --- | --- | --- |
 | Core only | `OFF` | `OFF` |
 | GPU only | `ON` | `OFF` |
-| UI only | `OFF` | `ON` |
+| UI (GPU dependency enabled automatically) | `OFF` | `ON` |
 | GPU + UI | `ON` | `ON` |
 
 Use `NK_BUILD_SHARED=ON` and `OFF` to cover shared and static libraries. On
 desktop Linux, use `NK_SOKOL_BACKEND=glcore` or `gles3` for a single runtime;
 `NK_BUILD_GPU_BACKEND_MATRIX=ON` builds both runtime variants together. The
-matrix configuration includes `nativekit_ui_sokol_backend_matrix_smoke`, which
-creates a public GPU render target, exports its `GraphicsImage`, and draws it
-through the UI backend.
+GPU runtime test independently verifies both Sokol runtime variants. With UI
+enabled, `nativekit_ui_public_renderer_smoke` checks the public UI renderer on
+the configured GPU backend.
 
 `nativekit_gpu_contract_smoke` covers shader-language validation, renderer
 ownership, renderer cleanup, and the window/offscreen frame state machine.
@@ -137,4 +137,4 @@ GPU-specific handles. `nativekit.gpu.RenderTarget` is the Haxe-facing typed
 wrapper for offscreen targets; its sampled image can be imported with
 `GraphicsSurface.fromImage()` and outlives the target while retained. This is
 the intended seam for future render producers (for example a 3D viewport),
-while backend-specific resource creation stays in the Sokol module.
+while backend-specific resource creation stays in the GPU module's Sokol implementation.

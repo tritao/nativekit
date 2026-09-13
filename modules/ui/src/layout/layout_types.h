@@ -164,6 +164,7 @@ enum class LayoutPrimitiveKind : uint8_t {
     Text,
     ClipBegin,
     ClipEnd,
+    Custom,
 };
 
 struct LayoutPrimitive {
