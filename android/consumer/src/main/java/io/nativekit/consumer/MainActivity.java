@@ -2,6 +2,7 @@ package io.nativekit.consumer;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.InputDevice;
@@ -83,18 +84,21 @@ public final class MainActivity extends Activity {
             !"hello \ud83d\ude00".contentEquals(editor.getText()) || !editor.isMultiLine() ||
             slider.getRangeInfo() == null || slider.getRangeInfo().getCurrent() != 100f)
             throw new AssertionError("semantic nodes were not projected to Android");
-        Bundle characterRequest = new Bundle();
-        characterRequest.putInt(
-            AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_START_INDEX, 6);
-        characterRequest.putInt(
-            AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_LENGTH, 2);
-        provider.addExtraDataToAccessibilityNodeInfo(1, editor,
-            AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY, characterRequest);
-        ArrayList<RectF> characterBounds = editor.getExtras().getParcelableArrayList(
-            AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY, RectF.class);
-        if (characterBounds == null || characterBounds.size() != 2 ||
-            characterBounds.get(0) == null || characterBounds.get(1) == null)
-            throw new AssertionError("semantic character geometry was not exposed");
+        if (Build.VERSION.SDK_INT >= 26) {
+            Bundle characterRequest = new Bundle();
+            characterRequest.putInt(
+                AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_START_INDEX, 6);
+            characterRequest.putInt(
+                AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_LENGTH, 2);
+            provider.addExtraDataToAccessibilityNodeInfo(1, editor,
+                AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY, characterRequest);
+            @SuppressWarnings("deprecation")
+            ArrayList<RectF> characterBounds = editor.getExtras().getParcelableArrayList(
+                AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY);
+            if (characterBounds == null || characterBounds.size() != 2 ||
+                characterBounds.get(0) == null || characterBounds.get(1) == null)
+                throw new AssertionError("semantic character geometry was not exposed");
+        }
         provider.performAction(1, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null);
         provider.performAction(1, AccessibilityNodeInfo.ACTION_CLICK, null);
         Bundle text = new Bundle();
