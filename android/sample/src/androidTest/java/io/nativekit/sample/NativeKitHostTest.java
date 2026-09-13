@@ -24,6 +24,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -47,8 +48,7 @@ public final class NativeKitHostTest {
             long[] handles = new long[2];
             String message = "Olá, 世界 🌍";
             String html = "<meta name=viewport content='width=device-width'>"
-                + "<script>setTimeout(()=>window.webkit.messageHandlers.nativekit."
-                + "postMessage('" + message + "'),50)</script><p>ready</p>";
+                + "<p>ready</p>";
             String url = "data:text/html;charset=utf-8,"
                 + URLEncoder.encode(html, StandardCharsets.UTF_8.name()).replace("+", "%20");
 
@@ -63,9 +63,11 @@ public final class NativeKitHostTest {
             assertNotEquals(0, handles[1]);
 
             List<NativeKitEvent> events = awaitEvents(scenario, EVENT_WEBVIEW_NAVIGATED,
-                                                       EVENT_WEBVIEW_MESSAGE,
                                                        EVENT_HOST_GEOMETRY_CHANGED);
-            NativeKitEvent messageEvent = find(events, EVENT_WEBVIEW_MESSAGE);
+            String messageScript = "window.webkit.messageHandlers.nativekit.postMessage("
+                + JSONObject.quote(message) + ");";
+            scenario.onActivity(activity -> activity.evaluateWebView(messageScript));
+            NativeKitEvent messageEvent = awaitEvent(scenario, EVENT_WEBVIEW_MESSAGE);
             assertEquals("\"" + message + "\"", messageEvent.text());
 
             NativeKitEvent geometry = null;
