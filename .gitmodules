@@ -3,7 +3,7 @@
 	url = https://github.com/tritao/sokol.git
 [submodule "vendor/skribidi"]
 	path = vendor/skribidi
-	url = https://github.com/memononen/Skribidi.git
+	url = https://github.com/tritao/Skribidi.git
 [submodule "vendor/harfbuzz"]
 	path = vendor/harfbuzz
 	url = https://github.com/harfbuzz/harfbuzz.git
@@ -18,7 +18,7 @@
 	url = https://github.com/memononen/budouxc.git
 [submodule "vendor/nanovg"]
 	path = vendor/nanovg
-	url = https://github.com/memononen/nanovg.git
+	url = https://github.com/tritao/nanovg.git
 [submodule "vendor/clay"]
 	path = vendor/clay
 	url = https://github.com/tritao/clay.git
