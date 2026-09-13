@@ -5,6 +5,7 @@ import NativeKit.NativeKitConstants;
 import NativeKit.EventKind;
 import NativeKit.GraphicsApi;
 import NativeKit.InputAction;
+import NativeKit.Key;
 import NativeKit.Result;
 import NativeKit.InitOptions;
 import NativeKit.SurfaceOptions;
@@ -157,7 +158,7 @@ class ShowcaseWeb {
                     case PointerButton(source, _, action, _, x, y) if (source == window && app != null):
                         app.pointerButton(x, y, action == InputAction.Press);
                     case Key(source, key, _, action, _) if (source == window &&
-                            action == InputAction.Press && key == NativeKitConstants.NK_KEY_ESCAPE):
+                            action == InputAction.Press && key == Key.Escape):
                         running = false;
                     default:
                 }
