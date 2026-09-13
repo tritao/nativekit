@@ -287,7 +287,11 @@ enum NK_ENUM(nk_key) {
     /** The right Super, Command, or Windows key. */
     NK_KEY_RIGHT_SUPER = 347,
     /** The Menu or context-menu key. */
-    NK_KEY_MENU = 348,
+    NK_KEY_MENU = 348
+};
+
+typedef uint32_t nk_key_last;
+enum NK_ENUM(nk_key_last) {
     /** Highest key value; useful for sizing key-state arrays. */
     NK_KEY_LAST = NK_KEY_MENU
 };

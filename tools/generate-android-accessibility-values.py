@@ -17,7 +17,9 @@ def render() -> str:
     source = re.sub(r"/\*.*?\*/|//[^\n]*", "", HEADER.read_text(), flags=re.S)
     groups = []
     values = {}
-    for match in re.finditer(r"enum\s*\{(.*?)\};", source, flags=re.S):
+    for match in re.finditer(
+            r"enum\s*(?:(?:NK_ENUM|NK_FLAGS)\s*\([^)]*\)\s*)?\{(.*?)\};",
+            source, flags=re.S):
         entries = []
         previous = -1
         for raw in match.group(1).split(","):

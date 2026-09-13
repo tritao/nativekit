@@ -96,6 +96,16 @@ final class NativeKitInputValues {
     static final int KEY_PRINT_SCREEN = 283;
     static final int KEY_PAUSE = 284;
     static final int KEY_F1 = 290;
+    static final int KEY_F2 = 291;
+    static final int KEY_F3 = 292;
+    static final int KEY_F4 = 293;
+    static final int KEY_F5 = 294;
+    static final int KEY_F6 = 295;
+    static final int KEY_F7 = 296;
+    static final int KEY_F8 = 297;
+    static final int KEY_F9 = 298;
+    static final int KEY_F10 = 299;
+    static final int KEY_F11 = 300;
     static final int KEY_F12 = 301;
     static final int KEY_F13 = 302;
     static final int KEY_F14 = 303;
@@ -136,7 +146,6 @@ final class NativeKitInputValues {
     static final int KEY_RIGHT_ALT = 346;
     static final int KEY_RIGHT_SUPER = 347;
     static final int KEY_MENU = 348;
-    static final int KEY_LAST = 348;
 
     @IntDef({KEY_UNKNOWN, KEY_SPACE, KEY_APOSTROPHE, KEY_COMMA, KEY_MINUS, KEY_PERIOD, KEY_SLASH,
             KEY_0, KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_SEMICOLON,
@@ -146,13 +155,14 @@ final class NativeKitInputValues {
             KEY_GRAVE_ACCENT, KEY_ESCAPE, KEY_ENTER, KEY_TAB, KEY_BACKSPACE, KEY_INSERT,
             KEY_DELETE, KEY_RIGHT, KEY_LEFT, KEY_DOWN, KEY_UP, KEY_PAGE_UP, KEY_PAGE_DOWN,
             KEY_HOME, KEY_END, KEY_CAPS_LOCK, KEY_SCROLL_LOCK, KEY_NUM_LOCK, KEY_PRINT_SCREEN,
-            KEY_PAUSE, KEY_F1, KEY_F12, KEY_F13, KEY_F14, KEY_F15, KEY_F16, KEY_F17, KEY_F18,
+            KEY_PAUSE, KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9,
+            KEY_F10, KEY_F11, KEY_F12, KEY_F13, KEY_F14, KEY_F15, KEY_F16, KEY_F17, KEY_F18,
             KEY_F19, KEY_F20, KEY_F21, KEY_F22, KEY_F23, KEY_F24, KEY_F25, KEY_KP_0, KEY_KP_1,
             KEY_KP_2, KEY_KP_3, KEY_KP_4, KEY_KP_5, KEY_KP_6, KEY_KP_7, KEY_KP_8, KEY_KP_9,
             KEY_KP_DECIMAL, KEY_KP_DIVIDE, KEY_KP_MULTIPLY, KEY_KP_SUBTRACT, KEY_KP_ADD,
             KEY_KP_ENTER, KEY_KP_EQUAL, KEY_LEFT_SHIFT, KEY_LEFT_CONTROL, KEY_LEFT_ALT,
             KEY_LEFT_SUPER, KEY_RIGHT_SHIFT, KEY_RIGHT_CONTROL, KEY_RIGHT_ALT, KEY_RIGHT_SUPER,
-            KEY_MENU, KEY_LAST})
+            KEY_MENU})
     @Retention(RetentionPolicy.SOURCE)
     @interface Key {}
 

@@ -30,7 +30,9 @@ def enum_groups(path: Path) -> dict[str, list[tuple[str, int]]]:
     source = re.sub(r"/\*.*?\*/|//[^\n]*", "", path.read_text(), flags=re.S)
     result: dict[str, list[tuple[str, int]]] = {}
     values: dict[str, int] = {}
-    for match in re.finditer(r"enum\s*\{(.*?)\};", source, flags=re.S):
+    for match in re.finditer(
+            r"enum\s*(?:(?:NK_ENUM|NK_FLAGS)\s*\([^)]*\)\s*)?\{(.*?)\};",
+            source, flags=re.S):
         entries: list[tuple[str, int]] = []
         previous = -1
         for raw in match.group(1).split(","):
