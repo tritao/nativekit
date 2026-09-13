@@ -106,7 +106,7 @@ static void sleep_milliseconds(unsigned milliseconds) {
 #endif
 }
 
-static int load_proc(nk_handle surface, const char *name, nk_graphics_proc *out) {
+static int load_proc(nk_surface surface, const char *name, nk_graphics_proc *out) {
     const nk_result result = nk_surface_get_proc_address(surface, name, out);
     if (result == NK_OK)
         return 1;
@@ -138,7 +138,7 @@ static gl_uint compile_shader(renderer *graphics, gl_enum kind, const char *sour
     return shader;
 }
 
-static int renderer_init(renderer *graphics, nk_handle surface) {
+static int renderer_init(renderer *graphics, nk_surface surface) {
     LOAD_GL(viewport, gl_viewport_proc, "glViewport");
     LOAD_GL(clear_color, gl_clear_color_proc, "glClearColor");
     LOAD_GL(clear, gl_clear_proc, "glClear");
@@ -262,7 +262,7 @@ int main(int argc, char **argv) {
     window_options.width = 800;
     window_options.height = 600;
     window_options.title = "NativeKit OpenGL Triangle";
-    nk_handle window = NK_INVALID_HANDLE;
+    nk_window window = NK_INVALID_HANDLE;
     if (nk_window_create(&window_options, &window) != NK_OK) {
         fprintf(stderr, "nk_window_create failed: %s\n", nk_last_error());
         nk_shutdown();
@@ -276,7 +276,7 @@ int main(int argc, char **argv) {
     surface_options.minor_version = 3;
     surface_options.width = window_options.width;
     surface_options.height = window_options.height;
-    nk_handle surface = NK_INVALID_HANDLE;
+    nk_surface surface = NK_INVALID_HANDLE;
     if (nk_surface_create(window, &surface_options, &surface) != NK_OK) {
         fprintf(stderr, "nk_surface_create failed: %s\n", nk_last_error());
         nk_window_destroy(window);

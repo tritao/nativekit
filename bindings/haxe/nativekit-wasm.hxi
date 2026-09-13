@@ -2036,14 +2036,18 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	extern fn nk_dialog_message(parent: nk_handle, options: ptr<const<nk_message_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
 	/**
 	 * Starts a non-blocking native dialog on the UI thread. `parent` may be zero;
-	 * otherwise it must be a live window. All strings and filters are copied before
-	 * the function returns. Completion uses NK_EVENT_DIALOG_PATHS_COMPLETE or
-	 * NK_EVENT_DIALOG_MESSAGE_COMPLETE, with the operation in event.flags and the
+	 * where a parent is supported, desktop backends accept an nk_window and Android
+	 * resource dialogs accept an nk_mobile_host. All strings and filters are copied
+	 * before the function returns. Completion uses NK_EVENT_DIALOG_PATHS_COMPLETE
+	 * or NK_EVENT_DIALOG_MESSAGE_COMPLETE, with the operation in event.flags and the
 	 * returned request ID in event.request_id.
 	 */
 	extern fn nk_dialog_open_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
 	/**
-	 * Resource dialogs return NK_EVENT_DIALOG_RESOURCES_COMPLETE with nk_resource_list data.
+	 * Resource dialogs return NK_EVENT_DIALOG_RESOURCES_COMPLETE with
+	 * nk_resource_list data. `parent` is a desktop nk_window or an Android
+	 * nk_mobile_host; zero requests an unparented dialog where the backend supports
+	 * it.
 	 */
 	extern fn nk_dialog_open_resource(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
 	/**
@@ -2476,7 +2480,9 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	extern fn nk_webview_can_go_forward(webview: nk_webview, out_can_go_forward: ptr<nk_bool> @out) -> nk_result;
 	/**
-	 * Creates a native child WebView inside `parent`. Bounds are logical pixels;
+	 * Creates a native child WebView inside `parent`. Desktop backends accept an
+	 * nk_window parent and Android accepts an nk_mobile_host; zero is accepted
+	 * where the backend supports an unparented WebView. Bounds are logical pixels;
 	 * width and height must be positive. `initial_url` is nullable UTF-8. Creation
 	 * may finish asynchronously; NK_EVENT_WEBVIEW_READY reports when the native
 	 * controller can display content. Operations issued before readiness are

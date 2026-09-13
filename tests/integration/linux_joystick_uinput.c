@@ -62,9 +62,9 @@ static void send_event(int fd, uint16_t type, uint16_t code, int32_t value) {
     assert(write(fd, &event, sizeof(event)) == (ssize_t)sizeof(event));
 }
 
-static nk_handle wait_for_device(void) {
+static nk_joystick wait_for_device(void) {
     for (int attempt = 0; attempt < 300; ++attempt) {
-        nk_handle handles[32];
+        nk_joystick handles[32];
         uint32_t count = 32;
         const nk_result result = nk_joystick_list(handles, &count);
         assert(result == NK_OK || result == NK_ERROR_BUFFER_TOO_SMALL);
@@ -82,7 +82,7 @@ static nk_handle wait_for_device(void) {
     return NK_INVALID_HANDLE;
 }
 
-static void verify_state(nk_handle joystick, float expected_axis, uint8_t expected_button,
+static void verify_state(nk_joystick joystick, float expected_axis, uint8_t expected_button,
                          uint8_t expected_hat) {
     float axes[8];
     uint8_t buttons[32];
@@ -101,7 +101,7 @@ static void verify_state(nk_handle joystick, float expected_axis, uint8_t expect
     assert(hats[0] == expected_hat);
 }
 
-static void verify_change_events(nk_handle joystick) {
+static void verify_change_events(nk_joystick joystick) {
     int raw_axis = 0;
     int raw_button = 0;
     int raw_hat = 0;
@@ -149,7 +149,7 @@ int main(void) {
     options.api_version = NK_API_VERSION;
     assert(nk_init(&options) == NK_OK);
 
-    const nk_handle joystick = wait_for_device();
+    const nk_joystick joystick = wait_for_device();
     assert(joystick != NK_INVALID_HANDLE);
     char guid[33];
     uint32_t guid_size = sizeof(guid);

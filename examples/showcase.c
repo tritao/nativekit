@@ -21,10 +21,10 @@ extern char **environ;
 #endif
 
 typedef struct app {
-    nk_handle window;
-    nk_handle webview;
-    nk_handle browser_window;
-    nk_handle browser_webview;
+    nk_window window;
+    nk_webview webview;
+    nk_window browser_window;
+    nk_webview browser_webview;
     nk_request_id showcase_eval_request;
     int fullscreen;
     int running;
@@ -225,7 +225,7 @@ static void create_utility_window(app *state) {
     window.title = "Owned utility window";
     window.owner = state->window;
     window.kind = NK_WINDOW_UTILITY;
-    nk_handle child = NK_INVALID_HANDLE;
+    nk_window child = NK_INVALID_HANDLE;
     if (nk_window_create(&window, &child) == NK_OK)
         log_text(state, "window", "Created an owned utility window");
     else

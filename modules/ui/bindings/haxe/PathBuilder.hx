@@ -1,5 +1,5 @@
 import NativeKitUI;
-import NativeKitUI.NkuiPathVerb;
+import NativeKitUI.UiPathVerb;
 
 /** Mutable encoder for immutable Path geometry. */
 class PathBuilder {
@@ -15,32 +15,32 @@ class PathBuilder {
 	}
 
 	public function moveTo(x:Float, y:Float):PathBuilder {
-		append(NkuiPathVerb.MoveTo, [x, y]);
+		append(UiPathVerb.MoveTo, [x, y]);
 		return this;
 	}
 
 	public function lineTo(x:Float, y:Float):PathBuilder {
-		append(NkuiPathVerb.LineTo, [x, y]);
+		append(UiPathVerb.LineTo, [x, y]);
 		return this;
 	}
 
 	public function quadraticTo(controlX:Float, controlY:Float, x:Float, y:Float):PathBuilder {
-		append(NkuiPathVerb.QuadraticTo, [controlX, controlY, x, y]);
+		append(UiPathVerb.QuadraticTo, [controlX, controlY, x, y]);
 		return this;
 	}
 
 	public function cubicTo(control1X:Float, control1Y:Float, control2X:Float, control2Y:Float, x:Float, y:Float):PathBuilder {
-		append(NkuiPathVerb.BezierTo, [control1X, control1Y, control2X, control2Y, x, y]);
+		append(UiPathVerb.BezierTo, [control1X, control1Y, control2X, control2Y, x, y]);
 		return this;
 	}
 
 	public function arcTo(tangent1X:Float, tangent1Y:Float, tangent2X:Float, tangent2Y:Float, radius:Float):PathBuilder {
-		append(NkuiPathVerb.ArcTo, [tangent1X, tangent1Y, tangent2X, tangent2Y, radius]);
+		append(UiPathVerb.ArcTo, [tangent1X, tangent1Y, tangent2X, tangent2Y, radius]);
 		return this;
 	}
 
 	public function close():PathBuilder {
-		append(NkuiPathVerb.Close, []);
+		append(UiPathVerb.Close, []);
 		return this;
 	}
 
@@ -52,7 +52,7 @@ class PathBuilder {
 		return new Path(made.out_path);
 	}
 
-	function append(verb:NkuiPathVerb, values:Array<Float>):Void {
+	function append(verb:UiPathVerb, values:Array<Float>):Void {
 		var element = new nkui_path_element();
 		element.set_verb(verb);
 		for (index in 0...values.length)

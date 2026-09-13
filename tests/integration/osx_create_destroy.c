@@ -81,7 +81,7 @@ int main(void) {
     options.width = 640;
     options.height = 480;
     options.title = "NativeKit macOS smoke test";
-    nk_handle window = NK_INVALID_HANDLE;
+    nk_window window = NK_INVALID_HANDLE;
     assert(nk_window_create(&options, &window) == NK_OK);
     assert(nk_window_set_title(window, "NativeKit UTF-8 \xE2\x9C\x93") == NK_OK);
     assert(nk_window_set_bounds(window, 20, 20, 800, 600) == NK_OK);
@@ -137,7 +137,7 @@ int main(void) {
     web_options.y = 20;
     web_options.width = 400;
     web_options.height = 300;
-    nk_handle webview = NK_INVALID_HANDLE;
+    nk_webview webview = NK_INVALID_HANDLE;
     assert(nk_webview_create(window, &web_options, &webview) == NK_OK);
     nk_event ready_event = wait_for_event(NK_EVENT_WEBVIEW_READY, NK_INVALID_REQUEST_ID);
     assert(ready_event.source == webview);
@@ -178,7 +178,7 @@ int main(void) {
     assert(nk_webview_destroy(webview) == NK_ERROR_INVALID_HANDLE);
 
     web_options.flags = NK_WEBVIEW_HIDDEN | NK_WEBVIEW_NAVIGATION_POLICY;
-    nk_handle policy_webview = NK_INVALID_HANDLE;
+    nk_webview policy_webview = NK_INVALID_HANDLE;
     assert(nk_webview_create(window, &web_options, &policy_webview) == NK_OK);
     nk_event policy_ready = wait_for_event(NK_EVENT_WEBVIEW_READY, NK_INVALID_REQUEST_ID);
     assert(policy_ready.source == policy_webview);
@@ -214,9 +214,9 @@ int main(void) {
     owned_options.flags = NK_WINDOW_HIDDEN | NK_WINDOW_BORDERLESS | NK_WINDOW_MODAL;
     owned_options.owner = window;
     owned_options.kind = NK_WINDOW_UTILITY;
-    nk_handle owned_window = NK_INVALID_HANDLE;
+    nk_window owned_window = NK_INVALID_HANDLE;
     assert(nk_window_create(&owned_options, &owned_window) == NK_OK);
-    nk_handle destroyed_webview = NK_INVALID_HANDLE;
+    nk_webview destroyed_webview = NK_INVALID_HANDLE;
     assert(nk_webview_create(window, &web_options, &destroyed_webview) == NK_OK);
     nk_event destroyed_ready = wait_for_event(NK_EVENT_WEBVIEW_READY, NK_INVALID_REQUEST_ID);
     assert(destroyed_ready.source == destroyed_webview);

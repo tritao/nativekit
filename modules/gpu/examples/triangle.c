@@ -19,7 +19,7 @@ static int report_gpu_error(const char *operation, nkgpu_result result) {
     return 1;
 }
 
-static int triangle_renderer_create(nk_handle surface, triangle_renderer *graphics) {
+static int triangle_renderer_create(nk_surface surface, triangle_renderer *graphics) {
     static const float vertex_data[] = {
         -0.72f, -0.62f, 0.96f, 0.30f, 0.24f,
          0.72f, -0.62f, 0.26f, 0.82f, 0.43f,
@@ -114,8 +114,8 @@ int main(void) {
     window_options.width = 800;
     window_options.height = 600;
     window_options.title = "NativeKit GPU Triangle";
-    nk_handle window = NK_INVALID_HANDLE;
-    nk_handle surface = NK_INVALID_HANDLE;
+    nk_window window = 0;
+    nk_surface surface = 0;
     triangle_renderer graphics = {0};
 
     if (nk_window_create(&window_options, &window) != NK_OK) {

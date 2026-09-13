@@ -162,9 +162,10 @@ typedef struct nk_dialog_message_result {
 
 /**
  * Starts a non-blocking native dialog on the UI thread. `parent` may be zero;
- * otherwise it must be a live window. All strings and filters are copied before
- * the function returns. Completion uses NK_EVENT_DIALOG_PATHS_COMPLETE or
- * NK_EVENT_DIALOG_MESSAGE_COMPLETE, with the operation in event.flags and the
+ * where a parent is supported, desktop backends accept an nk_window and Android
+ * resource dialogs accept an nk_mobile_host. All strings and filters are copied
+ * before the function returns. Completion uses NK_EVENT_DIALOG_PATHS_COMPLETE
+ * or NK_EVENT_DIALOG_MESSAGE_COMPLETE, with the operation in event.flags and the
  * returned request ID in event.request_id.
  */
 NK_API nk_result NK_CALL nk_dialog_open_file(nk_handle parent,

@@ -17,14 +17,14 @@ int main(void) {
     window_options.width = 1000;
     window_options.height = 700;
     window_options.title = "NativeKit resize test";
-    nk_handle window = NK_INVALID_HANDLE;
+    nk_window window = NK_INVALID_HANDLE;
     assert(nk_window_create(&window_options, &window) == NK_OK);
 
     nk_webview_options webview_options = {0};
     webview_options.struct_size = sizeof(webview_options);
     webview_options.width = 1000;
     webview_options.height = 700;
-    nk_handle webview = NK_INVALID_HANDLE;
+    nk_webview webview = NK_INVALID_HANDLE;
     assert(nk_webview_create(window, &webview_options, &webview) == NK_OK);
 
     // A GtkFixed containing a child with a 1000x700 size request must not turn

@@ -143,7 +143,7 @@ NKGPU_HANDLE(nkgpu_render_target);
 /* Result codes                                                              */
 /* ------------------------------------------------------------------------- */
 
-enum {
+enum NK_ENUM(nkgpu_result) {
     /** The operation completed successfully. */
     NKGPU_OK = 0,
     /** An unexpected NativeKit or graphics backend failure occurred. */
@@ -158,7 +158,7 @@ enum {
 
 /** Backend selected when the GPU module was built. */
 typedef uint32_t nkgpu_backend;
-enum {
+enum NK_ENUM(nkgpu_backend) {
     /** Desktop OpenGL core runtime. */
     NKGPU_BACKEND_GLCORE = 1,
     /** OpenGL ES 3 runtime. */
@@ -172,7 +172,7 @@ enum {
 /** Vertex attribute data format used by nkgpu_pipeline_attribute(). */
 typedef uint32_t nkgpu_vertex_format;
 
-enum {
+enum NK_ENUM(nkgpu_vertex_format) {
     /** A single 32-bit floating-point vertex component. */
     NKGPU_VERTEXFORMAT_FLOAT = 1,
     /** Two 32-bit floating-point vertex components. */
@@ -188,7 +188,7 @@ enum {
 /** The intended use of a buffer created by nkgpu_buffer_begin_kind(). */
 typedef uint32_t nkgpu_buffer_usage;
 
-enum {
+enum NK_ENUM(nkgpu_buffer_usage) {
     /** Use the buffer as vertex data. */
     NKGPU_BUFFER_VERTEX = 1,
     /** Use the buffer as index data. */
@@ -198,7 +198,7 @@ enum {
 /** How an applied index buffer is interpreted by the pipeline. */
 typedef uint32_t nkgpu_index_type;
 
-enum {
+enum NK_ENUM(nkgpu_index_type) {
     /** Do not use indexed drawing for the pipeline. */
     NKGPU_INDEXTYPE_NONE = 0,
     /** Interpret index elements as unsigned 16-bit values. */
@@ -209,7 +209,7 @@ enum {
 
 /** Blend factors accepted by generic pipeline state. */
 typedef uint32_t nkgpu_blend_factor;
-enum {
+enum NK_ENUM(nkgpu_blend_factor) {
     NKGPU_BLENDFACTOR_ZERO = 1,
     NKGPU_BLENDFACTOR_ONE = 2,
     NKGPU_BLENDFACTOR_SRC_ALPHA = 3,
@@ -218,11 +218,11 @@ enum {
 
 /** Blend operations accepted by generic pipeline state. */
 typedef uint32_t nkgpu_blend_op;
-enum { NKGPU_BLENDOP_ADD = 1 };
+enum NK_ENUM(nkgpu_blend_op) { NKGPU_BLENDOP_ADD = 1 };
 
 /** Comparison function used by depth and stencil state. */
 typedef uint32_t nkgpu_compare_func;
-enum {
+enum NK_ENUM(nkgpu_compare_func) {
     NKGPU_COMPAREFUNC_ALWAYS = 1,
     NKGPU_COMPAREFUNC_LESS_EQUAL = 2,
     NKGPU_COMPAREFUNC_EQUAL = 3,
@@ -231,7 +231,7 @@ enum {
 
 /** Stencil operation used when a fragment passes or fails a test. */
 typedef uint32_t nkgpu_stencil_op;
-enum {
+enum NK_ENUM(nkgpu_stencil_op) {
     NKGPU_STENCILOP_KEEP = 1,
     NKGPU_STENCILOP_ZERO = 2,
     NKGPU_STENCILOP_INVERT = 3,
@@ -241,15 +241,15 @@ enum {
 
 /** Culling mode for a generic graphics pipeline. */
 typedef uint32_t nkgpu_cull_mode;
-enum { NKGPU_CULLMODE_NONE = 1, NKGPU_CULLMODE_BACK = 2 };
+enum NK_ENUM(nkgpu_cull_mode) { NKGPU_CULLMODE_NONE = 1, NKGPU_CULLMODE_BACK = 2 };
 
 /** Front-face winding used with back-face culling. */
 typedef uint32_t nkgpu_face_winding;
-enum { NKGPU_FACEWINDING_CCW = 1, NKGPU_FACEWINDING_CW = 2 };
+enum NK_ENUM(nkgpu_face_winding) { NKGPU_FACEWINDING_CCW = 1, NKGPU_FACEWINDING_CW = 2 };
 
 /** Color channels written by a pipeline. */
 typedef uint32_t nkgpu_color_write_mask;
-enum {
+enum NK_FLAGS(nkgpu_color_write_mask) {
     NKGPU_COLORMASK_NONE = 0,
     NKGPU_COLORMASK_R = 1u << 0,
     NKGPU_COLORMASK_G = 1u << 1,
@@ -290,7 +290,7 @@ typedef struct nkgpu_stencil_state {
 
 /** Pixel storage accepted by nkgpu_image_create(). */
 typedef uint32_t nkgpu_image_format;
-enum {
+enum NK_ENUM(nkgpu_image_format) {
     NKGPU_IMAGEFORMAT_R8 = 1,
     NKGPU_IMAGEFORMAT_RGBA8 = 2,
 };
@@ -298,7 +298,7 @@ enum {
 /** Shader stage associated with a uniform block or texture binding. */
 typedef uint32_t nkgpu_shader_stage;
 
-enum {
+enum NK_ENUM(nkgpu_shader_stage) {
     /** The vertex shader stage. */
     NKGPU_SHADERSTAGE_VERTEX = 1,
     /** The fragment shader stage. */
@@ -308,7 +308,7 @@ enum {
 /** Source language accepted by the shader creation functions. */
 typedef uint32_t nkgpu_shader_language;
 
-enum {
+enum NK_ENUM(nkgpu_shader_language) {
     /** GLSL source for the configured OpenGL or OpenGL ES backend. */
     NKGPU_SHADERLANGUAGE_GLSL = 1,
 };
@@ -316,7 +316,7 @@ enum {
 /** Data type used to describe a shader uniform member. */
 typedef uint32_t nkgpu_uniform_type;
 
-enum {
+enum NK_ENUM(nkgpu_uniform_type) {
     /** One floating-point value. */
     NKGPU_UNIFORMTYPE_FLOAT = 1,
     /** Two floating-point values. */
@@ -340,7 +340,7 @@ enum {
 /** Texture minification or magnification filter. */
 typedef uint32_t nkgpu_filter;
 
-enum {
+enum NK_ENUM(nkgpu_filter) {
     /** Choose the nearest texel when sampling. */
     NKGPU_FILTER_NEAREST = 1,
     /** Interpolate neighboring texels when sampling. */
@@ -350,7 +350,7 @@ enum {
 /** Texture-coordinate behavior outside the [0, 1] range. */
 typedef uint32_t nkgpu_wrap;
 
-enum {
+enum NK_ENUM(nkgpu_wrap) {
     /** Repeat the texture at integer coordinate boundaries. */
     NKGPU_WRAP_REPEAT = 1,
     /** Clamp texture coordinates to the edge texels. */
@@ -360,7 +360,7 @@ enum {
 /** Opcode stored in the first word of a packed command record. */
 typedef uint32_t nkgpu_command;
 
-enum {
+enum NK_ENUM(nkgpu_command) {
     /** Apply a pipeline; payload: one nkgpu_pipeline handle. */
     NKGPU_COMMAND_APPLY_PIPELINE = 1,
     /** Apply a vertex buffer; payload: slot, buffer handle, and byte offset. */

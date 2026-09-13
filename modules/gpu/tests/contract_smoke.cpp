@@ -32,8 +32,8 @@ int main() {
     window_options.width = 192;
     window_options.height = 128;
     window_options.title = "NativeKit GPU contract";
-    nk_handle window = NK_INVALID_HANDLE;
-    nk_handle surface = NK_INVALID_HANDLE;
+    nk_window window = 0;
+    nk_surface surface = 0;
     nkgpu_renderer first{};
     nkgpu_renderer second{};
     nkgpu_buffer buffer{};

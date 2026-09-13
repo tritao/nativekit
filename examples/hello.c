@@ -53,7 +53,7 @@ int main(void) {
     window_options.width = 720;
     window_options.height = 480;
     window_options.title = "Hello NativeKit";
-    nk_handle window = NK_INVALID_HANDLE;
+    nk_window window = NK_INVALID_HANDLE;
     if (failed("nk_window_create", nk_window_create(&window_options, &window))) {
         nk_shutdown();
         return 1;
@@ -63,7 +63,7 @@ int main(void) {
     webview_options.struct_size = sizeof(webview_options);
     webview_options.width = window_options.width;
     webview_options.height = window_options.height;
-    nk_handle webview = NK_INVALID_HANDLE;
+    nk_webview webview = NK_INVALID_HANDLE;
     if (failed("nk_webview_create", nk_webview_create(window, &webview_options, &webview)) ||
         failed("nk_webview_set_html", nk_webview_set_html(webview, page, NULL))) {
         nk_window_destroy(window);

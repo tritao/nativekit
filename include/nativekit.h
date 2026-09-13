@@ -107,7 +107,8 @@ enum {
 #define NK_INVALID_REQUEST_ID ((nk_request_id)0)
 
 /* Typed resource identifiers. These aliases keep the same four-byte ABI as
- * nk_handle while allowing HXI to preserve each resource kind nominally. */
+ * nk_handle while allowing language bindings to preserve each kind nominally.
+ * Use nk_handle only where an API intentionally accepts more than one kind. */
 typedef uint32_t nk_window NK_HANDLE;
 typedef uint32_t nk_surface NK_HANDLE;
 typedef uint32_t nk_webview NK_HANDLE;

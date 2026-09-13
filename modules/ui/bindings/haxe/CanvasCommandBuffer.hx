@@ -22,60 +22,60 @@ class CanvasCommandBuffer {
 		length = 0;
 
 	public function save():Void
-		header(NativeKitUIConstants.NKUI_COMMAND_PUSH_STATE, 8);
+		header(NativeKitUI.CommandOpcode.PushState, 8);
 
 	public function restore():Void
-		header(NativeKitUIConstants.NKUI_COMMAND_POP_STATE, 8);
+		header(NativeKitUI.CommandOpcode.PopState, 8);
 
 	public function transform(a:Float, b:Float, c:Float, d:Float, x:Float, y:Float):Void {
-		header(NativeKitUIConstants.NKUI_COMMAND_SET_TRANSFORM, 32);
+		header(NativeKitUI.CommandOpcode.SetTransform, 32);
 		float(a); float(b); float(c); float(d); float(x); float(y);
 	}
 
 	public function globalAlpha(alpha:Float):Void {
-		header(NativeKitUIConstants.NKUI_COMMAND_SET_GLOBAL_ALPHA, 12);
+		header(NativeKitUI.CommandOpcode.SetGlobalAlpha, 12);
 		float(alpha);
 	}
 
 	public function composite(mode:CompositeMode):Void {
-		header(NativeKitUIConstants.NKUI_COMMAND_SET_COMPOSITE_MODE, 12);
+		header(NativeKitUI.CommandOpcode.SetCompositeMode, 12);
 		word(cast mode);
 	}
 
 	public function paint(value:Paint):Void
-		resource(NativeKitUIConstants.NKUI_COMMAND_SET_PAINT, value);
+		resource(NativeKitUI.CommandOpcode.SetPaint, value);
 
 	public function clipRect(x:Float, y:Float, width:Float, height:Float):Void {
-		header(NativeKitUIConstants.NKUI_COMMAND_CLIP_RECT, 24);
+		header(NativeKitUI.CommandOpcode.ClipRect, 24);
 		float(x); float(y); float(width); float(height);
 	}
 
 	public function drawPath(path:Path):Void
-		resource(NativeKitUIConstants.NKUI_COMMAND_DRAW_PATH, path);
+		resource(NativeKitUI.CommandOpcode.DrawPath, path);
 
 	public function drawImage(image:Image, x:Float, y:Float, width:Float,
 		height:Float):Void
-		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_IMAGE, image, x, y, width, height);
+		drawRect(NativeKitUI.CommandOpcode.DrawImage, image, x, y, width, height);
 
 	public function drawSurface(surface:GraphicsSurface, x:Float, y:Float, width:Float,
 		height:Float):Void
-		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_RENDER_TARGET, surface, x, y, width, height);
+		drawRect(NativeKitUI.CommandOpcode.DrawRenderTarget, surface, x, y, width, height);
 
 	public function drawText(layout:TextLayout, x:Float, y:Float):Void
-		drawRect(NativeKitUIConstants.NKUI_COMMAND_DRAW_TEXT_LAYOUT, layout, x, y, 0.0, 0.0);
+		drawRect(NativeKitUI.CommandOpcode.DrawTextLayout, layout, x, y, 0.0, 0.0);
 
 	public function beginLayer(opacity:Float, mode:CompositeMode = CompositeMode.SourceOver):Void {
-		header(NativeKitUIConstants.NKUI_COMMAND_BEGIN_LAYER, 16);
+		header(NativeKitUI.CommandOpcode.BeginLayer, 16);
 		float(opacity);
 		word(cast mode);
 	}
 
 	public function endLayer():Void
-		header(NativeKitUIConstants.NKUI_COMMAND_END_LAYER, 8);
+		header(NativeKitUI.CommandOpcode.EndLayer, 8);
 
 	public function strokePath(path:Path, width:Float, cap:LineCap = LineCap.Butt, join:LineJoin = LineJoin.Miter,
 		miterLimit:Float = 4.0):Void {
-		header(NativeKitUIConstants.NKUI_COMMAND_STROKE_PATH, 28);
+		header(NativeKitUI.CommandOpcode.StrokePath, 28);
 		word(path.nativeHandle().rawValue());
 		float(width);
 		word(cast cap);
@@ -100,22 +100,23 @@ class CanvasCommandBuffer {
 		return NativeKitUI.nkui_display_list_submit_slice(list, bytes, offset, count);
 	}
 
-	function resource(opcode:Int, value:NativeKitUIResource):Void {
+	function resource(opcode:NativeKitUI.CommandOpcode, value:NativeKitUIResource):Void {
 		header(opcode, 12);
 		word(value.nativeHandle().rawValue());
 	}
 
-	function drawRect(opcode:Int, value:NativeKitUIResource, x:Float, y:Float, width:Float,
+	function drawRect(opcode:NativeKitUI.CommandOpcode, value:NativeKitUIResource, x:Float, y:Float, width:Float,
 		height:Float):Void {
 		header(opcode, 28);
 		word(value.nativeHandle().rawValue());
 		float(x); float(y); float(width); float(height);
 	}
 
-	function header(opcode:Int, size:Int):Void {
+	function header(opcode:NativeKitUI.CommandOpcode, size:Int):Void {
 		require(size);
-		bytes.set(length, opcode & 255);
-		bytes.set(length + 1, (opcode >> 8) & 255);
+		var rawOpcode:Int = cast opcode;
+		bytes.set(length, rawOpcode & 255);
+		bytes.set(length + 1, (rawOpcode >> 8) & 255);
 		bytes.set(length + 2, NativeKitUIConstants.NKUI_COMMAND_VERSION);
 		bytes.set(length + 3, 0);
 		bytes.setInt32(length + 4, size);

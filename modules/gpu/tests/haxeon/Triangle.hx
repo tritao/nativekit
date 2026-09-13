@@ -24,6 +24,15 @@ import nativekit.gpu.Surface;
 import haxe.io.Bytes;
 
 class Triangle {
+	static function verifyGeneratedEnumMembers():Void {
+		var vertexFormat:NativeKitGpu.VertexFormat = NativeKitGpu.VertexFormat.Float;
+		var floatUniform:NativeKitGpu.UniformType = NativeKitGpu.UniformType.Float;
+		var intUniform:NativeKitGpu.UniformType = NativeKitGpu.UniformType.Int;
+		if (vertexFormat != NativeKitGpu.VertexFormat.Float || floatUniform != NativeKitGpu.UniformType.Float ||
+			intUniform != NativeKitGpu.UniformType.Int)
+			throw "generated GPU enum members changed values";
+	}
+
 	static function createVertexBuffer(renderer:Renderer):Buffer {
 		var values = [
 			-0.04, 0.04, 1.0, 0.30, 0.35, 0.0, 0.0,
@@ -110,6 +119,7 @@ class Triangle {
 	}
 
 	static function main():Int {
+		verifyGeneratedEnumMembers();
 		var runtime = NativeKitRuntime.start(NativeKitOptions.init());
 		var window:NativeKitWindow = runtime.createWindow(NativeKitOptions.window(800, 600,
 			"Haxeon: GPU over NativeKit"));

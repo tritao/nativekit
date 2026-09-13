@@ -1,7 +1,33 @@
 {
   "interface": "NativeKitGpu",
 	"enumNames": {
-		"nk_graphics_api": "NativeKit.GraphicsApi"
+		"nk_graphics_api": "NativeKit.GraphicsApi",
+		"nkgpu_result": "GpuStatus",
+		"nkgpu_backend": "Backend",
+		"nkgpu_vertex_format": "VertexFormat",
+		"nkgpu_buffer_usage": "BufferUsage",
+		"nkgpu_index_type": "IndexType",
+		"nkgpu_blend_factor": "BlendFactor",
+		"nkgpu_blend_op": "BlendOperation",
+		"nkgpu_compare_func": "CompareFunc",
+		"nkgpu_stencil_op": "StencilOp",
+		"nkgpu_cull_mode": "CullMode",
+		"nkgpu_face_winding": "FaceWinding",
+		"nkgpu_color_write_mask": "ColorWriteMask",
+		"nkgpu_image_format": "ImageFormat",
+		"nkgpu_shader_stage": "ShaderStage",
+		"nkgpu_shader_language": "ShaderLanguage",
+		"nkgpu_uniform_type": "UniformType",
+		"nkgpu_filter": "Filter",
+		"nkgpu_wrap": "Wrap",
+		"nkgpu_command": "CommandOpcode"
+	},
+	"enumValuePrefixes": ["NKGPU_BLENDOP_", "NKGPU_SHADERLANGUAGE_"],
+	"enumValueNames": {
+		"nkgpu_index_type": {
+			"NKGPU_INDEXTYPE_UINT16": "UInt16",
+			"NKGPU_INDEXTYPE_UINT32": "UInt32"
+		}
 	},
 	"typeNames": {
 		"nk_graphics_image": "NativeKit.GraphicsImage",

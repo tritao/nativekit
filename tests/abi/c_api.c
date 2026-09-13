@@ -92,7 +92,7 @@ int main(void) {
     nk_input_action input_action = NK_INPUT_RELEASE;
     nk_result input_result = nk_key_get_state(NK_INVALID_HANDLE, NK_KEY_A, &input_action);
     assert(input_result == NK_ERROR_INVALID_HANDLE || input_result == NK_ERROR_UNSUPPORTED);
-    nk_handle cursor = NK_INVALID_HANDLE;
+    nk_cursor cursor = NK_INVALID_HANDLE;
     nk_result cursor_result = nk_cursor_create_standard(NK_CURSOR_ARROW, &cursor);
     if (cursor_result == NK_OK)
         assert(nk_cursor_destroy(cursor) == NK_OK);
@@ -104,13 +104,13 @@ int main(void) {
     surface_options.api = NK_GRAPHICS_OPENGL;
     surface_options.width = 1;
     surface_options.height = 1;
-    nk_handle surface = NK_INVALID_HANDLE;
+    nk_surface surface = NK_INVALID_HANDLE;
     nk_result surface_result = nk_surface_create(NK_INVALID_HANDLE, &surface_options, &surface);
     assert(surface_result == NK_ERROR_INVALID_HANDLE || surface_result == NK_ERROR_UNSUPPORTED);
     nk_mobile_host_options mobile = {0};
     mobile.struct_size = sizeof(mobile);
     mobile.kind = NK_MOBILE_HOST_ANDROID_VIEW_GROUP;
-    nk_handle mobile_host = NK_INVALID_HANDLE;
+    nk_mobile_host mobile_host = NK_INVALID_HANDLE;
     nk_result mobile_result = nk_mobile_host_attach(&mobile, &mobile_host);
     assert(mobile_result == NK_ERROR_INVALID_ARGUMENT || mobile_result == NK_ERROR_UNSUPPORTED);
     assert(nk_mobile_host_dispatch_event(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);

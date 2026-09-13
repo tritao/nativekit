@@ -123,7 +123,7 @@ class Transaction {
 					return 15;
 				var frame = new FrameInfo(256.0, 192.0, size.out_width, size.out_height, scale.out_scale);
 				try {
-					renderer.renderFrame(list, Surface.fromNativeHandle(new NativeKit.Handle(surface.rawValue())), frame);
+					renderer.renderFrame(list, Surface.fromNativeHandle(surface), frame);
 				} catch (_:Dynamic) {
 					return 16;
 				}

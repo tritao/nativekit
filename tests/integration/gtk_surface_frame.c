@@ -11,7 +11,7 @@ typedef struct frame_state {
     int32_t height;
 } frame_state;
 
-static void NK_CALL on_frame(nk_handle surface, int32_t width, int32_t height, void *user_data) {
+static void NK_CALL on_frame(nk_surface surface, int32_t width, int32_t height, void *user_data) {
     frame_state *state = user_data;
     assert(surface != NK_INVALID_HANDLE && width > 0 && height > 0);
     ++state->count;
@@ -41,14 +41,14 @@ int main(void) {
     window_options.width = 320;
     window_options.height = 240;
     window_options.title = "NativeKit frame callback test";
-    nk_handle window = NK_INVALID_HANDLE;
+    nk_window window = NK_INVALID_HANDLE;
     assert(nk_window_create(&window_options, &window) == NK_OK);
     nk_surface_options surface_options = {0};
     surface_options.struct_size = sizeof(surface_options);
     surface_options.api = NK_GRAPHICS_OPENGL;
     surface_options.width = 320;
     surface_options.height = 240;
-    nk_handle surface = NK_INVALID_HANDLE;
+    nk_surface surface = NK_INVALID_HANDLE;
     assert(nk_surface_create(window, &surface_options, &surface) == NK_OK);
     frame_state state = {0};
     assert(nk_surface_set_frame_callback(surface, on_frame, &state) == NK_OK);

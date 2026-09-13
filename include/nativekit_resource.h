@@ -208,7 +208,12 @@ NK_API nk_result NK_CALL nk_clipboard_set_resources(
 /** Starts an asynchronous read of URI resources from the system clipboard. */
 NK_API nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request NK_OUT);
 
-/** Resource dialogs return NK_EVENT_DIALOG_RESOURCES_COMPLETE with nk_resource_list data. */
+/**
+ * Resource dialogs return NK_EVENT_DIALOG_RESOURCES_COMPLETE with
+ * nk_resource_list data. `parent` is a desktop nk_window or an Android
+ * nk_mobile_host; zero requests an unparented dialog where the backend supports
+ * it.
+ */
 NK_API nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
                                                  const nk_file_dialog_options *options,
                                                  nk_request_id *out_request NK_OUT);

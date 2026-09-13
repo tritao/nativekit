@@ -48,7 +48,7 @@ int main() {
     window_options.width = 256;
     window_options.height = 192;
     window_options.title = "NativeKit public UI renderer";
-    nk_handle window = NK_INVALID_HANDLE;
+    nk_window window = 0;
     if (nk_window_create(&window_options, &window) != NK_OK)
         return 2;
     nk_surface_options surface_options{};
@@ -62,7 +62,7 @@ int main() {
         surface_options.minor_version = 3;
     surface_options.width = window_options.width;
     surface_options.height = window_options.height;
-    nk_handle surface = NK_INVALID_HANDLE;
+    nk_surface surface = 0;
     if (nk_surface_create(window, &surface_options, &surface) != NK_OK)
         return 3;
 

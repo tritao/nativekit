@@ -4,72 +4,8 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * Current UI ABI version.
 	 */
 	const NKUI_API_VERSION = 4;
-	/**
-	 * Start a composited layer with an opacity and composite mode.
-	 */
-	const NKUI_COMMAND_BEGIN_LAYER = 11;
-	/**
-	 * Intersect the current clip with a logical-space rectangle.
-	 */
-	const NKUI_COMMAND_CLIP_RECT = 7;
-	/**
-	 * Draw an image resource into a logical-space rectangle.
-	 */
-	const NKUI_COMMAND_DRAW_IMAGE = 9;
-	/**
-	 * Fill a previously created path resource.
-	 */
-	const NKUI_COMMAND_DRAW_PATH = 8;
-	/**
-	 * Composite a render-target resource into a logical-space rectangle.
-	 */
-	const NKUI_COMMAND_DRAW_RENDER_TARGET = 13;
-	/**
-	 * Draw a text layout at a logical-space position.
-	 */
-	const NKUI_COMMAND_DRAW_TEXT_LAYOUT = 10;
-	/**
-	 * End the most recently started layer.
-	 */
-	const NKUI_COMMAND_END_LAYER = 12;
-	/**
-	 * Restore the most recently saved drawing state.
-	 */
-	const NKUI_COMMAND_POP_STATE = 6;
-	/**
-	 * Save the current transform, paint, alpha, composite, and clip state.
-	 */
-	const NKUI_COMMAND_PUSH_STATE = 5;
-	/**
-	 * Select the compositing mode used by subsequent drawing commands.
-	 */
-	const NKUI_COMMAND_SET_COMPOSITE_MODE = 4;
-	/**
-	 * Set the alpha multiplier applied to subsequent drawing commands.
-	 */
-	const NKUI_COMMAND_SET_GLOBAL_ALPHA = 3;
-	/**
-	 * Select the paint resource used by subsequent drawing commands.
-	 */
-	const NKUI_COMMAND_SET_PAINT = 2;
-	/**
-	 * Replace the current transform with a six-value affine matrix.
-	 */
-	const NKUI_COMMAND_SET_TRANSFORM = 1;
-	/**
-	 * Stroke a path using the current paint and the command's stroke style.
-	 */
-	const NKUI_COMMAND_STROKE_PATH = 14;
-	/**
-	 * Version value required in every command header.
-	 */
 	const NKUI_COMMAND_VERSION = 1;
-	const NKUI_LAYOUT_ALIGNMENT_CENTER = 2;
-	const NKUI_LAYOUT_ALIGNMENT_END = 1;
-	const NKUI_LAYOUT_ALIGNMENT_START = 0;
 	const NKUI_LAYOUT_API_VERSION = 7;
-	const NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT = 0;
-	const NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM = 1;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	const NKUI_LAYOUT_NODE_BACKGROUND_OFFSET = 52;
 	/**
@@ -126,20 +62,73 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 */
 	const NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184;
 	const NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96;
-	const NKUI_LAYOUT_SIZING_FIT = 0;
-	const NKUI_LAYOUT_SIZING_FIXED = 2;
-	const NKUI_LAYOUT_SIZING_GROW = 1;
-	const NKUI_LAYOUT_SIZING_PERCENT = 3;
 	const NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16;
 	const NKUI_LAYOUT_TRANSACTION_VERSION = 6;
-	const NKUI_LAYOUT_VISUAL_BOX = 1;
-	const NKUI_LAYOUT_VISUAL_CUSTOM = 4;
-	const NKUI_LAYOUT_VISUAL_IMAGE = 3;
-	const NKUI_LAYOUT_VISUAL_TEXT = 2;
+	/**
+	 * 16-bit opcode identifying one display-list command record.
+	 */
+	enum nkui_command_opcode : u16 {
+		/**
+		 * Replace the current transform with a six-value affine matrix.
+		 */
+		NKUI_COMMAND_SET_TRANSFORM = 1;
+		/**
+		 * Select the paint resource used by subsequent drawing commands.
+		 */
+		NKUI_COMMAND_SET_PAINT = 2;
+		/**
+		 * Set the alpha multiplier applied to subsequent drawing commands.
+		 */
+		NKUI_COMMAND_SET_GLOBAL_ALPHA = 3;
+		/**
+		 * Select the compositing mode used by subsequent drawing commands.
+		 */
+		NKUI_COMMAND_SET_COMPOSITE_MODE = 4;
+		/**
+		 * Save the current transform, paint, alpha, composite, and clip state.
+		 */
+		NKUI_COMMAND_PUSH_STATE = 5;
+		/**
+		 * Restore the most recently saved drawing state.
+		 */
+		NKUI_COMMAND_POP_STATE = 6;
+		/**
+		 * Intersect the current clip with a logical-space rectangle.
+		 */
+		NKUI_COMMAND_CLIP_RECT = 7;
+		/**
+		 * Fill a previously created path resource.
+		 */
+		NKUI_COMMAND_DRAW_PATH = 8;
+		/**
+		 * Draw an image resource into a logical-space rectangle.
+		 */
+		NKUI_COMMAND_DRAW_IMAGE = 9;
+		/**
+		 * Draw a text layout at a logical-space position.
+		 */
+		NKUI_COMMAND_DRAW_TEXT_LAYOUT = 10;
+		/**
+		 * Start a composited layer with an opacity and composite mode.
+		 */
+		NKUI_COMMAND_BEGIN_LAYER = 11;
+		/**
+		 * End the most recently started layer.
+		 */
+		NKUI_COMMAND_END_LAYER = 12;
+		/**
+		 * Composite a render-target resource into a logical-space rectangle.
+		 */
+		NKUI_COMMAND_DRAW_RENDER_TARGET = 13;
+		/**
+		 * Stroke a path using the current paint and the command's stroke style.
+		 */
+		NKUI_COMMAND_STROKE_PATH = 14;
+	}
 	/**
 	 * Alpha compositing mode supported by the current UI renderer.
 	 */
-	enum nkui_composite_mode : c_int {
+	enum nkui_composite_mode : u32 {
 		/**
 		 * Draw new content over the existing destination.
 		 */
@@ -148,7 +137,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Font role used when adding a font file to a collection.
 	 */
-	enum nkui_font_family : c_int {
+	enum nkui_font_family : u32 {
 		/**
 		 * General-purpose text font.
 		 */
@@ -161,7 +150,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Pixel format accepted by nkui_image_create().
 	 */
-	enum nkui_image_format : c_int {
+	enum nkui_image_format : u32 {
 		/**
 		 * Invalid format; cannot be used to create an image.
 		 */
@@ -176,11 +165,26 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		NKUI_IMAGE_RGBA8 = 2;
 	}
 	/**
+	 * Child alignment values shared by the horizontal and vertical axes.
+	 */
+	enum nkui_layout_alignment : u32 {
+		NKUI_LAYOUT_ALIGNMENT_START = 0;
+		NKUI_LAYOUT_ALIGNMENT_END = 1;
+		NKUI_LAYOUT_ALIGNMENT_CENTER = 2;
+	}
+	/**
 	 * Bit flags stored in each node's clip-flags field.
 	 */
 	flags nkui_layout_clip_flags : u32 {
 		NKUI_LAYOUT_CLIP_HORIZONTAL = 1;
 		NKUI_LAYOUT_CLIP_VERTICAL = 2;
+	}
+	/**
+	 * Child flow directions encoded in node styles.
+	 */
+	enum nkui_layout_direction : u32 {
+		NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT = 0;
+		NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM = 1;
 	}
 	/**
 	 * Node flags stored at NKUI_LAYOUT_NODE_FLAGS_OFFSET.
@@ -198,9 +202,27 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		NKUI_LAYOUT_RESOLVED_HAS_BASELINE = 2;
 	}
 	/**
+	 * Sizing modes encoded for each node axis.
+	 */
+	enum nkui_layout_sizing : u32 {
+		NKUI_LAYOUT_SIZING_FIT = 0;
+		NKUI_LAYOUT_SIZING_GROW = 1;
+		NKUI_LAYOUT_SIZING_FIXED = 2;
+		NKUI_LAYOUT_SIZING_PERCENT = 3;
+	}
+	/**
+	 * Visual content kinds encoded in the transaction.
+	 */
+	enum nkui_layout_visual_kind : u32 {
+		NKUI_LAYOUT_VISUAL_BOX = 1;
+		NKUI_LAYOUT_VISUAL_TEXT = 2;
+		NKUI_LAYOUT_VISUAL_IMAGE = 3;
+		NKUI_LAYOUT_VISUAL_CUSTOM = 4;
+	}
+	/**
 	 * End-cap style used when stroking an open path.
 	 */
-	enum nkui_path_line_cap : c_int {
+	enum nkui_path_line_cap : u32 {
 		/**
 		 * Stop the stroke at the endpoint.
 		 */
@@ -217,7 +239,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Join style used where two stroked segments meet.
 	 */
-	enum nkui_path_line_join : c_int {
+	enum nkui_path_line_join : u32 {
 		/**
 		 * Join segments with a circular arc.
 		 */
@@ -234,7 +256,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Geometry operation used by one element of a path.
 	 */
-	enum nkui_path_verb : c_int {
+	enum nkui_path_verb : u32 {
 		/**
 		 * Move the current point; values[0..1] are x and y.
 		 */
@@ -263,7 +285,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Result returned by a NativeKit UI operation.
 	 */
-	enum nkui_result : c_int {
+	enum nkui_result : i32 {
 		/**
 		 * The operation completed successfully.
 		 */
@@ -292,7 +314,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Horizontal alignment of paragraph lines.
 	 */
-	enum nkui_text_alignment : c_int {
+	enum nkui_text_alignment : u32 {
 		NKUI_TEXT_ALIGN_START = 0;
 		NKUI_TEXT_ALIGN_CENTER = 1;
 		NKUI_TEXT_ALIGN_END = 2;
@@ -300,7 +322,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Base direction requested for a paragraph.
 	 */
-	enum nkui_text_direction : c_int {
+	enum nkui_text_direction : u32 {
 		NKUI_TEXT_DIRECTION_AUTO = 0;
 		NKUI_TEXT_DIRECTION_LTR = 1;
 		NKUI_TEXT_DIRECTION_RTL = 2;
@@ -308,7 +330,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Word-breaking policy used by both explicit and automatic text layouts.
 	 */
-	enum nkui_text_wrap : c_int {
+	enum nkui_text_wrap : u32 {
 		/**
 		 * Do not wrap the paragraph.
 		 */
@@ -427,7 +449,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * When load_existing is non-zero, the layout is composited over the current
 	 * surface contents instead of clearing the frame first.
 	 */
-	extern fn nkui_layout_session_render_frame(renderer: nkui_renderer, session: nkui_layout_session, surface: nk_handle, frame_info: ptr<const<nkui_frame_info>>, load_existing: nk_bool) -> nkui_result;
+	extern fn nkui_layout_session_render_frame(renderer: nkui_renderer, session: nkui_layout_session, surface: nk_surface, frame_info: ptr<const<nkui_frame_info>>, load_existing: nk_bool) -> nkui_result;
 	/**
 	 * Associates a retained display list with a custom-visual node from the most
 	 * recently submitted tree. The session retains the list until it is replaced,
@@ -482,7 +504,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * It makes `surface` current and executes the list, but does not present it;
 	 * call nk_surface_present() after NKUI_OK.
 	 */
-	extern fn nkui_renderer_render(renderer: nkui_renderer, list: nkui_display_list, surface: nk_handle) -> nkui_result;
+	extern fn nkui_renderer_render(renderer: nkui_renderer, list: nkui_display_list, surface: nk_surface) -> nkui_result;
 	/**
 	 * Renders a display list with explicit logical and framebuffer dimensions.
 	 *
@@ -491,11 +513,11 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * surface is made current and the list is validated and executed. Rendering
 	 * does not present the surface; call nk_surface_present() after NKUI_OK.
 	 */
-	extern fn nkui_renderer_render_frame(renderer: nkui_renderer, list: nkui_display_list, surface: nk_handle, frame_info: ptr<const<nkui_frame_info>>) -> nkui_result;
+	extern fn nkui_renderer_render_frame(renderer: nkui_renderer, list: nkui_display_list, surface: nk_surface, frame_info: ptr<const<nkui_frame_info>>) -> nkui_result;
 	/**
 	 * Renders a display list over the currently presented frame without clearing it.
 	 */
-	extern fn nkui_renderer_render_frame_overlay(renderer: nkui_renderer, list: nkui_display_list, surface: nk_handle, frame_info: ptr<const<nkui_frame_info>>) -> nkui_result;
+	extern fn nkui_renderer_render_frame_overlay(renderer: nkui_renderer, list: nkui_display_list, surface: nk_surface, frame_info: ptr<const<nkui_frame_info>>) -> nkui_result;
 	/**
 	 * Releases the caller's ownership of a UI resource.
 	 *
@@ -712,7 +734,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		 */
 		struct_size: u32 @offset(0) @struct_size;
 		node_id: u32 @offset(4);
-		flags: u32 @offset(8);
+		flags: nkui_layout_resolved_flags @offset(8);
 		/**
 		 * Layout bounds before the returned world transform is applied.
 		 */
@@ -921,7 +943,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		/**
 		 * Text-direction code at the caret; preserve it when selecting a visual direction.
 		 */
-		direction: u32 @offset(24);
+		direction: nkui_text_direction @offset(24);
 	}
 	/**
 	 * Bounding rectangle returned for a text layout.
@@ -1029,10 +1051,6 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		 */
 		matrix: array<f32, 6> @offset(8);
 	}
-	/**
-	 * 16-bit opcode identifying one display-list command record.
-	 */
-	type nkui_command_opcode = u16;
 	/**
 	 * Opaque handle for a retained display list.
 	 */

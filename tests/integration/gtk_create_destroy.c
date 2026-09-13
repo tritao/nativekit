@@ -34,7 +34,7 @@ static nk_event wait_for_event(nk_event_kind kind, nk_handle source) {
     return unreachable;
 }
 
-static nk_event wait_for_window_state(nk_handle window, uint32_t mask, uint32_t expected) {
+static nk_event wait_for_window_state(nk_window window, uint32_t mask, uint32_t expected) {
     for (;;) {
         nk_event event = wait_for_event(NK_EVENT_WINDOW_STATE_CHANGED, window);
         assert(event.data_size == sizeof(nk_window_state));
@@ -65,7 +65,7 @@ int main(void) {
     nk_resource file_resource = {0};
     file_resource.struct_size = sizeof(file_resource);
     file_resource.uri = resource_uri;
-    nk_handle resource_stream = NK_INVALID_HANDLE;
+    nk_resource_stream resource_stream = NK_INVALID_HANDLE;
     assert(nk_resource_open(&file_resource,
                             NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE |
                                 NK_RESOURCE_OPEN_CREATE | NK_RESOURCE_OPEN_TRUNCATE,
@@ -99,7 +99,7 @@ int main(void) {
     window_options.width = 640;
     window_options.height = 480;
     window_options.title = "NativeKit integration test";
-    nk_handle window = NK_INVALID_HANDLE;
+    nk_window window = NK_INVALID_HANDLE;
     assert(nk_window_create(&window_options, &window) == NK_OK);
     if (nk_vulkan_supported()) {
         uint32_t extension_count = 0;
@@ -119,7 +119,7 @@ int main(void) {
     assert(native.display != 0);
     assert(native.window != 0);
     assert(native.flags == 0);
-    nk_handle wrapped = NK_INVALID_HANDLE;
+    nk_window wrapped = NK_INVALID_HANDLE;
     assert(nk_window_wrap_native(&native, &wrapped) == NK_ERROR_UNSUPPORTED);
     assert(wrapped == NK_INVALID_HANDLE);
     float scale = 0.0f;
@@ -171,12 +171,12 @@ int main(void) {
     uint32_t monitor_count = 0;
     assert(nk_monitor_list(NULL, &monitor_count) == NK_ERROR_BUFFER_TOO_SMALL);
     assert(monitor_count > 0);
-    nk_handle monitors[16] = {0};
+    nk_monitor monitors[16] = {0};
     assert(monitor_count <= 16);
     uint32_t monitor_capacity = 16;
     assert(nk_monitor_list(monitors, &monitor_capacity) == NK_OK);
     assert(monitor_capacity == monitor_count);
-    nk_handle primary_monitor = NK_INVALID_HANDLE;
+    nk_monitor primary_monitor = NK_INVALID_HANDLE;
     assert(nk_monitor_get_primary(&primary_monitor) == NK_OK);
     assert(primary_monitor != NK_INVALID_HANDLE);
     uint32_t monitor_name_size = 0;
@@ -215,7 +215,7 @@ int main(void) {
     double pointer_y = -1.0;
     assert(nk_pointer_get_position(window, &pointer_x, &pointer_y) == NK_OK);
     assert(pointer_x == 0.0 && pointer_y == 0.0);
-    nk_handle cursor = NK_INVALID_HANDLE;
+    nk_cursor cursor = NK_INVALID_HANDLE;
     assert(nk_cursor_create_standard(NK_CURSOR_HAND, &cursor) == NK_OK);
     assert(nk_window_set_cursor(window, cursor) == NK_OK);
     assert(nk_cursor_destroy(cursor) == NK_OK);
@@ -270,7 +270,7 @@ int main(void) {
     surface_options.api = NK_GRAPHICS_OPENGL;
     surface_options.width = 320;
     surface_options.height = 240;
-    nk_handle surface = NK_INVALID_HANDLE;
+    nk_surface surface = NK_INVALID_HANDLE;
     const nk_result surface_result = nk_surface_create(window, &surface_options, &surface);
     if (surface_result == NK_OK) {
         assert(surface != NK_INVALID_HANDLE);
@@ -298,7 +298,7 @@ int main(void) {
 
         nk_surface_options shared_options = surface_options;
         shared_options.share_surface = surface;
-        nk_handle shared_surface = NK_INVALID_HANDLE;
+        nk_surface shared_surface = NK_INVALID_HANDLE;
         assert(nk_surface_create(window, &shared_options, &shared_surface) == NK_OK);
         assert(nk_surface_destroy(surface) == NK_ERROR_INVALID_REQUEST);
         assert(nk_surface_destroy(shared_surface) == NK_OK);
@@ -384,7 +384,7 @@ int main(void) {
     webview_options.flags = NK_WEBVIEW_HIDDEN;
     webview_options.width = 640;
     webview_options.height = 480;
-    nk_handle webview = NK_INVALID_HANDLE;
+    nk_webview webview = NK_INVALID_HANDLE;
     assert(nk_webview_create(window, &webview_options, &webview) == NK_OK);
     int received_ready = 0;
     for (int attempt = 0; attempt < 100 && !received_ready; ++attempt) {
@@ -453,7 +453,7 @@ int main(void) {
 
     nk_webview_options policy_options = webview_options;
     policy_options.flags |= NK_WEBVIEW_NAVIGATION_POLICY;
-    nk_handle policy_webview = NK_INVALID_HANDLE;
+    nk_webview policy_webview = NK_INVALID_HANDLE;
     assert(nk_webview_create(window, &policy_options, &policy_webview) == NK_OK);
     nk_event policy_ready = wait_for_event(NK_EVENT_WEBVIEW_READY, policy_webview);
     nk_event_release(&policy_ready);
@@ -537,7 +537,7 @@ int main(void) {
     owned_options.flags = NK_WINDOW_HIDDEN | NK_WINDOW_BORDERLESS | NK_WINDOW_MODAL;
     owned_options.owner = window;
     owned_options.kind = NK_WINDOW_UTILITY;
-    nk_handle owned_window = NK_INVALID_HANDLE;
+    nk_window owned_window = NK_INVALID_HANDLE;
     assert(nk_window_create(&owned_options, &owned_window) == NK_OK);
     nk_request_id destroyed_eval_request = NK_INVALID_REQUEST_ID;
     assert(nk_webview_eval(webview, "42", &destroyed_eval_request) == NK_OK);

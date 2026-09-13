@@ -126,7 +126,7 @@ struct RendererSlot {
     std::unique_ptr<nkui::UiRenderer> renderer;
     nk_graphics_api backend_api = 0;
     nk_graphics_device backend_device{};
-    nk_handle backend_surface = 0;
+    nk_surface backend_surface = 0;
     bool active = false;
     nkui::Compositor compositor;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
@@ -1668,7 +1668,7 @@ extern "C" nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
 }
 
 static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_display_list list,
-                                              nk_handle surface,
+                                              nk_surface surface,
                                               const nkui_frame_info *frame_info,
                                               bool load_existing) {
     if (!frame_info || frame_info->struct_size < sizeof(*frame_info) ||
@@ -1916,20 +1916,20 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
 }
 
 extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_display_list list,
-                                                  nk_handle surface,
+                                                  nk_surface surface,
                                                   const nkui_frame_info *frame_info) {
     return renderer_render_frame_impl(renderer, list, surface, frame_info, false);
 }
 
 extern "C" nkui_result nkui_renderer_render_frame_overlay(
-    nkui_renderer renderer, nkui_display_list list, nk_handle surface,
+    nkui_renderer renderer, nkui_display_list list, nk_surface surface,
     const nkui_frame_info *frame_info) {
     return renderer_render_frame_impl(renderer, list, surface, frame_info, true);
 }
 
 extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                                                         nkui_layout_session session,
-                                                        nk_handle surface,
+                                                        nk_surface surface,
                                                         const nkui_frame_info *frame_info,
                                                         nk_bool load_existing) {
     if (!frame_info || frame_info->struct_size < sizeof(*frame_info) ||
@@ -2176,7 +2176,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
 }
 
 extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_list list,
-                                            nk_handle surface) {
+                                            nk_surface surface) {
     int32_t width = 0;
     int32_t height = 0;
     if (!surface || nk_surface_make_current(surface) != NK_OK ||

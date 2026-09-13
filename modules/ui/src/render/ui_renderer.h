@@ -90,7 +90,7 @@ class UiRenderer {
     virtual const char *lastError() const = 0;
 };
 
-std::unique_ptr<UiRenderer> create_ui_renderer(nk_handle surface);
+std::unique_ptr<UiRenderer> create_ui_renderer(nk_surface surface);
 
 } // namespace nkui
 

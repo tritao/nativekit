@@ -80,7 +80,7 @@ struct CApiShowcase {
     int last_width = 0;
     int last_height = 0;
 
-    static void NK_CALL draw_frame(nk_handle surface, int32_t width, int32_t height,
+    static void NK_CALL draw_frame(nk_surface surface, int32_t width, int32_t height,
                                    void *user_data) {
         auto &showcase = *static_cast<CApiShowcase *>(user_data);
         if (!showcase.render_frame(surface, width, height))
@@ -89,7 +89,7 @@ struct CApiShowcase {
             ++showcase.rendered_frames;
     }
 
-    bool render_frame(nk_handle surface, int32_t framebuffer_width, int32_t framebuffer_height) {
+    bool render_frame(nk_surface surface, int32_t framebuffer_width, int32_t framebuffer_height) {
         return resize(framebuffer_width, framebuffer_height) &&
                nkui_renderer_render(renderer, list, surface) == NKUI_OK;
     }
@@ -228,8 +228,8 @@ EM_JS(void, nk_web_example_report, (int result), {
 });
 
 struct WebShowcase {
-    nk_handle window = NK_INVALID_HANDLE;
-    nk_handle surface = NK_INVALID_HANDLE;
+    nk_window window = 0;
+    nk_surface surface = 0;
     CApiShowcase showcase;
     bool smoke = false;
     bool ready = false;
@@ -248,7 +248,7 @@ struct WebShowcase {
     int framebuffer_height = 0;
     int result = 0;
 
-    static void NK_CALL draw_frame(nk_handle surface, int32_t width, int32_t height,
+    static void NK_CALL draw_frame(nk_surface surface, int32_t width, int32_t height,
                                    void *user_data) {
         auto &app = *static_cast<WebShowcase *>(user_data);
         if (app.finished)
@@ -310,7 +310,7 @@ struct WebShowcase {
             if ((capabilities & (NK_CAP_CLIPBOARD | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE)) !=
                 (NK_CAP_CLIPBOARD | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE))
                 return fail(8);
-            nk_handle cursor = NK_INVALID_HANDLE;
+            nk_cursor cursor = 0;
             nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
             if (nk_cursor_create_standard(NK_CURSOR_HAND, &cursor) != NK_OK ||
                 nk_window_set_cursor(window, cursor) != NK_OK ||
@@ -505,7 +505,7 @@ int main(int argc, char **argv) {
     window_options.width = 900;
     window_options.height = 600;
     window_options.title = "NativeKit UI C ABI";
-    nk_handle window = NK_INVALID_HANDLE;
+    nk_window window = 0;
     if (nk_window_create(&window_options, &window) != NK_OK)
         return 1;
 
@@ -518,7 +518,7 @@ int main(int argc, char **argv) {
         surface_options.minor_version = 3;
     surface_options.width = window_options.width;
     surface_options.height = window_options.height;
-    nk_handle surface = NK_INVALID_HANDLE;
+    nk_surface surface = 0;
     if (nk_surface_create(window, &surface_options, &surface) != NK_OK)
         return 1;
 

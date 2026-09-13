@@ -69,7 +69,8 @@ enum {
 };
 
 /** Result returned by a NativeKit UI operation. */
-typedef enum nkui_result {
+typedef int32_t nkui_result;
+enum NK_ENUM(nkui_result) {
     /** The operation completed successfully. */
     NKUI_OK = 0,
     /** An argument was null, out of range, or otherwise invalid. */
@@ -82,7 +83,7 @@ typedef enum nkui_result {
     NKUI_ERROR_OUT_OF_MEMORY = -4,
     /** The graphics backend could not initialize or execute the render. */
     NKUI_ERROR_RENDERING = -5
-} nkui_result;
+};
 
 /** Opaque handle for a retained display list. */
 NK_DECLARE_HANDLE(nkui_display_list);
@@ -136,8 +137,8 @@ typedef struct nkui_renderer_stats {
 /** 16-bit opcode identifying one display-list command record. */
 typedef uint16_t nkui_command_opcode;
 
-/** Display-list command opcode and record version constants. */
-enum {
+/** Display-list command opcode constants. */
+enum NK_ENUM(nkui_command_opcode) {
     /** Replace the current transform with a six-value affine matrix. */
     NKUI_COMMAND_SET_TRANSFORM = 1,
     /** Select the paint resource used by subsequent drawing commands. */
@@ -165,16 +166,18 @@ enum {
     /** Composite a render-target resource into a logical-space rectangle. */
     NKUI_COMMAND_DRAW_RENDER_TARGET = 13,
     /** Stroke a path using the current paint and the command's stroke style. */
-    NKUI_COMMAND_STROKE_PATH = 14,
-    /** Version value required in every command header. */
-    NKUI_COMMAND_VERSION = 1
+    NKUI_COMMAND_STROKE_PATH = 14
 };
 
+/** Version value required in every command header. */
+enum { NKUI_COMMAND_VERSION = 1 };
+
 /** Alpha compositing mode supported by the current UI renderer. */
-typedef enum nkui_composite_mode {
+typedef uint32_t nkui_composite_mode;
+enum NK_ENUM(nkui_composite_mode) {
     /** Draw new content over the existing destination. */
     NKUI_COMPOSITE_SOURCE_OVER = 1
-} nkui_composite_mode;
+};
 
 /** Fixed header present at the start of every display-list command record. */
 typedef struct nkui_command_header {
@@ -215,24 +218,26 @@ typedef struct nkui_resource_command {
 } nkui_resource_command;
 
 /** End-cap style used when stroking an open path. */
-typedef enum nkui_path_line_cap {
+typedef uint32_t nkui_path_line_cap;
+enum NK_ENUM(nkui_path_line_cap) {
     /** Stop the stroke at the endpoint. */
     NKUI_PATH_LINE_CAP_BUTT = 0,
     /** Add a semicircular cap at the endpoint. */
     NKUI_PATH_LINE_CAP_ROUND = 1,
     /** Extend the stroke by half its width at the endpoint. */
     NKUI_PATH_LINE_CAP_SQUARE = 2
-} nkui_path_line_cap;
+};
 
 /** Join style used where two stroked segments meet. */
-typedef enum nkui_path_line_join {
+typedef uint32_t nkui_path_line_join;
+enum NK_ENUM(nkui_path_line_join) {
     /** Join segments with a circular arc. */
     NKUI_PATH_LINE_JOIN_ROUND = 1,
     /** Join segments with a clipped corner. */
     NKUI_PATH_LINE_JOIN_BEVEL = 3,
     /** Extend the outer edges to their intersection, subject to the miter limit. */
     NKUI_PATH_LINE_JOIN_MITER = 4
-} nkui_path_line_join;
+};
 
 /** Payload for NKUI_COMMAND_STROKE_PATH. */
 typedef struct nkui_stroke_path_command {
@@ -311,36 +316,40 @@ typedef struct nkui_layer_command {
 /* ------------------------------------------------------------------------- */
 
 /** Font role used when adding a font file to a collection. */
-typedef enum nkui_font_family {
+typedef uint32_t nkui_font_family;
+enum NK_ENUM(nkui_font_family) {
     /** General-purpose text font. */
     NKUI_FONT_FAMILY_DEFAULT = 0,
     /** Font intended to provide emoji glyphs. */
     NKUI_FONT_FAMILY_EMOJI = 1
-} nkui_font_family;
+};
 
 /** Word-breaking policy used by both explicit and automatic text layouts. */
-typedef enum nkui_text_wrap {
+typedef uint32_t nkui_text_wrap;
+enum NK_ENUM(nkui_text_wrap) {
     /** Do not wrap the paragraph. */
     NKUI_TEXT_WRAP_NONE = 0,
     /** Wrap at word boundaries. */
     NKUI_TEXT_WRAP_WORD = 1,
     /** Wrap at word or character boundaries. */
     NKUI_TEXT_WRAP_WORD_CHARACTER = 2
-} nkui_text_wrap;
+};
 
 /** Horizontal alignment of paragraph lines. */
-typedef enum nkui_text_alignment {
+typedef uint32_t nkui_text_alignment;
+enum NK_ENUM(nkui_text_alignment) {
     NKUI_TEXT_ALIGN_START = 0,
     NKUI_TEXT_ALIGN_CENTER = 1,
     NKUI_TEXT_ALIGN_END = 2
-} nkui_text_alignment;
+};
 
 /** Base direction requested for a paragraph. */
-typedef enum nkui_text_direction {
+typedef uint32_t nkui_text_direction;
+enum NK_ENUM(nkui_text_direction) {
     NKUI_TEXT_DIRECTION_AUTO = 0,
     NKUI_TEXT_DIRECTION_LTR = 1,
     NKUI_TEXT_DIRECTION_RTL = 2
-} nkui_text_direction;
+};
 
 /** Font and inline spacing inputs shared by explicit and tree-owned layouts. */
 typedef struct nkui_text_style {
@@ -402,7 +411,7 @@ typedef struct nkui_text_caret {
     /** Horizontal caret slope per unit of vertical distance. */
     float slope;
     /** Text-direction code at the caret; preserve it when selecting a visual direction. */
-    uint32_t direction;
+    nkui_text_direction direction;
 } nkui_text_caret;
 
 /** One visual rectangle covered by a text selection. */
@@ -420,7 +429,8 @@ typedef struct nkui_text_rect {
 /* ------------------------------------------------------------------------- */
 
 /** Geometry operation used by one element of a path. */
-typedef enum nkui_path_verb {
+typedef uint32_t nkui_path_verb;
+enum NK_ENUM(nkui_path_verb) {
     /** Move the current point; values[0..1] are x and y. */
     NKUI_PATH_MOVE_TO = 1,
     /** Add a straight segment; values[0..1] are x and y. */
@@ -433,7 +443,7 @@ typedef enum nkui_path_verb {
     NKUI_PATH_ARC_TO = 5,
     /** Close the current contour; values are ignored. */
     NKUI_PATH_CLOSE = 6
-} nkui_path_verb;
+};
 
 /** One path operation supplied to nkui_path_create(). */
 typedef struct nkui_path_element {
@@ -456,14 +466,15 @@ typedef struct nkui_color {
 } nkui_color;
 
 /** Pixel format accepted by nkui_image_create(). */
-typedef enum nkui_image_format {
+typedef uint32_t nkui_image_format;
+enum NK_ENUM(nkui_image_format) {
     /** Invalid format; cannot be used to create an image. */
     NKUI_IMAGE_FORMAT_INVALID = 0,
     /** One byte per pixel; rendered as white with the byte used as alpha. */
     NKUI_IMAGE_R8 = 1,
     /** Four bytes per pixel in red, green, blue, alpha order. */
     NKUI_IMAGE_RGBA8 = 2
-} nkui_image_format;
+};
 
 /* ------------------------------------------------------------------------- */
 /* Display-list APIs                                                         */
@@ -673,7 +684,7 @@ NKUI_API nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
  * call nk_surface_present() after NKUI_OK.
  */
 NKUI_API nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_list list,
-                                          nk_handle surface);
+                                          nk_surface surface);
 
 /**
  * Renders a display list with explicit logical and framebuffer dimensions.
@@ -684,12 +695,12 @@ NKUI_API nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_l
  * does not present the surface; call nk_surface_present() after NKUI_OK.
  */
 NKUI_API nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_display_list list,
-                                                nk_handle surface,
+                                                nk_surface surface,
                                                 const nkui_frame_info *frame_info);
 
 /** Renders a display list over the currently presented frame without clearing it. */
 NKUI_API nkui_result nkui_renderer_render_frame_overlay(
-    nkui_renderer renderer, nkui_display_list list, nk_handle surface,
+    nkui_renderer renderer, nkui_display_list list, nk_surface surface,
     const nkui_frame_info *frame_info);
 
 /**

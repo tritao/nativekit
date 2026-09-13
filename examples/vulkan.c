@@ -11,7 +11,7 @@
 #define FRAMES_IN_FLIGHT 2
 
 typedef struct renderer {
-    nk_handle window;
+    nk_window window;
     VkInstance instance;
     VkSurfaceKHR surface;
     VkPhysicalDevice physical;
@@ -542,7 +542,7 @@ int main(int argc, char **argv) {
                                  .width = 800,
                                  .height = 600,
                                  .title = "NativeKit Vulkan triangle"};
-    nk_handle window = NK_INVALID_HANDLE;
+    nk_window window = NK_INVALID_HANDLE;
     if (nk_window_create(&options, &window) != NK_OK) {
         fprintf(stderr, "nk_window_create failed: %s\n", nk_last_error());
         nk_shutdown();

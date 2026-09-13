@@ -48,7 +48,8 @@ enum NK_FLAGS(nkui_layout_resolved_flags) {
 };
 
 /** Visual content kinds encoded in the transaction. */
-enum {
+typedef uint32_t nkui_layout_visual_kind;
+enum NK_ENUM(nkui_layout_visual_kind) {
     NKUI_LAYOUT_VISUAL_BOX = 1,
     NKUI_LAYOUT_VISUAL_TEXT = 2,
     NKUI_LAYOUT_VISUAL_IMAGE = 3,
@@ -56,7 +57,8 @@ enum {
 };
 
 /** Sizing modes encoded for each node axis. */
-enum {
+typedef uint32_t nkui_layout_sizing;
+enum NK_ENUM(nkui_layout_sizing) {
     NKUI_LAYOUT_SIZING_FIT = 0,
     NKUI_LAYOUT_SIZING_GROW = 1,
     NKUI_LAYOUT_SIZING_FIXED = 2,
@@ -64,10 +66,15 @@ enum {
 };
 
 /** Child flow directions encoded in node styles. */
-enum { NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT = 0, NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM = 1 };
+typedef uint32_t nkui_layout_direction;
+enum NK_ENUM(nkui_layout_direction) {
+    NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT = 0,
+    NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM = 1
+};
 
 /** Child alignment values shared by the horizontal and vertical axes. */
-enum {
+typedef uint32_t nkui_layout_alignment;
+enum NK_ENUM(nkui_layout_alignment) {
     NKUI_LAYOUT_ALIGNMENT_START = 0,
     NKUI_LAYOUT_ALIGNMENT_END = 1,
     NKUI_LAYOUT_ALIGNMENT_CENTER = 2
@@ -130,7 +137,7 @@ typedef struct nkui_layout_item {
     /** Set to sizeof(nkui_layout_item) or a larger compatible size. */
     uint32_t struct_size NK_STRUCT_SIZE;
     uint32_t node_id;
-    uint32_t flags;
+    nkui_layout_resolved_flags flags;
     /** Layout bounds before the returned world transform is applied. */
     float x;
     float y;
@@ -220,7 +227,7 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_get_resolved_items(
  */
 NKUI_API nkui_result NK_CALL nkui_layout_session_render_frame(nkui_renderer renderer,
                                                               nkui_layout_session session,
-                                                              nk_handle surface,
+                                                              nk_surface surface,
                                                               const nkui_frame_info *frame_info,
                                                               nk_bool load_existing);
 

@@ -18,7 +18,7 @@ namespace nkui {
 
 class UiRendererImpl final : public UiRenderer {
   public:
-    explicit UiRendererImpl(nk_handle surface);
+    explicit UiRendererImpl(nk_surface surface);
     ~UiRendererImpl() override;
     bool initialize() override;
     bool valid() const override;
@@ -132,7 +132,7 @@ struct UiRendererImpl::State {
     std::unordered_map<uint32_t, PaintImage> images;
     UiRendererStats stats{};
     std::string error;
-    nk_handle surface = 0;
+    nk_surface surface = 0;
     nk_graphics_api graphics_api = 0;
     nk_graphics_device device_identity{};
     int width = 0;
@@ -732,7 +732,7 @@ nkgpu_stencil_face_state stencil_face(nkgpu_compare_func compare,
 
 } // namespace
 
-UiRendererImpl::UiRendererImpl(nk_handle surface) : state_(new State) {
+UiRendererImpl::UiRendererImpl(nk_surface surface) : state_(new State) {
     state_->surface = surface;
     if (!surface) {
         state_->error = "UI renderer requires a NativeKit surface";
@@ -1332,7 +1332,7 @@ const char *UiRendererImpl::lastError() const {
     return state_ ? state_->error.c_str() : "UI renderer is unavailable";
 }
 
-std::unique_ptr<UiRenderer> create_ui_renderer(nk_handle surface) {
+std::unique_ptr<UiRenderer> create_ui_renderer(nk_surface surface) {
     if (!surface)
         return nullptr;
     return std::make_unique<UiRendererImpl>(surface);
