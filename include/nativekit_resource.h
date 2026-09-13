@@ -270,7 +270,7 @@ NK_API nk_result NK_CALL nk_resource_get_persisted_access(const nk_resource *res
  * return fewer bytes than requested; zero bytes means end of stream.
  */
 NK_API nk_result NK_CALL nk_resource_open(const nk_resource *resource, nk_resource_open_flags flags,
-                                          nk_resource_stream *out_stream NK_OUT);
+                                          nk_resource_stream *out_stream NK_OUT NK_OWNED);
 /**
  * Starts an asynchronous read of the complete URI resource. Completion is
  * delivered through NK_EVENT_RESOURCE_DATA_COMPLETE; its event data contains

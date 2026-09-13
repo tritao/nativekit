@@ -1432,6 +1432,45 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		NK_MESSAGE_RESULT_NO = 4;
 	}
 	/**
+	 * Platform event type accepted by nk_mobile_host_dispatch_event().
+	 */
+	enum nk_mobile_host_event_kind : u32 {
+		/**
+		 * Android Intent supplied with a current JNIEnv* and Intent jobject.
+		 */
+		NK_MOBILE_HOST_EVENT_ANDROID_INTENT = 1;
+	}
+	/**
+	 * Native container type accepted by nk_mobile_host_attach().
+	 */
+	enum nk_mobile_host_kind : u32 {
+		/**
+		 * Android android.view.ViewGroup; requires Android JNI values.
+		 */
+		NK_MOBILE_HOST_ANDROID_VIEW_GROUP = 1;
+		/**
+		 * iOS UIView container; reserved for the UIKit backend.
+		 */
+		NK_MOBILE_HOST_UIKIT_VIEW = 2;
+	}
+	/**
+	 * Lifecycle state mirrored from the host application's platform container.
+	 */
+	enum nk_mobile_lifecycle_state : u32 {
+		/**
+		 * The host is active and may receive input and rendering callbacks.
+		 */
+		NK_MOBILE_LIFECYCLE_ACTIVE = 1;
+		/**
+		 * The host is visible but temporarily inactive.
+		 */
+		NK_MOBILE_LIFECYCLE_INACTIVE = 2;
+		/**
+		 * The host is backgrounded and should pause active work.
+		 */
+		NK_MOBILE_LIFECYCLE_BACKGROUND = 3;
+	}
+	/**
 	 * Modifier keys active when an input event was generated.
 	 */
 	flags nk_modifiers : u32 {
@@ -2012,11 +2051,11 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Creates a cursor from copied RGBA8 pixels, with the first row at the top.
 	 */
-	extern fn nk_cursor_create_custom(image: ptr<const<nk_cursor_image>>, out_cursor: ptr<nk_cursor>) -> nk_result;
+	extern fn nk_cursor_create_custom(image: ptr<const<nk_cursor_image>>, out_cursor: ptr<nk_cursor> @out @owned) -> nk_result;
 	/**
 	 * Creates a standard platform cursor and returns its NativeKit handle.
 	 */
-	extern fn nk_cursor_create_standard(shape: nk_cursor_shape, out_cursor: ptr<nk_cursor>) -> nk_result;
+	extern fn nk_cursor_create_standard(shape: nk_cursor_shape, out_cursor: ptr<nk_cursor> @out @owned) -> nk_result;
 	/**
 	 * Destroys a cursor handle; a cursor already selected by a window remains usable.
 	 */
@@ -2190,6 +2229,33 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_last_error() -> utf8 @borrowed;
 	/**
+	 * Attaches NativeKit to a caller-owned mobile container. The caller retains
+	 * ownership and must keep the container alive until nk_mobile_host_destroy().
+	 *
+	 * On Android, platform_context is a JNIEnv* and native_view is a local or
+	 * global jobject referring to an android.view.ViewGroup. Both values are used
+	 * only during this call; NativeKit retains its own global reference.
+	 */
+	extern fn nk_mobile_host_attach(options: ptr<const<nk_mobile_host_options>>, out_host: ptr<nk_mobile_host> @out @owned) -> nk_result;
+	/**
+	 * Destroys all child WebViews, releases native references, and detaches.
+	 */
+	extern fn nk_mobile_host_destroy(host: nk_mobile_host) -> nk_result;
+	/**
+	 * Forwards a platform-owned host event while it is valid. Android supplies the
+	 * current JNIEnv* and an Intent jobject. Recognized content is copied into the
+	 * NativeKit event queue before this function returns.
+	 */
+	extern fn nk_mobile_host_dispatch_event(host: nk_mobile_host, event: ptr<const<nk_mobile_host_event>>) -> nk_result;
+	/**
+	 * Enables or disables URI/text drops onto the caller-owned host container.
+	 */
+	extern fn nk_mobile_host_set_drop_enabled(host: nk_mobile_host, enabled: nk_bool) -> nk_result;
+	/**
+	 * Mirrors the lifecycle state owned by the host Activity or view controller.
+	 */
+	extern fn nk_mobile_host_set_lifecycle(host: nk_mobile_host, state: nk_mobile_lifecycle_state) -> nk_result;
+	/**
 	 * Returns the mode currently selected by the monitor compositor.
 	 */
 	extern fn nk_monitor_get_current_mode(monitor: nk_monitor, out_mode: ptr<nk_video_mode> @out) -> nk_result;
@@ -2278,7 +2344,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * synchronously and may be called from worker threads. A successful read may
 	 * return fewer bytes than requested; zero bytes means end of stream.
 	 */
-	extern fn nk_resource_open(resource: ptr<const<nk_resource>>, flags: nk_resource_open_flags, out_stream: ptr<nk_resource_stream> @out) -> nk_result;
+	extern fn nk_resource_open(resource: ptr<const<nk_resource>>, flags: nk_resource_open_flags, out_stream: ptr<nk_resource_stream> @out @owned) -> nk_result;
 	/**
 	 * Reads up to `size` bytes; a successful read may return fewer bytes.
 	 */
@@ -2391,7 +2457,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * been destroyed. Vulkan views do not support GL context flags or sharing.
 	 * On NK_OK, writes the new surface handle to `out_surface`.
 	 */
-	extern fn nk_surface_create(window: nk_window, options: ptr<const<nk_surface_options>>, out_surface: ptr<nk_surface> @out) -> nk_result;
+	extern fn nk_surface_create(window: nk_window, options: ptr<const<nk_surface_options>>, out_surface: ptr<nk_surface> @out @owned) -> nk_result;
 	/**
 	 * Destroys a graphics surface; its handle becomes invalid.
 	 */
@@ -2510,7 +2576,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * controller can display content. Operations issued before readiness are
 	 * retained in call order by asynchronous backends.
 	 */
-	extern fn nk_webview_create(parent: nk_handle, options: ptr<const<nk_webview_options>>, out_webview: ptr<nk_webview> @out) -> nk_result;
+	extern fn nk_webview_create(parent: nk_handle, options: ptr<const<nk_webview_options>>, out_webview: ptr<nk_webview> @out @owned) -> nk_result;
 	/**
 	 * Destroys a WebView and cancels its pending evaluations and navigation decisions.
 	 */
@@ -2578,7 +2644,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * their owner. Modal windows require an owner. Window ownership is deliberately
 	 * shallow and does not introduce a general-purpose widget hierarchy.
 	 */
-	extern fn nk_window_create(options: ptr<const<nk_window_options>>, out_window: ptr<nk_window> @out) -> nk_result;
+	extern fn nk_window_create(options: ptr<const<nk_window_options>>, out_window: ptr<nk_window> @out @owned) -> nk_result;
 	/**
 	 * Destroys a NativeKit-owned window and recursively destroys its owned windows.
 	 * The handle and any child WebView handles become invalid after this call.
@@ -2718,7 +2784,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * handle only detaches NativeKit. Backends return NK_ERROR_UNSUPPORTED until
 	 * they can guarantee correct event and ownership behavior for the given kind.
 	 */
-	extern fn nk_window_wrap_native(native: ptr<const<nk_native_window>>, out_window: ptr<nk_window> @out) -> nk_result;
+	extern fn nk_window_wrap_native(native: ptr<const<nk_native_window>>, out_window: ptr<nk_window> @out @owned) -> nk_result;
 	/**
 	 * Payload of NK_EVENT_ACCESSIBILITY_ACTION.
 	 *
@@ -3338,6 +3404,101 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * Required UTF-8 message text.
 		 */
 		message: utf8 @offset(24);
+	}
+	/**
+	 * Platform-owned event values forwarded by a mobile host.
+	 */
+	struct nk_mobile_host_event @layout(40, 8) {
+		/**
+		 * Set to sizeof(nk_mobile_host_event) before dispatching.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Platform event kind.
+		 */
+		kind: nk_mobile_host_event_kind @offset(4);
+		/**
+		 * Platform context used while dispatching, such as Android JNIEnv*.
+		 */
+		platform_context: usize @offset(8);
+		/**
+		 * Platform event object, such as an Android Intent jobject.
+		 */
+		native_event: usize @offset(16);
+		/**
+		 * Reserved for future event data; set all elements to zero.
+		 */
+		reserved: array<u64, 2> @offset(24);
+	}
+	/**
+	 * Payload of NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED, in logical pixels.
+	 */
+	struct nk_mobile_host_geometry @layout(56, 8) {
+		/**
+		 * Set to sizeof(nk_mobile_host_geometry).
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Host width in logical pixels.
+		 */
+		width: i32 @offset(4);
+		/**
+		 * Host height in logical pixels.
+		 */
+		height: i32 @offset(8);
+		/**
+		 * Scale from logical pixels to device pixels.
+		 */
+		scale: f32 @offset(12);
+		/**
+		 * Left safe-area inset in logical pixels.
+		 */
+		inset_left: i32 @offset(16);
+		/**
+		 * Top safe-area inset in logical pixels.
+		 */
+		inset_top: i32 @offset(20);
+		/**
+		 * Right safe-area inset in logical pixels.
+		 */
+		inset_right: i32 @offset(24);
+		/**
+		 * Bottom safe-area inset in logical pixels.
+		 */
+		inset_bottom: i32 @offset(28);
+		/**
+		 * Software-keyboard inset at the bottom in logical pixels.
+		 */
+		keyboard_bottom: i32 @offset(32);
+		/**
+		 * Reserved for future geometry information; set all elements to zero.
+		 */
+		reserved: array<u64, 2> @offset(40);
+	}
+	/**
+	 * Platform values used to attach a caller-owned mobile container.
+	 */
+	struct nk_mobile_host_options @layout(40, 8) {
+		/**
+		 * Set to sizeof(nk_mobile_host_options) before attaching.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Kind of native container described by the remaining fields.
+		 */
+		kind: nk_mobile_host_kind @offset(4);
+		/**
+		 * Platform context used only during attachment, such as Android JNIEnv*.
+		 */
+		platform_context: usize @offset(8);
+		/**
+		 * Native container used only during attachment, such as an Android ViewGroup.
+		 */
+		native_view: usize @offset(16);
+		/**
+		 * Reserved for future host options; set all elements to zero.
+		 */
+		reserved: array<u64, 2> @offset(24);
 	}
 	/**
 	 * Geometry, work area, physical size, and scale of a monitor.
@@ -4338,7 +4499,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * true; NativeKit normalizes boolean outputs to zero or one.
 	 */
 	type nk_bool = bool32;
-	handle nk_cursor : u32;
+	handle nk_cursor : u32 @destroy("nk_cursor_destroy");
 	/**
 	 * Identity of a graphics context and its explicitly shared contexts.
 	 */
@@ -4356,15 +4517,15 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	handle nk_handle : u32;
 	handle nk_joystick : u32;
-	handle nk_mobile_host : u32;
+	handle nk_mobile_host : u32 @destroy("nk_mobile_host_destroy");
 	handle nk_monitor : u32;
 	type nk_nullable_surface_frame_callback = nullable<nk_surface_frame_callback>;
 	/**
 	 * Identifier for one asynchronous operation; it is not a resource handle.
 	 */
 	type nk_request_id = u64;
-	handle nk_resource_stream : u32;
-	handle nk_surface : u32;
+	handle nk_resource_stream : u32 @destroy("nk_resource_close");
+	handle nk_surface : u32 @destroy("nk_surface_destroy");
 	/**
 	 * Callback invoked while a surface framebuffer is current and ready to draw.
 	 *
@@ -4376,6 +4537,6 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Absolute Unicode code-point position used by the text-input API.
 	 */
 	type nk_text_position = u32;
-	handle nk_webview : u32;
-	handle nk_window : u32;
+	handle nk_webview : u32 @destroy("nk_webview_destroy");
+	handle nk_window : u32 @destroy("nk_window_destroy");
 }

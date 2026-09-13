@@ -1,6 +1,7 @@
 import NativeKit;
 import NativeKit.Handle;
 import NativeKit.WindowHandle;
+import NativeKit.OwnedWindowHandle;
 import NativeKit.WindowOptions;
 import NativeKit.SurfaceOptions;
 import NativeKit.WebviewOptions;
@@ -17,8 +18,9 @@ class NativeKitWindow {
 	var disposed:Bool = false;
 
 	@:allow(NativeKitRuntime)
-	private function new(value:WindowHandle)
-		this.value = value;
+	private function new(owned:OwnedWindowHandle) {
+		this.value = owned.borrow();
+	}
 
 	public function nativeHandle():WindowHandle {
 		ensureLive();
@@ -29,7 +31,7 @@ class NativeKitWindow {
 		ensureLive();
 		var created = NativeKit.nk_surface_create(value, options);
 		NativeKitResult.check(created.status, "surface.create");
-		var surface = new NativeKitSurface(created.out_surface);
+		var surface = NativeKitSurface.adopt(created.out_surface);
 		surfaces.push(surface);
 		return surface;
 	}

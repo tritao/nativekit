@@ -658,11 +658,11 @@ NK_API nk_result NK_CALL nk_surface_set_text_input_active(nk_handle target, nk_b
 /* ------------------------------------------------------------------------- */
 
 /** Creates a standard platform cursor and returns its NativeKit handle. */
-NK_API nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_cursor *out_cursor);
+NK_API nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_cursor *out_cursor NK_OUT NK_OWNED);
 
 /** Creates a cursor from copied RGBA8 pixels, with the first row at the top. */
 NK_API nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image,
-                                                 nk_cursor *out_cursor);
+                                                 nk_cursor *out_cursor NK_OUT NK_OWNED);
 
 /** Destroys a cursor handle; a cursor already selected by a window remains usable. */
 NK_API nk_result NK_CALL nk_cursor_destroy(nk_cursor cursor);

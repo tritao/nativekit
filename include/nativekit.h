@@ -49,6 +49,8 @@
 #define NK_BORROWED_ARRAY(count_field)                                                             \
     __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
 #define NK_HANDLE __attribute__((annotate("hxi:handle")))
+#define NK_HANDLE_DESTROY(symbol) __attribute__((annotate("hxi:handle_destroy")))
+#define NK_OWNED __attribute__((annotate("hxi:owned")))
 #define NK_BOOL32 __attribute__((annotate("hxi:bool32")))
 #define NK_STRUCT_SIZE __attribute__((annotate("hxi:struct_size")))
 #define NK_NULLABLE _Nullable
@@ -70,6 +72,8 @@
 #define NK_BORROWED_BUFFER(length_field)
 #define NK_BORROWED_ARRAY(count_field)
 #define NK_HANDLE
+#define NK_HANDLE_DESTROY(symbol)
+#define NK_OWNED
 #define NK_BOOL32
 #define NK_STRUCT_SIZE
 #define NK_NULLABLE
@@ -109,14 +113,14 @@ enum {
 /* Typed resource identifiers. These aliases keep the same four-byte ABI as
  * nk_handle while allowing language bindings to preserve each kind nominally.
  * Use nk_handle only where an API intentionally accepts more than one kind. */
-typedef uint32_t nk_window NK_HANDLE;
-typedef uint32_t nk_surface NK_HANDLE;
-typedef uint32_t nk_webview NK_HANDLE;
+typedef uint32_t nk_window NK_HANDLE NK_HANDLE_DESTROY(nk_window_destroy);
+typedef uint32_t nk_surface NK_HANDLE NK_HANDLE_DESTROY(nk_surface_destroy);
+typedef uint32_t nk_webview NK_HANDLE NK_HANDLE_DESTROY(nk_webview_destroy);
 typedef uint32_t nk_monitor NK_HANDLE;
-typedef uint32_t nk_cursor NK_HANDLE;
+typedef uint32_t nk_cursor NK_HANDLE NK_HANDLE_DESTROY(nk_cursor_destroy);
 typedef uint32_t nk_joystick NK_HANDLE;
-typedef uint32_t nk_mobile_host NK_HANDLE;
-typedef uint32_t nk_resource_stream NK_HANDLE;
+typedef uint32_t nk_mobile_host NK_HANDLE NK_HANDLE_DESTROY(nk_mobile_host_destroy);
+typedef uint32_t nk_resource_stream NK_HANDLE NK_HANDLE_DESTROY(nk_resource_close);
 
 /** Opaque generation-checked identifier for a live NativeKit resource. */
 typedef uint32_t nk_handle NK_HANDLE;

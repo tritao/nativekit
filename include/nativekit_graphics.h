@@ -170,7 +170,7 @@ typedef struct nk_surface_frame_target {
  * On NK_OK, writes the new surface handle to `out_surface`.
  */
 NK_API nk_result NK_CALL nk_surface_create(nk_window window, const nk_surface_options *options,
-                                           nk_surface *out_surface NK_OUT);
+                                           nk_surface *out_surface NK_OUT NK_OWNED);
 
 /** Destroys a graphics surface; its handle becomes invalid. */
 NK_API nk_result NK_CALL nk_surface_destroy(nk_surface surface);

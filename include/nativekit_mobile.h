@@ -116,7 +116,7 @@ typedef struct nk_mobile_host_event {
  * only during this call; NativeKit retains its own global reference.
  */
 NK_API nk_result NK_CALL nk_mobile_host_attach(const nk_mobile_host_options *options,
-                                               nk_mobile_host *out_host);
+                                               nk_mobile_host *out_host NK_OUT NK_OWNED);
 
 /** Destroys all child WebViews, releases native references, and detaches. */
 NK_API nk_result NK_CALL nk_mobile_host_destroy(nk_mobile_host host);

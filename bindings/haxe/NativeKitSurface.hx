@@ -1,27 +1,34 @@
 import NativeKit;
 import NativeKit.SurfaceHandle;
+import NativeKit.OwnedSurfaceHandle;
 import NativeKit.SurfaceFrameCallbackCallback;
 import NativeKitResult;
 
 /** Owns one graphics surface attached to a NativeKit window. */
 class NativeKitSurface {
 	final value:SurfaceHandle;
+	final owned:Null<OwnedSurfaceHandle>;
 	final ownsHandle:Bool;
 	var disposed:Bool = false;
 	var frameSubscription:Null<NativeKitSurfaceFrameSubscription>;
 
 	@:allow(NativeKitWindow)
-	private function new(value:SurfaceHandle, ownsHandle:Bool = true) {
+	private function new(value:SurfaceHandle, ?owned:OwnedSurfaceHandle) {
 		this.value = value;
-		this.ownsHandle = ownsHandle;
+		this.owned = owned;
+		this.ownsHandle = owned != null;
 	}
 
 	/** Creates a non-owning view of a surface managed by a raw NativeKit host. */
 	public static function borrowNativeHandle(value:SurfaceHandle):NativeKitSurface {
 		if (!value.isValid())
 			throw "Cannot borrow a null NativeKit surface handle";
-		return new NativeKitSurface(value, false);
+		return new NativeKitSurface(value);
 	}
+
+	@:allow(NativeKitWindow)
+	private static function adopt(owned:OwnedSurfaceHandle):NativeKitSurface
+		return new NativeKitSurface(owned.borrow(), owned);
 
 	public function nativeHandle():SurfaceHandle {
 		ensureLive();
@@ -65,6 +72,13 @@ class NativeKitSurface {
 			return;
 		if (frameSubscription != null)
 			frameSubscription.dispose();
+		if (owned != null) {
+			var status = owned.close();
+			disposed = true;
+			if (status != null)
+				NativeKitResult.check(status, "surface.dispose");
+			return;
+		}
 		if (ownsHandle)
 			NativeKitResult.check(NativeKit.nk_surface_destroy(value), "surface.dispose");
 		disposed = true;

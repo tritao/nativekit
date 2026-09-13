@@ -277,7 +277,7 @@ NK_API nk_capabilities NK_CALL nk_get_capabilities(void);
  * shallow and does not introduce a general-purpose widget hierarchy.
  */
 NK_API nk_result NK_CALL nk_window_create(const nk_window_options *options,
-                                          nk_window *out_window NK_OUT);
+                                          nk_window *out_window NK_OUT NK_OWNED);
 
 /**
  * Destroys a NativeKit-owned window and recursively destroys its owned windows.
@@ -399,7 +399,7 @@ NK_API nk_result NK_CALL nk_window_get_native(nk_window window,
  * they can guarantee correct event and ownership behavior for the given kind.
  */
 NK_API nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native,
-                                               nk_window *out_window NK_OUT);
+                                               nk_window *out_window NK_OUT NK_OWNED);
 
 #ifdef __cplusplus
 }

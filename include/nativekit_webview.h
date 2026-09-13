@@ -97,7 +97,7 @@ typedef struct nk_webview_options {
  * retained in call order by asynchronous backends.
  */
 NK_API nk_result NK_CALL nk_webview_create(nk_handle parent, const nk_webview_options *options,
-                                           nk_webview *out_webview NK_OUT);
+                                           nk_webview *out_webview NK_OUT NK_OWNED);
 /** Destroys a WebView and cancels its pending evaluations and navigation decisions. */
 NK_API nk_result NK_CALL nk_webview_destroy(nk_webview webview);
 

@@ -1,5 +1,6 @@
 import NativeKit;
 import NativeKit.WebViewHandle;
+import NativeKit.OwnedWebViewHandle;
 import NativeKitResult;
 
 /** Owns one native child WebView. */
@@ -8,8 +9,9 @@ class NativeKitWebView {
 	var disposed:Bool = false;
 
 	@:allow(NativeKitWindow)
-	private function new(value:WebViewHandle)
-		this.value = value;
+	private function new(owned:OwnedWebViewHandle) {
+		this.value = owned.borrow();
+	}
 
 	public function nativeHandle():WebViewHandle {
 		ensureLive();
