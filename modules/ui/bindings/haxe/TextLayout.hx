@@ -108,6 +108,47 @@ class TextLayout extends NativeKitUIResource {
 		return new TextCaret(result.out_caret.get_x(), result.out_caret.get_y(), result.out_caret.get_ascender(),
 			result.out_caret.get_descender(), result.out_caret.get_slope(), result.out_caret.get_direction());
 	}
+
+	/** Returns grapheme-aware visual rectangles for a code-point selection. */
+	public function selectionRects(start:TextPosition, end:TextPosition):Array<Rect> {
+		if (start == null || end == null)
+			throw "Text selection endpoints cannot be null";
+		var nativeStart = new nkui_text_position();
+		nativeStart.set_offset(start.offset);
+		nativeStart.set_affinity(start.affinity);
+		var nativeEnd = new nkui_text_position();
+		nativeEnd.set_offset(end.offset);
+		nativeEnd.set_affinity(end.affinity);
+		var result = NativeKitUI.nkui_text_layout_get_selection_rects(nativeHandle(), nativeStart, nativeEnd);
+		UiResult.check(result.status, "textLayout.selectionRects");
+		var bytes:haxe.io.Bytes = result.out_buffer;
+		var recordBytes = 20;
+		if (bytes.length % recordBytes != 0)
+			throw "Text selection geometry contains a truncated rectangle";
+		var rectangles:Array<Rect> = [];
+		for (index in 0...Std.int(bytes.length / recordBytes)) {
+			var offset = index * recordBytes;
+			if (bytes.getInt32(offset) != recordBytes)
+				throw "Text selection geometry returned an unsupported record size";
+			rectangles.push(new Rect(readFloat(bytes, offset + 4), readFloat(bytes, offset + 8),
+				readFloat(bytes, offset + 12), readFloat(bytes, offset + 16)));
+		}
+		return rectangles;
+	}
+
+	static inline function readFloat(bytes:haxe.io.Bytes, offset:Int):Float
+		return floatFromBits(bytes.getInt32(offset));
+
+	static function floatFromBits(bits:Int):Float {
+		var sign = (bits >>> 31) == 0 ? 1.0 : -1.0;
+		var exponent = (bits >>> 23) & 0xff;
+		var fraction = bits & 0x7fffff;
+		if (exponent == 255)
+			throw "Text selection geometry contains a non-finite value";
+		if (exponent == 0)
+			return sign * fraction * Math.pow(2.0, -149.0);
+		return sign * (0x800000 | fraction) * Math.pow(2.0, exponent - 150.0);
+	}
 }
 
 /** Bounds returned by TextLayout.measure. */

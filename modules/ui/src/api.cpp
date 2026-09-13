@@ -32,6 +32,7 @@ static_assert(sizeof(nkui_command_header) == sizeof(nkui::CommandHeader));
 static_assert(sizeof(nkui_text_metrics) == 5 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_position) == 2 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_caret) == 7 * sizeof(uint32_t));
+static_assert(sizeof(nkui_text_rect) == 5 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_style) == 4 * sizeof(uint32_t));
 static_assert(sizeof(nkui_paragraph_style) == 5 * sizeof(uint32_t));
 static_assert(sizeof(nkui_layout_frame_input) == 4 * sizeof(uint32_t));
@@ -1284,6 +1285,48 @@ extern "C" nkui_result nkui_text_layout_caret(nkui_resource layout, nkui_text_po
         slot->text->caret({position.offset, static_cast<uint8_t>(position.affinity)});
     *out_caret = {sizeof(*out_caret), caret.x,     caret.y,        caret.ascender,
                   caret.descender,    caret.slope, caret.direction};
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_text_layout_get_selection_rects(
+    nkui_resource layout, nkui_text_position start, nkui_text_position end, uint8_t *out_buffer,
+    uint32_t *inout_bytes) {
+    if (!inout_bytes || start.offset < 0 || end.offset < 0 || start.affinity > 4 ||
+        end.affinity > 4)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    std::vector<nkui::TextRect> rectangles;
+    try {
+        rectangles = slot->text->selection_rects(
+            {start.offset, static_cast<uint8_t>(start.affinity)},
+            {end.offset, static_cast<uint8_t>(end.affinity)});
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    if (rectangles.size() > std::numeric_limits<uint32_t>::max() / sizeof(nkui_text_rect))
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    const uint32_t required = static_cast<uint32_t>(rectangles.size() * sizeof(nkui_text_rect));
+    if (!out_buffer) {
+        *inout_bytes = required;
+        return NKUI_OK;
+    }
+    if (*inout_bytes < required) {
+        *inout_bytes = required;
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    }
+    for (std::size_t index = 0; index < rectangles.size(); ++index) {
+        const auto &rect = rectangles[index];
+        if (!std::isfinite(rect.x) || !std::isfinite(rect.y) ||
+            !std::isfinite(rect.width) || !std::isfinite(rect.height))
+            return NKUI_ERROR_RENDERING;
+        const nkui_text_rect result{sizeof(nkui_text_rect), rect.x, rect.y,
+                                    rect.width, rect.height};
+        std::memcpy(out_buffer + index * sizeof(result), &result, sizeof(result));
+    }
+    *inout_bytes = required;
     return NKUI_OK;
 }
 

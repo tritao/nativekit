@@ -3,7 +3,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	/**
 	 * Current UI ABI version.
 	 */
-	const NKUI_API_VERSION = 2;
+	const NKUI_API_VERSION = 3;
 	/**
 	 * Start a composited layer with an opacity and composite mode.
 	 */
@@ -490,6 +490,14 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_text_layout_create_styled(fonts: nkui_resource, text: utf8, width: f32, text_style: ptr<const<nkui_text_style>>, paragraph_style: ptr<const<nkui_paragraph_style>>, out_layout: ptr<nkui_resource> @out) -> nkui_result;
 	/**
+	 * Returns the visual rectangles covered by a code-point selection.
+	 *
+	 * Query the required buffer size by passing NULL. On NKUI_OK, `inout_bytes` is
+	 * set to the exact byte count. Each `nkui_text_rect` record has its
+	 * `struct_size` field populated. Coordinates are relative to the text origin.
+	 */
+	extern fn nkui_text_layout_get_selection_rects(layout: nkui_resource, start: nkui_text_position, end: nkui_text_position, out_buffer: nullable<ptr<u8>> @out_buffer("inout_bytes"), inout_bytes: ptr<u32> @inout) -> nkui_result;
+	/**
 	 * Converts a logical-space point into the nearest text caret position.
 	 *
 	 * On NKUI_OK, writes a code-point offset and affinity to `out_position`.
@@ -904,6 +912,19 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Caret affinity returned by hit testing; pass it back unchanged to caret queries.
 		 */
 		affinity: u32 @offset(4);
+	}
+	/**
+	 * One visual rectangle covered by a text selection.
+	 */
+	struct nkui_text_rect @layout(20, 4) {
+		/**
+		 * Set to sizeof(nkui_text_rect) in the returned buffer.
+		 */
+		struct_size: u32 @offset(0);
+		x: f32 @offset(4);
+		y: f32 @offset(8);
+		width: f32 @offset(12);
+		height: f32 @offset(16);
 	}
 	/**
 	 * Font and inline spacing inputs shared by explicit and tree-owned layouts.

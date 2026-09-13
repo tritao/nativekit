@@ -103,6 +103,32 @@ int main(void) {
         nkui_text_layout_hit_test(layout, 0.0f, 0.0f, &position) != NKUI_OK ||
         nkui_text_layout_caret(layout, position, &caret) != NKUI_OK)
         return 8;
+    uint32_t selection_bytes = 0;
+    const nkui_text_position selection_start = {0, 0};
+    const nkui_text_position selection_end = {9, 0};
+    if (nkui_text_layout_get_selection_rects(layout, selection_start, selection_end, NULL,
+                                             &selection_bytes) != NKUI_OK ||
+        selection_bytes < sizeof(nkui_text_rect) ||
+        selection_bytes % sizeof(nkui_text_rect) != 0)
+        return 17;
+    nkui_text_rect selection_rects[16] = {0};
+    uint32_t selection_capacity = (uint32_t)sizeof(selection_rects);
+    if (selection_bytes > selection_capacity ||
+        nkui_text_layout_get_selection_rects(layout, selection_start, selection_end,
+                                             (uint8_t *)selection_rects,
+                                             &selection_capacity) != NKUI_OK ||
+        selection_capacity != selection_bytes || selection_rects[0].struct_size !=
+                                                     sizeof(nkui_text_rect) ||
+        selection_rects[0].width <= 0.0f || selection_rects[0].height <= 0.0f)
+        return 18;
+    uint32_t collapsed_bytes = 0;
+    if (nkui_text_layout_get_selection_rects(layout, selection_start, selection_start, NULL,
+                                             &collapsed_bytes) != NKUI_OK ||
+        collapsed_bytes != 0 ||
+        nkui_text_layout_get_selection_rects(layout, (nkui_text_position){0, 5}, selection_end,
+                                             NULL, &collapsed_bytes) !=
+            NKUI_ERROR_INVALID_ARGUMENT)
+        return 19;
     text_style.letter_spacing = 0.0f;
     paragraph_style.alignment = NKUI_TEXT_ALIGN_START;
     if (nkui_text_layout_update(layout, "NativeKit updated مرحبا", 280.0f, &text_style,

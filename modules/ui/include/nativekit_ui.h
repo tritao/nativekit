@@ -24,11 +24,13 @@
 #if defined(__clang__)
 #define NKUI_OUT __attribute__((annotate("hxi:out")))
 #define NKUI_INOUT __attribute__((annotate("hxi:inout")))
+#define NKUI_OUT_BUFFER(size_parameter) __attribute__((annotate("hxi:out_buffer")))
 #define NKUI_IN_ARRAY(count_parameter) __attribute__((annotate("hxi:in_array")))
 #define NKUI_UTF8 __attribute__((annotate("hxi:utf8")))
 #else
 #define NKUI_OUT
 #define NKUI_INOUT
+#define NKUI_OUT_BUFFER(size_parameter)
 #define NKUI_IN_ARRAY(count_parameter)
 #define NKUI_UTF8
 #endif
@@ -61,7 +63,7 @@ extern "C" {
 /** Version of the stable NativeKit UI C ABI. */
 enum {
     /** Current UI ABI version. */
-    NKUI_API_VERSION = 2
+    NKUI_API_VERSION = 3
 };
 
 /** Result returned by a NativeKit UI operation. */
@@ -401,6 +403,16 @@ typedef struct nkui_text_caret {
     uint32_t direction;
 } nkui_text_caret;
 
+/** One visual rectangle covered by a text selection. */
+typedef struct nkui_text_rect {
+    /** Set to sizeof(nkui_text_rect) in the returned buffer. */
+    uint32_t struct_size;
+    float x;
+    float y;
+    float width;
+    float height;
+} nkui_text_rect;
+
 /* ------------------------------------------------------------------------- */
 /* Path, color, and image types                                              */
 /* ------------------------------------------------------------------------- */
@@ -581,6 +593,17 @@ NKUI_API nkui_result nkui_text_layout_hit_test(nkui_resource layout, float x, fl
  */
 NKUI_API nkui_result nkui_text_layout_caret(nkui_resource layout, nkui_text_position position,
                                             nkui_text_caret *out_caret NKUI_OUT);
+
+/**
+ * Returns the visual rectangles covered by a code-point selection.
+ *
+ * Query the required buffer size by passing NULL. On NKUI_OK, `inout_bytes` is
+ * set to the exact byte count. Each `nkui_text_rect` record has its
+ * `struct_size` field populated. Coordinates are relative to the text origin.
+ */
+NKUI_API nkui_result nkui_text_layout_get_selection_rects(
+    nkui_resource layout, nkui_text_position start, nkui_text_position end,
+    uint8_t *out_buffer NKUI_OUT_BUFFER(inout_bytes), uint32_t *inout_bytes NKUI_INOUT);
 
 /* ------------------------------------------------------------------------- */
 /* Path, paint, and image APIs                                                */

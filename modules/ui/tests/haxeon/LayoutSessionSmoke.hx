@@ -1,3 +1,5 @@
+import TextLayout.TextPosition;
+
 class LayoutSessionSmoke {
 	static function rejectsInvalidTextStyle(node:LayoutNode):Bool {
 		try {
@@ -28,6 +30,14 @@ class LayoutSessionSmoke {
 			return 5;
 		var session = LayoutSession.create();
 		session.setFonts(fonts);
+		var textLayout = TextLayout.createStyled(fonts, "NativeKit selection", 220.0,
+			new TextStyle(18.0), new ParagraphStyle());
+		var selection = textLayout.selectionRects(new TextPosition(0, 0), new TextPosition(9, 0));
+		var collapsedSelection = textLayout.selectionRects(new TextPosition(4, 0), new TextPosition(4, 0));
+		if (selection.length == 0 || selection[0].width <= 0.0 ||
+			collapsedSelection.length != 0)
+			return 6;
+		textLayout.dispose();
 
 		var root = LayoutNode.box(100);
 		root.style.width = LayoutAxis.fixed(256.0);
