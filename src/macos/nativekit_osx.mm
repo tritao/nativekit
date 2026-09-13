@@ -837,6 +837,7 @@ void pump_events() noexcept {
                                              dequeue:YES]))
             [NSApp sendEvent:event];
         [NSApp updateWindows];
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, true);
     }
 }
 
