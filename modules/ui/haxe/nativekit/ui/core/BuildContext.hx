@@ -4,6 +4,7 @@ import FontCollection;
 import NativeKitSurface;
 import nativekit.ui.theme.Theme;
 import nativekit.ui.gestures.GestureArena;
+import nativekit.ui.animation.AnimationScheduler;
 
 /** Frame-local identity scopes backed by a persistent UiContext state store. */
 class BuildContext {
@@ -13,12 +14,14 @@ class BuildContext {
 	public final textInput:TextInputBridge;
 	public final clipboard:ClipboardService;
 	public final gestures:GestureArena;
+	public final animations:AnimationScheduler;
 	public var theme(default, null):Theme;
 	final claimed:Map<Int, String>;
 	var scope:KeyScope;
 
 	public function new(stateStore:StateStore, ?fonts:FontCollection, ?textInput:TextInputBridge,
-			?clipboard:ClipboardService, ?theme:Theme, ?gestures:GestureArena) {
+			?clipboard:ClipboardService, ?theme:Theme, ?gestures:GestureArena,
+			?animations:AnimationScheduler) {
 		if (stateStore == null)
 			throw "Build context requires a state store";
 		this.stateStore = stateStore;
@@ -27,6 +30,7 @@ class BuildContext {
 		this.textInput = textInput == null ? new TextInputBridge() : textInput;
 		this.clipboard = clipboard == null ? new ClipboardService() : clipboard;
 		this.gestures = gestures == null ? new GestureArena() : gestures;
+		this.animations = animations == null ? new AnimationScheduler() : animations;
 		this.theme = theme == null ? new Theme() : theme;
 		claimed = new Map();
 		scope = new KeyScope();

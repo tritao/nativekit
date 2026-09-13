@@ -16,6 +16,7 @@ import nativekit.ui.semantics.AccessibilityRequest;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.theme.Theme;
 import nativekit.ui.gestures.GestureArena;
+import nativekit.ui.animation.AnimationScheduler;
 
 /** Owns the frame-local render tree and the Haxe-side UI subsystems. */
 class UiContext {
@@ -26,6 +27,7 @@ class UiContext {
 	public final focus:FocusManager;
 	public final events:EventDispatcher;
 	public final gestures:GestureArena;
+	public final animations:AnimationScheduler;
 	public var root(default, null):Null<RenderNode>;
 	var submittedStateRevision:Int;
 	var disposed:Bool;
@@ -41,7 +43,9 @@ class UiContext {
 		clipboard = new ClipboardService();
 		textInput = new TextInputBridge();
 		gestures = new GestureArena();
-		buildContext = new BuildContext(stateStore, fonts, textInput, clipboard, theme, gestures);
+		animations = new AnimationScheduler();
+		buildContext = new BuildContext(stateStore, fonts, textInput, clipboard, theme,
+			gestures, animations);
 		if (fonts != null)
 			this.session.setFonts(fonts);
 		focus = new FocusManager();
@@ -84,6 +88,7 @@ class UiContext {
 		if (view == null || frame == null)
 			throw "A UI frame requires a view and layout frame";
 		gestures.advance(frame.deltaSeconds);
+		animations.advance(frame.deltaSeconds);
 		buildContext.beginFrame();
 		var next = buildContext.withScope(new Key("root"), function() return view.build(buildContext));
 		if (next == null || next.parent != null)
@@ -309,6 +314,7 @@ class UiContext {
 		clipboard.dispose();
 		textInput.dispose();
 		gestures.cancelAll();
+		animations.cancelAll();
 		if (accessibilityBridge != null)
 			accessibilityBridge.dispose();
 		stateStore.dispose();

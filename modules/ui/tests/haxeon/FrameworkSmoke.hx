@@ -71,6 +71,9 @@ import nativekit.ui.gestures.DoubleTapRecognizer;
 import nativekit.ui.gestures.LongPressRecognizer;
 import nativekit.ui.gestures.DragRecognizer;
 import nativekit.ui.widgets.GestureDetector;
+import nativekit.ui.animation.AnimationController;
+import nativekit.ui.animation.SpringController;
+import nativekit.ui.animation.Easing;
 
 class FrameworkSmoke {
 	static function main():Int {
@@ -725,6 +728,28 @@ class FrameworkSmoke {
 		context.pointerUp(gestureX + 20.0, gestureY + 10.0, 0);
 		if (dragStarts != 1 || dragMoves == 0 || dragEnds != 1 || taps != 2)
 			return 88;
+
+		var animationUpdates = 0;
+		var animationCompletions = 0;
+		var animation = new AnimationController(context.animations,
+			function(_) { animationUpdates++; }, function() { animationCompletions++; });
+		animation.play(0.0, 100.0, 1.0, Easing.EaseInOut);
+		var animationFrame = new LayoutFrame(256.0, 192.0);
+		animationFrame.deltaSeconds = 0.5;
+		context.submit(new Text("Tween"), animationFrame);
+		if (animation.value < 49.9 || animation.value > 50.1 || animationUpdates != 1)
+			return 89;
+		context.submit(new Text("Tween"), animationFrame);
+		if (animation.value != 100.0 || animation.active || animationCompletions != 1)
+			return 90;
+		var spring = new SpringController(0.0, 180.0, 24.0, 1.0, 0.001,
+			context.animations);
+		spring.setTarget(1.0);
+		animationFrame.deltaSeconds = 1.0 / 60.0;
+		for (_ in 0...120)
+			context.submit(new Text("Spring"), animationFrame);
+		if (spring.value < 0.99 || spring.active || context.animations.activeCount != 0)
+			return 91;
 
 		var overlayCanvas = new Canvas();
 		var overlayList = DisplayList.create();
