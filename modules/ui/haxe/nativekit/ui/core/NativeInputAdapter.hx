@@ -29,6 +29,8 @@ class NativeInputAdapter {
 		if (event == null)
 			return false;
 		return switch (event) {
+			case ClipboardText(_, _, _) if (context.clipboard.consume(event)):
+				true;
 			case PointerMove(eventSource, x, y) if (matches(eventSource)):
 				pointerX = x;
 				pointerY = y;

@@ -179,6 +179,16 @@ class FrameworkSmoke {
 		});
 		var source:NativeKit.Handle = 17;
 		var input = new NativeInputAdapter(context, source);
+		var pastedText = "";
+		var clipboardRequestInt = 49;
+		var clipboardRequest:haxe.Int64 = clipboardRequestInt;
+		context.clipboard.trackRead(clipboardRequest, function(text) {
+			pastedText = text;
+		});
+		if (!input.consume(ClipboardText(clipboardRequest, NativeKit.Result.Ok, "from clipboard")) ||
+			pastedText != "from clipboard" ||
+			input.consume(ClipboardText(clipboardRequest, NativeKit.Result.Ok, "duplicate")))
+			return 39;
 		if (input.consume(PointerMove(18, 4.0, 4.0)))
 			return 12;
 		if (!input.consume(PointerMove(source, 4.0, 4.0)) || hoverEnters == 0 ||

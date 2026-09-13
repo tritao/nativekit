@@ -19,6 +19,7 @@ import nativekit.ui.semantics.Semantics;
 class UiContext {
 	final session:LayoutSession;
 	public final stateStore:StateStore;
+	public final clipboard:ClipboardService;
 	public final buildContext:BuildContext;
 	public final focus:FocusManager;
 	public final events:EventDispatcher;
@@ -34,6 +35,7 @@ class UiContext {
 	public function new(?session:LayoutSession, ?fonts:FontCollection) {
 		this.session = session == null ? LayoutSession.create() : session;
 		stateStore = new StateStore();
+		clipboard = new ClipboardService();
 		textInput = new TextInputBridge();
 		buildContext = new BuildContext(stateStore, fonts, textInput);
 		if (fonts != null)
@@ -291,6 +293,7 @@ class UiContext {
 		if (disposed)
 			return;
 		session.dispose();
+		clipboard.dispose();
 		textInput.dispose();
 		if (accessibilityBridge != null)
 			accessibilityBridge.dispose();
