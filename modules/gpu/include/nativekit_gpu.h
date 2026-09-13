@@ -59,6 +59,15 @@ extern "C" {
  * derived from the surface's graphics API, not from a global build-time choice
  * when the backend matrix is enabled.
  *
+ * The renderer alternates between idle, a window frame, and an offscreen
+ * render-target pass. Begin operations are valid only while idle. A window
+ * frame must end with nkgpu_end_frame(); an offscreen pass must end with
+ * nkgpu_end_render_target(). These end operations are not interchangeable.
+ * Drawing and binding operations require either active pass. Resource creation
+ * and destruction are idle-only. Destroying an idle renderer invalidates all
+ * of its remaining resources and unfinished builders; destroying a resource
+ * with a different renderer returns NKGPU_ERROR_INVALID_HANDLE.
+ *
  * Functions return NKGPU_OK on success. On failure, call nkgpu_last_error()
  * immediately for a diagnostic string. Handles are value types; do not free,
  * modify, or compare their internal id fields as pointers.
@@ -93,8 +102,9 @@ typedef int32_t nkgpu_result;
         uint32_t id;                                                                               \
     } name NKGPU_HANDLE_ANNOTATION
 #endif
-/** Renderer handle returned by nkgpu_renderer_create(). It owns the adapter resources created with
- * it. */
+/** Renderer handle returned by nkgpu_renderer_create(). It owns the adapter
+ * resources and unfinished builders created with it; renderer destruction
+ * releases all of them. */
 NKGPU_HANDLE(nkgpu_renderer);
 /** Buffer handle returned by nkgpu_buffer_create() or nkgpu_buffer_end(). */
 NKGPU_HANDLE(nkgpu_buffer);
@@ -195,6 +205,14 @@ enum {
     NKGPU_SHADERSTAGE_VERTEX = 1,
     /** The fragment shader stage. */
     NKGPU_SHADERSTAGE_FRAGMENT = 2,
+};
+
+/** Source language accepted by the shader creation functions. */
+typedef uint32_t nkgpu_shader_language;
+
+enum {
+    /** GLSL source for the configured OpenGL or OpenGL ES backend. */
+    NKGPU_SHADERLANGUAGE_GLSL = 1,
 };
 
 /** Data type used to describe a shader uniform member. */
@@ -355,11 +373,15 @@ NKGPU_API nkgpu_result nkgpu_render_target_get_image(nkgpu_renderer renderer, nk
 /** Destroys a render target; imported image references remain valid until released. */
 NKGPU_API nkgpu_result nkgpu_render_target_destroy(nkgpu_renderer renderer, nkgpu_render_target target);
 
-/** Begins drawing to an offscreen target without clearing or presenting the window surface. */
+/**
+ * Begins drawing to an offscreen target without presenting the window surface.
+ * `clear` must be zero or one; one clears the color attachment. The renderer
+ * must be idle. Pair with nkgpu_end_render_target() before any other pass.
+ */
 NKGPU_API nkgpu_result nkgpu_begin_render_target(nkgpu_renderer renderer, nkgpu_render_target target,
                                            uint32_t clear);
 
-/** Ends and commits the offscreen target pass without presenting the window surface. */
+/** Ends and commits the active offscreen target pass without presenting. */
 NKGPU_API nkgpu_result nkgpu_end_render_target(nkgpu_renderer renderer);
 
 /* ------------------------------------------------------------------------- */
@@ -435,11 +457,14 @@ NKGPU_API nkgpu_result nkgpu_buffer_destroy(nkgpu_renderer renderer, nkgpu_buffe
 /**
  * Creates a shader from NUL-terminated vertex and fragment shader source.
  *
- * The source strings are UTF-8 GLSL for the configured OpenGL or GLES3
- * backend. Both stages are required. On NKGPU_OK, writes the shader handle to
- * `out_shader`.
+ * `language` selects how both source strings are interpreted. This version
+ * accepts NKGPU_SHADERLANGUAGE_GLSL for the configured OpenGL or OpenGL ES
+ * backend; unsupported values return NKGPU_ERROR_INVALID_ARGUMENT. Both stages
+ * are required. On NKGPU_OK, writes the shader handle to `out_shader`.
  */
-NKGPU_API nkgpu_result nkgpu_shader_create(nkgpu_renderer renderer, const char *vertex_source NKGPU_UTF8,
+NKGPU_API nkgpu_result nkgpu_shader_create(nkgpu_renderer renderer,
+                                     nkgpu_shader_language language,
+                                     const char *vertex_source NKGPU_UTF8,
                                      const char *fragment_source NKGPU_UTF8,
                                      nkgpu_shader *out_shader NKGPU_OUT);
 
@@ -449,11 +474,16 @@ NKGPU_API nkgpu_result nkgpu_shader_destroy(nkgpu_renderer renderer, nkgpu_shade
 /**
  * Starts building a shader with UTF-8 vertex and fragment source strings.
  *
- * Unlike nkgpu_shader_create(), this lets you describe uniform blocks, members,
- * and texture bindings before nkgpu_shader_end() creates the shader. The source
- * strings are copied, so they may be released after this call succeeds.
+ * `language` selects how both source strings are interpreted. This version
+ * accepts NKGPU_SHADERLANGUAGE_GLSL; unsupported values return
+ * NKGPU_ERROR_INVALID_ARGUMENT. Unlike nkgpu_shader_create(), this lets
+ * you describe uniform blocks, members, and texture bindings before
+ * nkgpu_shader_end() creates the shader. The source strings are copied, so
+ * they may be released after this call succeeds.
  */
-NKGPU_API nkgpu_result nkgpu_shader_begin(nkgpu_renderer renderer, const char *vertex_source NKGPU_UTF8,
+NKGPU_API nkgpu_result nkgpu_shader_begin(nkgpu_renderer renderer,
+                                    nkgpu_shader_language language,
+                                    const char *vertex_source NKGPU_UTF8,
                                     const char *fragment_source NKGPU_UTF8,
                                     nkgpu_shader_builder *out_builder NKGPU_OUT);
 

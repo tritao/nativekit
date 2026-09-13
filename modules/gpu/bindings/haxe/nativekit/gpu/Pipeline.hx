@@ -17,6 +17,7 @@ class Pipeline {
 	}
 
 	public static function begin(renderer:Renderer, shader:Shader, stride:Int):PipelineBuilder {
+		renderer.ensureResourceOperation();
 		if (shader.rendererOwner() != renderer)
 			throw "GPU pipeline shader belongs to a different renderer";
 		if (stride <= 0)
@@ -59,7 +60,7 @@ class Pipeline {
 	function ensureLive():Void {
 		if (disposed)
 			throw "GPU pipeline has been disposed";
-		renderer.ensureResourceOperation();
+		renderer.ensureLive();
 	}
 }
 

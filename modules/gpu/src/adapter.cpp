@@ -92,6 +92,7 @@ struct PipelineBuilder {
 };
 struct ShaderBuilder {
     Handle owner = 0;
+    nkgpu_shader_language language = NKGPU_SHADERLANGUAGE_GLSL;
     sg_shader_desc desc{};
     std::string vertex_source;
     std::string fragment_source;
@@ -162,6 +163,15 @@ static nkgpu_result activate_renderer(Handle handle) {
         return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
     selected_renderer = handle;
     selected_api = slot->value.api;
+    return NKGPU_OK;
+}
+
+static nkgpu_result require_idle_renderer(Handle handle) {
+    auto *slot = renderer_pool.get(handle);
+    if (!slot)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (slot->value.in_frame || active_renderer)
+        return fail(NKGPU_ERROR_WRONG_STATE, "GPU resources can only change while all renderers are idle");
     return NKGPU_OK;
 }
 
@@ -467,10 +477,14 @@ nkgpu_result nkgpu_renderer_destroy(nkgpu_renderer h) {
 nkgpu_result nkgpu_render_target_create(nkgpu_renderer renderer, uint32_t width, uint32_t height,
                                     uint32_t depth_stencil, nkgpu_render_target *out) {
     auto *owner = renderer_pool.get(renderer);
-    if (!owner || !width || !height || !out || depth_stencil > 1 ||
-        width > static_cast<uint32_t>(INT32_MAX) || height > static_cast<uint32_t>(INT32_MAX) ||
-        owner->value.in_frame)
+    if (!owner)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (!width || !height || !out || depth_stencil > 1 ||
+        width > static_cast<uint32_t>(INT32_MAX) || height > static_cast<uint32_t>(INT32_MAX))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid render-target arguments");
+    const nkgpu_result idle = require_idle_renderer(renderer);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(renderer);
     if (activated != NKGPU_OK)
         return activated;
@@ -575,6 +589,9 @@ nkgpu_result nkgpu_render_target_get_image(nkgpu_renderer renderer, nkgpu_render
     auto *target = render_target_pool.get(handle);
     if (!owner || !target || target->value.owner != renderer || !out)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid render-target image request");
+    const nkgpu_result idle = require_idle_renderer(renderer);
+    if (idle != NKGPU_OK)
+        return idle;
     *out = target->value.image;
     return NKGPU_OK;
 }
@@ -583,8 +600,9 @@ nkgpu_result nkgpu_render_target_destroy(nkgpu_renderer renderer, nkgpu_render_t
     auto *target = render_target_pool.get(handle);
     if (!owner || !target || target->value.owner != renderer)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid render-target handle/state");
-    if (owner->value.in_frame || owner->value.active_target == handle)
-        return fail(NKGPU_ERROR_WRONG_STATE, "cannot destroy a render target during an active pass");
+    const nkgpu_result idle = require_idle_renderer(renderer);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(renderer);
     if (activated != NKGPU_OK)
         return activated;
@@ -595,8 +613,11 @@ nkgpu_result nkgpu_begin_render_target(nkgpu_renderer renderer, nkgpu_render_tar
                                    uint32_t clear) {
     auto *owner = renderer_pool.get(renderer);
     auto *target = render_target_pool.get(handle);
-    if (!owner || !target || target->value.owner != renderer || clear > 1 ||
-        owner->value.in_frame || active_renderer)
+    if (!owner || !target || target->value.owner != renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid or foreign render target");
+    if (clear > 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid render-target clear flag");
+    if (owner->value.in_frame || active_renderer)
         return fail(NKGPU_ERROR_WRONG_STATE, "invalid render-target frame state");
     const nkgpu_result activated = activate_renderer(renderer);
     if (activated != NKGPU_OK)
@@ -621,7 +642,9 @@ nkgpu_result nkgpu_begin_render_target(nkgpu_renderer renderer, nkgpu_render_tar
 }
 nkgpu_result nkgpu_end_render_target(nkgpu_renderer renderer) {
     auto *owner = renderer_pool.get(renderer);
-    if (!owner || !owner->value.in_frame || !owner->value.in_pass || !owner->value.active_target ||
+    if (!owner)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (!owner->value.in_frame || !owner->value.in_pass || !owner->value.active_target ||
         active_renderer != renderer)
         return fail(NKGPU_ERROR_WRONG_STATE, "no active render-target pass");
     const nkgpu_result activated = activate_renderer(renderer);
@@ -645,8 +668,11 @@ static nkgpu_result save_buffer(Handle owner, sg_buffer object, nkgpu_buffer *ou
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_buffer_create(nkgpu_renderer r, const uint8_t *data, uint32_t size, nkgpu_buffer *out) {
-    if (!renderer_pool.get(r) || !data || !size || !out)
+    if (!data || !size || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer arguments");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
@@ -662,10 +688,13 @@ nkgpu_result nkgpu_buffer_begin(nkgpu_renderer r, uint32_t size, nkgpu_buffer_bu
 }
 nkgpu_result nkgpu_buffer_begin_kind(nkgpu_renderer r, uint32_t size, nkgpu_buffer_usage usage,
                                  nkgpu_buffer_builder *out) {
-    if (!renderer_pool.get(r) || !size || !out)
+    if (!size || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer builder");
     if (usage != NKGPU_BUFFER_VERTEX && usage != NKGPU_BUFFER_INDEX)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer usage");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
     uint8_t *data = (uint8_t *)calloc(1, size);
     if (!data)
         return fail(NKGPU_ERROR_UNKNOWN, "allocation failed");
@@ -681,6 +710,9 @@ nkgpu_result nkgpu_buffer_write_u16(nkgpu_buffer_builder h, uint32_t offset, uin
     auto *s = buffer_builder_pool.get(h);
     if (!s || value > UINT16_MAX || offset > s->value.size || s->value.size - offset < 2)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale/out-of-range buffer builder");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
     uint16_t v = (uint16_t)value;
     memcpy(s->value.data + offset, &v, 2);
     return NKGPU_OK;
@@ -689,6 +721,9 @@ nkgpu_result nkgpu_buffer_write_f32(nkgpu_buffer_builder h, uint32_t offset, flo
     auto *s = buffer_builder_pool.get(h);
     if (!s || offset > s->value.size || s->value.size - offset < sizeof(value))
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale/out-of-range buffer builder");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
     memcpy(s->value.data + offset, &value, sizeof(value));
     return NKGPU_OK;
 }
@@ -697,6 +732,9 @@ nkgpu_result nkgpu_buffer_end(nkgpu_buffer_builder h, nkgpu_buffer *out) {
     if (!s || !out)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale buffer builder");
     auto owner = s->value.owner;
+    const nkgpu_result idle = require_idle_renderer(owner);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(owner);
     if (activated != NKGPU_OK)
         return activated;
@@ -715,6 +753,9 @@ nkgpu_result nkgpu_buffer_destroy(nkgpu_renderer r, nkgpu_buffer h) {
     auto *s = buffer_pool.get(h);
     if (!renderer_pool.get(r) || !s || s->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale/foreign buffer");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
@@ -722,9 +763,15 @@ nkgpu_result nkgpu_buffer_destroy(nkgpu_renderer r, nkgpu_buffer h) {
     buffer_pool.remove(*s);
     return NKGPU_OK;
 }
-nkgpu_result nkgpu_shader_create(nkgpu_renderer r, const char *vs, const char *fs, nkgpu_shader *out) {
-    if (!renderer_pool.get(r) || !vs || !fs || !out)
+nkgpu_result nkgpu_shader_create(nkgpu_renderer r, nkgpu_shader_language language,
+                                const char *vs, const char *fs, nkgpu_shader *out) {
+    if (!renderer_pool.get(r))
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (!vs || !fs || !out || language != NKGPU_SHADERLANGUAGE_GLSL)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader arguments");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
@@ -746,6 +793,9 @@ nkgpu_result nkgpu_shader_destroy(nkgpu_renderer r, nkgpu_shader h) {
     auto *s = shader_pool.get(h);
     if (!renderer_pool.get(r) || !s || s->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale/foreign shader");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
@@ -753,15 +803,22 @@ nkgpu_result nkgpu_shader_destroy(nkgpu_renderer r, nkgpu_shader h) {
     shader_pool.remove(*s);
     return NKGPU_OK;
 }
-nkgpu_result nkgpu_shader_begin(nkgpu_renderer r, const char *vs, const char *fs,
-                            nkgpu_shader_builder *out) {
-    if (!renderer_pool.get(r) || !vs || !fs || !out)
+nkgpu_result nkgpu_shader_begin(nkgpu_renderer r, nkgpu_shader_language language,
+                               const char *vs, const char *fs,
+                               nkgpu_shader_builder *out) {
+    if (!renderer_pool.get(r))
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (!vs || !fs || !out || language != NKGPU_SHADERLANGUAGE_GLSL)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader builder");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
     Handle h = shader_builder_pool.add(ShaderBuilder{});
     if (!h)
         return fail(NKGPU_ERROR_UNKNOWN, "shader builder pool full");
     auto *s = shader_builder_pool.get(h);
     s->value.owner = r;
+    s->value.language = language;
     s->value.vertex_source = vs;
     s->value.fragment_source = fs;
     s->value.desc.vertex_func.source = s->value.vertex_source.c_str();
@@ -775,6 +832,9 @@ nkgpu_result nkgpu_shader_uniform_block(nkgpu_shader_builder h, uint32_t slot, n
     if (!s || slot >= SG_MAX_UNIFORMBLOCK_BINDSLOTS || !size ||
         (stage != NKGPU_SHADERSTAGE_VERTEX && stage != NKGPU_SHADERSTAGE_FRAGMENT))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid uniform block");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
     auto &b = s->value.desc.uniform_blocks[slot];
     b.stage = stage == NKGPU_SHADERSTAGE_VERTEX ? SG_SHADERSTAGE_VERTEX : SG_SHADERSTAGE_FRAGMENT;
     b.size = size;
@@ -787,6 +847,9 @@ nkgpu_result nkgpu_shader_uniform(nkgpu_shader_builder h, uint32_t block, uint32
     if (!s || block >= SG_MAX_UNIFORMBLOCK_BINDSLOTS || member >= SG_MAX_UNIFORMBLOCK_MEMBERS ||
         !name || converted == SG_UNIFORMTYPE_INVALID)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader uniform");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
     s->value.uniform_names[block][member] = name;
     auto &u = s->value.desc.uniform_blocks[block].glsl_uniforms[member];
     u.glsl_name = s->value.uniform_names[block][member].c_str();
@@ -801,6 +864,9 @@ nkgpu_result nkgpu_shader_texture(nkgpu_shader_builder h, uint32_t view_slot, ui
         view_slot >= SG_MAX_TEXTURE_SAMPLER_PAIRS || !name ||
         (stage != NKGPU_SHADERSTAGE_VERTEX && stage != NKGPU_SHADERSTAGE_FRAGMENT))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader texture binding");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
     const sg_shader_stage converted =
         stage == NKGPU_SHADERSTAGE_VERTEX ? SG_SHADERSTAGE_VERTEX : SG_SHADERSTAGE_FRAGMENT;
     s->value.desc.views[view_slot].texture.stage = converted;
@@ -821,6 +887,9 @@ nkgpu_result nkgpu_shader_end(nkgpu_shader_builder h, nkgpu_shader *out) {
     if (!s || !out)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale shader builder");
     Handle owner = s->value.owner;
+    const nkgpu_result idle = require_idle_renderer(owner);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(owner);
     if (activated != NKGPU_OK)
         return activated;
@@ -839,8 +908,15 @@ nkgpu_result nkgpu_shader_end(nkgpu_shader_builder h, nkgpu_shader *out) {
 nkgpu_result nkgpu_pipeline_begin(nkgpu_renderer r, nkgpu_shader shader, uint32_t stride,
                               nkgpu_pipeline_builder *out) {
     auto *sh = shader_pool.get(shader);
-    if (!renderer_pool.get(r) || !sh || sh->value.owner != r || !stride || !out)
+    if (!renderer_pool.get(r))
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (!sh || sh->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign shader");
+    if (!stride || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline builder");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
     PipelineBuilder b{};
     b.owner = r;
     b.desc.shader = sh->value.object;
@@ -859,6 +935,9 @@ nkgpu_result nkgpu_pipeline_attribute(nkgpu_pipeline_builder h, uint32_t locatio
     if (!s || location >= SG_MAX_VERTEX_ATTRIBUTES ||
         buffer_index >= SG_MAX_VERTEXBUFFER_BINDSLOTS || f == SG_VERTEXFORMAT_INVALID)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid pipeline attribute");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
     auto &a = s->value.desc.layout.attrs[location];
     a.buffer_index = (int)buffer_index;
     a.offset = (int)offset;
@@ -869,6 +948,9 @@ nkgpu_result nkgpu_pipeline_index_type(nkgpu_pipeline_builder h, nkgpu_index_typ
     auto *s = pipeline_builder_pool.get(h);
     if (!s || type > NKGPU_INDEXTYPE_UINT32)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid index type");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
     s->value.desc.index_type = type == NKGPU_INDEXTYPE_UINT16   ? SG_INDEXTYPE_UINT16
                                : type == NKGPU_INDEXTYPE_UINT32 ? SG_INDEXTYPE_UINT32
                                                               : SG_INDEXTYPE_NONE;
@@ -878,6 +960,9 @@ nkgpu_result nkgpu_pipeline_depth_stencil(nkgpu_pipeline_builder h, uint32_t ena
     auto *s = pipeline_builder_pool.get(h);
     if (!s || enabled > 1)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline depth/stencil state");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
     s->value.desc.depth.pixel_format = enabled ? SG_PIXELFORMAT_DEPTH_STENCIL : SG_PIXELFORMAT_NONE;
     s->value.desc.depth.write_enabled = enabled != 0;
     s->value.desc.depth.compare = enabled ? SG_COMPAREFUNC_LESS_EQUAL : SG_COMPAREFUNC_ALWAYS;
@@ -888,6 +973,9 @@ nkgpu_result nkgpu_pipeline_end(nkgpu_pipeline_builder h, nkgpu_pipeline *out) {
     if (!s || !out)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale pipeline builder");
     auto owner = s->value.owner;
+    const nkgpu_result idle = require_idle_renderer(owner);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(owner);
     if (activated != NKGPU_OK)
         return activated;
@@ -907,6 +995,9 @@ nkgpu_result nkgpu_pipeline_destroy(nkgpu_renderer r, nkgpu_pipeline h) {
     auto *s = pipeline_pool.get(h);
     if (!renderer_pool.get(r) || !s || s->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale/foreign pipeline");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
@@ -916,8 +1007,10 @@ nkgpu_result nkgpu_pipeline_destroy(nkgpu_renderer r, nkgpu_pipeline h) {
 }
 nkgpu_result nkgpu_begin_frame(nkgpu_renderer h) {
     auto *s = renderer_pool.get(h);
-    if (!s || active_renderer)
-        return fail(NKGPU_ERROR_WRONG_STATE, "invalid renderer/frame active");
+    if (!s)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (s->value.in_frame || active_renderer)
+        return fail(NKGPU_ERROR_WRONG_STATE, "a renderer frame is already active");
     const nkgpu_result activated = activate_renderer(h);
     if (activated != NKGPU_OK)
         return activated;
@@ -1009,8 +1102,11 @@ nkgpu_result nkgpu_apply_uniforms(nkgpu_renderer r, uint32_t slot, nkgpu_uniform
 }
 nkgpu_result nkgpu_image_begin(nkgpu_renderer r, uint32_t width, uint32_t height,
                            nkgpu_image_builder *out) {
-    if (!renderer_pool.get(r) || !width || !height || !out || width > UINT32_MAX / height / 4)
+    if (!width || !height || !out || width > UINT32_MAX / height / 4)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image builder");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
     uint8_t *data = (uint8_t *)calloc((size_t)width * height, 4);
     if (!data)
         return fail(NKGPU_ERROR_UNKNOWN, "image allocation failed");
@@ -1028,6 +1124,9 @@ nkgpu_result nkgpu_image_write_rgba8(nkgpu_image_builder h, uint32_t x, uint32_t
     if (!s || x >= s->value.width || y >= s->value.height || red > 255 || green > 255 ||
         blue > 255 || alpha > 255)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image pixel write");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
     uint8_t *pixel = s->value.data + ((size_t)y * s->value.width + x) * 4;
     pixel[0] = (uint8_t)red;
     pixel[1] = (uint8_t)green;
@@ -1040,6 +1139,9 @@ nkgpu_result nkgpu_image_end(nkgpu_image_builder h, nkgpu_image *out) {
     if (!s || !out)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale image builder");
     const Handle owner = s->value.owner;
+    const nkgpu_result idle = require_idle_renderer(owner);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(owner);
     if (activated != NKGPU_OK)
         return activated;
@@ -1073,6 +1175,9 @@ nkgpu_result nkgpu_image_destroy(nkgpu_renderer r, nkgpu_image h) {
     auto *s = image_pool.get(h);
     if (!renderer_pool.get(r) || !s || s->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale/foreign image");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
@@ -1083,9 +1188,12 @@ nkgpu_result nkgpu_image_destroy(nkgpu_renderer r, nkgpu_image h) {
 }
 nkgpu_result nkgpu_sampler_create(nkgpu_renderer r, nkgpu_filter min_filter, nkgpu_filter mag_filter,
                               nkgpu_wrap wrap_u, nkgpu_wrap wrap_v, nkgpu_sampler *out) {
-    if (!renderer_pool.get(r) || !out || min_filter < 1 || min_filter > 2 || mag_filter < 1 ||
+    if (!out || min_filter < 1 || min_filter > 2 || mag_filter < 1 ||
         mag_filter > 2 || wrap_u < 1 || wrap_u > 2 || wrap_v < 1 || wrap_v > 2)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid sampler arguments");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
@@ -1109,6 +1217,9 @@ nkgpu_result nkgpu_sampler_destroy(nkgpu_renderer r, nkgpu_sampler h) {
     auto *s = sampler_pool.get(h);
     if (!renderer_pool.get(r) || !s || s->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale/foreign sampler");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
@@ -1211,7 +1322,9 @@ nkgpu_result nkgpu_submit_commands(nkgpu_renderer r, const uint8_t *commands, ui
 }
 nkgpu_result nkgpu_end_frame(nkgpu_renderer r) {
     auto *rs = renderer_pool.get(r);
-    if (!rs || !rs->value.in_frame || !rs->value.in_pass || active_renderer != r ||
+    if (!rs)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (!rs->value.in_frame || !rs->value.in_pass || active_renderer != r ||
         rs->value.active_target)
         return fail(NKGPU_ERROR_WRONG_STATE, "no active frame");
     sg_end_pass();

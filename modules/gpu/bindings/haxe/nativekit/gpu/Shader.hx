@@ -1,6 +1,7 @@
 package nativekit.gpu;
 
 import nativekit.gpu.Enums.ShaderStage;
+import nativekit.gpu.Enums.ShaderLanguage;
 import nativekit.gpu.Enums.UniformType;
 
 /** Renderer-owned shader resource. */
@@ -16,14 +17,20 @@ class Shader {
 		renderer.registerResource(rendererClosed);
 	}
 
-	public static function create(renderer:Renderer, vertexSource:String, fragmentSource:String):Shader {
-		var made = NativeKitGpu.nkgpu_shader_create(renderer.nativeHandle(), vertexSource, fragmentSource);
+	public static function create(renderer:Renderer, language:ShaderLanguage,
+		vertexSource:String, fragmentSource:String):Shader {
+		renderer.ensureResourceOperation();
+		var made = NativeKitGpu.nkgpu_shader_create(renderer.nativeHandle(), language,
+			vertexSource, fragmentSource);
 		GpuResult.check(made.status, "shader.create");
 		return new Shader(renderer, made.out_shader);
 	}
 
-	public static function begin(renderer:Renderer, vertexSource:String, fragmentSource:String):ShaderBuilder {
-		var made = NativeKitGpu.nkgpu_shader_begin(renderer.nativeHandle(), vertexSource, fragmentSource);
+	public static function begin(renderer:Renderer, language:ShaderLanguage,
+		vertexSource:String, fragmentSource:String):ShaderBuilder {
+		renderer.ensureResourceOperation();
+		var made = NativeKitGpu.nkgpu_shader_begin(renderer.nativeHandle(), language,
+			vertexSource, fragmentSource);
 		GpuResult.check(made.status, "shader.begin");
 		return new ShaderBuilder(renderer, made.out_builder);
 	}
@@ -55,7 +62,7 @@ class Shader {
 	function ensureLive():Void {
 		if (disposed)
 			throw "GPU shader has been disposed";
-		renderer.ensureResourceOperation();
+		renderer.ensureLive();
 	}
 }
 

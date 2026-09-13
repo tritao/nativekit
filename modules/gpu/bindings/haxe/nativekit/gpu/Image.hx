@@ -23,6 +23,7 @@ class Image {
 		if (width <= 0 || height <= 0 || pixels == null || width > Std.int(536870911 / height)
 			|| pixels.length != width * height * 4)
 			throw "GPU RGBA8 image dimensions or pixel storage are invalid";
+		renderer.ensureResourceOperation();
 		var madeBuilder = NativeKitGpu.nkgpu_image_begin(renderer.nativeHandle(), width, height);
 		GpuResult.check(madeBuilder.status, "image.begin");
 		var builder = madeBuilder.out_builder;
@@ -72,6 +73,6 @@ class Image {
 	function ensureLive():Void {
 		if (disposed)
 			throw "GPU image has been disposed";
-		renderer.ensureResourceOperation();
+		renderer.ensureLive();
 	}
 }

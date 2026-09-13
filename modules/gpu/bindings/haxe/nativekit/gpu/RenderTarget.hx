@@ -30,17 +30,22 @@ class RenderTarget {
 		return new RenderTarget(renderer, made.out_target, width, height);
 	}
 
+	public function nativeHandle():nkgpu_render_target {
+		ensureLive();
+		return value;
+	}
+
 	/** Begins rendering to this target. Pair with end() before any other pass. */
 	public function begin(clear:Bool = true):Void {
 		ensureLive();
-		GpuResult.check(NativeKitGpu.nkgpu_begin_render_target(renderer.nativeHandle(), value, clear ? 1 : 0),
-			"renderTarget.begin");
+		renderer.beginRenderTarget(this, clear);
 	}
 
 	/** Ends the active offscreen pass. */
 	public function end():Void {
-		ensureLive();
-		GpuResult.check(NativeKitGpu.nkgpu_end_render_target(renderer.nativeHandle()), "renderTarget.end");
+		if (disposed)
+			throw "GPU render target has been disposed";
+		renderer.endRenderTarget(this);
 	}
 
 	/**
@@ -69,6 +74,10 @@ class RenderTarget {
 
 	public function isDisposed():Bool
 		return disposed;
+
+	@:allow(Renderer)
+	function rendererOwner():Renderer
+		return renderer;
 
 	@:allow(Renderer)
 	function rendererClosed():Void

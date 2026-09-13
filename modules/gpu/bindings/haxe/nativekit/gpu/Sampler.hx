@@ -18,6 +18,7 @@ class Sampler {
 	public static function create(renderer:Renderer, minFilter:Filter = Filter.Nearest,
 			magFilter:Filter = Filter.Nearest, wrapU:Wrap = Wrap.ClampToEdge,
 			wrapV:Wrap = Wrap.ClampToEdge):Sampler {
+		renderer.ensureResourceOperation();
 		var made = NativeKitGpu.nkgpu_sampler_create(renderer.nativeHandle(), minFilter, magFilter, wrapU, wrapV);
 		GpuResult.check(made.status, "sampler.create");
 		return new Sampler(renderer, made.out_sampler);
@@ -58,6 +59,6 @@ class Sampler {
 	function ensureLive():Void {
 		if (disposed)
 			throw "GPU sampler has been disposed";
-		renderer.ensureResourceOperation();
+		renderer.ensureLive();
 	}
 }

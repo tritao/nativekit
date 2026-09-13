@@ -85,6 +85,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	const NKGPU_OK = 0;
 	/**
+	 * GLSL source for the configured OpenGL or OpenGL ES backend.
+	 */
+	const NKGPU_SHADERLANGUAGE_GLSL = 1;
+	/**
 	 * The fragment shader stage.
 	 */
 	const NKGPU_SHADERSTAGE_FRAGMENT = 2;
@@ -193,7 +197,9 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_begin_frame(renderer: nkgpu_renderer) -> nkgpu_result;
 	/**
-	 * Begins drawing to an offscreen target without clearing or presenting the window surface.
+	 * Begins drawing to an offscreen target without presenting the window surface.
+	 * `clear` must be zero or one; one clears the color attachment. The renderer
+	 * must be idle. Pair with nkgpu_end_render_target() before any other pass.
 	 */
 	extern fn nkgpu_begin_render_target(renderer: nkgpu_renderer, target: nkgpu_render_target, clear: u32) -> nkgpu_result;
 	/**
@@ -264,7 +270,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_end_frame(renderer: nkgpu_renderer) -> nkgpu_result;
 	/**
-	 * Ends and commits the offscreen target pass without presenting the window surface.
+	 * Ends and commits the active offscreen target pass without presenting.
 	 */
 	extern fn nkgpu_end_render_target(renderer: nkgpu_renderer) -> nkgpu_result;
 	/**
@@ -389,19 +395,23 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	/**
 	 * Starts building a shader with UTF-8 vertex and fragment source strings.
 	 *
-	 * Unlike nkgpu_shader_create(), this lets you describe uniform blocks, members,
-	 * and texture bindings before nkgpu_shader_end() creates the shader. The source
-	 * strings are copied, so they may be released after this call succeeds.
+	 * `language` selects how both source strings are interpreted. This version
+	 * accepts NKGPU_SHADERLANGUAGE_GLSL; unsupported values return
+	 * NKGPU_ERROR_INVALID_ARGUMENT. Unlike nkgpu_shader_create(), this lets
+	 * you describe uniform blocks, members, and texture bindings before
+	 * nkgpu_shader_end() creates the shader. The source strings are copied, so
+	 * they may be released after this call succeeds.
 	 */
-	extern fn nkgpu_shader_begin(renderer: nkgpu_renderer, vertex_source: utf8, fragment_source: utf8, out_builder: ptr<nkgpu_shader_builder> @out) -> nkgpu_result;
+	extern fn nkgpu_shader_begin(renderer: nkgpu_renderer, language: nkgpu_shader_language, vertex_source: utf8, fragment_source: utf8, out_builder: ptr<nkgpu_shader_builder> @out) -> nkgpu_result;
 	/**
 	 * Creates a shader from NUL-terminated vertex and fragment shader source.
 	 *
-	 * The source strings are UTF-8 GLSL for the configured OpenGL or GLES3
-	 * backend. Both stages are required. On NKGPU_OK, writes the shader handle to
-	 * `out_shader`.
+	 * `language` selects how both source strings are interpreted. This version
+	 * accepts NKGPU_SHADERLANGUAGE_GLSL for the configured OpenGL or OpenGL ES
+	 * backend; unsupported values return NKGPU_ERROR_INVALID_ARGUMENT. Both stages
+	 * are required. On NKGPU_OK, writes the shader handle to `out_shader`.
 	 */
-	extern fn nkgpu_shader_create(renderer: nkgpu_renderer, vertex_source: utf8, fragment_source: utf8, out_shader: ptr<nkgpu_shader> @out) -> nkgpu_result;
+	extern fn nkgpu_shader_create(renderer: nkgpu_renderer, language: nkgpu_shader_language, vertex_source: utf8, fragment_source: utf8, out_shader: ptr<nkgpu_shader> @out) -> nkgpu_result;
 	/**
 	 * Destroys a shader owned by `renderer`; the handle becomes invalid.
 	 */
@@ -544,8 +554,9 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	handle nkgpu_render_target : u32;
 	/**
-	 * Renderer handle returned by nkgpu_renderer_create(). It owns the adapter resources created with
-	 * it.
+	 * Renderer handle returned by nkgpu_renderer_create(). It owns the adapter
+	 * resources and unfinished builders created with it; renderer destruction
+	 * releases all of them.
 	 */
 	handle nkgpu_renderer : u32;
 	/**
@@ -564,6 +575,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Temporary builder handle returned by nkgpu_shader_begin().
 	 */
 	handle nkgpu_shader_builder : u32;
+	/**
+	 * Source language accepted by the shader creation functions.
+	 */
+	type nkgpu_shader_language = u32;
 	/**
 	 * Shader stage associated with a uniform block or texture binding.
 	 */
