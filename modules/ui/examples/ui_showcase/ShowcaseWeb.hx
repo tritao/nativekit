@@ -5,6 +5,7 @@ import NativeKit.NativeKitConstants;
 import NativeKit.EventKind;
 import NativeKit.GraphicsApi;
 import NativeKit.InputAction;
+import NativeKit.Key;
 import NativeKit.Result;
 import NativeKit.InitOptions;
 import NativeKit.SurfaceOptions;
