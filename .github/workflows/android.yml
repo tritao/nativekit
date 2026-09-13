@@ -80,10 +80,4 @@ jobs:
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
-          script: |
-            cd android
-            if ./gradlew :sample:connectedDebugAndroidTest :consumer:connectedDebugAndroidTest; then
-              exit 0
-            fi
-            adb logcat -d -t 2000 '*:W'
-            exit 1
+          script: cd android && ./gradlew :sample:connectedDebugAndroidTest :consumer:connectedDebugAndroidTest || { adb logcat -d -t 2000 '*:W'; exit 1; }
