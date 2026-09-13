@@ -1444,6 +1444,14 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
                        return;
                    }
                    const auto pending = evaluations.find(request);
+                   std::fprintf(
+                       stderr,
+                       "WebKit evaluation lookup %llu found=%d stored=%llu expected=%llu "
+                       "count=%zu\n",
+                       static_cast<unsigned long long>(request), pending != evaluations.end(),
+                       static_cast<unsigned long long>(
+                           pending == evaluations.end() ? NK_INVALID_HANDLE : pending->second),
+                       static_cast<unsigned long long>(handle), evaluations.size());
                    if (pending == evaluations.end() || pending->second != handle) {
                        std::fprintf(stderr, "WebKit evaluation callback has no pending request\n");
                        return;
