@@ -8,15 +8,17 @@ class BuildContext {
 	public final stateStore:StateStore;
 	public var fonts(default, null):Null<FontCollection>;
 	public var platformSurface(default, null):Null<NativeKitSurface>;
+	public final textInput:TextInputBridge;
 	final claimed:Map<Int, String>;
 	var scope:KeyScope;
 
-	public function new(stateStore:StateStore, ?fonts:FontCollection) {
+	public function new(stateStore:StateStore, ?fonts:FontCollection, ?textInput:TextInputBridge) {
 		if (stateStore == null)
 			throw "Build context requires a state store";
 		this.stateStore = stateStore;
 		this.fonts = fonts;
 		platformSurface = null;
+		this.textInput = textInput == null ? new TextInputBridge() : textInput;
 		claimed = new Map();
 		scope = new KeyScope();
 	}
@@ -33,6 +35,7 @@ class BuildContext {
 		if (surface == null || surface.isDisposed())
 			throw "Build context requires a live NativeKit surface";
 		platformSurface = surface;
+		textInput.attach(surface);
 	}
 
 	public function beginFrame():Void {

@@ -10,7 +10,6 @@ import FrameInfo;
 import ResolvedLayoutItem;
 import FontCollection;
 import NativeKitSurface;
-import NativeKitTextInput;
 import nativekit.ui.semantics.AccessibilityBridge;
 import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRequest;
@@ -30,13 +29,13 @@ class UiContext {
 	var overlayList:Null<DisplayList>;
 	var accessibilityBridge:Null<AccessibilityBridge>;
 	var accessibilitySurface:Null<NativeKitSurface>;
-	var platformSurface:Null<NativeKitSurface>;
-	var textInputActive:Bool;
+	public final textInput:TextInputBridge;
 
 	public function new(?session:LayoutSession, ?fonts:FontCollection) {
 		this.session = session == null ? LayoutSession.create() : session;
 		stateStore = new StateStore();
-		buildContext = new BuildContext(stateStore, fonts);
+		textInput = new TextInputBridge();
+		buildContext = new BuildContext(stateStore, fonts, textInput);
 		if (fonts != null)
 			this.session.setFonts(fonts);
 		focus = new FocusManager();
@@ -48,8 +47,6 @@ class UiContext {
 		overlayList = null;
 		accessibilityBridge = null;
 		accessibilitySurface = null;
-		platformSurface = null;
-		textInputActive = false;
 	}
 
 	/** Sets fonts for text-aware widgets and the native layout session. */
@@ -66,7 +63,6 @@ class UiContext {
 		ensureLive();
 		if (surface == null || surface.isDisposed())
 			throw "UI context requires a live NativeKit surface";
-		platformSurface = surface;
 		buildContext.setPlatformSurface(surface);
 	}
 
@@ -295,10 +291,7 @@ class UiContext {
 		if (disposed)
 			return;
 		session.dispose();
-		if (textInputActive && platformSurface != null && !platformSurface.isDisposed()) {
-			NativeKitTextInput.setActive(platformSurface, false);
-			textInputActive = false;
-		}
+		textInput.dispose();
 		if (accessibilityBridge != null)
 			accessibilityBridge.dispose();
 		stateStore.dispose();
@@ -310,7 +303,6 @@ class UiContext {
 		root = null;
 		accessibilityBridge = null;
 		accessibilitySurface = null;
-		platformSurface = null;
 	}
 
 	function dispatchFocusChange(previous:Null<WidgetId>, next:Null<WidgetId>):Void {
