@@ -1,6 +1,6 @@
 #include "nativekit.h"
 #include "nativekit_graphics.h"
-#include "nativekit_sokol.h"
+#include "nativekit_gpu.h"
 #include "nativekit_window.h"
 
 #include "render/sokol_backend.h"
@@ -14,8 +14,8 @@ struct BackendSurface {
     nk_handle window = NK_INVALID_HANDLE;
     nk_handle surface = NK_INVALID_HANDLE;
     nk_graphics_api api = 0;
-    nks_renderer graphics_renderer{};
-    nks_render_target render_target{};
+    nkgpu_renderer graphics_renderer{};
+    nkgpu_render_target render_target{};
     nk_graphics_image image{};
     bool image_retained = false;
     std::unique_ptr<nkui::RenderBackend> backend;
@@ -33,11 +33,11 @@ void destroy_backend_surface(BackendSurface &item) {
         item.image = {};
     }
     if (item.render_target.id && item.graphics_renderer.id) {
-        nks_render_target_destroy(item.graphics_renderer, item.render_target);
+        nkgpu_render_target_destroy(item.graphics_renderer, item.render_target);
         item.render_target = {};
     }
     if (item.graphics_renderer.id) {
-        nks_renderer_destroy(item.graphics_renderer);
+        nkgpu_renderer_destroy(item.graphics_renderer);
         item.graphics_renderer = {};
     }
     if (item.surface != NK_INVALID_HANDLE) {
@@ -76,23 +76,23 @@ bool initialize_backend_surface(BackendSurface &item, const char *title) {
     if (nk_surface_get_frame_target(item.surface, &target) != NK_OK || target.api != item.api ||
         !target.device.id)
         return false;
-    if (nks_renderer_create(item.surface, &item.graphics_renderer) != NKS_OK)
+    if (nkgpu_renderer_create(item.surface, &item.graphics_renderer) != NKGPU_OK)
         return false;
-    const nks_backend expected_backend = item.api == NK_GRAPHICS_OPENGL_ES
-                                             ? NKS_BACKEND_GLES3
-                                             : NKS_BACKEND_GLCORE;
-    if (nks_query_backend(item.graphics_renderer) != expected_backend ||
-        nks_render_target_create(item.graphics_renderer, 32, 32, 0, &item.render_target) != NKS_OK ||
-        nks_begin_render_target(item.graphics_renderer, item.render_target, 1) != NKS_OK ||
-        nks_render_target_destroy(item.graphics_renderer, item.render_target) !=
-            NKS_ERROR_WRONG_STATE ||
-        nks_end_render_target(item.graphics_renderer) != NKS_OK ||
-        nks_begin_frame(item.graphics_renderer) != NKS_OK ||
-        nks_render_target_destroy(item.graphics_renderer, item.render_target) !=
-            NKS_ERROR_WRONG_STATE ||
-        nks_end_frame(item.graphics_renderer) != NKS_OK ||
-        nks_render_target_get_image(item.graphics_renderer, item.render_target, &item.image) !=
-            NKS_OK)
+    const nkgpu_backend expected_backend = item.api == NK_GRAPHICS_OPENGL_ES
+                                             ? NKGPU_BACKEND_GLES3
+                                             : NKGPU_BACKEND_GLCORE;
+    if (nkgpu_query_backend(item.graphics_renderer) != expected_backend ||
+        nkgpu_render_target_create(item.graphics_renderer, 32, 32, 0, &item.render_target) != NKGPU_OK ||
+        nkgpu_begin_render_target(item.graphics_renderer, item.render_target, 1) != NKGPU_OK ||
+        nkgpu_render_target_destroy(item.graphics_renderer, item.render_target) !=
+            NKGPU_ERROR_WRONG_STATE ||
+        nkgpu_end_render_target(item.graphics_renderer) != NKGPU_OK ||
+        nkgpu_begin_frame(item.graphics_renderer) != NKGPU_OK ||
+        nkgpu_render_target_destroy(item.graphics_renderer, item.render_target) !=
+            NKGPU_ERROR_WRONG_STATE ||
+        nkgpu_end_frame(item.graphics_renderer) != NKGPU_OK ||
+        nkgpu_render_target_get_image(item.graphics_renderer, item.render_target, &item.image) !=
+            NKGPU_OK)
         return false;
     if (nk_graphics_image_retain(item.image) != NK_OK)
         return false;
@@ -112,8 +112,8 @@ bool initialize_backend_surface(BackendSurface &item, const char *title) {
 bool render_frame(BackendSurface &item) {
     // Exercise the public adapter's window-frame path as well as the UI
     // compositor, alternating runtime selection between GLCore and GLES3.
-    if (nks_begin_frame(item.graphics_renderer) != NKS_OK ||
-        nks_end_frame(item.graphics_renderer) != NKS_OK)
+    if (nkgpu_begin_frame(item.graphics_renderer) != NKGPU_OK ||
+        nkgpu_end_frame(item.graphics_renderer) != NKGPU_OK)
         return false;
     if (nk_surface_make_current(item.surface) != NK_OK)
         return false;

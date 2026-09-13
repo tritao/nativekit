@@ -84,7 +84,7 @@ git clone https://github.com/tritao/nativekit.git
 cd nativekit
 ```
 
-The optional Sokol and UI modules use pinned Git submodules. Initialize them
+The optional GPU and UI modules use pinned Git submodules. Initialize them
 only when building those modules:
 
 ```sh
@@ -100,8 +100,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 Experimental higher-level modules live in the same repository but remain
-optional so the core platform library stays compact. Enable the low-level Sokol
-adapter with `-DNK_BUILD_SOKOL=ON`, or the retained UI-engine scaffold with
+optional so the core platform library stays compact. Enable the low-level GPU
+module with `-DNK_BUILD_GPU=ON`, or the retained UI-engine scaffold with
 `-DNK_BUILD_UI=ON`. Their design and build notes live under [`modules/`](modules/).
 
 ### Web / WASM preview

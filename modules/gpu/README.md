@@ -1,0 +1,98 @@
+# NativeKit GPU module
+
+This isolated experiment uses NativeKit for its window, event loop, graphics
+context, framebuffer sizing, and presentation. `sokol_gfx.h` owns only
+rendering resources and draw submission. It deliberately does not use
+`sokol_app.h`.
+
+`NK_SOKOL_BACKEND=glcore` or `NK_SOKOL_BACKEND=gles3` selects the default
+surface API and the single runtime used by a normal build. The default is
+`glcore` on desktop Linux and `gles3` on Android. Sokol is pinned in
+`CMakeLists.txt` so changes to its source-level API cannot silently change the
+adapter.
+
+On desktop Linux, `-DNK_BUILD_GPU_BACKEND_MATRIX=ON` includes independent
+GLCore and GLES3 runtimes in the same binary. `nkgpu_surface_create_for_api()`
+then selects a runtime from each surface's actual graphics API, so both kinds
+of renderer may coexist. Renderer calls are graphics-thread serialized and
+only one pass may be active at a time; resources remain owned by the renderer
+that created them. The backend-matrix test alternates frame submission between
+both runtime variants. Other graphics APIs (including Vulkan and Metal) still
+require their own Sokol runtimes/adapters and are not enabled by this option.
+
+Build and run from the NativeKit repository root:
+
+```sh
+cmake -S . -B build-gpu -GNinja -DNK_BUILD_GPU=ON
+cmake --build build-gpu
+./build-gpu/modules/gpu/nativekit_gpu_triangle
+```
+
+For an explicit GLES3 build on Linux:
+
+```sh
+cmake -S . -B build-gpu-gles -GNinja \
+  -DNK_BUILD_GPU=ON -DNK_SOKOL_BACKEND=gles3
+cmake --build build-gpu-gles
+```
+
+For a bounded 30-frame run (suitable for Xvfb):
+
+```sh
+xvfb-run -a ./build-gpu/modules/gpu/nativekit_gpu_triangle --smoke-test
+```
+
+Generate the curated HXI binding for the adapter:
+
+```sh
+modules/gpu/tools/check-hxi.sh
+```
+
+Run the end-to-end Haxeon triangle test with:
+
+```sh
+modules/gpu/tools/test-haxeon.sh
+```
+
+The scene is assembled in Haxe from generic buffers, shaders, pipeline
+attributes, bindings, and draw calls. There is no triangle-specific operation
+in the native adapter. The stress test constructs an RGBA8 checkerboard in Haxe
+and renders 400 independently positioned textured quads per frame. State,
+inline uniform data,
+and draws are encoded with `nativekit.gpu.CommandBuffer` and sent
+through `nkgpu_submit_commands` in one HXI call. Its storage grows automatically
+and can be reset and reused without reallocating each frame. The immediate calls
+remain available for simple rendering and debugging.
+
+Renderer, resource, and builder handles are distinct one-word value types in
+the public C ABI. Their IDs encode a resource kind, generation, and pool slot;
+the raw token stays internal to the adapter. HXI projects each C type to a
+distinct nominal Haxe abstract, preventing cross-type calls before runtime.
+
+Measure the HXI call boundary independently of graphics work with:
+
+```sh
+modules/gpu/tools/benchmark.sh
+```
+
+On the initial x86-64 Linux test machine, one million scalar HXI calls took
+317–347 ms across five warm runs (about 317–347 ns per call). A single call
+which performed the same million operations in native code took about 0.8 ms.
+In the first packed-command benchmark, 10,000 simulated draw records took about
+3.33 ms as individual HXI calls and 0.030 ms as one packed submission, including
+native command parsing. This measures CPU submission overhead rather than GPU
+rendering. In the initial rendered stress run, 400 quads averaged about 2.57 ms
+of immediate CPU submission time per frame versus 0.57 ms for command encoding
+and batched submission. Both measurements exclude presentation and GPU time.
+
+The GTK backend renders through a `GtkGLArea`. Its framebuffer is not assumed to
+be zero: the prototype queries the current draw framebuffer after NativeKit
+makes the surface current and passes that value in Sokol's `sg_swapchain`.
+
+The generic NativeKit graphics-image API lets a producer expose a retained
+sampled image to consumers such as the UI compositor without exposing
+GPU-specific handles. `nativekit.gpu.RenderTarget` is the Haxe-facing typed
+wrapper for offscreen targets; its sampled image can be imported with
+`GraphicsSurface.fromImage()` and outlives the target while retained. This is
+the intended seam for future render producers (for example a 3D viewport),
+while backend-specific resource creation stays in the Sokol module.

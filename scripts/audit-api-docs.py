@@ -30,8 +30,8 @@ else:
 
 
 IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_]*"
-PUBLIC_PREFIXES = ("NK_", "NKUI_", "NKS_")
-PUBLIC_TYPE_PREFIXES = ("nk_", "nkui_", "nks_")
+PUBLIC_PREFIXES = ("NK_", "NKUI_", "NKGPU_")
+PUBLIC_TYPE_PREFIXES = ("nk_", "nkui_", "nkgpu_")
 IMPLEMENTATION_MACROS = {
     "NK_API",
     "NK_CALL",
@@ -52,12 +52,12 @@ IMPLEMENTATION_MACROS = {
     "NKUI_IN_ARRAY",
     "NKUI_UTF8",
     "NKUI_BUILDING_LIBRARY",
-    "NKS_API",
-    "NKS_OUT",
-    "NKS_UTF8",
-    "NKS_RETURNS_BORROWED_UTF8",
-    "NKS_HANDLE",
-    "NKS_HANDLE_ANNOTATION",
+    "NKGPU_API",
+    "NKGPU_OUT",
+    "NKGPU_UTF8",
+    "NKGPU_RETURNS_BORROWED_UTF8",
+    "NKGPU_HANDLE",
+    "NKGPU_HANDLE_ANNOTATION",
     "NK_HANDLE",
     "NK_DECLARE_HANDLE",
 }
@@ -337,7 +337,7 @@ def parse_c_file(index: object, path: Path, root: Path, include_fields: bool,
             continue
         kind = cursor.kind
         offset, start_line = cursor_start(cursor)
-        if kind == kinds.FUNCTION_DECL and name.startswith(("nk_", "nkui_", "nks_")):
+        if kind == kinds.FUNCTION_DECL and name.startswith(("nk_", "nkui_", "nkgpu_")):
             items.append(attach_cursor(Item("function", name, path, start_line), cursor,
                                         source, comments, offset))
         elif kind == kinds.TYPEDEF_DECL and public_name(name, type_name=True):

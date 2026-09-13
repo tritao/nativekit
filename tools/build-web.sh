@@ -38,7 +38,7 @@ emcmake cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
     -DNK_BUILD_SHARED=OFF \
     -DNK_BUILD_TESTS=OFF \
     -DNK_BUILD_EXAMPLES=ON \
-    -DNK_BUILD_SOKOL=OFF \
+    -DNK_BUILD_GPU=OFF \
     -DNK_BUILD_UI=ON \
     -DNKUI_HAXEON_MEMORY_STATS="$memory_stats" \
     -DNK_SOKOL_BACKEND=gles3 \
