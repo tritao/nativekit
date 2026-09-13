@@ -95,10 +95,9 @@ EM_BOOL key_callback(int event_type, const EmscriptenKeyboardEvent *event, void 
     if (!event || !host_state.callbacks.key)
         return EM_FALSE;
     nk::web::KeyEvent key{};
-    key.type = event_type == EMSCRIPTEN_EVENT_KEYPRESS
-                   ? nk::web::KeyEventType::character
-                   : event_type == EMSCRIPTEN_EVENT_KEYUP ? nk::web::KeyEventType::up
-                                                          : nk::web::KeyEventType::down;
+    key.type = event_type == EMSCRIPTEN_EVENT_KEYPRESS ? nk::web::KeyEventType::character
+               : event_type == EMSCRIPTEN_EVENT_KEYUP  ? nk::web::KeyEventType::up
+                                                       : nk::web::KeyEventType::down;
     key.key_code = event->keyCode;
     key.location = event->location;
     key.char_code = event->charCode;
@@ -112,15 +111,11 @@ EM_BOOL mouse_callback(int event_type, const EmscriptenMouseEvent *event, void *
     if (!event || !host_state.callbacks.pointer)
         return EM_FALSE;
     nk::web::PointerEvent pointer{};
-    pointer.type = event_type == EMSCRIPTEN_EVENT_MOUSEDOWN
-                       ? nk::web::PointerEventType::down
-                       : event_type == EMSCRIPTEN_EVENT_MOUSEUP
-                             ? nk::web::PointerEventType::up
-                             : event_type == EMSCRIPTEN_EVENT_MOUSEENTER
-                                   ? nk::web::PointerEventType::enter
-                                   : event_type == EMSCRIPTEN_EVENT_MOUSELEAVE
-                                         ? nk::web::PointerEventType::leave
-                                         : nk::web::PointerEventType::move;
+    pointer.type = event_type == EMSCRIPTEN_EVENT_MOUSEDOWN    ? nk::web::PointerEventType::down
+                   : event_type == EMSCRIPTEN_EVENT_MOUSEUP    ? nk::web::PointerEventType::up
+                   : event_type == EMSCRIPTEN_EVENT_MOUSEENTER ? nk::web::PointerEventType::enter
+                   : event_type == EMSCRIPTEN_EVENT_MOUSELEAVE ? nk::web::PointerEventType::leave
+                                                               : nk::web::PointerEventType::move;
     pointer.button = event->button;
     pointer.buttons = event->buttons;
     pointer.modifiers = modifiers(*event);
@@ -152,13 +147,10 @@ EM_BOOL wheel_callback(int, const EmscriptenWheelEvent *event, void *) {
 EM_BOOL touch_callback(int event_type, const EmscriptenTouchEvent *event, void *) {
     if (!event || !host_state.callbacks.touch)
         return EM_FALSE;
-    const auto type = event_type == EMSCRIPTEN_EVENT_TOUCHSTART
-                          ? nk::web::TouchEventType::begin
-                          : event_type == EMSCRIPTEN_EVENT_TOUCHEND
-                                ? nk::web::TouchEventType::end
-                                : event_type == EMSCRIPTEN_EVENT_TOUCHCANCEL
-                                      ? nk::web::TouchEventType::cancel
-                                      : nk::web::TouchEventType::move;
+    const auto type = event_type == EMSCRIPTEN_EVENT_TOUCHSTART    ? nk::web::TouchEventType::begin
+                      : event_type == EMSCRIPTEN_EVENT_TOUCHEND    ? nk::web::TouchEventType::end
+                      : event_type == EMSCRIPTEN_EVENT_TOUCHCANCEL ? nk::web::TouchEventType::cancel
+                                                                   : nk::web::TouchEventType::move;
     for (int index = 0; index < event->numTouches; ++index) {
         const auto &point = event->touches[index];
         if (!point.isChanged || !point.onTarget)
@@ -176,8 +168,7 @@ EM_BOOL touch_callback(int event_type, const EmscriptenTouchEvent *event, void *
 
 EM_BOOL focus_callback(int event_type, const EmscriptenFocusEvent *, void *) {
     if (host_state.callbacks.focus)
-        host_state.callbacks.focus(event_type == EMSCRIPTEN_EVENT_FOCUS,
-                                   host_state.user_data);
+        host_state.callbacks.focus(event_type == EMSCRIPTEN_EVENT_FOCUS, host_state.user_data);
     return EM_TRUE;
 }
 
@@ -216,9 +207,8 @@ EM_JS(void, nk_web_set_canvas_visible, (const char *selector, int visible), {
         canvas.style.visibility = visible ? "visible" : "hidden";
 });
 
-EM_JS(void, nk_web_set_document_title, (const char *title), {
-    document.title = UTF8ToString(title);
-});
+EM_JS(void, nk_web_set_document_title, (const char *title),
+      { document.title = UTF8ToString(title); });
 
 EM_JS(void, nk_web_set_canvas_cursor, (const char *selector, const char *cursor), {
     const canvas = document.querySelector(UTF8ToString(selector));
@@ -227,10 +217,11 @@ EM_JS(void, nk_web_set_canvas_cursor, (const char *selector, const char *cursor)
 });
 
 EM_JS(void, nk_web_configure_text_input,
-      (const char *selector, int active, int flags, int input_type, int action,
-       const char *text, int text_start, int document_length, int selection_start,
-       int selection_end, int composition_start, int composition_end, float cursor_x,
-       float cursor_y, float cursor_width, float cursor_height), {
+      (const char *selector, int active, int flags, int input_type, int action, const char *text,
+       int text_start, int document_length, int selection_start, int selection_end,
+       int composition_start, int composition_end, float cursor_x, float cursor_y,
+       float cursor_width, float cursor_height),
+      {
           const canvas = document.querySelector(UTF8ToString(selector));
           if (!canvas)
               return;
@@ -239,7 +230,7 @@ EM_JS(void, nk_web_configure_text_input,
           const multiline = !!(flags & 1);
           let input = document.getElementById(id);
           const expectedTag = multiline ? "TEXTAREA" : "INPUT";
-          if (input && input.tagName !== expectedTag) {
+          if (input &&input.tagName != = expectedTag) {
               input.remove();
               input = null;
           }
@@ -260,45 +251,46 @@ EM_JS(void, nk_web_configure_text_input,
               input.style.outline = "none";
               input._nkComposing = false;
               input._nkIgnoreInput = false;
-              const emit = (type, value, start, end) => {
+              const emit = (type, value, start, end) = > {
                   if (!input._nkActive || !Module.ccall)
                       return;
                   Module.ccall("nk_web_host_text_input_event", null,
-                               ["number", "string", "number", "number"],
-                               [type, value || "", start || 0, end || 0]);
+                               [ "number", "string", "number", "number" ],
+                               [ type, value || "", start || 0, end || 0 ]);
               };
-              input.addEventListener("compositionstart", () => {
-                  input._nkComposing = true;
-              });
-              input.addEventListener("compositionupdate", event => {
-                  input._nkComposing = true;
-                  emit(0, event.data || "", 0, 0);
-              });
-              input.addEventListener("compositionend", event => {
-                  input._nkComposing = false;
-                  input._nkIgnoreInput = true;
-                  if (event.data)
-                      emit(1, event.data, 0, 0);
-                  else
-                      emit(4, "", 0, 0);
-              });
-              input.addEventListener("input", event => {
-                  if (input._nkIgnoreInput) {
-                      input._nkIgnoreInput = false;
-                      return;
-                  }
-                  if (input._nkComposing)
-                      return;
-                  if (event.inputType === "deleteContentBackward")
-                      emit(2, "", 0, 0);
-                  else if (event.inputType === "deleteContentForward")
-                      emit(3, "", 0, 0);
-                  else if (event.inputType === "insertLineBreak")
-                      emit(1, "\n", 0, 0);
-                  else if (event.data !== null)
-                      emit(1, event.data, 0, 0);
-              });
-              const codePointToUtf16 = (value, position) => {
+              input.addEventListener("compositionstart", () = > { input._nkComposing = true; });
+              input.addEventListener(
+                  "compositionupdate", event = > {
+                      input._nkComposing = true;
+                      emit(0, event.data || "", 0, 0);
+                  });
+              input.addEventListener(
+                  "compositionend", event = > {
+                      input._nkComposing = false;
+                      input._nkIgnoreInput = true;
+                      if (event.data)
+                          emit(1, event.data, 0, 0);
+                      else
+                          emit(4, "", 0, 0);
+                  });
+              input.addEventListener(
+                  "input", event = > {
+                      if (input._nkIgnoreInput) {
+                          input._nkIgnoreInput = false;
+                          return;
+                      }
+                      if (input._nkComposing)
+                          return;
+                      if (event.inputType == = "deleteContentBackward")
+                          emit(2, "", 0, 0);
+                      else if (event.inputType == = "deleteContentForward")
+                          emit(3, "", 0, 0);
+                      else if (event.inputType == = "insertLineBreak")
+                          emit(1, "\n", 0, 0);
+                      else if (event.data != = null)
+                          emit(1, event.data, 0, 0);
+                  });
+              const codePointToUtf16 = (value, position) = > {
                   let index = 0;
                   let count = 0;
                   for (const character of value) {
@@ -309,7 +301,7 @@ EM_JS(void, nk_web_configure_text_input,
                   }
                   return index;
               };
-              const emitSelection = () => {
+              const emitSelection = () = > {
                   if (!input._nkActive)
                       return;
                   const value = input.value;
@@ -328,19 +320,22 @@ EM_JS(void, nk_web_configure_text_input,
           input._nkDocumentLength = document_length;
           input._nkCompositionStart = composition_start;
           input._nkCompositionEnd = composition_end;
-          input.type = input_type === 5 ? "password"
-                     : input_type === 1 ? "email"
-                     : input_type === 2 ? "url"
-                     : input_type === 3 ? "number"
-                     : input_type === 4 ? "tel" : "text";
+          input.type = input_type ==
+              = 5 ? "password"
+                  : input_type == = 1 ? "email"
+                                      : input_type ==
+                                        = 2 ? "url"
+                                            : input_type ==
+                                              = 3 ? "number" : input_type == = 4 ? "tel" : "text";
           input.autocomplete = "off";
           input.autocorrect = (flags & 2) ? "on" : "off";
           input.autocapitalize = (flags & 4) ? "sentences" : "off";
-          input.enterKeyHint = ["enter", "done", "go", "next", "search", "send", "enter"][action] || "enter";
-          input.inputMode = input_type === 3 ? "decimal"
-                         : input_type === 4 ? "tel"
-                         : input_type === 1 ? "email"
-                         : input_type === 2 ? "url" : "text";
+          input.enterKeyHint =
+              [ "enter", "done", "go", "next", "search", "send", "enter" ][action] || "enter";
+          input.inputMode = input_type ==
+              = 3 ? "decimal"
+                  : input_type ==
+                    = 4 ? "tel" : input_type == = 1 ? "email" : input_type == = 2 ? "url" : "text";
           input.value = UTF8ToString(text);
           input.style.left = Math.max(0, cursor_x) + "px";
           input.style.top = Math.max(0, cursor_y) + "px";
@@ -352,9 +347,9 @@ EM_JS(void, nk_web_configure_text_input,
           input.setSelectionRange(toUtf16(input.value, relativeStart),
                                   toUtf16(input.value, relativeEnd));
           if (active) {
-              if (document.activeElement !== input)
-                  input.focus({preventScroll: true});
-          } else if (document.activeElement === input) {
+              if (document.activeElement != = input)
+                  input.focus({preventScroll : true});
+          } else if (document.activeElement == = input) {
               input.blur();
           }
       });
@@ -362,7 +357,7 @@ EM_JS(void, nk_web_configure_text_input,
 EM_JS(int, nk_web_set_clipboard_text, (const char *text), {
     const value = UTF8ToString(text);
     if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(value).catch(() => {});
+        navigator.clipboard.writeText(value).catch(() = > {});
         return 1;
     }
     const input = document.createElement("textarea");
@@ -378,53 +373,57 @@ EM_JS(int, nk_web_set_clipboard_text, (const char *text), {
 });
 
 EM_JS(void, nk_web_read_clipboard_text, (double request), {
-    const complete = (result, value) => {
+    const complete = (result, value) = > {
         if (Module.ccall)
             Module.ccall("nk_web_host_clipboard_text_complete", null,
-                         ["number", "number", "string"], [request, result, value || ""]);
+                         [ "number", "number", "string" ], [ request, result, value || "" ]);
     };
     if (!navigator.clipboard || !navigator.clipboard.readText) {
         complete(-4, "");
         return;
     }
-    navigator.clipboard.readText().then(value => complete(0, value)).catch(() => complete(-1, ""));
+    navigator.clipboard.readText()
+        .then(value = > complete(0, value))
+        .catch(() = > complete(-1, ""));
 });
 
 EM_JS(void, nk_web_fetch_resource, (const char *uri, double request), {
-    const complete = (result, pointer, size) => {
+    const complete = (result, pointer, size) = > {
         if (Module.ccall)
             Module.ccall("nk_web_host_resource_complete", null,
-                         ["number", "number", "number", "number"],
-                         [request, result, pointer || 0, size || 0]);
+                         [ "number", "number", "number", "number" ],
+                         [ request, result, pointer || 0, size || 0 ]);
     };
     try {
-        fetch(UTF8ToString(uri), {credentials: "same-origin"}).then(response => {
-            if (!response.ok) {
-                complete(-1, 0, 0);
-                return;
-            }
-            return response.arrayBuffer().then(buffer => {
-                const bytes = new Uint8Array(buffer);
-                if (bytes.length > 0xffffffff) {
-                    complete(-8, 0, 0);
-                    return;
-                }
-                const pointer = bytes.length ? _malloc(bytes.length) : 0;
-                if (pointer)
-                    HEAPU8.set(bytes, pointer);
-                complete(0, pointer, bytes.length);
-                if (pointer)
-                    _free(pointer);
-            });
-        }).catch(() => complete(-1, 0, 0));
+        fetch(UTF8ToString(uri), {credentials : "same-origin"})
+            .then(response = >
+                             {
+                                 if (!response.ok) {
+                                     complete(-1, 0, 0);
+                                     return;
+                                 }
+                                 return response.arrayBuffer().then(buffer = > {
+                                     const bytes = new Uint8Array(buffer);
+                                     if (bytes.length > 0xffffffff) {
+                                         complete(-8, 0, 0);
+                                         return;
+                                     }
+                                     const pointer = bytes.length ? _malloc(bytes.length) : 0;
+                                     if (pointer)
+                                         HEAPU8.set(bytes, pointer);
+                                     complete(0, pointer, bytes.length);
+                                     if (pointer)
+                                         _free(pointer);
+                                 });
+                             })
+            .catch(() = > complete(-1, 0, 0));
     } catch (error) {
         complete(-1, 0, 0);
     }
 });
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(int type, const char *text,
-                                                                    int selection_start,
-                                                                    int selection_end) {
+extern "C" EMSCRIPTEN_KEEPALIVE void
+nk_web_host_text_input_event(int type, const char *text, int selection_start, int selection_end) {
     if (!host_state.callbacks.text_input)
         return;
     nk::web::TextInputEvent event{};
@@ -435,8 +434,8 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(int type, cons
     host_state.callbacks.text_input(event, host_state.user_data);
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_clipboard_text_complete(
-    uint32_t request, nk_result result, const char *text) {
+extern "C" EMSCRIPTEN_KEEPALIVE void
+nk_web_host_clipboard_text_complete(uint32_t request, nk_result result, const char *text) {
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_CLIPBOARD_TEXT_COMPLETE;
     event.request_id = static_cast<nk_request_id>(request);
@@ -449,8 +448,8 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_clipboard_text_complete(
     nk::core::push_event(std::move(event));
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_complete(
-    uint32_t request, nk_result result, const void *data, uint32_t size) {
+extern "C" EMSCRIPTEN_KEEPALIVE void
+nk_web_host_resource_complete(uint32_t request, nk_result result, const void *data, uint32_t size) {
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_RESOURCE_DATA_COMPLETE;
     event.request_id = static_cast<nk_request_id>(request);
@@ -482,10 +481,8 @@ bool canvas_size(CanvasSize *out_size) noexcept {
     const double scale = std::max(1.0, emscripten_get_device_pixel_ratio());
     out_size->width = std::max(1, static_cast<int32_t>(std::lround(width)));
     out_size->height = std::max(1, static_cast<int32_t>(std::lround(height)));
-    out_size->framebuffer_width =
-        std::max(1, static_cast<int32_t>(std::lround(width * scale)));
-    out_size->framebuffer_height =
-        std::max(1, static_cast<int32_t>(std::lround(height * scale)));
+    out_size->framebuffer_width = std::max(1, static_cast<int32_t>(std::lround(width * scale)));
+    out_size->framebuffer_height = std::max(1, static_cast<int32_t>(std::lround(height * scale)));
     out_size->scale = static_cast<float>(scale);
     return true;
 }
@@ -504,8 +501,7 @@ bool set_canvas_size(int32_t width, int32_t height) noexcept {
 
 bool set_canvas_framebuffer_size(const CanvasSize &size) noexcept {
     return emscripten_set_canvas_element_size(canvas_selector(), size.framebuffer_width,
-                                              size.framebuffer_height) ==
-           EMSCRIPTEN_RESULT_SUCCESS;
+                                              size.framebuffer_height) == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
 bool set_canvas_visible(bool visible) noexcept {
@@ -536,9 +532,8 @@ void configure_text_input(const TextInputConfig &config) noexcept {
         config.composition_start == NK_TEXT_POSITION_NONE
             ? -1
             : static_cast<int>(config.composition_start),
-        config.composition_end == NK_TEXT_POSITION_NONE
-            ? -1
-            : static_cast<int>(config.composition_end),
+        config.composition_end == NK_TEXT_POSITION_NONE ? -1
+                                                        : static_cast<int>(config.composition_end),
         config.cursor_x, config.cursor_y, config.cursor_width, config.cursor_height);
 }
 
@@ -593,8 +588,7 @@ bool make_context_current(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context) noexcept {
 }
 
 bool request_fullscreen() noexcept {
-    return emscripten_request_fullscreen(canvas_selector(), EM_TRUE) ==
-           EMSCRIPTEN_RESULT_SUCCESS;
+    return emscripten_request_fullscreen(canvas_selector(), EM_TRUE) == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
 bool exit_fullscreen() noexcept {
@@ -602,8 +596,7 @@ bool exit_fullscreen() noexcept {
 }
 
 bool request_pointer_lock() noexcept {
-    return emscripten_request_pointerlock(canvas_selector(), EM_TRUE) ==
-           EMSCRIPTEN_RESULT_SUCCESS;
+    return emscripten_request_pointerlock(canvas_selector(), EM_TRUE) == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
 bool exit_pointer_lock() noexcept {
@@ -660,11 +653,9 @@ void remove_callbacks() noexcept {
     emscripten_set_touchend_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
     emscripten_set_touchmove_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
     emscripten_set_touchcancel_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE,
-                                    nullptr);
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
-    emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE,
-                                     nullptr);
+    emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
     emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
     emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
     emscripten_set_webglcontextlost_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);

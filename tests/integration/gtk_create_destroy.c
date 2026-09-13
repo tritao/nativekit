@@ -49,14 +49,12 @@ int main(void) {
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
-    const nk_capabilities expected = NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG |
-                                     NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
-                                     NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
-                                     NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE | NK_CAP_CURSOR |
-                                     NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
-                                     NK_CAP_WINDOW_STYLING | NK_CAP_MONITOR |
-                                     NK_CAP_MONITOR_FULLSCREEN | NK_CAP_RESOURCE_IO |
-                                     NK_CAP_VULKAN_SURFACE;
+    const nk_capabilities expected =
+        NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP |
+        NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION | NK_CAP_INPUT |
+        NK_CAP_OPENGL_SURFACE | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
+        NK_CAP_WINDOW_STYLING | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_RESOURCE_IO |
+        NK_CAP_VULKAN_SURFACE;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
@@ -109,8 +107,8 @@ int main(void) {
                NK_ERROR_BUFFER_TOO_SMALL);
         assert(extension_count == 2);
         const char *extensions[2] = {0};
-        assert(nk_vulkan_get_required_instance_extensions(window, extensions,
-                                                           &extension_count) == NK_OK);
+        assert(nk_vulkan_get_required_instance_extensions(window, extensions, &extension_count) ==
+               NK_OK);
         assert(strcmp(extensions[0], "VK_KHR_surface") == 0);
         assert(strcmp(extensions[1], "VK_KHR_xlib_surface") == 0);
     }
@@ -153,8 +151,8 @@ int main(void) {
     nk_window_frame_extents frame_extents = {0};
     frame_extents.struct_size = sizeof(frame_extents);
     assert(nk_window_get_frame_extents(window, &frame_extents) == NK_OK);
-    assert(frame_extents.left >= 0 && frame_extents.top >= 0 &&
-           frame_extents.right >= 0 && frame_extents.bottom >= 0);
+    assert(frame_extents.left >= 0 && frame_extents.top >= 0 && frame_extents.right >= 0 &&
+           frame_extents.bottom >= 0);
     uint32_t hovered = 1;
     assert(nk_window_get_hovered(window, &hovered) == NK_OK);
     assert(hovered == 0);
@@ -200,8 +198,7 @@ int main(void) {
     assert(nk_monitor_get_current_mode(primary_monitor, &video_mode) == NK_OK);
     assert(video_mode.width > 0 && video_mode.height > 0);
     uint32_t mode_count = 0;
-    assert(nk_monitor_get_modes(primary_monitor, NULL, &mode_count) ==
-           NK_ERROR_BUFFER_TOO_SMALL);
+    assert(nk_monitor_get_modes(primary_monitor, NULL, &mode_count) == NK_ERROR_BUFFER_TOO_SMALL);
     assert(mode_count == 1);
     nk_video_mode modes[1] = {{0}};
     modes[0].struct_size = sizeof(modes[0]);
@@ -228,20 +225,18 @@ int main(void) {
     assert(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_HIDDEN) == NK_OK);
     assert(nk_window_get_cursor_mode(window, &cursor_mode) == NK_OK);
     assert(cursor_mode == NK_CURSOR_MODE_HIDDEN);
-    assert(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_DISABLED) ==
-           NK_ERROR_UNSUPPORTED);
+    assert(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_DISABLED) == NK_ERROR_UNSUPPORTED);
     assert(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_NORMAL) == NK_OK);
     assert(nk_window_show(window, 1) == NK_OK);
     assert(nk_window_show(window, 1) == NK_OK);
-    nk_event shown = wait_for_window_state(window, NK_WINDOW_STATE_VISIBLE,
-                                           NK_WINDOW_STATE_VISIBLE);
+    nk_event shown =
+        wait_for_window_state(window, NK_WINDOW_STATE_VISIBLE, NK_WINDOW_STATE_VISIBLE);
     assert(shown.data_size == sizeof(nk_window_state));
     assert((((const nk_window_state *)shown.data)->flags & NK_WINDOW_STATE_VISIBLE) != 0);
     nk_event_release(&shown);
     assert(nk_window_is_visible(window, &visible) == NK_OK);
     assert(visible == 1);
-    const nk_result capture_result =
-        nk_window_set_cursor_mode(window, NK_CURSOR_MODE_CAPTURED);
+    const nk_result capture_result = nk_window_set_cursor_mode(window, NK_CURSOR_MODE_CAPTURED);
     if (capture_result == NK_OK) {
         assert(nk_window_get_cursor_mode(window, &cursor_mode) == NK_OK);
         assert(cursor_mode == NK_CURSOR_MODE_CAPTURED);
@@ -257,9 +252,8 @@ int main(void) {
     nk_event_release(&hidden);
     assert(nk_window_is_visible(window, &visible) == NK_OK);
     assert(visible == 0);
-    const unsigned char cursor_pixels[16] = {
-        255, 255, 255, 255, 0, 0, 0, 255,
-        0,   0,   0,   255, 255, 255, 255, 255};
+    const unsigned char cursor_pixels[16] = {255, 255, 255, 255, 0,   0,   0,   255,
+                                             0,   0,   0,   255, 255, 255, 255, 255};
     nk_cursor_image cursor_image = {0};
     cursor_image.struct_size = sizeof(cursor_image);
     cursor_image.width = 2;
@@ -283,8 +277,8 @@ int main(void) {
         assert(nk_surface_make_current(surface) == NK_OK);
         int32_t framebuffer_width = 0;
         int32_t framebuffer_height = 0;
-        assert(nk_surface_get_framebuffer_size(surface, &framebuffer_width,
-                                               &framebuffer_height) == NK_OK);
+        assert(nk_surface_get_framebuffer_size(surface, &framebuffer_width, &framebuffer_height) ==
+               NK_OK);
         assert(framebuffer_width > 0 && framebuffer_height > 0);
         nk_graphics_proc generic_proc = NULL;
         clear_color_proc clear_color = NULL;

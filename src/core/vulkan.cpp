@@ -55,7 +55,7 @@ struct WaylandSurfaceCreateInfo {
 };
 
 using CreateXlibSurface = VkResult (*)(VkInstance, const XlibSurfaceCreateInfo *, const void *,
-                                      VkSurfaceKHR *);
+                                       VkSurfaceKHR *);
 using CreateWaylandSurface = VkResult (*)(VkInstance, const WaylandSurfaceCreateInfo *,
                                           const void *, VkSurfaceKHR *);
 
@@ -130,37 +130,33 @@ uint32_t NK_CALL nk_vulkan_supported(void) {
 }
 
 nk_result NK_CALL nk_vulkan_get_required_instance_extensions(nk_handle window,
-                                                              const char **extensions,
-                                                              uint32_t *inout_count) {
-    return nk::core::result_boundary("unexpected error while querying Vulkan extensions",
-                                     [&]() -> nk_result {
-                                         nk::core::clear_error();
-                                         if (!inout_count) {
-                                             nk::core::set_error("inout_count is required");
-                                             return NK_ERROR_INVALID_ARGUMENT;
-                                         }
+                                                             const char **extensions,
+                                                             uint32_t *inout_count) {
+    return nk::core::result_boundary(
+        "unexpected error while querying Vulkan extensions", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (!inout_count) {
+                nk::core::set_error("inout_count is required");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
 #if defined(NK_BACKEND_GTK)
-                                         if (const auto result = nk::core::require_ui_thread();
-                                             result != NK_OK)
-                                             return result;
-                                         if (!get_instance_proc_addr())
-                                             return fail_loader("Vulkan loader is unavailable");
-                                         nk_native_window native{};
-                                         if (const auto result = native_window(window, native);
-                                             result != NK_OK)
-                                             return result;
-                                         static const char *surface = "VK_KHR_surface";
-                                         const char *required[] = {
-                                             surface,
-                                             nk::core::vulkan::platform_extension(native.kind)};
-                                         if (!extensions || *inout_count < 2) {
-                                             *inout_count = 2;
-                                             return NK_ERROR_BUFFER_TOO_SMALL;
-                                         }
-                                         extensions[0] = required[0];
-                                         extensions[1] = required[1];
-                                         *inout_count = 2;
-                                         return NK_OK;
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            if (!get_instance_proc_addr())
+                return fail_loader("Vulkan loader is unavailable");
+            nk_native_window native{};
+            if (const auto result = native_window(window, native); result != NK_OK)
+                return result;
+            static const char *surface = "VK_KHR_surface";
+            const char *required[] = {surface, nk::core::vulkan::platform_extension(native.kind)};
+            if (!extensions || *inout_count < 2) {
+                *inout_count = 2;
+                return NK_ERROR_BUFFER_TOO_SMALL;
+            }
+            extensions[0] = required[0];
+            extensions[1] = required[1];
+            *inout_count = 2;
+            return NK_OK;
 #elif defined(NK_BACKEND_ANDROID)
                                          if (const auto result = nk::core::require_ui_thread();
                                              result != NK_OK)
@@ -187,65 +183,57 @@ nk_result NK_CALL nk_vulkan_get_required_instance_extensions(nk_handle window,
                                          (void)extensions;
                                          return fail_loader("Vulkan surfaces are unsupported");
 #endif
-                                     });
+        });
 }
 
-nk_result NK_CALL nk_vulkan_create_surface(nk_handle window, void *instance,
-                                           const void *allocator,
+nk_result NK_CALL nk_vulkan_create_surface(nk_handle window, void *instance, const void *allocator,
                                            nk_vulkan_surface *out_surface) {
-    return nk::core::result_boundary("unexpected error while creating a Vulkan surface",
-                                     [&]() -> nk_result {
-                                         nk::core::clear_error();
+    return nk::core::result_boundary(
+        "unexpected error while creating a Vulkan surface", [&]() -> nk_result {
+            nk::core::clear_error();
 #if defined(NK_BACKEND_GTK)
-                                         if (const auto result = nk::core::require_ui_thread();
-                                             result != NK_OK)
-                                             return result;
-                                         if (!instance || !out_surface) {
-                                             nk::core::set_error(
-                                                 "instance and out_surface are required");
-                                             return NK_ERROR_INVALID_ARGUMENT;
-                                         }
-                                         *out_surface = NK_INVALID_VULKAN_SURFACE;
-                                         const auto get_proc = get_instance_proc_addr();
-                                         if (!get_proc)
-                                             return fail_loader("Vulkan loader is unavailable");
-                                         nk_native_window native{};
-                                         if (const auto result = native_window(window, native);
-                                             result != NK_OK)
-                                             return result;
-                                         VkSurfaceKHR surface = 0;
-                                         VkResult result = -1;
-                                         if (native.kind == NK_NATIVE_WINDOW_X11) {
-                                             const auto create = reinterpret_cast<CreateXlibSurface>(
-                                                 get_proc(instance, "vkCreateXlibSurfaceKHR"));
-                                             if (!create)
-                                                 return fail_loader(
-                                                     "VK_KHR_xlib_surface is not enabled");
-                                             const XlibSurfaceCreateInfo info{
-                                                 vk_structure_type_xlib_surface_create_info,
-                                                 nullptr, 0, reinterpret_cast<void *>(native.display),
-                                                 static_cast<unsigned long>(native.window)};
-                                             result = create(instance, &info, allocator, &surface);
-                                         } else {
-                                             const auto create =
-                                                 reinterpret_cast<CreateWaylandSurface>(get_proc(
-                                                     instance, "vkCreateWaylandSurfaceKHR"));
-                                             if (!create)
-                                                 return fail_loader(
-                                                     "VK_KHR_wayland_surface is not enabled");
-                                             const WaylandSurfaceCreateInfo info{
-                                                 vk_structure_type_wayland_surface_create_info,
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            if (!instance || !out_surface) {
+                nk::core::set_error("instance and out_surface are required");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            *out_surface = NK_INVALID_VULKAN_SURFACE;
+            const auto get_proc = get_instance_proc_addr();
+            if (!get_proc)
+                return fail_loader("Vulkan loader is unavailable");
+            nk_native_window native{};
+            if (const auto result = native_window(window, native); result != NK_OK)
+                return result;
+            VkSurfaceKHR surface = 0;
+            VkResult result = -1;
+            if (native.kind == NK_NATIVE_WINDOW_X11) {
+                const auto create = reinterpret_cast<CreateXlibSurface>(
+                    get_proc(instance, "vkCreateXlibSurfaceKHR"));
+                if (!create)
+                    return fail_loader("VK_KHR_xlib_surface is not enabled");
+                const XlibSurfaceCreateInfo info{vk_structure_type_xlib_surface_create_info,
                                                  nullptr, 0,
                                                  reinterpret_cast<void *>(native.display),
-                                                 reinterpret_cast<void *>(native.window)};
-                                             result = create(instance, &info, allocator, &surface);
-                                         }
-                                         if (result != vk_success) {
-                                             nk::core::set_error("Vulkan surface creation failed");
-                                             return NK_ERROR_UNKNOWN;
-                                         }
-                                         *out_surface = surface;
-                                         return NK_OK;
+                                                 static_cast<unsigned long>(native.window)};
+                result = create(instance, &info, allocator, &surface);
+            } else {
+                const auto create = reinterpret_cast<CreateWaylandSurface>(
+                    get_proc(instance, "vkCreateWaylandSurfaceKHR"));
+                if (!create)
+                    return fail_loader("VK_KHR_wayland_surface is not enabled");
+                const WaylandSurfaceCreateInfo info{vk_structure_type_wayland_surface_create_info,
+                                                    nullptr, 0,
+                                                    reinterpret_cast<void *>(native.display),
+                                                    reinterpret_cast<void *>(native.window)};
+                result = create(instance, &info, allocator, &surface);
+            }
+            if (result != vk_success) {
+                nk::core::set_error("Vulkan surface creation failed");
+                return NK_ERROR_UNKNOWN;
+            }
+            *out_surface = surface;
+            return NK_OK;
 #elif defined(NK_BACKEND_ANDROID)
                                          if (const auto result = nk::core::require_ui_thread();
                                              result != NK_OK)
@@ -290,46 +278,43 @@ nk_result NK_CALL nk_vulkan_create_surface(nk_handle window, void *instance,
                                          (void)out_surface;
                                          return fail_loader("Vulkan surfaces are unsupported");
 #endif
-                                     });
+        });
 }
 
 nk_result NK_CALL nk_vulkan_destroy_surface(void *instance, nk_vulkan_surface surface,
                                             const void *allocator) {
-    return nk::core::result_boundary("unexpected error while destroying a Vulkan surface",
-                                     [&]() -> nk_result {
-                                         nk::core::clear_error();
+    return nk::core::result_boundary(
+        "unexpected error while destroying a Vulkan surface", [&]() -> nk_result {
+            nk::core::clear_error();
 #if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_ANDROID)
-                                         if (const auto result = nk::core::require_ui_thread();
-                                             result != NK_OK)
-                                             return result;
-                                         if (!instance || !surface) {
-                                             nk::core::set_error(
-                                                 "instance and surface are required");
-                                             return NK_ERROR_INVALID_ARGUMENT;
-                                         }
-                                         const auto get_proc = get_instance_proc_addr();
-                                         if (!get_proc)
-                                             return fail_loader("Vulkan loader is unavailable");
-                                         const auto destroy = reinterpret_cast<DestroySurface>(
-                                             get_proc(instance, "vkDestroySurfaceKHR"));
-                                         if (!destroy)
-                                             return fail_loader(
-                                                 "VK_KHR_surface is not enabled on the instance");
-                                         destroy(instance, surface, allocator);
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            if (!instance || !surface) {
+                nk::core::set_error("instance and surface are required");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            const auto get_proc = get_instance_proc_addr();
+            if (!get_proc)
+                return fail_loader("Vulkan loader is unavailable");
+            const auto destroy =
+                reinterpret_cast<DestroySurface>(get_proc(instance, "vkDestroySurfaceKHR"));
+            if (!destroy)
+                return fail_loader("VK_KHR_surface is not enabled on the instance");
+            destroy(instance, surface, allocator);
 #if defined(NK_BACKEND_ANDROID)
-                                         if (const auto found = android_surface_windows.find(surface);
-                                             found != android_surface_windows.end()) {
-                                             ANativeWindow_release(found->second);
-                                             android_surface_windows.erase(found);
-                                         }
+            if (const auto found = android_surface_windows.find(surface);
+                found != android_surface_windows.end()) {
+                ANativeWindow_release(found->second);
+                android_surface_windows.erase(found);
+            }
 #endif
-                                         return NK_OK;
+            return NK_OK;
 #else
                                          (void)instance;
                                          (void)surface;
                                          (void)allocator;
                                          return fail_loader("Vulkan surfaces are unsupported");
 #endif
-                                     });
+        });
 }
 }

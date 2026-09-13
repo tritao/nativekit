@@ -43,8 +43,7 @@ static int runtime_config_matches(const sg_desc *desc) {
 int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device) {
     if (!desc || !device.id || runtime_references == UINT32_MAX)
         return 0;
-    if (runtime_references &&
-        (!runtime_config_matches(desc) || runtime_device != device.id))
+    if (runtime_references && (!runtime_config_matches(desc) || runtime_device != device.id))
         return 0;
     if (!runtime_references) {
         if (sg_isvalid())

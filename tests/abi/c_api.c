@@ -42,14 +42,12 @@ int main(void) {
         NK_INVALID_HANDLE, NULL, &vulkan_extension_count);
     assert(vulkan_extensions == NK_ERROR_INVALID_HANDLE ||
            vulkan_extensions == NK_ERROR_UNSUPPORTED);
-    nk_result vulkan_surface =
-        nk_vulkan_create_surface(NK_INVALID_HANDLE, NULL, NULL, NULL);
-    assert(vulkan_surface == NK_ERROR_INVALID_ARGUMENT ||
-           vulkan_surface == NK_ERROR_UNSUPPORTED);
+    nk_result vulkan_surface = nk_vulkan_create_surface(NK_INVALID_HANDLE, NULL, NULL, NULL);
+    assert(vulkan_surface == NK_ERROR_INVALID_ARGUMENT || vulkan_surface == NK_ERROR_UNSUPPORTED);
     uint32_t monitor_count = 0;
     nk_result monitor_result = nk_monitor_list(NULL, &monitor_count);
-    assert(monitor_result == NK_ERROR_BUFFER_TOO_SMALL ||
-           monitor_result == NK_ERROR_UNSUPPORTED || monitor_result == NK_OK);
+    assert(monitor_result == NK_ERROR_BUFFER_TOO_SMALL || monitor_result == NK_ERROR_UNSUPPORTED ||
+           monitor_result == NK_OK);
     uint32_t joystick_count = 0;
     nk_result joystick_result = nk_joystick_list(NULL, &joystick_count);
     assert(joystick_result == NK_ERROR_BUFFER_TOO_SMALL ||
@@ -60,13 +58,13 @@ int main(void) {
     assert(joystick_diagnostic_result == NK_ERROR_BUFFER_TOO_SMALL ||
            joystick_diagnostic_result == NK_ERROR_UNSUPPORTED);
     uint32_t mapped = 0;
-    assert(nk_gamepad_add_mapping(
-               "03000000112200003344000055660000,ABI Gamepad,a:b0,leftx:a0,") == NK_OK);
+    assert(nk_gamepad_add_mapping("03000000112200003344000055660000,ABI Gamepad,a:b0,leftx:a0,") ==
+           NK_OK);
     uint32_t mappings_added = 0;
-    assert(nk_gamepad_add_mappings(
-               "# mappings\n"
-               "03000000112200003344000055660001,ABI Bulk,a:b0,platform:Linux,\n",
-               &mappings_added) == NK_OK);
+    assert(
+        nk_gamepad_add_mappings("# mappings\n"
+                                "03000000112200003344000055660001,ABI Bulk,a:b0,platform:Linux,\n",
+                                &mappings_added) == NK_OK);
 #if defined(__linux__) && !defined(__ANDROID__)
     assert(mappings_added == 1);
 #endif
@@ -90,8 +88,7 @@ int main(void) {
     int32_t window_height = 0;
     nk_result geometry_result =
         nk_window_get_size(NK_INVALID_HANDLE, &window_width, &window_height);
-    assert(geometry_result == NK_ERROR_INVALID_HANDLE ||
-           geometry_result == NK_ERROR_UNSUPPORTED);
+    assert(geometry_result == NK_ERROR_INVALID_HANDLE || geometry_result == NK_ERROR_UNSUPPORTED);
     nk_input_action input_action = NK_INPUT_RELEASE;
     nk_result input_result = nk_key_get_state(NK_INVALID_HANDLE, NK_KEY_A, &input_action);
     assert(input_result == NK_ERROR_INVALID_HANDLE || input_result == NK_ERROR_UNSUPPORTED);
@@ -108,8 +105,7 @@ int main(void) {
     surface_options.width = 1;
     surface_options.height = 1;
     nk_handle surface = NK_INVALID_HANDLE;
-    nk_result surface_result =
-        nk_surface_create(NK_INVALID_HANDLE, &surface_options, &surface);
+    nk_result surface_result = nk_surface_create(NK_INVALID_HANDLE, &surface_options, &surface);
     assert(surface_result == NK_ERROR_INVALID_HANDLE || surface_result == NK_ERROR_UNSUPPORTED);
     nk_mobile_host_options mobile = {0};
     mobile.struct_size = sizeof(mobile);
@@ -117,10 +113,8 @@ int main(void) {
     nk_handle mobile_host = NK_INVALID_HANDLE;
     nk_result mobile_result = nk_mobile_host_attach(&mobile, &mobile_host);
     assert(mobile_result == NK_ERROR_INVALID_ARGUMENT || mobile_result == NK_ERROR_UNSUPPORTED);
-    assert(nk_mobile_host_dispatch_event(NK_INVALID_HANDLE, NULL) ==
-           NK_ERROR_INVALID_ARGUMENT);
-    assert(nk_mobile_host_set_drop_enabled(NK_INVALID_HANDLE, 2) ==
-           NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_mobile_host_dispatch_event(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_mobile_host_set_drop_enabled(NK_INVALID_HANDLE, 2) == NK_ERROR_INVALID_ARGUMENT);
     uint32_t can_navigate = 0;
     nk_result history_result = nk_webview_can_go_back(NK_INVALID_HANDLE, &can_navigate);
     assert(history_result == NK_ERROR_INVALID_HANDLE || history_result == NK_ERROR_UNSUPPORTED);
@@ -134,8 +128,7 @@ int main(void) {
     invalid_resource.struct_size = sizeof(invalid_resource);
     assert(nk_resource_event_item(NULL, 0, &invalid_resource) == NK_ERROR_INVALID_ARGUMENT);
     uint32_t persisted_flags = 0;
-    assert(nk_resource_get_persisted_access(NULL, &persisted_flags) ==
-           NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_resource_get_persisted_access(NULL, &persisted_flags) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_resource_set_persisted_access(NULL, 0, &persisted_flags) ==
            NK_ERROR_INVALID_ARGUMENT);
     nk_resource local_resource = {0};
@@ -211,7 +204,10 @@ int main(void) {
         char text[13];
     } drop_test_payload;
     drop_test_payload drop_data = {
-        {offsetof(drop_test_payload, resources), offsetof(drop_test_payload, text), 12.0f, 24.0f,
+        {offsetof(drop_test_payload, resources),
+         offsetof(drop_test_payload, text),
+         12.0f,
+         24.0f,
          {0, 0}},
         {0, 1, offsetof(drop_test_payload, item), offsetof(drop_test_payload, uri)},
         {NK_RESOURCE_READABLE, offsetof(drop_test_payload, uri), 0, 0},
@@ -230,8 +226,7 @@ int main(void) {
     assert(memcmp(share_string, "dropped text", 12) == 0);
     nk_resource_stream_info stream_info = {0};
     stream_info.struct_size = sizeof(stream_info);
-    assert(nk_resource_stream_info_get(NK_INVALID_HANDLE, &stream_info) ==
-           NK_ERROR_INVALID_HANDLE);
+    assert(nk_resource_stream_info_get(NK_INVALID_HANDLE, &stream_info) == NK_ERROR_INVALID_HANDLE);
     assert(nk_resource_read(NK_INVALID_HANDLE, NULL, 0, &stream_info.size) ==
            NK_ERROR_INVALID_HANDLE);
     assert(nk_resource_write(NK_INVALID_HANDLE, NULL, 0, &stream_info.size) ==

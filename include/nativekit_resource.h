@@ -203,8 +203,8 @@ NK_API nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource);
 /** Launches the platform share UI with optional text and URI resources. */
 NK_API nk_result NK_CALL nk_share(const nk_share_options *options);
 /** Copies URI resources into the system clipboard. */
-NK_API nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources NK_IN_ARRAY(resource_count),
-                                                    uint32_t resource_count);
+NK_API nk_result NK_CALL nk_clipboard_set_resources(
+    const nk_resource *resources NK_IN_ARRAY(resource_count), uint32_t resource_count);
 /** Starts an asynchronous read of URI resources from the system clipboard. */
 NK_API nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request NK_OUT);
 
@@ -217,8 +217,9 @@ NK_API nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
                                                  const nk_file_dialog_options *options,
                                                  nk_request_id *out_request NK_OUT);
 /** Starts an asynchronous native URI-resource directory dialog. */
-NK_API nk_result NK_CALL nk_dialog_select_resource_directory(
-    nk_handle parent, const nk_file_dialog_options *options, nk_request_id *out_request NK_OUT);
+NK_API nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle parent,
+                                                             const nk_file_dialog_options *options,
+                                                             nk_request_id *out_request NK_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Resource event helpers                                                    */
@@ -263,8 +264,7 @@ NK_API nk_result NK_CALL nk_resource_get_persisted_access(const nk_resource *res
  * synchronously and may be called from worker threads. A successful read may
  * return fewer bytes than requested; zero bytes means end of stream.
  */
-NK_API nk_result NK_CALL nk_resource_open(const nk_resource *resource,
-                                          nk_resource_open_flags flags,
+NK_API nk_result NK_CALL nk_resource_open(const nk_resource *resource, nk_resource_open_flags flags,
                                           nk_handle *out_stream NK_OUT);
 /**
  * Starts an asynchronous read of the complete URI resource. Completion is
@@ -283,8 +283,8 @@ NK_API nk_result NK_CALL nk_resource_read(nk_handle stream, void *buffer, uint64
 NK_API nk_result NK_CALL nk_resource_write(nk_handle stream, const void *buffer, uint64_t size,
                                            uint64_t *out_written);
 /** Moves the stream position and returns the resulting absolute byte offset. */
-NK_API nk_result NK_CALL nk_resource_seek(nk_handle stream, int64_t offset,
-                                          nk_seek_origin origin, uint64_t *out_position);
+NK_API nk_result NK_CALL nk_resource_seek(nk_handle stream, int64_t offset, nk_seek_origin origin,
+                                          uint64_t *out_position);
 /** Closes a resource stream and invalidates its handle. */
 NK_API nk_result NK_CALL nk_resource_close(nk_handle stream);
 

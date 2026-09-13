@@ -19,7 +19,8 @@ static_assert(offsetof(PreparedVertex, v) == offsetof(NVGvertex, v));
 static_assert(sizeof(PreparedPathRange) == sizeof(NVGpreparedPath));
 static_assert(offsetof(PreparedPathRange, fill_offset) == offsetof(NVGpreparedPath, fillOffset));
 static_assert(offsetof(PreparedPathRange, fill_count) == offsetof(NVGpreparedPath, fillCount));
-static_assert(offsetof(PreparedPathRange, stroke_offset) == offsetof(NVGpreparedPath, strokeOffset));
+static_assert(offsetof(PreparedPathRange, stroke_offset) ==
+              offsetof(NVGpreparedPath, strokeOffset));
 static_assert(offsetof(PreparedPathRange, stroke_count) == offsetof(NVGpreparedPath, strokeCount));
 static_assert(offsetof(PreparedPathRange, closed) == offsetof(NVGpreparedPath, closed));
 static_assert(offsetof(PreparedPathRange, convex) == offsetof(NVGpreparedPath, convex));
@@ -77,7 +78,8 @@ bool prepare(NVGpathBuilder *builder, const PathPreparationParams &params, bool 
         reset_geometry(output);
         return false;
     }
-    std::copy(std::begin(native_output.bounds), std::end(native_output.bounds), output.bounds.begin());
+    std::copy(std::begin(native_output.bounds), std::end(native_output.bounds),
+              output.bounds.begin());
     output.fringe_width = native_output.fringeWidth;
     output.stroke_width = native_output.strokeWidth;
     output.fill_rule = static_cast<PathFillRule>(native_output.fillRule);
@@ -112,8 +114,7 @@ bool PreparedPath::set(PreparedPathKind kind, const PreparedGeometry &geometry,
     return true;
 }
 
-bool PreparedPath::set_view(PreparedPathKind kind,
-                            std::shared_ptr<const PreparedGeometry> geometry,
+bool PreparedPath::set_view(PreparedPathKind kind, std::shared_ptr<const PreparedGeometry> geometry,
                             const PreparedPaint &paint) {
     geometry_view_ = std::move(geometry);
     data_ = {};

@@ -10,8 +10,7 @@ bool FrameResources::bind_path(ResourceId id, const PreparedPathData &path,
     return true;
 }
 
-bool FrameResources::bind_path(ResourceId id, const PreparedPath &path,
-                               uint32_t operation_index) {
+bool FrameResources::bind_path(ResourceId id, const PreparedPath &path, uint32_t operation_index) {
     return bind_path(id, path.data(), operation_index);
 }
 

@@ -17,11 +17,7 @@ struct CanvasSize {
     float scale = 1.0f;
 };
 
-enum class KeyEventType : uint8_t {
-    down,
-    up,
-    character
-};
+enum class KeyEventType : uint8_t { down, up, character };
 
 struct KeyEvent {
     KeyEventType type = KeyEventType::down;
@@ -32,14 +28,7 @@ struct KeyEvent {
     bool repeat = false;
 };
 
-enum class PointerEventType : uint8_t {
-    move,
-    down,
-    up,
-    enter,
-    leave,
-    wheel
-};
+enum class PointerEventType : uint8_t { move, down, up, enter, leave, wheel };
 
 struct PointerEvent {
     PointerEventType type = PointerEventType::move;
@@ -52,12 +41,7 @@ struct PointerEvent {
     double wheel_y = 0.0;
 };
 
-enum class TouchEventType : uint8_t {
-    begin,
-    move,
-    end,
-    cancel
-};
+enum class TouchEventType : uint8_t { begin, move, end, cancel };
 
 struct TouchEvent {
     TouchEventType type = TouchEventType::move;

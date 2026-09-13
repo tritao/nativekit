@@ -355,68 +355,120 @@ nk_key key_from_gdk(guint value) {
     if (value >= GDK_KEY_KP_0 && value <= GDK_KEY_KP_9)
         return NK_KEY_KP_0 + value - GDK_KEY_KP_0;
     switch (value) {
-    case GDK_KEY_space: return NK_KEY_SPACE;
-    case GDK_KEY_apostrophe: return NK_KEY_APOSTROPHE;
-    case GDK_KEY_comma: return NK_KEY_COMMA;
-    case GDK_KEY_minus: return NK_KEY_MINUS;
-    case GDK_KEY_period: return NK_KEY_PERIOD;
-    case GDK_KEY_slash: return NK_KEY_SLASH;
-    case GDK_KEY_semicolon: return NK_KEY_SEMICOLON;
-    case GDK_KEY_equal: return NK_KEY_EQUAL;
-    case GDK_KEY_bracketleft: return NK_KEY_LEFT_BRACKET;
-    case GDK_KEY_backslash: return NK_KEY_BACKSLASH;
-    case GDK_KEY_bracketright: return NK_KEY_RIGHT_BRACKET;
-    case GDK_KEY_grave: return NK_KEY_GRAVE_ACCENT;
-    case GDK_KEY_Escape: return NK_KEY_ESCAPE;
-    case GDK_KEY_Return: return NK_KEY_ENTER;
-    case GDK_KEY_KP_Enter: return NK_KEY_KP_ENTER;
-    case GDK_KEY_KP_Decimal: return NK_KEY_KP_DECIMAL;
-    case GDK_KEY_KP_Divide: return NK_KEY_KP_DIVIDE;
-    case GDK_KEY_KP_Multiply: return NK_KEY_KP_MULTIPLY;
-    case GDK_KEY_KP_Subtract: return NK_KEY_KP_SUBTRACT;
-    case GDK_KEY_KP_Add: return NK_KEY_KP_ADD;
-    case GDK_KEY_KP_Equal: return NK_KEY_KP_EQUAL;
+    case GDK_KEY_space:
+        return NK_KEY_SPACE;
+    case GDK_KEY_apostrophe:
+        return NK_KEY_APOSTROPHE;
+    case GDK_KEY_comma:
+        return NK_KEY_COMMA;
+    case GDK_KEY_minus:
+        return NK_KEY_MINUS;
+    case GDK_KEY_period:
+        return NK_KEY_PERIOD;
+    case GDK_KEY_slash:
+        return NK_KEY_SLASH;
+    case GDK_KEY_semicolon:
+        return NK_KEY_SEMICOLON;
+    case GDK_KEY_equal:
+        return NK_KEY_EQUAL;
+    case GDK_KEY_bracketleft:
+        return NK_KEY_LEFT_BRACKET;
+    case GDK_KEY_backslash:
+        return NK_KEY_BACKSLASH;
+    case GDK_KEY_bracketright:
+        return NK_KEY_RIGHT_BRACKET;
+    case GDK_KEY_grave:
+        return NK_KEY_GRAVE_ACCENT;
+    case GDK_KEY_Escape:
+        return NK_KEY_ESCAPE;
+    case GDK_KEY_Return:
+        return NK_KEY_ENTER;
+    case GDK_KEY_KP_Enter:
+        return NK_KEY_KP_ENTER;
+    case GDK_KEY_KP_Decimal:
+        return NK_KEY_KP_DECIMAL;
+    case GDK_KEY_KP_Divide:
+        return NK_KEY_KP_DIVIDE;
+    case GDK_KEY_KP_Multiply:
+        return NK_KEY_KP_MULTIPLY;
+    case GDK_KEY_KP_Subtract:
+        return NK_KEY_KP_SUBTRACT;
+    case GDK_KEY_KP_Add:
+        return NK_KEY_KP_ADD;
+    case GDK_KEY_KP_Equal:
+        return NK_KEY_KP_EQUAL;
     case GDK_KEY_Tab:
-    case GDK_KEY_ISO_Left_Tab: return NK_KEY_TAB;
-    case GDK_KEY_BackSpace: return NK_KEY_BACKSPACE;
-    case GDK_KEY_Insert: return NK_KEY_INSERT;
-    case GDK_KEY_Delete: return NK_KEY_DELETE;
-    case GDK_KEY_Right: return NK_KEY_RIGHT;
-    case GDK_KEY_Left: return NK_KEY_LEFT;
-    case GDK_KEY_Down: return NK_KEY_DOWN;
-    case GDK_KEY_Up: return NK_KEY_UP;
-    case GDK_KEY_Page_Up: return NK_KEY_PAGE_UP;
-    case GDK_KEY_Page_Down: return NK_KEY_PAGE_DOWN;
-    case GDK_KEY_Home: return NK_KEY_HOME;
-    case GDK_KEY_End: return NK_KEY_END;
-    case GDK_KEY_Caps_Lock: return NK_KEY_CAPS_LOCK;
-    case GDK_KEY_Scroll_Lock: return NK_KEY_SCROLL_LOCK;
-    case GDK_KEY_Num_Lock: return NK_KEY_NUM_LOCK;
-    case GDK_KEY_Print: return NK_KEY_PRINT_SCREEN;
-    case GDK_KEY_Pause: return NK_KEY_PAUSE;
-    case GDK_KEY_Shift_L: return NK_KEY_LEFT_SHIFT;
-    case GDK_KEY_Control_L: return NK_KEY_LEFT_CONTROL;
-    case GDK_KEY_Alt_L: return NK_KEY_LEFT_ALT;
-    case GDK_KEY_Super_L: return NK_KEY_LEFT_SUPER;
-    case GDK_KEY_Shift_R: return NK_KEY_RIGHT_SHIFT;
-    case GDK_KEY_Control_R: return NK_KEY_RIGHT_CONTROL;
-    case GDK_KEY_Alt_R: return NK_KEY_RIGHT_ALT;
-    case GDK_KEY_Super_R: return NK_KEY_RIGHT_SUPER;
-    case GDK_KEY_Menu: return NK_KEY_MENU;
-    default: return NK_KEY_UNKNOWN;
+    case GDK_KEY_ISO_Left_Tab:
+        return NK_KEY_TAB;
+    case GDK_KEY_BackSpace:
+        return NK_KEY_BACKSPACE;
+    case GDK_KEY_Insert:
+        return NK_KEY_INSERT;
+    case GDK_KEY_Delete:
+        return NK_KEY_DELETE;
+    case GDK_KEY_Right:
+        return NK_KEY_RIGHT;
+    case GDK_KEY_Left:
+        return NK_KEY_LEFT;
+    case GDK_KEY_Down:
+        return NK_KEY_DOWN;
+    case GDK_KEY_Up:
+        return NK_KEY_UP;
+    case GDK_KEY_Page_Up:
+        return NK_KEY_PAGE_UP;
+    case GDK_KEY_Page_Down:
+        return NK_KEY_PAGE_DOWN;
+    case GDK_KEY_Home:
+        return NK_KEY_HOME;
+    case GDK_KEY_End:
+        return NK_KEY_END;
+    case GDK_KEY_Caps_Lock:
+        return NK_KEY_CAPS_LOCK;
+    case GDK_KEY_Scroll_Lock:
+        return NK_KEY_SCROLL_LOCK;
+    case GDK_KEY_Num_Lock:
+        return NK_KEY_NUM_LOCK;
+    case GDK_KEY_Print:
+        return NK_KEY_PRINT_SCREEN;
+    case GDK_KEY_Pause:
+        return NK_KEY_PAUSE;
+    case GDK_KEY_Shift_L:
+        return NK_KEY_LEFT_SHIFT;
+    case GDK_KEY_Control_L:
+        return NK_KEY_LEFT_CONTROL;
+    case GDK_KEY_Alt_L:
+        return NK_KEY_LEFT_ALT;
+    case GDK_KEY_Super_L:
+        return NK_KEY_LEFT_SUPER;
+    case GDK_KEY_Shift_R:
+        return NK_KEY_RIGHT_SHIFT;
+    case GDK_KEY_Control_R:
+        return NK_KEY_RIGHT_CONTROL;
+    case GDK_KEY_Alt_R:
+        return NK_KEY_RIGHT_ALT;
+    case GDK_KEY_Super_R:
+        return NK_KEY_RIGHT_SUPER;
+    case GDK_KEY_Menu:
+        return NK_KEY_MENU;
+    default:
+        return NK_KEY_UNKNOWN;
     }
 }
 
 nk_pointer_button button_from_gdk(guint button) {
     switch (button) {
-    case 1: return NK_POINTER_BUTTON_LEFT;
-    case 2: return NK_POINTER_BUTTON_MIDDLE;
-    case 3: return NK_POINTER_BUTTON_RIGHT;
-    case 8: return NK_POINTER_BUTTON_4;
-    case 9: return NK_POINTER_BUTTON_5;
+    case 1:
+        return NK_POINTER_BUTTON_LEFT;
+    case 2:
+        return NK_POINTER_BUTTON_MIDDLE;
+    case 3:
+        return NK_POINTER_BUTTON_RIGHT;
+    case 8:
+        return NK_POINTER_BUTTON_4;
+    case 9:
+        return NK_POINTER_BUTTON_5;
     default:
-        return button > 0 && button <= NK_POINTER_BUTTON_LAST + 1 ? button - 1
-                                                                  : UINT32_MAX;
+        return button > 0 && button <= NK_POINTER_BUTTON_LAST + 1 ? button - 1 : UINT32_MAX;
     }
 }
 
@@ -428,8 +480,7 @@ void on_text_commit(GtkIMContext *, gchar *text, gpointer data) {
         const gchar *cursor = text;
         while (cursor && *cursor) {
             const gunichar codepoint = g_utf8_get_char_validated(cursor, -1);
-            if (codepoint == static_cast<gunichar>(-1) ||
-                codepoint == static_cast<gunichar>(-2))
+            if (codepoint == static_cast<gunichar>(-1) || codepoint == static_cast<gunichar>(-2))
                 return;
             const nk_text_input_event payload{codepoint, 0};
             nk::core::QueuedEvent event;
@@ -468,8 +519,8 @@ gboolean on_key(GtkWidget *, GdkEventKey *key_event, gpointer data) {
         if (!nk::core::is_runtime_generation(resource->generation))
             return;
         const nk_key key = key_from_gdk(key_event->keyval);
-        nk_input_action action = key_event->type == GDK_KEY_RELEASE ? NK_INPUT_RELEASE
-                                                                    : NK_INPUT_PRESS;
+        nk_input_action action =
+            key_event->type == GDK_KEY_RELEASE ? NK_INPUT_RELEASE : NK_INPUT_PRESS;
         if (key != NK_KEY_UNKNOWN) {
             if (action == NK_INPUT_PRESS && resource->keys[key] == NK_INPUT_PRESS)
                 action = NK_INPUT_REPEAT;
@@ -509,15 +560,14 @@ gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer d
         const auto button = button_from_gdk(button_event->button);
         if (button == UINT32_MAX)
             return;
-        const nk_input_action action = button_event->type == GDK_BUTTON_RELEASE
-                                           ? NK_INPUT_RELEASE
-                                           : NK_INPUT_PRESS;
+        const nk_input_action action =
+            button_event->type == GDK_BUTTON_RELEASE ? NK_INPUT_RELEASE : NK_INPUT_PRESS;
         resource->buttons[button] = action;
         resource->pointer_x = button_event->x;
         resource->pointer_y = button_event->y;
         const nk_pointer_button_event payload{
-            button, action, modifiers(static_cast<GdkModifierType>(button_event->state)), 0,
-            button_event->x, button_event->y};
+            button, action,          modifiers(static_cast<GdkModifierType>(button_event->state)),
+            0,      button_event->x, button_event->y};
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_POINTER_BUTTON;
         event.source = resource->handle;
@@ -569,10 +619,9 @@ gboolean on_surface_render(GtkGLArea *area, GdkGLContext *, gpointer data) {
         !resource->frame_callback)
         return TRUE;
     const int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
-    resource->frame_callback(resource->handle,
-                             gtk_widget_get_allocated_width(GTK_WIDGET(area)) * scale,
-                             gtk_widget_get_allocated_height(GTK_WIDGET(area)) * scale,
-                             resource->frame_user_data);
+    resource->frame_callback(
+        resource->handle, gtk_widget_get_allocated_width(GTK_WIDGET(area)) * scale,
+        gtk_widget_get_allocated_height(GTK_WIDGET(area)) * scale, resource->frame_user_data);
     return TRUE;
 }
 
@@ -591,8 +640,8 @@ GdkGLContext *on_surface_create_context(GtkGLArea *area, gpointer data) {
         if (resource->major_version)
             gdk_gl_context_set_required_version(context, resource->major_version,
                                                 resource->minor_version);
-        gdk_gl_context_set_debug_enabled(
-            context, (resource->flags & NK_SURFACE_DEBUG_CONTEXT) != 0);
+        gdk_gl_context_set_debug_enabled(context,
+                                         (resource->flags & NK_SURFACE_DEBUG_CONTEXT) != 0);
         gdk_gl_context_set_forward_compatible(
             context, (resource->flags & NK_SURFACE_FORWARD_COMPATIBLE) != 0);
         if (!gdk_gl_context_realize(context, &error)) {
@@ -649,8 +698,8 @@ gboolean on_window_configure(GtkWidget *, GdkEventConfigure *configure, gpointer
             event.data = bytes_of(payload);
             nk::core::push_event(std::move(event));
             const int scale = gtk_widget_get_scale_factor(resource->window);
-            const nk_window_framebuffer_resize_event framebuffer{
-                configure->width * scale, configure->height * scale};
+            const nk_window_framebuffer_resize_event framebuffer{configure->width * scale,
+                                                                 configure->height * scale};
             nk::core::QueuedEvent framebuffer_event;
             framebuffer_event.kind = NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE;
             framebuffer_event.source = resource->handle;
@@ -659,12 +708,10 @@ gboolean on_window_configure(GtkWidget *, GdkEventConfigure *configure, gpointer
         }
         bool position_available = true;
 #ifdef GDK_WINDOWING_WAYLAND
-        position_available =
-            !GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(resource->window));
+        position_available = !GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(resource->window));
 #endif
-        if (position_available &&
-            (!resource->geometry_known || resource->x != configure->x ||
-             resource->y != configure->y)) {
+        if (position_available && (!resource->geometry_known || resource->x != configure->x ||
+                                   resource->y != configure->y)) {
             resource->x = configure->x;
             resource->y = configure->y;
             const nk_window_move_event payload{configure->x, configure->y};
@@ -726,8 +773,8 @@ gboolean on_window_state(GtkWidget *, GdkEventWindowState *state, gpointer data)
                 if (resource->buttons[button] != NK_INPUT_PRESS)
                     continue;
                 resource->buttons[button] = NK_INPUT_RELEASE;
-                const nk_pointer_button_event released{button, NK_INPUT_RELEASE, 0, 0,
-                                                       resource->pointer_x, resource->pointer_y};
+                const nk_pointer_button_event released{
+                    button, NK_INPUT_RELEASE, 0, 0, resource->pointer_x, resource->pointer_y};
                 nk::core::QueuedEvent release_event;
                 release_event.kind = NK_EVENT_POINTER_BUTTON;
                 release_event.source = resource->handle;
@@ -736,8 +783,8 @@ gboolean on_window_state(GtkWidget *, GdkEventWindowState *state, gpointer data)
                 nk::core::push_event(std::move(release_event));
             }
         }
-        uint32_t flags = resource->state_flags &
-                         (NK_WINDOW_STATE_VISIBLE | NK_WINDOW_STATE_ATTENTION_REQUESTED);
+        uint32_t flags =
+            resource->state_flags & (NK_WINDOW_STATE_VISIBLE | NK_WINDOW_STATE_ATTENTION_REQUESTED);
         if (state->new_window_state & GDK_WINDOW_STATE_FOCUSED)
             flags |= NK_WINDOW_STATE_ACTIVE;
         if (state->new_window_state & GDK_WINDOW_STATE_ICONIFIED)
@@ -1028,8 +1075,7 @@ nk_handle register_monitor(GdkMonitor *native) {
     auto resource = std::make_shared<GtkMonitorResource>();
     resource->monitor = GDK_MONITOR(g_object_ref(native));
     resource->name = monitor_name(native);
-    resource->handle =
-        nk::core::handles().insert(nk::core::ResourceType::monitor, resource);
+    resource->handle = nk::core::handles().insert(nk::core::ResourceType::monitor, resource);
     if (resource->handle != NK_INVALID_HANDLE)
         monitor_handles.emplace(native, resource->handle);
     return resource->handle;
@@ -1072,15 +1118,13 @@ nk_result ensure_monitors() {
         return fail(NK_ERROR_UNSUPPORTED, "GTK has no display for monitor enumeration");
     const int count = gdk_display_get_n_monitors(monitor_display);
     for (int index = 0; index < count; ++index) {
-        if (register_monitor(gdk_display_get_monitor(monitor_display, index)) ==
-            NK_INVALID_HANDLE)
+        if (register_monitor(gdk_display_get_monitor(monitor_display, index)) == NK_INVALID_HANDLE)
             return fail(NK_ERROR_OUT_OF_MEMORY, "monitor handle registry is full");
     }
     monitor_added_signal =
         g_signal_connect(monitor_display, "monitor-added", G_CALLBACK(on_monitor_added), nullptr);
-    monitor_removed_signal =
-        g_signal_connect(monitor_display, "monitor-removed", G_CALLBACK(on_monitor_removed),
-                         nullptr);
+    monitor_removed_signal = g_signal_connect(monitor_display, "monitor-removed",
+                                              G_CALLBACK(on_monitor_removed), nullptr);
     return NK_OK;
 }
 
@@ -1134,9 +1178,8 @@ nk_result apply_cursor_mode(GtkWindowResource &resource, nk_cursor_mode mode) {
     resource.cursor_mode = mode;
     GdkCursor *native_cursor = effective_cursor(resource, display);
     if (mode == NK_CURSOR_MODE_CAPTURED) {
-        const auto status =
-            gdk_seat_grab(seat, native, GDK_SEAT_CAPABILITY_POINTER, TRUE, native_cursor, nullptr,
-                          nullptr, nullptr);
+        const auto status = gdk_seat_grab(seat, native, GDK_SEAT_CAPABILITY_POINTER, TRUE,
+                                          native_cursor, nullptr, nullptr, nullptr);
         if (status != GDK_GRAB_SUCCESS) {
             resource.cursor_mode = previous;
             gdk_window_set_cursor(native, effective_cursor(resource, display));
@@ -1778,10 +1821,8 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
                          resource.get());
         g_signal_connect(resource->window, "window-state-event", G_CALLBACK(on_window_state),
                          resource.get());
-        g_signal_connect(resource->window, "map", G_CALLBACK(on_window_map),
-                         resource.get());
-        g_signal_connect(resource->window, "unmap", G_CALLBACK(on_window_unmap),
-                         resource.get());
+        g_signal_connect(resource->window, "map", G_CALLBACK(on_window_map), resource.get());
+        g_signal_connect(resource->window, "unmap", G_CALLBACK(on_window_unmap), resource.get());
         g_signal_connect(resource->window, "realize", G_CALLBACK(on_window_realize),
                          resource.get());
         g_signal_connect(resource->window, "focus-in-event", G_CALLBACK(on_input_focus),
@@ -1791,10 +1832,9 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         g_signal_connect(resource->im_context, "commit", G_CALLBACK(on_text_commit),
                          resource.get());
         gtk_widget_add_events(resource->window,
-                              GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK |
-                                  GDK_POINTER_MOTION_MASK | GDK_BUTTON_PRESS_MASK |
-                                  GDK_BUTTON_RELEASE_MASK | GDK_SCROLL_MASK |
-                                  GDK_ENTER_NOTIFY_MASK | GDK_LEAVE_NOTIFY_MASK);
+                              GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK | GDK_POINTER_MOTION_MASK |
+                                  GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
+                                  GDK_SCROLL_MASK | GDK_ENTER_NOTIFY_MASK | GDK_LEAVE_NOTIFY_MASK);
         g_signal_connect(resource->window, "key-press-event", G_CALLBACK(on_key), resource.get());
         g_signal_connect(resource->window, "key-release-event", G_CALLBACK(on_key), resource.get());
         g_signal_connect(resource->window, "motion-notify-event", G_CALLBACK(on_pointer_move),
@@ -1933,8 +1973,7 @@ nk_result NK_CALL nk_window_get_position(nk_handle handle, int32_t *out_x, int32
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_get_size(nk_handle handle, int32_t *out_width,
-                                     int32_t *out_height) {
+nk_result NK_CALL nk_window_get_size(nk_handle handle, int32_t *out_width, int32_t *out_height) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     if (!out_width || !out_height)
@@ -2047,7 +2086,7 @@ nk_result NK_CALL nk_key_get_state(nk_handle handle, nk_key key, nk_input_action
 }
 
 nk_result NK_CALL nk_pointer_button_get_state(nk_handle handle, nk_pointer_button button,
-                                               nk_input_action *out_action) {
+                                              nk_input_action *out_action) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     if (!out_action || button > NK_POINTER_BUTTON_LAST)
@@ -2080,17 +2119,38 @@ nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_handle *ou
     *out_cursor = NK_INVALID_HANDLE;
     const char *name = nullptr;
     switch (shape) {
-    case NK_CURSOR_ARROW: name = "default"; break;
-    case NK_CURSOR_IBEAM: name = "text"; break;
-    case NK_CURSOR_CROSSHAIR: name = "crosshair"; break;
-    case NK_CURSOR_HAND: name = "pointer"; break;
-    case NK_CURSOR_HORIZONTAL_RESIZE: name = "ew-resize"; break;
-    case NK_CURSOR_VERTICAL_RESIZE: name = "ns-resize"; break;
-    case NK_CURSOR_NWSE_RESIZE: name = "nwse-resize"; break;
-    case NK_CURSOR_NESW_RESIZE: name = "nesw-resize"; break;
-    case NK_CURSOR_MOVE: name = "move"; break;
-    case NK_CURSOR_NOT_ALLOWED: name = "not-allowed"; break;
-    default: return fail(NK_ERROR_INVALID_ARGUMENT, "invalid standard cursor shape");
+    case NK_CURSOR_ARROW:
+        name = "default";
+        break;
+    case NK_CURSOR_IBEAM:
+        name = "text";
+        break;
+    case NK_CURSOR_CROSSHAIR:
+        name = "crosshair";
+        break;
+    case NK_CURSOR_HAND:
+        name = "pointer";
+        break;
+    case NK_CURSOR_HORIZONTAL_RESIZE:
+        name = "ew-resize";
+        break;
+    case NK_CURSOR_VERTICAL_RESIZE:
+        name = "ns-resize";
+        break;
+    case NK_CURSOR_NWSE_RESIZE:
+        name = "nwse-resize";
+        break;
+    case NK_CURSOR_NESW_RESIZE:
+        name = "nesw-resize";
+        break;
+    case NK_CURSOR_MOVE:
+        name = "move";
+        break;
+    case NK_CURSOR_NOT_ALLOWED:
+        name = "not-allowed";
+        break;
+    default:
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid standard cursor shape");
     }
     if (!ensure_gtk())
         return NK_ERROR_UNSUPPORTED;
@@ -2098,8 +2158,7 @@ nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_handle *ou
     resource->cursor = gdk_cursor_new_from_name(gdk_display_get_default(), name);
     if (!resource->cursor)
         return fail(NK_ERROR_UNSUPPORTED, "cursor shape is unavailable");
-    resource->handle =
-        nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
+    resource->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
     if (resource->handle == NK_INVALID_HANDLE)
         return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
     *out_cursor = resource->handle;
@@ -2129,14 +2188,12 @@ nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image, nk_handl
             std::memcpy(destination + y * destination_stride, source + y * image->stride,
                         static_cast<std::size_t>(image->width) * 4);
         auto resource = std::make_shared<GtkCursorResource>();
-        resource->cursor =
-            gdk_cursor_new_from_pixbuf(gdk_display_get_default(), pixbuf, image->hotspot_x,
-                                       image->hotspot_y);
+        resource->cursor = gdk_cursor_new_from_pixbuf(gdk_display_get_default(), pixbuf,
+                                                      image->hotspot_x, image->hotspot_y);
         g_object_unref(pixbuf);
         if (!resource->cursor)
             return fail(NK_ERROR_UNSUPPORTED, "GTK could not create the custom cursor");
-        resource->handle =
-            nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
+        resource->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
         if (resource->handle == NK_INVALID_HANDLE)
             return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
         *out_cursor = resource->handle;
@@ -2189,7 +2246,9 @@ nk_result NK_CALL nk_window_get_cursor_mode(nk_handle handle, nk_cursor_mode *ou
     return NK_OK;
 }
 
-uint32_t NK_CALL nk_raw_pointer_motion_supported(void) { return 0; }
+uint32_t NK_CALL nk_raw_pointer_motion_supported(void) {
+    return 0;
+}
 
 nk_result NK_CALL nk_window_minimize(nk_handle h) {
     if (const auto r = enter_ui(); r != NK_OK)
@@ -2271,8 +2330,7 @@ nk_result NK_CALL nk_window_set_size_limits(nk_handle h, const nk_window_size_li
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle h, int32_t numerator,
-                                             int32_t denominator) {
+nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle h, int32_t numerator, int32_t denominator) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     if ((numerator == 0) != (denominator == 0) || numerator < 0 || denominator < 0)
@@ -2355,55 +2413,55 @@ nk_result NK_CALL nk_window_get_hovered(nk_handle h, uint32_t *out_hovered) {
 }
 
 nk_result NK_CALL nk_monitor_list(nk_handle *monitors, uint32_t *inout_count) {
-    return nk::core::result_boundary("unexpected error while enumerating monitors",
-                                     [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (!inout_count)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "monitor count must not be null");
-        if (const auto result = ensure_monitors(); result != NK_OK)
-            return result;
-        const uint32_t required =
-            static_cast<uint32_t>(gdk_display_get_n_monitors(monitor_display));
-        const uint32_t capacity = *inout_count;
-        *inout_count = required;
-        if (!monitors || capacity < required)
-            return required ? fail(NK_ERROR_BUFFER_TOO_SMALL,
-                                   "monitor handle buffer is too small")
-                            : NK_OK;
-        for (uint32_t index = 0; index < required; ++index) {
-            GdkMonitor *native =
-                gdk_display_get_monitor(monitor_display, static_cast<int>(index));
-            const auto found = monitor_handles.find(native);
-            if (found == monitor_handles.end())
-                return fail(NK_ERROR_UNKNOWN, "monitor registry is inconsistent");
-            monitors[index] = found->second;
-        }
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while enumerating monitors", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!inout_count)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "monitor count must not be null");
+            if (const auto result = ensure_monitors(); result != NK_OK)
+                return result;
+            const uint32_t required =
+                static_cast<uint32_t>(gdk_display_get_n_monitors(monitor_display));
+            const uint32_t capacity = *inout_count;
+            *inout_count = required;
+            if (!monitors || capacity < required)
+                return required
+                           ? fail(NK_ERROR_BUFFER_TOO_SMALL, "monitor handle buffer is too small")
+                           : NK_OK;
+            for (uint32_t index = 0; index < required; ++index) {
+                GdkMonitor *native =
+                    gdk_display_get_monitor(monitor_display, static_cast<int>(index));
+                const auto found = monitor_handles.find(native);
+                if (found == monitor_handles.end())
+                    return fail(NK_ERROR_UNKNOWN, "monitor registry is inconsistent");
+                monitors[index] = found->second;
+            }
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_monitor_get_primary(nk_handle *out_monitor) {
-    return nk::core::result_boundary("unexpected error while finding primary monitor",
-                                     [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (!out_monitor)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "monitor output must not be null");
-        *out_monitor = NK_INVALID_HANDLE;
-        if (const auto result = ensure_monitors(); result != NK_OK)
-            return result;
-        GdkMonitor *native = gdk_display_get_primary_monitor(monitor_display);
-        if (!native && gdk_display_get_n_monitors(monitor_display) > 0)
-            native = gdk_display_get_monitor(monitor_display, 0);
-        if (!native)
-            return fail(NK_ERROR_UNSUPPORTED, "GTK reports no connected monitors");
-        const auto found = monitor_handles.find(native);
-        if (found == monitor_handles.end())
-            return fail(NK_ERROR_UNKNOWN, "primary monitor is not registered");
-        *out_monitor = found->second;
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while finding primary monitor", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!out_monitor)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "monitor output must not be null");
+            *out_monitor = NK_INVALID_HANDLE;
+            if (const auto result = ensure_monitors(); result != NK_OK)
+                return result;
+            GdkMonitor *native = gdk_display_get_primary_monitor(monitor_display);
+            if (!native && gdk_display_get_n_monitors(monitor_display) > 0)
+                native = gdk_display_get_monitor(monitor_display, 0);
+            if (!native)
+                return fail(NK_ERROR_UNSUPPORTED, "GTK reports no connected monitors");
+            const auto found = monitor_handles.find(native);
+            if (found == monitor_handles.end())
+                return fail(NK_ERROR_UNKNOWN, "primary monitor is not registered");
+            *out_monitor = found->second;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_monitor_get_name(nk_handle handle, char *buffer, uint32_t *inout_size) {
@@ -2415,13 +2473,11 @@ nk_result NK_CALL nk_monitor_get_name(nk_handle handle, char *buffer, uint32_t *
     return copy_utf8(resource->name.c_str(), buffer, inout_size);
 }
 
-nk_result NK_CALL nk_monitor_get_geometry(nk_handle handle,
-                                          nk_monitor_geometry *out_geometry) {
+nk_result NK_CALL nk_monitor_get_geometry(nk_handle handle, nk_monitor_geometry *out_geometry) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     if (!out_geometry || out_geometry->struct_size < sizeof(*out_geometry))
-        return fail(NK_ERROR_INVALID_ARGUMENT,
-                    "monitor geometry output is missing or too small");
+        return fail(NK_ERROR_INVALID_ARGUMENT, "monitor geometry output is missing or too small");
     auto resource = monitor(handle);
     if (!resource)
         return invalid_handle("monitor");
@@ -2565,86 +2621,85 @@ nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native, nk_handl
 
 nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_options *options,
                                     nk_handle *out_surface) {
-    return nk::core::result_boundary("unexpected error while creating graphics surface",
-                                     [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (!options || options->struct_size < sizeof(*options) || !out_surface ||
-            options->width <= 0 || options->height <= 0 ||
-            (options->api != NK_GRAPHICS_OPENGL &&
-             options->api != NK_GRAPHICS_OPENGL_ES))
-            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid graphics surface options");
-        *out_surface = NK_INVALID_HANDLE;
-        auto parent = window(parent_handle);
-        if (!parent)
-            return invalid_handle("parent window");
-        auto shared = options->share_surface ? surface(options->share_surface) : nullptr;
-        if (options->share_surface && !shared)
-            return invalid_handle("shared graphics surface");
-        if (shared &&
-            (shared->api != options->api || shared->major_version != options->major_version ||
-             shared->minor_version != options->minor_version ||
-             shared->flags !=
-                 (options->flags &
-                  (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE))))
-            return fail(NK_ERROR_INVALID_ARGUMENT,
-                        "shared surfaces must use identical context options");
-        parent->surfaces.reserve(parent->surfaces.size() + 1);
-        auto resource = std::make_shared<GtkSurfaceResource>();
-        resource->parent = parent_handle;
-        resource->generation = nk::core::runtime_generation();
-        resource->api = options->api;
-        resource->major_version = options->major_version;
-        resource->minor_version = options->minor_version;
-        resource->flags =
-            options->flags & (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE);
-        resource->shared_surface = std::move(shared);
-        resource->widget = gtk_gl_area_new();
-        g_object_add_weak_pointer(G_OBJECT(resource->widget),
-                                  reinterpret_cast<gpointer *>(&resource->widget));
-        auto *area = GTK_GL_AREA(resource->widget);
-        gtk_gl_area_set_auto_render(area, FALSE);
-        gtk_gl_area_set_use_es(area, options->api == NK_GRAPHICS_OPENGL_ES);
-        if (options->major_version)
-            gtk_gl_area_set_required_version(area, options->major_version,
-                                             options->minor_version);
-        gtk_gl_area_set_has_alpha(area, (options->flags & NK_SURFACE_ALPHA) != 0);
-        gtk_gl_area_set_has_depth_buffer(area, (options->flags & NK_SURFACE_DEPTH) != 0);
-        gtk_gl_area_set_has_stencil_buffer(area, (options->flags & NK_SURFACE_STENCIL) != 0);
-        gtk_widget_set_size_request(resource->widget, options->width, options->height);
-        gtk_fixed_put(GTK_FIXED(parent->container), resource->widget, options->x, options->y);
-        resource->handle =
-            nk::core::handles().insert(nk::core::ResourceType::surface, resource);
-        if (resource->handle == NK_INVALID_HANDLE) {
-            gtk_widget_destroy(resource->widget);
-            return fail(NK_ERROR_OUT_OF_MEMORY, "graphics surface handle registry is full");
-        }
-        if (resource->shared_surface)
-            ++resource->shared_surface->share_dependents;
-        parent->surfaces.push_back(resource->handle);
-        g_signal_connect(resource->widget, "create-context",
-                         G_CALLBACK(on_surface_create_context), resource.get());
-        g_signal_connect(resource->widget, "render", G_CALLBACK(on_surface_render), resource.get());
-        g_signal_connect(resource->widget, "resize", G_CALLBACK(on_surface_resize),
-                         resource.get());
-        if ((options->flags & NK_SURFACE_HIDDEN) == 0)
-            gtk_widget_show(resource->widget);
-        gtk_widget_realize(resource->widget);
-        gtk_gl_area_make_current(area);
-        if (const GError *error = gtk_gl_area_get_error(area)) {
-            parent->surfaces.pop_back();
-            nk::core::handles().erase(resource->handle, nk::core::ResourceType::surface);
+    return nk::core::result_boundary(
+        "unexpected error while creating graphics surface", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!options || options->struct_size < sizeof(*options) || !out_surface ||
+                options->width <= 0 || options->height <= 0 ||
+                (options->api != NK_GRAPHICS_OPENGL && options->api != NK_GRAPHICS_OPENGL_ES))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid graphics surface options");
+            *out_surface = NK_INVALID_HANDLE;
+            auto parent = window(parent_handle);
+            if (!parent)
+                return invalid_handle("parent window");
+            auto shared = options->share_surface ? surface(options->share_surface) : nullptr;
+            if (options->share_surface && !shared)
+                return invalid_handle("shared graphics surface");
+            if (shared &&
+                (shared->api != options->api || shared->major_version != options->major_version ||
+                 shared->minor_version != options->minor_version ||
+                 shared->flags !=
+                     (options->flags & (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE))))
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "shared surfaces must use identical context options");
+            parent->surfaces.reserve(parent->surfaces.size() + 1);
+            auto resource = std::make_shared<GtkSurfaceResource>();
+            resource->parent = parent_handle;
+            resource->generation = nk::core::runtime_generation();
+            resource->api = options->api;
+            resource->major_version = options->major_version;
+            resource->minor_version = options->minor_version;
+            resource->flags =
+                options->flags & (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE);
+            resource->shared_surface = std::move(shared);
+            resource->widget = gtk_gl_area_new();
+            g_object_add_weak_pointer(G_OBJECT(resource->widget),
+                                      reinterpret_cast<gpointer *>(&resource->widget));
+            auto *area = GTK_GL_AREA(resource->widget);
+            gtk_gl_area_set_auto_render(area, FALSE);
+            gtk_gl_area_set_use_es(area, options->api == NK_GRAPHICS_OPENGL_ES);
+            if (options->major_version)
+                gtk_gl_area_set_required_version(area, options->major_version,
+                                                 options->minor_version);
+            gtk_gl_area_set_has_alpha(area, (options->flags & NK_SURFACE_ALPHA) != 0);
+            gtk_gl_area_set_has_depth_buffer(area, (options->flags & NK_SURFACE_DEPTH) != 0);
+            gtk_gl_area_set_has_stencil_buffer(area, (options->flags & NK_SURFACE_STENCIL) != 0);
+            gtk_widget_set_size_request(resource->widget, options->width, options->height);
+            gtk_fixed_put(GTK_FIXED(parent->container), resource->widget, options->x, options->y);
+            resource->handle =
+                nk::core::handles().insert(nk::core::ResourceType::surface, resource);
+            if (resource->handle == NK_INVALID_HANDLE) {
+                gtk_widget_destroy(resource->widget);
+                return fail(NK_ERROR_OUT_OF_MEMORY, "graphics surface handle registry is full");
+            }
             if (resource->shared_surface)
-                --resource->shared_surface->share_dependents;
-            return fail(NK_ERROR_UNSUPPORTED, error->message);
-        }
-        nk::core::QueuedEvent ready;
-        ready.kind = NK_EVENT_SURFACE_READY;
-        ready.source = resource->handle;
-        nk::core::push_event(std::move(ready));
-        *out_surface = resource->handle;
-        return NK_OK;
-    });
+                ++resource->shared_surface->share_dependents;
+            parent->surfaces.push_back(resource->handle);
+            g_signal_connect(resource->widget, "create-context",
+                             G_CALLBACK(on_surface_create_context), resource.get());
+            g_signal_connect(resource->widget, "render", G_CALLBACK(on_surface_render),
+                             resource.get());
+            g_signal_connect(resource->widget, "resize", G_CALLBACK(on_surface_resize),
+                             resource.get());
+            if ((options->flags & NK_SURFACE_HIDDEN) == 0)
+                gtk_widget_show(resource->widget);
+            gtk_widget_realize(resource->widget);
+            gtk_gl_area_make_current(area);
+            if (const GError *error = gtk_gl_area_get_error(area)) {
+                parent->surfaces.pop_back();
+                nk::core::handles().erase(resource->handle, nk::core::ResourceType::surface);
+                if (resource->shared_surface)
+                    --resource->shared_surface->share_dependents;
+                return fail(NK_ERROR_UNSUPPORTED, error->message);
+            }
+            nk::core::QueuedEvent ready;
+            ready.kind = NK_EVENT_SURFACE_READY;
+            ready.source = resource->handle;
+            nk::core::push_event(std::move(ready));
+            *out_surface = resource->handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
@@ -2756,7 +2811,7 @@ nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out
 }
 
 nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
-                                               nk_surface_frame_target *out_target) {
+                                              nk_surface_frame_target *out_target) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     if (!out_target || out_target->struct_size < sizeof(*out_target))
@@ -3300,13 +3355,11 @@ nk_result NK_CALL nk_share(const nk_share_options *) {
 }
 
 nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *, uint32_t) {
-    return fail(NK_ERROR_UNSUPPORTED,
-                "resource clipboard is not implemented by the GTK backend");
+    return fail(NK_ERROR_UNSUPPORTED, "resource clipboard is not implemented by the GTK backend");
 }
 
 nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED,
-                "resource clipboard is not implemented by the GTK backend");
+    return fail(NK_ERROR_UNSUPPORTED, "resource clipboard is not implemented by the GTK backend");
 }
 
 nk_result NK_CALL nk_dialog_open_resource(nk_handle, const nk_file_dialog_options *,
@@ -3319,8 +3372,7 @@ nk_result NK_CALL nk_dialog_save_resource(nk_handle, const nk_file_dialog_option
     return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the GTK backend");
 }
 
-nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle,
-                                                      const nk_file_dialog_options *,
+nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle, const nk_file_dialog_options *,
                                                       nk_request_id *) {
     return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the GTK backend");
 }

@@ -16,8 +16,7 @@ nk_result unsupported_accessibility() {
 extern "C" {
 
 #if !defined(NK_BACKEND_ANDROID)
-nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle,
-                                                     const nk_accessibility_node *) {
+nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle, const nk_accessibility_node *) {
     return unsupported_accessibility();
 }
 nk_result NK_CALL nk_surface_accessibility_remove_node(nk_handle, nk_accessibility_node_id) {
@@ -32,15 +31,15 @@ nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle, nk_accessibility
 nk_result NK_CALL nk_surface_accessibility_update(nk_handle, const nk_accessibility_update *) {
     return unsupported_accessibility();
 }
-nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
-    nk_handle, nk_accessibility_node_id, const nk_accessibility_text_range *, uint32_t) {
+nk_result NK_CALL nk_surface_accessibility_set_text_ranges(nk_handle, nk_accessibility_node_id,
+                                                           const nk_accessibility_text_range *,
+                                                           uint32_t) {
     return unsupported_accessibility();
 }
 #endif
 
-nk_result NK_CALL nk_accessibility_action_event_value(const nk_event *event,
-                                                       const char **out_value,
-                                                       uint32_t *out_length) {
+nk_result NK_CALL nk_accessibility_action_event_value(const nk_event *event, const char **out_value,
+                                                      uint32_t *out_length) {
     if (!event || event->kind != NK_EVENT_ACCESSIBILITY_ACTION || !event->data ||
         event->data_size < sizeof(nk_accessibility_action_event) || !out_value || !out_length) {
         nk::core::set_error("invalid accessibility action event payload");

@@ -28,8 +28,7 @@ static void sleep_milliseconds(unsigned milliseconds) {
 #if defined(_WIN32)
     Sleep(milliseconds);
 #else
-    struct timespec delay = {(time_t)(milliseconds / 1000),
-                             (long)(milliseconds % 1000) * 1000000L};
+    struct timespec delay = {(time_t)(milliseconds / 1000), (long)(milliseconds % 1000) * 1000000L};
     nanosleep(&delay, NULL);
 #endif
 }

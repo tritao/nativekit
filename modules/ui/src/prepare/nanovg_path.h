@@ -59,8 +59,7 @@ struct PreparedGeometry {
 /** One NativeKit-owned prepared path operation and its geometry. */
 class PreparedPath {
   public:
-    bool set(PreparedPathKind kind, const PreparedGeometry &geometry,
-             const PreparedPaint &paint);
+    bool set(PreparedPathKind kind, const PreparedGeometry &geometry, const PreparedPaint &paint);
     /** Attach shared read-only geometry without copying its path or vertex arrays. */
     bool set_view(PreparedPathKind kind, std::shared_ptr<const PreparedGeometry> geometry,
                   const PreparedPaint &paint);

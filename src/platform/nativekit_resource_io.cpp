@@ -80,8 +80,7 @@ std::shared_ptr<FileResourceStream> stream(nk_handle handle) {
 
 extern "C" {
 nk_result NK_CALL nk_resource_set_persisted_access(const nk_resource *resource,
-                                                   uint32_t access_flags,
-                                                   uint32_t *out_flags) {
+                                                   uint32_t access_flags, uint32_t *out_flags) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
     if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
@@ -159,8 +158,8 @@ nk_result NK_CALL nk_resource_open(const nk_resource *resource, uint32_t flags,
             resource_stream->file.seekg(0, std::ios::beg);
         if (flags & NK_RESOURCE_OPEN_WRITE)
             resource_stream->file.seekp(0, std::ios::beg);
-        const auto handle = nk::core::handles().insert(nk::core::ResourceType::resource_stream,
-                                                       resource_stream);
+        const auto handle =
+            nk::core::handles().insert(nk::core::ResourceType::resource_stream, resource_stream);
         if (!handle)
             return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate resource stream handle");
         *out_stream = handle;
@@ -168,8 +167,7 @@ nk_result NK_CALL nk_resource_open(const nk_resource *resource, uint32_t flags,
     });
 }
 
-nk_result NK_CALL nk_resource_stream_info_get(nk_handle handle,
-                                              nk_resource_stream_info *out_info) {
+nk_result NK_CALL nk_resource_stream_info_get(nk_handle handle, nk_resource_stream_info *out_info) {
     if (!out_info || out_info->struct_size < sizeof(nk_resource_stream_info))
         return fail(NK_ERROR_INVALID_ARGUMENT, "resource stream info output is invalid");
     auto resource = stream(handle);
@@ -216,9 +214,8 @@ nk_result NK_CALL nk_resource_write(nk_handle handle, const void *buffer, uint64
         return fail(NK_ERROR_UNKNOWN, "resource write failed");
     *out_written = size;
     const auto position = resource->file.tellp();
-    if (position >= 0 &&
-        (!(resource->flags & NK_RESOURCE_STREAM_SIZE_KNOWN) ||
-         static_cast<uint64_t>(position) > resource->size)) {
+    if (position >= 0 && (!(resource->flags & NK_RESOURCE_STREAM_SIZE_KNOWN) ||
+                          static_cast<uint64_t>(position) > resource->size)) {
         resource->size = static_cast<uint64_t>(position);
         resource->flags |= NK_RESOURCE_STREAM_SIZE_KNOWN;
     }

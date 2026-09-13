@@ -524,10 +524,10 @@ NKUI_API nkui_result nkui_font_collection_add(nkui_resource fonts, const char *p
                                               nkui_font_family family);
 
 /** Adds a copied TTF/OTF byte buffer, suitable for asynchronously fetched browser assets. */
-NKUI_API nkui_result nkui_font_collection_add_data(
-    nkui_resource fonts, const char *name NKUI_UTF8,
-    const uint8_t *font_data NKUI_IN_ARRAY(font_bytes), uint32_t font_bytes,
-    nkui_font_family family);
+NKUI_API nkui_result
+nkui_font_collection_add_data(nkui_resource fonts, const char *name NKUI_UTF8,
+                              const uint8_t *font_data NKUI_IN_ARRAY(font_bytes),
+                              uint32_t font_bytes, nkui_font_family family);
 
 /** Enables best-effort platform system-font fallback discovery for new layouts. */
 NKUI_API nkui_result nkui_font_collection_add_system_fallbacks(nkui_resource fonts);
@@ -545,15 +545,15 @@ NKUI_API nkui_result nkui_text_layout_create(nkui_resource fonts, const char *te
                                              nkui_resource *out_layout NKUI_OUT);
 
 /** Creates a text layout using the shared semantic text and paragraph styles. */
-NKUI_API nkui_result nkui_text_layout_create_styled(
-    nkui_resource fonts, const char *text NKUI_UTF8, float width,
-    const nkui_text_style *text_style, const nkui_paragraph_style *paragraph_style,
-    nkui_resource *out_layout NKUI_OUT);
+NKUI_API nkui_result nkui_text_layout_create_styled(nkui_resource fonts, const char *text NKUI_UTF8,
+                                                    float width, const nkui_text_style *text_style,
+                                                    const nkui_paragraph_style *paragraph_style,
+                                                    nkui_resource *out_layout NKUI_OUT);
 
 /** Re-shapes an existing layout while retaining its native resource handle. */
-NKUI_API nkui_result nkui_text_layout_update(
-    nkui_resource layout, const char *text NKUI_UTF8, float width,
-    const nkui_text_style *text_style, const nkui_paragraph_style *paragraph_style);
+NKUI_API nkui_result nkui_text_layout_update(nkui_resource layout, const char *text NKUI_UTF8,
+                                             float width, const nkui_text_style *text_style,
+                                             const nkui_paragraph_style *paragraph_style);
 
 /** Re-shapes an existing layout with new UTF-8 text while retaining its handle and style. */
 NKUI_API nkui_result nkui_text_layout_set_text(nkui_resource layout, const char *text NKUI_UTF8);

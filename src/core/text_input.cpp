@@ -6,9 +6,8 @@
 #include <cstring>
 #include <limits>
 
-extern "C" nk_result NK_CALL nk_text_edit_event_text(const nk_event *event,
-                                                       const char **out_text,
-                                                       uint32_t *out_length) {
+extern "C" nk_result NK_CALL nk_text_edit_event_text(const nk_event *event, const char **out_text,
+                                                     uint32_t *out_length) {
     nk::core::clear_error();
     if (!event || event->kind != NK_EVENT_TEXT_EDIT || !event->data ||
         event->data_size < sizeof(nk_text_edit_event) || !out_text || !out_length ||
@@ -47,14 +46,12 @@ nk_result unsupported_text_input() {
 
 extern "C" {
 
-nk_result NK_CALL nk_surface_set_text_input_state(nk_handle,
-                                                   const nk_text_input_state *) {
+nk_result NK_CALL nk_surface_set_text_input_state(nk_handle, const nk_text_input_state *) {
     return unsupported_text_input();
 }
 
 nk_result NK_CALL nk_surface_set_text_input_active(nk_handle, uint32_t) {
     return unsupported_text_input();
 }
-
 }
 #endif

@@ -93,8 +93,7 @@ std::uint64_t wake_sequence() noexcept {
 bool wait_for_wake(std::uint64_t sequence, std::chrono::milliseconds timeout) noexcept {
     std::unique_lock lock(event_wake_mutex);
     return event_wake_condition.wait_for(lock, timeout, [sequence] {
-        return event_wake_sequence.load(std::memory_order_acquire) != sequence ||
-               events_pending();
+        return event_wake_sequence.load(std::memory_order_acquire) != sequence || events_pending();
     });
 }
 

@@ -29,8 +29,8 @@ enum NK_FLAGS(nk_webview_flags) {
     NK_WEBVIEW_NAVIGATION_POLICY = 1u << 2
 };
 
-/* Values stored in nk_event.flags for NK_EVENT_WEBVIEW_NAVIGATION_FAILED. */
-enum {
+/** Failure category stored in nk_event.flags for navigation-failed events. */
+enum NK_ENUM(nk_navigation_error) {
     /** No more specific navigation failure category is available. */
     NK_NAVIGATION_ERROR_OTHER = 0,
     /** The request was malformed or rejected before transport. */
@@ -109,8 +109,7 @@ NK_API nk_result NK_CALL nk_webview_navigate(nk_handle webview, const char *url 
 NK_API nk_result NK_CALL nk_webview_set_html(nk_handle webview, const char *html NK_UTF8,
                                              const char *base_url NK_NULLABLE_UTF8);
 /** Reports whether the WebView currently has a back-history entry. */
-NK_API nk_result NK_CALL nk_webview_can_go_back(nk_handle webview,
-                                                nk_bool *out_can_go_back NK_OUT);
+NK_API nk_result NK_CALL nk_webview_can_go_back(nk_handle webview, nk_bool *out_can_go_back NK_OUT);
 /** Reports whether the WebView currently has a forward-history entry. */
 NK_API nk_result NK_CALL nk_webview_can_go_forward(nk_handle webview,
                                                    nk_bool *out_can_go_forward NK_OUT);

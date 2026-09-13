@@ -8,15 +8,13 @@
 #if defined(NK_SOKOL_RUNTIME_PREFIX)
 #define NK_SOKOL_RUNTIME_CAT2(a, b) a##b
 #define NK_SOKOL_RUNTIME_CAT(a, b) NK_SOKOL_RUNTIME_CAT2(a, b)
-#define nk_sokol_runtime_acquire \
-    NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, acquire)
-#define nk_sokol_runtime_release \
-    NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, release)
-#define nk_sokol_external_image_create \
+#define nk_sokol_runtime_acquire NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, acquire)
+#define nk_sokol_runtime_release NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, release)
+#define nk_sokol_external_image_create                                                             \
     NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, external_image_create)
-#define nk_sokol_external_image_release \
+#define nk_sokol_external_image_release                                                            \
     NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, external_image_release)
-#define nk_sokol_external_image_resolve \
+#define nk_sokol_external_image_resolve                                                            \
     NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, external_image_resolve)
 #endif
 

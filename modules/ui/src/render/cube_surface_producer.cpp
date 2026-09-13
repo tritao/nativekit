@@ -13,18 +13,18 @@ namespace {
 constexpr uint8_t opaque = 255;
 
 constexpr std::array<SurfaceMeshVertex, 24> cube_vertices = {{
-    {-1, -1, 1, 52, 190, 238, opaque}, {1, -1, 1, 52, 190, 238, opaque},
-    {1, 1, 1, 52, 190, 238, opaque}, {-1, 1, 1, 52, 190, 238, opaque},
-    {1, -1, -1, 242, 104, 143, opaque}, {-1, -1, -1, 242, 104, 143, opaque},
-    {-1, 1, -1, 242, 104, 143, opaque}, {1, 1, -1, 242, 104, 143, opaque},
-    {1, -1, 1, 50, 214, 143, opaque}, {1, -1, -1, 50, 214, 143, opaque},
-    {1, 1, -1, 50, 214, 143, opaque}, {1, 1, 1, 50, 214, 143, opaque},
-    {-1, -1, -1, 247, 171, 76, opaque}, {-1, -1, 1, 247, 171, 76, opaque},
-    {-1, 1, 1, 247, 171, 76, opaque}, {-1, 1, -1, 247, 171, 76, opaque},
-    {-1, 1, 1, 143, 105, 245, opaque}, {1, 1, 1, 143, 105, 245, opaque},
-    {1, 1, -1, 143, 105, 245, opaque}, {-1, 1, -1, 143, 105, 245, opaque},
+    {-1, -1, 1, 52, 190, 238, opaque},   {1, -1, 1, 52, 190, 238, opaque},
+    {1, 1, 1, 52, 190, 238, opaque},     {-1, 1, 1, 52, 190, 238, opaque},
+    {1, -1, -1, 242, 104, 143, opaque},  {-1, -1, -1, 242, 104, 143, opaque},
+    {-1, 1, -1, 242, 104, 143, opaque},  {1, 1, -1, 242, 104, 143, opaque},
+    {1, -1, 1, 50, 214, 143, opaque},    {1, -1, -1, 50, 214, 143, opaque},
+    {1, 1, -1, 50, 214, 143, opaque},    {1, 1, 1, 50, 214, 143, opaque},
+    {-1, -1, -1, 247, 171, 76, opaque},  {-1, -1, 1, 247, 171, 76, opaque},
+    {-1, 1, 1, 247, 171, 76, opaque},    {-1, 1, -1, 247, 171, 76, opaque},
+    {-1, 1, 1, 143, 105, 245, opaque},   {1, 1, 1, 143, 105, 245, opaque},
+    {1, 1, -1, 143, 105, 245, opaque},   {-1, 1, -1, 143, 105, 245, opaque},
     {-1, -1, -1, 255, 207, 112, opaque}, {1, -1, -1, 255, 207, 112, opaque},
-    {1, -1, 1, 255, 207, 112, opaque}, {-1, -1, 1, 255, 207, 112, opaque},
+    {1, -1, 1, 255, 207, 112, opaque},   {-1, -1, 1, 255, 207, 112, opaque},
 }};
 
 constexpr std::array<uint32_t, 36> make_cube_indices() {
@@ -51,8 +51,7 @@ Matrix multiply(const Matrix &left, const Matrix &right) {
     for (size_t column = 0; column < 4; ++column)
         for (size_t row = 0; row < 4; ++row)
             for (size_t inner = 0; inner < 4; ++inner)
-                output[column * 4 + row] +=
-                    left[inner * 4 + row] * right[column * 4 + inner];
+                output[column * 4 + row] += left[inner * 4 + row] * right[column * 4 + inner];
     return output;
 }
 
@@ -96,9 +95,9 @@ bool CubeSurfaceProducer::describe(int requested_width, int requested_height,
     if (requested_width <= 0 || requested_height <= 0)
         return false;
     constexpr int maximum_extent = 768;
-    const float reduction = std::min(
-        1.0f, static_cast<float>(maximum_extent) /
-                  static_cast<float>(std::max(requested_width, requested_height)));
+    const float reduction =
+        std::min(1.0f, static_cast<float>(maximum_extent) /
+                           static_cast<float>(std::max(requested_width, requested_height)));
     description.width = std::max(1, static_cast<int>(std::lround(requested_width * reduction)));
     description.height = std::max(1, static_cast<int>(std::lround(requested_height * reduction)));
     description.format = SurfacePixelFormat::Rgba8;
@@ -126,8 +125,7 @@ SurfaceRenderResult CubeSurfaceProducer::render(RenderBackend &backend, Resource
     if (!backend.begin_surface_pass(target, description, false))
         return SurfaceRenderResult::Failed;
     SurfaceMeshView mesh{
-        cube_vertices,
-        cube_indices,
+        cube_vertices, cube_indices,
         model_view_projection(rotation_, static_cast<float>(description.width) /
                                              static_cast<float>(description.height))};
     if (!backend.draw_surface_mesh(mesh)) {

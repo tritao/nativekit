@@ -93,7 +93,8 @@ typedef int32_t nks_result;
         uint32_t id;                                                                               \
     } name NKS_HANDLE_ANNOTATION
 #endif
-/** Renderer handle returned by nks_renderer_create(). It owns the adapter resources created with it. */
+/** Renderer handle returned by nks_renderer_create(). It owns the adapter resources created with
+ * it. */
 NKS_HANDLE(nks_renderer);
 /** Buffer handle returned by nks_buffer_create() or nks_buffer_end(). */
 NKS_HANDLE(nks_buffer);
@@ -127,13 +128,13 @@ NKS_HANDLE(nks_render_target);
 enum {
     /** The operation completed successfully. */
     NKS_OK = 0,
-/** An unexpected NativeKit, Sokol, or graphics backend failure occurred. */
+    /** An unexpected NativeKit, Sokol, or graphics backend failure occurred. */
     NKS_ERROR_UNKNOWN = -1,
-/** An argument was null, zero, out of range, or otherwise invalid. */
+    /** An argument was null, zero, out of range, or otherwise invalid. */
     NKS_ERROR_INVALID_ARGUMENT = -2,
-/** A handle is stale, invalid, or belongs to a different renderer. */
+    /** A handle is stale, invalid, or belongs to a different renderer. */
     NKS_ERROR_INVALID_HANDLE = -3,
-/** The operation is not valid in the current renderer or frame state. */
+    /** The operation is not valid in the current renderer or frame state. */
     NKS_ERROR_WRONG_STATE = -4,
 };
 
@@ -152,13 +153,13 @@ enum {
 typedef uint32_t nks_vertex_format;
 
 enum {
-/** A single 32-bit floating-point vertex component. */
+    /** A single 32-bit floating-point vertex component. */
     NKS_VERTEXFORMAT_FLOAT = 1,
-/** Two 32-bit floating-point vertex components. */
+    /** Two 32-bit floating-point vertex components. */
     NKS_VERTEXFORMAT_FLOAT2 = 2,
-/** Three 32-bit floating-point vertex components. */
+    /** Three 32-bit floating-point vertex components. */
     NKS_VERTEXFORMAT_FLOAT3 = 3,
-/** Four 32-bit floating-point vertex components. */
+    /** Four 32-bit floating-point vertex components. */
     NKS_VERTEXFORMAT_FLOAT4 = 4,
 };
 
@@ -166,9 +167,9 @@ enum {
 typedef uint32_t nks_buffer_usage;
 
 enum {
-/** Use the buffer as vertex data. */
+    /** Use the buffer as vertex data. */
     NKS_BUFFER_VERTEX = 1,
-/** Use the buffer as index data. */
+    /** Use the buffer as index data. */
     NKS_BUFFER_INDEX = 2,
 };
 
@@ -176,11 +177,11 @@ enum {
 typedef uint32_t nks_index_type;
 
 enum {
-/** Do not use indexed drawing for the pipeline. */
+    /** Do not use indexed drawing for the pipeline. */
     NKS_INDEXTYPE_NONE = 0,
-/** Interpret index elements as unsigned 16-bit values. */
+    /** Interpret index elements as unsigned 16-bit values. */
     NKS_INDEXTYPE_UINT16 = 1,
-/** Interpret index elements as unsigned 32-bit values. */
+    /** Interpret index elements as unsigned 32-bit values. */
     NKS_INDEXTYPE_UINT32 = 2,
 };
 
@@ -188,9 +189,9 @@ enum {
 typedef uint32_t nks_shader_stage;
 
 enum {
-/** The vertex shader stage. */
+    /** The vertex shader stage. */
     NKS_SHADERSTAGE_VERTEX = 1,
-/** The fragment shader stage. */
+    /** The fragment shader stage. */
     NKS_SHADERSTAGE_FRAGMENT = 2,
 };
 
@@ -198,23 +199,23 @@ enum {
 typedef uint32_t nks_uniform_type;
 
 enum {
-/** One floating-point value. */
+    /** One floating-point value. */
     NKS_UNIFORMTYPE_FLOAT = 1,
-/** Two floating-point values. */
+    /** Two floating-point values. */
     NKS_UNIFORMTYPE_FLOAT2 = 2,
-/** Three floating-point values. */
+    /** Three floating-point values. */
     NKS_UNIFORMTYPE_FLOAT3 = 3,
-/** Four floating-point values. */
+    /** Four floating-point values. */
     NKS_UNIFORMTYPE_FLOAT4 = 4,
-/** One integer value. */
+    /** One integer value. */
     NKS_UNIFORMTYPE_INT = 5,
-/** Two integer values. */
+    /** Two integer values. */
     NKS_UNIFORMTYPE_INT2 = 6,
-/** Three integer values. */
+    /** Three integer values. */
     NKS_UNIFORMTYPE_INT3 = 7,
-/** Four integer values. */
+    /** Four integer values. */
     NKS_UNIFORMTYPE_INT4 = 8,
-/** A 4-by-4 matrix of floating-point values. */
+    /** A 4-by-4 matrix of floating-point values. */
     NKS_UNIFORMTYPE_MAT4 = 9,
 };
 
@@ -222,9 +223,9 @@ enum {
 typedef uint32_t nks_filter;
 
 enum {
-/** Choose the nearest texel when sampling. */
+    /** Choose the nearest texel when sampling. */
     NKS_FILTER_NEAREST = 1,
-/** Interpolate neighboring texels when sampling. */
+    /** Interpolate neighboring texels when sampling. */
     NKS_FILTER_LINEAR = 2,
 };
 
@@ -232,9 +233,9 @@ enum {
 typedef uint32_t nks_wrap;
 
 enum {
-/** Repeat the texture at integer coordinate boundaries. */
+    /** Repeat the texture at integer coordinate boundaries. */
     NKS_WRAP_REPEAT = 1,
-/** Clamp texture coordinates to the edge texels. */
+    /** Clamp texture coordinates to the edge texels. */
     NKS_WRAP_CLAMP_TO_EDGE = 2,
 };
 
@@ -242,19 +243,19 @@ enum {
 typedef uint32_t nks_command;
 
 enum {
-/** Apply a pipeline; payload: one nks_pipeline handle. */
+    /** Apply a pipeline; payload: one nks_pipeline handle. */
     NKS_COMMAND_APPLY_PIPELINE = 1,
-/** Apply a vertex buffer; payload: slot, buffer handle, and byte offset. */
+    /** Apply a vertex buffer; payload: slot, buffer handle, and byte offset. */
     NKS_COMMAND_APPLY_VERTEX_BUFFER = 2,
-/** Apply an index buffer; payload: buffer handle and byte offset. */
+    /** Apply an index buffer; payload: buffer handle and byte offset. */
     NKS_COMMAND_APPLY_INDEX_BUFFER = 3,
-/** Apply an image; payload: view slot and image handle. */
+    /** Apply an image; payload: view slot and image handle. */
     NKS_COMMAND_APPLY_IMAGE = 4,
-/** Apply a sampler; payload: sampler slot and sampler handle. */
+    /** Apply a sampler; payload: sampler slot and sampler handle. */
     NKS_COMMAND_APPLY_SAMPLER = 5,
-/** Apply uniform bytes; payload: block slot, byte count, and uniform bytes. */
+    /** Apply uniform bytes; payload: block slot, byte count, and uniform bytes. */
     NKS_COMMAND_APPLY_UNIFORMS = 6,
-/** Draw primitives; payload: base element, element count, and instance count. */
+    /** Draw primitives; payload: base element, element count, and instance count. */
     NKS_COMMAND_DRAW = 7,
 };
 
@@ -291,17 +292,16 @@ NKS_API nk_graphics_api nks_query_graphics_api(nks_renderer renderer);
  * `out_surface`; destroy it with nks_surface_destroy() after destroying its
  * renderer. This convenience call requests the build's default API.
  */
-NKS_API nks_result nks_surface_create(nk_handle nativekit_window, int32_t width,
-                                      int32_t height, nk_handle *out_surface NKS_OUT);
+NKS_API nks_result nks_surface_create(nk_handle nativekit_window, int32_t width, int32_t height,
+                                      nk_handle *out_surface NKS_OUT);
 
 /**
  * Creates a child surface with an explicit graphics API. The matching runtime
  * must be included in this build; with the backend matrix enabled, GLCore and
  * GLES3 surfaces can coexist.
  */
-NKS_API nks_result nks_surface_create_for_api(nk_handle nativekit_window,
-                                              nk_graphics_api api, int32_t width,
-                                              int32_t height,
+NKS_API nks_result nks_surface_create_for_api(nk_handle nativekit_window, nk_graphics_api api,
+                                              int32_t width, int32_t height,
                                               nk_handle *out_surface NKS_OUT);
 
 /**
@@ -342,18 +342,16 @@ NKS_API nks_result nks_renderer_create(nk_handle nativekit_surface,
 NKS_API nks_result nks_renderer_destroy(nks_renderer renderer);
 
 /** Creates a sampled RGBA8 offscreen target, optionally with depth/stencil storage. */
-NKS_API nks_result nks_render_target_create(nks_renderer renderer, uint32_t width,
-                                            uint32_t height, uint32_t depth_stencil,
+NKS_API nks_result nks_render_target_create(nks_renderer renderer, uint32_t width, uint32_t height,
+                                            uint32_t depth_stencil,
                                             nks_render_target *out_target NKS_OUT);
 
 /** Returns a borrowed generic image handle for the target's sampled color attachment. */
-NKS_API nks_result nks_render_target_get_image(nks_renderer renderer,
-                                               nks_render_target target,
+NKS_API nks_result nks_render_target_get_image(nks_renderer renderer, nks_render_target target,
                                                nk_graphics_image *out_image NKS_OUT);
 
 /** Destroys a render target; imported image references remain valid until released. */
-NKS_API nks_result nks_render_target_destroy(nks_renderer renderer,
-                                             nks_render_target target);
+NKS_API nks_result nks_render_target_destroy(nks_renderer renderer, nks_render_target target);
 
 /** Begins drawing to an offscreen target without clearing or presenting the window surface. */
 NKS_API nks_result nks_begin_render_target(nks_renderer renderer, nks_render_target target,

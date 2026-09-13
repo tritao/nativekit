@@ -19,8 +19,7 @@ typedef struct nk_sokol_api {
     const sg_api *gfx;
     int (*runtime_acquire)(const sg_desc *desc, nk_graphics_device device);
     void (*runtime_release)(void);
-    uint32_t (*external_image_create)(sg_image image, sg_view view, int32_t width,
-                                      int32_t height);
+    uint32_t (*external_image_create)(sg_image image, sg_view view, int32_t width, int32_t height);
     void (*external_image_release)(uint32_t image);
     int (*external_image_resolve)(uint32_t image, sg_view *out_view, int32_t *out_width,
                                   int32_t *out_height);

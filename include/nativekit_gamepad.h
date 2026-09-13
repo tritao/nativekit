@@ -145,13 +145,12 @@ NK_API nk_result NK_CALL nk_gamepad_add_mapping(const char *mapping NK_UTF8);
  * Adds newline-separated mappings, ignoring blank lines, comments, and entries
  * for other platforms. The update is atomic if any applicable line is invalid.
  */
-NK_API nk_result NK_CALL nk_gamepad_add_mappings(const char *database NK_UTF8,
-                                                 uint32_t *out_added);
+NK_API nk_result NK_CALL nk_gamepad_add_mappings(const char *database NK_UTF8, uint32_t *out_added);
 /** Reports whether a joystick has an active canonical gamepad mapping. */
 NK_API nk_result NK_CALL nk_gamepad_is_mapped(nk_handle joystick, nk_bool *out_mapped);
 /** Reports whether the active mapping is built-in or application-supplied. */
-NK_API nk_result NK_CALL
-nk_gamepad_get_mapping_source(nk_handle joystick, nk_gamepad_mapping_source *out_source);
+NK_API nk_result NK_CALL nk_gamepad_get_mapping_source(nk_handle joystick,
+                                                       nk_gamepad_mapping_source *out_source);
 /** Returns the pinned SDL_GameControllerDB Git revision used for built-ins. */
 NK_API nk_result NK_CALL nk_gamepad_get_builtin_database_revision(char *buffer,
                                                                   uint32_t *inout_size);
@@ -159,8 +158,7 @@ NK_API nk_result NK_CALL nk_gamepad_get_builtin_database_revision(char *buffer,
 NK_API nk_result NK_CALL nk_gamepad_get_name(nk_handle joystick, char *buffer,
                                              uint32_t *inout_size);
 /** Returns the current normalized state of a mapped joystick. */
-NK_API nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick,
-                                              nk_gamepad_state *out_state);
+NK_API nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick, nk_gamepad_state *out_state);
 /** Sets process-wide normalization used by state queries and gamepad events. */
 NK_API nk_result NK_CALL nk_gamepad_set_options(const nk_gamepad_options *options);
 /** Returns the process-wide gamepad normalization options. */

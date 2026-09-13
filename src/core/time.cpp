@@ -26,8 +26,7 @@ nk_result wait_until(const Clock::time_point *deadline) {
             if (now >= *deadline)
                 return NK_OK;
             duration = std::min(
-                duration,
-                std::chrono::duration_cast<std::chrono::milliseconds>(*deadline - now));
+                duration, std::chrono::duration_cast<std::chrono::milliseconds>(*deadline - now));
             if (duration.count() == 0)
                 duration = std::chrono::milliseconds(1);
         }
@@ -54,20 +53,18 @@ nk_result NK_CALL nk_wait_events(void) {
 }
 
 nk_result NK_CALL nk_wait_events_timeout(double timeout_seconds) {
-    return nk::core::result_boundary("unexpected error while waiting for events",
-                                     [&]() -> nk_result {
-                                         nk::core::clear_error();
-                                         if (!std::isfinite(timeout_seconds) ||
-                                             timeout_seconds < 0.0) {
-                                             nk::core::set_error("invalid event wait timeout");
-                                             return NK_ERROR_INVALID_ARGUMENT;
-                                         }
-                                         const auto deadline =
-                                             Clock::now() + std::chrono::duration_cast<Clock::duration>(
-                                                                std::chrono::duration<double>(
-                                                                    timeout_seconds));
-                                         return wait_until(&deadline);
-                                     });
+    return nk::core::result_boundary(
+        "unexpected error while waiting for events", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (!std::isfinite(timeout_seconds) || timeout_seconds < 0.0) {
+                nk::core::set_error("invalid event wait timeout");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            const auto deadline =
+                Clock::now() + std::chrono::duration_cast<Clock::duration>(
+                                   std::chrono::duration<double>(timeout_seconds));
+            return wait_until(&deadline);
+        });
 }
 
 void NK_CALL nk_wake_events(void) {

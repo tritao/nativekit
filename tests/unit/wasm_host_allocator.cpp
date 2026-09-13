@@ -84,5 +84,8 @@ bool exhaustion_is_bounded() {
 } // namespace
 
 int main() {
-    return basic_allocations() && realloc_preserves_data() && aligned_allocations() && exhaustion_is_bounded() ? 0 : 1;
+    return basic_allocations() && realloc_preserves_data() && aligned_allocations() &&
+                   exhaustion_is_bounded()
+               ? 0
+               : 1;
 }

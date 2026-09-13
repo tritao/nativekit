@@ -63,8 +63,8 @@ struct SokolBackend::State {
     std::unordered_map<uint64_t, AtlasImage> atlases;
     std::unordered_map<uint32_t, Target> targets;
     std::unordered_map<uint32_t, SurfaceState> surfaces;
-    std::unordered_map<const PreparedPathData *,
-                       std::unordered_map<PreparedImageToken, PaintImage>> paint_images;
+    std::unordered_map<const PreparedPathData *, std::unordered_map<PreparedImageToken, PaintImage>>
+        paint_images;
     std::unordered_map<uint32_t, PaintImage> images;
     SokolBackendStats stats{};
     std::string error;
@@ -206,9 +206,9 @@ void copy_atlas_pixels(SokolBackend::State::AtlasImage &target, const AtlasUploa
     for (int32_t row = 0; row < height; ++row) {
         const auto *source = upload.pixels + static_cast<size_t>(y + row) * upload.row_pitch +
                              static_cast<size_t>(x) * upload.bytes_per_pixel;
-        auto *destination = target.pixels.data() +
-                            (static_cast<size_t>(y + row) * target.width + x) *
-                                target.bytes_per_pixel;
+        auto *destination =
+            target.pixels.data() +
+            (static_cast<size_t>(y + row) * target.width + x) * target.bytes_per_pixel;
         std::memcpy(destination, source, static_cast<size_t>(width) * upload.bytes_per_pixel);
     }
 }
@@ -246,8 +246,7 @@ bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
                sg_sampler sampler = {}, GpuBufferHandle vertex_buffer_handle = {}) {
     if (vertices.empty() || indices.empty())
         return true;
-    const sg_buffer vertex_buffer =
-        state.device->gpu_resources().resolve(vertex_buffer_handle);
+    const sg_buffer vertex_buffer = state.device->gpu_resources().resolve(vertex_buffer_handle);
     const sg_buffer index_buffer = state.device->gpu_resources().resolve(state.indices);
     if (!vertex_buffer.id || !index_buffer.id)
         return fail(state, "UI streaming buffer is unavailable");
@@ -272,8 +271,8 @@ bool draw_mesh(SokolBackend::State &state, sg_pipeline pipeline,
     // All NativeKit shader families use generated std140 uniform blocks. A
     // vec2 therefore has a 16-byte block footprint even though only the first
     // two values are consumed by the vertex shader.
-    const std::array<float, 4> viewport = {
-        static_cast<float>(state.width), static_cast<float>(state.height), 0.0f, 0.0f};
+    const std::array<float, 4> viewport = {static_cast<float>(state.width),
+                                           static_cast<float>(state.height), 0.0f, 0.0f};
     const sg_range viewport_range{viewport.data(), sizeof(viewport)};
     state.api->gfx->apply_uniforms(0, &viewport_range);
     if (fragment_uniforms) {
@@ -322,8 +321,8 @@ bool create_target(SokolBackend::State &state, SokolBackend::State::Target &targ
     target.depth_attachment = gpu.create_view(depth_view_desc);
     target.width = width;
     target.height = height;
-    const bool valid = target.color && target.depth && target.texture &&
-                       target.color_attachment && target.depth_attachment;
+    const bool valid = target.color && target.depth && target.texture && target.color_attachment &&
+                       target.depth_attachment;
     if (!valid) {
         destroy_target(state, target);
         return fail(state, "offscreen target creation failed");
@@ -334,8 +333,9 @@ bool create_target(SokolBackend::State &state, SokolBackend::State::Target &targ
 
 const PreparedTexture *find_texture(const PreparedPathData &path, PreparedImageToken token) {
     const auto &textures = path.textures();
-    const auto found = std::find_if(textures.begin(), textures.end(),
-                                    [token](const auto &texture) { return texture.token == token; });
+    const auto found = std::find_if(textures.begin(), textures.end(), [token](const auto &texture) {
+        return texture.token == token;
+    });
     return found == textures.end() ? nullptr : &*found;
 }
 
@@ -346,8 +346,8 @@ bool upload_texture(SokolBackend::State &state, const PreparedTexture &source,
         sg_image_desc image_desc{};
         image_desc.width = source.width;
         image_desc.height = source.height;
-        image_desc.pixel_format = source.type == PreparedTextureType::Rgba ? SG_PIXELFORMAT_RGBA8
-                                                                           : SG_PIXELFORMAT_R8;
+        image_desc.pixel_format =
+            source.type == PreparedTextureType::Rgba ? SG_PIXELFORMAT_RGBA8 : SG_PIXELFORMAT_R8;
         image_desc.usage.dynamic_update = true;
         image.image = gpu.create_image(image_desc);
         sg_view_desc view_desc{};
@@ -386,9 +386,8 @@ bool upload_texture(SokolBackend::State &state, const PreparedTexture &source,
 }
 
 bool resolve_paint_image(SokolBackend::State &state, const PreparedPathData &path,
-                         PreparedImageToken token,
-                         sg_view &view, sg_sampler &sampler, PreparedTextureType &type,
-                         PreparedImageFlags &flags) {
+                         PreparedImageToken token, sg_view &view, sg_sampler &sampler,
+                         PreparedTextureType &type, PreparedImageFlags &flags) {
     if (!token) {
         view = state.device->resources().white_view;
         sampler = state.device->resources().white_sampler;
@@ -492,16 +491,15 @@ PathMesh make_paint_mesh(const PreparedPathData &path, const PreparedPathOperati
             append_path_range(mesh, path, range.fill_offset, range.fill_count, false, transform);
         if (operation.kind == PreparedPathKind::Stroke || fringe_only ||
             operation.kind == PreparedPathKind::Fill)
-            append_path_range(mesh, path, range.stroke_offset, range.stroke_count, true,
-                              transform);
+            append_path_range(mesh, path, range.stroke_offset, range.stroke_count, true, transform);
     }
     return mesh;
 }
 
 } // namespace
 
-bool triangulate_prepared_path(const PreparedPathData &path,
-                               const PreparedPathOperation &operation, SolidMesh &mesh) {
+bool triangulate_prepared_path(const PreparedPathData &path, const PreparedPathOperation &operation,
+                               SolidMesh &mesh) {
     mesh = {};
     if (operation.kind != PreparedPathKind::Fill && operation.kind != PreparedPathKind::Stroke)
         return false;
@@ -540,8 +538,7 @@ bool triangulate_prepared_path(const PreparedPathData &path,
     return !mesh.indices.empty();
 }
 
-SokolBackend::SokolBackend(const nk_sokol_api *api, nk_graphics_device device)
-    : state_(new State) {
+SokolBackend::SokolBackend(const nk_sokol_api *api, nk_graphics_device device) : state_(new State) {
     state_->api = api;
     state_->device_identity = device;
 }
@@ -588,8 +585,7 @@ bool SokolBackend::initialize() {
     if (state_->initialized)
         return fail(*state_, "Sokol backend is already initialized");
     std::string device_error;
-    state_->device = GraphicsDevice::acquire(state_->api, state_->device_identity,
-                                             &device_error);
+    state_->device = GraphicsDevice::acquire(state_->api, state_->device_identity, &device_error);
     if (!state_->device)
         return fail(*state_, device_error.c_str());
     auto &gpu = state_->device->gpu_resources();
@@ -620,13 +616,13 @@ bool SokolBackend::valid() const {
     return state_->initialized;
 }
 
-bool SokolBackend::begin_window_pass(int width, int height,
-                                     const nk_surface_frame_target &target, bool clear) {
+bool SokolBackend::begin_window_pass(int width, int height, const nk_surface_frame_target &target,
+                                     bool clear) {
     if (!valid() || state_->in_pass || width <= 0 || height <= 0)
         return fail(*state_, "invalid window pass");
-    const nk_graphics_api supported_api =
-        state_->api->gfx->query_backend() == SG_BACKEND_GLES3 ? NK_GRAPHICS_OPENGL_ES
-                                                               : NK_GRAPHICS_OPENGL;
+    const nk_graphics_api supported_api = state_->api->gfx->query_backend() == SG_BACKEND_GLES3
+                                              ? NK_GRAPHICS_OPENGL_ES
+                                              : NK_GRAPHICS_OPENGL;
     if (target.struct_size < sizeof(target) || target.api != supported_api ||
         target.device.id != state_->device_identity.id)
         return fail(*state_, "unsupported window target");
@@ -680,7 +676,7 @@ bool SokolBackend::begin_target_pass(ResourceId target_id, int width, int height
 }
 
 bool SokolBackend::begin_surface_pass(ResourceId target_id, const SurfaceDescriptor &description,
-                                       bool load_existing) {
+                                      bool load_existing) {
     if (description.format != SurfacePixelFormat::Rgba8 || description.width <= 0 ||
         description.height <= 0 ||
         (description.alpha != SurfaceAlphaMode::Opaque &&
@@ -726,8 +722,7 @@ bool SokolBackend::draw_surface_mesh(const SurfaceMeshView &mesh) {
     bindings.index_buffer_offset = index_offset;
     state_->api->gfx->apply_bindings(&bindings);
     ++state_->stats.binding_changes;
-    const sg_range uniforms{mesh.model_view_projection.data(),
-                            sizeof(mesh.model_view_projection)};
+    const sg_range uniforms{mesh.model_view_projection.data(), sizeof(mesh.model_view_projection)};
     state_->api->gfx->apply_uniforms(0, &uniforms);
     state_->api->gfx->draw(0, static_cast<int>(mesh.indices.size()), 1);
     ++state_->stats.draws;
@@ -757,13 +752,13 @@ bool SokolBackend::surface_is_current(ResourceId target_id, uint32_t generation,
 }
 
 void SokolBackend::mark_surface_current(ResourceId target_id, uint32_t generation,
-                                         const SurfaceDescriptor &description) {
+                                        const SurfaceDescriptor &description) {
     if (!is_resource_id(target_id, ResourceKind::RenderTarget) || !generation ||
         description.width <= 0 || description.height <= 0)
         return;
-    state_->surfaces[target_id.value] = {generation, description.width, description.height,
-                                         description.format, description.alpha, description.filter,
-                                         description.color_space};
+    state_->surfaces[target_id.value] = {
+        generation,        description.width,  description.height,     description.format,
+        description.alpha, description.filter, description.color_space};
 }
 
 bool SokolBackend::set_scissor(bool enabled, float x, float y, float width, float height) {
@@ -773,8 +768,8 @@ bool SokolBackend::set_scissor(bool enabled, float x, float y, float width, floa
         state_->api->gfx->apply_scissor_rect(0, 0, state_->width, state_->height, true);
         return true;
     }
-    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) ||
-        !std::isfinite(height) || width < 0.0f || height < 0.0f)
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) || !std::isfinite(height) ||
+        width < 0.0f || height < 0.0f)
         return fail(*state_, "invalid scissor rectangle");
     const int left = std::max(0, static_cast<int>(x));
     const int top = std::max(0, static_cast<int>(y));
@@ -804,8 +799,7 @@ bool SokolBackend::draw_path_transformed(const PreparedPathData &path, uint32_t 
     if (!resolve_paint_image(*state_, path, operation.paint.image_token, paint_view, paint_sampler,
                              texture_type, texture_flags))
         return false;
-    PathUniforms paint =
-        path_uniforms(operation, transform, opacity, texture_type, texture_flags);
+    PathUniforms paint = path_uniforms(operation, transform, opacity, texture_type, texture_flags);
     if (operation.kind == PreparedPathKind::Fill &&
         (operation.path_count != 1 || !path.paths()[operation.path_offset].convex)) {
         const std::array<float, 4> stencil_color{};
@@ -835,8 +829,8 @@ bool SokolBackend::draw_path_transformed(const PreparedPathData &path, uint32_t 
         const PathMesh fringe = make_paint_mesh(path, operation, transform, true);
         if (!fringe.indices.empty() &&
             !draw_mesh(*state_, state_->device->resources().paint_fringe_pipeline, fringe.vertices,
-                       fringe.indices,
-                       &paint, sizeof(paint), paint_view, paint_sampler, state_->solid_vertices))
+                       fringe.indices, &paint, sizeof(paint), paint_view, paint_sampler,
+                       state_->solid_vertices))
             return false;
         PathMesh cover;
         const auto point = [transform](float x, float y) {
@@ -850,15 +844,15 @@ bool SokolBackend::draw_path_transformed(const PreparedPathData &path, uint32_t 
         cover.indices = {0, 1, 2, 0, 2, 3};
         paint.coverage[0] = 0.0f;
         return draw_mesh(*state_, state_->device->resources().paint_cover_pipeline, cover.vertices,
-                         cover.indices,
-                         &paint, sizeof(paint), paint_view, paint_sampler, state_->solid_vertices);
+                         cover.indices, &paint, sizeof(paint), paint_view, paint_sampler,
+                         state_->solid_vertices);
     }
     const PathMesh mesh = make_paint_mesh(path, operation, transform);
     if (mesh.indices.empty())
         return fail(*state_, "empty prepared path");
     return draw_mesh(*state_, state_->device->resources().paint_pipeline, mesh.vertices,
-                     mesh.indices, &paint,
-                     sizeof(paint), paint_view, paint_sampler, state_->solid_vertices);
+                     mesh.indices, &paint, sizeof(paint), paint_view, paint_sampler,
+                     state_->solid_vertices);
 }
 
 bool SokolBackend::draw_paths(const PreparedPathData &path) {
@@ -880,18 +874,17 @@ bool SokolBackend::draw_image(const PreparedTexture &image, float x, float y, fl
         return false;
     const auto point = [transform](float px, float py, float u, float v) {
         return TextureVertex{px * transform[0] + py * transform[2] + transform[4],
-                              px * transform[1] + py * transform[3] + transform[5], u, v};
+                             px * transform[1] + py * transform[3] + transform[5], u, v};
     };
     const std::vector<TextureVertex> vertices = {
         point(x, y, 0.0f, 1.0f), point(x + width, y, 1.0f, 1.0f),
         point(x + width, y + height, 1.0f, 0.0f), point(x, y + height, 0.0f, 0.0f)};
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
-        return draw_mesh(*state_, state_->device->resources().composite_pipeline, vertices, indices,
-                         tint.data(), sizeof(tint),
-                         state_->device->gpu_resources().resolve(gpu_image.view),
-                         state_->device->gpu_resources().resolve(gpu_image.sampler),
-                         state_->composite_vertices);
+    return draw_mesh(
+        *state_, state_->device->resources().composite_pipeline, vertices, indices, tint.data(),
+        sizeof(tint), state_->device->gpu_resources().resolve(gpu_image.view),
+        state_->device->gpu_resources().resolve(gpu_image.sampler), state_->composite_vertices);
 }
 
 bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) {
@@ -925,10 +918,9 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
                    found->second.bytes_per_pixel != upload.bytes_per_pixel) {
             return fail(*state_, "atlas generation changed dimensions");
         }
-        const uint64_t dirty_bytes = upload.dirty
-                                         ? static_cast<uint64_t>(upload.width) * upload.height *
-                                               upload.bytes_per_pixel
-                                         : 0;
+        const uint64_t dirty_bytes = upload.dirty ? static_cast<uint64_t>(upload.width) *
+                                                        upload.height * upload.bytes_per_pixel
+                                                  : 0;
         state_->stats.atlas_dirty_bytes += dirty_bytes;
         if (upload.dirty)
             state_->stats.atlas_dirty_capacity_bytes +=
@@ -942,8 +934,8 @@ bool SokolBackend::upload_atlases(SkribidiAdapter &adapter, bool include_clean) 
         copy_atlas_pixels(found->second, upload, true);
         const sg_image_data data = {
             .mip_levels = {{found->second.pixels.data(), found->second.pixels.size()}}};
-        state_->api->gfx->update_image(
-            state_->device->gpu_resources().resolve(found->second.image), &data);
+        state_->api->gfx->update_image(state_->device->gpu_resources().resolve(found->second.image),
+                                       &data);
         ++state_->stats.atlas_full_uploads;
         const uint64_t uploaded_bytes = found->second.pixels.size();
         found->second.generation = upload.generation;
@@ -1055,9 +1047,9 @@ bool SokolBackend::draw_graphics_image(nk_graphics_image image, float x, float y
     info.struct_size = sizeof(info);
     const void *runtime = nullptr;
     uint64_t backend_image = 0;
-    const nk_graphics_api supported_api =
-        state_->api->gfx->query_backend() == SG_BACKEND_GLES3 ? NK_GRAPHICS_OPENGL_ES
-                                                               : NK_GRAPHICS_OPENGL;
+    const nk_graphics_api supported_api = state_->api->gfx->query_backend() == SG_BACKEND_GLES3
+                                              ? NK_GRAPHICS_OPENGL_ES
+                                              : NK_GRAPHICS_OPENGL;
     if (nk_core_graphics_image_get_backend(image, &info, &runtime, &backend_image) != NK_OK ||
         runtime != state_->api || info.api != supported_api ||
         info.device.id != state_->device_identity.id || !backend_image ||
@@ -1078,8 +1070,7 @@ bool SokolBackend::draw_graphics_image(nk_graphics_image image, float x, float y
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
     return draw_mesh(*state_, state_->device->resources().composite_pipeline, vertices, indices,
-                     tint.data(), sizeof(tint), view,
-                     state_->device->resources().surface_sampler,
+                     tint.data(), sizeof(tint), view, state_->device->resources().surface_sampler,
                      state_->composite_vertices);
 }
 
@@ -1129,18 +1120,18 @@ std::unique_ptr<RenderBackend> create_render_backend(nk_graphics_api api,
     if (!sokol_api)
         return nullptr;
 #else
-    #if defined(NK_SOKOL_BACKEND_GLES3)
-        #if defined(__EMSCRIPTEN__)
-        if (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES)
-            return nullptr;
-        #else
-        if (api != NK_GRAPHICS_OPENGL_ES)
-            return nullptr;
-        #endif
-    #else
-        if (api != NK_GRAPHICS_OPENGL)
-            return nullptr;
-    #endif
+#if defined(NK_SOKOL_BACKEND_GLES3)
+#if defined(__EMSCRIPTEN__)
+    if (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES)
+        return nullptr;
+#else
+    if (api != NK_GRAPHICS_OPENGL_ES)
+        return nullptr;
+#endif
+#else
+    if (api != NK_GRAPHICS_OPENGL)
+        return nullptr;
+#endif
     const nk_sokol_api *sokol_api = nk_sokol_get_api();
 #endif
     return sokol_api ? std::make_unique<SokolBackend>(sokol_api, device) : nullptr;

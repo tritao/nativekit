@@ -19,8 +19,7 @@ namespace {
 constexpr std::size_t kAutomaticTextLayoutCacheEntries = 128;
 
 Clay_Color clay_color(LayoutColor color) {
-    return {color.red * 255.0f, color.green * 255.0f, color.blue * 255.0f,
-            color.alpha * 255.0f};
+    return {color.red * 255.0f, color.green * 255.0f, color.blue * 255.0f, color.alpha * 255.0f};
 }
 
 Clay_SizingAxis clay_axis(LayoutAxis axis) {
@@ -40,8 +39,8 @@ Clay_SizingAxis clay_axis(LayoutAxis axis) {
 uint16_t clay_text_value(float value, bool allow_zero = false) {
     if (!std::isfinite(value) || value <= 0.0f)
         return allow_zero ? 0 : 1;
-    return static_cast<uint16_t>(std::min(
-        static_cast<long>(std::lround(value)), static_cast<long>(std::numeric_limits<uint16_t>::max())));
+    return static_cast<uint16_t>(std::min(static_cast<long>(std::lround(value)),
+                                          static_cast<long>(std::numeric_limits<uint16_t>::max())));
 }
 
 TextLayoutOptions text_options_for_node(const LayoutNode *node, Clay_TextElementConfig *config) {
@@ -61,12 +60,10 @@ TextLayoutOptions text_options_for_node(const LayoutNode *node, Clay_TextElement
         options.letter_spacing = static_cast<float>(config->letterSpacing);
         options.line_height = static_cast<float>(config->lineHeight);
         options.family = static_cast<FontFamily>(config->fontId);
-        options.wrap = config->wrapMode == CLAY_TEXT_WRAP_NONE
-                           ? TextWrapMode::None
+        options.wrap = config->wrapMode == CLAY_TEXT_WRAP_NONE       ? TextWrapMode::None
                        : config->wrapMode == CLAY_TEXT_WRAP_NEWLINES ? TextWrapMode::Word
-                                                                      : TextWrapMode::WordCharacter;
-        options.alignment = config->textAlignment == CLAY_TEXT_ALIGN_CENTER
-                                ? TextAlignment::Center
+                                                                     : TextWrapMode::WordCharacter;
+        options.alignment = config->textAlignment == CLAY_TEXT_ALIGN_CENTER  ? TextAlignment::Center
                             : config->textAlignment == CLAY_TEXT_ALIGN_RIGHT ? TextAlignment::End
                                                                              : TextAlignment::Start;
     }
@@ -74,24 +71,23 @@ TextLayoutOptions text_options_for_node(const LayoutNode *node, Clay_TextElement
 }
 
 Clay_TextElementConfigWrapMode clay_wrap(TextWrapMode wrap) {
-    return wrap == TextWrapMode::None
-               ? CLAY_TEXT_WRAP_NONE
-               : wrap == TextWrapMode::Word ? CLAY_TEXT_WRAP_NEWLINES : CLAY_TEXT_WRAP_WORDS;
+    return wrap == TextWrapMode::None   ? CLAY_TEXT_WRAP_NONE
+           : wrap == TextWrapMode::Word ? CLAY_TEXT_WRAP_NEWLINES
+                                        : CLAY_TEXT_WRAP_WORDS;
 }
 
 Clay_TextAlignment clay_alignment(TextAlignment alignment) {
-    return alignment == TextAlignment::Center
-               ? CLAY_TEXT_ALIGN_CENTER
-           : alignment == TextAlignment::End ? CLAY_TEXT_ALIGN_RIGHT : CLAY_TEXT_ALIGN_LEFT;
+    return alignment == TextAlignment::Center ? CLAY_TEXT_ALIGN_CENTER
+           : alignment == TextAlignment::End  ? CLAY_TEXT_ALIGN_RIGHT
+                                              : CLAY_TEXT_ALIGN_LEFT;
 }
 
 } // namespace
 
 struct LayoutEngine::Impl {
-    explicit Impl(std::size_t max_nodes_value,
-                  std::shared_ptr<SkribidiFontCollection> fonts = {})
-        : max_nodes(max_nodes_value), text(fonts ? std::move(fonts)
-                                                 : std::make_shared<SkribidiFontCollection>()) {
+    explicit Impl(std::size_t max_nodes_value, std::shared_ptr<SkribidiFontCollection> fonts = {})
+        : max_nodes(max_nodes_value),
+          text(fonts ? std::move(fonts) : std::make_shared<SkribidiFontCollection>()) {
         Clay_SetMaxElementCount(static_cast<int32_t>(max_nodes + 1));
         Clay_SetMaxMeasureTextCacheWordCount(static_cast<int32_t>(max_nodes * 8 + 32));
         clay_memory.resize(Clay_MinMemorySize());
@@ -119,18 +115,16 @@ struct LayoutEngine::Impl {
     bool add_font_from_data(const char *name, const void *data, std::size_t bytes,
                             FontFamily family);
     bool add_system_fallbacks();
-    bool layout(const std::vector<LayoutNode> &nodes, float width, float height,
-                float pointer_x, float pointer_y, bool pointer_down, float delta_seconds,
-                LayoutSnapshot &out, LayoutError *error);
+    bool layout(const std::vector<LayoutNode> &nodes, float width, float height, float pointer_x,
+                float pointer_y, bool pointer_down, float delta_seconds, LayoutSnapshot &out,
+                LayoutError *error);
 
     static Clay_Dimensions measure_text(Clay_StringSlice text, Clay_TextElementConfig *config,
                                         void *user_data);
-    static Clay_TextIntrinsicDimensions measure_intrinsic_text(Clay_StringSlice text,
-                                                               Clay_TextElementConfig *config,
-                                                               void *user_data);
-    static Clay_TextLayoutResult layout_text(Clay_StringSlice text,
-                                              Clay_TextElementConfig *config,
-                                              float available_width, void *user_data);
+    static Clay_TextIntrinsicDimensions
+    measure_intrinsic_text(Clay_StringSlice text, Clay_TextElementConfig *config, void *user_data);
+    static Clay_TextLayoutResult layout_text(Clay_StringSlice text, Clay_TextElementConfig *config,
+                                             float available_width, void *user_data);
 
     std::size_t max_nodes = 0;
     std::vector<char> clay_memory;
@@ -146,18 +140,17 @@ struct LayoutEngine::Impl {
 };
 
 Clay_Dimensions LayoutEngine::Impl::measure_text(Clay_StringSlice text,
-                                                 Clay_TextElementConfig *config,
-                                                 void *user_data) {
+                                                 Clay_TextElementConfig *config, void *user_data) {
     if (!config || text.length < 0 || (!text.chars && text.length != 0))
         return {0.0f, 0.0f};
 
-    const Clay_TextIntrinsicDimensions intrinsic =
-        measure_intrinsic_text(text, config, user_data);
+    const Clay_TextIntrinsicDimensions intrinsic = measure_intrinsic_text(text, config, user_data);
     return {intrinsic.unwrappedDimensions.width, intrinsic.unwrappedDimensions.height};
 }
 
-Clay_TextIntrinsicDimensions LayoutEngine::Impl::measure_intrinsic_text(
-    Clay_StringSlice text, Clay_TextElementConfig *config, void *user_data) {
+Clay_TextIntrinsicDimensions
+LayoutEngine::Impl::measure_intrinsic_text(Clay_StringSlice text, Clay_TextElementConfig *config,
+                                           void *user_data) {
     auto &state = *static_cast<Impl *>(user_data);
     Clay_TextIntrinsicDimensions result{};
     if (!config || text.length < 0 || (!text.chars && text.length != 0))
@@ -170,9 +163,9 @@ Clay_TextIntrinsicDimensions LayoutEngine::Impl::measure_intrinsic_text(
     TextRect bounds;
     if (!state.text.measure_intrinsic_utf8(value.c_str(), options, &bounds))
         return result;
-    result.unwrappedDimensions = {
-        bounds.width,
-        config->lineHeight > 0 ? static_cast<float>(config->lineHeight) : bounds.height};
+    result.unwrappedDimensions = {bounds.width, config->lineHeight > 0
+                                                    ? static_cast<float>(config->lineHeight)
+                                                    : bounds.height};
     // External paragraph engines may break at character boundaries, so the
     // safe lower bound is zero unless the engine exposes a stronger one.
     result.minWidth = 0.0f;
@@ -189,7 +182,8 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
         return result;
 
     try {
-        const std::string value(text.chars ? text.chars : "", static_cast<std::size_t>(text.length));
+        const std::string value(text.chars ? text.chars : "",
+                                static_cast<std::size_t>(text.length));
         const auto *node = static_cast<const LayoutNode *>(config->userData);
         const TextLayoutOptions options = text_options_for_node(node, config);
 
@@ -200,9 +194,8 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
 
         LayoutTextLayout native_layout;
         native_layout.id = shaped.id;
-        native_layout.node_id = config->userData
-                                    ? static_cast<const LayoutNode *>(config->userData)->id
-                                    : 0;
+        native_layout.node_id =
+            config->userData ? static_cast<const LayoutNode *>(config->userData)->id : 0;
         native_layout.text = value;
         native_layout.width = available_width;
         native_layout.height = shaped.bounds.height;
@@ -222,7 +215,8 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
                 line.text_length > static_cast<std::size_t>(INT32_MAX))
                 return result;
             native_layout.lines.push_back(
-                {line.text_offset, line.text_length,
+                {line.text_offset,
+                 line.text_length,
                  {line.bounds.x, line.bounds.y, line.bounds.width, line.bounds.height}});
             const char *line_chars = text.chars ? text.chars + line.text_offset : nullptr;
             state.callback_lines.push_back(
@@ -267,8 +261,7 @@ Clay_ElementDeclaration declaration_for(const LayoutNode &node) {
     return declaration;
 }
 
-template <typename LayoutState>
-void append_node(LayoutState &state, std::size_t index) {
+template <typename LayoutState> void append_node(LayoutState &state, std::size_t index) {
     const auto &node = (*state.nodes)[index];
     const Clay_ElementId id = state.element_ids[index];
     Clay__OpenElementWithId(id);
@@ -284,8 +277,8 @@ void append_node(LayoutState &state, std::size_t index) {
         text_config.lineHeight = clay_text_value(node.paragraph_style.line_height, true);
         text_config.wrapMode = clay_wrap(node.paragraph_style.wrap);
         text_config.textAlignment = clay_alignment(node.paragraph_style.alignment);
-        Clay__OpenTextElement(
-            {false, static_cast<int32_t>(node.text.size()), node.text.c_str()}, text_config);
+        Clay__OpenTextElement({false, static_cast<int32_t>(node.text.size()), node.text.c_str()},
+                              text_config);
     }
 
     for (const std::size_t child : state.children[index])
@@ -304,9 +297,8 @@ LayoutColor color_from(Clay_Color color) {
 
 void append_primitive(LayoutSnapshot &snapshot, const Clay_RenderCommand &command) {
     LayoutPrimitive primitive{};
-    primitive.node_id = command.userData
-                            ? static_cast<const LayoutNode *>(command.userData)->id
-                            : command.id;
+    primitive.node_id =
+        command.userData ? static_cast<const LayoutNode *>(command.userData)->id : command.id;
     primitive.bounds = rect_from(command.boundingBox);
 
     switch (command.commandType) {
@@ -322,8 +314,7 @@ void append_primitive(LayoutSnapshot &snapshot, const Clay_RenderCommand &comman
         primitive.kind = LayoutPrimitiveKind::Border;
         primitive.color = color_from(command.renderData.border.color);
         break;
-    case CLAY_RENDER_COMMAND_TYPE_TEXT:
-    {
+    case CLAY_RENDER_COMMAND_TYPE_TEXT: {
         primitive.kind = LayoutPrimitiveKind::Text;
         primitive.color = color_from(command.renderData.text.textColor);
         if (command.renderData.text.stringContents.length > 0)
@@ -337,8 +328,10 @@ void append_primitive(LayoutSnapshot &snapshot, const Clay_RenderCommand &comman
         } else {
             primitive.text_style.family = static_cast<FontFamily>(command.renderData.text.fontId);
             primitive.text_style.font_size = static_cast<float>(command.renderData.text.fontSize);
-            primitive.text_style.letter_spacing = static_cast<float>(command.renderData.text.letterSpacing);
-            primitive.paragraph_style.line_height = static_cast<float>(command.renderData.text.lineHeight);
+            primitive.text_style.letter_spacing =
+                static_cast<float>(command.renderData.text.letterSpacing);
+            primitive.paragraph_style.line_height =
+                static_cast<float>(command.renderData.text.lineHeight);
             primitive.paragraph_style.wrap = TextWrapMode::None;
         }
         primitive.text_layout_id = command.renderData.text.textLayoutId;
@@ -449,9 +442,8 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         marks[index] = 2;
         return true;
     };
-    if (!visit(visit, root) || std::any_of(marks.begin(), marks.end(), [](uint8_t mark) {
-            return mark != 2;
-        })) {
+    if (!visit(visit, root) ||
+        std::any_of(marks.begin(), marks.end(), [](uint8_t mark) { return mark != 2; })) {
         if (error)
             error->message = "layout tree contains a cycle or disconnected node";
         return false;
@@ -472,13 +464,12 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         const Clay_ElementData data = Clay_GetElementData(state.element_ids[index]);
         if (!data.found)
             continue;
-        out.items.push_back(
-            {nodes[index].id, nodes[index].kind, rect_from(data.boundingBox),
-             Clay_PointerOver(state.element_ids[index])});
+        out.items.push_back({nodes[index].id, nodes[index].kind, rect_from(data.boundingBox),
+                             Clay_PointerOver(state.element_ids[index])});
     }
     for (int32_t index = 0; index < commands.length; ++index) {
-        const Clay_RenderCommand *command = Clay_RenderCommandArray_Get(
-            const_cast<Clay_RenderCommandArray *>(&commands), index);
+        const Clay_RenderCommand *command =
+            Clay_RenderCommandArray_Get(const_cast<Clay_RenderCommandArray *>(&commands), index);
         if (command)
             append_primitive(out, *command);
     }
@@ -534,8 +525,8 @@ bool LayoutEngine::add_system_fallbacks() {
 }
 
 bool LayoutEngine::layout(const std::vector<LayoutNode> &nodes, float width, float height,
-                          float pointer_x, float pointer_y, bool pointer_down,
-                          float delta_seconds, LayoutSnapshot &out, LayoutError *error) {
+                          float pointer_x, float pointer_y, bool pointer_down, float delta_seconds,
+                          LayoutSnapshot &out, LayoutError *error) {
     if (!impl_) {
         if (error)
             error->message = "layout implementation is unavailable";

@@ -15,8 +15,12 @@ nk_result unsupported_monitor() {
 } // namespace
 
 extern "C" {
-nk_result NK_CALL nk_monitor_list(nk_handle *, uint32_t *) { return unsupported_monitor(); }
-nk_result NK_CALL nk_monitor_get_primary(nk_handle *) { return unsupported_monitor(); }
+nk_result NK_CALL nk_monitor_list(nk_handle *, uint32_t *) {
+    return unsupported_monitor();
+}
+nk_result NK_CALL nk_monitor_get_primary(nk_handle *) {
+    return unsupported_monitor();
+}
 nk_result NK_CALL nk_monitor_get_name(nk_handle, char *, uint32_t *) {
     return unsupported_monitor();
 }

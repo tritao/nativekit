@@ -32,8 +32,8 @@ class WasmHostAllocator {
     struct AlignedPrefix;
 
     static constexpr std::uintptr_t kAlignment = 16;
-    static constexpr uint32_t kHeaderMagic = 0x4e4b4842; // NKHB
-    static constexpr uint32_t kFooterMagic = 0x4e4b4654; // NKFT
+    static constexpr uint32_t kHeaderMagic = 0x4e4b4842;  // NKHB
+    static constexpr uint32_t kFooterMagic = 0x4e4b4654;  // NKFT
     static constexpr uint32_t kAlignedMagic = 0x4e4b414c; // NKAL
     static constexpr uint32_t kAllocated = 1;
 

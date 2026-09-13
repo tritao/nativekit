@@ -43,8 +43,14 @@ int render_create_texture(void *context, int type, int width, int height, int fl
         prepared_flags |= PreparedImageFlags::Premultiplied;
     if (flags & NVG_IMAGE_NEAREST)
         prepared_flags |= PreparedImageFlags::Nearest;
-    PreparedTexture texture{static_cast<PreparedImageToken>(id), prepared_type, width, height,
-                            prepared_flags, 1, true, {}};
+    PreparedTexture texture{static_cast<PreparedImageToken>(id),
+                            prepared_type,
+                            width,
+                            height,
+                            prepared_flags,
+                            1,
+                            true,
+                            {}};
     texture.pixels.resize(static_cast<size_t>(width) * height * bytes_per_pixel);
     if (data)
         std::memcpy(texture.pixels.data(), data, texture.pixels.size());
@@ -131,8 +137,8 @@ uint32_t copy_vertices(State &state, const NVGvertex *vertices, int count) {
     if (vertices && count > 0) {
         state.vertex_data.reserve(state.vertex_data.size() + static_cast<size_t>(count));
         for (int index = 0; index < count; ++index)
-            state.vertex_data.push_back({vertices[index].x, vertices[index].y, vertices[index].u,
-                                         vertices[index].v});
+            state.vertex_data.push_back(
+                {vertices[index].x, vertices[index].y, vertices[index].u, vertices[index].v});
     }
     return offset;
 }
@@ -192,8 +198,7 @@ void render_triangles(void *context, NVGpaint *paint, NVGcompositeOperationState
     auto &state = *static_cast<State *>(context);
     (void)composite;
     (void)scissor;
-    auto operation =
-        base_operation(PreparedPathKind::Triangles, *paint, fringe);
+    auto operation = base_operation(PreparedPathKind::Triangles, *paint, fringe);
     operation.vertex_offset = copy_vertices(state, vertices, vertex_count);
     operation.vertex_count = static_cast<uint32_t>(vertex_count);
     state.operation_data.push_back(operation);

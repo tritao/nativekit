@@ -30,9 +30,9 @@ struct Mapping {
 
 bool parse_mapping(std::string_view text, Mapping &mapping);
 bool apply_mapping(const Mapping &mapping, const std::vector<float> &axes,
-                   const std::vector<std::uint8_t> &buttons,
-                   const std::vector<std::uint8_t> &hats, nk_gamepad_state &state);
-void normalize_state(nk_gamepad_state &state, float stick_dead_zone,
-                     float trigger_dead_zone, nk_gamepad_flags flags);
+                   const std::vector<std::uint8_t> &buttons, const std::vector<std::uint8_t> &hats,
+                   nk_gamepad_state &state);
+void normalize_state(nk_gamepad_state &state, float stick_dead_zone, float trigger_dead_zone,
+                     nk_gamepad_flags flags);
 
 } // namespace nk::core::gamepad

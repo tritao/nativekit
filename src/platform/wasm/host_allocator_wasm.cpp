@@ -145,7 +145,8 @@ void *operator new(std::size_t size, std::align_val_t alignment, const std::noth
     return aligned_alloc(static_cast<std::size_t>(alignment), size);
 }
 
-void *operator new[](std::size_t size, std::align_val_t alignment, const std::nothrow_t &) noexcept {
+void *operator new[](std::size_t size, std::align_val_t alignment,
+                     const std::nothrow_t &) noexcept {
     return aligned_alloc(static_cast<std::size_t>(alignment), size);
 }
 

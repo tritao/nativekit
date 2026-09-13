@@ -110,9 +110,8 @@ struct GraphicsDeviceResources {
  */
 class GraphicsDevice {
   public:
-    static std::shared_ptr<GraphicsDevice> acquire(const nk_sokol_api *api,
-                                                   nk_graphics_device device,
-                                                   std::string *error = nullptr);
+    static std::shared_ptr<GraphicsDevice>
+    acquire(const nk_sokol_api *api, nk_graphics_device device, std::string *error = nullptr);
 
     ~GraphicsDevice();
     GraphicsDevice(const GraphicsDevice &) = delete;

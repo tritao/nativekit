@@ -33,9 +33,9 @@ class LayoutEngine {
                             FontFamily family = FontFamily::Default);
     bool add_system_fallbacks();
 
-    bool layout(const std::vector<LayoutNode> &nodes, float width, float height,
-                float pointer_x, float pointer_y, bool pointer_down, float delta_seconds,
-                LayoutSnapshot &out, LayoutError *error = nullptr);
+    bool layout(const std::vector<LayoutNode> &nodes, float width, float height, float pointer_x,
+                float pointer_y, bool pointer_down, float delta_seconds, LayoutSnapshot &out,
+                LayoutError *error = nullptr);
 
   private:
     struct Impl;

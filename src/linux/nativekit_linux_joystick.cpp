@@ -90,10 +90,9 @@ bool event_name(const char *name) {
 float normalize_axis(int value, const input_absinfo &info) {
     if (info.maximum <= info.minimum)
         return 0.f;
-    const double normalized =
-        (static_cast<double>(value - info.minimum) * 2.0 /
-         static_cast<double>(info.maximum - info.minimum)) -
-        1.0;
+    const double normalized = (static_cast<double>(value - info.minimum) * 2.0 /
+                               static_cast<double>(info.maximum - info.minimum)) -
+                              1.0;
     return static_cast<float>(std::clamp(normalized, -1.0, 1.0));
 }
 
@@ -183,8 +182,7 @@ void update_axis(Joystick &device, std::size_t axis, int value, bool emit_change
     }
 }
 
-void update_button(Joystick &device, std::size_t button, bool pressed,
-                   bool emit_change = true) {
+void update_button(Joystick &device, std::size_t button, bool pressed, bool emit_change = true) {
     const std::uint8_t value = pressed ? 1 : 0;
     if (device.buttons[button] == value)
         return;
@@ -208,8 +206,8 @@ void add_device(const std::string &path) {
     std::array<unsigned long, bit_words(EV_CNT)> ev_bits{};
     std::array<unsigned long, bit_words(KEY_CNT)> key_bits{};
     std::array<unsigned long, bit_words(ABS_CNT)> abs_bits{};
-    if (ioctl(fd, EVIOCGBIT(0, sizeof(ev_bits)), ev_bits.data()) < 0 ||
-        !bit_set(ev_bits, EV_KEY) || !bit_set(ev_bits, EV_ABS) ||
+    if (ioctl(fd, EVIOCGBIT(0, sizeof(ev_bits)), ev_bits.data()) < 0 || !bit_set(ev_bits, EV_KEY) ||
+        !bit_set(ev_bits, EV_ABS) ||
         ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(key_bits)), key_bits.data()) < 0 ||
         ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(abs_bits)), abs_bits.data()) < 0) {
         close(fd);
@@ -268,8 +266,7 @@ void add_device(const std::string &path) {
                     bit_set(key_state, code) ? 1 : 0;
         }
     }
-    device->handle =
-        nk::core::handles().insert(nk::core::ResourceType::joystick, device);
+    device->handle = nk::core::handles().insert(nk::core::ResourceType::joystick, device);
     devices.emplace(path, device);
     emit(NK_EVENT_JOYSTICK_CONNECTED, device->handle);
     nk::core::gamepad_events::update(device->handle, false);
@@ -308,9 +305,9 @@ void initialize() {
     scan_devices();
     notify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     if (notify_fd >= 0) {
-        notify_watch = inotify_add_watch(notify_fd, "/dev/input",
-                                         IN_CREATE | IN_ATTRIB | IN_DELETE | IN_MOVED_TO |
-                                             IN_MOVED_FROM);
+        notify_watch =
+            inotify_add_watch(notify_fd, "/dev/input",
+                              IN_CREATE | IN_ATTRIB | IN_DELETE | IN_MOVED_TO | IN_MOVED_FROM);
         if (notify_watch < 0)
             record_system_diagnostic("cannot monitor /dev/input", errno);
     } else {
@@ -322,9 +319,9 @@ void poll_hotplug() {
     if (notify_fd < 0)
         return;
     if (notify_watch < 0) {
-        notify_watch = inotify_add_watch(notify_fd, "/dev/input",
-                                         IN_CREATE | IN_ATTRIB | IN_DELETE | IN_MOVED_TO |
-                                             IN_MOVED_FROM);
+        notify_watch =
+            inotify_add_watch(notify_fd, "/dev/input",
+                              IN_CREATE | IN_ATTRIB | IN_DELETE | IN_MOVED_TO | IN_MOVED_FROM);
         if (notify_watch < 0)
             return;
         scan_devices();
@@ -358,9 +355,9 @@ bool resynchronize(Joystick &device) {
     const auto previous_hats = device.hats;
     for (int code = 0; code < ABS_CNT; ++code) {
         const bool mapped_axis = device.axis_map[static_cast<std::size_t>(code)] >= 0;
-        const bool mapped_hat = code >= ABS_HAT0X && code <= ABS_HAT3Y &&
-                                static_cast<std::size_t>((code - ABS_HAT0X) / 2) <
-                                    device.hats.size();
+        const bool mapped_hat =
+            code >= ABS_HAT0X && code <= ABS_HAT3Y &&
+            static_cast<std::size_t>((code - ABS_HAT0X) / 2) < device.hats.size();
         if (!mapped_axis && !mapped_hat)
             continue;
         input_absinfo info{};
@@ -418,8 +415,7 @@ void poll_device(const std::shared_ptr<Joystick> &device) {
                         if (error == ENODEV)
                             remove_device(device->path);
                         else
-                            record_system_diagnostic("cannot resynchronize " + device->path,
-                                                     error);
+                            record_system_diagnostic("cannot resynchronize " + device->path, error);
                         return;
                     }
                     nk::core::gamepad_events::update(device->handle, true);
@@ -432,8 +428,7 @@ void poll_device(const std::shared_ptr<Joystick> &device) {
             }
             if (event.type == EV_ABS && event.code < ABS_CNT) {
                 if (event.code >= ABS_HAT0X && event.code <= ABS_HAT3Y &&
-                    static_cast<std::size_t>((event.code - ABS_HAT0X) / 2) <
-                        device->hats.size()) {
+                    static_cast<std::size_t>((event.code - ABS_HAT0X) / 2) < device->hats.size()) {
                     update_hat(*device, event.code, event.value, true);
                 } else {
                     const int axis = device->axis_map[event.code];
@@ -611,8 +606,7 @@ nk_result NK_CALL nk_joystick_get_axes(nk_handle handle, float *axes, uint32_t *
     });
 }
 
-nk_result NK_CALL nk_joystick_get_buttons(nk_handle handle, uint8_t *buttons,
-                                          uint32_t *count) {
+nk_result NK_CALL nk_joystick_get_buttons(nk_handle handle, uint8_t *buttons, uint32_t *count) {
     return boundary([&]() -> nk_result {
         if (const auto result = validate_call(); result != NK_OK)
             return result;

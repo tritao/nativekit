@@ -186,17 +186,15 @@ struct LayoutSnapshot {
     std::vector<LayoutEvent> events;
 
     const LayoutItem *find(uint32_t id) const {
-        const auto found = std::find_if(items.begin(), items.end(), [id](const LayoutItem &item) {
-            return item.id == id;
-        });
+        const auto found = std::find_if(items.begin(), items.end(),
+                                        [id](const LayoutItem &item) { return item.id == id; });
         return found == items.end() ? nullptr : &*found;
     }
 
     std::optional<uint32_t> hit_test(float x, float y) const {
         const auto contains = [x, y](const LayoutItem &item) {
             return x >= item.bounds.x && y >= item.bounds.y &&
-                   x < item.bounds.x + item.bounds.width &&
-                   y < item.bounds.y + item.bounds.height;
+                   x < item.bounds.x + item.bounds.width && y < item.bounds.y + item.bounds.height;
         };
         for (auto item = items.rbegin(); item != items.rend(); ++item) {
             if (item->kind == LayoutNodeKind::Button && contains(*item))

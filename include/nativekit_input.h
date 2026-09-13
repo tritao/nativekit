@@ -49,7 +49,7 @@ enum NK_FLAGS(nk_modifiers) {
 
 /** Normalized physical or logical keyboard key identifier. */
 typedef uint32_t nk_key;
-enum {
+enum NK_ENUM(nk_key) {
     /** No supported key could be identified. */
     NK_KEY_UNKNOWN = 0,
     /** The Space key. */
@@ -475,8 +475,7 @@ typedef struct nk_text_input_state {
 /* ------------------------------------------------------------------------- */
 
 /** Returns a borrowed UTF-8 view valid until nk_event_release(). */
-NK_API nk_result NK_CALL nk_text_edit_event_text(const nk_event *event,
-                                                 const char **out_text,
+NK_API nk_result NK_CALL nk_text_edit_event_text(const nk_event *event, const char **out_text,
                                                  uint32_t *out_length);
 
 /* ------------------------------------------------------------------------- */
@@ -631,19 +630,18 @@ enum NK_ENUM(nk_cursor_mode) {
 
 /** On NK_OK, returns the current action state for a key. Call on the UI thread. */
 NK_API nk_result NK_CALL nk_key_get_state(nk_handle window, nk_key key,
-                                           nk_input_action *out_action);
+                                          nk_input_action *out_action);
 
 /** On NK_OK, returns the current action state of one pointer button. */
-NK_API nk_result NK_CALL nk_pointer_button_get_state(nk_handle window,
-                                                      nk_pointer_button button,
-                                                      nk_input_action *out_action);
+NK_API nk_result NK_CALL nk_pointer_button_get_state(nk_handle window, nk_pointer_button button,
+                                                     nk_input_action *out_action);
 
 /** On NK_OK, returns the current pointer position in surface-local logical pixels. */
 NK_API nk_result NK_CALL nk_pointer_get_position(nk_handle window, double *out_x, double *out_y);
 
 /** Synchronizes a custom editor with the platform IME using absolute code-point positions. */
-NK_API nk_result NK_CALL nk_surface_set_text_input_state(
-    nk_handle surface, const nk_text_input_state *state);
+NK_API nk_result NK_CALL nk_surface_set_text_input_state(nk_handle surface,
+                                                         const nk_text_input_state *state);
 /** Shows or hides the software keyboard for a custom graphics surface. */
 NK_API nk_result NK_CALL nk_surface_set_text_input_active(nk_handle surface, nk_bool active);
 
@@ -652,8 +650,7 @@ NK_API nk_result NK_CALL nk_surface_set_text_input_active(nk_handle surface, nk_
 /* ------------------------------------------------------------------------- */
 
 /** Creates a standard platform cursor and returns its NativeKit handle. */
-NK_API nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape,
-                                                   nk_handle *out_cursor);
+NK_API nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_handle *out_cursor);
 
 /** Creates a cursor from copied RGBA8 pixels, with the first row at the top. */
 NK_API nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image,
@@ -669,8 +666,7 @@ NK_API nk_result NK_CALL nk_window_set_cursor(nk_handle window, nk_handle cursor
 NK_API nk_result NK_CALL nk_window_set_cursor_mode(nk_handle window, nk_cursor_mode mode);
 
 /** On NK_OK, returns the window's current pointer presentation mode. */
-NK_API nk_result NK_CALL nk_window_get_cursor_mode(nk_handle window,
-                                                   nk_cursor_mode *out_mode);
+NK_API nk_result NK_CALL nk_window_get_cursor_mode(nk_handle window, nk_cursor_mode *out_mode);
 
 /** Returns non-zero when the active backend provides raw relative pointer motion. */
 NK_API nk_bool NK_CALL nk_raw_pointer_motion_supported(void);

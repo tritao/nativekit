@@ -31,49 +31,74 @@ typedef struct app {
 } app;
 
 static const char page[] =
-    "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<!doctype html><meta charset=utf-8><meta name=viewport "
+    "content='width=device-width,initial-scale=1'>"
     "<title>NativeKit Lab</title><style>"
     ":root{color-scheme:dark;font:15px system-ui;--bg:#0d1117;--panel:#161b22;--line:#30363d;"
     "--ink:#e6edf3;--muted:#8b949e;--accent:#58a6ff}*{box-sizing:border-box}body{margin:0;"
-    "background:var(--bg);color:var(--ink)}header{padding:24px 28px;border-bottom:1px solid var(--line);"
-    "background:linear-gradient(120deg,#172033,#161b22)}h1{margin:0 0 5px;font-size:25px}header p{margin:0;"
-    "color:var(--muted)}main{display:grid;grid-template-columns:minmax(420px,1fr) minmax(330px,.75fr);"
-    "gap:18px;padding:18px}.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));"
-    "gap:14px}.card,.log{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:16px}"
-    "h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 12px}"
+    "background:var(--bg);color:var(--ink)}header{padding:24px 28px;border-bottom:1px solid "
+    "var(--line);"
+    "background:linear-gradient(120deg,#172033,#161b22)}h1{margin:0 0 5px;font-size:25px}header "
+    "p{margin:0;"
+    "color:var(--muted)}main{display:grid;grid-template-columns:minmax(420px,1fr) "
+    "minmax(330px,.75fr);"
+    "gap:18px;padding:18px}.features{display:grid;grid-template-columns:repeat(auto-fit,minmax("
+    "210px,1fr));"
+    "gap:14px}.card,.log{border:1px solid "
+    "var(--line);border-radius:10px;background:var(--panel);padding:16px}"
+    "h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 "
+    "12px}"
     "button{width:100%;text-align:left;margin:4px 0;padding:9px 11px;border:1px solid var(--line);"
-    "border-radius:6px;background:#21262d;color:var(--ink);cursor:pointer}button:hover{border-color:var(--accent);"
-    "color:var(--accent)}.log{min-height:480px;overflow:auto}.entry{padding:7px 0;border-bottom:1px solid #21262d;"
-    "font:12px ui-monospace,monospace;overflow-wrap:anywhere}.entry b{color:var(--accent)}#caps{color:var(--muted);"
-    "font:12px ui-monospace,monospace}@media(max-width:850px){main{grid-template-columns:1fr}.log{min-height:250px}}"
-    "</style><header><h1>NativeKit Lab</h1><p>Interactive desktop API showcase · C host + HTML UI</p>"
+    "border-radius:6px;background:#21262d;color:var(--ink);cursor:pointer}button:hover{border-"
+    "color:var(--accent);"
+    "color:var(--accent)}.log{min-height:480px;overflow:auto}.entry{padding:7px "
+    "0;border-bottom:1px solid #21262d;"
+    "font:12px ui-monospace,monospace;overflow-wrap:anywhere}.entry "
+    "b{color:var(--accent)}#caps{color:var(--muted);"
+    "font:12px "
+    "ui-monospace,monospace}@media(max-width:850px){main{grid-template-columns:1fr}.log{min-height:"
+    "250px}}"
+    "</style><header><h1>NativeKit Lab</h1><p>Interactive desktop API showcase · C host + HTML "
+    "UI</p>"
     "<div id=caps>Loading backend capabilities…</div></header><main><section class=features>"
     "<div class=card><h2>Dialogs</h2><button data-c=dialog.open>Open files…</button>"
-    "<button data-c=dialog.save>Save file…</button><button data-c=dialog.directory>Select directory…</button>"
+    "<button data-c=dialog.save>Save file…</button><button data-c=dialog.directory>Select "
+    "directory…</button>"
     "<button data-c=dialog.message>Message dialog…</button></div>"
-    "<div class=card><h2>Clipboard & drops</h2><button data-c=clipboard.copy>Copy sample text</button>"
-    "<button data-c=clipboard.read>Read clipboard text</button><button data-c=drops.toggle>Enable file/text drops</button></div>"
+    "<div class=card><h2>Clipboard & drops</h2><button data-c=clipboard.copy>Copy sample "
+    "text</button>"
+    "<button data-c=clipboard.read>Read clipboard text</button><button data-c=drops.toggle>Enable "
+    "file/text drops</button></div>"
     "<div class=card><h2>Windows</h2><button data-c=window.child>Create utility window</button>"
-    "<button data-c=window.attention>Request attention</button><button data-c=window.fullscreen>Toggle fullscreen</button></div>"
-    "<div class=card><h2>Web & system</h2><button data-c=browser.open>Open sample browser window</button>"
-    "<button data-c=web.eval>Evaluate JavaScript</button><button data-c=system.info>Query system information</button>"
+    "<button data-c=window.attention>Request attention</button><button "
+    "data-c=window.fullscreen>Toggle fullscreen</button></div>"
+    "<div class=card><h2>Web & system</h2><button data-c=browser.open>Open sample browser "
+    "window</button>"
+    "<button data-c=web.eval>Evaluate JavaScript</button><button data-c=system.info>Query system "
+    "information</button>"
     "<button data-c=shell.open>Open NativeKit website</button></div>"
-    "<div class=card><h2>Graphics</h2><button data-c=graphics.opengl>Launch OpenGL triangle</button>"
+    "<div class=card><h2>Graphics</h2><button data-c=graphics.opengl>Launch OpenGL "
+    "triangle</button>"
     "<button data-c=graphics.vulkan>Launch Vulkan triangle</button></div>"
-    "<div class=card><h2>Notifications</h2><button data-c=notification.show>Show notification</button></div>"
+    "<div class=card><h2>Notifications</h2><button data-c=notification.show>Show "
+    "notification</button></div>"
     "</section><aside class=log><h2>Live event log</h2><div id=events></div></aside></main><script>"
-    "const bridge=window.webkit.messageHandlers.nativekit;document.addEventListener('click',e=>{const c=e.target.dataset.c;"
-    "if(c)bridge.postMessage(c)});window.nativeLog=(kind,text)=>{const row=document.createElement('div');row.className='entry';"
-    "const name=document.createElement('b');name.textContent=kind+' ';row.append(name,document.createTextNode(text));"
-    "document.querySelector('#events').prepend(row)};window.nativeCaps=x=>document.querySelector('#caps').textContent=x;"
+    "const "
+    "bridge=window.webkit.messageHandlers.nativekit;document.addEventListener('click',e=>{const "
+    "c=e.target.dataset.c;"
+    "if(c)bridge.postMessage(c)});window.nativeLog=(kind,text)=>{const "
+    "row=document.createElement('div');row.className='entry';"
+    "const name=document.createElement('b');name.textContent=kind+' "
+    "';row.append(name,document.createTextNode(text));"
+    "document.querySelector('#events').prepend(row)};window.nativeCaps=x=>document.querySelector('#"
+    "caps').textContent=x;"
     "nativeLog('ready','Choose an action or interact with the window.')</script>";
 
 static void sleep_milliseconds(unsigned milliseconds) {
 #if defined(_WIN32)
     Sleep(milliseconds);
 #else
-    struct timespec delay = {(time_t)(milliseconds / 1000),
-                             (long)(milliseconds % 1000) * 1000000L};
+    struct timespec delay = {(time_t)(milliseconds / 1000), (long)(milliseconds % 1000) * 1000000L};
     nanosleep(&delay, NULL);
 #endif
 }
@@ -356,7 +381,9 @@ static void report_dialog(app *state, const nk_event *event) {
 static void show_capabilities(app *state) {
     const nk_capabilities caps = nk_get_capabilities();
     char text[256];
-    snprintf(text, sizeof(text), "capabilities 0x%llx · window %s · webview %s · dialogs %s · clipboard %s · notifications %s",
+    snprintf(text, sizeof(text),
+             "capabilities 0x%llx · window %s · webview %s · dialogs %s · clipboard %s · "
+             "notifications %s",
              (unsigned long long)caps, caps & NK_CAP_WINDOW ? "yes" : "no",
              caps & NK_CAP_WEBVIEW ? "yes" : "no", caps & NK_CAP_FILE_DIALOG ? "yes" : "no",
              caps & NK_CAP_CLIPBOARD ? "yes" : "no", caps & NK_CAP_NOTIFICATION ? "yes" : "no");

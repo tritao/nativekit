@@ -64,8 +64,7 @@ int main() {
     gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_Y] = 0.f;
     gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] = 0.f;
     gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_TRIGGER] = -1.f;
-    nk::core::gamepad::normalize_state(gamepad_state, 0.2f, 0.1f,
-                                       NK_GAMEPAD_TRIGGER_ZERO_TO_ONE);
+    nk::core::gamepad::normalize_state(gamepad_state, 0.2f, 0.1f, NK_GAMEPAD_TRIGGER_ZERO_TO_ONE);
     assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_X] == 0.f);
     assert(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_X] > 0.499f);
     assert(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_X] < 0.501f);
@@ -73,8 +72,7 @@ int main() {
     assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] < 0.45f);
     assert(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_TRIGGER] == 0.f);
     assert(!nk::core::gamepad::parse_mapping("not-a-guid,Pad,a:b0", mapping));
-    assert(!nk::core::gamepad::parse_mapping(
-        "03000000112200003344000055660000,Pad,a:q0", mapping));
+    assert(!nk::core::gamepad::parse_mapping("03000000112200003344000055660000,Pad,a:q0", mapping));
     bool has_xbox = false;
     bool has_playstation = false;
     bool has_switch = false;

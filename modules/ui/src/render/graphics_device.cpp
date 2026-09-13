@@ -36,8 +36,7 @@ constexpr uint32_t kHandleSlotMask = 0xFFFFu;
 constexpr uint32_t kHandleGenerationMask = 0x0FFFu;
 
 uint32_t encode_buffer_handle(size_t slot, uint16_t generation) {
-    return (static_cast<uint32_t>(generation) << 16) |
-           static_cast<uint32_t>(slot + 1);
+    return (static_cast<uint32_t>(generation) << 16) | static_cast<uint32_t>(slot + 1);
 }
 
 bool decode_buffer_handle(GpuBufferHandle handle, size_t &slot, uint16_t &generation) {
@@ -50,14 +49,11 @@ bool decode_buffer_handle(GpuBufferHandle handle, size_t &slot, uint16_t &genera
     return true;
 }
 
-template <class Handle>
-uint32_t encode_handle(size_t slot, uint16_t generation) {
-    return (static_cast<uint32_t>(generation) << 16) |
-           static_cast<uint32_t>(slot + 1);
+template <class Handle> uint32_t encode_handle(size_t slot, uint16_t generation) {
+    return (static_cast<uint32_t>(generation) << 16) | static_cast<uint32_t>(slot + 1);
 }
 
-template <class Handle>
-bool decode_handle(Handle handle, size_t &slot, uint16_t &generation) {
+template <class Handle> bool decode_handle(Handle handle, size_t &slot, uint16_t &generation) {
     const uint32_t encoded_slot = handle.value & kHandleSlotMask;
     const uint32_t encoded_generation = (handle.value >> 16) & kHandleGenerationMask;
     if (!encoded_slot || !encoded_generation)
@@ -281,23 +277,30 @@ void destroy_resources(GraphicsDeviceResources &resources, const nk_sokol_api *a
 
 bool resources_valid(const GraphicsDeviceResources &resources, const nk_sokol_api *api) {
     return api->gfx->query_shader_state(resources.surface_mesh_shader) == SG_RESOURCESTATE_VALID &&
-           api->gfx->query_pipeline_state(resources.surface_mesh_pipeline) == SG_RESOURCESTATE_VALID &&
+           api->gfx->query_pipeline_state(resources.surface_mesh_pipeline) ==
+               SG_RESOURCESTATE_VALID &&
            api->gfx->query_shader_state(resources.solid_shader) == SG_RESOURCESTATE_VALID &&
            api->gfx->query_pipeline_state(resources.solid_pipeline) == SG_RESOURCESTATE_VALID &&
-           api->gfx->query_pipeline_state(resources.fill_stencil_pipeline) == SG_RESOURCESTATE_VALID &&
+           api->gfx->query_pipeline_state(resources.fill_stencil_pipeline) ==
+               SG_RESOURCESTATE_VALID &&
            api->gfx->query_pipeline_state(resources.fill_stencil_even_odd_pipeline) ==
                SG_RESOURCESTATE_VALID &&
-           api->gfx->query_pipeline_state(resources.fill_cover_pipeline) == SG_RESOURCESTATE_VALID &&
+           api->gfx->query_pipeline_state(resources.fill_cover_pipeline) ==
+               SG_RESOURCESTATE_VALID &&
            api->gfx->query_shader_state(resources.paint_shader) == SG_RESOURCESTATE_VALID &&
            api->gfx->query_pipeline_state(resources.paint_pipeline) == SG_RESOURCESTATE_VALID &&
-           api->gfx->query_pipeline_state(resources.paint_cover_pipeline) == SG_RESOURCESTATE_VALID &&
-           api->gfx->query_pipeline_state(resources.paint_fringe_pipeline) == SG_RESOURCESTATE_VALID &&
+           api->gfx->query_pipeline_state(resources.paint_cover_pipeline) ==
+               SG_RESOURCESTATE_VALID &&
+           api->gfx->query_pipeline_state(resources.paint_fringe_pipeline) ==
+               SG_RESOURCESTATE_VALID &&
            api->gfx->query_shader_state(resources.alpha_glyph_shader) == SG_RESOURCESTATE_VALID &&
-           api->gfx->query_pipeline_state(resources.alpha_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
+           api->gfx->query_pipeline_state(resources.alpha_glyph_pipeline) ==
+               SG_RESOURCESTATE_VALID &&
            api->gfx->query_shader_state(resources.sdf_glyph_shader) == SG_RESOURCESTATE_VALID &&
            api->gfx->query_pipeline_state(resources.sdf_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
            api->gfx->query_shader_state(resources.color_glyph_shader) == SG_RESOURCESTATE_VALID &&
-           api->gfx->query_pipeline_state(resources.color_glyph_pipeline) == SG_RESOURCESTATE_VALID &&
+           api->gfx->query_pipeline_state(resources.color_glyph_pipeline) ==
+               SG_RESOURCESTATE_VALID &&
            api->gfx->query_shader_state(resources.composite_shader) == SG_RESOURCESTATE_VALID &&
            api->gfx->query_pipeline_state(resources.composite_pipeline) == SG_RESOURCESTATE_VALID &&
            api->gfx->query_sampler_state(resources.sampler) == SG_RESOURCESTATE_VALID &&
@@ -553,12 +556,14 @@ GraphicsDevice::GraphicsDevice(const nk_sokol_api *api, nk_graphics_device devic
     resources_.fill_cover_pipeline = make_fill_cover_pipeline(api_, resources_.solid_shader);
     resources_.paint_pipeline = make_paint_pipeline(api_, resources_.paint_shader, false);
     resources_.paint_cover_pipeline = make_paint_pipeline(api_, resources_.paint_shader, true);
-    resources_.paint_fringe_pipeline = make_paint_pipeline(api_, resources_.paint_shader, false, true);
+    resources_.paint_fringe_pipeline =
+        make_paint_pipeline(api_, resources_.paint_shader, false, true);
     resources_.alpha_glyph_pipeline = make_glyph_pipeline(api_, resources_.alpha_glyph_shader);
     resources_.sdf_glyph_pipeline = make_glyph_pipeline(api_, resources_.sdf_glyph_shader);
     resources_.color_glyph_pipeline = make_glyph_pipeline(api_, resources_.color_glyph_shader);
     resources_.composite_pipeline = make_composite_pipeline(api_, resources_.composite_shader);
-    resources_.surface_mesh_pipeline = make_surface_mesh_pipeline(api_, resources_.surface_mesh_shader);
+    resources_.surface_mesh_pipeline =
+        make_surface_mesh_pipeline(api_, resources_.surface_mesh_shader);
 
     sg_sampler_desc sampler_desc{};
     sampler_desc.min_filter = SG_FILTER_NEAREST;
@@ -614,9 +619,8 @@ GraphicsDevice::~GraphicsDevice() {
     }
 }
 
-std::shared_ptr<GraphicsDevice> GraphicsDevice::acquire(const nk_sokol_api *api,
-                                                        nk_graphics_device device,
-                                                        std::string *error) {
+std::shared_ptr<GraphicsDevice>
+GraphicsDevice::acquire(const nk_sokol_api *api, nk_graphics_device device, std::string *error) {
     std::lock_guard<std::mutex> lock(device_mutex);
     if (!api || !device.id)
         return nullptr;
@@ -627,9 +631,8 @@ std::shared_ptr<GraphicsDevice> GraphicsDevice::acquire(const nk_sokol_api *api,
     auto graphics_device = std::shared_ptr<GraphicsDevice>(new GraphicsDevice(api, device));
     if (!graphics_device->valid_) {
         if (error)
-            *error = graphics_device->error_.empty()
-                         ? "Sokol graphics device initialization failed"
-                         : graphics_device->error_;
+            *error = graphics_device->error_.empty() ? "Sokol graphics device initialization failed"
+                                                     : graphics_device->error_;
         return nullptr;
     }
     shared_device = graphics_device;

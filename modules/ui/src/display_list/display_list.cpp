@@ -200,8 +200,8 @@ bool DisplayList::draw_path(ResourceId path) {
     return append(value);
 }
 
-bool DisplayList::stroke_path(ResourceId path, float width, uint32_t line_cap,
-                               uint32_t line_join, float miter_limit) {
+bool DisplayList::stroke_path(ResourceId path, float width, uint32_t line_cap, uint32_t line_join,
+                              float miter_limit) {
     auto value = command<StrokePathCommand>(CommandOpcode::StrokePath);
     value.path = path;
     value.width = width;
@@ -322,9 +322,9 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
         case CommandOpcode::StrokePath: {
             const auto *value = read_command<StrokePathCommand>(record, header.size);
             if (!value || !is_resource_id(value->path, ResourceKind::Path) ||
-                !finite(value->width) || value->width <= 0.0f ||
-                !valid_line_cap(value->line_cap) || !valid_line_join(value->line_join) ||
-                !finite(value->miter_limit) || value->miter_limit <= 0.0f)
+                !finite(value->width) || value->width <= 0.0f || !valid_line_cap(value->line_cap) ||
+                !valid_line_join(value->line_join) || !finite(value->miter_limit) ||
+                value->miter_limit <= 0.0f)
                 return fail(error, offset, index, "invalid stroke path command");
             break;
         }

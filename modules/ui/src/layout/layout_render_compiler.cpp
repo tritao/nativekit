@@ -33,12 +33,11 @@ bool valid_color(const LayoutColor &color) {
 }
 
 bool valid_radii(const LayoutPrimitive &primitive) {
-    return std::isfinite(primitive.radius_top_left) &&
-           std::isfinite(primitive.radius_top_right) &&
+    return std::isfinite(primitive.radius_top_left) && std::isfinite(primitive.radius_top_right) &&
            std::isfinite(primitive.radius_bottom_left) &&
-           std::isfinite(primitive.radius_bottom_right) &&
-           primitive.radius_top_left >= 0.0f && primitive.radius_top_right >= 0.0f &&
-           primitive.radius_bottom_left >= 0.0f && primitive.radius_bottom_right >= 0.0f;
+           std::isfinite(primitive.radius_bottom_right) && primitive.radius_top_left >= 0.0f &&
+           primitive.radius_top_right >= 0.0f && primitive.radius_bottom_left >= 0.0f &&
+           primitive.radius_bottom_right >= 0.0f;
 }
 
 LayoutRect intersect(LayoutRect left, const LayoutRect &right) {
@@ -59,8 +58,7 @@ void append_rounded_rect(NanoVGPath &path, const LayoutRect &rect,
     const float half_height = rect.height * 0.5f;
     const float top_left = std::min({primitive.radius_top_left, half_width, half_height});
     const float top_right = std::min({primitive.radius_top_right, half_width, half_height});
-    const float bottom_right =
-        std::min({primitive.radius_bottom_right, half_width, half_height});
+    const float bottom_right = std::min({primitive.radius_bottom_right, half_width, half_height});
     const float bottom_left = std::min({primitive.radius_bottom_left, half_width, half_height});
     const float left = rect.x;
     const float top = rect.y;
@@ -127,8 +125,7 @@ void LayoutRenderFrame::reset() {
     text_source_ = nullptr;
 }
 
-LayoutRenderCompiler::LayoutRenderCompiler()
-    : fonts_(std::make_shared<SkribidiFontCollection>()) {}
+LayoutRenderCompiler::LayoutRenderCompiler() : fonts_(std::make_shared<SkribidiFontCollection>()) {}
 
 void LayoutRenderCompiler::set_font_collection(std::shared_ptr<SkribidiFontCollection> fonts) {
     fonts_ = std::move(fonts);
@@ -221,9 +218,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 if (!path.valid() || !prepared || !prepare_fill(path, params, geometry) ||
                     !prepared->set(PreparedPathKind::Fill, geometry, solid_paint(primitive.color)))
                     return fail(error, index, "layout rectangle preparation failed");
-                const ResourceId id =
-                    make_resource_id(ResourceKind::Path, kTransientGeneration,
-                                     static_cast<uint16_t>(transient_slot++));
+                const ResourceId id = make_resource_id(ResourceKind::Path, kTransientGeneration,
+                                                       static_cast<uint16_t>(transient_slot++));
                 if (!out.resources_.bind_path(id, *prepared, 0))
                     return fail(error, index, "layout path resource binding failed");
                 RenderCommand command{RenderCommandKind::Path, id};
@@ -242,11 +238,11 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     return fail(error, index, "layout text preparation input is invalid");
                 const LayoutTextLayout *text_layout = nullptr;
                 if (primitive.text_layout_id) {
-                    const auto found = std::find_if(
-                        snapshot.text_layouts.begin(), snapshot.text_layouts.end(),
-                        [&primitive](const LayoutTextLayout &candidate) {
-                            return candidate.id == primitive.text_layout_id;
-                        });
+                    const auto found =
+                        std::find_if(snapshot.text_layouts.begin(), snapshot.text_layouts.end(),
+                                     [&primitive](const LayoutTextLayout &candidate) {
+                                         return candidate.id == primitive.text_layout_id;
+                                     });
                     if (found == snapshot.text_layouts.end() ||
                         primitive.text_line_index >= found->lines.size())
                         return fail(error, index, "layout text layout ID is invalid");
@@ -267,12 +263,12 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                         return fail(error, index, "layout text shaping failed");
                 }
                 auto glyphs = std::make_unique<PreparedGlyphs>();
-                const bool prepared = text_layout
-                                          ? text->prepare_glyphs_for_line(
-                                                text_layout->id, primitive.text_line_index, 0.0f,
-                                                0.0f, pixel_scale, GlyphMode::Alpha, *glyphs)
-                                          : text->prepare_glyphs(
-                                                0.0f, 0.0f, pixel_scale, GlyphMode::Alpha, *glyphs);
+                const bool prepared =
+                    text_layout
+                        ? text->prepare_glyphs_for_line(text_layout->id, primitive.text_line_index,
+                                                        0.0f, 0.0f, pixel_scale, GlyphMode::Alpha,
+                                                        *glyphs)
+                        : text->prepare_glyphs(0.0f, 0.0f, pixel_scale, GlyphMode::Alpha, *glyphs);
                 if (!prepared)
                     return fail(error, index, "layout glyph preparation failed");
                 tint_glyphs(*glyphs, primitive.color);
@@ -281,8 +277,11 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                                      static_cast<uint16_t>(transient_slot++));
                 if (!out.resources_.bind_text(id, *glyphs))
                     return fail(error, index, "layout text resource binding failed");
-                RenderCommand command{RenderCommandKind::GlyphBatch, id, primitive.bounds.x,
-                                      primitive.bounds.y, primitive.bounds.width,
+                RenderCommand command{RenderCommandKind::GlyphBatch,
+                                      id,
+                                      primitive.bounds.x,
+                                      primitive.bounds.y,
+                                      primitive.bounds.width,
                                       primitive.bounds.height};
                 command.transform = {pixel_scale, 0.0f, 0.0f, pixel_scale, 0.0f, 0.0f};
                 if (!clips.empty())

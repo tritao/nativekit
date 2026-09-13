@@ -86,8 +86,9 @@ NK_API nk_result NK_CALL nk_monitor_list(nk_handle *monitors, uint32_t *inout_co
 /** Returns the primary monitor handle. */
 NK_API nk_result NK_CALL nk_monitor_get_primary(nk_handle *out_monitor NK_OUT);
 /** Copies the monitor name into a caller-owned UTF-8 buffer. */
-NK_API nk_result NK_CALL nk_monitor_get_name(
-    nk_handle monitor, char *buffer NK_OUT_BUFFER(inout_size), uint32_t *inout_size NK_INOUT);
+NK_API nk_result NK_CALL nk_monitor_get_name(nk_handle monitor,
+                                             char *buffer NK_OUT_BUFFER(inout_size),
+                                             uint32_t *inout_size NK_INOUT);
 /** Returns the monitor geometry in logical desktop coordinates. */
 NK_API nk_result NK_CALL nk_monitor_get_geometry(nk_handle monitor,
                                                  nk_monitor_geometry *out_geometry NK_OUT);
@@ -106,8 +107,7 @@ NK_API nk_result NK_CALL nk_monitor_get_modes(nk_handle monitor, nk_video_mode *
 /* ------------------------------------------------------------------------- */
 
 /** An invalid monitor handle leaves fullscreen and restores windowed placement. */
-NK_API nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle window,
-                                                          nk_handle monitor);
+NK_API nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle window, nk_handle monitor);
 
 #ifdef __cplusplus
 }

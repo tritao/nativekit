@@ -310,8 +310,8 @@ typedef struct nk_accessibility_text_range {
  * must describe the supplied value window. Requires the UI thread and
  * NK_CAP_ACCESSIBILITY.
  */
-NK_API nk_result NK_CALL nk_surface_accessibility_set_node(
-    nk_handle surface, const nk_accessibility_node *node);
+NK_API nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle surface,
+                                                           const nk_accessibility_node *node);
 
 /**
  * Removes a virtual node and all of its descendants.
@@ -319,8 +319,8 @@ NK_API nk_result NK_CALL nk_surface_accessibility_set_node(
  * `node` must identify an existing non-root node. The operation runs on the UI
  * thread and requires NK_CAP_ACCESSIBILITY.
  */
-NK_API nk_result NK_CALL nk_surface_accessibility_remove_node(
-    nk_handle surface, nk_accessibility_node_id node);
+NK_API nk_result NK_CALL nk_surface_accessibility_remove_node(nk_handle surface,
+                                                              nk_accessibility_node_id node);
 
 /** Removes all virtual nodes from a surface's accessibility tree. */
 NK_API nk_result NK_CALL nk_surface_accessibility_clear(nk_handle surface);
@@ -331,8 +331,8 @@ NK_API nk_result NK_CALL nk_surface_accessibility_clear(nk_handle surface);
  * Pass NK_ACCESSIBILITY_ROOT to clear virtual focus. Any non-root node must
  * already exist in the surface's tree.
  */
-NK_API nk_result NK_CALL nk_surface_accessibility_set_focus(
-    nk_handle surface, nk_accessibility_node_id node);
+NK_API nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle surface,
+                                                            nk_accessibility_node_id node);
 
 /**
  * Applies node replacements, recursive removals, and optional focus atomically.
@@ -343,8 +343,8 @@ NK_API nk_result NK_CALL nk_surface_accessibility_set_focus(
  * NK_ACCESSIBILITY_UPDATE_FOCUS to apply `focus`, where ROOT clears focus.
  * Invalid input leaves the previous tree unchanged.
  */
-NK_API nk_result NK_CALL nk_surface_accessibility_update(
-    nk_handle surface, const nk_accessibility_update *update);
+NK_API nk_result NK_CALL nk_surface_accessibility_update(nk_handle surface,
+                                                         const nk_accessibility_update *update);
 
 /**
  * Supplies screen-reader geometry for text ranges in a node's value.
@@ -355,8 +355,7 @@ NK_API nk_result NK_CALL nk_surface_accessibility_update(
  */
 NK_API nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
     nk_handle surface, nk_accessibility_node_id node,
-    const nk_accessibility_text_range *ranges NK_BORROWED_ARRAY(range_count),
-    uint32_t range_count);
+    const nk_accessibility_text_range *ranges NK_BORROWED_ARRAY(range_count), uint32_t range_count);
 
 /* ------------------------------------------------------------------------- */
 /* Accessibility event helpers                                               */
@@ -371,8 +370,9 @@ NK_API nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
  * the NUL terminator. For actions without a value, the pointer is NULL and
  * the length is zero.
  */
-NK_API nk_result NK_CALL nk_accessibility_action_event_value(
-    const nk_event *event, const char **out_value, uint32_t *out_length);
+NK_API nk_result NK_CALL nk_accessibility_action_event_value(const nk_event *event,
+                                                             const char **out_value,
+                                                             uint32_t *out_length);
 
 #ifdef __cplusplus
 }

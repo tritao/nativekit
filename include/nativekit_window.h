@@ -318,8 +318,7 @@ NK_API nk_result NK_CALL nk_window_get_size(nk_handle window, int32_t *out_width
                                             int32_t *out_height NK_OUT);
 
 /** On NK_OK, fills in the framebuffer width and height in device pixels. */
-NK_API nk_result NK_CALL nk_window_get_framebuffer_size(nk_handle window,
-                                                        int32_t *out_width NK_OUT,
+NK_API nk_result NK_CALL nk_window_get_framebuffer_size(nk_handle window, int32_t *out_width NK_OUT,
                                                         int32_t *out_height NK_OUT);
 
 /** On NK_OK, fills in the non-client frame extents in logical screen pixels. */
@@ -327,8 +326,7 @@ NK_API nk_result NK_CALL nk_window_get_frame_extents(nk_handle window,
                                                      nk_window_frame_extents *out_extents NK_OUT);
 
 /** On NK_OK, fills in the current NK_WINDOW_STATE_* flags. */
-NK_API nk_result NK_CALL nk_window_get_state(nk_handle window,
-                                             nk_window_state *out_state NK_OUT);
+NK_API nk_result NK_CALL nk_window_get_state(nk_handle window, nk_window_state *out_state NK_OUT);
 
 /** Sets `*out_focused` to 1 if the window has focus, and 0 otherwise. */
 NK_API nk_result NK_CALL nk_window_is_focused(nk_handle window, nk_bool *out_focused NK_OUT);

@@ -19,7 +19,8 @@ static nk_event wait_for_dialog(nk_request_id request) {
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
         if ((event.kind == NK_EVENT_DIALOG_PATHS_COMPLETE ||
-             event.kind == NK_EVENT_DIALOG_MESSAGE_COMPLETE) && event.request_id == request)
+             event.kind == NK_EVENT_DIALOG_MESSAGE_COMPLETE) &&
+            event.request_id == request)
             return event;
         nk_event_release(&event);
         Sleep(10);

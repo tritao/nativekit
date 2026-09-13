@@ -68,10 +68,9 @@ extern "C" nk_result NK_CALL nk_core_graphics_image_register(
     nk_graphics_api api, nk_graphics_device device, int32_t width, int32_t height,
     const void *runtime, uint64_t backend_image, nk_core_graphics_image_release_fn release,
     nk_graphics_image *out_image) {
-    if (!out_image || !device.id || width <= 0 || height <= 0 || !runtime ||
-        !backend_image || !release ||
-        (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES &&
-         api != NK_GRAPHICS_VULKAN))
+    if (!out_image || !device.id || width <= 0 || height <= 0 || !runtime || !backend_image ||
+        !release ||
+        (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES && api != NK_GRAPHICS_VULKAN))
         return NK_ERROR_INVALID_ARGUMENT;
     out_image->id = 0;
     try {
@@ -170,7 +169,7 @@ extern "C" nk_result NK_CALL nk_graphics_image_release(nk_graphics_image image) 
 }
 
 extern "C" nk_result NK_CALL nk_graphics_image_get_info(nk_graphics_image image,
-                                                          nk_graphics_image_info *out_info) {
+                                                        nk_graphics_image_info *out_info) {
     if (!out_info || out_info->struct_size < sizeof(nk_graphics_image_info))
         return NK_ERROR_INVALID_ARGUMENT;
     const uint32_t size = out_info->struct_size;
@@ -207,9 +206,10 @@ extern "C" nk_result NK_CALL nk_graphics_device_release(nk_graphics_device devic
     return NK_OK;
 }
 
-extern "C" nk_result NK_CALL nk_core_graphics_image_get_backend(
-    nk_graphics_image image, nk_graphics_image_info *out_info, const void **out_runtime,
-    uint64_t *out_backend_image) {
+extern "C" nk_result NK_CALL nk_core_graphics_image_get_backend(nk_graphics_image image,
+                                                                nk_graphics_image_info *out_info,
+                                                                const void **out_runtime,
+                                                                uint64_t *out_backend_image) {
     if (!out_info || out_info->struct_size < sizeof(nk_graphics_image_info) || !out_runtime ||
         !out_backend_image)
         return NK_ERROR_INVALID_ARGUMENT;

@@ -101,8 +101,7 @@ static void sleep_milliseconds(unsigned milliseconds) {
 #if defined(_WIN32)
     Sleep(milliseconds);
 #else
-    struct timespec delay = {(time_t)(milliseconds / 1000),
-                             (long)(milliseconds % 1000) * 1000000L};
+    struct timespec delay = {(time_t)(milliseconds / 1000), (long)(milliseconds % 1000) * 1000000L};
     nanosleep(&delay, NULL);
 #endif
 }
@@ -199,8 +198,8 @@ static int renderer_init(renderer *graphics, nk_handle surface) {
     }
 
     static const gl_float vertices[] = {
-        0.0f,  0.72f, 1.0f, 0.30f, 0.35f, -0.72f, -0.58f, 0.25f,
-        0.85f, 0.55f, 0.72f, -0.58f, 0.30f, 0.55f, 1.0f,
+        0.0f,  0.72f, 1.0f,  0.30f,  0.35f, -0.72f, -0.58f, 0.25f,
+        0.85f, 0.55f, 0.72f, -0.58f, 0.30f, 0.55f,  1.0f,
     };
     graphics->gen_vertex_arrays(1, &graphics->vertex_array);
     graphics->bind_vertex_array(graphics->vertex_array);

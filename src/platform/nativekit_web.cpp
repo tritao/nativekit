@@ -175,15 +175,13 @@ void configure_text_input(WebSurfaceResource &surface) {
 void update_text_input_state(WebSurfaceResource &surface, nk_text_position replace_start,
                              nk_text_position replace_end, const std::string &text,
                              nk_text_position selection_start, nk_text_position selection_end,
-                             nk_text_position composition_start,
-                             nk_text_position composition_end) {
+                             nk_text_position composition_start, nk_text_position composition_end) {
     if (!surface.text_input_state_set)
         return;
     auto &state = surface.text_input_state;
-    const auto text_end = static_cast<uint64_t>(state.text_start) +
-                          utf8_codepoints(surface.text_input_text);
-    if (replace_start < state.text_start || replace_end < replace_start ||
-        replace_end > text_end)
+    const auto text_end =
+        static_cast<uint64_t>(state.text_start) + utf8_codepoints(surface.text_input_text);
+    if (replace_start < state.text_start || replace_end < replace_start || replace_end > text_end)
         return;
     const auto relative_start = replace_start - state.text_start;
     const auto relative_end = replace_end - state.text_start;
@@ -206,17 +204,28 @@ void update_text_input_state(WebSurfaceResource &surface, nk_text_position repla
 
 const char *cursor_name(nk_cursor_shape shape) {
     switch (shape) {
-    case NK_CURSOR_ARROW: return "default";
-    case NK_CURSOR_IBEAM: return "text";
-    case NK_CURSOR_CROSSHAIR: return "crosshair";
-    case NK_CURSOR_HAND: return "pointer";
-    case NK_CURSOR_HORIZONTAL_RESIZE: return "ew-resize";
-    case NK_CURSOR_VERTICAL_RESIZE: return "ns-resize";
-    case NK_CURSOR_NWSE_RESIZE: return "nwse-resize";
-    case NK_CURSOR_NESW_RESIZE: return "nesw-resize";
-    case NK_CURSOR_MOVE: return "move";
-    case NK_CURSOR_NOT_ALLOWED: return "not-allowed";
-    default: return nullptr;
+    case NK_CURSOR_ARROW:
+        return "default";
+    case NK_CURSOR_IBEAM:
+        return "text";
+    case NK_CURSOR_CROSSHAIR:
+        return "crosshair";
+    case NK_CURSOR_HAND:
+        return "pointer";
+    case NK_CURSOR_HORIZONTAL_RESIZE:
+        return "ew-resize";
+    case NK_CURSOR_VERTICAL_RESIZE:
+        return "ns-resize";
+    case NK_CURSOR_NWSE_RESIZE:
+        return "nwse-resize";
+    case NK_CURSOR_NESW_RESIZE:
+        return "nesw-resize";
+    case NK_CURSOR_MOVE:
+        return "move";
+    case NK_CURSOR_NOT_ALLOWED:
+        return "not-allowed";
+    default:
+        return nullptr;
     }
 }
 
@@ -244,8 +253,7 @@ void queue_window_state(WebWindowResource &window) {
 }
 
 void queue_surface_resize(WebSurfaceResource &surface) {
-    const nk_surface_resize_event payload{surface.width, surface.height,
-                                          surface.framebuffer_width,
+    const nk_surface_resize_event payload{surface.width, surface.height, surface.framebuffer_width,
                                           surface.framebuffer_height};
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_SURFACE_RESIZE;
@@ -271,8 +279,8 @@ void release_pressed_input(WebWindowResource &window) {
         if (window.buttons[button] != NK_INPUT_PRESS)
             continue;
         window.buttons[button] = NK_INPUT_RELEASE;
-        const nk_pointer_button_event payload{button, NK_INPUT_RELEASE, 0, 0, window.pointer_x,
-                                             window.pointer_y};
+        const nk_pointer_button_event payload{button, NK_INPUT_RELEASE, 0,
+                                              0,      window.pointer_x, window.pointer_y};
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_POINTER_BUTTON;
         event.source = window.handle;
@@ -355,56 +363,101 @@ nk_key key_from_dom(uint32_t key_code, uint32_t location) {
     if (location == 3 && key_code >= 96 && key_code <= 105)
         return NK_KEY_KP_0 + key_code - 96;
     switch (key_code) {
-    case 32: return NK_KEY_SPACE;
-    case 186: return NK_KEY_SEMICOLON;
-    case 187: return location == 3 ? NK_KEY_KP_EQUAL : NK_KEY_EQUAL;
-    case 188: return NK_KEY_COMMA;
-    case 189: return location == 3 ? NK_KEY_KP_SUBTRACT : NK_KEY_MINUS;
-    case 190: return NK_KEY_PERIOD;
-    case 191: return NK_KEY_SLASH;
-    case 192: return NK_KEY_GRAVE_ACCENT;
-    case 219: return NK_KEY_LEFT_BRACKET;
-    case 220: return NK_KEY_BACKSLASH;
-    case 221: return NK_KEY_RIGHT_BRACKET;
-    case 222: return NK_KEY_APOSTROPHE;
-    case 8: return NK_KEY_BACKSPACE;
-    case 9: return NK_KEY_TAB;
-    case 13: return location == 3 ? NK_KEY_KP_ENTER : NK_KEY_ENTER;
-    case 16: return location == 2 ? NK_KEY_RIGHT_SHIFT : NK_KEY_LEFT_SHIFT;
-    case 17: return location == 2 ? NK_KEY_RIGHT_CONTROL : NK_KEY_LEFT_CONTROL;
-    case 18: return location == 2 ? NK_KEY_RIGHT_ALT : NK_KEY_LEFT_ALT;
-    case 27: return NK_KEY_ESCAPE;
-    case 33: return NK_KEY_PAGE_UP;
-    case 34: return NK_KEY_PAGE_DOWN;
-    case 35: return NK_KEY_END;
-    case 36: return NK_KEY_HOME;
-    case 37: return NK_KEY_LEFT;
-    case 38: return NK_KEY_UP;
-    case 40: return NK_KEY_DOWN;
-    case 44: return NK_KEY_PRINT_SCREEN;
-    case 45: return NK_KEY_INSERT;
-    case 46: return location == 3 ? NK_KEY_KP_DECIMAL : NK_KEY_DELETE;
-    case 91: return NK_KEY_LEFT_SUPER;
-    case 93: return NK_KEY_RIGHT_SUPER;
-    case 106: return NK_KEY_KP_MULTIPLY;
-    case 107: return NK_KEY_KP_ADD;
-    case 109: return NK_KEY_KP_SUBTRACT;
-    case 111: return NK_KEY_KP_DIVIDE;
-    case 144: return NK_KEY_NUM_LOCK;
-    case 145: return NK_KEY_SCROLL_LOCK;
-    case 19: return NK_KEY_PAUSE;
-    default: return NK_KEY_UNKNOWN;
+    case 32:
+        return NK_KEY_SPACE;
+    case 186:
+        return NK_KEY_SEMICOLON;
+    case 187:
+        return location == 3 ? NK_KEY_KP_EQUAL : NK_KEY_EQUAL;
+    case 188:
+        return NK_KEY_COMMA;
+    case 189:
+        return location == 3 ? NK_KEY_KP_SUBTRACT : NK_KEY_MINUS;
+    case 190:
+        return NK_KEY_PERIOD;
+    case 191:
+        return NK_KEY_SLASH;
+    case 192:
+        return NK_KEY_GRAVE_ACCENT;
+    case 219:
+        return NK_KEY_LEFT_BRACKET;
+    case 220:
+        return NK_KEY_BACKSLASH;
+    case 221:
+        return NK_KEY_RIGHT_BRACKET;
+    case 222:
+        return NK_KEY_APOSTROPHE;
+    case 8:
+        return NK_KEY_BACKSPACE;
+    case 9:
+        return NK_KEY_TAB;
+    case 13:
+        return location == 3 ? NK_KEY_KP_ENTER : NK_KEY_ENTER;
+    case 16:
+        return location == 2 ? NK_KEY_RIGHT_SHIFT : NK_KEY_LEFT_SHIFT;
+    case 17:
+        return location == 2 ? NK_KEY_RIGHT_CONTROL : NK_KEY_LEFT_CONTROL;
+    case 18:
+        return location == 2 ? NK_KEY_RIGHT_ALT : NK_KEY_LEFT_ALT;
+    case 27:
+        return NK_KEY_ESCAPE;
+    case 33:
+        return NK_KEY_PAGE_UP;
+    case 34:
+        return NK_KEY_PAGE_DOWN;
+    case 35:
+        return NK_KEY_END;
+    case 36:
+        return NK_KEY_HOME;
+    case 37:
+        return NK_KEY_LEFT;
+    case 38:
+        return NK_KEY_UP;
+    case 40:
+        return NK_KEY_DOWN;
+    case 44:
+        return NK_KEY_PRINT_SCREEN;
+    case 45:
+        return NK_KEY_INSERT;
+    case 46:
+        return location == 3 ? NK_KEY_KP_DECIMAL : NK_KEY_DELETE;
+    case 91:
+        return NK_KEY_LEFT_SUPER;
+    case 93:
+        return NK_KEY_RIGHT_SUPER;
+    case 106:
+        return NK_KEY_KP_MULTIPLY;
+    case 107:
+        return NK_KEY_KP_ADD;
+    case 109:
+        return NK_KEY_KP_SUBTRACT;
+    case 111:
+        return NK_KEY_KP_DIVIDE;
+    case 144:
+        return NK_KEY_NUM_LOCK;
+    case 145:
+        return NK_KEY_SCROLL_LOCK;
+    case 19:
+        return NK_KEY_PAUSE;
+    default:
+        return NK_KEY_UNKNOWN;
     }
 }
 
 nk_pointer_button button_from_dom(int32_t button) {
     switch (button) {
-    case 0: return NK_POINTER_BUTTON_LEFT;
-    case 1: return NK_POINTER_BUTTON_MIDDLE;
-    case 2: return NK_POINTER_BUTTON_RIGHT;
-    case 3: return NK_POINTER_BUTTON_4;
-    case 4: return NK_POINTER_BUTTON_5;
-    default: return UINT32_MAX;
+    case 0:
+        return NK_POINTER_BUTTON_LEFT;
+    case 1:
+        return NK_POINTER_BUTTON_MIDDLE;
+    case 2:
+        return NK_POINTER_BUTTON_RIGHT;
+    case 3:
+        return NK_POINTER_BUTTON_4;
+    case 4:
+        return NK_POINTER_BUTTON_5;
+    default:
+        return UINT32_MAX;
     }
 }
 
@@ -435,12 +488,11 @@ void on_key(const nk::web::KeyEvent &event, void *user_data) {
             return;
         }
         const nk_key key = key_from_dom(event.key_code, event.location);
-        const nk_input_action action = event.type == nk::web::KeyEventType::up
-                                           ? NK_INPUT_RELEASE
-                                           : (event.repeat || (key <= NK_KEY_LAST &&
-                                                               window->keys[key] == NK_INPUT_PRESS))
-                                                 ? NK_INPUT_REPEAT
-                                                 : NK_INPUT_PRESS;
+        const nk_input_action action =
+            event.type == nk::web::KeyEventType::up ? NK_INPUT_RELEASE
+            : (event.repeat || (key <= NK_KEY_LAST && window->keys[key] == NK_INPUT_PRESS))
+                ? NK_INPUT_REPEAT
+                : NK_INPUT_PRESS;
         if (key <= NK_KEY_LAST)
             window->keys[key] = action == NK_INPUT_RELEASE ? NK_INPUT_RELEASE : NK_INPUT_PRESS;
         const nk_key_event payload{key, event.key_code, action, event.modifiers};
@@ -492,14 +544,12 @@ void on_pointer(const nk::web::PointerEvent &event, void *user_data) {
         const auto button = button_from_dom(event.button);
         if (button == UINT32_MAX)
             return;
-        const nk_input_action action = event.type == nk::web::PointerEventType::up
-                                           ? NK_INPUT_RELEASE
-                                           : NK_INPUT_PRESS;
+        const nk_input_action action =
+            event.type == nk::web::PointerEventType::up ? NK_INPUT_RELEASE : NK_INPUT_PRESS;
         window->buttons[button] = action;
         window->pointer_x = event.x;
         window->pointer_y = event.y;
-        const nk_pointer_button_event payload{button, action, event.modifiers, 0, event.x,
-                                              event.y};
+        const nk_pointer_button_event payload{button, action, event.modifiers, 0, event.x, event.y};
         nk::core::QueuedEvent queued;
         queued.kind = NK_EVENT_POINTER_BUTTON;
         queued.source = window->handle;
@@ -513,16 +563,21 @@ void on_touch(const nk::web::TouchEvent &event, void *user_data) {
         auto *window = static_cast<WebWindowResource *>(user_data);
         if (!window || !nk::core::is_runtime_generation(window->generation))
             return;
-        const nk_touch_action action = event.type == nk::web::TouchEventType::begin
-                                           ? NK_TOUCH_BEGIN
-                                           : event.type == nk::web::TouchEventType::end
-                                                 ? NK_TOUCH_END
-                                                 : event.type == nk::web::TouchEventType::cancel
-                                                       ? NK_TOUCH_CANCEL
-                                                       : NK_TOUCH_MOVE;
-        const nk_touch_event payload{event.identifier, action, NK_TOUCH_TOOL_FINGER,
-                                     event.modifiers, event.x, event.y, event.pressure, 0.0f,
-                                     0.0f, 0};
+        const nk_touch_action action = event.type == nk::web::TouchEventType::begin ? NK_TOUCH_BEGIN
+                                       : event.type == nk::web::TouchEventType::end ? NK_TOUCH_END
+                                       : event.type == nk::web::TouchEventType::cancel
+                                           ? NK_TOUCH_CANCEL
+                                           : NK_TOUCH_MOVE;
+        const nk_touch_event payload{event.identifier,
+                                     action,
+                                     NK_TOUCH_TOOL_FINGER,
+                                     event.modifiers,
+                                     event.x,
+                                     event.y,
+                                     event.pressure,
+                                     0.0f,
+                                     0.0f,
+                                     0};
         nk::core::QueuedEvent queued;
         queued.kind = NK_EVENT_TOUCH;
         queued.source = window->handle;
@@ -645,7 +700,8 @@ void on_text_input(const nk::web::TextInputEvent &event, void *user_data) {
             text.clear();
             break;
         case nk::web::TextInputEventType::selection: {
-            const auto relative_start = std::min(event.selection_start, text_end - state.text_start);
+            const auto relative_start =
+                std::min(event.selection_start, text_end - state.text_start);
             const auto relative_end = std::min(event.selection_end, text_end - state.text_start);
             selection_start = state.text_start + std::min(relative_start, relative_end);
             selection_end = state.text_start + std::max(relative_start, relative_end);
@@ -717,7 +773,7 @@ EM_BOOL frame_loop(double, void *user_data) {
     nk::core::callback_boundary([&] {
         if (surface->frame_callback)
             surface->frame_callback(surface->handle, surface->framebuffer_width,
-                                     surface->framebuffer_height, surface->frame_user_data);
+                                    surface->framebuffer_height, surface->frame_user_data);
     });
     return surface->frame_callback ? EM_TRUE : EM_FALSE;
 }
@@ -785,8 +841,7 @@ nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_resource_load_async(const nk_resource *resource,
-                                         nk_request_id *out_request) {
+nk_result NK_CALL nk_resource_load_async(const nk_resource *resource, nk_request_id *out_request) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
     if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
@@ -801,70 +856,72 @@ nk_result NK_CALL nk_resource_load_async(const nk_resource *resource,
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
-    return nk::core::result_boundary("unexpected error while creating web window", [&]() -> nk_result {
-        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-            return result;
-        if (!options || options->struct_size < sizeof(nk_window_options) || !out_window ||
-            options->width <= 0 || options->height <= 0)
-            return invalid_argument("invalid web window options");
-        if (options->owner != NK_INVALID_HANDLE || (options->flags & NK_WINDOW_MODAL))
-            return unsupported("owned and modal web windows are not supported");
-        if (!active_window.expired())
-            return NK_ERROR_ALREADY_INITIALIZED;
+    return nk::core::result_boundary(
+        "unexpected error while creating web window", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            if (!options || options->struct_size < sizeof(nk_window_options) || !out_window ||
+                options->width <= 0 || options->height <= 0)
+                return invalid_argument("invalid web window options");
+            if (options->owner != NK_INVALID_HANDLE || (options->flags & NK_WINDOW_MODAL))
+                return unsupported("owned and modal web windows are not supported");
+            if (!active_window.expired())
+                return NK_ERROR_ALREADY_INITIALIZED;
 
-        auto window = std::make_shared<WebWindowResource>();
-        window->generation = nk::core::runtime_generation();
-        window->title = options->title ? options->title : "";
-        window->visible = (options->flags & NK_WINDOW_HIDDEN) == 0;
-        window->resizable = (options->flags & NK_WINDOW_RESIZABLE) != 0;
-        const auto handle = nk::core::handles().insert(nk::core::ResourceType::window, window);
-        if (handle == NK_INVALID_HANDLE)
-            return NK_ERROR_OUT_OF_MEMORY;
-        window->handle = handle;
-        active_window = window;
-        if (!nk::web::set_canvas_size(options->width, options->height)) {
-            active_window.reset();
-            nk::core::handles().erase(handle, nk::core::ResourceType::window);
-            return NK_ERROR_UNKNOWN;
-        }
-        nk::web::HostCallbacks callbacks{};
-        callbacks.resize = on_resize;
-        callbacks.key = on_key;
-        callbacks.pointer = on_pointer;
-        callbacks.touch = on_touch;
-        callbacks.text_input = on_text_input;
-        callbacks.focus = on_focus;
-        callbacks.context = on_context;
-        callbacks.pointer_lock = on_pointer_lock;
-        nk::web::install_callbacks(callbacks, window.get());
-        nk::web::set_canvas_visible(window->visible);
-        if (!window->title.empty())
-            nk::web::set_title(window->title.c_str());
-        nk::web::CanvasSize size{};
-        nk::web::canvas_size(&size);
-        apply_canvas_size(*window, size);
-        queue_window_state(*window);
-        *out_window = handle;
-        return NK_OK;
-    });
+            auto window = std::make_shared<WebWindowResource>();
+            window->generation = nk::core::runtime_generation();
+            window->title = options->title ? options->title : "";
+            window->visible = (options->flags & NK_WINDOW_HIDDEN) == 0;
+            window->resizable = (options->flags & NK_WINDOW_RESIZABLE) != 0;
+            const auto handle = nk::core::handles().insert(nk::core::ResourceType::window, window);
+            if (handle == NK_INVALID_HANDLE)
+                return NK_ERROR_OUT_OF_MEMORY;
+            window->handle = handle;
+            active_window = window;
+            if (!nk::web::set_canvas_size(options->width, options->height)) {
+                active_window.reset();
+                nk::core::handles().erase(handle, nk::core::ResourceType::window);
+                return NK_ERROR_UNKNOWN;
+            }
+            nk::web::HostCallbacks callbacks{};
+            callbacks.resize = on_resize;
+            callbacks.key = on_key;
+            callbacks.pointer = on_pointer;
+            callbacks.touch = on_touch;
+            callbacks.text_input = on_text_input;
+            callbacks.focus = on_focus;
+            callbacks.context = on_context;
+            callbacks.pointer_lock = on_pointer_lock;
+            nk::web::install_callbacks(callbacks, window.get());
+            nk::web::set_canvas_visible(window->visible);
+            if (!window->title.empty())
+                nk::web::set_title(window->title.c_str());
+            nk::web::CanvasSize size{};
+            nk::web::canvas_size(&size);
+            apply_canvas_size(*window, size);
+            queue_window_state(*window);
+            *out_window = handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_window_destroy(nk_handle handle) {
-    return nk::core::result_boundary("unexpected error while destroying web window", [&]() -> nk_result {
-        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-            return result;
-        auto window = get_window(handle);
-        if (!window)
-            return invalid_handle("invalid web window handle");
-        const auto surfaces = window->surfaces;
-        for (const auto surface : surfaces)
-            nk_surface_destroy(surface);
-        if (active_window.lock() == window)
-            shutdown_web();
-        if (!nk::core::handles().erase(handle, nk::core::ResourceType::window))
-            return invalid_handle("web window was already destroyed");
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while destroying web window", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            auto window = get_window(handle);
+            if (!window)
+                return invalid_handle("invalid web window handle");
+            const auto surfaces = window->surfaces;
+            for (const auto surface : surfaces)
+                nk_surface_destroy(surface);
+            if (active_window.lock() == window)
+                shutdown_web();
+            if (!nk::core::handles().erase(handle, nk::core::ResourceType::window))
+                return invalid_handle("web window was already destroyed");
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_window_show(nk_handle handle, nk_bool visible) {
@@ -1009,56 +1066,58 @@ nk_result NK_CALL nk_window_wrap_native(const nk_native_window *, nk_handle *) {
 
 nk_result NK_CALL nk_surface_create(nk_handle window_handle, const nk_surface_options *options,
                                     nk_handle *out_surface) {
-    return nk::core::result_boundary("unexpected error while creating web surface", [&]() -> nk_result {
-        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-            return result;
-        if (!options || options->struct_size < sizeof(nk_surface_options) || !out_surface ||
-            options->width <= 0 || options->height <= 0)
-            return invalid_argument("invalid web surface options");
-        if (options->api != NK_GRAPHICS_OPENGL && options->api != NK_GRAPHICS_OPENGL_ES)
-            return unsupported("the first web backend supports WebGL2 only");
-        if (options->share_surface != NK_INVALID_HANDLE)
-            return unsupported("shared WebGL surfaces are not supported yet");
-        auto window = get_window(window_handle);
-        if (!window)
-            return invalid_handle("invalid web surface parent window");
-        if (!window->surfaces.empty())
-            return unsupported("a browser canvas supports one surface initially");
-        if (!nk::web::set_canvas_size(options->width, options->height))
-            return NK_ERROR_UNKNOWN;
+    return nk::core::result_boundary(
+        "unexpected error while creating web surface", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            if (!options || options->struct_size < sizeof(nk_surface_options) || !out_surface ||
+                options->width <= 0 || options->height <= 0)
+                return invalid_argument("invalid web surface options");
+            if (options->api != NK_GRAPHICS_OPENGL && options->api != NK_GRAPHICS_OPENGL_ES)
+                return unsupported("the first web backend supports WebGL2 only");
+            if (options->share_surface != NK_INVALID_HANDLE)
+                return unsupported("shared WebGL surfaces are not supported yet");
+            auto window = get_window(window_handle);
+            if (!window)
+                return invalid_handle("invalid web surface parent window");
+            if (!window->surfaces.empty())
+                return unsupported("a browser canvas supports one surface initially");
+            if (!nk::web::set_canvas_size(options->width, options->height))
+                return NK_ERROR_UNKNOWN;
 
-        nk::web::WebGLContextOptions context_options{};
-        context_options.alpha = (options->flags & NK_SURFACE_ALPHA) != 0;
-        context_options.depth = (options->flags & NK_SURFACE_DEPTH) != 0;
-        context_options.stencil = (options->flags & NK_SURFACE_STENCIL) != 0;
-        EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = 0;
-        if (!nk::web::create_webgl_context(context_options, &context)) {
-            nk::core::set_error("could not create a WebGL2 context for the NativeKit canvas");
-            return NK_ERROR_UNKNOWN;
-        }
-        auto surface = std::make_shared<WebSurfaceResource>();
-        surface->parent = window_handle;
-        surface->generation = nk::core::runtime_generation();
-        surface->context = context;
-        const auto handle = nk::core::handles().insert(nk::core::ResourceType::surface, surface);
-        if (handle == NK_INVALID_HANDLE) {
-            nk::web::destroy_webgl_context(context);
-            return NK_ERROR_OUT_OF_MEMORY;
-        }
-        surface->handle = handle;
-        window->surfaces.push_back(handle);
-        sync_canvas_size(*window);
-        surface->width = window->width;
-        surface->height = window->height;
-        surface->framebuffer_width = window->framebuffer_width;
-        surface->framebuffer_height = window->framebuffer_height;
-        nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_SURFACE_READY;
-        event.source = handle;
-        nk::core::push_event(std::move(event));
-        *out_surface = handle;
-        return NK_OK;
-    });
+            nk::web::WebGLContextOptions context_options{};
+            context_options.alpha = (options->flags & NK_SURFACE_ALPHA) != 0;
+            context_options.depth = (options->flags & NK_SURFACE_DEPTH) != 0;
+            context_options.stencil = (options->flags & NK_SURFACE_STENCIL) != 0;
+            EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = 0;
+            if (!nk::web::create_webgl_context(context_options, &context)) {
+                nk::core::set_error("could not create a WebGL2 context for the NativeKit canvas");
+                return NK_ERROR_UNKNOWN;
+            }
+            auto surface = std::make_shared<WebSurfaceResource>();
+            surface->parent = window_handle;
+            surface->generation = nk::core::runtime_generation();
+            surface->context = context;
+            const auto handle =
+                nk::core::handles().insert(nk::core::ResourceType::surface, surface);
+            if (handle == NK_INVALID_HANDLE) {
+                nk::web::destroy_webgl_context(context);
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            surface->handle = handle;
+            window->surfaces.push_back(handle);
+            sync_canvas_size(*window);
+            surface->width = window->width;
+            surface->height = window->height;
+            surface->framebuffer_width = window->framebuffer_width;
+            surface->framebuffer_height = window->framebuffer_height;
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_SURFACE_READY;
+            event.source = handle;
+            nk::core::push_event(std::move(event));
+            *out_surface = handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
@@ -1141,8 +1200,8 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
 }
 
 nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
-                                                 nk_surface_frame_callback callback,
-                                                 void *user_data) {
+                                                nk_surface_frame_callback callback,
+                                                void *user_data) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
     auto surface = get_surface(handle);
@@ -1164,7 +1223,7 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
 }
 
 nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
-                                                   const nk_text_input_state *state) {
+                                                  const nk_text_input_state *state) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
     if (!state || state->struct_size < sizeof(nk_text_input_state) || !state->text)
@@ -1179,11 +1238,10 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
                                    state->composition_start <= state->composition_end &&
                                    state->composition_start >= state->text_start &&
                                    state->composition_end <= text_end;
-    const bool valid_cursor = std::isfinite(state->cursor_x) &&
-                              std::isfinite(state->cursor_y) &&
+    const bool valid_cursor = std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
                               std::isfinite(state->cursor_width) &&
-                              std::isfinite(state->cursor_height) &&
-                              state->cursor_width >= 0.0f && state->cursor_height >= 0.0f;
+                              std::isfinite(state->cursor_height) && state->cursor_width >= 0.0f &&
+                              state->cursor_height >= 0.0f;
     if (text_end > std::numeric_limits<nk_text_position>::max() ||
         state->text_start > state->document_length || text_end > state->document_length ||
         state->selection_start > state->selection_end ||
@@ -1341,8 +1399,9 @@ nk_result NK_CALL nk_cursor_destroy(nk_handle handle) {
     if (!get_resource<WebCursorResource>(handle, nk::core::ResourceType::cursor,
                                          "invalid web cursor handle"))
         return invalid_handle("invalid web cursor handle");
-    return nk::core::handles().erase(handle, nk::core::ResourceType::cursor) ? NK_OK
-                                                                              : NK_ERROR_INVALID_HANDLE;
+    return nk::core::handles().erase(handle, nk::core::ResourceType::cursor)
+               ? NK_OK
+               : NK_ERROR_INVALID_HANDLE;
 }
 nk_result NK_CALL nk_window_set_cursor(nk_handle window_handle, nk_handle cursor_handle) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)

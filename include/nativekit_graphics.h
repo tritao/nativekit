@@ -115,10 +115,8 @@ typedef void(NK_CALL *nk_graphics_proc)(void);
  * The callback runs on the UI thread. `user_data` is the value supplied to
  * nk_surface_set_frame_callback().
  */
-typedef void(NK_CALL *nk_surface_frame_callback)(nk_handle surface,
-                                                 int32_t framebuffer_width,
-                                                 int32_t framebuffer_height,
-                                                 void *user_data);
+typedef void(NK_CALL *nk_surface_frame_callback)(nk_handle surface, int32_t framebuffer_width,
+                                                 int32_t framebuffer_height, void *user_data);
 typedef nk_surface_frame_callback NK_NULLABLE nk_nullable_surface_frame_callback;
 
 /** Payload of NK_EVENT_SURFACE_RESIZE. */
@@ -171,8 +169,7 @@ typedef struct nk_surface_frame_target {
  * been destroyed. Vulkan views do not support GL context flags or sharing.
  * On NK_OK, writes the new surface handle to `out_surface`.
  */
-NK_API nk_result NK_CALL nk_surface_create(nk_handle window,
-                                           const nk_surface_options *options,
+NK_API nk_result NK_CALL nk_surface_create(nk_handle window, const nk_surface_options *options,
                                            nk_handle *out_surface NK_OUT);
 
 /** Destroys a graphics surface; its handle becomes invalid. */
@@ -222,8 +219,8 @@ NK_API nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle surface,
                                                          int32_t *out_height NK_OUT);
 
 /** Returns the current backend-native render target for a surface frame. */
-NK_API nk_result NK_CALL nk_surface_get_frame_target(
-    nk_handle surface, nk_surface_frame_target *out_target NK_OUT);
+NK_API nk_result NK_CALL nk_surface_get_frame_target(nk_handle surface,
+                                                     nk_surface_frame_target *out_target NK_OUT);
 
 /** Retains a sampled image reference. Each successful retain requires one release. */
 NK_API nk_result NK_CALL nk_graphics_image_retain(nk_graphics_image image);
@@ -232,8 +229,8 @@ NK_API nk_result NK_CALL nk_graphics_image_retain(nk_graphics_image image);
 NK_API nk_result NK_CALL nk_graphics_image_release(nk_graphics_image image);
 
 /** Queries backend, owning context/share group, and dimensions for a sampled image. */
-NK_API nk_result NK_CALL nk_graphics_image_get_info(
-    nk_graphics_image image, nk_graphics_image_info *out_info NK_OUT);
+NK_API nk_result NK_CALL nk_graphics_image_get_info(nk_graphics_image image,
+                                                    nk_graphics_image_info *out_info NK_OUT);
 
 /** Retains a graphics device; its root NativeKit surface cannot be destroyed until release. */
 NK_API nk_result NK_CALL nk_graphics_device_retain(nk_graphics_device device);

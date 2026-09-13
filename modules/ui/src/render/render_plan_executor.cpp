@@ -15,7 +15,7 @@ bool fail(RenderExecutionError *error, uint32_t pass, uint32_t command, const ch
 }
 
 std::pair<int, int> surface_request_size(const RenderPlan &plan, ResourceId surface,
-                                        const nk_surface_frame_target &window) {
+                                         const nk_surface_frame_target &window) {
     float requested_width = 0.0f;
     float requested_height = 0.0f;
     for (const auto &pass : plan.passes) {
@@ -78,8 +78,7 @@ bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
             continue;
         }
         SurfaceDescriptor description{};
-        const auto requested = surface_request_size(plan, dependency.producer,
-                                                    window.frame_target);
+        const auto requested = surface_request_size(plan, dependency.producer, window.frame_target);
         if (!producer->describe(requested.first, requested.second, description) ||
             description.width <= 0 || description.height <= 0)
             return fail(error, 0, 0, "surface producer description is invalid");
@@ -112,12 +111,12 @@ bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
         const uint32_t pass_index = pass_order[scheduled_index];
         const auto &pass = plan.passes[pass_index];
         const int pass_width = pass.target_descriptor.width > 0 ? pass.target_descriptor.width
-                                                                 : window.frame_target.width;
+                                                                : window.frame_target.width;
         const int pass_height = pass.target_descriptor.height > 0 ? pass.target_descriptor.height
-                                                                   : window.frame_target.height;
+                                                                  : window.frame_target.height;
         const bool window_pass = pass.target.value == window.id.value;
-        if (!(window_pass ? backend.begin_window_pass(pass_width, pass_height,
-                                                      window.frame_target, !pass.load_existing)
+        if (!(window_pass ? backend.begin_window_pass(pass_width, pass_height, window.frame_target,
+                                                      !pass.load_existing)
                           : backend.begin_target_pass(pass.target, pass_width, pass_height,
                                                       pass.load_existing)))
             return fail(error, pass_index, 0, backend.last_error());
@@ -149,23 +148,20 @@ bool execute_render_plan(RenderBackend &backend, const RenderPlan &plan,
             }
             case RenderCommandKind::CompositeTarget:
                 if (const auto *image = resources.graphics_image(command.resource))
-                    rendered = backend.draw_graphics_image(*image, command.x, command.y,
-                                                           command.width, command.height,
-                                                           command.transform.data(), command.opacity);
+                    rendered = backend.draw_graphics_image(
+                        *image, command.x, command.y, command.width, command.height,
+                        command.transform.data(), command.opacity);
                 else
                     rendered = backend.draw_target(command.resource, command.x, command.y,
                                                    command.width, command.height,
                                                    command.transform.data(), command.opacity);
                 break;
-            case RenderCommandKind::Image:
-                {
-                    const auto *image = resources.image(command.resource);
-                    rendered = image &&
-                               backend.draw_image(*image->image, command.x, command.y,
-                                                  command.width, command.height,
-                                                  command.transform.data(), command.opacity);
-                }
-                break;
+            case RenderCommandKind::Image: {
+                const auto *image = resources.image(command.resource);
+                rendered = image && backend.draw_image(*image->image, command.x, command.y,
+                                                       command.width, command.height,
+                                                       command.transform.data(), command.opacity);
+            } break;
             }
             if (!rendered)
                 return fail_command(command_index, backend.last_error());

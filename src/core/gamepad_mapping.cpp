@@ -14,8 +14,7 @@ bool parse_number(std::string_view text, std::size_t &position, std::uint16_t &v
     if (position >= text.size() || !std::isdigit(static_cast<unsigned char>(text[position])))
         return false;
     unsigned long result = 0;
-    while (position < text.size() &&
-           std::isdigit(static_cast<unsigned char>(text[position]))) {
+    while (position < text.size() && std::isdigit(static_cast<unsigned char>(text[position]))) {
         result = result * 10 + static_cast<unsigned int>(text[position++] - '0');
         if (result > std::numeric_limits<std::uint16_t>::max())
             return false;
@@ -74,14 +73,14 @@ bool hexadecimal_guid(std::string_view guid) {
 }
 
 float binding_value(const Binding &binding, const std::vector<float> &axes,
-                    const std::vector<std::uint8_t> &buttons,
-                    const std::vector<std::uint8_t> &hats, bool &valid) {
+                    const std::vector<std::uint8_t> &buttons, const std::vector<std::uint8_t> &hats,
+                    bool &valid) {
     valid = true;
     switch (binding.type) {
     case nk::core::gamepad::InputType::axis:
         if (binding.index < axes.size())
-            return std::clamp(axes[binding.index] * binding.axis_scale + binding.axis_offset,
-                              -1.f, 1.f);
+            return std::clamp(axes[binding.index] * binding.axis_scale + binding.axis_offset, -1.f,
+                              1.f);
         break;
     case nk::core::gamepad::InputType::button:
         if (binding.index < buttons.size())
@@ -179,8 +178,8 @@ bool parse_mapping(std::string_view text, Mapping &mapping) {
 }
 
 bool apply_mapping(const Mapping &mapping, const std::vector<float> &axes,
-                   const std::vector<std::uint8_t> &buttons,
-                   const std::vector<std::uint8_t> &hats, nk_gamepad_state &state) {
+                   const std::vector<std::uint8_t> &buttons, const std::vector<std::uint8_t> &hats,
+                   nk_gamepad_state &state) {
     for (std::size_t index = 0; index < mapping.buttons.size(); ++index) {
         const auto &binding = mapping.buttons[index];
         bool valid = false;
@@ -188,11 +187,10 @@ bool apply_mapping(const Mapping &mapping, const std::vector<float> &axes,
         if (!valid && binding.type != InputType::none)
             return false;
         if (binding.type == InputType::axis) {
-            state.buttons[index] =
-                (binding.axis_offset < 0.f ||
-                 (binding.axis_offset == 0.f && binding.axis_scale > 0.f))
-                    ? value >= 0.f
-                    : value <= 0.f;
+            state.buttons[index] = (binding.axis_offset < 0.f ||
+                                    (binding.axis_offset == 0.f && binding.axis_scale > 0.f))
+                                       ? value >= 0.f
+                                       : value <= 0.f;
         } else if (valid) {
             state.buttons[index] = value > 0.f;
         }
@@ -207,8 +205,8 @@ bool apply_mapping(const Mapping &mapping, const std::vector<float> &axes,
     return true;
 }
 
-void normalize_state(nk_gamepad_state &state, float stick_dead_zone,
-                     float trigger_dead_zone, nk_gamepad_flags flags) {
+void normalize_state(nk_gamepad_state &state, float stick_dead_zone, float trigger_dead_zone,
+                     nk_gamepad_flags flags) {
     const auto normalize_stick = [stick_dead_zone](float &x, float &y) {
         const float magnitude = std::sqrt(x * x + y * y);
         if (magnitude <= stick_dead_zone) {
@@ -216,23 +214,19 @@ void normalize_state(nk_gamepad_state &state, float stick_dead_zone,
             y = 0.f;
             return;
         }
-        const float scaled =
-            std::min((magnitude - stick_dead_zone) / (1.f - stick_dead_zone), 1.f);
+        const float scaled = std::min((magnitude - stick_dead_zone) / (1.f - stick_dead_zone), 1.f);
         x = x / magnitude * scaled;
         y = y / magnitude * scaled;
     };
-    normalize_stick(state.axes[NK_GAMEPAD_AXIS_LEFT_X],
-                    state.axes[NK_GAMEPAD_AXIS_LEFT_Y]);
-    normalize_stick(state.axes[NK_GAMEPAD_AXIS_RIGHT_X],
-                    state.axes[NK_GAMEPAD_AXIS_RIGHT_Y]);
+    normalize_stick(state.axes[NK_GAMEPAD_AXIS_LEFT_X], state.axes[NK_GAMEPAD_AXIS_LEFT_Y]);
+    normalize_stick(state.axes[NK_GAMEPAD_AXIS_RIGHT_X], state.axes[NK_GAMEPAD_AXIS_RIGHT_Y]);
     for (const auto axis : {NK_GAMEPAD_AXIS_LEFT_TRIGGER, NK_GAMEPAD_AXIS_RIGHT_TRIGGER}) {
         float value = std::clamp((state.axes[axis] + 1.f) * 0.5f, 0.f, 1.f);
         if (value <= trigger_dead_zone)
             value = 0.f;
         else
             value = (value - trigger_dead_zone) / (1.f - trigger_dead_zone);
-        state.axes[axis] =
-            (flags & NK_GAMEPAD_TRIGGER_ZERO_TO_ONE) ? value : value * 2.f - 1.f;
+        state.axes[axis] = (flags & NK_GAMEPAD_TRIGGER_ZERO_TO_ONE) ? value : value * 2.f - 1.f;
     }
 }
 

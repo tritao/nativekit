@@ -107,12 +107,24 @@ nk_result NK_CALL nk_webview_navigate(nk_handle, const char *) {
 nk_result NK_CALL nk_webview_set_html(nk_handle, const char *, const char *) {
     return unsupported();
 }
-nk_result NK_CALL nk_webview_can_go_back(nk_handle, uint32_t *) { return unsupported(); }
-nk_result NK_CALL nk_webview_can_go_forward(nk_handle, uint32_t *) { return unsupported(); }
-nk_result NK_CALL nk_webview_go_back(nk_handle) { return unsupported(); }
-nk_result NK_CALL nk_webview_go_forward(nk_handle) { return unsupported(); }
-nk_result NK_CALL nk_webview_reload(nk_handle) { return unsupported(); }
-nk_result NK_CALL nk_webview_stop(nk_handle) { return unsupported(); }
+nk_result NK_CALL nk_webview_can_go_back(nk_handle, uint32_t *) {
+    return unsupported();
+}
+nk_result NK_CALL nk_webview_can_go_forward(nk_handle, uint32_t *) {
+    return unsupported();
+}
+nk_result NK_CALL nk_webview_go_back(nk_handle) {
+    return unsupported();
+}
+nk_result NK_CALL nk_webview_go_forward(nk_handle) {
+    return unsupported();
+}
+nk_result NK_CALL nk_webview_reload(nk_handle) {
+    return unsupported();
+}
+nk_result NK_CALL nk_webview_stop(nk_handle) {
+    return unsupported();
+}
 nk_result NK_CALL nk_webview_eval(nk_handle, const char *, nk_request_id *) {
     return unsupported();
 }
@@ -172,8 +184,7 @@ nk_result NK_CALL nk_dialog_save_resource(nk_handle, const nk_file_dialog_option
                                           nk_request_id *) {
     return unsupported();
 }
-nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle,
-                                                      const nk_file_dialog_options *,
+nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle, const nk_file_dialog_options *,
                                                       nk_request_id *) {
     return unsupported();
 }

@@ -22,8 +22,8 @@ struct SolidMesh {
     std::vector<uint32_t> indices;
 };
 
-bool triangulate_prepared_path(const PreparedPathData &path,
-                               const PreparedPathOperation &operation, SolidMesh &mesh);
+bool triangulate_prepared_path(const PreparedPathData &path, const PreparedPathOperation &operation,
+                               SolidMesh &mesh);
 
 using SokolBackendStats = RenderBackendStats;
 
@@ -42,8 +42,7 @@ class SokolBackend final : public RenderBackend {
     bool valid() const override;
     bool begin_window_pass(int width, int height, const nk_surface_frame_target &target,
                            bool clear) override;
-    bool begin_target_pass(ResourceId target, int width, int height,
-                           bool load_existing) override;
+    bool begin_target_pass(ResourceId target, int width, int height, bool load_existing) override;
     bool begin_surface_pass(ResourceId target, const SurfaceDescriptor &description,
                             bool load_existing) override;
     bool draw_surface_mesh(const SurfaceMeshView &mesh) override;
@@ -64,12 +63,11 @@ class SokolBackend final : public RenderBackend {
     bool upload_atlases(SkribidiAdapter &adapter, bool include_clean = false) override;
     bool draw_glyphs(const PreparedGlyphs &glyphs, float opacity = 1.0f) override;
     bool draw_glyphs_transformed(const PreparedGlyphs &glyphs, const float transform[6],
-                                 float origin_x, float origin_y,
-                                 float opacity = 1.0f) override;
+                                 float origin_x, float origin_y, float opacity = 1.0f) override;
     bool draw_target(ResourceId target, float x, float y, float width, float height,
                      const float transform[6], float opacity) override;
-    bool draw_graphics_image(nk_graphics_image image, float x, float y, float width,
-                             float height, const float transform[6], float opacity) override;
+    bool draw_graphics_image(nk_graphics_image image, float x, float y, float width, float height,
+                             const float transform[6], float opacity) override;
     bool end_pass() override;
     bool commit_frame() override;
     bool end_frame() override;

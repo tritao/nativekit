@@ -58,8 +58,8 @@ class RenderBackend {
 
     virtual bool initialize() = 0;
     virtual bool valid() const = 0;
-    virtual bool begin_window_pass(int width, int height,
-                                   const nk_surface_frame_target &target, bool clear) = 0;
+    virtual bool begin_window_pass(int width, int height, const nk_surface_frame_target &target,
+                                   bool clear) = 0;
     virtual bool begin_target_pass(ResourceId target, int width, int height,
                                    bool load_existing) = 0;
     virtual bool begin_surface_pass(ResourceId target, const SurfaceDescriptor &description,
@@ -70,8 +70,8 @@ class RenderBackend {
                                     const SurfaceDescriptor &description) const = 0;
     virtual void mark_surface_current(ResourceId target, uint32_t generation,
                                       const SurfaceDescriptor &description) = 0;
-    virtual bool set_scissor(bool enabled, float x = 0.0f, float y = 0.0f,
-                             float width = 0.0f, float height = 0.0f) = 0;
+    virtual bool set_scissor(bool enabled, float x = 0.0f, float y = 0.0f, float width = 0.0f,
+                             float height = 0.0f) = 0;
     virtual bool draw_path(const PreparedPathData &path, uint32_t operation_index,
                            float opacity = 1.0f) = 0;
     virtual bool draw_path_transformed(const PreparedPathData &path, uint32_t operation_index,
@@ -82,8 +82,7 @@ class RenderBackend {
     virtual bool upload_atlases(SkribidiAdapter &adapter, bool include_clean = false) = 0;
     virtual bool draw_glyphs(const PreparedGlyphs &glyphs, float opacity = 1.0f) = 0;
     virtual bool draw_glyphs_transformed(const PreparedGlyphs &glyphs, const float transform[6],
-                                         float origin_x, float origin_y,
-                                         float opacity = 1.0f) = 0;
+                                         float origin_x, float origin_y, float opacity = 1.0f) = 0;
     virtual bool draw_target(ResourceId target, float x, float y, float width, float height,
                              const float transform[6], float opacity) = 0;
     virtual bool draw_graphics_image(nk_graphics_image image, float x, float y, float width,

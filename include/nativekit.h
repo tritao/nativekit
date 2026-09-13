@@ -37,14 +37,14 @@
 #define NK_OUT_BUFFER(size_parameter) __attribute__((annotate("hxi:out_buffer")))
 #define NK_IN_ARRAY(count_parameter) __attribute__((annotate("hxi:in_array")))
 #define NK_RETAINED __attribute__((annotate("hxi:retained")))
-#define NK_IN_UTF8_ARRAY(count_parameter)                                                        \
+#define NK_IN_UTF8_ARRAY(count_parameter)                                                          \
     __attribute__((annotate("hxi:in_array"))) __attribute__((annotate("hxi:utf8_array")))
-#define NK_OUT_UTF8_ARRAY(count_parameter)                                                       \
+#define NK_OUT_UTF8_ARRAY(count_parameter)                                                         \
     __attribute__((annotate("hxi:out_array"))) __attribute__((annotate("hxi:utf8_array")))
 #define NK_RETURNS_BORROWED_UTF8 __attribute__((annotate("hxi:returns_borrowed_utf8")))
 #define NK_UTF8 __attribute__((annotate("hxi:utf8")))
 #define NK_NULLABLE_UTF8 __attribute__((annotate("hxi:nullable_utf8")))
-#define NK_BORROWED_BUFFER(length_field)                                                          \
+#define NK_BORROWED_BUFFER(length_field)                                                           \
     __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
 #define NK_BORROWED_ARRAY(count_field)                                                             \
     __attribute__((annotate("hxi:borrowed"))) __attribute__((annotate("hxi:length_field")))
@@ -74,9 +74,9 @@
 #endif
 
 /* Every named NativeKit handle is a value-copyable, four-byte opaque token. */
-#define NK_DECLARE_HANDLE(name) \
-    typedef struct name {        \
-        uint32_t id;              \
+#define NK_DECLARE_HANDLE(name)                                                                    \
+    typedef struct name {                                                                          \
+        uint32_t id;                                                                               \
     } name NK_HANDLE
 
 /* ------------------------------------------------------------------------- */

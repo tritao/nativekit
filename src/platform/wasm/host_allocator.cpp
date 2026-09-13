@@ -33,12 +33,13 @@ std::uintptr_t WasmHostAllocator::align_down(std::uintptr_t value, std::uintptr_
 }
 
 std::size_t WasmHostAllocator::minimum_block_size() const {
-    return static_cast<std::size_t>(align_up(sizeof(BlockHeader) + sizeof(BlockFooter) + 1, kAlignment));
+    return static_cast<std::size_t>(
+        align_up(sizeof(BlockHeader) + sizeof(BlockFooter) + 1, kAlignment));
 }
 
 void WasmHostAllocator::write_footer(BlockHeader *block) {
-    auto *footer = reinterpret_cast<BlockFooter *>(reinterpret_cast<uint8_t *>(block) + block->size -
-                                                   sizeof(BlockFooter));
+    auto *footer = reinterpret_cast<BlockFooter *>(reinterpret_cast<uint8_t *>(block) +
+                                                   block->size - sizeof(BlockFooter));
     footer->magic = kFooterMagic;
     footer->size = block->size;
 }
@@ -51,10 +52,11 @@ bool WasmHostAllocator::valid_block(BlockHeader *block) const {
     if (!block || !in_arena(reinterpret_cast<std::uintptr_t>(block), sizeof(BlockHeader)))
         return false;
     if (block->magic != kHeaderMagic || block->size < minimum_block_size() ||
-        block->size % kAlignment != 0 || !in_arena(reinterpret_cast<std::uintptr_t>(block), block->size))
+        block->size % kAlignment != 0 ||
+        !in_arena(reinterpret_cast<std::uintptr_t>(block), block->size))
         return false;
-    auto *footer = reinterpret_cast<BlockFooter *>(reinterpret_cast<uint8_t *>(block) + block->size -
-                                                   sizeof(BlockFooter));
+    auto *footer = reinterpret_cast<BlockFooter *>(reinterpret_cast<uint8_t *>(block) +
+                                                   block->size - sizeof(BlockFooter));
     return footer->magic == kFooterMagic && footer->size == block->size;
 }
 
@@ -79,7 +81,8 @@ WasmHostAllocator::BlockHeader *WasmHostAllocator::previous_block(BlockHeader *b
         footer->size > address - arena_begin_)
         return nullptr;
     auto *previous = reinterpret_cast<BlockHeader *>(address - footer->size);
-    return valid_block(previous) && reinterpret_cast<std::uintptr_t>(previous) + previous->size == address
+    return valid_block(previous) &&
+                   reinterpret_cast<std::uintptr_t>(previous) + previous->size == address
                ? previous
                : nullptr;
 }
@@ -150,7 +153,8 @@ void WasmHostAllocator::split_allocated(BlockHeader *block, std::size_t requeste
     }
     block->size = requested_size;
     write_footer(block);
-    auto *remainder = reinterpret_cast<BlockHeader *>(reinterpret_cast<uint8_t *>(block) + requested_size);
+    auto *remainder =
+        reinterpret_cast<BlockHeader *>(reinterpret_cast<uint8_t *>(block) + requested_size);
     remainder->magic = kHeaderMagic;
     remainder->flags = 0;
     remainder->size = remainder_size;
@@ -189,9 +193,11 @@ WasmHostAllocator::BlockHeader *WasmHostAllocator::header_from_payload(void *poi
 }
 
 WasmHostAllocator::AlignedPrefix *WasmHostAllocator::aligned_prefix(void *pointer) const {
-    if (!pointer || reinterpret_cast<std::uintptr_t>(pointer) < arena_begin_ + sizeof(AlignedPrefix))
+    if (!pointer ||
+        reinterpret_cast<std::uintptr_t>(pointer) < arena_begin_ + sizeof(AlignedPrefix))
         return nullptr;
-    auto *prefix = reinterpret_cast<AlignedPrefix *>(reinterpret_cast<uint8_t *>(pointer) - sizeof(AlignedPrefix));
+    auto *prefix = reinterpret_cast<AlignedPrefix *>(reinterpret_cast<uint8_t *>(pointer) -
+                                                     sizeof(AlignedPrefix));
     if (prefix->magic != kAlignedMagic || !header_from_payload(prefix->raw))
         return nullptr;
     return prefix;
@@ -232,13 +238,14 @@ void WasmHostAllocator::release(void *pointer) {
 void *WasmHostAllocator::allocate_aligned(std::size_t alignment, std::size_t size) {
     if (alignment <= kAlignment)
         return allocate(size);
-    if ((alignment & (alignment - 1)) != 0 || size > std::numeric_limits<std::size_t>::max() - alignment -
-                                                       sizeof(AlignedPrefix))
+    if ((alignment & (alignment - 1)) != 0 ||
+        size > std::numeric_limits<std::size_t>::max() - alignment - sizeof(AlignedPrefix))
         return nullptr;
     auto *raw = static_cast<uint8_t *>(allocate(size + alignment - 1 + sizeof(AlignedPrefix)));
     if (!raw)
         return nullptr;
-    const auto aligned = align_up(reinterpret_cast<std::uintptr_t>(raw) + sizeof(AlignedPrefix), alignment);
+    const auto aligned =
+        align_up(reinterpret_cast<std::uintptr_t>(raw) + sizeof(AlignedPrefix), alignment);
     auto *prefix = reinterpret_cast<AlignedPrefix *>(aligned - sizeof(AlignedPrefix));
     prefix->magic = kAlignedMagic;
     prefix->size = size;
@@ -270,7 +277,8 @@ void *WasmHostAllocator::reallocate(void *pointer, std::size_t size) {
     const auto old_payload = block->size - sizeof(BlockHeader) - sizeof(BlockFooter);
     if (requested_size <= block->size)
         return pointer;
-    if (auto *next = next_block(block); is_free(next) && block->size + next->size >= requested_size) {
+    if (auto *next = next_block(block);
+        is_free(next) && block->size + next->size >= requested_size) {
         remove_free(next);
         block->size += next->size;
         split_allocated(block, requested_size);

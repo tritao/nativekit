@@ -96,10 +96,10 @@ struct PathCacheKey {
     uint32_t miter_limit = 0;
 
     bool operator==(const PathCacheKey &other) const {
-        return path == other.path && transform == other.transform && pixel_scale == other.pixel_scale &&
-               kind == other.kind && stroke_width == other.stroke_width &&
-               line_cap == other.line_cap && line_join == other.line_join &&
-               miter_limit == other.miter_limit;
+        return path == other.path && transform == other.transform &&
+               pixel_scale == other.pixel_scale && kind == other.kind &&
+               stroke_width == other.stroke_width && line_cap == other.line_cap &&
+               line_join == other.line_join && miter_limit == other.miter_limit;
     }
 };
 
@@ -249,9 +249,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
     uint32_t string_offset = 0;
     if (!read_u32(bytes, size, 0, version) || !read_u32(bytes, size, 4, node_count) ||
         !read_u32(bytes, size, 8, encoded_record_bytes) ||
-        !read_u32(bytes, size, 12, string_offset) ||
-        version != NKUI_LAYOUT_TRANSACTION_VERSION || !node_count || node_count > max_nodes ||
-        encoded_record_bytes != record_bytes)
+        !read_u32(bytes, size, 12, string_offset) || version != NKUI_LAYOUT_TRANSACTION_VERSION ||
+        !node_count || node_count > max_nodes || encoded_record_bytes != record_bytes)
         return false;
     if (node_count > (std::numeric_limits<size_t>::max() - header_bytes) / record_bytes)
         return false;
@@ -312,8 +311,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                                  node.style.height.value) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_DIRECTION_OFFSET, direction) ||
                 direction > NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM ||
-                !read_u16(record, NKUI_LAYOUT_NODE_PADDING_LEFT_OFFSET,
-                          node.style.padding_left) ||
+                !read_u16(record, NKUI_LAYOUT_NODE_PADDING_LEFT_OFFSET, node.style.padding_left) ||
                 !read_u16(record, NKUI_LAYOUT_NODE_PADDING_RIGHT_OFFSET,
                           node.style.padding_right) ||
                 !read_u16(record, NKUI_LAYOUT_NODE_PADDING_TOP_OFFSET, node.style.padding_top) ||
@@ -343,8 +341,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_node_float(record, NKUI_LAYOUT_NODE_LINE_HEIGHT_OFFSET,
                                  node.paragraph_style.line_height) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_WRAP_OFFSET, text_wrap) ||
-                !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET,
-                               text_alignment) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET, text_alignment) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET, text_direction) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_TEXT_FLAGS_OFFSET, text_flags))
                 return false;
@@ -404,8 +401,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
     return true;
 }
 
-nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
-                              ResourceSlot **out_slot);
+nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out, ResourceSlot **out_slot);
 void release_resource_slot(ResourceSlot &slot);
 
 bool text_options_from_api(const nkui_text_style *text_style,
@@ -446,10 +442,9 @@ nkui_result ensure_mutable_font_collection(ResourceSlot &slot) {
         if (!replacement->valid())
             return NKUI_ERROR_OUT_OF_MEMORY;
         for (const auto &font : slot.fonts) {
-            const bool added = font.data
-                                   ? replacement->add_font_from_shared_data(
-                                         font.path.c_str(), font.data, font.family)
-                                   : replacement->add_font(font.path.c_str(), font.family);
+            const bool added = font.data ? replacement->add_font_from_shared_data(
+                                               font.path.c_str(), font.data, font.family)
+                                         : replacement->add_font(font.path.c_str(), font.family);
             if (!added)
                 return NKUI_ERROR_INVALID_ARGUMENT;
         }
@@ -574,8 +569,7 @@ bool uniform_scale(const std::array<float, 6> &matrix, float &scale) {
     return true;
 }
 
-std::array<float, 6> device_transform(const std::array<float, 6> &transform,
-                                       float pixel_scale) {
+std::array<float, 6> device_transform(const std::array<float, 6> &transform, float pixel_scale) {
     std::array<float, 6> result = transform;
     for (float &value : result)
         value *= pixel_scale;
@@ -592,10 +586,10 @@ std::array<float, 6> placement_transform(const std::array<float, 6> &transform) 
 
 nkui::PreparedPaint paint_color(ResourceSlot *paint);
 
-PreparedPathCacheEntry *prepare_cached_path(
-    RendererSlot &renderer, nkui_resource path_handle, const ResourceSlot &path,
-    const std::array<float, 6> &transform, float pixel_scale,
-    const nkui::RenderCommand &command) {
+PreparedPathCacheEntry *prepare_cached_path(RendererSlot &renderer, nkui_resource path_handle,
+                                            const ResourceSlot &path,
+                                            const std::array<float, 6> &transform,
+                                            float pixel_scale, const nkui::RenderCommand &command) {
     const PathCacheKey key = path_cache_key(path_handle, transform, pixel_scale, command);
     if (const auto found = renderer.paths.find(key); found != renderer.paths.end()) {
         ++renderer.stats.path_cache_hits;
@@ -622,18 +616,17 @@ PreparedPathCacheEntry *prepare_cached_path(
     const auto start = std::chrono::steady_clock::now();
     const bool prepared = stroke ? nkui::prepare_stroke(*path.path, params, geometry)
                                  : nkui::prepare_fill(*path.path, params, geometry);
-    renderer.stats.path_tessellation_nanoseconds += static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - start)
-            .count());
+    renderer.stats.path_tessellation_nanoseconds +=
+        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  std::chrono::steady_clock::now() - start)
+                                  .count());
     if (!prepared)
         return nullptr;
     const uint64_t geometry_bytes = geometry_memory_bytes(geometry);
     renderer.stats.path_vertices_generated += geometry.vertices.size();
     renderer.stats.path_geometry_bytes_allocated += geometry_bytes;
     try {
-        auto cached_geometry =
-            std::make_shared<const nkui::PreparedGeometry>(std::move(geometry));
+        auto cached_geometry = std::make_shared<const nkui::PreparedGeometry>(std::move(geometry));
         auto [found, inserted] = renderer.paths.emplace(key, PreparedPathCacheEntry{});
         if (!inserted)
             return &found->second;
@@ -756,10 +749,9 @@ bool collect_display_resources(const uint8_t *data, size_t size,
         nkui::CommandHeader header{};
         std::memcpy(&header, data + offset, sizeof(header));
         const auto append = [&](nkui::ResourceId id) {
-            const auto found = std::find_if(out.begin(), out.end(),
-                                            [id](nkui::ResourceId value) {
-                                                return value.value == id.value;
-                                            });
+            const auto found = std::find_if(out.begin(), out.end(), [id](nkui::ResourceId value) {
+                return value.value == id.value;
+            });
             if (found == out.end())
                 out.push_back(id);
         };
@@ -776,7 +768,8 @@ bool collect_display_resources(const uint8_t *data, size_t size,
         case nkui::CommandOpcode::DrawImage:
         case nkui::CommandOpcode::DrawTextLayout:
         case nkui::CommandOpcode::DrawRenderTarget:
-            append(reinterpret_cast<const nkui::DrawRectResourceCommand *>(data + offset)->resource);
+            append(
+                reinterpret_cast<const nkui::DrawRectResourceCommand *>(data + offset)->resource);
             break;
         default:
             break;
@@ -813,7 +806,7 @@ extern "C" NKUI_API nkui_result nkui_showcase_cube_create(nkui_resource *out_sur
 }
 
 extern "C" NKUI_API nkui_result nkui_showcase_cube_set_rotation(nkui_resource surface,
-                                                                  float radians) {
+                                                                float radians) {
     if (!std::isfinite(radians))
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
@@ -965,9 +958,8 @@ extern "C" nkui_result nkui_font_collection_add(nkui_resource fonts, const char 
 }
 
 extern "C" nkui_result nkui_font_collection_add_data(nkui_resource fonts, const char *name,
-                                                      const uint8_t *font_data,
-                                                      uint32_t font_bytes,
-                                                      nkui_font_family family) {
+                                                     const uint8_t *font_data, uint32_t font_bytes,
+                                                     nkui_font_family family) {
     if (!name || !*name || !font_data || !font_bytes ||
         (family != NKUI_FONT_FAMILY_DEFAULT && family != NKUI_FONT_FAMILY_EMOJI))
         return NKUI_ERROR_INVALID_ARGUMENT;
@@ -980,12 +972,13 @@ extern "C" nkui_result nkui_font_collection_add_data(nkui_resource fonts, const 
         return mutable_result;
     try {
         auto data = std::make_shared<std::vector<uint8_t>>(font_data, font_data + font_bytes);
-        slot->fonts.push_back({name, family == NKUI_FONT_FAMILY_EMOJI ? nkui::FontFamily::Emoji
-                                                                       : nkui::FontFamily::Default,
-                               std::move(data)});
+        slot->fonts.push_back(
+            {name,
+             family == NKUI_FONT_FAMILY_EMOJI ? nkui::FontFamily::Emoji : nkui::FontFamily::Default,
+             std::move(data)});
         const auto &entry = slot->fonts.back();
         if (!slot->font_collection->add_font_from_shared_data(entry.path.c_str(), entry.data,
-                                                               entry.family)) {
+                                                              entry.family)) {
             slot->fonts.pop_back();
             return NKUI_ERROR_INVALID_ARGUMENT;
         }
@@ -1058,7 +1051,7 @@ extern "C" nkui_result nkui_layout_session_destroy(nkui_layout_session session) 
 }
 
 extern "C" nkui_result nkui_layout_session_set_font_collection(nkui_layout_session session,
-                                                                  nkui_resource fonts) {
+                                                               nkui_resource fonts) {
     std::scoped_lock lock(layout_sessions_mutex, resources_mutex);
     auto *state = resolve(session);
     auto *font_slot = resolve(fonts, nkui::ResourceKind::FontCollection);
@@ -1079,9 +1072,10 @@ extern "C" nkui_result nkui_layout_session_set_font_collection(nkui_layout_sessi
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_layout_session_submit(
-    nkui_layout_session session, const uint8_t *transaction, uint32_t transaction_bytes,
-    const nkui_layout_frame_input *frame) {
+extern "C" nkui_result nkui_layout_session_submit(nkui_layout_session session,
+                                                  const uint8_t *transaction,
+                                                  uint32_t transaction_bytes,
+                                                  const nkui_layout_frame_input *frame) {
     if (!frame || frame->struct_size < sizeof(*frame))
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);
@@ -1108,7 +1102,7 @@ extern "C" nkui_result nkui_layout_session_submit(
 }
 
 extern "C" nkui_result nkui_layout_session_get_event_count(nkui_layout_session session,
-                                                              uint32_t *out_count) {
+                                                           uint32_t *out_count) {
     if (!out_count)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);
@@ -1120,7 +1114,7 @@ extern "C" nkui_result nkui_layout_session_get_event_count(nkui_layout_session s
 }
 
 extern "C" nkui_result nkui_layout_session_get_event(nkui_layout_session session, uint32_t index,
-                                                       nkui_layout_event *out_event) {
+                                                     nkui_layout_event *out_event) {
     if (!out_event)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);
@@ -1136,7 +1130,7 @@ extern "C" nkui_result nkui_layout_session_get_event(nkui_layout_session session
 }
 
 extern "C" nkui_result nkui_layout_session_get_item(nkui_layout_session session, uint32_t node_id,
-                                                      nkui_layout_item *out_item) {
+                                                    nkui_layout_item *out_item) {
     if (!out_item || out_item->struct_size < sizeof(*out_item) || !node_id)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);
@@ -1167,9 +1161,11 @@ extern "C" nkui_result nkui_text_layout_create(nkui_resource fonts, const char *
     return create_text_layout_locked(fonts, text, width, options, out_layout);
 }
 
-extern "C" nkui_result nkui_text_layout_create_styled(
-    nkui_resource fonts, const char *text, float width, const nkui_text_style *text_style,
-    const nkui_paragraph_style *paragraph_style, nkui_resource *out_layout) {
+extern "C" nkui_result nkui_text_layout_create_styled(nkui_resource fonts, const char *text,
+                                                      float width,
+                                                      const nkui_text_style *text_style,
+                                                      const nkui_paragraph_style *paragraph_style,
+                                                      nkui_resource *out_layout) {
     if (!text || !out_layout || !std::isfinite(width) || width <= 0.0f)
         return NKUI_ERROR_INVALID_ARGUMENT;
     nkui::TextLayoutOptions options;
@@ -1179,9 +1175,9 @@ extern "C" nkui_result nkui_text_layout_create_styled(
     return create_text_layout_locked(fonts, text, width, options, out_layout);
 }
 
-extern "C" nkui_result nkui_text_layout_update(
-    nkui_resource layout, const char *text, float width, const nkui_text_style *text_style,
-    const nkui_paragraph_style *paragraph_style) {
+extern "C" nkui_result nkui_text_layout_update(nkui_resource layout, const char *text, float width,
+                                               const nkui_text_style *text_style,
+                                               const nkui_paragraph_style *paragraph_style) {
     if (!text || !std::isfinite(width) || width <= 0.0f)
         return NKUI_ERROR_INVALID_ARGUMENT;
     nkui::TextLayoutOptions options;
@@ -1325,8 +1321,8 @@ extern "C" nkui_result nkui_path_create(const nkui_path_element *elements, uint3
         return result;
     try {
         auto path = std::make_unique<nkui::NanoVGPath>();
-        if (!path->valid() || !append_path(*path, std::vector<nkui_path_element>(elements,
-                                                                                    elements + count))) {
+        if (!path->valid() ||
+            !append_path(*path, std::vector<nkui_path_element>(elements, elements + count))) {
             release_resource_slot(*slot);
             out_path->id = 0;
             return NKUI_ERROR_OUT_OF_MEMORY;
@@ -1381,7 +1377,7 @@ extern "C" nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_i
 }
 
 extern "C" nkui_result nkui_graphics_surface_create(nk_graphics_image image,
-                                                     nkui_resource *out_surface) {
+                                                    nkui_resource *out_surface) {
     if (!out_surface || !image.id)
         return NKUI_ERROR_INVALID_ARGUMENT;
     out_surface->id = 0;
@@ -1452,7 +1448,7 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
 }
 
 extern "C" nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
-                                                 nkui_renderer_stats *out_stats) {
+                                               nkui_renderer_stats *out_stats) {
     if (!out_stats)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(renderers_mutex);
@@ -1465,8 +1461,8 @@ extern "C" nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
 }
 
 extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_display_list list,
-                                                   nk_handle surface,
-                                                   const nkui_frame_info *frame_info) {
+                                                  nk_handle surface,
+                                                  const nkui_frame_info *frame_info) {
     if (!frame_info || frame_info->struct_size < sizeof(*frame_info) ||
         !std::isfinite(frame_info->logical_width) || !std::isfinite(frame_info->logical_height) ||
         !std::isfinite(frame_info->pixel_scale) || frame_info->logical_width <= 0.0f ||
@@ -1517,9 +1513,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
             command.scissor_height *= frame_info->pixel_scale;
             if (command.kind == nkui::RenderCommandKind::Path ||
                 command.kind == nkui::RenderCommandKind::StrokePath) {
-                auto *path =
-                    resolve_retained(nkui_resource{command.resource.value},
-                                     nkui::ResourceKind::Path);
+                auto *path = resolve_retained(nkui_resource{command.resource.value},
+                                              nkui::ResourceKind::Path);
                 auto *paint = command.paint.value
                                   ? resolve_retained(nkui_resource{command.paint.value},
                                                      nkui::ResourceKind::Paint)
@@ -1531,8 +1526,9 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                 const auto transform = device_transform(command.transform, frame_info->pixel_scale);
                 const auto tessellation = tessellation_transform(transform);
                 const nkui_resource path_handle{command.resource.value};
-                const auto cached = prepare_cached_path(*renderer_slot, path_handle, *path,
-                                                        tessellation, frame_info->pixel_scale, command);
+                const auto cached =
+                    prepare_cached_path(*renderer_slot, path_handle, *path, tessellation,
+                                        frame_info->pixel_scale, command);
                 if (!cached) {
                     valid = false;
                     break;
@@ -1541,9 +1537,7 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                 const auto kind = command.kind == nkui::RenderCommandKind::StrokePath
                                       ? nkui::PreparedPathKind::Stroke
                                       : nkui::PreparedPathKind::Fill;
-                if (!prepared ||
-                    !prepared->set_view(kind, cached->geometry,
-                                   paint_color(paint))) {
+                if (!prepared || !prepared->set_view(kind, cached->geometry, paint_color(paint))) {
                     valid = false;
                     break;
                 }
@@ -1555,9 +1549,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                 command.transform = placement_transform(transform);
                 valid = frame_resources.bind_path(prepared_id, *prepared_path, 0);
             } else if (command.kind == nkui::RenderCommandKind::Image) {
-                auto *image =
-                    resolve_retained(nkui_resource{command.resource.value},
-                                     nkui::ResourceKind::Image);
+                auto *image = resolve_retained(nkui_resource{command.resource.value},
+                                               nkui::ResourceKind::Image);
                 if (!image || !prepared_slot) {
                     valid = false;
                     break;
@@ -1592,9 +1585,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                 command.transform = device_transform(command.transform, frame_info->pixel_scale);
                 valid = frame_resources.bind_image(prepared_id, *prepared_image);
             } else if (command.kind == nkui::RenderCommandKind::GlyphBatch) {
-                auto *layout =
-                    resolve_retained(nkui_resource{command.resource.value},
-                                     nkui::ResourceKind::TextLayout);
+                auto *layout = resolve_retained(nkui_resource{command.resource.value},
+                                                nkui::ResourceKind::TextLayout);
                 if (!layout || !layout->text) {
                     valid = false;
                     break;
@@ -1617,12 +1609,12 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                     if (found == layout->scaled_text_glyphs.end()) {
                         nkui::PreparedGlyphs prepared;
                         valid = layout->text->prepare_glyphs(0.0f, 0.0f, raster_scale,
-                                                            nkui::GlyphMode::Alpha, prepared);
+                                                             nkui::GlyphMode::Alpha, prepared);
                         if (!valid)
                             break;
-                        found = layout->scaled_text_glyphs.emplace(scale_bucket,
-                                                                  std::move(prepared))
-                                    .first;
+                        found =
+                            layout->scaled_text_glyphs.emplace(scale_bucket, std::move(prepared))
+                                .first;
                     }
                     glyphs = &found->second;
                     if (valid && !layout->text->prepared_glyphs_current(*glyphs))
@@ -1633,8 +1625,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                     break;
                 if (valid)
                     prepared_texts.push_back({layout->text.get(), glyphs});
-                const nkui::ResourceId prepared_id = nkui::make_resource_id(
-                    nkui::ResourceKind::TextLayout, 0x0FFE, prepared_slot++);
+                const nkui::ResourceId prepared_id =
+                    nkui::make_resource_id(nkui::ResourceKind::TextLayout, 0x0FFE, prepared_slot++);
                 valid = frame_resources.bind_text(prepared_id, *glyphs);
                 command.resource = prepared_id;
                 // Skribidi's pixel scale changes atlas raster density while
@@ -1653,8 +1645,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
             } else if (command.kind == nkui::RenderCommandKind::CompositeTarget) {
                 const uint16_t target_slot = static_cast<uint16_t>(command.resource.value);
                 if (target_slot < 0x8000u) {
-                    auto *surface_slot = resolve_retained(
-                        nkui_resource{command.resource.value}, nkui::ResourceKind::RenderTarget);
+                    auto *surface_slot = resolve_retained(nkui_resource{command.resource.value},
+                                                          nkui::ResourceKind::RenderTarget);
                     if (!surface_slot) {
                         valid = false;
                         break;
@@ -1663,16 +1655,16 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
                         valid = frame_resources.bind_graphics_image(command.resource,
                                                                     surface_slot->graphics_image);
                     } else {
-                        valid = surface_slot->surface &&
-                                frame_resources.bind_surface(command.resource,
-                                                             *surface_slot->surface);
+                        valid =
+                            surface_slot->surface &&
+                            frame_resources.bind_surface(command.resource, *surface_slot->surface);
                     }
                     if (!valid)
                         break;
                 }
                 if (command.width > 0.0f && command.height > 0.0f) {
-                    command.transform = device_transform(command.transform,
-                                                         frame_info->pixel_scale);
+                    command.transform =
+                        device_transform(command.transform, frame_info->pixel_scale);
                 } else {
                     command.x *= frame_info->pixel_scale;
                     command.y *= frame_info->pixel_scale;
@@ -1689,8 +1681,8 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
     for (size_t pass = 0; pass < prepared_texts.size() && valid; ++pass) {
         auto &[adapter, glyphs] = prepared_texts[pass];
         if (!adapter->prepared_glyphs_current(*glyphs))
-            valid = adapter->prepare_glyphs(glyphs->origin_x, glyphs->origin_y,
-                                            glyphs->pixel_scale, glyphs->mode, *glyphs);
+            valid = adapter->prepare_glyphs(glyphs->origin_x, glyphs->origin_y, glyphs->pixel_scale,
+                                            glyphs->mode, *glyphs);
     }
     if (!valid)
         return NKUI_ERROR_RENDERING;
@@ -1700,15 +1692,16 @@ extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_d
     for (auto *adapter : text_adapters)
         if (!renderer_slot->backend->upload_atlases(*adapter, new_backend))
             return NKUI_ERROR_RENDERING;
-    const bool executed =
-        nkui::execute_render_plan(*renderer_slot->backend, plan, frame_resources,
-                                  {main_target, frame_target});
+    const bool executed = nkui::execute_render_plan(*renderer_slot->backend, plan, frame_resources,
+                                                    {main_target, frame_target});
     return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
 }
 
-extern "C" nkui_result nkui_layout_session_render_frame(
-    nkui_renderer renderer, nkui_layout_session session, nk_handle surface,
-    const nkui_frame_info *frame_info, nk_bool load_existing) {
+extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
+                                                        nkui_layout_session session,
+                                                        nk_handle surface,
+                                                        const nkui_frame_info *frame_info,
+                                                        nk_bool load_existing) {
     if (!frame_info || frame_info->struct_size < sizeof(*frame_info) ||
         !std::isfinite(frame_info->logical_width) || !std::isfinite(frame_info->logical_height) ||
         !std::isfinite(frame_info->pixel_scale) || frame_info->logical_width <= 0.0f ||
@@ -1738,10 +1731,9 @@ extern "C" nkui_result nkui_layout_session_render_frame(
     const nkui::ResourceId main_target =
         nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);
     nkui::LayoutRenderCompileError compile_error{};
-    if (!session_state->compiler.compile(session_state->snapshot, main_target,
-                                         frame_info->pixel_scale, session_state->frame,
-                                         &compile_error, load_existing != 0,
-                                         session_state->engine->text_adapter()))
+    if (!session_state->compiler.compile(
+            session_state->snapshot, main_target, frame_info->pixel_scale, session_state->frame,
+            &compile_error, load_existing != 0, session_state->engine->text_adapter()))
         return NKUI_ERROR_INVALID_TRANSACTION;
     const bool new_backend = !renderer_slot->backend->valid();
     if (new_backend && !renderer_slot->backend->initialize())
@@ -1749,20 +1741,24 @@ extern "C" nkui_result nkui_layout_session_render_frame(
     if (auto *adapter = session_state->frame.text_adapter())
         if (!renderer_slot->backend->upload_atlases(*adapter, new_backend))
             return NKUI_ERROR_RENDERING;
-    const bool executed = nkui::execute_render_plan(
-        *renderer_slot->backend, session_state->frame.plan(), session_state->frame.resources(),
-        {main_target, frame_target});
+    const bool executed =
+        nkui::execute_render_plan(*renderer_slot->backend, session_state->frame.plan(),
+                                  session_state->frame.resources(), {main_target, frame_target});
     return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
 }
 
 extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_list list,
-                                             nk_handle surface) {
+                                            nk_handle surface) {
     int32_t width = 0;
     int32_t height = 0;
     if (!surface || nk_surface_make_current(surface) != NK_OK ||
         nk_surface_get_framebuffer_size(surface, &width, &height) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
-    const nkui_frame_info frame_info{sizeof(nkui_frame_info), static_cast<float>(width),
-                                     static_cast<float>(height), width, height, 1.0f};
+    const nkui_frame_info frame_info{sizeof(nkui_frame_info),
+                                     static_cast<float>(width),
+                                     static_cast<float>(height),
+                                     width,
+                                     height,
+                                     1.0f};
     return nkui_renderer_render_frame(renderer, list, surface, &frame_info);
 }

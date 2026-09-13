@@ -32,8 +32,7 @@ static int open_uinput(void) {
 static int create_device(int fd) {
     if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0 || ioctl(fd, UI_SET_KEYBIT, BTN_GAMEPAD) < 0 ||
         ioctl(fd, UI_SET_EVBIT, EV_ABS) < 0 || ioctl(fd, UI_SET_ABSBIT, ABS_X) < 0 ||
-        ioctl(fd, UI_SET_ABSBIT, ABS_HAT0X) < 0 ||
-        ioctl(fd, UI_SET_ABSBIT, ABS_HAT0Y) < 0)
+        ioctl(fd, UI_SET_ABSBIT, ABS_HAT0X) < 0 || ioctl(fd, UI_SET_ABSBIT, ABS_HAT0Y) < 0)
         return -1;
 
     struct uinput_user_dev setup;
@@ -156,9 +155,8 @@ int main(void) {
     uint32_t guid_size = sizeof(guid);
     assert(nk_joystick_get_guid(joystick, guid, &guid_size) == NK_OK);
     assert(strcmp(guid, "03000000091200004b4e000001000000") == 0);
-    assert(nk_gamepad_add_mapping(
-               "03000000091200004b4e000001000000,NativeKit Virtual Gamepad,a:b0,"
-               "dpup:h0.1,dpright:h0.2,leftx:a0,platform:Linux,") == NK_OK);
+    assert(nk_gamepad_add_mapping("03000000091200004b4e000001000000,NativeKit Virtual Gamepad,a:b0,"
+                                  "dpup:h0.1,dpright:h0.2,leftx:a0,platform:Linux,") == NK_OK);
     send_event(fd, EV_SYN, SYN_REPORT, 0);
     float baseline[1];
     uint32_t baseline_count = 1;
@@ -188,8 +186,7 @@ int main(void) {
         memset(&event, 0, sizeof(event));
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
-        disconnected = event.kind == NK_EVENT_JOYSTICK_DISCONNECTED &&
-                       event.source == joystick;
+        disconnected = event.kind == NK_EVENT_JOYSTICK_DISCONNECTED && event.source == joystick;
         nk_event_release(&event);
         if (!disconnected)
             pause_briefly();

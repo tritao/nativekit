@@ -1583,15 +1583,18 @@ nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *) {
     return fail(NK_ERROR_UNSUPPORTED, "resource clipboard is not implemented by the macOS backend");
 }
 
-nk_result NK_CALL nk_dialog_open_resource(nk_handle, const nk_file_dialog_options *, nk_request_id *) {
+nk_result NK_CALL nk_dialog_open_resource(nk_handle, const nk_file_dialog_options *,
+                                          nk_request_id *) {
     return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the macOS backend");
 }
 
-nk_result NK_CALL nk_dialog_save_resource(nk_handle, const nk_file_dialog_options *, nk_request_id *) {
+nk_result NK_CALL nk_dialog_save_resource(nk_handle, const nk_file_dialog_options *,
+                                          nk_request_id *) {
     return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the macOS backend");
 }
 
-nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle, const nk_file_dialog_options *, nk_request_id *) {
+nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle, const nk_file_dialog_options *,
+                                                      nk_request_id *) {
     return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the macOS backend");
 }
 

@@ -19,7 +19,8 @@ extern "C" {
 /* Joystick event types                                                      */
 /* ------------------------------------------------------------------------- */
 
-enum {
+typedef uint32_t nk_joystick_hat_flags;
+enum NK_FLAGS(nk_joystick_hat_flags) {
     /** The hat is centered; no direction is active. */
     NK_JOYSTICK_HAT_CENTERED = 0,
     /** The hat is pressed upward. */
@@ -53,7 +54,7 @@ typedef struct nk_joystick_hat_event {
     /** Zero-based raw joystick hat index. */
     uint32_t hat;
     /** Bitwise OR of NK_JOYSTICK_HAT_* direction values. */
-    uint32_t value;
+    nk_joystick_hat_flags value;
 } nk_joystick_hat_event;
 
 /* ------------------------------------------------------------------------- */

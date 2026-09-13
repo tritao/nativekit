@@ -25,8 +25,7 @@ bool valid_descriptor(const RenderTargetDescriptor &descriptor) {
 
 void add_edge(std::vector<std::vector<uint32_t>> &edges, std::vector<uint32_t> &indegree,
               uint32_t from, uint32_t to) {
-    if (from == to ||
-        std::find(edges[from].begin(), edges[from].end(), to) != edges[from].end())
+    if (from == to || std::find(edges[from].begin(), edges[from].end(), to) != edges[from].end())
         return;
     edges[from].push_back(to);
     ++indegree[to];

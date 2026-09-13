@@ -16,8 +16,7 @@ static void sleep_milliseconds(unsigned milliseconds) {
 #if defined(_WIN32)
     Sleep(milliseconds);
 #else
-    struct timespec delay = {(time_t)(milliseconds / 1000),
-                             (long)(milliseconds % 1000) * 1000000L};
+    struct timespec delay = {(time_t)(milliseconds / 1000), (long)(milliseconds % 1000) * 1000000L};
     nanosleep(&delay, NULL);
 #endif
 }
@@ -29,8 +28,7 @@ static void print_event_text(const char *label, const nk_event *event) {
 
 static int has_prefix(const nk_event *event, const char *prefix) {
     const size_t length = strlen(prefix);
-    return event->data && event->data_size >= length &&
-           memcmp(event->data, prefix, length) == 0;
+    return event->data && event->data_size >= length && memcmp(event->data, prefix, length) == 0;
 }
 
 static int navigation_is_safe(const nk_event *event) {
@@ -70,8 +68,7 @@ int main(int argc, char **argv) {
         return 1;
 
     const nk_capabilities capabilities = nk_get_capabilities();
-    if ((capabilities & (NK_CAP_WINDOW | NK_CAP_WEBVIEW)) !=
-        (NK_CAP_WINDOW | NK_CAP_WEBVIEW)) {
+    if ((capabilities & (NK_CAP_WINDOW | NK_CAP_WEBVIEW)) != (NK_CAP_WINDOW | NK_CAP_WEBVIEW)) {
         fprintf(stderr, "This NativeKit backend does not provide windows and WebViews.\n");
         nk_shutdown();
         return 1;
@@ -122,8 +119,7 @@ int main(int argc, char **argv) {
             if (event.source == window && event.data_size >= sizeof(nk_window_resize_event)) {
                 const nk_window_resize_event *size = event.data;
                 if (report_failure("nk_webview_set_bounds",
-                                   nk_webview_set_bounds(webview, 0, 0, size->width,
-                                                         size->height)))
+                                   nk_webview_set_bounds(webview, 0, 0, size->width, size->height)))
                     running = 0;
             }
             break;

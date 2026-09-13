@@ -34,8 +34,8 @@ uint16_t read_u16(const uint8_t *bytes) {
 }
 
 uint32_t read_u32(const uint8_t *bytes) {
-    return (uint32_t(bytes[0]) << 24) | (uint32_t(bytes[1]) << 16) |
-           (uint32_t(bytes[2]) << 8) | uint32_t(bytes[3]);
+    return (uint32_t(bytes[0]) << 24) | (uint32_t(bytes[1]) << 16) | (uint32_t(bytes[2]) << 8) |
+           uint32_t(bytes[3]);
 }
 
 bool read_bytes(std::ifstream &file, std::streamoff offset, void *destination, std::size_t bytes) {
@@ -93,8 +93,7 @@ bool supports_skribidi_color(const std::string &path) {
     // Skribidi's current color rasterizer consumes vector COLR/CPAL glyphs.
     // Do not classify bitmap color fonts (CBDT/CBLC or sbix) as usable color
     // fallbacks: they have FC_COLOR=true but cannot produce Skribidi quads.
-    return has_sfnt_table(path, SKB_TAG_STR("COLR")) &&
-           has_sfnt_table(path, SKB_TAG_STR("CPAL"));
+    return has_sfnt_table(path, SKB_TAG_STR("COLR")) && has_sfnt_table(path, SKB_TAG_STR("CPAL"));
 }
 
 void append_unique(std::vector<SystemFontFallback> &fonts, const std::string &path, bool emoji,
@@ -147,8 +146,7 @@ void append_fontconfig_emoji_matches(std::vector<SystemFontFallback> &fonts) {
         if (matches) {
             for (int index = 0; index < matches->nfont; ++index) {
                 FcChar8 *file = nullptr;
-                if (FcPatternGetString(matches->fonts[index], FC_FILE, 0, &file) !=
-                        FcResultMatch ||
+                if (FcPatternGetString(matches->fonts[index], FC_FILE, 0, &file) != FcResultMatch ||
                     !file)
                     continue;
                 const std::string path(reinterpret_cast<const char *>(file));
@@ -160,24 +158,21 @@ void append_fontconfig_emoji_matches(std::vector<SystemFontFallback> &fonts) {
             FcFontSetDestroy(matches);
         }
         FcPatternDestroy(pattern);
-        if (std::any_of(fonts.begin(), fonts.end(), [](const auto &font) {
-                return font.emoji && font.color;
-            }))
+        if (std::any_of(fonts.begin(), fonts.end(),
+                        [](const auto &font) { return font.emoji && font.color; }))
             break;
     }
 
     // A monochrome outline fallback is still preferable to an empty glyph
     // when the platform has no COLR/CPAL emoji font.
-    if (!std::any_of(fonts.begin(), fonts.end(), [](const auto &font) {
-            return font.emoji;
-        }))
+    if (!std::any_of(fonts.begin(), fonts.end(), [](const auto &font) { return font.emoji; }))
         append_fontconfig_match(fonts, ":charset=1f44b:color=false", true, 0);
 }
 #endif
 
 #if defined(__APPLE__)
-void append_core_text_match(std::vector<SystemFontFallback> &fonts, const char *sample,
-                            bool emoji, uint32_t script_tag) {
+void append_core_text_match(std::vector<SystemFontFallback> &fonts, const char *sample, bool emoji,
+                            uint32_t script_tag) {
     CFStringRef text = CFStringCreateWithCString(nullptr, sample, kCFStringEncodingUTF8);
     if (!text)
         return;
@@ -187,7 +182,7 @@ void append_core_text_match(std::vector<SystemFontFallback> &fonts, const char *
         if (value && CFGetTypeID(value) == CFURLGetTypeID()) {
             char path[PATH_MAX] = {};
             if (CFURLGetFileSystemRepresentation(reinterpret_cast<CFURLRef>(value), true,
-                                                  reinterpret_cast<UInt8 *>(path), sizeof(path)))
+                                                 reinterpret_cast<UInt8 *>(path), sizeof(path)))
                 append_unique(fonts, path, emoji, script_tag);
         }
         if (value)
@@ -219,8 +214,8 @@ std::wstring lowercase(std::wstring value) {
     return value;
 }
 
-void append_windows_registry_fonts(std::vector<SystemFontFallback> &fonts, HKEY root,
-                                   REGSAM view, bool user_fonts) {
+void append_windows_registry_fonts(std::vector<SystemFontFallback> &fonts, HKEY root, REGSAM view,
+                                   bool user_fonts) {
     HKEY key = nullptr;
     if (RegOpenKeyExW(root, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts", 0,
                       KEY_READ | view, &key) != ERROR_SUCCESS)
@@ -233,13 +228,12 @@ void append_windows_registry_fonts(std::vector<SystemFontFallback> &fonts, HKEY 
         wchar_t local_app_data[MAX_PATH] = {};
         const DWORD local_app_data_size =
             GetEnvironmentVariableW(L"LOCALAPPDATA", local_app_data, MAX_PATH);
-        font_directory = local_app_data_size
-                             ? std::wstring(local_app_data, local_app_data_size)
-                             : std::wstring(windows_directory, directory_size);
+        font_directory = local_app_data_size ? std::wstring(local_app_data, local_app_data_size)
+                                             : std::wstring(windows_directory, directory_size);
         font_directory += L"\\Microsoft\\Windows\\Fonts\\";
     } else {
         font_directory = directory_size ? std::wstring(windows_directory, directory_size)
-                                         : std::wstring(L"C:\\Windows");
+                                        : std::wstring(L"C:\\Windows");
         font_directory += L"\\Fonts\\";
     }
 

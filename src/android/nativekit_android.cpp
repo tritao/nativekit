@@ -161,8 +161,7 @@ std::string controller_guid(const std::string &descriptor) {
     const uint64_t first = hash(UINT64_C(1469598103934665603));
     const uint64_t second = hash(UINT64_C(1099511628211));
     char guid[33]{};
-    std::snprintf(guid, sizeof(guid), "%016llx%016llx",
-                  static_cast<unsigned long long>(first),
+    std::snprintf(guid, sizeof(guid), "%016llx%016llx", static_cast<unsigned long long>(first),
                   static_cast<unsigned long long>(second));
     return guid;
 }
@@ -434,8 +433,7 @@ std::vector<std::byte> resource_payload(bool accepted,
             size += resource.display_name.size() + 1;
     }
     std::vector<std::byte> result(size);
-    const nk_resource_list header{accepted ? 1u : 0u,
-                                  static_cast<uint32_t>(resources.size()),
+    const nk_resource_list header{accepted ? 1u : 0u, static_cast<uint32_t>(resources.size()),
                                   static_cast<uint32_t>(items_offset),
                                   static_cast<uint32_t>(strings_offset)};
     std::memcpy(result.data(), &header, sizeof(header));
@@ -459,8 +457,7 @@ std::vector<std::byte> resource_payload(bool accepted,
     return result;
 }
 
-std::vector<std::byte> received_share_payload(const std::string &text,
-                                              const std::string &subject,
+std::vector<std::byte> received_share_payload(const std::string &text, const std::string &subject,
                                               const std::vector<ResourceValue> &resources) {
     auto packed_resources = resource_payload(false, resources);
     const auto prefix = sizeof(nk_received_share);
@@ -729,8 +726,7 @@ namespace nk::backend {
 
 nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled);
 
-nk_result android_vulkan_window(nk_handle handle, ANativeWindow **out_window,
-                                bool require_ready) {
+nk_result android_vulkan_window(nk_handle handle, ANativeWindow **out_window, bool require_ready) {
     if (!out_window) {
         nk::core::set_error("Android native-window output is required");
         return NK_ERROR_INVALID_ARGUMENT;
@@ -749,7 +745,9 @@ nk_result android_vulkan_window(nk_handle handle, ANativeWindow **out_window,
     return NK_OK;
 }
 
-bool android_standard_gamepad(nk_handle handle) { return joystick(handle) != nullptr; }
+bool android_standard_gamepad(nk_handle handle) {
+    return joystick(handle) != nullptr;
+}
 
 nk_result android_gamepad_state(nk_handle handle, nk_gamepad_state *out_state) {
     auto resource = joystick(handle);
@@ -769,10 +767,9 @@ void pump_events() noexcept {}
 
 void shutdown() noexcept {
     while (!surfaces.empty()) {
-        const auto leaf = std::find_if(surfaces.begin(), surfaces.end(),
-                                       [](const auto &item) {
-                                           return item.second->share_dependents == 0;
-                                       });
+        const auto leaf = std::find_if(surfaces.begin(), surfaces.end(), [](const auto &item) {
+            return item.second->share_dependents == 0;
+        });
         if (leaf == surfaces.end())
             break;
         destroy_surface(leaf->first);
@@ -853,11 +850,10 @@ nk_result mobile_host_destroy(nk_handle handle) {
     }
     std::vector<nk_handle> children;
     for (;;) {
-        const auto leaf = std::find_if(surfaces.begin(), surfaces.end(),
-                                       [handle](const auto &item) {
-                                           return item.second->host == handle &&
-                                                  item.second->share_dependents == 0;
-                                       });
+        const auto leaf =
+            std::find_if(surfaces.begin(), surfaces.end(), [handle](const auto &item) {
+                return item.second->host == handle && item.second->share_dependents == 0;
+            });
         if (leaf == surfaces.end())
             break;
         destroy_surface(leaf->first);
@@ -920,11 +916,11 @@ nk_result mobile_host_dispatch_event(nk_handle handle, const nk_mobile_host_even
     auto *bridge = bridge_class(env);
     if (!bridge)
         return NK_ERROR_UNKNOWN;
-    auto method = env->GetStaticMethodID(
-        bridge, "dispatchIntent", "(Landroid/view/ViewGroup;JLandroid/content/Intent;)Z");
-    const auto handled = method && env->CallStaticBooleanMethod(
-                                       bridge, method, resource->view_group,
-                                       static_cast<jlong>(handle), intent);
+    auto method = env->GetStaticMethodID(bridge, "dispatchIntent",
+                                         "(Landroid/view/ViewGroup;JLandroid/content/Intent;)Z");
+    const auto handled =
+        method && env->CallStaticBooleanMethod(bridge, method, resource->view_group,
+                                               static_cast<jlong>(handle), intent);
     env->DeleteLocalRef(bridge);
     if (!method || clear_java_exception(env, "Android intent dispatch failed"))
         return NK_ERROR_UNKNOWN;
@@ -941,11 +937,10 @@ nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled) {
     auto *bridge = env ? bridge_class(env) : nullptr;
     if (!env || !bridge)
         return NK_ERROR_UNKNOWN;
-    auto method = env->GetStaticMethodID(bridge, "setDropEnabled",
-                                         "(Landroid/view/ViewGroup;JZ)V");
+    auto method = env->GetStaticMethodID(bridge, "setDropEnabled", "(Landroid/view/ViewGroup;JZ)V");
     if (method)
-        env->CallStaticVoidMethod(bridge, method, resource->view_group,
-                                  static_cast<jlong>(handle), enabled ? JNI_TRUE : JNI_FALSE);
+        env->CallStaticVoidMethod(bridge, method, resource->view_group, static_cast<jlong>(handle),
+                                  enabled ? JNI_TRUE : JNI_FALSE);
     env->DeleteLocalRef(bridge);
     if (!method || clear_java_exception(env, "Android drop configuration failed"))
         return NK_ERROR_UNKNOWN;
@@ -958,8 +953,7 @@ extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
-           NK_CAP_DRAG_DROP |
-           NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
+           NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
            NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE |
            NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT | NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY;
 }
@@ -1001,8 +995,7 @@ nk_result NK_CALL nk_shell_open_url(const char *url) {
 nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
-    if (const auto valid = validate_resources(resource, resource ? 1u : 0u, false);
-        valid != NK_OK)
+    if (const auto valid = validate_resources(resource, resource ? 1u : 0u, false); valid != NK_OK)
         return valid;
     auto host_resource = context_host();
     if (!host_resource)
@@ -1012,13 +1005,12 @@ nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource) {
     if (!env || !bridge)
         return NK_ERROR_UNKNOWN;
     auto method = env->GetStaticMethodID(
-        bridge, "openResource",
-        "(Landroid/view/ViewGroup;Ljava/lang/String;Ljava/lang/String;)I");
+        bridge, "openResource", "(Landroid/view/ViewGroup;Ljava/lang/String;Ljava/lang/String;)I");
     auto uri = from_utf8(env, resource->uri);
     auto mime = from_utf8(env, resource->mime_type);
-    const auto result = method ? env->CallStaticIntMethod(bridge, method,
-                                                          host_resource->view_group, uri, mime)
-                               : static_cast<jint>(NK_ERROR_UNKNOWN);
+    const auto result =
+        method ? env->CallStaticIntMethod(bridge, method, host_resource->view_group, uri, mime)
+               : static_cast<jint>(NK_ERROR_UNKNOWN);
     if (mime)
         env->DeleteLocalRef(mime);
     if (uri)
@@ -1044,8 +1036,7 @@ nk_result NK_CALL nk_share(const nk_share_options *options) {
         nk::core::set_error("share options must contain text or resources");
         return NK_ERROR_INVALID_ARGUMENT;
     }
-    if (const auto valid =
-            validate_resources(options->resources, options->resource_count, true);
+    if (const auto valid = validate_resources(options->resources, options->resource_count, true);
         valid != NK_OK)
         return valid;
     auto host_resource = context_host();
@@ -1057,18 +1048,18 @@ nk_result NK_CALL nk_share(const nk_share_options *options) {
         return NK_ERROR_UNKNOWN;
     auto method = env->GetStaticMethodID(
         bridge, "share",
-        "(Landroid/view/ViewGroup;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;)I");
+        "(Landroid/view/ViewGroup;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;[Ljava/"
+        "lang/String;[Ljava/lang/String;)I");
     auto title = from_utf8(env, options->title);
     auto text = from_utf8(env, options->text);
-    auto uris = resource_strings(env, options->resources, options->resource_count,
-                                 &nk_resource::uri);
-    auto mimes = resource_strings(env, options->resources, options->resource_count,
-                                  &nk_resource::mime_type);
+    auto uris =
+        resource_strings(env, options->resources, options->resource_count, &nk_resource::uri);
+    auto mimes =
+        resource_strings(env, options->resources, options->resource_count, &nk_resource::mime_type);
     auto names = resource_strings(env, options->resources, options->resource_count,
                                   &nk_resource::display_name);
-    const auto result = method ? env->CallStaticIntMethod(
-                                     bridge, method, host_resource->view_group, title, text, uris,
-                                     mimes, names)
+    const auto result = method ? env->CallStaticIntMethod(bridge, method, host_resource->view_group,
+                                                          title, text, uris, mimes, names)
                                : static_cast<jint>(NK_ERROR_UNKNOWN);
     if (names)
         env->DeleteLocalRef(names);
@@ -1253,9 +1244,9 @@ nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources,
     auto uris = resource_strings(env, resources, resource_count, &nk_resource::uri);
     auto mimes = resource_strings(env, resources, resource_count, &nk_resource::mime_type);
     auto names = resource_strings(env, resources, resource_count, &nk_resource::display_name);
-    const auto accepted = method && env->CallStaticBooleanMethod(
-                                        bridge, method, host_resource->view_group, uris, mimes,
-                                        names);
+    const auto accepted =
+        method &&
+        env->CallStaticBooleanMethod(bridge, method, host_resource->view_group, uris, mimes, names);
     if (names)
         env->DeleteLocalRef(names);
     if (uris)
@@ -1281,8 +1272,8 @@ nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
     auto *bridge = env ? bridge_class(env) : nullptr;
     if (!env || !bridge)
         return NK_ERROR_UNKNOWN;
-    auto method = env->GetStaticMethodID(
-        bridge, "clipboardResources", "(Landroid/view/ViewGroup;)[Ljava/lang/String;");
+    auto method = env->GetStaticMethodID(bridge, "clipboardResources",
+                                         "(Landroid/view/ViewGroup;)[Ljava/lang/String;");
     auto values = method ? static_cast<jobjectArray>(env->CallStaticObjectMethod(
                                bridge, method, host_resource->view_group))
                          : nullptr;
@@ -1326,149 +1317,146 @@ nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
 
 nk_result NK_CALL nk_resource_open(const nk_resource *resource, uint32_t flags,
                                    nk_handle *out_stream) {
-    return nk::core::result_boundary("unexpected error while opening Android resource",
-                                     [&]() -> nk_result {
-        if (const auto thread = require_thread(); thread != NK_OK)
-            return thread;
-        if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
-            !*resource->uri || !out_stream ||
-            (flags & (NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE)) == 0 ||
-            (flags & ~(NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE | NK_RESOURCE_OPEN_CREATE |
-                       NK_RESOURCE_OPEN_TRUNCATE)) != 0 ||
-            ((flags & (NK_RESOURCE_OPEN_CREATE | NK_RESOURCE_OPEN_TRUNCATE)) != 0 &&
-             (flags & NK_RESOURCE_OPEN_WRITE) == 0)) {
-            nk::core::set_error("resource open arguments are invalid");
-            return NK_ERROR_INVALID_ARGUMENT;
-        }
-        auto host_resource = context_host();
-        if (!host_resource) {
-            nk::core::set_error("Android resource opening requires an attached mobile host");
-            return NK_ERROR_UNSUPPORTED;
-        }
-        auto *env = environment();
-        auto *bridge = env ? bridge_class(env) : nullptr;
-        if (!env || !bridge)
-            return NK_ERROR_UNKNOWN;
-        auto method = env->GetStaticMethodID(
-            bridge, "openResourceFd", "(Landroid/view/ViewGroup;Ljava/lang/String;I)I");
-        auto uri = from_utf8(env, resource->uri);
-        const auto fd = method ? env->CallStaticIntMethod(bridge, method,
-                                                          host_resource->view_group, uri,
-                                                          static_cast<jint>(flags))
-                               : -1;
-        if (uri)
-            env->DeleteLocalRef(uri);
-        env->DeleteLocalRef(bridge);
-        if (!method || clear_java_exception(env, "Android resource provider open failed") ||
-            fd < 0) {
-            nk::core::set_error("Android could not open the resource URI");
-            return NK_ERROR_UNKNOWN;
-        }
-        auto stream = std::make_shared<AndroidResourceStream>();
-        stream->fd = fd;
-        if (flags & NK_RESOURCE_OPEN_READ)
-            stream->flags |= NK_RESOURCE_STREAM_READABLE;
-        if (flags & NK_RESOURCE_OPEN_WRITE)
-            stream->flags |= NK_RESOURCE_STREAM_WRITABLE;
-        if (::lseek(fd, 0, SEEK_CUR) >= 0)
-            stream->flags |= NK_RESOURCE_STREAM_SEEKABLE;
-        const auto handle =
-            nk::core::handles().insert(nk::core::ResourceType::resource_stream, stream);
-        if (!handle) {
-            nk::core::set_error("could not allocate Android resource stream handle");
-            return NK_ERROR_OUT_OF_MEMORY;
-        }
-        *out_stream = handle;
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while opening Android resource", [&]() -> nk_result {
+            if (const auto thread = require_thread(); thread != NK_OK)
+                return thread;
+            if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+                !*resource->uri || !out_stream ||
+                (flags & (NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE)) == 0 ||
+                (flags & ~(NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE |
+                           NK_RESOURCE_OPEN_CREATE | NK_RESOURCE_OPEN_TRUNCATE)) != 0 ||
+                ((flags & (NK_RESOURCE_OPEN_CREATE | NK_RESOURCE_OPEN_TRUNCATE)) != 0 &&
+                 (flags & NK_RESOURCE_OPEN_WRITE) == 0)) {
+                nk::core::set_error("resource open arguments are invalid");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            auto host_resource = context_host();
+            if (!host_resource) {
+                nk::core::set_error("Android resource opening requires an attached mobile host");
+                return NK_ERROR_UNSUPPORTED;
+            }
+            auto *env = environment();
+            auto *bridge = env ? bridge_class(env) : nullptr;
+            if (!env || !bridge)
+                return NK_ERROR_UNKNOWN;
+            auto method = env->GetStaticMethodID(bridge, "openResourceFd",
+                                                 "(Landroid/view/ViewGroup;Ljava/lang/String;I)I");
+            auto uri = from_utf8(env, resource->uri);
+            const auto fd =
+                method ? env->CallStaticIntMethod(bridge, method, host_resource->view_group, uri,
+                                                  static_cast<jint>(flags))
+                       : -1;
+            if (uri)
+                env->DeleteLocalRef(uri);
+            env->DeleteLocalRef(bridge);
+            if (!method || clear_java_exception(env, "Android resource provider open failed") ||
+                fd < 0) {
+                nk::core::set_error("Android could not open the resource URI");
+                return NK_ERROR_UNKNOWN;
+            }
+            auto stream = std::make_shared<AndroidResourceStream>();
+            stream->fd = fd;
+            if (flags & NK_RESOURCE_OPEN_READ)
+                stream->flags |= NK_RESOURCE_STREAM_READABLE;
+            if (flags & NK_RESOURCE_OPEN_WRITE)
+                stream->flags |= NK_RESOURCE_STREAM_WRITABLE;
+            if (::lseek(fd, 0, SEEK_CUR) >= 0)
+                stream->flags |= NK_RESOURCE_STREAM_SEEKABLE;
+            const auto handle =
+                nk::core::handles().insert(nk::core::ResourceType::resource_stream, stream);
+            if (!handle) {
+                nk::core::set_error("could not allocate Android resource stream handle");
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            *out_stream = handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_get_persisted_access(const nk_resource *resource,
                                                    uint32_t *out_flags) {
-    return nk::core::result_boundary("unexpected error while querying persisted URI access",
-                                     [&]() -> nk_result {
-        if (const auto thread = require_thread(); thread != NK_OK)
-            return thread;
-        if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
-            !*resource->uri || !out_flags) {
-            nk::core::set_error("persisted resource access arguments are invalid");
-            return NK_ERROR_INVALID_ARGUMENT;
-        }
-        auto host_resource = context_host();
-        if (!host_resource)
-            return NK_ERROR_UNSUPPORTED;
-        auto *env = environment();
-        auto *bridge = env ? bridge_class(env) : nullptr;
-        if (!env || !bridge)
-            return NK_ERROR_UNKNOWN;
-        auto method = env->GetStaticMethodID(
-            bridge, "persistedResourceAccess", "(Landroid/view/ViewGroup;Ljava/lang/String;)I");
-        auto uri = from_utf8(env, resource->uri);
-        const auto flags = method ? env->CallStaticIntMethod(
-                                        bridge, method, host_resource->view_group, uri)
-                                  : NK_ERROR_UNKNOWN;
-        if (uri)
-            env->DeleteLocalRef(uri);
-        env->DeleteLocalRef(bridge);
-        if (!method || clear_java_exception(env, "Android persisted URI query failed"))
-            return NK_ERROR_UNKNOWN;
-        if (flags < 0) {
-            nk::core::set_error(flags == NK_ERROR_UNSUPPORTED
-                                    ? "Android URI access cannot be persisted"
-                                    : "Android persisted URI query failed");
-            return flags;
-        }
-        *out_flags = static_cast<uint32_t>(flags);
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while querying persisted URI access", [&]() -> nk_result {
+            if (const auto thread = require_thread(); thread != NK_OK)
+                return thread;
+            if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+                !*resource->uri || !out_flags) {
+                nk::core::set_error("persisted resource access arguments are invalid");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            auto host_resource = context_host();
+            if (!host_resource)
+                return NK_ERROR_UNSUPPORTED;
+            auto *env = environment();
+            auto *bridge = env ? bridge_class(env) : nullptr;
+            if (!env || !bridge)
+                return NK_ERROR_UNKNOWN;
+            auto method = env->GetStaticMethodID(bridge, "persistedResourceAccess",
+                                                 "(Landroid/view/ViewGroup;Ljava/lang/String;)I");
+            auto uri = from_utf8(env, resource->uri);
+            const auto flags =
+                method ? env->CallStaticIntMethod(bridge, method, host_resource->view_group, uri)
+                       : NK_ERROR_UNKNOWN;
+            if (uri)
+                env->DeleteLocalRef(uri);
+            env->DeleteLocalRef(bridge);
+            if (!method || clear_java_exception(env, "Android persisted URI query failed"))
+                return NK_ERROR_UNKNOWN;
+            if (flags < 0) {
+                nk::core::set_error(flags == NK_ERROR_UNSUPPORTED
+                                        ? "Android URI access cannot be persisted"
+                                        : "Android persisted URI query failed");
+                return flags;
+            }
+            *out_flags = static_cast<uint32_t>(flags);
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_set_persisted_access(const nk_resource *resource,
-                                                   uint32_t access_flags,
-                                                   uint32_t *out_flags) {
-    return nk::core::result_boundary("unexpected error while updating persisted URI access",
-                                     [&]() -> nk_result {
-        if (const auto thread = require_thread(); thread != NK_OK)
-            return thread;
-        if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
-            !*resource->uri || !out_flags ||
-            (access_flags & ~(NK_RESOURCE_READABLE | NK_RESOURCE_WRITABLE)) != 0) {
-            nk::core::set_error("persisted resource access arguments are invalid");
-            return NK_ERROR_INVALID_ARGUMENT;
-        }
-        auto host_resource = context_host();
-        if (!host_resource)
-            return NK_ERROR_UNSUPPORTED;
-        auto *env = environment();
-        auto *bridge = env ? bridge_class(env) : nullptr;
-        if (!env || !bridge)
-            return NK_ERROR_UNKNOWN;
-        auto method = env->GetStaticMethodID(
-            bridge, "setPersistedResourceAccess",
-            "(Landroid/view/ViewGroup;Ljava/lang/String;I)I");
-        auto uri = from_utf8(env, resource->uri);
-        const auto flags = method ? env->CallStaticIntMethod(
-                                        bridge, method, host_resource->view_group, uri,
-                                        static_cast<jint>(access_flags))
-                                  : NK_ERROR_UNKNOWN;
-        if (uri)
-            env->DeleteLocalRef(uri);
-        env->DeleteLocalRef(bridge);
-        if (!method || clear_java_exception(env, "Android persisted URI update failed"))
-            return NK_ERROR_UNKNOWN;
-        if (flags < 0) {
-            nk::core::set_error(flags == NK_ERROR_UNSUPPORTED
-                                    ? "Android URI access cannot be persisted"
-                                    : "Android persisted URI update failed");
-            return flags;
-        }
-        *out_flags = static_cast<uint32_t>(flags);
-        return NK_OK;
-    });
+                                                   uint32_t access_flags, uint32_t *out_flags) {
+    return nk::core::result_boundary(
+        "unexpected error while updating persisted URI access", [&]() -> nk_result {
+            if (const auto thread = require_thread(); thread != NK_OK)
+                return thread;
+            if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+                !*resource->uri || !out_flags ||
+                (access_flags & ~(NK_RESOURCE_READABLE | NK_RESOURCE_WRITABLE)) != 0) {
+                nk::core::set_error("persisted resource access arguments are invalid");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            auto host_resource = context_host();
+            if (!host_resource)
+                return NK_ERROR_UNSUPPORTED;
+            auto *env = environment();
+            auto *bridge = env ? bridge_class(env) : nullptr;
+            if (!env || !bridge)
+                return NK_ERROR_UNKNOWN;
+            auto method = env->GetStaticMethodID(bridge, "setPersistedResourceAccess",
+                                                 "(Landroid/view/ViewGroup;Ljava/lang/String;I)I");
+            auto uri = from_utf8(env, resource->uri);
+            const auto flags =
+                method ? env->CallStaticIntMethod(bridge, method, host_resource->view_group, uri,
+                                                  static_cast<jint>(access_flags))
+                       : NK_ERROR_UNKNOWN;
+            if (uri)
+                env->DeleteLocalRef(uri);
+            env->DeleteLocalRef(bridge);
+            if (!method || clear_java_exception(env, "Android persisted URI update failed"))
+                return NK_ERROR_UNKNOWN;
+            if (flags < 0) {
+                nk::core::set_error(flags == NK_ERROR_UNSUPPORTED
+                                        ? "Android URI access cannot be persisted"
+                                        : "Android persisted URI update failed");
+                return flags;
+            }
+            *out_flags = static_cast<uint32_t>(flags);
+            return NK_OK;
+        });
 }
 
-nk_result NK_CALL nk_resource_stream_info_get(nk_handle handle,
-                                              nk_resource_stream_info *out_info) {
+nk_result NK_CALL nk_resource_stream_info_get(nk_handle handle, nk_resource_stream_info *out_info) {
     if (!out_info || out_info->struct_size < sizeof(nk_resource_stream_info)) {
         nk::core::set_error("resource stream info output is invalid");
         return NK_ERROR_INVALID_ARGUMENT;
@@ -1560,7 +1548,7 @@ nk_result NK_CALL nk_resource_seek(nk_handle handle, int64_t offset, nk_seek_ori
         nk::core::set_error("Android resource stream is not seekable");
         return NK_ERROR_UNSUPPORTED;
     }
-    const int whence = origin == NK_SEEK_START ? SEEK_SET
+    const int whence = origin == NK_SEEK_START     ? SEEK_SET
                        : origin == NK_SEEK_CURRENT ? SEEK_CUR
                                                    : SEEK_END;
     std::lock_guard lock(stream->mutex);
@@ -1616,21 +1604,21 @@ nk_result NK_CALL nk_dialog_select_directory(nk_handle parent,
     return NK_ERROR_UNSUPPORTED;
 }
 
-nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
-                                          const nk_file_dialog_options *options,
+nk_result NK_CALL nk_dialog_open_resource(nk_handle parent, const nk_file_dialog_options *options,
                                           nk_request_id *out_request) {
     return start_file_dialog(NK_DIALOG_OPEN_RESOURCE, true, parent, options, out_request);
 }
 
-nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
-                                          const nk_file_dialog_options *options,
+nk_result NK_CALL nk_dialog_save_resource(nk_handle parent, const nk_file_dialog_options *options,
                                           nk_request_id *out_request) {
     return start_file_dialog(NK_DIALOG_SAVE_RESOURCE, true, parent, options, out_request);
 }
 
-nk_result NK_CALL nk_dialog_select_resource_directory(
-    nk_handle parent, const nk_file_dialog_options *options, nk_request_id *out_request) {
-    return start_file_dialog(NK_DIALOG_SELECT_RESOURCE_DIRECTORY, true, parent, options, out_request);
+nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle parent,
+                                                      const nk_file_dialog_options *options,
+                                                      nk_request_id *out_request) {
+    return start_file_dialog(NK_DIALOG_SELECT_RESOURCE_DIRECTORY, true, parent, options,
+                             out_request);
 }
 
 nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
@@ -1653,8 +1641,8 @@ nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
         clear_java_exception(env, "Android file dialog cancellation failed");
     }
     nk::core::QueuedEvent event;
-    event.kind = dialog.resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE
-                                  : NK_EVENT_DIALOG_PATHS_COMPLETE;
+    event.kind =
+        dialog.resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE : NK_EVENT_DIALOG_PATHS_COMPLETE;
     event.flags = dialog.operation;
     event.request_id = request;
     event.data = dialog.resources ? resource_payload(false, {}) : dialog_payload(false, {});
@@ -1772,7 +1760,7 @@ nk_result NK_CALL nk_pointer_get_position(nk_handle handle, double *out_x, doubl
 }
 
 nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
-                                                   const nk_text_input_state *state) {
+                                                  const nk_text_input_state *state) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
     auto resource = surface(handle);
@@ -1794,14 +1782,12 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
                                    state->composition_start <= state->composition_end &&
                                    state->composition_start >= state->text_start &&
                                    state->composition_end <= text_end;
-    const bool valid_cursor = std::isfinite(state->cursor_x) &&
-                              std::isfinite(state->cursor_y) &&
+    const bool valid_cursor = std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
                               std::isfinite(state->cursor_width) &&
-                              std::isfinite(state->cursor_height) &&
-                              state->cursor_width >= 0.f && state->cursor_height >= 0.f;
+                              std::isfinite(state->cursor_height) && state->cursor_width >= 0.f &&
+                              state->cursor_height >= 0.f;
     if (state->text_start > INT_MAX || state->document_length > INT_MAX ||
-        text_end > state->document_length ||
-        state->selection_start > state->selection_end ||
+        text_end > state->document_length || state->selection_start > state->selection_end ||
         state->selection_start < state->text_start || state->selection_end > text_end ||
         (!no_composition && !valid_composition) || state->input_type > NK_TEXT_INPUT_PASSWORD ||
         (state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
@@ -1836,8 +1822,7 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
     arguments[14].f = state->cursor_height;
     const auto result = java_void_surface(
         resource, "setSurfaceTextInputState",
-        "(Landroid/view/SurfaceView;Ljava/lang/String;IIIIIIIIIFFFF)V",
-        arguments);
+        "(Landroid/view/SurfaceView;Ljava/lang/String;IIIIIIIIIFFFF)V", arguments);
     env->DeleteLocalRef(text);
     return result;
 }
@@ -1860,25 +1845,22 @@ nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t ac
 }
 
 nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle handle,
-                                                     const nk_accessibility_node *node) {
+                                                    const nk_accessibility_node *node) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
     auto resource = surface(handle);
     if (!resource)
         return NK_ERROR_INVALID_HANDLE;
-    constexpr auto all_states = NK_ACCESSIBILITY_FOCUSABLE | NK_ACCESSIBILITY_FOCUSED |
-                                NK_ACCESSIBILITY_SELECTED | NK_ACCESSIBILITY_CHECKED |
-                                NK_ACCESSIBILITY_DISABLED | NK_ACCESSIBILITY_READ_ONLY |
-                                NK_ACCESSIBILITY_MULTILINE | NK_ACCESSIBILITY_PASSWORD |
-                                NK_ACCESSIBILITY_EXPANDED;
-    constexpr auto all_actions = NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS |
-                                 NK_ACCESSIBILITY_CAN_SET_VALUE |
-                                 NK_ACCESSIBILITY_CAN_SET_SELECTION |
-                                 NK_ACCESSIBILITY_CAN_INCREMENT | NK_ACCESSIBILITY_CAN_DECREMENT |
-                                 NK_ACCESSIBILITY_CAN_SCROLL_FORWARD |
-                                 NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD |
-                                 NK_ACCESSIBILITY_CAN_MOVE_NEXT |
-                                 NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS;
+    constexpr auto all_states =
+        NK_ACCESSIBILITY_FOCUSABLE | NK_ACCESSIBILITY_FOCUSED | NK_ACCESSIBILITY_SELECTED |
+        NK_ACCESSIBILITY_CHECKED | NK_ACCESSIBILITY_DISABLED | NK_ACCESSIBILITY_READ_ONLY |
+        NK_ACCESSIBILITY_MULTILINE | NK_ACCESSIBILITY_PASSWORD | NK_ACCESSIBILITY_EXPANDED;
+    constexpr auto all_actions =
+        NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS |
+        NK_ACCESSIBILITY_CAN_SET_VALUE | NK_ACCESSIBILITY_CAN_SET_SELECTION |
+        NK_ACCESSIBILITY_CAN_INCREMENT | NK_ACCESSIBILITY_CAN_DECREMENT |
+        NK_ACCESSIBILITY_CAN_SCROLL_FORWARD | NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD |
+        NK_ACCESSIBILITY_CAN_MOVE_NEXT | NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS;
     uint32_t value_codepoints = 0;
     if (node && node->value)
         for (const auto *cursor = reinterpret_cast<const unsigned char *>(node->value); *cursor;
@@ -1888,24 +1870,21 @@ nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle handle,
     const bool no_selection = node &&
                               node->selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
                               node->selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE;
-    const bool valid_selection = node &&
-                                 node->selection_start != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
-                                 node->selection_end != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
-                                 node->selection_start <= node->selection_end &&
-                                 node->selection_start >= node->text_start &&
-                                 node->selection_end <= text_end;
+    const bool valid_selection =
+        node && node->selection_start != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+        node->selection_end != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+        node->selection_start <= node->selection_end && node->selection_start >= node->text_start &&
+        node->selection_end <= text_end;
     if (!node || node->struct_size < sizeof(*node) || node->id == NK_ACCESSIBILITY_ROOT ||
         node->id > INT_MAX || node->parent_id > INT_MAX || node->id == node->parent_id ||
-        node->child_index > INT_MAX ||
-        node->role > NK_ACCESSIBILITY_SCROLL_AREA || (node->states & ~all_states) ||
-        (node->actions & ~all_actions) || !std::isfinite(node->x) || !std::isfinite(node->y) ||
-        !std::isfinite(node->width) || !std::isfinite(node->height) || node->width < 0.f ||
-        node->height < 0.f || !std::isfinite(node->numeric_value) ||
+        node->child_index > INT_MAX || node->role > NK_ACCESSIBILITY_SCROLL_AREA ||
+        (node->states & ~all_states) || (node->actions & ~all_actions) || !std::isfinite(node->x) ||
+        !std::isfinite(node->y) || !std::isfinite(node->width) || !std::isfinite(node->height) ||
+        node->width < 0.f || node->height < 0.f || !std::isfinite(node->numeric_value) ||
         !std::isfinite(node->numeric_minimum) || !std::isfinite(node->numeric_maximum) ||
-        (node->role == NK_ACCESSIBILITY_SLIDER &&
-         (node->numeric_minimum > node->numeric_maximum ||
-          node->numeric_value < node->numeric_minimum ||
-          node->numeric_value > node->numeric_maximum))) {
+        (node->role == NK_ACCESSIBILITY_SLIDER && (node->numeric_minimum > node->numeric_maximum ||
+                                                   node->numeric_value < node->numeric_minimum ||
+                                                   node->numeric_value > node->numeric_maximum))) {
         nk::core::set_error("invalid accessibility node");
         return NK_ERROR_INVALID_ARGUMENT;
     }
@@ -1978,7 +1957,7 @@ nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle handle,
 }
 
 nk_result NK_CALL nk_surface_accessibility_remove_node(nk_handle handle,
-                                                        nk_accessibility_node_id node) {
+                                                       nk_accessibility_node_id node) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
     auto resource = surface(handle);
@@ -2021,7 +2000,7 @@ nk_result NK_CALL nk_surface_accessibility_clear(nk_handle handle) {
 }
 
 nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle handle,
-                                                      nk_accessibility_node_id node) {
+                                                     nk_accessibility_node_id node) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
     auto resource = surface(handle);
@@ -2040,7 +2019,7 @@ nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle handle,
 }
 
 nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
-                                                   const nk_accessibility_update *update) {
+                                                  const nk_accessibility_update *update) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
     auto resource = surface(handle);
@@ -2072,35 +2051,29 @@ nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
     }
     for (uint32_t index = 0; index < update->node_count; ++index) {
         const auto &node = update->nodes[index];
-        constexpr auto all_states = NK_ACCESSIBILITY_FOCUSABLE | NK_ACCESSIBILITY_FOCUSED |
-                                    NK_ACCESSIBILITY_SELECTED | NK_ACCESSIBILITY_CHECKED |
-                                    NK_ACCESSIBILITY_DISABLED | NK_ACCESSIBILITY_READ_ONLY |
-                                    NK_ACCESSIBILITY_MULTILINE | NK_ACCESSIBILITY_PASSWORD |
-                                    NK_ACCESSIBILITY_EXPANDED;
-        constexpr auto all_actions = NK_ACCESSIBILITY_CAN_ACTIVATE |
-                                     NK_ACCESSIBILITY_CAN_FOCUS |
-                                     NK_ACCESSIBILITY_CAN_SET_VALUE |
-                                     NK_ACCESSIBILITY_CAN_SET_SELECTION |
-                                     NK_ACCESSIBILITY_CAN_INCREMENT |
-                                     NK_ACCESSIBILITY_CAN_DECREMENT |
-                                     NK_ACCESSIBILITY_CAN_SCROLL_FORWARD |
-                                     NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD |
-                                     NK_ACCESSIBILITY_CAN_MOVE_NEXT |
-                                     NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS;
+        constexpr auto all_states =
+            NK_ACCESSIBILITY_FOCUSABLE | NK_ACCESSIBILITY_FOCUSED | NK_ACCESSIBILITY_SELECTED |
+            NK_ACCESSIBILITY_CHECKED | NK_ACCESSIBILITY_DISABLED | NK_ACCESSIBILITY_READ_ONLY |
+            NK_ACCESSIBILITY_MULTILINE | NK_ACCESSIBILITY_PASSWORD | NK_ACCESSIBILITY_EXPANDED;
+        constexpr auto all_actions =
+            NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS |
+            NK_ACCESSIBILITY_CAN_SET_VALUE | NK_ACCESSIBILITY_CAN_SET_SELECTION |
+            NK_ACCESSIBILITY_CAN_INCREMENT | NK_ACCESSIBILITY_CAN_DECREMENT |
+            NK_ACCESSIBILITY_CAN_SCROLL_FORWARD | NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD |
+            NK_ACCESSIBILITY_CAN_MOVE_NEXT | NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS;
         uint32_t value_codepoints = 0;
         if (node.value)
             for (const auto *cursor = reinterpret_cast<const unsigned char *>(node.value); *cursor;
                  ++cursor)
                 value_codepoints += (*cursor & 0xc0u) != 0x80u;
         const uint64_t text_end = static_cast<uint64_t>(node.text_start) + value_codepoints;
-        const bool no_selection =
-            node.selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
-            node.selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE;
-        const bool valid_selection =
-            node.selection_start != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
-            node.selection_end != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
-            node.selection_start <= node.selection_end && node.selection_start >= node.text_start &&
-            node.selection_end <= text_end;
+        const bool no_selection = node.selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                                  node.selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+        const bool valid_selection = node.selection_start != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                                     node.selection_end != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                                     node.selection_start <= node.selection_end &&
+                                     node.selection_start >= node.text_start &&
+                                     node.selection_end <= text_end;
         if (node.struct_size < sizeof(node) || !node.id || node.id > INT_MAX ||
             node.parent_id > INT_MAX || node.id == node.parent_id || node.child_index > INT_MAX ||
             node.role > NK_ACCESSIBILITY_SCROLL_AREA || (node.states & ~all_states) ||
@@ -2110,10 +2083,9 @@ nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
             !std::isfinite(node.y) || !std::isfinite(node.width) || !std::isfinite(node.height) ||
             node.width < 0 || node.height < 0 || !std::isfinite(node.numeric_value) ||
             !std::isfinite(node.numeric_minimum) || !std::isfinite(node.numeric_maximum) ||
-            (node.role == NK_ACCESSIBILITY_SLIDER &&
-             (node.numeric_minimum > node.numeric_maximum ||
-              node.numeric_value < node.numeric_minimum ||
-              node.numeric_value > node.numeric_maximum)) ||
+            (node.role == NK_ACCESSIBILITY_SLIDER && (node.numeric_minimum > node.numeric_maximum ||
+                                                      node.numeric_value < node.numeric_minimum ||
+                                                      node.numeric_value > node.numeric_maximum)) ||
             (node.parent_id && parents.find(node.parent_id) == parents.end())) {
             nk::core::set_error("invalid node in accessibility update");
             return NK_ERROR_INVALID_ARGUMENT;
@@ -2211,8 +2183,7 @@ nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
     arguments[8].z = (update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS) ? JNI_TRUE : JNI_FALSE;
     const auto result = java_void_surface(
         resource, "updateSurfaceAccessibility",
-        "(Landroid/view/SurfaceView;[I[F[Ljava/lang/String;[Ljava/lang/String;[D[IIZ)V",
-        arguments);
+        "(Landroid/view/SurfaceView;[I[F[Ljava/lang/String;[Ljava/lang/String;[D[IIZ)V", arguments);
     env->DeleteLocalRef(integers);
     env->DeleteLocalRef(bounds);
     env->DeleteLocalRef(labels);
@@ -2233,8 +2204,8 @@ nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
     auto resource = surface(handle);
     if (!resource)
         return NK_ERROR_INVALID_HANDLE;
-    if (!node || node > INT_MAX || resource->semantic_parents.find(node) ==
-                                           resource->semantic_parents.end() ||
+    if (!node || node > INT_MAX ||
+        resource->semantic_parents.find(node) == resource->semantic_parents.end() ||
         (range_count && !ranges) || range_count > INT_MAX / 4) {
         nk::core::set_error("invalid accessibility text ranges");
         return NK_ERROR_INVALID_ARGUMENT;
@@ -2245,9 +2216,8 @@ nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
     for (uint32_t index = 0; index < range_count; ++index) {
         const auto &range = ranges[index];
         if (range.start >= range.end || range.start < previous || range.end > INT_MAX ||
-            !std::isfinite(range.x) || !std::isfinite(range.y) ||
-            !std::isfinite(range.width) || !std::isfinite(range.height) || range.width < 0 ||
-            range.height < 0) {
+            !std::isfinite(range.x) || !std::isfinite(range.y) || !std::isfinite(range.width) ||
+            !std::isfinite(range.height) || range.width < 0 || range.height < 0) {
             nk::core::set_error("accessibility text ranges are invalid or unordered");
             return NK_ERROR_INVALID_ARGUMENT;
         }
@@ -2278,9 +2248,8 @@ nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
     arguments[1].i = static_cast<jint>(node);
     arguments[2].l = java_positions;
     arguments[3].l = java_bounds;
-    const auto result = java_void_surface(
-        resource, "setSurfaceAccessibilityTextRanges", "(Landroid/view/SurfaceView;I[I[F)V",
-        arguments);
+    const auto result = java_void_surface(resource, "setSurfaceAccessibilityTextRanges",
+                                          "(Landroid/view/SurfaceView;I[I[F)V", arguments);
     env->DeleteLocalRef(java_positions);
     env->DeleteLocalRef(java_bounds);
     return result;
@@ -2385,8 +2354,7 @@ nk_result NK_CALL nk_surface_create(nk_handle parent, const nk_surface_options *
             }
             if (!options || options->struct_size < sizeof(*options) || !out_surface ||
                 options->width <= 0 || options->height <= 0 ||
-                (options->api != NK_GRAPHICS_OPENGL_ES &&
-                 options->api != NK_GRAPHICS_VULKAN)) {
+                (options->api != NK_GRAPHICS_OPENGL_ES && options->api != NK_GRAPHICS_VULKAN)) {
                 nk::core::set_error("invalid Android graphics surface options");
                 return NK_ERROR_INVALID_ARGUMENT;
             }
@@ -2416,7 +2384,8 @@ nk_result NK_CALL nk_surface_create(nk_handle parent, const nk_surface_options *
             }
             if (!vulkan && egl_display == EGL_NO_DISPLAY) {
                 egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-                if (egl_display == EGL_NO_DISPLAY || !eglInitialize(egl_display, nullptr, nullptr)) {
+                if (egl_display == EGL_NO_DISPLAY ||
+                    !eglInitialize(egl_display, nullptr, nullptr)) {
                     egl_display = EGL_NO_DISPLAY;
                     nk::core::set_error("Android EGL display initialization failed");
                     return NK_ERROR_UNSUPPORTED;
@@ -2425,24 +2394,23 @@ nk_result NK_CALL nk_surface_create(nk_handle parent, const nk_surface_options *
             EGLConfig config = nullptr;
             EGLContext context = EGL_NO_CONTEXT;
             if (!vulkan) {
-                EGLint attributes[] = {
-                    EGL_SURFACE_TYPE,
-                    EGL_WINDOW_BIT,
-                    EGL_RENDERABLE_TYPE,
-                    major == 3 ? 0x0040 : EGL_OPENGL_ES2_BIT,
-                    EGL_RED_SIZE,
-                    8,
-                    EGL_GREEN_SIZE,
-                    8,
-                    EGL_BLUE_SIZE,
-                    8,
-                    EGL_ALPHA_SIZE,
-                    (options->flags & NK_SURFACE_ALPHA) ? 8 : 0,
-                    EGL_DEPTH_SIZE,
-                    (options->flags & NK_SURFACE_DEPTH) ? 16 : 0,
-                    EGL_STENCIL_SIZE,
-                    (options->flags & NK_SURFACE_STENCIL) ? 8 : 0,
-                    EGL_NONE};
+                EGLint attributes[] = {EGL_SURFACE_TYPE,
+                                       EGL_WINDOW_BIT,
+                                       EGL_RENDERABLE_TYPE,
+                                       major == 3 ? 0x0040 : EGL_OPENGL_ES2_BIT,
+                                       EGL_RED_SIZE,
+                                       8,
+                                       EGL_GREEN_SIZE,
+                                       8,
+                                       EGL_BLUE_SIZE,
+                                       8,
+                                       EGL_ALPHA_SIZE,
+                                       (options->flags & NK_SURFACE_ALPHA) ? 8 : 0,
+                                       EGL_DEPTH_SIZE,
+                                       (options->flags & NK_SURFACE_DEPTH) ? 16 : 0,
+                                       EGL_STENCIL_SIZE,
+                                       (options->flags & NK_SURFACE_STENCIL) ? 8 : 0,
+                                       EGL_NONE};
                 EGLint config_count = 0;
                 if (!eglChooseConfig(egl_display, attributes, &config, 1, &config_count) ||
                     config_count == 0) {
@@ -2452,9 +2420,9 @@ nk_result NK_CALL nk_surface_create(nk_handle parent, const nk_surface_options *
                 EGLint context_attributes[] = {EGL_CONTEXT_CLIENT_VERSION,
                                                static_cast<EGLint>(major), EGL_NONE};
                 eglBindAPI(EGL_OPENGL_ES_API);
-                context = eglCreateContext(egl_display, config,
-                                           shared ? shared->context : EGL_NO_CONTEXT,
-                                           context_attributes);
+                context =
+                    eglCreateContext(egl_display, config, shared ? shared->context : EGL_NO_CONTEXT,
+                                     context_attributes);
                 if (context == EGL_NO_CONTEXT) {
                     nk::core::set_error("Android OpenGL ES context creation failed");
                     return NK_ERROR_UNSUPPORTED;
@@ -2468,9 +2436,8 @@ nk_result NK_CALL nk_surface_create(nk_handle parent, const nk_surface_options *
             resource->api = options->api;
             resource->major_version = major;
             resource->minor_version = options->minor_version;
-            resource->context_flags = options->flags &
-                                      (NK_SURFACE_DEBUG_CONTEXT |
-                                       NK_SURFACE_FORWARD_COMPATIBLE);
+            resource->context_flags =
+                options->flags & (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE);
             resource->shared_surface = shared;
             const auto handle =
                 nk::core::handles().insert(nk::core::ResourceType::surface, resource);
@@ -2488,16 +2455,14 @@ nk_result NK_CALL nk_surface_create(nk_handle parent, const nk_surface_options *
             auto method = bridge ? env->GetStaticMethodID(
                                        bridge, "createSurface",
                                        "(Landroid/view/ViewGroup;JIIIII)Landroid/view/SurfaceView;")
-                                  : nullptr;
-            jobject view = method ? env->CallStaticObjectMethod(
-                                        bridge, method, parent_resource->view_group,
-                                        static_cast<jlong>(handle),
-                                        static_cast<jint>(options->flags),
-                                        static_cast<jint>(options->x),
-                                        static_cast<jint>(options->y),
-                                        static_cast<jint>(options->width),
-                                        static_cast<jint>(options->height))
-                                  : nullptr;
+                                 : nullptr;
+            jobject view =
+                method ? env->CallStaticObjectMethod(
+                             bridge, method, parent_resource->view_group,
+                             static_cast<jlong>(handle), static_cast<jint>(options->flags),
+                             static_cast<jint>(options->x), static_cast<jint>(options->y),
+                             static_cast<jint>(options->width), static_cast<jint>(options->height))
+                       : nullptr;
             if (bridge)
                 env->DeleteLocalRef(bridge);
             if (!method || clear_java_exception(env, "Android SurfaceView creation failed") ||
@@ -2536,8 +2501,7 @@ nk_result NK_CALL nk_surface_show(nk_handle handle, uint32_t visible) {
     jvalue arguments[2]{};
     arguments[0].l = resource->view;
     arguments[1].z = visible ? JNI_TRUE : JNI_FALSE;
-    return java_void_surface(resource, "showSurface", "(Landroid/view/SurfaceView;Z)V",
-                             arguments);
+    return java_void_surface(resource, "showSurface", "(Landroid/view/SurfaceView;Z)V", arguments);
 }
 
 nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, int32_t width,
@@ -2555,8 +2519,8 @@ nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, 
     arguments[2].i = y;
     arguments[3].i = width;
     arguments[4].i = height;
-    return java_void_surface(resource, "setSurfaceBounds",
-                             "(Landroid/view/SurfaceView;IIII)V", arguments);
+    return java_void_surface(resource, "setSurfaceBounds", "(Landroid/view/SurfaceView;IIII)V",
+                             arguments);
 }
 
 nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
@@ -2609,7 +2573,7 @@ nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out
 }
 
 nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
-                                               nk_surface_frame_target *out_target) {
+                                              nk_surface_frame_target *out_target) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
     if (!out_target || out_target->struct_size < sizeof(*out_target)) {
@@ -2970,8 +2934,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceChanged(
     nk::core::push_event(std::move(event));
 }
 
-JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceDestroyed(
-    JNIEnv *, jclass, jlong handle_value) {
+JNIEXPORT void JNICALL
+Java_io_nativekit_NativeKitBridge_nativeOnSurfaceDestroyed(JNIEnv *, jclass, jlong handle_value) {
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (resource)
         release_surface_window(*resource);
@@ -3000,8 +2964,9 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTouch(
     nk::core::push_event(std::move(event));
 }
 
-JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerMove(
-    JNIEnv *, jclass, jlong handle_value, jfloat x, jfloat y) {
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerMove(JNIEnv *, jclass,
+                                                                             jlong handle_value,
+                                                                             jfloat x, jfloat y) {
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (!resource)
         return;
@@ -3015,8 +2980,9 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerMove(
     nk::core::push_event(std::move(event));
 }
 
-JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerEnter(
-    JNIEnv *, jclass, jlong handle_value, jboolean entered) {
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerEnter(JNIEnv *, jclass,
+                                                                              jlong handle_value,
+                                                                              jboolean entered) {
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (!resource)
         return;
@@ -3028,8 +2994,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerEnter(
 }
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerButton(
-    JNIEnv *, jclass, jlong handle_value, jint button, jboolean pressed, jint modifiers,
-    jfloat x, jfloat y) {
+    JNIEnv *, jclass, jlong handle_value, jint button, jboolean pressed, jint modifiers, jfloat x,
+    jfloat y) {
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (!resource || button < 0 || button > NK_POINTER_BUTTON_LAST)
         return;
@@ -3037,8 +3003,12 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerButton(
     resource->pointer_buttons[static_cast<std::size_t>(button)] = action;
     resource->pointer_x = x;
     resource->pointer_y = y;
-    const nk_pointer_button_event payload{static_cast<nk_pointer_button>(button), action,
-                                          static_cast<nk_modifiers>(modifiers), 0, x, y};
+    const nk_pointer_button_event payload{static_cast<nk_pointer_button>(button),
+                                          action,
+                                          static_cast<nk_modifiers>(modifiers),
+                                          0,
+                                          x,
+                                          y};
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_POINTER_BUTTON;
     event.source = resource->handle;
@@ -3046,8 +3016,9 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerButton(
     nk::core::push_event(std::move(event));
 }
 
-JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerScroll(
-    JNIEnv *, jclass, jlong handle_value, jfloat x, jfloat y) {
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerScroll(JNIEnv *, jclass,
+                                                                               jlong handle_value,
+                                                                               jfloat x, jfloat y) {
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (!resource)
         return;
@@ -3059,8 +3030,10 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerScroll(
     nk::core::push_event(std::move(event));
 }
 
-JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnKey(
-    JNIEnv *, jclass, jlong handle_value, jint key, jint scancode, jint action, jint modifiers) {
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnKey(JNIEnv *, jclass,
+                                                                     jlong handle_value, jint key,
+                                                                     jint scancode, jint action,
+                                                                     jint modifiers) {
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (!resource || key < 0 || key > NK_KEY_LAST)
         return;
@@ -3140,9 +3113,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnAccessibilityAc
     };
     payload.selection_start = position(selection_start);
     payload.selection_end = position(selection_end);
-    payload.granularity = granularity > 0
-                              ? static_cast<nk_accessibility_text_granularity>(granularity)
-                              : 0;
+    payload.granularity =
+        granularity > 0 ? static_cast<nk_accessibility_text_granularity>(granularity) : 0;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_ACCESSIBILITY_ACTION;
     event.source = resource->handle;
@@ -3153,8 +3125,10 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnAccessibilityAc
     nk::core::push_event(std::move(event));
 }
 
-JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadAxis(
-    JNIEnv *, jclass, jlong handle_value, jint device, jint axis, jfloat value) {
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadAxis(JNIEnv *, jclass,
+                                                                             jlong handle_value,
+                                                                             jint device, jint axis,
+                                                                             jfloat value) {
     auto resource = surface(static_cast<nk_handle>(handle_value));
     auto controller = joystick_device(device);
     if (!resource || !controller || axis < 0 || axis >= NK_GAMEPAD_AXIS_COUNT)
@@ -3198,8 +3172,7 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadConnecte
     resource->device_id = device;
     resource->name = device_name.empty() ? "Android game controller" : device_name;
     resource->guid = controller_guid(device_descriptor);
-    resource->handle =
-        nk::core::handles().insert(nk::core::ResourceType::joystick, resource);
+    resource->handle = nk::core::handles().insert(nk::core::ResourceType::joystick, resource);
     if (!resource->handle)
         return;
     joysticks.emplace(device, resource);
@@ -3210,8 +3183,9 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadConnecte
     nk::core::push_event(std::move(event));
 }
 
-JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadDisconnected(
-    JNIEnv *, jclass, jint device) {
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadDisconnected(JNIEnv *,
+                                                                                     jclass,
+                                                                                     jint device) {
     const auto found = joysticks.find(device);
     if (found == joysticks.end())
         return;
@@ -3282,8 +3256,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitHost_nativeSetLifecycle(JNIEnv
 }
 
 JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeDispatchIntent(JNIEnv *env, jclass,
-                                                                             jlong handle,
-                                                                             jobject intent) {
+                                                                            jlong handle,
+                                                                            jobject intent) {
     nk_mobile_host_event event{};
     event.struct_size = sizeof(event);
     event.kind = NK_MOBILE_HOST_EVENT_ANDROID_INTENT;
@@ -3350,8 +3324,7 @@ JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeReadClipboardText(
 }
 
 JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeStartFileDialog(
-    JNIEnv *env, jclass, jlong host_handle, jint command, jstring title,
-    jstring suggested_name) {
+    JNIEnv *env, jclass, jlong host_handle, jint command, jstring title, jstring suggested_name) {
     const auto title_value = to_utf8(env, title);
     const auto name_value = to_utf8(env, suggested_name);
     nk_file_dialog_options options{};
@@ -3539,15 +3512,15 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
                 env->DeleteLocalRef(value);
         }
         nk::core::QueuedEvent event;
-        event.kind = dialog.resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE
-                                      : NK_EVENT_DIALOG_PATHS_COMPLETE;
+        event.kind =
+            dialog.resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE : NK_EVENT_DIALOG_PATHS_COMPLETE;
         event.flags = dialog.operation;
         event.request_id = request_id;
         if (dialog.resources) {
             std::vector<ResourceValue> resources;
             resources.reserve(uris.size());
-            jint *flags = resource_flags ? env->GetIntArrayElements(resource_flags, nullptr)
-                                         : nullptr;
+            jint *flags =
+                resource_flags ? env->GetIntArrayElements(resource_flags, nullptr) : nullptr;
             const auto flag_count = resource_flags ? env->GetArrayLength(resource_flags) : 0;
             const auto mime_count = mime_types ? env->GetArrayLength(mime_types) : 0;
             const auto name_count = display_names ? env->GetArrayLength(display_names) : 0;

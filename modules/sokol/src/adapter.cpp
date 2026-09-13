@@ -206,15 +206,15 @@ static const nk_sokol_api *api_for_graphics_api(nk_graphics_api api) {
     const nk_sokol_api *runtime = nk_sokol_get_api();
     if (!runtime || !runtime->gfx)
         return nullptr;
-    #if defined(NK_SOKOL_BACKEND_GLES3)
-        #if defined(__EMSCRIPTEN__)
+#if defined(NK_SOKOL_BACKEND_GLES3)
+#if defined(__EMSCRIPTEN__)
     return (api == NK_GRAPHICS_OPENGL || api == NK_GRAPHICS_OPENGL_ES) ? runtime : nullptr;
-        #else
+#else
     return api == NK_GRAPHICS_OPENGL_ES ? runtime : nullptr;
-        #endif
-    #else
+#endif
+#else
     return api == NK_GRAPHICS_OPENGL ? runtime : nullptr;
-    #endif
+#endif
 #endif
 }
 
@@ -301,18 +301,16 @@ nk_graphics_api nks_query_graphics_api(nks_renderer renderer) {
     return slot ? slot->value.graphics_api : static_cast<nk_graphics_api>(0);
 }
 
-nks_result nks_surface_create(nk_handle window, int32_t width, int32_t height,
-                              nk_handle *out) {
-    #if defined(NK_SOKOL_BACKEND_GLES3)
+nks_result nks_surface_create(nk_handle window, int32_t width, int32_t height, nk_handle *out) {
+#if defined(NK_SOKOL_BACKEND_GLES3)
     return nks_surface_create_for_api(window, NK_GRAPHICS_OPENGL_ES, width, height, out);
-    #else
+#else
     return nks_surface_create_for_api(window, NK_GRAPHICS_OPENGL, width, height, out);
-    #endif
+#endif
 }
 
-nks_result nks_surface_create_for_api(nk_handle window, nk_graphics_api api,
-                                      int32_t width, int32_t height,
-                                      nk_handle *out) {
+nks_result nks_surface_create_for_api(nk_handle window, nk_graphics_api api, int32_t width,
+                                      int32_t height, nk_handle *out) {
     if (!window || width <= 0 || height <= 0 || !out)
         return fail(NKS_ERROR_INVALID_ARGUMENT, "invalid surface arguments");
     if (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES)
@@ -597,8 +595,8 @@ nks_result nks_begin_render_target(nks_renderer renderer, nks_render_target hand
                                    uint32_t clear) {
     auto *owner = renderer_pool.get(renderer);
     auto *target = render_target_pool.get(handle);
-    if (!owner || !target || target->value.owner != renderer || clear > 1 || owner->value.in_frame ||
-        active_renderer)
+    if (!owner || !target || target->value.owner != renderer || clear > 1 ||
+        owner->value.in_frame || active_renderer)
         return fail(NKS_ERROR_WRONG_STATE, "invalid render-target frame state");
     const nks_result activated = activate_renderer(renderer);
     if (activated != NKS_OK)
@@ -623,8 +621,8 @@ nks_result nks_begin_render_target(nks_renderer renderer, nks_render_target hand
 }
 nks_result nks_end_render_target(nks_renderer renderer) {
     auto *owner = renderer_pool.get(renderer);
-    if (!owner || !owner->value.in_frame || !owner->value.in_pass ||
-        !owner->value.active_target || active_renderer != renderer)
+    if (!owner || !owner->value.in_frame || !owner->value.in_pass || !owner->value.active_target ||
+        active_renderer != renderer)
         return fail(NKS_ERROR_WRONG_STATE, "no active render-target pass");
     const nks_result activated = activate_renderer(renderer);
     if (activated != NKS_OK)
@@ -927,8 +925,8 @@ nks_result nks_begin_frame(nks_renderer h) {
     nk_surface_frame_target target{};
     target.struct_size = sizeof(target);
     if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK || target.width <= 0 ||
-        target.height <= 0 ||
-        target.api != s->value.graphics_api || target.device.id != s->value.device.id)
+        target.height <= 0 || target.api != s->value.graphics_api ||
+        target.device.id != s->value.device.id)
         return fail(NKS_ERROR_UNKNOWN, "framebuffer target does not match renderer device");
     sg_pass pass{};
     pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
@@ -960,8 +958,7 @@ nks_result nks_apply_vertex_buffer(nks_renderer r, uint32_t slot, nks_buffer h, 
     auto *rs = renderer_pool.get(r);
     auto *b = buffer_pool.get(h);
     if (!rs || !rs->value.in_frame || !rs->value.in_pass || active_renderer != r || !b ||
-        b->value.owner != r ||
-        slot >= SG_MAX_VERTEXBUFFER_BINDSLOTS)
+        b->value.owner != r || slot >= SG_MAX_VERTEXBUFFER_BINDSLOTS)
         return fail(NKS_ERROR_INVALID_HANDLE, "invalid buffer/frame");
     rs->value.bindings.vertex_buffers[slot] = b->value.object;
     rs->value.bindings.vertex_buffer_offsets[slot] = (int)offset;
@@ -1123,8 +1120,7 @@ nks_result nks_apply_image(nks_renderer r, uint32_t slot, nks_image h) {
     auto *rs = renderer_pool.get(r);
     auto *image = image_pool.get(h);
     if (!rs || !rs->value.in_frame || !rs->value.in_pass || active_renderer != r || !image ||
-        image->value.owner != r ||
-        slot >= SG_MAX_VIEW_BINDSLOTS)
+        image->value.owner != r || slot >= SG_MAX_VIEW_BINDSLOTS)
         return fail(NKS_ERROR_INVALID_HANDLE, "invalid image/frame");
     rs->value.bindings.views[slot] = image->value.view;
     return NKS_OK;

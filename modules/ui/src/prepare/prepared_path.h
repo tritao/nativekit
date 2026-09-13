@@ -34,8 +34,7 @@ enum class PreparedImageFlags : uint32_t {
 };
 
 constexpr PreparedImageFlags operator|(PreparedImageFlags lhs, PreparedImageFlags rhs) {
-    return static_cast<PreparedImageFlags>(static_cast<uint32_t>(lhs) |
-                                           static_cast<uint32_t>(rhs));
+    return static_cast<PreparedImageFlags>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs));
 }
 
 constexpr PreparedImageFlags &operator|=(PreparedImageFlags &lhs, PreparedImageFlags rhs) {
