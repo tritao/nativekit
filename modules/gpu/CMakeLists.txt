@@ -29,6 +29,22 @@ if(NK_BUILD_TESTS)
     add_library(nativekit_gpu_benchmark SHARED bench/benchmark.c)
     target_include_directories(nativekit_gpu_benchmark PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/bench")
+
+    if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NK_BACKEND_GTK_AVAILABLE)
+        find_program(NKGPU_XVFB_RUN xvfb-run)
+        if(NKGPU_XVFB_RUN)
+            add_executable(nativekit_gpu_contract_smoke_test tests/contract_smoke.cpp)
+            target_compile_features(nativekit_gpu_contract_smoke_test PRIVATE cxx_std_17)
+            target_link_libraries(nativekit_gpu_contract_smoke_test PRIVATE NativeKit::gpu
+                NativeKit::nativekit)
+            add_test(NAME nativekit_gpu_contract_smoke
+                COMMAND ${NKGPU_XVFB_RUN} -a $<TARGET_FILE:nativekit_gpu_contract_smoke_test>)
+            set_tests_properties(nativekit_gpu_contract_smoke PROPERTIES
+                LABELS "graphics;gpu"
+                TIMEOUT 15
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+        endif()
+    endif()
 endif()
 
 if(NK_BUILD_GPU_BACKEND_MATRIX AND NK_BUILD_TESTS)

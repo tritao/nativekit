@@ -11,6 +11,7 @@ import nativekit.gpu.CommandBuffer;
 import nativekit.gpu.Enums.Filter;
 import nativekit.gpu.Enums.IndexType;
 import nativekit.gpu.Enums.ShaderStage;
+import nativekit.gpu.Enums.ShaderLanguage;
 import nativekit.gpu.Enums.UniformType;
 import nativekit.gpu.Enums.VertexFormat;
 import nativekit.gpu.Enums.Wrap;
@@ -54,7 +55,7 @@ class Triangle {
 	}
 
 	static function createShader(renderer:Renderer):Shader {
-		var builder = Shader.begin(renderer,
+		var builder = Shader.begin(renderer, ShaderLanguage.Glsl,
 			"#version 330\nuniform vec2 offset; layout(location=0) in vec2 position; layout(location=1) in vec3 color0; layout(location=2) in vec2 uv0; out vec3 color; out vec2 uv; void main(){color=color0;uv=uv0;gl_Position=vec4(position+offset,0,1);}",
 			"#version 330\nuniform sampler2D tex; in vec3 color; in vec2 uv; out vec4 frag_color; void main(){frag_color=texture(tex,uv)*vec4(color,1);}");
 		return builder.uniformBlock(0, ShaderStage.Vertex, 8)
@@ -141,15 +142,6 @@ class Triangle {
 				renderer = surface.createRenderer();
 				commandBuffer = renderer.commandBuffer(64);
 
-				var target = RenderTarget.create(renderer, 32, 32);
-				target.begin();
-				target.end();
-				retainedTargetImage = target.sampledImage();
-				if (retainedTargetImage.width != 32 || retainedTargetImage.height != 32
-					|| (retainedTargetImage.api != GraphicsApi.Opengl && retainedTargetImage.api != GraphicsApi.OpenglEs))
-					throw "offscreen target image metadata mismatch";
-				target.dispose();
-
 				buffer = createVertexBuffer(renderer);
 				indexBuffer = createIndexBuffer(renderer);
 				image = createCheckerboard(renderer);
@@ -157,6 +149,26 @@ class Triangle {
 					Wrap.Repeat, Wrap.Repeat);
 				shader = createShader(renderer);
 				pipeline = createPipeline(renderer, shader);
+
+				var target = RenderTarget.create(renderer, 32, 32);
+				target.begin();
+				var endFrameRejected = false;
+				try renderer.endFrame() catch (_:Dynamic) endFrameRejected = true;
+				if (!endFrameRejected)
+					throw "window endFrame accepted an offscreen target pass";
+				var resourceCreationRejected = false;
+				try Sampler.create(renderer) catch (_:Dynamic) resourceCreationRejected = true;
+				if (!resourceCreationRejected)
+					throw "GPU resource creation succeeded during an active pass";
+				applyFrameBindings(pipeline, buffer, indexBuffer, image, sampler);
+				renderer.uniforms(8).writeFloat(0, 0).writeFloat(4, 0).apply(0);
+				renderer.draw(0, 6);
+				target.end();
+				retainedTargetImage = target.sampledImage();
+				if (retainedTargetImage.width != 32 || retainedTargetImage.height != 32
+					|| (retainedTargetImage.api != GraphicsApi.Opengl && retainedTargetImage.api != GraphicsApi.OpenglEs))
+					throw "offscreen target image metadata mismatch";
+				target.dispose();
 				ready = true;
 			}
 

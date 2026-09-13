@@ -27,6 +27,10 @@ enum abstract ShaderStage(Int) to Int {
 	var Fragment = 2;
 }
 
+enum abstract ShaderLanguage(Int) to Int {
+	var Glsl = 1;
+}
+
 enum abstract UniformType(Int) to Int {
 	var Float = 1;
 	var Float2 = 2;

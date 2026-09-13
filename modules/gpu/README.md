@@ -20,6 +20,15 @@ that created them. The backend-matrix test alternates frame submission between
 both runtime variants. Other graphics APIs (including Vulkan and Metal) still
 require their own Sokol runtimes/adapters and are not enabled by this option.
 
+The public shader API requires an explicit `ShaderLanguage`; GLSL is the
+currently supported value for both C and Haxe. A renderer is idle between
+passes. GPU resource creation, destruction, and resource-builder operations
+require idle state; binding and drawing require an active window or offscreen
+pass. End a window pass with `endFrame()` and an offscreen pass with
+`RenderTarget.end()`. Destroying a renderer releases its remaining GPU
+resources and unfinished builders, while Haxe resource `dispose()` methods are
+idempotent. Handles from another renderer are rejected.
+
 Build and run from the NativeKit repository root:
 
 ```sh
