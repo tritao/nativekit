@@ -18,7 +18,7 @@ static nk_event wait_for_event(nk_event_kind kind, nk_request_id request) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == kind && event.request_id == request)
+        if (event.kind == kind && (request == NK_INVALID_REQUEST_ID || event.request_id == request))
             return event;
         last_kind = event.kind;
         last_request = event.request_id;
