@@ -51,7 +51,7 @@ class Slider implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
-			var node = new RenderNode(context.id("slider"), LayoutVisualKind.Box, style);
+			var node = new RenderNode(context.id("slider"), LayoutVisualKind.Custom, style);
 			node.focusable = true;
 			node.enabled = enabled;
 			var semantics = new Semantics(AccessibilityRole.Slider, label, Std.string(value));
@@ -138,8 +138,11 @@ class Slider implements View {
 			node.on(UiEventKind.KeyDown, handleKey);
 			node.on(UiEventKind.KeyRepeat, handleKey);
 			node.on(UiEventKind.AccessibilitySetValue, function(event) {
-				if (event.text != null)
-					setValue(Std.parseFloat(event.text));
+				if (event.text != null) {
+					var parsed = parseNumericValue(event.text);
+					if (parsed != null)
+						setValue(parsed);
+				}
 			});
 			node.on(UiEventKind.AccessibilityIncrement, function(event) {
 				var action:AccessibilityActionData = cast event.data;
@@ -165,4 +168,84 @@ class Slider implements View {
 
 	static inline function finite(value:Float):Bool
 		return value == value && value - value == 0.0;
+
+	static function parseNumericValue(value:String):Null<Float> {
+		var text = value;
+		var start = 0;
+		var end = text.length;
+		while (start < end && whitespace(text.charCodeAt(start)))
+			start++;
+		while (end > start && whitespace(text.charCodeAt(end - 1)))
+			end--;
+		if (start == end)
+			return null;
+		var index = start;
+		var sign = 1.0;
+		var first = text.charCodeAt(index);
+		if (first == 45 || first == 43) {
+			if (first == 45)
+				sign = -1.0;
+			index++;
+		}
+		var whole = 0.0;
+		var digits = 0;
+		while (index < end) {
+			var code = text.charCodeAt(index);
+			if (code < 48 || code > 57)
+				break;
+			whole = whole * 10.0 + code - 48;
+			digits++;
+			index++;
+		}
+		var fraction = 0.0;
+		var fractionScale = 0.1;
+		if (index < end && text.charCodeAt(index) == 46) {
+			index++;
+			while (index < end) {
+				var code = text.charCodeAt(index);
+				if (code < 48 || code > 57)
+					break;
+				fraction += (code - 48) * fractionScale;
+				fractionScale *= 0.1;
+				digits++;
+				index++;
+			}
+		}
+		if (digits == 0)
+			return null;
+		var exponentSign = 1;
+		var exponent = 0;
+		if (index < end && (text.charCodeAt(index) == 101 || text.charCodeAt(index) == 69)) {
+			index++;
+			if (index < end && (text.charCodeAt(index) == 45 || text.charCodeAt(index) == 43)) {
+				if (text.charCodeAt(index) == 45)
+					exponentSign = -1;
+				index++;
+			}
+			var exponentDigits = 0;
+			while (index < end) {
+				var code = text.charCodeAt(index);
+				if (code < 48 || code > 57)
+					break;
+				exponent = exponent * 10 + code - 48;
+				if (exponent > 308)
+					return null;
+				exponentDigits++;
+				index++;
+			}
+			if (exponentDigits == 0)
+				return null;
+		}
+		if (index != end)
+			return null;
+		var result = sign * (whole + fraction);
+		var scale = 1.0;
+		for (_ in 0...exponent)
+			scale = exponentSign > 0 ? scale * 10.0 : scale / 10.0;
+		result *= scale;
+		return finite(result) ? result : null;
+	}
+
+	static inline function whitespace(code:Int):Bool
+		return code == 9 || code == 10 || code == 13 || code == 32;
 }

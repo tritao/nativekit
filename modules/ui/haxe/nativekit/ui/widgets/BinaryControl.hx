@@ -76,7 +76,7 @@ class BinaryControl implements View {
 				indicatorStyle.radiusTopLeft = indicatorStyle.radiusTopRight = 10.0;
 				indicatorStyle.radiusBottomLeft = indicatorStyle.radiusBottomRight = 10.0;
 			}
-			var indicator = new RenderNode(context.id("indicator"), LayoutVisualKind.Box,
+			var indicator = new RenderNode(context.id("indicator"), LayoutVisualKind.Custom,
 				indicatorStyle);
 			if (toggle) {
 				indicator.onPaint(function(canvas, geometry) {

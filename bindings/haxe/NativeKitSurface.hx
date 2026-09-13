@@ -6,12 +6,22 @@ import NativeKitResult;
 /** Owns one graphics surface attached to a NativeKit window. */
 class NativeKitSurface {
 	final value:SurfaceHandle;
+	final ownsHandle:Bool;
 	var disposed:Bool = false;
 	var frameSubscription:Null<NativeKitSurfaceFrameSubscription>;
 
 	@:allow(NativeKitWindow)
-	private function new(value:SurfaceHandle)
+	private function new(value:SurfaceHandle, ownsHandle:Bool = true) {
 		this.value = value;
+		this.ownsHandle = ownsHandle;
+	}
+
+	/** Creates a non-owning view of a surface managed by a raw NativeKit host. */
+	public static function borrowNativeHandle(value:SurfaceHandle):NativeKitSurface {
+		if (!value.isValid())
+			throw "Cannot borrow a null NativeKit surface handle";
+		return new NativeKitSurface(value, false);
+	}
 
 	public function nativeHandle():SurfaceHandle {
 		ensureLive();
@@ -55,7 +65,15 @@ class NativeKitSurface {
 			return;
 		if (frameSubscription != null)
 			frameSubscription.dispose();
-		NativeKitResult.check(NativeKit.nk_surface_destroy(value), "surface.dispose");
+		if (ownsHandle)
+			NativeKitResult.check(NativeKit.nk_surface_destroy(value), "surface.dispose");
+		disposed = true;
+	}
+
+	/** Releases a borrowed wrapper without destroying its host-owned surface. */
+	public function releaseBorrowed():Void {
+		if (ownsHandle)
+			throw "Cannot release a borrowed view of an owned NativeKit surface";
 		disposed = true;
 	}
 

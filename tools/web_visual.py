@@ -137,6 +137,7 @@ def main():
                 value = websocket.evaluate(
                     "JSON.stringify({frames:Number(document.documentElement?.dataset.nativekitFrames||0),"
                     "result:document.documentElement?.dataset.nativekitResult||'',"
+                    "message:document.getElementById('status')?.textContent||'',"
                     "width:document.getElementById('canvas')?.width||0,"
                     "height:document.getElementById('canvas')?.height||0})",
                     1,

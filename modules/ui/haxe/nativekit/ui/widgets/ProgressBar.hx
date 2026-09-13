@@ -38,7 +38,7 @@ class ProgressBar implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
-			var node = new RenderNode(context.id("progress"), LayoutVisualKind.Box, style);
+			var node = new RenderNode(context.id("progress"), LayoutVisualKind.Custom, style);
 			if (label != null) {
 				var semantics = new Semantics(AccessibilityRole.Group, label, Std.string(value));
 				semantics.states = AccessibilityState.ReadOnly;

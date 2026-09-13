@@ -232,6 +232,15 @@ if(NK_BUILD_EXAMPLES)
                 TIMEOUT 120
                 ENVIRONMENT "NATIVEKIT_BUILD_DIR=${CMAKE_BINARY_DIR};HAXEON_DIR=${NKUI_HAXEON_DIR}")
             if(NKUI_SHOWCASE_XVFB_RUN)
+                add_test(NAME nativekit_ui_explorer_smoke
+                    COMMAND ${NKUI_SHOWCASE_XVFB_RUN} -a
+                        "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase.sh"
+                        --ui-smoke-test)
+                set_tests_properties(nativekit_ui_explorer_smoke PROPERTIES
+                    LABELS "ui;haxe;showcase;smoke"
+                    TIMEOUT 120
+                    ENVIRONMENT
+                        "LIBGL_ALWAYS_SOFTWARE=1;NATIVEKIT_BUILD_DIR=${CMAKE_BINARY_DIR};HAXEON_DIR=${NKUI_HAXEON_DIR}")
                 add_test(NAME nativekit_ui_showcase_static
                     COMMAND ${NKUI_SHOWCASE_XVFB_RUN} -a
                         "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase.sh"
@@ -248,6 +257,8 @@ if(NK_BUILD_EXAMPLES)
             option(NKUI_HAXEON_MEMORY_STATS
                 "Export Haxeon guest allocator counters for Wasm benchmark profiling" OFF)
             file(GLOB NKUI_HAXEON_GUEST_HX_DEPS CONFIGURE_DEPENDS
+                "${CMAKE_CURRENT_SOURCE_DIR}/haxe/nativekit/ui/*.hx"
+                "${CMAKE_CURRENT_SOURCE_DIR}/haxe/nativekit/ui/*/*.hx"
                 "${CMAKE_CURRENT_SOURCE_DIR}/bindings/haxe/*.hx"
                 "${PROJECT_SOURCE_DIR}/bindings/haxe/*.hx")
             set(NKUI_HAXEON_MEMORY_CONTRACT_VERSION 1)
@@ -285,6 +296,7 @@ if(NK_BUILD_EXAMPLES)
                     "${NKUI_HAXEON_MEMORY_CONTRACT}"
                     "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/Showcase.hx"
                     "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/ShowcaseWeb.hx"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/UiExplorer.hx"
                     "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui-wasm.hxi"
                     "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui-showcase-wasm.hxi"
                     "${PROJECT_SOURCE_DIR}/bindings/haxe/nativekit-wasm.hxi"
@@ -312,10 +324,88 @@ if(NK_BUILD_EXAMPLES)
                 "${NKUI_HAXEON_FONT_DIR}/IBMPlexSansHebrew-Regular.ttf"
                 "${NKUI_HAXEON_FONT_DIR}/IBMPlexSansJP-Regular.ttf"
                 "${NKUI_HAXEON_FONT_DIR}/NotoEmoji-Regular.ttf")
+            set(NKUI_HAXEON_EXPORTED_FUNCTIONS
+                _main
+                _nk_api_version
+                _nk_clipboard_read_text
+                _nk_clipboard_set_text
+                _nk_event_release
+                _nk_init
+                _nk_last_error
+                _nk_poll_event
+                _nk_shutdown
+                _nk_surface_accessibility_clear
+                _nk_surface_accessibility_remove_node
+                _nk_surface_accessibility_set_focus
+                _nk_surface_accessibility_set_node
+                _nk_surface_create
+                _nk_surface_destroy
+                _nk_surface_get_framebuffer_size
+                _nk_surface_make_current
+                _nk_surface_present
+                _nk_surface_set_bounds
+                _nk_surface_set_text_input_active
+                _nk_surface_set_text_input_state
+                _nk_window_create
+                _nk_window_destroy
+                _nk_window_get_scale
+                _nkui_display_list_create
+                _nkui_display_list_destroy
+                _nkui_display_list_get_info
+                _nkui_display_list_reset
+                _nkui_display_list_submit
+                _nkui_font_collection_add
+                _nkui_font_collection_add_system_fallbacks
+                _nkui_font_collection_create
+                _nkui_image_create
+                _nkui_layout_session_clear_custom_paints
+                _nkui_layout_session_create
+                _nkui_layout_session_destroy
+                _nkui_layout_session_get_resolved_items
+                _nkui_layout_session_render_frame
+                _nkui_layout_session_set_custom_paint
+                _nkui_layout_session_set_font_collection
+                _nkui_layout_session_submit
+                _nkui_paint_create_solid
+                _nkui_path_create
+                _nkui_renderer_create
+                _nkui_renderer_destroy
+                _nkui_renderer_get_stats
+                _nkui_renderer_render
+                _nkui_renderer_render_frame
+                _nkui_resource_destroy
+                _nkui_text_layout_align_grapheme
+                _nkui_text_layout_caret
+                _nkui_text_layout_create
+                _nkui_text_layout_create_styled
+                _nkui_text_layout_get_selection_rects
+                _nkui_text_layout_hit_test
+                _nkui_text_layout_line_range_at
+                _nkui_text_layout_move_paragraph
+                _nkui_text_layout_move_word
+                _nkui_text_layout_next_grapheme
+                _nkui_text_layout_previous_grapheme
+                _nkui_text_layout_set_text
+                _nkui_text_layout_update
+                _nkui_text_layout_word_range_at
+                _nkui_showcase_cube_create
+                _nkui_showcase_cube_set_rotation
+                _nkui_haxeon_memory_contract_status
+                _nkui_haxeon_memory_contract_version
+                _nkui_haxeon_memory_contract_page_size
+                _nkui_haxeon_memory_contract_host_base
+                _nkui_haxeon_memory_contract_host_limit
+                _nkui_haxeon_memory_contract_base
+                _nkui_haxeon_memory_contract_guest_base
+                _nkui_haxeon_memory_contract_guest_limit
+                _nkui_haxeon_memory_contract_memory_size
+                _nkui_haxeon_memory_contract_limit)
+            list(JOIN NKUI_HAXEON_EXPORTED_FUNCTIONS ","
+                NKUI_HAXEON_EXPORTED_FUNCTIONS_CSV)
             target_link_options(nativekit_ui_haxeon PRIVATE
                 "-sINITIAL_MEMORY=${NKUI_HAXEON_MEMORY_LIMIT}"
                 "-sALLOW_MEMORY_GROWTH=0"
-                "-sEXPORTED_FUNCTIONS=[_main,_nk_api_version,_nk_event_release,_nk_init,_nk_last_error,_nk_poll_event,_nk_shutdown,_nk_surface_create,_nk_surface_destroy,_nk_surface_get_framebuffer_size,_nk_surface_make_current,_nk_surface_present,_nk_surface_set_bounds,_nk_window_create,_nk_window_destroy,_nk_window_get_scale,_nkui_display_list_create,_nkui_display_list_destroy,_nkui_display_list_get_info,_nkui_display_list_reset,_nkui_display_list_submit,_nkui_font_collection_add,_nkui_font_collection_add_system_fallbacks,_nkui_font_collection_create,_nkui_image_create,_nkui_paint_create_solid,_nkui_path_create,_nkui_renderer_create,_nkui_renderer_destroy,_nkui_renderer_get_stats,_nkui_renderer_render,_nkui_renderer_render_frame,_nkui_resource_destroy,_nkui_text_layout_caret,_nkui_text_layout_create,_nkui_text_layout_create_styled,_nkui_text_layout_hit_test,_nkui_text_layout_line_range_at,_nkui_text_layout_move_paragraph,_nkui_text_layout_move_word,_nkui_text_layout_set_text,_nkui_text_layout_update,_nkui_text_layout_word_range_at,_nkui_layout_session_create,_nkui_layout_session_destroy,_nkui_layout_session_get_resolved_items,_nkui_layout_session_render_frame,_nkui_layout_session_set_font_collection,_nkui_layout_session_submit,_nkui_showcase_cube_create,_nkui_showcase_cube_set_rotation,_nkui_haxeon_memory_contract_status,_nkui_haxeon_memory_contract_version,_nkui_haxeon_memory_contract_page_size,_nkui_haxeon_memory_contract_host_base,_nkui_haxeon_memory_contract_host_limit,_nkui_haxeon_memory_contract_base,_nkui_haxeon_memory_contract_guest_base,_nkui_haxeon_memory_contract_guest_limit,_nkui_haxeon_memory_contract_memory_size,_nkui_haxeon_memory_contract_limit]"
+                "-sEXPORTED_FUNCTIONS=[${NKUI_HAXEON_EXPORTED_FUNCTIONS_CSV}]"
                 "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSans-Regular.ttf@/assets/IBMPlexSans-Regular.ttf"
                 "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansArabic-Regular.ttf@/assets/IBMPlexSansArabic-Regular.ttf"
                 "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansHebrew-Regular.ttf@/assets/IBMPlexSansHebrew-Regular.ttf"

@@ -5,12 +5,27 @@ repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 artifact_dir=${NATIVEKIT_WEB_ARTIFACT_DIR:-"$repo_dir/build-web/modules/ui"}
 browser=${NK_WEB_BROWSER:-$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)}
 update=false
-if [[ ${1:-} == "--update" ]]; then
-    update=true
-elif [[ $# -ne 0 ]]; then
-    echo "usage: tools/test-web-visual.sh [--update]" >&2
-    exit 2
-fi
+ui_only=false
+case_filter=""
+while (($#)); do
+    case "$1" in
+        --update) update=true ;;
+        --ui-only) ui_only=true ;;
+        --case)
+            shift
+            if (($# == 0)); then
+                echo "usage: tools/test-web-visual.sh [--update] [--ui-only] [--case NAME]" >&2
+                exit 2
+            fi
+            case_filter=$1
+            ;;
+        *)
+            echo "usage: tools/test-web-visual.sh [--update] [--ui-only] [--case NAME]" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
 if [[ ! -f "$artifact_dir/nativekit_ui_haxeon.html" ]]; then
     echo "Haxeon web artifact is missing. Run tools/build-web.sh first." >&2
     exit 1
@@ -32,10 +47,46 @@ cases=(
     "light-theme|900x650||100,468|16,1,2"
     "animated|900x650|time=2250||16,1,2"
     "zoom-110|900x650|||16,1,2|1.1"
+    "ui-overview|1200x800|uiVisual=0||"
+    "ui-controls|1200x800|uiVisual=1||"
+    "ui-controls-light|1200x800|uiVisual=2||"
+    "ui-controls-focused|1200x800|uiVisual=3||"
+    "ui-text-focused|1200x800|uiVisual=4||"
+    "ui-layout|1200x800|uiVisual=5||"
+    "ui-lists-scrolled|1200x800|uiVisual=6||"
+    "ui-dialog|1200x800|uiVisual=7||"
+    "ui-popup|1200x800|uiVisual=8||"
+    "ui-menu|1200x800|uiVisual=9||"
+    "ui-controls-compact|820x700|uiVisual=10||"
 )
+
+if [[ -n "$case_filter" ]]; then
+    case_found=false
+    for visual_case in "${cases[@]}"; do
+        IFS='|' read -r case_name _ <<<"$visual_case"
+        if [[ "$case_name" == "$case_filter" ]]; then
+            case_found=true
+            break
+        fi
+    done
+    if [[ "$case_found" == false ]]; then
+        echo "Unknown visual case: $case_filter" >&2
+        exit 2
+    fi
+    if [[ "$ui_only" == true && "$case_filter" != ui-* ]]; then
+        echo "Visual case is not a UI Explorer case: $case_filter" >&2
+        exit 2
+    fi
+fi
 
 for visual_case in "${cases[@]}"; do
     IFS='|' read -r case_name size extra_query click caret device_scale <<<"$visual_case"
+    if [[ -n "$case_filter" && "$case_name" != "$case_filter" ]]; then
+        continue
+    fi
+    if [[ "$ui_only" == true && "$case_name" != ui-* ]]; then
+        continue
+    fi
     device_scale=${device_scale:-1}
     width=${size%x*}
     height=${size#*x}
@@ -78,9 +129,11 @@ for visual_case in "${cases[@]}"; do
         --reference "$repo_dir/modules/ui/tests/golden/showcase-${case_name}.png"
         --artifact-dir "$repo_dir/build-web/visual-diffs")
     [[ -z "$click" ]] || arguments+=(--click "$click")
-    IFS=',' read -r caret_offset caret_affinity caret_direction <<<"$caret"
-    arguments+=(--expect-offset "$caret_offset" --expect-affinity "$caret_affinity"
-        --expect-direction "$caret_direction")
+    if [[ -n "$caret" ]]; then
+        IFS=',' read -r caret_offset caret_affinity caret_direction <<<"$caret"
+        arguments+=(--expect-offset "$caret_offset" --expect-affinity "$caret_affinity"
+            --expect-direction "$caret_direction")
+    fi
     [[ "$update" == false ]] || arguments+=(--update)
     python3 "$repo_dir/tools/web_visual.py" "${arguments[@]}"
     cleanup_case

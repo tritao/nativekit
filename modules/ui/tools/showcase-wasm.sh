@@ -83,14 +83,18 @@ compiler_args=(
 	--wasm-memory-contract="$memory_contract"
 	--export=ShowcaseWeb.main
 	--export=ShowcaseWeb.configure
+	--export=ShowcaseWeb.configureMode
+	--export=ShowcaseWeb.configureUiVisual
 	--export=ShowcaseWeb.configureBenchmark
 	--export=ShowcaseWeb.frame
 	--export=ShowcaseWeb.status
+	--export=ShowcaseWeb.diagnostic
 	--export=ShowcaseWeb.caretOffset
 	--export=ShowcaseWeb.caretAffinity
 	--export=ShowcaseWeb.caretDirection
 	--export=ShowcaseWeb.shutdown
 	--root="$module_dir/examples/ui_showcase"
+	--root="$module_dir/haxe"
 	--root="$module_dir/bindings/haxe"
 	--root="$repo_dir/bindings/haxe"
 	--ffi-interface="$repo_dir/bindings/haxe/nativekit-wasm.hxi"
@@ -100,7 +104,15 @@ compiler_args=(
 	--ffi-interface="$module_dir/bindings/nativekit-ui-showcase-wasm.hxi"
 	"$module_dir/examples/ui_showcase/Showcase.hx"
 	"$module_dir/examples/ui_showcase/ShowcaseWeb.hx"
+	"$module_dir/examples/ui_showcase/UiExplorer.hx"
 	"$module_dir/examples/ui_showcase/ShowcaseCube.hx"
+	"$module_dir/haxe/nativekit/ui/core/"*.hx
+	"$module_dir/haxe/nativekit/ui/widgets/"*.hx
+	"$module_dir/haxe/nativekit/ui/theme/"*.hx
+	"$module_dir/haxe/nativekit/ui/semantics/"*.hx
+	"$module_dir/haxe/nativekit/ui/debug/"*.hx
+	"$module_dir/haxe/nativekit/ui/gestures/"*.hx
+	"$module_dir/haxe/nativekit/ui/animation/"*.hx
 	"$repo_dir/bindings/haxe/GraphicsImageRef.hx"
 	"$module_dir/bindings/haxe/"*.hx
 	"$repo_dir/bindings/haxe/NativeKitEvent.hx"

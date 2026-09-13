@@ -74,6 +74,10 @@ class FocusManager {
 	public function focusedNode():Null<RenderNode>
 		return focusedId == null ? null : find(focusedId);
 
+	/** Returns a currently eligible node without searching the render tree. */
+	public function eligibleNode(id:WidgetId):Null<RenderNode>
+		return id == null ? null : eligible.get(id.value);
+
 	public function contains(id:WidgetId):Bool
 		return find(id) != null;
 

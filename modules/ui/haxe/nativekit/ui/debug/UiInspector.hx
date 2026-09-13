@@ -75,9 +75,16 @@ class UiInspector {
 		return Std.string(Std.int(value * 100.0) / 100.0);
 
 	static function escape(value:String):String {
-		var result = StringTools.replace(value, "\\", "\\\\");
-		result = StringTools.replace(result, "\"", "\\\"");
-		result = StringTools.replace(result, "\n", "\\n");
-		return StringTools.replace(result, "\r", "\\r");
+		var result = new StringBuf();
+		for (index in 0...value.length) {
+			switch value.charCodeAt(index) {
+				case 92: result.add("\\\\");
+				case 34: result.add("\\\"");
+				case 10: result.add("\\n");
+				case 13: result.add("\\r");
+				case code: result.addChar(code);
+			}
+		}
+		return result.toString();
 	}
 }

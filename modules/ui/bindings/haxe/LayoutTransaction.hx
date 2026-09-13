@@ -99,6 +99,7 @@ class LayoutTransaction {
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TEXT_WRAP_OFFSET, cast node.paragraphStyle.wrap);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET, cast node.paragraphStyle.alignment);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET, cast node.paragraphStyle.direction);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TEXT_FLAGS_OFFSET, 0);
 			var transform = style.transform;
 			if (!finite(transform.a) || !finite(transform.b) || !finite(transform.c) ||
 				!finite(transform.d) || !finite(transform.tx) || !finite(transform.ty) ||

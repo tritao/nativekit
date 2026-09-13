@@ -119,6 +119,11 @@ class FrameworkSmoke {
 		editor.dispose();
 		var editedValue = "";
 		var submittedValue = "";
+		var emptyField = new TextField("empty-entry", "", function(_) {}, null,
+			"Empty message");
+		var emptyRoot = context.submit(emptyField, new LayoutFrame(256.0, 192.0));
+		if (emptyRoot.semantics == null || emptyRoot.semantics.value != "")
+			return 39;
 		var field = new TextField("entry", "hello", function(next) { editedValue = next; },
 			null, "Message");
 		field.onSubmit = function(next) { submittedValue = next; };

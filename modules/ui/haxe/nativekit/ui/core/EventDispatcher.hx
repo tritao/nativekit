@@ -216,7 +216,9 @@ class EventDispatcher {
 	function dispatchDirect(id:WidgetId, kind:String):Void {
 		if (root == null)
 			return;
-		var node = root.find(id);
+		var node = focus.eligibleNode(id);
+		if (node == null)
+			node = root.find(id);
 		if (node == null)
 			return;
 		var event = new UiEvent(kind, id);

@@ -1,6 +1,7 @@
 package nativekit.ui.core;
 
 import NativeKitSurface;
+import NativeKit.Result;
 import NativeKitTextInput;
 import Rect;
 
@@ -9,12 +10,16 @@ class TextInputBridge {
 	var surface:Null<NativeKitSurface>;
 	var requestedActive:Bool;
 	var platformActive:Bool;
+	public var platformSupported(default, null):Bool;
+	public var platformChecked(default, null):Bool;
 	var disposed:Bool;
 
 	public function new() {
 		surface = null;
 		requestedActive = false;
 		platformActive = false;
+		platformSupported = false;
+		platformChecked = false;
 		disposed = false;
 	}
 
@@ -26,6 +31,8 @@ class TextInputBridge {
 			return;
 		deactivatePlatform();
 		this.surface = surface;
+		platformSupported = false;
+		platformChecked = false;
 		if (requestedActive)
 			activatePlatform();
 	}
@@ -47,11 +54,14 @@ class TextInputBridge {
 			selectionEnd:Int, compositionStart:Int, compositionEnd:Int,
 			inputType:Int, flags:Int, cursor:Rect):Void {
 		ensureLive();
-		if (surface == null || surface.isDisposed() || !requestedActive || cursor == null)
+		if (surface == null || surface.isDisposed() || !requestedActive || cursor == null ||
+			(platformChecked && !platformSupported))
 			return;
-		NativeKitTextInput.update(surface, text == null ? "" : text, 0, documentLength, selectionStart,
+		var result = NativeKitTextInput.updateResult(surface, text == null ? "" : text, 0,
+			documentLength, selectionStart,
 			selectionEnd, compositionStart, compositionEnd, cast inputType, cast flags,
 			null, cursor.x, cursor.y, cursor.width, cursor.height);
+		checkPlatformResult(result, "text-input update");
 	}
 
 	public function dispose():Void {
@@ -64,16 +74,33 @@ class TextInputBridge {
 	}
 
 	function activatePlatform():Void {
-		if (!platformActive && surface != null && !surface.isDisposed()) {
-			NativeKitTextInput.setActive(surface, true);
+		if (platformActive || (platformChecked && !platformSupported) || surface == null ||
+			surface.isDisposed())
+			return;
+		if (checkPlatformResult(NativeKitTextInput.setActiveResult(surface, true),
+			"text-input activation"))
 			platformActive = true;
-		}
 	}
 
 	function deactivatePlatform():Void {
-		if (platformActive && surface != null && !surface.isDisposed())
-			NativeKitTextInput.setActive(surface, false);
+		if (platformActive && platformSupported && surface != null && !surface.isDisposed())
+			checkPlatformResult(NativeKitTextInput.setActiveResult(surface, false),
+				"text-input deactivation");
 		platformActive = false;
+	}
+
+	function checkPlatformResult(result:Result, operation:String):Bool {
+		if (result == Result.ErrorUnsupported) {
+			platformSupported = false;
+			platformChecked = true;
+			platformActive = false;
+			return false;
+		}
+		if (result != Result.Ok)
+			throw 'NativeKit $operation failed: $result';
+		platformSupported = true;
+		platformChecked = true;
+		return true;
 	}
 
 	function ensureLive():Void {

@@ -4,6 +4,7 @@ import NativeKit.NativeKitConstants;
 import NativeKit.Result;
 import NativeKit.TextInputAction;
 import NativeKit.TextInputType;
+import NativeKit.Handle;
 import NativeKitSurface;
 import NativeKitWindow;
 
@@ -37,9 +38,11 @@ class NativeKitTextInput {
 			selectionStart:Int, selectionEnd:Int, ?compositionStart:Int, ?compositionEnd:Int,
 			?inputType:TextInputType, ?flags:TextInputFlags, ?action:TextInputAction, ?cursorX:Float, ?cursorY:Float,
 			?cursorWidth:Float, ?cursorHeight:Float):Void {
-		updateTarget(new Handle(surface.nativeHandle().rawValue()), text, textStart, documentLength,
-			selectionStart, selectionEnd, compositionStart, compositionEnd, inputType, flags, action,
+		var result = updateResult(surface, text, textStart, documentLength, selectionStart,
+			selectionEnd, compositionStart, compositionEnd, inputType, flags, action,
 			cursorX, cursorY, cursorWidth, cursorHeight);
+		if (result != Result.Ok)
+			throw 'NativeKit text-input update failed: $result';
 	}
 
 	/** Synchronizes desktop IME input when the platform backend targets a window directly. */
@@ -47,15 +50,7 @@ class NativeKitTextInput {
 			selectionStart:Int, selectionEnd:Int, ?compositionStart:Int, ?compositionEnd:Int,
 			?inputType:TextInputType, ?flags:TextInputFlags, ?action:TextInputAction, ?cursorX:Float, ?cursorY:Float,
 			?cursorWidth:Float, ?cursorHeight:Float):Void {
-		updateTarget(new Handle(window.nativeHandle().rawValue()), text, textStart, documentLength,
-			selectionStart, selectionEnd, compositionStart, compositionEnd, inputType, flags, action,
-			cursorX, cursorY, cursorWidth, cursorHeight);
-	}
-
-	static function updateTarget(target:Handle, text:String, textStart:Int, documentLength:Int,
-			selectionStart:Int, selectionEnd:Int, ?compositionStart:Int, ?compositionEnd:Int,
-			?inputType:TextInputType, ?flags:TextInputFlags, ?action:TextInputAction, ?cursorX:Float, ?cursorY:Float,
-			?cursorWidth:Float, ?cursorHeight:Float):Void {
+		var target = new Handle(window.nativeHandle().rawValue());
 		var result = NativeKit.nk_surface_set_text_input_state(target,
 			state(text, textStart, documentLength, selectionStart, selectionEnd,
 				compositionStart, compositionEnd, inputType, flags, action,
@@ -64,19 +59,36 @@ class NativeKitTextInput {
 			throw 'NativeKit text-input update failed: $result';
 	}
 
+	/** Submits IME state without throwing, for callers that handle unsupported backends. */
+	public static function updateResult(surface:NativeKitSurface, text:String, textStart:Int,
+			documentLength:Int, selectionStart:Int, selectionEnd:Int, ?compositionStart:Int,
+			?compositionEnd:Int, ?inputType:TextInputType, ?flags:TextInputFlags,
+			?action:TextInputAction, ?cursorX:Float, ?cursorY:Float, ?cursorWidth:Float,
+			?cursorHeight:Float):Result {
+		var target = new Handle(surface.nativeHandle().rawValue());
+		return NativeKit.nk_surface_set_text_input_state(target,
+			state(text, textStart, documentLength, selectionStart, selectionEnd,
+				compositionStart, compositionEnd, inputType, flags, action,
+				cursorX, cursorY, cursorWidth, cursorHeight));
+	}
+
 	/** Shows or hides the platform text-input UI for a custom surface. */
 	public static function setActive(surface:NativeKitSurface, active:Bool):Void {
-		setTargetActive(new Handle(surface.nativeHandle().rawValue()), active);
+		var result = setActiveResult(surface, active);
+		if (result != Result.Ok)
+			throw 'NativeKit text-input activation failed: $result';
 	}
 
 	/** Shows or hides the platform text-input UI when the backend targets a window directly. */
 	public static function setWindowActive(window:NativeKitWindow, active:Bool):Void {
-		setTargetActive(new Handle(window.nativeHandle().rawValue()), active);
-	}
-
-	static function setTargetActive(target:Handle, active:Bool):Void {
+		var target = new Handle(window.nativeHandle().rawValue());
 		var result = NativeKit.nk_surface_set_text_input_active(target, active);
 		if (result != Result.Ok)
 			throw 'NativeKit text-input activation failed: $result';
 	}
+
+	/** Changes platform text-input visibility without throwing on unsupported backends. */
+	public static function setActiveResult(surface:NativeKitSurface, active:Bool):Result
+		return NativeKit.nk_surface_set_text_input_active(
+			new Handle(surface.nativeHandle().rawValue()), active);
 }

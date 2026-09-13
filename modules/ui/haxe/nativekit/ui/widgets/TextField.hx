@@ -4,6 +4,7 @@ import Canvas;
 import Color;
 import Insets;
 import LayoutAxis;
+import LayoutPositioning;
 import LayoutStyle;
 import LayoutVisualKind;
 import NativeKit.TextEditAction;
@@ -85,16 +86,14 @@ class TextField implements View {
 				semantics.states |= AccessibilityState.Multiline;
 			node.semantics = semantics;
 
-			var paintNodeStyle = new LayoutStyle();
-			paintNodeStyle.width = LayoutAxis.grow();
-			paintNodeStyle.height = LayoutAxis.grow();
-			var paintNode = new RenderNode(context.id("paint"), LayoutVisualKind.Custom,
-				paintNodeStyle);
-			node.add(paintNode);
-
 			var textNodeStyle = new LayoutStyle();
 			textNodeStyle.width = LayoutAxis.grow();
 			textNodeStyle.height = LayoutAxis.grow();
+			var editorContentStyle = new LayoutStyle();
+			editorContentStyle.width = LayoutAxis.grow();
+			editorContentStyle.height = LayoutAxis.grow();
+			var editorContent = new RenderNode(context.id("editor-content"),
+				LayoutVisualKind.Box, editorContentStyle);
 			var textNode = new RenderNode(context.id("text"), LayoutVisualKind.Text, textNodeStyle);
 			textNode.layout.text = editor.layoutText();
 			textNode.layout.textColor = textColor;
@@ -104,7 +103,21 @@ class TextField implements View {
 			textNode.layout.paragraphStyle.wrap = editor.paragraphStyle.wrap;
 			textNode.layout.paragraphStyle.alignment = editor.paragraphStyle.alignment;
 			textNode.layout.paragraphStyle.direction = editor.paragraphStyle.direction;
-			paintNode.add(textNode);
+			editorContent.add(textNode);
+			var paintStyle = new LayoutStyle();
+			paintStyle.width = LayoutAxis.grow();
+			paintStyle.height = LayoutAxis.grow();
+			paintStyle.positioning = LayoutPositioning.Absolute;
+			paintStyle.zIndex = 1;
+			var paintNode = new RenderNode(context.id("editor-paint"),
+				LayoutVisualKind.Custom, paintStyle);
+			paintNode.hitTestSelf = false;
+			paintNode.onPaint(function(canvas, _) {
+				if (!editor.isDisposed())
+					paintEditor(canvas, editor);
+			});
+			editorContent.add(paintNode);
+			node.add(editorContent);
 
 			var updateState = function() {
 				value = editor.layoutText();
@@ -143,11 +156,6 @@ class TextField implements View {
 				editor.updateLayout(geometry.width);
 				syncCursor(geometry);
 			});
-			paintNode.onPaint(function(canvas, _) {
-				if (!editor.isDisposed())
-					paintEditor(canvas, editor);
-			});
-
 			node.on(UiEventKind.Focus, function(_) {
 				if (!enabled)
 					return;

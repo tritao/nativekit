@@ -1,4 +1,5 @@
 import NativeKit;
+import NativeKit.Handle;
 import NativeKitUI;
 import NativeKit.NativeKitConstants;
 import NativeKit.EventKind;

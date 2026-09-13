@@ -14,33 +14,61 @@ import NativeKit.SurfaceFlags;
 import NativeKitEventValue;
 import NativeKitEvents;
 import NativeKitOptions;
+import NativeKitSurface;
+import nativekit.ui.core.NativeInputAdapter;
 
-/** Browser host entry points for the Haxeon Showcase wasm guest. */
+/** Browser host entry points for the Haxeon UI Explorer wasm guest. */
 class ShowcaseWeb {
-    static var app:Null<Showcase>;
+    static var graphics:Null<Showcase>;
+    static var explorer:Null<UiExplorer>;
+    static var explorerInput:Null<NativeInputAdapter>;
     static var events:Null<NativeKitEvents>;
     static var initialized = false;
     static var running = false;
     static var ready = false;
     static var window:WindowHandle = WindowHandle.invalid();
     static var surface:SurfaceHandle = SurfaceHandle.invalid();
-    static var logicalWidth:Float = Showcase.LOGICAL_WIDTH;
-    static var logicalHeight:Float = Showcase.LOGICAL_HEIGHT;
+    static var logicalWidth:Float = 1200.0;
+    static var logicalHeight:Float = 800.0;
     static var framebufferWidth = 0;
     static var framebufferHeight = 0;
     static var scale = 1.0;
     static var started = -1.0;
     static var rendered = 0;
     static var result = 0;
-    static var requestedWidth = 900;
-    static var requestedHeight = 650;
+    static var failureStage = 0;
+    static var requestedWidth = 1200;
+    static var requestedHeight = 800;
     static var benchmarkScenario = 0;
+    static var requestedMode = 0;
+    static var requestedUiVisualCase = -1;
+    static var graphicsMode = false;
+    static var openGraphicsRequested = false;
 
     public static function configure(width:Int, height:Int):Int {
         if (initialized || width <= 0 || height <= 0)
             return 1;
         requestedWidth = width;
         requestedHeight = height;
+        logicalWidth = width;
+        logicalHeight = height;
+        return 0;
+    }
+
+    /** Selects the initial app: 0=UI Explorer, 1=focused Graphics Lab. */
+    public static function configureMode(mode:Int):Int {
+        if (initialized || (mode != 0 && mode != 1))
+            return 1;
+        requestedMode = mode;
+        return 0;
+    }
+
+    /** Selects a deterministic UI Explorer screenshot state, 0-10. */
+    public static function configureUiVisual(caseId:Int):Int {
+        if (initialized || caseId < 0 || caseId > 10)
+            return 1;
+        requestedUiVisualCase = caseId;
+        requestedMode = 0;
         return 0;
     }
 
@@ -49,6 +77,7 @@ class ShowcaseWeb {
         if (initialized || scenario < 0 || scenario > 3)
             return 1;
         benchmarkScenario = scenario;
+        requestedMode = 1;
         return 0;
     }
 
@@ -61,8 +90,9 @@ class ShowcaseWeb {
                 return fail(10);
             initialized = true;
 
+            graphicsMode = requestedMode == 1;
             var windowOptions = NativeKitOptions.window(requestedWidth, requestedHeight,
-                "NativeKit Haxeon Showcase");
+                "NativeKit UI Explorer");
             var createdWindow = NativeKit.nk_window_create(windowOptions);
             if (createdWindow.status != Result.Ok)
                 return fail(11);
@@ -79,30 +109,41 @@ class ShowcaseWeb {
                 return fail(12);
             surface = createdSurface.out_surface;
             try {
-                var fonts = FontCollection.create();
-                fonts.add("/assets/IBMPlexSans-Regular.ttf");
-                fonts.add("/assets/IBMPlexSansArabic-Regular.ttf");
-                fonts.add("/assets/IBMPlexSansHebrew-Regular.ttf");
-                fonts.add("/assets/IBMPlexSansJP-Regular.ttf");
-                fonts.add("/assets/NotoEmoji-Regular.ttf", FontFamily.Emoji);
-                var sampleText:Null<String> = null;
-                if (benchmarkScenario == 2) {
-                    var repeated = new StringBuf();
-                    for (_ in 0...8)
-                        repeated.add("NativeKit — مرحبا — שלום — こんにちは 👋 · ");
-                    sampleText = repeated.toString();
+                if (graphicsMode) {
+                    var fonts = createWebFonts();
+                    var sampleText:Null<String> = null;
+                    if (benchmarkScenario == 2) {
+                        var repeated = new StringBuf();
+                        for (_ in 0...8)
+                            repeated.add("NativeKit — مرحبا — שלום — こんにちは 👋 · ");
+                        sampleText = repeated.toString();
+                    }
+                    graphics = new Showcase(fonts, sampleText);
+                    if (benchmarkScenario == 1)
+                        graphics.setBenchmarkAnimation(false);
+                } else {
+                    explorer = new UiExplorer(createWebFonts(), "WEBGL2 · WASM", function() {
+                        openGraphicsRequested = true;
+                    });
+                    explorer.attachSurface(NativeKitSurface.borrowNativeHandle(surface));
+                    explorer.setViewport(logicalWidth, logicalHeight, requestedWidth,
+                        requestedHeight, scale);
+                    if (requestedUiVisualCase >= 0 &&
+                        !explorer.setVisualCase(requestedUiVisualCase))
+                        return fail(23);
                 }
-                app = new Showcase(fonts, sampleText);
-                if (benchmarkScenario == 1)
-                    app.setBenchmarkAnimation(false);
             } catch (error:Dynamic) {
+                failureStage = 91;
                 return fail(22);
             }
             events = new NativeKitEvents();
             events.addListener(handleEvent);
+            if (!graphicsMode && explorer != null)
+                explorerInput = explorer.attachInput(events, new Handle(window.rawValue()));
             running = true;
             return 0;
         } catch (error:Dynamic) {
+            failureStage = 92;
             return fail(20);
         }
     }
@@ -112,28 +153,53 @@ class ShowcaseWeb {
         if (!running)
             return 0;
         try {
+            failureStage = 1;
             while (running && events != null && events.poll()) {}
             if (result != 0)
                 return -result;
 
-            if (running && ready && app != null) {
+            if (openGraphicsRequested && explorer != null && !graphicsMode) {
+                openGraphicsRequested = false;
+                graphicsMode = true;
+                if (explorerInput != null)
+                    explorerInput.detach();
+                graphics = new Showcase(createWebFonts());
+                graphics.setViewport(logicalWidth, logicalHeight);
+            }
+
+            if (running && ready && (graphics != null || explorer != null)) {
+                failureStage = 2;
                 if (benchmarkScenario == 3)
-                    app.benchmarkTextEdit(rendered);
+                    if (graphics != null)
+                        graphics.benchmarkTextEdit(rendered);
                 if (NativeKit.nk_surface_make_current(surface) != Result.Ok)
                     return -fail(17);
                 if (started < 0.0)
                     started = time;
                 var elapsed = (time - started) / 1000.0;
-                app.encodeFrame(elapsed, logicalWidth, logicalHeight, framebufferWidth,
-                    framebufferHeight, scale, false);
-                app.render(surface, logicalWidth, logicalHeight, framebufferWidth, framebufferHeight,
-                    scale);
+                if (graphicsMode && graphics != null) {
+                    failureStage = 3;
+                    graphics.encodeFrame(elapsed, logicalWidth, logicalHeight, framebufferWidth,
+                        framebufferHeight, scale, false);
+                    graphics.render(surface, logicalWidth, logicalHeight, framebufferWidth,
+                        framebufferHeight, scale);
+                } else if (explorer != null) {
+                    failureStage = 100 + explorer.getDiagnosticStage();
+                    explorer.render(new Handle(surface.rawValue()), elapsed);
+                }
+                failureStage = 4;
                 if (NativeKit.nk_surface_present(surface) != Result.Ok)
                     return -fail(18);
                 rendered++;
+                failureStage = 0;
             }
             return running ? 1 : 0;
+        } catch (error:UiError) {
+            failureStage = 1000 + cast(error.status, Int);
+            return -fail(19);
         } catch (error:Dynamic) {
+            if (explorer != null && explorer.getDiagnosticStage() > 0)
+                failureStage = 100 + explorer.getDiagnosticStage();
             return -fail(19);
         }
     }
@@ -141,22 +207,31 @@ class ShowcaseWeb {
     public static function status():Int
         return result != 0 ? result : (rendered > 0 ? 0 : 1);
 
+    public static function diagnostic():Int
+        return failureStage;
+
     public static function caretOffset():Int
-        return app == null ? -1 : app.caretOffset();
+        return graphics == null ? -1 : graphics.caretOffset();
 
     public static function caretAffinity():Int
-        return app == null ? -1 : app.caretAffinity();
+        return graphics == null ? -1 : graphics.caretAffinity();
 
     public static function caretDirection():Int
-        return app == null ? -1 : app.caretDirection();
+        return graphics == null ? -1 : graphics.caretDirection();
 
     public static function shutdown():Void {
         running = false;
         ready = false;
         events = null;
-        if (app != null)
-            app.dispose();
-        app = null;
+        if (graphics != null)
+            graphics.dispose();
+        graphics = null;
+        if (explorerInput != null)
+            explorerInput.detach();
+        explorerInput = null;
+        if (explorer != null)
+            explorer.dispose();
+        explorer = null;
         if (surface.isValid())
             NativeKit.nk_surface_destroy(surface);
         surface = SurfaceHandle.invalid();
@@ -173,6 +248,21 @@ class ShowcaseWeb {
             result = code;
         running = false;
         return result;
+    }
+
+    static function createWebFonts():FontCollection {
+        var fonts = FontCollection.create();
+        try {
+            fonts.add("/assets/IBMPlexSans-Regular.ttf");
+            fonts.add("/assets/IBMPlexSansArabic-Regular.ttf");
+            fonts.add("/assets/IBMPlexSansHebrew-Regular.ttf");
+            fonts.add("/assets/IBMPlexSansJP-Regular.ttf");
+            fonts.add("/assets/NotoEmoji-Regular.ttf", FontFamily.Emoji);
+            return fonts;
+        } catch (error:Dynamic) {
+            fonts.dispose();
+            throw error;
+        }
     }
 
     static function handleEvent(value:NativeKitEventValue):Void {
@@ -204,6 +294,9 @@ class ShowcaseWeb {
                     return;
                 }
                 scale = windowScale.out_scale;
+                if (explorer != null)
+                    explorer.setViewport(logicalWidth, logicalHeight, framebufferWidth,
+                        framebufferHeight, scale);
                 ready = framebufferWidth > 0 && framebufferHeight > 0;
             case SurfaceResize(source, width, height, newFramebufferWidth, newFramebufferHeight)
                 if (source.rawValue() == surface.rawValue()):
@@ -212,15 +305,27 @@ class ShowcaseWeb {
                 framebufferWidth = newFramebufferWidth;
                 framebufferHeight = newFramebufferHeight;
                 ready = framebufferWidth > 0 && framebufferHeight > 0;
+                if (explorer != null)
+                    explorer.setViewport(logicalWidth, logicalHeight, framebufferWidth,
+                        framebufferHeight, scale);
             case SurfaceLost(source) if (source.rawValue() == surface.rawValue()):
                 ready = false;
-            case PointerMove(source, x, y) if (source.rawValue() == window.rawValue() && app != null):
-                app.updatePointer(x, y);
-            case PointerButton(source, _, action, _, x, y) if (source.rawValue() == window.rawValue() && app != null):
-                app.pointerButton(x, y, action == InputAction.Press);
+            case PointerMove(source, x, y) if (source.rawValue() == window.rawValue() && graphicsMode && graphics != null):
+                graphics.updatePointer(x, y);
+            case PointerButton(source, _, action, _, x, y) if (source.rawValue() == window.rawValue() && graphicsMode && graphics != null):
+                graphics.pointerButton(x, y, action == InputAction.Press);
             case Key(source, key, _, action, _) if (source.rawValue() == window.rawValue() &&
                     action == InputAction.Press && key == Key.Escape):
-                running = false;
+                if (graphicsMode && explorer != null) {
+                    graphicsMode = false;
+                    if (graphics != null) {
+                        graphics.dispose();
+                        graphics = null;
+                    }
+                    if (explorerInput != null && events != null)
+                        explorerInput.attach(events);
+                } else
+                    running = false;
             case _:
         }
     }

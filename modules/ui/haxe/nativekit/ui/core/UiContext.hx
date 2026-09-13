@@ -39,6 +39,7 @@ class UiContext {
 	var customLists:Map<Int, DisplayList>;
 	var accessibilityBridge:Null<AccessibilityBridge>;
 	var accessibilitySurface:Null<NativeKitSurface>;
+	var diagnosticStage:Int = 0;
 	public final textInput:TextInputBridge;
 
 	public function new(?session:LayoutSession, ?fonts:FontCollection, ?theme:Theme) {
@@ -89,28 +90,39 @@ class UiContext {
 
 	/** Builds a fresh view tree, resolves native layout, and reconnects geometry by stable ID. */
 	public function submit(view:View, frame:LayoutFrame):RenderNode {
+		diagnosticStage = 1;
 		ensureLive();
 		if (view == null || frame == null)
 			throw "A UI frame requires a view and layout frame";
+		diagnosticStage = 2;
 		gestures.advance(frame.deltaSeconds);
+		diagnosticStage = 3;
 		animations.advance(frame.deltaSeconds);
 		buildContext.beginFrame();
+		diagnosticStage = 4;
 		var next = buildContext.withScope(new Key("root"), function() return view.build(buildContext));
 		if (next == null || next.parent != null)
 			throw "A view must produce one unparented render tree root";
+		diagnosticStage = 5;
 		var resolved = session.submit(next.layout, frame);
+		diagnosticStage = 6;
 		var byId = new Map<Int, ResolvedLayoutItem>();
 		for (item in resolved)
 			byId.set(item.id, item);
 		var resolvedStateRevision = stateStore.revision;
 		var missing = false;
+		diagnosticStage = 7;
 		next.walk(function(node) {
-			node.setResolved(byId.get(node.id.value));
+			// Geometry is keyed by the exact LayoutNode ID serialized to NativeUI.
+			node.setResolved(byId.get(node.layout.id));
 			if (node.resolved == null)
 				missing = true;
 		});
-		if (missing)
+		if (missing) {
+			diagnosticStage = 8;
 			throw "Native layout did not return geometry for every render node";
+		}
+		diagnosticStage = 9;
 		var previousFocus = focus.focusedId;
 		focus.rebuild(next);
 		var nextFocus = focus.focusedId;
@@ -124,8 +136,12 @@ class UiContext {
 		submittedStateRevision = resolvedStateRevision;
 		if (accessibilityBridge != null)
 			accessibilityBridge.update(next, focus.focusedId);
+		diagnosticStage = 0;
 		return next;
 	}
+
+	public function getDiagnosticStage():Int
+		return diagnosticStage;
 
 	/** Connects this frame's semantic projection to a NativeKit platform surface. */
 	public function updateAccessibility(surface:NativeKitSurface):Void {

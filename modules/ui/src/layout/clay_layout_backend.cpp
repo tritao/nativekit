@@ -216,8 +216,20 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
                                                       float available_width, void *user_data) {
     auto &state = *static_cast<Impl *>(user_data);
     Clay_TextLayoutResult result{};
-    if (!config || text.length < 0 || (!text.chars && text.length != 0) ||
-        !std::isfinite(available_width) || available_width <= 0.0f)
+    if (!config || text.length < 0 || (!text.chars && text.length != 0))
+        return result;
+
+    // An empty editor still contributes a text node to the UI tree. Clay may
+    // measure it with zero width, and no glyph layout or paragraph lines are
+    // needed until the first character is inserted.
+    if (text.length == 0) {
+        result.success = true;
+        result.dimensions = {std::isfinite(available_width) ? std::max(0.0f, available_width) : 0.0f,
+                             config->lineHeight > 0 ? static_cast<float>(config->lineHeight) : 0.0f};
+        return result;
+    }
+
+    if (!std::isfinite(available_width) || available_width <= 0.0f)
         return result;
 
     try {

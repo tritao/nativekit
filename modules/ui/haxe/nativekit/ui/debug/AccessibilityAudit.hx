@@ -22,7 +22,7 @@ class AccessibilityAudit {
 				issues.push(new AccessibilityIssue(node.id.value, "missing-semantics",
 					"Interactive nodes need an accessibility role and state"));
 			if (semantics != null && needsName(semantics.role) &&
-				(semantics.label == null || StringTools.trim(semantics.label).length == 0))
+				(semantics.label == null || isBlank(semantics.label)))
 				issues.push(new AccessibilityIssue(node.id.value, "missing-label",
 					"Interactive accessibility nodes need a non-empty label"));
 			if (node.focusable && node.resolved != null && node.resolved.visible &&
@@ -40,5 +40,15 @@ class AccessibilityAudit {
 		return role == AccessibilityRole.Button || role == AccessibilityRole.Checkbox ||
 			role == AccessibilityRole.Radio || role == AccessibilityRole.Link ||
 			role == AccessibilityRole.Slider || role == AccessibilityRole.TextField;
+	}
+
+	static function isBlank(value:String):Bool {
+		for (index in 0...value.length) {
+			var code = value.charCodeAt(index);
+			if (code != 9 && code != 10 && code != 11 && code != 12 && code != 13 &&
+				code != 32 && code != 160 && code != 0x3000)
+				return false;
+		}
+		return true;
 	}
 }

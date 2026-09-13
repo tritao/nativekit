@@ -1,55 +1,63 @@
-# NativeKit Graphics Lab
+# NativeKit UI Explorer
 
-The flagship UI example is a Haxeon program using the typed NativeKit graphics
-API. It keeps `nkui_resource`, command headers, and byte offsets out of the
-application code.
+`ui_showcase` is the flagship interactive example for NativeKit's Haxe UI
+framework. A searchable component catalog leads into seven pages: Overview,
+Controls, Text & Input, Layout, Scrolling & Data, Navigation & Overlays, and
+Graphics Lab. The app includes a global light/dark switch and a collapsible
+inspector that shows resolved render-tree bounds, focus, semantics, and the
+current accessibility audit.
 
-The scene demonstrates:
+The Haxe widgets own composition, state, focus, event handling, and semantics.
+Each frame follows the `UiContext.submit → native layout → render` path on both
+desktop and WebAssembly. Text & Input includes multilingual editing and sends
+selection, composition, and caret state to NativeKit's platform IME bridge.
+Scrolling & Data demonstrates a fixed-row `VirtualList` with 10,000 items and
+reports the visible row range.
 
-- reusable vector paths, Bézier curves, concave geometry, and stroke caps/joins;
-- solid paints, RGBA image upload, scaling, clipping, and opacity layers;
-- mixed Latin, Arabic, Hebrew, Japanese, and emoji text;
-- pointer-driven text hit testing with a visible caret;
-- the same retained star path rendered repeatedly with different translations;
-- display-list and path-cache diagnostics; and
-- a realtime, depth-tested indexed cube rendered offscreen and composited through
-  the same Canvas clipping, opacity, and ordering path as the rest of the UI.
+The Graphics Lab page opens the existing typed-graphics scene. That scene keeps
+its vector paths, Bézier curves, stroke caps and joins, image clipping and
+opacity, multilingual shaping and caret hit testing, retained display lists,
+path-cache diagnostics, and depth-tested offscreen cube. It remains the
+deterministic graphics workload used by existing visual regressions.
 
-The page shell and panel grid use retained `LayoutNode` values. After each
-submission, the Canvas demonstrations query their resolved panel bounds from
-`LayoutSession`, so window resizing reflows the cards while vector and image
-content remains under the typed graphics API.
-
-Build the Haxeon artifact and run it with:
+Build and run the desktop explorer with:
 
 ```sh
 modules/ui/tools/showcase.sh
 ```
 
-Useful deterministic modes are:
+The two smoke modes exercise the UI Explorer and the focused Graphics Lab,
+respectively. `--static-frame` renders one canonical Graphics Lab frame, and
+`--stats` prints its retained-list and path-cache counters:
 
 ```sh
-modules/ui/tools/showcase.sh --static-frame --stats
+modules/ui/tools/showcase.sh --ui-smoke-test
 modules/ui/tools/showcase.sh --smoke-test
+modules/ui/tools/showcase.sh --static-frame --stats
 ```
 
-`--static-frame` renders one canonical frame, including a fixed three-face cube
-view. `--smoke-test` renders 30 frames and exits, while `--stats` prints the
-final retained-list and path-cache counters.
-
-The WebGL visual regression suite captures the canonical, compact, and wide
-layout sizes with software rendering. It also covers deterministic caret clicks,
-light theme state, and a fixed non-zero animation frame:
+The WebGL host starts in the UI Explorer. The visual suite captures both the
+Graphics Lab and deterministic UI Explorer states: overview, dark/light and
+focused controls, text editing, layout, a scrolled virtual list, and dialog,
+popup, and menu overlays. Graphics cases continue to cover canonical, compact,
+and wide layouts, caret hit testing, light theme state, and a fixed animation
+frame:
 
 ```sh
 tools/test-web-visual.sh
+tools/test-web-visual.sh --ui-only
+tools/test-web-visual.sh --ui-only --case ui-controls
 tools/test-web-visual.sh --update  # intentionally refresh baselines
 ```
 
+`--ui-only` is a faster component-focused loop. UI baselines live beside the
+Graphics Lab references in `modules/ui/tests/golden/`; mismatches produce
+`*-actual.png` and `*-diff.png` artifacts under `build-web/visual-diffs/`.
+
 The browser bundle packages explicit IBM Plex Latin, Arabic, Hebrew, and
-Japanese fonts plus Noto Emoji from the Skribidi test assets. Its caret cases
-assert code-point offset, affinity, and direction for Latin, Arabic, Hebrew,
-CJK, and emoji runs, so they do not depend on fonts installed on the CI host.
+Japanese fonts plus Noto Emoji from the Skribidi test assets. Caret cases assert
+code-point offset, affinity, and direction for Latin, Arabic, Hebrew, CJK, and
+emoji runs, independent of fonts installed on the CI host.
 
 The Web host uses version 1 of a generated shared linear-memory contract:
 
