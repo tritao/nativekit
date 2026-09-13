@@ -27,6 +27,7 @@ import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
 import nativekit.ui.core.UiModifier;
 import nativekit.ui.core.UiTouchData;
+import nativekit.ui.core.WidgetId;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityBridge;
 import nativekit.ui.semantics.AccessibilityRole;
@@ -42,6 +43,10 @@ import nativekit.ui.widgets.ImageView;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Padding;
 import nativekit.ui.widgets.ProgressBar;
+import nativekit.ui.widgets.Dialog;
+import nativekit.ui.widgets.Menu;
+import nativekit.ui.widgets.MenuItem;
+import nativekit.ui.widgets.Popup;
 import nativekit.ui.widgets.Row;
 import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollController;
@@ -55,6 +60,7 @@ import nativekit.ui.widgets.Slider;
 import nativekit.ui.widgets.Stack;
 import nativekit.ui.widgets.StackChild;
 import nativekit.ui.widgets.Toggle;
+import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualList;
 
@@ -553,6 +559,86 @@ class FrameworkSmoke {
 		if (builtRows.length >= 12 || builtRows.length == 0 || builtRows[0] < 24 ||
 			builtRows[0] > 25 || listController.offsetY != 500.0)
 			return 68;
+
+		var returnFocusView = new Button("Return focus");
+		var returnFocusRoot = context.submit(returnFocusView, new LayoutFrame(256.0, 192.0));
+		if (!context.focusWidget(returnFocusRoot.id))
+			return 69;
+		var dialogDismissals = 0;
+		var dialog = new Dialog("dialog-smoke", "Settings", new Button("Apply"),
+			function() { dialogDismissals++; }, 240.0);
+		var dialogFrame = new LayoutFrame(256.0, 192.0);
+		var modalStack = new Stack("modal-stack", [
+			new StackChild("background", new Text("Background"), 0.0, 0.0, 0,
+				LayoutAxis.grow(), LayoutAxis.grow()),
+			new StackChild("dialog-layer", dialog, 0.0, 0.0, 10,
+				LayoutAxis.grow(), LayoutAxis.grow())
+		]);
+		var dialogRoot = context.submit(modalStack, dialogFrame);
+		var dialogFocus:Null<WidgetId> = null;
+		dialogRoot.walk(function(node) {
+			if (node.focusable)
+				dialogFocus = node.id;
+		});
+		var dialogLayer = dialogRoot.children[1];
+		var dialogPanelGeometry:ResolvedLayoutItem = cast dialogLayer.children[1].children[0].resolved;
+		var centeredDialogX = 128.0 - dialogPanelGeometry.width * 0.5;
+		if (dialogFocus == null || context.focus.focusedId == null ||
+			!context.focus.focusedId.equals(dialogFocus) ||
+			dialogPanelGeometry.x < centeredDialogX - 0.1 ||
+			dialogPanelGeometry.x > centeredDialogX + 0.1)
+			return 70;
+		var modalSemantics = AccessibilityBridge.project(dialogRoot, dialogFocus);
+		for (semanticNode in modalSemantics)
+			if (semanticNode.semantics.label == "Background")
+				return 79;
+		context.key(UiEventKind.KeyDown, UiKey.Escape);
+		if (dialogDismissals != 1)
+			return 71;
+		returnFocusRoot = context.submit(returnFocusView, dialogFrame);
+		if (context.focus.focusedId == null || !context.focus.focusedId.equals(returnFocusRoot.id))
+			return 72;
+
+		var popupDismissals = 0;
+		var popup = new Popup("popup-smoke", new Button("Popup action"), 100.0, 60.0,
+			null, function() { popupDismissals++; });
+		var popupRoot = context.submit(popup, dialogFrame);
+		context.pointerDown(5.0, 5.0, 0);
+		context.pointerUp(5.0, 5.0, 0);
+		if (popupDismissals != 1 || popupRoot.children[0].resolved == null)
+			return 73;
+
+		var selectedMenuItem = "";
+		var menuDismissals = 0;
+		var menu = new Menu("menu-smoke", [
+			new MenuItem("open", "Open", function() { selectedMenuItem = "open"; }),
+			new MenuItem("disabled", "Unavailable", null, false)
+		], 32.0, 24.0, function() { menuDismissals++; });
+		var menuRoot = context.submit(menu, dialogFrame);
+		if (context.focus.focusedId == null)
+			return 74;
+		context.key(UiEventKind.KeyDown, UiKey.Enter);
+		if (selectedMenuItem != "open" || menuDismissals != 1 ||
+			menuRoot.children[1].children[0].children[1].enabled)
+			return 75;
+
+		var tooltip = new Tooltip("tooltip-smoke", new Button("Anchor"), new Text("Hint"));
+		var tooltipFrame = new LayoutFrame(256.0, 192.0);
+		var tooltipRoot = context.submit(tooltip, tooltipFrame);
+		var tooltipGeometry:ResolvedLayoutItem = cast tooltipRoot.children[1].resolved;
+		if (tooltipGeometry.visible)
+			return 76;
+		var anchorGeometry:ResolvedLayoutItem = cast tooltipRoot.children[0].resolved;
+		context.pointerMove(anchorGeometry.x + 4.0, anchorGeometry.y + 4.0);
+		tooltipRoot = context.submit(tooltip, tooltipFrame);
+		tooltipGeometry = cast tooltipRoot.children[1].resolved;
+		if (!tooltipGeometry.visible)
+			return 77;
+		context.pointerMove(250.0, 190.0);
+		tooltipRoot = context.submit(tooltip, tooltipFrame);
+		tooltipGeometry = cast tooltipRoot.children[1].resolved;
+		if (tooltipGeometry.visible)
+			return 78;
 
 		var overlayCanvas = new Canvas();
 		var overlayList = DisplayList.create();

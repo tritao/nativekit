@@ -15,6 +15,8 @@ class RenderNode {
 	public var parent(default, null):Null<RenderNode>;
 	public var resolved:Null<ResolvedLayoutItem>;
 	public var focusable:Bool;
+	public var focusTrap:Bool;
+	public var hitTestSelf:Bool;
 	public var enabled:Bool;
 	public var tabIndex:Int;
 	public var semantics:Null<Semantics>;
@@ -31,6 +33,8 @@ class RenderNode {
 		parent = null;
 		resolved = null;
 		focusable = false;
+		focusTrap = false;
+		hitTestSelf = true;
 		enabled = true;
 		tabIndex = 0;
 		semantics = null;

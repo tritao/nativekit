@@ -31,7 +31,10 @@ class AccessibilityBridge {
 		var childCounts:Map<Int, Int> = new Map();
 		if (root == null)
 			return result;
-		projectNode(root, NativeKit.NativeKitConstants.NK_ACCESSIBILITY_ROOT,
+		var semanticRoot = findFocusTrap(root);
+		if (semanticRoot == null)
+			semanticRoot = root;
+		projectNode(semanticRoot, NativeKit.NativeKitConstants.NK_ACCESSIBILITY_ROOT,
 			true, focused, result, childCounts);
 		return result;
 	}
@@ -144,6 +147,18 @@ class AccessibilityBridge {
 		}
 		for (child in node.children)
 			projectNode(child, nextParent, enabled, focused, output, childCounts);
+	}
+
+	static function findFocusTrap(node:Null<RenderNode>):Null<RenderNode> {
+		if (node == null || node.resolved == null || !node.resolved.visible)
+			return null;
+		var result:Null<RenderNode> = node.focusTrap ? node : null;
+		for (child in node.children) {
+			var nested = findFocusTrap(child);
+			if (nested != null)
+				result = nested;
+		}
+		return result;
 	}
 
 	static function visibleBounds(item:ResolvedLayoutItem):Rect {

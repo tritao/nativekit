@@ -45,7 +45,7 @@ class HitTest {
 				return true;
 			index--;
 		}
-		if (geometry.hitTest(x, y))
+		if (node.hitTestSelf && geometry.hitTest(x, y))
 			return true;
 		path.pop();
 		return false;

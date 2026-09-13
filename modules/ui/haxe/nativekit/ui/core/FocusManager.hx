@@ -5,12 +5,16 @@ class FocusManager {
 	var root:Null<RenderNode>;
 	var order:Array<RenderNode>;
 	var eligible:Map<Int, RenderNode>;
+	var activeTrapId:Null<WidgetId>;
+	var focusBeforeTrap:Null<WidgetId>;
 	public var focusedId(default, null):Null<WidgetId>;
 
 	public function new() {
 		root = null;
 		order = [];
 		eligible = new Map();
+		activeTrapId = null;
+		focusBeforeTrap = null;
 		focusedId = null;
 	}
 
@@ -18,9 +22,34 @@ class FocusManager {
 		this.root = root;
 		order = [];
 		eligible = new Map();
-		if (root != null)
-			collect(root, true);
-		if (focusedId != null && !eligible.exists(focusedId.value))
+		var trap = findTrap(root);
+		var nextTrapId = trap == null ? null : trap.id;
+		if (trap != null) {
+			if (activeTrapId == null || !activeTrapId.equals(nextTrapId)) {
+				var current = focusedId == null || root == null ? null : root.find(focusedId);
+				if (current == null || trap.find(current.id) == null)
+					focusBeforeTrap = focusedId;
+				activeTrapId = nextTrapId;
+			}
+			collect(trap, true);
+		} else {
+			var restoreFocus = false;
+			if (activeTrapId != null) {
+				activeTrapId = null;
+				restoreFocus = true;
+			}
+			if (root != null)
+				collect(root, true);
+			if (restoreFocus) {
+				if (focusBeforeTrap != null && eligible.exists(focusBeforeTrap.value))
+					focusedId = eligible.get(focusBeforeTrap.value).id;
+				focusBeforeTrap = null;
+			}
+		}
+		if (trap != null && (focusedId == null || !eligible.exists(focusedId.value) ||
+			trap.find(focusedId) == null))
+			focusedId = order.length == 0 ? null : order[0].id;
+		else if (focusedId != null && !eligible.exists(focusedId.value))
 			focusedId = null;
 	}
 
@@ -79,6 +108,18 @@ class FocusManager {
 		if (visible)
 			for (child in node.children)
 				collect(child, enabled);
+	}
+
+	function findTrap(node:Null<RenderNode>):Null<RenderNode> {
+		if (node == null || node.resolved == null || !node.resolved.visible)
+			return null;
+		var result:Null<RenderNode> = node.focusTrap ? node : null;
+		for (child in node.children) {
+			var nested = findTrap(child);
+			if (nested != null)
+				result = nested;
+		}
+		return result;
 	}
 
 	function insertOrdered(node:RenderNode):Void {

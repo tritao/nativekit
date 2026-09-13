@@ -13,6 +13,7 @@ class UiKey {
 	public static inline var Left:Int = 263;
 	public static inline var Home:Int = 268;
 	public static inline var End:Int = 269;
+	public static inline var Escape:Int = 256;
 	public static inline var A:Int = 65;
 	public static inline var C:Int = 67;
 	public static inline var V:Int = 86;
