@@ -50,7 +50,7 @@ public final class NativeKitHostTest {
                 + "<script>setTimeout(()=>window.webkit.messageHandlers.nativekit."
                 + "postMessage('" + message + "'),50)</script><p>ready</p>";
             String url = "data:text/html;charset=utf-8,"
-                + URLEncoder.encode(html, StandardCharsets.UTF_8).replace("+", "%20");
+                + URLEncoder.encode(html, StandardCharsets.UTF_8.name()).replace("+", "%20");
 
             scenario.onActivity(activity -> {
                 handles[0] = activity.host.handle();
