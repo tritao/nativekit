@@ -4,6 +4,7 @@ import LayoutAxis;
 import LayoutDirection;
 import LayoutFrame;
 import LayoutStyle;
+import ResolvedLayoutItem;
 import NativeKit.InputAction;
 import NativeKit.TouchAction;
 import NativeKit.TouchTool;
@@ -21,6 +22,8 @@ import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Row;
+import nativekit.ui.widgets.ScrollAxis;
+import nativekit.ui.widgets.ScrollView;
 import nativekit.ui.widgets.Text;
 
 class FrameworkSmoke {
@@ -202,6 +205,32 @@ class FrameworkSmoke {
 		context.pointerUp(4.0, 4.0, 0);
 		if (clicks != 4)
 			return 11;
+
+		var viewportStyle = new LayoutStyle();
+		viewportStyle.width = LayoutAxis.fixed(256.0);
+		viewportStyle.height = LayoutAxis.fixed(80.0);
+		var longContentStyle = new LayoutStyle();
+		longContentStyle.width = LayoutAxis.fixed(256.0);
+		longContentStyle.height = LayoutAxis.fixed(400.0);
+		var scrollView = new ScrollView("demo-scroll", new Column("long-content", [
+			new KeyedView("message", new Text("Scrollable content"))
+		], longContentStyle), viewportStyle, ScrollAxis.Vertical);
+		var scrollFrame = new LayoutFrame(256.0, 80.0);
+		var scrollRoot = context.submit(scrollView, scrollFrame);
+		var contentGeometry:ResolvedLayoutItem = cast scrollRoot.children[0].resolved;
+		if (scrollView.controller.maxScrollY != 320.0 || contentGeometry == null ||
+			contentGeometry.clipBounds.height != 80.0)
+			return 25;
+		context.scroll(4.0, 4.0, 0.0, -50.0);
+		if (scrollView.controller.offsetY != 50.0 || !context.isDirty())
+			return 26;
+		scrollRoot = context.submit(scrollView, scrollFrame);
+		contentGeometry = cast scrollRoot.children[0].resolved;
+		if (contentGeometry.transform.ty != -50.0)
+			return 27;
+		scrollView.controller.jumpTo(0.0, 500.0);
+		if (scrollView.controller.offsetY != 320.0 || !context.isDirty())
+			return 28;
 
 		context.dispose();
 		fonts.dispose();

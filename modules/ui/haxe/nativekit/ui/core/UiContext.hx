@@ -42,9 +42,10 @@ class UiContext {
 		var byId = new Map<Int, ResolvedLayoutItem>();
 		for (item in resolved)
 			byId.set(item.id, item);
+		var resolvedStateRevision = stateStore.revision;
 		var missing = false;
 		next.walk(function(node) {
-			node.resolved = byId.get(node.id.value);
+			node.setResolved(byId.get(node.id.value));
 			if (node.resolved == null)
 				missing = true;
 		});
@@ -59,7 +60,7 @@ class UiContext {
 		events.setRoot(next);
 		if (nextFocus != null && (previousFocus == null || !previousFocus.equals(nextFocus)))
 			events.focusEvent(nextFocus, UiEventKind.Focus);
-		submittedStateRevision = stateStore.revision;
+		submittedStateRevision = resolvedStateRevision;
 		return next;
 	}
 

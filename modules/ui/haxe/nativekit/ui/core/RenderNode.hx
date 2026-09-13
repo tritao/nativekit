@@ -16,6 +16,7 @@ class RenderNode {
 	public var enabled:Bool;
 	public var tabIndex:Int;
 	final handlers:Map<String, Array<UiEvent->Void>>;
+	final resolvedHandlers:Array<ResolvedLayoutItem->Void>;
 
 	public function new(id:WidgetId, kind:LayoutVisualKind = LayoutVisualKind.Box, ?style:LayoutStyle) {
 		if (id == null)
@@ -29,6 +30,7 @@ class RenderNode {
 		enabled = true;
 		tabIndex = 0;
 		handlers = new Map();
+		resolvedHandlers = [];
 	}
 
 	public function add(child:RenderNode):RenderNode {
@@ -55,6 +57,21 @@ class RenderNode {
 		}
 		values.push(handler);
 		return this;
+	}
+
+	public function onResolved(handler:ResolvedLayoutItem->Void):RenderNode {
+		if (handler == null)
+			throw "Resolved geometry handlers cannot be null";
+		resolvedHandlers.push(handler);
+		return this;
+	}
+
+	@:allow(nativekit.ui.core.UiContext)
+	function setResolved(item:Null<ResolvedLayoutItem>):Void {
+		resolved = item;
+		if (item != null)
+			for (handler in resolvedHandlers)
+				handler(item);
 	}
 
 	@:allow(nativekit.ui.core.EventDispatcher)
