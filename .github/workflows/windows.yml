@@ -7,6 +7,7 @@ on:
 jobs:
   native-windows:
     runs-on: windows-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -27,4 +28,4 @@ jobs:
         run: cmake --build build --config Debug
       - name: Test
         if: matrix.test
-        run: ctest --test-dir build -C Debug --output-on-failure
+        run: ctest --test-dir build -C Debug --output-on-failure --timeout 120
