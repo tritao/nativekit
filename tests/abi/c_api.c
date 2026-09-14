@@ -37,18 +37,20 @@ int main(void) {
     options.api_version = NK_API_VERSION;
     assert(nk_api_version() == NK_API_VERSION);
     assert(nk_init(&options) == NK_OK);
-    assert(nk_surface_accessibility_clear(NK_INVALID_HANDLE) == NK_ERROR_UNSUPPORTED);
+    const nk_capabilities capabilities = nk_get_capabilities();
+    const nk_result accessibility_handle_result =
+        (capabilities & NK_CAP_ACCESSIBILITY) ? NK_ERROR_INVALID_HANDLE : NK_ERROR_UNSUPPORTED;
+    assert(nk_surface_accessibility_clear(NK_INVALID_HANDLE) == accessibility_handle_result);
     nk_accessibility_update accessibility_update = {0};
     accessibility_update.struct_size = sizeof(accessibility_update);
     assert(nk_surface_accessibility_update(NK_INVALID_HANDLE, &accessibility_update) ==
-           NK_ERROR_UNSUPPORTED);
+           accessibility_handle_result);
     const uint8_t malformed_removed_ids[] = {1, 2, 3};
     assert(nk_surface_accessibility_update_with_removed_ids(
                NK_INVALID_HANDLE, &accessibility_update, malformed_removed_ids,
                sizeof(malformed_removed_ids)) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_surface_accessibility_set_text_ranges(NK_INVALID_HANDLE, 1, NULL, 0) ==
-           NK_ERROR_UNSUPPORTED);
-    (void)nk_get_capabilities();
+           accessibility_handle_result);
     (void)nk_vulkan_supported();
     uint32_t vulkan_extension_count = 0;
     nk_result vulkan_extensions = nk_vulkan_get_required_instance_extensions(
