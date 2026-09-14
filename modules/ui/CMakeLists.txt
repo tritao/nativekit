@@ -365,6 +365,7 @@ if(NK_BUILD_EXAMPLES)
                 _nk_surface_accessibility_remove_node
                 _nk_surface_accessibility_set_focus
                 _nk_surface_accessibility_set_node
+                _nk_surface_accessibility_update_with_removed_ids
                 _nk_surface_create
                 _nk_surface_destroy
                 _nk_surface_get_framebuffer_size
