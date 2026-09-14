@@ -2355,7 +2355,7 @@ nkgpu_result nkgpu_submit_commands(nkgpu_renderer r, const uint8_t *commands, ui
     }
     return NKGPU_OK;
 }
-nkgpu_result nkgpu_end_frame(nkgpu_renderer r) {
+static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     auto *rs = renderer_pool.get(r);
     if (!rs)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
@@ -2375,14 +2375,17 @@ nkgpu_result nkgpu_end_frame(nkgpu_renderer r) {
     rs->value.pass_width = 0;
     rs->value.pass_height = 0;
     active_renderer = 0;
-    const nk_result present_result =
+    nk_result present_result = NK_OK;
+    if (present_surface) {
 #if defined(NKGPU_TESTING)
-        fail_next_present ? NK_ERROR_UNKNOWN : nk_surface_present(rs->value.surface);
+        present_result =
+            fail_next_present ? NK_ERROR_UNKNOWN : nk_surface_present(rs->value.surface);
 #else
-        nk_surface_present(rs->value.surface);
+        present_result = nk_surface_present(rs->value.surface);
 #endif
+    }
 #if defined(NKGPU_TESTING)
-    if (fail_next_present) {
+    if (present_surface && fail_next_present) {
         fail_next_present = false;
         mark_renderer_lost(r, rs->value);
         return fail(NKGPU_ERROR_DEVICE_LOST, "injected present failure");
@@ -2400,5 +2403,13 @@ nkgpu_result nkgpu_end_frame(nkgpu_renderer r) {
     }
 #endif
     return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_end_frame(nkgpu_renderer r) {
+    return end_frame(r, true);
+}
+
+nkgpu_result nkgpu_end_frame_deferred_present(nkgpu_renderer r) {
+    return end_frame(r, false);
 }
 }

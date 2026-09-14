@@ -15,13 +15,11 @@ namespace {
 bool check(bool result, const char *operation) {
     if (result)
         return true;
-    std::fprintf(stderr, "backend renderer smoke: %s failed: %s\n", operation,
-                 nk_last_error());
+    std::fprintf(stderr, "backend renderer smoke: %s failed: %s\n", operation, nk_last_error());
     return false;
 }
 
-bool acquire_surface_frame(nk_window window, nk_surface surface, int32_t &width,
-                           int32_t &height) {
+bool acquire_surface_frame(nk_window window, nk_surface surface, int32_t &width, int32_t &height) {
     if (!check(nk_window_activate(window) == NK_OK, "nk_window_activate"))
         return false;
     for (int attempt = 0; attempt < 500; ++attempt) {
@@ -116,8 +114,7 @@ int main() {
         goto cleanup;
     }
 
-    if (!check(nkgpu_renderer_create(surface, &producer) == NKGPU_OK,
-               "nkgpu_renderer_create")) {
+    if (!check(nkgpu_renderer_create(surface, &producer) == NKGPU_OK, "nkgpu_renderer_create")) {
         result = 7;
         goto cleanup;
     }
@@ -161,7 +158,7 @@ int main() {
     composite.width = 64.0f;
     composite.height = 64.0f;
     if (!check(nkui_display_list_submit(list, reinterpret_cast<const uint8_t *>(&composite),
-                                       sizeof(composite)) == NKUI_OK,
+                                        sizeof(composite)) == NKUI_OK,
                "submit imported image")) {
         result = 13;
         goto cleanup;
@@ -187,8 +184,13 @@ int main() {
         frame.framebuffer_width = width;
         frame.framebuffer_height = height;
         frame.pixel_scale = static_cast<float>(width) / window_options.width;
-        if (!check(nkui_renderer_render_frame(renderer, list, surface, &frame) == NKUI_OK,
-                   "render imported image")) {
+        const nkui_result render_result =
+            nkui_renderer_render_frame(renderer, list, surface, &frame);
+        if (render_result != NKUI_OK) {
+            std::fprintf(stderr,
+                         "backend renderer smoke: render imported image failed: result=%d, "
+                         "gpu=%s, window=%s\n",
+                         static_cast<int>(render_result), nkgpu_last_error(), nk_last_error());
             result = 16;
             goto cleanup;
         }

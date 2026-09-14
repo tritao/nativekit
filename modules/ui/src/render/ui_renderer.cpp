@@ -3,6 +3,7 @@
 #include "frame_resources.h"
 #include "ui_shader_sources.h"
 
+#include "adapter_internal.h"
 #include "nativekit_gpu.h"
 
 #include <algorithm>
@@ -1424,7 +1425,7 @@ bool UiRendererImpl::endFrame() {
         return true;
     if (state_->in_pass && !endPass())
         return false;
-    if (!gpu_result(*state_, nkgpu_end_frame(state_->renderer)))
+    if (!gpu_result(*state_, nkgpu_end_frame_deferred_present(state_->renderer)))
         return false;
     state_->in_frame = false;
     return true;

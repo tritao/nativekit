@@ -24,6 +24,7 @@ target_include_directories(nativekit_ui
     PRIVATE src)
 target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/clay")
 target_include_directories(nativekit_ui PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_include_directories(nativekit_ui PRIVATE "${PROJECT_SOURCE_DIR}/modules/gpu/src")
 target_link_libraries(nativekit_ui PUBLIC NativeKit::gpu
     PRIVATE nkui_skribidi nkui_nanovg_core)
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
@@ -49,7 +50,9 @@ set_target_properties(nativekit_ui PROPERTIES
 
 if(NK_BUILD_TESTS)
     add_test(NAME nativekit_ui_dependencies
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-dependencies.sh")
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNK_REPO_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-dependencies.cmake")
     if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
         add_executable(nativekit_ui_backend_smoke_test
             tests/backend_renderer_smoke.cpp)
