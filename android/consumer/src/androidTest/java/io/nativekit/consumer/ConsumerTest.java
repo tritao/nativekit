@@ -3,16 +3,19 @@ package io.nativekit.consumer;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.app.UiAutomation;
 import android.content.ClipData;
 import android.content.Intent;
 import android.net.Uri;
-import android.app.UiAutomation;
-import android.accessibilityservice.AccessibilityServiceInfo;
 import android.os.Build;
+import android.os.SystemClock;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityManager;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -74,6 +77,7 @@ public final class ConsumerTest {
             AccessibilityServiceInfo service = automation.getServiceInfo();
             service.flags |= AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
             automation.setServiceInfo(service);
+            waitForAccessibilityReady(scenario);
             executeAndWaitForAccessibilityEvent(
                 automation, () -> scenario.onActivity(MainActivity::dispatchAccessibilityForTest),
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, "window content changed");
@@ -143,6 +147,26 @@ public final class ConsumerTest {
 
     private static void waitForIdle() {
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+    }
+
+    private static void waitForAccessibilityReady(ActivityScenario<MainActivity> scenario)
+        throws InterruptedException {
+        AtomicBoolean ready = new AtomicBoolean();
+        long deadline = SystemClock.uptimeMillis() + 5_000;
+        do {
+            scenario.onActivity(activity -> {
+                AccessibilityManager manager =
+                    activity.getSystemService(AccessibilityManager.class);
+                ready.set(manager != null && manager.isEnabled() &&
+                          manager.isTouchExplorationEnabled());
+            });
+            if (ready.get()) {
+                waitForIdle();
+                return;
+            }
+            Thread.sleep(50);
+        } while (SystemClock.uptimeMillis() < deadline);
+        throw new AssertionError("Android accessibility service did not become ready");
     }
 
     private static void executeAndWaitForAccessibilityEvent(UiAutomation automation,
