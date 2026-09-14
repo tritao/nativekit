@@ -188,7 +188,8 @@ class UiContext {
 				customLists.set(nodeId, displayList);
 			}
 			canvas.update(displayList);
-			session.setCustomPaint(nodeId, displayList);
+			if (displayList.info().commandCount > 0)
+				session.setCustomPaint(nodeId, displayList);
 			painted.set(nodeId, true);
 		});
 		var stale:Array<Int> = [];

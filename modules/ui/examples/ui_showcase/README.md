@@ -41,8 +41,10 @@ modules/ui/tools/showcase.sh --static-frame --stats
 The WebGL host starts in the UI Explorer. The visual suite captures both the
 Graphics Lab and deterministic UI Explorer states: overview, dark/light and
 focused controls, text editing, layout, a scrolled virtual list,
-dialog/popup/menu overlays, a pointer-selected inspector widget, and Gestures &
-Motion. Graphics cases continue to cover canonical, compact, and wide layouts,
+dialog/popup/menu overlays, a pointer-selected inspector widget, Gestures &
+Motion, light-theme virtual-list and menu states, and selected TextArea text
+with its glyphs visible above the selection. Graphics cases continue to cover
+canonical, compact, and wide layouts,
 caret hit testing, light theme state, and a fixed animation frame:
 
 ```sh

@@ -89,11 +89,25 @@ class TextField implements View {
 			var textNodeStyle = new LayoutStyle();
 			textNodeStyle.width = LayoutAxis.grow();
 			textNodeStyle.height = LayoutAxis.grow();
+			textNodeStyle.zIndex = 1;
 			var editorContentStyle = new LayoutStyle();
 			editorContentStyle.width = LayoutAxis.grow();
 			editorContentStyle.height = LayoutAxis.grow();
 			var editorContent = new RenderNode(context.id("editor-content"),
 				LayoutVisualKind.Box, editorContentStyle);
+			var selectionStyle = new LayoutStyle();
+			selectionStyle.width = LayoutAxis.grow();
+			selectionStyle.height = LayoutAxis.grow();
+			selectionStyle.positioning = LayoutPositioning.Absolute;
+			selectionStyle.zIndex = 0;
+			var selectionNode = new RenderNode(context.id("editor-selection"),
+				LayoutVisualKind.Custom, selectionStyle);
+			selectionNode.hitTestSelf = false;
+			selectionNode.onPaint(function(canvas, _) {
+				if (!editor.isDisposed())
+					paintSelection(canvas, editor);
+			});
+			editorContent.add(selectionNode);
 			var textNode = new RenderNode(context.id("text"), LayoutVisualKind.Text, textNodeStyle);
 			textNode.layout.text = editor.layoutText();
 			textNode.layout.textColor = textColor;
@@ -108,13 +122,13 @@ class TextField implements View {
 			paintStyle.width = LayoutAxis.grow();
 			paintStyle.height = LayoutAxis.grow();
 			paintStyle.positioning = LayoutPositioning.Absolute;
-			paintStyle.zIndex = 1;
+			paintStyle.zIndex = 2;
 			var paintNode = new RenderNode(context.id("editor-paint"),
 				LayoutVisualKind.Custom, paintStyle);
 			paintNode.hitTestSelf = false;
 			paintNode.onPaint(function(canvas, _) {
 				if (!editor.isDisposed())
-					paintEditor(canvas, editor);
+					paintEditorDecorations(canvas, editor);
 			});
 			editorContent.add(paintNode);
 			node.add(editorContent);
@@ -347,11 +361,14 @@ class TextField implements View {
 				editor.selectionEnd));
 	}
 
-	static function paintEditor(canvas:Canvas, editor:TextEditorState):Void {
+	static function paintSelection(canvas:Canvas, editor:TextEditorState):Void {
 		if (editor.selectionStart != editor.selectionEnd) {
 			for (rect in editor.layout.selectionRects(editor.anchorPosition(), editor.focusPosition()))
 				canvas.fillRect(rect, Color.rgba(0.2, 0.43, 0.82, 0.55));
 		}
+	}
+
+	static function paintEditorDecorations(canvas:Canvas, editor:TextEditorState):Void {
 		if (editor.compositionStart >= 0 && editor.compositionStart != editor.compositionEnd) {
 			for (rect in editor.layout.selectionRects(new TextPosition(editor.compositionStart, 0),
 					new TextPosition(editor.compositionEnd, 0)))

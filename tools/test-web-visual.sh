@@ -105,6 +105,9 @@ cases=(
     "ui-controls-compact|820x700|uiVisual=10||"
     "ui-inspector-interactive|1200x800|uiVisual=1|650,218|"
     "ui-gestures|1200x800|uiVisual=11||"
+    "ui-lists-light|1200x800|uiVisual=12||"
+    "ui-textarea-selection|1200x800|uiVisual=13||"
+    "ui-menu-light|1200x800|uiVisual=14||"
 )
 
 if [[ -n "$case_filter" ]]; then

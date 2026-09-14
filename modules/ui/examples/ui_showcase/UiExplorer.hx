@@ -18,6 +18,7 @@ import Surface;
 import TextStyle;
 import nativekit.ui.core.NativeInputAdapter;
 import nativekit.ui.core.HitTest;
+import nativekit.ui.core.State;
 import nativekit.ui.core.UiContext;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.View;
@@ -63,6 +64,7 @@ import nativekit.ui.widgets.TabItem;
 import nativekit.ui.widgets.Tabs;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TextArea;
+import nativekit.ui.widgets.TextEditorState;
 import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Tooltip;
@@ -126,6 +128,7 @@ class UiExplorer {
 	var gestureMessage:String = "Tap, double-tap, hold, or drag the card.";
 	var smokeFocusTextField:Bool = false;
 	var visualFocusLabel:Null<String>;
+	var visualTextAreaSelection:Bool = false;
 
 	public function new(fonts:FontCollection, platformLabel:String,
 			onOpenGraphics:Void->Void) {
@@ -160,8 +163,10 @@ class UiExplorer {
 				rowStyle.width = LayoutAxis.grow();
 				rowStyle.height = LayoutAxis.fixed(LIST_ROW_HEIGHT);
 				rowStyle.padding = new Insets(8.0, 7.0, 8.0, 7.0);
-				rowStyle.background = index % 2 == 0 ? color(0.11, 0.14, 0.20) : color(0.13, 0.16, 0.23);
-				return new Text('ROW ${index + 1}  ·  virtual item', rowStyle, color(0.83, 0.87, 0.94));
+				rowStyle.background = lightTheme
+					? (index % 2 == 0 ? color(0.98, 0.99, 1.0) : color(0.91, 0.94, 0.98))
+					: (index % 2 == 0 ? color(0.11, 0.14, 0.20) : color(0.13, 0.16, 0.23));
+				return new Text('ROW ${index + 1}  ·  virtual item', rowStyle, paletteText());
 			}, listStyle, null, listController, 350.0);
 	}
 
@@ -213,7 +218,7 @@ class UiExplorer {
 		}
 	}
 
-	/** Selects one of the deterministic browser screenshot states, 0-11. */
+	/** Selects one of the deterministic browser screenshot states, 0-14. */
 	public function setVisualCase(caseId:Int):Bool {
 		showDialog = false;
 		showPopup = false;
@@ -236,6 +241,7 @@ class UiExplorer {
 		menuSelection = "No command selected";
 		listController.jumpTo(0.0, 0.0);
 		visualFocusLabel = null;
+		visualTextAreaSelection = false;
 		selectedPage = "overview";
 		switch caseId {
 			case 0: selectedPage = "overview";
@@ -259,6 +265,19 @@ class UiExplorer {
 			case 9: selectedPage = "overlays"; showMenu = true;
 			case 10: selectedPage = "controls";
 			case 11: selectedPage = "gestures";
+			case 12:
+				selectedPage = "lists";
+				lightTheme = true;
+				context.setTheme(makeTheme(true));
+			case 13:
+				selectedPage = "text";
+				visualFocusLabel = "Multilingual notes";
+				visualTextAreaSelection = true;
+			case 14:
+				selectedPage = "overlays";
+				lightTheme = true;
+				context.setTheme(makeTheme(true));
+				showMenu = true;
 			default: return false;
 		}
 		return true;
@@ -286,11 +305,22 @@ class UiExplorer {
 			smokeFocusTextField = false;
 			var targetLabel = visualFocusLabel;
 			visualFocusLabel = null;
+			var selectTextArea = visualTextAreaSelection;
+			visualTextAreaSelection = false;
 			var focused = false;
 			for (record in context.inspect())
 				if (!focused && ((targetLabel != null && record.label == targetLabel) ||
-					(targetLabel == null && record.role == AccessibilityRole.TextField)))
-					focused = context.focusWidget(new WidgetId(record.id));
+					(targetLabel == null && record.role == AccessibilityRole.TextField))) {
+					var widgetId = new WidgetId(record.id);
+					focused = context.focusWidget(widgetId);
+					if (focused && selectTextArea) {
+						var editorState:State<TextEditorState> = context.buildContext.existingState(widgetId);
+						var editor:TextEditorState = cast editorState.value;
+						if (!editor.setSelection(6, 15))
+							throw "UI visual test could not select TextArea text";
+						editorState.update(editor);
+					}
+				}
 			if (!focused)
 				throw "UI smoke test could not focus a TextField";
 		}
@@ -366,7 +396,7 @@ class UiExplorer {
 		topStyle.childAlignY = LayoutAlignment.Center;
 		topStyle.padding = new Insets(22.0, 0.0, 22.0, 0.0);
 		topStyle.childGap = 12.0;
-		topStyle.background = color(0.055, 0.075, 0.12);
+		topStyle.background = paletteSidebar();
 		var top = new Row("top-bar", [
 			keyed("brand-mark", text("NK", color(0.31, 0.91, 0.72))),
 			keyed("brand", text("NativeKit UI Explorer", paletteText())),
@@ -1280,11 +1310,13 @@ class UiExplorer {
 		theme.accent = light ? color(0.12, 0.37, 0.72) : color(0.25, 0.61, 0.89);
 		theme.text = light ? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
 		theme.mutedText = light ? color(0.32, 0.38, 0.47) : color(0.62, 0.68, 0.77);
-		theme.buttonHover = light ? color(0.22, 0.47, 0.82) : color(0.22, 0.48, 0.82);
-		theme.buttonPressed = light ? color(0.13, 0.33, 0.62) : color(0.13, 0.34, 0.67);
-		theme.buttonFocused = light ? color(0.27, 0.52, 0.84) : color(0.27, 0.52, 0.91);
-		theme.buttonSelected = light ? color(0.74, 0.83, 0.95) : color(0.17, 0.37, 0.68);
-		theme.buttonDisabled = light ? color(0.78, 0.81, 0.86) : color(0.22, 0.24, 0.28);
+		theme.buttonText = color(1.0, 1.0, 1.0);
+		theme.disabledButtonText = light ? color(0.38, 0.41, 0.46) : color(0.53, 0.55, 0.59);
+		theme.buttonHover = light ? color(0.16, 0.38, 0.69) : color(0.22, 0.48, 0.82);
+		theme.buttonPressed = light ? color(0.11, 0.29, 0.54) : color(0.13, 0.34, 0.67);
+		theme.buttonFocused = light ? color(0.22, 0.43, 0.73) : color(0.27, 0.52, 0.91);
+		theme.buttonSelected = light ? color(0.16, 0.36, 0.65) : color(0.17, 0.37, 0.68);
+		theme.buttonDisabled = light ? color(0.82, 0.84, 0.88) : color(0.22, 0.24, 0.28);
 		theme.controlSelected = theme.accent;
 		theme.controlUnselected = light ? color(0.78, 0.81, 0.86) : color(0.16, 0.18, 0.22);
 		theme.controlDisabled = light ? color(0.82, 0.84, 0.88) : color(0.20, 0.21, 0.24);

@@ -132,9 +132,13 @@ class FrameworkSmoke {
 		var fieldRoot = context.submit(field, new LayoutFrame(256.0, 192.0));
 		if (fieldRoot.children.length != 1 ||
 			fieldRoot.children[0].layout.visualKind != LayoutVisualKind.Box ||
-			fieldRoot.children[0].children.length != 2 ||
-			fieldRoot.children[0].children[0].layout.visualKind != LayoutVisualKind.Text ||
-			fieldRoot.children[0].children[1].layout.visualKind != LayoutVisualKind.Custom)
+			fieldRoot.children[0].children.length != 3 ||
+			fieldRoot.children[0].children[0].layout.visualKind != LayoutVisualKind.Custom ||
+			fieldRoot.children[0].children[0].layout.style.zIndex != 0 ||
+			fieldRoot.children[0].children[1].layout.visualKind != LayoutVisualKind.Text ||
+			fieldRoot.children[0].children[1].layout.style.zIndex != 1 ||
+			fieldRoot.children[0].children[2].layout.visualKind != LayoutVisualKind.Custom ||
+			fieldRoot.children[0].children[2].layout.style.zIndex != 2)
 			return 201;
 		if (fieldRoot.semantics == null || fieldRoot.semantics.role != AccessibilityRole.TextField ||
 			fieldRoot.semantics.label != "Message" || !fieldRoot.focusable)
@@ -174,7 +178,7 @@ class FrameworkSmoke {
 		if (fieldEditor.layout.selectionRects(new TextPosition(0, 0), new TextPosition(4, 0)).length == 0)
 			return 48;
 		var fieldTextGeometry:ResolvedLayoutItem =
-			cast fieldRoot.children[0].children[0].resolved;
+			cast fieldRoot.children[0].children[1].resolved;
 		var fieldY = fieldTextGeometry.y + fieldTextGeometry.height * 0.5;
 		var fieldLeft = fieldTextGeometry.x + 0.5;
 		var fieldRight = fieldTextGeometry.x + fieldTextGeometry.width - 0.5;
@@ -198,7 +202,7 @@ class FrameworkSmoke {
 		var clickFrame = new LayoutFrame(256.0, 192.0);
 		clickFrame.deltaSeconds = 0.1;
 		fieldRoot = context.submit(field, clickFrame);
-		fieldTextGeometry = cast fieldRoot.children[0].resolved;
+		fieldTextGeometry = cast fieldRoot.children[0].children[1].resolved;
 		var wordX = fieldTextGeometry.x + fieldEditor.layout.measure().width * 0.5;
 		context.pointerDown(wordX, fieldY, 0);
 		context.pointerUp(wordX, fieldY, 0);
@@ -222,7 +226,7 @@ class FrameworkSmoke {
 		if (wordRange.start != 4 || wordRange.end != 7)
 			return 191;
 		var wordTextGeometry:ResolvedLayoutItem =
-			cast wordAreaRoot.children[0].children[0].resolved;
+			cast wordAreaRoot.children[0].children[1].resolved;
 		var wordStartCaret = wordEditor.layout.caret(new TextPosition(4, 0));
 		var wordStartX = wordStartCaret.x;
 		var wordNextX = wordEditor.layout.caret(new TextPosition(5, 0)).x;
@@ -496,6 +500,12 @@ class FrameworkSmoke {
 		if (!NativeKitEventDecoderTests.run())
 			return 27;
 		var frame = new LayoutFrame(256.0, 192.0);
+		var cycleRoot = new RenderNode(new WidgetId(0x7fffff00));
+		var cycleChild = new RenderNode(new WidgetId(0x7fffff01));
+		cycleRoot.children.push(cycleChild);
+		cycleChild.children.push(cycleRoot);
+		if (cycleRoot.find(new WidgetId(0x7fffff02)) != null)
+			return 105;
 		var clicks = 0;
 		var bubbled = 0;
 		var captured = 0;
@@ -650,7 +660,15 @@ class FrameworkSmoke {
 		var nextId = root.children[1].id;
 		if (!input.consume(Key(source, UiKey.Tab, 15, InputAction.Press, 0)) ||
 			context.focus.focusedId == null || !context.focus.focusedId.equals(nextId) ||
+			!input.consume(Key(source, UiKey.Tab, 15, InputAction.Repeat, 0)) ||
+			context.focus.focusedId == null || !context.focus.focusedId.equals(initialId) ||
+			!input.consume(Key(source, UiKey.Tab, 15, InputAction.Repeat, 0)) ||
+			context.focus.focusedId == null || !context.focus.focusedId.equals(nextId) ||
 			!input.consume(Key(source, UiKey.Tab, 15, InputAction.Press, UiModifier.Shift)) ||
+			context.focus.focusedId == null || !context.focus.focusedId.equals(initialId) ||
+			!input.consume(Key(source, UiKey.Tab, 15, InputAction.Repeat, UiModifier.Shift)) ||
+			context.focus.focusedId == null || !context.focus.focusedId.equals(nextId) ||
+			!input.consume(Key(source, UiKey.Tab, 15, InputAction.Repeat, UiModifier.Shift)) ||
 			context.focus.focusedId == null || !context.focus.focusedId.equals(initialId))
 			return 24;
 		if (!input.consume(TextInput(source, 0x1f642)) || committedText != "🙂")
@@ -673,7 +691,7 @@ class FrameworkSmoke {
 		if (cancelEvents != 1 || clicks != 4)
 			return 20;
 		input.consume(WindowStateChanged(source, 0));
-		if (focusLostEvents != 1 || blurEvents != 2 || context.focus.focusedId != null)
+		if (focusLostEvents != 1 || blurEvents != 4 || context.focus.focusedId != null)
 			return 21;
 
 		context.clearFocus();
@@ -975,6 +993,14 @@ class FrameworkSmoke {
 			return 98;
 
 		var theme = new Theme();
+		theme.text = Color.rgba(0.10, 0.14, 0.21, 1.0);
+		theme.buttonText = Color.rgba(1.0, 1.0, 1.0, 1.0);
+		var lightNeutral = Color.rgba(0.87, 0.90, 0.95, 1.0);
+		var accentButton = Color.rgba(0.18, 0.39, 0.70, 1.0);
+		if (theme.buttonLabelColor(true, lightNeutral) != theme.text ||
+			theme.buttonLabelColor(true, accentButton) != theme.buttonText ||
+			theme.buttonLabelColor(false, accentButton) != theme.disabledButtonText)
+			return 101;
 		theme.buttonHover = Color.rgba(0.8, 0.1, 0.1, 1.0);
 		theme.buttonPressed = Color.rgba(0.7, 0.05, 0.05, 1.0);
 		theme.buttonFocused = Color.rgba(0.4, 0.2, 0.8, 1.0);

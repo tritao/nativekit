@@ -5,10 +5,14 @@ import LayoutStyle;
 
 /** Haxe-owned color and state palette resolved before the layout transaction. */
 class Theme {
+	static final darkButtonTextOnLight:Color = Color.rgba(0.08, 0.10, 0.14, 1.0);
+
 	public var accent:Color;
 	public var text:Color;
 	public var mutedText:Color;
 	public var disabledText:Color;
+	public var buttonText:Color;
+	public var disabledButtonText:Color;
 	public var buttonHover:Color;
 	public var buttonPressed:Color;
 	public var buttonFocused:Color;
@@ -26,6 +30,8 @@ class Theme {
 		text = Color.rgba(0.96, 0.97, 0.99, 1.0);
 		mutedText = Color.rgba(0.69, 0.72, 0.77, 1.0);
 		disabledText = Color.rgba(0.53, 0.55, 0.59, 1.0);
+		buttonText = text;
+		disabledButtonText = disabledText;
 		buttonHover = Color.rgba(0.21, 0.46, 0.84, 1.0);
 		buttonPressed = Color.rgba(0.13, 0.34, 0.67, 1.0);
 		buttonFocused = Color.rgba(0.27, 0.52, 0.91, 1.0);
@@ -57,6 +63,24 @@ class Theme {
 
 	public function textColor(enabled:Bool):Color
 		return enabled ? text : disabledText;
+
+	/** Chooses a readable foreground for both accent-filled and light neutral buttons. */
+	public function buttonLabelColor(enabled:Bool, background:Color):Color {
+		if (!enabled)
+			return disabledButtonText;
+		if (background == null || background.alpha < 0.5)
+			return text;
+		var luminance = channelLuminance(background.red) * 0.2126 +
+			channelLuminance(background.green) * 0.7152 +
+			channelLuminance(background.blue) * 0.0722;
+		if (luminance > 0.179)
+			return channelLuminance(text.red) * 0.2126 + channelLuminance(text.green) * 0.7152 +
+				channelLuminance(text.blue) * 0.0722 <= 0.179 ? text : darkButtonTextOnLight;
+		return buttonText;
+	}
+
+	static inline function channelLuminance(channel:Float):Float
+		return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
 
 	public function controlColor(selected:Bool, enabled:Bool):Color {
 		if (!enabled)

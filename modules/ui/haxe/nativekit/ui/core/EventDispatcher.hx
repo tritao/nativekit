@@ -108,11 +108,12 @@ class EventDispatcher {
 		var event = new UiEvent(kind, node.id, 0.0, 0.0, 0.0, 0.0, 0, key,
 			modifiers, null, null, scancode);
 		dispatchPath(path, event);
-		if (event.defaultPrevented || kind != UiEventKind.KeyDown)
+		if (event.defaultPrevented)
 			return;
-		if (key == UiKey.Tab)
+		if (key == UiKey.Tab &&
+			(kind == UiEventKind.KeyDown || kind == UiEventKind.KeyRepeat))
 			moveFocus((modifiers & UiModifier.Shift) != 0);
-		else if (key == UiKey.Enter || key == UiKey.Space)
+		else if (kind == UiEventKind.KeyDown && (key == UiKey.Enter || key == UiKey.Space))
 			dispatchPath(path, new UiEvent(UiEventKind.Activate, node.id, 0.0, 0.0,
 				0.0, 0.0, 0, key, modifiers, null, null, scancode));
 	}

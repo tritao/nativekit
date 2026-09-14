@@ -131,12 +131,22 @@ class RenderNode {
 	public function find(id:WidgetId):Null<RenderNode> {
 		if (id == null)
 			return null;
-		if (this.id.equals(id))
-			return this;
-		for (child in children) {
-			var found = child.find(id);
-			if (found != null)
-				return found;
+		var pending:Array<RenderNode> = [this];
+		var visited = new Map<Int, Bool>();
+		while (pending.length > 0) {
+			var node = pending.pop();
+			if (node == null || visited.exists(node.id.value))
+				continue;
+			if (node.id.equals(id))
+				return node;
+			visited.set(node.id.value, true);
+			var index = node.children.length - 1;
+			while (index >= 0) {
+				var child = node.children[index];
+				if (child != null)
+					pending.push(child);
+				index--;
+			}
 		}
 		return null;
 	}
