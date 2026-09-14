@@ -5,8 +5,9 @@
 #include "core/error.hpp"
 #include "core/runtime.hpp"
 
-#include <uiautomation.h>
-#include <uiautomationcoreapi.h>
+// UIAutomationCore's forward declarations need COM headers omitted by WIN32_LEAN_AND_MEAN.
+#include <Unknwn.h>
+#include <UIAutomation.h>
 
 #include <algorithm>
 #include <atomic>

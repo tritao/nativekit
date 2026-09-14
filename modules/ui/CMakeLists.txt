@@ -373,6 +373,7 @@ if(NK_BUILD_EXAMPLES)
                 _nk_clipboard_read_text
                 _nk_clipboard_set_text
                 _nk_event_release
+                _nk_get_capabilities
                 _nk_init
                 _nk_last_error
                 _nk_poll_event

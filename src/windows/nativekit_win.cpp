@@ -2560,12 +2560,11 @@ void shutdown() noexcept {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    nk_capabilities capabilities = NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
-                                   NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-                                   NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
-                                   NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR |
-                                   NK_CAP_POINTER_CAPTURE | NK_CAP_D3D11_SURFACE |
-                                   NK_CAP_ACCESSIBILITY;
+    nk_capabilities capabilities =
+        NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
+        NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
+        NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE |
+        NK_CAP_D3D11_SURFACE | NK_CAP_ACCESSIBILITY;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
