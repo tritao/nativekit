@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -81,6 +82,8 @@ struct Renderer {
     Handle active_target = 0;
     int32_t pass_width = 0;
     int32_t pass_height = 0;
+    sg_pixel_format surface_color_format = SG_PIXELFORMAT_RGBA8;
+    sg_pixel_format surface_depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     uint64_t frames = 0;
     uint64_t passes = 0;
     uint64_t draw_calls = 0;
@@ -103,6 +106,7 @@ struct Buffer {
 struct Shader {
     Handle owner = 0;
     sg_shader object{};
+    nkgpu_shader_language language = NKGPU_SHADERLANGUAGE_GLSL;
 };
 struct Pipeline {
     Handle owner = 0;
@@ -127,6 +131,9 @@ struct ShaderBuilder {
     std::array<std::array<std::string, SG_MAX_UNIFORMBLOCK_MEMBERS>, SG_MAX_UNIFORMBLOCK_BINDSLOTS>
         uniform_names;
     std::array<std::string, SG_MAX_TEXTURE_SAMPLER_PAIRS> texture_names;
+    std::array<std::string, SG_MAX_VERTEX_ATTRIBUTES> glsl_attribute_names;
+    std::array<std::string, SG_MAX_VERTEX_ATTRIBUTES> hlsl_semantic_names;
+    std::array<uint32_t, SG_MAX_VERTEX_ATTRIBUTES> hlsl_semantic_indices{};
 };
 struct UniformBuilder {
     Handle owner = 0;
@@ -275,7 +282,10 @@ static nkgpu_result activate_renderer(Handle handle) {
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     if (active_renderer && active_renderer != handle)
         return fail(NKGPU_ERROR_WRONG_STATE, "another renderer has an active frame");
-    if (!renderer_is_active(slot->value) && nk_surface_make_current(slot->value.surface) != NK_OK)
+    const bool context_backend = slot->value.graphics_api == NK_GRAPHICS_OPENGL ||
+                                 slot->value.graphics_api == NK_GRAPHICS_OPENGL_ES;
+    if (!renderer_is_active(slot->value) && context_backend &&
+        nk_surface_make_current(slot->value.surface) != NK_OK)
         return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
     nk_surface_frame_target target{};
     target.struct_size = sizeof(target);
@@ -402,7 +412,13 @@ static const nk_sokol_api *api_for_graphics_api(nk_graphics_api api) {
     return api == NK_GRAPHICS_OPENGL_ES ? runtime : nullptr;
 #endif
 #else
+#if defined(NK_SOKOL_BACKEND_D3D11)
+    return api == NK_GRAPHICS_D3D11 ? runtime : nullptr;
+#elif defined(NK_SOKOL_BACKEND_METAL)
+    return api == NK_GRAPHICS_METAL ? runtime : nullptr;
+#else
     return api == NK_GRAPHICS_OPENGL ? runtime : nullptr;
+#endif
 #endif
 #endif
 }
@@ -415,15 +431,23 @@ static nkgpu_backend convert_backend(const nk_sokol_api *api) {
         return NKGPU_BACKEND_GLCORE;
     case SG_BACKEND_GLES3:
         return NKGPU_BACKEND_GLES3;
+    case SG_BACKEND_D3D11:
+        return NKGPU_BACKEND_D3D11;
+    case SG_BACKEND_METAL_IOS:
+    case SG_BACKEND_METAL_MACOS:
+    case SG_BACKEND_METAL_SIMULATOR:
+        return NKGPU_BACKEND_METAL;
     default:
         return 0;
     }
 }
 
-static int release_graphics_image(const void *runtime, nk_graphics_device device,
-                                  uint64_t backend_image) {
+static int release_graphics_image(nk_graphics_api graphics_api, const void *runtime,
+                                  nk_graphics_device device, uint64_t backend_image) {
     auto *api = static_cast<const nk_sokol_api *>(runtime);
-    if (!api || !api->external_image_release || !device.id || !backend_image ||
+    if (!api || !api->external_image_release || !device.id || !backend_image)
+        return 0;
+    if ((graphics_api == NK_GRAPHICS_OPENGL || graphics_api == NK_GRAPHICS_OPENGL_ES) &&
         nk_surface_make_current(device.id) != NK_OK)
         return 0;
     api->external_image_release(static_cast<uint32_t>(backend_image));
@@ -436,6 +460,26 @@ static nkgpu_result fail(nkgpu_result code, const char *format, ...) {
     vsnprintf(error_message, sizeof(error_message), format, args);
     va_end(args);
     return code;
+}
+
+static nkgpu_shader_language shader_language_for(nk_graphics_api api) {
+    switch (api) {
+    case NK_GRAPHICS_OPENGL:
+    case NK_GRAPHICS_OPENGL_ES:
+        return NKGPU_SHADERLANGUAGE_GLSL;
+    case NK_GRAPHICS_D3D11:
+        return NKGPU_SHADERLANGUAGE_HLSL5;
+    case NK_GRAPHICS_METAL:
+        return NKGPU_SHADERLANGUAGE_MSL;
+    default:
+        return 0;
+    }
+}
+
+static bool shader_language_matches_renderer(nkgpu_renderer renderer,
+                                             nkgpu_shader_language language) {
+    const auto *slot = renderer_pool.get(renderer);
+    return slot && shader_language_for(slot->value.graphics_api) == language;
 }
 static sg_vertex_format convert_format(nkgpu_vertex_format f) {
     switch (f) {
@@ -521,6 +565,10 @@ const char *nkgpu_last_error(void) {
 nk_graphics_api nkgpu_default_graphics_api(void) {
 #if defined(NK_SOKOL_BACKEND_GLES3)
     return NK_GRAPHICS_OPENGL_ES;
+#elif defined(NK_SOKOL_BACKEND_D3D11)
+    return NK_GRAPHICS_D3D11;
+#elif defined(NK_SOKOL_BACKEND_METAL)
+    return NK_GRAPHICS_METAL;
 #else
     return NK_GRAPHICS_OPENGL;
 #endif
@@ -640,15 +688,18 @@ nkgpu_result nkgpu_surface_create_for_api(nk_window window, nk_graphics_api api,
                                       int32_t height, nk_surface *out) {
     if (!window || width <= 0 || height <= 0 || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid surface arguments");
-    if (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES)
+    if (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES &&
+        api != NK_GRAPHICS_D3D11 && api != NK_GRAPHICS_METAL)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "unsupported graphics API request");
     if (!api_for_graphics_api(api))
         return fail(NKGPU_ERROR_UNKNOWN, "requested Sokol runtime backend is unavailable");
     nk_surface_options o{};
     o.struct_size = sizeof(o);
     o.flags = api == NK_GRAPHICS_OPENGL ? NK_SURFACE_FORWARD_COMPATIBLE : 0;
+    if (api == NK_GRAPHICS_D3D11 || api == NK_GRAPHICS_METAL)
+        o.flags |= NK_SURFACE_DEPTH | NK_SURFACE_STENCIL;
     o.api = api;
-    o.major_version = 3;
+    o.major_version = (api == NK_GRAPHICS_OPENGL || api == NK_GRAPHICS_OPENGL_ES) ? 3 : 0;
     o.minor_version = api == NK_GRAPHICS_OPENGL ? 3 : 0;
     o.width = width;
     o.height = height;
@@ -671,19 +722,48 @@ nkgpu_result nkgpu_renderer_create(nk_surface surface, nkgpu_renderer *out) {
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid renderer arguments");
     if (active_renderer)
         return fail(NKGPU_ERROR_WRONG_STATE, "cannot create a renderer during an active frame");
-    if (nk_surface_make_current(surface) != NK_OK)
-        return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
+    // Explicit APIs initialize against the surface-owned device without
+    // acquiring a presentation image. The first frame prepares its target.
     nk_surface_frame_target target{};
     target.struct_size = sizeof(target);
-    if (nk_surface_get_frame_target(surface, &target) != NK_OK || !target.device.id)
+    if (nk_surface_get_frame_target(surface, &target) != NK_OK)
+        return fail(NKGPU_ERROR_UNKNOWN, "surface target query: %s", nk_last_error());
+    const bool context_backend = target.api == NK_GRAPHICS_OPENGL ||
+                                 target.api == NK_GRAPHICS_OPENGL_ES;
+    if (context_backend && nk_surface_make_current(surface) != NK_OK)
+        return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
+    if (context_backend && nk_surface_get_frame_target(surface, &target) != NK_OK)
+        return fail(NKGPU_ERROR_UNKNOWN, "surface target query: %s", nk_last_error());
+    if (!target.device.id)
         return fail(NKGPU_ERROR_UNKNOWN, "surface has no graphics-device identity");
+    if ((target.api == NK_GRAPHICS_D3D11 &&
+         (!target.native_device || !target.native_context)) ||
+        (target.api == NK_GRAPHICS_METAL &&
+         (!target.native_device || !target.native_context)))
+        return fail(NKGPU_ERROR_UNKNOWN, "explicit surface target is missing native tokens");
     const nk_sokol_api *api = api_for_graphics_api(target.api);
     if (!api || !api->runtime_acquire || !api->runtime_release || !api->gfx)
         return fail(NKGPU_ERROR_UNKNOWN, "surface graphics backend is unavailable");
     sg_desc desc{};
-    desc.environment.defaults = {.color_format = SG_PIXELFORMAT_RGBA8,
-                                 .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
+    const bool explicit_backend = target.api == NK_GRAPHICS_D3D11 ||
+                                  target.api == NK_GRAPHICS_METAL;
+    const sg_pixel_format color_format = explicit_backend ? SG_PIXELFORMAT_BGRA8
+                                                          : SG_PIXELFORMAT_RGBA8;
+    const sg_pixel_format depth_format =
+        explicit_backend && !target.native_depth_stencil_target ? SG_PIXELFORMAT_NONE
+                                                                : SG_PIXELFORMAT_DEPTH_STENCIL;
+    desc.environment.defaults = {.color_format = color_format,
+                                 .depth_format = depth_format,
                                  .sample_count = 1};
+    if (target.api == NK_GRAPHICS_D3D11) {
+        desc.environment.d3d11.device =
+            reinterpret_cast<const void *>(static_cast<uintptr_t>(target.native_device));
+        desc.environment.d3d11.device_context =
+            reinterpret_cast<const void *>(static_cast<uintptr_t>(target.native_context));
+    } else if (target.api == NK_GRAPHICS_METAL) {
+        desc.environment.metal.device =
+            reinterpret_cast<const void *>(static_cast<uintptr_t>(target.native_device));
+    }
     if (nk_graphics_device_retain(target.device) != NK_OK)
         return fail(NKGPU_ERROR_UNKNOWN, "graphics device retention failed");
     if (!api->runtime_acquire(&desc, target.device)) {
@@ -695,6 +775,8 @@ nkgpu_result nkgpu_renderer_create(nk_surface surface, nkgpu_renderer *out) {
     renderer_state.api = api;
     renderer_state.graphics_api = target.api;
     renderer_state.device = target.device;
+    renderer_state.surface_color_format = color_format;
+    renderer_state.surface_depth_format = depth_format;
     Handle h = renderer_pool.add(renderer_state);
     if (!h) {
         api->runtime_release();
@@ -1191,7 +1273,7 @@ nkgpu_result nkgpu_shader_create(nkgpu_renderer r, nkgpu_shader_language languag
                                 const char *vs, const char *fs, nkgpu_shader *out) {
     if (!renderer_pool.get(r))
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
-    if (!vs || !fs || !out || language != NKGPU_SHADERLANGUAGE_GLSL)
+    if (!vs || !fs || !out || !shader_language_matches_renderer(r, language))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader arguments");
     const nkgpu_result idle = require_idle_renderer(r);
     if (idle != NKGPU_OK)
@@ -1202,12 +1284,20 @@ nkgpu_result nkgpu_shader_create(nkgpu_renderer r, nkgpu_shader_language languag
     sg_shader_desc desc{};
     desc.vertex_func.source = vs;
     desc.fragment_func.source = fs;
+    if (language == NKGPU_SHADERLANGUAGE_HLSL5) {
+        desc.vertex_func.d3d11_target = "vs_5_0";
+        desc.fragment_func.d3d11_target = "ps_5_0";
+    }
+    if (language == NKGPU_SHADERLANGUAGE_HLSL5 || language == NKGPU_SHADERLANGUAGE_MSL) {
+        desc.vertex_func.entry = "main";
+        desc.fragment_func.entry = "main";
+    }
     sg_shader object = sg_make_shader(&desc);
     if (sg_query_shader_state(object) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(r);
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "shader creation failed");
     }
-    Handle h = shader_pool.add(Shader{r, object});
+    Handle h = shader_pool.add(Shader{r, object, language});
     if (!h) {
         sg_destroy_shader(object);
         record_allocation_failure(r);
@@ -1236,7 +1326,7 @@ nkgpu_result nkgpu_shader_begin(nkgpu_renderer r, nkgpu_shader_language language
                                nkgpu_shader_builder *out) {
     if (!renderer_pool.get(r))
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
-    if (!vs || !fs || !out || language != NKGPU_SHADERLANGUAGE_GLSL)
+    if (!vs || !fs || !out || !shader_language_matches_renderer(r, language))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader builder");
     const nkgpu_result idle = require_idle_renderer(r);
     if (idle != NKGPU_OK)
@@ -1251,9 +1341,43 @@ nkgpu_result nkgpu_shader_begin(nkgpu_renderer r, nkgpu_shader_language language
     s->value.fragment_source = fs;
     s->value.desc.vertex_func.source = s->value.vertex_source.c_str();
     s->value.desc.fragment_func.source = s->value.fragment_source.c_str();
+    if (language == NKGPU_SHADERLANGUAGE_HLSL5) {
+        s->value.desc.vertex_func.d3d11_target = "vs_5_0";
+        s->value.desc.fragment_func.d3d11_target = "ps_5_0";
+    }
+    if (language == NKGPU_SHADERLANGUAGE_HLSL5 || language == NKGPU_SHADERLANGUAGE_MSL) {
+        s->value.desc.vertex_func.entry = "main";
+        s->value.desc.fragment_func.entry = "main";
+    }
     *out = h;
     return NKGPU_OK;
 }
+
+nkgpu_result nkgpu_shader_attribute(nkgpu_shader_builder h, uint32_t location,
+                                    const char *glsl_name, const char *hlsl_semantic,
+                                    uint32_t hlsl_semantic_index) {
+    auto *s = shader_builder_pool.get(h);
+    if (!s || location >= SG_MAX_VERTEX_ATTRIBUTES || hlsl_semantic_index > UINT8_MAX ||
+        (s->value.language == NKGPU_SHADERLANGUAGE_GLSL && (!glsl_name || !*glsl_name)) ||
+        (s->value.language == NKGPU_SHADERLANGUAGE_HLSL5 &&
+         (!hlsl_semantic || !*hlsl_semantic)))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader vertex attribute");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    auto &attribute = s->value.desc.attrs[location];
+    if (glsl_name) {
+        s->value.glsl_attribute_names[location] = glsl_name;
+        attribute.glsl_name = s->value.glsl_attribute_names[location].c_str();
+    }
+    if (hlsl_semantic) {
+        s->value.hlsl_semantic_names[location] = hlsl_semantic;
+        attribute.hlsl_sem_name = s->value.hlsl_semantic_names[location].c_str();
+        attribute.hlsl_sem_index = static_cast<uint8_t>(hlsl_semantic_index);
+    }
+    return NKGPU_OK;
+}
+
 nkgpu_result nkgpu_shader_uniform_block(nkgpu_shader_builder h, uint32_t slot, nkgpu_shader_stage stage,
                                     uint32_t size) {
     auto *s = shader_builder_pool.get(h);
@@ -1266,6 +1390,9 @@ nkgpu_result nkgpu_shader_uniform_block(nkgpu_shader_builder h, uint32_t slot, n
     auto &b = s->value.desc.uniform_blocks[slot];
     b.stage = stage == NKGPU_SHADERSTAGE_VERTEX ? SG_SHADERSTAGE_VERTEX : SG_SHADERSTAGE_FRAGMENT;
     b.size = size;
+    b.layout = SG_UNIFORMLAYOUT_STD140;
+    b.hlsl_register_b_n = static_cast<uint8_t>(slot);
+    b.msl_buffer_n = static_cast<uint8_t>(slot);
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_shader_uniform(nkgpu_shader_builder h, uint32_t block, uint32_t member,
@@ -1300,8 +1427,12 @@ nkgpu_result nkgpu_shader_texture(nkgpu_shader_builder h, uint32_t view_slot, ui
     s->value.desc.views[view_slot].texture.stage = converted;
     s->value.desc.views[view_slot].texture.image_type = SG_IMAGETYPE_2D;
     s->value.desc.views[view_slot].texture.sample_type = SG_IMAGESAMPLETYPE_FLOAT;
+    s->value.desc.views[view_slot].texture.hlsl_register_t_n = static_cast<uint8_t>(view_slot);
+    s->value.desc.views[view_slot].texture.msl_texture_n = static_cast<uint8_t>(view_slot);
     s->value.desc.samplers[sampler_slot].stage = converted;
     s->value.desc.samplers[sampler_slot].sampler_type = SG_SAMPLERTYPE_FILTERING;
+    s->value.desc.samplers[sampler_slot].hlsl_register_s_n = static_cast<uint8_t>(sampler_slot);
+    s->value.desc.samplers[sampler_slot].msl_sampler_n = static_cast<uint8_t>(sampler_slot);
     s->value.texture_names[view_slot] = name;
     auto &pair = s->value.desc.texture_sampler_pairs[view_slot];
     pair.stage = converted;
@@ -1322,12 +1453,13 @@ nkgpu_result nkgpu_shader_end(nkgpu_shader_builder h, nkgpu_shader *out) {
     if (activated != NKGPU_OK)
         return activated;
     sg_shader object = sg_make_shader(&s->value.desc);
+    const nkgpu_shader_language language = s->value.language;
     shader_builder_pool.remove(*s);
     if (sg_query_shader_state(object) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(owner);
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "shader creation failed");
     }
-    Handle result = shader_pool.add(Shader{owner, object});
+    Handle result = shader_pool.add(Shader{owner, object, language});
     if (!result) {
         sg_destroy_shader(object);
         record_allocation_failure(owner);
@@ -1353,7 +1485,7 @@ nkgpu_result nkgpu_pipeline_begin(nkgpu_renderer r, nkgpu_shader shader, uint32_
     b.owner = r;
     b.desc.shader = sh->value.object;
     b.desc.layout.buffers[0].stride = (int)stride;
-    b.desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    b.desc.depth.pixel_format = renderer_pool.get(r)->value.surface_depth_format;
     Handle h = pipeline_builder_pool.add(b);
     if (!h)
         return fail(NKGPU_ERROR_UNKNOWN, "builder pool full");
@@ -1395,6 +1527,10 @@ nkgpu_result nkgpu_pipeline_depth_stencil(nkgpu_pipeline_builder h, uint32_t ena
     const nkgpu_result idle = require_idle_renderer(s->value.owner);
     if (idle != NKGPU_OK)
         return idle;
+    const auto *renderer = renderer_pool.get(s->value.owner);
+    if (enabled && renderer->value.surface_depth_format == SG_PIXELFORMAT_NONE)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT,
+                    "depth/stencil testing requires a surface depth target");
     s->value.desc.depth.pixel_format = enabled ? SG_PIXELFORMAT_DEPTH_STENCIL : SG_PIXELFORMAT_NONE;
     s->value.desc.depth.write_enabled = enabled != 0;
     s->value.desc.depth.compare = enabled ? SG_COMPAREFUNC_LESS_EQUAL : SG_COMPAREFUNC_ALWAYS;
@@ -1542,6 +1678,10 @@ nkgpu_result nkgpu_frame_begin(nkgpu_renderer h) {
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     if (s->value.state != RendererState::Ready || active_renderer)
         return fail(NKGPU_ERROR_WRONG_STATE, "a renderer frame is already active");
+    const bool context_backend = s->value.graphics_api == NK_GRAPHICS_OPENGL ||
+                                s->value.graphics_api == NK_GRAPHICS_OPENGL_ES;
+    if (!context_backend && nk_surface_make_current(s->value.surface) != NK_OK)
+        return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
     const nkgpu_result activated = activate_renderer(h);
     if (activated != NKGPU_OK)
         return activated;
@@ -1579,14 +1719,28 @@ nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t 
     sg_pass pass{};
     pass.action.colors[0].load_action = clear ? SG_LOADACTION_CLEAR : SG_LOADACTION_LOAD;
     pass.action.colors[0].clear_value = {.025f, .035f, .07f, 1};
-    pass.action.depth = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 1.0f};
-    pass.action.stencil = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 0};
+    if (s->value.surface_depth_format != SG_PIXELFORMAT_NONE) {
+        pass.action.depth = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 1.0f};
+        pass.action.stencil = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 0};
+    }
     pass.swapchain = {.width = static_cast<int>(width),
                       .height = static_cast<int>(height),
                       .sample_count = 1,
-                      .color_format = SG_PIXELFORMAT_RGBA8,
-                      .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
-                      .gl = {.framebuffer = static_cast<uint32_t>(target.native_target)}};
+                      .color_format = s->value.surface_color_format,
+                      .depth_format = s->value.surface_depth_format};
+    if (target.api == NK_GRAPHICS_D3D11) {
+        pass.swapchain.d3d11.render_view = reinterpret_cast<const void *>(
+            static_cast<uintptr_t>(target.native_target));
+        pass.swapchain.d3d11.depth_stencil_view = reinterpret_cast<const void *>(
+            static_cast<uintptr_t>(target.native_depth_stencil_target));
+    } else if (target.api == NK_GRAPHICS_METAL) {
+        pass.swapchain.metal.current_drawable = reinterpret_cast<const void *>(
+            static_cast<uintptr_t>(target.native_present_target));
+        pass.swapchain.metal.depth_stencil_texture = reinterpret_cast<const void *>(
+            static_cast<uintptr_t>(target.native_depth_stencil_target));
+    } else {
+        pass.swapchain.gl.framebuffer = static_cast<uint32_t>(target.native_target);
+    }
     sg_begin_pass(&pass);
     s->value.in_pass = true;
     ++s->value.passes;

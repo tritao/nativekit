@@ -37,7 +37,16 @@ if(NK_BUILD_GPU_BACKEND_MATRIX)
     target_link_libraries(nativekit_gpu PRIVATE OpenGL::GL
         "${NK_SOKOL_MATRIX_GLES3_LIBRARY}")
 else()
-    target_sources(nativekit_gpu PRIVATE src/sokol/runtime.c src/sokol/api.c)
+    if(NK_SOKOL_BACKEND STREQUAL "metal")
+        target_sources(nativekit_gpu PRIVATE src/sokol/runtime_metal.mm src/sokol/api.c)
+        set_target_properties(nativekit_gpu PROPERTIES
+            OBJCXX_STANDARD 17
+            OBJCXX_STANDARD_REQUIRED YES)
+        target_compile_options(nativekit_gpu PRIVATE
+            $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
+    else()
+        target_sources(nativekit_gpu PRIVATE src/sokol/runtime.c src/sokol/api.c)
+    endif()
     target_link_libraries(nativekit_gpu PRIVATE
         ${NK_SOKOL_GRAPHICS_LIBRARIES})
 endif()

@@ -87,6 +87,16 @@ class ShaderBuilder {
 		return this;
 	}
 
+	public function attribute(location:Int, glslName:String, hlslSemantic:String,
+		semanticIndex:Int = 0):ShaderBuilder {
+		ensureLive();
+		if (location < 0 || semanticIndex < 0)
+			throw "GPU shader vertex attribute is invalid";
+		GpuResult.check(NativeKitGpu.nkgpu_shader_attribute(value, location, glslName,
+			hlslSemantic, semanticIndex), "shader.attribute");
+		return this;
+	}
+
 	public function uniform(slot:Int, memberIndex:Int, name:String, type:UniformType, arrayCount:Int = 1):ShaderBuilder {
 		ensureLive();
 		if (slot < 0 || memberIndex < 0 || arrayCount < 0)

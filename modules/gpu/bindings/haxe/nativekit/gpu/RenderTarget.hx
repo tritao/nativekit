@@ -57,8 +57,6 @@ class RenderTarget {
 		var borrowed = NativeKitGpu.nkgpu_render_target_get_image(renderer.nativeHandle(), value);
 		GpuResult.check(borrowed.status, "renderTarget.sampledImage");
 		var api:GraphicsApi = NativeKitGpu.nkgpu_query_graphics_api(renderer.nativeHandle());
-		if (api != GraphicsApi.Opengl && api != GraphicsApi.OpenglEs)
-			throw "renderTarget.sampledImage encountered an unsupported backend";
 		return GraphicsImageRef.fromBorrowedHandle(borrowed.out_image, width, height, api);
 	}
 

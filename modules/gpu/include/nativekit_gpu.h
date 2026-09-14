@@ -51,10 +51,10 @@ extern "C" {
 #endif
 
 /**
- * NativeKit's GPU adapter for rendering through a NativeKit OpenGL or GLES3
- * surface. A normal build includes the configured graphics backend; desktop
- * Linux builds with NK_BUILD_GPU_BACKEND_MATRIX include both GLCore and
- * GLES3 runtimes and dispatch according to each surface's graphics API.
+ * NativeKit's GPU adapter for rendering through a NativeKit graphics surface.
+ * A normal build includes the configured graphics backend; desktop Linux
+ * builds with NK_BUILD_GPU_BACKEND_MATRIX include both GLCore and GLES3
+ * runtimes and dispatch according to each surface's graphics API.
  *
  * Create a NativeKit window and surface first, then create a GPU renderer
  * for that surface. Renderer handles may coexist when their surfaces use a
@@ -63,7 +63,7 @@ extern "C" {
  * belong to the renderer that created them. Each window frame must be enclosed
  * by nkgpu_begin_frame() and nkgpu_end_frame(). The selected runtime backend is
  * derived from the surface's graphics API, not from a global build-time choice
- * when the backend matrix is enabled.
+ * when multiple runtimes are compiled into the library.
  *
  * The renderer alternates between Ready, a window frame, and active render
  * passes. Begin operations require Ready or a frame with no active pass. A
@@ -205,13 +205,17 @@ typedef struct nkgpu_renderer_stats {
     uint64_t failed_allocations;
 } nkgpu_renderer_stats;
 
-/** Backend selected when the GPU module was built. */
+/** Backend selected by the renderer's NativeKit surface. */
 typedef uint32_t nkgpu_backend;
 enum NK_ENUM(nkgpu_backend) {
     /** Desktop OpenGL core runtime. */
     NKGPU_BACKEND_GLCORE = 1,
     /** OpenGL ES 3 runtime. */
     NKGPU_BACKEND_GLES3 = 2,
+    /** Direct3D 11 runtime. */
+    NKGPU_BACKEND_D3D11 = 3,
+    /** Metal runtime. */
+    NKGPU_BACKEND_METAL = 4,
 };
 
 /* ------------------------------------------------------------------------- */
@@ -358,8 +362,12 @@ enum NK_ENUM(nkgpu_shader_stage) {
 typedef uint32_t nkgpu_shader_language;
 
 enum NK_ENUM(nkgpu_shader_language) {
-    /** GLSL source for the configured OpenGL or OpenGL ES backend. */
+    /** GLSL source for OpenGL and OpenGL ES backends. */
     NKGPU_SHADERLANGUAGE_GLSL = 1,
+    /** HLSL shader-model-5 source for the Direct3D 11 backend. */
+    NKGPU_SHADERLANGUAGE_HLSL5 = 2,
+    /** Metal Shading Language source for the Metal backend. */
+    NKGPU_SHADERLANGUAGE_MSL = 3,
 };
 
 /** Data type used to describe a shader uniform member. */
@@ -466,7 +474,7 @@ NKGPU_API nkgpu_result nkgpu_renderer_get_stats(nkgpu_renderer renderer,
  *
  * `nativekit_window` must be a valid NativeKit window handle, and `width` and
  * `height` must be positive. The current adapter requests the configured
- * OpenGL or GLES3 surface. On NKGPU_OK, writes the NativeKit surface handle to
+ * graphics surface. On NKGPU_OK, writes the NativeKit surface handle to
  * `out_surface`; destroy it with nkgpu_surface_destroy() after destroying its
  * renderer. This convenience call requests the build's default API.
  */
@@ -615,10 +623,11 @@ NKGPU_API nkgpu_result nkgpu_buffer_destroy(nkgpu_renderer renderer, nkgpu_buffe
 /**
  * Creates a shader from NUL-terminated vertex and fragment shader source.
  *
- * `language` selects how both source strings are interpreted. This version
- * accepts NKGPU_SHADERLANGUAGE_GLSL for the configured OpenGL or OpenGL ES
- * backend; unsupported values return NKGPU_ERROR_INVALID_ARGUMENT. Both stages
- * are required. On NKGPU_OK, writes the shader handle to `out_shader`.
+ * `language` must match the renderer backend: GLSL for OpenGL, HLSL5 for D3D11,
+ * or MSL for Metal. HLSL5 and MSL source stages must each expose a `main`
+ * entry point. Both stages are required. Shader builders provide the backend
+ * binding metadata needed for uniforms, textures, and vertex inputs.
+ * On NKGPU_OK, writes the shader handle to `out_shader`.
  */
 NKGPU_API nkgpu_result nkgpu_shader_create(nkgpu_renderer renderer,
                                      nkgpu_shader_language language,
@@ -632,9 +641,9 @@ NKGPU_API nkgpu_result nkgpu_shader_destroy(nkgpu_renderer renderer, nkgpu_shade
 /**
  * Starts building a shader with UTF-8 vertex and fragment source strings.
  *
- * `language` selects how both source strings are interpreted. This version
- * accepts NKGPU_SHADERLANGUAGE_GLSL; unsupported values return
- * NKGPU_ERROR_INVALID_ARGUMENT. Unlike nkgpu_shader_create(), this lets
+ * `language` must match the renderer backend: GLSL for OpenGL, HLSL5 for D3D11,
+ * or MSL for Metal. HLSL5 and MSL source stages must each expose a `main`
+ * entry point. Unlike nkgpu_shader_create(), this lets
  * you describe uniform blocks, members, and texture bindings before
  * nkgpu_shader_end() creates the shader. The source strings are copied, so
  * they may be released after this call succeeds.
@@ -643,7 +652,20 @@ NKGPU_API nkgpu_result nkgpu_shader_begin(nkgpu_renderer renderer,
                                     nkgpu_shader_language language,
                                     const char *vertex_source NKGPU_UTF8,
                                     const char *fragment_source NKGPU_UTF8,
-                                    nkgpu_shader_builder *out_builder NKGPU_OUT);
+                                     nkgpu_shader_builder *out_builder NKGPU_OUT);
+
+/**
+ * Describes a vertex input for a shader builder.
+ *
+ * `location` matches the vertex attribute index used by the pipeline. The GLSL
+ * name is used by GL backends; the HLSL semantic and index are used by D3D11.
+ * Metal source declares its own `[[attribute(location)]]` mapping.
+ */
+NKGPU_API nkgpu_result nkgpu_shader_attribute(nkgpu_shader_builder builder,
+                                               uint32_t location,
+                                               const char *glsl_name NKGPU_UTF8,
+                                               const char *hlsl_semantic NKGPU_UTF8,
+                                               uint32_t hlsl_semantic_index);
 
 /**
  * Describes one shader uniform block in a shader builder.
@@ -658,9 +680,9 @@ NKGPU_API nkgpu_result nkgpu_shader_uniform_block(nkgpu_shader_builder builder, 
 /**
  * Describes one member of a shader uniform block.
  *
- * `name` is the UTF-8 GLSL uniform member name. `array_count` describes an
- * array and zero is treated as one element. The member's byte layout still
- * follows the shader backend's uniform packing rules.
+ * `name` is the UTF-8 GLSL uniform member name. HLSL5 and MSL use the block
+ * size and caller-provided bytes directly. `array_count` describes an array
+ * and zero is treated as one element. Cross-backend blocks use std140 layout.
  */
 NKGPU_API nkgpu_result nkgpu_shader_uniform(nkgpu_shader_builder builder, uint32_t block_slot,
                                       uint32_t member_index, const char *name NKGPU_UTF8,
@@ -671,7 +693,8 @@ NKGPU_API nkgpu_result nkgpu_shader_uniform(nkgpu_shader_builder builder, uint32
  *
  * `view_slot` and `sampler_slot` are the slots used later by nkgpu_apply_image()
  * and nkgpu_apply_sampler(). `name` is the UTF-8 GLSL combined texture/sampler
- * name, and `stage` selects the vertex or fragment shader.
+ * name; HLSL5 and MSL use the view and sampler slots directly. `stage` selects
+ * the vertex or fragment shader.
  */
 NKGPU_API nkgpu_result nkgpu_shader_texture(nkgpu_shader_builder builder, uint32_t view_slot,
                                       uint32_t sampler_slot, nkgpu_shader_stage stage,

@@ -29,6 +29,8 @@ enum abstract ShaderStage(Int) to Int {
 
 enum abstract ShaderLanguage(Int) to Int {
 	var Glsl = 1;
+	var Hlsl5 = 2;
+	var Msl = 3;
 }
 
 enum abstract UniformType(Int) to Int {

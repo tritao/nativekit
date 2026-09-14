@@ -14,13 +14,13 @@
 		"nkgpu_cull_mode": "CullMode",
 		"nkgpu_face_winding": "FaceWinding",
 		"nkgpu_color_write_mask": "ColorWriteMask",
-		"nkgpu_image_format": "ImageFormat",
+		"nkgpu_image_format": "GpuImageFormat",
 		"nkgpu_shader_stage": "ShaderStage",
 		"nkgpu_shader_language": "ShaderLanguage",
 		"nkgpu_uniform_type": "UniformType",
 		"nkgpu_filter": "Filter",
 		"nkgpu_wrap": "Wrap",
-		"nkgpu_command": "CommandOpcode"
+		"nkgpu_command": "GpuCommandOpcode"
 	},
 	"enumValuePrefixes": ["NKGPU_BLENDOP_", "NKGPU_SHADERLANGUAGE_"],
 	"enumValueNames": {

@@ -199,7 +199,10 @@ class Triangle {
 				target.end();
 				retainedTargetImage = target.sampledImage();
 				if (retainedTargetImage.width != 32 || retainedTargetImage.height != 32
-					|| (retainedTargetImage.api != GraphicsApi.Opengl && retainedTargetImage.api != GraphicsApi.OpenglEs))
+					|| (retainedTargetImage.api != GraphicsApi.Opengl
+						&& retainedTargetImage.api != GraphicsApi.OpenglEs
+						&& retainedTargetImage.api != GraphicsApi.D3d11
+						&& retainedTargetImage.api != GraphicsApi.Metal))
 					throw "offscreen target image metadata mismatch";
 				target.dispose();
 				ready = true;

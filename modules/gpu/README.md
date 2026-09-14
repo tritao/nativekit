@@ -5,11 +5,12 @@ context, framebuffer sizing, and presentation. `sokol_gfx.h` owns only
 rendering resources and draw submission. It deliberately does not use
 `sokol_app.h`.
 
-`NK_SOKOL_BACKEND=glcore` or `NK_SOKOL_BACKEND=gles3` selects the default
-surface API and the single runtime used by a normal build. The default is
-`glcore` on desktop Linux and `gles3` on Android. Sokol is pinned in
-`CMakeLists.txt` so changes to its source-level API cannot silently change the
-adapter.
+`NK_SOKOL_BACKEND=glcore`, `gles3`, `d3d11`, or `metal` selects the default
+surface API and the single runtime used by a normal build. Defaults are
+`glcore` on desktop Linux, `d3d11` on Windows, `metal` on macOS, and `gles3` on
+Android. The renderer runtime is selected from the surface's actual API.
+Sokol is pinned in `CMakeLists.txt` so changes to its source-level API cannot
+silently change the adapter.
 
 On desktop Linux, `-DNK_BUILD_GPU_BACKEND_MATRIX=ON` includes independent
 GLCore and GLES3 runtimes in the same binary. `nkgpu_surface_create_for_api()`
@@ -17,11 +18,12 @@ then selects a runtime from each surface's actual graphics API, so both kinds
 of renderer may coexist. Renderer calls are graphics-thread serialized and
 only one pass may be active at a time; resources remain owned by the renderer
 that created them. The backend-matrix test alternates frame submission between
-both runtime variants. Other graphics APIs (including Vulkan and Metal) still
-require their own Sokol runtimes/adapters and are not enabled by this option.
+both runtime variants. Vulkan still requires its own Sokol runtime and adapter.
+Windows D3D11 and macOS Metal are experimental until the Explorer and Graphics
+Lab pass their native end-to-end checks.
 
-The public shader API requires an explicit `ShaderLanguage`; GLSL is the
-currently supported value for both C and Haxe. The C renderer exposes
+The public shader API requires an explicit `ShaderLanguage`: GLSL for GL,
+HLSL5 for D3D11, and MSL for Metal. The C renderer exposes
 `Ready`, `FrameActive`, `RenderTargetActive`, and `Lost` states. A window frame
 uses `nkgpu_begin_frame()` / `nkgpu_end_frame()`; a standalone offscreen pass
 uses `nkgpu_begin_render_target()` / `nkgpu_end_render_target()`. UI render-plan
