@@ -22,3 +22,8 @@
 [submodule "vendor/clay"]
 	path = vendor/clay
 	url = https://github.com/tritao/clay.git
+[submodule "vendor/haxeon"]
+	path = vendor/haxeon
+	url = https://github.com/tritao/haxeon.git
+	update = none
+	shallow = true
