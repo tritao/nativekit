@@ -347,7 +347,7 @@ class UiContext {
 	/** Returns a deterministic headless snapshot of the most recently submitted tree. */
 	public function inspect():Array<UiNodeSnapshot> {
 		ensureLive();
-		return UiInspector.snapshot(root, focus.focusedId);
+		return UiInspector.snapshot(root, focus.focusedId, events.hoveredId(), events.pressedId());
 	}
 
 	/** Formats the current render and semantic tree for logs or developer tools. */

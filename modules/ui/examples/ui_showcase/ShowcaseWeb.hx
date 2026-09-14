@@ -67,9 +67,9 @@ class ShowcaseWeb {
         return 0;
     }
 
-    /** Selects a deterministic UI Explorer screenshot state, 0-10. */
+    /** Selects a deterministic UI Explorer screenshot state, 0-11. */
     public static function configureUiVisual(caseId:Int):Int {
-        if (initialized || caseId < 0 || caseId > 10)
+        if (initialized || caseId < 0 || caseId > 11)
             return 1;
         requestedUiVisualCase = caseId;
         requestedMode = 0;

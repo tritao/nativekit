@@ -161,6 +161,16 @@ class EventDispatcher {
 	public function focusEvent(id:WidgetId, kind:String):Void
 		dispatchDirect(id, kind);
 
+	/** Returns the deepest node currently under a pointer, if any. */
+	public function hoveredId(pointerId:Int = 0):Null<WidgetId> {
+		var path = hoverPaths.get(pointerId);
+		return path == null || path.length == 0 ? null : path[path.length - 1].id;
+	}
+
+	/** Returns the node holding pointer capture after a press, if any. */
+	public function pressedId(pointerId:Int = 0):Null<WidgetId>
+		return capturedIds.get(pointerId);
+
 	function updateHover(pointerId:Int, path:Array<RenderNode>, x:Float, y:Float):Void {
 		var previous = hoverPaths.get(pointerId);
 		if (previous == null)

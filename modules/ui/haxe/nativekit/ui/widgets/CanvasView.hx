@@ -18,15 +18,17 @@ class CanvasView implements View {
 	public final key:String;
 	public final label:Null<String>;
 	public final style:LayoutStyle;
+	public final hitTestSelf:Bool;
 	final painter:Canvas->ResolvedLayoutItem->Void;
 	final handlers:Map<String, Array<UiEvent->Void>>;
 
 	public function new(key:String, painter:Canvas->ResolvedLayoutItem->Void,
-			?style:LayoutStyle, ?label:String) {
+			?style:LayoutStyle, ?label:String, hitTestSelf:Bool = true) {
 		if (key == null || key.length == 0 || painter == null)
 			throw "Canvas views require a stable key and painter";
 		this.key = key;
 		this.label = label;
+		this.hitTestSelf = hitTestSelf;
 		this.painter = painter;
 		this.style = style == null ? defaultStyle() : style.copy();
 		handlers = new Map();
@@ -47,6 +49,7 @@ class CanvasView implements View {
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
 			var node = new RenderNode(context.id("canvas"), LayoutVisualKind.Custom, style);
+			node.hitTestSelf = hitTestSelf;
 			if (label != null)
 				node.semantics = new Semantics(AccessibilityRole.Group, label);
 			node.onPaint(painter);

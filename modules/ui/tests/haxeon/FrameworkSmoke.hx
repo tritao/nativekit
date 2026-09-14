@@ -989,19 +989,23 @@ class FrameworkSmoke {
 		themedRoot = context.submit(themedButton, themedFrame);
 		if (themedRoot.layout.style.background.red != 0.4)
 			return 81;
-		var themedGeometry:ResolvedLayoutItem = cast themedRoot.resolved;
-		var themedX = themedGeometry.x + 2.0;
-		var themedY = themedGeometry.y + 2.0;
+		var themedLabelGeometry:ResolvedLayoutItem = cast themedRoot.children[0].resolved;
+		var themedX = themedLabelGeometry.x + themedLabelGeometry.width * 0.5;
+		var themedY = themedLabelGeometry.y + themedLabelGeometry.height * 0.5;
 		context.pointerMove(themedX, themedY);
 		themedRoot = context.submit(themedButton, themedFrame);
-		if (themedRoot.layout.style.background.red != 0.8)
+		var themedSnapshot = context.inspect();
+		if (themedRoot.layout.style.background.red != 0.8 || !themedSnapshot[0].hovered ||
+			themedSnapshot[1].hovered)
 			return 82;
 		context.pointerDown(themedX, themedY, 0);
 		themedRoot = context.submit(themedButton, themedFrame);
-		if (themedRoot.layout.style.background.red != 0.7)
+		themedSnapshot = context.inspect();
+		if (themedRoot.layout.style.background.red != 0.7 || !themedSnapshot[0].pressed ||
+			themedSnapshot[1].pressed)
 			return 83;
 		context.pointerUp(themedX, themedY, 0);
-		if (themedClicks != 1)
+		if (themedClicks != 1 || context.inspect()[0].pressed)
 			return 84;
 		themedButton.enabled = false;
 		themedRoot = context.submit(themedButton, themedFrame);

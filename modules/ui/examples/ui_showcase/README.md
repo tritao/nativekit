@@ -1,11 +1,13 @@
 # NativeKit UI Explorer
 
 `ui_showcase` is the flagship interactive example for NativeKit's Haxe UI
-framework. A searchable component catalog leads into seven pages: Overview,
-Controls, Text & Input, Layout, Scrolling & Data, Navigation & Overlays, and
-Graphics Lab. The app includes a global light/dark switch and a collapsible
-inspector that shows resolved render-tree bounds, focus, semantics, and the
-current accessibility audit.
+framework. A searchable component catalog leads into eight pages: Overview,
+Controls, Text & Input, Layout, Scrolling & Data, Navigation & Overlays,
+Gestures & Motion, and Graphics Lab. The app includes a global light/dark
+switch and a collapsible inspector. Hover or click a preview widget to inspect
+its resolved bounds, clipping, focus/hover/press state, semantic role/actions,
+and nearby render tree; the inspector also includes a short API synopsis and
+canonical Haxe usage example.
 
 The Haxe widgets own composition, state, focus, event handling, and semantics.
 Each frame follows the `UiContext.submit → native layout → render` path on both
@@ -38,10 +40,10 @@ modules/ui/tools/showcase.sh --static-frame --stats
 
 The WebGL host starts in the UI Explorer. The visual suite captures both the
 Graphics Lab and deterministic UI Explorer states: overview, dark/light and
-focused controls, text editing, layout, a scrolled virtual list, and dialog,
-popup, and menu overlays. Graphics cases continue to cover canonical, compact,
-and wide layouts, caret hit testing, light theme state, and a fixed animation
-frame:
+focused controls, text editing, layout, a scrolled virtual list,
+dialog/popup/menu overlays, a pointer-selected inspector widget, and Gestures &
+Motion. Graphics cases continue to cover canonical, compact, and wide layouts,
+caret hit testing, light theme state, and a fixed animation frame:
 
 ```sh
 tools/test-web-visual.sh

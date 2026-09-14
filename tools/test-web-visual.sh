@@ -103,6 +103,8 @@ cases=(
     "ui-popup|1200x800|uiVisual=8||"
     "ui-menu|1200x800|uiVisual=9||"
     "ui-controls-compact|820x700|uiVisual=10||"
+    "ui-inspector-interactive|1200x800|uiVisual=1|650,218|"
+    "ui-gestures|1200x800|uiVisual=11||"
 )
 
 if [[ -n "$case_filter" ]]; then

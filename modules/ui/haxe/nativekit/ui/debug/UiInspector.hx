@@ -1,15 +1,20 @@
 package nativekit.ui.debug;
 
 import nativekit.ui.core.RenderNode;
+import nativekit.ui.core.HitTest;
 import nativekit.ui.core.WidgetId;
 import nativekit.ui.semantics.Semantics;
 
 /** Produces deterministic, headless snapshots and readable render-tree dumps. */
 class UiInspector {
-	public static function snapshot(root:Null<RenderNode>, focused:Null<WidgetId>):Array<UiNodeSnapshot> {
+	public static function snapshot(root:Null<RenderNode>, focused:Null<WidgetId>,
+			hovered:Null<WidgetId> = null, pressed:Null<WidgetId> = null):Array<UiNodeSnapshot> {
 		var result:Array<UiNodeSnapshot> = [];
-		if (root != null)
-			append(root, 0, 0, focused, result);
+		if (root != null) {
+			var hoveredOwner = interactionOwner(root, hovered);
+			var pressedOwner = interactionOwner(root, pressed);
+			append(root, 0, 0, focused, hoveredOwner, pressedOwner, result);
+		}
 		return result;
 	}
 
@@ -27,12 +32,16 @@ class UiInspector {
 				line += " hidden";
 			if (record.focused)
 				line += " focused";
+			if (record.hovered)
+				line += " hovered";
+			if (record.pressed)
+				line += " pressed";
 			if (record.focusable)
 				line += " focusable";
 			if (record.zIndex != 0)
 				line += " z=" + Std.string(record.zIndex);
 			if (record.role >= 0)
-				line += " role=" + Std.string(record.role);
+				line += " role=" + Std.string(record.role) + " states=" + Std.string(record.semanticStates);
 			if (record.label != null && record.label.length > 0)
 				line += ' label="' + escape(record.label) + '"';
 			if (record.value != null)
@@ -43,7 +52,8 @@ class UiInspector {
 	}
 
 	static function append(node:RenderNode, parentId:Int, depth:Int,
-			focused:Null<WidgetId>, output:Array<UiNodeSnapshot>):Void {
+			focused:Null<WidgetId>, hovered:Null<WidgetId>, pressed:Null<WidgetId>,
+			output:Array<UiNodeSnapshot>):Void {
 		var semantics:Null<Semantics> = cast node.semantics;
 		var geometry = node.resolved;
 		var bounds = geometry == null ? new Rect(0.0, 0.0, 0.0, 0.0) : geometry.bounds();
@@ -53,12 +63,32 @@ class UiInspector {
 		output.push(new UiNodeSnapshot(node.id.value, parentId, depth,
 			cast node.layout.visualKind, bounds, clip, content,
 			geometry != null && geometry.visible, node.enabled, node.focusable,
-			focused != null && focused.equals(node.id), node.layout.style.zIndex,
-			role, semantics == null ? null : semantics.label,
+			focused != null && focused.equals(node.id),
+			hovered != null && hovered.equals(node.id),
+			pressed != null && pressed.equals(node.id), node.layout.style.zIndex,
+			role, semantics == null ? 0 : semantics.states,
+			semantics == null ? null : semantics.label,
 			semantics == null ? null : semantics.value,
 			semantics == null ? 0 : semantics.actions));
 		for (child in node.children)
-			append(child, node.id.value, depth + 1, focused, output);
+			append(child, node.id.value, depth + 1, focused, hovered, pressed, output);
+	}
+
+	static function interactionOwner(root:RenderNode, id:Null<WidgetId>):Null<WidgetId> {
+		if (id == null)
+			return null;
+		var path = HitTest.pathTo(root.find(id));
+		var semantic:Null<WidgetId> = null;
+		var index = path.length - 1;
+		while (index >= 0) {
+			var node = path[index];
+			if (node.semantics != null && semantic == null)
+				semantic = node.id;
+			if (node.focusable)
+				return node.id;
+			index--;
+		}
+		return semantic == null ? id : semantic;
 	}
 
 	static function visualName(kind:Int):String {
