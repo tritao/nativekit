@@ -1,6 +1,8 @@
 import NativeKit.GraphicsApi;
+import NativeKit.WindowOptions;
+import NativeKit.WindowFlags;
+import NativeKit.WindowKind;
 import NativeKitEventValue;
-import NativeKitOptions;
 import NativeKitRuntime;
 import NativeKitWindow;
 import NativeKitGpu;
@@ -120,9 +122,15 @@ class Triangle {
 
 	static function main():Int {
 		verifyGeneratedEnumMembers();
-		var runtime = NativeKitRuntime.start(NativeKitOptions.init());
-		var window:NativeKitWindow = runtime.createWindow(NativeKitOptions.window(800, 600,
-			"Haxeon: GPU over NativeKit"));
+		var runtime = NativeKitRuntime.start();
+		var windowOptions = new WindowOptions();
+		windowOptions.set_width(800);
+		windowOptions.set_height(600);
+		windowOptions.set_title("Haxeon: GPU over NativeKit");
+		windowOptions.set_flags(WindowFlags.Resizable);
+		windowOptions.set_owner(NativeKit.WindowHandle.invalid());
+		windowOptions.set_kind(WindowKind.Normal);
+		var window:NativeKitWindow = runtime.createWindow(windowOptions);
 		var surface = Surface.create(window, 800, 600);
 		var renderer:Null<Renderer> = null;
 		var buffer:Null<Buffer> = null;

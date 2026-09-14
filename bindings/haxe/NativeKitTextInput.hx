@@ -5,7 +5,6 @@ import NativeKit.Result;
 import NativeKit.TextInputAction;
 import NativeKit.TextInputType;
 import NativeKit.Handle;
-import NativeKitResult;
 import NativeKitSurface;
 import NativeKitWindow;
 
@@ -39,10 +38,9 @@ class NativeKitTextInput {
 			selectionStart:Int, selectionEnd:Int, ?compositionStart:Int, ?compositionEnd:Int,
 			?inputType:TextInputType, ?flags:TextInputFlags, ?action:TextInputAction, ?cursorX:Float, ?cursorY:Float,
 			?cursorWidth:Float, ?cursorHeight:Float):Void {
-		var result = updateResult(surface, text, textStart, documentLength, selectionStart,
-			selectionEnd, compositionStart, compositionEnd, inputType, flags, action,
+		updateTarget(new Handle(surface.nativeHandle().rawValue()), text, textStart, documentLength,
+			selectionStart, selectionEnd, compositionStart, compositionEnd, inputType, flags, action,
 			cursorX, cursorY, cursorWidth, cursorHeight);
-		NativeKitResult.check(result, "textInput.update");
 	}
 
 	/** Synchronizes desktop IME input when the platform backend targets a window directly. */
@@ -80,8 +78,7 @@ class NativeKitTextInput {
 
 	/** Shows or hides the platform text-input UI for a custom surface. */
 	public static function setActive(surface:NativeKitSurface, active:Bool):Void {
-		var result = setActiveResult(surface, active);
-		NativeKitResult.check(result, "textInput.setActive");
+		setTargetActive(new Handle(surface.nativeHandle().rawValue()), active);
 	}
 
 	/** Shows or hides the platform text-input UI when the backend targets a window directly. */

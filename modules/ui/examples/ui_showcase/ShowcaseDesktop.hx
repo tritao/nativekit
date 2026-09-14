@@ -7,12 +7,14 @@ import NativeKit.InputAction;
 import NativeKit.Result;
 import NativeKit.InitOptions;
 import NativeKit.WindowHandle;
+import NativeKit.WindowOptions;
+import NativeKit.WindowFlags;
+import NativeKit.WindowKind;
 import NativeKit.SurfaceHandle;
 import NativeKit.SurfaceOptions;
 import NativeKit.SurfaceFlags;
 import NativeKitEventValue;
 import NativeKitEvents;
-import NativeKitOptions;
 import NativeKitSurface;
 import nativekit.ui.core.NativeInputAdapter;
 
@@ -50,14 +52,19 @@ class ShowcaseDesktop {
                 return 10;
             initialized = true;
 
-            var windowOptions = NativeKitOptions.window(initialWidth, initialHeight,
-                "NativeKit UI Explorer");
+            var windowOptions = new WindowOptions();
+            windowOptions.set_width(initialWidth);
+            windowOptions.set_height(initialHeight);
+            windowOptions.set_title("NativeKit UI Explorer");
+            windowOptions.set_flags(WindowFlags.Resizable);
+            windowOptions.set_owner(WindowHandle.invalid());
+            windowOptions.set_kind(WindowKind.Normal);
             var createdWindow = NativeKit.nk_window_create(windowOptions);
             if (createdWindow.status != Result.Ok) {
                 NativeKit.nk_shutdown();
                 return 11;
             }
-            window = createdWindow.out_window;
+            window = createdWindow.out_window.borrow();
 
             var surfaceOptions = new SurfaceOptions();
             surfaceOptions.set_flags(SurfaceFlags.ForwardCompatible | SurfaceFlags.Stencil);
@@ -72,7 +79,7 @@ class ShowcaseDesktop {
                 NativeKit.nk_shutdown();
                 return 12;
             }
-            surface = createdSurface.out_surface;
+            surface = createdSurface.out_surface.borrow();
             var running = true;
             var ready = false;
             var logicalWidth:Float = initialWidth;

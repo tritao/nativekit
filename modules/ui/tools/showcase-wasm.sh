@@ -125,10 +125,8 @@ compiler_args=(
 	"$repo_dir/bindings/haxe/NativeKitInputEvents.hx"
 	"$repo_dir/bindings/haxe/NativeKitServiceEvents.hx"
 	"$repo_dir/bindings/haxe/NativeKitResourceEvents.hx"
-	"$repo_dir/bindings/haxe/NativeKitOptions.hx"
 	"$repo_dir/bindings/haxe/NativeKitRequests.hx"
 	"$repo_dir/bindings/haxe/NativeKitRequestOutcome.hx"
-	"$repo_dir/bindings/haxe/NativeKitResult.hx"
 	"$repo_dir/bindings/haxe/NativeKitWindow.hx"
 	"$repo_dir/bindings/haxe/NativeKitWebView.hx"
 )

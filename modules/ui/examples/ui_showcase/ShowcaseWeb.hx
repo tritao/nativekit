@@ -8,12 +8,14 @@ import NativeKit.Key;
 import NativeKit.Result;
 import NativeKit.InitOptions;
 import NativeKit.WindowHandle;
+import NativeKit.WindowOptions;
+import NativeKit.WindowFlags;
+import NativeKit.WindowKind;
 import NativeKit.SurfaceHandle;
 import NativeKit.SurfaceOptions;
 import NativeKit.SurfaceFlags;
 import NativeKitEventValue;
 import NativeKitEvents;
-import NativeKitOptions;
 import NativeKitSurface;
 import nativekit.ui.core.NativeInputAdapter;
 
@@ -91,12 +93,17 @@ class ShowcaseWeb {
             initialized = true;
 
             graphicsMode = requestedMode == 1;
-            var windowOptions = NativeKitOptions.window(requestedWidth, requestedHeight,
-                "NativeKit UI Explorer");
+            var windowOptions = new WindowOptions();
+            windowOptions.set_width(requestedWidth);
+            windowOptions.set_height(requestedHeight);
+            windowOptions.set_title("NativeKit UI Explorer");
+            windowOptions.set_flags(WindowFlags.Resizable);
+            windowOptions.set_owner(WindowHandle.invalid());
+            windowOptions.set_kind(WindowKind.Normal);
             var createdWindow = NativeKit.nk_window_create(windowOptions);
             if (createdWindow.status != Result.Ok)
                 return fail(11);
-            window = createdWindow.out_window;
+            window = createdWindow.out_window.borrow();
 
             var surfaceOptions = new SurfaceOptions();
             surfaceOptions.set_flags(SurfaceFlags.ForwardCompatible | SurfaceFlags.Stencil);
@@ -107,7 +114,7 @@ class ShowcaseWeb {
             var createdSurface = NativeKit.nk_surface_create(window, surfaceOptions);
             if (createdSurface.status != Result.Ok)
                 return fail(12);
-            surface = createdSurface.out_surface;
+            surface = createdSurface.out_surface.borrow();
             try {
                 if (graphicsMode) {
                     var fonts = createWebFonts();

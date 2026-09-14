@@ -17,96 +17,91 @@ class NativeKitRequests {
 
 	/** Starts a clipboard-text read and tracks its typed completion. */
 	public function readClipboardText(handler:NativeKitRequestOutcome<String>->Void):haxe.Int64 {
-		var started = NativeKit.nk_clipboard_read_text();
-		checkStarted("clipboard text read", started.status);
-		track(started.out_request, function(value) switch value {
+		var request = NativeKit.nk_clipboard_read_text_checked();
+		track(request, function(value) switch value {
 			case ClipboardText(_, result, text): handler(resultOutcome(result, text));
 			case _: throw "NativeKit clipboard request completed with the wrong event";
 		});
-		return started.out_request;
+		return request;
 	}
 
 	/** Starts a clipboard-file read and tracks its typed completion. */
 	public function readClipboardFiles(handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_clipboard_read_files();
-		checkStarted("clipboard file read", started.status);
-		track(started.out_request, function(value) switch value {
+		var request = NativeKit.nk_clipboard_read_files_checked();
+		track(request, function(value) switch value {
 			case ClipboardFiles(_, result, paths): handler(resultOutcome(result, paths));
 			case _: wrongEvent("clipboard file read");
 		});
-		return started.out_request;
+		return request;
 	}
 
 	/** Starts a structured-resource clipboard read and tracks its typed completion. */
 	public function readClipboardResources(
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_clipboard_read_resources();
-		checkStarted("clipboard resource read", started.status);
-		track(started.out_request, function(value) switch value {
+		var request = NativeKit.nk_clipboard_read_resources_checked();
+		track(request, function(value) switch value {
 			case Resources(_, _, result, _, items): handler(resultOutcome(result, items));
 			case _: wrongEvent("clipboard resource read");
 		});
-		return started.out_request;
+		return request;
 	}
 
 	public function openFile(parent:NativeKitWindow, configured:FileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_open_file(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
-		return trackDialog("open-file dialog", started.status, started.out_request, handler);
+		var request = NativeKit.nk_dialog_open_file_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
+		return trackDialog("open-file dialog", request, handler);
 	}
 
 	public function saveFile(parent:NativeKitWindow, configured:FileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_save_file(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
-		return trackDialog("save-file dialog", started.status, started.out_request, handler);
+		var request = NativeKit.nk_dialog_save_file_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
+		return trackDialog("save-file dialog", request, handler);
 	}
 
 	public function selectDirectory(parent:NativeKitWindow, configured:FileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_select_directory(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
-		return trackDialog("directory dialog", started.status, started.out_request, handler);
+		var request = NativeKit.nk_dialog_select_directory_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
+		return trackDialog("directory dialog", request, handler);
 	}
 
 	public function openResource(parent:NativeKitWindow, configured:FileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_open_resource(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
-		return trackResourceDialog("open-resource dialog", started.status, started.out_request, handler);
+		var request = NativeKit.nk_dialog_open_resource_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
+		return trackResourceDialog("open-resource dialog", request, handler);
 	}
 
 	public function saveResource(parent:NativeKitWindow, configured:FileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_save_resource(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
-		return trackResourceDialog("save-resource dialog", started.status, started.out_request, handler);
+		var request = NativeKit.nk_dialog_save_resource_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
+		return trackResourceDialog("save-resource dialog", request, handler);
 	}
 
 	public function selectResourceDirectory(parent:NativeKitWindow, configured:FileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_select_resource_directory(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
-		return trackResourceDialog("resource-directory dialog", started.status, started.out_request, handler);
+		var request = NativeKit.nk_dialog_select_resource_directory_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
+		return trackResourceDialog("resource-directory dialog", request, handler);
 	}
 
 	public function messageDialog(parent:NativeKitWindow, options:MessageDialogOptions,
 		handler:NativeKitRequestOutcome<MessageResult>->Void):haxe.Int64 {
-		var started = NativeKit.nk_dialog_message(new NativeKit.Handle(parent.nativeHandle().rawValue()), options);
-		checkStarted("message dialog", started.status);
-		track(started.out_request, function(value) switch value {
+		var request = NativeKit.nk_dialog_message_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), options);
+		track(request, function(value) switch value {
 			case DialogMessage(_, result, button):
 				handler(acceptedOutcome(result, button != MessageResult.None, button));
 			case _: wrongEvent("message dialog");
 		});
-		return started.out_request;
+		return request;
 	}
 
 	public function evaluateWebView(webview:NativeKitWebView, script:String,
 		handler:NativeKitRequestOutcome<String>->Void):haxe.Int64 {
-		var started = NativeKit.nk_webview_eval(webview.nativeHandle(), script);
-		checkStarted("WebView evaluation", started.status);
-		track(started.out_request, function(value) switch value {
+		var request = NativeKit.nk_webview_eval_checked(webview.nativeHandle(), script);
+		track(request, function(value) switch value {
 			case WebViewEvaluation(_, _, result, json):
 				handler(resultOutcome(result, json, result == Result.Ok ? null : json));
 			case _: wrongEvent("WebView evaluation");
 		});
-		return started.out_request;
+		return request;
 	}
 
 	public function track(request:haxe.Int64, handler:NativeKitEventValue->Void):Void {
@@ -137,9 +132,8 @@ class NativeKitRequests {
 		return count;
 	}
 
-	function trackDialog(name:String, status:Result, request:haxe.Int64,
+	function trackDialog(name:String, request:haxe.Int64,
 		handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
-		checkStarted(name, status);
 		track(request, function(value) switch value {
 			case DialogPaths(_, result, accepted, paths):
 				handler(acceptedOutcome(result, accepted, paths));
@@ -148,9 +142,8 @@ class NativeKitRequests {
 		return request;
 	}
 
-	function trackResourceDialog(name:String, status:Result, request:haxe.Int64,
+	function trackResourceDialog(name:String, request:haxe.Int64,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
-		checkStarted(name, status);
 		track(request, function(value) switch value {
 			case Resources(kind, _, result, accepted, items):
 				if (kind != NativeKit.EventKind.DialogResourcesComplete) wrongEvent(name);
@@ -175,9 +168,6 @@ class NativeKitRequests {
 		};
 		return key == "0" ? null : key;
 	}
-
-	static function checkStarted(name:String, result:Result):Void
-		NativeKitResult.check(result, 'NativeKit $name');
 
 	static function resultOutcome<T>(result:Result, value:T,
 		?message:Null<String>):NativeKitRequestOutcome<T> {

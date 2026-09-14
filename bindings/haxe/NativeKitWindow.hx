@@ -2,10 +2,10 @@ import NativeKit;
 import NativeKit.Handle;
 import NativeKit.WindowHandle;
 import NativeKit.OwnedWindowHandle;
-import NativeKit.WindowOptions;
 import NativeKit.SurfaceOptions;
 import NativeKit.WebviewOptions;
-import NativeKitResult;
+import NativeKit.Result;
+import NativeKitError;
 import NativeKitSurface;
 import NativeKitWebView;
 
@@ -31,25 +31,16 @@ class NativeKitWindow {
 
 	public function createSurface(options:SurfaceOptions):NativeKitSurface {
 		ensureLive();
-		var created = NativeKit.nk_surface_create(value, options);
-		NativeKitResult.check(created.status, "surface.create");
-		var surface = NativeKitSurface.adopt(created.out_surface);
+		var surface = NativeKitSurface.adopt(NativeKit.nk_surface_create_checked(value, options));
 		surfaces.push(surface);
 		return surface;
 	}
 
 	public function createWebView(options:WebviewOptions):NativeKitWebView {
 		ensureLive();
-		var created = NativeKit.nk_webview_create(new Handle(value.rawValue()), options);
-		NativeKitResult.check(created.status, "webview.create");
-		var webview = new NativeKitWebView(created.out_webview);
+		var webview = new NativeKitWebView(NativeKit.nk_webview_create_checked(new Handle(value.rawValue()), options));
 		webviews.push(webview);
 		return webview;
-	}
-
-	public function show(visible:Bool = true):Void {
-		ensureLive();
-		NativeKitResult.check(NativeKit.nk_window_show(value, visible), "window.show");
 	}
 
 	/** Registers an adapter-owned child that must be released before this window. */
@@ -91,8 +82,8 @@ class NativeKitWindow {
 			throw failure;
 		disposed = true;
 		var status = owned.close();
-		if (status != null)
-			NativeKitResult.check(status, "window.dispose");
+		if (status != null && status != Result.Ok)
+			throw new NativeKitError(status, "window.dispose", NativeKit.nk_last_error());
 	}
 
 	public function isDisposed():Bool

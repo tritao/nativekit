@@ -17,8 +17,7 @@ class ClipboardService {
 	/** Copies UTF-8 text to the system clipboard. */
 	public function writeText(text:String):Void {
 		ensureLive();
-		NativeKitResult.check(NativeKit.nk_clipboard_set_text(text == null ? "" : text),
-			"ui.clipboard.writeText");
+		NativeKit.nk_clipboard_set_text_checked(text == null ? "" : text);
 	}
 
 	/** Starts an asynchronous clipboard read and dispatches its text to `handler`. */
@@ -26,10 +25,9 @@ class ClipboardService {
 		ensureLive();
 		if (handler == null)
 			throw "Clipboard reads require a completion handler";
-		var started = NativeKit.nk_clipboard_read_text();
-		NativeKitResult.check(started.status, "ui.clipboard.readText");
-		trackRead(started.out_request, handler);
-		return started.out_request;
+		var request = NativeKit.nk_clipboard_read_text_checked();
+		trackRead(request, handler);
+		return request;
 	}
 
 	/** Tracks a host-started clipboard request using the same completion path. */

@@ -2,7 +2,8 @@ import NativeKit;
 import NativeKit.SurfaceHandle;
 import NativeKit.OwnedSurfaceHandle;
 import NativeKit.SurfaceFrameCallbackCallback;
-import NativeKitResult;
+import NativeKit.Result;
+import NativeKitError;
 
 /** Owns one graphics surface attached to a NativeKit window. */
 class NativeKitSurface {
@@ -35,21 +36,6 @@ class NativeKitSurface {
 		return value;
 	}
 
-	public function show(visible:Bool = true):Void {
-		ensureLive();
-		NativeKit.nk_surface_show_checked(value, visible);
-	}
-
-	public function makeCurrent():Void {
-		ensureLive();
-		NativeKit.nk_surface_make_current_checked(value);
-	}
-
-	public function present():Void {
-		ensureLive();
-		NativeKit.nk_surface_present_checked(value);
-	}
-
 	/** Replaces the current frame handler and roots it until dispose/detach succeeds. */
 	public function onFrame(handler:Int->Int->Void):NativeKitSurfaceFrameSubscription {
 		ensureLive();
@@ -57,10 +43,11 @@ class NativeKitSurface {
 			frameSubscription.dispose();
 		var handlerBridge = new NativeKitSurfaceFrameHandler(handler);
 		var callback = new SurfaceFrameCallbackCallback(handlerBridge.invoke);
-		var status = NativeKit.nk_surface_set_frame_callback(value, callback, null);
-		if (status != NativeKit.Result.Ok) {
+		try
+			NativeKit.nk_surface_set_frame_callback_checked(value, callback, null)
+		catch (error:Dynamic) {
 			callback.close();
-			NativeKitResult.check(status, "surface.onFrame");
+			throw error;
 		}
 		var subscription = new NativeKitSurfaceFrameSubscription(this, callback);
 		frameSubscription = subscription;
@@ -75,8 +62,8 @@ class NativeKitSurface {
 		if (owned != null) {
 			var status = owned.close();
 			disposed = true;
-			if (status != null)
-				NativeKitResult.check(status, "surface.dispose");
+			if (status != null && status != Result.Ok)
+				throw new NativeKitError(status, "surface.dispose", NativeKit.nk_last_error());
 			return;
 		}
 		if (ownsHandle)
@@ -100,7 +87,7 @@ class NativeKitSurface {
 			subscription.releasedAfterDetach();
 			return;
 		}
-		NativeKitResult.check(NativeKit.nk_surface_set_frame_callback(value, null, null), "surface.detachFrameCallback");
+		NativeKit.nk_surface_set_frame_callback_checked(value, null, null);
 		frameSubscription = null;
 		subscription.releasedAfterDetach();
 	}

@@ -8,7 +8,6 @@ import NativeKit.Result;
 import NativeKit.SurfaceHandle;
 import NativeKitEvent;
 import NativeKitEventValue;
-import NativeKitOptions;
 import haxe.io.Bytes;
 
 /**

@@ -1,6 +1,8 @@
 import NativeKit;
 import NativeKit.WebViewHandle;
 import NativeKit.OwnedWebViewHandle;
+import NativeKit.Result;
+import NativeKitError;
 
 /** Owns one native child WebView. */
 class NativeKitWebView {
@@ -19,23 +21,13 @@ class NativeKitWebView {
 		return value;
 	}
 
-	public function show(visible:Bool = true):Void {
-		ensureLive();
-		NativeKit.nk_webview_show_checked(value, visible);
-	}
-
-	public function navigate(url:String):Void {
-		ensureLive();
-		NativeKit.nk_webview_navigate_checked(value, url);
-	}
-
 	public function dispose():Void {
 		if (disposed)
 			return;
 		disposed = true;
 		var status = owned.close();
-		if (status != null)
-			NativeKitResult.check(status, "webview.dispose");
+		if (status != null && status != Result.Ok)
+			throw new NativeKitError(status, "webview.dispose", NativeKit.nk_last_error());
 	}
 
 	public function isDisposed():Bool

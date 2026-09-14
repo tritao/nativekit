@@ -1,7 +1,6 @@
 import NativeKit;
 import NativeKit.InitOptions;
 import NativeKit.WindowOptions;
-import NativeKitOptions;
 import NativeKitWindow;
 import NativeKitEvents;
 
@@ -16,7 +15,11 @@ class NativeKitRuntime {
 	}
 
 	public static function start(?options:InitOptions):NativeKitRuntime {
-		var configured = options == null ? NativeKitOptions.init() : options;
+		var configured = options;
+		if (configured == null) {
+			configured = new InitOptions();
+			configured.set_api_version(NativeKit.nk_api_version());
+		}
 		NativeKit.nk_init_checked(configured);
 		return new NativeKitRuntime();
 	}

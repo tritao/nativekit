@@ -2,7 +2,6 @@ package nativekit.ui.semantics;
 
 import NativeKit;
 import NativeKitSurface;
-import NativeKitResult;
 import Rect;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.WidgetId;
@@ -18,8 +17,7 @@ class AccessibilityBridge {
 		if (surface == null || surface.isDisposed())
 			throw "Accessibility projection requires a live NativeKit surface";
 		this.surface = surface;
-		NativeKitResult.check(NativeKit.nk_surface_accessibility_clear(surface.nativeHandle()),
-			"ui.accessibility.initialClear");
+		NativeKit.nk_surface_accessibility_clear_checked(surface.nativeHandle());
 		previousParents = new Map();
 		focusedId = NativeKit.NativeKitConstants.NK_ACCESSIBILITY_ROOT;
 		disposed = false;
@@ -52,8 +50,7 @@ class AccessibilityBridge {
 				var parentId = previousParents.get(id);
 				if (parentId == NativeKit.NativeKitConstants.NK_ACCESSIBILITY_ROOT ||
 					currentParents.exists(parentId))
-					NativeKitResult.check(NativeKit.nk_surface_accessibility_remove_node(
-						surface.nativeHandle(), id), "ui.accessibility.removeNode");
+					NativeKit.nk_surface_accessibility_remove_node_checked(surface.nativeHandle(), id);
 			}
 		}
 
@@ -66,8 +63,7 @@ class AccessibilityBridge {
 				break;
 			}
 		if (nextFocus != focusedId) {
-			NativeKitResult.check(NativeKit.nk_surface_accessibility_set_focus(
-				surface.nativeHandle(), nextFocus), "ui.accessibility.setFocus");
+			NativeKit.nk_surface_accessibility_set_focus_checked(surface.nativeHandle(), nextFocus);
 			focusedId = nextFocus;
 		}
 		previousParents = currentParents;
@@ -78,8 +74,7 @@ class AccessibilityBridge {
 		if (disposed)
 			return;
 		if (!surface.isDisposed())
-			NativeKitResult.check(NativeKit.nk_surface_accessibility_clear(surface.nativeHandle()),
-				"ui.accessibility.clear");
+			NativeKit.nk_surface_accessibility_clear_checked(surface.nativeHandle());
 		disposed = true;
 		previousParents = new Map();
 	}
@@ -107,8 +102,7 @@ class AccessibilityBridge {
 		node.set_document_length(value.documentLength);
 		node.set_selection_start(value.selectionStart);
 		node.set_selection_end(value.selectionEnd);
-		NativeKitResult.check(NativeKit.nk_surface_accessibility_set_node(surface.nativeHandle(), node),
-			"ui.accessibility.setNode");
+		NativeKit.nk_surface_accessibility_set_node_checked(surface.nativeHandle(), node);
 	}
 
 	function ensureLive():Void {

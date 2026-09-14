@@ -52,10 +52,8 @@ fi
     "$nativekit_dir/bindings/haxe/NativeKitInputEvents.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitServiceEvents.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitResourceEvents.hx" \
-    "$nativekit_dir/bindings/haxe/NativeKitOptions.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitRequests.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitRequestOutcome.hx" \
-    "$nativekit_dir/bindings/haxe/NativeKitResult.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitWindow.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitWebView.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitRuntime.hx")

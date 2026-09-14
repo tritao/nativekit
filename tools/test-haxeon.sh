@@ -53,12 +53,10 @@ fi
         "$repo_dir/bindings/haxe/NativeKitWindowEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitInputEvents.hx" \
 		"$repo_dir/bindings/haxe/NativeKitTextInput.hx" \
-        "$repo_dir/bindings/haxe/NativeKitOptions.hx" \
         "$repo_dir/bindings/haxe/NativeKitRuntime.hx" \
         "$repo_dir/bindings/haxe/NativeKitWindow.hx" \
         "$repo_dir/bindings/haxe/NativeKitSurface.hx" \
         "$repo_dir/bindings/haxe/NativeKitWebView.hx" \
-        "$repo_dir/bindings/haxe/NativeKitResult.hx" \
         "$repo_dir/bindings/haxe/NativeKitError.hx" \
         "$repo_dir/bindings/haxe/NativeKitVulkanExtensions.hx" \
         "$repo_dir/bindings/haxe/NativeKitServiceEvents.hx" \

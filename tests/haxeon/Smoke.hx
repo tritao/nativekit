@@ -5,7 +5,6 @@ import NativeKitEvents;
 import NativeKitEventBytes;
 import NativeKitEventDecoderTests;
 import NativeKitTextInput;
-import NativeKitOptions;
 import NativeKitRuntime;
 import NativeKitWindow;
 import NativeKit.NativeKitConstants;
@@ -13,6 +12,14 @@ import NativeKit.InitOptions;
 import NativeKit.TextInputState;
 import NativeKit.Capabilities;
 import NativeKit.NotificationFlags;
+import NativeKit.DialogFilter;
+import NativeKit.FileDialogOptions;
+import NativeKit.Resource;
+import NativeKit.ShareOptions;
+import NativeKit.NotificationOptions;
+import NativeKit.WindowOptions;
+import NativeKit.WindowFlags;
+import NativeKit.WindowKind;
 import NativeKitRequestOutcome;
 
 class Smoke {
@@ -25,7 +32,10 @@ class Smoke {
 			|| capabilityMask.without(Capabilities.window()).contains(Capabilities.window()))
 			return 16;
 
-		var runtime = NativeKitRuntime.start(NativeKitOptions.init(32));
+		var initOptions = new InitOptions();
+		initOptions.set_api_version(NativeKitConstants.NK_API_VERSION);
+		initOptions.set_event_queue_capacity(32);
+		var runtime = NativeKitRuntime.start(initOptions);
 		if (runtime.isDisposed())
 			return 2;
 		var resultErrorOk = false;
@@ -72,25 +82,41 @@ class Smoke {
 		if (fileArrayResult != 0 && fileArrayResult != Result.ErrorUnsupported)
 			return 14;
 		var resourceArrayResult = NativeKit.nk_clipboard_set_resources([
-			NativeKitOptions.resource("file:///tmp/nativekit-a", "text/plain", "nativekit-a")
+			resource("file:///tmp/nativekit-a", "text/plain", "nativekit-a")
 		]);
 		if (resourceArrayResult != 0 && resourceArrayResult != Result.ErrorUnsupported)
 			return 15;
 
-		var windowOptions = NativeKitOptions.window(320, 200, "NativeKit smoke", 2);
-		var filters = NativeKitOptions.filteredFileDialog([
-			NativeKitOptions.dialogFilter("*.txt;*.md", "Têxt files"),
-			NativeKitOptions.dialogFilter("*.png;*.jpg", "Imágenes")
-		]);
+		var windowOptions = new WindowOptions();
+		windowOptions.set_width(320);
+		windowOptions.set_height(200);
+		windowOptions.set_title("NativeKit smoke");
+		windowOptions.set_flags(WindowFlags.Hidden);
+		windowOptions.set_owner(NativeKit.WindowHandle.invalid());
+		windowOptions.set_kind(WindowKind.Normal);
+		var textFilter = new DialogFilter();
+		textFilter.set_patterns("*.txt;*.md");
+		textFilter.set_name("Têxt files");
+		var imageFilter = new DialogFilter();
+		imageFilter.set_patterns("*.png;*.jpg");
+		imageFilter.set_name("Imágenes");
+		var filters = new FileDialogOptions();
+		filters.set_filters([textFilter, imageFilter]);
 		if (filters.get_filter_count() != 2)
 			return 12;
-		var share = NativeKitOptions.resourceShare([
-			NativeKitOptions.resource("file:///tmp/nativekit.txt", "text/plain", "nativekit.txt")
-		], "hello");
-		if (share.options.get_resource_count() != 1 || share.options.get_flags() != 0)
+		var share = new ShareOptions();
+		share.set_text("hello");
+		share.set_title(null);
+		share.set_flags(0);
+		share.set_resources([resource("file:///tmp/nativekit.txt", "text/plain", "nativekit.txt")]);
+		if (share.get_resource_count() != 1 || share.get_flags() != 0)
 			return 13;
-		var notification = NativeKitOptions.notification("NativeKit smoke", null, null, null,
-			NotificationFlags.Silent);
+		var notification = new NotificationOptions();
+		notification.set_title("NativeKit smoke");
+		notification.set_body(null);
+		notification.set_icon(null);
+		notification.set_timeout_ms(0);
+		notification.set_flags(NotificationFlags.Silent);
 		if (notification.get_flags() != NotificationFlags.Silent)
 			return 18;
 		if (windowOptions.get_title() != "NativeKit smoke")
@@ -135,5 +161,14 @@ class Smoke {
 		if (!NativeKitEventDecoderTests.run())
 			return 8;
 		return 42;
+	}
+
+	static function resource(uri:String, mimeType:String, displayName:String):Resource {
+		var value = new Resource();
+		value.set_uri(uri);
+		value.set_mime_type(mimeType);
+		value.set_display_name(displayName);
+		value.set_flags(0);
+		return value;
 	}
 }
