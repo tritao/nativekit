@@ -4,12 +4,10 @@ set -euo pipefail
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/realtime-haxe"}
 
-for path in "$haxeon_dir/.tools/haxe/haxe" "$haxeon_dir/vendor/hashlink/hl"; do
-    if [[ ! -x "$path" ]]; then
-        echo "test-haxeon: missing Haxeon toolchain executable: $path" >&2
-        exit 2
-    fi
-done
+if [[ ! -x "$haxeon_dir/.tools/haxe/haxe" ]]; then
+    echo "test-haxeon: missing Haxeon compiler: $haxeon_dir/.tools/haxe/haxe" >&2
+    exit 2
+fi
 
 test_root=$(mktemp -d)
 cleanup() {
@@ -30,6 +28,15 @@ elif [[ -x "$haxeon_dir/scripts/build-native.sh" ]]; then
     (cd "$haxeon_dir" && ./scripts/build-native.sh)
 else
     echo "test-haxeon: Haxeon runtime build script not found" >&2
+    exit 2
+fi
+
+hashlink_runtime="$haxeon_dir/.tools/hashlink/hl"
+if [[ ! -x "$hashlink_runtime" ]]; then
+    hashlink_runtime="$haxeon_dir/vendor/hashlink/hl"
+fi
+if [[ ! -x "$hashlink_runtime" ]]; then
+    echo "test-haxeon: missing HashLink runtime in .tools/hashlink or vendor/hashlink" >&2
     exit 2
 fi
 
@@ -67,13 +74,13 @@ fi
 )
 
 set +e
-runtime_library_path="$test_root/build:$haxeon_dir/out:$haxeon_dir/vendor/hashlink${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+runtime_library_path="$test_root/build:$haxeon_dir/out:$haxeon_dir/.tools/hashlink:$haxeon_dir/vendor/hashlink${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 if command -v xvfb-run >/dev/null; then
     xvfb-run -a env LD_LIBRARY_PATH="$runtime_library_path" \
-        "$haxeon_dir/vendor/hashlink/hl" "$test_root/nativekit-smoke.hl"
+        "$hashlink_runtime" "$test_root/nativekit-smoke.hl"
 else
     LD_LIBRARY_PATH="$runtime_library_path" \
-        "$haxeon_dir/vendor/hashlink/hl" "$test_root/nativekit-smoke.hl"
+        "$hashlink_runtime" "$test_root/nativekit-smoke.hl"
 fi
 status=$?
 set -e

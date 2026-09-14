@@ -54,6 +54,7 @@ class NativeKitRuntime {
 		disposed = true;
 		for (window in windows)
 			window.runtimeShutdown();
+		events.runtimeShutdown();
 	}
 
 	public function isDisposed():Bool

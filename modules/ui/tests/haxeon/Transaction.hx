@@ -9,14 +9,14 @@ import NativeKit.SurfaceFlags;
 import haxe.io.Bytes;
 import NativeKitEvents;
 import NativeKitEventValue;
+import NativeKitRuntime;
 
 class Transaction {
 	static function main():Int {
 		var init = new InitOptions();
 		init.set_api_version(NativeKitConstants.NK_API_VERSION);
 		init.set_event_queue_capacity(32);
-		if (NativeKit.nk_init(init) != Result.Ok)
-			return 10;
+		var runtime = NativeKitRuntime.start(init);
 
 		var windowOptions = new WindowOptions();
 		windowOptions.set_flags(WindowFlags.Resizable);
@@ -25,10 +25,10 @@ class Transaction {
 		windowOptions.set_title("Haxeon: NativeKit UI");
 		var createdWindow = NativeKit.nk_window_create(windowOptions);
 		if (createdWindow.status != Result.Ok) {
-			NativeKit.nk_shutdown();
+			runtime.dispose();
 			return 11;
 		}
-		var window = createdWindow.out_window;
+		var window = createdWindow.out_window.borrow();
 		var surfaceOptions = new SurfaceOptions();
 		surfaceOptions.set_flags(SurfaceFlags.ForwardCompatible | SurfaceFlags.Stencil);
 		surfaceOptions.set_api(GraphicsApi.Opengl);
@@ -39,10 +39,10 @@ class Transaction {
 		var createdSurface = NativeKit.nk_surface_create(window, surfaceOptions);
 		if (createdSurface.status != Result.Ok) {
 			NativeKit.nk_window_destroy(window);
-			NativeKit.nk_shutdown();
+			runtime.dispose();
 			return 12;
 		}
-		var surface = createdSurface.out_surface;
+		var surface = createdSurface.out_surface.borrow();
 
 		var list = DisplayList.create();
 		var path = new PathBuilder().moveTo(0.0, 0.0).lineTo(244.0, 12.0).lineTo(244.0, 180.0).lineTo(12.0, 180.0).close().build();
@@ -106,8 +106,8 @@ class Transaction {
 		var ready = false;
 		var rendered = 0;
 		var attempts = 0;
-		var events = new NativeKitEvents();
-		events.addListener(function(value) switch value {
+		var events = runtime.events;
+		var eventSubscription = events.listen(function(value) switch value {
 			case SurfaceReady(source) if (source.rawValue() == surface.rawValue()): ready = true;
 			case _:
 		});
@@ -159,9 +159,10 @@ class Transaction {
 		}
 		if (!staleRejected)
 			return 7;
+		eventSubscription.dispose();
 		NativeKit.nk_surface_destroy(surface);
 		NativeKit.nk_window_destroy(window);
-		NativeKit.nk_shutdown();
+		runtime.dispose();
 		return 0;
 	}
 }

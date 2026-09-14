@@ -21,6 +21,7 @@ import NativeKit.WindowOptions;
 import NativeKit.WindowFlags;
 import NativeKit.WindowKind;
 import NativeKitRequestOutcome;
+import NativeKitEvents.NativeKitEventSubscription;
 
 class Smoke {
 	static function main():Int {
@@ -45,6 +46,7 @@ class Smoke {
 			resultErrorOk = error.result == Result.ErrorInvalidHandle && error.operation == "nk_window_show" && error.diagnostic != null;
 
 		var events = runtime.events;
+		var lifetimeSubscription = events.listen(function(_) {});
 		var eventOk = !events.poll();
 		try {
 			NativeKitEventBytes.decodeClipboardFiles(haxe.io.Bytes.alloc(4), 0);
@@ -53,6 +55,7 @@ class Smoke {
 		var payloadOk = true;
 		if (NativeKit.nk_clipboard_set_text("nativekit ffi") == Result.Ok) {
 			var completed = false, requestSeenByListener = false;
+			var requestSubscription:Null<NativeKitEventSubscription> = null;
 			var requests = events.requests;
 			var request = requests.readClipboardText(function(outcome) {
 				payloadOk = switch outcome {
@@ -61,7 +64,7 @@ class Smoke {
 				};
 				completed = true;
 			});
-			events.addListener(function(value) switch value {
+			requestSubscription = events.listen(function(value) switch value {
 				case ClipboardText(id, _, _) if (Std.string(id) == Std.string(request)):
 					requestSeenByListener = completed;
 				case _:
@@ -77,6 +80,8 @@ class Smoke {
 			payloadOk = payloadOk && completed && requestSeenByListener && requests.pending() == 0
 				&& !requests.cancel(request);
 			payloadOk = payloadOk && requests.pending() == 0;
+			if (requestSubscription != null)
+				requestSubscription.dispose();
 		}
 		var fileArrayResult = NativeKit.nk_clipboard_set_files(["/tmp/nativekit-a", "/tmp/nativekit-b"]);
 		if (fileArrayResult != 0 && fileArrayResult != Result.ErrorUnsupported)
@@ -146,6 +151,8 @@ class Smoke {
 
 		var diagnosticOk = NativeKit.nk_window_destroy(NativeKit.WindowHandle.invalid()) == -3 && NativeKit.nk_last_error() != null;
 		runtime.dispose();
+		if (!events.isDisposed() || !lifetimeSubscription.isDisposed())
+			return 21;
 		if (!eventOk)
 			return 3;
 		if (!windowOk)

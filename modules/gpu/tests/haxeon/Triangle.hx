@@ -147,7 +147,7 @@ class Triangle {
 		var batchedMs = 0.0;
 		var commandBuffer:Null<CommandBuffer> = null;
 		var surfaceReady = false;
-		runtime.events.addListener(function(value) switch value {
+		var eventSubscription = runtime.events.listen(function(value) switch value {
 			case WindowClose(source)
 				if (source.rawValue() == window.nativeHandle().rawValue()):
 				running = false;
@@ -246,6 +246,7 @@ class Triangle {
 			throw "runtime shut down with a retained graphics image";
 		retainedTargetImage.dispose();
 		surface.dispose();
+		eventSubscription.dispose();
 		runtime.dispose();
 
 		Sys.println("draws_per_frame=400");

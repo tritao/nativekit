@@ -22,6 +22,7 @@ import NativeKit.TextEditAction;
 import NativeKitEventValue;
 import NativeKitEventValue.NativeKitTextEdit;
 import NativeKitEvents;
+import NativeKitRuntime;
 import NativeKitEventDecoderTests;
 import nativekit.ui.core.NativeInputAdapter;
 import nativekit.ui.core.RenderNode;
@@ -603,9 +604,10 @@ class FrameworkSmoke {
 		});
 		var source = new NativeKit.Handle(17);
 		var input = new NativeInputAdapter(context, source);
-		var eventPump = new NativeKitEvents();
+		var eventRuntime = NativeKitRuntime.start();
+		var eventPump = eventRuntime.events;
 		var pumpEvents = 0;
-		eventPump.addListener(function(_) { pumpEvents++; });
+		var pumpSubscription = eventPump.listen(function(_) { pumpEvents++; });
 		input.attach(eventPump);
 		input.attach(eventPump);
 		eventPump.dispatch(PointerMove(source, 4.0, 4.0));
@@ -615,6 +617,13 @@ class FrameworkSmoke {
 		eventPump.dispatch(PointerEnter(source, false));
 		if (pumpEvents != 2 || hoverLeaves != 0)
 			return 102;
+		pumpSubscription.dispose();
+		eventPump.dispatch(PointerMove(source, 5.0, 5.0));
+		if (pumpEvents != 2 || !pumpSubscription.isDisposed())
+			return 103;
+		eventRuntime.dispose();
+		if (!eventPump.isDisposed())
+			return 104;
 		var pastedText = "";
 		var clipboardRequestInt = 49;
 		var clipboardRequest:haxe.Int64 = clipboardRequestInt;

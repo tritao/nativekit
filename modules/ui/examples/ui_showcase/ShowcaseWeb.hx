@@ -16,6 +16,7 @@ import NativeKit.SurfaceOptions;
 import NativeKit.SurfaceFlags;
 import NativeKitEventValue;
 import NativeKitEvents;
+import NativeKitEvents.NativeKitEventSubscription;
 import NativeKitSurface;
 import nativekit.ui.core.NativeInputAdapter;
 
@@ -25,6 +26,7 @@ class ShowcaseWeb {
     static var explorer:Null<UiExplorer>;
     static var explorerInput:Null<NativeInputAdapter>;
     static var events:Null<NativeKitEvents>;
+    static var eventSubscription:Null<NativeKitEventSubscription>;
     static var initialized = false;
     static var running = false;
     static var ready = false;
@@ -143,10 +145,11 @@ class ShowcaseWeb {
                 failureStage = 91;
                 return fail(22);
             }
-            events = new NativeKitEvents();
-            events.addListener(handleEvent);
+            var activePump = new NativeKitEvents();
+            events = activePump;
+            eventSubscription = activePump.listen(handleEvent);
             if (!graphicsMode && explorer != null)
-                explorerInput = explorer.attachInput(events, new Handle(window.rawValue()));
+                explorerInput = explorer.attachInput(activePump, new Handle(window.rawValue()));
             running = true;
             return 0;
         } catch (error:Dynamic) {
@@ -229,6 +232,10 @@ class ShowcaseWeb {
     public static function shutdown():Void {
         running = false;
         ready = false;
+        var eventPump = events;
+        if (eventSubscription != null)
+            eventSubscription.dispose();
+        eventSubscription = null;
         events = null;
         if (graphics != null)
             graphics.dispose();
@@ -247,6 +254,8 @@ class ShowcaseWeb {
         window = WindowHandle.invalid();
         if (initialized)
             NativeKit.nk_shutdown();
+        if (eventPump != null)
+            eventPump.runtimeShutdown();
         initialized = false;
     }
 

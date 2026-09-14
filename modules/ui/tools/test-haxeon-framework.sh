@@ -18,6 +18,15 @@ else
 	exit 2
 fi
 
+hashlink_runtime="$haxeon_dir/.tools/hashlink/hl"
+if [[ ! -x "$hashlink_runtime" ]]; then
+	hashlink_runtime="$haxeon_dir/vendor/hashlink/hl"
+fi
+if [[ ! -x "$hashlink_runtime" ]]; then
+	echo "test-haxeon-framework: missing HashLink runtime in .tools/hashlink or vendor/hashlink" >&2
+	exit 2
+fi
+
 (cd "$haxeon_dir" && .tools/haxe/haxe -cp src --run compiler.tools.HaxeonCompiler \
 	--output="$artifact" \
 	--entry=FrameworkSmoke \
@@ -36,5 +45,5 @@ fi
 
 (cd "$haxeon_dir/out" && \
 	NKUI_TEST_FONT_PATH="$repo_dir/vendor/skribidi/example/data/IBMPlexSans-Regular.ttf" \
-	LD_LIBRARY_PATH="$build_dir/modules/ui:$build_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-	"$haxeon_dir/vendor/hashlink/hl" "$artifact")
+	LD_LIBRARY_PATH="$build_dir/modules/ui:$build_dir:$haxeon_dir/out:$haxeon_dir/.tools/hashlink:$haxeon_dir/vendor/hashlink${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+	"$hashlink_runtime" "$artifact")

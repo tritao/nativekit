@@ -15,6 +15,7 @@ import NativeKit.SurfaceOptions;
 import NativeKit.SurfaceFlags;
 import NativeKitEventValue;
 import NativeKitEvents;
+import NativeKitEvents.NativeKitEventSubscription;
 import NativeKitSurface;
 import nativekit.ui.core.NativeInputAdapter;
 
@@ -38,6 +39,8 @@ class ShowcaseDesktop {
                 return 2;
 
         var initialized = false;
+        var eventPump:Null<NativeKitEvents> = null;
+        var eventSubscription:Null<NativeKitEventSubscription> = null;
         var window = WindowHandle.invalid();
         var surface = SurfaceHandle.invalid();
         var graphics:Null<Showcase> = null;
@@ -90,7 +93,8 @@ class ShowcaseDesktop {
             var rendered = 0;
             var started = Date.now().getTime();
             var nextFrameAt:Float = started;
-            var events = new NativeKitEvents();
+            var activePump = new NativeKitEvents();
+            eventPump = activePump;
 
             if (graphicsMode) {
                 var fonts = FontCollection.create();
@@ -127,11 +131,11 @@ class ShowcaseDesktop {
                     throw error;
                 }
                 explorer.attachSurface(NativeKitSurface.borrowNativeHandle(surface));
-                explorerInput = explorer.attachInput(events, new Handle(window.rawValue()));
+                explorerInput = explorer.attachInput(activePump, new Handle(window.rawValue()));
                 explorer.setViewport(logicalWidth, logicalHeight, initialWidth, initialHeight, 1.0);
             }
 
-            events.addListener(function(value) {
+            eventSubscription = activePump.listen(function(value) {
                 switch (value) {
                     case WindowClose(source) if (source.rawValue() == window.rawValue()):
                         running = false;
@@ -185,7 +189,7 @@ class ShowcaseDesktop {
                                 graphics = null;
                             }
                             if (explorerInput != null)
-                                explorerInput.attach(events);
+                                explorerInput.attach(activePump);
                         } else
                             running = false;
                     case _:
@@ -193,7 +197,7 @@ class ShowcaseDesktop {
             });
 
             while (running) {
-                var hadEvent = events.poll();
+                var hadEvent = activePump.poll();
 
                 if (ready && running) {
                     if (!staticFrame && !smoke && !uiSmoke) {
@@ -248,12 +252,16 @@ class ShowcaseDesktop {
             explorerInput.detach();
         if (explorer != null)
             explorer.dispose();
+        if (eventSubscription != null)
+            eventSubscription.dispose();
         if (surface.isValid())
             NativeKit.nk_surface_destroy(surface);
         if (window.isValid())
             NativeKit.nk_window_destroy(window);
         if (initialized)
             NativeKit.nk_shutdown();
+        if (eventPump != null)
+            eventPump.runtimeShutdown();
         return result;
     }
 }

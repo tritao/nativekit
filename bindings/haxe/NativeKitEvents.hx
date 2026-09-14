@@ -7,13 +7,18 @@ import NativeKitEventValue;
 class NativeKitEvents {
 	public final requests:NativeKitRequests;
 	final listeners:Array<NativeKitEventValue->Void> = [];
+	var disposed:Bool = false;
 
-	public function new(?requests:NativeKitRequests) {
-		this.requests = requests == null ? new NativeKitRequests() : requests;
+	@:allow(NativeKitRuntime)
+	@:allow(ShowcaseDesktop)
+	@:allow(ShowcaseWeb)
+	private function new() {
+		requests = new NativeKitRequests();
 	}
 
 	/** Polls and releases one native event, then routes its managed snapshot. */
 	public function poll():Bool {
+		ensureLive();
 		var polled = NativeKit.nk_poll_event_checked(new Event());
 		var event = new NativeKitEvent(polled);
 		var value = event.take();
@@ -27,18 +32,35 @@ class NativeKitEvents {
 	}
 
 	/** Adds an observer which receives decoded, fully managed events. */
-	public function addListener(listener:NativeKitEventValue->Void):Void {
+	public function listen(listener:NativeKitEventValue->Void):NativeKitEventSubscription {
+		ensureLive();
 		if (listener == null)
 			throw "NativeKit event listeners cannot be null";
 		listeners.push(listener);
+		return new NativeKitEventSubscription(this, listener);
 	}
 
-	/** Removes one observer. Returns false when it was not attached. */
-	public function removeListener(listener:NativeKitEventValue->Void):Bool
+	/** Reports whether this runtime's event pump has been shut down. */
+	public function isDisposed():Bool
+		return disposed;
+
+	/** Removes one listener when its subscription is disposed. */
+	@:allow(NativeKitEventSubscription)
+	private function removeListener(listener:NativeKitEventValue->Void):Bool
 		return listeners.remove(listener);
+
+	/** Stops the pump after its owning runtime shuts down. */
+	@:allow(NativeKitRuntime)
+	@:allow(ShowcaseDesktop)
+	@:allow(ShowcaseWeb)
+	private function runtimeShutdown():Void {
+		disposed = true;
+		listeners.resize(0);
+	}
 
 	/** Routes a decoded value through the same request and listener path as poll(). */
 	public function dispatch(value:NativeKitEventValue):Void {
+		ensureLive();
 		if (value == null)
 			return;
 		switch value {
@@ -65,4 +87,32 @@ class NativeKitEvents {
 		if (failure != null)
 			throw failure;
 	}
+
+	function ensureLive():Void {
+		if (disposed)
+			throw "NativeKit event pump has been disposed with its runtime";
+	}
+}
+
+/** One listener registration owned by a NativeKit event pump. */
+class NativeKitEventSubscription {
+	final events:NativeKitEvents;
+	final listener:NativeKitEventValue->Void;
+	var disposed:Bool = false;
+
+	@:allow(NativeKitEvents)
+	private function new(events:NativeKitEvents, listener:NativeKitEventValue->Void) {
+		this.events = events;
+		this.listener = listener;
+	}
+
+	public function dispose():Void {
+		if (disposed)
+			return;
+		disposed = true;
+		events.removeListener(listener);
+	}
+
+	public function isDisposed():Bool
+		return disposed || events.isDisposed();
 }

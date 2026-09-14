@@ -7,10 +7,10 @@ on:
 jobs:
   web:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       HAXEON_DIR: ${{ github.workspace }}/haxeon
-      HAXEON_REF: 92f414676ecd3fc40dc0d01b114dc3665a617c58
+      HAXEON_REF: 0ffc8a8a9f65d9fb3200dba2fbc5007d7b907aa1
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,7 +33,9 @@ jobs:
           git submodule update --init vendor/hashlink vendor/hashlink-debugger vendor/libffi vendor/utest
 
       - name: Install Haxeon build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libffi-dev
+        run: >-
+          sudo apt-get update && sudo apt-get install -y libffi-dev libfontconfig1-dev
+          libgl1-mesa-dev libgles2-mesa-dev libgtk-3-dev libwebkit2gtk-4.1-dev xvfb
 
       - name: Cache web toolchain
         uses: actions/cache@v4
@@ -46,6 +48,9 @@ jobs:
       - name: Install Haxeon toolchain
         working-directory: haxeon
         run: ./scripts/bootstrap-tools.sh
+
+      - name: Check native Haxe bindings and ABI drift
+        run: ./tools/test-haxe-bindings.sh
 
       - name: Install Chrome
         uses: browser-actions/setup-chrome@v1
