@@ -333,6 +333,7 @@ if(NK_BUILD_EXAMPLES)
                 _nk_last_error
                 _nk_poll_event
                 _nk_shutdown
+                _nk_time_seconds
                 _nk_surface_accessibility_clear
                 _nk_surface_accessibility_remove_node
                 _nk_surface_accessibility_set_focus

@@ -131,9 +131,10 @@ class FrameworkSmoke {
 		field.onSubmit = function(next) { submittedValue = next; };
 		var fieldRoot = context.submit(field, new LayoutFrame(256.0, 192.0));
 		if (fieldRoot.children.length != 1 ||
-			fieldRoot.children[0].layout.visualKind != LayoutVisualKind.Custom ||
-			fieldRoot.children[0].children.length != 1 ||
-			fieldRoot.children[0].children[0].layout.visualKind != LayoutVisualKind.Text)
+			fieldRoot.children[0].layout.visualKind != LayoutVisualKind.Box ||
+			fieldRoot.children[0].children.length != 2 ||
+			fieldRoot.children[0].children[0].layout.visualKind != LayoutVisualKind.Text ||
+			fieldRoot.children[0].children[1].layout.visualKind != LayoutVisualKind.Custom)
 			return 201;
 		if (fieldRoot.semantics == null || fieldRoot.semantics.role != AccessibilityRole.TextField ||
 			fieldRoot.semantics.label != "Message" || !fieldRoot.focusable)
