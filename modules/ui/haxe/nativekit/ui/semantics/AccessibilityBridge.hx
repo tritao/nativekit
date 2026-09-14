@@ -10,7 +10,6 @@ import nativekit.ui.core.WidgetId;
 class AccessibilityBridge {
 	final surface:NativeKitSurface;
 	var previousParents:Map<Int, Int>;
-	var focusedId:Int;
 	var disposed:Bool;
 
 	public function new(surface:NativeKitSurface) {
@@ -19,7 +18,6 @@ class AccessibilityBridge {
 		this.surface = surface;
 		NativeKit.nk_surface_accessibility_clear_checked(surface.nativeHandle());
 		previousParents = new Map();
-		focusedId = NativeKit.NativeKitConstants.NK_ACCESSIBILITY_ROOT;
 		disposed = false;
 	}
 
@@ -37,36 +35,69 @@ class AccessibilityBridge {
 		return result;
 	}
 
-	/** Reconciles semantic nodes and removes platform nodes absent from this frame. */
+	/** Sends one atomic snapshot replacement, removals, and focus update. */
 	public function update(root:Null<RenderNode>, focused:Null<WidgetId>):Void {
 		ensureLive();
 		var snapshot = project(root, focused);
 		var currentParents:Map<Int, Int> = new Map();
 		for (item in snapshot)
 			currentParents.set(item.id, item.parentId);
+		var requestedFocus = focused == null ? NativeKit.NativeKitConstants.NK_ACCESSIBILITY_ROOT : focused.value;
+		var batch = buildUpdate(snapshot, previousParents, requestedFocus);
+		NativeKit.nk_surface_accessibility_update_with_removed_ids_checked(surface.nativeHandle(),
+			batch.nativeUpdate, batch.removedNodeIds, batch.removedNodeIds.length);
+		previousParents = currentParents;
+	}
 
+	/** Builds a platform-neutral atomic NativeKit update from a complete semantic snapshot. */
+	public static function buildUpdate(snapshot:Array<AccessibilitySnapshotNode>,
+			previousParents:Map<Int, Int>, focus:Int):AccessibilityUpdateBatch {
+		var currentIds:Map<Int, Bool> = new Map();
+		for (item in snapshot)
+			currentIds.set(item.id, true);
+		var nodes = buildNodes(snapshot);
+		var removed:Array<Int> = [];
 		for (id in previousParents.keys()) {
-			if (!currentParents.exists(id)) {
+			if (!currentIds.exists(id)) {
 				var parentId = previousParents.get(id);
 				if (parentId == NativeKit.NativeKitConstants.NK_ACCESSIBILITY_ROOT ||
-					currentParents.exists(parentId))
-					NativeKit.nk_surface_accessibility_remove_node_checked(surface.nativeHandle(), id);
+					currentIds.exists(parentId))
+					removed.push(id);
 			}
 		}
 
+		var update = new NativeKit.AccessibilityUpdate();
+		update.set_struct_size(NativeKit.AccessibilityUpdate.size());
+		update.set_flags(NativeKit.AccessibilityUpdateFlags.NkAccessibilityUpdateFocus);
+		update.set_nodes(nodes);
+		update.set_node_count(nodes.length);
+		var removedBytes = haxe.io.Bytes.alloc(removed.length * 4);
+		for (index in 0...removed.length) {
+			var offset = index * 4;
+			var id = removed[index];
+			removedBytes.set(offset, id & 0xff);
+			removedBytes.set(offset + 1, (id >>> 8) & 0xff);
+			removedBytes.set(offset + 2, (id >>> 16) & 0xff);
+			removedBytes.set(offset + 3, (id >>> 24) & 0xff);
+		}
+		update.set_removed_node_count(0);
+		var focusTarget = NativeKit.NativeKitConstants.NK_ACCESSIBILITY_ROOT;
 		for (item in snapshot)
-			setNode(item);
-		var nextFocus = NativeKit.NativeKitConstants.NK_ACCESSIBILITY_ROOT;
-		for (item in snapshot)
-			if (focused != null && item.id == focused.value) {
-				nextFocus = item.id;
+			if (item.id == focus && (item.states & AccessibilityState.Disabled) == 0) {
+				focusTarget = item.id;
 				break;
 			}
-		if (nextFocus != focusedId) {
-			NativeKit.nk_surface_accessibility_set_focus_checked(surface.nativeHandle(), nextFocus);
-			focusedId = nextFocus;
-		}
-		previousParents = currentParents;
+		update.set_focus(focusTarget);
+		update.set_reserved(0);
+		return new AccessibilityUpdateBatch(update, removedBytes, removed.length);
+	}
+
+	/** Serializes every record in a semantic snapshot into native ABI structures. */
+	public static function buildNodes(snapshot:Array<AccessibilitySnapshotNode>):Array<NativeKit.AccessibilityNode> {
+		var result:Array<NativeKit.AccessibilityNode> = [];
+		for (item in snapshot)
+			result.push(toNativeNode(item));
+		return result;
 	}
 
 	/** Removes the projected tree if the host surface still exists. */
@@ -79,9 +110,10 @@ class AccessibilityBridge {
 		previousParents = new Map();
 	}
 
-	function setNode(item:AccessibilitySnapshotNode):Void {
+	static function toNativeNode(item:AccessibilitySnapshotNode):NativeKit.AccessibilityNode {
 		var value = item.semantics;
 		var node = new NativeKit.AccessibilityNode();
+		node.set_struct_size(NativeKit.AccessibilityNode.size());
 		node.set_id(item.id);
 		node.set_parent_id(item.parentId);
 		node.set_child_index(item.childIndex);
@@ -102,7 +134,17 @@ class AccessibilityBridge {
 		node.set_document_length(value.documentLength);
 		node.set_selection_start(value.selectionStart);
 		node.set_selection_end(value.selectionEnd);
-		NativeKit.nk_surface_accessibility_set_node_checked(surface.nativeHandle(), node);
+		node.set_set_size(item.setSize);
+		node.set_position_in_set(item.positionInSet);
+		node.set_row_count(item.rowCount);
+		node.set_column_count(item.columnCount);
+		node.set_row_index(item.rowIndex);
+		node.set_column_index(item.columnIndex);
+		node.set_row_span(item.rowSpan);
+		node.set_column_span(item.columnSpan);
+		node.set_hierarchy_level(item.hierarchyLevel);
+		node.set_orientation(cast(item.orientation, NativeKit.AccessibilityOrientation));
+		return node;
 	}
 
 	function ensureLive():Void {
@@ -116,18 +158,25 @@ class AccessibilityBridge {
 			focused:Null<WidgetId>, output:Array<AccessibilitySnapshotNode>, childCounts:Map<Int, Int>):Void {
 		if (node.resolved == null || !node.resolved.visible)
 			return;
-		var enabled = ancestorsEnabled && node.enabled;
+		var explicitlyDisabled = false;
+		if (node.semantics != null) {
+			var declared:Semantics = cast node.semantics;
+			explicitlyDisabled = (declared.states & AccessibilityState.Disabled) != 0;
+		}
+		var enabled = ancestorsEnabled && node.enabled && !explicitlyDisabled;
 		var nextParent = semanticParent;
 		if (node.semantics != null) {
 			var semantics:Semantics = cast node.semantics;
 			var childIndex = childCounts.exists(semanticParent) ? childCounts.get(semanticParent) : 0;
 			childCounts.set(semanticParent, childIndex + 1);
 			var states = semantics.states;
-			if (node.focusable)
+			if (node.focusable && enabled)
 				states |= AccessibilityState.Focusable;
-			if (!enabled)
+			if (!enabled) {
 				states |= AccessibilityState.Disabled;
-			if (focused != null && node.id.equals(focused))
+				states &= ~(AccessibilityState.Focusable | AccessibilityState.Focused);
+			}
+			if (enabled && focused != null && node.id.equals(focused))
 				states |= AccessibilityState.Focused;
 			var actions = semantics.actions;
 			if (node.focusable && enabled)

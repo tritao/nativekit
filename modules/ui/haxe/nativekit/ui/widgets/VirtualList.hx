@@ -8,6 +8,7 @@ import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
 import nativekit.ui.core.View;
+import nativekit.ui.semantics.AccessibilityOrientation;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.widgets.Column;
@@ -15,7 +16,6 @@ import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollController;
 import nativekit.ui.widgets.ScrollView;
-import nativekit.ui.widgets.SizedBox;
 import nativekit.ui.widgets.Spacer;
 
 /** Fixed-height virtual list composed from ordinary rows inside ScrollView. */
@@ -77,8 +77,7 @@ class VirtualList implements View {
 				var item = itemBuilder(index);
 				if (item == null)
 					throw 'VirtualList item builder returned null for index $index';
-				var row = new SizedBox("row", item, LayoutAxis.grow(),
-					LayoutAxis.fixed(itemHeight));
+				var row = new VirtualCollectionRow("row", item, itemCount, index, itemHeight);
 				rowViews.push(new KeyedView('item:$rowKey', row));
 			}
 			var afterHeight = (itemCount - last) * itemHeight;
@@ -94,7 +93,10 @@ class VirtualList implements View {
 			var root = new RenderNode(context.id("list"), LayoutVisualKind.Box);
 			root.layout.style.width = viewportStyle.width;
 			root.layout.style.height = viewportStyle.height;
-			root.semantics = new Semantics(AccessibilityRole.List);
+			var semantics = new Semantics(AccessibilityRole.Collection);
+			semantics.setSize = itemCount;
+			semantics.orientation = AccessibilityOrientation.Vertical;
+			root.semantics = semantics;
 			var viewport = context.withScope(new Key("scroll-view"), function() return scroll.build(context));
 			root.add(viewport);
 			return root;
@@ -110,4 +112,35 @@ class VirtualList implements View {
 
 	static inline function finite(value:Float):Bool
 		return value == value && value - value == 0.0;
+}
+
+private class VirtualCollectionRow implements View {
+	final key:String;
+	final child:View;
+	final setSize:Int;
+	final index:Int;
+	final height:Float;
+
+	public function new(key:String, child:View, setSize:Int, index:Int, height:Float) {
+		this.key = key;
+		this.child = child;
+		this.setSize = setSize;
+		this.index = index;
+		this.height = height;
+	}
+
+	public function build(context:BuildContext):RenderNode {
+		return context.withScope(new Key(key), function() {
+			var style = new LayoutStyle();
+			style.width = LayoutAxis.grow();
+			style.height = LayoutAxis.fixed(height);
+			var node = new RenderNode(context.id("collection-item"), LayoutVisualKind.Box, style);
+			var semantics = new Semantics(AccessibilityRole.CollectionItem);
+			semantics.setSize = setSize;
+			semantics.positionInSet = index + 1;
+			node.semantics = semantics;
+			node.add(context.withScope(new Key("content"), function() return child.build(context)));
+			return node;
+		});
+	}
 }

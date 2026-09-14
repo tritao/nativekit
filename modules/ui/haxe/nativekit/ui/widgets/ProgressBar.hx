@@ -39,14 +39,12 @@ class ProgressBar implements View {
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
 			var node = new RenderNode(context.id("progress"), LayoutVisualKind.Custom, style);
-			if (label != null) {
-				var semantics = new Semantics(AccessibilityRole.Group, label, Std.string(value));
-				semantics.states = AccessibilityState.ReadOnly;
-				semantics.numericValue = value;
-				semantics.numericMinimum = minimum;
-				semantics.numericMaximum = maximum;
-				node.semantics = semantics;
-			}
+			var semantics = new Semantics(AccessibilityRole.ProgressBar, label, Std.string(value));
+			semantics.states = AccessibilityState.ReadOnly;
+			semantics.numericValue = value;
+			semantics.numericMinimum = minimum;
+			semantics.numericMaximum = maximum;
+			node.semantics = semantics;
 			node.onPaint(function(canvas, geometry) {
 				var fraction = (value - minimum) / (maximum - minimum);
 				canvas.fillRect(new Rect(0.0, 0.0, geometry.width, geometry.height),

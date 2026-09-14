@@ -53,11 +53,11 @@ class BinaryControl implements View {
 		return context.withScope(new Key(key), function() {
 			var node = new RenderNode(context.id(toggle ? "toggle" : "checkbox"),
 				LayoutVisualKind.Box, style);
-			node.focusable = true;
+			node.focusable = enabled;
 			node.enabled = enabled;
-			var semantics = new Semantics(AccessibilityRole.Checkbox, label,
+			var semantics = new Semantics(toggle ? AccessibilityRole.Switch : AccessibilityRole.Checkbox, label,
 				checked ? "true" : "false");
-			semantics.actions = AccessibilityAction.Activate;
+			semantics.actions = toggle ? AccessibilityAction.Toggle : AccessibilityAction.Activate;
 			if (checked)
 				semantics.states |= AccessibilityState.Checked;
 			if (!enabled)

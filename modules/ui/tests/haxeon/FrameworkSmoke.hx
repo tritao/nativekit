@@ -85,6 +85,7 @@ import nativekit.ui.animation.SpringController;
 import nativekit.ui.animation.Easing;
 import nativekit.ui.debug.UiInspector;
 import nativekit.ui.debug.AccessibilityAudit;
+import AccessibilityContract;
 
 class FrameworkSmoke {
 	static function main():Int {
@@ -424,7 +425,8 @@ class FrameworkSmoke {
 			toggleGeometry.y + toggleGeometry.height * 0.5, 0);
 		context.pointerUp(toggleGeometry.x + toggleGeometry.width * 0.5,
 			toggleGeometry.y + toggleGeometry.height * 0.5, 0);
-		if (!toggle.checked || !toggleChanged || toggleSemantics.role != AccessibilityRole.Checkbox)
+		if (!toggle.checked || !toggleChanged || toggleSemantics.role != AccessibilityRole.Switch ||
+			(toggleSemantics.actions & AccessibilityAction.Toggle) == 0)
 			return 56;
 		var sliderChanged = 0.0;
 		var slider = new Slider("slider-smoke", "Level", 0.5, 0.0, 1.0, 0.1,
@@ -461,7 +463,7 @@ class FrameworkSmoke {
 		var progressRoot = context.submit(new ProgressBar("progress-smoke", 0.75,
 			0.0, 1.0, "Transfer"), new LayoutFrame(256.0, 192.0));
 		var progressSemantics:Semantics = cast progressRoot.semantics;
-		if (progressSemantics == null || progressSemantics.role != AccessibilityRole.Group ||
+		if (progressSemantics == null || progressSemantics.role != AccessibilityRole.ProgressBar ||
 			(progressSemantics.states & AccessibilityState.ReadOnly) == 0 ||
 			progressSemantics.numericValue != 0.75)
 			return 61;
@@ -769,7 +771,8 @@ class FrameworkSmoke {
 		}, virtualStyle, null, listController, 80.0);
 		var virtualRoot = context.submit(virtualList, new LayoutFrame(256.0, 80.0));
 		var virtualSemantics:Semantics = cast virtualRoot.semantics;
-		if (virtualSemantics.role != AccessibilityRole.List || builtRows.length >= 12 ||
+		if (virtualSemantics.role != AccessibilityRole.Collection || virtualSemantics.setSize != 100 ||
+			builtRows.length >= 12 ||
 			listController.maxScrollY != 1920.0)
 			return 67;
 		listController.jumpTo(0.0, 500.0);
@@ -981,7 +984,7 @@ class FrameworkSmoke {
 			return 95;
 		tabsRoot = context.submit(tabs, tabsFrame);
 		var secondPage:Semantics = cast tabsRoot.children[1].semantics;
-		if (secondPage.label != "Second page" ||
+		if (secondPage.role != AccessibilityRole.TabPanel || secondPage.label != "Second" ||
 			(cast(tabsRoot.children[0].children[1].semantics, Semantics).states &
 			AccessibilityState.Selected) == 0)
 			return 96;
@@ -1112,6 +1115,9 @@ class FrameworkSmoke {
 			context.submit(new Text("Spring"), animationFrame);
 		if (spring.value < 0.99 || spring.active || context.animations.activeCount != 0)
 			return 91;
+		var accessibilityResult = AccessibilityContract.run(fonts);
+		if (accessibilityResult != 0)
+			return 120 + accessibilityResult;
 
 		var overlayCanvas = new Canvas();
 		var overlayList = DisplayList.create();

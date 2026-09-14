@@ -46,7 +46,7 @@ class Radio implements View {
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(key, function() {
 			var node = new RenderNode(context.id("radio"), LayoutVisualKind.Box, style.copy());
-			node.focusable = true;
+			node.focusable = enabled;
 			node.enabled = enabled;
 			var semantics = new Semantics(AccessibilityRole.Radio, label, value);
 			semantics.actions = AccessibilityAction.Activate;

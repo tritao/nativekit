@@ -12,6 +12,8 @@ import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
 import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityRole;
+import nativekit.ui.semantics.AccessibilityAction;
+import nativekit.ui.semantics.AccessibilityOrientation;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.TabItem;
@@ -60,7 +62,9 @@ class Tabs implements View {
 			};
 
 			var root = new RenderNode(context.id("tabs"), LayoutVisualKind.Box, style.copy());
-			root.semantics = new Semantics(AccessibilityRole.Group, "Tabs");
+			var tabsSemantics = new Semantics(AccessibilityRole.TabList, "Tabs");
+			tabsSemantics.orientation = AccessibilityOrientation.Horizontal;
+			root.semantics = tabsSemantics;
 			var stripStyle = new LayoutStyle();
 			stripStyle.width = LayoutAxis.grow();
 			stripStyle.direction = LayoutDirection.LeftToRight;
@@ -71,6 +75,8 @@ class Tabs implements View {
 				var button = new Button(item.label, null, function() { select(item.key); }, item.key);
 				button.enabled = item.enabled;
 				button.selected = item.key == active;
+				button.semanticRole = AccessibilityRole.Tab;
+				button.semanticActions = AccessibilityAction.Select;
 				var buttonNode = context.withScope(new Key(item.key),
 					function() return button.build(context));
 				strip.add(buttonNode);
@@ -106,9 +112,14 @@ class Tabs implements View {
 				}
 			if (selectedItem != null) {
 				var item:TabItem = cast selectedItem;
-				var page = context.withScope(new Key("panel:" + item.key),
-					function() return item.content.build(context));
-				root.add(page);
+				var panel = context.withScope(new Key("panel:" + item.key), function() {
+					var node = new RenderNode(context.id("tab-panel"), LayoutVisualKind.Box);
+					node.semantics = new Semantics(AccessibilityRole.TabPanel, item.label);
+					node.add(context.withScope(new Key("content"),
+						function() return item.content.build(context)));
+					return node;
+				});
+				root.add(panel);
 			}
 			return root;
 		});

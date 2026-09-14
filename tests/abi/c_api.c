@@ -33,6 +33,10 @@ int main(void) {
     accessibility_update.struct_size = sizeof(accessibility_update);
     assert(nk_surface_accessibility_update(NK_INVALID_HANDLE, &accessibility_update) ==
            NK_ERROR_UNSUPPORTED);
+    const uint8_t malformed_removed_ids[] = {1, 2, 3};
+    assert(nk_surface_accessibility_update_with_removed_ids(
+               NK_INVALID_HANDLE, &accessibility_update, malformed_removed_ids,
+               sizeof(malformed_removed_ids)) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_surface_accessibility_set_text_ranges(NK_INVALID_HANDLE, 1, NULL, 0) ==
            NK_ERROR_UNSUPPORTED);
     (void)nk_get_capabilities();
