@@ -2,6 +2,9 @@
 #include "nativekit_graphics.h"
 #include "nativekit_window.h"
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #include <uiautomation.h>
 #include <uiautomationclient.h>
@@ -328,12 +331,12 @@ int main() {
         LONG property = properties[index];
         assert(SUCCEEDED(SafeArrayPutElement(property_array, &index, &property)));
     }
-    assert(SUCCEEDED(automation->AddPropertyChangedEventHandler(root, TreeScope_SubTree, nullptr,
+    assert(SUCCEEDED(automation->AddPropertyChangedEventHandler(root, TreeScope_Subtree, nullptr,
                                                                 signals, property_array)));
     SafeArrayDestroy(property_array);
     assert(SUCCEEDED(automation->AddFocusChangedEventHandler(nullptr, signals)));
     assert(SUCCEEDED(
-        automation->AddStructureChangedEventHandler(root, TreeScope_SubTree, nullptr, signals)));
+        automation->AddStructureChangedEventHandler(root, TreeScope_Subtree, nullptr, signals)));
 
     IUIAutomationElement *button = find_named(automation, root, L"Open Overview");
     assert(button);
