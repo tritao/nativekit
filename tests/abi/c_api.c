@@ -20,6 +20,15 @@
 #include <stddef.h>
 #include <string.h>
 
+_Static_assert(NK_GRAPHICS_D3D11 == 4, "D3D11 graphics API value is stable");
+_Static_assert(NK_GRAPHICS_METAL == 5, "Metal graphics API value is stable");
+_Static_assert(sizeof(nk_surface_frame_target) == 72,
+               "surface frame target keeps its versioned 40-byte prefix and token tail");
+_Static_assert(offsetof(nk_surface_frame_target, native_device) == 40,
+               "native frame-target tokens are appended after the original ABI prefix");
+_Static_assert(offsetof(nk_surface_frame_target, native_present_target) == 64,
+               "present target token has a stable ABI offset");
+
 int main(void) {
     assert(nk_time_now_ns() > 0);
     assert(nk_time_seconds() > 0.0);

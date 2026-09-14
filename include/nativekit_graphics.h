@@ -18,15 +18,16 @@ extern "C" {
 /** Opaque sampled image shared between NativeKit graphics producers and consumers. */
 NK_DECLARE_HANDLE(nk_graphics_image);
 
-/** Identity of a graphics context and its explicitly shared contexts. */
+/** Identity of a graphics device and surfaces that explicitly share it. */
 NK_DECLARE_HANDLE(nk_graphics_device);
 
 /**
  * NativeKit's graphics-surface API.
  *
  * A surface is a child rendering target associated with a NativeKit window or
- * mobile host. Create it with nk_surface_create(), make it current before
- * issuing graphics commands, and call nk_surface_present() when the frame is
+ * mobile host. NativeKit core owns its platform presentation resources;
+ * NativeKit GPU owns rendering commands and resources. Prepare a frame with
+ * nk_surface_make_current(), then call nk_surface_present() when the frame is
  * ready. Surface operations are UI-thread-only.
  */
 
@@ -42,7 +43,11 @@ enum NK_ENUM(nk_graphics_api) {
     /** OpenGL ES, typically used on mobile or embedded systems. */
     NK_GRAPHICS_OPENGL_ES = 2,
     /** Vulkan presentation surface. */
-    NK_GRAPHICS_VULKAN = 3
+    NK_GRAPHICS_VULKAN = 3,
+    /** Direct3D 11 presentation surface. */
+    NK_GRAPHICS_D3D11 = 4,
+    /** Metal presentation surface. */
+    NK_GRAPHICS_METAL = 5
 };
 
 /** Backend-neutral metadata for a sampled graphics image. */
@@ -51,7 +56,7 @@ typedef struct nk_graphics_image_info {
     uint32_t struct_size NK_STRUCT_SIZE;
     /** Graphics backend that owns the image. */
     nk_graphics_api api;
-    /** Context-sharing device that owns the image. */
+    /** Graphics device that owns the image. */
     nk_graphics_device device;
     /** Sampled image width in pixels. */
     int32_t width;
@@ -98,7 +103,7 @@ typedef struct nk_surface_options {
     int32_t width;
     /** Initial logical height; must be positive. */
     int32_t height;
-    /** Optional compatible surface whose graphics context should be shared. */
+    /** Optional compatible surface whose graphics device should be shared. */
     nk_surface share_surface;
     /** Reserved; set to zero. */
     uint32_t reserved;
@@ -134,10 +139,13 @@ typedef struct nk_surface_resize_event {
 /**
  * Backend-native render target for the current surface frame.
  *
- * Callers must make the surface current before requesting this descriptor.
- * For OpenGL and OpenGL ES, `native_target` is the current draw framebuffer
- * name, with zero representing the default framebuffer. Other graphics APIs
- * may use the field for a backend-native target handle in a future backend.
+ * Callers must prepare the frame with nk_surface_make_current() before
+ * requesting this descriptor. For OpenGL and OpenGL ES, `native_target` is
+ * the current draw framebuffer name, with zero representing the default
+ * framebuffer. For explicit APIs, it is a borrowed backend-native color target
+ * token. The appended tokens are borrowed from the surface; target and present
+ * tokens are valid only for the prepared frame. NativeKit callers must not
+ * release or retain these tokens.
  */
 typedef struct nk_surface_frame_target {
     /** Set to sizeof(nk_surface_frame_target) or a larger compatible size. */
@@ -150,10 +158,18 @@ typedef struct nk_surface_frame_target {
     int32_t height;
     /** Backend-native target token; opaque to NativeKit callers. */
     uint64_t native_target;
-    /** Identity of the graphics context/share group current for this target. */
+    /** Identity of the graphics device that owns this target. */
     nk_graphics_device device;
-    /** Reserved for future target metadata; set to zero. */
+    /** Reserved for compatibility with the original frame-target descriptor; set to zero. */
     uint32_t reserved[3];
+    /** Borrowed native device token (ID3D11Device* or id<MTLDevice> where applicable). */
+    uint64_t native_device;
+    /** Borrowed execution token (ID3D11DeviceContext* or id<MTLCommandQueue> where applicable). */
+    uint64_t native_context;
+    /** Borrowed depth/stencil target token; zero when no attachment is requested. */
+    uint64_t native_depth_stencil_target;
+    /** Borrowed presentation token (for example IDXGISwapChain* or CAMetalDrawable*). */
+    uint64_t native_present_target;
 } nk_surface_frame_target;
 
 /* ------------------------------------------------------------------------- */
@@ -163,10 +179,9 @@ typedef struct nk_surface_frame_target {
 /**
  * Creates a graphics surface inside a NativeKit window or mobile host.
  *
- * Context configuration is fixed at creation. Desktop backends support
- * OpenGL and OpenGL ES; Android supports OpenGL ES and Vulkan presentation
- * views. A share_surface must remain alive until every surface sharing it has
- * been destroyed. Vulkan views do not support GL context flags or sharing.
+ * Backend configuration is fixed at creation. A share_surface must remain
+ * alive until every surface sharing its graphics device has been destroyed.
+ * The requested API determines which platform backends are available.
  * On NK_OK, writes the new surface handle to `out_surface`.
  */
 NK_API nk_result NK_CALL nk_surface_create(nk_window window, const nk_surface_options *options,
@@ -187,14 +202,20 @@ NK_API nk_result NK_CALL nk_surface_show(nk_surface surface, nk_bool visible);
 NK_API nk_result NK_CALL nk_surface_set_bounds(nk_surface surface, int32_t x, int32_t y,
                                                int32_t width, int32_t height);
 
-/** Makes the surface's graphics context and framebuffer current on the UI thread. */
+/**
+ * Prepares the surface for rendering on the UI thread. OpenGL backends make
+ * their context and framebuffer current. Explicit backends acquire or prepare
+ * the frame's presentation targets; they do not expose a thread-current
+ * graphics context.
+ */
 NK_API nk_result NK_CALL nk_surface_make_current(nk_surface surface);
 
 /**
  * Presents drawing performed since the last make-current call.
  *
- * On GTK this schedules composition of the GtkGLArea framebuffer instead of
- * swapping a caller-owned native surface.
+ * The backend presents the surface's prepared frame. On GTK this schedules
+ * composition of the GtkGLArea framebuffer instead of swapping a
+ * caller-owned native surface.
  */
 NK_API nk_result NK_CALL nk_surface_present(nk_surface surface);
 
@@ -239,11 +260,12 @@ NK_API nk_result NK_CALL nk_graphics_device_retain(nk_graphics_device device);
 NK_API nk_result NK_CALL nk_graphics_device_release(nk_graphics_device device);
 
 /**
- * Resolves a graphics function for the current surface context.
+ * Resolves a graphics function for the current OpenGL surface context.
  *
  * `name` is a non-null UTF-8 function name. On NK_OK, writes a callable
  * function pointer to `out_proc`; the pointer remains valid only while the
- * associated graphics context and loader remain valid.
+ * associated graphics context and loader remain valid. Explicit backends such
+ * as D3D11 and Metal return NK_ERROR_UNSUPPORTED.
  */
 NK_API nk_result NK_CALL nk_surface_get_proc_address(nk_surface surface, const char *name NK_UTF8,
                                                      nk_graphics_proc *out_proc);

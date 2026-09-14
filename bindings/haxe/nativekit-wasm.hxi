@@ -1034,6 +1034,14 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * Vulkan presentation surface.
 		 */
 		NK_GRAPHICS_VULKAN = 3;
+		/**
+		 * Direct3D 11 presentation surface.
+		 */
+		NK_GRAPHICS_D3D11 = 4;
+		/**
+		 * Metal presentation surface.
+		 */
+		NK_GRAPHICS_METAL = 5;
 	}
 	/**
 	 * Transition reported for a key or pointer button.
@@ -2657,10 +2665,9 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	/**
 	 * Creates a graphics surface inside a NativeKit window or mobile host.
 	 *
-	 * Context configuration is fixed at creation. Desktop backends support
-	 * OpenGL and OpenGL ES; Android supports OpenGL ES and Vulkan presentation
-	 * views. A share_surface must remain alive until every surface sharing it has
-	 * been destroyed. Vulkan views do not support GL context flags or sharing.
+	 * Backend configuration is fixed at creation. A share_surface must remain
+	 * alive until every surface sharing its graphics device has been destroyed.
+	 * The requested API determines which platform backends are available.
 	 * On NK_OK, writes the new surface handle to `out_surface`.
 	 */
 	extern fn nk_surface_create(window: nk_window, options: ptr<const<nk_surface_options>>, out_surface: ptr<nk_surface> @out @owned) -> nk_result;
@@ -2677,22 +2684,27 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	extern fn nk_surface_get_framebuffer_size(surface: nk_surface, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
 	/**
-	 * Resolves a graphics function for the current surface context.
+	 * Resolves a graphics function for the current OpenGL surface context.
 	 *
 	 * `name` is a non-null UTF-8 function name. On NK_OK, writes a callable
 	 * function pointer to `out_proc`; the pointer remains valid only while the
-	 * associated graphics context and loader remain valid.
+	 * associated graphics context and loader remain valid. Explicit backends such
+	 * as D3D11 and Metal return NK_ERROR_UNSUPPORTED.
 	 */
 	extern fn nk_surface_get_proc_address(surface: nk_surface, name: utf8, out_proc: ptr<nk_graphics_proc>) -> nk_result;
 	/**
-	 * Makes the surface's graphics context and framebuffer current on the UI thread.
+	 * Prepares the surface for rendering on the UI thread. OpenGL backends make
+	 * their context and framebuffer current. Explicit backends acquire or prepare
+	 * the frame's presentation targets; they do not expose a thread-current
+	 * graphics context.
 	 */
 	extern fn nk_surface_make_current(surface: nk_surface) -> nk_result;
 	/**
 	 * Presents drawing performed since the last make-current call.
 	 *
-	 * On GTK this schedules composition of the GtkGLArea framebuffer instead of
-	 * swapping a caller-owned native surface.
+	 * The backend presents the surface's prepared frame. On GTK this schedules
+	 * composition of the GtkGLArea framebuffer instead of swapping a
+	 * caller-owned native surface.
 	 */
 	extern fn nk_surface_present(surface: nk_surface) -> nk_result;
 	/**
@@ -3525,7 +3537,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 */
 		api: nk_graphics_api @offset(4);
 		/**
-		 * Context-sharing device that owns the image.
+		 * Graphics device that owns the image.
 		 */
 		device: nk_graphics_device @offset(8);
 		/**
@@ -4159,12 +4171,15 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	/**
 	 * Backend-native render target for the current surface frame.
 	 *
-	 * Callers must make the surface current before requesting this descriptor.
-	 * For OpenGL and OpenGL ES, `native_target` is the current draw framebuffer
-	 * name, with zero representing the default framebuffer. Other graphics APIs
-	 * may use the field for a backend-native target handle in a future backend.
+	 * Callers must prepare the frame with nk_surface_make_current() before
+	 * requesting this descriptor. For OpenGL and OpenGL ES, `native_target` is
+	 * the current draw framebuffer name, with zero representing the default
+	 * framebuffer. For explicit APIs, it is a borrowed backend-native color target
+	 * token. The appended tokens are borrowed from the surface; target and present
+	 * tokens are valid only for the prepared frame. NativeKit callers must not
+	 * release or retain these tokens.
 	 */
-	struct nk_surface_frame_target @layout(40, 8) {
+	struct nk_surface_frame_target @layout(72, 8) {
 		/**
 		 * Set to sizeof(nk_surface_frame_target) or a larger compatible size.
 		 */
@@ -4186,13 +4201,29 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 */
 		native_target: u64 @offset(16);
 		/**
-		 * Identity of the graphics context/share group current for this target.
+		 * Identity of the graphics device that owns this target.
 		 */
 		device: nk_graphics_device @offset(24);
 		/**
-		 * Reserved for future target metadata; set to zero.
+		 * Reserved for compatibility with the original frame-target descriptor; set to zero.
 		 */
 		reserved: array<u32, 3> @offset(28);
+		/**
+		 * Borrowed native device token (ID3D11Device* or id<MTLDevice> where applicable).
+		 */
+		native_device: u64 @offset(40);
+		/**
+		 * Borrowed execution token (ID3D11DeviceContext* or id<MTLCommandQueue> where applicable).
+		 */
+		native_context: u64 @offset(48);
+		/**
+		 * Borrowed depth/stencil target token; zero when no attachment is requested.
+		 */
+		native_depth_stencil_target: u64 @offset(56);
+		/**
+		 * Borrowed presentation token (for example IDXGISwapChain* or CAMetalDrawable*).
+		 */
+		native_present_target: u64 @offset(64);
 	}
 	/**
 	 * Options used to create a NativeKit graphics surface.
@@ -4235,7 +4266,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 */
 		height: i32 @offset(32);
 		/**
-		 * Optional compatible surface whose graphics context should be shared.
+		 * Optional compatible surface whose graphics device should be shared.
 		 */
 		share_surface: nk_surface @offset(36);
 		/**
@@ -4747,7 +4778,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	type nk_bool = bool32;
 	handle nk_cursor : u32 @destroy("nk_cursor_destroy");
 	/**
-	 * Identity of a graphics context and its explicitly shared contexts.
+	 * Identity of a graphics device and surfaces that explicitly share it.
 	 */
 	handle nk_graphics_device : u32;
 	/**

@@ -6,6 +6,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
 #include "platform/web/host.h"
@@ -1316,19 +1317,18 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
                                               nk_surface_frame_target *out_target) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
-    if (!out_target || out_target->struct_size < sizeof(nk_surface_frame_target))
+    if (!nk::core::surface_frame_target_output_valid(out_target))
         return invalid_argument("invalid web surface frame target output");
     auto surface = get_surface(handle);
     if (!surface)
         return invalid_handle("invalid web surface handle");
-    const auto size = out_target->struct_size;
-    *out_target = {size,
-                   NK_GRAPHICS_OPENGL_ES,
-                   surface->framebuffer_width,
-                   surface->framebuffer_height,
-                   0,
-                   nk_graphics_device{surface->handle},
-                   {0, 0, 0}};
+    nk_surface_frame_target target{};
+    target.struct_size = out_target->struct_size;
+    target.api = NK_GRAPHICS_OPENGL_ES;
+    target.width = surface->framebuffer_width;
+    target.height = surface->framebuffer_height;
+    target.device.id = surface->handle;
+    nk::core::write_surface_frame_target(out_target, target);
     return NK_OK;
 }
 

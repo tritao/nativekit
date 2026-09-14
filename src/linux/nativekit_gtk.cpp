@@ -12,6 +12,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
 
@@ -2820,7 +2821,7 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
                                               nk_surface_frame_target *out_target) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
-    if (!out_target || out_target->struct_size < sizeof(*out_target))
+    if (!nk::core::surface_frame_target_output_valid(out_target))
         return fail(NK_ERROR_INVALID_ARGUMENT, "frame target output is missing or too small");
     auto resource = surface(handle);
     if (!resource)
@@ -2838,17 +2839,17 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
     auto get_integerv = reinterpret_cast<GlGetIntegerv>(proc);
     int framebuffer = 0;
     get_integerv(0x8CA6u, &framebuffer); // GL_DRAW_FRAMEBUFFER_BINDING
-    const uint32_t size = out_target->struct_size;
-    *out_target = {};
-    out_target->struct_size = size;
-    out_target->api = resource->api;
-    out_target->width = width;
-    out_target->height = height;
-    out_target->native_target = static_cast<uint64_t>(static_cast<uint32_t>(framebuffer));
+    nk_surface_frame_target target{};
+    target.struct_size = out_target->struct_size;
+    target.api = resource->api;
+    target.width = width;
+    target.height = height;
+    target.native_target = static_cast<uint64_t>(static_cast<uint32_t>(framebuffer));
     auto device_surface = resource.get();
     while (device_surface->shared_surface)
         device_surface = device_surface->shared_surface.get();
-    out_target->device.id = device_surface->handle;
+    target.device.id = device_surface->handle;
+    nk::core::write_surface_frame_target(out_target, target);
     return NK_OK;
 }
 

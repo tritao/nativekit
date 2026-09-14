@@ -2,6 +2,7 @@
 #include "core/event_queue.hpp"
 #include "core/gamepad_mapping.hpp"
 #include "core/gamepad_mappings_generated.hpp"
+#include "core/graphics_frame_target.hpp"
 #include "core/handle_registry.hpp"
 #include "core/vulkan_internal.hpp"
 #include "nativekit_accessibility.h"
@@ -54,6 +55,21 @@ int main() {
     assert(nk_surface_accessibility_update_with_removed_ids(
                NK_INVALID_HANDLE, &invalid_update, malformed_removed_ids,
                sizeof(malformed_removed_ids)) == NK_ERROR_INVALID_ARGUMENT);
+
+    nk_surface_frame_target old_frame_target{};
+    old_frame_target.struct_size = nk::core::surface_frame_target_v1_size;
+    old_frame_target.native_device = 0xfeedbeef;
+    assert(nk::core::surface_frame_target_output_valid(&old_frame_target));
+    nk_surface_frame_target frame_target{};
+    frame_target.api = NK_GRAPHICS_OPENGL;
+    frame_target.width = 640;
+    frame_target.height = 480;
+    nk::core::write_surface_frame_target(&old_frame_target, frame_target);
+    assert(old_frame_target.api == NK_GRAPHICS_OPENGL);
+    assert(old_frame_target.width == 640 && old_frame_target.height == 480);
+    assert(old_frame_target.native_device == 0xfeedbeef);
+    old_frame_target.struct_size = nk::core::surface_frame_target_v1_size - 1;
+    assert(!nk::core::surface_frame_target_output_valid(&old_frame_target));
 
     assert(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_X11),
                        "VK_KHR_xlib_surface") == 0);
