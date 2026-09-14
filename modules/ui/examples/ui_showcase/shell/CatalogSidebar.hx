@@ -7,6 +7,7 @@ import TextStyle;
 import UiExplorer;
 import ExplorerCatalog;
 import ExplorerPage;
+import components.SectionHeader;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
@@ -30,23 +31,23 @@ class CatalogSidebar {
 		searchStyle.width = LayoutAxis.grow();
 		searchStyle.height = LayoutAxis.fixed(38.0);
 		searchStyle.padding = new Insets(9.0, 7.0, 9.0, 7.0);
-		searchStyle.background = explorer.lightTheme
+		searchStyle.background = explorer.state.lightTheme
 			? UiExplorer.color(0.91, 0.93, 0.97)
 			: UiExplorer.color(0.09, 0.12, 0.18);
-		var search = new TextField("catalog-search", explorer.searchText, function(value) {
-			explorer.searchText = value;
+		var search = new TextField("catalog-search", explorer.state.searchText, function(value) {
+			explorer.state.searchText = value;
 		}, searchStyle, "Search components", new TextStyle(14.0), explorer.paletteText());
 		children.push(explorer.keyed("search", search));
 		var navItems:Array<KeyedView> = [];
 		var lastGroup:Null<String> = null;
 		for (page in ExplorerCatalog.all()) {
-			if (explorer.searchText.length > 0 &&
-					!ExplorerCatalog.matches(page, explorer.searchText))
+			if (explorer.state.searchText.length > 0 &&
+					!ExplorerCatalog.matches(page, explorer.state.searchText))
 				continue;
 			if (lastGroup != page.group) {
 				lastGroup = page.group;
-				navItems.push(explorer.keyed("group-" + page.group,
-					explorer.text(ExplorerCatalog.groupTitle(page.group), explorer.paletteMuted())));
+				navItems.push(SectionHeader.build("group-" + page.group,
+					ExplorerCatalog.groupTitle(page.group), explorer.paletteMuted()));
 			}
 			appendNav(explorer, navItems, page);
 		}
@@ -72,16 +73,16 @@ class CatalogSidebar {
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.fixed(36.0);
 		style.padding = new Insets(10.0, 8.0, 10.0, 8.0);
-		style.background = explorer.lightTheme
+		style.background = explorer.state.lightTheme
 			? UiExplorer.color(0.87, 0.90, 0.95)
 			: UiExplorer.color(0.075, 0.10, 0.16);
 		var item = new Button(page.title, style, function() {
-			explorer.selectedPage = page.id;
-			explorer.selectedNodeId = 0;
-			explorer.hoveredNodeId = 0;
-			explorer.inspectorTab = "preview";
+			explorer.state.selectedPage = page.id;
+			explorer.state.inspector.selectedNodeId = 0;
+			explorer.state.inspector.hoveredNodeId = 0;
+			explorer.state.inspector.tab = "preview";
 		}, "nav-" + page.id);
-		item.selected = explorer.selectedPage == page.id;
+		item.selected = explorer.state.selectedPage == page.id;
 		children.push(explorer.keyed("nav-" + page.id, item));
 	}
 }

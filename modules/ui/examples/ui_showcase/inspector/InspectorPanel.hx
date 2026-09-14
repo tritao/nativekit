@@ -14,6 +14,8 @@ import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollView;
 import inspector.InspectionOverlay;
 import inspector.WidgetDocsRegistry;
+import components.CodeSample;
+import components.PropertyRow;
 
 /** Inspector drawer: selected render node, state, semantics, and ancestry. */
 class InspectorPanel {
@@ -57,7 +59,7 @@ class InspectorPanel {
 
 	static function tabButton(explorer:UiExplorer, label:String, tab:String):Button {
 		var item = explorer.button(label, "inspector-tab-" + tab,
-			function() { explorer.inspectorTab = tab; }, explorer.inspectorTab == tab);
+			function() { explorer.state.inspector.tab = tab; }, explorer.state.inspector.tab == tab);
 		item.style.width = LayoutAxis.grow();
 		item.style.height = LayoutAxis.fixed(30.0);
 		item.style.padding = new Insets(7.0, 5.0, 7.0, 5.0);
@@ -78,35 +80,35 @@ class InspectorPanel {
 		children.push(explorer.keyed("selected-id", explorer.text(
 			'#${record.id} · ${WidgetDocsRegistry.visualName(record.visualKind)} · ${WidgetDocsRegistry.roleName(record.role)}',
 			explorer.paletteMuted())));
-		switch explorer.inspectorTab {
+		switch explorer.state.inspector.tab {
 			case "state":
 				children.push(explorer.keyed("state-heading", explorer.text("LIVE STATE", explorer.paletteText())));
-				children.push(explorer.keyed("state-focus", explorer.text(
-					'focused=${record.focused}  focusable=${record.focusable}', explorer.paletteMuted())));
-				children.push(explorer.keyed("state-pointer", explorer.text(
-					'hovered=${record.hovered}  pressed=${record.pressed}', explorer.paletteMuted())));
-				children.push(explorer.keyed("state-enabled", explorer.text(
-					'enabled=${record.enabled}  visible=${record.visible}', explorer.paletteMuted())));
-				children.push(explorer.keyed("state-value", explorer.text(
-					'value=${record.value == null ? "(none)" : record.value}', explorer.paletteMuted())));
-				children.push(explorer.keyed("state-semantic", explorer.text(
+				children.push(PropertyRow.build("state-focus",
+					'focused=${record.focused}  focusable=${record.focusable}', explorer.paletteMuted()));
+				children.push(PropertyRow.build("state-pointer",
+					'hovered=${record.hovered}  pressed=${record.pressed}', explorer.paletteMuted()));
+				children.push(PropertyRow.build("state-enabled",
+					'enabled=${record.enabled}  visible=${record.visible}', explorer.paletteMuted()));
+				children.push(PropertyRow.build("state-value",
+					'value=${record.value == null ? "(none)" : record.value}', explorer.paletteMuted()));
+				children.push(PropertyRow.build("state-semantic",
 					'semantic states: ${WidgetDocsRegistry.semanticStateNames(record.semanticStates)}',
-					explorer.paletteMuted())));
-				children.push(explorer.keyed("state-bounds", explorer.text(
+					explorer.paletteMuted()));
+				children.push(PropertyRow.build("state-bounds",
 					'bounds: ${WidgetDocsRegistry.rectText(record.bounds)}\nclip: ${WidgetDocsRegistry.rectText(record.clipBounds)}\nz-order: ${record.zIndex}',
-					explorer.paletteMuted())));
+					explorer.paletteMuted()));
 			case "semantics":
 				children.push(explorer.keyed("sem-heading", explorer.text("ACCESSIBILITY", explorer.paletteText())));
-				children.push(explorer.keyed("sem-role", explorer.text(
-					'role: ${WidgetDocsRegistry.roleName(record.role)}', explorer.paletteMuted())));
-				children.push(explorer.keyed("sem-label", explorer.text('label: ${label}', explorer.paletteMuted())));
-				children.push(explorer.keyed("sem-value", explorer.text(
-					'value: ${record.value == null ? "(none)" : record.value}', explorer.paletteMuted())));
-				children.push(explorer.keyed("sem-states", explorer.text(
+				children.push(PropertyRow.build("sem-role",
+					'role: ${WidgetDocsRegistry.roleName(record.role)}', explorer.paletteMuted()));
+				children.push(PropertyRow.build("sem-label", 'label: ${label}', explorer.paletteMuted()));
+				children.push(PropertyRow.build("sem-value",
+					'value: ${record.value == null ? "(none)" : record.value}', explorer.paletteMuted()));
+				children.push(PropertyRow.build("sem-states",
 					'states: ${WidgetDocsRegistry.semanticStateNames(record.semanticStates)}',
-					explorer.paletteMuted())));
-				children.push(explorer.keyed("sem-actions", explorer.text(
-					'actions: ${WidgetDocsRegistry.actionNames(record.actions)}', explorer.paletteMuted())));
+					explorer.paletteMuted()));
+				children.push(PropertyRow.build("sem-actions",
+					'actions: ${WidgetDocsRegistry.actionNames(record.actions)}', explorer.paletteMuted()));
 				var nodeIssues:Array<String> = [];
 				for (issue in issues)
 					if (issue.nodeId == record.id)
@@ -143,27 +145,27 @@ class InspectorPanel {
 				children.push(explorer.keyed("behavior-description",
 					explorer.text(synopsis.behavior, explorer.paletteMuted())));
 				children.push(explorer.keyed("code-heading", explorer.text("HAXE", explorer.paletteText())));
-				children.push(explorer.keyed("code-snippet",
-					explorer.text(synopsis.code, UiExplorer.color(0.48, 0.82, 0.75))));
+				children.push(CodeSample.build("code-snippet", synopsis.code,
+					UiExplorer.color(0.48, 0.82, 0.75)));
 				children.push(explorer.keyed("geometry-heading",
 					explorer.text("RESOLVED GEOMETRY", explorer.paletteText())));
 				children.push(explorer.keyed("geometry", explorer.text(
 					'bounds ${WidgetDocsRegistry.rectText(record.bounds)}\nclip ${WidgetDocsRegistry.rectText(record.clipBounds)}\nz ${record.zIndex}',
 					explorer.paletteMuted())));
 		}
-		return new Column("inspector-content-" + explorer.inspectorTab, children,
+		return new Column("inspector-content-" + explorer.state.inspector.tab, children,
 			explorer.panelStyle());
 	}
 
 	static function chooseInspectionRecord(explorer:UiExplorer,
 			records:Array<UiNodeSnapshot>):Null<UiNodeSnapshot> {
-		if (explorer.hoveredNodeId != 0) {
-			var hovered = InspectionOverlay.findSnapshot(records, explorer.hoveredNodeId);
+		if (explorer.state.inspector.hoveredNodeId != 0) {
+			var hovered = InspectionOverlay.findSnapshot(records, explorer.state.inspector.hoveredNodeId);
 			if (hovered != null)
 				return hovered;
 		}
-		if (explorer.selectedNodeId != 0) {
-			var selected = InspectionOverlay.findSnapshot(records, explorer.selectedNodeId);
+		if (explorer.state.inspector.selectedNodeId != 0) {
+			var selected = InspectionOverlay.findSnapshot(records, explorer.state.inspector.selectedNodeId);
 			if (selected != null)
 				return selected;
 		}

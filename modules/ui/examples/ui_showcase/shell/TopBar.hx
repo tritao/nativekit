@@ -26,14 +26,14 @@ class TopBar {
 			explorer.keyed("brand", explorer.text("NativeKit UI Explorer", explorer.paletteText())),
 			explorer.keyed("space", new Spacer("top-spacer", LayoutAxis.grow(), LayoutAxis.fit())),
 			explorer.keyed("platform", explorer.text(explorer.platformLabel, explorer.paletteMuted())),
-			explorer.keyed("theme", explorer.button(explorer.lightTheme ? "Light theme" : "Dark theme",
+			explorer.keyed("theme", explorer.button(explorer.state.lightTheme ? "Light theme" : "Dark theme",
 				"theme-toggle", function() {
-					explorer.lightTheme = !explorer.lightTheme;
-					explorer.context.setTheme(UiExplorer.makeTheme(explorer.lightTheme));
+					explorer.state.lightTheme = !explorer.state.lightTheme;
+					explorer.context.setTheme(UiExplorer.makeTheme(explorer.state.lightTheme));
 				})),
-			explorer.keyed("inspect", explorer.button(explorer.inspectorOpen ? "Hide inspector" : "Inspect",
+			explorer.keyed("inspect", explorer.button(explorer.state.inspector.open ? "Hide inspector" : "Inspect",
 				"inspector-toggle", function() {
-					explorer.inspectorOpen = !explorer.inspectorOpen;
+					explorer.state.inspector.open = !explorer.state.inspector.open;
 				}))
 		], style);
 	}

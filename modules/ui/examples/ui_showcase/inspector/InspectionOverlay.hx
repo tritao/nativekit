@@ -17,9 +17,9 @@ import nativekit.ui.widgets.StackChild;
 class InspectionOverlay {
 	public static function addHighlight(explorer:UiExplorer,
 			layers:Array<StackChild>):Void {
-		var highlightId = explorer.hoveredNodeId != 0
-			? explorer.hoveredNodeId : explorer.selectedNodeId;
-		if (!explorer.inspectorOpen || highlightId == 0)
+		var highlightId = explorer.state.inspector.hoveredNodeId != 0
+			? explorer.state.inspector.hoveredNodeId : explorer.state.inspector.selectedNodeId;
+		if (!explorer.state.inspector.open || highlightId == 0)
 			return;
 		var style = new LayoutStyle();
 		style.width = LayoutAxis.grow();
@@ -48,14 +48,14 @@ class InspectionOverlay {
 			var focusedId = inspectionTargetId(explorer, event.target);
 			var focused = findSnapshot(explorer.context.inspect(), focusedId);
 			if (focused != null && isRecordInPreview(explorer, focused))
-				explorer.selectedNodeId = focusedId;
+				explorer.state.inspector.selectedNodeId = focusedId;
 		});
 		root.on(UiEventKind.PointerDown, function(event) {
 			if (isPreviewPoint(explorer, event.x, event.y)) {
 				var selected = inspectionTargetId(explorer, event.target);
 				if (selected != 0) {
-					explorer.selectedNodeId = selected;
-					explorer.hoveredNodeId = selected;
+					explorer.state.inspector.selectedNodeId = selected;
+					explorer.state.inspector.hoveredNodeId = selected;
 				}
 			}
 		});
@@ -63,11 +63,12 @@ class InspectionOverlay {
 
 	static function updateHoveredAt(explorer:UiExplorer, x:Float, y:Float):Void {
 		if (!isPreviewPoint(explorer, x, y) || explorer.context.root == null) {
-			explorer.hoveredNodeId = 0;
+			explorer.state.inspector.hoveredNodeId = 0;
 			return;
 		}
 		var path = HitTest.path(explorer.context.root, x, y);
-		explorer.hoveredNodeId = path.length == 0 ? 0 : inspectionPathTargetId(path);
+		explorer.state.inspector.hoveredNodeId = path.length == 0
+			? 0 : inspectionPathTargetId(path);
 	}
 
 	static function inspectionTargetId(explorer:UiExplorer, id:WidgetId):Int {
@@ -95,7 +96,7 @@ class InspectionOverlay {
 
 	static function isPreviewPoint(explorer:UiExplorer, x:Float, y:Float):Bool {
 		var sidebar = explorer.width < 760.0 ? 176.0 : 212.0;
-		var inspectorWidth = explorer.inspectorOpen && explorer.width >= 880.0 ? 270.0 : 0.0;
+		var inspectorWidth = explorer.state.inspector.open && explorer.width >= 880.0 ? 270.0 : 0.0;
 		return y >= 66.0 && x >= sidebar && x < explorer.width - inspectorWidth;
 	}
 

@@ -75,6 +75,9 @@ import shell.CatalogSidebar;
 import shell.ExplorerShell;
 import inspector.InspectionOverlay;
 import inspector.InspectorPanel;
+import testing.ExplorerSmokeSequence;
+import testing.ExplorerVisualCases;
+import components.PageHeader;
 
 /** Interactive, Haxe-composed showcase for NativeKit's UI framework. */
 @:allow(pages.GraphicsPage)
@@ -91,19 +94,20 @@ import inspector.InspectorPanel;
 @:allow(inspector.InspectionOverlay)
 @:allow(inspector.InspectorPanel)
 @:allow(ExplorerCatalog)
+@:allow(testing.ExplorerVisualCases)
 class UiExplorer {
 	public static inline var TARGET_FPS:Float = 60.0;
 	static inline var LIST_COUNT:Int = 10000;
 	static inline var LIST_ROW_HEIGHT:Float = 32.0;
 
 	final context:UiContext;
+	final state:ExplorerState;
 	final renderer:Renderer;
 	final fonts:FontCollection;
 	final frame:LayoutFrame;
 	final frameInfo:FrameInfo;
 	final platformLabel:String;
 	final onOpenGraphics:Void->Void;
-	final listController:ScrollController;
 	final virtualList:VirtualList;
 	final tweenController:AnimationController;
 	final springController:SpringController;
@@ -116,46 +120,13 @@ class UiExplorer {
 	var previousTime:Float = -1.0;
 	var frames:Int = 0;
 	var diagnosticStage:Int = 0;
-	var lightTheme:Bool = false;
-	var inspectorOpen:Bool = true;
-	var inspectorTab:String = "preview";
-	var selectedNodeId:Int = 0;
-	var hoveredNodeId:Int = 0;
-	var showDialog:Bool = false;
-	var showPopup:Bool = false;
-	var showMenu:Bool = false;
-	var selectedPage:String = "overview";
-	var searchText:String = "";
-	var nameValue:String = "NativeKit UI";
-	var notesValue:String = "مرحبا NativeKit — שלום — こんにちは 👋";
-	var checked:Bool = true;
-	var enabled:Bool = true;
-	var volume:Float = 0.68;
-	var progress:Float = 0.72;
-	var radioValue:String = "comfortable";
-	var selectedTab:String = "preview";
-	var menuSelection:String = "No command selected";
-	var tweenValue:Float = 0.0;
-	var springValue:Float = 0.18;
-	var tapCount:Int = 0;
-	var doubleTapCount:Int = 0;
-	var longPressCount:Int = 0;
-	var dragCount:Int = 0;
-	var dragCardX:Float = 18.0;
-	var dragCardY:Float = 18.0;
-	var dragOriginX:Float = 18.0;
-	var dragOriginY:Float = 18.0;
-	var gestureMessage:String = "Tap, double-tap, hold, or drag the card.";
-	var smokeFocusTextField:Bool = false;
-	var visualFocusLabel:Null<String>;
-	var visualTextAreaSelection:Bool = false;
 
 	public function new(fonts:FontCollection, platformLabel:String,
 			onOpenGraphics:Void->Void) {
 		if (fonts == null || fonts.isDisposed())
 			throw "UI Explorer requires a live font collection";
 		this.fonts = fonts;
-		visualFocusLabel = null;
+		state = new ExplorerState();
 		this.platformLabel = platformLabel == null ? "NativeKit runtime" : platformLabel;
 		this.onOpenGraphics = onOpenGraphics == null ? function() {} : onOpenGraphics;
 		context = new UiContext(null, fonts, makeTheme(false));
@@ -167,12 +138,11 @@ class UiExplorer {
 		pixelScale = 1.0;
 		frame = new LayoutFrame(width, height);
 		frameInfo = new FrameInfo(width, height, framebufferWidth, framebufferHeight, pixelScale);
-		listController = new ScrollController();
 		tweenController = new AnimationController(context.animations, function(value) {
-			tweenValue = value;
+			state.gestures.tweenValue = value;
 		});
-		springController = new SpringController(springValue, 180.0, 24.0, 1.0, 0.001,
-			context.animations, function(value) { springValue = value; });
+		springController = new SpringController(state.gestures.springValue, 180.0, 24.0, 1.0, 0.001,
+			context.animations, function(value) { state.gestures.springValue = value; });
 		var listStyle = new LayoutStyle();
 		listStyle.width = LayoutAxis.grow();
 		listStyle.height = LayoutAxis.fixed(350.0);
@@ -183,11 +153,11 @@ class UiExplorer {
 				rowStyle.width = LayoutAxis.grow();
 				rowStyle.height = LayoutAxis.fixed(LIST_ROW_HEIGHT);
 				rowStyle.padding = new Insets(8.0, 7.0, 8.0, 7.0);
-				rowStyle.background = lightTheme
+				rowStyle.background = state.lightTheme
 					? (index % 2 == 0 ? color(0.98, 0.99, 1.0) : color(0.91, 0.94, 0.98))
 					: (index % 2 == 0 ? color(0.11, 0.14, 0.20) : color(0.13, 0.16, 0.23));
 				return new Text('ROW ${index + 1}  ·  virtual item', rowStyle, paletteText());
-			}, listStyle, null, listController, 350.0);
+			}, listStyle, null, state.listController, 350.0);
 	}
 
 	/** Installs the native surface used by text editing and platform IME state. */
@@ -217,90 +187,12 @@ class UiExplorer {
 
 	/** Selects a page/overlay sequence for deterministic desktop smoke coverage. */
 	public function setSmokeFrame(frame:Int):Void {
-		showDialog = false;
-		showPopup = false;
-		showMenu = false;
-		smokeFocusTextField = false;
-		switch frame % 12 {
-			case 0: selectedPage = "overview";
-			case 1: selectedPage = "controls";
-			case 2: selectedPage = "text";
-			case 3: selectedPage = "text"; smokeFocusTextField = true;
-			case 4: selectedPage = "layout";
-			case 5: selectedPage = "lists";
-			case 6: selectedPage = "overlays";
-			case 7: selectedPage = "overlays"; showDialog = true;
-			case 8: selectedPage = "overlays"; showPopup = true;
-			case 9: selectedPage = "overlays"; showMenu = true;
-			case 10: selectedPage = "graphics";
-			case 11: selectedPage = "gestures";
-			default: selectedPage = "overview";
-		}
+		ExplorerSmokeSequence.apply(state, frame);
 	}
 
 	/** Selects one of the deterministic browser screenshot states, 0-14. */
 	public function setVisualCase(caseId:Int):Bool {
-		showDialog = false;
-		showPopup = false;
-		showMenu = false;
-		searchText = "";
-		inspectorOpen = true;
-		inspectorTab = "preview";
-		selectedNodeId = 0;
-		hoveredNodeId = 0;
-		lightTheme = false;
-		context.setTheme(makeTheme(false));
-		checked = true;
-		enabled = true;
-		volume = 0.68;
-		progress = 0.72;
-		radioValue = "comfortable";
-		selectedTab = "preview";
-		nameValue = "NativeKit UI";
-		notesValue = "مرحبا NativeKit — שלום — こんにちは 👋";
-		menuSelection = "No command selected";
-		listController.jumpTo(0.0, 0.0);
-		visualFocusLabel = null;
-		visualTextAreaSelection = false;
-		selectedPage = "overview";
-		switch caseId {
-			case 0: selectedPage = "overview";
-			case 1: selectedPage = "controls";
-			case 2:
-				selectedPage = "controls";
-				lightTheme = true;
-				context.setTheme(makeTheme(true));
-			case 3:
-				selectedPage = "controls";
-				visualFocusLabel = "Primary action";
-			case 4:
-				selectedPage = "text";
-				visualFocusLabel = "Display name";
-			case 5: selectedPage = "layout";
-			case 6:
-				selectedPage = "lists";
-				listController.jumpTo(0.0, 414.0 * LIST_ROW_HEIGHT);
-			case 7: selectedPage = "overlays"; showDialog = true;
-			case 8: selectedPage = "overlays"; showPopup = true;
-			case 9: selectedPage = "overlays"; showMenu = true;
-			case 10: selectedPage = "controls";
-			case 11: selectedPage = "gestures";
-			case 12:
-				selectedPage = "lists";
-				lightTheme = true;
-				context.setTheme(makeTheme(true));
-			case 13:
-				selectedPage = "text";
-				visualFocusLabel = "Multilingual notes";
-				visualTextAreaSelection = true;
-			case 14:
-				selectedPage = "overlays";
-				lightTheme = true;
-				context.setTheme(makeTheme(true));
-				showMenu = true;
-			default: return false;
-		}
-		return true;
+		return ExplorerVisualCases.apply(this, caseId);
 	}
 
 	public function render(surface:SurfaceHandle, timeSeconds:Float):Void {
@@ -320,13 +212,13 @@ class UiExplorer {
 			diagnosticStage = 10 + context.getDiagnosticStage();
 			throw error;
 		}
-		if (smokeFocusTextField || visualFocusLabel != null) {
+		if (state.smokeFocusTextField || state.visualFocusLabel != null) {
 			diagnosticStage = 4;
-			smokeFocusTextField = false;
-			var targetLabel = visualFocusLabel;
-			visualFocusLabel = null;
-			var selectTextArea = visualTextAreaSelection;
-			visualTextAreaSelection = false;
+			state.smokeFocusTextField = false;
+			var targetLabel = state.visualFocusLabel;
+			state.visualFocusLabel = null;
+			var selectTextArea = state.visualTextAreaSelection;
+			state.visualTextAreaSelection = false;
 			var focused = false;
 			for (record in context.inspect())
 				if (!focused && ((targetLabel != null && record.label == targetLabel) ||
@@ -368,31 +260,31 @@ class UiExplorer {
 		rootStyle.width = LayoutAxis.grow();
 		rootStyle.height = LayoutAxis.grow();
 		var layers:Array<StackChild> = [new StackChild("explorer-shell", buildShell())];
-		if (showDialog) {
+		if (state.overlays.dialogOpen) {
 			var dialog = new Dialog("showcase-dialog", "NativeKit dialog",
 				new Column("dialog-content", [
 					keyed("copy", text("A modal overlay rendered in the same resolved UI tree.", paletteMuted())),
-					keyed("close", button("Done", "dialog-done", function() { showDialog = false; }))
-				], columnStyle(340.0, 90.0)), function() { showDialog = false; }, 390.0);
+					keyed("close", button("Done", "dialog-done", function() { state.overlays.dialogOpen = false; }))
+				], columnStyle(340.0, 90.0)), function() { state.overlays.dialogOpen = false; }, 390.0);
 			layers.push(new StackChild("dialog-layer", dialog, 0.0, 0.0, 30));
-		} else if (showPopup) {
+		} else if (state.overlays.popupOpen) {
 			var popupStyle = panelStyle(250.0);
 			var popupContent = new Column("popup-content", [
 				keyed("title", text("Quick actions", paletteText())),
 				keyed("copy", text("This popup escapes the page clip.", paletteMuted())),
-				keyed("dismiss", button("Close popup", "popup-close", function() { showPopup = false; }))
+				keyed("dismiss", button("Close popup", "popup-close", function() { state.overlays.popupOpen = false; }))
 			], popupStyle);
 			var popup = new Popup("showcase-popup", popupContent, Math.max(270.0, width * 0.42), 150.0,
-				null, function() { showPopup = false; });
+				null, function() { state.overlays.popupOpen = false; });
 			popup.label = "Quick actions";
 			popup.modal = false;
 			layers.push(new StackChild("popup-layer", popup, 0.0, 0.0, 20));
-		} else if (showMenu) {
+		} else if (state.overlays.menuOpen) {
 			var menu = new Menu("showcase-menu", [
-				new MenuItem("menu-new", "New document", function() { menuSelection = "New document"; }),
-				new MenuItem("menu-copy", "Copy selection", function() { menuSelection = "Copy selection"; }),
+				new MenuItem("menu-new", "New document", function() { state.controls.menuSelection = "New document"; }),
+				new MenuItem("menu-copy", "Copy selection", function() { state.controls.menuSelection = "Copy selection"; }),
 				new MenuItem("menu-disabled", "Unavailable action", null, false)
-			], 330.0, 165.0, function() { showMenu = false; });
+			], 330.0, 165.0, function() { state.overlays.menuOpen = false; });
 			layers.push(new StackChild("menu-layer", menu, 0.0, 0.0, 20));
 		}
 		InspectionOverlay.addHighlight(this, layers);
@@ -405,7 +297,7 @@ class UiExplorer {
 
 	function buildPage():Column {
 		var items:Array<KeyedView> = [];
-		var page = ExplorerCatalog.find(selectedPage);
+		var page = ExplorerCatalog.find(state.selectedPage);
 		if (page == null)
 			page = ExplorerCatalog.find("overview");
 		if (page != null)
@@ -418,8 +310,7 @@ class UiExplorer {
 	}
 
 	function pageHeading(items:Array<KeyedView>, title:String, description:String):Void {
-		items.push(keyed("page-title", text(title, paletteText())));
-		items.push(keyed("page-description", text(description, paletteMuted())));
+		PageHeader.append(items, title, description, paletteText(), paletteMuted());
 	}
 
 	function buildInspector():Column {
@@ -430,16 +321,17 @@ class UiExplorer {
 		InspectionOverlay.attachEvents(this);
 	}
 
-
 	function textField():TextField {
 		var style = new LayoutStyle();
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.fixed(42.0);
 		style.padding = new Insets(11.0, 8.0, 11.0, 8.0);
-		style.background = lightTheme ? color(0.92, 0.94, 0.98) : color(0.09, 0.12, 0.18);
+		style.background = state.lightTheme ? color(0.92, 0.94, 0.98) : color(0.09, 0.12, 0.18);
 		style.radiusTopLeft = style.radiusTopRight = 5.0;
 		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
-		return new TextField("demo-name", nameValue, function(value) { nameValue = value; },
+		return new TextField("demo-name", state.controls.nameValue, function(value) {
+			state.controls.nameValue = value;
+		},
 			style, "Display name", new TextStyle(15.0), paletteText());
 	}
 
@@ -448,10 +340,12 @@ class UiExplorer {
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.fixed(146.0);
 		style.padding = new Insets(11.0, 8.0, 11.0, 8.0);
-		style.background = lightTheme ? color(0.92, 0.94, 0.98) : color(0.09, 0.12, 0.18);
+		style.background = state.lightTheme ? color(0.92, 0.94, 0.98) : color(0.09, 0.12, 0.18);
 		style.radiusTopLeft = style.radiusTopRight = 5.0;
 		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
-		return new TextArea("demo-notes", notesValue, function(value) { notesValue = value; },
+		return new TextArea("demo-notes", state.controls.notesValue, function(value) {
+			state.controls.notesValue = value;
+		},
 			style, "Multilingual notes", new TextStyle(15.0), paletteText());
 	}
 
@@ -459,15 +353,15 @@ class UiExplorer {
 		var style = new LayoutStyle();
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.fixed(36.0);
-		return new Slider("volume-slider", "Volume", volume, 0.0, 1.0, 0.01,
-			function(value) { volume = value; }, style);
+		return new Slider("volume-slider", "Volume", state.controls.volume, 0.0, 1.0, 0.01,
+			function(value) { state.controls.volume = value; }, style);
 	}
 
 	function button(label:String, key:String, action:Void->Void, selected:Bool = false):Button {
 		var style = new LayoutStyle();
 		style.height = LayoutAxis.fixed(38.0);
 		style.padding = new Insets(12.0, 9.0, 12.0, 9.0);
-		style.background = lightTheme ? color(0.18, 0.39, 0.70) : color(0.16, 0.38, 0.70);
+		style.background = state.lightTheme ? color(0.18, 0.39, 0.70) : color(0.16, 0.38, 0.70);
 		style.radiusTopLeft = style.radiusTopRight = 5.0;
 		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
 		var result = new Button(label, style, action, key);
@@ -485,21 +379,13 @@ class UiExplorer {
 		return new Column(key, children, panelStyle());
 	}
 
-	function card(key:String, title:String, value:String, description:String):Column {
-		return panel(key, [
-			keyed("eyebrow", text(title, color(0.40, 0.74, 0.92))),
-			keyed("value", text(value, paletteText())),
-			keyed("description", text(description, paletteMuted()))
-		]);
-	}
-
 	function panelStyle(?fixedWidth:Float):LayoutStyle {
 		var style = new LayoutStyle();
 		style.width = fixedWidth == null ? LayoutAxis.grow() : LayoutAxis.fixed(fixedWidth);
 		style.height = LayoutAxis.fit();
 		style.padding = new Insets(16.0, 14.0, 16.0, 14.0);
 		style.childGap = 10.0;
-		style.background = lightTheme ? color(0.97, 0.98, 1.0) : color(0.10, 0.14, 0.22);
+		style.background = state.lightTheme ? color(0.97, 0.98, 1.0) : color(0.10, 0.14, 0.22);
 		style.radiusTopLeft = style.radiusTopRight = 7.0;
 		style.radiusBottomLeft = style.radiusBottomRight = 7.0;
 		return style;
@@ -528,7 +414,7 @@ class UiExplorer {
 		style.width = LayoutAxis.fixed(width);
 		style.height = LayoutAxis.fixed(height);
 		style.padding = new Insets(10.0, 10.0, 10.0, 10.0);
-		style.background = lightTheme ? color(0.88, 0.91, 0.96) : color(0.07, 0.10, 0.16);
+		style.background = state.lightTheme ? color(0.88, 0.91, 0.96) : color(0.07, 0.10, 0.16);
 		return style;
 	}
 
@@ -563,16 +449,16 @@ class UiExplorer {
 		return new Text(value, null, color);
 
 	function paletteBackground():Color
-		return lightTheme ? color(0.93, 0.95, 0.98) : color(0.065, 0.085, 0.13);
+		return state.lightTheme ? color(0.93, 0.95, 0.98) : color(0.065, 0.085, 0.13);
 
 	function paletteSidebar():Color
-		return lightTheme ? color(0.88, 0.91, 0.96) : color(0.08, 0.11, 0.17);
+		return state.lightTheme ? color(0.88, 0.91, 0.96) : color(0.08, 0.11, 0.17);
 
 	function paletteText():Color
-		return lightTheme ? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
+		return state.lightTheme ? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
 
 	function paletteMuted():Color
-		return lightTheme ? color(0.32, 0.38, 0.47) : color(0.62, 0.68, 0.77);
+		return state.lightTheme ? color(0.32, 0.38, 0.47) : color(0.62, 0.68, 0.77);
 
 	static function makeTheme(light:Bool):Theme {
 		var theme = new Theme();

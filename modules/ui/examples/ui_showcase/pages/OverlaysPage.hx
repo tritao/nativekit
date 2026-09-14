@@ -21,22 +21,22 @@ class OverlaysPage {
 					"Tab navigation supports arrow keys and visible focus.", explorer.paletteMuted())),
 				new TabItem("disabled", "Disabled", explorer.text(
 					"This tab is not enabled.", explorer.paletteMuted()), false)
-			], explorer.selectedTab, function(value) { explorer.selectedTab = value; }))
+			], explorer.state.controls.selectedTab, function(value) { explorer.state.controls.selectedTab = value; }))
 		])));
 		items.push(explorer.keyed("overlay-actions", explorer.panel("overlay-actions", [
 			explorer.keyed("heading", explorer.text("Open an overlay", explorer.paletteText())),
 			explorer.keyed("actions", new Row("overlay-buttons", [
 				explorer.keyed("dialog", explorer.button("Show dialog", "show-dialog", function() {
-					explorer.showDialog = true;
+					explorer.state.overlays.dialogOpen = true;
 				})),
 				explorer.keyed("popup", explorer.button("Show popup", "show-popup", function() {
-					explorer.showPopup = true;
+					explorer.state.overlays.popupOpen = true;
 				})),
 				explorer.keyed("menu", explorer.button("Show menu", "show-menu", function() {
-					explorer.showMenu = true;
+					explorer.state.overlays.menuOpen = true;
 				}))
 			], explorer.rowStyle(10.0))),
-			explorer.keyed("menu-state", explorer.text(explorer.menuSelection, explorer.paletteMuted())),
+			explorer.keyed("menu-state", explorer.text(explorer.state.controls.menuSelection, explorer.paletteMuted())),
 			explorer.keyed("tooltip", new Tooltip("tooltip-demo",
 				explorer.button("Hover for tooltip", "tooltip-anchor", function() {}),
 				explorer.text("Tooltip content is positioned in a Stack layer.", explorer.paletteText()),

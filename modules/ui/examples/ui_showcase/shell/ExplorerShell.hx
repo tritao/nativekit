@@ -35,7 +35,7 @@ class ExplorerShell {
 			ScrollAxis.Vertical);
 		bodyChildren.push(explorer.keyed("main", new Column("main-content",
 			[explorer.keyed("page", pageScroll)], mainStyle)));
-		if (explorer.inspectorOpen && explorer.width >= 880.0)
+		if (explorer.state.inspector.open && explorer.width >= 880.0)
 			bodyChildren.push(explorer.keyed("inspector", explorer.buildInspector()));
 		var body = new Row("workspace", bodyChildren, bodyStyle);
 		var shellStyle = new LayoutStyle();

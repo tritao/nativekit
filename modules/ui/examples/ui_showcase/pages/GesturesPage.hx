@@ -28,58 +28,58 @@ class GesturesPage {
 		cardStyle.width = LayoutAxis.grow();
 		cardStyle.height = LayoutAxis.fixed(48.0);
 		var gestureCard = explorer.button("Touch, hold, or drag me", "gesture-card-button", function() {
-			explorer.gestureMessage = "Button activation routed through the child view.";
+			explorer.state.gestures.message = "Button activation routed through the child view.";
 		});
 		gestureCard.style.width = LayoutAxis.grow();
 		gestureCard.style.height = LayoutAxis.fixed(48.0);
 		var detector = new GestureDetector("gesture-playground-detector", gestureCard, [
 			new TapRecognizer(function(_) {
-				explorer.tapCount++;
-				explorer.gestureMessage = "Tap recognized.";
+				explorer.state.gestures.tapCount++;
+				explorer.state.gestures.message = "Tap recognized.";
 			}),
 			new DoubleTapRecognizer(function(_) {
-				explorer.doubleTapCount++;
-				explorer.gestureMessage = "Double tap recognized on the same target.";
+				explorer.state.gestures.doubleTapCount++;
+				explorer.state.gestures.message = "Double tap recognized on the same target.";
 			}),
 			new LongPressRecognizer(function(_) {
-				explorer.longPressCount++;
-				explorer.gestureMessage = "Long press recognized after a stationary hold.";
+				explorer.state.gestures.longPressCount++;
+				explorer.state.gestures.message = "Long press recognized after a stationary hold.";
 			}),
 			new DragRecognizer(8.0,
 				function(_) {
-					explorer.dragCount++;
-					explorer.dragOriginX = explorer.dragCardX;
-					explorer.dragOriginY = explorer.dragCardY;
-					explorer.gestureMessage = "Drag won the gesture arena.";
+					explorer.state.gestures.dragCount++;
+					explorer.state.gestures.dragOriginX = explorer.state.gestures.dragCardX;
+					explorer.state.gestures.dragOriginY = explorer.state.gestures.dragCardY;
+					explorer.state.gestures.message = "Drag won the gesture arena.";
 				},
 				function(event) {
 					var sidebar = explorer.width < 760.0 ? 176.0 : 212.0;
-					var inspectorWidth = explorer.inspectorOpen && explorer.width >= 880.0 ? 270.0 : 0.0;
+					var inspectorWidth = explorer.state.inspector.open && explorer.width >= 880.0 ? 270.0 : 0.0;
 					var maxX = Math.max(8.0, explorer.width - sidebar - inspectorWidth - 300.0);
-					explorer.dragCardX = UiExplorer.clamp(explorer.dragOriginX + event.deltaX,
+					explorer.state.gestures.dragCardX = UiExplorer.clamp(explorer.state.gestures.dragOriginX + event.deltaX,
 						8.0, maxX);
-					explorer.dragCardY = UiExplorer.clamp(explorer.dragOriginY + event.deltaY,
+					explorer.state.gestures.dragCardY = UiExplorer.clamp(explorer.state.gestures.dragOriginY + event.deltaY,
 						8.0, 96.0);
 				},
-				function(_) { explorer.gestureMessage = "Drag ended."; })
+				function(_) { explorer.state.gestures.message = "Drag ended."; })
 		], cardStyle);
 		items.push(explorer.keyed("gesture-playground", explorer.panel("gesture-playground-card", [
 			explorer.keyed("heading", explorer.text("Gesture arena", explorer.paletteText())),
 			explorer.keyed("copy", explorer.text("Tap and double-tap the card, hold for a long press, or move past the drag threshold. A recognized drag cancels tap delivery.", explorer.paletteMuted())),
 			explorer.keyed("stage", new Stack("gesture-playground-stage", [
-				new StackChild("draggable-card", detector, explorer.dragCardX, explorer.dragCardY, 1,
+				new StackChild("draggable-card", detector, explorer.state.gestures.dragCardX, explorer.state.gestures.dragCardY, 1,
 					LayoutAxis.fixed(230.0), LayoutAxis.fixed(48.0))
 			], stageStyle)),
-			explorer.keyed("gesture-status", explorer.text(explorer.gestureMessage,
+			explorer.keyed("gesture-status", explorer.text(explorer.state.gestures.message,
 				UiExplorer.color(0.35, 0.85, 0.69))),
-			explorer.keyed("gesture-counts", explorer.text('Tap ${explorer.tapCount}  ·  Double tap ${explorer.doubleTapCount}  ·  Long press ${explorer.longPressCount}  ·  Drag ${explorer.dragCount}',
+			explorer.keyed("gesture-counts", explorer.text('Tap ${explorer.state.gestures.tapCount}  ·  Double tap ${explorer.state.gestures.doubleTapCount}  ·  Long press ${explorer.state.gestures.longPressCount}  ·  Drag ${explorer.state.gestures.dragCount}',
 				explorer.paletteMuted()))
 		])));
 
 		var motionStyle = explorer.panelStyle();
 		motionStyle.height = LayoutAxis.fixed(132.0);
-		var tweenX = 8.0 + explorer.tweenValue * 150.0;
-		var springX = 8.0 + explorer.springValue * 150.0;
+		var tweenX = 8.0 + explorer.state.gestures.tweenValue * 150.0;
+		var springX = 8.0 + explorer.state.gestures.springValue * 150.0;
 		items.push(explorer.keyed("motion-playground", explorer.panel("motion-playground-card", [
 			explorer.keyed("heading", explorer.text("Animated properties", explorer.paletteText())),
 			explorer.keyed("copy", explorer.text("These cards move by rebuilding positioned layout from Haxe-owned tween and spring values.", explorer.paletteMuted())),
@@ -89,14 +89,14 @@ class GesturesPage {
 			], motionStyle)),
 			explorer.keyed("actions", new Row("motion-actions", [
 				explorer.keyed("tween", explorer.button("Replay tween", "gesture-replay-tween", function() {
-					explorer.tweenController.play(explorer.tweenValue,
-						explorer.tweenValue < 0.5 ? 1.0 : 0.0, 0.7);
+					explorer.tweenController.play(explorer.state.gestures.tweenValue,
+						explorer.state.gestures.tweenValue < 0.5 ? 1.0 : 0.0, 0.7);
 				})),
 				explorer.keyed("spring", explorer.button("Retarget spring", "gesture-retarget-spring", function() {
-					explorer.springController.setTarget(explorer.springValue < 0.5 ? 1.0 : 0.18);
+					explorer.springController.setTarget(explorer.state.gestures.springValue < 0.5 ? 1.0 : 0.18);
 				}))
 			], explorer.rowStyle(10.0))),
-			explorer.keyed("motion-values", explorer.text('Tween ${Std.int(explorer.tweenValue * 100)}%  ·  Spring ${Std.int(explorer.springValue * 100)}%',
+			explorer.keyed("motion-values", explorer.text('Tween ${Std.int(explorer.state.gestures.tweenValue * 100)}%  ·  Spring ${Std.int(explorer.state.gestures.springValue * 100)}%',
 				explorer.paletteMuted()))
 		])));
 	}

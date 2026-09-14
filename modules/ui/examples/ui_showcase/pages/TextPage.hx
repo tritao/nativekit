@@ -14,7 +14,7 @@ class TextPage {
 				explorer.keyed("heading", explorer.text("TextField", explorer.paletteText())),
 				explorer.keyed("copy", explorer.text("Type, select, paste and move the caret with the keyboard.", explorer.paletteMuted())),
 				explorer.keyed("field", explorer.textField()),
-				explorer.keyed("value", explorer.text('Current value: ${explorer.nameValue}', explorer.paletteMuted()))
+				explorer.keyed("value", explorer.text('Current value: ${explorer.state.controls.nameValue}', explorer.paletteMuted()))
 			])),
 			explorer.keyed("multiline", explorer.panel("text-area-card", [
 				explorer.keyed("heading", explorer.text("TextArea + IME", explorer.paletteText())),
