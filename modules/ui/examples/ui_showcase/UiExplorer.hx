@@ -18,6 +18,7 @@ import Surface;
 import TextStyle;
 import nativekit.ui.core.NativeInputAdapter;
 import nativekit.ui.core.HitTest;
+import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
 import nativekit.ui.core.UiContext;
 import nativekit.ui.core.UiEventKind;
@@ -956,13 +957,19 @@ class UiExplorer {
 			return;
 		}
 		var path = HitTest.path(context.root, x, y);
-		hoveredNodeId = path.length == 0 ? 0 : inspectionTargetId(path[path.length - 1].id);
+		hoveredNodeId = path.length == 0 ? 0 : inspectionPathTargetId(path);
 	}
 
 	function inspectionTargetId(id:WidgetId):Int {
 		if (context.root == null)
 			return 0;
-		var path = HitTest.pathTo(context.root.find(id));
+		return inspectionPathTargetId(HitTest.pathTo(context.root.find(id)));
+	}
+
+	function inspectionPathTargetId(path:Array<RenderNode>):Int {
+		if (path.length == 0)
+			return 0;
+		var id = path[path.length - 1].id;
 		var semantic:Null<WidgetId> = null;
 		var index = path.length - 1;
 		while (index >= 0) {
