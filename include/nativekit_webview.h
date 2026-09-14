@@ -112,7 +112,8 @@ NK_API nk_result NK_CALL nk_webview_navigate(nk_webview webview, const char *url
 NK_API nk_result NK_CALL nk_webview_set_html(nk_webview webview, const char *html NK_UTF8,
                                              const char *base_url NK_NULLABLE_UTF8);
 /** Reports whether the WebView currently has a back-history entry. */
-NK_API nk_result NK_CALL nk_webview_can_go_back(nk_webview webview, nk_bool *out_can_go_back NK_OUT);
+NK_API nk_result NK_CALL nk_webview_can_go_back(nk_webview webview,
+                                                nk_bool *out_can_go_back NK_OUT);
 /** Reports whether the WebView currently has a forward-history entry. */
 NK_API nk_result NK_CALL nk_webview_can_go_forward(nk_webview webview,
                                                    nk_bool *out_can_go_forward NK_OUT);

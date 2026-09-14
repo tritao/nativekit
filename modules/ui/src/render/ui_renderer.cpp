@@ -35,10 +35,9 @@ class UiRendererImpl final : public UiRenderer {
     void markSurfaceCurrent(ResourceId target, uint32_t generation,
                             const SurfaceDescriptor &description) override;
     bool setScissor(bool enabled, float x, float y, float width, float height) override;
-    bool drawPath(const PreparedPathData &path, uint32_t operation_index,
+    bool drawPath(const PreparedPathData &path, uint32_t operation_index, float opacity) override;
+    bool drawPath(const PreparedPathData &path, uint32_t operation_index, const float transform[6],
                   float opacity) override;
-    bool drawPath(const PreparedPathData &path, uint32_t operation_index,
-                  const float transform[6], float opacity) override;
     bool drawImage(const PreparedTexture &image, float x, float y, float width, float height,
                    const float transform[6], float opacity) override;
     bool uploadAtlases(SkribidiAdapter &adapter, bool include_clean) override;
@@ -271,11 +270,10 @@ bool create_atlas_image(UiRendererImpl::State &state, UiRendererImpl::State::Atl
     atlas.pixels.resize(static_cast<size_t>(upload.texture_width) * upload.texture_height *
                         upload.bytes_per_pixel);
     copy_atlas_pixels(atlas, upload, true);
-    if (!gpu_result(state, nkgpu_image_create(
-                               state.renderer, upload.texture_width, upload.texture_height,
-                               format, atlas.pixels.data(),
-                               static_cast<uint32_t>(atlas.pixels.size()), 1,
-                               &atlas.image)))
+    if (!gpu_result(state, nkgpu_image_create(state.renderer, upload.texture_width,
+                                              upload.texture_height, format, atlas.pixels.data(),
+                                              static_cast<uint32_t>(atlas.pixels.size()), 1,
+                                              &atlas.image)))
         return false;
     return true;
 }
@@ -323,10 +321,10 @@ void retire_atlas_generations(UiRendererImpl::State &state, AtlasTextureId textu
 template <class Vertex>
 bool draw_mesh(UiRendererImpl::State &state, nkgpu_pipeline pipeline,
                const std::vector<Vertex> &vertices, const std::vector<uint32_t> &indices,
-               const void *fragment_uniforms, size_t fragment_uniform_size,
-               nkgpu_image image = {}, nkgpu_sampler sampler = {},
-               nkgpu_buffer vertex_buffer = {}, nk_graphics_image external_image = {},
-               const void *vertex_uniforms = nullptr, size_t vertex_uniform_size = 0) {
+               const void *fragment_uniforms, size_t fragment_uniform_size, nkgpu_image image = {},
+               nkgpu_sampler sampler = {}, nkgpu_buffer vertex_buffer = {},
+               nk_graphics_image external_image = {}, const void *vertex_uniforms = nullptr,
+               size_t vertex_uniform_size = 0) {
     if (vertices.empty() || indices.empty())
         return true;
     if (!state.in_pass || indices.size() > UINT32_MAX || vertices.size() > UINT32_MAX)
@@ -336,19 +334,20 @@ bool draw_mesh(UiRendererImpl::State &state, nkgpu_pipeline pipeline,
     const size_t vertex_bytes = vertices.size() * sizeof(Vertex);
     const size_t index_bytes = indices.size() * sizeof(uint32_t);
     if (vertex_bytes > UINT32_MAX || index_bytes > UINT32_MAX ||
-        !gpu_result(state, nkgpu_buffer_append(
-                               state.renderer, vertex_buffer.id ? vertex_buffer : state.solid_vertices,
-                               reinterpret_cast<const uint8_t *>(vertices.data()),
-                               static_cast<uint32_t>(vertex_bytes), &vertex_offset)) ||
-        !gpu_result(state, nkgpu_buffer_append(
-                               state.renderer, state.indices,
-                               reinterpret_cast<const uint8_t *>(indices.data()),
-                               static_cast<uint32_t>(index_bytes), &index_offset)) ||
+        !gpu_result(state,
+                    nkgpu_buffer_append(state.renderer,
+                                        vertex_buffer.id ? vertex_buffer : state.solid_vertices,
+                                        reinterpret_cast<const uint8_t *>(vertices.data()),
+                                        static_cast<uint32_t>(vertex_bytes), &vertex_offset)) ||
+        !gpu_result(state,
+                    nkgpu_buffer_append(state.renderer, state.indices,
+                                        reinterpret_cast<const uint8_t *>(indices.data()),
+                                        static_cast<uint32_t>(index_bytes), &index_offset)) ||
         !gpu_result(state, nkgpu_apply_pipeline(state.renderer, pipeline)) ||
-        !gpu_result(state, nkgpu_apply_vertex_buffer(
-                               state.renderer, 0,
-                               vertex_buffer.id ? vertex_buffer : state.solid_vertices,
-                               vertex_offset)) ||
+        !gpu_result(state, nkgpu_apply_vertex_buffer(state.renderer, 0,
+                                                     vertex_buffer.id ? vertex_buffer
+                                                                      : state.solid_vertices,
+                                                     vertex_offset)) ||
         !gpu_result(state, nkgpu_apply_index_buffer(state.renderer, state.indices, index_offset)))
         return false;
     ++state.stats.pipeline_changes;
@@ -363,14 +362,13 @@ bool draw_mesh(UiRendererImpl::State &state, nkgpu_pipeline pipeline,
     const void *vertex_data = vertex_uniforms ? vertex_uniforms : viewport.data();
     const size_t vertex_size = vertex_uniforms ? vertex_uniform_size : sizeof(viewport);
     if (!gpu_result(state, nkgpu_apply_uniform_data(state.renderer, 0,
-                               reinterpret_cast<const uint8_t *>(vertex_data),
-                               static_cast<uint32_t>(vertex_size))))
+                                                    reinterpret_cast<const uint8_t *>(vertex_data),
+                                                    static_cast<uint32_t>(vertex_size))))
         return false;
     if (fragment_uniforms &&
-        !gpu_result(state, nkgpu_apply_uniform_data(
-                               state.renderer, 1,
-                               static_cast<const uint8_t *>(fragment_uniforms),
-                               static_cast<uint32_t>(fragment_uniform_size))))
+        !gpu_result(state, nkgpu_apply_uniform_data(state.renderer, 1,
+                                                    static_cast<const uint8_t *>(fragment_uniforms),
+                                                    static_cast<uint32_t>(fragment_uniform_size))))
         return false;
     if (!gpu_result(state, nkgpu_draw(state.renderer, 0, static_cast<uint32_t>(indices.size()), 1)))
         return false;
@@ -387,12 +385,11 @@ void destroy_target(UiRendererImpl::State &state, UiRendererImpl::State::Target 
 
 bool create_target(UiRendererImpl::State &state, UiRendererImpl::State::Target &target, int width,
                    int height) {
-    if (!gpu_result(state, nkgpu_render_target_create(state.renderer,
-                                                      static_cast<uint32_t>(width),
-                                                      static_cast<uint32_t>(height), 1,
-                                                      &target.handle)) ||
-        !gpu_result(state, nkgpu_render_target_get_image(state.renderer, target.handle,
-                                                          &target.image)))
+    if (!gpu_result(state,
+                    nkgpu_render_target_create(state.renderer, static_cast<uint32_t>(width),
+                                               static_cast<uint32_t>(height), 1, &target.handle)) ||
+        !gpu_result(state,
+                    nkgpu_render_target_get_image(state.renderer, target.handle, &target.image)))
         return false;
     target.width = width;
     target.height = height;
@@ -414,22 +411,25 @@ bool upload_texture(UiRendererImpl::State &state, const PreparedTexture &source,
         const uint32_t bytes_per_pixel = source.type == PreparedTextureType::Rgba ? 4 : 1;
         const auto format = source.type == PreparedTextureType::Rgba ? NKGPU_IMAGEFORMAT_RGBA8
                                                                      : NKGPU_IMAGEFORMAT_R8;
-        if (source.pixels.size() != static_cast<size_t>(source.width) * source.height *
-                                        bytes_per_pixel ||
-            !gpu_result(state, nkgpu_image_create(
-                                   state.renderer, static_cast<uint32_t>(source.width),
-                                   static_cast<uint32_t>(source.height), format,
-                                   source.pixels.data(), static_cast<uint32_t>(source.pixels.size()),
-                                   1, &image.image)))
+        if (source.pixels.size() !=
+                static_cast<size_t>(source.width) * source.height * bytes_per_pixel ||
+            !gpu_result(state,
+                        nkgpu_image_create(
+                            state.renderer, static_cast<uint32_t>(source.width),
+                            static_cast<uint32_t>(source.height), format, source.pixels.data(),
+                            static_cast<uint32_t>(source.pixels.size()), 1, &image.image)))
             return false;
         const auto filter = has_flag(source.flags, PreparedImageFlags::Nearest)
-                                ? NKGPU_FILTER_NEAREST : NKGPU_FILTER_LINEAR;
+                                ? NKGPU_FILTER_NEAREST
+                                : NKGPU_FILTER_LINEAR;
         const auto wrap_u = has_flag(source.flags, PreparedImageFlags::RepeatX)
-                                ? NKGPU_WRAP_REPEAT : NKGPU_WRAP_CLAMP_TO_EDGE;
+                                ? NKGPU_WRAP_REPEAT
+                                : NKGPU_WRAP_CLAMP_TO_EDGE;
         const auto wrap_v = has_flag(source.flags, PreparedImageFlags::RepeatY)
-                                ? NKGPU_WRAP_REPEAT : NKGPU_WRAP_CLAMP_TO_EDGE;
+                                ? NKGPU_WRAP_REPEAT
+                                : NKGPU_WRAP_CLAMP_TO_EDGE;
         if (!gpu_result(state, nkgpu_sampler_create(state.renderer, filter, filter, wrap_u, wrap_v,
-                                                     &image.sampler))) {
+                                                    &image.sampler))) {
             nkgpu_image_destroy(state.renderer, image.image);
             image.image = {};
             return false;
@@ -443,11 +443,11 @@ bool upload_texture(UiRendererImpl::State &state, const PreparedTexture &source,
     }
     if (image.generation != source.generation) {
         const uint32_t bytes_per_pixel = source.type == PreparedTextureType::Rgba ? 4 : 1;
-        if (!gpu_result(state, nkgpu_image_update(
-                                   state.renderer, image.image, 0, 0,
-                                   static_cast<uint32_t>(source.width),
-                                   static_cast<uint32_t>(source.height), source.pixels.data(),
-                                   static_cast<uint32_t>(source.width) * bytes_per_pixel)))
+        if (!gpu_result(state,
+                        nkgpu_image_update(
+                            state.renderer, image.image, 0, 0, static_cast<uint32_t>(source.width),
+                            static_cast<uint32_t>(source.height), source.pixels.data(),
+                            static_cast<uint32_t>(source.width) * bytes_per_pixel)))
             return false;
         image.generation = source.generation;
         ++state.stats.image_uploads;
@@ -584,8 +584,8 @@ ShaderSources shader_sources(nkgpu_backend backend, UiShaderKind kind) {
     const bool es = backend == NKGPU_BACKEND_GLES3;
     const bool d3d11 = backend == NKGPU_BACKEND_D3D11;
     const bool metal = backend == NKGPU_BACKEND_METAL;
-    const auto gl = [es](const char *vertex410, const char *fragment410,
-                         const char *vertex300, const char *fragment300) {
+    const auto gl = [es](const char *vertex410, const char *fragment410, const char *vertex300,
+                         const char *fragment300) {
         return es ? ShaderSources{vertex300, fragment300, NKGPU_SHADERLANGUAGE_GLSL}
                   : ShaderSources{vertex410, fragment410, NKGPU_SHADERLANGUAGE_GLSL};
     };
@@ -616,8 +616,7 @@ ShaderSources shader_sources(nkgpu_backend backend, UiShaderKind kind) {
             return {ui_shader_text_alpha_metal_macos_vertex,
                     ui_shader_text_alpha_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
         return gl(ui_shader_text_alpha_glsl410_vertex, ui_shader_text_alpha_glsl410_fragment,
-                  ui_shader_text_alpha_glsl300es_vertex,
-                  ui_shader_text_alpha_glsl300es_fragment);
+                  ui_shader_text_alpha_glsl300es_vertex, ui_shader_text_alpha_glsl300es_fragment);
     case UiShaderKind::SdfGlyph:
         if (d3d11)
             return {ui_shader_text_sdf_hlsl5_vertex, ui_shader_text_sdf_hlsl5_fragment,
@@ -635,8 +634,7 @@ ShaderSources shader_sources(nkgpu_backend backend, UiShaderKind kind) {
             return {ui_shader_text_color_metal_macos_vertex,
                     ui_shader_text_color_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
         return gl(ui_shader_text_color_glsl410_vertex, ui_shader_text_color_glsl410_fragment,
-                  ui_shader_text_color_glsl300es_vertex,
-                  ui_shader_text_color_glsl300es_fragment);
+                  ui_shader_text_color_glsl300es_vertex, ui_shader_text_color_glsl300es_fragment);
     case UiShaderKind::Composite:
         if (d3d11)
             return {ui_shader_composite_hlsl5_vertex, ui_shader_composite_hlsl5_fragment,
@@ -645,17 +643,15 @@ ShaderSources shader_sources(nkgpu_backend backend, UiShaderKind kind) {
             return {ui_shader_composite_metal_macos_vertex,
                     ui_shader_composite_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
         return gl(ui_shader_composite_glsl410_vertex, ui_shader_composite_glsl410_fragment,
-                  ui_shader_composite_glsl300es_vertex,
-                  ui_shader_composite_glsl300es_fragment);
+                  ui_shader_composite_glsl300es_vertex, ui_shader_composite_glsl300es_fragment);
     case UiShaderKind::SurfaceMesh:
         if (d3d11)
-            return {ui_shader_surface_mesh_hlsl5_vertex,
-                    ui_shader_surface_mesh_hlsl5_fragment, NKGPU_SHADERLANGUAGE_HLSL5};
+            return {ui_shader_surface_mesh_hlsl5_vertex, ui_shader_surface_mesh_hlsl5_fragment,
+                    NKGPU_SHADERLANGUAGE_HLSL5};
         if (metal)
             return {ui_shader_surface_mesh_metal_macos_vertex,
                     ui_shader_surface_mesh_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
-        return gl(ui_shader_surface_mesh_glsl410_vertex,
-                  ui_shader_surface_mesh_glsl410_fragment,
+        return gl(ui_shader_surface_mesh_glsl410_vertex, ui_shader_surface_mesh_glsl410_fragment,
                   ui_shader_surface_mesh_glsl300es_vertex,
                   ui_shader_surface_mesh_glsl300es_fragment);
     }
@@ -672,8 +668,8 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
     if (!sources.vertex || !sources.fragment)
         return fail(state, "UI shader source is unavailable for this graphics backend");
     nkgpu_shader_builder builder{};
-    if (!gpu_result(state, nkgpu_shader_begin(state.renderer, sources.language,
-                                               sources.vertex, sources.fragment, &builder)))
+    if (!gpu_result(state, nkgpu_shader_begin(state.renderer, sources.language, sources.vertex,
+                                              sources.fragment, &builder)))
         return false;
     const char *attributes[3]{};
     uint32_t attribute_count = 0;
@@ -699,9 +695,8 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
         break;
     }
     for (uint32_t location = 0; location < attribute_count; ++location) {
-        if (!gpu_result(state, nkgpu_shader_attribute(builder, location,
-                                                       attributes[location], "TEXCOORD",
-                                                       location)))
+        if (!gpu_result(state, nkgpu_shader_attribute(builder, location, attributes[location],
+                                                      "TEXCOORD", location)))
             return false;
     }
     const char *vertex_block = nullptr;
@@ -738,21 +733,19 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
         vertex_size = 64;
         break;
     }
-    if (!gpu_result(state, nkgpu_shader_uniform_block(builder, 0, NKGPU_SHADERSTAGE_VERTEX,
-                                                       vertex_size)) ||
-        !add_uniform(state, builder, 0, 0, vertex_block,
-                     NKGPU_UNIFORMTYPE_FLOAT4,
+    if (!gpu_result(
+            state, nkgpu_shader_uniform_block(builder, 0, NKGPU_SHADERSTAGE_VERTEX, vertex_size)) ||
+        !add_uniform(state, builder, 0, 0, vertex_block, NKGPU_UNIFORMTYPE_FLOAT4,
                      kind == UiShaderKind::SurfaceMesh ? 4 : 1))
         return false;
     if (fragment_block &&
-        (!gpu_result(state, nkgpu_shader_uniform_block(builder, 1,
-                                                        NKGPU_SHADERSTAGE_FRAGMENT,
-                                                        fragment_size)) ||
+        (!gpu_result(state, nkgpu_shader_uniform_block(builder, 1, NKGPU_SHADERSTAGE_FRAGMENT,
+                                                       fragment_size)) ||
          !add_uniform(state, builder, 1, 0, fragment_block, NKGPU_UNIFORMTYPE_FLOAT4,
                       kind == UiShaderKind::Path ? 7 : 1)))
         return false;
-    if (textured && !gpu_result(state, nkgpu_shader_texture(
-                            builder, 0, 0, NKGPU_SHADERSTAGE_FRAGMENT, "tex_smp")))
+    if (textured && !gpu_result(state, nkgpu_shader_texture(builder, 0, 0,
+                                                            NKGPU_SHADERSTAGE_FRAGMENT, "tex_smp")))
         return false;
     return gpu_result(state, nkgpu_shader_end(builder, &out_shader));
 }
@@ -782,16 +775,15 @@ bool create_pipeline(UiRendererImpl::State &state, nkgpu_shader shader, uint32_t
         return false;
     for (const auto &attribute : attributes) {
         if (!gpu_result(state, nkgpu_pipeline_attribute(builder, attribute.location, 0,
-                                                         attribute.offset, attribute.format)))
+                                                        attribute.offset, attribute.format)))
             return false;
     }
     if (!gpu_result(state, nkgpu_pipeline_index_type(builder, NKGPU_INDEXTYPE_UINT32)) ||
         (options.blend && !gpu_result(state, nkgpu_pipeline_blend(builder, options.blend))) ||
         (options.stencil && !gpu_result(state, nkgpu_pipeline_stencil(builder, options.stencil))) ||
-        (options.depth_stencil &&
-         !gpu_result(state, nkgpu_pipeline_depth_stencil(builder, 1))) ||
-        (options.cull && !gpu_result(state, nkgpu_pipeline_cull_mode(
-                             builder, options.cull_mode, options.winding))) ||
+        (options.depth_stencil && !gpu_result(state, nkgpu_pipeline_depth_stencil(builder, 1))) ||
+        (options.cull && !gpu_result(state, nkgpu_pipeline_cull_mode(builder, options.cull_mode,
+                                                                     options.winding))) ||
         (options.set_color_mask &&
          !gpu_result(state, nkgpu_pipeline_color_write_mask(builder, options.color_mask))))
         return false;
@@ -799,15 +791,17 @@ bool create_pipeline(UiRendererImpl::State &state, nkgpu_shader shader, uint32_t
 }
 
 nkgpu_blend_state premultiplied_blend() {
-    return {1, NKGPU_BLENDFACTOR_ONE, NKGPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-            NKGPU_BLENDOP_ADD, NKGPU_BLENDFACTOR_ONE,
-            NKGPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, NKGPU_BLENDOP_ADD};
+    return {1,
+            NKGPU_BLENDFACTOR_ONE,
+            NKGPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            NKGPU_BLENDOP_ADD,
+            NKGPU_BLENDFACTOR_ONE,
+            NKGPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            NKGPU_BLENDOP_ADD};
 }
 
-nkgpu_stencil_face_state stencil_face(nkgpu_compare_func compare,
-                                      nkgpu_stencil_op fail_op,
-                                      nkgpu_stencil_op depth_fail_op,
-                                      nkgpu_stencil_op pass_op) {
+nkgpu_stencil_face_state stencil_face(nkgpu_compare_func compare, nkgpu_stencil_op fail_op,
+                                      nkgpu_stencil_op depth_fail_op, nkgpu_stencil_op pass_op) {
     return {compare, fail_op, depth_fail_op, pass_op};
 }
 
@@ -850,12 +844,14 @@ bool UiRendererImpl::initialize() {
         return false;
 
     const auto premultiplied = premultiplied_blend();
-    const nkgpu_blend_state glyph_blend{
-        1, NKGPU_BLENDFACTOR_SRC_ALPHA, NKGPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-        NKGPU_BLENDOP_ADD, NKGPU_BLENDFACTOR_ONE,
-        NKGPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, NKGPU_BLENDOP_ADD};
-    auto make_stencil = [](nkgpu_stencil_face_state front,
-                           nkgpu_stencil_face_state back) {
+    const nkgpu_blend_state glyph_blend{1,
+                                        NKGPU_BLENDFACTOR_SRC_ALPHA,
+                                        NKGPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                                        NKGPU_BLENDOP_ADD,
+                                        NKGPU_BLENDFACTOR_ONE,
+                                        NKGPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                                        NKGPU_BLENDOP_ADD};
+    auto make_stencil = [](nkgpu_stencil_face_state front, nkgpu_stencil_face_state back) {
         nkgpu_stencil_state result{};
         result.enabled = 1;
         result.read_mask = 0xFF;
@@ -867,11 +863,9 @@ bool UiRendererImpl::initialize() {
     const auto keep = stencil_face(NKGPU_COMPAREFUNC_ALWAYS, NKGPU_STENCILOP_KEEP,
                                    NKGPU_STENCILOP_KEEP, NKGPU_STENCILOP_KEEP);
     const auto increment_front = stencil_face(NKGPU_COMPAREFUNC_ALWAYS, NKGPU_STENCILOP_KEEP,
-                                               NKGPU_STENCILOP_KEEP,
-                                               NKGPU_STENCILOP_INCREMENT_WRAP);
+                                              NKGPU_STENCILOP_KEEP, NKGPU_STENCILOP_INCREMENT_WRAP);
     const auto decrement_back = stencil_face(NKGPU_COMPAREFUNC_ALWAYS, NKGPU_STENCILOP_KEEP,
-                                              NKGPU_STENCILOP_KEEP,
-                                              NKGPU_STENCILOP_DECREMENT_WRAP);
+                                             NKGPU_STENCILOP_KEEP, NKGPU_STENCILOP_DECREMENT_WRAP);
     const auto invert = stencil_face(NKGPU_COMPAREFUNC_ALWAYS, NKGPU_STENCILOP_KEEP,
                                      NKGPU_STENCILOP_KEEP, NKGPU_STENCILOP_INVERT);
     const auto zero_cover = stencil_face(NKGPU_COMPAREFUNC_NOT_EQUAL, NKGPU_STENCILOP_ZERO,
@@ -906,8 +900,8 @@ bool UiRendererImpl::initialize() {
     surface_options.winding = NKGPU_FACEWINDING_CCW;
 
     if (!create_pipeline(*state_, state_->solid_shader, sizeof(SolidVertex),
-                         {{0, offsetof(SolidVertex, x), NKGPU_VERTEXFORMAT_FLOAT2}},
-                         color_options, state_->solid_pipeline) ||
+                         {{0, offsetof(SolidVertex, x), NKGPU_VERTEXFORMAT_FLOAT2}}, color_options,
+                         state_->solid_pipeline) ||
         !create_pipeline(*state_, state_->solid_shader, sizeof(SolidVertex),
                          {{0, offsetof(SolidVertex, x), NKGPU_VERTEXFORMAT_FLOAT2}},
                          stencil_options, state_->fill_stencil_pipeline) ||
@@ -915,8 +909,8 @@ bool UiRendererImpl::initialize() {
                          {{0, offsetof(SolidVertex, x), NKGPU_VERTEXFORMAT_FLOAT2}},
                          even_odd_options, state_->fill_stencil_even_odd_pipeline) ||
         !create_pipeline(*state_, state_->solid_shader, sizeof(SolidVertex),
-                         {{0, offsetof(SolidVertex, x), NKGPU_VERTEXFORMAT_FLOAT2}},
-                         cover_options, state_->fill_cover_pipeline) ||
+                         {{0, offsetof(SolidVertex, x), NKGPU_VERTEXFORMAT_FLOAT2}}, cover_options,
+                         state_->fill_cover_pipeline) ||
         !create_pipeline(*state_, state_->path_shader, sizeof(PathVertex),
                          {{0, offsetof(PathVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
                           {1, offsetof(PathVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
@@ -957,24 +951,24 @@ bool UiRendererImpl::initialize() {
     const auto nearest = NKGPU_FILTER_NEAREST;
     const auto linear = NKGPU_FILTER_LINEAR;
     const auto clamp = NKGPU_WRAP_CLAMP_TO_EDGE;
-    if (!gpu_result(*state_, nkgpu_sampler_create(state_->renderer, nearest, nearest, clamp,
-                                                   clamp, &state_->sampler)) ||
-        !gpu_result(*state_, nkgpu_sampler_create(state_->renderer, linear, linear, clamp,
-                                                   clamp, &state_->glyph_sampler)) ||
-        !gpu_result(*state_, nkgpu_sampler_create(state_->renderer, linear, linear, clamp,
-                                                   clamp, &state_->surface_sampler)) ||
-        !gpu_result(*state_, nkgpu_sampler_create(state_->renderer, nearest, nearest, clamp,
-                                                   clamp, &state_->white_sampler)))
+    if (!gpu_result(*state_, nkgpu_sampler_create(state_->renderer, nearest, nearest, clamp, clamp,
+                                                  &state_->sampler)) ||
+        !gpu_result(*state_, nkgpu_sampler_create(state_->renderer, linear, linear, clamp, clamp,
+                                                  &state_->glyph_sampler)) ||
+        !gpu_result(*state_, nkgpu_sampler_create(state_->renderer, linear, linear, clamp, clamp,
+                                                  &state_->surface_sampler)) ||
+        !gpu_result(*state_, nkgpu_sampler_create(state_->renderer, nearest, nearest, clamp, clamp,
+                                                  &state_->white_sampler)))
         return false;
     const std::array<uint8_t, 4> white{255, 255, 255, 255};
-    if (!gpu_result(*state_, nkgpu_image_create(state_->renderer, 1, 1,
-                                                 NKGPU_IMAGEFORMAT_RGBA8, white.data(),
-                                                 white.size(), 0, &state_->white_image)))
+    if (!gpu_result(*state_,
+                    nkgpu_image_create(state_->renderer, 1, 1, NKGPU_IMAGEFORMAT_RGBA8,
+                                       white.data(), white.size(), 0, &state_->white_image)))
         return false;
     const auto create_stream = [this](uint32_t size, nkgpu_buffer_usage usage,
                                       nkgpu_buffer &buffer) {
-        return gpu_result(*state_, nkgpu_buffer_create_stream(state_->renderer, size, usage,
-                                                               &buffer));
+        return gpu_result(*state_,
+                          nkgpu_buffer_create_stream(state_->renderer, size, usage, &buffer));
     };
     if (!create_stream(4 * 1024 * 1024, NKGPU_BUFFER_VERTEX, state_->solid_vertices) ||
         !create_stream(4 * 1024 * 1024, NKGPU_BUFFER_VERTEX, state_->glyph_vertices) ||
@@ -1012,8 +1006,7 @@ bool UiRendererImpl::beginFrame() {
 bool UiRendererImpl::beginWindowPass(int width, int height, bool clear) {
     if (!valid() || !state_->in_frame || state_->in_pass || width <= 0 || height <= 0)
         return fail(*state_, "invalid UI window pass");
-    if (!gpu_result(*state_, nkgpu_begin_window_pass(state_->renderer,
-                                                     static_cast<uint32_t>(width),
+    if (!gpu_result(*state_, nkgpu_begin_window_pass(state_->renderer, static_cast<uint32_t>(width),
                                                      static_cast<uint32_t>(height), clear ? 1 : 0)))
         return false;
     state_->width = width;
@@ -1039,7 +1032,7 @@ bool UiRendererImpl::beginTargetPass(ResourceId target_id, int width, int height
             return false;
     }
     if (!gpu_result(*state_, nkgpu_begin_target_pass(state_->renderer, target.handle,
-                                                      load_existing ? 0 : 1)))
+                                                     load_existing ? 0 : 1)))
         return false;
     state_->width = width;
     state_->height = height;
@@ -1089,10 +1082,10 @@ bool UiRendererImpl::surfaceIsCurrent(ResourceId target, uint32_t generation,
 }
 
 void UiRendererImpl::markSurfaceCurrent(ResourceId target, uint32_t generation,
-                                       const SurfaceDescriptor &description) {
-    state_->surfaces[target.value] = {generation, description.width, description.height,
-                                      description.format, description.alpha, description.filter,
-                                      description.color_space};
+                                        const SurfaceDescriptor &description) {
+    state_->surfaces[target.value] = {
+        generation,        description.width,  description.height,     description.format,
+        description.alpha, description.filter, description.color_space};
 }
 
 bool UiRendererImpl::setScissor(bool enabled, float x, float y, float width, float height) {
@@ -1104,20 +1097,18 @@ bool UiRendererImpl::setScissor(bool enabled, float x, float y, float width, flo
     int32_t bottom = 0;
     if (enabled) {
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) ||
-            !std::isfinite(height) || width < 0.0f || height < 0.0f ||
-            x < INT32_MIN || x > INT32_MAX || y < INT32_MIN || y > INT32_MAX ||
-            x + width < INT32_MIN || x + width > INT32_MAX ||
-            y + height < INT32_MIN || y + height > INT32_MAX)
+            !std::isfinite(height) || width < 0.0f || height < 0.0f || x < INT32_MIN ||
+            x > INT32_MAX || y < INT32_MIN || y > INT32_MAX || x + width < INT32_MIN ||
+            x + width > INT32_MAX || y + height < INT32_MIN || y + height > INT32_MAX)
             return fail(*state_, "invalid UI scissor rectangle");
         left = static_cast<int32_t>(std::floor(x));
         top = static_cast<int32_t>(std::floor(y));
         right = static_cast<int32_t>(std::ceil(x + width));
         bottom = static_cast<int32_t>(std::ceil(y + height));
     }
-    return gpu_result(*state_, nkgpu_apply_scissor(
-                                   state_->renderer, enabled ? 1 : 0, left, top,
-                                   enabled ? std::max(0, right - left) : 0,
-                                   enabled ? std::max(0, bottom - top) : 0));
+    return gpu_result(*state_, nkgpu_apply_scissor(state_->renderer, enabled ? 1 : 0, left, top,
+                                                   enabled ? std::max(0, right - left) : 0,
+                                                   enabled ? std::max(0, bottom - top) : 0));
 }
 
 bool UiRendererImpl::drawPath(const PreparedPathData &path, uint32_t operation_index,
@@ -1140,8 +1131,8 @@ bool UiRendererImpl::drawPath(const PreparedPathData &path, uint32_t operation_i
     nkgpu_sampler paint_sampler{};
     PreparedTextureType texture_type = PreparedTextureType::Rgba;
     PreparedImageFlags texture_flags = PreparedImageFlags::None;
-    if (!resolve_paint_image(*state_, path, operation.paint.image_token, paint_image,
-                             paint_sampler, texture_type, texture_flags))
+    if (!resolve_paint_image(*state_, path, operation.paint.image_token, paint_image, paint_sampler,
+                             texture_type, texture_flags))
         return false;
     PathUniforms paint = path_uniforms(operation, transform, opacity, texture_type, texture_flags);
     if (operation.kind == PreparedPathKind::Fill &&
@@ -1171,8 +1162,7 @@ bool UiRendererImpl::drawPath(const PreparedPathData &path, uint32_t operation_i
         const PathMesh fringe = make_paint_mesh(path, operation, transform, true);
         if (!fringe.indices.empty() &&
             !draw_mesh(*state_, state_->path_fringe_pipeline, fringe.vertices, fringe.indices,
-                       &paint, sizeof(paint), paint_image, paint_sampler,
-                       state_->solid_vertices))
+                       &paint, sizeof(paint), paint_image, paint_sampler, state_->solid_vertices))
             return false;
         const auto point = [transform](float x, float y) {
             return PathVertex{x * transform[0] + y * transform[2] + transform[4],
@@ -1186,8 +1176,7 @@ bool UiRendererImpl::drawPath(const PreparedPathData &path, uint32_t operation_i
         cover.indices = {0, 1, 2, 0, 2, 3};
         paint.coverage[0] = 0.0f;
         return draw_mesh(*state_, state_->path_cover_pipeline, cover.vertices, cover.indices,
-                         &paint, sizeof(paint), paint_image, paint_sampler,
-                         state_->solid_vertices);
+                         &paint, sizeof(paint), paint_image, paint_sampler, state_->solid_vertices);
     }
 
     const PathMesh mesh = make_paint_mesh(path, operation, transform);
@@ -1216,8 +1205,7 @@ bool UiRendererImpl::drawImage(const PreparedTexture &image, float x, float y, f
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
     return draw_mesh(*state_, state_->composite_pipeline, vertices, indices, tint.data(),
-                     sizeof(tint), gpu_image.image, gpu_image.sampler,
-                     state_->composite_vertices);
+                     sizeof(tint), gpu_image.image, gpu_image.sampler, state_->composite_vertices);
 }
 
 bool UiRendererImpl::uploadAtlases(SkribidiAdapter &adapter, bool include_clean) {
@@ -1252,10 +1240,9 @@ bool UiRendererImpl::uploadAtlases(SkribidiAdapter &adapter, bool include_clean)
                    found->second.bytes_per_pixel != upload.bytes_per_pixel) {
             return fail(*state_, "atlas generation changed dimensions");
         }
-        const uint64_t dirty_bytes = upload.dirty
-                                         ? static_cast<uint64_t>(upload.width) * upload.height *
-                                               upload.bytes_per_pixel
-                                         : 0;
+        const uint64_t dirty_bytes = upload.dirty ? static_cast<uint64_t>(upload.width) *
+                                                        upload.height * upload.bytes_per_pixel
+                                                  : 0;
         state_->stats.atlas_dirty_bytes += dirty_bytes;
         state_->stats.atlas_dirty_upload_bytes += dirty_bytes;
         if (upload.dirty)
@@ -1269,13 +1256,12 @@ bool UiRendererImpl::uploadAtlases(SkribidiAdapter &adapter, bool include_clean)
             if (upload.dirty)
                 ++state_->stats.atlas_full_upload_fallbacks;
             copy_atlas_pixels(found->second, upload, true);
-            const uint32_t row_pitch = static_cast<uint32_t>(found->second.width) *
-                                       found->second.bytes_per_pixel;
-            if (!gpu_result(*state_, nkgpu_image_update(
-                                         state_->renderer, found->second.image, 0, 0,
-                                         static_cast<uint32_t>(found->second.width),
-                                         static_cast<uint32_t>(found->second.height),
-                                         found->second.pixels.data(), row_pitch)))
+            const uint32_t row_pitch =
+                static_cast<uint32_t>(found->second.width) * found->second.bytes_per_pixel;
+            if (!gpu_result(*state_, nkgpu_image_update(state_->renderer, found->second.image, 0, 0,
+                                                        static_cast<uint32_t>(found->second.width),
+                                                        static_cast<uint32_t>(found->second.height),
+                                                        found->second.pixels.data(), row_pitch)))
                 return false;
         }
         ++state_->stats.atlas_full_uploads;
@@ -1292,20 +1278,17 @@ bool UiRendererImpl::uploadAtlases(SkribidiAdapter &adapter, bool include_clean)
     }
     const SkribidiAdapterStats current = adapter.stats();
     auto &previous = state_->text_stats[&adapter];
-    state_->stats.text_layout_cache_hits += current.text_layout_cache_hits >=
-                                                   previous.text_layout_cache_hits
-                                               ? current.text_layout_cache_hits -
-                                                     previous.text_layout_cache_hits
-                                               : current.text_layout_cache_hits;
-    state_->stats.text_layout_cache_misses += current.text_layout_cache_misses >=
-                                                      previous.text_layout_cache_misses
-                                                  ? current.text_layout_cache_misses -
-                                                        previous.text_layout_cache_misses
-                                                  : current.text_layout_cache_misses;
+    state_->stats.text_layout_cache_hits +=
+        current.text_layout_cache_hits >= previous.text_layout_cache_hits
+            ? current.text_layout_cache_hits - previous.text_layout_cache_hits
+            : current.text_layout_cache_hits;
+    state_->stats.text_layout_cache_misses +=
+        current.text_layout_cache_misses >= previous.text_layout_cache_misses
+            ? current.text_layout_cache_misses - previous.text_layout_cache_misses
+            : current.text_layout_cache_misses;
     state_->stats.glyphs_rasterized += current.glyphs_rasterized >= previous.glyphs_rasterized
-                                          ? current.glyphs_rasterized -
-                                                previous.glyphs_rasterized
-                                          : current.glyphs_rasterized;
+                                           ? current.glyphs_rasterized - previous.glyphs_rasterized
+                                           : current.glyphs_rasterized;
     previous = current;
     state_->stats.atlas_scale_generation =
         std::max<uint64_t>(state_->stats.atlas_scale_generation, current.scale_generation);
@@ -1318,17 +1301,16 @@ bool UiRendererImpl::drawGlyphs(const PreparedGlyphs &glyphs, float opacity) {
 }
 
 bool UiRendererImpl::drawGlyphs(const PreparedGlyphs &glyphs, const float transform[6],
-                               float origin_x, float origin_y, float opacity) {
+                                float origin_x, float origin_y, float opacity) {
     if (!state_->in_pass || !transform || !std::isfinite(opacity) || opacity < 0.0f ||
         opacity > 1.0f || !std::isfinite(glyphs.pixel_scale) || glyphs.pixel_scale <= 0.0f)
         return fail(*state_, "invalid glyph draw");
     const float integral_scale = std::round(glyphs.pixel_scale);
     // Preserve crisp texel alignment at integer scales; fractional device scales
     // need coverage interpolation so glyph edges do not lose partial rows/columns.
-    const nkgpu_sampler glyph_sampler =
-        std::abs(glyphs.pixel_scale - integral_scale) < 0.0001f
-            ? state_->sampler
-            : state_->glyph_sampler;
+    const nkgpu_sampler glyph_sampler = std::abs(glyphs.pixel_scale - integral_scale) < 0.0001f
+                                            ? state_->sampler
+                                            : state_->glyph_sampler;
     for (const auto &batch : glyphs.batches) {
         const auto atlas = state_->atlases.find(atlas_key(batch.atlas, batch.atlas_generation));
         if (atlas == state_->atlases.end())
@@ -1339,11 +1321,10 @@ bool UiRendererImpl::drawGlyphs(const PreparedGlyphs &glyphs, const float transf
         if ((batch.mode == GlyphMode::Color) != color_format ||
             (batch.mode == GlyphMode::Sdf) != (atlas->second.format == AtlasTextureFormat::R8Sdf))
             return fail(*state_, "glyph mode does not match atlas format");
-        const nkgpu_pipeline pipeline = batch.mode == GlyphMode::Color
-                                            ? state_->color_glyph_pipeline
-                                        : batch.mode == GlyphMode::Sdf
-                                            ? state_->sdf_glyph_pipeline
-                                            : state_->alpha_glyph_pipeline;
+        const nkgpu_pipeline pipeline =
+            batch.mode == GlyphMode::Color ? state_->color_glyph_pipeline
+            : batch.mode == GlyphMode::Sdf ? state_->sdf_glyph_pipeline
+                                           : state_->alpha_glyph_pipeline;
         std::vector<GlyphVertex> vertices(glyphs.vertices.begin() + batch.first_vertex,
                                           glyphs.vertices.begin() + batch.first_vertex +
                                               batch.vertex_count);
@@ -1358,8 +1339,8 @@ bool UiRendererImpl::drawGlyphs(const PreparedGlyphs &glyphs, const float transf
         indices.reserve(batch.index_count);
         for (uint32_t index = 0; index < batch.index_count; ++index)
             indices.push_back(glyphs.indices[batch.first_index + index] - batch.first_vertex);
-        if (!draw_mesh(*state_, pipeline, vertices, indices, nullptr, 0,
-                       atlas->second.image, glyph_sampler, state_->glyph_vertices))
+        if (!draw_mesh(*state_, pipeline, vertices, indices, nullptr, 0, atlas->second.image,
+                       glyph_sampler, state_->glyph_vertices))
             return false;
     }
     return true;
@@ -1374,8 +1355,7 @@ std::vector<TextureVertex> composite_vertices(float x, float y, float width, flo
                              px * transform[1] + py * transform[3] + transform[5], u, v};
     };
     return {point(x, y, 0.0f, 1.0f), point(x + width, y, 1.0f, 1.0f),
-            point(x + width, y + height, 1.0f, 0.0f),
-            point(x, y + height, 0.0f, 0.0f)};
+            point(x + width, y + height, 1.0f, 0.0f), point(x, y + height, 0.0f, 0.0f)};
 }
 
 bool valid_composite(UiRendererImpl::State &state, const float transform[6], float opacity) {
@@ -1418,8 +1398,8 @@ bool UiRendererImpl::compositeImage(ResourceId target_id, float x, float y, floa
         else if (surface->second.filter != SurfaceFilter::Nearest)
             return fail(*state_, "surface filter is unsupported");
     }
-    return draw_composite(*state_, x, y, width, height, transform, opacity, {},
-                          found->second.image, sampler);
+    return draw_composite(*state_, x, y, width, height, transform, opacity, {}, found->second.image,
+                          sampler);
 }
 
 bool UiRendererImpl::compositeImage(nk_graphics_image image, float x, float y, float width,

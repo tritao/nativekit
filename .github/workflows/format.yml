@@ -10,8 +10,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install ClangFormat
-        run: sudo apt-get update && sudo apt-get install -y clang-format
+        run: >-
+          python3 -m pip install --no-deps
+          --target "$RUNNER_TEMP/clang-format"
+          clang-format==18.1.8
       - name: Configure
-        run: cmake -S . -B build -DNK_BUILD_TESTS=OFF -DNK_BUILD_EXAMPLES=OFF
+        run: >-
+          cmake -S . -B build
+          -DNK_CLANG_FORMAT="$RUNNER_TEMP/clang-format/clang_format/data/bin/clang-format"
+          -DNK_BUILD_TESTS=OFF -DNK_BUILD_EXAMPLES=OFF
       - name: Check formatting
         run: cmake --build build --target format-check

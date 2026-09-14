@@ -85,8 +85,7 @@ Clay_TextAlignment clay_alignment(TextAlignment alignment) {
 } // namespace
 
 struct LayoutEngine::Impl {
-    explicit Impl(std::size_t initial_capacity,
-                  std::shared_ptr<SkribidiFontCollection> fonts = {})
+    explicit Impl(std::size_t initial_capacity, std::shared_ptr<SkribidiFontCollection> fonts = {})
         : text(fonts ? std::move(fonts) : std::make_shared<SkribidiFontCollection>()) {
         initialize_context(initial_capacity);
     }
@@ -224,8 +223,9 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
     // needed until the first character is inserted.
     if (text.length == 0) {
         result.success = true;
-        result.dimensions = {std::isfinite(available_width) ? std::max(0.0f, available_width) : 0.0f,
-                             config->lineHeight > 0 ? static_cast<float>(config->lineHeight) : 0.0f};
+        result.dimensions = {
+            std::isfinite(available_width) ? std::max(0.0f, available_width) : 0.0f,
+            config->lineHeight > 0 ? static_cast<float>(config->lineHeight) : 0.0f};
         return result;
     }
 
@@ -312,12 +312,11 @@ Clay_ElementDeclaration declaration_for(const LayoutNode &node) {
     if (node.style.positioning == LayoutPositioning::Absolute) {
         declaration.floating.offset = {node.style.position_x, node.style.position_y};
         declaration.floating.zIndex = static_cast<int16_t>(node.style.z_index);
-        declaration.floating.attachPoints = {
-            CLAY_ATTACH_POINT_LEFT_TOP, CLAY_ATTACH_POINT_LEFT_TOP};
+        declaration.floating.attachPoints = {CLAY_ATTACH_POINT_LEFT_TOP,
+                                             CLAY_ATTACH_POINT_LEFT_TOP};
         declaration.floating.attachTo = CLAY_ATTACH_TO_PARENT;
-        declaration.floating.clipTo = node.style.clip_to_parent
-            ? CLAY_CLIP_TO_ATTACHED_PARENT
-            : CLAY_CLIP_TO_NONE;
+        declaration.floating.clipTo =
+            node.style.clip_to_parent ? CLAY_CLIP_TO_ATTACHED_PARENT : CLAY_CLIP_TO_NONE;
     }
     declaration.backgroundColor = clay_color(node.style.background);
     declaration.cornerRadius = {node.style.radius_top_left, node.style.radius_top_right,
@@ -374,9 +373,8 @@ LayoutTransform translated(float x, float y) {
 }
 
 bool finite_transform(const LayoutTransform &transform) {
-    return std::isfinite(transform.a) && std::isfinite(transform.b) &&
-           std::isfinite(transform.c) && std::isfinite(transform.d) &&
-           std::isfinite(transform.tx) && std::isfinite(transform.ty);
+    return std::isfinite(transform.a) && std::isfinite(transform.b) && std::isfinite(transform.c) &&
+           std::isfinite(transform.d) && std::isfinite(transform.tx) && std::isfinite(transform.ty);
 }
 
 bool axis_aligned(const LayoutTransform &transform) {
@@ -400,8 +398,7 @@ LayoutRect transform_bounds(LayoutRect rect, LayoutTransform transform) {
     const float y3 = y(rect.x + rect.width, rect.y + rect.height);
     const float left = std::min({x0, x1, x2, x3});
     const float top = std::min({y0, y1, y2, y3});
-    return {left, top, std::max({x0, x1, x2, x3}) - left,
-            std::max({y0, y1, y2, y3}) - top};
+    return {left, top, std::max({x0, x1, x2, x3}) - left, std::max({y0, y1, y2, y3}) - top};
 }
 
 LayoutRect intersect_axes(LayoutRect clip, LayoutRect bounds, bool horizontal, bool vertical) {
@@ -706,11 +703,10 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         }
         if (has_child)
             item.content_bounds = {left, top, right - left, bottom - top};
-        const auto text_layout =
-            std::find_if(out.text_layouts.begin(), out.text_layouts.end(),
-                         [&](const LayoutTextLayout &layout) {
-                             return layout.node_id == node.id && layout.has_baseline;
-                         });
+        const auto text_layout = std::find_if(
+            out.text_layouts.begin(), out.text_layouts.end(), [&](const LayoutTextLayout &layout) {
+                return layout.node_id == node.id && layout.has_baseline;
+            });
         if (text_layout != out.text_layouts.end()) {
             item.has_baseline = true;
             item.baseline = item.bounds.y + text_layout->first_line_baseline;
@@ -739,10 +735,10 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         if (command) {
             append_primitive(out, *command);
             auto &primitive = out.primitives.back();
-            const auto item = std::find_if(out.items.begin(), out.items.end(),
-                                           [&](const LayoutItem &value) {
-                                               return value.id == primitive.node_id;
-                                           });
+            const auto item =
+                std::find_if(out.items.begin(), out.items.end(), [&](const LayoutItem &value) {
+                    return value.id == primitive.node_id;
+                });
             if (item != out.items.end()) {
                 primitive.transform = item->transform;
                 primitive.visible = item->visible;
@@ -759,8 +755,7 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
             continue;
         const uint32_t node_id = out.primitives[index].node_id;
         std::size_t insertion = index + 1;
-        while (insertion < out.primitives.size() &&
-               out.primitives[insertion].node_id == node_id)
+        while (insertion < out.primitives.size() && out.primitives[insertion].node_id == node_id)
             ++insertion;
         if (insertion > index + 1) {
             auto marker = std::move(out.primitives[index]);

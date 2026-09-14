@@ -33,7 +33,7 @@ extern "C" nk_result NK_CALL nk_text_edit_event_text(const nk_event *event, cons
     return NK_OK;
 }
 
-#if !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_WEB) && !defined(NK_BACKEND_WINDOWS) && \
+#if !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_WEB) && !defined(NK_BACKEND_WINDOWS) &&    \
     !defined(NK_BACKEND_MACOS)
 namespace {
 nk_result unsupported_text_input() {

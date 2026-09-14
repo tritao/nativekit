@@ -21,9 +21,8 @@ static int report_gpu_error(const char *operation, nkgpu_result result) {
 
 static int triangle_renderer_create(nk_surface surface, triangle_renderer *graphics) {
     static const float vertex_data[] = {
-        -0.72f, -0.62f, 0.96f, 0.30f, 0.24f,
-         0.72f, -0.62f, 0.26f, 0.82f, 0.43f,
-         0.00f,  0.72f, 0.25f, 0.48f, 0.98f,
+        -0.72f, -0.62f, 0.96f, 0.30f, 0.24f, 0.72f, -0.62f, 0.26f,
+        0.82f,  0.43f,  0.00f, 0.72f, 0.25f, 0.48f, 0.98f,
     };
     static const char vertex_gl[] =
         "#version 330\n"
@@ -31,23 +30,21 @@ static int triangle_renderer_create(nk_surface surface, triangle_renderer *graph
         "layout(location=1) in vec3 color;\n"
         "out vec3 vertex_color;\n"
         "void main(){ vertex_color=color; gl_Position=vec4(position,0.0,1.0); }\n";
-    static const char fragment_gl[] =
-        "#version 330\n"
-        "in vec3 vertex_color;\n"
-        "out vec4 fragment_color;\n"
-        "void main(){ fragment_color=vec4(vertex_color,1.0); }\n";
+    static const char fragment_gl[] = "#version 330\n"
+                                      "in vec3 vertex_color;\n"
+                                      "out vec4 fragment_color;\n"
+                                      "void main(){ fragment_color=vec4(vertex_color,1.0); }\n";
     static const char vertex_gles[] =
         "#version 300 es\n"
         "layout(location=0) in vec2 position;\n"
         "layout(location=1) in vec3 color;\n"
         "out vec3 vertex_color;\n"
         "void main(){ vertex_color=color; gl_Position=vec4(position,0.0,1.0); }\n";
-    static const char fragment_gles[] =
-        "#version 300 es\n"
-        "precision mediump float;\n"
-        "in vec3 vertex_color;\n"
-        "out vec4 fragment_color;\n"
-        "void main(){ fragment_color=vec4(vertex_color,1.0); }\n";
+    static const char fragment_gles[] = "#version 300 es\n"
+                                        "precision mediump float;\n"
+                                        "in vec3 vertex_color;\n"
+                                        "out vec4 fragment_color;\n"
+                                        "void main(){ fragment_color=vec4(vertex_color,1.0); }\n";
     const int gles = nkgpu_query_graphics_api(graphics->renderer) == NK_GRAPHICS_OPENGL_ES;
     nkgpu_pipeline_builder builder = {0};
 
@@ -55,8 +52,7 @@ static int triangle_renderer_create(nk_surface surface, triangle_renderer *graph
                          nkgpu_renderer_create(surface, &graphics->renderer)))
         return 0;
     if (report_gpu_error("nkgpu_buffer_create",
-                         nkgpu_buffer_create(graphics->renderer,
-                                             (const uint8_t *)vertex_data,
+                         nkgpu_buffer_create(graphics->renderer, (const uint8_t *)vertex_data,
                                              sizeof(vertex_data), &graphics->vertices)) ||
         report_gpu_error("nkgpu_shader_create",
                          nkgpu_shader_create(graphics->renderer, NKGPU_SHADERLANGUAGE_GLSL,
@@ -67,14 +63,11 @@ static int triangle_renderer_create(nk_surface surface, triangle_renderer *graph
                          nkgpu_pipeline_begin(graphics->renderer, graphics->shader,
                                               5u * (uint32_t)sizeof(float), &builder)) ||
         report_gpu_error("nkgpu_pipeline_attribute(position)",
-                         nkgpu_pipeline_attribute(builder, 0, 0, 0,
-                                                  NKGPU_VERTEXFORMAT_FLOAT2)) ||
+                         nkgpu_pipeline_attribute(builder, 0, 0, 0, NKGPU_VERTEXFORMAT_FLOAT2)) ||
         report_gpu_error("nkgpu_pipeline_attribute(color)",
-                         nkgpu_pipeline_attribute(builder, 1, 0,
-                                                  2u * (uint32_t)sizeof(float),
+                         nkgpu_pipeline_attribute(builder, 1, 0, 2u * (uint32_t)sizeof(float),
                                                   NKGPU_VERTEXFORMAT_FLOAT3)) ||
-        report_gpu_error("nkgpu_pipeline_end",
-                         nkgpu_pipeline_end(builder, &graphics->pipeline)))
+        report_gpu_error("nkgpu_pipeline_end", nkgpu_pipeline_end(builder, &graphics->pipeline)))
         return 0;
     return 1;
 }
@@ -85,8 +78,7 @@ static int triangle_renderer_draw(triangle_renderer *graphics) {
     if (report_gpu_error("nkgpu_apply_pipeline",
                          nkgpu_apply_pipeline(graphics->renderer, graphics->pipeline)) ||
         report_gpu_error("nkgpu_apply_vertex_buffer",
-                         nkgpu_apply_vertex_buffer(graphics->renderer, 0,
-                                                   graphics->vertices, 0)) ||
+                         nkgpu_apply_vertex_buffer(graphics->renderer, 0, graphics->vertices, 0)) ||
         report_gpu_error("nkgpu_draw", nkgpu_draw(graphics->renderer, 0, 3, 1))) {
         nkgpu_end_frame(graphics->renderer);
         return 0;
@@ -124,8 +116,8 @@ int main(void) {
         goto cleanup;
     }
     window_created = 1;
-    if (nkgpu_surface_create(window, window_options.width, window_options.height,
-                             &surface) != NKGPU_OK) {
+    if (nkgpu_surface_create(window, window_options.width, window_options.height, &surface) !=
+        NKGPU_OK) {
         fprintf(stderr, "nkgpu_surface_create failed: %s\n", nkgpu_last_error());
         result = 1;
         goto cleanup;

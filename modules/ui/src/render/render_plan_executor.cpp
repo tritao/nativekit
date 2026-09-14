@@ -125,8 +125,7 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
         const int pass_height = pass.target_descriptor.height > 0 ? pass.target_descriptor.height
                                                                   : window.frame_target.height;
         const bool window_pass = pass.target.value == window.id.value;
-        if (!(window_pass ? renderer.beginWindowPass(pass_width, pass_height,
-                                                     !pass.load_existing)
+        if (!(window_pass ? renderer.beginWindowPass(pass_width, pass_height, !pass.load_existing)
                           : renderer.beginTargetPass(pass.target, pass_width, pass_height,
                                                      pass.load_existing)))
             return fail(error, pass_index, 0, renderer.lastError());
@@ -144,23 +143,21 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
             case RenderCommandKind::Path:
             case RenderCommandKind::StrokePath: {
                 const auto *path = resources.path(command.resource);
-                rendered = path &&
-                           renderer.drawPath(*path->path, path->operation_index,
-                                              command.transform.data(), command.opacity);
+                rendered = path && renderer.drawPath(*path->path, path->operation_index,
+                                                     command.transform.data(), command.opacity);
                 break;
             }
             case RenderCommandKind::GlyphBatch: {
                 const auto *text = resources.text(command.resource);
-                rendered =
-                    text && renderer.drawGlyphs(*text, command.transform.data(),
-                                                command.x, command.y, command.opacity);
+                rendered = text && renderer.drawGlyphs(*text, command.transform.data(), command.x,
+                                                       command.y, command.opacity);
                 break;
             }
             case RenderCommandKind::CompositeTarget:
                 if (const auto *image = resources.graphics_image(command.resource))
-                    rendered = renderer.compositeImage(
-                        *image, command.x, command.y, command.width, command.height,
-                        command.transform.data(), command.opacity);
+                    rendered = renderer.compositeImage(*image, command.x, command.y, command.width,
+                                                       command.height, command.transform.data(),
+                                                       command.opacity);
                 else
                     rendered = renderer.compositeImage(command.resource, command.x, command.y,
                                                        command.width, command.height,

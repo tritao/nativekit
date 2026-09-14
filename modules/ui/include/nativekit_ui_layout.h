@@ -180,16 +180,16 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_set_font_collection(nkui_layout
                                                                      nkui_resource fonts);
 
 /** Clears all custom-paint display lists attached to the session. */
-NKUI_API nkui_result NK_CALL nkui_layout_session_clear_custom_paints(
-    nkui_layout_session session);
+NKUI_API nkui_result NK_CALL nkui_layout_session_clear_custom_paints(nkui_layout_session session);
 
 /**
  * Associates a retained display list with a custom-visual node from the most
  * recently submitted tree. The session retains the list until it is replaced,
  * cleared, or the session is destroyed.
  */
-NKUI_API nkui_result NK_CALL nkui_layout_session_set_custom_paint(
-    nkui_layout_session session, uint32_t node_id, nkui_display_list display_list);
+NKUI_API nkui_result NK_CALL nkui_layout_session_set_custom_paint(nkui_layout_session session,
+                                                                  uint32_t node_id,
+                                                                  nkui_display_list display_list);
 
 /**
  * Submits one flat, Haxe-owned render/layout tree transaction.

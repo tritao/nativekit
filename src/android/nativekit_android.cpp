@@ -1773,8 +1773,7 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
     }
     const char *text = state->text ? state->text : "";
     uint32_t codepoints = 0;
-    for (const auto *cursor = reinterpret_cast<const unsigned char *>(text); *cursor;
-         ++cursor)
+    for (const auto *cursor = reinterpret_cast<const unsigned char *>(text); *cursor; ++cursor)
         codepoints += (*cursor & 0xc0u) != 0x80u;
     const uint64_t text_end = static_cast<uint64_t>(state->text_start) + codepoints;
     const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&

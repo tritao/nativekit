@@ -15,6 +15,29 @@ final class NativeKitAccessibilityValues {
     static final int ACCESSIBILITY_LIST_ITEM = 10;
     static final int ACCESSIBILITY_SLIDER = 11;
     static final int ACCESSIBILITY_SCROLL_AREA = 12;
+    static final int ACCESSIBILITY_DIALOG = 13;
+    static final int ACCESSIBILITY_MENU = 14;
+    static final int ACCESSIBILITY_MENU_BAR = 15;
+    static final int ACCESSIBILITY_MENU_ITEM = 16;
+    static final int ACCESSIBILITY_TAB_LIST = 17;
+    static final int ACCESSIBILITY_TAB = 18;
+    static final int ACCESSIBILITY_TAB_PANEL = 19;
+    static final int ACCESSIBILITY_SWITCH = 20;
+    static final int ACCESSIBILITY_PROGRESS_BAR = 21;
+    static final int ACCESSIBILITY_COMBO_BOX = 22;
+    static final int ACCESSIBILITY_COLLECTION = 23;
+    static final int ACCESSIBILITY_COLLECTION_ITEM = 24;
+    static final int ACCESSIBILITY_GRID = 25;
+    static final int ACCESSIBILITY_ROW = 26;
+    static final int ACCESSIBILITY_CELL = 27;
+    static final int ACCESSIBILITY_COLUMN_HEADER = 28;
+    static final int ACCESSIBILITY_ROW_HEADER = 29;
+    static final int ACCESSIBILITY_TREE = 30;
+    static final int ACCESSIBILITY_TREE_ITEM = 31;
+    static final int ACCESSIBILITY_SEPARATOR = 32;
+    static final int ACCESSIBILITY_TOOLBAR = 33;
+    static final int ACCESSIBILITY_STATUS = 34;
+    static final int ACCESSIBILITY_ALERT = 35;
 
     static final int ACCESSIBILITY_FOCUSABLE = 1;
     static final int ACCESSIBILITY_FOCUSED = 2;
@@ -25,6 +48,11 @@ final class NativeKitAccessibilityValues {
     static final int ACCESSIBILITY_MULTILINE = 64;
     static final int ACCESSIBILITY_PASSWORD = 128;
     static final int ACCESSIBILITY_EXPANDED = 256;
+    static final int ACCESSIBILITY_MODAL = 512;
+    static final int ACCESSIBILITY_REQUIRED = 1024;
+    static final int ACCESSIBILITY_INVALID = 2048;
+    static final int ACCESSIBILITY_BUSY = 4096;
+    static final int ACCESSIBILITY_HAS_POPUP = 8192;
 
     static final int ACCESSIBILITY_CAN_ACTIVATE = 1;
     static final int ACCESSIBILITY_CAN_FOCUS = 2;
@@ -36,6 +64,14 @@ final class NativeKitAccessibilityValues {
     static final int ACCESSIBILITY_CAN_SCROLL_BACKWARD = 128;
     static final int ACCESSIBILITY_CAN_MOVE_NEXT = 256;
     static final int ACCESSIBILITY_CAN_MOVE_PREVIOUS = 512;
+    static final int ACCESSIBILITY_CAN_TOGGLE = 1024;
+    static final int ACCESSIBILITY_CAN_SELECT = 2048;
+    static final int ACCESSIBILITY_CAN_DESELECT = 4096;
+    static final int ACCESSIBILITY_CAN_EXPAND = 8192;
+    static final int ACCESSIBILITY_CAN_COLLAPSE = 16384;
+    static final int ACCESSIBILITY_CAN_DISMISS = 32768;
+    static final int ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU = 65536;
+    static final int ACCESSIBILITY_CAN_SCROLL_INTO_VIEW = 131072;
 
     static final int ACCESSIBILITY_ACTION_ACTIVATE = 1;
     static final int ACCESSIBILITY_ACTION_FOCUS = 2;
@@ -48,6 +84,14 @@ final class NativeKitAccessibilityValues {
     static final int ACCESSIBILITY_ACTION_SCROLL_BACKWARD = 9;
     static final int ACCESSIBILITY_ACTION_MOVE_NEXT = 10;
     static final int ACCESSIBILITY_ACTION_MOVE_PREVIOUS = 11;
+    static final int ACCESSIBILITY_ACTION_TOGGLE = 12;
+    static final int ACCESSIBILITY_ACTION_SELECT = 13;
+    static final int ACCESSIBILITY_ACTION_DESELECT = 14;
+    static final int ACCESSIBILITY_ACTION_EXPAND = 15;
+    static final int ACCESSIBILITY_ACTION_COLLAPSE = 16;
+    static final int ACCESSIBILITY_ACTION_DISMISS = 17;
+    static final int ACCESSIBILITY_ACTION_SHOW_CONTEXT_MENU = 18;
+    static final int ACCESSIBILITY_ACTION_SCROLL_INTO_VIEW = 19;
 
     static final int ACCESSIBILITY_GRANULARITY_CHARACTER = 1;
     static final int ACCESSIBILITY_GRANULARITY_WORD = 2;

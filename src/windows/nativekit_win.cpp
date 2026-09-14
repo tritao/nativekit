@@ -467,8 +467,8 @@ nk_key key_from_windows(WPARAM virtual_key, LPARAM message_data) {
     case VK_RSHIFT:
         return NK_KEY_RIGHT_SHIFT;
     case VK_SHIFT: {
-        const UINT key = MapVirtualKeyW(static_cast<UINT>((message_data >> 16) & 0xff),
-                                        MAPVK_VSC_TO_VK_EX);
+        const UINT key =
+            MapVirtualKeyW(static_cast<UINT>((message_data >> 16) & 0xff), MAPVK_VSC_TO_VK_EX);
         return key == VK_RSHIFT ? NK_KEY_RIGHT_SHIFT : NK_KEY_LEFT_SHIFT;
     }
     case VK_LCONTROL:
@@ -614,9 +614,8 @@ nk_pointer_button pointer_button_from_windows(UINT message, WPARAM wparam) {
 }
 
 bool pointer_button_message(UINT message) {
-    return message == WM_LBUTTONDOWN || message == WM_LBUTTONUP ||
-           message == WM_RBUTTONDOWN || message == WM_RBUTTONUP ||
-           message == WM_MBUTTONDOWN || message == WM_MBUTTONUP ||
+    return message == WM_LBUTTONDOWN || message == WM_LBUTTONUP || message == WM_RBUTTONDOWN ||
+           message == WM_RBUTTONUP || message == WM_MBUTTONDOWN || message == WM_MBUTTONUP ||
            message == WM_XBUTTONDOWN || message == WM_XBUTTONUP;
 }
 
@@ -631,8 +630,8 @@ void emit_pointer_button(WinWindowResource &resource, nk_pointer_button button,
     if (button > NK_POINTER_BUTTON_LAST)
         return;
     resource.pointer_buttons[button] = action;
-    const nk_pointer_button_event payload{button, action, modifiers, 0,
-                                          resource.pointer_x, resource.pointer_y};
+    const nk_pointer_button_event payload{
+        button, action, modifiers, 0, resource.pointer_x, resource.pointer_y};
     queue_input_event(NK_EVENT_POINTER_BUTTON, resource.handle, bytes_of(payload));
 }
 
@@ -762,7 +761,7 @@ bool get_ime_string(HIMC context, DWORD index, std::wstring &value) {
         return false;
     value.resize(static_cast<std::size_t>(bytes) / sizeof(wchar_t));
     return !bytes || ImmGetCompositionStringW(context, index, value.data(),
-                                               static_cast<DWORD>(bytes)) == bytes;
+                                              static_cast<DWORD>(bytes)) == bytes;
 }
 
 void emit_key_transition(WinWindowResource &resource, WPARAM virtual_key, LPARAM message_data,
@@ -789,13 +788,21 @@ void reset_window_input(WinWindowResource &resource) {
         if (resource.pointer_buttons[button] != NK_INPUT_PRESS)
             continue;
         resource.pointer_buttons[button] = NK_INPUT_RELEASE;
-        const nk_pointer_button_event payload{button, NK_INPUT_RELEASE, 0, 0,
-                                              resource.pointer_x, resource.pointer_y};
+        const nk_pointer_button_event payload{button, NK_INPUT_RELEASE,   0,
+                                              0,      resource.pointer_x, resource.pointer_y};
         queue_input_event(NK_EVENT_POINTER_BUTTON, resource.handle, bytes_of(payload), 1u);
     }
     for (const auto &[pointer_id, tool] : resource.active_touch_pointers) {
-        const nk_touch_event payload{pointer_id, NK_TOUCH_CANCEL, tool, 0, resource.pointer_x,
-                                     resource.pointer_y, 0.f, 0.f, 0.f, 0};
+        const nk_touch_event payload{pointer_id,
+                                     NK_TOUCH_CANCEL,
+                                     tool,
+                                     0,
+                                     resource.pointer_x,
+                                     resource.pointer_y,
+                                     0.f,
+                                     0.f,
+                                     0.f,
+                                     0};
         queue_input_event(NK_EVENT_TOUCH, resource.handle, bytes_of(payload), 1u);
     }
     resource.active_touch_pointers.clear();
@@ -819,8 +826,8 @@ void emit_text_character(WinWindowResource &resource, wchar_t character) {
             emit_committed_utf8(resource, "\xef\xbf\xbd");
             return;
         }
-        codepoint = 0x10000u + ((resource.pending_high_surrogate - 0xd800u) << 10) +
-                    (character - 0xdc00u);
+        codepoint =
+            0x10000u + ((resource.pending_high_surrogate - 0xd800u) << 10) + (character - 0xdc00u);
         resource.pending_high_surrogate = 0;
     } else if (resource.pending_high_surrogate) {
         emit_committed_utf8(resource, "\xef\xbf\xbd");
@@ -926,8 +933,8 @@ bool handle_pointer_message(WinWindowResource &resource, UINT message, WPARAM wp
     } else {
         tool = found->second;
     }
-    const nk_touch_event payload{pointer_id, action, tool, modifiers, x, y, pressure, tilt_x,
-                                 tilt_y, 0};
+    const nk_touch_event payload{pointer_id, action,   tool,   modifiers, x,
+                                 y,          pressure, tilt_x, tilt_y,    0};
     queue_input_event(NK_EVENT_TOUCH, resource.handle, bytes_of(payload));
     if (action == NK_TOUCH_END || action == NK_TOUCH_CANCEL)
         resource.active_touch_pointers.erase(pointer_id);
@@ -962,13 +969,13 @@ void handle_ime_composition(WinWindowResource &resource, LPARAM flags) {
                 if (current >= 0)
                     cursor_units = current;
             }
-            cursor_units = std::max<LONG>(0, std::min<LONG>(cursor_units,
-                                                static_cast<LONG>(composing.size())));
+            cursor_units = std::max<LONG>(
+                0, std::min<LONG>(cursor_units, static_cast<LONG>(composing.size())));
             const auto cursor = static_cast<nk_text_position>(
                 start + codepoint_count(std::wstring_view(composing).substr(0, cursor_units)));
             const auto finish = static_cast<nk_text_position>(start + codepoint_count(composing));
-            apply_text_edit_state(resource, NK_TEXT_EDIT_COMPOSE, start, end, value, cursor,
-                                  cursor, start, finish);
+            apply_text_edit_state(resource, NK_TEXT_EDIT_COMPOSE, start, end, value, cursor, cursor,
+                                  start, finish);
         }
     }
     ImmReleaseContext(resource.window, context);
@@ -1124,9 +1131,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         if (message == WM_CAPTURECHANGED && reinterpret_cast<HWND>(lparam) != window)
             resource->pointer_captured = false;
         bool pointer_handled = false;
-        nk::core::callback_boundary([&] {
-            pointer_handled = handle_pointer_message(*resource, message, wparam);
-        });
+        nk::core::callback_boundary(
+            [&] { pointer_handled = handle_pointer_message(*resource, message, wparam); });
         if (pointer_handled)
             return 0;
         if (is_promoted_pointer_mouse() &&
@@ -1155,9 +1161,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         if (message == WM_CHAR) {
             if (wparam == '\b')
                 return 0;
-            nk::core::callback_boundary([&] {
-                emit_text_character(*resource, static_cast<wchar_t>(wparam));
-            });
+            nk::core::callback_boundary(
+                [&] { emit_text_character(*resource, static_cast<wchar_t>(wparam)); });
             return 0;
         }
         if (message == WM_UNICHAR) {
@@ -1171,8 +1176,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 }
                 const uint32_t value = codepoint - 0x10000;
                 emit_text_character(*resource, static_cast<wchar_t>(0xd800u + (value >> 10)));
-                emit_text_character(*resource,
-                                    static_cast<wchar_t>(0xdc00u + (value & 0x3ffu)));
+                emit_text_character(*resource, static_cast<wchar_t>(0xdc00u + (value & 0x3ffu)));
             });
             return 0;
         }
@@ -1181,9 +1185,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             resource->skip_ime_characters = 0;
         }
         if (message == WM_IME_COMPOSITION) {
-            nk::core::callback_boundary([&] {
-                handle_ime_composition(*resource, lparam);
-            });
+            nk::core::callback_boundary([&] { handle_ime_composition(*resource, lparam); });
             return 0;
         }
         if (message == WM_IME_ENDCOMPOSITION) {
@@ -1214,9 +1216,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         }
         if (message == WM_MOUSELEAVE) {
             resource->pointer_tracking = false;
-            nk::core::callback_boundary([&] {
-                queue_input_event(NK_EVENT_POINTER_ENTER, resource->handle, {}, 0u);
-            });
+            nk::core::callback_boundary(
+                [&] { queue_input_event(NK_EVENT_POINTER_ENTER, resource->handle, {}, 0u); });
             return 0;
         }
         if (pointer_button_message(message)) {
@@ -1238,10 +1239,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 resource->pointer_x = position.x / scale;
                 resource->pointer_y = position.y / scale;
                 const double amount = static_cast<double>(GET_WHEEL_DELTA_WPARAM(wparam)) /
-                                     static_cast<double>(WHEEL_DELTA);
-                const nk_pointer_scroll_event payload =
-                    message == WM_MOUSEWHEEL ? nk_pointer_scroll_event{0.0, -amount}
-                                             : nk_pointer_scroll_event{amount, 0.0};
+                                      static_cast<double>(WHEEL_DELTA);
+                const nk_pointer_scroll_event payload = message == WM_MOUSEWHEEL
+                                                            ? nk_pointer_scroll_event{0.0, -amount}
+                                                            : nk_pointer_scroll_event{amount, 0.0};
                 queue_input_event(NK_EVENT_POINTER_SCROLL, resource->handle, bytes_of(payload));
             });
             return 0;
@@ -1382,8 +1383,7 @@ void emit_surface_lost(WinSurfaceResource &surface) {
 }
 
 void emit_surface_resize(WinSurfaceResource &surface) {
-    const nk_surface_resize_event payload{surface.width, surface.height,
-                                          surface.framebuffer_width,
+    const nk_surface_resize_event payload{surface.width, surface.height, surface.framebuffer_width,
                                           surface.framebuffer_height};
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_SURFACE_RESIZE;
@@ -1403,9 +1403,9 @@ bool create_d3d11_device(WinSurfaceResource &surface) {
     if (surface.flags & NK_SURFACE_DEBUG_CONTEXT)
         flags |= D3D11_CREATE_DEVICE_DEBUG;
     D3D_FEATURE_LEVEL level{};
-    HRESULT result = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr,
-                                       0, D3D11_SDK_VERSION, &surface.device, &level,
-                                       &surface.context);
+    HRESULT result =
+        D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr, 0,
+                          D3D11_SDK_VERSION, &surface.device, &level, &surface.context);
     if (FAILED(result) && !(surface.flags & NK_SURFACE_DEBUG_CONTEXT)) {
         surface.device.Reset();
         surface.context.Reset();
@@ -1520,7 +1520,8 @@ bool rebuild_surface_targets(WinSurfaceResource &surface, int32_t width, int32_t
 }
 
 LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
-    auto *surface = reinterpret_cast<WinSurfaceResource *>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    auto *surface =
+        reinterpret_cast<WinSurfaceResource *>(GetWindowLongPtrW(window, GWLP_USERDATA));
     if (message == WM_NCCREATE) {
         const auto *create = reinterpret_cast<const CREATESTRUCTW *>(lparam);
         surface = static_cast<WinSurfaceResource *>(create->lpCreateParams);
@@ -1540,8 +1541,8 @@ LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, L
                 return;
             const auto callback = active->frame_callback;
             void *user_data = active->frame_user_data;
-            callback(active->handle, active->framebuffer_width,
-                     active->framebuffer_height, user_data);
+            callback(active->handle, active->framebuffer_width, active->framebuffer_height,
+                     user_data);
             if (active->frame_prepared)
                 nk_surface_present(active->handle);
         });
@@ -2808,57 +2809,56 @@ nk_result NK_CALL nk_pointer_get_position(nk_handle handle, double *out_x, doubl
 nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_handle *out_cursor) {
     return nk::core::result_boundary(
         "unexpected error while creating standard cursor", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (!out_cursor)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "cursor output must not be null");
-        *out_cursor = NK_INVALID_HANDLE;
-        LPCWSTR identifier = nullptr;
-        switch (shape) {
-        case NK_CURSOR_ARROW:
-            identifier = IDC_ARROW;
-            break;
-        case NK_CURSOR_IBEAM:
-            identifier = IDC_IBEAM;
-            break;
-        case NK_CURSOR_CROSSHAIR:
-            identifier = IDC_CROSS;
-            break;
-        case NK_CURSOR_HAND:
-            identifier = IDC_HAND;
-            break;
-        case NK_CURSOR_HORIZONTAL_RESIZE:
-            identifier = IDC_SIZEWE;
-            break;
-        case NK_CURSOR_VERTICAL_RESIZE:
-            identifier = IDC_SIZENS;
-            break;
-        case NK_CURSOR_NWSE_RESIZE:
-            identifier = IDC_SIZENWSE;
-            break;
-        case NK_CURSOR_NESW_RESIZE:
-            identifier = IDC_SIZENESW;
-            break;
-        case NK_CURSOR_MOVE:
-            identifier = IDC_SIZEALL;
-            break;
-        case NK_CURSOR_NOT_ALLOWED:
-            identifier = IDC_NO;
-            break;
-        default:
-            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid standard cursor shape");
-        }
-        auto resource = std::make_shared<WinCursorResource>();
-        resource->cursor = LoadCursorW(nullptr, identifier);
-        if (!resource->cursor)
-            return fail(NK_ERROR_UNSUPPORTED, "Windows does not provide the requested cursor");
-        resource->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
-        if (resource->handle == NK_INVALID_HANDLE)
-            return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
-        *out_cursor = resource->handle;
-        return NK_OK;
-
-    });
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!out_cursor)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "cursor output must not be null");
+            *out_cursor = NK_INVALID_HANDLE;
+            LPCWSTR identifier = nullptr;
+            switch (shape) {
+            case NK_CURSOR_ARROW:
+                identifier = IDC_ARROW;
+                break;
+            case NK_CURSOR_IBEAM:
+                identifier = IDC_IBEAM;
+                break;
+            case NK_CURSOR_CROSSHAIR:
+                identifier = IDC_CROSS;
+                break;
+            case NK_CURSOR_HAND:
+                identifier = IDC_HAND;
+                break;
+            case NK_CURSOR_HORIZONTAL_RESIZE:
+                identifier = IDC_SIZEWE;
+                break;
+            case NK_CURSOR_VERTICAL_RESIZE:
+                identifier = IDC_SIZENS;
+                break;
+            case NK_CURSOR_NWSE_RESIZE:
+                identifier = IDC_SIZENWSE;
+                break;
+            case NK_CURSOR_NESW_RESIZE:
+                identifier = IDC_SIZENESW;
+                break;
+            case NK_CURSOR_MOVE:
+                identifier = IDC_SIZEALL;
+                break;
+            case NK_CURSOR_NOT_ALLOWED:
+                identifier = IDC_NO;
+                break;
+            default:
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid standard cursor shape");
+            }
+            auto resource = std::make_shared<WinCursorResource>();
+            resource->cursor = LoadCursorW(nullptr, identifier);
+            if (!resource->cursor)
+                return fail(NK_ERROR_UNSUPPORTED, "Windows does not provide the requested cursor");
+            resource->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
+            if (resource->handle == NK_INVALID_HANDLE)
+                return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
+            *out_cursor = resource->handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image, nk_handle *out_cursor) {
@@ -2996,93 +2996,98 @@ nk_result NK_CALL nk_window_get_cursor_mode(nk_handle handle, nk_cursor_mode *ou
     return NK_OK;
 }
 
-uint32_t NK_CALL nk_raw_pointer_motion_supported(void) { return 0; }
+uint32_t NK_CALL nk_raw_pointer_motion_supported(void) {
+    return 0;
+}
 
 nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
                                                   const nk_text_input_state *state) {
     return nk::core::result_boundary(
         "unexpected error while setting text input state", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (!state || state->struct_size < sizeof(*state) || !state->text)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid text input state");
-        std::vector<uint32_t> codepoints;
-        const std::string_view text(state->text);
-        if (!decode_utf8(text, &codepoints))
-            return fail(NK_ERROR_INVALID_ARGUMENT, "text input state text is not valid UTF-8");
-        const uint64_t text_end = static_cast<uint64_t>(state->text_start) + codepoints.size();
-        const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
-                                    state->composition_end == NK_TEXT_POSITION_NONE;
-        const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
-                                       state->composition_end != NK_TEXT_POSITION_NONE &&
-                                       state->composition_start <= state->composition_end &&
-                                       state->composition_start >= state->text_start &&
-                                       state->composition_end <= text_end;
-        const bool valid_cursor = std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
-                                  std::isfinite(state->cursor_width) &&
-                                  std::isfinite(state->cursor_height) && state->cursor_width >= 0.f &&
-                                  state->cursor_height >= 0.f;
-        if ((state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
-                              NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) ||
-            state->text_start > state->document_length || text_end > state->document_length ||
-            state->selection_start > state->selection_end ||
-            state->selection_start < state->text_start || state->selection_end > text_end ||
-            (!no_composition && !valid_composition) || state->input_type > NK_TEXT_INPUT_PASSWORD ||
-            state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "text input state ranges or hints are invalid");
-        auto resource = get_window(handle);
-        if (!resource)
-            return fail(NK_ERROR_INVALID_HANDLE,
-                        "text input state requires a desktop window on this backend");
-        resource->text_input_text = text;
-        resource->text_input_state = *state;
-        resource->text_input_state.text = resource->text_input_text.c_str();
-        resource->text_composition_start = state->composition_start;
-        resource->text_composition_end = state->composition_end;
-        resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
-        HIMC context = ImmGetContext(resource->window);
-        if (context) {
-            const auto scale = dpi_scale(resource->window);
-            COMPOSITIONFORM composition{};
-            composition.dwStyle = CFS_POINT;
-            composition.ptCurrentPos.x = static_cast<LONG>(std::lround(state->cursor_x * scale));
-            composition.ptCurrentPos.y = static_cast<LONG>(std::lround(state->cursor_y * scale));
-            ImmSetCompositionWindow(context, &composition);
-            CANDIDATEFORM candidate{};
-            candidate.dwIndex = 0;
-            candidate.dwStyle = CFS_CANDIDATEPOS;
-            candidate.ptCurrentPos = composition.ptCurrentPos;
-            ImmSetCandidateWindow(context, &candidate);
-            ImmReleaseContext(resource->window, context);
-        }
-        return NK_OK;
-
-    });
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!state || state->struct_size < sizeof(*state) || !state->text)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid text input state");
+            std::vector<uint32_t> codepoints;
+            const std::string_view text(state->text);
+            if (!decode_utf8(text, &codepoints))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "text input state text is not valid UTF-8");
+            const uint64_t text_end = static_cast<uint64_t>(state->text_start) + codepoints.size();
+            const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
+                                        state->composition_end == NK_TEXT_POSITION_NONE;
+            const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
+                                           state->composition_end != NK_TEXT_POSITION_NONE &&
+                                           state->composition_start <= state->composition_end &&
+                                           state->composition_start >= state->text_start &&
+                                           state->composition_end <= text_end;
+            const bool valid_cursor =
+                std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
+                std::isfinite(state->cursor_width) && std::isfinite(state->cursor_height) &&
+                state->cursor_width >= 0.f && state->cursor_height >= 0.f;
+            if ((state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
+                                  NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) ||
+                state->text_start > state->document_length || text_end > state->document_length ||
+                state->selection_start > state->selection_end ||
+                state->selection_start < state->text_start || state->selection_end > text_end ||
+                (!no_composition && !valid_composition) ||
+                state->input_type > NK_TEXT_INPUT_PASSWORD ||
+                state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "text input state ranges or hints are invalid");
+            auto resource = get_window(handle);
+            if (!resource)
+                return fail(NK_ERROR_INVALID_HANDLE,
+                            "text input state requires a desktop window on this backend");
+            resource->text_input_text = text;
+            resource->text_input_state = *state;
+            resource->text_input_state.text = resource->text_input_text.c_str();
+            resource->text_composition_start = state->composition_start;
+            resource->text_composition_end = state->composition_end;
+            resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
+            HIMC context = ImmGetContext(resource->window);
+            if (context) {
+                const auto scale = dpi_scale(resource->window);
+                COMPOSITIONFORM composition{};
+                composition.dwStyle = CFS_POINT;
+                composition.ptCurrentPos.x =
+                    static_cast<LONG>(std::lround(state->cursor_x * scale));
+                composition.ptCurrentPos.y =
+                    static_cast<LONG>(std::lround(state->cursor_y * scale));
+                ImmSetCompositionWindow(context, &composition);
+                CANDIDATEFORM candidate{};
+                candidate.dwIndex = 0;
+                candidate.dwStyle = CFS_CANDIDATEPOS;
+                candidate.ptCurrentPos = composition.ptCurrentPos;
+                ImmSetCandidateWindow(context, &candidate);
+                ImmReleaseContext(resource->window, context);
+            }
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t active) {
     return nk::core::result_boundary(
         "unexpected error while changing text input", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (active > 1)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "text input active state must be zero or one");
-        auto resource = get_window(handle);
-        if (!resource)
-            return fail(NK_ERROR_INVALID_HANDLE,
-                        "text input activation requires a desktop window on this backend");
-        resource->text_input_active = active != 0;
-        if (!resource->text_input_active) {
-            HIMC context = ImmGetContext(resource->window);
-            if (context) {
-                ImmNotifyIME(context, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
-                ImmReleaseContext(resource->window, context);
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (active > 1)
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "text input active state must be zero or one");
+            auto resource = get_window(handle);
+            if (!resource)
+                return fail(NK_ERROR_INVALID_HANDLE,
+                            "text input activation requires a desktop window on this backend");
+            resource->text_input_active = active != 0;
+            if (!resource->text_input_active) {
+                HIMC context = ImmGetContext(resource->window);
+                if (context) {
+                    ImmNotifyIME(context, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
+                    ImmReleaseContext(resource->window, context);
+                }
+                finish_text_composition(*resource);
             }
-            finish_text_composition(*resource);
-        }
-        return NK_OK;
-
-    });
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_window_minimize(nk_handle h) {
@@ -3210,8 +3215,8 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         constexpr nk_surface_flags supported_flags = NK_SURFACE_HIDDEN | NK_SURFACE_ALPHA |
-                                                      NK_SURFACE_DEPTH | NK_SURFACE_STENCIL |
-                                                      NK_SURFACE_DEBUG_CONTEXT;
+                                                     NK_SURFACE_DEPTH | NK_SURFACE_STENCIL |
+                                                     NK_SURFACE_DEBUG_CONTEXT;
         if (!options || options->struct_size < sizeof(*options) || !out_surface ||
             options->width <= 0 || options->height <= 0 || options->api != NK_GRAPHICS_D3D11 ||
             (options->flags & ~supported_flags) != 0)
@@ -3254,13 +3259,12 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
         const int height = MulDiv(resource->height, static_cast<int>(dpi), 96);
         const DWORD style = WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS |
                             ((options->flags & NK_SURFACE_HIDDEN) ? 0 : WS_VISIBLE);
-        resource->window = CreateWindowExW(WS_EX_NOACTIVATE, surface_class_name, L"", style, x, y,
-                                           width, height, parent->window, nullptr,
-                                           GetModuleHandleW(nullptr), resource.get());
+        resource->window =
+            CreateWindowExW(WS_EX_NOACTIVATE, surface_class_name, L"", style, x, y, width, height,
+                            parent->window, nullptr, GetModuleHandleW(nullptr), resource.get());
         if (!resource->window)
             return fail(NK_ERROR_UNKNOWN, "could not create the Direct3D child surface");
-        resource->handle =
-            nk::core::handles().insert(nk::core::ResourceType::surface, resource);
+        resource->handle = nk::core::handles().insert(nk::core::ResourceType::surface, resource);
         if (resource->handle == NK_INVALID_HANDLE)
             return fail(NK_ERROR_OUT_OF_MEMORY, "graphics surface handle registry is full");
         if (!resource->device_handle)
@@ -3293,10 +3297,10 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
     if (resource->share_dependents)
-        return fail(NK_ERROR_INVALID_REQUEST, "graphics surface is still shared by another surface");
-    if (nk_core_graphics_device_has_references(nk_graphics_device{resource->device_handle}))
         return fail(NK_ERROR_INVALID_REQUEST,
-                    "graphics surface still owns retained GPU resources");
+                    "graphics surface is still shared by another surface");
+    if (nk_core_graphics_device_has_references(nk_graphics_device{resource->device_handle}))
+        return fail(NK_ERROR_INVALID_REQUEST, "graphics surface still owns retained GPU resources");
     resource->destroying = true;
     resource->frame_prepared = false;
     resource->context->OMSetRenderTargets(0, nullptr, nullptr);
@@ -3437,17 +3441,20 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
     const bool prepared = resource->frame_prepared;
     target.width = prepared ? resource->framebuffer_width : 0;
     target.height = prepared ? resource->framebuffer_height : 0;
-    target.native_target = prepared && resource->render_target
-                               ? static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->render_target.Get()))
-                               : 0;
+    target.native_target =
+        prepared && resource->render_target
+            ? static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->render_target.Get()))
+            : 0;
     target.device.id = resource->device_handle;
-    target.native_device = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->device.Get()));
-    target.native_context = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->context.Get()));
-    target.native_depth_stencil_target = static_cast<uint64_t>(
-        reinterpret_cast<uintptr_t>(resource->depth_stencil_target.Get()));
-    target.native_present_target = prepared
-                                       ? static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->swapchain.Get()))
-                                       : 0;
+    target.native_device =
+        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->device.Get()));
+    target.native_context =
+        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->context.Get()));
+    target.native_depth_stencil_target =
+        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->depth_stencil_target.Get()));
+    target.native_present_target =
+        prepared ? static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->swapchain.Get()))
+                 : 0;
     nk::core::write_surface_frame_target(out_target, target);
     return NK_OK;
 }

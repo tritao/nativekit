@@ -68,7 +68,7 @@ class Triangle {
 		var builder = Shader.begin(renderer, ShaderLanguage.Glsl,
 			"#version 330\nuniform vec2 offset; layout(location=0) in vec2 position; layout(location=1) in vec3 color0; layout(location=2) in vec2 uv0; out vec3 color; out vec2 uv; void main(){color=color0;uv=uv0;gl_Position=vec4(position+offset,0,1);}",
 			"#version 330\nuniform sampler2D tex; in vec3 color; in vec2 uv; out vec4 frag_color; void main(){frag_color=texture(tex,uv)*vec4(color,1);}");
-		return builder.uniformBlock(0, ShaderStage.Vertex, 8)
+		return builder.uniformBlock(0, ShaderStage.Vertex, 16)
 			.uniform(0, 0, "offset", UniformType.Float2)
 			.texture(0, 0, ShaderStage.Fragment, "tex")
 			.build();
@@ -95,7 +95,7 @@ class Triangle {
 	static function drawImmediate(renderer:Renderer):Void {
 		for (y in 0...20) {
 			for (x in 0...20) {
-				renderer.uniforms(8)
+				renderer.uniforms(16)
 					.writeFloat(0, -0.90 + x * 0.095)
 					.writeFloat(4, -0.90 + y * 0.095)
 					.apply(0);
@@ -194,7 +194,7 @@ class Triangle {
 				if (!resourceCreationRejected)
 					throw "GPU resource creation succeeded during an active pass";
 				applyFrameBindings(pipeline, buffer, indexBuffer, image, sampler);
-				renderer.uniforms(8).writeFloat(0, 0).writeFloat(4, 0).apply(0);
+				renderer.uniforms(16).writeFloat(0, 0).writeFloat(4, 0).apply(0);
 				renderer.draw(0, 6);
 				target.end();
 				retainedTargetImage = target.sampledImage();

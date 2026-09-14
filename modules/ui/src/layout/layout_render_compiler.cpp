@@ -117,9 +117,8 @@ void set_scissor(RenderCommand &command, const LayoutRect &clip, float pixel_sca
 }
 
 std::array<float, 6> device_transform(const LayoutTransform &transform, float pixel_scale) {
-    return {transform.a * pixel_scale,  transform.b * pixel_scale,
-            transform.c * pixel_scale,  transform.d * pixel_scale,
-            transform.tx * pixel_scale, transform.ty * pixel_scale};
+    return {transform.a * pixel_scale, transform.b * pixel_scale,  transform.c * pixel_scale,
+            transform.d * pixel_scale, transform.tx * pixel_scale, transform.ty * pixel_scale};
 }
 
 std::array<float, 6> device_transform(const std::array<float, 6> &transform, float pixel_scale) {
@@ -146,8 +145,7 @@ LayoutRect transform_bounds(LayoutRect rect, const LayoutTransform &transform) {
     const float y3 = y(rect.x + rect.width, rect.y + rect.height);
     const float left = std::min({x0, x1, x2, x3});
     const float top = std::min({y0, y1, y2, y3});
-    return {left, top, std::max({x0, x1, x2, x3}) - left,
-            std::max({y0, y1, y2, y3}) - top};
+    return {left, top, std::max({x0, x1, x2, x3}) - left, std::max({y0, y1, y2, y3}) - top};
 }
 
 } // namespace

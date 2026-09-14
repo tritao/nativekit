@@ -89,12 +89,14 @@ class CommandBuffer {
 	public function applyUniform2f(slot:Int, x:Float, y:Float):Void {
 		if (slot < 0)
 			throw "GPU uniform slot must be non-negative";
-		header(6, 24);
+		header(6, 32);
 		word(slot);
-		word(8);
+		word(16);
 		bytes.setFloat(length, x);
 		bytes.setFloat(length + 4, y);
-		length += 8;
+		bytes.setInt32(length + 8, 0);
+		bytes.setInt32(length + 12, 0);
+		length += 16;
 	}
 
 	public function draw(baseElement:Int, elementCount:Int, instanceCount:Int):Void {

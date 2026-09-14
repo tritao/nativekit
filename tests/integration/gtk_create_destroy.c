@@ -92,8 +92,7 @@ static void assert_pointer_clicks_are_forwarded_once(nk_window window) {
 
     GdkDisplay *display = gdk_x11_lookup_xdisplay((Display *)native.display);
     assert(display != NULL);
-    GdkWindow *gdk_window =
-        gdk_x11_window_foreign_new_for_display(display, (Window)native.window);
+    GdkWindow *gdk_window = gdk_x11_window_foreign_new_for_display(display, (Window)native.window);
     assert(gdk_window != NULL);
     simulate_left_click(gdk_window);
     assert_pointer_click_count(window, 1);

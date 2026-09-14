@@ -285,11 +285,11 @@ NK_API nk_result NK_CALL nk_resource_stream_info_get(nk_resource_stream stream,
 NK_API nk_result NK_CALL nk_resource_read(nk_resource_stream stream, void *buffer, uint64_t size,
                                           uint64_t *out_read);
 /** Writes up to `size` bytes; a successful write may transfer fewer bytes. */
-NK_API nk_result NK_CALL nk_resource_write(nk_resource_stream stream, const void *buffer, uint64_t size,
-                                           uint64_t *out_written);
+NK_API nk_result NK_CALL nk_resource_write(nk_resource_stream stream, const void *buffer,
+                                           uint64_t size, uint64_t *out_written);
 /** Moves the stream position and returns the resulting absolute byte offset. */
-NK_API nk_result NK_CALL nk_resource_seek(nk_resource_stream stream, int64_t offset, nk_seek_origin origin,
-                                          uint64_t *out_position);
+NK_API nk_result NK_CALL nk_resource_seek(nk_resource_stream stream, int64_t offset,
+                                          nk_seek_origin origin, uint64_t *out_position);
 /** Closes a resource stream and invalidates its handle. */
 NK_API nk_result NK_CALL nk_resource_close(nk_resource_stream stream);
 

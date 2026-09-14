@@ -214,7 +214,6 @@ struct LayoutSnapshot {
                                         [id](const LayoutItem &item) { return item.id == id; });
         return found == items.end() ? nullptr : &*found;
     }
-
 };
 
 } // namespace nkui

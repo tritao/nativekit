@@ -10,6 +10,16 @@ On Linux, `linux_notification_failure` runs in an isolated D-Bus session with
 no notification daemon. It verifies that an accepted asynchronous request
 produces a queue-guaranteed `NK_EVENT_NOTIFICATION_FAILED` instead of hanging.
 
+## Stabilization gate
+
+Until the CI matrix is green, defer new subsystem abstractions. Keep work
+focused on generated-binding drift, configure/build/test failures, and validating
+the existing renderer contract in
+[ADR 0010](decisions/0010-explicit-rendering-backends.md). The gate covers
+Windows D3D11 (x64, Win32, and ARM64), macOS Metal (Intel and Apple Silicon),
+Android API 23 and 36, and the Web smoke, visual, benchmark, and profiling
+checks.
+
 `NK_ENABLE_SANITIZERS=ON` enables AddressSanitizer and UndefinedBehaviorSanitizer.
 Leak detection remains enabled for the core tests. It is disabled only for the
 GTK integration process because GTK, Pango, and Fontconfig retain
@@ -18,9 +28,10 @@ process-lifetime caches outside NativeKit's ownership.
 ## Android tests
 
 The Android workflow pins Java 17, API 36, NDK 30.0.16248370, and CMake 3.22.1.
-Its build job checks generated JNI constants, runs the library JVM tests, builds
-the AAR and samples, and compiles both C++ Prefab consumers in debug and release
-configurations. Native builds cover every ABI declared by the Gradle modules.
+Its build job checks generated JNI input and accessibility values, runs the
+library JVM tests, builds the AAR and samples, and compiles both C++ Prefab
+consumers in debug and release configurations. Native builds cover every ABI
+declared by the Gradle modules.
 
 Instrumentation runs on API 23 (the supported minimum) and API 36. The sample
 tests exercise host and WebView integration; the consumer tests additionally

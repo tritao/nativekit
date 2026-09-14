@@ -375,8 +375,7 @@ void emit_surface_lost(MacSurfaceResource &resource) {
 
 void emit_surface_resize(MacSurfaceResource &resource) {
     const nk_surface_resize_event payload{resource.width, resource.height,
-                                          resource.framebuffer_width,
-                                          resource.framebuffer_height};
+                                          resource.framebuffer_width, resource.framebuffer_height};
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_SURFACE_RESIZE;
     event.source = resource.handle;
@@ -390,8 +389,8 @@ void sync_surface_drawable_size(MacSurfaceResource &resource) {
     const CGFloat scale = resource.view.window ? resource.view.window.backingScaleFactor : 1.0;
     const NSSize view_size = resource.view.bounds.size;
     resource.layer.contentsScale = scale > 0.0 ? scale : 1.0;
-    resource.layer.drawableSize = CGSizeMake(std::max(0.0, view_size.width * scale),
-                                             std::max(0.0, view_size.height * scale));
+    resource.layer.drawableSize =
+        CGSizeMake(std::max(0.0, view_size.width * scale), std::max(0.0, view_size.height * scale));
     const int32_t width = static_cast<int32_t>(resource.layer.drawableSize.width);
     const int32_t height = static_cast<int32_t>(resource.layer.drawableSize.height);
     if (resource.framebuffer_width == width && resource.framebuffer_height == height)
@@ -440,9 +439,9 @@ bool ensure_surface_depth_target(MacSurfaceResource &resource, int32_t width, in
     const MTLPixelFormat format = MTLPixelFormatDepth32Float_Stencil8;
     MTLTextureDescriptor *descriptor =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format
-                                                            width:static_cast<NSUInteger>(width)
-                                                           height:static_cast<NSUInteger>(height)
-                                                        mipmapped:NO];
+                                                           width:static_cast<NSUInteger>(width)
+                                                          height:static_cast<NSUInteger>(height)
+                                                       mipmapped:NO];
     descriptor.usage = MTLTextureUsageRenderTarget;
     descriptor.storageMode = MTLStorageModePrivate;
     resource.depth_stencil = [resource.device newTextureWithDescriptor:descriptor];
@@ -518,7 +517,8 @@ NSUInteger utf16_offset_for_codepoint(const std::vector<uint32_t> &codepoints,
     return result;
 }
 
-uint32_t codepoint_index_for_utf16(const std::vector<uint32_t> &codepoints, NSUInteger utf16_index) {
+uint32_t codepoint_index_for_utf16(const std::vector<uint32_t> &codepoints,
+                                   NSUInteger utf16_index) {
     NSUInteger offset = 0;
     uint32_t result = 0;
     for (const auto codepoint : codepoints) {
@@ -540,12 +540,14 @@ std::vector<uint32_t> current_text_codepoints(const MacWindowResource &resource)
 NSRange native_range_for_positions(const MacWindowResource &resource, nk_text_position start,
                                    nk_text_position end) {
     const auto points = current_text_codepoints(resource);
-    const auto local_start = start == NK_TEXT_POSITION_NONE || start < resource.text_input_state.text_start
-                                 ? 0u
-                                 : start - resource.text_input_state.text_start;
-    const auto local_end = end == NK_TEXT_POSITION_NONE || end < resource.text_input_state.text_start
-                               ? local_start
-                               : end - resource.text_input_state.text_start;
+    const auto local_start =
+        start == NK_TEXT_POSITION_NONE || start < resource.text_input_state.text_start
+            ? 0u
+            : start - resource.text_input_state.text_start;
+    const auto local_end =
+        end == NK_TEXT_POSITION_NONE || end < resource.text_input_state.text_start
+            ? local_start
+            : end - resource.text_input_state.text_start;
     const NSUInteger start_offset = utf16_offset_for_codepoint(points, local_start);
     const NSUInteger end_offset = utf16_offset_for_codepoint(points, local_end);
     return NSMakeRange(start_offset, end_offset >= start_offset ? end_offset - start_offset : 0);
@@ -556,7 +558,8 @@ bool codepoint_range_for_native_range(const MacWindowResource &resource, NSRange
     if (range.location == NSNotFound)
         return false;
     const auto points = current_text_codepoints(resource);
-    const auto total_units = utf16_offset_for_codepoint(points, static_cast<uint32_t>(points.size()));
+    const auto total_units =
+        utf16_offset_for_codepoint(points, static_cast<uint32_t>(points.size()));
     const uint64_t range_end = static_cast<uint64_t>(range.location) + range.length;
     if (range_end > total_units)
         return false;
@@ -571,15 +574,15 @@ void update_text_snapshot(MacWindowResource &resource, nk_text_position replace_
                           nk_text_position replace_end, std::string_view inserted) {
     std::vector<uint32_t> old_codepoints;
     if (!decode_utf8(resource.text_input_text, old_codepoints) ||
-        replace_start < resource.text_input_state.text_start ||
-        replace_end < replace_start ||
+        replace_start < resource.text_input_state.text_start || replace_end < replace_start ||
         static_cast<uint64_t>(replace_end) >
             static_cast<uint64_t>(resource.text_input_state.text_start) + old_codepoints.size())
         return;
     std::vector<uint32_t> inserted_codepoints;
     if (!decode_utf8(inserted, inserted_codepoints))
         return;
-    const auto first = static_cast<std::size_t>(replace_start - resource.text_input_state.text_start);
+    const auto first =
+        static_cast<std::size_t>(replace_start - resource.text_input_state.text_start);
     const auto last = static_cast<std::size_t>(replace_end - resource.text_input_state.text_start);
     const auto byte_offset = [&](std::size_t codepoint_index) {
         std::size_t bytes = 0;
@@ -593,12 +596,12 @@ void update_text_snapshot(MacWindowResource &resource, nk_text_position replace_
     const auto first_byte = byte_offset(first);
     const auto last_byte = byte_offset(last);
     updated.replace(first_byte, last_byte - first_byte, inserted.data(), inserted.size());
-    const int64_t delta = static_cast<int64_t>(inserted_codepoints.size()) -
-                          static_cast<int64_t>(last - first);
+    const int64_t delta =
+        static_cast<int64_t>(inserted_codepoints.size()) - static_cast<int64_t>(last - first);
     resource.text_input_text = std::move(updated);
     resource.text_input_state.text = resource.text_input_text.c_str();
-    resource.text_input_state.document_length = static_cast<nk_text_position>(
-        std::max<int64_t>(0, static_cast<int64_t>(resource.text_input_state.document_length) + delta));
+    resource.text_input_state.document_length = static_cast<nk_text_position>(std::max<int64_t>(
+        0, static_cast<int64_t>(resource.text_input_state.document_length) + delta));
 }
 
 void emit_text_edit(MacWindowResource &resource, nk_text_edit_event payload,
@@ -628,14 +631,14 @@ void apply_text_edit_state(MacWindowResource &resource, nk_text_edit_action acti
     resource.text_composition_end = composition_end;
     if (resource.text_composing) {
         resource.marked_text = text;
-        resource.marked_native_range = native_range_for_positions(resource, composition_start,
-                                                                  composition_end);
+        resource.marked_native_range =
+            native_range_for_positions(resource, composition_start, composition_end);
     } else {
         resource.marked_text.clear();
         resource.marked_native_range = NSMakeRange(NSNotFound, 0);
     }
-    resource.selected_native_range = native_range_for_positions(
-        resource, selection_start, selection_end);
+    resource.selected_native_range =
+        native_range_for_positions(resource, selection_start, selection_end);
     nk_text_edit_event payload{};
     payload.action = action;
     payload.replace_start = replace_start;
@@ -711,116 +714,226 @@ nk_modifiers modifiers_from_native(NSEventModifierFlags flags) {
 
 nk_key key_from_cocoa(unsigned short code) {
     switch (code) {
-    case kVK_ANSI_A: return NK_KEY_A;
-    case kVK_ANSI_S: return NK_KEY_S;
-    case kVK_ANSI_D: return NK_KEY_D;
-    case kVK_ANSI_F: return NK_KEY_F;
-    case kVK_ANSI_H: return NK_KEY_H;
-    case kVK_ANSI_G: return NK_KEY_G;
-    case kVK_ANSI_Z: return NK_KEY_Z;
-    case kVK_ANSI_X: return NK_KEY_X;
-    case kVK_ANSI_C: return NK_KEY_C;
-    case kVK_ANSI_V: return NK_KEY_V;
-    case kVK_ANSI_B: return NK_KEY_B;
-    case kVK_ANSI_Q: return NK_KEY_Q;
-    case kVK_ANSI_W: return NK_KEY_W;
-    case kVK_ANSI_E: return NK_KEY_E;
-    case kVK_ANSI_R: return NK_KEY_R;
-    case kVK_ANSI_Y: return NK_KEY_Y;
-    case kVK_ANSI_T: return NK_KEY_T;
-    case kVK_ANSI_1: return NK_KEY_1;
-    case kVK_ANSI_2: return NK_KEY_2;
-    case kVK_ANSI_3: return NK_KEY_3;
-    case kVK_ANSI_4: return NK_KEY_4;
-    case kVK_ANSI_6: return NK_KEY_6;
-    case kVK_ANSI_5: return NK_KEY_5;
-    case kVK_ANSI_Equal: return NK_KEY_EQUAL;
-    case kVK_ANSI_9: return NK_KEY_9;
-    case kVK_ANSI_7: return NK_KEY_7;
-    case kVK_ANSI_Minus: return NK_KEY_MINUS;
-    case kVK_ANSI_8: return NK_KEY_8;
-    case kVK_ANSI_0: return NK_KEY_0;
-    case kVK_ANSI_RightBracket: return NK_KEY_RIGHT_BRACKET;
-    case kVK_ANSI_O: return NK_KEY_O;
-    case kVK_ANSI_U: return NK_KEY_U;
-    case kVK_ANSI_LeftBracket: return NK_KEY_LEFT_BRACKET;
-    case kVK_ANSI_I: return NK_KEY_I;
-    case kVK_ANSI_P: return NK_KEY_P;
-    case kVK_Return: return NK_KEY_ENTER;
-    case kVK_ANSI_L: return NK_KEY_L;
-    case kVK_ANSI_J: return NK_KEY_J;
-    case kVK_ANSI_Quote: return NK_KEY_APOSTROPHE;
-    case kVK_ANSI_K: return NK_KEY_K;
-    case kVK_ANSI_Semicolon: return NK_KEY_SEMICOLON;
-    case kVK_ANSI_Backslash: return NK_KEY_BACKSLASH;
-    case kVK_ANSI_Comma: return NK_KEY_COMMA;
-    case kVK_ANSI_Slash: return NK_KEY_SLASH;
-    case kVK_ANSI_N: return NK_KEY_N;
-    case kVK_ANSI_M: return NK_KEY_M;
-    case kVK_ANSI_Period: return NK_KEY_PERIOD;
-    case kVK_Tab: return NK_KEY_TAB;
-    case kVK_Space: return NK_KEY_SPACE;
-    case kVK_ANSI_Grave: return NK_KEY_GRAVE_ACCENT;
-    case kVK_Delete: return NK_KEY_BACKSPACE;
-    case kVK_Escape: return NK_KEY_ESCAPE;
-    case kVK_RightCommand: return NK_KEY_RIGHT_SUPER;
-    case kVK_Command: return NK_KEY_LEFT_SUPER;
-    case kVK_Shift: return NK_KEY_LEFT_SHIFT;
-    case kVK_CapsLock: return NK_KEY_CAPS_LOCK;
-    case kVK_Option: return NK_KEY_LEFT_ALT;
-    case kVK_Control: return NK_KEY_LEFT_CONTROL;
-    case kVK_RightShift: return NK_KEY_RIGHT_SHIFT;
-    case kVK_RightOption: return NK_KEY_RIGHT_ALT;
-    case kVK_RightControl: return NK_KEY_RIGHT_CONTROL;
-    case kVK_F17: return NK_KEY_F17;
-    case kVK_ANSI_KeypadDecimal: return NK_KEY_KP_DECIMAL;
-    case kVK_ANSI_KeypadMultiply: return NK_KEY_KP_MULTIPLY;
-    case kVK_ANSI_KeypadPlus: return NK_KEY_KP_ADD;
-    case kVK_ANSI_KeypadClear: return NK_KEY_NUM_LOCK;
-    case kVK_ANSI_KeypadDivide: return NK_KEY_KP_DIVIDE;
-    case kVK_ANSI_KeypadEnter: return NK_KEY_KP_ENTER;
-    case kVK_ANSI_KeypadMinus: return NK_KEY_KP_SUBTRACT;
-    case kVK_F18: return NK_KEY_F18;
-    case kVK_F19: return NK_KEY_F19;
-    case kVK_ANSI_KeypadEquals: return NK_KEY_KP_EQUAL;
-    case kVK_ANSI_Keypad0: return NK_KEY_KP_0;
-    case kVK_ANSI_Keypad1: return NK_KEY_KP_1;
-    case kVK_ANSI_Keypad2: return NK_KEY_KP_2;
-    case kVK_ANSI_Keypad3: return NK_KEY_KP_3;
-    case kVK_ANSI_Keypad4: return NK_KEY_KP_4;
-    case kVK_ANSI_Keypad5: return NK_KEY_KP_5;
-    case kVK_ANSI_Keypad6: return NK_KEY_KP_6;
-    case kVK_ANSI_Keypad7: return NK_KEY_KP_7;
-    case kVK_F20: return NK_KEY_F20;
-    case kVK_ANSI_Keypad8: return NK_KEY_KP_8;
-    case kVK_ANSI_Keypad9: return NK_KEY_KP_9;
-    case kVK_F5: return NK_KEY_F5;
-    case kVK_F6: return NK_KEY_F6;
-    case kVK_F7: return NK_KEY_F7;
-    case kVK_F3: return NK_KEY_F3;
-    case kVK_F8: return NK_KEY_F8;
-    case kVK_F9: return NK_KEY_F9;
-    case kVK_F11: return NK_KEY_F11;
-    case kVK_F13: return NK_KEY_F13;
-    case kVK_F16: return NK_KEY_F16;
-    case kVK_F14: return NK_KEY_F14;
-    case kVK_F10: return NK_KEY_F10;
-    case kVK_F12: return NK_KEY_F12;
-    case kVK_F15: return NK_KEY_F15;
-    case kVK_Help: return NK_KEY_INSERT;
-    case kVK_Home: return NK_KEY_HOME;
-    case kVK_PageUp: return NK_KEY_PAGE_UP;
-    case kVK_ForwardDelete: return NK_KEY_DELETE;
-    case kVK_F4: return NK_KEY_F4;
-    case kVK_End: return NK_KEY_END;
-    case kVK_F2: return NK_KEY_F2;
-    case kVK_PageDown: return NK_KEY_PAGE_DOWN;
-    case kVK_F1: return NK_KEY_F1;
-    case kVK_LeftArrow: return NK_KEY_LEFT;
-    case kVK_RightArrow: return NK_KEY_RIGHT;
-    case kVK_DownArrow: return NK_KEY_DOWN;
-    case kVK_UpArrow: return NK_KEY_UP;
-    default: return NK_KEY_UNKNOWN;
+    case kVK_ANSI_A:
+        return NK_KEY_A;
+    case kVK_ANSI_S:
+        return NK_KEY_S;
+    case kVK_ANSI_D:
+        return NK_KEY_D;
+    case kVK_ANSI_F:
+        return NK_KEY_F;
+    case kVK_ANSI_H:
+        return NK_KEY_H;
+    case kVK_ANSI_G:
+        return NK_KEY_G;
+    case kVK_ANSI_Z:
+        return NK_KEY_Z;
+    case kVK_ANSI_X:
+        return NK_KEY_X;
+    case kVK_ANSI_C:
+        return NK_KEY_C;
+    case kVK_ANSI_V:
+        return NK_KEY_V;
+    case kVK_ANSI_B:
+        return NK_KEY_B;
+    case kVK_ANSI_Q:
+        return NK_KEY_Q;
+    case kVK_ANSI_W:
+        return NK_KEY_W;
+    case kVK_ANSI_E:
+        return NK_KEY_E;
+    case kVK_ANSI_R:
+        return NK_KEY_R;
+    case kVK_ANSI_Y:
+        return NK_KEY_Y;
+    case kVK_ANSI_T:
+        return NK_KEY_T;
+    case kVK_ANSI_1:
+        return NK_KEY_1;
+    case kVK_ANSI_2:
+        return NK_KEY_2;
+    case kVK_ANSI_3:
+        return NK_KEY_3;
+    case kVK_ANSI_4:
+        return NK_KEY_4;
+    case kVK_ANSI_6:
+        return NK_KEY_6;
+    case kVK_ANSI_5:
+        return NK_KEY_5;
+    case kVK_ANSI_Equal:
+        return NK_KEY_EQUAL;
+    case kVK_ANSI_9:
+        return NK_KEY_9;
+    case kVK_ANSI_7:
+        return NK_KEY_7;
+    case kVK_ANSI_Minus:
+        return NK_KEY_MINUS;
+    case kVK_ANSI_8:
+        return NK_KEY_8;
+    case kVK_ANSI_0:
+        return NK_KEY_0;
+    case kVK_ANSI_RightBracket:
+        return NK_KEY_RIGHT_BRACKET;
+    case kVK_ANSI_O:
+        return NK_KEY_O;
+    case kVK_ANSI_U:
+        return NK_KEY_U;
+    case kVK_ANSI_LeftBracket:
+        return NK_KEY_LEFT_BRACKET;
+    case kVK_ANSI_I:
+        return NK_KEY_I;
+    case kVK_ANSI_P:
+        return NK_KEY_P;
+    case kVK_Return:
+        return NK_KEY_ENTER;
+    case kVK_ANSI_L:
+        return NK_KEY_L;
+    case kVK_ANSI_J:
+        return NK_KEY_J;
+    case kVK_ANSI_Quote:
+        return NK_KEY_APOSTROPHE;
+    case kVK_ANSI_K:
+        return NK_KEY_K;
+    case kVK_ANSI_Semicolon:
+        return NK_KEY_SEMICOLON;
+    case kVK_ANSI_Backslash:
+        return NK_KEY_BACKSLASH;
+    case kVK_ANSI_Comma:
+        return NK_KEY_COMMA;
+    case kVK_ANSI_Slash:
+        return NK_KEY_SLASH;
+    case kVK_ANSI_N:
+        return NK_KEY_N;
+    case kVK_ANSI_M:
+        return NK_KEY_M;
+    case kVK_ANSI_Period:
+        return NK_KEY_PERIOD;
+    case kVK_Tab:
+        return NK_KEY_TAB;
+    case kVK_Space:
+        return NK_KEY_SPACE;
+    case kVK_ANSI_Grave:
+        return NK_KEY_GRAVE_ACCENT;
+    case kVK_Delete:
+        return NK_KEY_BACKSPACE;
+    case kVK_Escape:
+        return NK_KEY_ESCAPE;
+    case kVK_RightCommand:
+        return NK_KEY_RIGHT_SUPER;
+    case kVK_Command:
+        return NK_KEY_LEFT_SUPER;
+    case kVK_Shift:
+        return NK_KEY_LEFT_SHIFT;
+    case kVK_CapsLock:
+        return NK_KEY_CAPS_LOCK;
+    case kVK_Option:
+        return NK_KEY_LEFT_ALT;
+    case kVK_Control:
+        return NK_KEY_LEFT_CONTROL;
+    case kVK_RightShift:
+        return NK_KEY_RIGHT_SHIFT;
+    case kVK_RightOption:
+        return NK_KEY_RIGHT_ALT;
+    case kVK_RightControl:
+        return NK_KEY_RIGHT_CONTROL;
+    case kVK_F17:
+        return NK_KEY_F17;
+    case kVK_ANSI_KeypadDecimal:
+        return NK_KEY_KP_DECIMAL;
+    case kVK_ANSI_KeypadMultiply:
+        return NK_KEY_KP_MULTIPLY;
+    case kVK_ANSI_KeypadPlus:
+        return NK_KEY_KP_ADD;
+    case kVK_ANSI_KeypadClear:
+        return NK_KEY_NUM_LOCK;
+    case kVK_ANSI_KeypadDivide:
+        return NK_KEY_KP_DIVIDE;
+    case kVK_ANSI_KeypadEnter:
+        return NK_KEY_KP_ENTER;
+    case kVK_ANSI_KeypadMinus:
+        return NK_KEY_KP_SUBTRACT;
+    case kVK_F18:
+        return NK_KEY_F18;
+    case kVK_F19:
+        return NK_KEY_F19;
+    case kVK_ANSI_KeypadEquals:
+        return NK_KEY_KP_EQUAL;
+    case kVK_ANSI_Keypad0:
+        return NK_KEY_KP_0;
+    case kVK_ANSI_Keypad1:
+        return NK_KEY_KP_1;
+    case kVK_ANSI_Keypad2:
+        return NK_KEY_KP_2;
+    case kVK_ANSI_Keypad3:
+        return NK_KEY_KP_3;
+    case kVK_ANSI_Keypad4:
+        return NK_KEY_KP_4;
+    case kVK_ANSI_Keypad5:
+        return NK_KEY_KP_5;
+    case kVK_ANSI_Keypad6:
+        return NK_KEY_KP_6;
+    case kVK_ANSI_Keypad7:
+        return NK_KEY_KP_7;
+    case kVK_F20:
+        return NK_KEY_F20;
+    case kVK_ANSI_Keypad8:
+        return NK_KEY_KP_8;
+    case kVK_ANSI_Keypad9:
+        return NK_KEY_KP_9;
+    case kVK_F5:
+        return NK_KEY_F5;
+    case kVK_F6:
+        return NK_KEY_F6;
+    case kVK_F7:
+        return NK_KEY_F7;
+    case kVK_F3:
+        return NK_KEY_F3;
+    case kVK_F8:
+        return NK_KEY_F8;
+    case kVK_F9:
+        return NK_KEY_F9;
+    case kVK_F11:
+        return NK_KEY_F11;
+    case kVK_F13:
+        return NK_KEY_F13;
+    case kVK_F16:
+        return NK_KEY_F16;
+    case kVK_F14:
+        return NK_KEY_F14;
+    case kVK_F10:
+        return NK_KEY_F10;
+    case kVK_F12:
+        return NK_KEY_F12;
+    case kVK_F15:
+        return NK_KEY_F15;
+    case kVK_Help:
+        return NK_KEY_INSERT;
+    case kVK_Home:
+        return NK_KEY_HOME;
+    case kVK_PageUp:
+        return NK_KEY_PAGE_UP;
+    case kVK_ForwardDelete:
+        return NK_KEY_DELETE;
+    case kVK_F4:
+        return NK_KEY_F4;
+    case kVK_End:
+        return NK_KEY_END;
+    case kVK_F2:
+        return NK_KEY_F2;
+    case kVK_PageDown:
+        return NK_KEY_PAGE_DOWN;
+    case kVK_F1:
+        return NK_KEY_F1;
+    case kVK_LeftArrow:
+        return NK_KEY_LEFT;
+    case kVK_RightArrow:
+        return NK_KEY_RIGHT;
+    case kVK_DownArrow:
+        return NK_KEY_DOWN;
+    case kVK_UpArrow:
+        return NK_KEY_UP;
+    default:
+        return NK_KEY_UNKNOWN;
     }
 }
 
@@ -861,16 +974,16 @@ void emit_pointer_button(MacWindowResource &resource, nk_pointer_button button,
     if (button > NK_POINTER_BUTTON_LAST)
         return;
     resource.pointer_buttons[button] = action;
-    const nk_pointer_button_event payload{button, action, modifiers, 0, resource.pointer_x,
-                                          resource.pointer_y};
+    const nk_pointer_button_event payload{
+        button, action, modifiers, 0, resource.pointer_x, resource.pointer_y};
     queue_input_event(NK_EVENT_POINTER_BUTTON, resource.handle, bytes_of(payload));
 }
 
 void emit_touch(MacWindowResource &resource, uint32_t pointer_id, nk_touch_action action,
                 nk_touch_tool tool, NSPoint location, nk_modifiers modifiers, float pressure = 1.f,
                 float tilt_x = 0.f, float tilt_y = 0.f, uint32_t flags = 0) {
-    const nk_touch_event payload{pointer_id, action, tool, modifiers, location.x, location.y,
-                                 pressure, tilt_x, tilt_y, 0};
+    const nk_touch_event payload{pointer_id, action,   tool,   modifiers, location.x,
+                                 location.y, pressure, tilt_x, tilt_y,    0};
     queue_input_event(NK_EVENT_TOUCH, resource.handle, bytes_of(payload), flags);
 }
 
@@ -986,14 +1099,22 @@ void reset_window_input(MacWindowResource &resource) {
         if (resource.pointer_buttons[button] != NK_INPUT_PRESS)
             continue;
         resource.pointer_buttons[button] = NK_INPUT_RELEASE;
-        const nk_pointer_button_event payload{button, NK_INPUT_RELEASE, 0, 0,
-                                              resource.pointer_x, resource.pointer_y};
+        const nk_pointer_button_event payload{button, NK_INPUT_RELEASE,   0,
+                                              0,      resource.pointer_x, resource.pointer_y};
         queue_input_event(NK_EVENT_POINTER_BUTTON, resource.handle, bytes_of(payload), 1u);
     }
     for (const auto &[identity, pointer_id] : resource.touch_pointers) {
         (void)identity;
-        const nk_touch_event payload{pointer_id, NK_TOUCH_CANCEL, NK_TOUCH_TOOL_FINGER, 0,
-                                     resource.pointer_x, resource.pointer_y, 0.f, 0.f, 0.f, 0};
+        const nk_touch_event payload{pointer_id,
+                                     NK_TOUCH_CANCEL,
+                                     NK_TOUCH_TOOL_FINGER,
+                                     0,
+                                     resource.pointer_x,
+                                     resource.pointer_y,
+                                     0.f,
+                                     0.f,
+                                     0.f,
+                                     0};
         queue_input_event(NK_EVENT_TOUCH, resource.handle, bytes_of(payload), 1u);
     }
     resource.touch_pointers.clear();
@@ -1054,16 +1175,15 @@ void emit_tablet_event(NKContentView *view, NSEvent *event) {
     const auto location = local_pointer_position(view, event);
     resource->pointer_x = location.x;
     resource->pointer_y = location.y;
-    const auto tool = event.pointingDeviceType == NSPointingDeviceTypeEraser
-                          ? NK_TOUCH_TOOL_ERASER
-                          : NK_TOUCH_TOOL_STYLUS;
+    const auto tool = event.pointingDeviceType == NSPointingDeviceTypeEraser ? NK_TOUCH_TOOL_ERASER
+                                                                             : NK_TOUCH_TOOL_STYLUS;
     const float pressure = std::max(0.f, std::min(1.f, event.pressure));
-    const auto action = event.pressure > 0.f ? (began ? NK_TOUCH_BEGIN : NK_TOUCH_MOVE)
-                                              : NK_TOUCH_END;
+    const auto action =
+        event.pressure > 0.f ? (began ? NK_TOUCH_BEGIN : NK_TOUCH_MOVE) : NK_TOUCH_END;
     const auto tilt = event.tilt;
     emit_touch(*resource, found->second, action, tool, location,
-               modifiers_from_native(event.modifierFlags), pressure,
-               static_cast<float>(tilt.x), static_cast<float>(tilt.y));
+               modifiers_from_native(event.modifierFlags), pressure, static_cast<float>(tilt.x),
+               static_cast<float>(tilt.y));
     if (action == NK_TOUCH_END)
         resource->tablet_pointers.erase(found);
 }
@@ -1693,17 +1813,15 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     if (!resource)
         return;
     nk::core::callback_boundary([&] {
-        emit_key_transition(*resource, event,
-                            event.isARepeat ? NK_INPUT_REPEAT : NK_INPUT_PRESS);
+        emit_key_transition(*resource, event, event.isARepeat ? NK_INPUT_REPEAT : NK_INPUT_PRESS);
         [self interpretKeyEvents:@[ event ]];
     });
 }
 - (void)keyUp:(NSEvent *)event {
     auto *resource = static_cast<MacWindowResource *>(_resource);
     if (resource)
-        nk::core::callback_boundary([&] {
-            emit_key_transition(*resource, event, NK_INPUT_RELEASE);
-        });
+        nk::core::callback_boundary(
+            [&] { emit_key_transition(*resource, event, NK_INPUT_RELEASE); });
 }
 - (void)flagsChanged:(NSEvent *)event {
     auto *resource = static_cast<MacWindowResource *>(_resource);
@@ -1713,8 +1831,8 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         const auto key = key_from_cocoa(event.keyCode);
         if (key == NK_KEY_UNKNOWN)
             return;
-        const auto action = resource->keys[key] == NK_INPUT_PRESS ? NK_INPUT_RELEASE
-                                                                  : NK_INPUT_PRESS;
+        const auto action =
+            resource->keys[key] == NK_INPUT_PRESS ? NK_INPUT_RELEASE : NK_INPUT_PRESS;
         emit_key_transition(*resource, event, action);
     });
 }
@@ -1757,16 +1875,17 @@ void emit_window_state(MacWindowResource &resource) noexcept {
                                           resource->text_input_state.selection_end);
     return resource->selected_native_range;
 }
-- (void)setMarkedText:(id)value selectedRange:(NSRange)selectionRange
-      replacementRange:(NSRange)replacementRange {
+- (void)setMarkedText:(id)value
+        selectedRange:(NSRange)selectionRange
+     replacementRange:(NSRange)replacementRange {
     auto *resource = static_cast<MacWindowResource *>(_resource);
     if (!resource)
         return;
     nk::core::callback_boundary([&] {
-        NSString *text_value = [value isKindOfClass:[NSAttributedString class]]
-                                   ? [(NSAttributedString *)value string]
-                                   : ([value isKindOfClass:[NSString class]] ? value
-                                                                            : [value description]);
+        NSString *text_value =
+            [value isKindOfClass:[NSAttributedString class]]
+                ? [(NSAttributedString *)value string]
+                : ([value isKindOfClass:[NSString class]] ? value : [value description]);
         const auto text = utf8(text_value ?: @"");
         std::vector<uint32_t> points;
         if (!decode_utf8(text, points))
@@ -1777,19 +1896,23 @@ void emit_window_state(MacWindowResource &resource) noexcept {
             start = text_replacement_start(*resource);
             end = text_replacement_end(*resource);
         }
-        const auto selection_begin = selectionRange.location == NSNotFound
-                                         ? points.size()
-                                         : codepoint_index_for_utf16(
-                                               points, std::min<NSUInteger>(selectionRange.location,
-                                                   utf16_offset_for_codepoint(points, points.size())));
-        const auto selection_finish = selectionRange.location == NSNotFound
-                                          ? selection_begin
-                                          : codepoint_index_for_utf16(
-                                                points, std::min<NSUInteger>(
-                                                    selectionRange.location + selectionRange.length,
-                                                    utf16_offset_for_codepoint(points, points.size())));
+        const auto selection_begin =
+            selectionRange.location == NSNotFound
+                ? points.size()
+                : codepoint_index_for_utf16(
+                      points,
+                      std::min<NSUInteger>(selectionRange.location,
+                                           utf16_offset_for_codepoint(points, points.size())));
+        const auto selection_finish =
+            selectionRange.location == NSNotFound
+                ? selection_begin
+                : codepoint_index_for_utf16(
+                      points,
+                      std::min<NSUInteger>(selectionRange.location + selectionRange.length,
+                                           utf16_offset_for_codepoint(points, points.size())));
         const auto composition_end = static_cast<nk_text_position>(start + points.size());
-        const auto absolute_selection_start = static_cast<nk_text_position>(start + selection_begin);
+        const auto absolute_selection_start =
+            static_cast<nk_text_position>(start + selection_begin);
         const auto absolute_selection_end = static_cast<nk_text_position>(start + selection_finish);
         if (resource->text_input_active) {
             apply_text_edit_state(*resource, NK_TEXT_EDIT_COMPOSE, start, end, text,
@@ -1805,15 +1928,14 @@ void emit_window_state(MacWindowResource &resource) noexcept {
             resource->text_input_state.selection_start = absolute_selection_start;
             resource->text_input_state.selection_end = absolute_selection_end;
             resource->marked_text = text;
-            resource->marked_native_range = NSMakeRange(replacementRange.location == NSNotFound
-                                                            ? 0
-                                                            : replacementRange.location,
-                                                        text_value.length);
-            resource->selected_native_range = NSMakeRange(
-                resource->marked_native_range.location +
-                    (selectionRange.location == NSNotFound ? text_value.length
-                                                           : selectionRange.location),
-                selectionRange.location == NSNotFound ? 0 : selectionRange.length);
+            resource->marked_native_range =
+                NSMakeRange(replacementRange.location == NSNotFound ? 0 : replacementRange.location,
+                            text_value.length);
+            resource->selected_native_range =
+                NSMakeRange(resource->marked_native_range.location +
+                                (selectionRange.location == NSNotFound ? text_value.length
+                                                                       : selectionRange.location),
+                            selectionRange.location == NSNotFound ? 0 : selectionRange.length);
         }
     });
 }
@@ -1855,10 +1977,10 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     if (!resource)
         return;
     nk::core::callback_boundary([&] {
-        NSString *text_value = [value isKindOfClass:[NSAttributedString class]]
-                                   ? [(NSAttributedString *)value string]
-                                   : ([value isKindOfClass:[NSString class]] ? value
-                                                                            : [value description]);
+        NSString *text_value =
+            [value isKindOfClass:[NSAttributedString class]]
+                ? [(NSAttributedString *)value string]
+                : ([value isKindOfClass:[NSString class]] ? value : [value description]);
         const auto text = utf8(text_value ?: @"");
         std::vector<uint32_t> points;
         if (!decode_utf8(text, points))
@@ -1884,10 +2006,10 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         return NSNotFound;
     const NSPoint windowPoint = [self.window convertPointFromScreen:screenPoint];
     const NSPoint localPoint = [self convertPoint:windowPoint fromView:nil];
-    const NSRect caret = NSMakeRect(resource->text_input_state.cursor_x,
-                                    resource->text_input_state.cursor_y,
-                                    std::max(1.f, resource->text_input_state.cursor_width),
-                                    std::max(1.f, resource->text_input_state.cursor_height));
+    const NSRect caret =
+        NSMakeRect(resource->text_input_state.cursor_x, resource->text_input_state.cursor_y,
+                   std::max(1.f, resource->text_input_state.cursor_width),
+                   std::max(1.f, resource->text_input_state.cursor_height));
     if (!NSPointInRect(localPoint, caret))
         return NSNotFound;
     return self.selectedRange.location;
@@ -1898,10 +2020,10 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         return NSZeroRect;
     if (actualRange)
         *actualRange = range;
-    NSRect rect = NSMakeRect(resource->text_input_state.cursor_x,
-                             resource->text_input_state.cursor_y,
-                             std::max(1.f, resource->text_input_state.cursor_width),
-                             std::max(1.f, resource->text_input_state.cursor_height));
+    NSRect rect =
+        NSMakeRect(resource->text_input_state.cursor_x, resource->text_input_state.cursor_y,
+                   std::max(1.f, resource->text_input_state.cursor_width),
+                   std::max(1.f, resource->text_input_state.cursor_height));
     return [self.window convertRectToScreen:[self convertRect:rect toView:nil]];
 }
 - (void)doCommandBySelector:(SEL)selector {
@@ -1929,14 +2051,14 @@ void emit_window_state(MacWindowResource &resource) noexcept {
             apply_text_edit_state(*resource, NK_TEXT_EDIT_COMMIT, text_replacement_start(*resource),
                                   text_replacement_end(*resource), "\n",
                                   text_replacement_start(*resource) + 1,
-                                  text_replacement_start(*resource) + 1,
-                                  NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+                                  text_replacement_start(*resource) + 1, NK_TEXT_POSITION_NONE,
+                                  NK_TEXT_POSITION_NONE);
         } else if (selector == @selector(insertTab:)) {
             apply_text_edit_state(*resource, NK_TEXT_EDIT_COMMIT, text_replacement_start(*resource),
                                   text_replacement_end(*resource), "\t",
                                   text_replacement_start(*resource) + 1,
-                                  text_replacement_start(*resource) + 1,
-                                  NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+                                  text_replacement_start(*resource) + 1, NK_TEXT_POSITION_NONE,
+                                  NK_TEXT_POSITION_NONE);
         }
     });
 }
@@ -2125,8 +2247,8 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_WEBVIEW |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-           NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO |
-           NK_CAP_INPUT | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_METAL_SURFACE;
+           NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO | NK_CAP_INPUT |
+           NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_METAL_SURFACE;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -2209,10 +2331,9 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
     for (const nk_handle surface_handle : resource->surfaces) {
         auto child_surface = surface(surface_handle);
-        if (child_surface &&
-            (child_surface->share_dependents ||
-             nk_core_graphics_device_has_references(
-                 nk_graphics_device{child_surface->device_handle})))
+        if (child_surface && (child_surface->share_dependents ||
+                              nk_core_graphics_device_has_references(
+                                  nk_graphics_device{child_surface->device_handle})))
             return fail(NK_ERROR_INVALID_REQUEST,
                         "window still owns a shared or retained graphics surface");
     }
@@ -2401,113 +2522,112 @@ nk_result NK_CALL nk_pointer_get_position(nk_handle handle, double *out_x, doubl
 nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_handle *out_cursor) {
     return nk::core::result_boundary(
         "unexpected error while creating standard cursor", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (!out_cursor)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "cursor output must not be null");
-        *out_cursor = NK_INVALID_HANDLE;
-        NSCursor *native = nil;
-        switch (shape) {
-        case NK_CURSOR_ARROW:
-            native = [NSCursor arrowCursor];
-            break;
-        case NK_CURSOR_IBEAM:
-            native = [NSCursor IBeamCursor];
-            break;
-        case NK_CURSOR_CROSSHAIR:
-            native = [NSCursor crosshairCursor];
-            break;
-        case NK_CURSOR_HAND:
-            native = [NSCursor pointingHandCursor];
-            break;
-        case NK_CURSOR_HORIZONTAL_RESIZE:
-            native = [NSCursor resizeLeftRightCursor];
-            break;
-        case NK_CURSOR_VERTICAL_RESIZE:
-            native = [NSCursor resizeUpDownCursor];
-            break;
-        case NK_CURSOR_NWSE_RESIZE:
-            native = diagonal_resize_cursor(true);
-            break;
-        case NK_CURSOR_NESW_RESIZE:
-            native = diagonal_resize_cursor(false);
-            break;
-        case NK_CURSOR_MOVE:
-            native = [NSCursor closedHandCursor];
-            break;
-        case NK_CURSOR_NOT_ALLOWED:
-            native = [NSCursor operationNotAllowedCursor];
-            break;
-        default:
-            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid standard cursor shape");
-        }
-        auto resource = std::make_shared<MacCursorResource>();
-        resource->cursor = native;
-        resource->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
-        if (resource->handle == NK_INVALID_HANDLE)
-            return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
-        *out_cursor = resource->handle;
-        return NK_OK;
-
-    });
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!out_cursor)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "cursor output must not be null");
+            *out_cursor = NK_INVALID_HANDLE;
+            NSCursor *native = nil;
+            switch (shape) {
+            case NK_CURSOR_ARROW:
+                native = [NSCursor arrowCursor];
+                break;
+            case NK_CURSOR_IBEAM:
+                native = [NSCursor IBeamCursor];
+                break;
+            case NK_CURSOR_CROSSHAIR:
+                native = [NSCursor crosshairCursor];
+                break;
+            case NK_CURSOR_HAND:
+                native = [NSCursor pointingHandCursor];
+                break;
+            case NK_CURSOR_HORIZONTAL_RESIZE:
+                native = [NSCursor resizeLeftRightCursor];
+                break;
+            case NK_CURSOR_VERTICAL_RESIZE:
+                native = [NSCursor resizeUpDownCursor];
+                break;
+            case NK_CURSOR_NWSE_RESIZE:
+                native = diagonal_resize_cursor(true);
+                break;
+            case NK_CURSOR_NESW_RESIZE:
+                native = diagonal_resize_cursor(false);
+                break;
+            case NK_CURSOR_MOVE:
+                native = [NSCursor closedHandCursor];
+                break;
+            case NK_CURSOR_NOT_ALLOWED:
+                native = [NSCursor operationNotAllowedCursor];
+                break;
+            default:
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid standard cursor shape");
+            }
+            auto resource = std::make_shared<MacCursorResource>();
+            resource->cursor = native;
+            resource->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
+            if (resource->handle == NK_INVALID_HANDLE)
+                return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
+            *out_cursor = resource->handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image, nk_handle *out_cursor) {
-    return nk::core::result_boundary("unexpected error while creating custom cursor",
-                                     [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (!image || image->struct_size < sizeof(*image) || !out_cursor || !image->rgba ||
-            image->width <= 0 || image->height <= 0 || image->width > INT_MAX / 4 ||
-            image->stride < image->width * 4 || image->hotspot_x < 0 || image->hotspot_y < 0 ||
-            image->hotspot_x >= image->width || image->hotspot_y >= image->height)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid custom cursor image");
-        *out_cursor = NK_INVALID_HANDLE;
-        NSBitmapImageRep *bitmap =
-            [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nil
-                                                    pixelsWide:image->width
-                                                    pixelsHigh:image->height
-                                                 bitsPerSample:8
-                                               samplesPerPixel:4
-                                                      hasAlpha:YES
-                                                      isPlanar:NO
-                                                colorSpaceName:NSDeviceRGBColorSpace
-                                                   bytesPerRow:0
-                                                  bitsPerPixel:0];
-        if (!bitmap)
-            return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate custom cursor pixels");
-        const auto *source = static_cast<const uint8_t *>(image->rgba);
-        auto *destination = bitmap.bitmapData;
-        const int stride = static_cast<int>(bitmap.bytesPerRow);
-        for (int32_t y = 0; y < image->height; ++y) {
-            const auto *source_row = source + static_cast<std::size_t>(y) * image->stride;
-            auto *destination_row = destination + static_cast<std::size_t>(y) * stride;
-            for (int32_t x = 0; x < image->width; ++x) {
-                const uint32_t alpha = source_row[x * 4 + 3];
-                destination_row[x * 4 + 0] =
-                    static_cast<uint8_t>(source_row[x * 4 + 0] * alpha / 255u);
-                destination_row[x * 4 + 1] =
-                    static_cast<uint8_t>(source_row[x * 4 + 1] * alpha / 255u);
-                destination_row[x * 4 + 2] =
-                    static_cast<uint8_t>(source_row[x * 4 + 2] * alpha / 255u);
-                destination_row[x * 4 + 3] = static_cast<uint8_t>(alpha);
+    return nk::core::result_boundary(
+        "unexpected error while creating custom cursor", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!image || image->struct_size < sizeof(*image) || !out_cursor || !image->rgba ||
+                image->width <= 0 || image->height <= 0 || image->width > INT_MAX / 4 ||
+                image->stride < image->width * 4 || image->hotspot_x < 0 || image->hotspot_y < 0 ||
+                image->hotspot_x >= image->width || image->hotspot_y >= image->height)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid custom cursor image");
+            *out_cursor = NK_INVALID_HANDLE;
+            NSBitmapImageRep *bitmap =
+                [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nil
+                                                        pixelsWide:image->width
+                                                        pixelsHigh:image->height
+                                                     bitsPerSample:8
+                                                   samplesPerPixel:4
+                                                          hasAlpha:YES
+                                                          isPlanar:NO
+                                                    colorSpaceName:NSDeviceRGBColorSpace
+                                                       bytesPerRow:0
+                                                      bitsPerPixel:0];
+            if (!bitmap)
+                return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate custom cursor pixels");
+            const auto *source = static_cast<const uint8_t *>(image->rgba);
+            auto *destination = bitmap.bitmapData;
+            const int stride = static_cast<int>(bitmap.bytesPerRow);
+            for (int32_t y = 0; y < image->height; ++y) {
+                const auto *source_row = source + static_cast<std::size_t>(y) * image->stride;
+                auto *destination_row = destination + static_cast<std::size_t>(y) * stride;
+                for (int32_t x = 0; x < image->width; ++x) {
+                    const uint32_t alpha = source_row[x * 4 + 3];
+                    destination_row[x * 4 + 0] =
+                        static_cast<uint8_t>(source_row[x * 4 + 0] * alpha / 255u);
+                    destination_row[x * 4 + 1] =
+                        static_cast<uint8_t>(source_row[x * 4 + 1] * alpha / 255u);
+                    destination_row[x * 4 + 2] =
+                        static_cast<uint8_t>(source_row[x * 4 + 2] * alpha / 255u);
+                    destination_row[x * 4 + 3] = static_cast<uint8_t>(alpha);
+                }
             }
-        }
-        NSImage *native_image =
-            [[NSImage alloc] initWithSize:NSMakeSize(image->width, image->height)];
-        [native_image addRepresentation:bitmap];
-        auto resource = std::make_shared<MacCursorResource>();
-        resource->cursor = [[NSCursor alloc]
-            initWithImage:native_image
-                  hotSpot:NSMakePoint(image->hotspot_x, image->height - image->hotspot_y)];
-        if (!resource->cursor)
-            return fail(NK_ERROR_UNSUPPORTED, "macOS could not create the custom cursor");
-        resource->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
-        if (resource->handle == NK_INVALID_HANDLE)
-            return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
-        *out_cursor = resource->handle;
-        return NK_OK;
-    });
+            NSImage *native_image =
+                [[NSImage alloc] initWithSize:NSMakeSize(image->width, image->height)];
+            [native_image addRepresentation:bitmap];
+            auto resource = std::make_shared<MacCursorResource>();
+            resource->cursor = [[NSCursor alloc]
+                initWithImage:native_image
+                      hotSpot:NSMakePoint(image->hotspot_x, image->height - image->hotspot_y)];
+            if (!resource->cursor)
+                return fail(NK_ERROR_UNSUPPORTED, "macOS could not create the custom cursor");
+            resource->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, resource);
+            if (resource->handle == NK_INVALID_HANDLE)
+                return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
+            *out_cursor = resource->handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_cursor_destroy(nk_handle handle) {
@@ -2558,97 +2678,101 @@ nk_result NK_CALL nk_window_get_cursor_mode(nk_handle handle, nk_cursor_mode *ou
     return NK_OK;
 }
 
-uint32_t NK_CALL nk_raw_pointer_motion_supported(void) { return 0; }
+uint32_t NK_CALL nk_raw_pointer_motion_supported(void) {
+    return 0;
+}
 
 nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
                                                   const nk_text_input_state *state) {
     return nk::core::result_boundary(
         "unexpected error while setting text input state", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (!state || state->struct_size < sizeof(*state) || !state->text)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid text input state");
-        NSString *native_text = string(state->text);
-        std::vector<uint32_t> points;
-        if (!native_text || !decode_utf8(state->text, points))
-            return fail(NK_ERROR_INVALID_ARGUMENT, "text input state text is not valid UTF-8");
-        const uint64_t text_end = static_cast<uint64_t>(state->text_start) + points.size();
-        const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
-                                    state->composition_end == NK_TEXT_POSITION_NONE;
-        const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
-                                       state->composition_end != NK_TEXT_POSITION_NONE &&
-                                       state->composition_start <= state->composition_end &&
-                                       state->composition_start >= state->text_start &&
-                                       state->composition_end <= text_end;
-        const bool valid_cursor = std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
-                                  std::isfinite(state->cursor_width) &&
-                                  std::isfinite(state->cursor_height) && state->cursor_width >= 0.f &&
-                                  state->cursor_height >= 0.f;
-        if ((state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
-                              NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) ||
-            state->text_start > state->document_length || text_end > state->document_length ||
-            state->selection_start > state->selection_end ||
-            state->selection_start < state->text_start || state->selection_end > text_end ||
-            (!no_composition && !valid_composition) || state->input_type > NK_TEXT_INPUT_PASSWORD ||
-            state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "text input state ranges or hints are invalid");
-        auto resource = window(handle);
-        if (!resource)
-            return fail(NK_ERROR_INVALID_HANDLE,
-                        "text input state requires a desktop window on this backend");
-        resource->text_input_text = state->text;
-        resource->text_input_state = *state;
-        resource->text_input_state.text = resource->text_input_text.c_str();
-        resource->text_composition_start = state->composition_start;
-        resource->text_composition_end = state->composition_end;
-        resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
-        resource->marked_native_range =
-            resource->text_composing
-                ? native_range_for_positions(*resource, state->composition_start, state->composition_end)
-                : NSMakeRange(NSNotFound, 0);
-        resource->selected_native_range =
-            native_range_for_positions(*resource, state->selection_start, state->selection_end);
-        if (resource->text_composing) {
-            const auto first = state->composition_start - state->text_start;
-            const auto last = state->composition_end - state->text_start;
-            const NSUInteger native_start = utf16_offset_for_codepoint(points, first);
-            const NSUInteger native_end = utf16_offset_for_codepoint(points, last);
-            NSString *state_string = string(resource->text_input_text.c_str());
-            resource->marked_text =
-                utf8([state_string substringWithRange:NSMakeRange(native_start, native_end - native_start)]);
-        } else {
-            resource->marked_text.clear();
-        }
-        [[resource->content inputContext] invalidateCharacterCoordinates];
-        return NK_OK;
-
-    });
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!state || state->struct_size < sizeof(*state) || !state->text)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid text input state");
+            NSString *native_text = string(state->text);
+            std::vector<uint32_t> points;
+            if (!native_text || !decode_utf8(state->text, points))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "text input state text is not valid UTF-8");
+            const uint64_t text_end = static_cast<uint64_t>(state->text_start) + points.size();
+            const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
+                                        state->composition_end == NK_TEXT_POSITION_NONE;
+            const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
+                                           state->composition_end != NK_TEXT_POSITION_NONE &&
+                                           state->composition_start <= state->composition_end &&
+                                           state->composition_start >= state->text_start &&
+                                           state->composition_end <= text_end;
+            const bool valid_cursor =
+                std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
+                std::isfinite(state->cursor_width) && std::isfinite(state->cursor_height) &&
+                state->cursor_width >= 0.f && state->cursor_height >= 0.f;
+            if ((state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
+                                  NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) ||
+                state->text_start > state->document_length || text_end > state->document_length ||
+                state->selection_start > state->selection_end ||
+                state->selection_start < state->text_start || state->selection_end > text_end ||
+                (!no_composition && !valid_composition) ||
+                state->input_type > NK_TEXT_INPUT_PASSWORD ||
+                state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "text input state ranges or hints are invalid");
+            auto resource = window(handle);
+            if (!resource)
+                return fail(NK_ERROR_INVALID_HANDLE,
+                            "text input state requires a desktop window on this backend");
+            resource->text_input_text = state->text;
+            resource->text_input_state = *state;
+            resource->text_input_state.text = resource->text_input_text.c_str();
+            resource->text_composition_start = state->composition_start;
+            resource->text_composition_end = state->composition_end;
+            resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
+            resource->marked_native_range =
+                resource->text_composing
+                    ? native_range_for_positions(*resource, state->composition_start,
+                                                 state->composition_end)
+                    : NSMakeRange(NSNotFound, 0);
+            resource->selected_native_range =
+                native_range_for_positions(*resource, state->selection_start, state->selection_end);
+            if (resource->text_composing) {
+                const auto first = state->composition_start - state->text_start;
+                const auto last = state->composition_end - state->text_start;
+                const NSUInteger native_start = utf16_offset_for_codepoint(points, first);
+                const NSUInteger native_end = utf16_offset_for_codepoint(points, last);
+                NSString *state_string = string(resource->text_input_text.c_str());
+                resource->marked_text = utf8([state_string
+                    substringWithRange:NSMakeRange(native_start, native_end - native_start)]);
+            } else {
+                resource->marked_text.clear();
+            }
+            [[resource->content inputContext] invalidateCharacterCoordinates];
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t active) {
     return nk::core::result_boundary(
         "unexpected error while changing text input", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (active > 1)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "text input active state must be zero or one");
-        auto resource = window(handle);
-        if (!resource)
-            return fail(NK_ERROR_INVALID_HANDLE,
-                        "text input activation requires a desktop window on this backend");
-        if (active) {
-            resource->text_input_active = true;
-            [resource->window makeFirstResponder:resource->content];
-        } else {
-            if (resource->text_input_active)
-                finish_text_composition(*resource);
-            resource->text_input_active = false;
-            if (resource->text_composing)
-                [resource->content unmarkText];
-        }
-        return NK_OK;
-
-    });
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (active > 1)
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "text input active state must be zero or one");
+            auto resource = window(handle);
+            if (!resource)
+                return fail(NK_ERROR_INVALID_HANDLE,
+                            "text input activation requires a desktop window on this backend");
+            if (active) {
+                resource->text_input_active = true;
+                [resource->window makeFirstResponder:resource->content];
+            } else {
+                if (resource->text_input_active)
+                    finish_text_composition(*resource);
+                resource->text_input_active = false;
+                if (resource->text_composing)
+                    [resource->content unmarkText];
+            }
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_window_minimize(nk_handle h) {
@@ -2750,83 +2874,87 @@ nk_result NK_CALL nk_window_wrap_native(const nk_native_window *, nk_handle *) {
 
 nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_options *options,
                                     nk_handle *out_surface) {
-    return nk::core::result_boundary("unexpected error while creating Metal surface",
-                                     [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        constexpr nk_surface_flags supported_flags = NK_SURFACE_HIDDEN | NK_SURFACE_ALPHA |
-                                                      NK_SURFACE_DEPTH | NK_SURFACE_STENCIL |
-                                                      NK_SURFACE_DEBUG_CONTEXT;
-        if (!options || options->struct_size < sizeof(*options) || !out_surface ||
-            options->width <= 0 || options->height <= 0 || options->api != NK_GRAPHICS_METAL ||
-            (options->flags & ~supported_flags) != 0)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid Metal surface options");
-        *out_surface = NK_INVALID_HANDLE;
-        auto parent = window(parent_handle);
-        if (!parent)
-            return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale parent window handle");
-        auto shared = options->share_surface ? surface(options->share_surface) : nullptr;
-        if (options->share_surface && !shared)
-            return fail(NK_ERROR_INVALID_HANDLE, "invalid shared graphics surface");
-        if (shared && shared->api != NK_GRAPHICS_METAL)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "shared surfaces must use the same graphics API");
-        if (shared && shared->share_dependents == UINT32_MAX)
-            return fail(NK_ERROR_INVALID_REQUEST, "graphics surface has too many dependents");
+    return nk::core::result_boundary(
+        "unexpected error while creating Metal surface", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            constexpr nk_surface_flags supported_flags = NK_SURFACE_HIDDEN | NK_SURFACE_ALPHA |
+                                                         NK_SURFACE_DEPTH | NK_SURFACE_STENCIL |
+                                                         NK_SURFACE_DEBUG_CONTEXT;
+            if (!options || options->struct_size < sizeof(*options) || !out_surface ||
+                options->width <= 0 || options->height <= 0 || options->api != NK_GRAPHICS_METAL ||
+                (options->flags & ~supported_flags) != 0)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid Metal surface options");
+            *out_surface = NK_INVALID_HANDLE;
+            auto parent = window(parent_handle);
+            if (!parent)
+                return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale parent window handle");
+            auto shared = options->share_surface ? surface(options->share_surface) : nullptr;
+            if (options->share_surface && !shared)
+                return fail(NK_ERROR_INVALID_HANDLE, "invalid shared graphics surface");
+            if (shared && shared->api != NK_GRAPHICS_METAL)
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "shared surfaces must use the same graphics API");
+            if (shared && shared->share_dependents == UINT32_MAX)
+                return fail(NK_ERROR_INVALID_REQUEST, "graphics surface has too many dependents");
 
-        parent->surfaces.reserve(parent->surfaces.size() + 1);
-        auto resource = std::make_shared<MacSurfaceResource>();
-        resource->parent = parent_handle;
-        resource->flags = options->flags;
-        resource->x = options->x;
-        resource->y = options->y;
-        resource->width = options->width;
-        resource->height = options->height;
-        resource->shared_surface = shared;
-        if (shared) {
-            resource->device = shared->device;
-            resource->queue = shared->queue;
-            resource->device_handle = shared->device_handle;
-        } else {
-            resource->device = MTLCreateSystemDefaultDevice();
-            if (resource->device)
-                resource->queue = [resource->device newCommandQueue];
-        }
-        if (!resource->device || !resource->queue)
-            return fail(NK_ERROR_UNSUPPORTED, "could not create a Metal device and command queue");
+            parent->surfaces.reserve(parent->surfaces.size() + 1);
+            auto resource = std::make_shared<MacSurfaceResource>();
+            resource->parent = parent_handle;
+            resource->flags = options->flags;
+            resource->x = options->x;
+            resource->y = options->y;
+            resource->width = options->width;
+            resource->height = options->height;
+            resource->shared_surface = shared;
+            if (shared) {
+                resource->device = shared->device;
+                resource->queue = shared->queue;
+                resource->device_handle = shared->device_handle;
+            } else {
+                resource->device = MTLCreateSystemDefaultDevice();
+                if (resource->device)
+                    resource->queue = [resource->device newCommandQueue];
+            }
+            if (!resource->device || !resource->queue)
+                return fail(NK_ERROR_UNSUPPORTED,
+                            "could not create a Metal device and command queue");
 
-        resource->view = [[NKMetalSurfaceView alloc]
-            initWithFrame:NSMakeRect(resource->x, resource->y, resource->width, resource->height)];
-        resource->view.wantsLayer = YES;
-        resource->layer = [CAMetalLayer layer];
-        resource->layer.device = resource->device;
-        resource->layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-        resource->layer.framebufferOnly = YES;
-        resource->layer.opaque = (options->flags & NK_SURFACE_ALPHA) == 0;
-        resource->view.layer = resource->layer;
-        resource->view.hidden = (options->flags & NK_SURFACE_HIDDEN) != 0;
-        [parent->content addSubview:resource->view positioned:NSWindowAbove relativeTo:nil];
-        set_surface_native_bounds(*resource);
-        if (resource->framebuffer_width > 0 && resource->framebuffer_height > 0 &&
-            !ensure_surface_depth_target(*resource, resource->framebuffer_width,
-                                         resource->framebuffer_height))
-            return fail(NK_ERROR_UNSUPPORTED, "could not create the Metal depth/stencil target");
-        resource->handle =
-            nk::core::handles().insert(nk::core::ResourceType::surface, resource);
-        if (resource->handle == NK_INVALID_HANDLE)
-            return fail(NK_ERROR_OUT_OF_MEMORY, "graphics surface handle registry is full");
-        if (!resource->device_handle)
-            resource->device_handle = resource->handle;
-        parent->surfaces.push_back(resource->handle);
-        if (shared)
-            ++shared->share_dependents;
-        resource->ready = true;
-        nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_SURFACE_READY;
-        event.source = resource->handle;
-        nk::core::push_event(std::move(event));
-        *out_surface = resource->handle;
-        return NK_OK;
-    });
+            resource->view = [[NKMetalSurfaceView alloc]
+                initWithFrame:NSMakeRect(resource->x, resource->y, resource->width,
+                                         resource->height)];
+            resource->view.wantsLayer = YES;
+            resource->layer = [CAMetalLayer layer];
+            resource->layer.device = resource->device;
+            resource->layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+            resource->layer.framebufferOnly = YES;
+            resource->layer.opaque = (options->flags & NK_SURFACE_ALPHA) == 0;
+            resource->view.layer = resource->layer;
+            resource->view.hidden = (options->flags & NK_SURFACE_HIDDEN) != 0;
+            [parent->content addSubview:resource->view positioned:NSWindowAbove relativeTo:nil];
+            set_surface_native_bounds(*resource);
+            if (resource->framebuffer_width > 0 && resource->framebuffer_height > 0 &&
+                !ensure_surface_depth_target(*resource, resource->framebuffer_width,
+                                             resource->framebuffer_height))
+                return fail(NK_ERROR_UNSUPPORTED,
+                            "could not create the Metal depth/stencil target");
+            resource->handle =
+                nk::core::handles().insert(nk::core::ResourceType::surface, resource);
+            if (resource->handle == NK_INVALID_HANDLE)
+                return fail(NK_ERROR_OUT_OF_MEMORY, "graphics surface handle registry is full");
+            if (!resource->device_handle)
+                resource->device_handle = resource->handle;
+            parent->surfaces.push_back(resource->handle);
+            if (shared)
+                ++shared->share_dependents;
+            resource->ready = true;
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_SURFACE_READY;
+            event.source = resource->handle;
+            nk::core::push_event(std::move(event));
+            *out_surface = resource->handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
@@ -2836,7 +2964,8 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
     if (resource->share_dependents)
-        return fail(NK_ERROR_INVALID_REQUEST, "graphics surface is still shared by another surface");
+        return fail(NK_ERROR_INVALID_REQUEST,
+                    "graphics surface is still shared by another surface");
     if (nk_core_graphics_device_has_references(nk_graphics_device{resource->device_handle}))
         return fail(NK_ERROR_INVALID_REQUEST, "graphics surface still owns retained GPU resources");
     resource->destroying = true;
@@ -2941,23 +3070,25 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
     resource->frame_user_data = callback ? user_data : nullptr;
     if (!callback)
         return NK_OK;
-    resource->frame_timer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
-                                                           repeats:YES
-                                                             block:^(NSTimer *timer) {
-        (void)timer;
-        auto active = surface(handle);
-        if (!active || active->frame_callback != callback) {
-            [timer invalidate];
-            return;
-        }
-        nk::core::callback_boundary([&] {
-            if (nk_surface_make_current(handle) != NK_OK)
-                return;
-            callback(handle, active->framebuffer_width, active->framebuffer_height, user_data);
-            if (active->frame_prepared)
-                nk_surface_present(handle);
-        });
-    }];
+    resource->frame_timer =
+        [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
+                                        repeats:YES
+                                          block:^(NSTimer *timer) {
+                                            (void)timer;
+                                            auto active = surface(handle);
+                                            if (!active || active->frame_callback != callback) {
+                                                [timer invalidate];
+                                                return;
+                                            }
+                                            nk::core::callback_boundary([&] {
+                                                if (nk_surface_make_current(handle) != NK_OK)
+                                                    return;
+                                                callback(handle, active->framebuffer_width,
+                                                         active->framebuffer_height, user_data);
+                                                if (active->frame_prepared)
+                                                    nk_surface_present(handle);
+                                            });
+                                          }];
     return resource->frame_timer ? NK_OK
                                  : fail(NK_ERROR_UNKNOWN, "could not start the Metal frame timer");
 }
@@ -2997,16 +3128,13 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
     const bool prepared = resource->frame_prepared;
     target.width = prepared ? resource->framebuffer_width : 0;
     target.height = prepared ? resource->framebuffer_height : 0;
-    target.native_target = prepared && resource->drawable
-                               ? metal_object_token(resource->drawable.texture)
-                               : 0;
+    target.native_target =
+        prepared && resource->drawable ? metal_object_token(resource->drawable.texture) : 0;
     target.device.id = resource->device_handle;
     target.native_device = metal_object_token(resource->device);
     target.native_context = metal_object_token(resource->queue);
     target.native_depth_stencil_target = metal_object_token(resource->depth_stencil);
-    target.native_present_target = prepared
-                                       ? metal_object_token(resource->drawable)
-                                       : 0;
+    target.native_present_target = prepared ? metal_object_token(resource->drawable) : 0;
     nk::core::write_surface_frame_target(out_target, target);
     return NK_OK;
 }

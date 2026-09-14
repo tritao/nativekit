@@ -96,8 +96,7 @@ class UiRenderer {
     virtual bool lost() const = 0;
     virtual bool beginFrame() = 0;
     virtual bool beginWindowPass(int width, int height, bool clear) = 0;
-    virtual bool beginTargetPass(ResourceId target, int width, int height,
-                                 bool load_existing) = 0;
+    virtual bool beginTargetPass(ResourceId target, int width, int height, bool load_existing) = 0;
     virtual bool beginSurfacePass(ResourceId target, const SurfaceDescriptor &description,
                                   bool load_existing) = 0;
     virtual bool drawSurfaceMesh(const SurfaceMeshView &mesh) = 0;
@@ -106,8 +105,8 @@ class UiRenderer {
                                   const SurfaceDescriptor &description) const = 0;
     virtual void markSurfaceCurrent(ResourceId target, uint32_t generation,
                                     const SurfaceDescriptor &description) = 0;
-    virtual bool setScissor(bool enabled, float x = 0.0f, float y = 0.0f,
-                            float width = 0.0f, float height = 0.0f) = 0;
+    virtual bool setScissor(bool enabled, float x = 0.0f, float y = 0.0f, float width = 0.0f,
+                            float height = 0.0f) = 0;
     virtual bool drawPath(const PreparedPathData &path, uint32_t operation_index,
                           float opacity = 1.0f) = 0;
     virtual bool drawPath(const PreparedPathData &path, uint32_t operation_index,
@@ -116,8 +115,8 @@ class UiRenderer {
                            float height, const float transform[6], float opacity = 1.0f) = 0;
     virtual bool uploadAtlases(SkribidiAdapter &adapter, bool include_clean = false) = 0;
     virtual bool drawGlyphs(const PreparedGlyphs &glyphs, float opacity = 1.0f) = 0;
-    virtual bool drawGlyphs(const PreparedGlyphs &glyphs, const float transform[6],
-                            float origin_x, float origin_y, float opacity = 1.0f) = 0;
+    virtual bool drawGlyphs(const PreparedGlyphs &glyphs, const float transform[6], float origin_x,
+                            float origin_y, float opacity = 1.0f) = 0;
     virtual bool compositeImage(ResourceId target, float x, float y, float width, float height,
                                 const float transform[6], float opacity) = 0;
     virtual bool compositeImage(nk_graphics_image image, float x, float y, float width,

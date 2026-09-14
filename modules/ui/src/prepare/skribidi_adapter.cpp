@@ -603,8 +603,8 @@ bool SkribidiAdapter::prepare_glyphs_internal(TextLayoutId id, float origin_x, f
     const auto *retained = find_layout(*state_, id);
     if (!retained || pixel_scale <= 0.0f)
         return false;
-    const uint32_t scale_key = static_cast<uint32_t>(
-        std::max(1.0, std::round(static_cast<double>(pixel_scale) * 1024.0)));
+    const uint32_t scale_key =
+        static_cast<uint32_t>(std::max(1.0, std::round(static_cast<double>(pixel_scale) * 1024.0)));
     if (state_->last_scale_key != scale_key) {
         state_->last_scale_key = scale_key;
         ++state_->scale_generation;
@@ -686,8 +686,8 @@ int32_t SkribidiAdapter::offset_from_position(TextPosition position) const {
     const auto *layout = active_layout(*state_);
     if (!layout)
         return 0;
-    const skb_text_position_t value = {
-        position.offset, static_cast<skb_caret_affinity_t>(position.affinity)};
+    const skb_text_position_t value = {position.offset,
+                                       static_cast<skb_caret_affinity_t>(position.affinity)};
     return skb_layout_get_offset_from_text_position(layout->layout, value);
 }
 
@@ -801,8 +801,7 @@ int32_t SkribidiAdapter::move_word(int32_t offset, int32_t direction, bool mac_s
 
     if (direction > 0) {
         if (mac_style) {
-            while (next < text_count &&
-                   (properties[next].flags & (whitespace | punctuation)) != 0)
+            while (next < text_count && (properties[next].flags & (whitespace | punctuation)) != 0)
                 next++;
             while (next < text_count) {
                 if ((properties[next].flags & word_break) != 0) {
@@ -826,8 +825,7 @@ int32_t SkribidiAdapter::move_word(int32_t offset, int32_t direction, bool mac_s
         }
     } else {
         if (mac_style) {
-            while (next > 0 &&
-                   (properties[next - 1].flags & (whitespace | punctuation)) != 0)
+            while (next > 0 && (properties[next - 1].flags & (whitespace | punctuation)) != 0)
                 next--;
         }
         if (next > 0)
@@ -848,8 +846,7 @@ int32_t SkribidiAdapter::move_word(int32_t offset, int32_t direction, bool mac_s
     return std::clamp(skb_layout_align_grapheme_offset(layout, next), 0, text_count);
 }
 
-int32_t SkribidiAdapter::move_paragraph(int32_t offset, int32_t direction,
-                                       bool mac_style) const {
+int32_t SkribidiAdapter::move_paragraph(int32_t offset, int32_t direction, bool mac_style) const {
     const auto *retained = active_layout(*state_);
     if (!retained || direction == 0)
         return offset;
@@ -941,8 +938,8 @@ SkribidiAdapterStats SkribidiAdapter::stats() const {
     result.atlas_pages = atlas_texture_count();
     result.scale_generation = state_->scale_generation;
     for (const auto &upload : atlas_uploads(true))
-        result.atlas_bytes += static_cast<uint64_t>(upload.texture_width) *
-                              upload.texture_height * upload.bytes_per_pixel;
+        result.atlas_bytes += static_cast<uint64_t>(upload.texture_width) * upload.texture_height *
+                              upload.bytes_per_pixel;
     return result;
 }
 

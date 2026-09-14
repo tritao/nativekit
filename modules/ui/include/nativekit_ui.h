@@ -640,23 +640,28 @@ NKUI_API nkui_result nkui_font_collection_add_system_fallbacks(nkui_resource fon
  * layout resource to `out_layout`; the input string is consumed while the
  * layout is built. A null text pointer represents an empty UTF-8 string.
  */
-NKUI_API nkui_result nkui_text_layout_create(nkui_resource fonts, const char *text NKUI_NULLABLE_UTF8,
-                                             float width, float font_size,
-                                             nkui_resource *out_layout NKUI_OUT);
+NKUI_API nkui_result nkui_text_layout_create(nkui_resource fonts,
+                                             const char *text NKUI_NULLABLE_UTF8, float width,
+                                             float font_size, nkui_resource *out_layout NKUI_OUT);
 
-/** Creates a text layout using the shared semantic text and paragraph styles; null text is empty. */
-NKUI_API nkui_result nkui_text_layout_create_styled(nkui_resource fonts, const char *text NKUI_NULLABLE_UTF8,
+/** Creates a text layout using the shared semantic text and paragraph styles; null text is empty.
+ */
+NKUI_API nkui_result nkui_text_layout_create_styled(nkui_resource fonts,
+                                                    const char *text NKUI_NULLABLE_UTF8,
                                                     float width, const nkui_text_style *text_style,
                                                     const nkui_paragraph_style *paragraph_style,
                                                     nkui_resource *out_layout NKUI_OUT);
 
 /** Re-shapes an existing layout while retaining its native resource handle; null text is empty. */
-NKUI_API nkui_result nkui_text_layout_update(nkui_resource layout, const char *text NKUI_NULLABLE_UTF8,
-                                             float width, const nkui_text_style *text_style,
+NKUI_API nkui_result nkui_text_layout_update(nkui_resource layout,
+                                             const char *text NKUI_NULLABLE_UTF8, float width,
+                                             const nkui_text_style *text_style,
                                              const nkui_paragraph_style *paragraph_style);
 
-/** Re-shapes an existing layout with new UTF-8 text while retaining its handle and style; null text is empty. */
-NKUI_API nkui_result nkui_text_layout_set_text(nkui_resource layout, const char *text NKUI_NULLABLE_UTF8);
+/** Re-shapes an existing layout with new UTF-8 text while retaining its handle and style; null text
+ * is empty. */
+NKUI_API nkui_result nkui_text_layout_set_text(nkui_resource layout,
+                                               const char *text NKUI_NULLABLE_UTF8);
 
 /** Returns the layout bounds in `out_metrics`. */
 NKUI_API nkui_result nkui_text_layout_measure(nkui_resource layout,
@@ -673,8 +678,8 @@ NKUI_API nkui_result nkui_text_layout_hit_test(nkui_resource layout, float x, fl
                                                nkui_text_position *out_position NKUI_OUT);
 /** Converts a shaped text position to its affinity-aware code-point insertion offset. */
 NKUI_API nkui_result nkui_text_layout_position_offset(nkui_resource layout,
-                                                       nkui_text_position position,
-                                                       int32_t *out_offset NKUI_OUT);
+                                                      nkui_text_position position,
+                                                      int32_t *out_offset NKUI_OUT);
 
 /**
  * Returns visual caret geometry for a text position.
@@ -735,8 +740,7 @@ NKUI_API nkui_result nkui_text_layout_move_paragraph(nkui_resource layout, int32
                                                      int32_t *out_offset NKUI_OUT);
 
 /** Returns a half-open insertion-offset range for the word under a hit-tested position. */
-NKUI_API nkui_result nkui_text_layout_word_range(nkui_resource layout,
-                                                 nkui_text_position position,
+NKUI_API nkui_result nkui_text_layout_word_range(nkui_resource layout, nkui_text_position position,
                                                  int32_t *out_start NKUI_OUT,
                                                  int32_t *out_end NKUI_OUT);
 
@@ -809,9 +813,9 @@ NKUI_API nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_dis
                                                 const nkui_frame_info *frame_info);
 
 /** Renders a display list over the currently presented frame without clearing it. */
-NKUI_API nkui_result nkui_renderer_render_frame_overlay(
-    nkui_renderer renderer, nkui_display_list list, nk_surface surface,
-    const nkui_frame_info *frame_info);
+NKUI_API nkui_result nkui_renderer_render_frame_overlay(nkui_renderer renderer,
+                                                        nkui_display_list list, nk_surface surface,
+                                                        const nkui_frame_info *frame_info);
 
 /**
  * Releases the caller's ownership of a UI resource.
