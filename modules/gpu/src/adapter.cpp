@@ -1319,9 +1319,12 @@ nkgpu_result nkgpu_shader_create(nkgpu_renderer r, nkgpu_shader_language languag
         desc.vertex_func.d3d11_target = "vs_5_0";
         desc.fragment_func.d3d11_target = "ps_5_0";
     }
-    if (language == NKGPU_SHADERLANGUAGE_HLSL5 || language == NKGPU_SHADERLANGUAGE_MSL) {
+    if (language == NKGPU_SHADERLANGUAGE_HLSL5) {
         desc.vertex_func.entry = "main";
         desc.fragment_func.entry = "main";
+    } else if (language == NKGPU_SHADERLANGUAGE_MSL) {
+        desc.vertex_func.entry = "main0";
+        desc.fragment_func.entry = "main0";
     }
     sg_shader object = sg_make_shader(&desc);
     if (sg_query_shader_state(object) != SG_RESOURCESTATE_VALID) {
@@ -1375,9 +1378,12 @@ nkgpu_result nkgpu_shader_begin(nkgpu_renderer r, nkgpu_shader_language language
         s->value.desc.vertex_func.d3d11_target = "vs_5_0";
         s->value.desc.fragment_func.d3d11_target = "ps_5_0";
     }
-    if (language == NKGPU_SHADERLANGUAGE_HLSL5 || language == NKGPU_SHADERLANGUAGE_MSL) {
+    if (language == NKGPU_SHADERLANGUAGE_HLSL5) {
         s->value.desc.vertex_func.entry = "main";
         s->value.desc.fragment_func.entry = "main";
+    } else if (language == NKGPU_SHADERLANGUAGE_MSL) {
+        s->value.desc.vertex_func.entry = "main0";
+        s->value.desc.fragment_func.entry = "main0";
     }
     *out = h;
     return NKGPU_OK;

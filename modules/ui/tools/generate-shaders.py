@@ -77,8 +77,6 @@ def generate(shdc: str) -> bytes:
                     raise RuntimeError(f"duplicate generated shader: {path.name}")
                 found.add(key)
                 source = path.read_text(encoding="utf-8")
-                if slang == "metal_macos":
-                    source = re.sub(r"\bmain0\(", "main(", source)
                 symbol = f"ui_shader_{program}_{slang}_{stage}"
                 if symbol in symbols:
                     raise RuntimeError(f"duplicate C++ shader symbol: {symbol}")
