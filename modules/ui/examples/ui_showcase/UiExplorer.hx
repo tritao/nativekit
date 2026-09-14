@@ -70,8 +70,24 @@ import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.VirtualList;
+import pages.ControlsPage;
+import pages.GraphicsPage;
+import pages.GesturesPage;
+import pages.LayoutPage;
+import pages.ListsPage;
+import pages.OverlaysPage;
+import pages.OverviewPage;
+import pages.TextPage;
 
 /** Interactive, Haxe-composed showcase for NativeKit's UI framework. */
+@:allow(pages.GraphicsPage)
+@:allow(pages.ControlsPage)
+@:allow(pages.GesturesPage)
+@:allow(pages.LayoutPage)
+@:allow(pages.ListsPage)
+@:allow(pages.OverlaysPage)
+@:allow(pages.OverviewPage)
+@:allow(pages.TextPage)
 class UiExplorer {
 	public static inline var TARGET_FPS:Float = 60.0;
 	static inline var LIST_COUNT:Int = 10000;
@@ -526,275 +542,35 @@ class UiExplorer {
 	}
 
 	function buildOverview(items:Array<KeyedView>):Void {
-		pageHeading(items, "Haxe UI, rendered by NativeKit",
-			"A live explorer for composition, native layout, input and rendering.");
-		var cards = new Row("overview-cards", [
-			keyed("platform-card", card("platform-card", "PLATFORM", platformLabel,
-				"NativeKit owns the window, input and graphics surface.")),
-			keyed("composition-card", card("composition-card", "COMPOSITION", "Haxe widgets",
-				"Stable widget IDs keep focus and state across frames.")),
-			keyed("layout-card", card("layout-card", "LAYOUT", "Native engine",
-				"Submit the tree, resolve bounds, then render the result."))
-		], rowStyle(0.0));
-		items.push(keyed("overview-cards", cards));
-		items.push(keyed("overview-quick-start", panel("quick-start", [
-			keyed("quick-title", text("Try the framework", paletteText())),
-			keyed("quick-copy", text("Switch pages from the catalog. Edit the multilingual text field, tab through controls, scroll the virtual list, or open the live inspector.", paletteMuted())),
-			keyed("quick-controls", new Row("quick-controls", [
-				keyed("toggle", new Toggle("overview-toggle", "Enable preview", enabled, function(value) { enabled = value; })),
-				keyed("progress", new ProgressBar("overview-progress", progress, 0.0, 1.0, "Preview progress"))
-			], rowStyle(18.0)))
-		])));
-		items.push(keyed("overview-pipeline", panel("pipeline", [
-			keyed("pipeline-title", text("One application, two runtimes", paletteText())),
-			keyed("pipeline-copy", text("NativeKit provides platform, IME and graphics services. Haxe owns the UI tree, state and semantics. The same showcase runs on desktop and WebAssembly.", paletteMuted()))
-		])));
-		items.push(keyed("overview-motion", panel("motion", [
-			keyed("motion-title", text("Haxe-owned motion", paletteText())),
-			keyed("motion-copy", text('Tween ${Std.int(tweenValue * 100)}%  ·  Spring ${Std.int(springValue * 100)}%', paletteMuted())),
-			keyed("motion-actions", new Row("motion-actions", [
-				keyed("play-tween", button("Play tween", "play-tween", function() {
-					tweenController.play(0.0, 1.0, 0.8);
-				})),
-				keyed("play-spring", button("Spring bounce", "play-spring", function() {
-					springController.setTarget(springValue < 0.5 ? 1.0 : 0.18);
-				}))
-			], rowStyle(10.0)))
-		])));
+		OverviewPage.build(this, items);
 	}
 
 	function buildControls(items:Array<KeyedView>):Void {
-		pageHeading(items, "Controls", "Focus, hover, pressed, selected and disabled states are part of each widget.");
-		items.push(keyed("controls-row", new Row("controls-row", [
-			keyed("buttons", panel("buttons-card", [
-				keyed("heading", text("Buttons", paletteText())),
-				keyed("primary", button("Primary action", "primary-action", function() { progress = Math.min(1.0, progress + 0.08); })),
-				keyed("secondary", button("Selected", "selected-action", function() {}, true)),
-				keyed("disabled", disabledButton("Disabled action")),
-				keyed("hint", text("Tab to focus · Enter to activate", paletteMuted()))
-			])),
-			keyed("selection", panel("selection-card", [
-				keyed("heading", text("Selection", paletteText())),
-				keyed("checkbox", new Checkbox("show-labels", "Show labels", checked, function(value) { checked = value; })),
-				keyed("toggle", new Toggle("control-enabled", "Live updates", enabled, function(value) { enabled = value; })),
-				keyed("radio", new RadioGroup("density", [
-					new RadioOption("comfortable", "Comfortable", "comfortable"),
-					new RadioOption("compact", "Compact", "compact"),
-					new RadioOption("disabled", "Unavailable", "disabled", false)
-				], radioValue, function(value) { radioValue = value; }))
-			]))
-		], rowStyle(14.0))));
-		items.push(keyed("controls-range", panel("range-card", [
-			keyed("heading", text("Range and progress", paletteText())),
-			keyed("slider-label", text('Opacity / volume  ·  ${Std.int(volume * 100)}%', paletteMuted())),
-			keyed("slider", slider()),
-			keyed("progress-label", text('Progress  ·  ${Std.int(progress * 100)}%', paletteMuted())),
-			keyed("progress", new ProgressBar("showcase-progress", progress, 0.0, 1.0, "Task progress")),
-			keyed("advance", button("Advance progress", "advance-progress", function() {
-				progress = progress >= 1.0 ? 0.0 : Math.min(1.0, progress + 0.1);
-			}))
-		])));
+		ControlsPage.build(this, items);
 	}
 
 	function buildTextPage(items:Array<KeyedView>):Void {
-		pageHeading(items, "Text & Input", "Native text shaping, selection and keyboard editing, with platform IME composition where available.");
-		items.push(keyed("text-input-row", new Row("text-input-row", [
-			keyed("single-line", panel("text-field-card", [
-				keyed("heading", text("TextField", paletteText())),
-				keyed("copy", text("Type, select, paste and move the caret with the keyboard.", paletteMuted())),
-				keyed("field", textField()),
-				keyed("value", text('Current value: ${nameValue}', paletteMuted()))
-			])),
-			keyed("multiline", panel("text-area-card", [
-				keyed("heading", text("TextArea + IME", paletteText())),
-				keyed("copy", text("Compose accented text or switch to an RTL / CJK keyboard.", paletteMuted())),
-				keyed("area", textArea()),
-				keyed("sample", text("مرحبا NativeKit  ·  שלום  ·  こんにちは  ·  👋", color(0.40, 0.83, 0.87)))
-			]))
-		], rowStyle(14.0))));
-		items.push(keyed("text-architecture", panel("text-architecture", [
-			keyed("heading", text("Platform text-input status", paletteText())),
-			keyed("copy", text(textInputStatus(), paletteMuted()))
-		])));
-	}
-
-	function textInputStatus():String {
-		if (context.textInput.platformChecked && !context.textInput.platformSupported)
-			return "This NativeKit backend does not provide custom IME state. The editor remains active for delivered Unicode text input, but composition updates may be unavailable.";
-		if (context.textInput.platformSupported)
-			return "The focused editor publishes selection, composition range and caret bounds to NativeKit; the host returns committed text and composition updates through the UI event path.";
-		return "Focus a text field to check custom IME support. Unsupported backends keep text editing active, while composition updates may be unavailable.";
+		TextPage.build(this, items);
 	}
 
 	function buildLayoutPage(items:Array<KeyedView>):Void {
-		pageHeading(items, "Layout", "Resize the window to watch the native layout transaction reflow these Haxe compositions.");
-		items.push(keyed("layout-primitives", new Row("layout-primitives", [
-			keyed("row-column", panel("row-column", [
-				keyed("heading", text("Row + Column", paletteText())),
-				keyed("copy", text("Fixed gaps and grow sizing", paletteMuted())),
-				keyed("row", new Row("sample-row", [
-					keyed("one", colorTile("One", color(0.24, 0.48, 0.77))),
-					keyed("two", colorTile("Two", color(0.39, 0.34, 0.72))),
-					keyed("three", colorTile("Three", color(0.20, 0.58, 0.52)))
-				], rowStyle(8.0)))
-			])),
-			keyed("padding-align", panel("padding-align", [
-				keyed("heading", text("Padding + Align", paletteText())),
-				keyed("aligned", new Align("centered-content",
-					colorTile("Centered in a padded box", color(0.30, 0.40, 0.59)),
-					LayoutAlignment.Center, LayoutAlignment.Center, fixedBoxStyle(270.0, 90.0)))
-			]))
-		], rowStyle(14.0))));
-		items.push(keyed("layout-stack", panel("stack-demo", [
-			keyed("heading", text("Stack + clipping", paletteText())),
-			keyed("copy", text("Positioned children paint by z-index and inherit their parent's clip.", paletteMuted())),
-			keyed("stack", stackDemo())
-		])));
+		LayoutPage.build(this, items);
 	}
 
 	function buildListsPage(items:Array<KeyedView>):Void {
-		pageHeading(items, "Scrolling & Data", "A fixed-row VirtualList with a real 10,000-item data set and explicit visible-range reporting.");
-		var first = Std.int(listController.offsetY / LIST_ROW_HEIGHT) + 1;
-		var last = Std.int((listController.offsetY + Math.max(0.0, listController.viewportHeight)) /
-			LIST_ROW_HEIGHT) + 1;
-		if (last > LIST_COUNT)
-			last = LIST_COUNT;
-		if (first > LIST_COUNT)
-			first = LIST_COUNT;
-		items.push(keyed("list-status", panel("list-status", [
-			keyed("status", text('Rendering rows ${first}–${last} / ${LIST_COUNT}', color(0.35, 0.85, 0.69))),
-			keyed("copy", text("Scroll inside the list. Only the viewport window and a small overscan are built as Haxe widgets.", paletteMuted())),
-			keyed("jump", button("Jump to row 415", "jump-row", function() {
-				listController.jumpTo(0.0, 414.0 * LIST_ROW_HEIGHT);
-			}))
-		])));
-		items.push(keyed("virtual-list", virtualList));
+		ListsPage.build(this, items);
 	}
 
 	function buildOverlaysPage(items:Array<KeyedView>):Void {
-		pageHeading(items, "Navigation & Overlays", "Tabs, menus, popups, tooltips and dialogs share focus, clipping and z-order rules.");
-		items.push(keyed("tabs-card", panel("tabs-card", [
-			keyed("heading", text("Tabs", paletteText())),
-			keyed("tabs", new Tabs("demo-tabs", [
-				new TabItem("preview", "Preview", text("Selected content is built lazily and keeps a stable keyed identity.", paletteMuted())),
-				new TabItem("details", "Details", text("Tab navigation supports arrow keys and visible focus.", paletteMuted())),
-				new TabItem("disabled", "Disabled", text("This tab is not enabled.", paletteMuted()), false)
-			], selectedTab, function(value) { selectedTab = value; }))
-		])));
-		items.push(keyed("overlay-actions", panel("overlay-actions", [
-			keyed("heading", text("Open an overlay", paletteText())),
-			keyed("actions", new Row("overlay-buttons", [
-				keyed("dialog", button("Show dialog", "show-dialog", function() { showDialog = true; })),
-				keyed("popup", button("Show popup", "show-popup", function() { showPopup = true; })),
-				keyed("menu", button("Show menu", "show-menu", function() { showMenu = true; }))
-			], rowStyle(10.0))),
-			keyed("menu-state", text(menuSelection, paletteMuted())),
-			keyed("tooltip", new Tooltip("tooltip-demo",
-				button("Hover for tooltip", "tooltip-anchor", function() {}),
-				text("Tooltip content is positioned in a Stack layer.", paletteText()), 0.0, -32.0))
-		])));
+		OverlaysPage.build(this, items);
 	}
 
 	function buildGesturesPage(items:Array<KeyedView>):Void {
-		pageHeading(items, "Gestures & Motion",
-			"Haxe recognizers arbitrate taps, holds and drags; frame-ticked tween and spring controllers animate ordinary UI state.");
-		var stageStyle = panelStyle();
-		stageStyle.height = LayoutAxis.fixed(174.0);
-		var cardStyle = new LayoutStyle();
-		cardStyle.width = LayoutAxis.grow();
-		cardStyle.height = LayoutAxis.fixed(48.0);
-		var gestureCard = button("Touch, hold, or drag me", "gesture-card-button", function() {
-			gestureMessage = "Button activation routed through the child view.";
-		});
-		gestureCard.style.width = LayoutAxis.grow();
-		gestureCard.style.height = LayoutAxis.fixed(48.0);
-		var detector = new GestureDetector("gesture-playground-detector", gestureCard, [
-			new TapRecognizer(function(_) {
-				tapCount++;
-				gestureMessage = "Tap recognized.";
-			}),
-			new DoubleTapRecognizer(function(_) {
-				doubleTapCount++;
-				gestureMessage = "Double tap recognized on the same target.";
-			}),
-			new LongPressRecognizer(function(_) {
-				longPressCount++;
-				gestureMessage = "Long press recognized after a stationary hold.";
-			}),
-			new DragRecognizer(8.0,
-				function(_) {
-					dragCount++;
-					dragOriginX = dragCardX;
-					dragOriginY = dragCardY;
-					gestureMessage = "Drag won the gesture arena.";
-				},
-				function(event) {
-					var sidebar = width < 760.0 ? 176.0 : 212.0;
-					var inspectorWidth = inspectorOpen && width >= 880.0 ? 270.0 : 0.0;
-					var maxX = Math.max(8.0, width - sidebar - inspectorWidth - 300.0);
-					dragCardX = clamp(dragOriginX + event.deltaX, 8.0, maxX);
-					dragCardY = clamp(dragOriginY + event.deltaY, 8.0, 96.0);
-				},
-				function(_) { gestureMessage = "Drag ended."; })
-		], cardStyle);
-		items.push(keyed("gesture-playground", panel("gesture-playground-card", [
-			keyed("heading", text("Gesture arena", paletteText())),
-			keyed("copy", text("Tap and double-tap the card, hold for a long press, or move past the drag threshold. A recognized drag cancels tap delivery.", paletteMuted())),
-			keyed("stage", new Stack("gesture-playground-stage", [
-				new StackChild("draggable-card", detector, dragCardX, dragCardY, 1,
-					LayoutAxis.fixed(230.0), LayoutAxis.fixed(48.0))
-			], stageStyle)),
-			keyed("gesture-status", text(gestureMessage, color(0.35, 0.85, 0.69))),
-			keyed("gesture-counts", text('Tap ${tapCount}  ·  Double tap ${doubleTapCount}  ·  Long press ${longPressCount}  ·  Drag ${dragCount}', paletteMuted()))
-		])));
-
-		var motionStyle = panelStyle();
-		motionStyle.height = LayoutAxis.fixed(132.0);
-		var tweenX = 8.0 + tweenValue * 150.0;
-		var springX = 8.0 + springValue * 150.0;
-		items.push(keyed("motion-playground", panel("motion-playground-card", [
-			keyed("heading", text("Animated properties", paletteText())),
-			keyed("copy", text("These cards move by rebuilding positioned layout from Haxe-owned tween and spring values.", paletteMuted())),
-			keyed("stage", new Stack("motion-stage", [
-				new StackChild("tween-marker", motionMarker("Tween", color(0.20, 0.52, 0.82)), tweenX, 12.0, 1),
-				new StackChild("spring-marker", motionMarker("Spring", color(0.24, 0.58, 0.48)), springX, 66.0, 1)
-			], motionStyle)),
-			keyed("actions", new Row("motion-actions", [
-				keyed("tween", button("Replay tween", "gesture-replay-tween", function() {
-					tweenController.play(tweenValue, tweenValue < 0.5 ? 1.0 : 0.0, 0.7);
-				})),
-				keyed("spring", button("Retarget spring", "gesture-retarget-spring", function() {
-					springController.setTarget(springValue < 0.5 ? 1.0 : 0.18);
-				}))
-			], rowStyle(10.0))),
-			keyed("motion-values", text('Tween ${Std.int(tweenValue * 100)}%  ·  Spring ${Std.int(springValue * 100)}%', paletteMuted()))
-		])));
-	}
-
-	function motionMarker(label:String, background:Color):View {
-		var style = new LayoutStyle();
-		style.width = LayoutAxis.fixed(112.0);
-		style.height = LayoutAxis.fixed(34.0);
-		style.padding = new Insets(9.0, 6.0, 9.0, 6.0);
-		style.background = background;
-		style.radiusTopLeft = style.radiusTopRight = 5.0;
-		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
-		return new Padding("motion-marker-padding", text(label, color(1.0, 1.0, 1.0)),
-			style.padding, style);
+		GesturesPage.build(this, items);
 	}
 
 	function buildGraphicsPage(items:Array<KeyedView>):Void {
-		pageHeading(items, "Graphics Lab", "The original retained graphics demonstration remains part of this showcase.");
-		items.push(keyed("graphics-card", panel("graphics-card", [
-			keyed("heading", text("Paths · text · images · offscreen rendering", paletteText())),
-			keyed("copy", text("Explore Bézier paths and stroke joins, multilingual shaping and caret hit testing, clipped image layers, retained display lists, and the depth-tested cube. The full graphics canvas keeps its existing renderer and deterministic visual tests.", paletteMuted())),
-			keyed("launch", button("Open full Graphics Lab", "open-graphics-lab", onOpenGraphics)),
-			keyed("hint", text("Press Escape in the Graphics Lab to return here.", paletteMuted()))
-		])));
-		items.push(keyed("graphics-pipeline", panel("graphics-pipeline", [
-			keyed("heading", text("Graphics is one page in the explorer", paletteText())),
-			keyed("copy", text("The catalog shell and framework demos use UiContext.submit → native layout → render. The original canvas lab remains available as the focused graphics workload.", paletteMuted()))
-		])));
+		GraphicsPage.build(this, items);
 	}
 
 	function buildInspector():Column {
