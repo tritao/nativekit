@@ -5,7 +5,9 @@
 
 #if defined(NKGPU_TESTING)
 #if defined(_WIN32)
-#if defined(NKGPU_BUILDING_LIBRARY)
+#if defined(NK_STATIC)
+#define NKGPU_TEST_API
+#elif defined(NKGPU_BUILDING_LIBRARY)
 #define NKGPU_TEST_API __declspec(dllexport)
 #else
 #define NKGPU_TEST_API __declspec(dllimport)

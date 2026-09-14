@@ -32,6 +32,7 @@
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <wrl/client.h>
+#include "nativekit_win_accessibility.hpp"
 
 #if defined(NK_HAS_WEBVIEW2)
 #include <WebView2.h>
@@ -1527,6 +1528,11 @@ LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, L
         surface = static_cast<WinSurfaceResource *>(create->lpCreateParams);
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(surface));
     }
+    if (surface && message == WM_GETOBJECT) {
+        LRESULT result = 0;
+        if (nk::windows::accessibility_handle_getobject(window, wparam, lparam, &result))
+            return result;
+    }
     if (surface && message == WM_MOUSEACTIVATE)
         return MA_NOACTIVATE;
     if (surface && message == WM_NCHITTEST)
@@ -2558,7 +2564,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
                                    NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
                                    NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
                                    NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR |
-                                   NK_CAP_POINTER_CAPTURE | NK_CAP_D3D11_SURFACE;
+                                   NK_CAP_POINTER_CAPTURE | NK_CAP_D3D11_SURFACE |
+                                   NK_CAP_ACCESSIBILITY;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
@@ -3277,6 +3284,11 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             return fail(NK_ERROR_UNSUPPORTED, "could not initialize the Direct3D surface targets");
         }
         resource->ready = true;
+        if (nk::windows::accessibility_attach(resource->window, resource->handle) != NK_OK) {
+            nk_surface_destroy(resource->handle);
+            return fail(NK_ERROR_OUT_OF_MEMORY,
+                        "could not initialize Direct3D surface accessibility");
+        }
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_SURFACE_READY;
         event.source = resource->handle;
@@ -3308,6 +3320,7 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
     resource->depth_stencil_target.Reset();
     resource->depth_texture.Reset();
     resource->swapchain.Reset();
+    nk::windows::accessibility_detach(resource->window);
     if (resource->window && IsWindow(resource->window))
         DestroyWindow(resource->window);
     resource->window = nullptr;

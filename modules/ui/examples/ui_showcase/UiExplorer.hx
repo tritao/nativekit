@@ -5,6 +5,7 @@ import LayoutAxis;
 import LayoutFrame;
 import LayoutStyle;
 import NativeKit.Handle;
+import NativeKit.Capabilities;
 import NativeKit.SurfaceHandle;
 import NativeKitEvents;
 import NativeKitSurface;
@@ -109,18 +110,27 @@ class UiExplorer {
 			context.animations, function(value) { state.gestures.springValue = value; });
 	}
 
-	/** Installs the native surface used by text editing and platform IME state. */
+	/** Installs the native surface used by text editing, IME state, and accessibility. */
 	public function attachSurface(surface:NativeKitSurface):Void {
 		nativeSurface = surface;
 		context.attachPlatformSurface(surface);
+		if (supportsNativeAccessibility())
+			context.updateAccessibility(surface);
 	}
 
 	/** Routes platform input through the framework's standard NativeKit adapter. */
 	public function attachInput(events:NativeKitEvents, window:Handle):NativeInputAdapter {
-		var input = new NativeInputAdapter(context, window);
+		var accessibilitySource = nativeSurface == null || !supportsNativeAccessibility() ? window :
+			new Handle(nativeSurface.nativeHandle().rawValue());
+		var input = new NativeInputAdapter(context, window, accessibilitySource);
 		input.attach(events);
 		return input;
 	}
+
+	function supportsNativeAccessibility():Bool
+		return haxe.Int64.compare(
+			haxe.Int64.and(NativeKit.nk_get_capabilities(), Capabilities.accessibility()),
+			haxe.Int64.ofInt(0)) != 0;
 
 	public function setViewport(width:Float, height:Float, framebufferWidth:Int,
 			framebufferHeight:Int, pixelScale:Float):Void {

@@ -222,9 +222,12 @@ elseif(WIN32)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${NK_WEBVIEW2_LOADER_DLL}" "$<TARGET_FILE_DIR:nativekit>")
     endif()
-    target_sources(nativekit PRIVATE src/windows/nativekit_win.cpp)
+    target_sources(nativekit PRIVATE
+        src/windows/nativekit_win.cpp
+        src/windows/nativekit_win_accessibility.cpp)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_WINDOWS=1)
-    target_link_libraries(nativekit PRIVATE user32 shell32 ole32 advapi32 imm32 d3d11 dxgi)
+    target_link_libraries(nativekit PRIVATE user32 shell32 ole32 oleaut32 advapi32 imm32
+        d3d11 dxgi)
 elseif(APPLE)
     target_sources(nativekit PRIVATE src/macos/nativekit_osx.mm)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_MACOS=1)
