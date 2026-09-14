@@ -410,15 +410,21 @@ bool SkribidiAdapter::measure_intrinsic_utf8(const char *text, const TextLayoutO
     const skb_attribute_t layout_attributes[] = {
         skb_attribute_make_text_wrap(SKB_WRAP_NONE),
         skb_attribute_make_horizontal_align(SKB_ALIGN_START)};
+    const skb_attribute_set_t layout_attribute_set{
+        .attributes = layout_attributes,
+        .attributes_count = static_cast<int32_t>(SKB_COUNTOF(layout_attributes)),
+    };
+    const skb_attribute_set_t attribute_set{
+        .attributes = attributes,
+        .attributes_count = static_cast<int32_t>(SKB_COUNTOF(attributes)),
+    };
     const skb_layout_params_t params = {.font_collection = state_->font_collection->native_handle(),
                                         .layout_width = 1000000.0f,
-                                        .layout_attributes =
-                                            SKB_ATTRIBUTE_SET_FROM_STATIC_ARRAY(layout_attributes)};
+                                        .layout_attributes = layout_attribute_set};
     skb_layout_t *layout = skb_layout_create(&params);
     if (!layout)
         return false;
-    skb_layout_set_utf8(layout, state_->temporary, &params, text, -1,
-                        SKB_ATTRIBUTE_SET_FROM_STATIC_ARRAY(attributes));
+    skb_layout_set_utf8(layout, state_->temporary, &params, text, -1, attribute_set);
     const skb_rect2_t bounds = skb_layout_get_bounds(layout);
     skb_layout_destroy(layout);
     if (result)
@@ -484,16 +490,22 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, const TextLayou
     const skb_attribute_t layout_attributes[] = {
         skb_attribute_make_text_wrap(wrap), skb_attribute_make_horizontal_align(align),
         skb_attribute_make_text_base_direction(base_direction)};
+    const skb_attribute_set_t layout_attribute_set{
+        .attributes = layout_attributes,
+        .attributes_count = static_cast<int32_t>(SKB_COUNTOF(layout_attributes)),
+    };
+    const skb_attribute_set_t attribute_set{
+        .attributes = attributes,
+        .attributes_count = static_cast<int32_t>(SKB_COUNTOF(attributes)),
+    };
     const skb_layout_params_t params = {.font_collection = state_->font_collection->native_handle(),
                                         .layout_width = width,
-                                        .layout_attributes =
-                                            SKB_ATTRIBUTE_SET_FROM_STATIC_ARRAY(layout_attributes)};
+                                        .layout_attributes = layout_attribute_set};
     auto retained = std::make_unique<State::RetainedLayout>();
     retained->layout = skb_layout_create(&params);
     if (!retained->layout)
         return false;
-    skb_layout_set_utf8(retained->layout, state_->temporary, &params, text, -1,
-                        SKB_ATTRIBUTE_SET_FROM_STATIC_ARRAY(attributes));
+    skb_layout_set_utf8(retained->layout, state_->temporary, &params, text, -1, attribute_set);
     retained->text = text;
     retained->width = width;
     retained->options = options;

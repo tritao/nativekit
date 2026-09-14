@@ -104,7 +104,6 @@ if(NK_BUILD_TESTS)
         tests/skribidi_adapter.cpp
         src/prepare/skribidi_adapter.cpp
         src/prepare/system_fonts.cpp)
-    target_compile_features(nativekit_ui_skribidi_adapter_test PRIVATE cxx_std_20)
     target_include_directories(nativekit_ui_skribidi_adapter_test PRIVATE src)
     target_compile_definitions(nativekit_ui_skribidi_adapter_test PRIVATE
         NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf"
@@ -133,7 +132,6 @@ if(NK_BUILD_TESTS)
         src/layout/clay_layout_backend.cpp
         src/prepare/skribidi_adapter.cpp
         src/prepare/system_fonts.cpp)
-    target_compile_features(nativekit_ui_layout_engine_test PRIVATE cxx_std_20)
     target_include_directories(nativekit_ui_layout_engine_test PRIVATE
         src "${NK_VENDOR_DIR}/clay")
     target_compile_definitions(nativekit_ui_layout_engine_test PRIVATE
@@ -151,7 +149,6 @@ if(NK_BUILD_TESTS)
         src/render/frame_resources.cpp
         src/render/render_plan_executor.cpp
         src/compositor/render_plan.cpp)
-    target_compile_features(nativekit_ui_layout_render_compiler_test PRIVATE cxx_std_20)
     target_include_directories(nativekit_ui_layout_render_compiler_test PRIVATE
         src "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/clay")
     target_compile_definitions(nativekit_ui_layout_render_compiler_test PRIVATE
@@ -198,6 +195,22 @@ if(NK_BUILD_TESTS)
             TIMEOUT 45
             ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
     endif()
+    foreach(target IN ITEMS
+        nativekit_ui_backend_smoke_test
+        nativekit_ui_display_list_test
+        nativekit_ui_nanovg_recorder_test
+        nativekit_ui_nanovg_path_test
+        nativekit_ui_skribidi_adapter_test
+        nativekit_ui_compositor_test
+        nativekit_ui_frame_resources_test
+        nativekit_ui_layout_engine_test
+        nativekit_ui_layout_render_compiler_test
+        nativekit_ui_layout_session_test
+        nativekit_ui_public_renderer_smoke_test)
+        if(TARGET ${target})
+            target_compile_features(${target} PRIVATE cxx_std_20)
+        endif()
+    endforeach()
 endif()
 
 if(NK_BUILD_EXAMPLES)
