@@ -21,7 +21,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: 12266719
+          packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
       - name: Install Android toolchain
         run: >-
@@ -64,7 +67,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: 12266719
+          packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
       - name: Install native toolchain
         run: >-
