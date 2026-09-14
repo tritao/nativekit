@@ -116,6 +116,7 @@ struct UiRendererImpl::State {
     nkgpu_pipeline composite_pipeline{};
     nkgpu_pipeline surface_mesh_pipeline{};
     nkgpu_sampler sampler{};
+    nkgpu_sampler glyph_sampler{};
     nkgpu_sampler surface_sampler{};
     nkgpu_sampler white_sampler{};
     nkgpu_image white_image{};
@@ -879,6 +880,8 @@ bool UiRendererImpl::initialize() {
     if (!gpu_result(*state_, nkgpu_sampler_create(state_->renderer, nearest, nearest, clamp,
                                                    clamp, &state_->sampler)) ||
         !gpu_result(*state_, nkgpu_sampler_create(state_->renderer, linear, linear, clamp,
+                                                   clamp, &state_->glyph_sampler)) ||
+        !gpu_result(*state_, nkgpu_sampler_create(state_->renderer, linear, linear, clamp,
                                                    clamp, &state_->surface_sampler)) ||
         !gpu_result(*state_, nkgpu_sampler_create(state_->renderer, nearest, nearest, clamp,
                                                    clamp, &state_->white_sampler)))
@@ -1203,8 +1206,15 @@ bool UiRendererImpl::drawGlyphs(const PreparedGlyphs &glyphs, float opacity) {
 bool UiRendererImpl::drawGlyphs(const PreparedGlyphs &glyphs, const float transform[6],
                                float origin_x, float origin_y, float opacity) {
     if (!state_->in_pass || !transform || !std::isfinite(opacity) || opacity < 0.0f ||
-        opacity > 1.0f)
+        opacity > 1.0f || !std::isfinite(glyphs.pixel_scale) || glyphs.pixel_scale <= 0.0f)
         return fail(*state_, "invalid glyph draw");
+    const float integral_scale = std::round(glyphs.pixel_scale);
+    // Preserve crisp texel alignment at integer scales; fractional device scales
+    // need coverage interpolation so glyph edges do not lose partial rows/columns.
+    const nkgpu_sampler glyph_sampler =
+        std::abs(glyphs.pixel_scale - integral_scale) < 0.0001f
+            ? state_->sampler
+            : state_->glyph_sampler;
     for (const auto &batch : glyphs.batches) {
         const auto atlas = state_->atlases.find(atlas_key(batch.atlas, batch.atlas_generation));
         if (atlas == state_->atlases.end())
@@ -1235,7 +1245,7 @@ bool UiRendererImpl::drawGlyphs(const PreparedGlyphs &glyphs, const float transf
         for (uint32_t index = 0; index < batch.index_count; ++index)
             indices.push_back(glyphs.indices[batch.first_index + index] - batch.first_vertex);
         if (!draw_mesh(*state_, pipeline, vertices, indices, nullptr, 0,
-                       atlas->second.image, state_->sampler, state_->glyph_vertices))
+                       atlas->second.image, glyph_sampler, state_->glyph_vertices))
             return false;
     }
     return true;
