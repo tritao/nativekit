@@ -22,6 +22,7 @@ class UiRendererImpl final : public UiRenderer {
     ~UiRendererImpl() override;
     bool initialize() override;
     bool valid() const override;
+    bool lost() const override;
     bool beginFrame() override;
     bool beginWindowPass(int width, int height, bool clear) override;
     bool beginTargetPass(ResourceId target, int width, int height, bool load_existing) override;
@@ -131,6 +132,7 @@ struct UiRendererImpl::State {
     std::unordered_map<const PreparedPathData *, std::unordered_map<PreparedImageToken, PaintImage>>
         paint_images;
     std::unordered_map<uint32_t, PaintImage> images;
+    std::unordered_map<const SkribidiAdapter *, SkribidiAdapterStats> text_stats;
     UiRendererStats stats{};
     std::string error;
     nk_surface surface = 0;
@@ -907,7 +909,17 @@ bool UiRendererImpl::initialize() {
     return true;
 }
 
-bool UiRendererImpl::valid() const { return state_ && state_->initialized; }
+bool UiRendererImpl::valid() const {
+    return state_ && state_->initialized && !lost();
+}
+
+bool UiRendererImpl::lost() const {
+    if (!state_ || !state_->renderer.id)
+        return false;
+    nkgpu_renderer_state renderer_state = NKGPU_RENDERER_READY;
+    return nkgpu_renderer_get_state(state_->renderer, &renderer_state) == NKGPU_OK &&
+           renderer_state == NKGPU_RENDERER_LOST;
+}
 
 bool UiRendererImpl::beginFrame() {
     if (!valid() || state_->in_frame)
@@ -1153,6 +1165,7 @@ bool UiRendererImpl::uploadAtlases(SkribidiAdapter &adapter, bool include_clean)
                 return false;
             found = state_->atlases.emplace(key, std::move(atlas)).first;
             ++state_->stats.gpu_resources;
+            ++state_->stats.atlas_rebuilds;
             if (replacing_generation)
                 ++state_->stats.atlas_reallocations;
         } else if (found->second.width != upload.texture_width ||
@@ -1166,6 +1179,7 @@ bool UiRendererImpl::uploadAtlases(SkribidiAdapter &adapter, bool include_clean)
                                                upload.bytes_per_pixel
                                          : 0;
         state_->stats.atlas_dirty_bytes += dirty_bytes;
+        state_->stats.atlas_dirty_upload_bytes += dirty_bytes;
         if (upload.dirty)
             state_->stats.atlas_dirty_capacity_bytes +=
                 static_cast<uint64_t>(upload.texture_width) * upload.texture_height *
@@ -1174,6 +1188,8 @@ bool UiRendererImpl::uploadAtlases(SkribidiAdapter &adapter, bool include_clean)
         // contract. Later updates refresh the full CPU mirror before upload so
         // rotating backend storage cannot lose clean glyphs.
         if (!new_generation) {
+            if (upload.dirty)
+                ++state_->stats.atlas_full_upload_fallbacks;
             copy_atlas_pixels(found->second, upload, true);
             const uint32_t row_pitch = static_cast<uint32_t>(found->second.width) *
                                        found->second.bytes_per_pixel;
@@ -1185,6 +1201,7 @@ bool UiRendererImpl::uploadAtlases(SkribidiAdapter &adapter, bool include_clean)
                 return false;
         }
         ++state_->stats.atlas_full_uploads;
+        ++state_->stats.glyph_uploads;
         const uint64_t uploaded_bytes = found->second.pixels.size();
         found->second.generation = upload.generation;
         ++state_->stats.image_uploads;
@@ -1195,6 +1212,25 @@ bool UiRendererImpl::uploadAtlases(SkribidiAdapter &adapter, bool include_clean)
         if (new_generation)
             retire_atlas_generations(*state_, upload.texture, upload.generation);
     }
+    const SkribidiAdapterStats current = adapter.stats();
+    auto &previous = state_->text_stats[&adapter];
+    state_->stats.text_layout_cache_hits += current.text_layout_cache_hits >=
+                                                   previous.text_layout_cache_hits
+                                               ? current.text_layout_cache_hits -
+                                                     previous.text_layout_cache_hits
+                                               : current.text_layout_cache_hits;
+    state_->stats.text_layout_cache_misses += current.text_layout_cache_misses >=
+                                                      previous.text_layout_cache_misses
+                                                  ? current.text_layout_cache_misses -
+                                                        previous.text_layout_cache_misses
+                                                  : current.text_layout_cache_misses;
+    state_->stats.glyphs_rasterized += current.glyphs_rasterized >= previous.glyphs_rasterized
+                                          ? current.glyphs_rasterized -
+                                                previous.glyphs_rasterized
+                                          : current.glyphs_rasterized;
+    previous = current;
+    state_->stats.atlas_scale_generation =
+        std::max<uint64_t>(state_->stats.atlas_scale_generation, current.scale_generation);
     return true;
 }
 
@@ -1336,7 +1372,41 @@ bool UiRendererImpl::endFrame() {
     return true;
 }
 
-UiRendererStats UiRendererImpl::stats() const { return state_ ? state_->stats : UiRendererStats{}; }
+UiRendererStats UiRendererImpl::stats() const {
+    if (!state_)
+        return {};
+    UiRendererStats stats = state_->stats;
+    stats.atlas_pages = state_->atlases.size();
+    stats.atlas_bytes = 0;
+    for (const auto &[key, atlas] : state_->atlases) {
+        (void)key;
+        stats.atlas_bytes += atlas.pixels.size();
+    }
+    if (state_->renderer.id) {
+        nkgpu_renderer_stats gpu{};
+        if (nkgpu_renderer_get_stats(state_->renderer, &gpu) == NKGPU_OK) {
+            stats.gpu = {gpu.frames,
+                         gpu.passes,
+                         gpu.draw_calls,
+                         gpu.buffers_live,
+                         gpu.images_live,
+                         gpu.samplers_live,
+                         gpu.shaders_live,
+                         gpu.pipelines_live,
+                         gpu.render_targets_live,
+                         gpu.buffer_bytes,
+                         gpu.image_bytes,
+                         gpu.render_target_bytes,
+                         gpu.upload_bytes,
+                         gpu.resource_creations,
+                         gpu.resource_destructions,
+                         gpu.surface_recreations,
+                         gpu.device_losses,
+                         gpu.failed_allocations};
+        }
+    }
+    return stats;
+}
 
 const char *UiRendererImpl::lastError() const {
     return state_ ? state_->error.c_str() : "UI renderer is unavailable";

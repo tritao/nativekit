@@ -146,6 +146,27 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		NKGPU_INDEXTYPE_UINT32 = 2;
 	}
 	/**
+	 * Observable renderer lifecycle state.
+	 */
+	enum nkgpu_renderer_state : u32 {
+		/**
+		 * The renderer is ready to begin a frame or standalone target pass.
+		 */
+		NKGPU_RENDERER_READY = 0;
+		/**
+		 * A window frame is active, including frames between render passes.
+		 */
+		NKGPU_RENDERER_FRAME_ACTIVE = 1;
+		/**
+		 * A standalone offscreen target pass is active.
+		 */
+		NKGPU_RENDERER_RENDER_TARGET_ACTIVE = 2;
+		/**
+		 * The backend/device is unusable; only diagnostics and destruction remain.
+		 */
+		NKGPU_RENDERER_LOST = 3;
+	}
+	/**
 	 * Result returned by a GPU adapter operation; zero is success.
 	 */
 	enum nkgpu_result : i32 {
@@ -169,6 +190,14 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * The operation is not valid in the current renderer or frame state.
 		 */
 		NKGPU_ERROR_WRONG_STATE = -4;
+		/**
+		 * The renderer's graphics device or backend has been lost.
+		 */
+		NKGPU_ERROR_DEVICE_LOST = -5;
+		/**
+		 * A backend or adapter resource allocation failed.
+		 */
+		NKGPU_ERROR_OUT_OF_MEMORY = -6;
 	}
 	/**
 	 * Source language accepted by the shader creation functions.
@@ -570,6 +599,14 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_renderer_destroy(renderer: nkgpu_renderer) -> nkgpu_result;
 	/**
+	 * Returns the explicit lifecycle state of a renderer.
+	 */
+	extern fn nkgpu_renderer_get_state(renderer: nkgpu_renderer, out_state: ptr<nkgpu_renderer_state> @out) -> nkgpu_result;
+	/**
+	 * Returns resource and submission counters for a renderer.
+	 */
+	extern fn nkgpu_renderer_get_stats(renderer: nkgpu_renderer, out_stats: ptr<nkgpu_renderer_stats> @out) -> nkgpu_result;
+	/**
 	 * Creates a texture sampler with independent minification and magnification
 	 * filters and U/V wrap modes.
 	 *
@@ -701,6 +738,31 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		src_alpha: nkgpu_blend_factor @offset(16);
 		dst_alpha: nkgpu_blend_factor @offset(20);
 		op_alpha: nkgpu_blend_op @offset(24);
+	}
+	/**
+	 * Resource, upload, and submission counters for one renderer.
+	 */
+	struct nkgpu_renderer_stats @layout(152, 8) {
+		struct_size: u32 @offset(0);
+		reserved: u32 @offset(4);
+		frames: u64 @offset(8);
+		passes: u64 @offset(16);
+		draw_calls: u64 @offset(24);
+		buffers_live: u64 @offset(32);
+		images_live: u64 @offset(40);
+		samplers_live: u64 @offset(48);
+		shaders_live: u64 @offset(56);
+		pipelines_live: u64 @offset(64);
+		render_targets_live: u64 @offset(72);
+		buffer_bytes: u64 @offset(80);
+		image_bytes: u64 @offset(88);
+		render_target_bytes: u64 @offset(96);
+		upload_bytes: u64 @offset(104);
+		resource_creations: u64 @offset(112);
+		resource_destructions: u64 @offset(120);
+		surface_recreations: u64 @offset(128);
+		device_losses: u64 @offset(136);
+		failed_allocations: u64 @offset(144);
 	}
 	/**
 	 * Operations applied to one stencil face.

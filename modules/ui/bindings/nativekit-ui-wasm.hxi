@@ -861,7 +861,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	/**
 	 * Preparation and geometry-cache counters for one renderer.
 	 */
-	struct nkui_renderer_stats @layout(64, 8) {
+	struct nkui_renderer_stats @layout(328, 8) {
 		/**
 		 * Set to sizeof(nkui_renderer_stats) when returned by the API.
 		 */
@@ -894,6 +894,138 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Vector capacity bytes currently retained by the path geometry cache.
 		 */
 		path_geometry_bytes_retained: u64 @offset(56);
+		/**
+		 * Render-plan commands submitted through this renderer.
+		 */
+		render_plan_commands: u64 @offset(64);
+		/**
+		 * Display-list render calls submitted through this renderer.
+		 */
+		display_list_count: u64 @offset(72);
+		/**
+		 * Cumulative display-list bytes processed by this renderer.
+		 */
+		display_list_bytes: u64 @offset(80);
+		/**
+		 * Completed GPU window and offscreen frames.
+		 */
+		gpu_frames: u64 @offset(88);
+		/**
+		 * GPU passes submitted by this renderer.
+		 */
+		gpu_passes: u64 @offset(96);
+		/**
+		 * GPU draw calls submitted by this renderer.
+		 */
+		gpu_draw_calls: u64 @offset(104);
+		/**
+		 * Live GPU buffer count.
+		 */
+		buffers_live: u64 @offset(112);
+		/**
+		 * Live GPU image count, excluding render-target images.
+		 */
+		images_live: u64 @offset(120);
+		/**
+		 * Live GPU sampler count.
+		 */
+		samplers_live: u64 @offset(128);
+		/**
+		 * Live GPU shader count.
+		 */
+		shaders_live: u64 @offset(136);
+		/**
+		 * Live GPU pipeline count.
+		 */
+		pipelines_live: u64 @offset(144);
+		/**
+		 * Live offscreen render-target count.
+		 */
+		render_targets_live: u64 @offset(152);
+		/**
+		 * Estimated live GPU buffer bytes.
+		 */
+		buffer_bytes: u64 @offset(160);
+		/**
+		 * Estimated live GPU image bytes, excluding render targets.
+		 */
+		image_bytes: u64 @offset(168);
+		/**
+		 * Estimated render-target color and depth storage bytes.
+		 */
+		render_target_bytes: u64 @offset(176);
+		/**
+		 * Bytes uploaded into GPU resources.
+		 */
+		upload_bytes: u64 @offset(184);
+		/**
+		 * Successfully created GPU resources.
+		 */
+		resource_creations: u64 @offset(192);
+		/**
+		 * GPU resource destruction requests completed.
+		 */
+		resource_destructions: u64 @offset(200);
+		/**
+		 * Surface/device identity changes observed by the GPU adapter.
+		 */
+		surface_recreations: u64 @offset(208);
+		/**
+		 * Fatal device-loss transitions.
+		 */
+		device_losses: u64 @offset(216);
+		/**
+		 * Failed GPU resource allocations.
+		 */
+		failed_allocations: u64 @offset(224);
+		/**
+		 * Live text atlas pages.
+		 */
+		atlas_pages: u64 @offset(232);
+		/**
+		 * Live text atlas bytes mirrored by the renderer.
+		 */
+		atlas_bytes: u64 @offset(240);
+		/**
+		 * Atlas page uploads issued by the UI renderer.
+		 */
+		glyph_uploads: u64 @offset(248);
+		/**
+		 * Monotonic text raster-scale generation observed by the renderer.
+		 */
+		atlas_scale_generation: u64 @offset(256);
+		/**
+		 * Retained text-layout cache hits.
+		 */
+		text_layout_cache_hits: u64 @offset(264);
+		/**
+		 * Retained text-layout cache misses.
+		 */
+		text_layout_cache_misses: u64 @offset(272);
+		/**
+		 * Custom paint nodes compiled by layout sessions.
+		 */
+		custom_paint_nodes: u64 @offset(280);
+		/**
+		 * Display-list bytes used by custom paint nodes.
+		 */
+		custom_paint_bytes: u64 @offset(288);
+		/**
+		 * Glyphs rasterized into the retained text atlas.
+		 */
+		glyphs_rasterized: u64 @offset(296);
+		/**
+		 * Atlas page generations created or rebuilt on the GPU.
+		 */
+		atlas_rebuilds: u64 @offset(304);
+		/**
+		 * Atlas partial subregion updates; currently zero when full uploads are used.
+		 */
+		atlas_partial_updates: u64 @offset(312);
+		/**
+		 * Bytes dirtied by glyph rasterization and submitted for atlas upload.
+		 */
+		atlas_dirty_upload_bytes: u64 @offset(320);
 	}
 	/**
 	 * Payload for NKUI_COMMAND_SET_PAINT and resource-only draw commands.

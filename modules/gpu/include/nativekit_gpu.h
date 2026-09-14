@@ -65,16 +65,24 @@ extern "C" {
  * derived from the surface's graphics API, not from a global build-time choice
  * when the backend matrix is enabled.
  *
- * The renderer alternates between idle, a window frame, and an offscreen
- * render-target pass. Begin operations are valid only while idle. A window
- * frame must end with nkgpu_end_frame(); an offscreen pass must end with
- * nkgpu_end_render_target(). These end operations are not interchangeable.
- * Drawing and binding operations require either active pass. Resource creation
- * and destruction are idle-only, except image and sampler creation and image
- * updates, which may also occur inside the active renderer's pass for streaming
- * texture workloads. Destroying an idle renderer invalidates all
- * of its remaining resources and unfinished builders; destroying a resource
- * with a different renderer returns NKGPU_ERROR_INVALID_HANDLE.
+ * The renderer alternates between Ready, a window frame, and active render
+ * passes. Begin operations require Ready or a frame with no active pass. A
+ * standalone offscreen pass must end with nkgpu_end_render_target(); a pass
+ * inside a window frame must end with nkgpu_end_pass(). These end operations
+ * are not interchangeable. Drawing and binding operations require an active
+ * pass. Resource creation and destruction require no active pass, except image
+ * and sampler creation and image updates, which may also occur inside the
+ * active renderer's pass for streaming texture workloads. Destroying an idle
+ * renderer invalidates all of its remaining resources and unfinished builders;
+ * destroying a resource with a different renderer returns
+ * NKGPU_ERROR_INVALID_HANDLE.
+ *
+ * The public renderer lifecycle is Ready -> FrameActive -> Ready for window
+ * frames and Ready -> RenderTargetActive -> Ready for standalone render-target
+ * passes. A fatal backend/device failure moves the renderer to Lost. Lost
+ * renderers reject rendering and resource creation with
+ * NKGPU_ERROR_DEVICE_LOST; destroying them remains safe. Surface resize and
+ * framebuffer/DPR changes do not imply device loss.
  *
  * Functions return NKGPU_OK on success. On failure, call nkgpu_last_error()
  * immediately for a diagnostic string. Handles are value types; do not free,
@@ -154,7 +162,48 @@ enum NK_ENUM(nkgpu_result) {
     NKGPU_ERROR_INVALID_HANDLE = -3,
     /** The operation is not valid in the current renderer or frame state. */
     NKGPU_ERROR_WRONG_STATE = -4,
+    /** The renderer's graphics device or backend has been lost. */
+    NKGPU_ERROR_DEVICE_LOST = -5,
+    /** A backend or adapter resource allocation failed. */
+    NKGPU_ERROR_OUT_OF_MEMORY = -6,
 };
+
+/** Observable renderer lifecycle state. */
+typedef uint32_t nkgpu_renderer_state;
+enum NK_ENUM(nkgpu_renderer_state) {
+    /** The renderer is ready to begin a frame or standalone target pass. */
+    NKGPU_RENDERER_READY = 0,
+    /** A window frame is active, including frames between render passes. */
+    NKGPU_RENDERER_FRAME_ACTIVE = 1,
+    /** A standalone offscreen target pass is active. */
+    NKGPU_RENDERER_RENDER_TARGET_ACTIVE = 2,
+    /** The backend/device is unusable; only diagnostics and destruction remain. */
+    NKGPU_RENDERER_LOST = 3,
+};
+
+/** Resource, upload, and submission counters for one renderer. */
+typedef struct nkgpu_renderer_stats {
+    uint32_t struct_size;
+    uint32_t reserved;
+    uint64_t frames;
+    uint64_t passes;
+    uint64_t draw_calls;
+    uint64_t buffers_live;
+    uint64_t images_live;
+    uint64_t samplers_live;
+    uint64_t shaders_live;
+    uint64_t pipelines_live;
+    uint64_t render_targets_live;
+    uint64_t buffer_bytes;
+    uint64_t image_bytes;
+    uint64_t render_target_bytes;
+    uint64_t upload_bytes;
+    uint64_t resource_creations;
+    uint64_t resource_destructions;
+    uint64_t surface_recreations;
+    uint64_t device_losses;
+    uint64_t failed_allocations;
+} nkgpu_renderer_stats;
 
 /** Backend selected when the GPU module was built. */
 typedef uint32_t nkgpu_backend;
@@ -398,6 +447,14 @@ NKGPU_API nkgpu_backend nkgpu_query_backend(nkgpu_renderer renderer);
 
 /** Returns the NativeKit graphics API selected for this renderer's surface. */
 NKGPU_API nk_graphics_api nkgpu_query_graphics_api(nkgpu_renderer renderer);
+
+/** Returns the explicit lifecycle state of a renderer. */
+NKGPU_API nkgpu_result nkgpu_renderer_get_state(nkgpu_renderer renderer,
+                                                nkgpu_renderer_state *out_state NKGPU_OUT);
+
+/** Returns resource and submission counters for a renderer. */
+NKGPU_API nkgpu_result nkgpu_renderer_get_stats(nkgpu_renderer renderer,
+                                                nkgpu_renderer_stats *out_stats NKGPU_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Surface and renderer lifecycle                                            */

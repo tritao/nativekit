@@ -56,6 +56,10 @@ struct SkribidiAdapter::State {
     std::unordered_map<TextLayoutId, std::unique_ptr<RetainedLayout>> layouts;
     uint32_t layout_builds = 0;
     uint64_t prepared_batch_count = 0;
+    uint64_t layout_cache_hits = 0;
+    uint64_t layout_cache_misses = 0;
+    uint32_t last_scale_key = 0;
+    uint32_t scale_generation = 0;
 };
 
 namespace {
@@ -453,9 +457,11 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, const TextLayou
             state_->active_layout_id = entry.first;
             if (result)
                 *result = cached.result;
+            ++state_->layout_cache_hits;
             return true;
         }
     }
+    ++state_->layout_cache_misses;
     const skb_text_wrap_t wrap = options.wrap == TextWrapMode::None   ? SKB_WRAP_NONE
                                  : options.wrap == TextWrapMode::Word ? SKB_WRAP_WORD
                                                                       : SKB_WRAP_WORD_CHAR;
@@ -597,6 +603,14 @@ bool SkribidiAdapter::prepare_glyphs_internal(TextLayoutId id, float origin_x, f
     const auto *retained = find_layout(*state_, id);
     if (!retained || pixel_scale <= 0.0f)
         return false;
+    const uint32_t scale_key = static_cast<uint32_t>(
+        std::max(1.0, std::round(static_cast<double>(pixel_scale) * 1024.0)));
+    if (state_->last_scale_key != scale_key) {
+        state_->last_scale_key = scale_key;
+        ++state_->scale_generation;
+        if (!state_->scale_generation)
+            ++state_->scale_generation;
+    }
     output = {};
     output.origin_x = origin_x;
     output.origin_y = origin_y;
@@ -910,12 +924,26 @@ uint32_t SkribidiAdapter::atlas_texture_count() const {
                          : 0;
 }
 
+uint32_t SkribidiAdapter::scale_generation() const {
+    return state_->scale_generation;
+}
+
 SkribidiAdapterStats SkribidiAdapter::stats() const {
     if (!state_->atlas)
         return {};
     const skb_image_atlas_stats_t atlas_stats = skb_image_atlas_get_stats(state_->atlas);
-    return {atlas_stats.glyph_cache_misses, atlas_stats.glyphs_rasterized,
-            state_->prepared_batch_count};
+    SkribidiAdapterStats result{};
+    result.glyph_cache_misses = atlas_stats.glyph_cache_misses;
+    result.glyphs_rasterized = atlas_stats.glyphs_rasterized;
+    result.prepared_batch_count = state_->prepared_batch_count;
+    result.text_layout_cache_hits = state_->layout_cache_hits;
+    result.text_layout_cache_misses = state_->layout_cache_misses;
+    result.atlas_pages = atlas_texture_count();
+    result.scale_generation = state_->scale_generation;
+    for (const auto &upload : atlas_uploads(true))
+        result.atlas_bytes += static_cast<uint64_t>(upload.texture_width) *
+                              upload.texture_height * upload.bytes_per_pixel;
+    return result;
 }
 
 std::vector<AtlasUpload> SkribidiAdapter::pending_atlas_uploads() const {

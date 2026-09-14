@@ -132,6 +132,11 @@ struct SkribidiAdapterStats {
     uint64_t glyph_cache_misses = 0;
     uint64_t glyphs_rasterized = 0;
     uint64_t prepared_batch_count = 0;
+    uint64_t text_layout_cache_hits = 0;
+    uint64_t text_layout_cache_misses = 0;
+    uint64_t atlas_pages = 0;
+    uint64_t atlas_bytes = 0;
+    uint32_t scale_generation = 0;
 };
 
 class SkribidiFontCollection {
@@ -208,6 +213,7 @@ class SkribidiAdapter {
     uint64_t layout_generation() const;
     uint32_t layout_build_count() const;
     uint32_t atlas_texture_count() const;
+    uint32_t scale_generation() const;
     SkribidiAdapterStats stats() const;
     std::vector<AtlasUpload> pending_atlas_uploads() const;
     std::vector<AtlasUpload> atlas_uploads(bool include_clean) const;

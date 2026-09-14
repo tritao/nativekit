@@ -21,13 +21,24 @@ both runtime variants. Other graphics APIs (including Vulkan and Metal) still
 require their own Sokol runtimes/adapters and are not enabled by this option.
 
 The public shader API requires an explicit `ShaderLanguage`; GLSL is the
-currently supported value for both C and Haxe. A renderer is idle between
-passes. GPU resource creation, destruction, and resource-builder operations
-require idle state; binding and drawing require an active window or offscreen
-pass. End a window pass with `endFrame()` and an offscreen pass with
-`RenderTarget.end()`. Destroying a renderer releases its remaining GPU
-resources and unfinished builders, while Haxe resource `dispose()` methods are
-idempotent. Handles from another renderer are rejected.
+currently supported value for both C and Haxe. The C renderer exposes
+`Ready`, `FrameActive`, `RenderTargetActive`, and `Lost` states. A window frame
+uses `nkgpu_begin_frame()` / `nkgpu_end_frame()`; a standalone offscreen pass
+uses `nkgpu_begin_render_target()` / `nkgpu_end_render_target()`. UI render-plan
+passes can also run between the begin and end of a window frame. Resource
+creation and destruction require no active pass, while binding and drawing
+require one. A fatal backend or device failure moves the renderer permanently
+to `Lost`: rendering and resource creation return
+`NKGPU_ERROR_DEVICE_LOST`, and callers must destroy and recreate that renderer.
+Destruction remains safe after loss. Surface resize and DPR changes preserve
+the renderer; they update the swapchain/framebuffer dimensions without
+discarding UI or text state. GPU statistics are queryable with
+`nkgpu_renderer_get_stats()`, and UI renderer statistics expose the GPU and
+atlas counters through `nkui_renderer_get_stats()`.
+
+Destroying a renderer releases its remaining GPU resources and unfinished
+builders, while Haxe resource `dispose()` methods are idempotent. Handles from
+another renderer are rejected.
 
 Build and run from the NativeKit repository root:
 
@@ -70,7 +81,12 @@ enabled, `nativekit_ui_public_renderer_smoke` checks the public UI renderer on
 the configured GPU backend.
 
 `nativekit_gpu_contract_smoke` covers shader-language validation, renderer
-ownership, renderer cleanup, and the window/offscreen frame state machine.
+ownership, renderer cleanup, the lost-state contract, injected allocation and
+present failures, and repeated retained `GraphicsImage` use after render-target
+and renderer destruction. `nativekit_ui_stress` runs a seeded 120-frame UI
+render sequence with changing DPR, surface bounds, and short-lived offscreen
+targets; its live-resource limits catch unbounded growth. The public UI renderer
+smoke also checks fractional/integer scale atlas behavior and text bounds.
 `modules/gpu/tools/test-haxeon.sh` compiles and runs the Haxe wrappers, including
 wrong-renderer checks, resource disposal, drawing into an offscreen target, and
 the retained `GraphicsImage` lifetime. `modules/gpu/tools/check-hxi.sh` checks

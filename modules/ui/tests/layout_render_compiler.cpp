@@ -26,6 +26,7 @@ class RecordingRenderer final : public UiRenderer {
   public:
     bool initialize() override { return true; }
     bool valid() const override { return true; }
+    bool lost() const override { return false; }
     bool beginFrame() override { ++frame_count; return true; }
     bool beginWindowPass(int, int, bool) override {
         ++pass_count;

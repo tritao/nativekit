@@ -132,6 +132,72 @@ typedef struct nkui_renderer_stats {
     uint64_t path_tessellation_nanoseconds;
     /** Vector capacity bytes currently retained by the path geometry cache. */
     uint64_t path_geometry_bytes_retained;
+    /** Render-plan commands submitted through this renderer. */
+    uint64_t render_plan_commands;
+    /** Display-list render calls submitted through this renderer. */
+    uint64_t display_list_count;
+    /** Cumulative display-list bytes processed by this renderer. */
+    uint64_t display_list_bytes;
+    /** Completed GPU window and offscreen frames. */
+    uint64_t gpu_frames;
+    /** GPU passes submitted by this renderer. */
+    uint64_t gpu_passes;
+    /** GPU draw calls submitted by this renderer. */
+    uint64_t gpu_draw_calls;
+    /** Live GPU buffer count. */
+    uint64_t buffers_live;
+    /** Live GPU image count, excluding render-target images. */
+    uint64_t images_live;
+    /** Live GPU sampler count. */
+    uint64_t samplers_live;
+    /** Live GPU shader count. */
+    uint64_t shaders_live;
+    /** Live GPU pipeline count. */
+    uint64_t pipelines_live;
+    /** Live offscreen render-target count. */
+    uint64_t render_targets_live;
+    /** Estimated live GPU buffer bytes. */
+    uint64_t buffer_bytes;
+    /** Estimated live GPU image bytes, excluding render targets. */
+    uint64_t image_bytes;
+    /** Estimated render-target color and depth storage bytes. */
+    uint64_t render_target_bytes;
+    /** Bytes uploaded into GPU resources. */
+    uint64_t upload_bytes;
+    /** Successfully created GPU resources. */
+    uint64_t resource_creations;
+    /** GPU resource destruction requests completed. */
+    uint64_t resource_destructions;
+    /** Surface/device identity changes observed by the GPU adapter. */
+    uint64_t surface_recreations;
+    /** Fatal device-loss transitions. */
+    uint64_t device_losses;
+    /** Failed GPU resource allocations. */
+    uint64_t failed_allocations;
+    /** Live text atlas pages. */
+    uint64_t atlas_pages;
+    /** Live text atlas bytes mirrored by the renderer. */
+    uint64_t atlas_bytes;
+    /** Atlas page uploads issued by the UI renderer. */
+    uint64_t glyph_uploads;
+    /** Monotonic text raster-scale generation observed by the renderer. */
+    uint64_t atlas_scale_generation;
+    /** Retained text-layout cache hits. */
+    uint64_t text_layout_cache_hits;
+    /** Retained text-layout cache misses. */
+    uint64_t text_layout_cache_misses;
+    /** Custom paint nodes compiled by layout sessions. */
+    uint64_t custom_paint_nodes;
+    /** Display-list bytes used by custom paint nodes. */
+    uint64_t custom_paint_bytes;
+    /** Glyphs rasterized into the retained text atlas. */
+    uint64_t glyphs_rasterized;
+    /** Atlas page generations created or rebuilt on the GPU. */
+    uint64_t atlas_rebuilds;
+    /** Atlas partial subregion updates; currently zero when full uploads are used. */
+    uint64_t atlas_partial_updates;
+    /** Bytes dirtied by glyph rasterization and submitted for atlas upload. */
+    uint64_t atlas_dirty_upload_bytes;
 } nkui_renderer_stats;
 
 /** 16-bit opcode identifying one display-list command record. */

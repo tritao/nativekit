@@ -130,6 +130,7 @@ struct RendererSlot {
     bool active = false;
     nkui::Compositor compositor;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
+    nkui::UiGpuStats retired_gpu{};
     nkui_renderer_stats stats{};
     uint16_t generation = 1;
 };
@@ -148,6 +149,47 @@ struct LayoutSessionSlot {
     std::unique_ptr<LayoutSessionState> session;
     uint16_t generation = 1;
 };
+
+void accumulate_gpu_lifetime(nkui::UiGpuStats &total, const nkui::UiGpuStats &current) {
+    total.frames += current.frames;
+    total.passes += current.passes;
+    total.draw_calls += current.draw_calls;
+    total.upload_bytes += current.upload_bytes;
+    total.resource_creations += current.resource_creations;
+    total.resource_destructions += current.resource_destructions;
+    total.surface_recreations += current.surface_recreations;
+    total.device_losses += current.device_losses;
+    total.failed_allocations += current.failed_allocations;
+}
+
+void discard_stale_renderer(RendererSlot &slot, const nk_surface_frame_target &target,
+                            nk_surface surface) {
+    if (!slot.renderer)
+        return;
+    const bool was_lost = slot.renderer->lost();
+    const bool api_changed = slot.backend_api != target.api;
+    const bool device_changed = slot.backend_device.id != target.device.id;
+    const bool surface_changed = slot.backend_surface != surface;
+    if (!was_lost && !api_changed && !device_changed && !surface_changed)
+        return;
+    const nkui::UiRendererStats old_stats = slot.renderer->stats();
+    const nkui::UiGpuStats &old = old_stats.gpu;
+    accumulate_gpu_lifetime(slot.retired_gpu, old);
+    slot.retired_gpu.resource_destructions +=
+        old.buffers_live + old.images_live + old.samplers_live + old.shaders_live +
+        old.pipelines_live + old.render_targets_live;
+    if (old.device_losses == 0 && (was_lost || api_changed || device_changed))
+        ++slot.retired_gpu.device_losses;
+    if (old.surface_recreations == 0 && (api_changed || device_changed || surface_changed))
+        ++slot.retired_gpu.surface_recreations;
+    slot.stats.glyph_uploads += old_stats.glyph_uploads;
+    slot.stats.atlas_rebuilds += old_stats.atlas_rebuilds;
+    slot.stats.atlas_partial_updates += old_stats.atlas_partial_updates;
+    slot.stats.atlas_dirty_upload_bytes += old_stats.atlas_dirty_upload_bytes;
+    slot.stats.atlas_scale_generation =
+        std::max<uint64_t>(slot.stats.atlas_scale_generation, old_stats.atlas_scale_generation);
+    slot.renderer.reset();
+}
 
 std::mutex lists_mutex;
 std::vector<DisplayListSlot> lists;
@@ -1707,6 +1749,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
                 slot.backend_device = {};
                 slot.backend_surface = 0;
                 slot.active = true;
+                slot.retired_gpu = {};
                 slot.stats = {};
                 out_renderer->id = make_handle(slot.generation, static_cast<uint16_t>(index + 1));
                 return NKUI_OK;
@@ -1717,6 +1760,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
         renderers.emplace_back();
         auto &slot = renderers.back();
         slot.active = true;
+        slot.retired_gpu = {};
         slot.stats = {};
         out_renderer->id = make_handle(1, static_cast<uint16_t>(renderers.size()));
         return NKUI_OK;
@@ -1736,6 +1780,7 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     slot->backend_surface = 0;
     slot->active = false;
     clear_path_cache(*slot);
+    slot->retired_gpu = {};
     slot->stats = {};
     slot->generation = static_cast<uint16_t>(slot->generation + 1);
     if (!slot->generation)
@@ -1753,6 +1798,52 @@ extern "C" nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
         return NKUI_ERROR_INVALID_HANDLE;
     *out_stats = slot->stats;
     out_stats->struct_size = sizeof(*out_stats);
+    const nkui::UiGpuStats &retired = slot->retired_gpu;
+    out_stats->gpu_frames = retired.frames;
+    out_stats->gpu_passes = retired.passes;
+    out_stats->gpu_draw_calls = retired.draw_calls;
+    out_stats->upload_bytes = retired.upload_bytes;
+    out_stats->resource_creations = retired.resource_creations;
+    out_stats->resource_destructions = retired.resource_destructions;
+    out_stats->surface_recreations = retired.surface_recreations;
+    out_stats->device_losses = retired.device_losses;
+    out_stats->failed_allocations = retired.failed_allocations;
+    if (slot->renderer) {
+        const nkui::UiRendererStats ui_stats = slot->renderer->stats();
+        const nkui::UiGpuStats &gpu = ui_stats.gpu;
+        out_stats->gpu_frames += gpu.frames;
+        out_stats->gpu_passes += gpu.passes;
+        out_stats->gpu_draw_calls += gpu.draw_calls;
+        out_stats->buffers_live = gpu.buffers_live;
+        out_stats->images_live = gpu.images_live;
+        out_stats->samplers_live = gpu.samplers_live;
+        out_stats->shaders_live = gpu.shaders_live;
+        out_stats->pipelines_live = gpu.pipelines_live;
+        out_stats->render_targets_live = gpu.render_targets_live;
+        out_stats->buffer_bytes = gpu.buffer_bytes;
+        out_stats->image_bytes = gpu.image_bytes;
+        out_stats->render_target_bytes = gpu.render_target_bytes;
+        out_stats->upload_bytes += gpu.upload_bytes;
+        out_stats->resource_creations += gpu.resource_creations;
+        out_stats->resource_destructions += gpu.resource_destructions;
+        out_stats->surface_recreations += gpu.surface_recreations;
+        out_stats->device_losses += gpu.device_losses;
+        out_stats->failed_allocations += gpu.failed_allocations;
+        out_stats->atlas_pages = ui_stats.atlas_pages;
+        out_stats->atlas_bytes = ui_stats.atlas_bytes;
+        out_stats->glyph_uploads = slot->stats.glyph_uploads + ui_stats.glyph_uploads;
+        out_stats->glyphs_rasterized = ui_stats.glyphs_rasterized;
+        out_stats->atlas_rebuilds = slot->stats.atlas_rebuilds + ui_stats.atlas_rebuilds;
+        out_stats->atlas_partial_updates =
+            slot->stats.atlas_partial_updates + ui_stats.atlas_partial_updates;
+        out_stats->atlas_dirty_upload_bytes =
+            slot->stats.atlas_dirty_upload_bytes + ui_stats.atlas_dirty_upload_bytes;
+        out_stats->atlas_scale_generation =
+            std::max<uint64_t>(slot->stats.atlas_scale_generation,
+                               ui_stats.atlas_scale_generation);
+        out_stats->text_layout_cache_hits = ui_stats.text_layout_cache_hits;
+        out_stats->text_layout_cache_misses = ui_stats.text_layout_cache_misses;
+    }
     return NKUI_OK;
 }
 
@@ -1779,9 +1870,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     auto *list_slot = resolve(list);
     if (!renderer_slot || !list_slot)
         return NKUI_ERROR_INVALID_HANDLE;
-    if (!renderer_slot->renderer || renderer_slot->backend_api != frame_target.api ||
-        renderer_slot->backend_device.id != frame_target.device.id ||
-        renderer_slot->backend_surface != surface) {
+    discard_stale_renderer(*renderer_slot, frame_target, surface);
+    if (!renderer_slot->renderer) {
         auto ui_renderer = nkui::create_ui_renderer(surface);
         if (!ui_renderer)
             return NKUI_ERROR_RENDERING;
@@ -1795,6 +1885,10 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     nkui::RenderPlan plan;
     if (!renderer_slot->compositor.compile(*list_slot->list, main_target, plan))
         return NKUI_ERROR_INVALID_TRANSACTION;
+    ++renderer_slot->stats.display_list_count;
+    renderer_slot->stats.display_list_bytes += list_slot->list->size();
+    for (const auto &pass : plan.passes)
+        renderer_slot->stats.render_plan_commands += pass.commands.size();
     if (load_existing && !plan.passes.empty())
         plan.passes.front().load_existing = true;
 
@@ -2038,9 +2132,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     auto *session_state = resolve(session);
     if (!renderer_slot || !session_state || !session_state->submitted)
         return NKUI_ERROR_INVALID_HANDLE;
-    if (!renderer_slot->renderer || renderer_slot->backend_api != frame_target.api ||
-        renderer_slot->backend_device.id != frame_target.device.id ||
-        renderer_slot->backend_surface != surface) {
+    discard_stale_renderer(*renderer_slot, frame_target, surface);
+    if (!renderer_slot->renderer) {
         auto ui_renderer = nkui::create_ui_renderer(surface);
         if (!ui_renderer)
             return NKUI_ERROR_RENDERING;
@@ -2082,6 +2175,16 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         return NKUI_ERROR_INVALID_TRANSACTION;
 
     auto &plan = session_state->frame.plan();
+    for (const auto &[node_id, custom_plan] : custom_plan_storage) {
+        (void)custom_plan;
+        ++renderer_slot->stats.custom_paint_nodes;
+        const auto found = session_state->custom_paints.find(node_id);
+        if (found != session_state->custom_paints.end())
+            if (auto *list_slot = resolve(found->second))
+                renderer_slot->stats.custom_paint_bytes += list_slot->list->size();
+    }
+    for (const auto &pass : plan.passes)
+        renderer_slot->stats.render_plan_commands += pass.commands.size();
     auto &frame_resources = session_state->frame.resources();
     std::vector<std::unique_ptr<nkui::PreparedPath>> custom_paths;
     std::vector<std::unique_ptr<nkui::PreparedTexture>> custom_images;

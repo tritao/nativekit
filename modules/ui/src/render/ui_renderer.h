@@ -15,6 +15,27 @@ namespace nkui {
 
 struct SurfaceDescriptor;
 
+struct UiGpuStats {
+    uint64_t frames = 0;
+    uint64_t passes = 0;
+    uint64_t draw_calls = 0;
+    uint64_t buffers_live = 0;
+    uint64_t images_live = 0;
+    uint64_t samplers_live = 0;
+    uint64_t shaders_live = 0;
+    uint64_t pipelines_live = 0;
+    uint64_t render_targets_live = 0;
+    uint64_t buffer_bytes = 0;
+    uint64_t image_bytes = 0;
+    uint64_t render_target_bytes = 0;
+    uint64_t upload_bytes = 0;
+    uint64_t resource_creations = 0;
+    uint64_t resource_destructions = 0;
+    uint64_t surface_recreations = 0;
+    uint64_t device_losses = 0;
+    uint64_t failed_allocations = 0;
+};
+
 struct UiRendererStats {
     uint32_t passes = 0;
     uint32_t draws = 0;
@@ -32,6 +53,22 @@ struct UiRendererStats {
     uint64_t atlas_uploaded_bytes = 0;
     uint64_t transient_bytes = 0;
     uint32_t gpu_resources = 0;
+    uint64_t render_plan_commands = 0;
+    uint64_t display_list_count = 0;
+    uint64_t display_list_bytes = 0;
+    uint64_t atlas_pages = 0;
+    uint64_t atlas_bytes = 0;
+    uint64_t glyph_uploads = 0;
+    uint64_t glyphs_rasterized = 0;
+    uint64_t atlas_rebuilds = 0;
+    uint64_t atlas_partial_updates = 0;
+    uint64_t atlas_dirty_upload_bytes = 0;
+    uint64_t atlas_scale_generation = 0;
+    uint64_t text_layout_cache_hits = 0;
+    uint64_t text_layout_cache_misses = 0;
+    uint64_t custom_paint_nodes = 0;
+    uint64_t custom_paint_bytes = 0;
+    UiGpuStats gpu{};
 };
 
 struct SurfaceMeshVertex {
@@ -56,6 +93,7 @@ class UiRenderer {
 
     virtual bool initialize() = 0;
     virtual bool valid() const = 0;
+    virtual bool lost() const = 0;
     virtual bool beginFrame() = 0;
     virtual bool beginWindowPass(int width, int height, bool clear) = 0;
     virtual bool beginTargetPass(ResourceId target, int width, int height,

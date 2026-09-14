@@ -50,6 +50,7 @@ set_target_properties(nativekit_gpu PROPERTIES
     SOVERSION 0)
 
 if(NK_BUILD_TESTS)
+    target_compile_definitions(nativekit_gpu PRIVATE NKGPU_TESTING=1)
     add_library(nativekit_gpu_benchmark SHARED bench/benchmark.c)
     target_include_directories(nativekit_gpu_benchmark PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/bench")
@@ -59,6 +60,12 @@ if(NK_BUILD_TESTS)
         if(NKGPU_XVFB_RUN)
             add_executable(nativekit_gpu_contract_smoke_test tests/contract_smoke.cpp)
             target_compile_features(nativekit_gpu_contract_smoke_test PRIVATE cxx_std_17)
+            target_compile_definitions(nativekit_gpu_contract_smoke_test PRIVATE NKGPU_TESTING=1)
+            if(NK_BUILD_GPU_BACKEND_MATRIX)
+                target_compile_definitions(nativekit_gpu_contract_smoke_test PRIVATE
+                    NK_GPU_TEST_BACKEND_MATRIX=1)
+            endif()
+            target_include_directories(nativekit_gpu_contract_smoke_test PRIVATE src)
             target_link_libraries(nativekit_gpu_contract_smoke_test PRIVATE NativeKit::gpu
                 NativeKit::nativekit)
             add_test(NAME nativekit_gpu_contract_smoke
