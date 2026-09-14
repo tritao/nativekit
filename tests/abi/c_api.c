@@ -114,7 +114,15 @@ int main(void) {
     (void)nk_raw_pointer_motion_supported();
     nk_surface_options surface_options = {0};
     surface_options.struct_size = sizeof(surface_options);
+#if defined(__APPLE__)
+    surface_options.api = NK_GRAPHICS_METAL;
+#elif defined(_WIN32)
+    surface_options.api = NK_GRAPHICS_D3D11;
+#elif defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+    surface_options.api = NK_GRAPHICS_OPENGL_ES;
+#else
     surface_options.api = NK_GRAPHICS_OPENGL;
+#endif
     surface_options.width = 1;
     surface_options.height = 1;
     nk_surface surface = NK_INVALID_HANDLE;

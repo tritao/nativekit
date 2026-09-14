@@ -1,8 +1,26 @@
 #include "nativekit_graphics.h"
+#include "nativekit_time.h"
 #include "nativekit_window.h"
 
 #include <assert.h>
 #include <stdint.h>
+
+static void acquire_frame(nk_window window, nk_surface surface) {
+    assert(nk_window_activate(window) == NK_OK);
+    nk_result result = NK_ERROR_INVALID_REQUEST;
+    for (uint32_t attempt = 0; attempt < 500 && result != NK_OK; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        nk_event_release(&event);
+        result = nk_surface_make_current(surface);
+        if (result == NK_ERROR_INVALID_REQUEST)
+            assert(nk_wait_events_timeout(0.01) == NK_OK);
+        else
+            assert(result == NK_OK);
+    }
+    assert(result == NK_OK);
+}
 
 int main(void) {
     nk_init_options init = {0};
@@ -27,7 +45,7 @@ int main(void) {
     nk_surface surface = NK_INVALID_HANDLE;
     assert(nk_surface_create(window, &surface_options, &surface) == NK_OK);
 
-    assert(nk_surface_make_current(surface) == NK_OK);
+    acquire_frame(window, surface);
     nk_surface_frame_target target = {0};
     target.struct_size = sizeof(target);
     assert(nk_surface_get_frame_target(surface, &target) == NK_OK);
@@ -42,7 +60,7 @@ int main(void) {
     assert(nk_surface_present(surface) == NK_OK);
 
     assert(nk_surface_set_bounds(surface, 12, 16, 200, 100) == NK_OK);
-    assert(nk_surface_make_current(surface) == NK_OK);
+    acquire_frame(window, surface);
     target = (nk_surface_frame_target){0};
     target.struct_size = sizeof(target);
     assert(nk_surface_get_frame_target(surface, &target) == NK_OK);

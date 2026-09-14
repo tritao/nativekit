@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_graphics.h"
 #include "nativekit_gpu.h"
+#include "nativekit_time.h"
 #include "nativekit_ui.h"
 #include "nativekit_window.h"
 
@@ -19,6 +20,34 @@ bool check(bool result, const char *operation) {
     return false;
 }
 
+bool acquire_surface_frame(nk_window window, nk_surface surface, int32_t &width,
+                           int32_t &height) {
+    if (!check(nk_window_activate(window) == NK_OK, "nk_window_activate"))
+        return false;
+    for (int attempt = 0; attempt < 500; ++attempt) {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        if (!check(nk_poll_event(&event) == NK_OK, "nk_poll_event"))
+            return false;
+        nk_event_release(&event);
+
+        const nk_result current = nk_surface_make_current(surface);
+        if (current == NK_OK) {
+            if (!check(nk_surface_get_framebuffer_size(surface, &width, &height) == NK_OK,
+                       "nk_surface_get_framebuffer_size"))
+                return false;
+            if (width > 0 && height > 0)
+                return true;
+        } else if (current != NK_ERROR_INVALID_REQUEST) {
+            return check(false, "nk_surface_make_current");
+        }
+        if (!check(nk_wait_events_timeout(0.01) == NK_OK, "nk_wait_events_timeout"))
+            return false;
+    }
+    std::fprintf(stderr, "backend renderer smoke: surface frame did not become available\n");
+    return false;
+}
+
 } // namespace
 
 int main() {
@@ -34,6 +63,8 @@ int main() {
     nkui_draw_rect_command composite{};
     bool initialized = false;
     int result = 0;
+    int32_t surface_width = 0;
+    int32_t surface_height = 0;
 
     nk_init_options init{};
     init.struct_size = sizeof(init);
@@ -80,15 +111,9 @@ int main() {
         }
     }
 
-    {
-        int32_t width = 0;
-        int32_t height = 0;
-        if (!check(nk_surface_get_framebuffer_size(surface, &width, &height) == NK_OK &&
-                       width > 0 && height > 0,
-                   "nk_surface_get_framebuffer_size")) {
-            result = 6;
-            goto cleanup;
-        }
+    if (!acquire_surface_frame(window, surface, surface_width, surface_height)) {
+        result = 6;
+        goto cleanup;
     }
 
     if (!check(nkgpu_renderer_create(surface, &producer) == NKGPU_OK,
@@ -165,6 +190,10 @@ int main() {
         if (!check(nkui_renderer_render_frame(renderer, list, surface, &frame) == NKUI_OK,
                    "render imported image")) {
             result = 16;
+            goto cleanup;
+        }
+        if (!check(nk_surface_present(surface) == NK_OK, "nk_surface_present")) {
+            result = 17;
             goto cleanup;
         }
     }
