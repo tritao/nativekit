@@ -1,15 +1,16 @@
 import NativeKit;
 import NativeKit.WebViewHandle;
 import NativeKit.OwnedWebViewHandle;
-import NativeKitResult;
 
 /** Owns one native child WebView. */
 class NativeKitWebView {
 	final value:WebViewHandle;
+	final owned:OwnedWebViewHandle;
 	var disposed:Bool = false;
 
 	@:allow(NativeKitWindow)
 	private function new(owned:OwnedWebViewHandle) {
+		this.owned = owned;
 		this.value = owned.borrow();
 	}
 
@@ -20,19 +21,21 @@ class NativeKitWebView {
 
 	public function show(visible:Bool = true):Void {
 		ensureLive();
-		NativeKitResult.check(NativeKit.nk_webview_show(value, visible), "webview.show");
+		NativeKit.nk_webview_show_checked(value, visible);
 	}
 
 	public function navigate(url:String):Void {
 		ensureLive();
-		NativeKitResult.check(NativeKit.nk_webview_navigate(value, url), "webview.navigate");
+		NativeKit.nk_webview_navigate_checked(value, url);
 	}
 
 	public function dispose():Void {
 		if (disposed)
 			return;
-		NativeKitResult.check(NativeKit.nk_webview_destroy(value), "webview.dispose");
 		disposed = true;
+		var status = owned.close();
+		if (status != null)
+			NativeKitResult.check(status, "webview.dispose");
 	}
 
 	public function isDisposed():Bool

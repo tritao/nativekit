@@ -28,6 +28,11 @@ class Smoke {
 		var runtime = NativeKitRuntime.start(NativeKitOptions.init(32));
 		if (runtime.isDisposed())
 			return 2;
+		var resultErrorOk = false;
+		try
+			NativeKit.nk_window_show_checked(NativeKit.WindowHandle.invalid(), true)
+		catch (error:NativeKitError)
+			resultErrorOk = error.result == Result.ErrorInvalidHandle && error.operation == "nk_window_show" && error.diagnostic != null;
 
 		var events = runtime.events;
 		var eventOk = !events.poll();
@@ -121,6 +126,8 @@ class Smoke {
 			return 4;
 		if (!diagnosticOk)
 			return 5;
+		if (!resultErrorOk)
+			return 19;
 		if (!monitorOk)
 			return 6;
 		if (!payloadOk)

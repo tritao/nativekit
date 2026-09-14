@@ -59,6 +59,7 @@ fi
         "$repo_dir/bindings/haxe/NativeKitSurface.hx" \
         "$repo_dir/bindings/haxe/NativeKitWebView.hx" \
         "$repo_dir/bindings/haxe/NativeKitResult.hx" \
+        "$repo_dir/bindings/haxe/NativeKitError.hx" \
         "$repo_dir/bindings/haxe/NativeKitVulkanExtensions.hx" \
         "$repo_dir/bindings/haxe/NativeKitServiceEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitResourceEvents.hx" \

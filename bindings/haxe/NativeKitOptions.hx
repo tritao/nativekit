@@ -3,7 +3,6 @@ import NativeKit.InitOptions;
 import NativeKit.NativeKitConstants;
 import NativeKit.MessageKind;
 import NativeKit.MessageButtons;
-import NativeKit.Result;
 import NativeKit.WindowKind;
 import NativeKit.WindowFlags;
 import NativeKit.SurfaceFlags;
@@ -163,8 +162,6 @@ class NativeKitShareOptions {
 	}
 
 	public function submit():Void {
-		var result = NativeKit.nk_share(options);
-		if (result != Result.Ok)
-			throw 'NativeKit share failed: $result';
+		NativeKit.nk_share_checked(options);
 	}
 }

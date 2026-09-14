@@ -7,7 +7,7 @@ class NativeKitVulkanExtensions {
 	public static function requiredInstanceExtensions(window:NativeKitWindow):Array<String> {
 		var result = NativeKitVulkan.getRequiredInstanceExtensions(window.nativeHandle());
 		if (result.status != Result.Ok)
-			throw 'NativeKit Vulkan extension query failed: ${NativeKit.nk_last_error()}';
+			throw new NativeKitError(result.status, "vulkan.getRequiredInstanceExtensions", NativeKit.nk_last_error());
 		var extensions:Array<String> = [];
 		for (extension in result.extensions) {
 			if (extension == null)

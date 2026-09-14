@@ -13,5 +13,13 @@
 		"nk_joystick": "JoystickHandle",
 		"nk_mobile_host": "MobileHostHandle",
 		"nk_resource_stream": "ResourceStreamHandle"
+	},
+	"resultPolicies": {
+		"nk_result": {
+			"successValue": "NK_OK",
+			"diagnosticFunction": "nk_last_error",
+			"errorType": "NativeKitError",
+			"checkedSuffix": "_checked"
+		}
 	}
 }

@@ -37,17 +37,17 @@ class NativeKitSurface {
 
 	public function show(visible:Bool = true):Void {
 		ensureLive();
-		NativeKitResult.check(NativeKit.nk_surface_show(value, visible), "surface.show");
+		NativeKit.nk_surface_show_checked(value, visible);
 	}
 
 	public function makeCurrent():Void {
 		ensureLive();
-		NativeKitResult.check(NativeKit.nk_surface_make_current(value), "surface.makeCurrent");
+		NativeKit.nk_surface_make_current_checked(value);
 	}
 
 	public function present():Void {
 		ensureLive();
-		NativeKitResult.check(NativeKit.nk_surface_present(value), "surface.present");
+		NativeKit.nk_surface_present_checked(value);
 	}
 
 	/** Replaces the current frame handler and roots it until dispose/detach succeeds. */
@@ -80,7 +80,7 @@ class NativeKitSurface {
 			return;
 		}
 		if (ownsHandle)
-			NativeKitResult.check(NativeKit.nk_surface_destroy(value), "surface.dispose");
+			NativeKit.nk_surface_destroy_checked(value);
 		disposed = true;
 	}
 

@@ -1,6 +1,5 @@
 import NativeKit;
 import NativeKit.Event;
-import NativeKit.Result;
 import NativeKitEvent;
 import NativeKitEventValue;
 
@@ -15,11 +14,8 @@ class NativeKitEvents {
 
 	/** Polls and releases one native event, then routes its managed snapshot. */
 	public function poll():Bool {
-		var nativeEvent = new Event();
-		var polled = NativeKit.nk_poll_event(nativeEvent);
-		if (polled.status != Result.Ok)
-			throw 'NativeKit event poll failed: ${polled.status}';
-		var event = new NativeKitEvent(polled.event);
+		var polled = NativeKit.nk_poll_event_checked(new Event());
+		var event = new NativeKitEvent(polled);
 		var value = event.take();
 		var hasEvent = switch value {
 			case None: false;

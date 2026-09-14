@@ -30,8 +30,7 @@ class GraphicsImageRef {
 		api:GraphicsApi):GraphicsImageRef {
 		if (width <= 0 || height <= 0)
 			throw "Graphics image dimensions must be positive";
-		if (NativeKit.nk_graphics_image_retain(value) != 0)
-			throw "graphicsImage.retain failed";
+		NativeKit.nk_graphics_image_retain_checked(value);
 		return new GraphicsImageRef(value, width, height, api);
 	}
 
@@ -45,8 +44,7 @@ class GraphicsImageRef {
 	public function dispose():Void {
 		if (disposed)
 			return;
-		if (NativeKit.nk_graphics_image_release(value) != 0)
-			throw "graphicsImage.dispose failed";
+		NativeKit.nk_graphics_image_release_checked(value);
 		disposed = true;
 	}
 

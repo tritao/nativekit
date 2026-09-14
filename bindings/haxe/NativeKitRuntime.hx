@@ -2,7 +2,6 @@ import NativeKit;
 import NativeKit.InitOptions;
 import NativeKit.WindowOptions;
 import NativeKitOptions;
-import NativeKitResult;
 import NativeKitWindow;
 import NativeKitEvents;
 
@@ -18,15 +17,14 @@ class NativeKitRuntime {
 
 	public static function start(?options:InitOptions):NativeKitRuntime {
 		var configured = options == null ? NativeKitOptions.init() : options;
-		NativeKitResult.check(NativeKit.nk_init(configured), "runtime.start");
+		NativeKit.nk_init_checked(configured);
 		return new NativeKitRuntime();
 	}
 
 	public function createWindow(options:WindowOptions):NativeKitWindow {
 		ensureLive();
-		var created = NativeKit.nk_window_create(options);
-		NativeKitResult.check(created.status, "window.create");
-		var window = new NativeKitWindow(created.out_window);
+		var owned = NativeKit.nk_window_create_checked(options);
+		var window = new NativeKitWindow(owned);
 		windows.push(window);
 		return window;
 	}

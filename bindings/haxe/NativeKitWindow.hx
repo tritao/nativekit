@@ -12,6 +12,7 @@ import NativeKitWebView;
 /** Owns one NativeKit top-level window and resources created inside it. */
 class NativeKitWindow {
 	final value:WindowHandle;
+	final owned:OwnedWindowHandle;
 	final surfaces:Array<NativeKitSurface> = [];
 	final webviews:Array<NativeKitWebView> = [];
 	final dependentDisposers:Array<Void->Void> = [];
@@ -19,6 +20,7 @@ class NativeKitWindow {
 
 	@:allow(NativeKitRuntime)
 	private function new(owned:OwnedWindowHandle) {
+		this.owned = owned;
 		this.value = owned.borrow();
 	}
 
@@ -87,8 +89,10 @@ class NativeKitWindow {
 		}
 		if (failure != null)
 			throw failure;
-		NativeKitResult.check(NativeKit.nk_window_destroy(value), "window.dispose");
 		disposed = true;
+		var status = owned.close();
+		if (status != null)
+			NativeKitResult.check(status, "window.dispose");
 	}
 
 	public function isDisposed():Bool
