@@ -576,41 +576,90 @@ enum class UiShaderKind { Solid, Path, AlphaGlyph, SdfGlyph, ColorGlyph, Composi
 struct ShaderSources {
     const char *vertex;
     const char *fragment;
+    nkgpu_shader_language language;
 };
 
 ShaderSources shader_sources(nkgpu_backend backend, UiShaderKind kind) {
     using namespace shader_source;
     const bool es = backend == NKGPU_BACKEND_GLES3;
+    const bool d3d11 = backend == NKGPU_BACKEND_D3D11;
+    const bool metal = backend == NKGPU_BACKEND_METAL;
+    const auto gl = [es](const char *vertex410, const char *fragment410,
+                         const char *vertex300, const char *fragment300) {
+        return es ? ShaderSources{vertex300, fragment300, NKGPU_SHADERLANGUAGE_GLSL}
+                  : ShaderSources{vertex410, fragment410, NKGPU_SHADERLANGUAGE_GLSL};
+    };
     switch (kind) {
     case UiShaderKind::Solid:
-        return es ? ShaderSources{ui_shader_glsl300es_solid_vert, ui_shader_glsl300es_solid_frag}
-                  : ShaderSources{ui_shader_glsl410_solid_vert, ui_shader_glsl410_solid_frag};
+        if (d3d11)
+            return {ui_shader_solid_hlsl5_vertex, ui_shader_solid_hlsl5_fragment,
+                    NKGPU_SHADERLANGUAGE_HLSL5};
+        if (metal)
+            return {ui_shader_solid_metal_macos_vertex, ui_shader_solid_metal_macos_fragment,
+                    NKGPU_SHADERLANGUAGE_MSL};
+        return gl(ui_shader_solid_glsl410_vertex, ui_shader_solid_glsl410_fragment,
+                  ui_shader_solid_glsl300es_vertex, ui_shader_solid_glsl300es_fragment);
     case UiShaderKind::Path:
-        return es ? ShaderSources{ui_shader_glsl300es_path_vert, ui_shader_glsl300es_path_frag}
-                  : ShaderSources{ui_shader_glsl410_path_vert, ui_shader_glsl410_path_frag};
+        if (d3d11)
+            return {ui_shader_path_hlsl5_vertex, ui_shader_path_hlsl5_fragment,
+                    NKGPU_SHADERLANGUAGE_HLSL5};
+        if (metal)
+            return {ui_shader_path_metal_macos_vertex, ui_shader_path_metal_macos_fragment,
+                    NKGPU_SHADERLANGUAGE_MSL};
+        return gl(ui_shader_path_glsl410_vertex, ui_shader_path_glsl410_fragment,
+                  ui_shader_path_glsl300es_vertex, ui_shader_path_glsl300es_fragment);
     case UiShaderKind::AlphaGlyph:
-        return es ? ShaderSources{ui_shader_glsl300es_text_vert,
-                                  ui_shader_glsl300es_text_alpha_frag}
-                  : ShaderSources{ui_shader_glsl410_text_vert, ui_shader_glsl410_text_alpha_frag};
+        if (d3d11)
+            return {ui_shader_text_alpha_hlsl5_vertex, ui_shader_text_alpha_hlsl5_fragment,
+                    NKGPU_SHADERLANGUAGE_HLSL5};
+        if (metal)
+            return {ui_shader_text_alpha_metal_macos_vertex,
+                    ui_shader_text_alpha_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
+        return gl(ui_shader_text_alpha_glsl410_vertex, ui_shader_text_alpha_glsl410_fragment,
+                  ui_shader_text_alpha_glsl300es_vertex,
+                  ui_shader_text_alpha_glsl300es_fragment);
     case UiShaderKind::SdfGlyph:
-        return es ? ShaderSources{ui_shader_glsl300es_text_vert, ui_shader_glsl300es_text_sdf_frag}
-                  : ShaderSources{ui_shader_glsl410_text_vert, ui_shader_glsl410_text_sdf_frag};
+        if (d3d11)
+            return {ui_shader_text_sdf_hlsl5_vertex, ui_shader_text_sdf_hlsl5_fragment,
+                    NKGPU_SHADERLANGUAGE_HLSL5};
+        if (metal)
+            return {ui_shader_text_sdf_metal_macos_vertex, ui_shader_text_sdf_metal_macos_fragment,
+                    NKGPU_SHADERLANGUAGE_MSL};
+        return gl(ui_shader_text_sdf_glsl410_vertex, ui_shader_text_sdf_glsl410_fragment,
+                  ui_shader_text_sdf_glsl300es_vertex, ui_shader_text_sdf_glsl300es_fragment);
     case UiShaderKind::ColorGlyph:
-        return es ? ShaderSources{ui_shader_glsl300es_text_vert,
-                                  ui_shader_glsl300es_text_color_frag}
-                  : ShaderSources{ui_shader_glsl410_text_vert, ui_shader_glsl410_text_color_frag};
+        if (d3d11)
+            return {ui_shader_text_color_hlsl5_vertex, ui_shader_text_color_hlsl5_fragment,
+                    NKGPU_SHADERLANGUAGE_HLSL5};
+        if (metal)
+            return {ui_shader_text_color_metal_macos_vertex,
+                    ui_shader_text_color_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
+        return gl(ui_shader_text_color_glsl410_vertex, ui_shader_text_color_glsl410_fragment,
+                  ui_shader_text_color_glsl300es_vertex,
+                  ui_shader_text_color_glsl300es_fragment);
     case UiShaderKind::Composite:
-        return es ? ShaderSources{ui_shader_glsl300es_composite_vert,
-                                  ui_shader_glsl300es_composite_frag}
-                  : ShaderSources{ui_shader_glsl410_composite_vert,
-                                  ui_shader_glsl410_composite_frag};
+        if (d3d11)
+            return {ui_shader_composite_hlsl5_vertex, ui_shader_composite_hlsl5_fragment,
+                    NKGPU_SHADERLANGUAGE_HLSL5};
+        if (metal)
+            return {ui_shader_composite_metal_macos_vertex,
+                    ui_shader_composite_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
+        return gl(ui_shader_composite_glsl410_vertex, ui_shader_composite_glsl410_fragment,
+                  ui_shader_composite_glsl300es_vertex,
+                  ui_shader_composite_glsl300es_fragment);
     case UiShaderKind::SurfaceMesh:
-        return es ? ShaderSources{ui_shader_glsl300es_surface_mesh_vert,
-                                  ui_shader_glsl300es_surface_mesh_frag}
-                  : ShaderSources{ui_shader_glsl410_surface_mesh_vert,
-                                  ui_shader_glsl410_surface_mesh_frag};
+        if (d3d11)
+            return {ui_shader_surface_mesh_hlsl5_vertex,
+                    ui_shader_surface_mesh_hlsl5_fragment, NKGPU_SHADERLANGUAGE_HLSL5};
+        if (metal)
+            return {ui_shader_surface_mesh_metal_macos_vertex,
+                    ui_shader_surface_mesh_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
+        return gl(ui_shader_surface_mesh_glsl410_vertex,
+                  ui_shader_surface_mesh_glsl410_fragment,
+                  ui_shader_surface_mesh_glsl300es_vertex,
+                  ui_shader_surface_mesh_glsl300es_fragment);
     }
-    return {};
+    return {nullptr, nullptr, NKGPU_SHADERLANGUAGE_GLSL};
 }
 
 bool add_uniform(UiRendererImpl::State &state, nkgpu_shader_builder builder, uint32_t slot,
@@ -623,9 +672,38 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
     if (!sources.vertex || !sources.fragment)
         return fail(state, "UI shader source is unavailable for this graphics backend");
     nkgpu_shader_builder builder{};
-    if (!gpu_result(state, nkgpu_shader_begin(state.renderer, NKGPU_SHADERLANGUAGE_GLSL,
+    if (!gpu_result(state, nkgpu_shader_begin(state.renderer, sources.language,
                                                sources.vertex, sources.fragment, &builder)))
         return false;
+    const char *attributes[3]{};
+    uint32_t attribute_count = 0;
+    switch (kind) {
+    case UiShaderKind::Solid:
+        attributes[attribute_count++] = "position";
+        break;
+    case UiShaderKind::Path:
+    case UiShaderKind::Composite:
+        attributes[attribute_count++] = "position";
+        attributes[attribute_count++] = "uv0";
+        break;
+    case UiShaderKind::AlphaGlyph:
+    case UiShaderKind::SdfGlyph:
+    case UiShaderKind::ColorGlyph:
+        attributes[attribute_count++] = "position";
+        attributes[attribute_count++] = "uv0";
+        attributes[attribute_count++] = "color0";
+        break;
+    case UiShaderKind::SurfaceMesh:
+        attributes[attribute_count++] = "position";
+        attributes[attribute_count++] = "color0";
+        break;
+    }
+    for (uint32_t location = 0; location < attribute_count; ++location) {
+        if (!gpu_result(state, nkgpu_shader_attribute(builder, location,
+                                                       attributes[location], "TEXCOORD",
+                                                       location)))
+            return false;
+    }
     const char *vertex_block = nullptr;
     uint32_t vertex_size = 16;
     const char *fragment_block = nullptr;

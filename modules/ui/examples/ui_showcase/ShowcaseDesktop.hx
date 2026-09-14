@@ -3,6 +3,7 @@ import NativeKit.Key;
 import NativeKit.Handle;
 import NativeKit.NativeKitConstants;
 import NativeKit.GraphicsApi;
+import NativeKitGpu;
 import NativeKit.InputAction;
 import NativeKit.Result;
 import NativeKit.InitOptions;
@@ -21,6 +22,26 @@ import nativekit.ui.core.NativeInputAdapter;
 
 /** Desktop frame-loop host for the NativeKit UI Explorer. */
 class ShowcaseDesktop {
+    static function platformName():String {
+        var name = Sys.systemName();
+        return switch (name) {
+            case "Windows": "WINDOWS";
+            case "Mac": "MACOS";
+            case "Linux": "LINUX";
+            default: name.toUpperCase();
+        };
+    }
+
+    static function graphicsApiName(api:GraphicsApi):String {
+        return switch (api) {
+            case GraphicsApi.D3d11: "D3D11";
+            case GraphicsApi.Metal: "METAL";
+            case GraphicsApi.OpenglEs: "GLES";
+            case GraphicsApi.Vulkan: "VULKAN";
+            default: "OPENGL";
+        };
+    }
+
     static function has(args:Array<String>, name:String):Bool
         return args.indexOf(name) >= 0;
 
@@ -70,10 +91,15 @@ class ShowcaseDesktop {
             window = createdWindow.out_window.borrow();
 
             var surfaceOptions = new SurfaceOptions();
-            surfaceOptions.set_flags(SurfaceFlags.ForwardCompatible | SurfaceFlags.Stencil);
-            surfaceOptions.set_api(GraphicsApi.Opengl);
-            surfaceOptions.set_major_version(3);
-            surfaceOptions.set_minor_version(3);
+            var graphicsApi:GraphicsApi = NativeKitGpu.nkgpu_default_graphics_api();
+            var surfaceFlags = SurfaceFlags.Stencil;
+            if (graphicsApi == GraphicsApi.Opengl) {
+                surfaceFlags = SurfaceFlags.ForwardCompatible | SurfaceFlags.Stencil;
+                surfaceOptions.set_major_version(3);
+                surfaceOptions.set_minor_version(3);
+            }
+            surfaceOptions.set_flags(surfaceFlags);
+            surfaceOptions.set_api(graphicsApi);
             surfaceOptions.set_width(initialWidth);
             surfaceOptions.set_height(initialHeight);
             var createdSurface = NativeKit.nk_surface_create(window, surfaceOptions);
@@ -110,7 +136,8 @@ class ShowcaseDesktop {
                 var fonts = FontCollection.create();
                 try {
                     fonts.addSystemFallbacks();
-                    explorer = new UiExplorer(fonts, "DESKTOP · OPENGL", function() {
+                    explorer = new UiExplorer(fonts,
+                        '${platformName()} · ${graphicsApiName(graphicsApi)}', function() {
                         if (graphicsMode)
                             return;
                         graphicsMode = true;
@@ -199,7 +226,15 @@ class ShowcaseDesktop {
             while (running) {
                 var hadEvent = activePump.poll();
 
-                if (ready && running) {
+                if (ready) {
+                    var currentFramebuffer = NativeKit.nk_surface_get_framebuffer_size(surface);
+                    if (currentFramebuffer.status != Result.Ok)
+                        throw "framebuffer size query failed";
+                    framebufferWidth = currentFramebuffer.out_width;
+                    framebufferHeight = currentFramebuffer.out_height;
+                }
+
+                if (ready && running && framebufferWidth > 0 && framebufferHeight > 0) {
                     if (!staticFrame && !smoke && !uiSmoke) {
                         var beforeFrame = Date.now().getTime();
                         if (nextFrameAt > beforeFrame)

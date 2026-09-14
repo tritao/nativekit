@@ -1,6 +1,5 @@
 include(cmake/SkribidiSubmodules.cmake)
 include(cmake/NanoVGSubmodules.cmake)
-include(cmake/UiShaderSources.cmake)
 
 add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/api.cpp
@@ -14,8 +13,7 @@ add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/prepare/system_fonts.cpp
     src/render/frame_resources.cpp
     src/render/render_plan_executor.cpp
-    src/render/ui_renderer.cpp
-    "${NKUI_SHADER_SOURCE_HEADER}")
+    src/render/ui_renderer.cpp)
 add_library(NativeKit::ui ALIAS nativekit_ui)
 target_compile_features(nativekit_ui PRIVATE cxx_std_20)
 target_include_directories(nativekit_ui
@@ -26,7 +24,6 @@ target_include_directories(nativekit_ui
     PRIVATE src)
 target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/clay")
 target_include_directories(nativekit_ui PRIVATE "${PROJECT_SOURCE_DIR}/src")
-target_include_directories(nativekit_ui PRIVATE "${NKUI_SHADER_GENERATED_DIR}")
 target_link_libraries(nativekit_ui PUBLIC NativeKit::gpu
     PRIVATE nkui_skribidi nkui_nanovg_core)
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
@@ -53,6 +50,33 @@ set_target_properties(nativekit_ui PROPERTIES
 if(NK_BUILD_TESTS)
     add_test(NAME nativekit_ui_dependencies
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-dependencies.sh")
+    if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+        add_executable(nativekit_ui_backend_smoke_test
+            tests/backend_renderer_smoke.cpp)
+        target_link_libraries(nativekit_ui_backend_smoke_test PRIVATE
+            NativeKit::ui NativeKit::gpu NativeKit::nativekit)
+        set(NKUI_BACKEND_SMOKE_REGISTERED OFF)
+        if(WIN32 OR APPLE)
+            add_test(NAME nativekit_ui_backend_smoke
+                COMMAND nativekit_ui_backend_smoke_test)
+            set(NKUI_BACKEND_SMOKE_REGISTERED ON)
+        else()
+            find_program(NKUI_BACKEND_XVFB_RUN xvfb-run)
+            if(NKUI_BACKEND_XVFB_RUN)
+                add_test(NAME nativekit_ui_backend_smoke
+                    COMMAND ${NKUI_BACKEND_XVFB_RUN} -a
+                        $<TARGET_FILE:nativekit_ui_backend_smoke_test>)
+                set_tests_properties(nativekit_ui_backend_smoke PROPERTIES
+                    ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+                set(NKUI_BACKEND_SMOKE_REGISTERED ON)
+            endif()
+        endif()
+        if(NKUI_BACKEND_SMOKE_REGISTERED)
+            set_tests_properties(nativekit_ui_backend_smoke PROPERTIES
+                LABELS "graphics;gpu;ui"
+                TIMEOUT 15)
+        endif()
+    endif()
     add_executable(nativekit_ui_abi_test tests/abi.c)
     target_compile_definitions(nativekit_ui_abi_test PRIVATE
         NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")

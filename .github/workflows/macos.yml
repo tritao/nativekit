@@ -16,7 +16,7 @@ jobs:
         with:
           submodules: recursive
       - name: Configure
-        run: cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=OFF -DNK_BUILD_TESTS=ON
+        run: cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=OFF -DNK_BUILD_TESTS=ON -DNK_BUILD_GPU=ON -DNK_BUILD_UI=ON
       - name: Build
         run: cmake --build build
       - name: Test

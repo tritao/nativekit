@@ -33,8 +33,15 @@ passes, resources, GPU state, and backend submission.
 Configure with `-DNK_BUILD_UI=ON`; this also builds the GPU dependency. The
 public CMake targets are `NativeKit::nativekit`, `NativeKit::gpu`, and
 `NativeKit::ui`. Sokol headers, configuration, runtime ownership, and resource
-handles stay inside `modules/gpu`; UI shader sources are embedded at build time
-and do not require `sokol-shdc`.
+handles stay inside `modules/gpu`. The canonical UI shaders are split by family
+under `shaders/`; their GLSL, HLSL5, and MSL source variants are checked in as
+`src/render/ui_shader_sources.h`, so ordinary builds do not require
+`sokol-shdc`. The generator is the standalone [Sokol shader compiler](https://github.com/floooh/sokol-tools/blob/master/docs/sokol-shdc.md).
+
+After editing a shader, regenerate the header with
+`SOKOL_SHDC=/path/to/sokol-shdc modules/ui/tools/generate-shaders.sh`. Run
+`SOKOL_SHDC=/path/to/sokol-shdc modules/ui/tools/check-shaders.sh` to verify the
+generated header is current.
 
 ```sh
 cmake -S . -B build-ui -GNinja -DNK_BUILD_UI=ON

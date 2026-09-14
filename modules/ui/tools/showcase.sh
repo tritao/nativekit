@@ -37,11 +37,14 @@ fi
     --root="$module_dir/examples/ui_showcase" \
     --root="$module_dir/haxe" \
     --root="$module_dir/bindings/haxe" \
+    --root="$repo_dir/modules/gpu/bindings/haxe" \
     --root="$repo_dir/bindings/haxe" \
     --ffi-interface="$repo_dir/bindings/haxe/nativekit.hxi" \
     --ffi-projection="$repo_dir/bindings/haxe/nativekit.hxmap" \
     --ffi-interface="$module_dir/bindings/nativekit-ui.hxi" \
     --ffi-projection="$module_dir/bindings/nativekit-ui.hxmap" \
+    --ffi-interface="$repo_dir/modules/gpu/bindings/nativekit-gpu.hxi" \
+    --ffi-projection="$repo_dir/modules/gpu/bindings/nativekit-gpu.hxmap" \
     --ffi-interface="$module_dir/bindings/nativekit-ui-showcase.hxi" \
     --ffi-projection="$module_dir/bindings/nativekit-ui-showcase.hxmap" \
     "$module_dir/examples/ui_showcase/ShowcaseDesktop.hx" \
@@ -79,11 +82,11 @@ fi
 
 font_path=${NKUI_TEST_FONT_PATH:-"$repo_dir/vendor/skribidi/example/data/IBMPlexSans-Regular.ttf"}
 emoji_path=${NKUI_COLOR_FONT_PATH:-"$repo_dir/vendor/skribidi/example/data/NotoColorEmoji-Regular.ttf"}
-runtime_library_path="$build_dir/modules/ui:$build_dir:$haxeon_dir/out:$haxeon_dir/vendor/hashlink"
+runtime_library_path="$build_dir/modules/ui:$build_dir/modules/gpu:$build_dir:$haxeon_dir/out:$haxeon_dir/vendor/hashlink"
 hashlink_runtime="$haxeon_dir/vendor/hashlink/hl"
 if [[ -x "$haxeon_dir/.tools/hashlink/hl" ]]; then
     hashlink_runtime="$haxeon_dir/.tools/hashlink/hl"
-    runtime_library_path="$build_dir/modules/ui:$build_dir:$haxeon_dir/out:$haxeon_dir/.tools/hashlink"
+    runtime_library_path="$build_dir/modules/ui:$build_dir/modules/gpu:$build_dir:$haxeon_dir/out:$haxeon_dir/.tools/hashlink"
 fi
 if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
     runtime_library_path="$runtime_library_path:$LD_LIBRARY_PATH"
