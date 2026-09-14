@@ -76,7 +76,8 @@ class CatalogSidebar {
 		style.background = explorer.state.lightTheme
 			? UiExplorer.color(0.87, 0.90, 0.95)
 			: UiExplorer.color(0.075, 0.10, 0.16);
-		var item = new Button(page.title, style, function() {
+		var navigationTitle = explorer.width < 760.0 ? page.compactTitle : page.title;
+		var item = new Button(navigationTitle, style, function() {
 			explorer.state.selectedPage = page.id;
 			explorer.state.inspector.selectedNodeId = 0;
 			explorer.state.inspector.hoveredNodeId = 0;

@@ -31,7 +31,8 @@ class ExplorerVisualCases {
 		state.visualTextAreaSelection = false;
 		state.selectedPage = "overview";
 		switch caseId {
-			case ExplorerVisualCase.Overview: state.selectedPage = "overview";
+			case ExplorerVisualCase.Overview, ExplorerVisualCase.OverviewCompact:
+				state.selectedPage = "overview";
 			case ExplorerVisualCase.Controls: state.selectedPage = "controls";
 			case ExplorerVisualCase.ControlsLight:
 				state.selectedPage = "controls";
@@ -43,10 +44,12 @@ class ExplorerVisualCases {
 			case ExplorerVisualCase.TextFocused:
 				state.selectedPage = "text";
 				state.visualFocusLabel = "Display name";
-			case ExplorerVisualCase.Layout: state.selectedPage = "layout";
-			case ExplorerVisualCase.ListsScrolled:
+			case ExplorerVisualCase.Layout, ExplorerVisualCase.LayoutCompact:
+				state.selectedPage = "layout";
+			case ExplorerVisualCase.ListsScrolled, ExplorerVisualCase.ListsCompact:
 				state.selectedPage = "lists";
-				state.listController.jumpTo(0.0, 414.0 * UiExplorer.LIST_ROW_HEIGHT);
+				if (caseId == ExplorerVisualCase.ListsScrolled)
+					state.listController.jumpTo(0.0, 414.0 * UiExplorer.LIST_ROW_HEIGHT);
 			case ExplorerVisualCase.Dialog:
 				state.selectedPage = "overlays";
 				state.overlays.dialogOpen = true;
@@ -57,7 +60,8 @@ class ExplorerVisualCases {
 				state.selectedPage = "overlays";
 				state.overlays.menuOpen = true;
 			case ExplorerVisualCase.ControlsCompact: state.selectedPage = "controls";
-			case ExplorerVisualCase.Gestures: state.selectedPage = "gestures";
+			case ExplorerVisualCase.Gestures, ExplorerVisualCase.GesturesCompact:
+				state.selectedPage = "gestures";
 			case ExplorerVisualCase.ListsLight:
 				state.selectedPage = "lists";
 				state.lightTheme = true;
@@ -71,6 +75,10 @@ class ExplorerVisualCases {
 				state.lightTheme = true;
 				explorer.context.setTheme(UiExplorer.makeTheme(true));
 				state.overlays.menuOpen = true;
+			case ExplorerVisualCase.TextCompact: state.selectedPage = "text";
+			case ExplorerVisualCase.OverlaysCompact: state.selectedPage = "overlays";
+			case ExplorerVisualCase.Graphics, ExplorerVisualCase.GraphicsCompact:
+				state.selectedPage = "graphics";
 			default: return false;
 		}
 		return true;

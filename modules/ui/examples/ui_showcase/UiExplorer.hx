@@ -190,7 +190,7 @@ class UiExplorer {
 		ExplorerSmokeSequence.apply(state, frame);
 	}
 
-	/** Selects one of the deterministic browser screenshot states, 0-14. */
+	/** Selects one of the deterministic browser screenshot states, 0-22. */
 	public function setVisualCase(caseId:Int):Bool {
 		return ExplorerVisualCases.apply(this, caseId);
 	}

@@ -17,4 +17,12 @@ enum abstract ExplorerVisualCase(Int) from Int to Int {
 	var ListsLight = 12;
 	var TextAreaSelection = 13;
 	var MenuLight = 14;
+	var Graphics = 15;
+	var OverviewCompact = 16;
+	var TextCompact = 17;
+	var LayoutCompact = 18;
+	var ListsCompact = 19;
+	var OverlaysCompact = 20;
+	var GesturesCompact = 21;
+	var GraphicsCompact = 22;
 }

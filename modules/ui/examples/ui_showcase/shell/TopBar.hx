@@ -21,7 +21,7 @@ class TopBar {
 		style.padding = new Insets(22.0, 0.0, 22.0, 0.0);
 		style.childGap = 12.0;
 		style.background = explorer.paletteSidebar();
-		return new Row("top-bar", [
+		var children:Array<KeyedView> = [
 			explorer.keyed("brand-mark", explorer.text("NK", UiExplorer.color(0.31, 0.91, 0.72))),
 			explorer.keyed("brand", explorer.text("NativeKit UI Explorer", explorer.paletteText())),
 			explorer.keyed("space", new Spacer("top-spacer", LayoutAxis.grow(), LayoutAxis.fit())),
@@ -31,10 +31,13 @@ class TopBar {
 					explorer.state.lightTheme = !explorer.state.lightTheme;
 					explorer.context.setTheme(UiExplorer.makeTheme(explorer.state.lightTheme));
 				})),
-			explorer.keyed("inspect", explorer.button(explorer.state.inspector.open ? "Hide inspector" : "Inspect",
+		];
+		if (explorer.width >= 880.0)
+			children.push(explorer.keyed("inspect", explorer.button(
+				explorer.state.inspector.open ? "Hide inspector" : "Inspect",
 				"inspector-toggle", function() {
 					explorer.state.inspector.open = !explorer.state.inspector.open;
-				}))
-		], style);
+			})));
+		return new Row("top-bar", children, style);
 	}
 }

@@ -27,7 +27,7 @@ class ExplorerCatalog {
 			function(explorer, items) { ListsPage.build(explorer, items); }),
 		new ExplorerPage("overlays", "Navigation & Overlays", "components", "Tabs and floating UI",
 			["tabs", "popup", "menu", "tooltip", "dialog", "overlay"],
-			function(explorer, items) { OverlaysPage.build(explorer, items); }),
+			function(explorer, items) { OverlaysPage.build(explorer, items); }, "Overlays"),
 		new ExplorerPage("gestures", "Gestures & Motion", "components", "Gesture arbitration and animation",
 			["tap", "double tap", "long press", "drag", "tween", "spring", "animation"],
 			function(explorer, items) { GesturesPage.build(explorer, items); }),
