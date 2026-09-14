@@ -14,8 +14,8 @@ class ExplorerFocusSequence {
 			return;
 		explorer.diagnosticStage = 4;
 		state.smokeFocusTextField = false;
+		// Visual cases keep their requested focus stable across browser capture frames.
 		var targetLabel = state.visualFocusLabel;
-		state.visualFocusLabel = null;
 		var selectTextArea = state.visualTextAreaSelection;
 		state.visualTextAreaSelection = false;
 		var focused = false;
