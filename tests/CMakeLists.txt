@@ -85,7 +85,9 @@ if(WIN32)
     target_link_libraries(nativekit_win_accessibility_uia PRIVATE NativeKit::nativekit
         ole32 oleaut32)
     add_test(NAME win_accessibility_uia COMMAND nativekit_win_accessibility_uia)
-    set_tests_properties(win_accessibility_uia PROPERTIES LABELS "windows;accessibility;graphics")
+    set_tests_properties(win_accessibility_uia PROPERTIES
+        LABELS "windows;accessibility;graphics"
+        TIMEOUT 120)
     if(NK_WEBVIEW2_LOADER_DLL)
         add_custom_command(TARGET nativekit_win_integration POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
