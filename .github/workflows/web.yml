@@ -15,21 +15,12 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Initialize pinned Haxeon submodule
-        run: git -c submodule.vendor/haxeon.update=checkout submodule update --init --depth=1 vendor/haxeon
+      - name: Initialize Haxeon and its pinned dependencies
+        run: git -c submodule.vendor/haxeon.update=checkout submodule update --init --depth=1 --recursive vendor/haxeon
 
       - name: Read pinned Haxeon revision
         id: haxeon-revision
         run: printf 'revision=%s\n' "$(git -C "$HAXEON_DIR" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Initialize public Haxeon dependencies
-        working-directory: vendor/haxeon
-        run: |
-          # The pinned Haxeon revision currently references two unpublished
-          # profiler commits. NativeKit's browser build only needs the latest
-          # public integrated runtime, so keep this checkout reproducible.
-          git update-index --cacheinfo 160000,d1eaefbbb92509ea22fde068a0bbe81f1cbf83b2,vendor/hashlink
-          git submodule update --init vendor/hashlink vendor/hashlink-debugger vendor/libffi vendor/utest
 
       - name: Install Haxeon build dependencies
         run: >-

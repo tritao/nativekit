@@ -29,7 +29,7 @@ needs explicitly.
 Initialize Haxeon when working on its bindings or browser integration:
 
 ```sh
-git -c submodule.vendor/haxeon.update=checkout submodule update --init --depth=1 vendor/haxeon
+git -c submodule.vendor/haxeon.update=checkout submodule update --init --depth=1 --recursive vendor/haxeon
 ```
 
 Each submodule retains its upstream license. Build glue in the parent project
