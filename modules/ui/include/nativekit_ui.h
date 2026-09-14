@@ -12,7 +12,9 @@
 /* ------------------------------------------------------------------------- */
 
 #if defined(_WIN32)
-#if defined(NKUI_BUILDING_LIBRARY)
+#if defined(NK_STATIC)
+#define NKUI_API
+#elif defined(NKUI_BUILDING_LIBRARY)
 #define NKUI_API __declspec(dllexport)
 #else
 #define NKUI_API __declspec(dllimport)
