@@ -618,13 +618,13 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_text_layout_update(layout: nkui_resource, text: nullable<utf8>, width: f32, text_style: ptr<const<nkui_text_style>>, paragraph_style: ptr<const<nkui_paragraph_style>>) -> nkui_result;
 	/**
-	 * Returns the Skribidi word range containing the code-point `offset`.
-	 */
-	extern fn nkui_text_layout_word_range_at(layout: nkui_resource, offset: i32, out_start: ptr<i32> @out, out_end: ptr<i32> @out) -> nkui_result;
-	/**
 	 * Returns a half-open insertion-offset range for the word under a hit-tested position.
 	 */
 	extern fn nkui_text_layout_word_range(layout: nkui_resource, position: nkui_text_position, out_start: ptr<i32> @out, out_end: ptr<i32> @out) -> nkui_result;
+	/**
+	 * Returns the Skribidi word range containing the code-point `offset`.
+	 */
+	extern fn nkui_text_layout_word_range_at(layout: nkui_resource, offset: i32, out_start: ptr<i32> @out, out_end: ptr<i32> @out) -> nkui_result;
 	/**
 	 * A normalized RGBA paint color.
 	 */
