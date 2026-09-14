@@ -26,9 +26,10 @@ NK_DECLARE_HANDLE(nk_graphics_device);
  *
  * A surface is a child rendering target associated with a NativeKit window or
  * mobile host. NativeKit core owns its platform presentation resources;
- * NativeKit GPU owns rendering commands and resources. Prepare a frame with
- * nk_surface_make_current(), then call nk_surface_present() when the frame is
- * ready. Surface operations are UI-thread-only.
+ * NativeKit GPU owns rendering commands and resources. For GL,
+ * nk_surface_make_current() selects the context; explicit APIs use it to
+ * acquire the current frame target. Call nk_surface_present() after submitting
+ * the frame. Surface operations are UI-thread-only.
  */
 
 /* ------------------------------------------------------------------------- */
@@ -139,13 +140,15 @@ typedef struct nk_surface_resize_event {
 /**
  * Backend-native render target for the current surface frame.
  *
- * Callers must prepare the frame with nk_surface_make_current() before
- * requesting this descriptor. For OpenGL and OpenGL ES, `native_target` is
- * the current draw framebuffer name, with zero representing the default
- * framebuffer. For explicit APIs, it is a borrowed backend-native color target
- * token. The appended tokens are borrowed from the surface; target and present
- * tokens are valid only for the prepared frame. NativeKit callers must not
- * release or retain these tokens.
+ * GL callers make the surface current before requesting this descriptor.
+ * Explicit API callers may query stable device, context and depth tokens before
+ * preparing a frame; call nk_surface_make_current() before using the color or
+ * presentation tokens. For OpenGL and OpenGL ES, `native_target` is the current
+ * draw framebuffer name, with zero representing the default framebuffer. For
+ * explicit APIs, it is a borrowed backend-native color target token. Tokens
+ * are borrowed; device/context tokens last for the surface lifetime, the depth
+ * token lasts until a resize, and color/presentation tokens last through the
+ * prepared frame. NativeKit callers must not release or retain these tokens.
  */
 typedef struct nk_surface_frame_target {
     /** Set to sizeof(nk_surface_frame_target) or a larger compatible size. */
@@ -213,9 +216,9 @@ NK_API nk_result NK_CALL nk_surface_make_current(nk_surface surface);
 /**
  * Presents drawing performed since the last make-current call.
  *
- * The backend presents the surface's prepared frame. On GTK this schedules
- * composition of the GtkGLArea framebuffer instead of swapping a
- * caller-owned native surface.
+ * The backend presents the surface's prepared frame. Explicit APIs submit to
+ * their native presentation target; GTK schedules composition of the
+ * GtkGLArea framebuffer instead of swapping a caller-owned native surface.
  */
 NK_API nk_result NK_CALL nk_surface_present(nk_surface surface);
 
@@ -234,7 +237,11 @@ NK_API nk_result NK_CALL nk_surface_set_frame_callback(
 /* Surface queries                                                           */
 /* ------------------------------------------------------------------------- */
 
-/** Returns the current framebuffer size in device pixels. */
+/**
+ * Returns the current framebuffer size in device pixels. Returns zero
+ * dimensions while the surface has no drawable frame, such as while hidden,
+ * minimized or fully occluded.
+ */
 NK_API nk_result NK_CALL nk_surface_get_framebuffer_size(nk_surface surface,
                                                          int32_t *out_width NK_OUT,
                                                          int32_t *out_height NK_OUT);

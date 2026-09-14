@@ -1,11 +1,14 @@
 #import <Cocoa/Cocoa.h>
 #import <Carbon/Carbon.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <Metal/Metal.h>
+#import <QuartzCore/CAMetalLayer.h>
 #import <UserNotifications/UserNotifications.h>
 #import <WebKit/WebKit.h>
 
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_graphics.h"
 #include "nativekit_input.h"
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
@@ -15,6 +18,8 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/graphics_frame_target.hpp"
+#include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
 
 #include <algorithm>
@@ -42,6 +47,9 @@
 
 @interface NKContentView : NSView <NSDraggingDestination, NSTextInputClient>
 @property(nonatomic, assign) void *resource;
+@end
+
+@interface NKMetalSurfaceView : NSView
 @end
 
 @interface NKWebViewDelegate : NSObject <WKNavigationDelegate, WKScriptMessageHandler>
@@ -85,6 +93,7 @@ struct MacWindowResource final : nk::core::Resource {
     std::unordered_map<NSUInteger, uint32_t> touch_pointers;
     std::unordered_map<uint64_t, uint32_t> tablet_pointers;
     std::vector<nk_handle> children;
+    std::vector<nk_handle> surfaces;
     std::vector<nk_handle> owned_windows;
     ~MacWindowResource() override {
         if (pointer_captured) {
@@ -101,6 +110,42 @@ struct MacWindowResource final : nk::core::Resource {
             [window orderOut:nil];
             [window close];
         }
+    }
+};
+
+struct MacSurfaceResource final : nk::core::Resource {
+    __strong NKMetalSurfaceView *view = nil;
+    __strong CAMetalLayer *layer = nil;
+    __strong id<MTLDevice> device = nil;
+    __strong id<MTLCommandQueue> queue = nil;
+    __strong id<CAMetalDrawable> drawable = nil;
+    __strong id<MTLTexture> depth_stencil = nil;
+    __strong NSTimer *frame_timer = nil;
+    nk_handle handle = NK_INVALID_HANDLE;
+    nk_handle parent = NK_INVALID_HANDLE;
+    nk_handle device_handle = NK_INVALID_HANDLE;
+    nk_graphics_api api = NK_GRAPHICS_METAL;
+    nk_surface_flags flags = 0;
+    int32_t x = 0;
+    int32_t y = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+    int32_t framebuffer_width = 0;
+    int32_t framebuffer_height = 0;
+    std::shared_ptr<MacSurfaceResource> shared_surface;
+    uint32_t share_dependents = 0;
+    nk_surface_frame_callback frame_callback = nullptr;
+    void *frame_user_data = nullptr;
+    bool frame_prepared = false;
+    bool ready = false;
+    bool lost_reported = false;
+    bool destroying = false;
+
+    ~MacSurfaceResource() override {
+        [frame_timer invalidate];
+        drawable = nil;
+        if (view)
+            [view removeFromSuperview];
     }
 };
 
@@ -305,6 +350,109 @@ bool emit_drop(MacWindowResource &resource, id<NSDraggingInfo> information) noex
 std::shared_ptr<MacWindowResource> window(nk_handle handle) {
     return std::dynamic_pointer_cast<MacWindowResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::window));
+}
+
+std::shared_ptr<MacSurfaceResource> surface(nk_handle handle) {
+    return std::dynamic_pointer_cast<MacSurfaceResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::surface));
+}
+
+uint64_t metal_object_token(id object) {
+    return static_cast<uint64_t>(reinterpret_cast<uintptr_t>((__bridge void *)object));
+}
+
+void emit_surface_lost(MacSurfaceResource &resource) {
+    if (resource.lost_reported || resource.destroying)
+        return;
+    resource.lost_reported = true;
+    resource.frame_prepared = false;
+    resource.drawable = nil;
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_SURFACE_LOST;
+    event.source = resource.handle;
+    nk::core::push_event(std::move(event));
+}
+
+void emit_surface_resize(MacSurfaceResource &resource) {
+    const nk_surface_resize_event payload{resource.width, resource.height,
+                                          resource.framebuffer_width,
+                                          resource.framebuffer_height};
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_SURFACE_RESIZE;
+    event.source = resource.handle;
+    event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
+void sync_surface_drawable_size(MacSurfaceResource &resource) {
+    if (!resource.view || !resource.layer)
+        return;
+    const CGFloat scale = resource.view.window ? resource.view.window.backingScaleFactor : 1.0;
+    const NSSize view_size = resource.view.bounds.size;
+    resource.layer.contentsScale = scale > 0.0 ? scale : 1.0;
+    resource.layer.drawableSize = CGSizeMake(std::max(0.0, view_size.width * scale),
+                                             std::max(0.0, view_size.height * scale));
+    const int32_t width = static_cast<int32_t>(resource.layer.drawableSize.width);
+    const int32_t height = static_cast<int32_t>(resource.layer.drawableSize.height);
+    if (resource.framebuffer_width == width && resource.framebuffer_height == height)
+        return;
+    const bool changed = resource.framebuffer_width != 0 || resource.framebuffer_height != 0;
+    resource.framebuffer_width = width;
+    resource.framebuffer_height = height;
+    resource.depth_stencil = nil;
+    resource.drawable = nil;
+    resource.frame_prepared = false;
+    if (resource.ready && changed)
+        emit_surface_resize(resource);
+}
+
+bool set_surface_native_bounds(MacSurfaceResource &resource) {
+    if (!resource.view)
+        return false;
+    [resource.view setFrame:NSMakeRect(resource.x, resource.y, resource.width, resource.height)];
+    sync_surface_drawable_size(resource);
+    return true;
+}
+
+void update_window_surfaces(MacWindowResource &resource) {
+    for (const nk_handle handle : resource.surfaces)
+        if (auto child = surface(handle))
+            sync_surface_drawable_size(*child);
+}
+
+bool surface_frame_available(const MacSurfaceResource &resource) {
+    auto parent = window(resource.parent);
+    return resource.view && resource.layer && resource.device && resource.queue && parent &&
+           !parent->window.miniaturized && parent->window.visible &&
+           (parent->window.occlusionState & NSWindowOcclusionStateVisible) != 0 &&
+           !resource.view.hidden && resource.framebuffer_width > 0 &&
+           resource.framebuffer_height > 0;
+}
+
+bool ensure_surface_depth_target(MacSurfaceResource &resource, int32_t width, int32_t height) {
+    if (!(resource.flags & (NK_SURFACE_DEPTH | NK_SURFACE_STENCIL))) {
+        resource.depth_stencil = nil;
+        return true;
+    }
+    if (resource.depth_stencil && resource.depth_stencil.width == static_cast<NSUInteger>(width) &&
+        resource.depth_stencil.height == static_cast<NSUInteger>(height))
+        return true;
+    const MTLPixelFormat format = MTLPixelFormatDepth32Float_Stencil8;
+    MTLTextureDescriptor *descriptor =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format
+                                                            width:static_cast<NSUInteger>(width)
+                                                           height:static_cast<NSUInteger>(height)
+                                                        mipmapped:NO];
+    descriptor.usage = MTLTextureUsageRenderTarget;
+    descriptor.storageMode = MTLStorageModePrivate;
+    resource.depth_stencil = [resource.device newTextureWithDescriptor:descriptor];
+    if (!resource.depth_stencil) {
+        if (resource.ready)
+            emit_surface_lost(resource);
+        nk::core::set_error("could not allocate the Metal depth/stencil target");
+        return false;
+    }
+    return true;
 }
 
 std::shared_ptr<MacCursorResource> cursor(nk_handle handle) {
@@ -1329,6 +1477,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     event.data = bytes_of(nk_window_resize_event{static_cast<int32_t>(size.width),
                                                  static_cast<int32_t>(size.height)});
     nk::core::push_event(std::move(event));
+    update_window_surfaces(*resource);
     emit_window_state(*resource);
 }
 - (void)windowDidMiniaturize:(NSNotification *)notification {
@@ -1368,6 +1517,20 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     auto *resource = static_cast<MacWindowResource *>(_resource);
     if (!resource || !resource->handle)
         return;
+    update_window_surfaces(*resource);
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_WINDOW_SCALE_CHANGED;
+    event.source = resource->handle;
+    event.data =
+        bytes_of(nk_window_scale_event{static_cast<float>(resource->window.backingScaleFactor)});
+    nk::core::push_event(std::move(event));
+}
+- (void)windowDidChangeScreen:(NSNotification *)notification {
+    (void)notification;
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource || !resource->handle)
+        return;
+    update_window_surfaces(*resource);
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_WINDOW_SCALE_CHANGED;
     event.source = resource->handle;
@@ -1800,6 +1963,19 @@ void emit_window_state(MacWindowResource &resource) noexcept {
 }
 @end
 
+@implementation NKMetalSurfaceView
+- (BOOL)isFlipped {
+    return YES;
+}
+- (BOOL)acceptsFirstResponder {
+    return NO;
+}
+- (NSView *)hitTest:(NSPoint)point {
+    (void)point;
+    return nil;
+}
+@end
+
 @implementation NKWebViewDelegate
 - (void)webView:(WKWebView *)view
     decidePolicyForNavigationAction:(WKNavigationAction *)action
@@ -1950,7 +2126,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_WEBVIEW |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO |
-           NK_CAP_INPUT | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE;
+           NK_CAP_INPUT | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_METAL_SURFACE;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -2031,9 +2207,21 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     auto resource = window(handle);
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    for (const nk_handle surface_handle : resource->surfaces) {
+        auto child_surface = surface(surface_handle);
+        if (child_surface &&
+            (child_surface->share_dependents ||
+             nk_core_graphics_device_has_references(
+                 nk_graphics_device{child_surface->device_handle})))
+            return fail(NK_ERROR_INVALID_REQUEST,
+                        "window still owns a shared or retained graphics surface");
+    }
     const auto owned_windows = resource->owned_windows;
     for (const auto owned : owned_windows)
         nk_window_destroy(owned);
+    const auto surfaces = resource->surfaces;
+    for (auto iter = surfaces.rbegin(); iter != surfaces.rend(); ++iter)
+        nk_surface_destroy(*iter);
     const auto children = resource->children;
     for (const auto child : children)
         nk_webview_destroy(child);
@@ -2559,6 +2747,282 @@ nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window *out_n
 nk_result NK_CALL nk_window_wrap_native(const nk_native_window *, nk_handle *) {
     return unsupported();
 }
+
+nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_options *options,
+                                    nk_handle *out_surface) {
+    return nk::core::result_boundary("unexpected error while creating Metal surface",
+                                     [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        constexpr nk_surface_flags supported_flags = NK_SURFACE_HIDDEN | NK_SURFACE_ALPHA |
+                                                      NK_SURFACE_DEPTH | NK_SURFACE_STENCIL |
+                                                      NK_SURFACE_DEBUG_CONTEXT;
+        if (!options || options->struct_size < sizeof(*options) || !out_surface ||
+            options->width <= 0 || options->height <= 0 || options->api != NK_GRAPHICS_METAL ||
+            (options->flags & ~supported_flags) != 0)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid Metal surface options");
+        *out_surface = NK_INVALID_HANDLE;
+        auto parent = window(parent_handle);
+        if (!parent)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale parent window handle");
+        auto shared = options->share_surface ? surface(options->share_surface) : nullptr;
+        if (options->share_surface && !shared)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid shared graphics surface");
+        if (shared && shared->api != NK_GRAPHICS_METAL)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "shared surfaces must use the same graphics API");
+        if (shared && shared->share_dependents == UINT32_MAX)
+            return fail(NK_ERROR_INVALID_REQUEST, "graphics surface has too many dependents");
+
+        parent->surfaces.reserve(parent->surfaces.size() + 1);
+        auto resource = std::make_shared<MacSurfaceResource>();
+        resource->parent = parent_handle;
+        resource->flags = options->flags;
+        resource->x = options->x;
+        resource->y = options->y;
+        resource->width = options->width;
+        resource->height = options->height;
+        resource->shared_surface = shared;
+        if (shared) {
+            resource->device = shared->device;
+            resource->queue = shared->queue;
+            resource->device_handle = shared->device_handle;
+        } else {
+            resource->device = MTLCreateSystemDefaultDevice();
+            if (resource->device)
+                resource->queue = [resource->device newCommandQueue];
+        }
+        if (!resource->device || !resource->queue)
+            return fail(NK_ERROR_UNSUPPORTED, "could not create a Metal device and command queue");
+
+        resource->view = [[NKMetalSurfaceView alloc]
+            initWithFrame:NSMakeRect(resource->x, resource->y, resource->width, resource->height)];
+        resource->view.wantsLayer = YES;
+        resource->layer = [CAMetalLayer layer];
+        resource->layer.device = resource->device;
+        resource->layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+        resource->layer.framebufferOnly = YES;
+        resource->layer.opaque = (options->flags & NK_SURFACE_ALPHA) == 0;
+        resource->view.layer = resource->layer;
+        resource->view.hidden = (options->flags & NK_SURFACE_HIDDEN) != 0;
+        [parent->content addSubview:resource->view positioned:NSWindowAbove relativeTo:nil];
+        set_surface_native_bounds(*resource);
+        if (resource->framebuffer_width > 0 && resource->framebuffer_height > 0 &&
+            !ensure_surface_depth_target(*resource, resource->framebuffer_width,
+                                         resource->framebuffer_height))
+            return fail(NK_ERROR_UNSUPPORTED, "could not create the Metal depth/stencil target");
+        resource->handle =
+            nk::core::handles().insert(nk::core::ResourceType::surface, resource);
+        if (resource->handle == NK_INVALID_HANDLE)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "graphics surface handle registry is full");
+        if (!resource->device_handle)
+            resource->device_handle = resource->handle;
+        parent->surfaces.push_back(resource->handle);
+        if (shared)
+            ++shared->share_dependents;
+        resource->ready = true;
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_SURFACE_READY;
+        event.source = resource->handle;
+        nk::core::push_event(std::move(event));
+        *out_surface = resource->handle;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    if (resource->share_dependents)
+        return fail(NK_ERROR_INVALID_REQUEST, "graphics surface is still shared by another surface");
+    if (nk_core_graphics_device_has_references(nk_graphics_device{resource->device_handle}))
+        return fail(NK_ERROR_INVALID_REQUEST, "graphics surface still owns retained GPU resources");
+    resource->destroying = true;
+    resource->frame_prepared = false;
+    [resource->frame_timer invalidate];
+    resource->frame_timer = nil;
+    resource->drawable = nil;
+    resource->depth_stencil = nil;
+    if (resource->view)
+        [resource->view removeFromSuperview];
+    resource->view = nil;
+    resource->layer = nil;
+    if (auto parent = window(resource->parent)) {
+        auto &surfaces = parent->surfaces;
+        surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), handle), surfaces.end());
+    }
+    if (resource->shared_surface)
+        --resource->shared_surface->share_dependents;
+    nk::core::handles().erase(handle, nk::core::ResourceType::surface);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_show(nk_handle handle, uint32_t visible) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (visible > 1)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "surface visibility must be zero or one");
+    auto resource = surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    resource->view.hidden = visible == 0;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, int32_t width,
+                                        int32_t height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (width <= 0 || height <= 0)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "graphics surface dimensions must be positive");
+    auto resource = surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    resource->x = x;
+    resource->y = y;
+    resource->width = width;
+    resource->height = height;
+    return set_surface_native_bounds(*resource)
+               ? NK_OK
+               : fail(NK_ERROR_UNKNOWN, "could not resize the Metal child surface");
+}
+
+nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    if (resource->frame_prepared && resource->drawable)
+        return NK_OK;
+    if (!surface_frame_available(*resource))
+        return fail(NK_ERROR_INVALID_REQUEST, "Metal surface has no drawable frame");
+    sync_surface_drawable_size(*resource);
+    resource->drawable = [resource->layer nextDrawable];
+    if (!resource->drawable)
+        return fail(NK_ERROR_INVALID_REQUEST, "Metal drawable is temporarily unavailable");
+    const int32_t width = static_cast<int32_t>(resource->drawable.texture.width);
+    const int32_t height = static_cast<int32_t>(resource->drawable.texture.height);
+    if (!ensure_surface_depth_target(*resource, width, height))
+        return NK_ERROR_UNKNOWN;
+    resource->framebuffer_width = width;
+    resource->framebuffer_height = height;
+    resource->frame_prepared = true;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_present(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    if (!resource->frame_prepared)
+        return fail(NK_ERROR_INVALID_REQUEST, "Metal surface has no prepared frame");
+    // Sokol schedules the drawable for presentation when its command buffer commits.
+    resource->drawable = nil;
+    resource->frame_prepared = false;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
+                                                nk_surface_frame_callback callback,
+                                                void *user_data) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    [resource->frame_timer invalidate];
+    resource->frame_timer = nil;
+    resource->frame_callback = callback;
+    resource->frame_user_data = callback ? user_data : nullptr;
+    if (!callback)
+        return NK_OK;
+    resource->frame_timer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
+                                                           repeats:YES
+                                                             block:^(NSTimer *timer) {
+        (void)timer;
+        auto active = surface(handle);
+        if (!active || active->frame_callback != callback) {
+            [timer invalidate];
+            return;
+        }
+        nk::core::callback_boundary([&] {
+            if (nk_surface_make_current(handle) != NK_OK)
+                return;
+            callback(handle, active->framebuffer_width, active->framebuffer_height, user_data);
+            if (active->frame_prepared)
+                nk_surface_present(handle);
+        });
+    }];
+    return resource->frame_timer ? NK_OK
+                                 : fail(NK_ERROR_UNKNOWN, "could not start the Metal frame timer");
+}
+
+nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out_width,
+                                                  int32_t *out_height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_width || !out_height)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "framebuffer size outputs must not be null");
+    auto resource = surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    sync_surface_drawable_size(*resource);
+    if (surface_frame_available(*resource)) {
+        *out_width = resource->framebuffer_width;
+        *out_height = resource->framebuffer_height;
+    } else {
+        *out_width = 0;
+        *out_height = 0;
+    }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
+                                              nk_surface_frame_target *out_target) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!nk::core::surface_frame_target_output_valid(out_target))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "frame-target output is missing or too small");
+    auto resource = surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    nk_surface_frame_target target{};
+    target.struct_size = out_target->struct_size;
+    target.api = NK_GRAPHICS_METAL;
+    const bool prepared = resource->frame_prepared;
+    target.width = prepared ? resource->framebuffer_width : 0;
+    target.height = prepared ? resource->framebuffer_height : 0;
+    target.native_target = prepared && resource->drawable
+                               ? metal_object_token(resource->drawable.texture)
+                               : 0;
+    target.device.id = resource->device_handle;
+    target.native_device = metal_object_token(resource->device);
+    target.native_context = metal_object_token(resource->queue);
+    target.native_depth_stencil_target = metal_object_token(resource->depth_stencil);
+    target.native_present_target = prepared
+                                       ? metal_object_token(resource->drawable)
+                                       : 0;
+    nk::core::write_surface_frame_target(out_target, target);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_get_proc_address(nk_handle handle, const char *name,
+                                              nk_graphics_proc *out_proc) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!name || !*name || !out_proc)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid graphics procedure query");
+    *out_proc = nullptr;
+    if (!surface(handle))
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    return fail(NK_ERROR_UNSUPPORTED, "Metal surfaces do not expose GL procedure addresses");
+}
+
 nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_options *options,
                                     nk_handle *out_webview) {
     return nk::core::result_boundary("unexpected error while creating WebView", [&]() -> nk_result {

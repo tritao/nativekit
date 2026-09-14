@@ -543,6 +543,14 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * The backend supports NativeKit accessibility integration.
 		 */
 		NK_CAP_ACCESSIBILITY = 16777216;
+		/**
+		 * The backend can create a Direct3D 11 surface.
+		 */
+		NK_CAP_D3D11_SURFACE = 33554432;
+		/**
+		 * The backend can create a Metal surface.
+		 */
+		NK_CAP_METAL_SURFACE = 67108864;
 	}
 	/**
 	 * System color-scheme values returned in nk_system_appearance.
@@ -2680,7 +2688,9 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	extern fn nk_surface_get_frame_target(surface: nk_surface, out_target: ptr<nk_surface_frame_target> @out) -> nk_result;
 	/**
-	 * Returns the current framebuffer size in device pixels.
+	 * Returns the current framebuffer size in device pixels. Returns zero
+	 * dimensions while the surface has no drawable frame, such as while hidden,
+	 * minimized or fully occluded.
 	 */
 	extern fn nk_surface_get_framebuffer_size(surface: nk_surface, out_width: ptr<i32> @out, out_height: ptr<i32> @out) -> nk_result;
 	/**
@@ -2702,9 +2712,9 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	/**
 	 * Presents drawing performed since the last make-current call.
 	 *
-	 * The backend presents the surface's prepared frame. On GTK this schedules
-	 * composition of the GtkGLArea framebuffer instead of swapping a
-	 * caller-owned native surface.
+	 * The backend presents the surface's prepared frame. Explicit APIs submit to
+	 * their native presentation target; GTK schedules composition of the
+	 * GtkGLArea framebuffer instead of swapping a caller-owned native surface.
 	 */
 	extern fn nk_surface_present(surface: nk_surface) -> nk_result;
 	/**
@@ -4171,13 +4181,15 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	/**
 	 * Backend-native render target for the current surface frame.
 	 *
-	 * Callers must prepare the frame with nk_surface_make_current() before
-	 * requesting this descriptor. For OpenGL and OpenGL ES, `native_target` is
-	 * the current draw framebuffer name, with zero representing the default
-	 * framebuffer. For explicit APIs, it is a borrowed backend-native color target
-	 * token. The appended tokens are borrowed from the surface; target and present
-	 * tokens are valid only for the prepared frame. NativeKit callers must not
-	 * release or retain these tokens.
+	 * GL callers make the surface current before requesting this descriptor.
+	 * Explicit API callers may query stable device, context and depth tokens before
+	 * preparing a frame; call nk_surface_make_current() before using the color or
+	 * presentation tokens. For OpenGL and OpenGL ES, `native_target` is the current
+	 * draw framebuffer name, with zero representing the default framebuffer. For
+	 * explicit APIs, it is a borrowed backend-native color target token. Tokens
+	 * are borrowed; device/context tokens last for the surface lifetime, the depth
+	 * token lasts until a resize, and color/presentation tokens last through the
+	 * prepared frame. NativeKit callers must not release or retain these tokens.
 	 */
 	struct nk_surface_frame_target @layout(72, 8) {
 		/**

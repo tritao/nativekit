@@ -18,15 +18,19 @@ The graphics API values include OpenGL, OpenGL ES, Vulkan, D3D11, and Metal.
 `nk_surface_make_current()` has API-specific behavior: it makes an OpenGL
 context current, and prepares/acquires the current frame for explicit APIs.
 Callers use it before retrieving a frame target or issuing backend rendering.
-`nk_surface_present()` presents the prepared frame. A proc-address query is a
-GL operation and returns `NK_ERROR_UNSUPPORTED` for APIs without a GL function
-table, including D3D11 and Metal.
+`nk_surface_present()` completes the prepared frame and performs any required
+presentation step. With Metal, Sokol schedules the drawable when its command
+buffer commits and NativeKit releases the drawable from the surface after
+submission. A proc-address query is a GL operation and returns
+`NK_ERROR_UNSUPPORTED` for APIs without a GL function table, including D3D11
+and Metal.
 
 `nk_surface_frame_target` keeps its original 40-byte prefix. Its extensible
 tail carries opaque 64-bit tokens for the native device, execution
-context/queue, depth/stencil target, and presentation object. These values are
-borrowed from the surface; attachment and presentation tokens are valid for the
-prepared frame only. NativeKit does not expose or transfer ownership of
+context/queue, depth/stencil target, and presentation object. Device and
+context/queue tokens last for the surface lifetime, the depth/stencil token
+lasts until resize, and color/presentation tokens are valid only while the
+frame is prepared. NativeKit does not expose or transfer ownership of
 Direct3D, Objective-C, or Sokol objects through this ABI. OpenGL continues to
 use `native_target` for the current draw framebuffer and leaves the new tokens
 zero.

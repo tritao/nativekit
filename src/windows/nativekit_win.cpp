@@ -1,5 +1,6 @@
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
+#include "nativekit_graphics.h"
 #include "nativekit_input.h"
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
@@ -9,6 +10,8 @@
 
 #include "core/error.hpp"
 #include "core/boundary.hpp"
+#include "core/graphics_frame_target.hpp"
+#include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
 
 #define UNICODE
@@ -26,6 +29,9 @@
 #include <shobjidl.h>
 #include <shlobj.h>
 #include <shellapi.h>
+#include <d3d11.h>
+#include <dxgi1_2.h>
+#include <wrl/client.h>
 
 #if defined(NK_HAS_WEBVIEW2)
 #include <WebView2.h>
@@ -54,9 +60,14 @@
 
 namespace {
 
+using Microsoft::WRL::ComPtr;
+
 constexpr wchar_t window_class_name[] = L"NativeKitWindow";
+constexpr wchar_t surface_class_name[] = L"NativeKitD3D11Surface";
 constexpr UINT notification_message = WM_APP + 42;
+constexpr UINT_PTR surface_frame_timer = 1;
 ATOM window_class = 0;
+ATOM surface_window_class = 0;
 HWND notification_window = nullptr;
 
 UINT query_window_dpi(HWND window);
@@ -93,8 +104,6 @@ std::mutex dialogs_mutex;
 std::unordered_map<nk_request_id, std::shared_ptr<WinDialogContext>> dialogs;
 
 #if defined(NK_HAS_WEBVIEW2)
-using Microsoft::WRL::ComPtr;
-
 template <typename Interface, const IID *InterfaceId, typename... Arguments>
 class ComCallback final : public Interface {
   public:
@@ -218,10 +227,45 @@ struct WinWindowResource final : nk::core::Resource {
     uint32_t skip_ime_characters = 0;
     std::unordered_map<uint32_t, nk_touch_tool> active_touch_pointers;
     std::vector<nk_handle> children;
+    std::vector<nk_handle> surfaces;
     std::vector<nk_handle> owned_windows;
     ~WinWindowResource() override {
         if (pointer_captured && GetCapture() == window)
             ReleaseCapture();
+        if (window && IsWindow(window))
+            DestroyWindow(window);
+    }
+};
+
+struct WinSurfaceResource final : nk::core::Resource {
+    HWND window = nullptr;
+    nk_handle handle = NK_INVALID_HANDLE;
+    nk_handle parent = NK_INVALID_HANDLE;
+    nk_handle device_handle = NK_INVALID_HANDLE;
+    nk_graphics_api api = NK_GRAPHICS_D3D11;
+    nk_surface_flags flags = 0;
+    int32_t x = 0;
+    int32_t y = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+    int32_t framebuffer_width = 0;
+    int32_t framebuffer_height = 0;
+    ComPtr<ID3D11Device> device;
+    ComPtr<ID3D11DeviceContext> context;
+    ComPtr<IDXGISwapChain1> swapchain;
+    ComPtr<ID3D11RenderTargetView> render_target;
+    ComPtr<ID3D11Texture2D> depth_texture;
+    ComPtr<ID3D11DepthStencilView> depth_stencil_target;
+    std::shared_ptr<WinSurfaceResource> shared_surface;
+    uint32_t share_dependents = 0;
+    nk_surface_frame_callback frame_callback = nullptr;
+    void *frame_user_data = nullptr;
+    bool frame_prepared = false;
+    bool ready = false;
+    bool lost_reported = false;
+    bool destroying = false;
+
+    ~WinSurfaceResource() override {
         if (window && IsWindow(window))
             DestroyWindow(window);
     }
@@ -237,6 +281,9 @@ struct WinCursorResource final : nk::core::Resource {
             DestroyCursor(cursor);
     }
 };
+
+std::shared_ptr<WinSurfaceResource> get_surface(nk_handle handle);
+bool set_surface_native_bounds(WinSurfaceResource &surface);
 
 nk_result fail(nk_result result, std::string_view message) {
     nk::core::set_error(message);
@@ -1271,6 +1318,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
 #if defined(NK_HAS_WEBVIEW2)
             update_child_bounds(*resource);
 #endif
+            for (const auto surface_handle : resource->surfaces)
+                if (auto child_surface = get_surface(surface_handle))
+                    set_surface_native_bounds(*child_surface);
             return 0;
         }
     }
@@ -1313,6 +1363,234 @@ void copy_notification_text(wchar_t (&destination)[Size], const std::wstring &so
 std::shared_ptr<WinWindowResource> get_window(nk_handle handle) {
     return std::dynamic_pointer_cast<WinWindowResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::window));
+}
+
+std::shared_ptr<WinSurfaceResource> get_surface(nk_handle handle) {
+    return std::dynamic_pointer_cast<WinSurfaceResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::surface));
+}
+
+void emit_surface_lost(WinSurfaceResource &surface) {
+    if (surface.lost_reported || surface.destroying)
+        return;
+    surface.lost_reported = true;
+    surface.frame_prepared = false;
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_SURFACE_LOST;
+    event.source = surface.handle;
+    nk::core::push_event(std::move(event));
+}
+
+void emit_surface_resize(WinSurfaceResource &surface) {
+    const nk_surface_resize_event payload{surface.width, surface.height,
+                                          surface.framebuffer_width,
+                                          surface.framebuffer_height};
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_SURFACE_RESIZE;
+    event.source = surface.handle;
+    event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
+bool d3d11_device_failure(const WinSurfaceResource &surface, HRESULT result) {
+    return result == DXGI_ERROR_DEVICE_REMOVED || result == DXGI_ERROR_DEVICE_RESET ||
+           result == DXGI_ERROR_DEVICE_HUNG || result == DXGI_ERROR_DRIVER_INTERNAL_ERROR ||
+           (surface.device && FAILED(surface.device->GetDeviceRemovedReason()));
+}
+
+bool create_d3d11_device(WinSurfaceResource &surface) {
+    UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+    if (surface.flags & NK_SURFACE_DEBUG_CONTEXT)
+        flags |= D3D11_CREATE_DEVICE_DEBUG;
+    D3D_FEATURE_LEVEL level{};
+    HRESULT result = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr,
+                                       0, D3D11_SDK_VERSION, &surface.device, &level,
+                                       &surface.context);
+    if (FAILED(result) && !(surface.flags & NK_SURFACE_DEBUG_CONTEXT)) {
+        surface.device.Reset();
+        surface.context.Reset();
+        result = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, flags, nullptr, 0,
+                                   D3D11_SDK_VERSION, &surface.device, &level, &surface.context);
+    }
+    if (FAILED(result)) {
+        nk::core::set_error("could not create a Direct3D 11 device");
+        return false;
+    }
+    return true;
+}
+
+bool create_d3d11_swapchain(WinSurfaceResource &surface, int32_t width, int32_t height) {
+    ComPtr<IDXGIDevice> dxgi_device;
+    ComPtr<IDXGIAdapter> adapter;
+    ComPtr<IDXGIFactory2> factory;
+    if (FAILED(surface.device.As(&dxgi_device)) || FAILED(dxgi_device->GetAdapter(&adapter)) ||
+        FAILED(adapter->GetParent(IID_PPV_ARGS(&factory)))) {
+        nk::core::set_error("could not query the Direct3D DXGI factory");
+        return false;
+    }
+    DXGI_SWAP_CHAIN_DESC1 descriptor{};
+    descriptor.Width = static_cast<UINT>(width);
+    descriptor.Height = static_cast<UINT>(height);
+    descriptor.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    descriptor.SampleDesc.Count = 1;
+    descriptor.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    descriptor.BufferCount = 2;
+    descriptor.Scaling = DXGI_SCALING_STRETCH;
+    // FLIP_SEQUENTIAL is supported by the Windows 8 minimum declared above;
+    // FLIP_DISCARD would silently raise the runtime requirement to Windows 10.
+    descriptor.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+    descriptor.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+    const HRESULT result = factory->CreateSwapChainForHwnd(
+        surface.device.Get(), surface.window, &descriptor, nullptr, nullptr, &surface.swapchain);
+    if (FAILED(result)) {
+        nk::core::set_error("could not create the Direct3D DXGI swapchain");
+        return false;
+    }
+    factory->MakeWindowAssociation(surface.window, DXGI_MWA_NO_ALT_ENTER);
+    return true;
+}
+
+bool rebuild_surface_targets(WinSurfaceResource &surface, int32_t width, int32_t height) {
+    const int32_t previous_width = surface.framebuffer_width;
+    const int32_t previous_height = surface.framebuffer_height;
+    surface.frame_prepared = false;
+    if (width <= 0 || height <= 0) {
+        surface.render_target.Reset();
+        surface.depth_stencil_target.Reset();
+        surface.depth_texture.Reset();
+        surface.framebuffer_width = 0;
+        surface.framebuffer_height = 0;
+        if (previous_width != 0 || previous_height != 0)
+            emit_surface_resize(surface);
+        return true;
+    }
+    if (surface.device && FAILED(surface.device->GetDeviceRemovedReason())) {
+        emit_surface_lost(surface);
+        nk::core::set_error("the Direct3D 11 device was removed");
+        return false;
+    }
+    if (!surface.swapchain) {
+        if (!create_d3d11_swapchain(surface, width, height))
+            return false;
+    } else if (surface.framebuffer_width != width || surface.framebuffer_height != height) {
+        surface.context->OMSetRenderTargets(0, nullptr, nullptr);
+        surface.render_target.Reset();
+        surface.depth_stencil_target.Reset();
+        surface.depth_texture.Reset();
+        const HRESULT result = surface.swapchain->ResizeBuffers(
+            0, static_cast<UINT>(width), static_cast<UINT>(height), DXGI_FORMAT_UNKNOWN, 0);
+        if (FAILED(result)) {
+            if (d3d11_device_failure(surface, result))
+                emit_surface_lost(surface);
+            nk::core::set_error("could not resize the Direct3D DXGI swapchain");
+            return false;
+        }
+    }
+
+    ComPtr<ID3D11Texture2D> backbuffer;
+    if (FAILED(surface.swapchain->GetBuffer(0, IID_PPV_ARGS(&backbuffer))) ||
+        FAILED(surface.device->CreateRenderTargetView(backbuffer.Get(), nullptr,
+                                                      &surface.render_target))) {
+        nk::core::set_error("could not create the Direct3D swapchain render target");
+        return false;
+    }
+    if (surface.flags & (NK_SURFACE_DEPTH | NK_SURFACE_STENCIL)) {
+        D3D11_TEXTURE2D_DESC depth_descriptor{};
+        depth_descriptor.Width = static_cast<UINT>(width);
+        depth_descriptor.Height = static_cast<UINT>(height);
+        depth_descriptor.MipLevels = 1;
+        depth_descriptor.ArraySize = 1;
+        depth_descriptor.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        depth_descriptor.SampleDesc.Count = 1;
+        depth_descriptor.Usage = D3D11_USAGE_DEFAULT;
+        depth_descriptor.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+        if (FAILED(surface.device->CreateTexture2D(&depth_descriptor, nullptr,
+                                                   &surface.depth_texture)) ||
+            FAILED(surface.device->CreateDepthStencilView(surface.depth_texture.Get(), nullptr,
+                                                          &surface.depth_stencil_target))) {
+            nk::core::set_error("could not create the Direct3D depth/stencil target");
+            return false;
+        }
+    }
+    surface.framebuffer_width = width;
+    surface.framebuffer_height = height;
+    if (surface.ready && (previous_width != width || previous_height != height))
+        emit_surface_resize(surface);
+    return true;
+}
+
+LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    auto *surface = reinterpret_cast<WinSurfaceResource *>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (message == WM_NCCREATE) {
+        const auto *create = reinterpret_cast<const CREATESTRUCTW *>(lparam);
+        surface = static_cast<WinSurfaceResource *>(create->lpCreateParams);
+        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(surface));
+    }
+    if (surface && message == WM_MOUSEACTIVATE)
+        return MA_NOACTIVATE;
+    if (surface && message == WM_NCHITTEST)
+        return HTTRANSPARENT;
+    if (surface && message == WM_TIMER && wparam == surface_frame_timer &&
+        surface->frame_callback && !surface->destroying) {
+        auto active = get_surface(surface->handle);
+        if (!active)
+            return 0;
+        nk::core::callback_boundary([&] {
+            if (nk_surface_make_current(active->handle) != NK_OK)
+                return;
+            const auto callback = active->frame_callback;
+            void *user_data = active->frame_user_data;
+            callback(active->handle, active->framebuffer_width,
+                     active->framebuffer_height, user_data);
+            if (active->frame_prepared)
+                nk_surface_present(active->handle);
+        });
+        return 0;
+    }
+    if (surface && message == WM_SIZE && surface->handle != NK_INVALID_HANDLE &&
+        !surface->destroying) {
+        nk::core::callback_boundary([&] {
+            if (!rebuild_surface_targets(*surface, static_cast<int32_t>(LOWORD(lparam)),
+                                         static_cast<int32_t>(HIWORD(lparam))))
+                emit_surface_lost(*surface);
+        });
+    }
+    return DefWindowProcW(window, message, wparam, lparam);
+}
+
+bool ensure_surface_window_class() {
+    if (surface_window_class)
+        return true;
+    WNDCLASSEXW definition{};
+    definition.cbSize = sizeof(definition);
+    definition.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+    definition.lpfnWndProc = surface_window_proc;
+    definition.hInstance = GetModuleHandleW(nullptr);
+    definition.lpszClassName = surface_class_name;
+    surface_window_class = RegisterClassExW(&definition);
+    return surface_window_class != 0 || GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+}
+
+bool set_surface_native_bounds(WinSurfaceResource &surface) {
+    auto parent = get_window(surface.parent);
+    if (!parent)
+        return false;
+    const UINT dpi = query_window_dpi(parent->window);
+    const int x = MulDiv(surface.x, static_cast<int>(dpi), 96);
+    const int y = MulDiv(surface.y, static_cast<int>(dpi), 96);
+    const int width = MulDiv(surface.width, static_cast<int>(dpi), 96);
+    const int height = MulDiv(surface.height, static_cast<int>(dpi), 96);
+    return SetWindowPos(surface.window, nullptr, x, y, width, height,
+                        SWP_NOACTIVATE | SWP_NOZORDER) != 0;
+}
+
+bool surface_frame_available(const WinSurfaceResource &surface) {
+    auto parent = get_window(surface.parent);
+    if (!parent || IsIconic(parent->window) || !IsWindowVisible(parent->window) ||
+        !IsWindowVisible(surface.window) || !surface.framebuffer_width ||
+        !surface.framebuffer_height || !surface.swapchain)
+        return false;
+    return surface.swapchain->Present(0, DXGI_PRESENT_TEST) != DXGI_STATUS_OCCLUDED;
 }
 
 std::shared_ptr<WinCursorResource> get_cursor(nk_handle handle) {
@@ -2279,7 +2557,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
                                    NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
                                    NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
                                    NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR |
-                                   NK_CAP_POINTER_CAPTURE;
+                                   NK_CAP_POINTER_CAPTURE | NK_CAP_D3D11_SURFACE;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
@@ -2347,9 +2625,22 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     auto resource = get_window(handle);
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    for (const auto surface_handle : resource->surfaces) {
+        auto child_surface = get_surface(surface_handle);
+        if (!child_surface)
+            continue;
+        if (child_surface->share_dependents ||
+            nk_core_graphics_device_has_references(
+                nk_graphics_device{child_surface->device_handle}))
+            return fail(NK_ERROR_INVALID_REQUEST,
+                        "window still owns a shared or retained graphics surface");
+    }
     const auto owned_windows = resource->owned_windows;
     for (const auto owned : owned_windows)
         nk_window_destroy(owned);
+    const auto surfaces = resource->surfaces;
+    for (auto iter = surfaces.rbegin(); iter != surfaces.rend(); ++iter)
+        nk_surface_destroy(*iter);
     const auto children = resource->children;
     for (const auto child : children)
         nk_webview_destroy(child);
@@ -2911,6 +3202,266 @@ nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window *out_n
 
 nk_result NK_CALL nk_window_wrap_native(const nk_native_window *, nk_handle *) {
     return unsupported();
+}
+
+nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_options *options,
+                                    nk_handle *out_surface) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        constexpr nk_surface_flags supported_flags = NK_SURFACE_HIDDEN | NK_SURFACE_ALPHA |
+                                                      NK_SURFACE_DEPTH | NK_SURFACE_STENCIL |
+                                                      NK_SURFACE_DEBUG_CONTEXT;
+        if (!options || options->struct_size < sizeof(*options) || !out_surface ||
+            options->width <= 0 || options->height <= 0 || options->api != NK_GRAPHICS_D3D11 ||
+            (options->flags & ~supported_flags) != 0)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid Direct3D surface options");
+        *out_surface = NK_INVALID_HANDLE;
+        auto parent = get_window(parent_handle);
+        if (!parent)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale parent window handle");
+        auto shared = options->share_surface ? get_surface(options->share_surface) : nullptr;
+        if (options->share_surface && !shared)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid shared graphics surface");
+        if (shared && shared->api != NK_GRAPHICS_D3D11)
+            return fail(NK_ERROR_INVALID_ARGUMENT,
+                        "shared surfaces must use the same graphics API");
+        if (shared && shared->share_dependents == UINT32_MAX)
+            return fail(NK_ERROR_INVALID_REQUEST, "graphics surface has too many dependents");
+        if (!ensure_surface_window_class())
+            return fail(NK_ERROR_UNKNOWN, "could not register the Direct3D surface window class");
+        parent->surfaces.reserve(parent->surfaces.size() + 1);
+        auto resource = std::make_shared<WinSurfaceResource>();
+        resource->parent = parent_handle;
+        resource->flags = options->flags;
+        resource->x = options->x;
+        resource->y = options->y;
+        resource->width = options->width;
+        resource->height = options->height;
+        resource->shared_surface = shared;
+        if (shared) {
+            resource->device = shared->device;
+            resource->context = shared->context;
+            resource->device_handle = shared->device_handle;
+        } else if (!create_d3d11_device(*resource)) {
+            return NK_ERROR_UNSUPPORTED;
+        }
+
+        const UINT dpi = query_window_dpi(parent->window);
+        const int x = MulDiv(resource->x, static_cast<int>(dpi), 96);
+        const int y = MulDiv(resource->y, static_cast<int>(dpi), 96);
+        const int width = MulDiv(resource->width, static_cast<int>(dpi), 96);
+        const int height = MulDiv(resource->height, static_cast<int>(dpi), 96);
+        const DWORD style = WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS |
+                            ((options->flags & NK_SURFACE_HIDDEN) ? 0 : WS_VISIBLE);
+        resource->window = CreateWindowExW(WS_EX_NOACTIVATE, surface_class_name, L"", style, x, y,
+                                           width, height, parent->window, nullptr,
+                                           GetModuleHandleW(nullptr), resource.get());
+        if (!resource->window)
+            return fail(NK_ERROR_UNKNOWN, "could not create the Direct3D child surface");
+        resource->handle =
+            nk::core::handles().insert(nk::core::ResourceType::surface, resource);
+        if (resource->handle == NK_INVALID_HANDLE)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "graphics surface handle registry is full");
+        if (!resource->device_handle)
+            resource->device_handle = resource->handle;
+        parent->surfaces.push_back(resource->handle);
+        if (shared)
+            ++shared->share_dependents;
+        if (!rebuild_surface_targets(*resource, width, height)) {
+            nk_surface_destroy(resource->handle);
+            return fail(NK_ERROR_UNSUPPORTED, "could not initialize the Direct3D surface targets");
+        }
+        resource->ready = true;
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_SURFACE_READY;
+        event.source = resource->handle;
+        nk::core::push_event(std::move(event));
+        *out_surface = resource->handle;
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while creating Direct3D surface");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while creating Direct3D surface");
+    }
+}
+
+nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = get_surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    if (resource->share_dependents)
+        return fail(NK_ERROR_INVALID_REQUEST, "graphics surface is still shared by another surface");
+    if (nk_core_graphics_device_has_references(nk_graphics_device{resource->device_handle}))
+        return fail(NK_ERROR_INVALID_REQUEST,
+                    "graphics surface still owns retained GPU resources");
+    resource->destroying = true;
+    resource->frame_prepared = false;
+    resource->context->OMSetRenderTargets(0, nullptr, nullptr);
+    resource->render_target.Reset();
+    resource->depth_stencil_target.Reset();
+    resource->depth_texture.Reset();
+    resource->swapchain.Reset();
+    if (resource->window && IsWindow(resource->window))
+        DestroyWindow(resource->window);
+    resource->window = nullptr;
+    if (auto parent = get_window(resource->parent)) {
+        auto &surfaces = parent->surfaces;
+        surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), handle), surfaces.end());
+    }
+    if (resource->shared_surface)
+        --resource->shared_surface->share_dependents;
+    nk::core::handles().erase(handle, nk::core::ResourceType::surface);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_show(nk_handle handle, uint32_t visible) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (visible > 1)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "surface visibility must be zero or one");
+    auto resource = get_surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    ShowWindow(resource->window, visible ? SW_SHOWNA : SW_HIDE);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, int32_t width,
+                                        int32_t height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (width <= 0 || height <= 0)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "graphics surface dimensions must be positive");
+    auto resource = get_surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    resource->x = x;
+    resource->y = y;
+    resource->width = width;
+    resource->height = height;
+    return set_surface_native_bounds(*resource)
+               ? NK_OK
+               : fail(NK_ERROR_UNKNOWN, "could not resize the Direct3D child surface");
+}
+
+nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = get_surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    if (resource->lost_reported || !resource->device ||
+        FAILED(resource->device->GetDeviceRemovedReason())) {
+        emit_surface_lost(*resource);
+        return fail(NK_ERROR_INVALID_REQUEST, "Direct3D surface device is unavailable");
+    }
+    if (resource->frame_prepared)
+        return NK_OK;
+    if (!surface_frame_available(*resource))
+        return fail(NK_ERROR_INVALID_REQUEST, "Direct3D surface has no drawable frame");
+    resource->frame_prepared = true;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_present(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = get_surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    if (!resource->frame_prepared)
+        return fail(NK_ERROR_INVALID_REQUEST, "Direct3D surface has no prepared frame");
+    resource->frame_prepared = false;
+    const HRESULT result = resource->swapchain->Present(1, 0);
+    if (result == DXGI_STATUS_OCCLUDED)
+        return NK_OK;
+    if (FAILED(result)) {
+        if (d3d11_device_failure(*resource, result))
+            emit_surface_lost(*resource);
+        return fail(NK_ERROR_UNKNOWN, "could not present the Direct3D surface");
+    }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
+                                                nk_surface_frame_callback callback,
+                                                void *user_data) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = get_surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    resource->frame_callback = callback;
+    resource->frame_user_data = callback ? user_data : nullptr;
+    if (callback)
+        SetTimer(resource->window, surface_frame_timer, 16, nullptr);
+    else
+        KillTimer(resource->window, surface_frame_timer);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out_width,
+                                                  int32_t *out_height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_width || !out_height)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "framebuffer size outputs must not be null");
+    auto resource = get_surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    if (surface_frame_available(*resource)) {
+        *out_width = resource->framebuffer_width;
+        *out_height = resource->framebuffer_height;
+    } else {
+        *out_width = 0;
+        *out_height = 0;
+    }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
+                                              nk_surface_frame_target *out_target) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!nk::core::surface_frame_target_output_valid(out_target))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "frame-target output is missing or too small");
+    auto resource = get_surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    nk_surface_frame_target target{};
+    target.struct_size = out_target->struct_size;
+    target.api = NK_GRAPHICS_D3D11;
+    const bool prepared = resource->frame_prepared;
+    target.width = prepared ? resource->framebuffer_width : 0;
+    target.height = prepared ? resource->framebuffer_height : 0;
+    target.native_target = prepared && resource->render_target
+                               ? static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->render_target.Get()))
+                               : 0;
+    target.device.id = resource->device_handle;
+    target.native_device = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->device.Get()));
+    target.native_context = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->context.Get()));
+    target.native_depth_stencil_target = static_cast<uint64_t>(
+        reinterpret_cast<uintptr_t>(resource->depth_stencil_target.Get()));
+    target.native_present_target = prepared
+                                       ? static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->swapchain.Get()))
+                                       : 0;
+    nk::core::write_surface_frame_target(out_target, target);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_get_proc_address(nk_handle handle, const char *name,
+                                              nk_graphics_proc *out_proc) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!name || !*name || !out_proc)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid graphics procedure query");
+    *out_proc = nullptr;
+    if (!get_surface(handle))
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    return fail(NK_ERROR_UNSUPPORTED, "Direct3D surfaces do not expose GL procedure addresses");
 }
 
 #if defined(NK_HAS_WEBVIEW2)

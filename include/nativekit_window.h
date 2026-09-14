@@ -72,7 +72,11 @@ enum NK_FLAGS(nk_capabilities) {
     /** The backend can create or expose a Vulkan surface. */
     NK_CAP_VULKAN_SURFACE = UINT64_C(1) << 23,
     /** The backend supports NativeKit accessibility integration. */
-    NK_CAP_ACCESSIBILITY = UINT64_C(1) << 24
+    NK_CAP_ACCESSIBILITY = UINT64_C(1) << 24,
+    /** The backend can create a Direct3D 11 surface. */
+    NK_CAP_D3D11_SURFACE = UINT64_C(1) << 25,
+    /** The backend can create a Metal surface. */
+    NK_CAP_METAL_SURFACE = UINT64_C(1) << 26
 };
 
 /** Discriminator identifying the platform representation in nk_native_window. */

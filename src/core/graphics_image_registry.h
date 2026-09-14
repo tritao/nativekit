@@ -3,7 +3,8 @@
 
 #include "nativekit_graphics.h"
 
-typedef int(NK_CALL *nk_core_graphics_image_release_fn)(const void *runtime,
+typedef int(NK_CALL *nk_core_graphics_image_release_fn)(nk_graphics_api api,
+                                                        const void *runtime,
                                                         nk_graphics_device device,
                                                         uint64_t backend_image);
 

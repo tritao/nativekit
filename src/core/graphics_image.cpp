@@ -70,7 +70,8 @@ extern "C" nk_result NK_CALL nk_core_graphics_image_register(
     nk_graphics_image *out_image) {
     if (!out_image || !device.id || width <= 0 || height <= 0 || !runtime || !backend_image ||
         !release ||
-        (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES && api != NK_GRAPHICS_VULKAN))
+        (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES &&
+         api != NK_GRAPHICS_VULKAN && api != NK_GRAPHICS_D3D11 && api != NK_GRAPHICS_METAL))
         return NK_ERROR_INVALID_ARGUMENT;
     out_image->id = 0;
     try {
@@ -119,6 +120,7 @@ extern "C" nk_result NK_CALL nk_graphics_image_release(nk_graphics_image image) 
     const void *runtime = nullptr;
     uint64_t backend_image = 0;
     nk_graphics_device device{};
+    nk_graphics_api api = 0;
     {
         std::lock_guard<std::mutex> lock(registry_mutex);
         Slot *slot = resolve_locked(image);
@@ -131,11 +133,12 @@ extern "C" nk_result NK_CALL nk_graphics_image_release(nk_graphics_image image) 
         slot->references = 0;
         slot->releasing = true;
         release = slot->release;
+        api = slot->info.api;
         device = slot->info.device;
         runtime = slot->runtime;
         backend_image = slot->backend_image;
     }
-    if (!release(runtime, device, backend_image)) {
+    if (!release(api, runtime, device, backend_image)) {
         std::lock_guard<std::mutex> lock(registry_mutex);
         const uint32_t encoded_index = image.id & 0xFFFFu;
         const uint16_t generation = static_cast<uint16_t>(image.id >> 16);
