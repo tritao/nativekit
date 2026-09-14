@@ -1,83 +1,43 @@
 import Color;
-import Canvas;
 import FontCollection;
 import FrameInfo;
-import Insets;
-import LayoutAlignment;
 import LayoutAxis;
-import LayoutDirection;
 import LayoutFrame;
 import LayoutStyle;
 import NativeKit.Handle;
 import NativeKit.SurfaceHandle;
 import NativeKitEvents;
 import NativeKitSurface;
-import Rect;
 import Renderer;
 import Surface;
-import TextStyle;
 import nativekit.ui.core.NativeInputAdapter;
-import nativekit.ui.core.HitTest;
-import nativekit.ui.core.RenderNode;
-import nativekit.ui.core.State;
 import nativekit.ui.core.UiContext;
-import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.View;
-import nativekit.ui.core.WidgetId;
 import nativekit.ui.animation.AnimationController;
 import nativekit.ui.animation.SpringController;
-import nativekit.ui.debug.AccessibilityIssue;
-import nativekit.ui.debug.UiNodeSnapshot;
-import nativekit.ui.gestures.DoubleTapRecognizer;
-import nativekit.ui.gestures.DragRecognizer;
-import nativekit.ui.gestures.GestureEvent;
-import nativekit.ui.gestures.LongPressRecognizer;
-import nativekit.ui.gestures.TapRecognizer;
-import nativekit.ui.semantics.AccessibilityAction;
-import nativekit.ui.semantics.AccessibilityRole;
-import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.theme.Theme;
-import nativekit.ui.widgets.Align;
 import nativekit.ui.widgets.Button;
-import nativekit.ui.widgets.CanvasView;
-import nativekit.ui.widgets.Checkbox;
 import nativekit.ui.widgets.Column;
-import nativekit.ui.widgets.Dialog;
 import nativekit.ui.widgets.KeyedView;
-import nativekit.ui.widgets.GestureDetector;
-import nativekit.ui.widgets.Menu;
-import nativekit.ui.widgets.MenuItem;
-import nativekit.ui.widgets.Padding;
-import nativekit.ui.widgets.ProgressBar;
-import nativekit.ui.widgets.Popup;
-import nativekit.ui.widgets.RadioGroup;
-import nativekit.ui.widgets.RadioOption;
 import nativekit.ui.widgets.Row;
-import nativekit.ui.widgets.ScrollAxis;
-import nativekit.ui.widgets.ScrollController;
-import nativekit.ui.widgets.ScrollView;
-import nativekit.ui.widgets.SizedBox;
 import nativekit.ui.widgets.Slider;
-import nativekit.ui.widgets.Spacer;
 import nativekit.ui.widgets.Stack;
 import nativekit.ui.widgets.StackChild;
-import nativekit.ui.widgets.TabItem;
-import nativekit.ui.widgets.Tabs;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TextArea;
-import nativekit.ui.widgets.TextEditorState;
 import nativekit.ui.widgets.TextField;
-import nativekit.ui.widgets.Toggle;
-import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.VirtualList;
 import ExplorerCatalog;
-import shell.CatalogSidebar;
 import shell.ExplorerShell;
+import shell.OverlayHost;
 import inspector.InspectionOverlay;
 import inspector.InspectorPanel;
 import testing.ExplorerSmokeSequence;
+import testing.ExplorerFocusSequence;
 import testing.ExplorerVisualCases;
 import components.PageHeader;
+import components.ShowcaseKit;
+import pages.ListsPage;
 
 /** Interactive, Haxe-composed showcase for NativeKit's UI framework. */
 @:allow(pages.GraphicsPage)
@@ -95,6 +55,9 @@ import components.PageHeader;
 @:allow(inspector.InspectorPanel)
 @:allow(ExplorerCatalog)
 @:allow(testing.ExplorerVisualCases)
+@:allow(testing.ExplorerFocusSequence)
+@:allow(components.ShowcaseKit)
+@:allow(shell.OverlayHost)
 class UiExplorer {
 	public static inline var TARGET_FPS:Float = 60.0;
 	static inline var LIST_COUNT:Int = 10000;
@@ -138,26 +101,12 @@ class UiExplorer {
 		pixelScale = 1.0;
 		frame = new LayoutFrame(width, height);
 		frameInfo = new FrameInfo(width, height, framebufferWidth, framebufferHeight, pixelScale);
+		virtualList = ListsPage.createVirtualList(this);
 		tweenController = new AnimationController(context.animations, function(value) {
 			state.gestures.tweenValue = value;
 		});
 		springController = new SpringController(state.gestures.springValue, 180.0, 24.0, 1.0, 0.001,
 			context.animations, function(value) { state.gestures.springValue = value; });
-		var listStyle = new LayoutStyle();
-		listStyle.width = LayoutAxis.grow();
-		listStyle.height = LayoutAxis.fixed(350.0);
-		listStyle.clipVertical = true;
-		virtualList = new VirtualList("ten-thousand-rows", LIST_COUNT, LIST_ROW_HEIGHT,
-			function(index) {
-				var rowStyle = new LayoutStyle();
-				rowStyle.width = LayoutAxis.grow();
-				rowStyle.height = LayoutAxis.fixed(LIST_ROW_HEIGHT);
-				rowStyle.padding = new Insets(8.0, 7.0, 8.0, 7.0);
-				rowStyle.background = state.lightTheme
-					? (index % 2 == 0 ? color(0.98, 0.99, 1.0) : color(0.91, 0.94, 0.98))
-					: (index % 2 == 0 ? color(0.11, 0.14, 0.20) : color(0.13, 0.16, 0.23));
-				return new Text('ROW ${index + 1}  ·  virtual item', rowStyle, paletteText());
-			}, listStyle, null, state.listController, 350.0);
 	}
 
 	/** Installs the native surface used by text editing and platform IME state. */
@@ -212,30 +161,7 @@ class UiExplorer {
 			diagnosticStage = 10 + context.getDiagnosticStage();
 			throw error;
 		}
-		if (state.smokeFocusTextField || state.visualFocusLabel != null) {
-			diagnosticStage = 4;
-			state.smokeFocusTextField = false;
-			var targetLabel = state.visualFocusLabel;
-			state.visualFocusLabel = null;
-			var selectTextArea = state.visualTextAreaSelection;
-			state.visualTextAreaSelection = false;
-			var focused = false;
-			for (record in context.inspect())
-				if (!focused && ((targetLabel != null && record.label == targetLabel) ||
-					(targetLabel == null && record.role == AccessibilityRole.TextField))) {
-					var widgetId = new WidgetId(record.id);
-					focused = context.focusWidget(widgetId);
-					if (focused && selectTextArea) {
-						var editorState:State<TextEditorState> = context.buildContext.existingState(widgetId);
-						var editor:TextEditorState = cast editorState.value;
-						if (!editor.setSelection(6, 15))
-							throw "UI visual test could not select TextArea text";
-						editorState.update(editor);
-					}
-				}
-			if (!focused)
-				throw "UI smoke test could not focus a TextField";
-		}
+		ExplorerFocusSequence.applyAfterSubmit(this);
 		diagnosticStage = 5;
 		context.render(renderer, Surface.fromNativeHandle(surface), frameInfo);
 		frames++;
@@ -260,33 +186,7 @@ class UiExplorer {
 		rootStyle.width = LayoutAxis.grow();
 		rootStyle.height = LayoutAxis.grow();
 		var layers:Array<StackChild> = [new StackChild("explorer-shell", buildShell())];
-		if (state.overlays.dialogOpen) {
-			var dialog = new Dialog("showcase-dialog", "NativeKit dialog",
-				new Column("dialog-content", [
-					keyed("copy", text("A modal overlay rendered in the same resolved UI tree.", paletteMuted())),
-					keyed("close", button("Done", "dialog-done", function() { state.overlays.dialogOpen = false; }))
-				], columnStyle(340.0, 90.0)), function() { state.overlays.dialogOpen = false; }, 390.0);
-			layers.push(new StackChild("dialog-layer", dialog, 0.0, 0.0, 30));
-		} else if (state.overlays.popupOpen) {
-			var popupStyle = panelStyle(250.0);
-			var popupContent = new Column("popup-content", [
-				keyed("title", text("Quick actions", paletteText())),
-				keyed("copy", text("This popup escapes the page clip.", paletteMuted())),
-				keyed("dismiss", button("Close popup", "popup-close", function() { state.overlays.popupOpen = false; }))
-			], popupStyle);
-			var popup = new Popup("showcase-popup", popupContent, Math.max(270.0, width * 0.42), 150.0,
-				null, function() { state.overlays.popupOpen = false; });
-			popup.label = "Quick actions";
-			popup.modal = false;
-			layers.push(new StackChild("popup-layer", popup, 0.0, 0.0, 20));
-		} else if (state.overlays.menuOpen) {
-			var menu = new Menu("showcase-menu", [
-				new MenuItem("menu-new", "New document", function() { state.controls.menuSelection = "New document"; }),
-				new MenuItem("menu-copy", "Copy selection", function() { state.controls.menuSelection = "Copy selection"; }),
-				new MenuItem("menu-disabled", "Unavailable action", null, false)
-			], 330.0, 165.0, function() { state.overlays.menuOpen = false; });
-			layers.push(new StackChild("menu-layer", menu, 0.0, 0.0, 20));
-		}
+		OverlayHost.appendLayers(this, layers);
 		InspectionOverlay.addHighlight(this, layers);
 		return new Stack("showcase-root", layers, rootStyle);
 	}
@@ -322,167 +222,65 @@ class UiExplorer {
 	}
 
 	function textField():TextField {
-		var style = new LayoutStyle();
-		style.width = LayoutAxis.grow();
-		style.height = LayoutAxis.fixed(42.0);
-		style.padding = new Insets(11.0, 8.0, 11.0, 8.0);
-		style.background = state.lightTheme ? color(0.92, 0.94, 0.98) : color(0.09, 0.12, 0.18);
-		style.radiusTopLeft = style.radiusTopRight = 5.0;
-		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
-		return new TextField("demo-name", state.controls.nameValue, function(value) {
-			state.controls.nameValue = value;
-		},
-			style, "Display name", new TextStyle(15.0), paletteText());
+		return ShowcaseKit.textField(this);
 	}
 
-	function textArea():TextArea {
-		var style = new LayoutStyle();
-		style.width = LayoutAxis.grow();
-		style.height = LayoutAxis.fixed(146.0);
-		style.padding = new Insets(11.0, 8.0, 11.0, 8.0);
-		style.background = state.lightTheme ? color(0.92, 0.94, 0.98) : color(0.09, 0.12, 0.18);
-		style.radiusTopLeft = style.radiusTopRight = 5.0;
-		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
-		return new TextArea("demo-notes", state.controls.notesValue, function(value) {
-			state.controls.notesValue = value;
-		},
-			style, "Multilingual notes", new TextStyle(15.0), paletteText());
-	}
+	function textArea():TextArea
+		return ShowcaseKit.textArea(this);
 
-	function slider():Slider {
-		var style = new LayoutStyle();
-		style.width = LayoutAxis.grow();
-		style.height = LayoutAxis.fixed(36.0);
-		return new Slider("volume-slider", "Volume", state.controls.volume, 0.0, 1.0, 0.01,
-			function(value) { state.controls.volume = value; }, style);
-	}
+	function slider():Slider
+		return ShowcaseKit.slider(this);
 
-	function button(label:String, key:String, action:Void->Void, selected:Bool = false):Button {
-		var style = new LayoutStyle();
-		style.height = LayoutAxis.fixed(38.0);
-		style.padding = new Insets(12.0, 9.0, 12.0, 9.0);
-		style.background = state.lightTheme ? color(0.18, 0.39, 0.70) : color(0.16, 0.38, 0.70);
-		style.radiusTopLeft = style.radiusTopRight = 5.0;
-		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
-		var result = new Button(label, style, action, key);
-		result.selected = selected;
-		return result;
-	}
+	function button(label:String, key:String, action:Void->Void, selected:Bool = false):Button
+		return ShowcaseKit.button(this, label, key, action, selected);
 
-	function disabledButton(label:String):Button {
-		var result = button(label, "disabled-demo", function() {});
-		result.enabled = false;
-		return result;
-	}
+	function disabledButton(label:String):Button
+		return ShowcaseKit.disabledButton(this, label);
 
-	function panel(key:String, children:Array<KeyedView>):Column {
-		return new Column(key, children, panelStyle());
-	}
+	function panel(key:String, children:Array<KeyedView>):Column
+		return ShowcaseKit.panel(this, key, children);
 
-	function panelStyle(?fixedWidth:Float):LayoutStyle {
-		var style = new LayoutStyle();
-		style.width = fixedWidth == null ? LayoutAxis.grow() : LayoutAxis.fixed(fixedWidth);
-		style.height = LayoutAxis.fit();
-		style.padding = new Insets(16.0, 14.0, 16.0, 14.0);
-		style.childGap = 10.0;
-		style.background = state.lightTheme ? color(0.97, 0.98, 1.0) : color(0.10, 0.14, 0.22);
-		style.radiusTopLeft = style.radiusTopRight = 7.0;
-		style.radiusBottomLeft = style.radiusBottomRight = 7.0;
-		return style;
-	}
+	function panelStyle(?fixedWidth:Float):LayoutStyle
+		return ShowcaseKit.panelStyle(this, fixedWidth);
 
-	function columnStyle(width:Float, height:Float):LayoutStyle {
-		var style = new LayoutStyle();
-		style.width = LayoutAxis.fixed(width);
-		style.height = LayoutAxis.fixed(height);
-		style.padding = new Insets(20.0, 18.0, 20.0, 18.0);
-		style.childGap = 12.0;
-		style.background = panelStyle().background;
-		return style;
-	}
+	function columnStyle(width:Float, height:Float):LayoutStyle
+		return ShowcaseKit.columnStyle(this, width, height);
 
-	function rowStyle(gap:Float):LayoutStyle {
-		var style = new LayoutStyle();
-		style.width = LayoutAxis.grow();
-		style.direction = LayoutDirection.LeftToRight;
-		style.childGap = gap;
-		return style;
-	}
+	function rowStyle(gap:Float):LayoutStyle
+		return ShowcaseKit.rowStyle(gap);
 
-	function fixedBoxStyle(width:Float, height:Float):LayoutStyle {
-		var style = new LayoutStyle();
-		style.width = LayoutAxis.fixed(width);
-		style.height = LayoutAxis.fixed(height);
-		style.padding = new Insets(10.0, 10.0, 10.0, 10.0);
-		style.background = state.lightTheme ? color(0.88, 0.91, 0.96) : color(0.07, 0.10, 0.16);
-		return style;
-	}
+	function fixedBoxStyle(width:Float, height:Float):LayoutStyle
+		return ShowcaseKit.fixedBoxStyle(this, width, height);
 
-	function colorTile(label:String, background:Color):View {
-		var style = new LayoutStyle();
-		style.width = LayoutAxis.grow();
-		style.height = LayoutAxis.fixed(50.0);
-		style.padding = new Insets(10.0, 10.0, 10.0, 10.0);
-		style.background = background;
-		style.radiusTopLeft = style.radiusTopRight = 5.0;
-		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
-		return new Padding("tile-padding", text(label, color(1.0, 1.0, 1.0)),
-			new Insets(10.0, 10.0, 10.0, 10.0), style);
-	}
+	function colorTile(label:String, background:Color):View
+		return ShowcaseKit.colorTile(label, background);
 
-	function stackDemo():View {
-		var rootStyle = fixedBoxStyle(520.0, 122.0);
-		rootStyle.width = LayoutAxis.grow();
-		var layers:Array<StackChild> = [
-			new StackChild("base", colorTile("base layer", color(0.16, 0.29, 0.45)), 12.0, 12.0, 0,
-				LayoutAxis.fixed(250.0), LayoutAxis.fixed(72.0)),
-			new StackChild("top", colorTile("z-index 1", color(0.38, 0.26, 0.61)), 190.0, 36.0, 1,
-				LayoutAxis.fixed(220.0), LayoutAxis.fixed(68.0))
-		];
-		return new Stack("positioned-stack", layers, rootStyle);
-	}
+	function stackDemo():View
+		return ShowcaseKit.stackDemo(this);
 
 	function keyed(key:String, view:View):KeyedView
-		return new KeyedView(key, view);
+		return ShowcaseKit.keyed(key, view);
 
 	function text(value:String, color:Color):Text
-		return new Text(value, null, color);
+		return ShowcaseKit.text(value, color);
 
 	function paletteBackground():Color
-		return state.lightTheme ? color(0.93, 0.95, 0.98) : color(0.065, 0.085, 0.13);
+		return ShowcaseKit.paletteBackground(this);
 
 	function paletteSidebar():Color
-		return state.lightTheme ? color(0.88, 0.91, 0.96) : color(0.08, 0.11, 0.17);
+		return ShowcaseKit.paletteSidebar(this);
 
 	function paletteText():Color
-		return state.lightTheme ? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
+		return ShowcaseKit.paletteText(this);
 
 	function paletteMuted():Color
-		return state.lightTheme ? color(0.32, 0.38, 0.47) : color(0.62, 0.68, 0.77);
+		return ShowcaseKit.paletteMuted(this);
 
-	static function makeTheme(light:Bool):Theme {
-		var theme = new Theme();
-		theme.accent = light ? color(0.12, 0.37, 0.72) : color(0.25, 0.61, 0.89);
-		theme.text = light ? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
-		theme.mutedText = light ? color(0.32, 0.38, 0.47) : color(0.62, 0.68, 0.77);
-		theme.buttonText = color(1.0, 1.0, 1.0);
-		theme.disabledButtonText = light ? color(0.38, 0.41, 0.46) : color(0.53, 0.55, 0.59);
-		theme.buttonHover = light ? color(0.16, 0.38, 0.69) : color(0.22, 0.48, 0.82);
-		theme.buttonPressed = light ? color(0.11, 0.29, 0.54) : color(0.13, 0.34, 0.67);
-		theme.buttonFocused = light ? color(0.22, 0.43, 0.73) : color(0.27, 0.52, 0.91);
-		theme.buttonSelected = light ? color(0.16, 0.36, 0.65) : color(0.17, 0.37, 0.68);
-		theme.buttonDisabled = light ? color(0.82, 0.84, 0.88) : color(0.22, 0.24, 0.28);
-		theme.controlSelected = theme.accent;
-		theme.controlUnselected = light ? color(0.78, 0.81, 0.86) : color(0.16, 0.18, 0.22);
-		theme.controlDisabled = light ? color(0.82, 0.84, 0.88) : color(0.20, 0.21, 0.24);
-		theme.panelBackground = light ? color(0.98, 0.98, 1.0) : color(0.14, 0.16, 0.20);
-		theme.overlayBackdrop = color(0.0, 0.0, 0.0, 0.54);
-		theme.tooltipBackground = light ? color(0.13, 0.17, 0.23) : color(0.08, 0.09, 0.11);
-		return theme;
-	}
+	static function makeTheme(light:Bool):Theme
+		return ShowcaseKit.makeTheme(light);
 
 	static inline function color(red:Float, green:Float, blue:Float, alpha:Float = 1.0):Color
-		return Color.rgba(red, green, blue, alpha);
+		return ShowcaseKit.color(red, green, blue, alpha);
 
 	static inline function clamp(value:Float, minimum:Float, maximum:Float):Float
 		return value < minimum ? minimum : value > maximum ? maximum : value;

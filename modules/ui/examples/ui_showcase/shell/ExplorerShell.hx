@@ -5,6 +5,7 @@ import LayoutAxis;
 import LayoutDirection;
 import LayoutStyle;
 import UiExplorer;
+import shell.CatalogSidebar;
 import shell.TopBar;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;

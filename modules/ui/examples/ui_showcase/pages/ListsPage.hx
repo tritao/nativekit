@@ -2,10 +2,36 @@ package pages;
 
 import UiExplorer;
 import components.StatusBadge;
+import Insets;
+import LayoutAxis;
+import LayoutStyle;
+import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.KeyedView;
+import nativekit.ui.widgets.VirtualList;
 
 /** Fixed-row virtualized scrolling and visible-range reporting. */
 class ListsPage {
+	public static function createVirtualList(explorer:UiExplorer):VirtualList {
+		var listStyle = new LayoutStyle();
+		listStyle.width = LayoutAxis.grow();
+		listStyle.height = LayoutAxis.fixed(350.0);
+		listStyle.clipVertical = true;
+		return new VirtualList("ten-thousand-rows", UiExplorer.LIST_COUNT,
+			UiExplorer.LIST_ROW_HEIGHT, function(index) {
+				var rowStyle = new LayoutStyle();
+				rowStyle.width = LayoutAxis.grow();
+				rowStyle.height = LayoutAxis.fixed(UiExplorer.LIST_ROW_HEIGHT);
+				rowStyle.padding = new Insets(8.0, 7.0, 8.0, 7.0);
+				rowStyle.background = explorer.state.lightTheme
+					? (index % 2 == 0 ? UiExplorer.color(0.98, 0.99, 1.0)
+						: UiExplorer.color(0.91, 0.94, 0.98))
+					: (index % 2 == 0 ? UiExplorer.color(0.11, 0.14, 0.20)
+						: UiExplorer.color(0.13, 0.16, 0.23));
+				return new Text('ROW ${index + 1}  ·  virtual item', rowStyle,
+					explorer.paletteText());
+			}, listStyle, null, explorer.state.listController, 350.0);
+	}
+
 	public static function build(explorer:UiExplorer, items:Array<KeyedView>):Void {
 		explorer.pageHeading(items, "Scrolling & Data",
 			"A fixed-row VirtualList with a real 10,000-item data set and explicit visible-range reporting.");
