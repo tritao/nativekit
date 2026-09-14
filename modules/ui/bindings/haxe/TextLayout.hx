@@ -162,6 +162,46 @@ class TextLayout extends NativeKitUIResource {
 		return result.out_offset;
 	}
 
+	/** Returns Skribidi's word range containing a code-point offset. */
+	public function wordRangeAt(offset:Int):TextRange {
+		if (offset < 0)
+			throw "Text position cannot be negative";
+		var result = NativeKitUI.nkui_text_layout_word_range_at(nativeHandle(), offset);
+		UiResult.check(result.status, "textLayout.wordRangeAt");
+		return new TextRange(result.out_start, result.out_end);
+	}
+
+	/** Returns the visual line range containing a code-point offset. */
+	public function lineRangeAt(offset:Int):TextRange {
+		if (offset < 0)
+			throw "Text position cannot be negative";
+		var result = NativeKitUI.nkui_text_layout_line_range_at(nativeHandle(), offset);
+		UiResult.check(result.status, "textLayout.lineRangeAt");
+		return new TextRange(result.out_start, result.out_end);
+	}
+
+	/** Moves to a word boundary using Control-arrow or macOS Option-arrow conventions. */
+	public function moveWord(offset:Int, direction:Int, macStyle:Bool = false):Int {
+		if (offset < 0 || (direction != -1 && direction != 1))
+			throw "Text word movement arguments are invalid";
+		var behavior:NativeKitUI.TextNavigationBehavior = cast (macStyle ? 1 : 0);
+		var result = NativeKitUI.nkui_text_layout_move_word(nativeHandle(), offset,
+			direction, behavior);
+		UiResult.check(result.status, "textLayout.moveWord");
+		return result.out_offset;
+	}
+
+	/** Moves to a paragraph boundary using Control-arrow or macOS Option-arrow conventions. */
+	public function moveParagraph(offset:Int, direction:Int, macStyle:Bool = false):Int {
+		if (offset < 0 || (direction != -1 && direction != 1))
+			throw "Text paragraph movement arguments are invalid";
+		var behavior:NativeKitUI.TextNavigationBehavior = cast (macStyle ? 1 : 0);
+		var result = NativeKitUI.nkui_text_layout_move_paragraph(nativeHandle(), offset,
+			direction, behavior);
+		UiResult.check(result.status, "textLayout.moveParagraph");
+		return result.out_offset;
+	}
+
 	static inline function readFloat(bytes:haxe.io.Bytes, offset:Int):Float
 		return floatFromBits(bytes.getInt32(offset));
 
@@ -200,6 +240,17 @@ class TextPosition {
 	public function new(offset:Int, affinity:Int) {
 		this.offset = offset;
 		this.affinity = affinity;
+	}
+}
+
+/** An ordered code-point range returned by a text layout query. */
+class TextRange {
+	public final start:Int;
+	public final end:Int;
+
+	public function new(start:Int, end:Int) {
+		this.start = start;
+		this.end = end;
 	}
 }
 

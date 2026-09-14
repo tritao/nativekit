@@ -693,6 +693,160 @@ int32_t SkribidiAdapter::align_grapheme(int32_t offset) const {
     return layout ? skb_layout_align_grapheme_offset(layout->layout, offset) : 0;
 }
 
+TextRange SkribidiAdapter::word_range_at(int32_t offset) const {
+    const auto *retained = active_layout(*state_);
+    if (!retained)
+        return {};
+    const skb_layout_t *layout = retained->layout;
+    const int32_t text_count = skb_layout_get_text_count(layout);
+    if (text_count <= 0)
+        return {};
+
+    const int32_t safe_offset = std::clamp(offset, 0, text_count);
+    const skb_text_position_t position{safe_offset, SKB_AFFINITY_LEADING};
+    const skb_text_position_t start = skb_layout_get_word_start_at(layout, position);
+    const skb_text_position_t inclusive_end = skb_layout_get_word_end_at(layout, position);
+    const int32_t end = inclusive_end.offset < text_count
+                            ? skb_layout_get_next_grapheme_offset(layout, inclusive_end.offset)
+                            : text_count;
+    return {std::min(start.offset, end), std::max(start.offset, end)};
+}
+
+TextRange SkribidiAdapter::line_range_at(int32_t offset) const {
+    const auto *retained = active_layout(*state_);
+    if (!retained)
+        return {};
+    const skb_layout_t *layout = retained->layout;
+    const int32_t text_count = skb_layout_get_text_count(layout);
+    if (text_count <= 0)
+        return {};
+
+    const int32_t safe_offset = std::clamp(offset, 0, text_count);
+    const skb_text_position_t position{safe_offset, SKB_AFFINITY_LEADING};
+    const skb_text_position_t start = skb_layout_get_line_start_at(layout, position);
+    const skb_text_position_t inclusive_end = skb_layout_get_line_end_at(layout, position);
+    const int32_t end = inclusive_end.offset < text_count
+                            ? skb_layout_get_next_grapheme_offset(layout, inclusive_end.offset)
+                            : text_count;
+    return {std::min(start.offset, end), std::max(start.offset, end)};
+}
+
+int32_t SkribidiAdapter::move_word(int32_t offset, int32_t direction, bool mac_style) const {
+    const auto *retained = active_layout(*state_);
+    if (!retained || direction == 0)
+        return offset;
+
+    const skb_layout_t *layout = retained->layout;
+    const int32_t text_count = skb_layout_get_text_count(layout);
+    if (text_count <= 0)
+        return 0;
+
+    const skb_text_property_t *properties = skb_layout_get_text_properties(layout);
+    if (!properties)
+        return std::clamp(offset, 0, text_count);
+
+    int32_t next = std::clamp(offset, 0, text_count);
+    const auto next_grapheme = [layout](int32_t value) {
+        return skb_layout_get_next_grapheme_offset(layout, value);
+    };
+    const auto previous_grapheme = [layout](int32_t value) {
+        return skb_layout_get_prev_grapheme_offset(layout, value);
+    };
+    constexpr uint8_t word_break = SKB_TEXT_PROP_WORD_BREAK;
+    constexpr uint8_t whitespace = SKB_TEXT_PROP_WHITESPACE;
+    constexpr uint8_t punctuation = SKB_TEXT_PROP_PUNCTUATION;
+
+    if (direction > 0) {
+        if (mac_style) {
+            while (next < text_count &&
+                   (properties[next].flags & (whitespace | punctuation)) != 0)
+                next++;
+            while (next < text_count) {
+                if ((properties[next].flags & word_break) != 0) {
+                    next = next_grapheme(next);
+                    break;
+                }
+                next++;
+            }
+        } else {
+            while (next < text_count) {
+                if ((properties[next].flags & word_break) != 0) {
+                    const int32_t after_boundary = next_grapheme(next);
+                    if (after_boundary >= text_count ||
+                        (properties[after_boundary].flags & whitespace) == 0) {
+                        next = after_boundary;
+                        break;
+                    }
+                }
+                next++;
+            }
+        }
+    } else {
+        if (mac_style) {
+            while (next > 0 &&
+                   (properties[next - 1].flags & (whitespace | punctuation)) != 0)
+                next--;
+        }
+        if (next > 0)
+            next = previous_grapheme(next);
+        while (next > 0) {
+            if ((properties[next - 1].flags & word_break) != 0) {
+                const int32_t after_boundary = next_grapheme(next - 1);
+                if (mac_style || after_boundary >= text_count ||
+                    (properties[after_boundary].flags & whitespace) == 0) {
+                    next = after_boundary;
+                    break;
+                }
+            }
+            next--;
+        }
+    }
+
+    return std::clamp(skb_layout_align_grapheme_offset(layout, next), 0, text_count);
+}
+
+int32_t SkribidiAdapter::move_paragraph(int32_t offset, int32_t direction,
+                                       bool mac_style) const {
+    const auto *retained = active_layout(*state_);
+    if (!retained || direction == 0)
+        return offset;
+
+    const skb_layout_t *layout = retained->layout;
+    const int32_t text_count = skb_layout_get_text_count(layout);
+    if (text_count <= 0)
+        return 0;
+    const skb_text_property_t *properties = skb_layout_get_text_properties(layout);
+    if (!properties)
+        return std::clamp(offset, 0, text_count);
+
+    const int32_t current = std::clamp(offset, 0, text_count);
+    int32_t paragraph_start = 0;
+    for (int32_t index = 0; index < current; ++index) {
+        if ((properties[index].flags & SKB_TEXT_PROP_MUST_LINE_BREAK) != 0)
+            paragraph_start = index + 1;
+    }
+
+    int32_t paragraph_end = text_count;
+    for (int32_t index = current; index < text_count; ++index) {
+        if ((properties[index].flags & SKB_TEXT_PROP_MUST_LINE_BREAK) != 0) {
+            paragraph_end = index;
+            break;
+        }
+    }
+
+    if (mac_style)
+        return direction < 0 ? paragraph_start : paragraph_end;
+    if (direction > 0)
+        return paragraph_end < text_count ? paragraph_end + 1 : text_count;
+
+    int32_t previous_start = 0;
+    for (int32_t index = 0; index + 1 < paragraph_start; ++index) {
+        if ((properties[index].flags & SKB_TEXT_PROP_MUST_LINE_BREAK) != 0)
+            previous_start = index + 1;
+    }
+    return previous_start;
+}
+
 std::vector<TextRect> SkribidiAdapter::selection_rects(TextPosition start, TextPosition end) const {
     std::vector<TextRect> rectangles;
     const auto *layout = active_layout(*state_);

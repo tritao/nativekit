@@ -150,6 +150,47 @@ int main(void) {
             NKUI_ERROR_INVALID_ARGUMENT ||
         nkui_resource_destroy(grapheme_layout) != NKUI_OK)
         return 20;
+    nkui_resource word_layout = {0};
+    const char word_text[] = "one two caf\xc3\xa9\nnext";
+    int32_t word_start = -1;
+    int32_t word_end = -1;
+    int32_t word_offset = -1;
+    if (nkui_text_layout_create(fonts, word_text, 400.0f, 18.0f, &word_layout) != NKUI_OK)
+        return 22;
+    if (nkui_text_layout_word_range_at(word_layout, 5, &word_start, &word_end) != NKUI_OK ||
+        word_start != 4 || word_end != 7)
+        return 23;
+    if (nkui_text_layout_move_word(word_layout, 0, 1, NKUI_TEXT_NAVIGATION_BEHAVIOR_STANDARD,
+                                   &word_offset) != NKUI_OK || word_offset != 4)
+        return 24;
+    if (nkui_text_layout_move_word(word_layout, 4, 1, NKUI_TEXT_NAVIGATION_BEHAVIOR_MACOS,
+                                   &word_offset) != NKUI_OK || word_offset != 7)
+        return 25;
+    if (nkui_text_layout_move_word(word_layout, 8, -1, NKUI_TEXT_NAVIGATION_BEHAVIOR_STANDARD,
+                                   &word_offset) != NKUI_OK || word_offset != 4)
+        return 26;
+    if (nkui_text_layout_move_paragraph(word_layout, 5, 1,
+                                        NKUI_TEXT_NAVIGATION_BEHAVIOR_STANDARD,
+                                        &word_offset) != NKUI_OK || word_offset != 13)
+        return 27;
+    if (nkui_text_layout_move_paragraph(word_layout, 13, -1,
+                                        NKUI_TEXT_NAVIGATION_BEHAVIOR_STANDARD,
+                                        &word_offset) != NKUI_OK || word_offset != 0)
+        return 28;
+    if (nkui_text_layout_move_paragraph(word_layout, 5, 1,
+                                        NKUI_TEXT_NAVIGATION_BEHAVIOR_MACOS,
+                                        &word_offset) != NKUI_OK || word_offset != 12)
+        return 29;
+    if (nkui_text_layout_line_range_at(word_layout, 5, &word_start, &word_end) != NKUI_OK ||
+        word_start > 5 || word_end <= 5)
+        return 30;
+    if (nkui_text_layout_word_range_at(word_layout, -1, &word_start, &word_end) !=
+            NKUI_ERROR_INVALID_ARGUMENT ||
+        nkui_text_layout_move_word(word_layout, 0, 0, NKUI_TEXT_NAVIGATION_BEHAVIOR_STANDARD,
+                                   &word_offset) != NKUI_ERROR_INVALID_ARGUMENT)
+        return 31;
+    if (nkui_resource_destroy(word_layout) != NKUI_OK)
+        return 32;
     text_style.letter_spacing = 0.0f;
     paragraph_style.alignment = NKUI_TEXT_ALIGN_START;
     if (nkui_text_layout_update(layout, "NativeKit updated مرحبا", 280.0f, &text_style,

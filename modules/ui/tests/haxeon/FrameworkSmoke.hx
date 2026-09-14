@@ -10,6 +10,7 @@ import LayoutAxis;
 import LayoutDirection;
 import LayoutFrame;
 import LayoutStyle;
+import LayoutVisualKind;
 import Rect;
 import ResolvedLayoutItem;
 import TextLayout;
@@ -122,6 +123,11 @@ class FrameworkSmoke {
 			null, "Message");
 		field.onSubmit = function(next) { submittedValue = next; };
 		var fieldRoot = context.submit(field, new LayoutFrame(256.0, 192.0));
+		if (fieldRoot.children.length != 1 ||
+			fieldRoot.children[0].layout.visualKind != LayoutVisualKind.Custom ||
+			fieldRoot.children[0].children.length != 1 ||
+			fieldRoot.children[0].children[0].layout.visualKind != LayoutVisualKind.Text)
+			return 201;
 		if (fieldRoot.semantics == null || fieldRoot.semantics.role != AccessibilityRole.TextField ||
 			fieldRoot.semantics.label != "Message" || !fieldRoot.focusable)
 			return 40;
@@ -159,7 +165,8 @@ class FrameworkSmoke {
 		fieldEditor = cast fieldState.value;
 		if (fieldEditor.layout.selectionRects(new TextPosition(0, 0), new TextPosition(4, 0)).length == 0)
 			return 48;
-		var fieldTextGeometry:ResolvedLayoutItem = cast fieldRoot.children[0].resolved;
+		var fieldTextGeometry:ResolvedLayoutItem =
+			cast fieldRoot.children[0].children[0].resolved;
 		var fieldY = fieldTextGeometry.y + fieldTextGeometry.height * 0.5;
 		var fieldLeft = fieldTextGeometry.x + 0.5;
 		var fieldRight = fieldTextGeometry.x + fieldTextGeometry.width - 0.5;
@@ -172,6 +179,88 @@ class FrameworkSmoke {
 		context.key(UiEventKind.KeyDown, UiKey.Enter);
 		if (submittedValue != "done")
 			return 50;
+		var wordArea = new TextArea("word-navigation", "one two\nthree four");
+		var wordAreaRoot = context.submit(wordArea, new LayoutFrame(256.0, 192.0));
+		var wordAreaState:State<TextEditorState> = context.buildContext.existingState(wordAreaRoot.id);
+		var wordEditor:TextEditorState = cast wordAreaState.value;
+		if (!context.focusWidget(wordAreaRoot.id))
+			return 190;
+		var wordRange = wordEditor.layout.wordRangeAt(5);
+		if (wordRange.start != 4 || wordRange.end != 7)
+			return 191;
+		var wordTextGeometry:ResolvedLayoutItem =
+			cast wordAreaRoot.children[0].children[0].resolved;
+		var wordStartCaret = wordEditor.layout.caret(new TextPosition(4, 0));
+		var wordStartX = wordStartCaret.x;
+		var wordNextX = wordEditor.layout.caret(new TextPosition(5, 0)).x;
+		var wordClickX = wordTextGeometry.x + (wordStartX + wordNextX) * 0.5;
+		var wordClickY = wordTextGeometry.y + wordStartCaret.y +
+			(wordStartCaret.ascender + wordStartCaret.descender) * 0.5;
+		context.pointerDown(wordClickX, wordClickY, 0, 0, 0, null, 1.0);
+		if (wordEditor.selectionStart != wordEditor.selectionEnd ||
+			wordEditor.selectionFocus < 4 || wordEditor.selectionFocus > 5)
+			return 202;
+		context.pointerUp(wordClickX, wordClickY, 0);
+		context.pointerDown(wordClickX, wordClickY, 0, 0, 0, null, 1.1);
+		if (wordEditor.selectionStart != 4 || wordEditor.selectionEnd != 7)
+			return 192;
+		if (wordEditor.layout.selectionRects(new TextPosition(4, 0),
+			new TextPosition(7, 0)).length == 0)
+			return 200;
+		context.pointerUp(wordClickX, wordClickY, 0);
+		context.pointerDown(wordClickX, wordClickY, 0, 0, 0, null, 1.2);
+		if (wordEditor.selectionStart != 0 || wordEditor.selectionEnd != 8)
+			return 193;
+		context.pointerUp(wordClickX, wordClickY, 0);
+		#if (mac || ios)
+		wordEditor.placeCaret(4, false);
+		context.key(UiEventKind.KeyDown, UiKey.Right, UiModifier.Alt);
+		if (wordEditor.selectionFocus != 7)
+			return 196;
+		wordEditor.placeCaret(4, false);
+		context.key(UiEventKind.KeyDown, UiKey.Right, UiModifier.Alt | UiModifier.Shift);
+		if (wordEditor.selectionFocus != 7 || wordEditor.selectionStart != 4 ||
+			wordEditor.selectionEnd != 7)
+			return 195;
+		wordEditor.placeCaret(7, false);
+		context.key(UiEventKind.KeyDown, UiKey.Left, UiModifier.Alt | UiModifier.Shift);
+		if (wordEditor.selectionFocus != 4 || wordEditor.selectionStart != 4 ||
+			wordEditor.selectionEnd != 7)
+			return 199;
+		wordEditor.placeCaret(10, false);
+		context.key(UiEventKind.KeyDown, UiKey.Up, UiModifier.Alt);
+		if (wordEditor.selectionFocus != 8)
+			return 197;
+		wordEditor.placeCaret(1, false);
+		context.key(UiEventKind.KeyDown, UiKey.Down, UiModifier.Alt);
+		if (wordEditor.selectionFocus != 7)
+			return 198;
+		#else
+		wordEditor.placeCaret(0, false);
+		context.key(UiEventKind.KeyDown, UiKey.Right, UiModifier.Control);
+		if (wordEditor.selectionFocus != 4 || wordEditor.selectionStart != 4 ||
+			wordEditor.selectionEnd != 4)
+			return 194;
+		context.key(UiEventKind.KeyDown, UiKey.Right,
+			UiModifier.Control | UiModifier.Shift);
+		if (wordEditor.selectionFocus != 7 || wordEditor.selectionStart != 4 ||
+			wordEditor.selectionEnd != 7)
+			return 195;
+		wordEditor.placeCaret(7, false);
+		context.key(UiEventKind.KeyDown, UiKey.Left,
+			UiModifier.Control | UiModifier.Shift);
+		if (wordEditor.selectionFocus != 4 || wordEditor.selectionStart != 4 ||
+			wordEditor.selectionEnd != 7)
+			return 199;
+		wordEditor.placeCaret(8, false);
+		context.key(UiEventKind.KeyDown, UiKey.Up, UiModifier.Control);
+		if (wordEditor.selectionFocus != 0)
+			return 197;
+		wordEditor.placeCaret(0, false);
+		context.key(UiEventKind.KeyDown, UiKey.Down, UiModifier.Control);
+		if (wordEditor.selectionFocus != 8)
+			return 198;
+		#end
 		var areaChanged = "";
 		var area = new TextArea("area-smoke", "line", function(next) { areaChanged = next; });
 		var areaRoot = context.submit(area, new LayoutFrame(256.0, 192.0));

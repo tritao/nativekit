@@ -10,6 +10,7 @@
     "nkui_text_wrap": "UiTextWrap",
     "nkui_text_alignment": "UiTextAlignment",
     "nkui_text_direction": "UiTextDirection",
+    "nkui_text_navigation_behavior": "TextNavigationBehavior",
     "nkui_path_verb": "UiPathVerb",
     "nkui_image_format": "UiImageFormat",
     "nkui_layout_visual_kind": "UiLayoutVisualKind",

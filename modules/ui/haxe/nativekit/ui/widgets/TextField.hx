@@ -85,6 +85,13 @@ class TextField implements View {
 				semantics.states |= AccessibilityState.Multiline;
 			node.semantics = semantics;
 
+			var paintNodeStyle = new LayoutStyle();
+			paintNodeStyle.width = LayoutAxis.grow();
+			paintNodeStyle.height = LayoutAxis.grow();
+			var paintNode = new RenderNode(context.id("paint"), LayoutVisualKind.Custom,
+				paintNodeStyle);
+			node.add(paintNode);
+
 			var textNodeStyle = new LayoutStyle();
 			textNodeStyle.width = LayoutAxis.grow();
 			textNodeStyle.height = LayoutAxis.grow();
@@ -97,7 +104,7 @@ class TextField implements View {
 			textNode.layout.paragraphStyle.wrap = editor.paragraphStyle.wrap;
 			textNode.layout.paragraphStyle.alignment = editor.paragraphStyle.alignment;
 			textNode.layout.paragraphStyle.direction = editor.paragraphStyle.direction;
-			node.add(textNode);
+			paintNode.add(textNode);
 
 			var updateState = function() {
 				value = editor.layoutText();
@@ -136,7 +143,7 @@ class TextField implements View {
 				editor.updateLayout(geometry.width);
 				syncCursor(geometry);
 			});
-			textNode.onPaint(function(canvas, _) {
+			paintNode.onPaint(function(canvas, _) {
 				if (!editor.isDisposed())
 					paintEditor(canvas, editor);
 			});
@@ -155,7 +162,7 @@ class TextField implements View {
 				if (!editor.focused && !editor.draggingSelection)
 					return;
 				editor.focused = false;
-				editor.draggingSelection = false;
+				editor.cancelPointer();
 				semantics.states &= ~AccessibilityState.Focused;
 				stored.update(editor);
 				context.textInput.deactivate();
@@ -168,10 +175,12 @@ class TextField implements View {
 					return;
 				var geometry:ResolvedLayoutItem = cast textNode.resolved;
 				var point = geometry.viewportToLayout(event.x, event.y);
-				var offset = editor.hitTest(point.x - geometry.x, point.y - geometry.y);
-				if (editor.placeCaret(offset, (event.modifiers & UiModifier.Shift) != 0))
+				var textX = point.x - geometry.x;
+				var textY = point.y - geometry.y;
+				var offset = editor.hitTest(textX, textY);
+				if (editor.pointerDown(offset, textX, textY,
+					(event.modifiers & UiModifier.Shift) != 0, event.timestamp))
 					updateState();
-				editor.draggingSelection = true;
 				event.preventDefault();
 			});
 			node.on(UiEventKind.PointerMove, function(event) {
@@ -179,17 +188,30 @@ class TextField implements View {
 					return;
 				var geometry:ResolvedLayoutItem = cast textNode.resolved;
 				var point = geometry.viewportToLayout(event.x, event.y);
-				if (editor.placeCaret(editor.hitTest(point.x - geometry.x, point.y - geometry.y), true))
+				var textX = point.x - geometry.x;
+				var textY = point.y - geometry.y;
+				if (editor.pointerMove(editor.hitTest(textX, textY), textX, textY))
 					updateState();
 			});
-			node.on(UiEventKind.PointerUp, function(_) { editor.draggingSelection = false; });
-			node.on(UiEventKind.PointerCancel, function(_) { editor.draggingSelection = false; });
+			node.on(UiEventKind.PointerUp, function(_) { editor.pointerUp(); });
+			node.on(UiEventKind.PointerCancel, function(_) { editor.cancelPointer(); });
 
 			var handleKey = function(event:UiEvent) {
 				if (!enabled)
 					return;
 				var extend = (event.modifiers & UiModifier.Shift) != 0;
 				var command = (event.modifiers & (UiModifier.Control | UiModifier.Super)) != 0;
+				var macWordNavigation = #if (mac || ios)
+					(event.modifiers & UiModifier.Alt) != 0 &&
+					(event.modifiers & UiModifier.Control) == 0;
+				#else
+					false;
+				#end
+				var wordNavigation = #if (mac || ios)
+					macWordNavigation;
+				#else
+					(event.modifiers & UiModifier.Control) != 0;
+				#end
 				var handled = true;
 				var changed = false;
 				var previousText = editor.layoutText();
@@ -208,7 +230,21 @@ class TextField implements View {
 						if (editor.insert(pasted))
 							publishTextChange(beforePaste);
 					});
-				} else if (event.key == UiKey.Left)
+				} else if (wordNavigation && event.key == UiKey.Left)
+					changed = editor.moveCaretByWord(-1, extend, macWordNavigation);
+				else if (wordNavigation && event.key == UiKey.Right)
+					changed = editor.moveCaretByWord(1, extend, macWordNavigation);
+				else if (wordNavigation && event.key == UiKey.Up)
+					changed = editor.moveCaretByParagraph(-1, extend, macWordNavigation);
+				else if (wordNavigation && event.key == UiKey.Down)
+					changed = editor.moveCaretByParagraph(1, extend, macWordNavigation);
+				#if (mac || ios)
+				else if ((event.modifiers & UiModifier.Super) != 0 && event.key == UiKey.Up)
+					changed = editor.placeCaret(0, extend);
+				else if ((event.modifiers & UiModifier.Super) != 0 && event.key == UiKey.Down)
+					changed = editor.placeCaret(Utf8Text.length(editor.text), extend);
+				#end
+				else if (event.key == UiKey.Left)
 					changed = editor.moveCaret(-1, extend);
 				else if (event.key == UiKey.Right)
 					changed = editor.moveCaret(1, extend);

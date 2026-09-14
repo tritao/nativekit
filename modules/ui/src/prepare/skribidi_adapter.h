@@ -77,6 +77,11 @@ struct TextPosition {
     uint8_t affinity = 0;
 };
 
+struct TextRange {
+    int32_t start = 0;
+    int32_t end = 0;
+};
+
 struct TextCaret {
     float x = 0.0f;
     float y = 0.0f;
@@ -191,6 +196,10 @@ class SkribidiAdapter {
     int32_t next_grapheme(int32_t offset) const;
     int32_t previous_grapheme(int32_t offset) const;
     int32_t align_grapheme(int32_t offset) const;
+    TextRange word_range_at(int32_t offset) const;
+    TextRange line_range_at(int32_t offset) const;
+    int32_t move_word(int32_t offset, int32_t direction, bool mac_style) const;
+    int32_t move_paragraph(int32_t offset, int32_t direction, bool mac_style) const;
     std::vector<TextRect> selection_rects(TextPosition start, TextPosition end) const;
     uint64_t font_collection_generation() const;
     uint64_t layout_generation() const;

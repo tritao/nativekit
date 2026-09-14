@@ -65,7 +65,7 @@ extern "C" {
 /** Version of the stable NativeKit UI C ABI. */
 enum {
     /** Current UI ABI version. */
-    NKUI_API_VERSION = 4
+    NKUI_API_VERSION = 5
 };
 
 /** Result returned by a NativeKit UI operation. */
@@ -351,6 +351,15 @@ enum NK_ENUM(nkui_text_direction) {
     NKUI_TEXT_DIRECTION_RTL = 2
 };
 
+/** Text navigation convention used by text editors. */
+typedef uint32_t nkui_text_navigation_behavior;
+enum NK_ENUM(nkui_text_navigation_behavior) {
+    /** Standard Control-arrow word and paragraph movement. */
+    NKUI_TEXT_NAVIGATION_BEHAVIOR_STANDARD = 0,
+    /** macOS Option-arrow word and paragraph movement. */
+    NKUI_TEXT_NAVIGATION_BEHAVIOR_MACOS = 1
+};
+
 /** Font and inline spacing inputs shared by explicit and tree-owned layouts. */
 typedef struct nkui_text_style {
     /** Set to sizeof(nkui_text_style) or a larger compatible structure size. */
@@ -628,6 +637,31 @@ NKUI_API nkui_result nkui_text_layout_previous_grapheme(nkui_resource layout, in
 
 /** Returns the nearest grapheme boundary to `offset`. */
 NKUI_API nkui_result nkui_text_layout_align_grapheme(nkui_resource layout, int32_t offset,
+                                                     int32_t *out_offset NKUI_OUT);
+
+/** Returns the Skribidi word range containing the code-point `offset`. */
+NKUI_API nkui_result nkui_text_layout_word_range_at(nkui_resource layout, int32_t offset,
+                                                    int32_t *out_start NKUI_OUT,
+                                                    int32_t *out_end NKUI_OUT);
+
+/** Returns the visual line range containing the code-point `offset`. */
+NKUI_API nkui_result nkui_text_layout_line_range_at(nkui_resource layout, int32_t offset,
+                                                    int32_t *out_start NKUI_OUT,
+                                                    int32_t *out_end NKUI_OUT);
+
+/**
+ * Moves to a word boundary. `direction` must be -1 or +1. The behavior selects
+ * standard Control-arrow or macOS Option-arrow word movement.
+ */
+NKUI_API nkui_result nkui_text_layout_move_word(nkui_resource layout, int32_t offset,
+                                                int32_t direction,
+                                                nkui_text_navigation_behavior behavior,
+                                                int32_t *out_offset NKUI_OUT);
+
+/** Moves to a paragraph boundary using Control-arrow or macOS Option-arrow conventions. */
+NKUI_API nkui_result nkui_text_layout_move_paragraph(nkui_resource layout, int32_t offset,
+                                                     int32_t direction,
+                                                     nkui_text_navigation_behavior behavior,
                                                      int32_t *out_offset NKUI_OUT);
 
 /* ------------------------------------------------------------------------- */

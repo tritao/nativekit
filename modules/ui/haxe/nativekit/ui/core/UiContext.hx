@@ -288,9 +288,9 @@ class UiContext {
 	}
 
 	public function pointerDown(x:Float, y:Float, button:Int, modifiers:Int = 0,
-			pointerId:Int = 0, data:Dynamic = null):Void {
+			pointerId:Int = 0, data:Dynamic = null, timestamp:Float = -1.0):Void {
 		ensureLive();
-		events.pointerDown(x, y, button, modifiers, pointerId, data);
+		events.pointerDown(x, y, button, modifiers, pointerId, data, timestamp);
 	}
 
 	public function pointerUp(x:Float, y:Float, button:Int, modifiers:Int = 0,

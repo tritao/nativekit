@@ -15,6 +15,12 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifdef GDK_WINDOWING_X11
+#include <gdk/gdk.h>
+#include <gdk/gdkx.h>
+#include <gdk/gdktestutils.h>
+#endif
+
 typedef void (*clear_color_proc)(float, float, float, float);
 typedef void (*clear_proc)(unsigned int);
 typedef void (*read_pixels_proc)(int, int, int, int, unsigned int, unsigned int, void *);
@@ -43,6 +49,64 @@ static nk_event wait_for_window_state(nk_window window, uint32_t mask, uint32_t 
         nk_event_release(&event);
     }
 }
+
+#ifdef GDK_WINDOWING_X11
+static void simulate_left_click(GdkWindow *window) {
+    assert(gdk_test_simulate_button(window, 40, 40, 1, 0, GDK_BUTTON_PRESS));
+    assert(gdk_test_simulate_button(window, 40, 40, 1, 0, GDK_BUTTON_RELEASE));
+}
+
+static void assert_pointer_click_count(nk_window window, uint32_t expected_clicks) {
+    uint32_t presses = 0;
+    uint32_t releases = 0;
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_NONE) {
+            if (presses == expected_clicks && releases == expected_clicks)
+                break;
+            usleep(1000);
+            continue;
+        }
+        if (event.kind == NK_EVENT_POINTER_BUTTON && event.source == window) {
+            assert(event.data_size == sizeof(nk_pointer_button_event));
+            const nk_pointer_button_event *button = event.data;
+            assert(button->button == NK_POINTER_BUTTON_LEFT);
+            if (button->action == NK_INPUT_PRESS)
+                ++presses;
+            else if (button->action == NK_INPUT_RELEASE)
+                ++releases;
+        }
+        nk_event_release(&event);
+    }
+    assert(presses == expected_clicks);
+    assert(releases == expected_clicks);
+}
+
+static void assert_pointer_clicks_are_forwarded_once(nk_window window) {
+    nk_native_window native = {0};
+    native.struct_size = sizeof(native);
+    assert(nk_window_get_native(window, &native) == NK_OK);
+    assert(native.kind == NK_NATIVE_WINDOW_X11);
+
+    GdkDisplay *display = gdk_x11_lookup_xdisplay((Display *)native.display);
+    assert(display != NULL);
+    GdkWindow *gdk_window =
+        gdk_x11_window_foreign_new_for_display(display, (Window)native.window);
+    assert(gdk_window != NULL);
+    simulate_left_click(gdk_window);
+    assert_pointer_click_count(window, 1);
+
+    // Start a fresh GTK click sequence, then verify the 2-button notification does
+    // not add an extra press on top of the two physical clicks.
+    usleep(500000);
+    simulate_left_click(gdk_window);
+    simulate_left_click(gdk_window);
+    assert_pointer_click_count(window, 2);
+    g_object_unref(gdk_window);
+}
+#endif
 
 int main(void) {
     nk_init_options init = {0};
@@ -236,6 +300,9 @@ int main(void) {
     nk_event_release(&shown);
     assert(nk_window_is_visible(window, &visible) == NK_OK);
     assert(visible == 1);
+#ifdef GDK_WINDOWING_X11
+    assert_pointer_clicks_are_forwarded_once(window);
+#endif
     const nk_result capture_result = nk_window_set_cursor_mode(window, NK_CURSOR_MODE_CAPTURED);
     if (capture_result == NK_OK) {
         assert(nk_window_get_cursor_mode(window, &cursor_mode) == NK_OK);

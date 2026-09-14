@@ -3,7 +3,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	/**
 	 * Current UI ABI version.
 	 */
-	const NKUI_API_VERSION = 4;
+	const NKUI_API_VERSION = 5;
 	const NKUI_COMMAND_VERSION = 1;
 	const NKUI_LAYOUT_API_VERSION = 7;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
@@ -328,6 +328,19 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		NKUI_TEXT_DIRECTION_RTL = 2;
 	}
 	/**
+	 * Text navigation convention used by text editors.
+	 */
+	enum nkui_text_navigation_behavior : u32 {
+		/**
+		 * Standard Control-arrow word and paragraph movement.
+		 */
+		NKUI_TEXT_NAVIGATION_BEHAVIOR_STANDARD = 0;
+		/**
+		 * macOS Option-arrow word and paragraph movement.
+		 */
+		NKUI_TEXT_NAVIGATION_BEHAVIOR_MACOS = 1;
+	}
+	/**
 	 * Word-breaking policy used by both explicit and automatic text layouts.
 	 */
 	enum nkui_text_wrap : u32 {
@@ -568,9 +581,22 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_text_layout_hit_test(layout: nkui_resource, x: f32, y: f32, out_position: ptr<nkui_text_position> @out) -> nkui_result;
 	/**
+	 * Returns the visual line range containing the code-point `offset`.
+	 */
+	extern fn nkui_text_layout_line_range_at(layout: nkui_resource, offset: i32, out_start: ptr<i32> @out, out_end: ptr<i32> @out) -> nkui_result;
+	/**
 	 * Returns the layout bounds in `out_metrics`.
 	 */
 	extern fn nkui_text_layout_measure(layout: nkui_resource, out_metrics: ptr<nkui_text_metrics> @out) -> nkui_result;
+	/**
+	 * Moves to a paragraph boundary using Control-arrow or macOS Option-arrow conventions.
+	 */
+	extern fn nkui_text_layout_move_paragraph(layout: nkui_resource, offset: i32, direction: i32, behavior: nkui_text_navigation_behavior, out_offset: ptr<i32> @out) -> nkui_result;
+	/**
+	 * Moves to a word boundary. `direction` must be -1 or +1. The behavior selects
+	 * standard Control-arrow or macOS Option-arrow word movement.
+	 */
+	extern fn nkui_text_layout_move_word(layout: nkui_resource, offset: i32, direction: i32, behavior: nkui_text_navigation_behavior, out_offset: ptr<i32> @out) -> nkui_result;
 	/**
 	 * Returns the next grapheme boundary at or after `offset`.
 	 */
@@ -587,6 +613,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 * Re-shapes an existing layout while retaining its native resource handle; null text is empty.
 	 */
 	extern fn nkui_text_layout_update(layout: nkui_resource, text: nullable<utf8>, width: f32, text_style: ptr<const<nkui_text_style>>, paragraph_style: ptr<const<nkui_paragraph_style>>) -> nkui_result;
+	/**
+	 * Returns the Skribidi word range containing the code-point `offset`.
+	 */
+	extern fn nkui_text_layout_word_range_at(layout: nkui_resource, offset: i32, out_start: ptr<i32> @out, out_end: ptr<i32> @out) -> nkui_result;
 	/**
 	 * A normalized RGBA paint color.
 	 */

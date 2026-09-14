@@ -1466,6 +1466,66 @@ extern "C" nkui_result nkui_text_layout_align_grapheme(nkui_resource layout, int
     return NKUI_OK;
 }
 
+extern "C" nkui_result nkui_text_layout_word_range_at(nkui_resource layout, int32_t offset,
+                                                       int32_t *out_start, int32_t *out_end) {
+    if (!out_start || !out_end || offset < 0)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    const auto range = slot->text->word_range_at(offset);
+    *out_start = range.start;
+    *out_end = range.end;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_text_layout_line_range_at(nkui_resource layout, int32_t offset,
+                                                       int32_t *out_start, int32_t *out_end) {
+    if (!out_start || !out_end || offset < 0)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    const auto range = slot->text->line_range_at(offset);
+    *out_start = range.start;
+    *out_end = range.end;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_text_layout_move_word(nkui_resource layout, int32_t offset,
+                                                   int32_t direction,
+                                                   nkui_text_navigation_behavior behavior,
+                                                   int32_t *out_offset) {
+    if (!out_offset || offset < 0 || (direction != -1 && direction != 1) ||
+        behavior > NKUI_TEXT_NAVIGATION_BEHAVIOR_MACOS)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    *out_offset = slot->text->move_word(
+        offset, direction, behavior == NKUI_TEXT_NAVIGATION_BEHAVIOR_MACOS);
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_text_layout_move_paragraph(nkui_resource layout, int32_t offset,
+                                                        int32_t direction,
+                                                        nkui_text_navigation_behavior behavior,
+                                                        int32_t *out_offset) {
+    if (!out_offset || offset < 0 || (direction != -1 && direction != 1) ||
+        behavior > NKUI_TEXT_NAVIGATION_BEHAVIOR_MACOS)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    *out_offset = slot->text->move_paragraph(
+        offset, direction, behavior == NKUI_TEXT_NAVIGATION_BEHAVIOR_MACOS);
+    return NKUI_OK;
+}
+
 extern "C" nkui_result nkui_resource_destroy(nkui_resource resource) {
     std::lock_guard<std::mutex> lock(resources_mutex);
     const uint16_t slot_index = static_cast<uint16_t>(resource.id);

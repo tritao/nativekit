@@ -555,6 +555,12 @@ gboolean on_pointer_move(GtkWidget *, GdkEventMotion *motion, gpointer data) {
 }
 
 gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer data) {
+    // GTK emits GDK_2BUTTON_PRESS/GDK_3BUTTON_PRESS in addition to the ordinary
+    // GDK_BUTTON_PRESS for that physical click. Forwarding both makes a double-click
+    // look like a triple-click to consumers that count press/release transitions.
+    if (button_event->type == GDK_2BUTTON_PRESS || button_event->type == GDK_3BUTTON_PRESS)
+        return TRUE;
+
     nk::core::callback_boundary([&] {
         auto *resource = static_cast<GtkWindowResource *>(data);
         const auto button = button_from_gdk(button_event->button);
@@ -574,7 +580,7 @@ gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer d
         event.data = bytes_of(payload);
         nk::core::push_event(std::move(event));
     });
-    return FALSE;
+    return TRUE;
 }
 
 gboolean on_pointer_scroll(GtkWidget *, GdkEventScroll *scroll, gpointer data) {

@@ -40,7 +40,7 @@ if(NK_BACKEND_GTK_AVAILABLE)
     find_program(XVFB_RUN xvfb-run)
     if(XVFB_RUN)
         add_executable(nativekit_gtk_integration integration/gtk_create_destroy.c)
-        target_link_libraries(nativekit_gtk_integration PRIVATE NativeKit::nativekit)
+        target_link_libraries(nativekit_gtk_integration PRIVATE NativeKit::nativekit PkgConfig::GTK3)
         set_target_properties(nativekit_gtk_integration PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_create_destroy
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_integration>)

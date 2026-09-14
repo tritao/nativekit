@@ -1,5 +1,7 @@
 package nativekit.ui.core;
 
+import NativeKit;
+
 /** Capture/target/bubble dispatch with per-pointer hover and pointer capture. */
 class EventDispatcher {
 	var root:Null<RenderNode>;
@@ -40,7 +42,7 @@ class EventDispatcher {
 	}
 
 	public function pointerDown(x:Float, y:Float, button:Int, modifiers:Int = 0,
-			pointerId:Int = 0, data:Dynamic = null):Void {
+			pointerId:Int = 0, data:Dynamic = null, timestamp:Float = -1.0):Void {
 		var path = HitTest.path(root, x, y);
 		if (path.length == 0)
 			return;
@@ -53,7 +55,8 @@ class EventDispatcher {
 			index--;
 		}
 		dispatchPath(path, new UiEvent(UiEventKind.PointerDown, target.id, x, y,
-			0.0, 0.0, button, 0, modifiers, null, data, 0, pointerId));
+			0.0, 0.0, button, 0, modifiers, null, data, 0, pointerId,
+			timestamp < 0.0 ? NativeKit.nk_time_seconds() : timestamp));
 	}
 
 	public function pointerUp(x:Float, y:Float, button:Int, modifiers:Int = 0,

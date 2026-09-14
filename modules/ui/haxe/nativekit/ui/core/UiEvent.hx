@@ -13,6 +13,7 @@ class UiEvent {
 	public final scancode:Int;
 	public final modifiers:Int;
 	public final pointerId:Int;
+	public final timestamp:Float;
 	public final text:Null<String>;
 	public final data:Dynamic;
 	public var currentTarget:Null<WidgetId>;
@@ -23,7 +24,7 @@ class UiEvent {
 	public function new(kind:String, target:WidgetId, x:Float = 0.0, y:Float = 0.0,
 			deltaX:Float = 0.0, deltaY:Float = 0.0, button:Int = 0, key:Int = 0,
 			modifiers:Int = 0, text:Null<String> = null, data:Dynamic = null,
-			scancode:Int = 0, pointerId:Int = 0) {
+			scancode:Int = 0, pointerId:Int = 0, timestamp:Float = -1.0) {
 		if (kind == null || kind.length == 0 || target == null)
 			throw "Routed events require a kind and target";
 		this.kind = kind;
@@ -37,6 +38,7 @@ class UiEvent {
 		this.scancode = scancode;
 		this.modifiers = modifiers;
 		this.pointerId = pointerId;
+		this.timestamp = timestamp;
 		this.text = text;
 		this.data = data;
 		currentTarget = null;
