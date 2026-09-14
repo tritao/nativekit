@@ -78,6 +78,8 @@ import pages.ListsPage;
 import pages.OverlaysPage;
 import pages.OverviewPage;
 import pages.TextPage;
+import shell.CatalogSidebar;
+import shell.ExplorerShell;
 
 /** Interactive, Haxe-composed showcase for NativeKit's UI framework. */
 @:allow(pages.GraphicsPage)
@@ -88,6 +90,9 @@ import pages.TextPage;
 @:allow(pages.OverlaysPage)
 @:allow(pages.OverviewPage)
 @:allow(pages.TextPage)
+@:allow(shell.CatalogSidebar)
+@:allow(shell.ExplorerShell)
+@:allow(shell.TopBar)
 class UiExplorer {
 	public static inline var TARGET_FPS:Float = 60.0;
 	static inline var LIST_COUNT:Int = 10000;
@@ -406,115 +411,11 @@ class UiExplorer {
 	}
 
 	function buildShell():Column {
-		var topStyle = new LayoutStyle();
-		topStyle.width = LayoutAxis.grow();
-		topStyle.height = LayoutAxis.fixed(66.0);
-		topStyle.direction = LayoutDirection.LeftToRight;
-		topStyle.childAlignY = LayoutAlignment.Center;
-		topStyle.padding = new Insets(22.0, 0.0, 22.0, 0.0);
-		topStyle.childGap = 12.0;
-		topStyle.background = paletteSidebar();
-		var top = new Row("top-bar", [
-			keyed("brand-mark", text("NK", color(0.31, 0.91, 0.72))),
-			keyed("brand", text("NativeKit UI Explorer", paletteText())),
-			keyed("space", new Spacer("top-spacer", LayoutAxis.grow(), LayoutAxis.fit())),
-			keyed("platform", text(platformLabel, paletteMuted())),
-			keyed("theme", button(lightTheme ? "Light theme" : "Dark theme", "theme-toggle", function() {
-				lightTheme = !lightTheme;
-				context.setTheme(makeTheme(lightTheme));
-			})),
-			keyed("inspect", button(inspectorOpen ? "Hide inspector" : "Inspect", "inspector-toggle", function() {
-				inspectorOpen = !inspectorOpen;
-			}))
-		], topStyle);
-
-		var bodyStyle = new LayoutStyle();
-		bodyStyle.width = LayoutAxis.grow();
-		bodyStyle.height = LayoutAxis.grow();
-		bodyStyle.direction = LayoutDirection.LeftToRight;
-		bodyStyle.childGap = 0.0;
-		var bodyChildren:Array<KeyedView> = [keyed("catalog", buildCatalog())];
-		var mainStyle = new LayoutStyle();
-		mainStyle.width = LayoutAxis.grow();
-		mainStyle.height = LayoutAxis.grow();
-		mainStyle.padding = new Insets(22.0, 18.0, 22.0, 18.0);
-		var scrollStyle = new LayoutStyle();
-		scrollStyle.width = LayoutAxis.grow();
-		scrollStyle.height = LayoutAxis.grow();
-		scrollStyle.clipVertical = true;
-		var pageScroll = new ScrollView("page-scroll", buildPage(), scrollStyle, ScrollAxis.Vertical);
-		bodyChildren.push(keyed("main", new Column("main-content", [keyed("page", pageScroll)], mainStyle)));
-		if (inspectorOpen && width >= 880.0)
-			bodyChildren.push(keyed("inspector", buildInspector()));
-		var body = new Row("workspace", bodyChildren, bodyStyle);
-		var shellStyle = new LayoutStyle();
-		shellStyle.width = LayoutAxis.grow();
-		shellStyle.height = LayoutAxis.grow();
-		shellStyle.background = paletteBackground();
-		return new Column("app-shell", [keyed("top", top), keyed("workspace", body)], shellStyle);
+		return ExplorerShell.build(this);
 	}
 
 	function buildCatalog():Column {
-		var style = new LayoutStyle();
-		style.width = LayoutAxis.fixed(width < 760.0 ? 176.0 : 212.0);
-		style.height = LayoutAxis.grow();
-		style.padding = new Insets(14.0, 18.0, 14.0, 18.0);
-		style.childGap = 8.0;
-		style.background = paletteSidebar();
-		var children:Array<KeyedView> = [
-			keyed("catalog-label", text("COMPONENT CATALOG", paletteMuted()))
-		];
-		var searchStyle = new LayoutStyle();
-		searchStyle.width = LayoutAxis.grow();
-		searchStyle.height = LayoutAxis.fixed(38.0);
-		searchStyle.padding = new Insets(9.0, 7.0, 9.0, 7.0);
-		searchStyle.background = lightTheme ? color(0.91, 0.93, 0.97) : color(0.09, 0.12, 0.18);
-		var search = new TextField("catalog-search", searchText, function(value) {
-			searchText = value;
-		}, searchStyle, "Search components", new TextStyle(14.0), paletteText());
-		children.push(keyed("search", search));
-		var navItems:Array<KeyedView> = [keyed("group-start", text("START HERE", paletteMuted()))];
-		appendNav(navItems, "overview", "Overview");
-		navItems.push(keyed("group-components", text("COMPONENTS", paletteMuted())));
-		appendNav(navItems, "controls", "Controls");
-		appendNav(navItems, "text", "Text & Input");
-		appendNav(navItems, "layout", "Layout");
-		appendNav(navItems, "lists", "Scrolling & Data");
-		appendNav(navItems, "overlays", "Navigation & Overlays");
-		appendNav(navItems, "gestures", "Gestures & Motion");
-		navItems.push(keyed("group-developer", text("DEVELOPER TOOLS", paletteMuted())));
-		appendNav(navItems, "graphics", "Graphics Lab");
-		var navStyle = new LayoutStyle();
-		navStyle.width = LayoutAxis.grow();
-		navStyle.height = LayoutAxis.fit();
-		navStyle.childGap = 6.0;
-		var navScrollStyle = new LayoutStyle();
-		navScrollStyle.width = LayoutAxis.grow();
-		navScrollStyle.height = LayoutAxis.grow();
-		navScrollStyle.clipVertical = true;
-		children.push(keyed("catalog-navigation", new ScrollView("catalog-navigation-scroll",
-			new Column("catalog-navigation-items", navItems, navStyle), navScrollStyle,
-			ScrollAxis.Vertical)));
-		children.push(keyed("catalog-foot", text("Haxe composition\nNative layout + render", paletteMuted())));
-		return new Column("component-catalog", children, style);
-	}
-
-	function appendNav(children:Array<KeyedView>, key:String, label:String):Void {
-		if (searchText.length > 0 && !containsInsensitive(label, searchText))
-			return;
-		var navStyle = new LayoutStyle();
-		navStyle.width = LayoutAxis.grow();
-		navStyle.height = LayoutAxis.fixed(36.0);
-		navStyle.padding = new Insets(10.0, 8.0, 10.0, 8.0);
-		navStyle.background = lightTheme ? color(0.87, 0.90, 0.95) : color(0.075, 0.10, 0.16);
-		var item = new Button(label, navStyle, function() {
-			selectedPage = key;
-			selectedNodeId = 0;
-			hoveredNodeId = 0;
-			inspectorTab = "preview";
-		}, "nav-" + key);
-		item.selected = selectedPage == key;
-		children.push(keyed("nav-" + key, item));
+		return CatalogSidebar.build(this);
 	}
 
 	function buildPage():Column {
