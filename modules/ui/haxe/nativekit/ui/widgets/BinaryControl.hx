@@ -93,13 +93,16 @@ class BinaryControl implements View {
 					if (!checked)
 						return;
 					var mark = Color.rgba(1.0, 1.0, 1.0, 1.0);
-					// Keep this as filled geometry rather than transformed strokes: the
-					// custom-control paint path currently doesn't preserve local rotation.
-					canvas.fillRect(new Rect(3.0, 8.0, 3.0, 3.0), mark);
-					canvas.fillRect(new Rect(5.0, 10.0, 3.0, 3.0), mark);
-					canvas.fillRect(new Rect(7.0, 8.0, 3.0, 3.0), mark);
-					canvas.fillRect(new Rect(9.0, 6.0, 3.0, 3.0), mark);
-					canvas.fillRect(new Rect(11.0, 4.0, 3.0, 3.0), mark);
+					canvas.withState(function(target) {
+						target.translate(5.5, 10.5);
+						target.rotate(0.7853981634);
+						target.fillRect(new Rect(-2.5, -1.1, 5.0, 2.2), mark);
+					});
+					canvas.withState(function(target) {
+						target.translate(11.0, 8.5);
+						target.rotate(-0.7853981634);
+						target.fillRect(new Rect(-5.5, -1.1, 11.0, 2.2), mark);
+					});
 				});
 			}
 			node.add(indicator);
