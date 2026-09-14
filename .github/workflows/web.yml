@@ -10,7 +10,7 @@ jobs:
     timeout-minutes: 60
     env:
       HAXEON_DIR: ${{ github.workspace }}/haxeon
-      HAXEON_REF: 0ffc8a8d9e08742d41d84192399a53db4f95911b
+      HAXEON_REF: 043a71f031c6bdbc90bee2749f844da6288b23f4
     steps:
       - uses: actions/checkout@v4
         with:
