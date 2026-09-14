@@ -1,6 +1,9 @@
 #define SOKOL_IMPL
 #include "nativekit_sokol_runtime.h"
 
+#if defined(NKGPU_TESTING)
+#include <stdio.h>
+#endif
 #include <stdint.h>
 
 enum { NK_SOKOL_EXTERNAL_IMAGE_CAPACITY = 4096 };
@@ -20,6 +23,18 @@ static int runtime_depth_format;
 static int runtime_sample_count;
 static uint32_t runtime_device;
 static nk_sokol_external_image_slot external_images[NK_SOKOL_EXTERNAL_IMAGE_CAPACITY];
+
+#if defined(NKGPU_TESTING)
+static void nk_sokol_test_log(const char *tag, uint32_t level, uint32_t item_id,
+                              const char *message, uint32_t line, const char *filename,
+                              void *user_data) {
+    (void)user_data;
+    if (level > 1)
+        return;
+    fprintf(stderr, "%s: %s (item %u, %s:%u)\n", tag ? tag : "sokol", message ? message : "",
+            item_id, filename ? filename : "unknown", line);
+}
+#endif
 
 static uint32_t external_image_token(uint32_t index, uint16_t generation) {
     return ((uint32_t)generation << 16) | (index + 1u);
@@ -52,7 +67,11 @@ int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device) {
         runtime_depth_format = desc->environment.defaults.depth_format;
         runtime_sample_count = desc->environment.defaults.sample_count;
         runtime_device = device.id;
-        sg_setup(desc);
+        sg_desc runtime_desc = *desc;
+#if defined(NKGPU_TESTING)
+        runtime_desc.logger.func = nk_sokol_test_log;
+#endif
+        sg_setup(&runtime_desc);
         if (!sg_isvalid()) {
             runtime_color_format = 0;
             runtime_depth_format = 0;

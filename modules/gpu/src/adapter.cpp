@@ -1,6 +1,7 @@
 #include "nativekit_gpu.h"
 #include "nativekit_graphics.h"
 #include "nativekit_sokol_api.h"
+#include "adapter_internal.h"
 #include "core/graphics_image_registry.h"
 #if defined(NKGPU_TESTING)
 #include "testing.h"
