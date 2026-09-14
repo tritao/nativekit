@@ -187,6 +187,9 @@ for visual_case in "${cases[@]}"; do
         --scale "$device_scale"
         --reference "$repo_dir/modules/ui/tests/golden/showcase-${case_name}.png"
         --artifact-dir "$repo_dir/build-web/visual-diffs")
+    if [[ "$case_name" == ui-* ]]; then
+        arguments+=(--move 1,1)
+    fi
     [[ -z "$click" ]] || arguments+=(--click "$click")
     if [[ -n "$caret" ]]; then
         IFS=',' read -r caret_offset caret_affinity caret_direction <<<"$caret"

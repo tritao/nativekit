@@ -114,6 +114,7 @@ def main():
     parser.add_argument("--scale", type=float, default=1.0)
     parser.add_argument("--reference", type=pathlib.Path, required=True)
     parser.add_argument("--artifact-dir", type=pathlib.Path, required=True)
+    parser.add_argument("--move")
     parser.add_argument("--click")
     parser.add_argument("--expect-offset", type=int)
     parser.add_argument("--expect-affinity", type=int)
@@ -160,6 +161,24 @@ def main():
             time.sleep(0.05)
         else:
             raise RuntimeError(f"showcase did not reach the requested visual frame: {state}")
+
+        if args.move:
+            move_x, move_y = (float(value) for value in args.move.split(",", 1))
+            websocket.command("Input.dispatchMouseEvent", {
+                "type": "mouseMoved", "x": move_x, "y": move_y,
+                "button": "none", "buttons": 0,
+            }, 7)
+            target_frames = state["frames"] + 3
+            while time.monotonic() < deadline:
+                frames = websocket.evaluate(
+                    "Number(document.documentElement?.dataset.nativekitFrames||0)", 8
+                )
+                if frames >= target_frames:
+                    state["frames"] = frames
+                    break
+                time.sleep(0.05)
+            else:
+                raise RuntimeError("showcase did not render the requested pointer position")
 
         if args.click:
             click_x, click_y = (float(value) for value in args.click.split(",", 1))
