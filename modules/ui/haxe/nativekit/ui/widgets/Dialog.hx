@@ -14,6 +14,8 @@ import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
 import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityRole;
+import nativekit.ui.semantics.AccessibilityAction;
+import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
 
 /** Centered modal composition with trapped keyboard focus and dismissal hooks. */
@@ -49,7 +51,11 @@ class Dialog implements View {
 			var root = new RenderNode(context.id("dialog"), LayoutVisualKind.Box, rootStyle);
 			root.focusTrap = true;
 			root.hitTestSelf = false;
-			root.semantics = new Semantics(AccessibilityRole.Group, title);
+			var semantics = new Semantics(AccessibilityRole.Dialog, title);
+			semantics.states |= AccessibilityState.Modal;
+			if (hasDismissHandler)
+				semantics.actions |= AccessibilityAction.Dismiss;
+			root.semantics = semantics;
 
 			var backdropStyle = new LayoutStyle();
 			backdropStyle.width = LayoutAxis.grow();
@@ -103,6 +109,11 @@ class Dialog implements View {
 					onDismiss();
 				}
 			});
+			if (hasDismissHandler)
+				root.on(UiEventKind.Activate, function(event) {
+					if (event.target.equals(root.id))
+						onDismiss();
+				});
 			return root;
 		});
 	}

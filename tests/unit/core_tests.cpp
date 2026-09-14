@@ -4,6 +4,7 @@
 #include "core/gamepad_mappings_generated.hpp"
 #include "core/handle_registry.hpp"
 #include "core/vulkan_internal.hpp"
+#include "nativekit_accessibility.h"
 #include "nativekit_joystick.h"
 #include "nativekit_window.h"
 
@@ -15,9 +16,45 @@
 
 namespace {
 struct Dummy final : nk::core::Resource {};
+
+static_assert(NK_ACCESSIBILITY_SCROLL_AREA == 12);
+static_assert(NK_ACCESSIBILITY_DIALOG == 13);
+static_assert(NK_ACCESSIBILITY_ALERT == 35);
+static_assert(NK_ACCESSIBILITY_EXPANDED == (1u << 8));
+static_assert(NK_ACCESSIBILITY_MODAL == (1u << 9));
+static_assert(NK_ACCESSIBILITY_HAS_POPUP == (1u << 13));
+static_assert(NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS == (1u << 9));
+static_assert(NK_ACCESSIBILITY_CAN_TOGGLE == (1u << 10));
+static_assert(NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW == (1u << 17));
+static_assert(NK_ACCESSIBILITY_ACTION_MOVE_PREVIOUS == 11);
+static_assert(NK_ACCESSIBILITY_ACTION_TOGGLE == 12);
+static_assert(NK_ACCESSIBILITY_ACTION_SCROLL_INTO_VIEW == 19);
+static_assert(offsetof(nk_accessibility_node, set_size) ==
+              offsetof(nk_accessibility_node, selection_end) + sizeof(uint32_t));
+static_assert(offsetof(nk_accessibility_node, orientation) >
+              offsetof(nk_accessibility_node, hierarchy_level));
 } // namespace
 
 int main() {
+    nk_accessibility_node accessibility_node{};
+    accessibility_node.struct_size = sizeof(accessibility_node);
+    accessibility_node.role = NK_ACCESSIBILITY_COLLECTION_ITEM;
+    accessibility_node.set_size = 10000;
+    accessibility_node.position_in_set = 4231;
+    accessibility_node.row_index = NK_ACCESSIBILITY_INDEX_NONE;
+    accessibility_node.column_index = NK_ACCESSIBILITY_INDEX_NONE;
+    accessibility_node.orientation = NK_ACCESSIBILITY_ORIENTATION_VERTICAL;
+    assert(accessibility_node.struct_size == sizeof(accessibility_node));
+    assert(accessibility_node.position_in_set <= accessibility_node.set_size);
+    assert(accessibility_node.row_index == NK_ACCESSIBILITY_INDEX_NONE);
+    assert(accessibility_node.orientation == NK_ACCESSIBILITY_ORIENTATION_VERTICAL);
+    nk_accessibility_update invalid_update{};
+    invalid_update.struct_size = sizeof(invalid_update);
+    const uint8_t malformed_removed_ids[] = {1, 2, 3};
+    assert(nk_surface_accessibility_update_with_removed_ids(
+               NK_INVALID_HANDLE, &invalid_update, malformed_removed_ids,
+               sizeof(malformed_removed_ids)) == NK_ERROR_INVALID_ARGUMENT);
+
     assert(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_X11),
                        "VK_KHR_xlib_surface") == 0);
     assert(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_WAYLAND),

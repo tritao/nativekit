@@ -6,6 +6,12 @@ import LayoutAxis;
 import LayoutStyle;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.View;
+import nativekit.ui.core.RenderNode;
+import nativekit.ui.core.UiEventKind;
+import nativekit.ui.semantics.AccessibilityAction;
+import nativekit.ui.semantics.AccessibilityRole;
+import nativekit.ui.semantics.AccessibilityState;
+import nativekit.ui.semantics.Semantics;
 
 /** Keyboard-focusable popup menu composed from ordinary Haxe buttons. */
 class Menu implements View {
@@ -42,6 +48,8 @@ class Menu implements View {
 					onDismiss();
 			}, item.key);
 			button.enabled = item.enabled;
+			button.semanticRole = AccessibilityRole.MenuItem;
+			button.semanticActions = AccessibilityAction.Select;
 			children.push(new KeyedView(item.key, button));
 		}
 		var menuStyle = new LayoutStyle();
@@ -52,6 +60,17 @@ class Menu implements View {
 			hasDismissHandler ? onDismiss : null);
 		popup.label = "Menu";
 		popup.modal = true;
-		return popup.build(context);
+		var root:RenderNode = popup.build(context);
+		var semantics = new Semantics(AccessibilityRole.Menu, "Menu");
+		semantics.states |= AccessibilityState.Modal;
+		if (hasDismissHandler)
+			semantics.actions |= AccessibilityAction.Dismiss;
+		root.semantics = semantics;
+		if (hasDismissHandler)
+			root.on(UiEventKind.Activate, function(event) {
+				if (event.target.equals(root.id))
+					onDismiss();
+			});
+		return root;
 	}
 }

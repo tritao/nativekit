@@ -34,7 +34,9 @@ extern "C" {
 typedef uint32_t nk_accessibility_node_id;
 enum {
     /** The platform-provided host root; it cannot be removed or replaced. */
-    NK_ACCESSIBILITY_ROOT = 0
+    NK_ACCESSIBILITY_ROOT = 0,
+    /** Sentinel for an omitted row or column index. */
+    NK_ACCESSIBILITY_INDEX_NONE = 0xffffffffu
 };
 
 /** Semantic role announced for an accessibility node. */
@@ -65,7 +67,53 @@ enum NK_ENUM(nk_accessibility_role) {
     /** Numeric or ranged value control. */
     NK_ACCESSIBILITY_SLIDER = 11,
     /** Scrollable content container. */
-    NK_ACCESSIBILITY_SCROLL_AREA = 12
+    NK_ACCESSIBILITY_SCROLL_AREA = 12,
+    /** Modal or modeless dialog window. */
+    NK_ACCESSIBILITY_DIALOG = 13,
+    /** Popup or application menu. */
+    NK_ACCESSIBILITY_MENU = 14,
+    /** Application menu bar. */
+    NK_ACCESSIBILITY_MENU_BAR = 15,
+    /** Command or choice inside a menu. */
+    NK_ACCESSIBILITY_MENU_ITEM = 16,
+    /** Container for a set of tabs. */
+    NK_ACCESSIBILITY_TAB_LIST = 17,
+    /** Selectable tab in a tab list. */
+    NK_ACCESSIBILITY_TAB = 18,
+    /** Content associated with a tab. */
+    NK_ACCESSIBILITY_TAB_PANEL = 19,
+    /** On/off switch control. */
+    NK_ACCESSIBILITY_SWITCH = 20,
+    /** Read-only progress indicator. */
+    NK_ACCESSIBILITY_PROGRESS_BAR = 21,
+    /** Editable selection from a list of options. */
+    NK_ACCESSIBILITY_COMBO_BOX = 22,
+    /** Generic collection of related items. */
+    NK_ACCESSIBILITY_COLLECTION = 23,
+    /** Item in a collection. */
+    NK_ACCESSIBILITY_COLLECTION_ITEM = 24,
+    /** Two-dimensional collection of cells. */
+    NK_ACCESSIBILITY_GRID = 25,
+    /** Row in a grid or table. */
+    NK_ACCESSIBILITY_ROW = 26,
+    /** Cell in a grid or table. */
+    NK_ACCESSIBILITY_CELL = 27,
+    /** Header describing a grid column. */
+    NK_ACCESSIBILITY_COLUMN_HEADER = 28,
+    /** Header describing a grid row. */
+    NK_ACCESSIBILITY_ROW_HEADER = 29,
+    /** Hierarchical collection of tree items. */
+    NK_ACCESSIBILITY_TREE = 30,
+    /** Item in a hierarchical tree. */
+    NK_ACCESSIBILITY_TREE_ITEM = 31,
+    /** Non-interactive visual or semantic separator. */
+    NK_ACCESSIBILITY_SEPARATOR = 32,
+    /** Group of commonly used commands. */
+    NK_ACCESSIBILITY_TOOLBAR = 33,
+    /** Status information about the application or document. */
+    NK_ACCESSIBILITY_STATUS = 34,
+    /** Important message that should be announced promptly. */
+    NK_ACCESSIBILITY_ALERT = 35
 };
 
 /** Bit flags describing the current state of an accessibility node. */
@@ -88,7 +136,17 @@ enum NK_FLAGS(nk_accessibility_states) {
     /** The node's value should be announced as protected content. */
     NK_ACCESSIBILITY_PASSWORD = 1u << 7,
     /** A node such as a group or tree item is expanded. */
-    NK_ACCESSIBILITY_EXPANDED = 1u << 8
+    NK_ACCESSIBILITY_EXPANDED = 1u << 8,
+    /** The node or one of its descendants is modal. */
+    NK_ACCESSIBILITY_MODAL = 1u << 9,
+    /** The node must be populated before its form can be submitted. */
+    NK_ACCESSIBILITY_REQUIRED = 1u << 10,
+    /** The current value or input is invalid. */
+    NK_ACCESSIBILITY_INVALID = 1u << 11,
+    /** The node or its contents are being updated. */
+    NK_ACCESSIBILITY_BUSY = 1u << 12,
+    /** The node exposes a popup or expandable popup content. */
+    NK_ACCESSIBILITY_HAS_POPUP = 1u << 13
 };
 
 /** Bit flags describing actions supported by an accessibility node. */
@@ -113,7 +171,23 @@ enum NK_FLAGS(nk_accessibility_actions) {
     /** The node accepts moving to the next semantic item. */
     NK_ACCESSIBILITY_CAN_MOVE_NEXT = 1u << 8,
     /** The node accepts moving to the previous semantic item. */
-    NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS = 1u << 9
+    NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS = 1u << 9,
+    /** The node accepts NK_ACCESSIBILITY_ACTION_TOGGLE. */
+    NK_ACCESSIBILITY_CAN_TOGGLE = 1u << 10,
+    /** The node accepts NK_ACCESSIBILITY_ACTION_SELECT. */
+    NK_ACCESSIBILITY_CAN_SELECT = 1u << 11,
+    /** The node accepts NK_ACCESSIBILITY_ACTION_DESELECT. */
+    NK_ACCESSIBILITY_CAN_DESELECT = 1u << 12,
+    /** The node accepts NK_ACCESSIBILITY_ACTION_EXPAND. */
+    NK_ACCESSIBILITY_CAN_EXPAND = 1u << 13,
+    /** The node accepts NK_ACCESSIBILITY_ACTION_COLLAPSE. */
+    NK_ACCESSIBILITY_CAN_COLLAPSE = 1u << 14,
+    /** The node accepts NK_ACCESSIBILITY_ACTION_DISMISS. */
+    NK_ACCESSIBILITY_CAN_DISMISS = 1u << 15,
+    /** The node accepts NK_ACCESSIBILITY_ACTION_SHOW_CONTEXT_MENU. */
+    NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU = 1u << 16,
+    /** The node accepts NK_ACCESSIBILITY_ACTION_SCROLL_INTO_VIEW. */
+    NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW = 1u << 17
 };
 
 /** Action requested by a platform accessibility service. */
@@ -140,7 +214,34 @@ enum NK_ENUM(nk_accessibility_action) {
     /** Move to the next semantic item. */
     NK_ACCESSIBILITY_ACTION_MOVE_NEXT = 10,
     /** Move to the previous semantic item. */
-    NK_ACCESSIBILITY_ACTION_MOVE_PREVIOUS = 11
+    NK_ACCESSIBILITY_ACTION_MOVE_PREVIOUS = 11,
+    /** Toggle a switch or other binary control. */
+    NK_ACCESSIBILITY_ACTION_TOGGLE = 12,
+    /** Select this item. */
+    NK_ACCESSIBILITY_ACTION_SELECT = 13,
+    /** Remove selection from this item. */
+    NK_ACCESSIBILITY_ACTION_DESELECT = 14,
+    /** Expand this item. */
+    NK_ACCESSIBILITY_ACTION_EXPAND = 15,
+    /** Collapse this item. */
+    NK_ACCESSIBILITY_ACTION_COLLAPSE = 16,
+    /** Dismiss this popup or transient element. */
+    NK_ACCESSIBILITY_ACTION_DISMISS = 17,
+    /** Show this item's context menu. */
+    NK_ACCESSIBILITY_ACTION_SHOW_CONTEXT_MENU = 18,
+    /** Scroll the item into the visible viewport. */
+    NK_ACCESSIBILITY_ACTION_SCROLL_INTO_VIEW = 19
+};
+
+/** Generic orientation for collections and other directional semantics. */
+typedef uint32_t nk_accessibility_orientation;
+enum NK_ENUM(nk_accessibility_orientation) {
+    /** No orientation is specified. */
+    NK_ACCESSIBILITY_ORIENTATION_UNSPECIFIED = 0,
+    /** Items progress along the horizontal axis. */
+    NK_ACCESSIBILITY_ORIENTATION_HORIZONTAL = 1,
+    /** Items progress along the vertical axis. */
+    NK_ACCESSIBILITY_ORIENTATION_VERTICAL = 2
 };
 
 /** Text unit requested for a selection or navigation action. */
@@ -220,6 +321,28 @@ typedef struct nk_accessibility_node {
     nk_accessibility_text_position selection_start;
     /** Selection end in document coordinates, or NONE for no selection. */
     nk_accessibility_text_position selection_end;
+    /* Keep future additions at the tail. Readers should use struct_size and
+       treat metadata beyond the supplied size as unspecified. */
+    /** Total logical items in a collection; zero means unspecified. */
+    uint32_t set_size;
+    /** One-based item position in its collection; zero means unspecified. */
+    uint32_t position_in_set;
+    /** Total rows in a grid; zero means unspecified. */
+    uint32_t row_count;
+    /** Total columns in a grid; zero means unspecified. */
+    uint32_t column_count;
+    /** Zero-based row index, or NK_ACCESSIBILITY_INDEX_NONE if unspecified. */
+    uint32_t row_index;
+    /** Zero-based column index, or NK_ACCESSIBILITY_INDEX_NONE if unspecified. */
+    uint32_t column_index;
+    /** Number of rows occupied by a grid cell; zero means unspecified. */
+    uint32_t row_span;
+    /** Number of columns occupied by a grid cell; zero means unspecified. */
+    uint32_t column_span;
+    /** One-based depth in a hierarchy; zero means unspecified. */
+    uint32_t hierarchy_level;
+    /** Generic collection orientation. */
+    nk_accessibility_orientation orientation;
 } nk_accessibility_node;
 
 /**
@@ -345,6 +468,19 @@ NK_API nk_result NK_CALL nk_surface_accessibility_set_focus(nk_surface surface,
  */
 NK_API nk_result NK_CALL nk_surface_accessibility_update(nk_surface surface,
                                                          const nk_accessibility_update *update);
+
+/**
+ * Applies an atomic accessibility update whose removed-node list is supplied
+ * as a packed little-endian byte array of 32-bit node IDs. This helper exists
+ * for language bindings that can safely marshal byte buffers but cannot
+ * represent a pointer to a primitive array inside `nk_accessibility_update`.
+ * The update's `removed_nodes` and `removed_node_count` fields are replaced by
+ * the supplied array; all other fields are applied unchanged.
+ */
+NK_API nk_result NK_CALL nk_surface_accessibility_update_with_removed_ids(
+    nk_surface surface, const nk_accessibility_update *update,
+    const uint8_t *removed_node_ids NK_BORROWED_ARRAY(removed_node_id_byte_count),
+    uint32_t removed_node_id_byte_count);
 
 /**
  * Supplies screen-reader geometry for text ranges in a node's value.

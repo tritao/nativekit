@@ -25,6 +25,10 @@ class Button implements View {
 	public final style:LayoutStyle;
 	public var enabled:Bool;
 	public var selected:Bool;
+	/** Semantic role override used by composite controls such as tabs and menus. */
+	public var semanticRole:AccessibilityRole;
+	/** Action capabilities override used by composite controls. */
+	public var semanticActions:Int;
 	public var onClick:Void->Void;
 
 	public function new(label:String, ?style:LayoutStyle, ?onClick:Void->Void, ?key:String) {
@@ -36,6 +40,8 @@ class Button implements View {
 		this.onClick = onClick;
 		enabled = true;
 		selected = false;
+		semanticRole = AccessibilityRole.Button;
+		semanticActions = AccessibilityAction.Activate;
 	}
 
 	public function build(context:BuildContext):RenderNode {
@@ -49,10 +55,10 @@ class Button implements View {
 		flags = InteractionState.with(flags, InteractionState.Selected, selected);
 		var resolvedStyle = context.theme.resolveButtonStyle(style, flags, enabled);
 		var node = new RenderNode(id, LayoutVisualKind.Box, resolvedStyle);
-		node.focusable = true;
+		node.focusable = enabled;
 		node.enabled = enabled;
-		var semantics = new Semantics(AccessibilityRole.Button, label);
-		semantics.actions = AccessibilityAction.Activate;
+		var semantics = new Semantics(semanticRole, label);
+		semantics.actions = semanticActions;
 		if (selected)
 			semantics.states |= AccessibilityState.Selected;
 		node.semantics = semantics;

@@ -69,7 +69,7 @@ class TextField implements View {
 			editor.syncExternal(value);
 
 			var node = new RenderNode(id, LayoutVisualKind.Box, style);
-			node.focusable = true;
+			node.focusable = enabled;
 			node.enabled = enabled;
 			var semantics = new Semantics(AccessibilityRole.TextField,
 				label == null ? key : label, editor.text);

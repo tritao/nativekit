@@ -11,4 +11,9 @@ class AccessibilityState {
 	public static inline var Multiline = 64;
 	public static inline var Password = 128;
 	public static inline var Expanded = 256;
+	public static inline var Modal = 512;
+	public static inline var Required = 1024;
+	public static inline var Invalid = 2048;
+	public static inline var Busy = 4096;
+	public static inline var HasPopup = 8192;
 }

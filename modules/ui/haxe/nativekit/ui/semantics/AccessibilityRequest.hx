@@ -15,6 +15,14 @@ class AccessibilityRequest {
 	public static inline var ScrollBackward = 9;
 	public static inline var MoveNext = 10;
 	public static inline var MovePrevious = 11;
+	public static inline var Toggle = 12;
+	public static inline var Select = 13;
+	public static inline var Deselect = 14;
+	public static inline var Expand = 15;
+	public static inline var Collapse = 16;
+	public static inline var Dismiss = 17;
+	public static inline var ShowContextMenu = 18;
+	public static inline var ScrollIntoView = 19;
 
 	public final action:Int;
 	public final capability:Int;
@@ -50,6 +58,14 @@ class AccessibilityRequest {
 			case ScrollBackward: capability = AccessibilityAction.ScrollBackward; kind = UiEventKind.Scroll;
 			case MoveNext: capability = AccessibilityAction.MoveNext; kind = UiEventKind.AccessibilityMoveNext;
 			case MovePrevious: capability = AccessibilityAction.MovePrevious; kind = UiEventKind.AccessibilityMovePrevious;
+			case Toggle: capability = AccessibilityAction.Toggle; kind = UiEventKind.Activate;
+			case Select: capability = AccessibilityAction.Select; kind = UiEventKind.Activate;
+			case Deselect: capability = AccessibilityAction.Deselect; kind = UiEventKind.Activate;
+			case Expand: capability = AccessibilityAction.Expand; kind = UiEventKind.Activate;
+			case Collapse: capability = AccessibilityAction.Collapse; kind = UiEventKind.Activate;
+			case Dismiss: capability = AccessibilityAction.Dismiss; kind = UiEventKind.Activate;
+			case ShowContextMenu: capability = AccessibilityAction.ShowContextMenu; kind = UiEventKind.Activate;
+			case ScrollIntoView: capability = AccessibilityAction.ScrollIntoView; kind = UiEventKind.Scroll;
 			default: return null;
 		}
 		return new AccessibilityRequest(action, capability, kind, value,

@@ -52,7 +52,7 @@ class Slider implements View {
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
 			var node = new RenderNode(context.id("slider"), LayoutVisualKind.Custom, style);
-			node.focusable = true;
+			node.focusable = enabled;
 			node.enabled = enabled;
 			var semantics = new Semantics(AccessibilityRole.Slider, label, Std.string(value));
 			semantics.actions = AccessibilityAction.SetValue | AccessibilityAction.Increment |
