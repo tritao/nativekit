@@ -2,7 +2,8 @@
 set -euo pipefail
 
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-artifact_dir=${NATIVEKIT_WEB_ARTIFACT_DIR:-"$repo_dir/build-web/modules/ui"}
+build_dir=${NATIVEKIT_WEB_BUILD_DIR:-"$repo_dir/build-web"}
+artifact_dir=${NATIVEKIT_WEB_ARTIFACT_DIR:-"$build_dir/modules/ui"}
 browser=${NK_WEB_BROWSER:-$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)}
 update=false
 ui_only=false
@@ -28,6 +29,50 @@ while (($#)); do
 done
 if [[ ! -f "$artifact_dir/nativekit_ui_haxeon.html" ]]; then
     echo "Haxeon web artifact is missing. Run tools/build-web.sh first." >&2
+    exit 1
+fi
+host_wasm_artifact="$artifact_dir/nativekit_ui_haxeon.wasm"
+guest_wasm_artifact="$artifact_dir/nativekit_ui_haxeon_guest.wasm"
+if [[ ! -f "$host_wasm_artifact" || ! -f "$guest_wasm_artifact" ]]; then
+    echo "Haxeon WebAssembly artifact is missing. Run tools/build-web.sh first." >&2
+    exit 1
+fi
+guest_source_artifact="$build_dir/modules/ui/nativekit_ui_showcase_wasm32.wasm"
+guest_build_artifact="$guest_wasm_artifact"
+[[ ! -f "$guest_source_artifact" ]] || guest_build_artifact="$guest_source_artifact"
+stale_native_source=$(find "$repo_dir/src" "$repo_dir/include" "$repo_dir/modules/ui" \
+    "$repo_dir/cmake" "$repo_dir/vendor" \
+    \( -type d \( -name .git -o -name build -o -name build-web -o -name build-ui \
+        -o -name .tools \) -prune \) -o \
+    \( -type f \( -name '*.c' -o -name '*.cc' -o -name '*.cpp' \
+        -o -name '*.h' -o -name '*.hpp' -o -name '*.cmake' -o -name '*.glsl' \) \
+        -newer "$host_wasm_artifact" -print -quit \))
+haxeon_dir=${HAXEON_DIR:-}
+if [[ -z "$haxeon_dir" && -f "$build_dir/build.ninja" ]]; then
+    haxeon_dir=$(sed -n 's/.*HAXEON_DIR=\([^[:space:]]*\).*/\1/p' \
+        "$build_dir/build.ninja" | head -n 1)
+fi
+haxeon_dir=${haxeon_dir:-"$repo_dir/../realtime-haxe"}
+haxe_source_dirs=(
+    "$repo_dir/modules/ui/haxe"
+    "$repo_dir/modules/ui/bindings"
+    "$repo_dir/modules/ui/examples/ui_showcase"
+    "$repo_dir/bindings"
+)
+[[ ! -d "$haxeon_dir/src" ]] || haxe_source_dirs+=("$haxeon_dir/src")
+stale_haxe_source=$(find "${haxe_source_dirs[@]}" -type f \
+    -name '*.hx' -newer "$guest_build_artifact" -print -quit)
+for guest_input in "$repo_dir/modules/ui/tools/showcase-wasm.sh" \
+    "$repo_dir/modules/ui/cmake/wasm_memory_contract.json.in"; do
+    if [[ -f "$guest_input" && "$guest_input" -nt "$guest_build_artifact" && \
+        -z "$stale_haxe_source" ]]; then
+        stale_haxe_source="$guest_input"
+    fi
+done
+if [[ -n "$stale_native_source" || -n "$stale_haxe_source" ]]; then
+    stale_source=${stale_native_source:-$stale_haxe_source}
+    echo "Web visual artifact is older than source input: ${stale_source#"$repo_dir"/}" >&2
+    echo "Rebuild it with tools/build-web.sh before running visual tests." >&2
     exit 1
 fi
 if [[ -z "$browser" ]]; then

@@ -257,9 +257,9 @@ if(NK_BUILD_EXAMPLES)
         if(EMSCRIPTEN)
             option(NKUI_HAXEON_MEMORY_STATS
                 "Export Haxeon guest allocator counters for Wasm benchmark profiling" OFF)
-            file(GLOB NKUI_HAXEON_GUEST_HX_DEPS CONFIGURE_DEPENDS
+            file(GLOB_RECURSE NKUI_HAXEON_GUEST_HX_DEPS CONFIGURE_DEPENDS
+                "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/*.hx"
                 "${CMAKE_CURRENT_SOURCE_DIR}/haxe/nativekit/ui/*.hx"
-                "${CMAKE_CURRENT_SOURCE_DIR}/haxe/nativekit/ui/*/*.hx"
                 "${CMAKE_CURRENT_SOURCE_DIR}/bindings/haxe/*.hx"
                 "${PROJECT_SOURCE_DIR}/bindings/haxe/*.hx")
             set(NKUI_HAXEON_MEMORY_CONTRACT_VERSION 1)
@@ -295,9 +295,6 @@ if(NK_BUILD_EXAMPLES)
                 DEPENDS
                     "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase-wasm.sh"
                     "${NKUI_HAXEON_MEMORY_CONTRACT}"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/Showcase.hx"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/ShowcaseWeb.hx"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/UiExplorer.hx"
                     "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui-wasm.hxi"
                     "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui-showcase-wasm.hxi"
                     "${CMAKE_CURRENT_SOURCE_DIR}/bindings/nativekit-ui-showcase.hxmap"
