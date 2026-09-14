@@ -70,14 +70,7 @@ import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.VirtualList;
-import pages.ControlsPage;
-import pages.GraphicsPage;
-import pages.GesturesPage;
-import pages.LayoutPage;
-import pages.ListsPage;
-import pages.OverlaysPage;
-import pages.OverviewPage;
-import pages.TextPage;
+import ExplorerCatalog;
 import shell.CatalogSidebar;
 import shell.ExplorerShell;
 import inspector.InspectionOverlay;
@@ -97,6 +90,7 @@ import inspector.InspectorPanel;
 @:allow(shell.TopBar)
 @:allow(inspector.InspectionOverlay)
 @:allow(inspector.InspectorPanel)
+@:allow(ExplorerCatalog)
 class UiExplorer {
 	public static inline var TARGET_FPS:Float = 60.0;
 	static inline var LIST_COUNT:Int = 10000;
@@ -411,58 +405,21 @@ class UiExplorer {
 
 	function buildPage():Column {
 		var items:Array<KeyedView> = [];
-		switch selectedPage {
-			case "controls": buildControls(items);
-			case "text": buildTextPage(items);
-			case "layout": buildLayoutPage(items);
-			case "lists": buildListsPage(items);
-			case "overlays": buildOverlaysPage(items);
-			case "gestures": buildGesturesPage(items);
-			case "graphics": buildGraphicsPage(items);
-			default: buildOverview(items);
-		}
+		var page = ExplorerCatalog.find(selectedPage);
+		if (page == null)
+			page = ExplorerCatalog.find("overview");
+		if (page != null)
+			page.builder(this, items);
 		var style = new LayoutStyle();
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.fit();
 		style.childGap = 16.0;
-		return new Column("page-content-" + selectedPage, items, style);
+		return new Column("page-content-" + (page == null ? "overview" : page.id), items, style);
 	}
 
 	function pageHeading(items:Array<KeyedView>, title:String, description:String):Void {
 		items.push(keyed("page-title", text(title, paletteText())));
 		items.push(keyed("page-description", text(description, paletteMuted())));
-	}
-
-	function buildOverview(items:Array<KeyedView>):Void {
-		OverviewPage.build(this, items);
-	}
-
-	function buildControls(items:Array<KeyedView>):Void {
-		ControlsPage.build(this, items);
-	}
-
-	function buildTextPage(items:Array<KeyedView>):Void {
-		TextPage.build(this, items);
-	}
-
-	function buildLayoutPage(items:Array<KeyedView>):Void {
-		LayoutPage.build(this, items);
-	}
-
-	function buildListsPage(items:Array<KeyedView>):Void {
-		ListsPage.build(this, items);
-	}
-
-	function buildOverlaysPage(items:Array<KeyedView>):Void {
-		OverlaysPage.build(this, items);
-	}
-
-	function buildGesturesPage(items:Array<KeyedView>):Void {
-		GesturesPage.build(this, items);
-	}
-
-	function buildGraphicsPage(items:Array<KeyedView>):Void {
-		GraphicsPage.build(this, items);
 	}
 
 	function buildInspector():Column {

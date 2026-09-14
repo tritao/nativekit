@@ -5,6 +5,8 @@ import LayoutAxis;
 import LayoutStyle;
 import TextStyle;
 import UiExplorer;
+import ExplorerCatalog;
+import ExplorerPage;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
@@ -35,20 +37,19 @@ class CatalogSidebar {
 			explorer.searchText = value;
 		}, searchStyle, "Search components", new TextStyle(14.0), explorer.paletteText());
 		children.push(explorer.keyed("search", search));
-		var navItems:Array<KeyedView> = [explorer.keyed("group-start",
-			explorer.text("START HERE", explorer.paletteMuted()))];
-		appendNav(explorer, navItems, "overview", "Overview");
-		navItems.push(explorer.keyed("group-components",
-			explorer.text("COMPONENTS", explorer.paletteMuted())));
-		appendNav(explorer, navItems, "controls", "Controls");
-		appendNav(explorer, navItems, "text", "Text & Input");
-		appendNav(explorer, navItems, "layout", "Layout");
-		appendNav(explorer, navItems, "lists", "Scrolling & Data");
-		appendNav(explorer, navItems, "overlays", "Navigation & Overlays");
-		appendNav(explorer, navItems, "gestures", "Gestures & Motion");
-		navItems.push(explorer.keyed("group-developer",
-			explorer.text("DEVELOPER TOOLS", explorer.paletteMuted())));
-		appendNav(explorer, navItems, "graphics", "Graphics Lab");
+		var navItems:Array<KeyedView> = [];
+		var lastGroup:Null<String> = null;
+		for (page in ExplorerCatalog.all()) {
+			if (explorer.searchText.length > 0 &&
+					!ExplorerCatalog.matches(page, explorer.searchText))
+				continue;
+			if (lastGroup != page.group) {
+				lastGroup = page.group;
+				navItems.push(explorer.keyed("group-" + page.group,
+					explorer.text(ExplorerCatalog.groupTitle(page.group), explorer.paletteMuted())));
+			}
+			appendNav(explorer, navItems, page);
+		}
 		var navStyle = new LayoutStyle();
 		navStyle.width = LayoutAxis.grow();
 		navStyle.height = LayoutAxis.fit();
@@ -65,10 +66,8 @@ class CatalogSidebar {
 		return new Column("component-catalog", children, style);
 	}
 
-	static function appendNav(explorer:UiExplorer, children:Array<KeyedView>, key:String,
-			label:String):Void {
-		if (explorer.searchText.length > 0 && !UiExplorer.containsInsensitive(label, explorer.searchText))
-			return;
+	static function appendNav(explorer:UiExplorer, children:Array<KeyedView>,
+			page:ExplorerPage):Void {
 		var style = new LayoutStyle();
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.fixed(36.0);
@@ -76,13 +75,13 @@ class CatalogSidebar {
 		style.background = explorer.lightTheme
 			? UiExplorer.color(0.87, 0.90, 0.95)
 			: UiExplorer.color(0.075, 0.10, 0.16);
-		var item = new Button(label, style, function() {
-			explorer.selectedPage = key;
+		var item = new Button(page.title, style, function() {
+			explorer.selectedPage = page.id;
 			explorer.selectedNodeId = 0;
 			explorer.hoveredNodeId = 0;
 			explorer.inspectorTab = "preview";
-		}, "nav-" + key);
-		item.selected = explorer.selectedPage == key;
-		children.push(explorer.keyed("nav-" + key, item));
+		}, "nav-" + page.id);
+		item.selected = explorer.selectedPage == page.id;
+		children.push(explorer.keyed("nav-" + page.id, item));
 	}
 }
