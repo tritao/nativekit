@@ -77,7 +77,7 @@ class Smoke {
 			NativeKitOptions.dialogFilter("*.txt;*.md", "Têxt files"),
 			NativeKitOptions.dialogFilter("*.png;*.jpg", "Imágenes")
 		]);
-		if (filters.options.get_filter_count() != 2)
+		if (filters.get_filter_count() != 2)
 			return 12;
 		var share = NativeKitOptions.resourceShare([
 			NativeKitOptions.resource("file:///tmp/nativekit.txt", "text/plain", "nativekit.txt")

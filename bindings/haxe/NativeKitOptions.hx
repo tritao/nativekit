@@ -35,14 +35,12 @@ class NativeKitOptions {
 		return value;
 	}
 
-	/** Attaches a managed contiguous filter array and keeps it alive with the options. */
+	/** Builds a file dialog with a generated, retained filter array. */
 	public static function filteredFileDialog(filters:Array<DialogFilter>, ?title:String,
-			?initialPath:String, ?suggestedName:String, ?flags:DialogFlags):NativeKitFileDialogOptions {
+			?initialPath:String, ?suggestedName:String, ?flags:DialogFlags):FileDialogOptions {
 		var options = rawFileDialog(title, initialPath, suggestedName, flags);
-		var storage = DialogFilter.array(filters);
-		if (filters.length > 0) options.set_filters(storage);
-		options.set_filter_count(filters.length);
-		return new NativeKitFileDialogOptions(options, storage);
+		options.set_filters(filters);
+		return options;
 	}
 
 	/** Creates one dialog filter with managed UTF-8 storage. */
@@ -93,7 +91,7 @@ class NativeKitOptions {
 	}
 
 	public static function fileDialog(?title:String, ?initialPath:String,
-			?suggestedName:String, ?flags:DialogFlags):NativeKitFileDialogOptions
+			?suggestedName:String, ?flags:DialogFlags):FileDialogOptions
 		return filteredFileDialog([], title, initialPath, suggestedName, flags);
 
 	static function rawFileDialog(?title:String, ?initialPath:String,
@@ -134,17 +132,15 @@ class NativeKitOptions {
 		return value;
 	}
 
-	/** Attaches managed contiguous resources and keeps them alive with the share options. */
+	/** Builds share options with a generated, retained resource array. */
 	public static function resourceShare(resources:Array<Resource>, ?text:String,
 		?title:String):NativeKitShareOptions {
 		var options = new ShareOptions();
 		options.set_text(text);
 		options.set_title(title);
 		options.set_flags(0);
-		var storage = Resource.array(resources);
-		if (resources.length > 0) options.set_resources(storage);
-		options.set_resource_count(resources.length);
-		return new NativeKitShareOptions(options, storage);
+		options.set_resources(resources);
+		return new NativeKitShareOptions(options);
 	}
 
 	public static function notification(title:String, ?body:String, ?icon:String,
@@ -159,23 +155,11 @@ class NativeKitOptions {
 	}
 }
 
-class NativeKitFileDialogOptions {
-	public final options:FileDialogOptions;
-	final filters:DialogFilter;
-
-	public function new(options:FileDialogOptions, filters:DialogFilter) {
-		this.options = options;
-		this.filters = filters;
-	}
-}
-
 class NativeKitShareOptions {
 	public final options:ShareOptions;
-	final resources:Resource;
 
-	public function new(options:ShareOptions, resources:Resource) {
+	public function new(options:ShareOptions) {
 		this.options = options;
-		this.resources = resources;
 	}
 
 	public function submit():Void {
