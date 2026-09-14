@@ -29,7 +29,7 @@ static void nk_sokol_test_log(const char *tag, uint32_t level, uint32_t item_id,
                               const char *message, uint32_t line, const char *filename,
                               void *user_data) {
     (void)user_data;
-    if (level > 1)
+    if (level > 3)
         return;
     fprintf(stderr, "%s: %s (item %u, %s:%u)\n", tag ? tag : "sokol", message ? message : "",
             item_id, filename ? filename : "unknown", line);
