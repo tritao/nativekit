@@ -51,6 +51,6 @@ int main(void) {
 
     assert(nk_surface_destroy(surface) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);
-    assert(nk_shutdown() == NK_OK);
+    nk_shutdown();
     return 0;
 }

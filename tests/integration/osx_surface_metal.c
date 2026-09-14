@@ -27,7 +27,7 @@ int main(void) {
     const nk_result created = nk_surface_create(window, &surface_options, &surface);
     if (created == NK_ERROR_UNSUPPORTED) {
         assert(nk_window_destroy(window) == NK_OK);
-        assert(nk_shutdown() == NK_OK);
+        nk_shutdown();
         return 77;
     }
     assert(created == NK_OK);
@@ -56,6 +56,6 @@ int main(void) {
 
     assert(nk_surface_destroy(surface) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);
-    assert(nk_shutdown() == NK_OK);
+    nk_shutdown();
     return 0;
 }

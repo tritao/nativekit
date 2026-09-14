@@ -1,6 +1,6 @@
 add_library(nativekit_gpu ${NK_LIBRARY_TYPE} src/adapter.cpp)
 add_library(NativeKit::gpu ALIAS nativekit_gpu)
-target_compile_features(nativekit_gpu PRIVATE cxx_std_17)
+target_compile_features(nativekit_gpu PRIVATE cxx_std_20)
 target_compile_definitions(nativekit_gpu PRIVATE NKGPU_BUILDING_LIBRARY)
 target_include_directories(nativekit_gpu
     PUBLIC

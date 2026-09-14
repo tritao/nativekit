@@ -104,6 +104,7 @@ if(NK_BUILD_TESTS)
         tests/skribidi_adapter.cpp
         src/prepare/skribidi_adapter.cpp
         src/prepare/system_fonts.cpp)
+    target_compile_features(nativekit_ui_skribidi_adapter_test PRIVATE cxx_std_20)
     target_include_directories(nativekit_ui_skribidi_adapter_test PRIVATE src)
     target_compile_definitions(nativekit_ui_skribidi_adapter_test PRIVATE
         NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf"
