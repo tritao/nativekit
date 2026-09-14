@@ -96,7 +96,7 @@ if(WIN32)
     endif()
 endif()
 
-if(APPLE)
+if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     add_executable(nativekit_osx_integration integration/osx_create_destroy.c)
     target_link_libraries(nativekit_osx_integration PRIVATE NativeKit::nativekit)
     set_target_properties(nativekit_osx_integration PROPERTIES LINKER_LANGUAGE OBJCXX)

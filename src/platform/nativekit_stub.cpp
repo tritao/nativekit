@@ -14,7 +14,7 @@ nk_result unsupported() {
     const auto thread = nk::core::require_ui_thread();
     if (thread != NK_OK)
         return thread;
-    nk::core::set_error("this NativeKit build has no desktop backend");
+    nk::core::set_error("this NativeKit build has no platform window backend");
     return NK_ERROR_UNSUPPORTED;
 }
 } // namespace

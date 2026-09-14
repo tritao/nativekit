@@ -1,0 +1,36 @@
+name: iOS
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ios-compile:
+    name: Build ${{ matrix.sdk }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [iphoneos, iphonesimulator]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >-
+          cmake -S . -B "build-${{ matrix.sdk }}" -G Xcode
+          -DCMAKE_SYSTEM_NAME=iOS
+          -DCMAKE_OSX_SYSROOT=${{ matrix.sdk }}
+          -DCMAKE_OSX_ARCHITECTURES=arm64
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
+          -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
+          -DNK_BUILD_SHARED=OFF
+          -DNK_BUILD_EXAMPLES=OFF
+          -DNK_BUILD_TESTS=ON
+          -DNK_BUILD_GPU=OFF
+          -DNK_BUILD_UI=OFF
+      - name: Build iOS library
+        run: cmake --build "build-${{ matrix.sdk }}" --config Debug --target nativekit
+      - name: Build portable test binaries
+        if: matrix.sdk == 'iphonesimulator'
+        run: >-
+          cmake --build "build-${{ matrix.sdk }}" --config Debug
+          --target nativekit_c_abi nativekit_core_tests nativekit_time_tests
