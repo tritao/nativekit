@@ -1,0 +1,15 @@
+{
+  "interface": "NativeKitAudio",
+  "enumNames": {
+    "nk_result": "NativeKit.Result",
+    "nk_audio_sound_flags": "SoundFlags"
+  },
+  "enumValuePrefixes": ["NK_AUDIO_SOUND_"],
+  "typeNames": {
+    "nk_audio_clip": "ClipHandle",
+    "nk_audio_bus": "BusHandle",
+    "nk_audio_voice": "VoiceHandle",
+    "nk_audio_sound": "SoundHandle",
+    "nk_audio_sound_options": "NativeSoundOptions"
+  }
+}
