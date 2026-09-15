@@ -6,7 +6,7 @@
 #include <cstring>
 #include <vector>
 
-#if !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_WINDOWS)
+#if !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_WINDOWS) && !defined(NK_BACKEND_IOS)
 namespace {
 nk_result unsupported_accessibility() {
     nk::core::set_error("custom-surface accessibility is unavailable on this backend");
@@ -17,7 +17,7 @@ nk_result unsupported_accessibility() {
 
 extern "C" {
 
-#if !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_WINDOWS)
+#if !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_WINDOWS) && !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle, const nk_accessibility_node *) {
     return unsupported_accessibility();
 }

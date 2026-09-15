@@ -277,6 +277,13 @@ the resulting semantic state. Use `nk_accessibility_action_event_value()` for
 event-owned replacement text. Movement actions identify character, word, line,
 paragraph, or page granularity.
 
+iOS projects the tree as `UIAccessibilityElement` objects inside the Metal
+surface's accessibility container. VoiceOver focus, activation, adjustment,
+scrolling, custom actions, and value editing produce the same
+`NK_EVENT_ACCESSIBILITY_ACTION` payloads. Bounds are converted from surface
+logical pixels to screen coordinates, and `nk_surface_accessibility_set_focus()`
+posts the corresponding UIKit accessibility focus notification.
+
 Cursor resources may be standard platform shapes or copied RGBA8 images.
 Destroying a cursor handle does not invalidate a cursor already selected by a
 window. Windows supports normal, hidden, and captured pointer modes; disabled
