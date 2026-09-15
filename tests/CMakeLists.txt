@@ -24,6 +24,24 @@ target_compile_features(nativekit_time_tests PRIVATE cxx_std_17)
 target_link_libraries(nativekit_time_tests PRIVATE NativeKit::nativekit)
 add_test(NAME time COMMAND nativekit_time_tests)
 
+add_executable(nativekit_platform_parity unit/platform_parity.cpp)
+target_compile_features(nativekit_platform_parity PRIVATE cxx_std_17)
+target_link_libraries(nativekit_platform_parity PRIVATE NativeKit::nativekit)
+if(ANDROID)
+    target_compile_definitions(nativekit_platform_parity PRIVATE NK_PARITY_BACKEND_ANDROID=1)
+elseif(WIN32)
+    target_compile_definitions(nativekit_platform_parity PRIVATE NK_PARITY_BACKEND_WINDOWS=1)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    target_compile_definitions(nativekit_platform_parity PRIVATE NK_PARITY_BACKEND_IOS=1)
+elseif(APPLE)
+    target_compile_definitions(nativekit_platform_parity PRIVATE NK_PARITY_BACKEND_MACOS=1)
+elseif(EMSCRIPTEN)
+    target_compile_definitions(nativekit_platform_parity PRIVATE NK_PARITY_BACKEND_WEB=1)
+elseif(NK_BACKEND_GTK_AVAILABLE)
+    target_compile_definitions(nativekit_platform_parity PRIVATE NK_PARITY_BACKEND_LINUX=1)
+endif()
+add_test(NAME platform_parity COMMAND nativekit_platform_parity)
+
 add_executable(nativekit_wasm_host_allocator_test
     unit/wasm_host_allocator.cpp
     ${PROJECT_SOURCE_DIR}/src/platform/wasm/host_allocator.cpp)
@@ -123,11 +141,12 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     # These binaries are compile/link probes for the iOS SDK. Running them
     # requires an application host and a simulator or physical device.
-    set_tests_properties(c_abi core time wasm_host_allocator PROPERTIES DISABLED TRUE)
+    set_tests_properties(c_abi core time platform_parity wasm_host_allocator PROPERTIES DISABLED TRUE)
 endif()
 
 if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    set(sanitized_test_targets nativekit_c_abi nativekit_core_tests nativekit_time_tests)
+    set(sanitized_test_targets nativekit_c_abi nativekit_core_tests nativekit_time_tests
+        nativekit_platform_parity)
     if(TARGET nativekit_gtk_integration)
         list(APPEND sanitized_test_targets nativekit_gtk_integration)
     endif()

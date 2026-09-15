@@ -40,23 +40,25 @@ native services on Windows, macOS, and Android.
 
 This overview groups related API capabilities to keep platform support easy to
 scan. Applications should still query `nk_get_capabilities()` at runtime:
-optional system components and build configuration can affect availability.
+optional system components and build configuration can affect availability. The
+normative target, current deferred work, and executable capability contract are
+maintained in the [platform parity contract](docs/platform-parity.md).
 
-| Feature family | Linux | Windows | macOS | Android | Web / WASM |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Windows and lifecycle | ✅ | ✅ | ✅ | Host view | Partial |
-| WebView | ✅ | ✅ | ✅ | ✅ | 🚧 |
-| Dialogs and system services | ✅ | ✅ | ✅ | ✅ | 🚧 |
-| Clipboard and drag/drop | ✅ | ✅ | ✅ | ✅ | 🚧 |
-| Notifications | ✅ | ✅ | ✅ | ✅ | 🚧 |
-| Input, cursors, and capture | ✅ | ✅ | ✅ | Partial | Partial |
-| Monitors and fullscreen modes | ✅ | — | — | — | — |
-| Joysticks and gamepads | ✅ | — | — | ✅ | 🚧 |
-| OpenGL / OpenGL ES | ✅ | — | — | GLES | Partial |
-| Vulkan | ✅ | — | — | ✅ | 🚧 |
-| URI resources and sharing | Partial | Partial | Partial | ✅ | 🚧 |
-| Custom-surface accessibility | — | — | — | ✅ | 🚧 |
-| Native interoperability | Export | Export | Export | Host view | — |
+| Feature family | Linux | Windows | macOS | Android | iOS | Web / WASM |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| Windows and lifecycle | ✅ | ✅ | ✅ | Host view | Host view | Partial |
+| WebView | ✅ | ✅ | ✅ | ✅ | 🚧 | Native DOM |
+| Dialogs and system services | ✅ | ✅ | ✅ | ✅ | 🚧 | 🚧 |
+| Clipboard and drag/drop | ✅ | ✅ | ✅ | ✅ | 🚧 | Partial |
+| Notifications | ✅ | ✅ | ✅ | ✅ | 🚧 | 🚧 |
+| Input, cursors, and capture | ✅ | ✅ | ✅ | Partial | 🚧 | Partial |
+| Monitors and fullscreen modes | ✅ | — | — | — | — | — |
+| Joysticks and gamepads | ✅ | — | — | ✅ | 🚧 | 🚧 |
+| OpenGL / OpenGL ES | ✅ | — | — | GLES | 🚧 | Partial |
+| Vulkan | ✅ | — | — | ✅ | 🚧 | 🚧 |
+| URI resources and sharing | Partial | Partial | Partial | ✅ | 🚧 | 🚧 |
+| Custom-surface accessibility | — | ✅ | — | ✅ | 🚧 | 🚧 |
+| Native interoperability | Export | Export | Export | Host view | Host view | — |
 
 **Legend:** ✅ supported · **Partial** a subset is supported · 🚧 coming soon ·
 — not currently advertised
