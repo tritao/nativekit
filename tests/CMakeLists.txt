@@ -135,7 +135,7 @@ endif()
 
 if(MINGW)
     foreach(target nativekit_c_abi nativekit_core_tests nativekit_win_integration
-            nativekit_win_accessibility_uia)
+            nativekit_win_accessibility_uia nativekit_win_text_input)
         if(TARGET ${target})
             # Keep Wine smoke tests and redistributed test binaries independent
             # of the compiler runtime DLLs installed with a particular MinGW.
