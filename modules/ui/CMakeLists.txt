@@ -4,6 +4,9 @@ include(cmake/NanoVGSubmodules.cmake)
 option(NKUI_ENABLE_SECTION_GC
     "Compile UI code into discardable sections and garbage-collect unused sections"
     ON)
+option(NKUI_ENABLE_CLAY_DEBUG
+    "Keep Clay's internal debug view in the NativeKit UI build"
+    OFF)
 
 add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/api.cpp
@@ -45,6 +48,9 @@ elseif(APPLE)
     target_link_libraries(nativekit_ui PRIVATE "-framework CoreText" "-framework CoreFoundation")
 endif()
 target_compile_definitions(nativekit_ui PRIVATE NKUI_BUILDING_LIBRARY)
+if(NOT NKUI_ENABLE_CLAY_DEBUG)
+    target_compile_definitions(nativekit_ui PRIVATE CLAY_DISABLE_DEBUG)
+endif()
 set_target_properties(nativekit_ui PROPERTIES
     EXPORT_NAME ui
     CXX_VISIBILITY_PRESET hidden
