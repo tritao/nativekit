@@ -22,7 +22,7 @@ class StateStore {
 	@:allow(nativekit.ui.core.State)
 	function getValue(id:WidgetId):Dynamic {
 		if (id == null || !values.exists(id.value))
-			throw "Widget state has not been initialized";
+			throw 'Widget state has not been initialized for ${id == null ? "null" : id.value}';
 		return values.get(id.value);
 	}
 
