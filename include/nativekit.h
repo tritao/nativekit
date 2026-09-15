@@ -358,6 +358,8 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_AUDIO_VOICE_VIRTUALIZED = 915,
     /** A virtualized voice was promoted back to the audio backend; source is its voice handle. */
     NK_EVENT_AUDIO_VOICE_RESUMED = 916,
+    /** A streaming voice's provider read or seek failed; source is its voice handle. */
+    NK_EVENT_AUDIO_VOICE_STREAM_FAILED = 917,
     /** A plugin service call reached its terminal state. */
     NK_EVENT_PLUGIN_COMPLETE = 1000,
     /** A plugin emitted an unsolicited notification. */

@@ -151,6 +151,13 @@ class NativeKitEventDecoderTests {
 				source.rawValue() == 18 && result == NativeKit.Result.ErrorUnknown;
 			case _: false;
 		};
+		var audioStreamFailedContext = new NativeKitEventContext(EventKind.AudioVoiceStreamFailed,
+			handle(24), zero, NativeKit.Result.ErrorUnknown, 0, 0, empty);
+		var audioStreamFailedOk = switch NativeKitEvent.decodeContext(audioStreamFailedContext) {
+			case AudioVoiceStreamFailed(source, result):
+				source.rawValue() == 24 && result == NativeKit.Result.ErrorUnknown;
+			case _: false;
+		};
 		var audioDeviceEventsOk = switch [
 			NativeKitEvent.decodeContext(new NativeKitEventContext(EventKind.AudioDeviceStarted, handle(0), zero, 0, 0, 0, empty)),
 			NativeKitEvent.decodeContext(new NativeKitEventContext(EventKind.AudioDeviceStopped, handle(0), zero, 0, 0, 0, empty)),
@@ -170,6 +177,7 @@ class NativeKitEventDecoderTests {
 			&& audioReadyOk && audioFailedOk
 			&& audioClipReadyOk && audioClipFailedOk
 			&& audioTransitionEventsOk
+			&& audioStreamFailedOk
 			&& audioDeviceEventsOk
 			&& throws(function() { NativeKitEventBytes.requireSize(haxe.io.Bytes.alloc(3), 4); })
 			&& throws(function() { NativeKitEventBytes.readU32(haxe.io.Bytes.alloc(3), 0); })

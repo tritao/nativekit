@@ -15,11 +15,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <condition_variable>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <new>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -69,7 +71,10 @@ void audio_effect_uninitialize(AudioEffectResource &effect) noexcept;
 struct AudioClipResource final : nk::core::Resource {
     std::shared_ptr<AudioEngineResource> engine;
     std::string path;
+    std::string resource_uri;
+    nk_resource_flags resource_flags = NK_RESOURCE_READABLE;
     nk::core::ResourceAssetBytes encoded_data;
+    bool resource_stream = false;
     std::atomic<nk_audio_clip> handle{NK_INVALID_HANDLE};
 
     ~AudioClipResource() override {
@@ -126,6 +131,13 @@ struct AudioEffectResource final : nk::core::Resource {
 };
 
 struct AudioVoiceResource;
+struct AudioResourceReader {
+    nk_resource_stream stream = NK_INVALID_HANDLE;
+    AudioVoiceResource *voice = nullptr;
+};
+
+struct AudioStreamingSource;
+
 struct AudioVoiceLoadNotification {
     ma_async_notification_callbacks callbacks{};
     AudioVoiceResource *voice = nullptr;
@@ -136,6 +148,8 @@ void audio_voice_load_callback(ma_async_notification *notification) noexcept;
 void audio_voice_update_load_state(AudioVoiceResource &voice) noexcept;
 void audio_voice_publish_load_event(AudioVoiceResource &voice) noexcept;
 void publish_voice_event(AudioVoiceResource &voice, nk_event_kind kind) noexcept;
+void audio_voice_report_stream_error(AudioVoiceResource &voice, nk_result result) noexcept;
+nk_result miniaudio_result_code(ma_result result);
 
 struct AudioVoiceResource final : nk::core::Resource {
     std::shared_ptr<AudioEngineResource> engine;
@@ -148,6 +162,8 @@ struct AudioVoiceResource final : nk::core::Resource {
     std::atomic<bool> load_notification_signaled{false};
     std::atomic<bool> load_status_query_ready{false};
     std::atomic<bool> load_event_emitted{false};
+    std::atomic<nk_result> stream_error{NK_OK};
+    std::atomic<bool> stream_error_emitted{false};
     std::atomic<bool> logically_playing{false};
     std::atomic<bool> virtualized{false};
     uint32_t priority = 0;
@@ -157,17 +173,368 @@ struct AudioVoiceResource final : nk::core::Resource {
     AudioVoiceLoadNotification load_notification{};
     ma_decoder decoder{};
     bool decoder_initialized = false;
+    std::unique_ptr<AudioStreamingSource> streaming_source;
+    AudioResourceReader resource_reader{};
     ma_sound sound{};
     bool sound_initialized = false;
 
-    ~AudioVoiceResource() override {
-        handle.store(NK_INVALID_HANDLE, std::memory_order_release);
-        if (sound_initialized)
-            ma_sound_uninit(&sound);
-        if (decoder_initialized)
-            ma_decoder_uninit(&decoder);
-    }
+    ~AudioVoiceResource() override;
 };
+
+constexpr uint64_t no_stream_seek = std::numeric_limits<uint64_t>::max();
+
+struct AudioStreamingSource final {
+    ma_pcm_rb pcm{};
+    ma_decoder *decoder = nullptr;
+    AudioVoiceResource *voice = nullptr;
+    ma_format format = ma_format_unknown;
+    uint32_t channels = 0;
+    uint32_t sample_rate = 0;
+    uint64_t length = 0;
+    bool length_known = false;
+    bool initialized = false;
+    std::atomic<bool> stop_requested{false};
+    std::atomic<bool> seek_pending{false};
+    std::atomic<uint64_t> requested_seek{no_stream_seek};
+    std::atomic<bool> ended{false};
+    std::atomic<bool> ready{false};
+    std::atomic<ma_result> load_result{MA_BUSY};
+    std::atomic<ma_result> read_result{MA_SUCCESS};
+    std::atomic<uint64_t> cursor{0};
+    std::mutex worker_mutex;
+    std::condition_variable worker_condition;
+    std::thread worker;
+
+    ~AudioStreamingSource();
+
+    ma_result initialize(ma_decoder *source_decoder, AudioVoiceResource *source_voice,
+                         ma_format source_format, uint32_t source_channels,
+                         uint32_t source_sample_rate, uint64_t source_length,
+                         bool source_length_known);
+    ma_result start();
+    void stop() noexcept;
+    void worker_main() noexcept;
+};
+
+ma_result streaming_source_read(ma_data_source *data_source, void *frames_out,
+                                ma_uint64 frame_count, ma_uint64 *frames_read);
+ma_result streaming_source_seek(ma_data_source *data_source, ma_uint64 frame_index);
+ma_result streaming_source_get_data_format(ma_data_source *data_source, ma_format *format,
+                                           ma_uint32 *channels, ma_uint32 *sample_rate,
+                                           ma_channel *channel_map, size_t channel_map_capacity);
+ma_result streaming_source_get_cursor(ma_data_source *data_source, ma_uint64 *cursor);
+ma_result streaming_source_get_length(ma_data_source *data_source, ma_uint64 *length);
+ma_result streaming_source_set_looping(ma_data_source *, ma_bool32) {
+    return MA_SUCCESS;
+}
+
+const ma_data_source_vtable streaming_source_vtable = {
+    streaming_source_read,
+    streaming_source_seek,
+    streaming_source_get_data_format,
+    streaming_source_get_cursor,
+    streaming_source_get_length,
+    streaming_source_set_looping,
+    0};
+
+ma_result resource_result(nk_result result) {
+    if (result == NK_OK)
+        return MA_SUCCESS;
+    if (result == NK_ERROR_INVALID_ARGUMENT)
+        return MA_INVALID_ARGS;
+    if (result == NK_ERROR_OUT_OF_MEMORY)
+        return MA_OUT_OF_MEMORY;
+    if (result == NK_ERROR_UNSUPPORTED)
+        return MA_NOT_IMPLEMENTED;
+    if (result == NK_ERROR_INVALID_REQUEST)
+        return MA_INVALID_OPERATION;
+    return MA_IO_ERROR;
+}
+
+ma_result audio_resource_read(ma_decoder *decoder, void *buffer, size_t bytes_to_read,
+                              size_t *bytes_read) {
+    if (bytes_read)
+        *bytes_read = 0;
+    if (!decoder || !decoder->pUserData)
+        return MA_INVALID_ARGS;
+    auto *reader = static_cast<AudioResourceReader *>(decoder->pUserData);
+    uint64_t read = 0;
+    const auto result = nk_resource_read(reader->stream, buffer, bytes_to_read, &read);
+    if (bytes_read)
+        *bytes_read = static_cast<size_t>(read);
+    if (result != NK_OK) {
+        if (reader->voice)
+            audio_voice_report_stream_error(*reader->voice, result);
+        return resource_result(result);
+    }
+    return read == 0 ? MA_AT_END : MA_SUCCESS;
+}
+
+ma_result audio_resource_seek(ma_decoder *decoder, ma_int64 byte_offset, ma_seek_origin origin) {
+    if (!decoder || !decoder->pUserData)
+        return MA_INVALID_ARGS;
+    auto *reader = static_cast<AudioResourceReader *>(decoder->pUserData);
+    const auto resource_origin = origin == ma_seek_origin_start
+                                     ? NK_SEEK_START
+                                     : origin == ma_seek_origin_current ? NK_SEEK_CURRENT
+                                                                         : NK_SEEK_END;
+    uint64_t position = 0;
+    const auto result = nk_resource_seek(reader->stream, byte_offset, resource_origin, &position);
+    if (result != NK_OK && reader->voice)
+        audio_voice_report_stream_error(*reader->voice, result);
+    return resource_result(result);
+}
+
+AudioStreamingSource *streaming_source(ma_data_source *data_source) {
+    return reinterpret_cast<AudioStreamingSource *>(data_source);
+}
+
+ma_result streaming_source_read(ma_data_source *data_source, void *frames_out,
+                                ma_uint64 frame_count, ma_uint64 *frames_read) {
+    auto *source = streaming_source(data_source);
+    if (!source || frame_count == 0)
+        return MA_INVALID_ARGS;
+    if (frames_read)
+        *frames_read = 0;
+    if (source->stop_requested.load(std::memory_order_acquire))
+        return MA_INVALID_OPERATION;
+    if (source->seek_pending.load(std::memory_order_acquire) ||
+        source->requested_seek.load(std::memory_order_acquire) != no_stream_seek)
+        return MA_BUSY;
+
+    const auto failure = source->read_result.load(std::memory_order_acquire);
+    if (failure != MA_SUCCESS)
+        return failure;
+
+    ma_uint64 total_read = 0;
+    while (total_read < frame_count) {
+        const auto remaining = frame_count - total_read;
+        const auto requested = static_cast<ma_uint32>(
+            std::min<ma_uint64>(remaining, std::numeric_limits<ma_uint32>::max()));
+        auto available = requested;
+        void *mapped = nullptr;
+        const auto acquire_result = ma_pcm_rb_acquire_read(&source->pcm, &available, &mapped);
+        if (acquire_result != MA_SUCCESS)
+            return acquire_result;
+        if (available == 0)
+            break;
+
+        if (frames_out) {
+            auto *output = ma_offset_pcm_frames_ptr(frames_out, total_read, source->format,
+                                                     source->channels);
+            ma_copy_pcm_frames(output, mapped, available, source->format, source->channels);
+        }
+        const auto commit_result = ma_pcm_rb_commit_read(&source->pcm, available);
+        if (commit_result != MA_SUCCESS)
+            return commit_result;
+        total_read += available;
+        source->cursor.fetch_add(available, std::memory_order_release);
+    }
+
+    if (frames_read)
+        *frames_read = total_read;
+    if (total_read != 0) {
+        source->worker_condition.notify_one();
+        return MA_SUCCESS;
+    }
+    if (source->ended.load(std::memory_order_acquire))
+        return MA_AT_END;
+    return MA_BUSY;
+}
+
+ma_result streaming_source_seek(ma_data_source *data_source, ma_uint64 frame_index) {
+    auto *source = streaming_source(data_source);
+    if (!source || source->stop_requested.load(std::memory_order_acquire))
+        return MA_INVALID_OPERATION;
+    source->seek_pending.store(true, std::memory_order_release);
+    source->requested_seek.store(frame_index, std::memory_order_release);
+    source->worker_condition.notify_one();
+    return MA_SUCCESS;
+}
+
+ma_result streaming_source_get_data_format(ma_data_source *data_source, ma_format *format,
+                                           ma_uint32 *channels, ma_uint32 *sample_rate,
+                                           ma_channel *channel_map, size_t channel_map_capacity) {
+    const auto *source = streaming_source(data_source);
+    if (!source)
+        return MA_INVALID_ARGS;
+    if (format)
+        *format = source->format;
+    if (channels)
+        *channels = source->channels;
+    if (sample_rate)
+        *sample_rate = source->sample_rate;
+    if (channel_map)
+        ma_channel_map_init_standard(ma_standard_channel_map_default, channel_map,
+                                     channel_map_capacity, source->channels);
+    return MA_SUCCESS;
+}
+
+ma_result streaming_source_get_cursor(ma_data_source *data_source, ma_uint64 *cursor) {
+    const auto *source = streaming_source(data_source);
+    if (!source || !cursor)
+        return MA_INVALID_ARGS;
+    *cursor = source->cursor.load(std::memory_order_acquire);
+    return MA_SUCCESS;
+}
+
+ma_result streaming_source_get_length(ma_data_source *data_source, ma_uint64 *length) {
+    const auto *source = streaming_source(data_source);
+    if (!source || !length)
+        return MA_INVALID_ARGS;
+    if (!source->length_known)
+        return MA_NOT_IMPLEMENTED;
+    *length = source->length;
+    return MA_SUCCESS;
+}
+
+ma_result AudioStreamingSource::initialize(ma_decoder *source_decoder,
+                                           AudioVoiceResource *source_voice,
+                                           ma_format source_format, uint32_t source_channels,
+                                           uint32_t source_sample_rate, uint64_t source_length,
+                                           bool source_length_known) {
+    if (!source_decoder || !source_voice || source_format == ma_format_unknown ||
+        source_channels == 0 || source_sample_rate == 0)
+        return MA_INVALID_ARGS;
+
+    decoder = source_decoder;
+    voice = source_voice;
+    format = source_format;
+    channels = source_channels;
+    sample_rate = source_sample_rate;
+    length = source_length;
+    length_known = source_length_known;
+
+    const auto ring_frame_count = std::min<uint64_t>(
+        std::max<uint64_t>(static_cast<uint64_t>(sample_rate) * 2, 4096),
+        std::numeric_limits<ma_uint32>::max());
+    const auto result = ma_pcm_rb_init(format, channels, static_cast<ma_uint32>(ring_frame_count),
+                                       nullptr, nullptr, &pcm);
+    if (result != MA_SUCCESS)
+        return result;
+    pcm.ds.vtable = &streaming_source_vtable;
+    initialized = true;
+    return MA_SUCCESS;
+}
+
+ma_result AudioStreamingSource::start() {
+    if (!initialized || !decoder || worker.joinable())
+        return MA_INVALID_OPERATION;
+    stop_requested.store(false, std::memory_order_release);
+    try {
+        worker = std::thread([this] { worker_main(); });
+    } catch (...) {
+        return MA_OUT_OF_MEMORY;
+    }
+    return MA_SUCCESS;
+}
+
+void AudioStreamingSource::stop() noexcept {
+    stop_requested.store(true, std::memory_order_release);
+    worker_condition.notify_one();
+    if (worker.joinable())
+        worker.join();
+}
+
+void AudioStreamingSource::worker_main() noexcept {
+    while (!stop_requested.load(std::memory_order_acquire)) {
+        if (seek_pending.load(std::memory_order_acquire) ||
+            requested_seek.load(std::memory_order_acquire) != no_stream_seek) {
+            const auto target = requested_seek.exchange(no_stream_seek, std::memory_order_acq_rel);
+            if (target == no_stream_seek) {
+                seek_pending.store(false, std::memory_order_release);
+                continue;
+            }
+            ma_pcm_rb_reset(&pcm);
+            ended.store(false, std::memory_order_release);
+            read_result.store(MA_SUCCESS, std::memory_order_release);
+            const auto result = ma_decoder_seek_to_pcm_frame(decoder, target);
+            if (result != MA_SUCCESS) {
+                read_result.store(result, std::memory_order_release);
+                ended.store(true, std::memory_order_release);
+                if (!ready.exchange(true, std::memory_order_acq_rel))
+                    load_result.store(result, std::memory_order_release);
+                if (result != MA_AT_END)
+                    audio_voice_report_stream_error(*voice, miniaudio_result_code(result));
+                audio_voice_update_load_state(*voice);
+            } else {
+                cursor.store(target, std::memory_order_release);
+                seek_pending.store(false, std::memory_order_release);
+            }
+            if (requested_seek.load(std::memory_order_acquire) == no_stream_seek)
+                seek_pending.store(false, std::memory_order_release);
+            continue;
+        }
+
+        if (ended.load(std::memory_order_acquire)) {
+            std::unique_lock lock(worker_mutex);
+            worker_condition.wait(lock, [this] {
+                return stop_requested.load(std::memory_order_acquire) ||
+                       seek_pending.load(std::memory_order_acquire) ||
+                       requested_seek.load(std::memory_order_acquire) != no_stream_seek;
+            });
+            continue;
+        }
+
+        auto writable = ma_pcm_rb_available_write(&pcm);
+        if (writable == 0) {
+            std::unique_lock lock(worker_mutex);
+            worker_condition.wait(lock, [this] {
+                return stop_requested.load(std::memory_order_acquire) ||
+                       seek_pending.load(std::memory_order_acquire) ||
+                       requested_seek.load(std::memory_order_acquire) != no_stream_seek ||
+                       ma_pcm_rb_available_write(&pcm) != 0;
+            });
+            continue;
+        }
+
+        void *mapped = nullptr;
+        const auto acquire_result = ma_pcm_rb_acquire_write(&pcm, &writable, &mapped);
+        if (acquire_result != MA_SUCCESS)
+            continue;
+        ma_uint64 decoded = 0;
+        const auto result = ma_decoder_read_pcm_frames(decoder, mapped, writable, &decoded);
+        if (decoded != 0)
+            ma_pcm_rb_commit_write(&pcm, static_cast<ma_uint32>(decoded));
+
+        if (decoded != 0 && !ready.exchange(true, std::memory_order_acq_rel)) {
+            load_result.store(MA_SUCCESS, std::memory_order_release);
+            audio_voice_update_load_state(*voice);
+        }
+
+        if (result == MA_SUCCESS && decoded != 0)
+            continue;
+
+        if (result != MA_SUCCESS && result != MA_AT_END) {
+            read_result.store(result, std::memory_order_release);
+            audio_voice_report_stream_error(*voice, miniaudio_result_code(result));
+            if (!ready.load(std::memory_order_acquire))
+                load_result.store(result, std::memory_order_release);
+        } else if (decoded == 0) {
+            if (!ready.load(std::memory_order_acquire))
+                load_result.store(MA_AT_END, std::memory_order_release);
+        }
+        ended.store(true, std::memory_order_release);
+        audio_voice_update_load_state(*voice);
+    }
+}
+
+AudioStreamingSource::~AudioStreamingSource() {
+    stop();
+    if (initialized)
+        ma_pcm_rb_uninit(&pcm);
+}
+
+AudioVoiceResource::~AudioVoiceResource() {
+    handle.store(NK_INVALID_HANDLE, std::memory_order_release);
+    if (sound_initialized)
+        ma_sound_uninit(&sound);
+    streaming_source.reset();
+    if (decoder_initialized)
+        ma_decoder_uninit(&decoder);
+    if (resource_reader.stream != NK_INVALID_HANDLE)
+        nk_resource_close(resource_reader.stream);
+}
 
 void audio_voice_end_callback(void *user_data, ma_sound *) noexcept {
     auto *voice = static_cast<AudioVoiceResource *>(user_data);
@@ -548,15 +915,23 @@ void audio_voice_publish_load_event(AudioVoiceResource &voice) noexcept {
 
 void audio_voice_update_load_state(AudioVoiceResource &voice) noexcept {
     if (!voice.asynchronous.load(std::memory_order_acquire) ||
-        !voice.load_notification_signaled.load(std::memory_order_acquire) ||
         !voice.load_status_query_ready.load(std::memory_order_acquire))
         return;
 
-    const auto *data_source = ma_sound_get_data_source(&voice.sound);
-    if (!data_source)
-        return;
-    const auto result = ma_resource_manager_data_source_result(
-        reinterpret_cast<const ma_resource_manager_data_source *>(data_source));
+    ma_result result = MA_BUSY;
+    if (voice.clip && voice.clip->resource_stream) {
+        if (!voice.streaming_source)
+            return;
+        result = voice.streaming_source->load_result.load(std::memory_order_acquire);
+    } else {
+        if (!voice.load_notification_signaled.load(std::memory_order_acquire))
+            return;
+        const auto *data_source = ma_sound_get_data_source(&voice.sound);
+        if (!data_source)
+            return;
+        result = ma_resource_manager_data_source_result(
+            reinterpret_cast<const ma_resource_manager_data_source *>(data_source));
+    }
     if (result == MA_BUSY)
         return;
 
@@ -746,6 +1121,45 @@ std::shared_ptr<AudioClipResource> create_clip_from_asset(nk_resource_asset asse
     auto clip = std::make_shared<AudioClipResource>();
     clip->engine = std::move(engine);
     clip->encoded_data = std::move(encoded_data);
+    return clip;
+}
+
+std::shared_ptr<AudioClipResource> create_clip_from_stream(const nk_resource *resource,
+                                                           nk_result &out_result) {
+    out_result = NK_OK;
+    nk_result engine_result = NK_OK;
+    auto engine = ensure_engine(engine_result);
+    if (!engine) {
+        out_result = engine_result;
+        return {};
+    }
+
+    AudioResourceReader reader{};
+    const auto open_result = nk_resource_open(resource, NK_RESOURCE_OPEN_READ, &reader.stream);
+    if (open_result != NK_OK) {
+        out_result = open_result;
+        return {};
+    }
+
+    ma_decoder decoder{};
+    const auto result = ma_decoder_init(audio_resource_read, audio_resource_seek, &reader, nullptr,
+                                        &decoder);
+    if (result != MA_SUCCESS) {
+        nk_resource_close(reader.stream);
+        out_result = map_miniaudio_result(result, "could not validate streaming audio resource");
+        return {};
+    }
+    ma_decoder_uninit(&decoder);
+    if (const auto close_result = nk_resource_close(reader.stream); close_result != NK_OK) {
+        out_result = close_result;
+        return {};
+    }
+
+    auto clip = std::make_shared<AudioClipResource>();
+    clip->engine = std::move(engine);
+    clip->resource_uri = resource->uri;
+    clip->resource_flags = resource->flags;
+    clip->resource_stream = true;
     return clip;
 }
 
@@ -972,7 +1386,7 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
 
     if (clip->encoded_data && (flags & NK_AUDIO_VOICE_ASYNC)) {
         out_result = invalid_argument(
-            "asynchronous audio loading requires a file-backed clip");
+            "asynchronous audio loading is unavailable for memory-backed clips");
         return {};
     }
 
@@ -1000,6 +1414,53 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
             (flags & NK_AUDIO_VOICE_LOOPING) ? MA_SOUND_FLAG_LOOPING : 0;
         result = ma_sound_init_from_data_source(
             &voice->engine->engine, &voice->decoder, sound_flags,
+            voice->bus ? &voice->bus->group : nullptr, &voice->sound);
+    } else if (voice->clip->resource_stream) {
+        nk_resource resource{};
+        resource.struct_size = sizeof(resource);
+        resource.flags = voice->clip->resource_flags;
+        resource.uri = voice->clip->resource_uri.c_str();
+        voice->resource_reader.voice = voice.get();
+        const auto open_result =
+            nk_resource_open(&resource, NK_RESOURCE_OPEN_READ, &voice->resource_reader.stream);
+        if (open_result != NK_OK) {
+            out_result = open_result;
+            return {};
+        }
+        result = ma_decoder_init(audio_resource_read, audio_resource_seek,
+                                 &voice->resource_reader, nullptr, &voice->decoder);
+        if (result != MA_SUCCESS) {
+            out_result = map_miniaudio_result(result,
+                                              "could not initialize streaming audio decoder");
+            return {};
+        }
+        voice->decoder_initialized = true;
+        ma_format format = ma_format_unknown;
+        ma_uint32 channels = 0;
+        ma_uint32 sample_rate = 0;
+        result = ma_decoder_get_data_format(&voice->decoder, &format, &channels, &sample_rate,
+                                            nullptr, 0);
+        if (result != MA_SUCCESS) {
+            out_result = map_miniaudio_result(result,
+                                              "could not query streaming audio format");
+            return {};
+        }
+        ma_uint64 length = 0;
+        const bool length_known =
+            ma_decoder_get_length_in_pcm_frames(&voice->decoder, &length) == MA_SUCCESS;
+        voice->streaming_source = std::make_unique<AudioStreamingSource>();
+        result = voice->streaming_source->initialize(
+            &voice->decoder, voice.get(), format, channels, sample_rate, length, length_known);
+        if (result != MA_SUCCESS) {
+            out_result = map_miniaudio_result(result,
+                                              "could not initialize streaming audio buffer");
+            return {};
+        }
+        const uint32_t sound_flags =
+            (flags & NK_AUDIO_VOICE_LOOPING) ? MA_SOUND_FLAG_LOOPING : 0;
+        result = ma_sound_init_from_data_source(
+            &voice->engine->engine,
+            reinterpret_cast<ma_data_source *>(&voice->streaming_source->pcm), sound_flags,
             voice->bus ? &voice->bus->group : nullptr, &voice->sound);
     } else if (asynchronous) {
         voice->load_notification.voice = voice.get();
@@ -1034,6 +1495,14 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
                                           "could not configure audio voice completion");
         return {};
     }
+    if (voice->streaming_source) {
+        const auto stream_result = voice->streaming_source->start();
+        if (stream_result != MA_SUCCESS) {
+            out_result = map_miniaudio_result(stream_result,
+                                              "could not start streaming audio decoder");
+            return {};
+        }
+    }
     if (asynchronous)
         audio_voice_update_load_state(*voice);
     return voice;
@@ -1050,6 +1519,8 @@ nk_result insert_voice(std::shared_ptr<AudioVoiceResource> voice, nk_audio_voice
     *out_voice = handle;
     audio_voice_update_load_state(*voice);
     audio_voice_publish_load_event(*voice);
+    audio_voice_report_stream_error(*voice,
+                                    voice->stream_error.load(std::memory_order_acquire));
     return NK_OK;
 }
 
@@ -1179,6 +1650,29 @@ void publish_voice_event(AudioVoiceResource &voice, nk_event_kind kind) noexcept
     event.kind = kind;
     event.source = handle;
     nk::core::push_event(std::move(event));
+}
+
+void audio_voice_report_stream_error(AudioVoiceResource &voice, nk_result result) noexcept {
+    if (result == NK_OK)
+        return;
+    nk_result first_error = NK_OK;
+    if (!voice.stream_error.compare_exchange_strong(first_error, result,
+                                                     std::memory_order_acq_rel))
+        result = first_error;
+    if (voice.handle.load(std::memory_order_acquire) == NK_INVALID_HANDLE)
+        return;
+
+    bool expected = false;
+    if (!voice.stream_error_emitted.compare_exchange_strong(expected, true,
+                                                           std::memory_order_acq_rel))
+        return;
+
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_AUDIO_VOICE_STREAM_FAILED;
+    event.source = voice.handle.load(std::memory_order_acquire);
+    event.result = result;
+    if (nk::core::push_event(std::move(event)) != NK_OK)
+        voice.stream_error_emitted.store(false, std::memory_order_release);
 }
 
 void virtualize_voice(AudioVoiceResource &voice) {
@@ -2635,6 +3129,25 @@ nk_result NK_CALL nk_audio_clip_create_from_asset(nk_resource_asset asset,
             *out_clip = NK_INVALID_HANDLE;
             nk_result clip_result = NK_OK;
             auto clip = create_clip_from_asset(asset, clip_result);
+            if (!clip)
+                return clip_result;
+            return insert_clip(std::move(clip), out_clip);
+        });
+}
+
+nk_result NK_CALL nk_audio_clip_create_from_stream(const nk_resource *resource,
+                                                   nk_audio_clip *out_clip) {
+    return nk::core::result_boundary(
+        "unexpected error while creating a streaming audio clip", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!resource || resource->struct_size < sizeof(nk_resource) ||
+                (resource->flags & NK_RESOURCE_READABLE) == 0 || !resource->uri ||
+                !*resource->uri || !out_clip)
+                return invalid_argument("streaming audio resource or output is invalid");
+            *out_clip = NK_INVALID_HANDLE;
+            nk_result clip_result = NK_OK;
+            auto clip = create_clip_from_stream(resource, clip_result);
             if (!clip)
                 return clip_result;
             return insert_clip(std::move(clip), out_clip);

@@ -426,6 +426,13 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_clip_create_from_memory(data: ptr<const<void>>, data_size: u64, out_clip: ptr<nk_audio_clip> @out @owned) -> nk_result;
 	/**
+	 * Creates a reusable streaming clip from a readable URI resource descriptor.
+	 * Each voice opens and owns an independent provider stream; the complete
+	 * encoded resource is never retained by the clip. With NK_AUDIO_VOICE_ASYNC,
+	 * the voice becomes ready when its first decoded page is available.
+	 */
+	extern fn nk_audio_clip_create_from_stream(resource: ptr<const<nk_resource>>, out_clip: ptr<nk_audio_clip> @out @owned) -> nk_result;
+	/**
 	 * Stops using and destroys a clip. Existing voices retain their source.
 	 */
 	extern fn nk_audio_clip_destroy(clip: nk_audio_clip) -> nk_result;

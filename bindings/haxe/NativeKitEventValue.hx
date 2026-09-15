@@ -56,6 +56,7 @@ enum NativeKitEventValue {
 	AudioVoiceStolen(source:NativeKit.Handle);
 	AudioVoiceVirtualized(source:NativeKit.Handle);
 	AudioVoiceResumed(source:NativeKit.Handle);
+	AudioVoiceStreamFailed(source:NativeKit.Handle, result:NativeKit.Result);
 	AudioDeviceStarted;
 	AudioDeviceStopped;
 	AudioDeviceRerouted;

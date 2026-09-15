@@ -247,7 +247,8 @@ int main() {
     assert(completion_event.source == first);
     nk_event_release(&completion_event);
 
-    for (const auto kind : {NK_EVENT_AUDIO_VOICE_READY, NK_EVENT_AUDIO_VOICE_LOAD_FAILED}) {
+    for (const auto kind : {NK_EVENT_AUDIO_VOICE_READY, NK_EVENT_AUDIO_VOICE_LOAD_FAILED,
+                            NK_EVENT_AUDIO_VOICE_STREAM_FAILED}) {
         nk::core::EventQueue audio_lifecycle_queue(1);
         nk::core::QueuedEvent lifecycle_occupied;
         lifecycle_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;

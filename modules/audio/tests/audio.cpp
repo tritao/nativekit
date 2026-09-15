@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdio>
 #include <filesystem>
+#include <thread>
 
 namespace {
 
@@ -47,6 +48,11 @@ int main() {
     nk_audio_clip clip = NK_INVALID_HANDLE;
     assert(nk_audio_clip_create_from_file(nullptr, &clip) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_audio_clip_create_from_asset(NK_INVALID_HANDLE, &clip) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    nk_resource unreadable_resource{};
+    unreadable_resource.struct_size = sizeof(unreadable_resource);
+    unreadable_resource.uri = "file:///unused.wav";
+    assert(nk_audio_clip_create_from_stream(&unreadable_resource, &clip) ==
            NK_ERROR_INVALID_ARGUMENT);
     assert(nk_audio_clip_create_from_memory(nullptr, 0, &clip) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_audio_clip_destroy(NK_INVALID_HANDLE) == NK_ERROR_INVALID_HANDLE);
@@ -510,6 +516,31 @@ int main() {
     assert(nk_audio_voice_destroy(resource_voice) == NK_OK);
     assert(nk_audio_voice_destroy(resource_second_voice) == NK_OK);
     assert(nk_audio_clip_destroy(resource_clip) == NK_OK);
+
+    nk_audio_clip stream_clip = NK_INVALID_HANDLE;
+    assert(nk_audio_clip_create_from_stream(&resource, &stream_clip) == NK_OK);
+    voice_options.flags = 0;
+    nk_audio_voice stream_voice = NK_INVALID_HANDLE;
+    assert(nk_audio_voice_create(stream_clip, &voice_options, &stream_voice) == NK_OK);
+    nk_audio_voice stream_second_voice = NK_INVALID_HANDLE;
+    assert(nk_audio_voice_create(stream_clip, &voice_options, &stream_second_voice) == NK_OK);
+    assert(nk_audio_voice_get_load_state(stream_voice, &load_state) == NK_OK);
+    assert(load_state == NK_AUDIO_VOICE_READY);
+    voice_options.flags = NK_AUDIO_VOICE_ASYNC;
+    nk_audio_voice async_resource_stream_voice = NK_INVALID_HANDLE;
+    assert(nk_audio_voice_create(stream_clip, &voice_options, &async_resource_stream_voice) ==
+           NK_OK);
+    for (int attempt = 0; attempt < 100 && load_state == NK_AUDIO_VOICE_LOADING; ++attempt) {
+        assert(nk_audio_voice_get_load_state(async_resource_stream_voice, &load_state) == NK_OK);
+        std::this_thread::yield();
+    }
+    assert(load_state == NK_AUDIO_VOICE_READY);
+    assert(nk_audio_voice_start(stream_voice) == NK_OK);
+    assert(nk_audio_voice_stop(stream_voice) == NK_OK);
+    assert(nk_audio_voice_destroy(async_resource_stream_voice) == NK_OK);
+    assert(nk_audio_voice_destroy(stream_voice) == NK_OK);
+    assert(nk_audio_voice_destroy(stream_second_voice) == NK_OK);
+    assert(nk_audio_clip_destroy(stream_clip) == NK_OK);
 
     nk_audio_clip async_clip = NK_INVALID_HANDLE;
     assert(nk_audio_clip_create_from_file(audio_path.c_str(), &async_clip) == NK_OK);

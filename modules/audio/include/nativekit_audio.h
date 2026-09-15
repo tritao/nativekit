@@ -449,6 +449,15 @@ NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_memory(
 NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_asset(
     nk_resource_asset asset, nk_audio_clip *out_clip NK_OUT NK_OWNED);
 
+/**
+ * Creates a reusable streaming clip from a readable URI resource descriptor.
+ * Each voice opens and owns an independent provider stream; the complete
+ * encoded resource is never retained by the clip. With NK_AUDIO_VOICE_ASYNC,
+ * the voice becomes ready when its first decoded page is available.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_stream(
+    const nk_resource *resource, nk_audio_clip *out_clip NK_OUT NK_OWNED);
+
 /** Stops using and destroys a clip. Existing voices retain their source. */
 NKAUDIO_API nk_result NK_CALL nk_audio_clip_destroy(nk_audio_clip clip);
 

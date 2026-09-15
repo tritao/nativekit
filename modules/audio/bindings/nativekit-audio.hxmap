@@ -12,6 +12,7 @@
   },
   "enumValuePrefixes": ["NK_AUDIO_VOICE_"],
   "typeNames": {
+    "nk_resource": "NativeKit.ResourceValue",
     "nk_resource_asset": "NativeKit.ResourceAssetHandle",
     "nk_audio_clip": "ClipHandle",
     "nk_audio_bus": "BusHandle",

@@ -68,7 +68,9 @@ an owned resource handle. The generated low-level ABI value is named
 `NativeKit.ResourceValue` to keep it distinct from this managed descriptor.
 Call `Resource.cancelLoad(request)` to cancel a generic asynchronous resource
 load. Pass a ready `ResourceAsset` to `nativekit.audio.Clip.fromAsset()` to
-create a reusable audio source that retains the asset's immutable bytes.
+create a reusable audio source that retains the asset's immutable bytes. Use
+`nativekit.audio.Clip.fromStream()` for large resources when each voice should
+open its own incremental provider stream instead of retaining the full asset.
 
 `nativekit.resource.ResourceCache` deduplicates complete readable resource loads
 by exact URI. `load()` is synchronous, while `loadAsync()` returns a

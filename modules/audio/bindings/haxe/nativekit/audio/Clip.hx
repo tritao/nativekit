@@ -4,6 +4,7 @@ import NativeKit;
 import NativeKitAudio;
 import NativeKitError;
 import haxe.io.Bytes;
+import nativekit.resource.Resource;
 import nativekit.resource.ResourceAsset;
 
 /** Reusable audio source that can create multiple independent voices. */
@@ -31,6 +32,15 @@ class Clip {
 			throw "Audio clip resource asset must not be null";
 		var made = NativeKitAudio.nk_audio_clip_create_from_asset(asset.nativeHandle());
 		AudioResult.check(made.status, "audio.clip.fromAsset");
+		return new Clip(made.out_clip);
+	}
+
+	/** Creates a streaming clip backed by independent provider streams. */
+	public static function fromStream(resource:Resource):Clip {
+		if (resource == null)
+			throw "Audio streaming resource must not be null";
+		var made = NativeKitAudio.nk_audio_clip_create_from_stream(resource.nativeValue());
+		AudioResult.check(made.status, "audio.clip.fromStream");
 		return new Clip(made.out_clip);
 	}
 

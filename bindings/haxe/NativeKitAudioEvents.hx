@@ -12,6 +12,7 @@ class NativeKitAudioEvents {
 			case EventKind.AudioVoiceStolen: AudioVoiceStolen(c.source);
 			case EventKind.AudioVoiceVirtualized: AudioVoiceVirtualized(c.source);
 			case EventKind.AudioVoiceResumed: AudioVoiceResumed(c.source);
+			case EventKind.AudioVoiceStreamFailed: AudioVoiceStreamFailed(c.source, c.result);
 			case EventKind.AudioDeviceStarted: AudioDeviceStarted;
 			case EventKind.AudioDeviceStopped: AudioDeviceStopped;
 			case EventKind.AudioDeviceRerouted: AudioDeviceRerouted;

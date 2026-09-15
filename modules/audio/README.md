@@ -19,6 +19,16 @@ released after clip creation. Resource cache ready and failure events are the
 single loading lifecycle for URI-backed audio; attempting to create a clip
 before the asset is ready returns `NK_ERROR_INVALID_REQUEST`.
 
+For music and other large resources, use `nk_audio_clip_create_from_stream()`
+(or Haxe `Clip.fromStream()`). This validates the resource synchronously but
+does not retain its complete encoded contents. Each voice opens an independent
+provider stream and decoder, so the same streaming clip can be played by
+multiple voices without sharing stream position. Provider reads happen on a
+decoder worker and the audio callback only consumes
+the decoded PCM ring. `NK_AUDIO_VOICE_ASYNC` reports readiness when the first
+decoded page is available; provider read and seek failures emit
+`NK_EVENT_AUDIO_VOICE_STREAM_FAILED` with the provider's `nk_result`.
+
 The process-wide playback device can be enumerated with
 `nk_audio_device_get_count()`, `nk_audio_device_get_name()`, and
 `nk_audio_device_is_default()`. Apply `nk_audio_device_options` with
@@ -115,9 +125,10 @@ Non-looping voices emit `NK_EVENT_AUDIO_VOICE_COMPLETE` when playback reaches
 the natural end. The event is queued from miniaudio's audio callback and must
 be consumed on the NativeKit UI thread with `nk_poll_event()`. Haxe clients
 receive these as `AudioVoiceReady`, `AudioVoiceLoadFailed`, and
-`AudioVoiceComplete`, `AudioVoiceStolen`, `AudioVoiceVirtualized`, and
-`AudioVoiceResumed` through `NativeKitEvents.listen()`. Device notifications
-arrive as `AudioDeviceStarted`, `AudioDeviceStopped`, `AudioDeviceRerouted`,
+`AudioVoiceComplete`, `AudioVoiceStolen`, `AudioVoiceVirtualized`,
+`AudioVoiceResumed`, or `AudioVoiceStreamFailed` through
+`NativeKitEvents.listen()`. Device notifications arrive as
+`AudioDeviceStarted`, `AudioDeviceStopped`, `AudioDeviceRerouted`,
 `AudioDeviceInterruptionBegan`, or `AudioDeviceInterruptionEnded`.
 Scheduled stops are transport operations and do not emit this natural-end
 completion event.
@@ -127,7 +138,8 @@ The module also provides a generated Haxeon ABI interface in
 `bindings/haxe/nativekit/audio`. The public facade consists of `Clip`, `Voice`, `VoiceOptions`,
 `Bus`, `BusConcurrencyOptions`, `MixSnapshot`, `DeviceOptions`, and `Mixer`. `Mixer` exposes device
 enumeration and lifecycle controls, while `Clip.fromAsset()` consumes a ready
-`nativekit.resource.ResourceAsset` from the core cache.
+`nativekit.resource.ResourceAsset` from the core cache and `Clip.fromStream()`
+creates an incremental source for large resources.
 
 With Haxeon available, run the native and managed smoke test with:
 
