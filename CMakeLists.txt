@@ -235,7 +235,8 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_IOS=1)
     set_target_properties(nativekit PROPERTIES
         OBJCXX_STANDARD 17
-        OBJCXX_STANDARD_REQUIRED YES)
+        OBJCXX_STANDARD_REQUIRED YES
+        XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
     target_compile_options(nativekit PRIVATE
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
