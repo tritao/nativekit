@@ -26,6 +26,15 @@ existing minimum and maximum constraints, and nodes can opt into Clay's
 existing aspect-ratio sizing with `aspectRatio`; NativeKit does not reimplement
 either rule.
 
+Custom nodes can provide intrinsic dimensions and an optional baseline through
+the synchronous measurement callback. NativeKit caches successful results by
+node ID, the node's application-defined measurement version, and the exact
+four-axis constraints; changing the version invalidates only that node's
+measurements. Haxe callers can use `LayoutNode.custom` with
+`LayoutMeasuredContent` for canvas, native-view, and editor surfaces, or
+`LayoutImageContent` for immutable image dimensions. Rendering remains separate:
+attach the corresponding retained display list with `LayoutSession.setCustomPaint`.
+
 GROW axes also accept a positive `growWeight`. Equal weights preserve the
 normal equal-share behavior; for example, `LayoutAxis.grow(0.0, 0.0, 4.0)`
 receives four times the unconstrained space of a sibling with weight `1.0`.

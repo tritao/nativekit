@@ -1,3 +1,4 @@
+import haxe.io.Bytes;
 import TextLayout.TextPosition;
 
 class LayoutSessionSmoke {
@@ -84,20 +85,15 @@ class LayoutSessionSmoke {
 		if (resolved[2].x != resolved[1].x + 20.0 || resolved[2].y != resolved[1].y + 10.0)
 			return 7;
 
-		var measuredNode = LayoutNode.box(103);
-		measuredNode.visualKind = LayoutVisualKind.Custom;
-		measuredNode.style.width = LayoutAxis.fit();
-		measuredNode.style.height = LayoutAxis.fit();
-		panel.add(measuredNode);
 		var measureCalls = 0;
-		session.setMeasureCallback(function(nodeId:Int, constraints:LayoutMeasureConstraints) {
+		var measureContent = new LayoutMeasuredContent(function(constraints:LayoutMeasureConstraints) {
 			measureCalls++;
-			if (nodeId != 103) {
-				Sys.println('unexpected measure node=$nodeId');
-				throw "Unexpected custom measurement request";
-			}
+			if (constraints.maxWidth < constraints.minWidth || constraints.maxHeight < constraints.minHeight)
+				throw "Invalid intrinsic measurement constraints";
 			return new LayoutMeasureResult(48.0, 20.0, 15.0, true);
 		});
+		var measuredNode = LayoutNode.custom(103, measureContent);
+		panel.add(measuredNode);
 		resolved = session.submit(root, frame);
 		var measuredItem:Null<ResolvedLayoutItem> = null;
 		for (item in resolved)
@@ -108,8 +104,41 @@ class LayoutSessionSmoke {
 			measuredItem.height != 20.0 || !measuredItem.hasBaseline)
 			return 41;
 		resolved = session.submit(root, frame);
-		if (measureCalls <= callsAfterFirst)
+		if (measureCalls != callsAfterFirst)
 			return 42;
+		measureContent.invalidate();
+		resolved = session.submit(root, frame);
+		if (measureCalls <= callsAfterFirst)
+			return 43;
+
+		var image = Image.create(8, 6, ImageFormat.RGBA8, Bytes.alloc(8 * 6 * 4));
+		panel.add(LayoutNode.custom(104, new LayoutImageContent(image)));
+		resolved = session.submit(root, frame);
+		var imageItem:Null<ResolvedLayoutItem> = null;
+		for (item in resolved)
+			if (item.id == 104)
+				imageItem = item;
+		if (imageItem == null || imageItem.width != 8.0 || imageItem.height != 6.0)
+			return 44;
+		image.dispose();
+
+		measuredNode.intrinsicContent = null;
+		measuredNode.measureVersion = 2;
+		var fallbackCalls = 0;
+		session.setMeasureCallback(function(nodeId:Int, constraints:LayoutMeasureConstraints) {
+			fallbackCalls++;
+			if (nodeId != 103)
+				throw "Unexpected fallback measurement request";
+			return new LayoutMeasureResult(32.0, 12.0);
+		});
+		resolved = session.submit(root, frame);
+		measuredItem = null;
+		for (item in resolved)
+			if (item.id == 103)
+				measuredItem = item;
+		if (fallbackCalls == 0 || measuredItem == null || measuredItem.width != 32.0 ||
+			measuredItem.height != 12.0)
+			return 45;
 		session.setMeasureCallback(null);
 
 		session.dispose();

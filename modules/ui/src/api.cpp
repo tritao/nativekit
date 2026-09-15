@@ -455,6 +455,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_node_float(record, NKUI_LAYOUT_NODE_POSITION_X_OFFSET, position_x) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_POSITION_Y_OFFSET, position_y) ||
                 !read_node_i32(record, NKUI_LAYOUT_NODE_Z_INDEX_OFFSET, z_index) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_MEASURE_VERSION_OFFSET,
+                               node.measure_version) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_WIDTH_MIN_OFFSET, width_min) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_WIDTH_MAX_OFFSET, width_max) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_HEIGHT_MIN_OFFSET, height_min) ||

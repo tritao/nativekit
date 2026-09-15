@@ -49,9 +49,14 @@ class LayoutTransaction {
 			var node = nodes[index];
 			var style = node.style;
 			var record = headerBytes + index * recordBytes;
+			var measureVersion = node.measureVersion;
+			if (node.intrinsicContent != null)
+				measureVersion = node.intrinsicContent.getVersion();
 			var lineHeight:Float = node.paragraphStyle.lineHeight == null ? 0.0 : node.paragraphStyle.lineHeight;
 			if (node.id <= 0 || node.id == 0x80000000)
 				throw "Layout node ID is out of range";
+			if (measureVersion < 0)
+				throw "Layout measurement version must be non-negative";
 			if (!finitePositive(node.textStyle.fontSize) || !finite(node.textStyle.letterSpacing) ||
 				!finite(lineHeight) || lineHeight < 0.0)
 				throw "Layout text style values are invalid";
@@ -153,6 +158,8 @@ class LayoutTransaction {
 				wrapMode);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_ALIGN_SELF_OFFSET,
 				alignSelf);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_MEASURE_VERSION_OFFSET,
+				measureVersion);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_X_OFFSET,
 				style.positionX);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_Y_OFFSET,

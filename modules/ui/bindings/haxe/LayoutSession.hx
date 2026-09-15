@@ -10,6 +10,9 @@ class LayoutSession {
 	final transaction:LayoutTransaction;
 	final resolved:Array<ResolvedLayoutItem>;
 	var measureCallback:Null<nkui_layout_measure_callbackCallback>;
+	var measureFunction:Null<LayoutMeasureCallback>;
+	final measureContents:Map<Int, LayoutContent>;
+	var hasMeasureContents:Bool;
 
 	private function new(value:nkui_layout_session) {
 		this.value = value;
@@ -17,6 +20,9 @@ class LayoutSession {
 		transaction = new LayoutTransaction();
 		resolved = [];
 		measureCallback = null;
+		measureFunction = null;
+		measureContents = new Map();
+		hasMeasureContents = false;
 	}
 
 	public static function create():LayoutSession {
@@ -33,31 +39,16 @@ class LayoutSession {
 	}
 
 	/**
-	 * Installs a synchronous intrinsic measurer for Custom nodes. The callback
-	 * runs during submit and remains retained by this session until replaced or
-	 * cleared.
+	 * Installs a fallback intrinsic measurer for Custom nodes without an
+	 * attached LayoutContent provider. The callback runs during submit and
+	 * remains retained by this session until replaced or cleared.
 	 */
 	public function setMeasureCallback(callback:Null<LayoutMeasureCallback>):Void {
 		ensureLive();
-		detachMeasureCallback();
-		if (callback == null)
-			return;
-		var nativeCallback = new nkui_layout_measure_callbackCallback(
-			function(nodeId:Int, constraints:nkui_layout_measure_constraints,
-				_userData:Null<hl.Abstract<"native_pointer">>) {
-				var measured = callback(nodeId, LayoutMeasureConstraints.fromNative(constraints));
-				if (measured == null)
-					throw "Layout measurement callback returned null";
-				return measured.nativeValue();
-			});
-		try {
-			UiResult.check(NativeKitUI.nkui_layout_session_set_measure_callback(value, nativeCallback,
-				null), "layoutSession.setMeasureCallback");
-		} catch (error:Dynamic) {
-			nativeCallback.close();
-			throw error;
-		}
-		measureCallback = nativeCallback;
+		if (measureCallback != null)
+			detachMeasureCallback();
+		measureFunction = callback;
+		refreshMeasureCallback();
 	}
 
 	/** Submits one render tree and returns geometry for the complete resolved frame. */
@@ -66,6 +57,8 @@ class LayoutSession {
 		if (frame == null)
 			throw "Layout session frame cannot be null";
 		var transactionBytes:Bytes = transaction.encodeInto(root);
+		collectMeasureContents(root);
+		refreshMeasureCallback();
 		var nativeFrame = frame.nativeValue();
 		UiResult.check(NativeKitUI.nkui_layout_session_submit_slice(value, transactionBytes, 0,
 			transaction.byteLength(), nativeFrame),
@@ -138,6 +131,57 @@ class LayoutSession {
 	function ensureLive():Void {
 		if (disposed)
 			throw "Layout session has been disposed";
+	}
+
+	function refreshMeasureCallback():Void {
+		if (measureFunction == null && !hasMeasureContents) {
+			detachMeasureCallback();
+			return;
+		}
+		if (measureCallback != null)
+			return;
+		var nativeCallback = new nkui_layout_measure_callbackCallback(
+			function(nodeId:Int, constraints:nkui_layout_measure_constraints,
+				_userData:Null<hl.Abstract<"native_pointer">>) {
+				var measured = measureNode(nodeId, LayoutMeasureConstraints.fromNative(constraints));
+				if (measured == null)
+					throw "Layout measurement callback returned null";
+				return measured.nativeValue();
+			});
+		try {
+			UiResult.check(NativeKitUI.nkui_layout_session_set_measure_callback(value, nativeCallback,
+				null), "layoutSession.setMeasureCallback");
+		} catch (error:Dynamic) {
+			nativeCallback.close();
+			throw error;
+		}
+		measureCallback = nativeCallback;
+	}
+
+	function measureNode(nodeId:Int, constraints:LayoutMeasureConstraints):LayoutMeasureResult {
+		var content = measureContents.get(nodeId);
+		if (content != null)
+			return content.measure(constraints);
+		if (measureFunction != null)
+			return measureFunction(nodeId, constraints);
+		return new LayoutMeasureResult(0.0, 0.0);
+	}
+
+	function collectMeasureContents(root:LayoutNode):Void {
+		measureContents.clear();
+		hasMeasureContents = false;
+		collectMeasureContentsFrom(root);
+	}
+
+	function collectMeasureContentsFrom(node:LayoutNode):Void {
+		if (node.intrinsicContent != null) {
+			if (node.visualKind != LayoutVisualKind.Custom)
+				throw "Intrinsic content requires a Custom layout node";
+			measureContents.set(node.id, node.intrinsicContent);
+			hasMeasureContents = true;
+		}
+		for (child in node.children)
+			collectMeasureContentsFrom(child);
 	}
 
 	function detachMeasureCallback():Void {

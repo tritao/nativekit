@@ -182,6 +182,8 @@ struct LayoutNode {
     LayoutColor text_color{1.0f, 1.0f, 1.0f, 1.0f};
     TextStyle text_style{};
     ParagraphStyle paragraph_style{};
+    // Changes invalidate persistent external intrinsic measurements for this node.
+    uint32_t measure_version = 0;
 };
 
 /** NativeKit-owned constraints for opaque external content measurement. */

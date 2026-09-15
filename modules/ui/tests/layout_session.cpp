@@ -6,7 +6,7 @@
 #include <vector>
 
 static_assert(NKUI_LAYOUT_NODE_RECORD_BYTES ==
-                  NKUI_LAYOUT_NODE_ALIGN_SELF_OFFSET + sizeof(uint32_t),
+                  NKUI_LAYOUT_NODE_MEASURE_VERSION_OFFSET + sizeof(uint32_t),
               "layout node record size must include every defined field");
 
 namespace {
@@ -366,8 +366,12 @@ int main() {
         std::abs(button_item.baseline - 15.0f) > 0.01f)
         return 46;
     if (nkui_layout_session_submit(session, measured.data(), measured.size(), &frame) != NKUI_OK ||
-        measure_state.calls != 2)
+        measure_state.calls != 1)
         return 47;
+    write_u32(measured, measured_record + NKUI_LAYOUT_NODE_MEASURE_VERSION_OFFSET, 1);
+    if (nkui_layout_session_submit(session, measured.data(), measured.size(), &frame) != NKUI_OK ||
+        measure_state.calls != 2)
+        return 49;
     if (nkui_layout_session_set_measure_callback(session, nullptr, nullptr) != NKUI_OK)
         return 48;
     resolved_bytes = static_cast<uint32_t>(resolved.size());

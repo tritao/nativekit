@@ -17,10 +17,10 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 15,
-    NKUI_LAYOUT_TRANSACTION_VERSION = 13,
+    NKUI_LAYOUT_API_VERSION = 16,
+    NKUI_LAYOUT_TRANSACTION_VERSION = 14,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
-    NKUI_LAYOUT_NODE_RECORD_BYTES = 236,
+    NKUI_LAYOUT_NODE_RECORD_BYTES = 240,
     NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16 * 1024 * 1024,
     NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96
 };
@@ -180,7 +180,9 @@ enum {
     /** Wrap policy: zero keeps one row/column, one enables wrapping. */
     NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET = 228,
     /** Per-child cross-axis alignment override; zero inherits the parent. */
-    NKUI_LAYOUT_NODE_ALIGN_SELF_OFFSET = 232
+    NKUI_LAYOUT_NODE_ALIGN_SELF_OFFSET = 232,
+    /** Application-defined intrinsic-content version used by measurement caching. */
+    NKUI_LAYOUT_NODE_MEASURE_VERSION_OFFSET = 236
 };
 
 /** Opaque retained layout session used by a Haxe-owned component tree. */

@@ -6,7 +6,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_API_VERSION = 6;
 	const NKUI_COMMAND_VERSION = 1;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
-	const NKUI_LAYOUT_API_VERSION = 15;
+	const NKUI_LAYOUT_API_VERSION = 16;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	/**
 	 * Per-child cross-axis alignment override; zero inherits the parent.
@@ -52,6 +52,10 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_ID_OFFSET = 0;
 	const NKUI_LAYOUT_NODE_LETTER_SPACING_OFFSET = 120;
 	const NKUI_LAYOUT_NODE_LINE_HEIGHT_OFFSET = 124;
+	/**
+	 * Application-defined intrinsic-content version used by measurement caching.
+	 */
+	const NKUI_LAYOUT_NODE_MEASURE_VERSION_OFFSET = 236;
 	const NKUI_LAYOUT_NODE_PADDING_BOTTOM_OFFSET = 44;
 	const NKUI_LAYOUT_NODE_PADDING_LEFT_OFFSET = 32;
 	const NKUI_LAYOUT_NODE_PADDING_RIGHT_OFFSET = 36;
@@ -69,7 +73,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_RADIUS_BOTTOM_RIGHT_OFFSET = 80;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET = 68;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET = 72;
-	const NKUI_LAYOUT_NODE_RECORD_BYTES = 236;
+	const NKUI_LAYOUT_NODE_RECORD_BYTES = 240;
 	/**
 	 * Vertical gap between wrapped rows.
 	 */
@@ -112,7 +116,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184;
 	const NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96;
 	const NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16;
-	const NKUI_LAYOUT_TRANSACTION_VERSION = 13;
+	const NKUI_LAYOUT_TRANSACTION_VERSION = 14;
 	/**
 	 * 16-bit opcode identifying one display-list command record.
 	 */
