@@ -11,6 +11,20 @@
 #include <string.h>
 #include <wchar.h>
 
+static void focus_window(HWND hwnd) {
+    const HWND foreground = GetForegroundWindow();
+    DWORD foreground_thread = foreground ? GetWindowThreadProcessId(foreground, NULL) : 0;
+    const DWORD current_thread = GetCurrentThreadId();
+    const BOOL attached = foreground_thread && foreground_thread != current_thread &&
+                          AttachThreadInput(current_thread, foreground_thread, TRUE);
+    BringWindowToTop(hwnd);
+    SetForegroundWindow(hwnd);
+    SetActiveWindow(hwnd);
+    SetFocus(hwnd);
+    if (attached)
+        AttachThreadInput(current_thread, foreground_thread, FALSE);
+}
+
 static HKL activate_japanese_layout(void) {
     static const wchar_t *layout_ids[] = {
         // The Microsoft Japanese IME is normally exposed as E0010411.  Try
@@ -219,8 +233,7 @@ int main(void) {
     assert(native.kind == NK_NATIVE_WINDOW_WIN32);
     HWND hwnd = (HWND)native.window;
     assert(hwnd != NULL);
-    SetForegroundWindow(hwnd);
-    SetFocus(hwnd);
+    focus_window(hwnd);
     fprintf(stderr, "win_text_input: hwnd=%p foreground=%p focus=%p\n",
             (void *)hwnd, (void *)GetForegroundWindow(), (void *)GetFocus());
     // Prefer the installed Japanese Microsoft IME when this runner has it.
@@ -228,7 +241,7 @@ int main(void) {
     // validate caret positioning and committed WM_IME_CHAR behavior.
     HKL ime_layout = activate_japanese_layout();
     const int ime_profile = activate_japanese_ime_profile();
-    SetFocus(hwnd);
+    focus_window(hwnd);
     wchar_t active_layout[KL_NAMELENGTH] = {0};
     wchar_t ime_name[MAX_PATH] = {0};
     if (ime_layout != NULL)
