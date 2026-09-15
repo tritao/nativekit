@@ -105,6 +105,18 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+For a Linux Release package with stripped shared libraries and separate debug
+symbols, configure and build the UI, then run:
+
+```sh
+tools/check-native-ui-size.sh build-release/modules/ui/libnativekit_ui.so
+tools/package-native-release.sh build-release out/nativekit
+```
+
+The package helper writes debug files under `lib/.debug/` and adds GNU debug
+links to the stripped libraries. The current native UI loadable-size budget is
+1,700,000 bytes; the same check runs in CI.
+
 Experimental higher-level modules live in the same repository but remain
 optional so the core platform library stays compact. Enable the low-level GPU
 module with `-DNK_BUILD_GPU=ON`, or the retained UI module with
