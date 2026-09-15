@@ -51,6 +51,7 @@ fi
     "$module_dir/bindings/haxe/nativekit/audio/FilterSettings.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/GainLimits.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Mixer.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/MixSnapshot.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Voice.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/VoiceOptions.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Vector3.hx" \

@@ -603,6 +603,42 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_listener_set_world_up(world_up: nk_audio_vec3) -> nk_result;
 	/**
+	 * Applies all targets immediately or over a duration in PCM frames.
+	 */
+	extern fn nk_audio_mix_snapshot_apply(snapshot: nk_audio_mix_snapshot, duration_pcm_frames: u64) -> nk_result;
+	/**
+	 * Applies all targets at an absolute process-wide audio time.
+	 */
+	extern fn nk_audio_mix_snapshot_apply_at(snapshot: nk_audio_mix_snapshot, duration_pcm_frames: u64, absolute_start_time_pcm_frames: u64) -> nk_result;
+	/**
+	 * Captures one bus's current configured volume and mute state.
+	 */
+	extern fn nk_audio_mix_snapshot_capture_bus(snapshot: nk_audio_mix_snapshot, bus: nk_audio_bus) -> nk_result;
+	/**
+	 * Removes every bus target from the snapshot.
+	 */
+	extern fn nk_audio_mix_snapshot_clear(snapshot: nk_audio_mix_snapshot) -> nk_result;
+	/**
+	 * Creates an empty mixer snapshot. Add bus targets before applying it.
+	 */
+	extern fn nk_audio_mix_snapshot_create(out_snapshot: ptr<nk_audio_mix_snapshot> @out @owned) -> nk_result;
+	/**
+	 * Destroys a mixer snapshot and releases its captured bus targets.
+	 */
+	extern fn nk_audio_mix_snapshot_destroy(snapshot: nk_audio_mix_snapshot) -> nk_result;
+	/**
+	 * Returns the number of bus targets stored in the snapshot.
+	 */
+	extern fn nk_audio_mix_snapshot_get_bus_count(snapshot: nk_audio_mix_snapshot, out_count: ptr<u32> @out) -> nk_result;
+	/**
+	 * Removes one bus target from the snapshot.
+	 */
+	extern fn nk_audio_mix_snapshot_remove_bus(snapshot: nk_audio_mix_snapshot, bus: nk_audio_bus) -> nk_result;
+	/**
+	 * Sets or replaces one bus target in the snapshot.
+	 */
+	extern fn nk_audio_mix_snapshot_set_bus(snapshot: nk_audio_mix_snapshot, bus: nk_audio_bus, volume: f32, muted: nk_bool) -> nk_result;
+	/**
 	 * Sets linear gain for the process-wide NativeKit audio mixer.
 	 */
 	extern fn nk_audio_set_master_volume(volume: f32) -> nk_result;
@@ -1371,6 +1407,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Opaque handle for one reusable audio clip source.
 	 */
 	handle nk_audio_clip : u32 @destroy("nk_audio_clip_destroy");
+	/**
+	 * Opaque handle for one reusable set of mixer bus targets.
+	 */
+	handle nk_audio_mix_snapshot : u32 @destroy("nk_audio_mix_snapshot_destroy");
 	/**
 	 * Opaque handle for one independent playback voice.
 	 */

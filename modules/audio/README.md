@@ -73,6 +73,16 @@ Buses support the same schedule and fade operations for all routed voices. This
 allows music transitions and voice/SFX ducking to be coordinated at the mixer
 boundary instead of issuing one operation per voice.
 
+`nk_audio_mix_snapshot` stores explicit bus volume and mute targets. Capture a
+bus's current mix with `nk_audio_mix_snapshot_capture_bus()`, or define a
+target directly with `nk_audio_mix_snapshot_set_bus()`, then apply the snapshot
+immediately or over a shared PCM-frame fade. `nk_audio_mix_snapshot_apply_at()`
+schedules the transition against the same process-wide clock. Keeping a base
+snapshot and a lower-volume target snapshot makes dialogue ducking, pause-menu
+mixes, and cutscene transitions reversible without manually restoring each bus.
+Snapshots reference buses weakly; destroying a bus removes its target when the
+snapshot is queried or applied.
+
 Buses can also own ordered effect chains. `Bus.addLowPass()`,
 `Bus.addHighPass()`, and `Bus.addDelay()` append effects that can be bypassed,
 reordered, and reconfigured through `BusEffect`. Filter cutoffs must be below
@@ -114,7 +124,7 @@ completion event.
 The module also provides a generated Haxeon ABI interface in
 `bindings/nativekit-audio.hxi` and a small typed Haxe facade under
 `bindings/haxe/nativekit/audio`. The public facade consists of `Clip`, `Voice`,
-`VoiceOptions`, `Bus`, `DeviceOptions`, and `Mixer`. `Mixer` exposes device
+`VoiceOptions`, `Bus`, `MixSnapshot`, `DeviceOptions`, and `Mixer`. `Mixer` exposes device
 enumeration and lifecycle controls, while `Clip.fromResourceAsync()` exposes
 the asynchronous resource path; `loadRequest()`, `loadState()`, and `isReady()`
 mirror the native lifecycle.

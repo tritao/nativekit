@@ -12,6 +12,7 @@ import nativekit.audio.DistanceLimits;
 import nativekit.audio.DeviceOptions;
 import nativekit.audio.GainLimits;
 import nativekit.audio.Mixer;
+import nativekit.audio.MixSnapshot;
 import nativekit.audio.Voice;
 import nativekit.audio.VoiceOptions;
 import nativekit.audio.Vector3;
@@ -56,6 +57,8 @@ class AudioSmoke {
 		var highPass:BusEffect = null;
 		var delay:BusEffect = null;
 		var parentBus:Bus = null;
+		var baseSnapshot:MixSnapshot = null;
+		var duckSnapshot:MixSnapshot = null;
 		var clip:Clip = null;
 		var first:Voice = null;
 		var second:Voice = null;
@@ -140,6 +143,25 @@ class AudioSmoke {
 			bus.setVolume(0.5);
 			if (bus.volume() != 0.5)
 				throw "Haxe audio bus volume did not round-trip";
+			baseSnapshot = MixSnapshot.create();
+			baseSnapshot.captureBus(bus);
+			if (baseSnapshot.busCount() != 1)
+				throw "Haxe audio mix snapshot did not capture its bus";
+			duckSnapshot = MixSnapshot.create();
+			duckSnapshot.setBus(bus, 0.1, true);
+			duckSnapshot.apply(haxe.Int64.ofInt(0));
+			if (Math.abs(bus.volume() - 0.1) > 0.0001 || !bus.isMuted())
+				throw "Haxe audio mix snapshot did not apply its duck target";
+			baseSnapshot.apply(haxe.Int64.ofInt(0));
+			if (bus.volume() != 0.5 || bus.isMuted())
+				throw "Haxe audio mix snapshot did not restore its base target";
+			duckSnapshot.clear();
+			if (duckSnapshot.busCount() != 0)
+				throw "Haxe audio mix snapshot did not clear its targets";
+			duckSnapshot.dispose();
+			duckSnapshot = null;
+			baseSnapshot.dispose();
+			baseSnapshot = null;
 			lowPass = bus.addLowPass(2000.0, 2);
 			highPass = bus.addHighPass(100.0, 1);
 			delay = bus.addDelay(64, 0.5);
@@ -311,6 +333,10 @@ class AudioSmoke {
 				highPass.dispose();
 			if (delay != null)
 				delay.dispose();
+			if (duckSnapshot != null)
+				duckSnapshot.dispose();
+			if (baseSnapshot != null)
+				baseSnapshot.dispose();
 			if (clip != null)
 				clip.dispose();
 			if (bus != null)

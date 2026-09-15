@@ -15,6 +15,7 @@
     "nk_resource": "NativeKit.ResourceValue",
     "nk_audio_clip": "ClipHandle",
     "nk_audio_bus": "BusHandle",
+    "nk_audio_mix_snapshot": "MixSnapshotHandle",
     "nk_audio_bus_effect": "BusEffectHandle",
     "nk_audio_voice": "VoiceHandle",
     "nk_audio_bus_options": "NativeBusOptions",

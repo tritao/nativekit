@@ -95,6 +95,18 @@ struct AudioBusResource final : nk::core::Resource {
     ~AudioBusResource() override;
 };
 
+struct AudioMixSnapshotTarget {
+    std::weak_ptr<AudioBusResource> bus;
+    float volume = 1.0f;
+    bool muted = false;
+};
+
+struct AudioMixSnapshotResource final : nk::core::Resource {
+    std::shared_ptr<AudioEngineResource> engine;
+    std::vector<AudioMixSnapshotTarget> targets;
+    std::atomic<nk_audio_mix_snapshot> handle{NK_INVALID_HANDLE};
+};
+
 struct AudioEffectResource final : nk::core::Resource {
     std::shared_ptr<AudioEngineResource> engine;
     std::weak_ptr<AudioBusResource> bus;
@@ -930,6 +942,20 @@ std::shared_ptr<AudioBusResource> get_bus(nk_audio_bus handle) {
     return bus;
 }
 
+std::shared_ptr<AudioMixSnapshotResource> get_mix_snapshot(nk_audio_mix_snapshot handle) {
+    auto resource =
+        nk::core::handles().get(handle, nk::core::ResourceType::audio_mix_snapshot);
+    if (!resource) {
+        nk::core::set_error("invalid audio mix snapshot handle");
+        return {};
+    }
+    auto snapshot =
+        std::dynamic_pointer_cast<AudioMixSnapshotResource>(std::move(resource));
+    if (!snapshot)
+        nk::core::set_error("invalid audio mix snapshot resource");
+    return snapshot;
+}
+
 std::shared_ptr<AudioEffectResource> get_effect(nk_audio_bus_effect handle) {
     auto resource =
         nk::core::handles().get(handle, nk::core::ResourceType::audio_bus_effect);
@@ -963,6 +989,85 @@ nk_result insert_bus(std::shared_ptr<AudioBusResource> bus, nk_audio_bus *out_bu
     }
     bus->handle.store(handle, std::memory_order_release);
     *out_bus = handle;
+    return NK_OK;
+}
+
+nk_result insert_mix_snapshot(std::shared_ptr<AudioMixSnapshotResource> snapshot,
+                              nk_audio_mix_snapshot *out_snapshot) {
+    const auto handle =
+        nk::core::handles().insert(nk::core::ResourceType::audio_mix_snapshot, snapshot);
+    if (handle == NK_INVALID_HANDLE) {
+        nk::core::set_error("could not allocate an audio mix snapshot handle");
+        return NK_ERROR_OUT_OF_MEMORY;
+    }
+    snapshot->handle.store(handle, std::memory_order_release);
+    *out_snapshot = handle;
+    return NK_OK;
+}
+
+void prune_mix_snapshot_targets(AudioMixSnapshotResource &snapshot) {
+    snapshot.targets.erase(
+        std::remove_if(snapshot.targets.begin(), snapshot.targets.end(), [](const auto &target) {
+            const auto bus = target.bus.lock();
+            return !bus || bus->handle.load(std::memory_order_acquire) == NK_INVALID_HANDLE;
+        }),
+        snapshot.targets.end());
+}
+
+AudioMixSnapshotTarget *find_mix_snapshot_target(AudioMixSnapshotResource &snapshot,
+                                                  const AudioBusResource &bus) {
+    const auto it = std::find_if(snapshot.targets.begin(), snapshot.targets.end(),
+                                 [&](auto &target) {
+                                     const auto candidate = target.bus.lock();
+                                     return candidate && candidate.get() == &bus;
+                                 });
+    return it == snapshot.targets.end() ? nullptr : &*it;
+}
+
+struct ResolvedMixSnapshotTarget {
+    std::shared_ptr<AudioBusResource> bus;
+    float volume = 1.0f;
+    bool muted = false;
+};
+
+nk_result resolve_mix_snapshot_targets(
+    const AudioMixSnapshotResource &snapshot,
+    std::vector<ResolvedMixSnapshotTarget> &resolved) {
+    resolved.clear();
+    resolved.reserve(snapshot.targets.size());
+    for (const auto &target : snapshot.targets) {
+        auto bus = target.bus.lock();
+        if (!bus || bus->handle.load(std::memory_order_acquire) == NK_INVALID_HANDLE)
+            return invalid_handle("audio mix snapshot contains a destroyed bus");
+        if (snapshot.engine && bus->engine.get() != snapshot.engine.get())
+            return invalid_request("audio mix snapshot contains a bus from another audio engine");
+        resolved.push_back({std::move(bus), target.volume, target.muted});
+    }
+    return NK_OK;
+}
+
+nk_result apply_mix_snapshot_targets(
+    const AudioMixSnapshotResource &snapshot, uint64_t duration_pcm_frames,
+    bool scheduled, uint64_t absolute_start_time_pcm_frames) {
+    std::vector<ResolvedMixSnapshotTarget> resolved;
+    if (const auto result = resolve_mix_snapshot_targets(snapshot, resolved); result != NK_OK)
+        return result;
+    for (const auto &target : resolved) {
+        const auto target_volume = target.muted ? 0.0f : target.volume;
+        if (scheduled) {
+            ma_sound_set_fade_start_in_pcm_frames(
+                &target.bus->group, NK_AUDIO_VOLUME_CURRENT, target_volume,
+                duration_pcm_frames, absolute_start_time_pcm_frames);
+        } else if (duration_pcm_frames == 0) {
+            ma_sound_group_set_volume(&target.bus->group, target_volume);
+        } else {
+            ma_sound_group_set_fade_in_pcm_frames(
+                &target.bus->group, NK_AUDIO_VOLUME_CURRENT, target_volume,
+                duration_pcm_frames);
+        }
+        target.bus->volume = target.volume;
+        target.bus->muted = target.muted;
+    }
     return NK_OK;
 }
 
@@ -1722,6 +1827,186 @@ nk_result NK_CALL nk_audio_bus_is_muted(nk_audio_bus bus, nk_bool *out_muted) {
                 *out_muted = value.muted ? 1u : 0u;
                 return NK_OK;
             });
+        });
+}
+
+nk_result NK_CALL nk_audio_mix_snapshot_create(nk_audio_mix_snapshot *out_snapshot) {
+    return nk::core::result_boundary(
+        "unexpected error while creating an audio mix snapshot", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_snapshot)
+                return invalid_argument("audio mix snapshot output is missing");
+            *out_snapshot = NK_INVALID_HANDLE;
+            return insert_mix_snapshot(std::make_shared<AudioMixSnapshotResource>(), out_snapshot);
+        });
+}
+
+nk_result NK_CALL nk_audio_mix_snapshot_destroy(nk_audio_mix_snapshot snapshot_handle) {
+    return nk::core::result_boundary(
+        "unexpected error while destroying an audio mix snapshot", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            auto snapshot = get_mix_snapshot(snapshot_handle);
+            if (!snapshot)
+                return NK_ERROR_INVALID_HANDLE;
+            if (!nk::core::handles().erase(snapshot_handle,
+                                            nk::core::ResourceType::audio_mix_snapshot))
+                return invalid_handle("invalid audio mix snapshot handle");
+            snapshot->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
+            snapshot->targets.clear();
+            snapshot->engine.reset();
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_mix_snapshot_capture_bus(nk_audio_mix_snapshot snapshot_handle,
+                                                    nk_audio_bus bus_handle) {
+    return nk::core::result_boundary(
+        "unexpected error while capturing an audio mix snapshot bus", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            auto snapshot = get_mix_snapshot(snapshot_handle);
+            if (!snapshot)
+                return NK_ERROR_INVALID_HANDLE;
+            auto bus = get_bus(bus_handle);
+            if (!bus)
+                return NK_ERROR_INVALID_HANDLE;
+            if (snapshot->engine && snapshot->engine.get() != bus->engine.get())
+                return invalid_request(
+                    "audio mix snapshot bus belongs to another audio engine");
+            prune_mix_snapshot_targets(*snapshot);
+            auto *target = find_mix_snapshot_target(*snapshot, *bus);
+            if (!target) {
+                snapshot->targets.push_back({bus, bus->volume, bus->muted});
+            } else {
+                target->volume = bus->volume;
+                target->muted = bus->muted;
+            }
+            snapshot->engine = bus->engine;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_mix_snapshot_set_bus(nk_audio_mix_snapshot snapshot_handle,
+                                                nk_audio_bus bus_handle, float volume,
+                                                nk_bool muted) {
+    return nk::core::result_boundary(
+        "unexpected error while setting an audio mix snapshot bus", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!std::isfinite(volume) || volume < 0.0f)
+                return invalid_argument(
+                    "audio mix snapshot bus volume must be finite and non-negative");
+            if (muted > 1)
+                return invalid_argument("audio mix snapshot bus mute must be zero or one");
+            auto snapshot = get_mix_snapshot(snapshot_handle);
+            if (!snapshot)
+                return NK_ERROR_INVALID_HANDLE;
+            auto bus = get_bus(bus_handle);
+            if (!bus)
+                return NK_ERROR_INVALID_HANDLE;
+            if (snapshot->engine && snapshot->engine.get() != bus->engine.get())
+                return invalid_request(
+                    "audio mix snapshot bus belongs to another audio engine");
+            prune_mix_snapshot_targets(*snapshot);
+            auto *target = find_mix_snapshot_target(*snapshot, *bus);
+            if (!target) {
+                snapshot->targets.push_back({bus, volume, muted != 0});
+            } else {
+                target->volume = volume;
+                target->muted = muted != 0;
+            }
+            snapshot->engine = bus->engine;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_mix_snapshot_remove_bus(nk_audio_mix_snapshot snapshot_handle,
+                                                   nk_audio_bus bus_handle) {
+    return nk::core::result_boundary(
+        "unexpected error while removing an audio mix snapshot bus", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            auto snapshot = get_mix_snapshot(snapshot_handle);
+            if (!snapshot)
+                return NK_ERROR_INVALID_HANDLE;
+            auto bus = get_bus(bus_handle);
+            if (!bus)
+                return NK_ERROR_INVALID_HANDLE;
+            prune_mix_snapshot_targets(*snapshot);
+            const auto old_size = snapshot->targets.size();
+            snapshot->targets.erase(
+                std::remove_if(snapshot->targets.begin(), snapshot->targets.end(),
+                               [&](const auto &target) {
+                                   const auto candidate = target.bus.lock();
+                                   return candidate && candidate.get() == bus.get();
+                               }),
+                snapshot->targets.end());
+            if (snapshot->targets.empty())
+                snapshot->engine.reset();
+            return old_size == snapshot->targets.size()
+                       ? invalid_handle("audio bus is not part of the mix snapshot")
+                       : NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_mix_snapshot_clear(nk_audio_mix_snapshot snapshot_handle) {
+    return nk::core::result_boundary(
+        "unexpected error while clearing an audio mix snapshot", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            auto snapshot = get_mix_snapshot(snapshot_handle);
+            if (!snapshot)
+                return NK_ERROR_INVALID_HANDLE;
+            snapshot->targets.clear();
+            snapshot->engine.reset();
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_mix_snapshot_get_bus_count(nk_audio_mix_snapshot snapshot_handle,
+                                                      uint32_t *out_count) {
+    return nk::core::result_boundary(
+        "unexpected error while getting an audio mix snapshot bus count", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_count)
+                return invalid_argument("audio mix snapshot bus count output is missing");
+            auto snapshot = get_mix_snapshot(snapshot_handle);
+            if (!snapshot)
+                return NK_ERROR_INVALID_HANDLE;
+            prune_mix_snapshot_targets(*snapshot);
+            *out_count = static_cast<uint32_t>(snapshot->targets.size());
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_mix_snapshot_apply(nk_audio_mix_snapshot snapshot_handle,
+                                              uint64_t duration_pcm_frames) {
+    return nk::core::result_boundary(
+        "unexpected error while applying an audio mix snapshot", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            auto snapshot = get_mix_snapshot(snapshot_handle);
+            if (!snapshot)
+                return NK_ERROR_INVALID_HANDLE;
+            return apply_mix_snapshot_targets(*snapshot, duration_pcm_frames, false, 0);
+        });
+}
+
+nk_result NK_CALL nk_audio_mix_snapshot_apply_at(nk_audio_mix_snapshot snapshot_handle,
+                                                 uint64_t duration_pcm_frames,
+                                                 uint64_t absolute_start_time_pcm_frames) {
+    return nk::core::result_boundary(
+        "unexpected error while scheduling an audio mix snapshot", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            auto snapshot = get_mix_snapshot(snapshot_handle);
+            if (!snapshot)
+                return NK_ERROR_INVALID_HANDLE;
+            return apply_mix_snapshot_targets(*snapshot, duration_pcm_frames, true,
+                                              absolute_start_time_pcm_frames);
         });
 }
 

@@ -134,6 +134,36 @@ int main() {
     assert(nk_audio_bus_set_muted(bus, 0) == NK_OK);
     assert(nk_audio_bus_is_muted(bus, &state) == NK_OK && state == 0);
 
+    nk_audio_mix_snapshot base_snapshot = NK_INVALID_HANDLE;
+    nk_audio_mix_snapshot duck_snapshot = NK_INVALID_HANDLE;
+    assert(nk_audio_mix_snapshot_create(&base_snapshot) == NK_OK);
+    assert(nk_audio_mix_snapshot_get_bus_count(base_snapshot, &device_count) == NK_OK &&
+           device_count == 0);
+    assert(nk_audio_mix_snapshot_capture_bus(base_snapshot, bus) == NK_OK);
+    assert(nk_audio_mix_snapshot_capture_bus(base_snapshot, parent_bus) == NK_OK);
+    assert(nk_audio_mix_snapshot_get_bus_count(base_snapshot, &device_count) == NK_OK &&
+           device_count == 2);
+    assert(nk_audio_mix_snapshot_create(&duck_snapshot) == NK_OK);
+    assert(nk_audio_mix_snapshot_set_bus(duck_snapshot, bus, 0.1f, 1) == NK_OK);
+    assert(nk_audio_mix_snapshot_get_bus_count(duck_snapshot, &device_count) == NK_OK &&
+           device_count == 1);
+    assert(nk_audio_mix_snapshot_apply(duck_snapshot, 0) == NK_OK);
+    assert(nk_audio_bus_get_volume(bus, &value) == NK_OK && value == 0.1f);
+    assert(nk_audio_bus_is_muted(bus, &state) == NK_OK && state == 1);
+    assert(nk_audio_mix_snapshot_apply(base_snapshot, 0) == NK_OK);
+    assert(nk_audio_bus_get_volume(bus, &value) == NK_OK && value == 0.5f);
+    assert(nk_audio_bus_is_muted(bus, &state) == NK_OK && state == 0);
+    assert(nk_audio_mix_snapshot_set_bus(duck_snapshot, bus, 0.2f, 0) == NK_OK);
+    uint64_t snapshot_time_frames = 0;
+    assert(nk_audio_get_time_pcm_frames(&snapshot_time_frames) == NK_OK);
+    assert(nk_audio_mix_snapshot_apply_at(duck_snapshot, 1, snapshot_time_frames + 1) == NK_OK);
+    assert(nk_audio_mix_snapshot_remove_bus(duck_snapshot, bus) == NK_OK);
+    assert(nk_audio_mix_snapshot_clear(base_snapshot) == NK_OK);
+    assert(nk_audio_mix_snapshot_get_bus_count(base_snapshot, &device_count) == NK_OK &&
+           device_count == 0);
+    assert(nk_audio_mix_snapshot_destroy(duck_snapshot) == NK_OK);
+    assert(nk_audio_mix_snapshot_destroy(base_snapshot) == NK_OK);
+
     nk_audio_bus_effect low_pass = NK_INVALID_HANDLE;
     nk_audio_bus_effect high_pass = NK_INVALID_HANDLE;
     nk_audio_bus_effect delay = NK_INVALID_HANDLE;

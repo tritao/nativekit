@@ -110,6 +110,10 @@ enum NK_ENUM(nk_audio_positioning) {
 /** Opaque handle for one audio mixer bus. */
 typedef uint32_t nk_audio_bus NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_destroy);
 
+/** Opaque handle for one reusable set of mixer bus targets. */
+typedef uint32_t nk_audio_mix_snapshot NK_HANDLE
+    NK_HANDLE_DESTROY(nk_audio_mix_snapshot_destroy);
+
 /** Optional creation settings for one audio mixer bus. */
 typedef struct nk_audio_bus_options {
     /** Set to sizeof(nk_audio_bus_options) before passing the structure. */
@@ -290,6 +294,35 @@ NKAUDIO_API nk_result NK_CALL nk_audio_bus_set_muted(nk_audio_bus bus, nk_bool m
 /** Returns whether the bus is muted. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_is_muted(nk_audio_bus bus,
                                                     nk_bool *out_muted NK_OUT);
+
+/* Mixer snapshots                                                         */
+
+/** Creates an empty mixer snapshot. Add bus targets before applying it. */
+NKAUDIO_API nk_result NK_CALL nk_audio_mix_snapshot_create(
+    nk_audio_mix_snapshot *out_snapshot NK_OUT NK_OWNED);
+/** Destroys a mixer snapshot and releases its captured bus targets. */
+NKAUDIO_API nk_result NK_CALL nk_audio_mix_snapshot_destroy(nk_audio_mix_snapshot snapshot);
+/** Captures one bus's current configured volume and mute state. */
+NKAUDIO_API nk_result NK_CALL nk_audio_mix_snapshot_capture_bus(
+    nk_audio_mix_snapshot snapshot, nk_audio_bus bus);
+/** Sets or replaces one bus target in the snapshot. */
+NKAUDIO_API nk_result NK_CALL nk_audio_mix_snapshot_set_bus(
+    nk_audio_mix_snapshot snapshot, nk_audio_bus bus, float volume, nk_bool muted);
+/** Removes one bus target from the snapshot. */
+NKAUDIO_API nk_result NK_CALL nk_audio_mix_snapshot_remove_bus(
+    nk_audio_mix_snapshot snapshot, nk_audio_bus bus);
+/** Removes every bus target from the snapshot. */
+NKAUDIO_API nk_result NK_CALL nk_audio_mix_snapshot_clear(nk_audio_mix_snapshot snapshot);
+/** Returns the number of bus targets stored in the snapshot. */
+NKAUDIO_API nk_result NK_CALL nk_audio_mix_snapshot_get_bus_count(
+    nk_audio_mix_snapshot snapshot, uint32_t *out_count NK_OUT);
+/** Applies all targets immediately or over a duration in PCM frames. */
+NKAUDIO_API nk_result NK_CALL nk_audio_mix_snapshot_apply(
+    nk_audio_mix_snapshot snapshot, uint64_t duration_pcm_frames);
+/** Applies all targets at an absolute process-wide audio time. */
+NKAUDIO_API nk_result NK_CALL nk_audio_mix_snapshot_apply_at(
+    nk_audio_mix_snapshot snapshot, uint64_t duration_pcm_frames,
+    uint64_t absolute_start_time_pcm_frames);
 
 /* ------------------------------------------------------------------------- */
 /* Bus effects                                                               */
