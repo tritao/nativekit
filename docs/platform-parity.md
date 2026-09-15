@@ -107,8 +107,8 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 | Backend | Required or equivalent today | Deferred today |
 |---|---|---|
 | Linux/GTK | Windows, geometry, styling, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, GPU, resource I/O, monitors, joystick, native export | Resource sharing, accessibility, native wrapping |
-| Windows | Windows, WebView when WebView2 is available, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, D3D11, resource I/O, accessibility, native export | Geometry, styling, monitors, joystick, resource sharing, native wrapping |
-| macOS | Windows, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, Metal, resource I/O, native export | Geometry, styling, monitors, joystick, resource sharing, accessibility, native wrapping |
+| Windows | Windows, WebView when WebView2 is available, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource I/O, accessibility, native export | Monitors, joystick, resource sharing, native wrapping |
+| macOS | Windows, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource I/O, native export | Monitors, joystick, resource sharing, accessibility, native wrapping |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility | — |
 | iOS | Mobile host, resource I/O | WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, Metal, resource sharing, joystick, accessibility |
 | Web | Window, geometry, clipboard, input, cursor/capture, GLES, resource I/O | Styling, dialogs, drag/drop, shell, appearance, notifications, resource sharing, joystick, accessibility |

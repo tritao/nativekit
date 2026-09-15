@@ -76,6 +76,7 @@ struct MacWindowResource final : nk::core::Resource {
     std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> pointer_buttons{};
     double pointer_x = 0.0;
     double pointer_y = 0.0;
+    bool hovered = false;
     nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
     std::shared_ptr<MacCursorResource> cursor;
     bool pointer_captured = false;
@@ -1683,6 +1684,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     auto *resource = static_cast<MacWindowResource *>(_resource);
     if (resource) {
         nk::core::callback_boundary([&] {
+            resource->hovered = true;
             apply_cursor(*resource);
             emit_pointer_enter(*resource, true);
         });
@@ -1692,7 +1694,10 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     (void)event;
     auto *resource = static_cast<MacWindowResource *>(_resource);
     if (resource)
-        nk::core::callback_boundary([&] { emit_pointer_enter(*resource, false); });
+        nk::core::callback_boundary([&] {
+            resource->hovered = false;
+            emit_pointer_enter(*resource, false);
+        });
 }
 - (void)mouseMoved:(NSEvent *)event {
     auto *resource = static_cast<MacWindowResource *>(_resource);
@@ -2248,7 +2253,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_WEBVIEW |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO | NK_CAP_INPUT |
-           NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_METAL_SURFACE;
+           NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
+           NK_CAP_WINDOW_STYLING | NK_CAP_METAL_SURFACE;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -2434,6 +2440,90 @@ nk_result NK_CALL nk_window_get_scale(nk_handle handle, float *out_scale) {
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
     *out_scale = static_cast<float>(resource->window.backingScaleFactor);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_content_scale(nk_handle handle,
+                                              nk_window_content_scale *out_scale) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_scale || out_scale->struct_size < sizeof(*out_scale))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "content scale output is missing or too small");
+    auto resource = window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    const auto size = out_scale->struct_size;
+    const float scale = static_cast<float>(resource->window.backingScaleFactor);
+    *out_scale = {};
+    out_scale->struct_size = size;
+    out_scale->x = scale;
+    out_scale->y = scale;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_position(nk_handle handle, int32_t *out_x, int32_t *out_y) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_x || !out_y)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "window position outputs must not be null");
+    auto resource = window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    const NSPoint origin = resource->window.frame.origin;
+    *out_x = static_cast<int32_t>(std::lround(origin.x));
+    *out_y = static_cast<int32_t>(std::lround(origin.y));
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_size(nk_handle handle, int32_t *out_width, int32_t *out_height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_width || !out_height)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "window size outputs must not be null");
+    auto resource = window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    const NSSize size = resource->window.contentView.bounds.size;
+    *out_width = static_cast<int32_t>(std::lround(size.width));
+    *out_height = static_cast<int32_t>(std::lround(size.height));
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_framebuffer_size(nk_handle handle, int32_t *out_width,
+                                                 int32_t *out_height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_width || !out_height)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "framebuffer size outputs must not be null");
+    auto resource = window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    const NSSize size = resource->window.contentView.bounds.size;
+    const CGFloat scale = resource->window.backingScaleFactor;
+    *out_width = static_cast<int32_t>(std::lround(size.width * scale));
+    *out_height = static_cast<int32_t>(std::lround(size.height * scale));
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_frame_extents(nk_handle handle,
+                                              nk_window_frame_extents *out_extents) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_extents || out_extents->struct_size < sizeof(*out_extents))
+        return fail(NK_ERROR_INVALID_ARGUMENT,
+                    "window frame extents output is missing or too small");
+    auto resource = window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    const NSRect frame = resource->window.frame;
+    const NSRect content = [resource->window convertRectToScreen:resource->content.frame];
+    const auto size = out_extents->struct_size;
+    *out_extents = {};
+    out_extents->struct_size = size;
+    out_extents->left = static_cast<int32_t>(std::lround(content.origin.x - frame.origin.x));
+    out_extents->bottom = static_cast<int32_t>(std::lround(content.origin.y - frame.origin.y));
+    out_extents->right = static_cast<int32_t>(std::lround(NSMaxX(frame) - NSMaxX(content)));
+    out_extents->top = static_cast<int32_t>(std::lround(NSMaxY(frame) - NSMaxY(content)));
     return NK_OK;
 }
 
@@ -2848,6 +2938,97 @@ nk_result NK_CALL nk_window_set_size_limits(nk_handle h, const nk_window_size_li
     w->window.contentMinSize = NSMakeSize(l->min_width, l->min_height);
     w->window.contentMaxSize =
         NSMakeSize(l->max_width ? l->max_width : FLT_MAX, l->max_height ? l->max_height : FLT_MAX);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle h, int32_t numerator,
+                                              int32_t denominator) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if ((numerator == 0) != (denominator == 0) || numerator < 0 || denominator < 0)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window aspect ratio");
+    auto w = window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    [w->window setContentAspectRatio:
+                    (numerator ? NSMakeSize(numerator, denominator) : NSZeroSize)];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_resizable(nk_handle h, uint32_t enabled) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    NSWindowStyleMask style = w->window.styleMask;
+    if (enabled)
+        style |= NSWindowStyleMaskResizable;
+    else
+        style &= ~NSWindowStyleMaskResizable;
+    w->window.styleMask = style;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    constexpr NSWindowStyleMask decorations = NSWindowStyleMaskTitled |
+                                               NSWindowStyleMaskClosable |
+                                               NSWindowStyleMaskMiniaturizable;
+    NSWindowStyleMask style = w->window.styleMask;
+    if (enabled)
+        style |= decorations;
+    else
+        style &= ~decorations;
+    w->window.styleMask = style;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_floating(nk_handle h, uint32_t enabled) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    w->window.level = enabled ? NSFloatingWindowLevel : NSNormalWindowLevel;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_opacity(nk_handle h, float opacity) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!(opacity >= 0.0f && opacity <= 1.0f))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "window opacity must be between zero and one");
+    auto w = window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    w->window.alphaValue = opacity;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_mouse_passthrough(nk_handle h, uint32_t enabled) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    w->window.ignoresMouseEvents = enabled != 0;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_hovered(nk_handle h, uint32_t *out_hovered) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!out_hovered)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "hovered output must not be null");
+    auto w = window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    *out_hovered = w->hovered ? 1u : 0u;
     return NK_OK;
 }
 

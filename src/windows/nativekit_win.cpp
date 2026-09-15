@@ -209,7 +209,12 @@ struct WinWindowResource final : nk::core::Resource {
     WINDOWPLACEMENT placement{};
     LONG_PTR windowed_style = 0;
     int32_t min_width = 0, min_height = 0, max_width = 0, max_height = 0;
+    int32_t aspect_numerator = 0;
+    int32_t aspect_denominator = 0;
+    bool resizable = false;
+    bool decorated = true;
     bool drops_enabled = false;
+    bool mouse_passthrough = false;
     std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
     std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> pointer_buttons{};
     double pointer_x = 0.0;
@@ -1252,6 +1257,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             apply_cursor(*resource);
             return TRUE;
         }
+        if (message == WM_NCHITTEST && resource->mouse_passthrough)
+            return HTTRANSPARENT;
         if (message == WM_GETMINMAXINFO) {
             auto *info = reinterpret_cast<MINMAXINFO *>(lparam);
             if (resource->min_width)
@@ -1263,6 +1270,36 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             if (resource->max_height)
                 info->ptMaxTrackSize.y = resource->max_height;
             return 0;
+        }
+        if (message == WM_SIZING && resource->aspect_numerator && resource->aspect_denominator) {
+            auto *bounds = reinterpret_cast<RECT *>(lparam);
+            const double aspect = static_cast<double>(resource->aspect_numerator) /
+                                  static_cast<double>(resource->aspect_denominator);
+            const LONG width = bounds->right - bounds->left;
+            const LONG height = bounds->bottom - bounds->top;
+            const LONG width_for_height = static_cast<LONG>(std::lround(height * aspect));
+            const LONG height_for_width = static_cast<LONG>(std::lround(width / aspect));
+            switch (wparam) {
+            case WMSZ_LEFT:
+            case WMSZ_TOPLEFT:
+            case WMSZ_BOTTOMLEFT:
+                bounds->left = bounds->right - width_for_height;
+                break;
+            case WMSZ_RIGHT:
+            case WMSZ_TOPRIGHT:
+            case WMSZ_BOTTOMRIGHT:
+                bounds->right = bounds->left + width_for_height;
+                break;
+            case WMSZ_TOP:
+                bounds->top = bounds->bottom - height_for_width;
+                break;
+            case WMSZ_BOTTOM:
+                bounds->bottom = bounds->top + height_for_width;
+                break;
+            default:
+                break;
+            }
+            return TRUE;
         }
         if (message == WM_DROPFILES && resource->drops_enabled) {
             emit_drop_files(*resource, reinterpret_cast<HDROP>(wparam));
@@ -2564,7 +2601,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
         NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
         NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE |
-        NK_CAP_D3D11_SURFACE | NK_CAP_ACCESSIBILITY;
+        NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING | NK_CAP_D3D11_SURFACE |
+        NK_CAP_ACCESSIBILITY;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
@@ -2591,6 +2629,8 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         auto resource = std::make_shared<WinWindowResource>();
         resource->owner = options->owner;
         resource->modal = (options->flags & NK_WINDOW_MODAL) != 0;
+        resource->resizable = (options->flags & NK_WINDOW_RESIZABLE) != 0;
+        resource->decorated = (options->flags & NK_WINDOW_BORDERLESS) == 0;
         const auto title = wide(options->title);
         DWORD style = (options->flags & NK_WINDOW_BORDERLESS) ? WS_POPUP : WS_OVERLAPPEDWINDOW;
         DWORD extended_style = options->kind == NK_WINDOW_UTILITY ? WS_EX_TOOLWINDOW : 0;
@@ -2727,6 +2767,106 @@ nk_result NK_CALL nk_window_get_scale(nk_handle handle, float *out_scale) {
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
     *out_scale = static_cast<float>(query_window_dpi(resource->window)) / 96.0f;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_content_scale(nk_handle handle,
+                                              nk_window_content_scale *out_scale) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_scale || out_scale->struct_size < sizeof(*out_scale))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "content scale output is missing or too small");
+    auto resource = get_window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    const auto size = out_scale->struct_size;
+    const float scale = static_cast<float>(query_window_dpi(resource->window)) / 96.0f;
+    *out_scale = {};
+    out_scale->struct_size = size;
+    out_scale->x = scale;
+    out_scale->y = scale;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_position(nk_handle handle, int32_t *out_x, int32_t *out_y) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_x || !out_y)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "window position outputs must not be null");
+    auto resource = get_window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    RECT bounds{};
+    if (!GetWindowRect(resource->window, &bounds))
+        return fail(NK_ERROR_UNKNOWN, "could not query window position");
+    const UINT dpi = query_window_dpi(resource->window);
+    *out_x = MulDiv(bounds.left, 96, static_cast<int>(dpi));
+    *out_y = MulDiv(bounds.top, 96, static_cast<int>(dpi));
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_size(nk_handle handle, int32_t *out_width, int32_t *out_height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_width || !out_height)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "window size outputs must not be null");
+    auto resource = get_window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    RECT client{};
+    if (!GetClientRect(resource->window, &client))
+        return fail(NK_ERROR_UNKNOWN, "could not query window size");
+    const UINT dpi = query_window_dpi(resource->window);
+    *out_width = MulDiv(client.right - client.left, 96, static_cast<int>(dpi));
+    *out_height = MulDiv(client.bottom - client.top, 96, static_cast<int>(dpi));
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_framebuffer_size(nk_handle handle, int32_t *out_width,
+                                                 int32_t *out_height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_width || !out_height)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "framebuffer size outputs must not be null");
+    auto resource = get_window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    RECT client{};
+    if (!GetClientRect(resource->window, &client))
+        return fail(NK_ERROR_UNKNOWN, "could not query framebuffer size");
+    *out_width = client.right - client.left;
+    *out_height = client.bottom - client.top;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_frame_extents(nk_handle handle,
+                                              nk_window_frame_extents *out_extents) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_extents || out_extents->struct_size < sizeof(*out_extents))
+        return fail(NK_ERROR_INVALID_ARGUMENT,
+                    "window frame extents output is missing or too small");
+    auto resource = get_window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    RECT outer{};
+    RECT client{};
+    POINT client_origin{0, 0};
+    if (!GetWindowRect(resource->window, &outer) || !GetClientRect(resource->window, &client) ||
+        !ClientToScreen(resource->window, &client_origin))
+        return fail(NK_ERROR_UNKNOWN, "could not query window frame extents");
+    const int32_t left = client_origin.x - outer.left;
+    const int32_t top = client_origin.y - outer.top;
+    const int32_t right = outer.right - client_origin.x - (client.right - client.left);
+    const int32_t bottom = outer.bottom - client_origin.y - (client.bottom - client.top);
+    const UINT dpi = query_window_dpi(resource->window);
+    const auto size = out_extents->struct_size;
+    *out_extents = {};
+    out_extents->struct_size = size;
+    out_extents->left = MulDiv(left, 96, static_cast<int>(dpi));
+    out_extents->top = MulDiv(top, 96, static_cast<int>(dpi));
+    out_extents->right = MulDiv(right, 96, static_cast<int>(dpi));
+    out_extents->bottom = MulDiv(bottom, 96, static_cast<int>(dpi));
     return NK_OK;
 }
 
@@ -3192,6 +3332,116 @@ nk_result NK_CALL nk_window_set_size_limits(nk_handle h, const nk_window_size_li
     w->max_height = l->max_height;
     SetWindowPos(w->window, nullptr, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle h, int32_t numerator,
+                                              int32_t denominator) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if ((numerator == 0) != (denominator == 0) || numerator < 0 || denominator < 0)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window aspect ratio");
+    auto w = get_window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    w->aspect_numerator = numerator;
+    w->aspect_denominator = denominator;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_resizable(nk_handle h, uint32_t enabled) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = get_window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    LONG_PTR style = GetWindowLongPtrW(w->window, GWL_STYLE);
+    if (enabled)
+        style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
+    else
+        style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
+    SetWindowLongPtrW(w->window, GWL_STYLE, style);
+    if (!SetWindowPos(w->window, nullptr, 0, 0, 0, 0,
+                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER |
+                          SWP_FRAMECHANGED))
+        return fail(NK_ERROR_UNKNOWN, "could not change window resizable state");
+    w->resizable = enabled != 0;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = get_window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    constexpr LONG_PTR decoration_style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX |
+                                          WS_MAXIMIZEBOX | WS_THICKFRAME;
+    LONG_PTR style = GetWindowLongPtrW(w->window, GWL_STYLE);
+    if (enabled) {
+        style |= WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+        if (w->resizable)
+            style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
+    } else {
+        style &= ~decoration_style;
+    }
+    SetWindowLongPtrW(w->window, GWL_STYLE, style);
+    if (!SetWindowPos(w->window, nullptr, 0, 0, 0, 0,
+                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER |
+                          SWP_FRAMECHANGED))
+        return fail(NK_ERROR_UNKNOWN, "could not change window decoration state");
+    w->decorated = enabled != 0;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_floating(nk_handle h, uint32_t enabled) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = get_window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    return SetWindowPos(w->window, enabled ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+               ? NK_OK
+               : fail(NK_ERROR_UNKNOWN, "could not change window floating state");
+}
+
+nk_result NK_CALL nk_window_set_opacity(nk_handle h, float opacity) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!(opacity >= 0.0f && opacity <= 1.0f))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "window opacity must be between zero and one");
+    auto w = get_window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    const LONG_PTR extended_style = GetWindowLongPtrW(w->window, GWL_EXSTYLE);
+    if (!(extended_style & WS_EX_LAYERED))
+        SetWindowLongPtrW(w->window, GWL_EXSTYLE, extended_style | WS_EX_LAYERED);
+    return SetLayeredWindowAttributes(w->window, 0, static_cast<BYTE>(std::lround(opacity * 255.0f)),
+                                      LWA_ALPHA)
+               ? NK_OK
+               : fail(NK_ERROR_UNKNOWN, "could not change window opacity");
+}
+
+nk_result NK_CALL nk_window_set_mouse_passthrough(nk_handle h, uint32_t enabled) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto w = get_window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    w->mouse_passthrough = enabled != 0;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_get_hovered(nk_handle h, uint32_t *out_hovered) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!out_hovered)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "hovered output must not be null");
+    auto w = get_window(h);
+    if (!w)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    *out_hovered = w->pointer_tracking ? 1u : 0u;
     return NK_OK;
 }
 

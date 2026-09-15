@@ -54,9 +54,9 @@ constexpr backend_contract current_contract() {
             0};
 #elif defined(NK_PARITY_BACKEND_WINDOWS)
     return {"Windows",
-            k_desktop_common | cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_ACCESSIBILITY),
-            cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
-                cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_JOYSTICK) |
+            k_desktop_common | cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) |
+                cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_ACCESSIBILITY),
+            cap(NK_CAP_MONITOR) | cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_JOYSTICK) |
                 cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_WRAP_NATIVE_WINDOW) |
                 cap(NK_CAP_OPENGL_SURFACE) | cap(NK_CAP_OPENGL_ES_SURFACE) |
                 cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_MOBILE_HOST),
@@ -64,9 +64,9 @@ constexpr backend_contract current_contract() {
             cap(NK_CAP_WEBVIEW)};
 #elif defined(NK_PARITY_BACKEND_MACOS)
     return {"macOS",
-            k_desktop_common | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_METAL_SURFACE),
-            cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
-                cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_JOYSTICK) |
+            k_desktop_common | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_WINDOW_GEOMETRY) |
+                cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_METAL_SURFACE),
+            cap(NK_CAP_MONITOR) | cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_JOYSTICK) |
                 cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_ACCESSIBILITY) |
                 cap(NK_CAP_WRAP_NATIVE_WINDOW) | cap(NK_CAP_OPENGL_SURFACE) |
                 cap(NK_CAP_OPENGL_ES_SURFACE) | cap(NK_CAP_VULKAN_SURFACE) |
