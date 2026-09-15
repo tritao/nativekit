@@ -70,6 +70,13 @@ Call `Resource.cancelLoad(request)` to cancel a generic asynchronous resource
 load; audio clip loads are cancelled automatically when their `Clip` is
 disposed.
 
+`nativekit.resource.ResourceCache` deduplicates complete readable resource loads
+by exact URI. `load()` is synchronous, while `loadAsync()` returns a
+`ResourceCacheLoad` containing an independently owned `ResourceAsset` and its
+request ID. Asset state, result, size, and URI remain queryable after
+`ResourceCache.remove()` or `clear()`; those operations only remove future cache
+lookups and do not invalidate existing asset views.
+
 Request IDs map to one-shot typed completion callbacks.
 Callbacks receive `Success(value)`, `Cancelled`, or `Failure(result, message)`;
 dialogs use `Cancelled` when dismissed. Expected asynchronous failures are

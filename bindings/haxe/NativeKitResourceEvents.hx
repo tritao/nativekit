@@ -17,6 +17,8 @@ class NativeKitResourceEvents {
 			if(c.data.length<32) throw "NativeKit resource drop payload is truncated";
 			var h:ResourceDrop=c.data,d=NativeKitEventBytes.decodeResourceList(c.data,h.get_resources_offset());
 			ResourceDrop(c.source,h.get_x(),h.get_y(),NativeKitEventBytes.readOptionalString(c.data,h.get_text_offset(),32),d.items);
+		case EventKind.ResourceCacheReady: ResourceAssetReady(c.source, c.request);
+		case EventKind.ResourceCacheLoadFailed: ResourceAssetLoadFailed(c.source, c.request, c.result);
 		default:null;
 	}
 }

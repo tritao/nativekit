@@ -42,6 +42,17 @@ class NativeKitEventDecoderTests {
 			case Resources(kind, _, result, accepted, items): kind == EventKind.DialogResourcesComplete && result == 0 && !accepted && items.length == 0;
 			case _: false;
 		};
+		var resourceCacheEventsOk = switch [
+			NativeKitEvent.decodeContext(new NativeKitEventContext(EventKind.ResourceCacheReady,
+				handle(24), haxe.Int64.ofInt(25), 0, 0, 0, empty)),
+			NativeKitEvent.decodeContext(new NativeKitEventContext(EventKind.ResourceCacheLoadFailed,
+				handle(25), haxe.Int64.ofInt(26), NativeKit.Result.ErrorUnknown, 0, 0, empty))
+		] {
+			case [ResourceAssetReady(source, request), ResourceAssetLoadFailed(failedSource, failedRequest, result)]:
+				source.rawValue() == 24 && Std.string(request) == "25" && failedSource.rawValue() == 25 &&
+				Std.string(failedRequest) == "26" && result == NativeKit.Result.ErrorUnknown;
+			case _: false;
+		};
 		var editPayload = haxe.io.Bytes.alloc(50);
 		putU32(editPayload, 0, TextEditAction.Compose);
 		putU32(editPayload, 4, 48); putU32(editPayload, 8, 2);
@@ -169,6 +180,7 @@ class NativeKitEventDecoderTests {
 
 		if (!messageOk) throw "message completion decoding failed";
 		if (!resourcesOk) throw "resource completion decoding failed";
+		if (!resourceCacheEventsOk) throw "resource cache event decoding failed";
 		return rawOk && nonMatch && editOk && typedKeyOk && typedHatOk && typedNavigationOk && accessibilityOk && taskOk && audioOk
 			&& audioReadyOk && audioFailedOk
 			&& audioClipReadyOk && audioClipFailedOk

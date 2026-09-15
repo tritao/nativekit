@@ -238,6 +238,8 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_RESOURCE_OPENED` | mobile host | none | `nk_resource_list` |
 | `NK_EVENT_SHARE_RECEIVED` | mobile host | none | `nk_received_share` followed by its resource list and strings |
 | `NK_EVENT_RESOURCE_DROP` | mobile host or desktop window | none | `nk_resource_drop` followed by its resource list and optional text |
+| `NK_EVENT_RESOURCE_CACHE_READY` | cached resource asset | cache load ID | empty |
+| `NK_EVENT_RESOURCE_CACHE_LOAD_FAILED` | cached resource asset | cache load ID | empty; failure in `result` |
 | `NK_EVENT_HTTP_HEADERS` | HTTP request | request ID | `nk_http_response` without a buffered body |
 | `NK_EVENT_HTTP_DATA_AVAILABLE` | HTTP stream | request ID | empty; pull bytes with `nk_http_stream_read()` |
 | `NK_EVENT_HTTP_PROGRESS` | HTTP request | request ID | `nk_http_progress` |
@@ -920,6 +922,21 @@ persisted flags rather than attempting to derive a local path.
 Resource-producing Android APIs ask `ContentResolver` for the effective MIME
 type and `OpenableColumns.DISPLAY_NAME`. Providers may omit either value; the
 final URI path segment is used as a display-name fallback.
+
+The core `nk_resource_cache` deduplicates complete readable loads by exact URI.
+`nk_resource_cache_load()` reads synchronously; `nk_resource_cache_load_async()`
+joins an existing load when possible and returns a request ID for the shared
+operation. A cache entry remains available until explicitly removed or cleared,
+and asynchronously failed entries remain cached so retry requires an intentional
+remove.
+
+Each load returns an independently owned `nk_resource_asset` view. Removing or
+clearing the cache does not invalidate existing views, which retain their
+completed bytes. Asset state, result, size, URI, and byte-copy operations are
+safe from worker threads; cache mutation and asset destruction remain
+UI-thread-only. Async completion uses `NK_EVENT_RESOURCE_CACHE_READY` or
+`NK_EVENT_RESOURCE_CACHE_LOAD_FAILED`, with the asset handle in `source` and
+the underlying request ID in `request_id`.
 
 Persistable Android grants are process-independent resources with a finite
 system quota. `nk_resource_get_persisted_access()` reports the access currently

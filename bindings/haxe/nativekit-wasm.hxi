@@ -1025,6 +1025,14 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 */
 		NK_EVENT_RESOURCE_DATA_COMPLETE = 803;
 		/**
+		 * A cached URI resource became ready; source is its asset handle.
+		 */
+		NK_EVENT_RESOURCE_CACHE_READY = 804;
+		/**
+		 * A cached URI resource failed to load; source is its asset handle.
+		 */
+		NK_EVENT_RESOURCE_CACHE_LOAD_FAILED = 805;
+		/**
 		 * HTTP response headers became available.
 		 */
 		NK_EVENT_HTTP_HEADERS = 900;
@@ -2202,6 +2210,23 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		NK_POINTER_BUTTON_LAST = 7;
 	}
 	/**
+	 * Loading lifecycle for one cached URI resource asset.
+	 */
+	enum nk_resource_asset_load_state : u32 {
+		/**
+		 * The resource bytes are still loading.
+		 */
+		NK_RESOURCE_ASSET_LOADING = 0;
+		/**
+		 * The complete resource bytes are available.
+		 */
+		NK_RESOURCE_ASSET_READY = 1;
+		/**
+		 * The resource failed to load; the result query reports the failure.
+		 */
+		NK_RESOURCE_ASSET_LOAD_FAILED = 2;
+	}
+	/**
 	 * Access and persistence flags attached to a URI resource.
 	 */
 	flags nk_resource_flags : u32 {
@@ -3224,6 +3249,67 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * Returns non-zero when the active backend provides raw relative pointer motion.
 	 */
 	extern fn nk_raw_pointer_motion_supported() -> nk_bool;
+	/**
+	 * Copies complete cached bytes into a caller-owned buffer. The required size
+	 * is returned through inout_size, including when the buffer is too small.
+	 * Safe from worker threads.
+	 */
+	extern fn nk_resource_asset_copy_data(asset: nk_resource_asset, buffer: ptr<void>, inout_size: ptr<u64> @inout) -> nk_result;
+	/**
+	 * Releases one caller-owned cached resource asset view; UI-thread-only.
+	 */
+	extern fn nk_resource_asset_destroy(asset: nk_resource_asset) -> nk_result;
+	/**
+	 * Returns the loading state of a cached resource asset; safe from worker threads.
+	 */
+	extern fn nk_resource_asset_get_load_state(asset: nk_resource_asset, out_state: ptr<nk_resource_asset_load_state> @out) -> nk_result;
+	/**
+	 * Returns the load result, or NK_OK while the asset is ready or loading; safe from worker threads.
+	 */
+	extern fn nk_resource_asset_get_result(asset: nk_resource_asset, out_result: ptr<nk_result> @out) -> nk_result;
+	/**
+	 * Returns the complete cached byte count once the asset is ready; safe from worker threads.
+	 */
+	extern fn nk_resource_asset_get_size(asset: nk_resource_asset, out_size: ptr<u64> @out) -> nk_result;
+	/**
+	 * Copies the cached asset URI into a caller-owned UTF-8 buffer; safe from worker threads.
+	 */
+	extern fn nk_resource_asset_get_uri(asset: nk_resource_asset, buffer: nullable<ptr<c_char>> @out_buffer("inout_size"), inout_size: ptr<u32> @inout) -> nk_result;
+	/**
+	 * Cancels pending loads and removes every cache entry.
+	 */
+	extern fn nk_resource_cache_clear(cache: nk_resource_cache) -> nk_result;
+	/**
+	 * Creates an empty URI resource cache. Cache operations are UI-thread-only.
+	 */
+	extern fn nk_resource_cache_create(out_cache: ptr<nk_resource_cache> @out @owned) -> nk_result;
+	/**
+	 * Cancels pending loads, removes all entries, and destroys a resource cache.
+	 */
+	extern fn nk_resource_cache_destroy(cache: nk_resource_cache) -> nk_result;
+	/**
+	 * Returns an owned asset view for a URI already present in the cache.
+	 */
+	extern fn nk_resource_cache_find(cache: nk_resource_cache, uri: utf8, out_asset: ptr<nk_resource_asset> @out @owned) -> nk_result;
+	/**
+	 * Returns the number of URI entries currently retained by the cache.
+	 */
+	extern fn nk_resource_cache_get_count(cache: nk_resource_cache, out_count: ptr<u32> @out) -> nk_result;
+	/**
+	 * Loads complete readable resource bytes synchronously, or returns an existing
+	 * cached entry. The returned asset is an independent owned view; destroying it
+	 * does not remove the cache entry.
+	 */
+	extern fn nk_resource_cache_load(cache: nk_resource_cache, resource: ptr<const<nk_resource>>, out_asset: ptr<nk_resource_asset> @out @owned) -> nk_result;
+	/**
+	 * Starts loading complete readable resource bytes, or joins an existing cache
+	 * load. A ready or failed entry returns NK_INVALID_REQUEST_ID.
+	 */
+	extern fn nk_resource_cache_load_async(cache: nk_resource_cache, resource: ptr<const<nk_resource>>, out_asset: ptr<nk_resource_asset> @out @owned, out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Removes one URI entry; existing asset views retain their data.
+	 */
+	extern fn nk_resource_cache_remove(cache: nk_resource_cache, uri: utf8) -> nk_result;
 	/**
 	 * Closes a resource stream and invalidates its handle.
 	 */
@@ -6245,6 +6331,8 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * Identifier for one asynchronous operation; it is not a resource handle.
 	 */
 	type nk_request_id = u64;
+	handle nk_resource_asset : u32 @destroy("nk_resource_asset_destroy");
+	handle nk_resource_cache : u32 @destroy("nk_resource_cache_destroy");
 	handle nk_resource_stream : u32 @destroy("nk_resource_close");
 	/**
 	 * A generation-checked handle for one enumerated physical sensor.

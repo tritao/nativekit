@@ -18,6 +18,8 @@ enum class ResourceType : std::uint8_t {
     surface,
     cursor,
     monitor,
+    resource_cache,
+    resource_asset,
     joystick,
     sensor,
     file_watch,

@@ -4,6 +4,9 @@
 	"enumValuePrefixes": [
 		"NK_NOTIFICATION_"
 	],
+	"enumNames": {
+		"nk_resource_asset_load_state": "ResourceAssetLoadState"
+	},
 	"typeNames": {
 		"nk_window": "WindowHandle",
 		"nk_surface": "SurfaceHandle",
@@ -15,6 +18,8 @@
 		"nk_mobile_host": "MobileHostHandle",
 		"nk_resource_stream": "ResourceStreamHandle",
 		"nk_task": "TaskHandle",
+		"nk_resource_cache": "ResourceCacheHandle",
+		"nk_resource_asset": "ResourceAssetHandle",
 		"nk_resource": "ResourceValue"
 	},
 	"resultPolicies": {

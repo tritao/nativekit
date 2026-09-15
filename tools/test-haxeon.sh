@@ -69,6 +69,8 @@ fi
         "$repo_dir/bindings/haxe/NativeKitVulkanExtensions.hx" \
         "$repo_dir/bindings/haxe/NativeKitServiceEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitResourceEvents.hx" \
+        "$repo_dir/bindings/haxe/nativekit/resource/ResourceAsset.hx" \
+        "$repo_dir/bindings/haxe/nativekit/resource/ResourceCache.hx" \
         "$repo_dir/bindings/haxe/NativeKitRequestOutcome.hx" \
         "$repo_dir/bindings/haxe/NativeFuture.hx" \
         "$repo_dir/bindings/haxe/NativePromise.hx" \

@@ -125,6 +125,8 @@ typedef uint32_t nk_resource_stream NK_HANDLE NK_HANDLE_DESTROY(nk_resource_clos
 typedef uint32_t nk_file_watch NK_HANDLE NK_HANDLE_DESTROY(nk_file_watch_destroy);
 /** Generation-checked handle for clipboard change observation. */
 typedef uint32_t nk_clipboard_watch NK_HANDLE NK_HANDLE_DESTROY(nk_clipboard_watch_stop);
+typedef uint32_t nk_resource_cache NK_HANDLE NK_HANDLE_DESTROY(nk_resource_cache_destroy);
+typedef uint32_t nk_resource_asset NK_HANDLE NK_HANDLE_DESTROY(nk_resource_asset_destroy);
 
 /** Opaque generation-checked identifier for a live NativeKit resource. */
 typedef uint32_t nk_handle NK_HANDLE;
@@ -318,6 +320,10 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_RESOURCE_DROP = 802,
     /** An asynchronous URI resource load completed with raw byte data. */
     NK_EVENT_RESOURCE_DATA_COMPLETE = 803,
+    /** A cached URI resource became ready; source is its asset handle. */
+    NK_EVENT_RESOURCE_CACHE_READY = 804,
+    /** A cached URI resource failed to load; source is its asset handle. */
+    NK_EVENT_RESOURCE_CACHE_LOAD_FAILED = 805,
     /** HTTP response headers became available. */
     NK_EVENT_HTTP_HEADERS = 900,
     /** A streaming HTTP response has data available to read. */

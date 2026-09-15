@@ -258,6 +258,18 @@ int main() {
         assert(audio_lifecycle_queue.push(std::move(lifecycle_event)) == NK_OK);
     }
 
+    for (const auto kind : {NK_EVENT_RESOURCE_CACHE_READY,
+                            NK_EVENT_RESOURCE_CACHE_LOAD_FAILED}) {
+        nk::core::EventQueue resource_cache_queue(1);
+        nk::core::QueuedEvent resource_cache_occupied;
+        resource_cache_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
+        assert(resource_cache_queue.push(std::move(resource_cache_occupied)) == NK_OK);
+        nk::core::QueuedEvent resource_cache_event;
+        resource_cache_event.kind = kind;
+        resource_cache_event.request_id = 44;
+        assert(resource_cache_queue.push(std::move(resource_cache_event)) == NK_OK);
+    }
+
     nk_event event{};
 
     nk::core::EventQueue readiness_queue(1);

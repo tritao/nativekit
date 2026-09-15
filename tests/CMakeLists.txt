@@ -19,6 +19,12 @@ if(MSVC)
 endif()
 add_test(NAME core COMMAND nativekit_core_tests)
 
+add_executable(nativekit_resource_cache_tests unit/resource_cache_tests.cpp)
+target_compile_features(nativekit_resource_cache_tests PRIVATE cxx_std_17)
+target_link_libraries(nativekit_resource_cache_tests PRIVATE NativeKit::nativekit)
+add_test(NAME resource_cache COMMAND nativekit_resource_cache_tests)
+set_tests_properties(resource_cache PROPERTIES SKIP_RETURN_CODE 77)
+
 add_executable(nativekit_time_tests unit/time_tests.cpp)
 target_compile_features(nativekit_time_tests PRIVATE cxx_std_17)
 target_link_libraries(nativekit_time_tests PRIVATE NativeKit::nativekit)

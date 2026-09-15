@@ -24,6 +24,7 @@ import NativeKitRequestOutcome;
 import NativeFuture;
 import NativePromise;
 import NativeKitEvents.NativeKitEventSubscription;
+import nativekit.resource.ResourceCache;
 
 class Smoke {
 	static function main():Int {
@@ -39,6 +40,10 @@ class Smoke {
 		initOptions.set_api_version(NativeKitConstants.NK_API_VERSION);
 		initOptions.set_event_queue_capacity(32);
 		var runtime = NativeKitRuntime.start(initOptions);
+		var resourceCache = ResourceCache.create();
+		var resourceCacheOk = resourceCache.count() == 0;
+		resourceCache.clear();
+		resourceCache.dispose();
 		if (runtime.isDisposed())
 			return 2;
 		var resultErrorOk = false;
@@ -76,10 +81,12 @@ class Smoke {
 				};
 				completed = true;
 			});
-			requestSubscription = events.listen(function(value) switch value {
-				case ClipboardText(id, _, _) if (Std.string(id) == Std.string(request)):
-					requestSeenByListener = completed;
-				case _:
+			requestSubscription = events.listen(function(value) {
+				switch value {
+					case ClipboardText(id, _, _) if (Std.string(id) == Std.string(request)):
+						requestSeenByListener = completed;
+					case _:
+				}
 			});
 			var duplicateRejected = false;
 			try requests.track(request, function(_) {}) catch (_:Dynamic) duplicateRejected = true;
@@ -180,6 +187,8 @@ class Smoke {
 			return 22;
 		if (!payloadOk)
 			return 7;
+		if (!resourceCacheOk)
+			return 22;
 		if (!NativeKitEventDecoderTests.run())
 			return 8;
 		return 42;

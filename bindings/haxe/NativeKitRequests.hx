@@ -177,6 +177,8 @@ class NativeKitRequests {
 			case NotificationActivated(id, _): Std.string(id);
 			case NotificationFailed(id, _): Std.string(id);
 			case Resources(_, id, _, _, _): Std.string(id);
+			case ResourceAssetReady(_, id): Std.string(id);
+			case ResourceAssetLoadFailed(_, id, _): Std.string(id);
 			case AudioClipReady(_, id): Std.string(id);
 			case AudioClipLoadFailed(_, id, _): Std.string(id);
 			case _: null;
