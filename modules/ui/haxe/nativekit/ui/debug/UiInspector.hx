@@ -76,22 +76,20 @@ class UiInspector {
 	static function interactionOwner(root:RenderNode, id:Null<WidgetId>):Null<WidgetId> {
 		if (id == null)
 			return null;
-		var owner = findInteractionOwner(root, id, null, null);
-		return owner == null ? id : owner;
-	}
-
-	static function findInteractionOwner(node:RenderNode, id:WidgetId,
-			semantic:Null<WidgetId>, focusable:Null<WidgetId>):Null<WidgetId> {
-		var nextSemantic = node.semantics == null ? semantic : node.id;
-		var nextFocusable = node.focusable ? node.id : focusable;
-		if (node.id.equals(id))
-			return nextFocusable == null ? nextSemantic : nextFocusable;
-		for (child in node.children) {
-			var owner = findInteractionOwner(child, id, nextSemantic, nextFocusable);
-			if (owner != null)
-				return owner;
+		var node = root.find(id);
+		if (node == null)
+			return id;
+		var semantic:Null<WidgetId> = null;
+		var current:Null<RenderNode> = node;
+		while (current != null) {
+			var present:RenderNode = cast current;
+			if (present.semantics != null && semantic == null)
+				semantic = present.id;
+			if (present.focusable)
+				return present.id;
+			current = present.parent;
 		}
-		return null;
+		return semantic == null ? id : semantic;
 	}
 
 	static function visualName(kind:Int):String {

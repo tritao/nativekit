@@ -2476,8 +2476,7 @@ BOOL CALLBACK enumerate_monitors(HMONITOR monitor, HDC, LPRECT, LPARAM data) {
 
 std::vector<HMONITOR> connected_monitors() {
     std::vector<HMONITOR> result;
-    EnumDisplayMonitors(nullptr, nullptr, enumerate_monitors,
-                        reinterpret_cast<LPARAM>(&result));
+    EnumDisplayMonitors(nullptr, nullptr, enumerate_monitors, reinterpret_cast<LPARAM>(&result));
     return result;
 }
 
@@ -2537,8 +2536,22 @@ nk_result refresh_monitors() {
 }
 
 UINT monitor_dpi() {
-    const UINT dpi = GetDpiForSystem();
-    return dpi ? dpi : 96;
+    using Function = UINT(WINAPI *)();
+    const FARPROC address = GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForSystem");
+    Function function = nullptr;
+    static_assert(sizeof(function) == sizeof(address));
+    std::memcpy(&function, &address, sizeof(function));
+    if (function) {
+        const UINT dpi = function();
+        if (dpi)
+            return dpi;
+    }
+    HDC device = GetDC(nullptr);
+    if (!device)
+        return 96;
+    const int dpi = GetDeviceCaps(device, LOGPIXELSX);
+    ReleaseDC(nullptr, device);
+    return dpi > 0 ? static_cast<UINT>(dpi) : 96;
 }
 
 bool monitor_info(HMONITOR native, MONITORINFOEXW &out_info) {
@@ -3457,9 +3470,9 @@ nk_result NK_CALL nk_monitor_list(nk_handle *monitors, uint32_t *inout_count) {
             const uint32_t capacity = *inout_count;
             *inout_count = required;
             if (!monitors || capacity < required)
-                return required ? fail(NK_ERROR_BUFFER_TOO_SMALL,
-                                       "monitor handle buffer is too small")
-                                 : NK_OK;
+                return required
+                           ? fail(NK_ERROR_BUFFER_TOO_SMALL, "monitor handle buffer is too small")
+                           : NK_OK;
             uint32_t index = 0;
             for (const auto native : connected_monitors())
                 monitors[index++] = monitor_handles.at(native);
@@ -3514,16 +3527,16 @@ nk_result NK_CALL nk_monitor_get_geometry(nk_handle handle, nk_monitor_geometry 
     out_geometry->struct_size = size;
     out_geometry->x = MulDiv(info.rcMonitor.left, 96, static_cast<int>(dpi));
     out_geometry->y = MulDiv(info.rcMonitor.top, 96, static_cast<int>(dpi));
-    out_geometry->width = MulDiv(info.rcMonitor.right - info.rcMonitor.left, 96,
-                                 static_cast<int>(dpi));
-    out_geometry->height = MulDiv(info.rcMonitor.bottom - info.rcMonitor.top, 96,
-                                  static_cast<int>(dpi));
+    out_geometry->width =
+        MulDiv(info.rcMonitor.right - info.rcMonitor.left, 96, static_cast<int>(dpi));
+    out_geometry->height =
+        MulDiv(info.rcMonitor.bottom - info.rcMonitor.top, 96, static_cast<int>(dpi));
     out_geometry->work_x = MulDiv(info.rcWork.left, 96, static_cast<int>(dpi));
     out_geometry->work_y = MulDiv(info.rcWork.top, 96, static_cast<int>(dpi));
-    out_geometry->work_width = MulDiv(info.rcWork.right - info.rcWork.left, 96,
-                                      static_cast<int>(dpi));
-    out_geometry->work_height = MulDiv(info.rcWork.bottom - info.rcWork.top, 96,
-                                       static_cast<int>(dpi));
+    out_geometry->work_width =
+        MulDiv(info.rcWork.right - info.rcWork.left, 96, static_cast<int>(dpi));
+    out_geometry->work_height =
+        MulDiv(info.rcWork.bottom - info.rcWork.top, 96, static_cast<int>(dpi));
     HDC device = CreateDCW(info.szDevice, info.szDevice, nullptr, nullptr);
     if (device) {
         out_geometry->width_mm = GetDeviceCaps(device, HORZSIZE);
@@ -3615,8 +3628,7 @@ nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle window_handle,
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle h, int32_t numerator,
-                                              int32_t denominator) {
+nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle h, int32_t numerator, int32_t denominator) {
     if (const auto r = enter_ui(); r != NK_OK)
         return r;
     if ((numerator == 0) != (denominator == 0) || numerator < 0 || denominator < 0)
@@ -3655,8 +3667,8 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
     auto w = get_window(h);
     if (!w)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    constexpr LONG_PTR decoration_style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX |
-                                          WS_MAXIMIZEBOX | WS_THICKFRAME;
+    constexpr LONG_PTR decoration_style =
+        WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME;
     LONG_PTR style = GetWindowLongPtrW(w->window, GWL_STYLE);
     if (enabled) {
         style |= WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
@@ -3697,8 +3709,8 @@ nk_result NK_CALL nk_window_set_opacity(nk_handle h, float opacity) {
     const LONG_PTR extended_style = GetWindowLongPtrW(w->window, GWL_EXSTYLE);
     if (!(extended_style & WS_EX_LAYERED))
         SetWindowLongPtrW(w->window, GWL_EXSTYLE, extended_style | WS_EX_LAYERED);
-    return SetLayeredWindowAttributes(w->window, 0, static_cast<BYTE>(std::lround(opacity * 255.0f)),
-                                      LWA_ALPHA)
+    return SetLayeredWindowAttributes(w->window, 0,
+                                      static_cast<BYTE>(std::lround(opacity * 255.0f)), LWA_ALPHA)
                ? NK_OK
                : fail(NK_ERROR_UNKNOWN, "could not change window opacity");
 }

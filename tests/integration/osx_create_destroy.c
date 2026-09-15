@@ -110,7 +110,8 @@ int main(void) {
     assert(window_width == 800 && window_height == 600);
     int32_t framebuffer_width = 0;
     int32_t framebuffer_height = 0;
-    assert(nk_window_get_framebuffer_size(window, &framebuffer_width, &framebuffer_height) == NK_OK);
+    assert(nk_window_get_framebuffer_size(window, &framebuffer_width, &framebuffer_height) ==
+           NK_OK);
     assert(framebuffer_width >= window_width && framebuffer_height >= window_height);
     nk_window_frame_extents frame_extents = {0};
     frame_extents.struct_size = sizeof(frame_extents);
@@ -144,7 +145,8 @@ int main(void) {
     assert(nk_monitor_get_primary(&primary_monitor) == NK_OK);
     assert(primary_monitor != NK_INVALID_HANDLE);
     uint32_t monitor_name_size = 0;
-    assert(nk_monitor_get_name(primary_monitor, NULL, &monitor_name_size) == NK_ERROR_BUFFER_TOO_SMALL);
+    assert(nk_monitor_get_name(primary_monitor, NULL, &monitor_name_size) ==
+           NK_ERROR_BUFFER_TOO_SMALL);
     assert(monitor_name_size > 1);
     char monitor_name[256] = {0};
     uint32_t monitor_name_capacity = sizeof(monitor_name);

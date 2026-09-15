@@ -30,12 +30,7 @@ static HKL activate_japanese_layout(void) {
         // The Microsoft Japanese IME is normally exposed as E0010411.  Try
         // it before the plain Japanese keyboard layout, which cannot produce
         // composition events even when the Japanese language is installed.
-        L"E0010411",
-        L"E0200411",
-        L"0411:00000411",
-        L"0411",
-        L"00000411"
-    };
+        L"E0010411", L"E0200411", L"0411:00000411", L"0411", L"00000411"};
     for (size_t index = 0; index < sizeof(layout_ids) / sizeof(layout_ids[0]); ++index) {
         HKL layout = LoadKeyboardLayoutW(layout_ids[index], KLF_ACTIVATE | KLF_SUBSTITUTE_OK);
         if (layout != NULL) {
@@ -47,12 +42,12 @@ static HKL activate_japanese_layout(void) {
 }
 
 static int activate_japanese_ime_profile(void) {
-    static const GUID clsid_input_processor_profiles =
-        {0x33c53a50, 0xf456, 0x4884, {0xb0, 0x49, 0x85, 0xfd, 0x64, 0x3e, 0xcf, 0xed}};
-    static const GUID iid_input_processor_profiles =
-        {0x1f02b6c5, 0x7842, 0x4ee6, {0x8a, 0x0b, 0x9a, 0x24, 0x18, 0x3a, 0x95, 0xca}};
-    static const GUID iid_input_processor_profile_mgr =
-        {0x71c6e74c, 0x0f28, 0x11d8, {0xa8, 0x2a, 0x00, 0x06, 0x5b, 0x84, 0x43, 0x5c}};
+    static const GUID clsid_input_processor_profiles = {
+        0x33c53a50, 0xf456, 0x4884, {0xb0, 0x49, 0x85, 0xfd, 0x64, 0x3e, 0xcf, 0xed}};
+    static const GUID iid_input_processor_profiles = {
+        0x1f02b6c5, 0x7842, 0x4ee6, {0x8a, 0x0b, 0x9a, 0x24, 0x18, 0x3a, 0x95, 0xca}};
+    static const GUID iid_input_processor_profile_mgr = {
+        0x71c6e74c, 0x0f28, 0x11d8, {0xa8, 0x2a, 0x00, 0x06, 0x5b, 0x84, 0x43, 0x5c}};
     GUID clsid = {0};
     GUID profile = {0};
     ITfInputProcessorProfiles *profiles = NULL;
@@ -65,14 +60,13 @@ static int activate_japanese_ime_profile(void) {
             CoUninitialize();
         return 0;
     }
-    HRESULT created = CoCreateInstance(&clsid_input_processor_profiles, NULL,
-                                       CLSCTX_INPROC_SERVER, &iid_input_processor_profiles,
-                                       (void **)&profiles);
+    HRESULT created = CoCreateInstance(&clsid_input_processor_profiles, NULL, CLSCTX_INPROC_SERVER,
+                                       &iid_input_processor_profiles, (void **)&profiles);
     int activated = 0;
     if (SUCCEEDED(created)) {
         const LANGID japanese = MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN);
-        HRESULT result = profiles->lpVtbl->ActivateLanguageProfile(
-            profiles, &clsid, japanese, &profile);
+        HRESULT result =
+            profiles->lpVtbl->ActivateLanguageProfile(profiles, &clsid, japanese, &profile);
         activated = SUCCEEDED(result);
         ITfInputProcessorProfileMgr *profile_mgr = NULL;
         HRESULT queried = profiles->lpVtbl->QueryInterface(
@@ -88,10 +82,10 @@ static int activate_japanese_ime_profile(void) {
         GUID active_profile = {0};
         HRESULT active_result = profiles->lpVtbl->GetActiveLanguageProfile(
             profiles, &clsid, &active_language, &active_profile);
-        fprintf(stderr, "win_text_input: profile_result=0x%08lx process_result=0x%08lx "
-                        "active_result=0x%08lx active_language=%04x active_profile=%d\n",
-                (unsigned long)result, (unsigned long)process_result,
-                (unsigned long)active_result,
+        fprintf(stderr,
+                "win_text_input: profile_result=0x%08lx process_result=0x%08lx "
+                "active_result=0x%08lx active_language=%04x active_profile=%d\n",
+                (unsigned long)result, (unsigned long)process_result, (unsigned long)active_result,
                 (unsigned int)active_language, IsEqualGUID(&active_profile, &profile) ? 1 : 0);
         profiles->lpVtbl->Release(profiles);
     }
@@ -118,7 +112,9 @@ static int wait_for_edit(nk_window window, nk_text_edit_action action, nk_event 
             nk_text_edit_event edit = {0};
             assert(event.data_size >= sizeof(edit));
             memcpy(&edit, event.data, sizeof(edit));
-            fprintf(stderr, "win_text_input: edit_action=%u replace=%u..%u selection=%u..%u composition=%u..%u\n",
+            fprintf(stderr,
+                    "win_text_input: edit_action=%u replace=%u..%u selection=%u..%u "
+                    "composition=%u..%u\n",
                     (unsigned int)edit.action, (unsigned int)edit.replace_start,
                     (unsigned int)edit.replace_end, (unsigned int)edit.selection_start,
                     (unsigned int)edit.selection_end, (unsigned int)edit.composition_start,
@@ -141,8 +137,8 @@ static int send_virtual_key(WORD key) {
     inputs[1] = inputs[0];
     inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
     const UINT sent = SendInput(2, inputs, sizeof(inputs[0]));
-    fprintf(stderr, "win_text_input: key=%u sent=%u foreground=%p\n",
-            (unsigned int)key, (unsigned int)sent, (void *)GetForegroundWindow());
+    fprintf(stderr, "win_text_input: key=%u sent=%u foreground=%p\n", (unsigned int)key,
+            (unsigned int)sent, (void *)GetForegroundWindow());
     return sent == 2;
 }
 
@@ -162,10 +158,8 @@ static int verify_native_composition(const nk_event *event, nk_text_position sta
     uint32_t event_length = 0;
     return edit.action == NK_TEXT_EDIT_COMPOSE && edit.replace_start == start &&
            edit.replace_end == start && edit.composition_start == start &&
-           edit.composition_end > start &&
-           edit.selection_start == edit.selection_end &&
-           nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK &&
-           event_length != 0;
+           edit.composition_end > start && edit.selection_start == edit.selection_end &&
+           nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK && event_length != 0;
 }
 
 static int verify_native_commit(const nk_event *event) {
@@ -178,8 +172,7 @@ static int verify_native_commit(const nk_event *event) {
            edit.selection_start > edit.replace_start &&
            edit.composition_start == NK_TEXT_POSITION_NONE &&
            edit.composition_end == NK_TEXT_POSITION_NONE &&
-           nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK &&
-           event_length != 0;
+           nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK && event_length != 0;
 }
 
 static int verify_native_finish(const nk_event *event) {
@@ -191,8 +184,7 @@ static int verify_native_finish(const nk_event *event) {
            edit.selection_start == edit.selection_end &&
            edit.composition_start == NK_TEXT_POSITION_NONE &&
            edit.composition_end == NK_TEXT_POSITION_NONE &&
-           nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK &&
-           event_length == 0;
+           nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK && event_length == 0;
 }
 
 static int verify_direct_character(const nk_event *event) {
@@ -200,8 +192,7 @@ static int verify_direct_character(const nk_event *event) {
     memcpy(&edit, event->data, sizeof(edit));
     const char *event_text = NULL;
     uint32_t event_length = 0;
-    return edit.action == NK_TEXT_EDIT_COMMIT &&
-           edit.selection_start == edit.selection_end &&
+    return edit.action == NK_TEXT_EDIT_COMMIT && edit.selection_start == edit.selection_end &&
            edit.composition_start == NK_TEXT_POSITION_NONE &&
            edit.composition_end == NK_TEXT_POSITION_NONE &&
            nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK &&
@@ -233,8 +224,8 @@ int main(void) {
     HWND hwnd = (HWND)native.window;
     assert(hwnd != NULL);
     focus_window(hwnd);
-    fprintf(stderr, "win_text_input: hwnd=%p foreground=%p focus=%p\n",
-            (void *)hwnd, (void *)GetForegroundWindow(), (void *)GetFocus());
+    fprintf(stderr, "win_text_input: hwnd=%p foreground=%p focus=%p\n", (void *)hwnd,
+            (void *)GetForegroundWindow(), (void *)GetFocus());
     // Prefer the installed Japanese Microsoft IME when this runner has it.
     // Keep the default layout as a fallback so ordinary Windows runners still
     // validate caret positioning and committed WM_IME_CHAR behavior.
@@ -247,8 +238,8 @@ int main(void) {
         GetKeyboardLayoutNameW(active_layout);
     if (ime_layout != NULL)
         ImmGetDescriptionW(ime_layout, ime_name, MAX_PATH);
-    fprintf(stderr, "win_text_input: layout=%p active=%ls ime=%ls profile=%d\n",
-            (void *)ime_layout, active_layout, ime_name, ime_profile);
+    fprintf(stderr, "win_text_input: layout=%p active=%ls ime=%ls profile=%d\n", (void *)ime_layout,
+            active_layout, ime_name, ime_profile);
 
     float scale = 0.0f;
     assert(nk_window_get_scale(window, &scale) == NK_OK);
@@ -279,8 +270,7 @@ int main(void) {
         return 77;
     }
     COMPOSITIONFORM composition = {0};
-    if (!ImmGetCompositionWindow(context, &composition) ||
-        composition.dwStyle != CFS_POINT ||
+    if (!ImmGetCompositionWindow(context, &composition) || composition.dwStyle != CFS_POINT ||
         composition.ptCurrentPos.x != (LONG)lroundf(state.cursor_x * scale) ||
         composition.ptCurrentPos.y != (LONG)lroundf(state.cursor_y * scale))
         return skip_test(window, hwnd, context);
@@ -300,14 +290,15 @@ int main(void) {
 
     if (!ImmSetOpenStatus(context, TRUE))
         return skip_test(window, hwnd, context);
-    const BOOL conversion_set = ImmSetConversionStatus(
-        context, IME_CMODE_NATIVE | IME_CMODE_ROMAN, IME_SMODE_NONE);
+    const BOOL conversion_set =
+        ImmSetConversionStatus(context, IME_CMODE_NATIVE | IME_CMODE_ROMAN, IME_SMODE_NONE);
     DWORD conversion = 0;
     DWORD sentence = 0;
     const BOOL conversion_read = ImmGetConversionStatus(context, &conversion, &sentence);
-    fprintf(stderr, "win_text_input: conversion_set=%d open=%d read=%d mode=0x%08lx sentence=0x%08lx\n",
-            conversion_set ? 1 : 0, ImmGetOpenStatus(context) ? 1 : 0,
-            conversion_read ? 1 : 0, (unsigned long)conversion, (unsigned long)sentence);
+    fprintf(stderr,
+            "win_text_input: conversion_set=%d open=%d read=%d mode=0x%08lx sentence=0x%08lx\n",
+            conversion_set ? 1 : 0, ImmGetOpenStatus(context) ? 1 : 0, conversion_read ? 1 : 0,
+            (unsigned long)conversion, (unsigned long)sentence);
     int composition_supported = 0;
     if (ime_profile && conversion_set && send_ime_roman("KANJI")) {
         nk_event compose = {0};

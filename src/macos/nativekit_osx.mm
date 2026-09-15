@@ -10,6 +10,7 @@
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
+#include "nativekit_monitor.h"
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
@@ -2347,9 +2348,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_WEBVIEW |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO | NK_CAP_INPUT |
-           NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
-           NK_CAP_WINDOW_STYLING | NK_CAP_METAL_SURFACE | NK_CAP_MONITOR |
-           NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK;
+           NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
+           NK_CAP_METAL_SURFACE | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -3049,9 +3049,9 @@ nk_result NK_CALL nk_monitor_list(nk_handle *monitors, uint32_t *inout_count) {
             const uint32_t capacity = *inout_count;
             *inout_count = required;
             if (!monitors || capacity < required)
-                return required ? fail(NK_ERROR_BUFFER_TOO_SMALL,
-                                       "monitor handle buffer is too small")
-                                 : NK_OK;
+                return required
+                           ? fail(NK_ERROR_BUFFER_TOO_SMALL, "monitor handle buffer is too small")
+                           : NK_OK;
             uint32_t index = 0;
             for (NSScreen *screen in NSScreen.screens) {
                 const auto display = display_id(screen);
@@ -3157,8 +3157,8 @@ nk_result NK_CALL nk_monitor_get_modes(nk_handle handle, nk_video_mode *modes,
     const CFIndex count = CFArrayGetCount(native_modes);
     available.reserve(static_cast<std::size_t>(count));
     for (CFIndex index = 0; index < count; ++index) {
-        auto mode = static_cast<CGDisplayModeRef>(const_cast<void *>(
-            CFArrayGetValueAtIndex(native_modes, index)));
+        auto mode = static_cast<CGDisplayModeRef>(
+            const_cast<void *>(CFArrayGetValueAtIndex(native_modes, index)));
         if (mode)
             available.push_back(make_video_mode(mode));
     }
@@ -3195,8 +3195,7 @@ nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle window_handle,
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle h, int32_t numerator,
-                                              int32_t denominator) {
+nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle h, int32_t numerator, int32_t denominator) {
     if (const auto r = enter_ui(); r != NK_OK)
         return r;
     if ((numerator == 0) != (denominator == 0) || numerator < 0 || denominator < 0)
@@ -3204,8 +3203,7 @@ nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle h, int32_t numerator,
     auto w = window(h);
     if (!w)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    [w->window setContentAspectRatio:
-                    (numerator ? NSMakeSize(numerator, denominator) : NSZeroSize)];
+    [w->window setContentAspectRatio:(numerator ? NSMakeSize(numerator, denominator) : NSZeroSize)];
     return NK_OK;
 }
 
@@ -3230,9 +3228,8 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
     auto w = window(h);
     if (!w)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    constexpr NSWindowStyleMask decorations = NSWindowStyleMaskTitled |
-                                               NSWindowStyleMaskClosable |
-                                               NSWindowStyleMaskMiniaturizable;
+    constexpr NSWindowStyleMask decorations =
+        NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable;
     NSWindowStyleMask style = w->window.styleMask;
     if (enabled)
         style |= decorations;

@@ -72,9 +72,9 @@ float trigger_value(BYTE value) {
 }
 
 std::array<float, NK_GAMEPAD_AXIS_COUNT> axes_from(const XINPUT_GAMEPAD &pad) {
-    return {stick_value(pad.sThumbLX), stick_value(pad.sThumbLY), stick_value(pad.sThumbRX),
-            stick_value(pad.sThumbRY), trigger_value(pad.bLeftTrigger),
-            trigger_value(pad.bRightTrigger)};
+    return {stick_value(pad.sThumbLX),       stick_value(pad.sThumbLY),
+            stick_value(pad.sThumbRX),       stick_value(pad.sThumbRY),
+            trigger_value(pad.bLeftTrigger), trigger_value(pad.bRightTrigger)};
 }
 
 std::array<std::uint8_t, 10> buttons_from(const XINPUT_GAMEPAD &pad) {
@@ -139,8 +139,7 @@ void update(WinJoystick &device, const XINPUT_STATE &state) {
     }
     if (device.hats[0] != hats[0]) {
         device.hats[0] = hats[0];
-        emit_input(NK_EVENT_JOYSTICK_HAT, device.handle,
-                   nk_joystick_hat_event{0, hats[0]});
+        emit_input(NK_EVENT_JOYSTICK_HAT, device.handle, nk_joystick_hat_event{0, hats[0]});
     }
     device.gamepad_buttons = gamepad_buttons;
 }
@@ -296,8 +295,7 @@ nk_result NK_CALL nk_joystick_get_name(nk_handle handle, char *buffer, uint32_t 
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         const auto device = lookup(handle);
-        return device ? copy_string(device->name, buffer, inout_size)
-                      : NK_ERROR_INVALID_HANDLE;
+        return device ? copy_string(device->name, buffer, inout_size) : NK_ERROR_INVALID_HANDLE;
     });
 }
 
@@ -306,8 +304,7 @@ nk_result NK_CALL nk_joystick_get_guid(nk_handle handle, char *buffer, uint32_t 
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         const auto device = lookup(handle);
-        return device ? copy_string(device->guid, buffer, inout_size)
-                      : NK_ERROR_INVALID_HANDLE;
+        return device ? copy_string(device->guid, buffer, inout_size) : NK_ERROR_INVALID_HANDLE;
     });
 }
 

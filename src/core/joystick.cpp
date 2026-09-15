@@ -2,7 +2,7 @@
 
 #include "core/error.hpp"
 
-#if !defined(NK_BACKEND_GTK) && !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_WINDOWS) && \
+#if !defined(NK_BACKEND_GTK) && !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_WINDOWS) &&    \
     !defined(NK_BACKEND_MACOS)
 namespace {
 nk_result unsupported() {
