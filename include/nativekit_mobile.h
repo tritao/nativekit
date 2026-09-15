@@ -29,7 +29,7 @@ typedef uint32_t nk_mobile_host_event_kind;
 enum NK_ENUM(nk_mobile_host_kind) {
     /** Android android.view.ViewGroup; requires Android JNI values. */
     NK_MOBILE_HOST_ANDROID_VIEW_GROUP = 1,
-    /** iOS UIView container; reserved for the UIKit backend. */
+    /** iOS UIView container; requires a caller-owned UIView*. */
     NK_MOBILE_HOST_UIKIT_VIEW = 2
 };
 

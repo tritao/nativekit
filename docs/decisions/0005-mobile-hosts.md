@@ -14,5 +14,5 @@ from desktop window state.
 
 Platform objects cross the C ABI only during attachment. Android supplies a
 `JNIEnv*` and `ViewGroup` object; the backend immediately creates a JNI global
-reference. Future UIKit support will use a borrowed `UIView*` under the same
-ownership contract.
+reference. iOS supplies a borrowed `UIView*`; the UIKit backend retains it under
+the same ownership contract and observes its geometry until the host is destroyed.

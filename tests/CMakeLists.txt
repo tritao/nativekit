@@ -120,6 +120,12 @@ if(MINGW)
     endforeach()
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    # These binaries are compile/link probes for the iOS SDK. Running them
+    # requires an application host and a simulator or physical device.
+    set_tests_properties(c_abi core time wasm_host_allocator PROPERTIES DISABLED TRUE)
+endif()
+
 if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     set(sanitized_test_targets nativekit_c_abi nativekit_core_tests nativekit_time_tests)
     if(TARGET nativekit_gtk_integration)

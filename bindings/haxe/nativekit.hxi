@@ -2678,7 +2678,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * The requested API determines which platform backends are available.
 	 * On NK_OK, writes the new surface handle to `out_surface`.
 	 */
-	extern fn nk_surface_create(window: nk_window, options: ptr<const<nk_surface_options>>, out_surface: ptr<nk_surface> @out @owned) -> nk_result;
+	extern fn nk_surface_create(parent: nk_handle, options: ptr<const<nk_surface_options>>, out_surface: ptr<nk_surface> @out @owned) -> nk_result;
 	/**
 	 * Destroys a graphics surface; its handle becomes invalid.
 	 */
