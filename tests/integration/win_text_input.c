@@ -118,6 +118,11 @@ static int wait_for_edit(nk_window window, nk_text_edit_action action, nk_event 
             nk_text_edit_event edit = {0};
             assert(event.data_size >= sizeof(edit));
             memcpy(&edit, event.data, sizeof(edit));
+            fprintf(stderr, "win_text_input: edit_action=%u replace=%u..%u selection=%u..%u composition=%u..%u\n",
+                    (unsigned int)edit.action, (unsigned int)edit.replace_start,
+                    (unsigned int)edit.replace_end, (unsigned int)edit.selection_start,
+                    (unsigned int)edit.selection_end, (unsigned int)edit.composition_start,
+                    (unsigned int)edit.composition_end);
             if (edit.action == action) {
                 *out_event = event;
                 return 1;
