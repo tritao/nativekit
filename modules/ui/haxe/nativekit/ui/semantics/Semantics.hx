@@ -1,5 +1,7 @@
 package nativekit.ui.semantics;
 
+import nativekit.ui.widgets.Utf8Text;
+
 /** Haxe-owned accessible name, value, role, state, and supported actions. */
 class Semantics {
 	public final role:AccessibilityRole;
@@ -38,7 +40,7 @@ class Semantics {
 		numericMinimum = 0.0;
 		numericMaximum = 0.0;
 		textStart = 0;
-		documentLength = 0;
+		documentLength = Utf8Text.length(value);
 		selectionStart = -1;
 		selectionEnd = -1;
 		setSize = 0;

@@ -44,10 +44,8 @@ class AccessibilityBridge {
 			currentParents.set(item.id, item.parentId);
 		var requestedFocus = focused == null ? NativeKit.NativeKitConstants.NK_ACCESSIBILITY_ROOT : focused.value;
 		var batch = buildUpdate(snapshot, previousParents, requestedFocus);
-		var status = NativeKit.nk_surface_accessibility_update_with_removed_ids(surface.nativeHandle(),
+		NativeKit.nk_surface_accessibility_update_with_removed_ids_checked(surface.nativeHandle(),
 			batch.nativeUpdate, batch.removedNodeIds, batch.removedNodeIds.length);
-		if (status != NativeKit.Result.Ok)
-			throw "NativeKit accessibility update failed";
 		previousParents = currentParents;
 	}
 
