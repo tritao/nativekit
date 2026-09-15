@@ -54,7 +54,7 @@ jobs:
         if: matrix.sdk == 'iphonesimulator'
         run: |
           xcrun simctl install "$IOS_SIMULATOR_ID" \
-            "build-iphonesimulator/Debug/nativekit_ios_runtime_tests.app"
+            "build-iphonesimulator/tests/Debug-iphonesimulator/nativekit_ios_runtime_tests.app"
           set +e
           xcrun simctl launch --console "$IOS_SIMULATOR_ID" \
             org.nativekit.tests.ios-runtime 2>&1 | tee ios-runtime.log

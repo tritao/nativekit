@@ -144,6 +144,11 @@ struct MacWindowResource final : nk::core::Resource {
     bool owns_window = true;
     bool sheet_active = false;
     bool child_attached = false;
+    bool fullscreen_target = false;
+    bool fullscreen_transitioning = false;
+    bool fullscreen_reposition_pending = false;
+    bool fullscreen_reenter_after_reposition = false;
+    NSPoint fullscreen_target_origin = NSZeroPoint;
     std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
     std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> pointer_buttons{};
     double pointer_x = 0.0;
@@ -185,6 +190,37 @@ struct MacWindowResource final : nk::core::Resource {
         }
     }
 };
+
+void request_fullscreen_transition(MacWindowResource &resource, bool enabled) {
+    if (!resource.window)
+        return;
+    resource.fullscreen_target = enabled;
+    if (resource.fullscreen_transitioning)
+        return;
+    const bool current = (resource.window.styleMask & NSWindowStyleMaskFullScreen) != 0;
+    if (current == enabled)
+        return;
+    resource.fullscreen_transitioning = true;
+    [resource.window toggleFullScreen:nil];
+}
+
+void finish_fullscreen_transition(MacWindowResource &resource) {
+    resource.fullscreen_transitioning = false;
+    const bool current = (resource.window.styleMask & NSWindowStyleMaskFullScreen) != 0;
+    if (!current && resource.fullscreen_reposition_pending) {
+        [resource.window setFrameOrigin:resource.fullscreen_target_origin];
+        resource.fullscreen_reposition_pending = false;
+        if (resource.fullscreen_reenter_after_reposition) {
+            resource.fullscreen_reenter_after_reposition = false;
+            request_fullscreen_transition(resource, true);
+            return;
+        }
+    } else if (current && resource.fullscreen_reposition_pending) {
+        resource.fullscreen_reposition_pending = false;
+    }
+    if (current != resource.fullscreen_target)
+        request_fullscreen_transition(resource, resource.fullscreen_target);
+}
 
 struct MacMonitorResource final : nk::core::Resource {
     CGDirectDisplayID display = kCGNullDirectDisplay;
@@ -2425,6 +2461,22 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         bytes_of(nk_window_scale_event{static_cast<float>(resource->window.backingScaleFactor)});
     nk::core::push_event(std::move(event));
 }
+- (void)windowDidEnterFullScreen:(NSNotification *)notification {
+    (void)notification;
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    finish_fullscreen_transition(*resource);
+    emit_window_state(*resource);
+}
+- (void)windowDidExitFullScreen:(NSNotification *)notification {
+    (void)notification;
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    finish_fullscreen_transition(*resource);
+    emit_window_state(*resource);
+}
 @end
 
 @implementation NKContentView
@@ -4197,9 +4249,7 @@ nk_result NK_CALL nk_window_set_fullscreen(nk_handle h, uint32_t enabled) {
     auto w = window(h);
     if (!w)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    bool current = (w->window.styleMask & NSWindowStyleMaskFullScreen) != 0;
-    if (current != !!enabled)
-        [w->window toggleFullScreen:nil];
+    request_fullscreen_transition(*w, enabled != 0);
     return NK_OK;
 }
 nk_result NK_CALL nk_window_request_attention(nk_handle h) {
@@ -4395,19 +4445,28 @@ nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle window_handle,
     auto window_resource = window(window_handle);
     if (!window_resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    if (monitor_handle == NK_INVALID_HANDLE)
+    if (monitor_handle == NK_INVALID_HANDLE) {
+        window_resource->fullscreen_reposition_pending = false;
+        window_resource->fullscreen_reenter_after_reposition = false;
         return nk_window_set_fullscreen(window_handle, 0);
+    }
     auto monitor_resource = monitor(monitor_handle);
     if (!monitor_resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
     NSScreen *screen = screen_for_display(monitor_resource->display);
     if (!screen)
         return fail(NK_ERROR_INVALID_HANDLE, "monitor is no longer connected");
-    if (window_resource->window.styleMask & NSWindowStyleMaskFullScreen)
-        [window_resource->window toggleFullScreen:nil];
-    [window_resource->window setFrameOrigin:screen.frame.origin];
-    if (!(window_resource->window.styleMask & NSWindowStyleMaskFullScreen))
-        [window_resource->window toggleFullScreen:nil];
+    window_resource->fullscreen_target_origin = screen.frame.origin;
+    window_resource->fullscreen_reposition_pending = true;
+    const bool current = (window_resource->window.styleMask & NSWindowStyleMaskFullScreen) != 0;
+    if (current) {
+        window_resource->fullscreen_reenter_after_reposition = true;
+        request_fullscreen_transition(*window_resource, false);
+    } else {
+        window_resource->fullscreen_reenter_after_reposition = false;
+        [window_resource->window setFrameOrigin:screen.frame.origin];
+        request_fullscreen_transition(*window_resource, true);
+    }
     return NK_OK;
 }
 

@@ -327,14 +327,15 @@ EM_JS(void, nk_web_install_drop_handlers, (const char *selector), {
         } else {
             const listed = transfer.getData("text/uri-list");
             if (listed)
-                for (const uri of listed.split(/\r?\n/))
+                for (const uri of listed.split(String.fromCharCode(10)))
                     if (uri && !uri.startsWith("#"))
                         uris.push(uri);
         }
         const text = transfer.getData("text/plain") || "";
         Module.ccall("nk_web_host_resource_drop", null,
                      ["number", "number", "string", "string"],
-                     [event.offsetX || 0, event.offsetY || 0, uris.join("\r\n"), text]);
+                     [event.offsetX || 0, event.offsetY || 0,
+                      uris.join(String.fromCharCode(13, 10)), text]);
     };
     canvas.addEventListener("dragover", dragover);
     canvas.addEventListener("drop", drop);
