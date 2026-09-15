@@ -2,7 +2,8 @@ package nativekit.ui.widgets;
 
 import Color;
 import Insets;
-import LayoutAlignment;
+import LayoutAlignmentX;
+import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutDirection;
 import LayoutStyle;
@@ -60,8 +61,8 @@ class Radio implements View {
 			indicatorStyle.background = context.theme.controlColor(false, enabled);
 			indicatorStyle.radiusTopLeft = indicatorStyle.radiusTopRight = 9.0;
 			indicatorStyle.radiusBottomLeft = indicatorStyle.radiusBottomRight = 9.0;
-			indicatorStyle.childAlignX = LayoutAlignment.Center;
-			indicatorStyle.childAlignY = LayoutAlignment.Center;
+			indicatorStyle.childAlignX = LayoutAlignmentX.Center;
+			indicatorStyle.childAlignY = LayoutAlignmentY.Center;
 			var indicator = new RenderNode(context.id("indicator"), LayoutVisualKind.Box,
 				indicatorStyle);
 			var dotStyle = new LayoutStyle();
@@ -94,7 +95,7 @@ class Radio implements View {
 		result.height = LayoutAxis.fixed(32.0);
 		result.padding = new Insets(4.0, 5.0, 4.0, 5.0);
 		result.childGap = 9.0;
-		result.childAlignY = LayoutAlignment.Center;
+		result.childAlignY = LayoutAlignmentY.Center;
 		return result;
 	}
 }

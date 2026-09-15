@@ -313,6 +313,10 @@ Clay_ElementDeclaration declaration_for(const LayoutNode &node) {
     declaration.layout.padding = {node.style.padding_left, node.style.padding_right,
                                   node.style.padding_top, node.style.padding_bottom};
     declaration.layout.childGap = node.style.child_gap;
+    declaration.layout.rowGap = node.style.row_gap;
+    declaration.layout.columnGap = node.style.column_gap;
+    declaration.layout.wrapMode =
+        static_cast<Clay_LayoutWrapMode>(static_cast<uint8_t>(node.style.wrap_mode));
     declaration.layout.childAlignment = {
         static_cast<Clay_LayoutAlignmentX>(static_cast<uint8_t>(node.style.child_align_x)),
         static_cast<Clay_LayoutAlignmentY>(static_cast<uint8_t>(node.style.child_align_y))};

@@ -6,7 +6,7 @@
 #include <vector>
 
 static_assert(NKUI_LAYOUT_NODE_RECORD_BYTES ==
-                  NKUI_LAYOUT_NODE_CHILD_DISTRIBUTION_OFFSET + sizeof(uint32_t),
+                  NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET + sizeof(uint32_t),
               "layout node record size must include every defined field");
 
 namespace {
@@ -349,6 +349,16 @@ int main() {
     if (nkui_layout_session_submit(session, baseline.data(), baseline.size(), &frame) != NKUI_OK)
         return 36;
 
+    auto wrapped = bytes;
+    write_u32(wrapped, panel_record + NKUI_LAYOUT_NODE_DIRECTION_OFFSET,
+              NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT);
+    write_u32(wrapped, panel_record + NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET,
+              NKUI_LAYOUT_WRAP_WRAP);
+    write_u32(wrapped, panel_record + NKUI_LAYOUT_NODE_ROW_GAP_OFFSET, 6);
+    write_u32(wrapped, panel_record + NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET, 4);
+    if (nkui_layout_session_submit(session, wrapped.data(), wrapped.size(), &frame) != NKUI_OK)
+        return 38;
+
     auto hidden = bytes;
     write_u32(hidden, panel_record + NKUI_LAYOUT_NODE_FLAGS_OFFSET, 0);
     if (nkui_layout_session_submit(session, hidden.data(), hidden.size(), &frame) != NKUI_OK ||
@@ -384,6 +394,12 @@ int main() {
     if (nkui_layout_session_submit(session, invalid.data(), invalid.size(), &frame) !=
         NKUI_ERROR_INVALID_TRANSACTION)
         return 35;
+    invalid = bytes;
+    write_u32(invalid, panel_record + NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET,
+              NKUI_LAYOUT_WRAP_WRAP + 1u);
+    if (nkui_layout_session_submit(session, invalid.data(), invalid.size(), &frame) !=
+        NKUI_ERROR_INVALID_TRANSACTION)
+        return 39;
     if (nkui_layout_session_destroy(session) != NKUI_OK ||
         nkui_layout_session_get_resolved_items(session, nullptr, &resolved_bytes) !=
             NKUI_ERROR_INVALID_HANDLE ||

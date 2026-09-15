@@ -48,9 +48,12 @@ class LayoutSessionSmoke {
 		var panel = LayoutNode.box(101);
 		panel.style.width = LayoutAxis.fixed(160.0);
 		panel.style.height = LayoutAxis.fixed(64.0);
-		panel.style.childAlignX = LayoutAlignment.Center;
-		panel.style.childAlignY = LayoutAlignment.Center;
+		panel.style.childAlignX = LayoutAlignmentX.Center;
+		panel.style.childAlignY = LayoutAlignmentY.Center;
 		panel.style.childDistribution = LayoutDistribution.Center;
+		panel.style.wrapMode = LayoutWrapMode.Wrap;
+		panel.style.rowGap = 6.0;
+		panel.style.columnGap = 4.0;
 		panel.style.transform = Transform2D.identity().translated(100.0, 20.0);
 		panel.add(LayoutNode.textNode(102, "Press"));
 		root.add(panel);

@@ -1,6 +1,7 @@
 package nativekit.ui.widgets;
 
-import LayoutAlignment;
+import LayoutAlignmentX;
+import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutStyle;
 import LayoutVisualKind;
@@ -15,8 +16,8 @@ class Align implements View {
 	final child:View;
 	public final style:LayoutStyle;
 
-	public function new(key:String, child:View, alignmentX:LayoutAlignment = LayoutAlignment.Center,
-			alignmentY:LayoutAlignment = LayoutAlignment.Center, ?style:LayoutStyle) {
+	public function new(key:String, child:View, alignmentX:LayoutAlignmentX = LayoutAlignmentX.Center,
+			alignmentY:LayoutAlignmentY = LayoutAlignmentY.Center, ?style:LayoutStyle) {
 		if (child == null)
 			throw "Align requires a child view";
 		this.key = new Key(key);

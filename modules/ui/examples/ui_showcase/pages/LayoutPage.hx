@@ -1,6 +1,7 @@
 package pages;
 
-import LayoutAlignment;
+import LayoutAlignmentX;
+import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutStyle;
 import UiExplorer;
@@ -29,7 +30,7 @@ class LayoutPage {
 				explorer.keyed("heading", explorer.text("Padding + Align", explorer.paletteText())),
 				explorer.keyed("aligned", new Align("centered-content",
 					explorer.colorTile("Centered in a padded box", UiExplorer.color(0.30, 0.40, 0.59)),
-					LayoutAlignment.Center, LayoutAlignment.Center, explorer.fixedBoxStyle(270.0, 90.0)))
+					LayoutAlignmentX.Center, LayoutAlignmentY.Center, explorer.fixedBoxStyle(270.0, 90.0)))
 			]))
 		];
 		var layoutPrimitives:View;

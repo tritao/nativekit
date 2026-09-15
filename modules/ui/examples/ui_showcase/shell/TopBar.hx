@@ -1,6 +1,6 @@
 package shell;
 
-import LayoutAlignment;
+import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutDirection;
 import LayoutStyle;
@@ -17,7 +17,7 @@ class TopBar {
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.fixed(66.0);
 		style.direction = LayoutDirection.LeftToRight;
-		style.childAlignY = LayoutAlignment.Center;
+		style.childAlignY = LayoutAlignmentY.Center;
 		style.padding = new Insets(22.0, 0.0, 22.0, 0.0);
 		style.childGap = 12.0;
 		style.background = explorer.paletteSidebar();

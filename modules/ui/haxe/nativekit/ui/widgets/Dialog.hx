@@ -2,7 +2,8 @@ package nativekit.ui.widgets;
 
 import Color;
 import Insets;
-import LayoutAlignment;
+import LayoutAlignmentX;
+import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutPositioning;
 import LayoutStyle;
@@ -76,8 +77,8 @@ class Dialog implements View {
 			centerStyle.height = LayoutAxis.grow();
 			centerStyle.positioning = LayoutPositioning.Absolute;
 			centerStyle.zIndex = 1;
-			centerStyle.childAlignX = LayoutAlignment.Center;
-			centerStyle.childAlignY = LayoutAlignment.Center;
+			centerStyle.childAlignX = LayoutAlignmentX.Center;
+			centerStyle.childAlignY = LayoutAlignmentY.Center;
 			var center = new RenderNode(context.id("dialog-center"), LayoutVisualKind.Box,
 				centerStyle);
 			var panelStyle = new LayoutStyle();

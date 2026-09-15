@@ -5,7 +5,8 @@ import FontCollection;
 import Image;
 import ImageFormat;
 import Insets;
-import LayoutAlignment;
+import LayoutAlignmentX;
+import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutDirection;
 import LayoutFrame;
@@ -468,7 +469,7 @@ class FrameworkSmoke {
 		alignStyle.width = LayoutAxis.fixed(160.0);
 		alignStyle.height = LayoutAxis.fixed(80.0);
 		var alignRoot = context.submit(new Align("align-smoke", new Text("Centered"),
-			LayoutAlignment.Center, LayoutAlignment.Center, alignStyle),
+			LayoutAlignmentX.Center, LayoutAlignmentY.Center, alignStyle),
 			new LayoutFrame(256.0, 192.0));
 		var alignParentGeometry:ResolvedLayoutItem = cast alignRoot.resolved;
 		var alignChildGeometry:ResolvedLayoutItem = cast alignRoot.children[0].resolved;

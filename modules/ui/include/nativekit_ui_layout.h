@@ -17,10 +17,10 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 11,
-    NKUI_LAYOUT_TRANSACTION_VERSION = 10,
+    NKUI_LAYOUT_API_VERSION = 12,
+    NKUI_LAYOUT_TRANSACTION_VERSION = 11,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
-    NKUI_LAYOUT_NODE_RECORD_BYTES = 220,
+    NKUI_LAYOUT_NODE_RECORD_BYTES = 232,
     NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16 * 1024 * 1024,
     NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96
 };
@@ -93,6 +93,13 @@ enum NK_ENUM(nkui_layout_distribution) {
     NKUI_LAYOUT_DISTRIBUTION_SPACE_EVENLY = 5
 };
 
+/** Whether children stay on one row/column or flow onto additional lines. */
+typedef uint32_t nkui_layout_wrap_mode;
+enum NK_ENUM(nkui_layout_wrap_mode) {
+    NKUI_LAYOUT_WRAP_NO_WRAP = 0,
+    NKUI_LAYOUT_WRAP_WRAP = 1
+};
+
 /** Byte offsets within each fixed-size node record. */
 enum {
     NKUI_LAYOUT_NODE_ID_OFFSET = 0,
@@ -155,7 +162,13 @@ enum {
     /** Relative share of extra height for GROW sizing; must be positive and finite. */
     NKUI_LAYOUT_NODE_HEIGHT_GROW_WEIGHT_OFFSET = 212,
     /** Main-axis free-space distribution policy. */
-    NKUI_LAYOUT_NODE_CHILD_DISTRIBUTION_OFFSET = 216
+    NKUI_LAYOUT_NODE_CHILD_DISTRIBUTION_OFFSET = 216,
+    /** Vertical gap between wrapped rows. */
+    NKUI_LAYOUT_NODE_ROW_GAP_OFFSET = 220,
+    /** Horizontal gap between wrapped columns. */
+    NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET = 224,
+    /** Wrap policy: zero keeps one row/column, one enables wrapping. */
+    NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET = 228
 };
 
 /** Opaque retained layout session used by a Haxe-owned component tree. */

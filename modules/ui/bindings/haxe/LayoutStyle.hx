@@ -5,11 +5,17 @@ class LayoutStyle {
 	/** Width divided by height; zero disables aspect-ratio sizing. */
 	public var aspectRatio:Float;
 	public var direction:LayoutDirection;
-	public var childAlignX:LayoutAlignment;
-	public var childAlignY:LayoutAlignment;
+	public var childAlignX:LayoutAlignmentX;
+	public var childAlignY:LayoutAlignmentY;
 	/** Main-axis free-space distribution policy. */
 	public var childDistribution:LayoutDistribution;
 	public var positioning:LayoutPositioning;
+	/** Controls whether children flow onto additional rows or columns. */
+	public var wrapMode:LayoutWrapMode;
+	/** Vertical gap between wrapped rows. */
+	public var rowGap:Float;
+	/** Horizontal gap between wrapped columns. */
+	public var columnGap:Float;
 	public var positionX:Float;
 	public var positionY:Float;
 	public var zIndex:Int;
@@ -31,10 +37,13 @@ class LayoutStyle {
 		height = LayoutAxis.fit();
 		aspectRatio = 0.0;
 		direction = LayoutDirection.TopToBottom;
-		childAlignX = LayoutAlignment.Start;
-		childAlignY = LayoutAlignment.Start;
+		childAlignX = LayoutAlignmentX.Start;
+		childAlignY = LayoutAlignmentY.Start;
 		childDistribution = LayoutDistribution.Start;
 		positioning = LayoutPositioning.Flow;
+		wrapMode = LayoutWrapMode.NoWrap;
+		rowGap = 0.0;
+		columnGap = 0.0;
 		positionX = 0.0;
 		positionY = 0.0;
 		zIndex = 0;
@@ -63,6 +72,9 @@ class LayoutStyle {
 		result.childAlignY = childAlignY;
 		result.childDistribution = childDistribution;
 		result.positioning = positioning;
+		result.wrapMode = wrapMode;
+		result.rowGap = rowGap;
+		result.columnGap = columnGap;
 		result.positionX = positionX;
 		result.positionY = positionY;
 		result.zIndex = zIndex;

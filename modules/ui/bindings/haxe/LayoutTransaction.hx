@@ -64,10 +64,12 @@ class LayoutTransaction {
 			var childAlignY:Int = style.childAlignY;
 			var childDistribution:Int = style.childDistribution;
 			var positioning:Int = style.positioning;
-			if (childAlignX < LayoutAlignment.Start || childAlignX > LayoutAlignment.Center ||
-				childAlignY < LayoutAlignment.Start || childAlignY > LayoutAlignment.Baseline ||
+			var wrapMode:Int = style.wrapMode;
+			if (childAlignX < LayoutAlignmentX.Start || childAlignX > LayoutAlignmentX.Center ||
+				childAlignY < LayoutAlignmentY.Start || childAlignY > LayoutAlignmentY.Baseline ||
 				childDistribution < LayoutDistribution.Start ||
 				childDistribution > LayoutDistribution.SpaceEvenly ||
+				wrapMode < LayoutWrapMode.NoWrap || wrapMode > LayoutWrapMode.Wrap ||
 				(positioning != LayoutPositioning.Flow && positioning != LayoutPositioning.Absolute) ||
 				!finite(style.positionX) || !finite(style.positionY) ||
 				style.zIndex < -32768 || style.zIndex > 32767)
@@ -137,6 +139,12 @@ class LayoutTransaction {
 				childAlignX | (childAlignY << 8));
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_CHILD_DISTRIBUTION_OFFSET,
 				childDistribution);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_ROW_GAP_OFFSET,
+				roundedInt(style.rowGap));
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET,
+				roundedInt(style.columnGap));
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET,
+				wrapMode);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_X_OFFSET,
 				style.positionX);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_Y_OFFSET,

@@ -363,6 +363,9 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             float aspect_ratio = 0.0f;
             float width_grow_weight = 1.0f;
             float height_grow_weight = 1.0f;
+            uint16_t row_gap = 0;
+            uint16_t column_gap = 0;
+            uint32_t wrap_mode = 0;
             if (!read_node_u32(record, NKUI_LAYOUT_NODE_ID_OFFSET, id) ||
                 !read_node_i32(record, NKUI_LAYOUT_NODE_PARENT_OFFSET, node.parent) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET, visual_kind) ||
@@ -382,6 +385,9 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_u16(record, NKUI_LAYOUT_NODE_PADDING_BOTTOM_OFFSET,
                           node.style.padding_bottom) ||
                 !read_u16(record, NKUI_LAYOUT_NODE_CHILD_GAP_OFFSET, node.style.child_gap) ||
+                !read_u16(record, NKUI_LAYOUT_NODE_ROW_GAP_OFFSET, row_gap) ||
+                !read_u16(record, NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET, column_gap) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET, wrap_mode) ||
                 !read_node_color(record, NKUI_LAYOUT_NODE_BACKGROUND_OFFSET,
                                  node.style.background) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET,
@@ -440,6 +446,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 child_align_x > NKUI_LAYOUT_ALIGNMENT_CENTER ||
                 child_align_y > NKUI_LAYOUT_ALIGNMENT_BASELINE ||
                 child_distribution > NKUI_LAYOUT_DISTRIBUTION_SPACE_EVENLY ||
+                wrap_mode > NKUI_LAYOUT_WRAP_WRAP ||
                 (node_flags & ~(NKUI_LAYOUT_NODE_VISIBLE | NKUI_LAYOUT_NODE_FLOATING |
                                 NKUI_LAYOUT_NODE_CLIP_TO_PARENT)) != 0 ||
                 (clip_to_parent && !floating) || z_index < std::numeric_limits<int16_t>::min() ||
@@ -472,6 +479,9 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 static_cast<nkui::LayoutAlignmentY>(child_align_y);
             node.style.child_distribution =
                 static_cast<nkui::LayoutDistribution>(child_distribution);
+            node.style.row_gap = row_gap;
+            node.style.column_gap = column_gap;
+            node.style.wrap_mode = static_cast<nkui::LayoutWrapMode>(wrap_mode);
             node.style.positioning =
                 floating ? nkui::LayoutPositioning::Absolute : nkui::LayoutPositioning::Flow;
             node.style.position_x = position_x;

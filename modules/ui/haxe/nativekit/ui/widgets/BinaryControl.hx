@@ -3,7 +3,8 @@ package nativekit.ui.widgets;
 import Canvas;
 import Color;
 import Insets;
-import LayoutAlignment;
+import LayoutAlignmentX;
+import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutDirection;
 import LayoutStyle;
@@ -42,7 +43,7 @@ class BinaryControl implements View {
 		this.onChange = onChange;
 		this.style = style == null ? defaultStyle() : style.copy();
 		this.style.direction = LayoutDirection.LeftToRight;
-		this.style.childAlignY = LayoutAlignment.Center;
+		this.style.childAlignY = LayoutAlignmentY.Center;
 		this.style.childGap = 9.0;
 		if (this.style.height.sizing == LayoutSizing.Fit)
 			this.style.height = LayoutAxis.fixed(32.0);
@@ -78,8 +79,8 @@ class BinaryControl implements View {
 				indicatorStyle.radiusTopLeft = indicatorStyle.radiusTopRight = 10.0;
 				indicatorStyle.radiusBottomLeft = indicatorStyle.radiusBottomRight = 10.0;
 				indicatorStyle.padding = new Insets(2.0, 2.0, 2.0, 2.0);
-				indicatorStyle.childAlignX = checked ? LayoutAlignment.End : LayoutAlignment.Start;
-				indicatorStyle.childAlignY = LayoutAlignment.Center;
+				indicatorStyle.childAlignX = checked ? LayoutAlignmentX.End : LayoutAlignmentX.Start;
+				indicatorStyle.childAlignY = LayoutAlignmentY.Center;
 				var thumbStyle = new LayoutStyle();
 				thumbStyle.width = LayoutAxis.fixed(15.0);
 				thumbStyle.height = LayoutAxis.fixed(15.0);

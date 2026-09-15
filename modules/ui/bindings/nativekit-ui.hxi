@@ -6,7 +6,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_API_VERSION = 6;
 	const NKUI_COMMAND_VERSION = 1;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
-	const NKUI_LAYOUT_API_VERSION = 11;
+	const NKUI_LAYOUT_API_VERSION = 12;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	/**
 	 * Width divided by height; zero disables aspect-ratio sizing.
@@ -23,6 +23,10 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_CHILD_DISTRIBUTION_OFFSET = 216;
 	const NKUI_LAYOUT_NODE_CHILD_GAP_OFFSET = 48;
 	const NKUI_LAYOUT_NODE_CLIP_FLAGS_OFFSET = 84;
+	/**
+	 * Horizontal gap between wrapped columns.
+	 */
+	const NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET = 224;
 	const NKUI_LAYOUT_NODE_DIRECTION_OFFSET = 28;
 	const NKUI_LAYOUT_NODE_FLAGS_OFFSET = 168;
 	const NKUI_LAYOUT_NODE_FONT_FAMILY_OFFSET = 112;
@@ -61,7 +65,11 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_RADIUS_BOTTOM_RIGHT_OFFSET = 80;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET = 68;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET = 72;
-	const NKUI_LAYOUT_NODE_RECORD_BYTES = 220;
+	const NKUI_LAYOUT_NODE_RECORD_BYTES = 232;
+	/**
+	 * Vertical gap between wrapped rows.
+	 */
+	const NKUI_LAYOUT_NODE_ROW_GAP_OFFSET = 220;
 	const NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET = 132;
 	const NKUI_LAYOUT_NODE_TEXT_COLOR_OFFSET = 96;
 	const NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET = 136;
@@ -91,12 +99,16 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET = 12;
 	const NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET = 16;
 	/**
+	 * Wrap policy: zero keeps one row/column, one enables wrapping.
+	 */
+	const NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET = 228;
+	/**
 	 * Stacking order for absolute-positioned nodes, encoded as signed int32.
 	 */
 	const NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184;
 	const NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96;
 	const NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16;
-	const NKUI_LAYOUT_TRANSACTION_VERSION = 10;
+	const NKUI_LAYOUT_TRANSACTION_VERSION = 11;
 	/**
 	 * 16-bit opcode identifying one display-list command record.
 	 */
@@ -266,6 +278,13 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		NKUI_LAYOUT_VISUAL_TEXT = 2;
 		NKUI_LAYOUT_VISUAL_IMAGE = 3;
 		NKUI_LAYOUT_VISUAL_CUSTOM = 4;
+	}
+	/**
+	 * Whether children stay on one row/column or flow onto additional lines.
+	 */
+	enum nkui_layout_wrap_mode : u32 {
+		NKUI_LAYOUT_WRAP_NO_WRAP = 0;
+		NKUI_LAYOUT_WRAP_WRAP = 1;
 	}
 	/**
 	 * End-cap style used when stroking an open path.

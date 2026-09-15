@@ -403,6 +403,101 @@ int main(int argc, char **argv) {
                  (baseline_control_item->bounds.y + baseline_control_item->bounds.height)) >
             0.01f)
         return 40;
+
+    LayoutNode wrapped_row_root = box(730, -1);
+    wrapped_row_root.style.width = {LayoutSizing::Fixed, 100.0f};
+    wrapped_row_root.style.height = {LayoutSizing::Fit, 0.0f};
+    wrapped_row_root.style.direction = LayoutDirection::LeftToRight;
+    wrapped_row_root.style.wrap_mode = LayoutWrapMode::Wrap;
+    wrapped_row_root.style.row_gap = 8;
+    wrapped_row_root.style.column_gap = 5;
+    LayoutNode wrapped_row_first = box(731, 0);
+    wrapped_row_first.style.width = {LayoutSizing::Fixed, 60.0f};
+    wrapped_row_first.style.height = {LayoutSizing::Fixed, 20.0f};
+    LayoutNode wrapped_row_second = box(732, 0);
+    wrapped_row_second.style.width = {LayoutSizing::Fixed, 30.0f};
+    wrapped_row_second.style.height = {LayoutSizing::Fixed, 10.0f};
+    LayoutNode wrapped_row_third = box(733, 0);
+    wrapped_row_third.style.width = {LayoutSizing::Fixed, 50.0f};
+    wrapped_row_third.style.height = {LayoutSizing::Fixed, 12.0f};
+    std::vector<LayoutNode> wrapped_row_nodes{wrapped_row_root, wrapped_row_first,
+                                              wrapped_row_second, wrapped_row_third};
+    if (!engine.layout(wrapped_row_nodes, 100.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 41;
+    const auto *wrapped_row_root_item = snapshot.find(730);
+    const auto *wrapped_row_first_item = snapshot.find(731);
+    const auto *wrapped_row_second_item = snapshot.find(732);
+    const auto *wrapped_row_third_item = snapshot.find(733);
+    if (!wrapped_row_root_item || !wrapped_row_first_item || !wrapped_row_second_item ||
+        !wrapped_row_third_item || std::abs(wrapped_row_root_item->bounds.height - 40.0f) > 0.01f ||
+        std::abs(wrapped_row_first_item->bounds.x) > 0.01f ||
+        std::abs(wrapped_row_second_item->bounds.x - 65.0f) > 0.01f ||
+        std::abs(wrapped_row_third_item->bounds.x) > 0.01f ||
+        std::abs(wrapped_row_third_item->bounds.y - 28.0f) > 0.01f)
+        return 42;
+
+    LayoutNode wrapped_grow_root = box(735, -1);
+    wrapped_grow_root.style.width = {LayoutSizing::Fixed, 120.0f};
+    wrapped_grow_root.style.height = {LayoutSizing::Fit, 0.0f};
+    wrapped_grow_root.style.direction = LayoutDirection::LeftToRight;
+    wrapped_grow_root.style.wrap_mode = LayoutWrapMode::Wrap;
+    wrapped_grow_root.style.row_gap = 5;
+    wrapped_grow_root.style.column_gap = 5;
+    LayoutNode wrapped_grow_fixed = box(736, 0);
+    wrapped_grow_fixed.style.width = {LayoutSizing::Fixed, 70.0f};
+    wrapped_grow_fixed.style.height = {LayoutSizing::Fixed, 10.0f};
+    LayoutNode wrapped_grow_sibling = box(737, 0);
+    wrapped_grow_sibling.style.width = {LayoutSizing::Fixed, 30.0f};
+    wrapped_grow_sibling.style.height = {LayoutSizing::Fixed, 10.0f};
+    LayoutNode wrapped_grow_child = box(738, 0);
+    wrapped_grow_child.style.width = {LayoutSizing::Grow, 0.0f, 30.0f, 0.0f, 1.0f};
+    wrapped_grow_child.style.height = {LayoutSizing::Fixed, 10.0f};
+    std::vector<LayoutNode> wrapped_grow_nodes{wrapped_grow_root, wrapped_grow_fixed,
+                                               wrapped_grow_sibling, wrapped_grow_child};
+    if (!engine.layout(wrapped_grow_nodes, 120.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 45;
+    const auto *wrapped_grow_root_item = snapshot.find(735);
+    const auto *wrapped_grow_child_item = snapshot.find(738);
+    if (!wrapped_grow_root_item || !wrapped_grow_child_item ||
+        std::abs(wrapped_grow_root_item->bounds.height - 25.0f) > 0.01f ||
+        std::abs(wrapped_grow_child_item->bounds.x) > 0.01f ||
+        std::abs(wrapped_grow_child_item->bounds.y - 15.0f) > 0.01f ||
+        std::abs(wrapped_grow_child_item->bounds.width - 120.0f) > 0.01f)
+    {
+        return 46;
+    }
+
+    LayoutNode wrapped_column_root = box(740, -1);
+    wrapped_column_root.style.width = {LayoutSizing::Fit, 0.0f};
+    wrapped_column_root.style.height = {LayoutSizing::Fixed, 60.0f};
+    wrapped_column_root.style.direction = LayoutDirection::TopToBottom;
+    wrapped_column_root.style.wrap_mode = LayoutWrapMode::Wrap;
+    wrapped_column_root.style.row_gap = 4;
+    wrapped_column_root.style.column_gap = 7;
+    LayoutNode wrapped_column_first = box(741, 0);
+    wrapped_column_first.style.width = {LayoutSizing::Fixed, 10.0f};
+    wrapped_column_first.style.height = {LayoutSizing::Fixed, 35.0f};
+    LayoutNode wrapped_column_second = box(742, 0);
+    wrapped_column_second.style.width = {LayoutSizing::Fixed, 20.0f};
+    wrapped_column_second.style.height = {LayoutSizing::Fixed, 20.0f};
+    LayoutNode wrapped_column_third = box(743, 0);
+    wrapped_column_third.style.width = {LayoutSizing::Fixed, 30.0f};
+    wrapped_column_third.style.height = {LayoutSizing::Fixed, 30.0f};
+    std::vector<LayoutNode> wrapped_column_nodes{wrapped_column_root, wrapped_column_first,
+                                                 wrapped_column_second, wrapped_column_third};
+    if (!engine.layout(wrapped_column_nodes, 80.0f, 60.0f, 1.0f / 60.0f, snapshot, &error))
+        return 43;
+    const auto *wrapped_column_root_item = snapshot.find(740);
+    const auto *wrapped_column_first_item = snapshot.find(741);
+    const auto *wrapped_column_second_item = snapshot.find(742);
+    const auto *wrapped_column_third_item = snapshot.find(743);
+    if (!wrapped_column_root_item || !wrapped_column_first_item ||
+        !wrapped_column_second_item || !wrapped_column_third_item ||
+        std::abs(wrapped_column_root_item->bounds.width - 57.0f) > 0.01f ||
+        std::abs(wrapped_column_second_item->bounds.y - 39.0f) > 0.01f ||
+        std::abs(wrapped_column_third_item->bounds.x - 27.0f) > 0.01f ||
+        std::abs(wrapped_column_third_item->bounds.y) > 0.01f)
+        return 44;
     std::cout << "PASS: Clay layout boxes, text, transforms, and geometry\n";
     return 0;
 #endif
