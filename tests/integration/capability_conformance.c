@@ -83,6 +83,11 @@ static int wait_for_event(nk_handle source, nk_event_kind kind) {
             nk_event_release(&event);
             return 1;
         }
+        if (event.source == source && event.kind == NK_EVENT_WEBVIEW_NAVIGATION_FAILED) {
+            fprintf(stderr, "WebView navigation failed while waiting for event %d\n", kind);
+            nk_event_release(&event);
+            return 0;
+        }
         nk_event_release(&event);
         if (!require_ok("nk_wait_events_timeout", nk_wait_events_timeout(0.01)))
             return 0;
@@ -768,13 +773,14 @@ static int probe_webview(nk_capabilities capabilities, nk_window window) {
         !require_ok("nk_webview_set_html",
                     nk_webview_set_html(webview, "<title>conformance</title>", NULL)) ||
         !require_ok("nk_webview_navigate", nk_webview_navigate(webview, "about:blank")) ||
+        !wait_for_event(webview, NK_EVENT_WEBVIEW_NAVIGATED) ||
         !require_ok("nk_webview_can_go_back", nk_webview_can_go_back(webview, &can_go_back)) ||
         !require_ok("nk_webview_can_go_forward",
                     nk_webview_can_go_forward(webview, &can_go_forward)) ||
-        !require_ok("nk_webview_go_back", nk_webview_go_back(webview)) ||
-        !require_ok("nk_webview_go_forward", nk_webview_go_forward(webview)) ||
         !require_ok("nk_webview_reload", nk_webview_reload(webview)) ||
         !require_ok("nk_webview_stop", nk_webview_stop(webview)) ||
+        !require_ok("nk_webview_go_back", nk_webview_go_back(webview)) ||
+        !require_ok("nk_webview_go_forward", nk_webview_go_forward(webview)) ||
         !require_ok("nk_webview_eval", nk_webview_eval(webview, "1 + 1", &eval_request)) ||
         !require_ok("nk_webview_destroy", nk_webview_destroy(webview)))
         return 0;
