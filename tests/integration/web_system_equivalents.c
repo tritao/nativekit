@@ -135,6 +135,12 @@ assert((info.flags & NK_RESOURCE_STREAM_SEEKABLE) != 0);
 assert(info.size == sizeof(bytes));
 assert(nk_resource_close(stream) == NK_OK);
 
+/* Web resource writes are flushed by the backend event pump. */
+nk_event event = {0};
+event.struct_size = sizeof(event);
+assert(nk_poll_event(&event) == NK_OK);
+nk_event_release(&event);
+
 /* The File System Access write and close are promise-based. */
 // clang-format off
 EM_ASM({
