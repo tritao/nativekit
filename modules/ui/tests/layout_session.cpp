@@ -6,7 +6,7 @@
 #include <vector>
 
 static_assert(NKUI_LAYOUT_NODE_RECORD_BYTES ==
-                  NKUI_LAYOUT_NODE_ASPECT_RATIO_OFFSET + sizeof(float),
+                  NKUI_LAYOUT_NODE_HEIGHT_GROW_WEIGHT_OFFSET + sizeof(float),
               "layout node record size must include every defined field");
 
 namespace {
@@ -47,6 +47,8 @@ std::vector<uint8_t> transaction() {
                                    static_cast<std::size_t>(index) * NKUI_LAYOUT_NODE_RECORD_BYTES;
         write_float(bytes, offset + NKUI_LAYOUT_NODE_TRANSFORM_A_OFFSET, 1.0f);
         write_float(bytes, offset + NKUI_LAYOUT_NODE_TRANSFORM_D_OFFSET, 1.0f);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET, 1.0f);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_HEIGHT_GROW_WEIGHT_OFFSET, 1.0f);
         write_u32(bytes, offset + NKUI_LAYOUT_NODE_FLAGS_OFFSET, NKUI_LAYOUT_NODE_VISIBLE);
     }
 
@@ -119,6 +121,8 @@ std::vector<uint8_t> transaction_with_nodes(uint32_t node_count) {
         write_float(bytes, offset + NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET, 16.0f);
         write_float(bytes, offset + NKUI_LAYOUT_NODE_TRANSFORM_A_OFFSET, 1.0f);
         write_float(bytes, offset + NKUI_LAYOUT_NODE_TRANSFORM_D_OFFSET, 1.0f);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET, 1.0f);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_HEIGHT_GROW_WEIGHT_OFFSET, 1.0f);
         write_u32(bytes, offset + NKUI_LAYOUT_NODE_FLAGS_OFFSET, NKUI_LAYOUT_NODE_VISIBLE);
         write_u32(bytes, offset + NKUI_LAYOUT_NODE_TEXT_OFFSET_OFFSET,
                   static_cast<uint32_t>(string_offset));
@@ -207,6 +211,20 @@ int main() {
                                    invalid_constraints.size(), &frame) !=
         NKUI_ERROR_INVALID_TRANSACTION)
         return 32;
+
+    auto invalid_weight = constraints;
+    write_u32(invalid_weight, constraints_record + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET,
+              NKUI_LAYOUT_SIZING_GROW);
+    write_float(invalid_weight,
+                constraints_record + NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET, 0.0f);
+    if (nkui_layout_session_submit(session, invalid_weight.data(), invalid_weight.size(), &frame) !=
+        NKUI_ERROR_INVALID_TRANSACTION)
+        return 33;
+    write_float(invalid_weight,
+                constraints_record + NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET, NAN);
+    if (nkui_layout_session_submit(session, invalid_weight.data(), invalid_weight.size(), &frame) !=
+        NKUI_ERROR_INVALID_TRANSACTION)
+        return 34;
 
     // Custom-paint lists are retained by their layout session, and only
     // custom-visual nodes in the latest submission may own one.

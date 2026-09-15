@@ -82,6 +82,9 @@ struct LayoutAxis {
     // unbounded, matching Clay's CLAY_SIZING_FIT/GROW convention.
     float min = 0.0f;
     float max = 0.0f;
+    // Relative share of extra space for GROW sizing. Other sizing modes ignore
+    // this field. The wire/API layer requires a positive finite value.
+    float grow_weight = 1.0f;
 };
 
 struct LayoutColor {

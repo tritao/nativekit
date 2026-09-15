@@ -60,6 +60,8 @@ LayoutAxis random_axis(Rng &rng) {
 
     axis.min = rng.next() % 3u == 0 ? rng.unit() * 24.0f : 0.0f;
     axis.max = rng.next() % 2u == 0 ? 0.0f : axis.min + 24.0f + rng.unit() * 160.0f;
+    if (axis.sizing == LayoutSizing::Grow)
+        axis.grow_weight = 0.25f + rng.unit() * 4.0f;
     return axis;
 }
 

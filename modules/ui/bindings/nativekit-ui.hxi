@@ -6,7 +6,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_API_VERSION = 6;
 	const NKUI_COMMAND_VERSION = 1;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
-	const NKUI_LAYOUT_API_VERSION = 8;
+	const NKUI_LAYOUT_API_VERSION = 9;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	/**
 	 * Width divided by height; zero disables aspect-ratio sizing.
@@ -23,6 +23,10 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_FLAGS_OFFSET = 168;
 	const NKUI_LAYOUT_NODE_FONT_FAMILY_OFFSET = 112;
 	const NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET = 116;
+	/**
+	 * Relative share of extra height for GROW sizing; must be positive and finite.
+	 */
+	const NKUI_LAYOUT_NODE_HEIGHT_GROW_WEIGHT_OFFSET = 212;
 	/**
 	 * Maximum height for FIT/GROW sizing; zero means unbounded.
 	 */
@@ -53,7 +57,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_RADIUS_BOTTOM_RIGHT_OFFSET = 80;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET = 68;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET = 72;
-	const NKUI_LAYOUT_NODE_RECORD_BYTES = 208;
+	const NKUI_LAYOUT_NODE_RECORD_BYTES = 216;
 	const NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET = 132;
 	const NKUI_LAYOUT_NODE_TEXT_COLOR_OFFSET = 96;
 	const NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET = 136;
@@ -68,6 +72,10 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET = 160;
 	const NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET = 164;
 	const NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET = 8;
+	/**
+	 * Relative share of extra width for GROW sizing; must be positive and finite.
+	 */
+	const NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET = 208;
 	/**
 	 * Maximum width for FIT/GROW sizing; zero means unbounded.
 	 */
@@ -84,7 +92,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184;
 	const NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96;
 	const NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16;
-	const NKUI_LAYOUT_TRANSACTION_VERSION = 7;
+	const NKUI_LAYOUT_TRANSACTION_VERSION = 8;
 	/**
 	 * 16-bit opcode identifying one display-list command record.
 	 */

@@ -82,6 +82,10 @@ class LayoutTransaction {
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_HEIGHT_MIN_OFFSET, style.height.min);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_HEIGHT_MAX_OFFSET, style.height.max);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_ASPECT_RATIO_OFFSET, style.aspectRatio);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET,
+				style.width.growWeight);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_HEIGHT_GROW_WEIGHT_OFFSET,
+				style.height.growWeight);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_DIRECTION_OFFSET, cast style.direction);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PADDING_LEFT_OFFSET, roundedInt(style.padding.left));
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PADDING_RIGHT_OFFSET, roundedInt(style.padding.right));
@@ -209,12 +213,16 @@ class LayoutTransaction {
 		var sizing:Int = axis == null ? -1 : cast axis.sizing;
 		if (axis == null || sizing < cast LayoutSizing.Fit || sizing > cast LayoutSizing.Percent ||
 			!finite(axis.value) || axis.value < 0.0 || !finite(axis.min) ||
-			axis.min < 0.0 || !finite(axis.max) || axis.max < 0.0)
+			axis.min < 0.0 || !finite(axis.max) || axis.max < 0.0 ||
+			!finite(axis.growWeight) || axis.growWeight <= 0.0)
 			return false;
 		if (axis.sizing == LayoutSizing.Percent)
-			return axis.value <= 1.0 && axis.min == 0.0 && axis.max == 0.0;
+			return axis.value <= 1.0 && axis.min == 0.0 && axis.max == 0.0 &&
+				axis.growWeight == 1.0;
 		if (axis.sizing == LayoutSizing.Fixed)
-			return axis.min == 0.0 && axis.max == 0.0;
+			return axis.min == 0.0 && axis.max == 0.0 && axis.growWeight == 1.0;
+		if (axis.sizing != LayoutSizing.Grow && axis.growWeight != 1.0)
+			return false;
 		return axis.max == 0.0 || axis.max >= axis.min;
 	}
 

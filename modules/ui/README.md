@@ -26,6 +26,11 @@ existing minimum and maximum constraints, and nodes can opt into Clay's
 existing aspect-ratio sizing with `aspectRatio`; NativeKit does not reimplement
 either rule.
 
+GROW axes also accept a positive `growWeight`. Equal weights preserve the
+normal equal-share behavior; for example, `LayoutAxis.grow(0.0, 0.0, 4.0)`
+receives four times the unconstrained space of a sibling with weight `1.0`.
+Clay redistributes space when a weighted child reaches its maximum.
+
 The layout facade keeps Clay types private and uses its external paragraph
 layout callback: Skribidi provides shaping, bidirectional text, line breaks,
 and glyph atlases; Clay contributes box constraints and line placement.

@@ -360,6 +360,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             float height_min = 0.0f;
             float height_max = 0.0f;
             float aspect_ratio = 0.0f;
+            float width_grow_weight = 1.0f;
+            float height_grow_weight = 1.0f;
             if (!read_node_u32(record, NKUI_LAYOUT_NODE_ID_OFFSET, id) ||
                 !read_node_i32(record, NKUI_LAYOUT_NODE_PARENT_OFFSET, node.parent) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET, visual_kind) ||
@@ -420,7 +422,11 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_node_float(record, NKUI_LAYOUT_NODE_WIDTH_MAX_OFFSET, width_max) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_HEIGHT_MIN_OFFSET, height_min) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_HEIGHT_MAX_OFFSET, height_max) ||
-                !read_node_float(record, NKUI_LAYOUT_NODE_ASPECT_RATIO_OFFSET, aspect_ratio))
+                !read_node_float(record, NKUI_LAYOUT_NODE_ASPECT_RATIO_OFFSET, aspect_ratio) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET,
+                                 width_grow_weight) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_HEIGHT_GROW_WEIGHT_OFFSET,
+                                 height_grow_weight))
                 return false;
             const uint32_t child_align_x = child_alignment & 0xffu;
             const uint32_t child_align_y = (child_alignment >> 8u) & 0xffu;
@@ -452,6 +458,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             node.style.width.max = width_max;
             node.style.height.min = height_min;
             node.style.height.max = height_max;
+            node.style.width.grow_weight = width_grow_weight;
+            node.style.height.grow_weight = height_grow_weight;
             node.style.aspect_ratio = aspect_ratio;
             node.style.direction = static_cast<nkui::LayoutDirection>(direction);
             node.style.child_align_x = static_cast<uint8_t>(child_align_x);
@@ -471,12 +479,16 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             const auto valid_axis = [](const nkui::LayoutAxis &axis) {
                 if (!std::isfinite(axis.value) || axis.value < 0.0f ||
                     !std::isfinite(axis.min) || axis.min < 0.0f ||
-                    !std::isfinite(axis.max) || axis.max < 0.0f)
+                    !std::isfinite(axis.max) || axis.max < 0.0f ||
+                    !std::isfinite(axis.grow_weight) || axis.grow_weight <= 0.0f)
                     return false;
                 if (axis.sizing == nkui::LayoutSizing::Percent)
-                    return axis.value <= 1.0f && axis.min == 0.0f && axis.max == 0.0f;
+                    return axis.value <= 1.0f && axis.min == 0.0f && axis.max == 0.0f &&
+                           axis.grow_weight == 1.0f;
                 if (axis.sizing == nkui::LayoutSizing::Fixed)
-                    return axis.min == 0.0f && axis.max == 0.0f;
+                    return axis.min == 0.0f && axis.max == 0.0f && axis.grow_weight == 1.0f;
+                if (axis.sizing != nkui::LayoutSizing::Grow && axis.grow_weight != 1.0f)
+                    return false;
                 return axis.max == 0.0f || axis.max >= axis.min;
             };
             const auto valid_color = [](const nkui::LayoutColor &color) {

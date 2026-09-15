@@ -24,8 +24,11 @@ Clay_Color clay_color(LayoutColor color) {
 
 Clay_SizingAxis clay_axis(LayoutAxis axis) {
     switch (axis.sizing) {
-    case LayoutSizing::Grow:
-        return CLAY_SIZING_GROW(axis.min, axis.max);
+    case LayoutSizing::Grow: {
+        Clay_SizingAxis result = CLAY_SIZING_GROW(axis.min, axis.max);
+        result.growWeight = axis.grow_weight;
+        return result;
+    }
     case LayoutSizing::Fixed:
         return CLAY_SIZING_FIXED(axis.value);
     case LayoutSizing::Percent:

@@ -17,10 +17,10 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 8,
-    NKUI_LAYOUT_TRANSACTION_VERSION = 7,
+    NKUI_LAYOUT_API_VERSION = 9,
+    NKUI_LAYOUT_TRANSACTION_VERSION = 8,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
-    NKUI_LAYOUT_NODE_RECORD_BYTES = 208,
+    NKUI_LAYOUT_NODE_RECORD_BYTES = 216,
     NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16 * 1024 * 1024,
     NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96
 };
@@ -136,7 +136,11 @@ enum {
     /** Maximum height for FIT/GROW sizing; zero means unbounded. */
     NKUI_LAYOUT_NODE_HEIGHT_MAX_OFFSET = 200,
     /** Width divided by height; zero disables aspect-ratio sizing. */
-    NKUI_LAYOUT_NODE_ASPECT_RATIO_OFFSET = 204
+    NKUI_LAYOUT_NODE_ASPECT_RATIO_OFFSET = 204,
+    /** Relative share of extra width for GROW sizing; must be positive and finite. */
+    NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET = 208,
+    /** Relative share of extra height for GROW sizing; must be positive and finite. */
+    NKUI_LAYOUT_NODE_HEIGHT_GROW_WEIGHT_OFFSET = 212
 };
 
 /** Opaque retained layout session used by a Haxe-owned component tree. */

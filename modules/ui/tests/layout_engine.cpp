@@ -280,6 +280,46 @@ int main(int argc, char **argv) {
         std::abs(aspect_item->bounds.height - 40.0f) > 0.01f)
         return 30;
 
+    LayoutNode weighted_root = box(600, -1);
+    weighted_root.style.width = {LayoutSizing::Fixed, 500.0f};
+    weighted_root.style.height = {LayoutSizing::Fixed, 80.0f};
+    weighted_root.style.direction = LayoutDirection::LeftToRight;
+    LayoutNode weighted_first = box(601, 0);
+    weighted_first.style.width = {LayoutSizing::Grow, 0.0f, 0.0f, 0.0f, 1.0f};
+    weighted_first.style.height = {LayoutSizing::Fixed, 20.0f};
+    LayoutNode weighted_second = box(602, 0);
+    weighted_second.style.width = {LayoutSizing::Grow, 0.0f, 0.0f, 0.0f, 4.0f};
+    weighted_second.style.height = {LayoutSizing::Fixed, 20.0f};
+    std::vector<LayoutNode> weighted_nodes{weighted_root, weighted_first, weighted_second};
+    if (!engine.layout(weighted_nodes, 500.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 31;
+    const auto *weighted_first_item = snapshot.find(601);
+    const auto *weighted_second_item = snapshot.find(602);
+    if (!weighted_first_item || !weighted_second_item ||
+        std::abs(weighted_first_item->bounds.width - 100.0f) > 0.01f ||
+        std::abs(weighted_second_item->bounds.width - 400.0f) > 0.01f)
+        return 32;
+
+    LayoutNode capped_root = box(610, -1);
+    capped_root.style.width = {LayoutSizing::Fixed, 400.0f};
+    capped_root.style.height = {LayoutSizing::Fixed, 80.0f};
+    capped_root.style.direction = LayoutDirection::LeftToRight;
+    LayoutNode capped_first = box(611, 0);
+    capped_first.style.width = {LayoutSizing::Grow, 0.0f, 0.0f, 100.0f, 1.0f};
+    capped_first.style.height = {LayoutSizing::Fixed, 20.0f};
+    LayoutNode capped_second = box(612, 0);
+    capped_second.style.width = {LayoutSizing::Grow, 0.0f, 0.0f, 0.0f, 3.0f};
+    capped_second.style.height = {LayoutSizing::Fixed, 20.0f};
+    std::vector<LayoutNode> capped_nodes{capped_root, capped_first, capped_second};
+    if (!engine.layout(capped_nodes, 400.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 33;
+    const auto *capped_first_item = snapshot.find(611);
+    const auto *capped_second_item = snapshot.find(612);
+    if (!capped_first_item || !capped_second_item ||
+        std::abs(capped_first_item->bounds.width - 100.0f) > 0.01f ||
+        std::abs(capped_second_item->bounds.width - 300.0f) > 0.01f)
+        return 34;
+
     std::cout << "PASS: Clay layout boxes, text, transforms, and geometry\n";
     return 0;
 #endif

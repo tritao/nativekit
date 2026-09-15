@@ -7,20 +7,23 @@ class LayoutAxis {
 	public var min:Float;
 	/** Maximum size for FIT/GROW; zero means unbounded. */
 	public var max:Float;
+	/** Relative share of extra space for GROW; ignored by other sizing modes. */
+	public var growWeight:Float;
 
 	public function new(sizing:LayoutSizing = LayoutSizing.Fit, value:Float = 0.0,
-			min:Float = 0.0, max:Float = 0.0) {
+			min:Float = 0.0, max:Float = 0.0, growWeight:Float = 1.0) {
 		this.sizing = sizing;
 		this.value = value;
 		this.min = min;
 		this.max = max;
+		this.growWeight = growWeight;
 	}
 
 	public static function fit(min:Float = 0.0, max:Float = 0.0):LayoutAxis
 		return new LayoutAxis(LayoutSizing.Fit, 0.0, min, max);
 
-	public static function grow(min:Float = 0.0, max:Float = 0.0):LayoutAxis
-		return new LayoutAxis(LayoutSizing.Grow, 0.0, min, max);
+	public static function grow(min:Float = 0.0, max:Float = 0.0, growWeight:Float = 1.0):LayoutAxis
+		return new LayoutAxis(LayoutSizing.Grow, 0.0, min, max, growWeight);
 
 	public static function fixed(value:Float):LayoutAxis
 		return new LayoutAxis(LayoutSizing.Fixed, value);
