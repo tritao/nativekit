@@ -2,6 +2,7 @@
 #include "nativekit_mobile.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
+#include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
@@ -18,6 +19,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <UIKit/UIKit.h>
+#import <UserNotifications/UserNotifications.h>
 #import <WebKit/WebKit.h>
 
 #include <algorithm>
@@ -25,9 +27,11 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -52,6 +56,9 @@
 
 @interface NKIOSWebViewDelegate : NSObject <WKNavigationDelegate, WKScriptMessageHandler>
 @property(nonatomic, assign) void *resource;
+@end
+
+@interface NKIOSNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
 @end
 
 namespace {
@@ -181,6 +188,16 @@ std::unordered_map<nk_handle, std::shared_ptr<IOSSurface>> surfaces;
 nk_orientation last_device_orientation = NK_ORIENTATION_UNKNOWN;
 std::unordered_map<nk_handle, std::shared_ptr<IOSWebView>> webviews;
 
+struct IOSNotification {
+    uint64_t generation = 0;
+    bool silent = false;
+};
+
+std::mutex notifications_mutex;
+std::unordered_map<nk_request_id, IOSNotification> notifications;
+__strong NKIOSNotificationDelegate *notification_delegate = nil;
+bool notification_center_initialized = false;
+
 struct IOSNavigationDecision {
     nk_handle source = NK_INVALID_HANDLE;
     __strong void (^handler)(WKNavigationActionPolicy) = nil;
@@ -297,6 +314,55 @@ std::vector<std::byte> string_list_payload(Header header, const std::vector<std:
         cursor += value.size() + 1;
     }
     return result;
+}
+
+NSString *notification_identifier(nk_request_id request) {
+    return [NSString stringWithFormat:@"%llu", static_cast<unsigned long long>(request)];
+}
+
+nk_request_id notification_request(NSString *identifier) {
+    if (!identifier.length)
+        return NK_INVALID_REQUEST_ID;
+    return static_cast<nk_request_id>(std::strtoull(identifier.UTF8String, nullptr, 10));
+}
+
+void emit_notification(nk_event_kind kind, nk_request_id request, nk_result result = NK_OK,
+                       NSString *text = nil) noexcept {
+    nk::core::callback_boundary([&] {
+        nk::core::QueuedEvent event;
+        event.kind = kind;
+        event.request_id = request;
+        event.result = result;
+        if (text)
+            event.data = text_bytes(utf8_string(text));
+        nk::core::push_event(std::move(event));
+    });
+}
+
+bool take_notification(nk_request_id request, IOSNotification *value = nullptr) {
+    std::lock_guard lock(notifications_mutex);
+    const auto found = notifications.find(request);
+    if (found == notifications.end())
+        return false;
+    if (value)
+        *value = found->second;
+    notifications.erase(found);
+    return true;
+}
+
+bool has_notification(nk_request_id request, uint64_t generation) {
+    std::lock_guard lock(notifications_mutex);
+    const auto found = notifications.find(request);
+    return found != notifications.end() && found->second.generation == generation;
+}
+
+bool get_notification(nk_request_id request, IOSNotification &value) {
+    std::lock_guard lock(notifications_mutex);
+    const auto found = notifications.find(request);
+    if (found == notifications.end())
+        return false;
+    value = found->second;
+    return true;
 }
 
 nk_result ios_fail(nk_result result, const char *message) {
@@ -1654,11 +1720,69 @@ void frame_tick(nk_handle handle) noexcept {
 }
 @end
 
+@implementation NKIOSNotificationDelegate
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+    didReceiveNotificationResponse:(UNNotificationResponse *)response
+             withCompletionHandler:(void (^)(void))completionHandler {
+    (void)center;
+    const auto request = notification_request(response.notification.request.identifier);
+    IOSNotification notification;
+    if (take_notification(request, &notification) &&
+        nk::core::is_runtime_generation(notification.generation)) {
+        const bool dismissed =
+            [response.actionIdentifier isEqualToString:UNNotificationDismissActionIdentifier];
+        NSString *action = nil;
+        if (!dismissed &&
+            ![response.actionIdentifier isEqualToString:UNNotificationDefaultActionIdentifier])
+            action = response.actionIdentifier;
+        emit_notification(dismissed ? NK_EVENT_NOTIFICATION_DISMISSED
+                                    : NK_EVENT_NOTIFICATION_ACTIVATED,
+                          request, NK_OK, action);
+    }
+    completionHandler();
+}
+
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+       willPresentNotification:(UNNotification *)notification
+         withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler {
+    (void)center;
+    const auto request = notification_request(notification.request.identifier);
+    IOSNotification value;
+    if (!get_notification(request, value) ||
+        !nk::core::is_runtime_generation(value.generation)) {
+        completionHandler(UNNotificationPresentationOptionNone);
+        return;
+    }
+    UNNotificationPresentationOptions options = UNNotificationPresentationOptionAlert;
+    if (!value.silent)
+        options |= UNNotificationPresentationOptionSound;
+    completionHandler(options);
+}
+@end
+
 namespace nk::backend {
 
 void pump_events() noexcept {}
 
 void shutdown() noexcept {
+    NSMutableArray<NSString *> *notification_identifiers = [NSMutableArray array];
+    {
+        std::lock_guard lock(notifications_mutex);
+        for (const auto &[request, notification] : notifications) {
+            (void)notification;
+            [notification_identifiers addObject:notification_identifier(request)];
+        }
+        notifications.clear();
+    }
+    if (notification_center_initialized) {
+        UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
+        [center removePendingNotificationRequestsWithIdentifiers:notification_identifiers];
+        [center removeDeliveredNotificationsWithIdentifiers:notification_identifiers];
+        if (center.delegate == notification_delegate)
+            center.delegate = nil;
+        notification_center_initialized = false;
+    }
+    notification_delegate = nil;
     for (auto &[request, decision] : navigation_decisions) {
         (void)request;
         decision.handler(WKNavigationActionPolicyCancel);
@@ -3040,11 +3164,153 @@ nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request) {
         });
 }
 
+nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
+                                       nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while showing an iOS notification", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            if (!options || options->struct_size < sizeof(*options) || !out_request ||
+                !options->title || !*options->title ||
+                (options->flags & ~NK_NOTIFICATION_SILENT) != 0 ||
+                !valid_utf8(options->title) || !valid_utf8(options->body) ||
+                !valid_utf8(options->icon))
+                return ios_fail(NK_ERROR_INVALID_ARGUMENT, "invalid iOS notification options");
+            *out_request = NK_INVALID_REQUEST_ID;
+            NSString *title = native_string(options->title);
+            NSString *body = native_string(options->body) ?: @"";
+            UNMutableNotificationContent *content = [UNMutableNotificationContent new];
+            if (!title || !content)
+                return ios_fail(NK_ERROR_OUT_OF_MEMORY,
+                                "could not allocate iOS notification content");
+            content.title = title;
+            content.body = body;
+            content.categoryIdentifier = @"nativekit.default";
+            const bool silent = (options->flags & NK_NOTIFICATION_SILENT) != 0;
+            if (!silent)
+                content.sound = UNNotificationSound.defaultSound;
+            if (options->icon && *options->icon) {
+                NSString *path = native_string(options->icon);
+                if (!path || !path.isAbsolutePath ||
+                    ![NSFileManager.defaultManager fileExistsAtPath:path])
+                    return ios_fail(NK_ERROR_INVALID_ARGUMENT,
+                                    "iOS notification icon path does not exist");
+                NSError *error = nil;
+                UNNotificationAttachment *attachment =
+                    [UNNotificationAttachment attachmentWithIdentifier:@"icon"
+                                                                   URL:[NSURL fileURLWithPath:path]
+                                                               options:nil
+                                                                 error:&error];
+                if (!attachment)
+                    return ios_fail(NK_ERROR_INVALID_ARGUMENT,
+                                    "iOS notification icon could not be attached");
+                content.attachments = @[ attachment ];
+            }
+            UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
+            if (!center)
+                return ios_fail(NK_ERROR_UNSUPPORTED,
+                                "iOS notification services are unavailable");
+            const auto request = nk::core::next_request_id();
+            const auto generation = nk::core::runtime_generation();
+            {
+                std::lock_guard lock(notifications_mutex);
+                notifications.emplace(request, IOSNotification{generation, silent});
+            }
+            if (!notification_delegate)
+                notification_delegate = [NKIOSNotificationDelegate new];
+            if (!notification_delegate) {
+                take_notification(request);
+                return ios_fail(NK_ERROR_OUT_OF_MEMORY,
+                                "could not allocate the iOS notification delegate");
+            }
+            notification_center_initialized = true;
+            center.delegate = notification_delegate;
+            UNNotificationRequest *native_request =
+                [UNNotificationRequest requestWithIdentifier:notification_identifier(request)
+                                                       content:content
+                                                       trigger:nil];
+            if (!native_request) {
+                take_notification(request);
+                return ios_fail(NK_ERROR_OUT_OF_MEMORY,
+                                "could not allocate the iOS notification request");
+            }
+            const UNAuthorizationOptions authorization_options =
+                silent ? UNAuthorizationOptionAlert
+                       : (UNAuthorizationOptionAlert | UNAuthorizationOptionSound);
+            [center requestAuthorizationWithOptions:authorization_options
+                                  completionHandler:^(BOOL granted, NSError *error) {
+                                    if (!has_notification(request, generation) ||
+                                        !nk::core::is_runtime_generation(generation))
+                                        return;
+                                    if (!granted) {
+                                        take_notification(request);
+                                        emit_notification(
+                                            NK_EVENT_NOTIFICATION_FAILED, request,
+                                            NK_ERROR_UNSUPPORTED,
+                                            error.localizedDescription
+                                                ?: @"iOS notification permission was denied");
+                                        return;
+                                    }
+                                    [center getNotificationCategoriesWithCompletionHandler:^(
+                                                NSSet<UNNotificationCategory *> *categories) {
+                                      if (!has_notification(request, generation) ||
+                                          !nk::core::is_runtime_generation(generation))
+                                          return;
+                                      NSMutableSet<UNNotificationCategory *> *updated =
+                                          [categories mutableCopy];
+                                      [updated
+                                          addObject:
+                                              [UNNotificationCategory
+                                                  categoryWithIdentifier:@"nativekit.default"
+                                                                 actions:@[]
+                                                       intentIdentifiers:@[]
+                                                                 options:
+                                                                     UNNotificationCategoryOptionCustomDismissAction]];
+                                      [center setNotificationCategories:updated];
+                                      [center addNotificationRequest:native_request
+                                               withCompletionHandler:^(NSError *delivery_error) {
+                                                 if (!has_notification(request, generation) ||
+                                                     !nk::core::is_runtime_generation(generation))
+                                                     return;
+                                                 if (delivery_error) {
+                                                     take_notification(request);
+                                                     emit_notification(
+                                                         NK_EVENT_NOTIFICATION_FAILED, request,
+                                                         NK_ERROR_UNKNOWN,
+                                                         delivery_error.localizedDescription);
+                                                 } else {
+                                                     emit_notification(
+                                                         NK_EVENT_NOTIFICATION_DELIVERED, request);
+                                                 }
+                                               }];
+                                    }];
+                                  }];
+            *out_request = request;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_notification_close(nk_request_id request) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (!request || !take_notification(request))
+        return ios_fail(NK_ERROR_INVALID_REQUEST,
+                        "invalid or completed iOS notification request");
+    NSArray<NSString *> *identifiers = @[ notification_identifier(request) ];
+    UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
+    [center removePendingNotificationRequestsWithIdentifiers:identifiers];
+    [center removeDeliveredNotificationsWithIdentifiers:identifiers];
+    emit_notification(NK_EVENT_NOTIFICATION_DISMISSED, request);
+    return NK_OK;
+}
+
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_SYSTEM_INFO |
            NK_CAP_METAL_SURFACE | NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
            NK_CAP_KEEP_AWAKE | NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_INPUT |
            NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-           nk::core::optional_capabilities();
+           NK_CAP_NOTIFICATION | nk::core::optional_capabilities();
 }
 }

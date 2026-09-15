@@ -699,3 +699,9 @@ Android creates a default notification channel and requests notification
 permission through an internal proxy activity when required. Taps and user
 dismissals are routed through an internal receiver while the NativeKit runtime
 is alive; permission denial produces `NK_EVENT_NOTIFICATION_FAILED`.
+
+iOS submits notifications through `UNUserNotificationCenter`. The first request
+may prompt for permission; denial produces `NK_EVENT_NOTIFICATION_FAILED`.
+Delivery, activation, dismissal, and explicit close use the same request IDs as
+the other backends. Silent notifications suppress sound, while icon paths are
+copied as notification attachments when iOS accepts the file.

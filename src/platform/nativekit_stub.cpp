@@ -227,7 +227,7 @@ nk_result NK_CALL nk_clipboard_read_files(nk_request_id *) {
 nk_result NK_CALL nk_window_set_drop_enabled(nk_handle, uint32_t) {
     return unsupported();
 }
-#if !defined(NK_STUB_ANDROID)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_notification_show(const nk_notification_options *, nk_request_id *) {
     return unsupported();
 }
