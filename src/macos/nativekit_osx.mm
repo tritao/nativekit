@@ -21,6 +21,7 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
+#include "macos/joystick.hpp"
 
 #include <algorithm>
 #include <array>
@@ -2287,6 +2288,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
 
 namespace nk::backend {
 void pump_events() noexcept {
+    nk::macos_joystick::pump();
     @autoreleasepool {
         NSEvent *event = nil;
         while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
@@ -2299,6 +2301,7 @@ void pump_events() noexcept {
 }
 
 void shutdown() noexcept {
+    nk::macos_joystick::shutdown();
     NSMutableArray<NSString *> *notification_identifiers = [NSMutableArray array];
     {
         std::lock_guard lock(notifications_mutex);
@@ -2346,7 +2349,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO | NK_CAP_INPUT |
            NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
            NK_CAP_WINDOW_STYLING | NK_CAP_METAL_SURFACE | NK_CAP_MONITOR |
-           NK_CAP_MONITOR_FULLSCREEN;
+           NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {

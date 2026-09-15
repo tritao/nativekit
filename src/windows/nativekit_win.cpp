@@ -14,6 +14,7 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
+#include "windows/joystick.hpp"
 
 #define UNICODE
 #define _UNICODE
@@ -2639,6 +2640,7 @@ nk_result get_system_directory(nk_system_directory_kind kind, std::string &outpu
 
 namespace nk::backend {
 void pump_events() noexcept {
+    nk::windows_joystick::pump();
     MSG message;
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
         TranslateMessage(&message);
@@ -2648,6 +2650,7 @@ void pump_events() noexcept {
 }
 
 void shutdown() noexcept {
+    nk::windows_joystick::shutdown();
     while (!notifications.empty())
         remove_notification(notifications.begin()->first);
     if (notification_window) {
@@ -2708,7 +2711,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
         NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE |
         NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING | NK_CAP_D3D11_SURFACE |
-        NK_CAP_ACCESSIBILITY | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN;
+        NK_CAP_ACCESSIBILITY | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;

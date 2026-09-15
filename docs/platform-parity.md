@@ -107,11 +107,17 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 | Backend | Required or equivalent today | Deferred today |
 |---|---|---|
 | Linux/GTK | Windows, geometry, styling, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, GPU, resource I/O, monitors, joystick, native export | Resource sharing, accessibility, native wrapping |
-| Windows | Windows, WebView when WebView2 is available, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource I/O, accessibility, monitors, native export | Joystick, resource sharing, native wrapping |
-| macOS | Windows, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource I/O, monitors, native export | Joystick, resource sharing, accessibility, native wrapping |
+| Windows | Windows, WebView when WebView2 is available, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource I/O, accessibility, monitors, joystick, native export | Resource sharing, native wrapping |
+| macOS | Windows, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource I/O, monitors, joystick, native export | Resource sharing, accessibility, native wrapping |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility | — |
 | iOS | Mobile host, resource I/O | WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, Metal, resource sharing, joystick, accessibility |
 | Web | Window, geometry, clipboard, input, cursor/capture, GLES, resource I/O | Styling, dialogs, drag/drop, shell, appearance, notifications, resource sharing, joystick, accessibility |
+
+The current Windows joystick adapter uses XInput's standard gamepad model,
+including hotplug and normalized canonical state. The current macOS adapter
+uses GameController's extended and micro gamepad models. Generic HID joystick
+enumeration remains a separate follow-up from these platform-native gamepad
+equivalents and must not be silently treated as complete parity.
 
 The baseline is guarded by `platform_parity` in CTest. It checks that:
 

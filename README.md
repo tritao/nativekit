@@ -52,8 +52,8 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 | Clipboard and drag/drop | ✅ | ✅ | ✅ | ✅ | 🚧 | Partial |
 | Notifications | ✅ | ✅ | ✅ | ✅ | 🚧 | 🚧 |
 | Input, cursors, and capture | ✅ | ✅ | ✅ | Partial | 🚧 | Partial |
-| Monitors and fullscreen modes | ✅ | — | — | — | — | — |
-| Joysticks and gamepads | ✅ | — | — | ✅ | 🚧 | 🚧 |
+| Monitors and fullscreen modes | ✅ | ✅ | ✅ | — | — | — |
+| Joysticks and gamepads | ✅ | ✅ | ✅ | ✅ | 🚧 | 🚧 |
 | OpenGL / OpenGL ES | ✅ | — | — | GLES | 🚧 | Partial |
 | Vulkan | ✅ | — | — | ✅ | 🚧 | 🚧 |
 | URI resources and sharing | Partial | Partial | Partial | ✅ | 🚧 | 🚧 |

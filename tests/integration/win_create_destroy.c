@@ -3,6 +3,7 @@
 #include "nativekit_dialog.h"
 #include "nativekit_notification.h"
 #include "nativekit_monitor.h"
+#include "nativekit_joystick.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -89,6 +90,10 @@ int main(void) {
     assert((nk_get_capabilities() & NK_CAP_WINDOW_STYLING) != 0);
     assert((nk_get_capabilities() & NK_CAP_MONITOR) != 0);
     assert((nk_get_capabilities() & NK_CAP_MONITOR_FULLSCREEN) != 0);
+    assert((nk_get_capabilities() & NK_CAP_JOYSTICK) != 0);
+    uint32_t joystick_count = 0;
+    const nk_result joystick_result = nk_joystick_list(NULL, &joystick_count);
+    assert(joystick_result == NK_OK || joystick_result == NK_ERROR_BUFFER_TOO_SMALL);
     assert(nk_notification_show(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_notification_close(NK_INVALID_REQUEST_ID) == NK_ERROR_INVALID_REQUEST);
 

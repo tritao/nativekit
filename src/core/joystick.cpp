@@ -2,7 +2,8 @@
 
 #include "core/error.hpp"
 
-#if !defined(NK_BACKEND_GTK) && !defined(NK_BACKEND_ANDROID)
+#if !defined(NK_BACKEND_GTK) && !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_WINDOWS) && \
+    !defined(NK_BACKEND_MACOS)
 namespace {
 nk_result unsupported() {
     nk::core::set_error("joysticks are not supported by this backend");

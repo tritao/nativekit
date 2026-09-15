@@ -224,10 +224,11 @@ elseif(WIN32)
     endif()
     target_sources(nativekit PRIVATE
         src/windows/nativekit_win.cpp
-        src/windows/nativekit_win_accessibility.cpp)
+        src/windows/nativekit_win_accessibility.cpp
+        src/windows/nativekit_win_joystick.cpp)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_WINDOWS=1)
     target_link_libraries(nativekit PRIVATE user32 shell32 ole32 oleaut32 advapi32 imm32
-        d3d11 dxgi)
+        d3d11 dxgi xinput)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_sources(nativekit PRIVATE
         src/ios/nativekit_ios.mm
@@ -243,7 +244,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_link_libraries(nativekit PRIVATE
         "-framework Foundation" "-framework UIKit" "-framework CoreGraphics")
 elseif(APPLE)
-    target_sources(nativekit PRIVATE src/macos/nativekit_osx.mm)
+    target_sources(nativekit PRIVATE
+        src/macos/nativekit_osx.mm
+        src/macos/nativekit_mac_joystick.mm)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_MACOS=1)
     set_target_properties(nativekit PROPERTIES
         OBJCXX_STANDARD 17
@@ -253,7 +256,8 @@ elseif(APPLE)
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
     target_link_libraries(nativekit PRIVATE "-framework Cocoa" "-framework Carbon"
         "-framework CoreGraphics" "-framework WebKit"
-        "-framework UserNotifications" "-framework Metal" "-framework QuartzCore")
+        "-framework UserNotifications" "-framework Metal" "-framework QuartzCore"
+        "-framework GameController")
 elseif(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
     target_sources(nativekit PRIVATE

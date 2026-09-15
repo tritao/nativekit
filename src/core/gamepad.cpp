@@ -9,6 +9,10 @@
 #include "nativekit_joystick.h"
 #if defined(NK_BACKEND_ANDROID)
 #include "android/nativekit_android_internal.hpp"
+#elif defined(NK_BACKEND_WINDOWS)
+#include "windows/joystick.hpp"
+#elif defined(NK_BACKEND_MACOS)
+#include "macos/joystick.hpp"
 #endif
 
 #include <algorithm>
@@ -34,6 +38,30 @@ std::vector<StoredMapping> mappings;
 std::once_flag builtin_once;
 nk_gamepad_options gamepad_options{sizeof(nk_gamepad_options), 0.f, 0.f, 0, 0, {0, 0}};
 std::unordered_map<nk_handle, nk_gamepad_state> event_states;
+
+[[maybe_unused]] bool native_standard_gamepad(nk_handle joystick) noexcept {
+#if defined(NK_BACKEND_WINDOWS)
+    return nk::windows_joystick::standard_gamepad(joystick);
+#elif defined(NK_BACKEND_MACOS)
+    return nk::macos_joystick::standard_gamepad(joystick);
+#else
+    (void)joystick;
+    return false;
+#endif
+}
+
+[[maybe_unused]] nk_result native_gamepad_state(nk_handle joystick,
+                                                nk_gamepad_state *out_state) noexcept {
+#if defined(NK_BACKEND_WINDOWS)
+    return nk::windows_joystick::standard_gamepad_state(joystick, out_state);
+#elif defined(NK_BACKEND_MACOS)
+    return nk::macos_joystick::standard_gamepad_state(joystick, out_state);
+#else
+    (void)joystick;
+    (void)out_state;
+    return NK_ERROR_UNSUPPORTED;
+#endif
+}
 
 void load_builtins() {
     std::lock_guard lock(mappings_mutex);
@@ -238,6 +266,12 @@ nk_result NK_CALL nk_gamepad_is_mapped(nk_handle joystick, uint32_t *out_mapped)
                 return NK_OK;
             }
 #endif
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS)
+            if (native_standard_gamepad(joystick)) {
+                *out_mapped = 1;
+                return NK_OK;
+            }
+#endif
             std::string guid;
             if (const auto result = read_guid(joystick, guid); result != NK_OK)
                 return result;
@@ -257,6 +291,12 @@ nk_result NK_CALL nk_gamepad_get_mapping_source(nk_handle joystick,
             }
 #if defined(NK_BACKEND_ANDROID)
             if (nk::backend::android_standard_gamepad(joystick)) {
+                *out_source = NK_GAMEPAD_MAPPING_BUILT_IN;
+                return NK_OK;
+            }
+#endif
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS)
+            if (native_standard_gamepad(joystick)) {
                 *out_source = NK_GAMEPAD_MAPPING_BUILT_IN;
                 return NK_OK;
             }
@@ -285,6 +325,10 @@ nk_result NK_CALL nk_gamepad_get_name(nk_handle joystick, char *buffer, uint32_t
             if (nk::backend::android_standard_gamepad(joystick))
                 return nk_joystick_get_name(joystick, buffer, inout_size);
 #endif
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS)
+            if (native_standard_gamepad(joystick))
+                return nk_joystick_get_name(joystick, buffer, inout_size);
+#endif
             StoredMapping mapping;
             if (const auto result = mapping_for(joystick, mapping); result != NK_OK)
                 return result;
@@ -303,6 +347,16 @@ nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick, nk_gamepad_state *out
 #if defined(NK_BACKEND_ANDROID)
             if (nk::backend::android_standard_gamepad(joystick)) {
                 const auto result = nk::backend::android_gamepad_state(joystick, out_state);
+                if (result == NK_OK)
+                    nk::core::gamepad::normalize_state(*out_state, gamepad_options.stick_dead_zone,
+                                                       gamepad_options.trigger_dead_zone,
+                                                       gamepad_options.flags);
+                return result;
+            }
+#endif
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS)
+            if (native_standard_gamepad(joystick)) {
+                const auto result = native_gamepad_state(joystick, out_state);
                 if (result == NK_OK)
                     nk::core::gamepad::normalize_state(*out_state, gamepad_options.stick_dead_zone,
                                                        gamepad_options.trigger_dead_zone,
