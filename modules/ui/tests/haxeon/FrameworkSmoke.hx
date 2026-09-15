@@ -353,6 +353,29 @@ class FrameworkSmoke {
 		lineEditor.placeCaret(0, false);
 		if (!lineEditor.ensureCaretVisible(30.0) || lineEditor.scrollOffsetY != 0.0)
 			return 212;
+		var keyboardArea = new TextArea("keyboard-line-navigation",
+			"one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\neleven\ntwelve");
+		var keyboardRoot = context.submit(keyboardArea, new LayoutFrame(256.0, 192.0));
+		var keyboardState:State<TextEditorState> = context.buildContext.existingState(keyboardRoot.id);
+		var keyboardEditor:TextEditorState = cast keyboardState.value;
+		if (!context.focusWidget(keyboardRoot.id))
+			return 214;
+		keyboardEditor.placeCaret(0, false);
+		context.key(UiEventKind.KeyDown, UiKey.End);
+		if (keyboardEditor.selectionFocus != 3)
+			return 215;
+		context.key(UiEventKind.KeyDown, UiKey.Down);
+		context.key(UiEventKind.KeyDown, UiKey.Home);
+		if (keyboardEditor.selectionFocus != 4)
+			return 216;
+		keyboardEditor.placeCaret(0, false);
+		for (_ in 0...12)
+			context.key(UiEventKind.KeyDown, UiKey.Down);
+		if (keyboardEditor.scrollOffsetY <= 0.0)
+			return 217;
+		context.key(UiEventKind.KeyDown, UiKey.Home, UiModifier.Control);
+		if (keyboardEditor.selectionFocus != 0 || keyboardEditor.scrollOffsetY != 0.0)
+			return 218;
 		var clickField = new TextField("single-double-click", "first last", null,
 			null, "Click selection");
 		var clickFieldRoot = context.submit(clickField, new LayoutFrame(256.0, 192.0));
