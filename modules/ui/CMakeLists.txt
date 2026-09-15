@@ -184,6 +184,13 @@ if(NK_BUILD_TESTS)
         "${NK_VENDOR_DIR}/clay")
     add_test(NAME nativekit_ui_clay_measure_element
         COMMAND nativekit_ui_clay_measure_element_test)
+    add_executable(nativekit_ui_clay_layout_benchmark
+        "${NK_VENDOR_DIR}/clay/tests/layout_benchmark.cpp")
+    target_compile_features(nativekit_ui_clay_layout_benchmark PRIVATE cxx_std_20)
+    target_include_directories(nativekit_ui_clay_layout_benchmark PRIVATE
+        "${NK_VENDOR_DIR}/clay")
+    add_test(NAME nativekit_ui_clay_layout_benchmark
+        COMMAND nativekit_ui_clay_layout_benchmark)
     add_executable(nativekit_ui_layout_invariants_test
         tests/layout_invariants.cpp
         src/layout/clay_layout_backend.cpp
