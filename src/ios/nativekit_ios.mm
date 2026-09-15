@@ -4356,7 +4356,7 @@ nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
                                    : style == UIUserInterfaceStyleLight ? NK_COLOR_SCHEME_LIGHT
                                                                         : NK_COLOR_SCHEME_UNKNOWN;
     }
-    appearance->high_contrast = UIAccessibilityIsDarkerSystemColorsEnabled() ? 1u : 0u;
+    appearance->high_contrast = UIAccessibilityDarkerSystemColorsEnabled() ? 1u : 0u;
     return NK_OK;
 }
 
