@@ -98,9 +98,8 @@ iOS hosts pass a caller-owned `UIView*` as `native_view` with
 The iOS backend retains the view, emits an initial geometry event, and tracks
 bounds, safe-area, and display-scale changes. The view controller remains
 responsible for forwarding lifecycle transitions. Metal surfaces, touch and
-pointer events, hardware-key events, UIKit text editing, WKWebView, and UIKit
-dialogs are available on iOS; path-based dialogs and the remaining system
-services are still being added.
+pointer events, hardware-key events, UIKit text editing, WKWebView, URI
+resource dialogs, and UIKit system services are available on iOS.
 
 Container size, display scale, system-bar safe insets, and software-keyboard
 inset changes produce `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED`. Geometry and
@@ -157,7 +156,6 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_WEBVIEW_NAVIGATION_FAILED` | WebView | none | error text; category in `flags` |
 | `NK_EVENT_WEBVIEW_PROCESS_TERMINATED` | WebView | none | empty; backend reason in `flags` |
 | `NK_EVENT_WEBVIEW_NAVIGATION_REQUEST` | WebView | navigation ID | proposed URL |
-| `NK_EVENT_DIALOG_PATHS_COMPLETE` | none | dialog ID | `nk_dialog_paths`; operation in `flags` |
 | `NK_EVENT_DIALOG_RESOURCES_COMPLETE` | none | dialog ID | `nk_resource_list`; operation in `flags` |
 | `NK_EVENT_DIALOG_MESSAGE_COMPLETE` | none | dialog ID | `nk_dialog_message_result`; operation in `flags` |
 | `NK_EVENT_DROP_FILES` | window | none | `nk_drop_data` and local paths |
@@ -645,26 +643,22 @@ separate deferred capability because host view drop routing is not yet exposed.
 
 ## Dialog results
 
-Dialogs never run a nested blocking loop. Starting one returns a request ID. Path,
-resource, and message dialogs complete through `NK_EVENT_DIALOG_PATHS_COMPLETE`,
-`NK_EVENT_DIALOG_RESOURCES_COMPLETE`, and `NK_EVENT_DIALOG_MESSAGE_COMPLETE`
-respectively. An event kind therefore always determines exactly one payload schema.
-File and directory results begin with `nk_dialog_paths`, followed by a table of
-32-bit offsets and NUL-terminated UTF-8 paths. Consumers should use
-`nk_dialog_event_path()` instead of parsing this layout directly. Cancellation is a
+Dialogs never run a nested blocking loop. Starting one returns a request ID.
+Resource and message dialogs complete through
+`NK_EVENT_DIALOG_RESOURCES_COMPLETE` and `NK_EVENT_DIALOG_MESSAGE_COMPLETE`.
+An event kind therefore always determines exactly one payload schema. Resource
+results use `nk_resource_list` and `nk_resource_event_item()`; cancellation is a
 successful completion with `accepted == 0`.
 
 Android uses the Storage Access Framework for open, save, and directory dialogs.
-Its path-based dialog entry points are unsupported because document-provider
-results are not filesystem paths. Use the resource dialog variants, which complete
-with `NK_EVENT_DIALOG_RESOURCES_COMPLETE` and return the original `content:` URI
-and access flags through `nk_resource_event_item()`.
+Resource variants complete with `NK_EVENT_DIALOG_RESOURCES_COMPLETE` and return
+the original `content:` URI and access flags through `nk_resource_event_item()`.
 
  iOS uses `UIDocumentPickerViewController` for resource open, save, and directory
 dialogs, retaining security-scoped access for returned file URLs while the
-NativeKit runtime is alive. Its path-based dialog entry points are unsupported;
-use the resource variants to preserve provider URI identity. Message dialogs use
-`UIAlertController` and return `NK_MESSAGE_RESULT_NONE` when cancelled.
+NativeKit runtime is alive. Resource variants preserve provider URI identity.
+Message dialogs use `UIAlertController` and return `NK_MESSAGE_RESULT_NONE` when
+cancelled.
 
 Web resource dialogs use the File System Access API where available and fall
 back to an HTML file input for open operations. Open selections are represented
@@ -674,7 +668,7 @@ browser handle remains retained while the NativeKit runtime is alive. Directory
 selections similarly retain a `nativekit-directory-handle://` URI; browsers do
 not expose a filesystem path. Browser picker cancellation is a successful
 completion with `accepted == 0`. The picker must be started from a browser user
-activation. Path-based dialog entry points remain unavailable.
+activation.
 
 ## HTTP networking
 

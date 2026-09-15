@@ -1400,7 +1400,6 @@ struct DialogContext {
     nk_handle parent = NK_INVALID_HANDLE;
     uint32_t kind = 0;
     bool native_dialog = false;
-    bool resources = false;
     uint64_t generation = 0;
 };
 
@@ -2450,28 +2449,6 @@ nk_result apply_cursor_mode(GtkWindowResource &resource, nk_cursor_mode mode) {
     return NK_OK;
 }
 
-std::vector<std::byte> dialog_paths_payload(const std::vector<std::string> &paths, bool accepted) {
-    const auto offsets_offset = sizeof(nk_dialog_paths);
-    const auto strings_offset = offsets_offset + paths.size() * sizeof(uint32_t);
-    std::size_t total = strings_offset;
-    for (const auto &path : paths)
-        total += path.size() + 1;
-    std::vector<std::byte> result(total);
-    const nk_dialog_paths header{accepted ? 1u : 0u, static_cast<uint32_t>(paths.size()),
-                                 static_cast<uint32_t>(offsets_offset),
-                                 static_cast<uint32_t>(strings_offset)};
-    std::memcpy(result.data(), &header, sizeof(header));
-    std::size_t cursor = strings_offset;
-    for (std::size_t index = 0; index < paths.size(); ++index) {
-        const auto offset = static_cast<uint32_t>(cursor);
-        std::memcpy(result.data() + offsets_offset + index * sizeof(offset), &offset,
-                    sizeof(offset));
-        std::memcpy(result.data() + cursor, paths[index].c_str(), paths[index].size() + 1);
-        cursor += paths[index].size() + 1;
-    }
-    return result;
-}
-
 template <typename Header>
 std::vector<std::byte> string_list_payload(Header header, const std::vector<std::string> &strings,
                                            uint32_t Header::*offset_member) {
@@ -2656,23 +2633,17 @@ void emit_file_dialog_completion(DialogContext *context, int response) {
         g_slist_free(filenames);
     }
     nk::core::QueuedEvent event;
-    event.kind = context->resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE
-                                    : NK_EVENT_DIALOG_PATHS_COMPLETE;
+    event.kind = NK_EVENT_DIALOG_RESOURCES_COMPLETE;
     event.request_id = context->request;
     event.flags = context->kind;
     event.data_count = static_cast<uint32_t>(paths.size());
-    if (context->resources) {
-        const auto access = context->kind == NK_DIALOG_OPEN_RESOURCE
-                                ? NK_RESOURCE_READABLE
-                                : NK_RESOURCE_WRITABLE;
-        std::vector<nk::platform::ResourceValue> resources;
-        resources.reserve(paths.size());
-        for (auto &path : paths)
-            resources.push_back(nk::platform::resource_from_file_path(std::move(path), access));
-        event.data = nk::platform::resource_payload(accepted, resources);
-    } else {
-        event.data = dialog_paths_payload(paths, accepted);
-    }
+    const auto access = context->kind == NK_DIALOG_OPEN_RESOURCE ? NK_RESOURCE_READABLE
+                                                                  : NK_RESOURCE_WRITABLE;
+    std::vector<nk::platform::ResourceValue> resources;
+    resources.reserve(paths.size());
+    for (auto &path : paths)
+        resources.push_back(nk::platform::resource_from_file_path(std::move(path), access));
+    event.data = nk::platform::resource_payload(accepted, resources);
     nk::core::push_event(std::move(event));
 }
 
@@ -2762,7 +2733,7 @@ void add_filters(GtkFileChooser *chooser, const nk_file_dialog_options *options)
 }
 
 nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_options *options,
-                            nk_request_id *out_request, uint32_t kind, bool resources = false) {
+                            nk_request_id *out_request, uint32_t kind) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     if (!options || options->struct_size < sizeof(*options) || !out_request ||
@@ -2781,9 +2752,9 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
     if (!ensure_gtk())
         return NK_ERROR_UNSUPPORTED;
     GtkFileChooserAction action = GTK_FILE_CHOOSER_ACTION_OPEN;
-    if (kind == NK_DIALOG_SAVE_FILE || kind == NK_DIALOG_SAVE_RESOURCE)
+    if (kind == NK_DIALOG_SAVE_RESOURCE)
         action = GTK_FILE_CHOOSER_ACTION_SAVE;
-    if (kind == NK_DIALOG_SELECT_DIRECTORY || kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY)
+    if (kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY)
         action = GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER;
     GtkFileChooserNative *chooser = gtk_file_chooser_native_new(
         options->title ? options->title : "", parent ? GTK_WINDOW(parent->window) : nullptr, action,
@@ -2798,32 +2769,24 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
     context->generation = nk::core::runtime_generation();
     context->parent = parent_handle;
     context->kind = kind;
-    context->resources = resources;
     context->native_dialog = true;
     auto *interface = GTK_FILE_CHOOSER(chooser);
     gtk_file_chooser_set_select_multiple(
-        interface, (kind == NK_DIALOG_OPEN_FILE || kind == NK_DIALOG_OPEN_RESOURCE) &&
-                       (options->flags & NK_DIALOG_ALLOW_MULTIPLE));
+        interface, kind == NK_DIALOG_OPEN_RESOURCE && (options->flags & NK_DIALOG_ALLOW_MULTIPLE));
     gtk_file_chooser_set_do_overwrite_confirmation(
         interface, (options->flags & NK_DIALOG_CONFIRM_OVERWRITE) != 0);
     gtk_file_chooser_set_show_hidden(interface, (options->flags & NK_DIALOG_SHOW_HIDDEN) != 0);
     if (options->initial_path) {
-        const char *initial_path = options->initial_path;
-        char *resource_path = nullptr;
-        if (resources)
-            resource_path = g_filename_from_uri(options->initial_path, nullptr, nullptr);
-        if (resource_path)
-            initial_path = resource_path;
-        if (g_file_test(initial_path, G_FILE_TEST_IS_DIR))
-            gtk_file_chooser_set_current_folder(interface, initial_path);
-        else if (!resources || resource_path)
-            gtk_file_chooser_set_filename(interface, initial_path);
+        char *resource_path = g_filename_from_uri(options->initial_path, nullptr, nullptr);
+        if (resource_path && g_file_test(resource_path, G_FILE_TEST_IS_DIR))
+            gtk_file_chooser_set_current_folder(interface, resource_path);
+        else if (resource_path)
+            gtk_file_chooser_set_filename(interface, resource_path);
         g_free(resource_path);
     }
-    if (options->suggested_name &&
-        (kind == NK_DIALOG_SAVE_FILE || kind == NK_DIALOG_SAVE_RESOURCE))
+    if (options->suggested_name && kind == NK_DIALOG_SAVE_RESOURCE)
         gtk_file_chooser_set_current_name(interface, options->suggested_name);
-    if (kind != NK_DIALOG_SELECT_DIRECTORY && kind != NK_DIALOG_SELECT_RESOURCE_DIRECTORY)
+    if (kind != NK_DIALOG_SELECT_RESOURCE_DIRECTORY)
         add_filters(interface, options);
     dialogs.emplace(context->request, context.get());
     g_signal_connect(chooser, "response", G_CALLBACK(on_dialog_response), context.get());
@@ -3182,7 +3145,7 @@ void shutdown() noexcept {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
+    return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_INPUT |
            NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
@@ -4957,31 +4920,6 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t a
     return NK_OK;
 }
 
-nk_result NK_CALL nk_dialog_open_file(nk_handle parent, const nk_file_dialog_options *options,
-                                      nk_request_id *out_request) {
-    return nk::core::result_boundary(
-        "unexpected error while opening file dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, out_request, NK_DIALOG_OPEN_FILE);
-        });
-}
-
-nk_result NK_CALL nk_dialog_save_file(nk_handle parent, const nk_file_dialog_options *options,
-                                      nk_request_id *out_request) {
-    return nk::core::result_boundary(
-        "unexpected error while opening save dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, out_request, NK_DIALOG_SAVE_FILE);
-        });
-}
-
-nk_result NK_CALL nk_dialog_select_directory(nk_handle parent,
-                                             const nk_file_dialog_options *options,
-                                             nk_request_id *out_request) {
-    return nk::core::result_boundary(
-        "unexpected error while opening directory dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, out_request, NK_DIALOG_SELECT_DIRECTORY);
-        });
-}
-
 nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
                                     const nk_message_dialog_options *options,
                                     nk_request_id *out_request) {
@@ -5254,7 +5192,7 @@ nk_result NK_CALL nk_dialog_open_resource(nk_handle parent, const nk_file_dialog
                                           nk_request_id *request) {
     return nk::core::result_boundary(
         "unexpected error while opening resource dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, request, NK_DIALOG_OPEN_RESOURCE, true);
+            return start_file_dialog(parent, options, request, NK_DIALOG_OPEN_RESOURCE);
         });
 }
 
@@ -5262,7 +5200,7 @@ nk_result NK_CALL nk_dialog_save_resource(nk_handle parent, const nk_file_dialog
                                           nk_request_id *request) {
     return nk::core::result_boundary(
         "unexpected error while opening resource save dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, request, NK_DIALOG_SAVE_RESOURCE, true);
+            return start_file_dialog(parent, options, request, NK_DIALOG_SAVE_RESOURCE);
         });
 }
 
@@ -5271,7 +5209,7 @@ nk_result NK_CALL nk_dialog_select_resource_directory(
     return nk::core::result_boundary(
         "unexpected error while opening resource directory dialog", [&]() -> nk_result {
             return start_file_dialog(parent, options, request,
-                                     NK_DIALOG_SELECT_RESOURCE_DIRECTORY, true);
+                                     NK_DIALOG_SELECT_RESOURCE_DIRECTORY);
         });
 }
 

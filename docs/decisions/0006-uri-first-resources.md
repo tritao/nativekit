@@ -66,13 +66,12 @@ and a correct conversion requires an application-owned `FileProvider` policy.
 
 Desktop backends may convert a confirmed local selection to an RFC 8089
 `file:` URI for the resource APIs. Conversion is confined to that explicit
-URI contract; the existing path APIs continue to expose native local paths.
+URI contract; dialog results never expose process-local paths through NativeKit.
 
 ## Compatibility
 
-The first resource API is additive to ABI version 1. A dedicated capability
-bit lets callers distinguish resource sharing from the older shell and
-clipboard capabilities. Existing path entry points keep their signatures and
-semantics. Android's current use of path-labelled dialog results for
-`content:` values is transitional and is replaced by the resource dialog
-variants; new integrations should use only the resource variants there.
+The first resource API is additive to ABI version 1. Resource sharing remains
+distinguishable through its dedicated capability bit. The path-returning dialog
+entry points and payload were removed from the public API, so all dialog results
+preserve URI identity. Android's path-labelled transitional results were
+replaced by the resource dialog variants.

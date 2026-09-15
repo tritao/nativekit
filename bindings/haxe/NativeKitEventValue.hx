@@ -4,7 +4,6 @@ enum NativeKitEventValue {
 	ClipboardFiles(request:haxe.Int64, result:NativeKit.Result, paths:Array<String>);
 	DropText(source:NativeKit.Handle, text:String);
 	DropFiles(source:NativeKit.Handle, paths:Array<String>);
-	DialogPaths(request:haxe.Int64, result:NativeKit.Result, accepted:Bool, paths:Array<String>);
 	DialogMessage(request:haxe.Int64, result:NativeKit.Result, button:NativeKit.MessageResult);
 	WebViewNavigated(source:NativeKit.Handle, url:String);
 	WebViewMessage(source:NativeKit.Handle, json:String);

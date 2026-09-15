@@ -26,7 +26,7 @@ bool check_result(const char *operation, nk_result result) {
 }
 
 bool check_capabilities(nk_capabilities capabilities) {
-    const nk_capabilities required = NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG |
+    const nk_capabilities required = NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW |
                                      NK_CAP_METAL_SURFACE | NK_CAP_INPUT | NK_CAP_RESOURCE_IO |
                                      NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
                                      NK_CAP_NOTIFICATION | NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP |

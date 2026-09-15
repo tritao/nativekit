@@ -116,7 +116,6 @@ std::unordered_map<nk_request_id, nk_handle> evaluations;
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
 struct DialogRequest {
     uint32_t operation;
-    bool resources;
 };
 
 enum class AndroidPickerMode : jint { open = 1, save = 2, directory = 3 };
@@ -434,28 +433,6 @@ void cancel_webview_requests(nk_handle source) {
     }
 }
 
-std::vector<std::byte> dialog_payload(bool accepted, const std::vector<std::string> &uris) {
-    const auto offsets_offset = sizeof(nk_dialog_paths);
-    const auto strings_offset = offsets_offset + uris.size() * sizeof(uint32_t);
-    std::size_t size = strings_offset;
-    for (const auto &uri : uris)
-        size += uri.size() + 1;
-    std::vector<std::byte> result(size);
-    const nk_dialog_paths header{accepted ? 1u : 0u, static_cast<uint32_t>(uris.size()),
-                                 static_cast<uint32_t>(offsets_offset),
-                                 static_cast<uint32_t>(strings_offset)};
-    std::memcpy(result.data(), &header, sizeof(header));
-    std::size_t cursor = strings_offset;
-    for (std::size_t index = 0; index < uris.size(); ++index) {
-        const auto offset = static_cast<uint32_t>(cursor);
-        std::memcpy(result.data() + offsets_offset + index * sizeof(offset), &offset,
-                    sizeof(offset));
-        std::memcpy(result.data() + cursor, uris[index].c_str(), uris[index].size() + 1);
-        cursor += uris[index].size() + 1;
-    }
-    return result;
-}
-
 std::vector<std::byte> resource_payload(bool accepted,
                                         const std::vector<ResourceValue> &resources) {
     const auto items_offset = sizeof(nk_resource_list);
@@ -568,7 +545,7 @@ std::vector<std::byte> resource_drop_payload(float x, float y, const std::string
     return result;
 }
 
-nk_result start_file_dialog(uint32_t operation, bool resources, nk_handle parent,
+nk_result start_file_dialog(uint32_t operation, nk_handle parent,
                             const nk_file_dialog_options *options, nk_request_id *out_request) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
@@ -579,15 +556,12 @@ nk_result start_file_dialog(uint32_t operation, bool resources, nk_handle parent
     }
     AndroidPickerMode mode;
     switch (operation) {
-    case NK_DIALOG_OPEN_FILE:
     case NK_DIALOG_OPEN_RESOURCE:
         mode = AndroidPickerMode::open;
         break;
-    case NK_DIALOG_SAVE_FILE:
     case NK_DIALOG_SAVE_RESOURCE:
         mode = AndroidPickerMode::save;
         break;
-    case NK_DIALOG_SELECT_DIRECTORY:
     case NK_DIALOG_SELECT_RESOURCE_DIRECTORY:
         mode = AndroidPickerMode::directory;
         break;
@@ -638,7 +612,7 @@ nk_result start_file_dialog(uint32_t operation, bool resources, nk_handle parent
         nk::core::set_error("Android could not launch the system document picker");
         return NK_ERROR_UNKNOWN;
     }
-    file_dialogs.emplace(request, DialogRequest{operation, resources});
+    file_dialogs.emplace(request, DialogRequest{operation});
     *out_request = request;
     return NK_OK;
 }
@@ -1092,7 +1066,7 @@ nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled) {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
+    return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
            NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE |
            NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT | NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY |
@@ -1712,55 +1686,20 @@ nk_result NK_CALL nk_resource_close(nk_handle handle) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_dialog_open_file(nk_handle parent, const nk_file_dialog_options *options,
-                                      nk_request_id *out_request) {
-    if (const auto thread = require_thread(); thread != NK_OK)
-        return thread;
-    (void)parent;
-    (void)options;
-    (void)out_request;
-    nk::core::set_error("Android document selections are URIs; use nk_dialog_open_resource");
-    return NK_ERROR_UNSUPPORTED;
-}
-
-nk_result NK_CALL nk_dialog_save_file(nk_handle parent, const nk_file_dialog_options *options,
-                                      nk_request_id *out_request) {
-    if (const auto thread = require_thread(); thread != NK_OK)
-        return thread;
-    (void)parent;
-    (void)options;
-    (void)out_request;
-    nk::core::set_error("Android document selections are URIs; use nk_dialog_save_resource");
-    return NK_ERROR_UNSUPPORTED;
-}
-
-nk_result NK_CALL nk_dialog_select_directory(nk_handle parent,
-                                             const nk_file_dialog_options *options,
-                                             nk_request_id *out_request) {
-    if (const auto thread = require_thread(); thread != NK_OK)
-        return thread;
-    (void)parent;
-    (void)options;
-    (void)out_request;
-    nk::core::set_error(
-        "Android document selections are URIs; use nk_dialog_select_resource_directory");
-    return NK_ERROR_UNSUPPORTED;
-}
-
 nk_result NK_CALL nk_dialog_open_resource(nk_handle parent, const nk_file_dialog_options *options,
                                           nk_request_id *out_request) {
-    return start_file_dialog(NK_DIALOG_OPEN_RESOURCE, true, parent, options, out_request);
+    return start_file_dialog(NK_DIALOG_OPEN_RESOURCE, parent, options, out_request);
 }
 
 nk_result NK_CALL nk_dialog_save_resource(nk_handle parent, const nk_file_dialog_options *options,
                                           nk_request_id *out_request) {
-    return start_file_dialog(NK_DIALOG_SAVE_RESOURCE, true, parent, options, out_request);
+    return start_file_dialog(NK_DIALOG_SAVE_RESOURCE, parent, options, out_request);
 }
 
 nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle parent,
                                                       const nk_file_dialog_options *options,
                                                       nk_request_id *out_request) {
-    return start_file_dialog(NK_DIALOG_SELECT_RESOURCE_DIRECTORY, true, parent, options,
+    return start_file_dialog(NK_DIALOG_SELECT_RESOURCE_DIRECTORY, parent, options,
                              out_request);
 }
 
@@ -1784,11 +1723,10 @@ nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
         clear_java_exception(env, "Android file dialog cancellation failed");
     }
     nk::core::QueuedEvent event;
-    event.kind =
-        dialog.resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE : NK_EVENT_DIALOG_PATHS_COMPLETE;
+    event.kind = NK_EVENT_DIALOG_RESOURCES_COMPLETE;
     event.flags = dialog.operation;
     event.request_id = request;
-    event.data = dialog.resources ? resource_payload(false, {}) : dialog_payload(false, {});
+    event.data = resource_payload(false, {});
     return nk::core::push_event(std::move(event));
 }
 
@@ -3655,45 +3593,39 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
                 env->DeleteLocalRef(value);
         }
         nk::core::QueuedEvent event;
-        event.kind =
-            dialog.resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE : NK_EVENT_DIALOG_PATHS_COMPLETE;
+        event.kind = NK_EVENT_DIALOG_RESOURCES_COMPLETE;
         event.flags = dialog.operation;
         event.request_id = request_id;
-        if (dialog.resources) {
-            std::vector<ResourceValue> resources;
-            resources.reserve(uris.size());
-            jint *flags =
-                resource_flags ? env->GetIntArrayElements(resource_flags, nullptr) : nullptr;
-            const auto flag_count = resource_flags ? env->GetArrayLength(resource_flags) : 0;
-            const auto mime_count = mime_types ? env->GetArrayLength(mime_types) : 0;
-            const auto name_count = display_names ? env->GetArrayLength(display_names) : 0;
-            for (std::size_t index = 0; index < uris.size(); ++index) {
-                ResourceValue resource;
-                resource.uri = std::move(uris[index]);
-                auto mime = index < static_cast<std::size_t>(mime_count)
-                                ? static_cast<jstring>(env->GetObjectArrayElement(
-                                      mime_types, static_cast<jsize>(index)))
-                                : nullptr;
-                auto name = index < static_cast<std::size_t>(name_count)
-                                ? static_cast<jstring>(env->GetObjectArrayElement(
-                                      display_names, static_cast<jsize>(index)))
-                                : nullptr;
-                resource.mime_type = to_utf8(env, mime);
-                resource.display_name = to_utf8(env, name);
-                if (flags && index < static_cast<std::size_t>(flag_count))
-                    resource.flags = static_cast<uint32_t>(flags[index]);
-                resources.push_back(std::move(resource));
-                if (name)
-                    env->DeleteLocalRef(name);
-                if (mime)
-                    env->DeleteLocalRef(mime);
-            }
-            if (flags)
-                env->ReleaseIntArrayElements(resource_flags, flags, JNI_ABORT);
-            event.data = resource_payload(accepted == JNI_TRUE, resources);
-        } else {
-            event.data = dialog_payload(accepted == JNI_TRUE, uris);
+        std::vector<ResourceValue> resources;
+        resources.reserve(uris.size());
+        jint *flags = resource_flags ? env->GetIntArrayElements(resource_flags, nullptr) : nullptr;
+        const auto flag_count = resource_flags ? env->GetArrayLength(resource_flags) : 0;
+        const auto mime_count = mime_types ? env->GetArrayLength(mime_types) : 0;
+        const auto name_count = display_names ? env->GetArrayLength(display_names) : 0;
+        for (std::size_t index = 0; index < uris.size(); ++index) {
+            ResourceValue resource;
+            resource.uri = std::move(uris[index]);
+            auto mime = index < static_cast<std::size_t>(mime_count)
+                            ? static_cast<jstring>(env->GetObjectArrayElement(
+                                  mime_types, static_cast<jsize>(index)))
+                            : nullptr;
+            auto name = index < static_cast<std::size_t>(name_count)
+                            ? static_cast<jstring>(env->GetObjectArrayElement(
+                                  display_names, static_cast<jsize>(index)))
+                            : nullptr;
+            resource.mime_type = to_utf8(env, mime);
+            resource.display_name = to_utf8(env, name);
+            if (flags && index < static_cast<std::size_t>(flag_count))
+                resource.flags = static_cast<uint32_t>(flags[index]);
+            resources.push_back(std::move(resource));
+            if (name)
+                env->DeleteLocalRef(name);
+            if (mime)
+                env->DeleteLocalRef(mime);
         }
+        if (flags)
+            env->ReleaseIntArrayElements(resource_flags, flags, JNI_ABORT);
+        event.data = resource_payload(accepted == JNI_TRUE, resources);
         nk::core::push_event(std::move(event));
     });
 }

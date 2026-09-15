@@ -22,12 +22,6 @@ extern "C" {
 /** Operation encoded in a dialog completion event's flags. */
 typedef uint32_t nk_dialog_operation;
 enum NK_ENUM(nk_dialog_operation) {
-    /** Select one or more local files. */
-    NK_DIALOG_OPEN_FILE = 1,
-    /** Select a destination for a local file. */
-    NK_DIALOG_SAVE_FILE = 2,
-    /** Select a local directory. */
-    NK_DIALOG_SELECT_DIRECTORY = 3,
     /** Show a native message and collect the selected button. */
     NK_DIALOG_MESSAGE = 4,
     /** Select one or more URI resources. */
@@ -38,7 +32,7 @@ enum NK_ENUM(nk_dialog_operation) {
     NK_DIALOG_SELECT_RESOURCE_DIRECTORY = 7
 };
 
-/** Optional behavior flags for file and resource dialogs. */
+/** Optional behavior flags for URI-resource dialogs. */
 typedef uint32_t nk_dialog_flags;
 enum NK_FLAGS(nk_dialog_flags) {
     /** Allow selecting more than one item in an open dialog. */
@@ -94,7 +88,7 @@ enum NK_ENUM(nk_message_result) {
 /* Dialog options and event data                                             */
 /* ------------------------------------------------------------------------- */
 
-/** One user-visible name and glob pattern set for a file dialog. */
+/** One user-visible name and glob pattern set for a URI-resource dialog. */
 typedef struct nk_dialog_filter {
     /** Optional label shown for the filter. */
     const char *name NK_NULLABLE_UTF8;
@@ -102,7 +96,7 @@ typedef struct nk_dialog_filter {
     const char *patterns NK_UTF8;
 } nk_dialog_filter;
 
-/** Options shared by local-file and URI-resource dialogs. */
+/** Options for URI-resource dialogs. */
 typedef struct nk_file_dialog_options {
     /** Set to sizeof(nk_file_dialog_options) before starting the dialog. */
     uint32_t struct_size NK_STRUCT_SIZE;
@@ -110,7 +104,7 @@ typedef struct nk_file_dialog_options {
     nk_dialog_flags flags;
     /** Optional dialog title. */
     const char *title NK_NULLABLE_UTF8;
-    /** Optional initial local path or platform resource location. */
+    /** Optional initial URI or platform resource location. */
     const char *initial_path NK_NULLABLE_UTF8;
     /** Optional suggested filename for save operations. */
     const char *suggested_name NK_NULLABLE_UTF8;
@@ -138,18 +132,6 @@ typedef struct nk_message_dialog_options {
     const char *message NK_UTF8;
 } nk_message_dialog_options;
 
-/** Header at the start of NK_EVENT_DIALOG_PATHS_COMPLETE data. */
-typedef struct nk_dialog_paths {
-    /** 1 when the user accepted the dialog, and 0 when it was cancelled. */
-    nk_bool accepted;
-    /** Number of returned paths. */
-    uint32_t path_count;
-    /** Byte offset from the payload start to the uint32_t path-offset table. */
-    uint32_t offsets_offset;
-    /** Byte offset from the payload start to the packed NUL-terminated paths. */
-    uint32_t strings_offset;
-} nk_dialog_paths;
-
 /** Payload of NK_EVENT_DIALOG_MESSAGE_COMPLETE. */
 typedef struct nk_dialog_message_result {
     /** Button selected by the user, or NK_MESSAGE_RESULT_NONE on cancellation. */
@@ -164,21 +146,11 @@ typedef struct nk_dialog_message_result {
  * Starts a non-blocking native dialog on the UI thread. `parent` may be zero;
  * where a parent is supported, desktop backends accept an nk_window and Android
  * resource dialogs accept an nk_mobile_host. All strings and filters are copied
- * before the function returns. Completion uses NK_EVENT_DIALOG_PATHS_COMPLETE
- * or NK_EVENT_DIALOG_MESSAGE_COMPLETE, with the operation in event.flags and the
- * returned request ID in event.request_id.
+ * before the function returns. Resource dialogs complete with
+ * NK_EVENT_DIALOG_RESOURCES_COMPLETE; message dialogs complete with
+ * NK_EVENT_DIALOG_MESSAGE_COMPLETE. The operation is in event.flags and the
+ * returned request ID is in event.request_id.
  */
-NK_API nk_result NK_CALL nk_dialog_open_file(nk_handle parent,
-                                             const nk_file_dialog_options *options,
-                                             nk_request_id *out_request NK_OUT);
-/** Starts an asynchronous native save-file dialog. */
-NK_API nk_result NK_CALL nk_dialog_save_file(nk_handle parent,
-                                             const nk_file_dialog_options *options,
-                                             nk_request_id *out_request NK_OUT);
-/** Starts an asynchronous native directory-selection dialog. */
-NK_API nk_result NK_CALL nk_dialog_select_directory(nk_handle parent,
-                                                    const nk_file_dialog_options *options,
-                                                    nk_request_id *out_request NK_OUT);
 /** Starts an asynchronous native message dialog. */
 NK_API nk_result NK_CALL nk_dialog_message(nk_handle parent,
                                            const nk_message_dialog_options *options,
@@ -186,17 +158,6 @@ NK_API nk_result NK_CALL nk_dialog_message(nk_handle parent,
 
 /** Cancels a pending dialog. Its completion event is still emitted. */
 NK_API nk_result NK_CALL nk_dialog_cancel(nk_request_id request);
-
-/* ------------------------------------------------------------------------- */
-/* Dialog event helpers                                                      */
-/* ------------------------------------------------------------------------- */
-
-/**
- * Validates and returns a path from a dialog event. The returned UTF-8 view is
- * owned by the event and remains valid until nk_event_release().
- */
-NK_API nk_result NK_CALL nk_dialog_event_path(const nk_event *event, uint32_t index,
-                                              const char **out_path, uint32_t *out_length);
 
 #ifdef __cplusplus
 }

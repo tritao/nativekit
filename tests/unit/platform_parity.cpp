@@ -34,7 +34,7 @@ constexpr mask cap(nk_capabilities value) {
 }
 
 constexpr mask k_known_capabilities =
-    cap(NK_CAP_WINDOW) | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_FILE_DIALOG) | cap(NK_CAP_CLIPBOARD) |
+    cap(NK_CAP_WINDOW) | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_CLIPBOARD) |
     cap(NK_CAP_DRAG_DROP) | cap(NK_CAP_SHELL) | cap(NK_CAP_SYSTEM_APPEARANCE) |
     cap(NK_CAP_EXPORT_NATIVE_WINDOW) | cap(NK_CAP_WRAP_NATIVE_WINDOW) | cap(NK_CAP_NOTIFICATION) |
     cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_INPUT) | cap(NK_CAP_OPENGL_SURFACE) |
@@ -72,7 +72,7 @@ constexpr mask k_ios_system_capabilities =
     k_mobile_system_capabilities | cap(NK_CAP_APPLICATION_PATH);
 
 constexpr mask k_desktop_common =
-    cap(NK_CAP_WINDOW) | cap(NK_CAP_FILE_DIALOG) | cap(NK_CAP_CLIPBOARD) | cap(NK_CAP_DRAG_DROP) |
+    cap(NK_CAP_WINDOW) | cap(NK_CAP_CLIPBOARD) | cap(NK_CAP_DRAG_DROP) |
     cap(NK_CAP_SHELL) | cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) |
     cap(NK_CAP_NOTIFICATION) | cap(NK_CAP_INPUT) | cap(NK_CAP_CURSOR) |
     cap(NK_CAP_POINTER_CAPTURE) | cap(NK_CAP_RESOURCE_IO);
@@ -114,7 +114,7 @@ constexpr backend_contract platform_contract() {
             0, 0};
 #elif defined(NK_PARITY_BACKEND_ANDROID)
     return {"Android",
-            cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_FILE_DIALOG) |
+            cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_WEBVIEW) |
                 cap(NK_CAP_CLIPBOARD) | cap(NK_CAP_DRAG_DROP) | cap(NK_CAP_SHELL) |
                 cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_NOTIFICATION) | cap(NK_CAP_INPUT) |
                 cap(NK_CAP_OPENGL_ES_SURFACE) | cap(NK_CAP_VULKAN_SURFACE) |
@@ -131,7 +131,7 @@ constexpr backend_contract platform_contract() {
             cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_METAL_SURFACE) |
                 cap(NK_CAP_INPUT) | cap(NK_CAP_RESOURCE_IO) | cap(NK_CAP_CLIPBOARD) |
                 cap(NK_CAP_SHELL) | cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_NOTIFICATION) |
-                k_ios_system_capabilities | cap(NK_CAP_FILE_DIALOG) | cap(NK_CAP_ACCESSIBILITY),
+                k_ios_system_capabilities | cap(NK_CAP_ACCESSIBILITY),
             cap(NK_CAP_DRAG_DROP) | cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_JOYSTICK),
             cap(NK_CAP_WINDOW) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) | cap(NK_CAP_WRAP_NATIVE_WINDOW) |
                 cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
@@ -147,7 +147,7 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_RESOURCE_IO) | cap(NK_CAP_SYSTEM_INFO) |
                 cap(NK_CAP_ACCESSIBILITY) | cap(NK_CAP_SHELL) | cap(NK_CAP_NOTIFICATION) |
                 cap(NK_CAP_JOYSTICK),
-            cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_FILE_DIALOG) |
+            cap(NK_CAP_WINDOW_STYLING) |
                 cap(NK_CAP_APPLICATION_PATH) | cap(NK_CAP_APPLICATION_STORAGE) |
                 cap(NK_CAP_SYSTEM_FONTS) | cap(NK_CAP_DEVICE_ORIENTATION),
             cap(NK_CAP_WEBVIEW) | cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) |
@@ -196,10 +196,9 @@ struct capability_name {
     nk_capabilities value;
 };
 
-constexpr std::array<capability_name, 36> k_capability_names = {{
+constexpr std::array<capability_name, 35> k_capability_names = {{
     {"WINDOW", NK_CAP_WINDOW},
     {"WEBVIEW", NK_CAP_WEBVIEW},
-    {"FILE_DIALOG", NK_CAP_FILE_DIALOG},
     {"CLIPBOARD", NK_CAP_CLIPBOARD},
     {"DRAG_DROP", NK_CAP_DRAG_DROP},
     {"SHELL", NK_CAP_SHELL},

@@ -113,7 +113,7 @@ int main(void) {
     init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
     const nk_capabilities expected =
-        NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP |
+        NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP |
         NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION | NK_CAP_INPUT |
         NK_CAP_OPENGL_SURFACE | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
         NK_CAP_WINDOW_STYLING | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN |
@@ -551,11 +551,11 @@ int main(void) {
     assert(nk_webview_destroy(policy_webview) == NK_OK);
     assert(nk_webview_navigation_decide(cancelled_id, 1) == NK_ERROR_INVALID_REQUEST);
 
-    nk_file_dialog_options file_options = {0};
-    file_options.struct_size = sizeof(file_options);
-    file_options.title = "NativeKit cancellation test";
+    nk_file_dialog_options resource_options = {0};
+    resource_options.struct_size = sizeof(resource_options);
+    resource_options.title = "NativeKit resource cancellation test";
     nk_request_id dialog_request = NK_INVALID_REQUEST_ID;
-    assert(nk_dialog_open_file(window, &file_options, &dialog_request) == NK_OK);
+    assert(nk_dialog_open_resource(window, &resource_options, &dialog_request) == NK_OK);
     assert(dialog_request != NK_INVALID_REQUEST_ID);
     assert(nk_dialog_cancel(dialog_request) == NK_OK);
     assert(nk_dialog_cancel(dialog_request) == NK_ERROR_INVALID_REQUEST);
@@ -564,17 +564,12 @@ int main(void) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == NK_EVENT_DIALOG_PATHS_COMPLETE && event.request_id == dialog_request) {
-            assert(event.kind == NK_EVENT_DIALOG_PATHS_COMPLETE);
-            assert(event.flags == NK_DIALOG_OPEN_FILE);
-            assert(event.data_size >= sizeof(nk_dialog_paths));
-            const nk_dialog_paths *paths = (const nk_dialog_paths *)event.data;
-            assert(paths->accepted == 0);
-            assert(paths->path_count == 0);
-            const char *path = NULL;
-            uint32_t path_length = 0;
-            assert(nk_dialog_event_path(&event, 0, &path, &path_length) ==
-                   NK_ERROR_INVALID_ARGUMENT);
+        if (event.kind == NK_EVENT_DIALOG_RESOURCES_COMPLETE && event.request_id == dialog_request) {
+            assert(event.flags == NK_DIALOG_OPEN_RESOURCE);
+            assert(event.data_size >= sizeof(nk_resource_list));
+            const nk_resource_list *resources = (const nk_resource_list *)event.data;
+            assert(resources->accepted == 0);
+            assert(resources->item_count == 0);
             received_dialog = 1;
         }
         nk_event_release(&event);

@@ -48,7 +48,7 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | Windows and lifecycle | ✅ | ✅ | ✅ | Host view | Host view | Partial |
 | WebView | ✅ | ✅ | ✅ | ✅ | ✅ | Native DOM |
-| Dialogs and system services | ✅ | ✅ | ✅ | ✅ | ✅ | Partial |
+| URI resource dialogs and system services | ✅ | ✅ | ✅ | ✅ | ✅ | Equivalent |
 | Clipboard and drag/drop | ✅ | ✅ | ✅ | ✅ | ✅ | Partial |
 | Notifications | ✅ | ✅ | ✅ | ✅ | ✅ | Partial |
 | Input, cursors, and capture | ✅ | ✅ | ✅ | Partial | Partial | Partial |
@@ -78,8 +78,9 @@ maintained in the [platform parity contract](docs/platform-parity.md).
   streams, and gamepads use browser APIs. Save and directory pickers retain
   opaque browser handles for the lifetime of the NativeKit runtime; open files
   remain temporary `blob:` resources. Pickers and notifications are subject to
-  browser permissions and user-activation rules; path-based dialogs remain
-  deferred because browsers do not expose process-local filesystem paths.
+  browser permissions and user-activation rules. Window styling uses the
+  browser canvas CSS model; page-owned decorations and activation are outside
+  the contract.
 - Linux desktop support requires GTK 3 and WebKitGTK 4.1. Without them, the
   library builds with a stub backend and reports the services as unsupported.
 - Windows WebViews require the Microsoft Edge WebView2 Evergreen Runtime.

@@ -21,17 +21,6 @@ class NativeKitEventBytes {
 	public static function decodeDropItems(data:haxe.io.Bytes, expectedCount:Int):Array<String>
 		return decodePackedStrings(data, expectedCount, 16);
 
-	public static function decodeDialogPaths(data:haxe.io.Bytes):Array<String> {
-		requireMinimumSize(data, 16);
-		var count = readU32(data, 4), offsets = readU32(data, 8), strings = readU32(data, 12);
-		if (offsets < 16 || strings < offsets || strings > data.length || count > Std.int((strings - offsets) / 4))
-			throw "NativeKit dialog payload has an invalid offset table";
-		var values:Array<String> = [];
-		for (index in 0...count)
-			values.push(requireString(data, readU32(data, offsets + index * 4), strings));
-		return values;
-	}
-
 	public static function decodeResourceList(data:haxe.io.Bytes, listOffset:Int):{accepted:Bool, items:Array<NativeKitResource>} {
 		if (listOffset < 0 || listOffset > data.length - 16)
 			throw "NativeKit resource payload has an invalid list offset";

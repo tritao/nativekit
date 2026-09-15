@@ -222,7 +222,6 @@ int main(void) {
     nk_result notification_result = nk_notification_show(NULL, NULL);
     assert(notification_result == NK_ERROR_INVALID_ARGUMENT ||
            notification_result == NK_ERROR_UNSUPPORTED);
-    assert(nk_dialog_event_path(NULL, 0, NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     nk_resource_view invalid_resource = {0};
     invalid_resource.struct_size = sizeof(invalid_resource);
     assert(nk_resource_event_item(NULL, 0, &invalid_resource) == NK_ERROR_INVALID_ARGUMENT);
@@ -333,26 +332,6 @@ int main(void) {
     assert(nk_resource_seek(NK_INVALID_HANDLE, 0, NK_SEEK_START, &stream_info.size) ==
            NK_ERROR_INVALID_HANDLE);
     assert(nk_resource_close(NK_INVALID_HANDLE) == NK_ERROR_INVALID_HANDLE);
-    struct {
-        nk_dialog_paths header;
-        uint32_t offset;
-        char path[4];
-    } packed = {{1, 1, sizeof(nk_dialog_paths), sizeof(nk_dialog_paths) + sizeof(uint32_t)},
-                sizeof(nk_dialog_paths) + sizeof(uint32_t),
-                "abc"};
-    nk_event packed_event = {0};
-    packed_event.struct_size = sizeof(packed_event);
-    packed_event.kind = NK_EVENT_DIALOG_PATHS_COMPLETE;
-    packed_event.data = &packed;
-    packed_event.data_size = sizeof(packed);
-    const char *decoded_path = NULL;
-    uint32_t decoded_length = 0;
-    assert(nk_dialog_event_path(&packed_event, 0, &decoded_path, &decoded_length) == NK_OK);
-    assert(decoded_length == 3);
-    assert(memcmp(decoded_path, "abc", 3) == 0);
-    packed_event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
-    assert(nk_dialog_event_path(&packed_event, 0, &decoded_path, &decoded_length) ==
-           NK_ERROR_INVALID_ARGUMENT);
     uint32_t home_size = 0;
     nk_result home_result = nk_system_directory(NK_DIRECTORY_HOME, NULL, &home_size);
     assert(home_result == NK_ERROR_BUFFER_TOO_SMALL || home_result == NK_ERROR_UNSUPPORTED);

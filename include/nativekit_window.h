@@ -27,8 +27,6 @@ enum NK_FLAGS(nk_capabilities) {
     NK_CAP_WINDOW = UINT64_C(1) << 0,
     /** The backend can create embedded WebViews. */
     NK_CAP_WEBVIEW = UINT64_C(1) << 1,
-    /** The backend can show native file dialogs. */
-    NK_CAP_FILE_DIALOG = UINT64_C(1) << 2,
     /** The backend can read and write the system clipboard. */
     NK_CAP_CLIPBOARD = UINT64_C(1) << 3,
     /** The backend can report and accept drag-and-drop data. */

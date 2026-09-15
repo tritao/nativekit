@@ -210,6 +210,61 @@ EM_JS(void, nk_web_set_canvas_css_size, (const char *selector, int width, int he
     }
 });
 
+EM_JS(void, nk_web_set_canvas_size_limits,
+      (const char *selector, int min_width, int min_height, int max_width, int max_height), {
+          const canvas = document.querySelector(UTF8ToString(selector));
+          if (!canvas)
+              return;
+          canvas.style.minWidth = min_width > 0 ? min_width + "px" : "";
+          canvas.style.minHeight = min_height > 0 ? min_height + "px" : "";
+          canvas.style.maxWidth = max_width > 0 ? max_width + "px" : "";
+          canvas.style.maxHeight = max_height > 0 ? max_height + "px" : "";
+      });
+
+EM_JS(void, nk_web_set_canvas_aspect_ratio,
+      (const char *selector, int numerator, int denominator), {
+          const canvas = document.querySelector(UTF8ToString(selector));
+          if (!canvas)
+              return;
+          canvas.style.aspectRatio = numerator > 0 && denominator > 0
+                                         ? numerator + " / " + denominator
+                                         : "";
+      });
+
+EM_JS(void, nk_web_set_canvas_resizable, (const char *selector, int enabled), {
+    const canvas = document.querySelector(UTF8ToString(selector));
+    if (!canvas)
+        return;
+    canvas.style.resize = enabled ? "both" : "none";
+    canvas.style.overflow = enabled ? "auto" : "hidden";
+    if (typeof ResizeObserver !== "undefined") {
+        if (canvas._nkResizeObserver)
+            canvas._nkResizeObserver.disconnect();
+        if (enabled) {
+            const notify = () => {
+                if (Module.ccall)
+                    Module.ccall("nk_web_host_canvas_resize", null, [], []);
+            };
+            canvas._nkResizeObserver = new ResizeObserver(notify);
+            canvas._nkResizeObserver.observe(canvas);
+        } else {
+            delete canvas._nkResizeObserver;
+        }
+    }
+});
+
+EM_JS(void, nk_web_set_canvas_opacity, (const char *selector, float opacity), {
+    const canvas = document.querySelector(UTF8ToString(selector));
+    if (canvas)
+        canvas.style.opacity = String(opacity);
+});
+
+EM_JS(void, nk_web_set_canvas_mouse_passthrough, (const char *selector, int enabled), {
+    const canvas = document.querySelector(UTF8ToString(selector));
+    if (canvas)
+        canvas.style.pointerEvents = enabled ? "none" : "auto";
+});
+
 EM_JS(void, nk_web_set_canvas_visible, (const char *selector, int visible), {
     const canvas = document.querySelector(UTF8ToString(selector));
     if (canvas)
@@ -946,7 +1001,7 @@ EM_JS(void, nk_web_pick_resources,
               const uris = Array.from(files || []).map(release);
               complete(result_ok, uris.length > 0, uris.join("\r\n"));
           };
-          const openWithInput = () => {
+          const openWithInput = (directory) => {
               const input = document.createElement("input");
               let completed = false;
               const onFocus = () => window.setTimeout(() => finish(null, false), 100);
@@ -962,8 +1017,12 @@ EM_JS(void, nk_web_pick_resources,
                   input.remove();
               };
               input.type = "file";
-              input.multiple = !!multiple;
+              input.multiple = !!multiple || !!directory;
               input.accept = acceptValue;
+              if (directory) {
+                  input.setAttribute("webkitdirectory", "");
+                  input.setAttribute("directory", "");
+              }
               input.style.display = "none";
               input.addEventListener("change", () => {
                   finish(input.files, input.files && input.files.length > 0);
@@ -1001,8 +1060,8 @@ EM_JS(void, nk_web_pick_resources,
                       completeFiles(files);
                       return;
                   }
-                  if (kind === open_resource) {
-                      openWithInput();
+                  if (kind === open_resource || kind === select_resource_directory) {
+                      openWithInput(kind === select_resource_directory);
                       return;
                   }
                   complete(result_unsupported, false, "");
@@ -1419,6 +1478,14 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_drop(
     host_state.callbacks.drop(event, host_state.user_data);
 }
 
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_canvas_resize() {
+    if (!host_state.callbacks.resize)
+        return;
+    nk::web::CanvasSize size{};
+    if (nk::web::canvas_size(&size))
+        host_state.callbacks.resize(size, host_state.user_data);
+}
+
 extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_dialog_complete(
     uint32_t request, uint32_t kind, nk_result result, int accepted, const char *uris) {
     if (!host_state.callbacks.resource_dialog)
@@ -1554,6 +1621,28 @@ bool set_canvas_size(int32_t width, int32_t height) noexcept {
     if (!canvas_size(&size))
         return false;
     return set_canvas_framebuffer_size(size);
+}
+
+void set_canvas_size_limits(int32_t min_width, int32_t min_height, int32_t max_width,
+                            int32_t max_height) noexcept {
+    nk_web_set_canvas_size_limits(canvas_selector(), min_width, min_height, max_width,
+                                  max_height);
+}
+
+void set_canvas_aspect_ratio(int32_t numerator, int32_t denominator) noexcept {
+    nk_web_set_canvas_aspect_ratio(canvas_selector(), numerator, denominator);
+}
+
+void set_canvas_resizable(bool enabled) noexcept {
+    nk_web_set_canvas_resizable(canvas_selector(), enabled ? 1 : 0);
+}
+
+void set_canvas_opacity(float opacity) noexcept {
+    nk_web_set_canvas_opacity(canvas_selector(), opacity);
+}
+
+void set_canvas_mouse_passthrough(bool enabled) noexcept {
+    nk_web_set_canvas_mouse_passthrough(canvas_selector(), enabled ? 1 : 0);
 }
 
 bool set_canvas_framebuffer_size(const CanvasSize &size) noexcept {

@@ -159,6 +159,12 @@ const char *canvas_selector() noexcept;
 bool canvas_size(CanvasSize *out_size) noexcept;
 bool set_canvas_framebuffer_size(const CanvasSize &size) noexcept;
 bool set_canvas_size(int32_t width, int32_t height) noexcept;
+void set_canvas_size_limits(int32_t min_width, int32_t min_height, int32_t max_width,
+                            int32_t max_height) noexcept;
+void set_canvas_aspect_ratio(int32_t numerator, int32_t denominator) noexcept;
+void set_canvas_resizable(bool enabled) noexcept;
+void set_canvas_opacity(float opacity) noexcept;
+void set_canvas_mouse_passthrough(bool enabled) noexcept;
 bool set_canvas_visible(bool visible) noexcept;
 bool set_title(const char *title) noexcept;
 bool set_cursor(const char *cursor) noexcept;
