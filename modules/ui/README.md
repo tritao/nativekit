@@ -72,10 +72,18 @@ Set up Emscripten, then build and test with:
 python3 -m http.server --directory build-web/modules/ui 8080
 ```
 
-The Haxeon showcase fetches its five font assets separately by default, so the
-initial WASM host is not accompanied by a font `.data` payload. For an offline
-or deterministic bundle, build with `NKUI_HAXEON_BUNDLE_FONTS=ON`; this puts
-the fonts back into `nativekit_ui_haxeon.data`.
+The Haxeon showcase fetches five compact, separately generated TTF assets by
+default, so the initial WASM host is not accompanied by a font `.data` payload.
+The subsetter collects characters from the showcase sources; set
+`NKUI_HAXEON_SUBSET_FONTS=OFF` when the showcase needs the complete source
+fonts. The subset build requires the Python `fonttools` package. For an offline
+or deterministic bundle, build with
+`NKUI_HAXEON_BUNDLE_FONTS=ON`; this puts the selected fonts back into
+`nativekit_ui_haxeon.data`.
+
+NativeKit currently accepts TTF/OTF data directly. Configure the web server to
+apply Brotli or gzip content encoding to these assets for transfer compression;
+serving WOFF2 would require a WOFF2 decoder before calling `FontCollection.addData`.
 
 The browser owns the frame loop through `nk_surface_set_frame_callback()`;
 Emscripten types do not appear in NativeKit's public headers.
