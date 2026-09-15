@@ -117,7 +117,8 @@ int main(void) {
         NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION | NK_CAP_INPUT |
         NK_CAP_OPENGL_SURFACE | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
         NK_CAP_WINDOW_STYLING | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN |
-        NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE;
+        NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE |
+        NK_CAP_WRAP_NATIVE_WINDOW;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
@@ -183,8 +184,11 @@ int main(void) {
     assert(native.window != 0);
     assert(native.flags == 0);
     nk_window wrapped = NK_INVALID_HANDLE;
-    assert(nk_window_wrap_native(&native, &wrapped) == NK_ERROR_UNSUPPORTED);
-    assert(wrapped == NK_INVALID_HANDLE);
+    assert(nk_window_wrap_native(&native, &wrapped) == NK_OK);
+    assert(wrapped != NK_INVALID_HANDLE);
+    assert(nk_window_destroy(wrapped) == NK_OK);
+    assert(nk_window_get_native(window, &native) == NK_OK);
+    assert(native.window != 0);
     float scale = 0.0f;
     assert(nk_window_get_scale(window, &scale) == NK_OK);
     nk_window_state state = {0};

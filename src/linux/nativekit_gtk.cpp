@@ -109,6 +109,7 @@ struct GtkMonitorResource final : nk::core::Resource {
 struct GtkWindowResource final : nk::core::Resource {
     GtkWidget *window = nullptr;
     GtkWidget *container = nullptr;
+    GdkWindow *foreign_window = nullptr;
     GtkIMContext *im_context = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle owner = NK_INVALID_HANDLE;
@@ -116,6 +117,9 @@ struct GtkWindowResource final : nk::core::Resource {
     std::vector<nk_handle> surfaces;
     std::vector<nk_handle> owned_windows;
     bool drops_enabled = false;
+    bool wrapped = false;
+    bool decorated = true;
+    bool resizable = false;
     uint64_t generation = 0;
     std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
     std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> buttons{};
@@ -139,11 +143,18 @@ struct GtkWindowResource final : nk::core::Resource {
     int32_t aspect_denominator = 0;
 
     ~GtkWindowResource() override {
-        if (pointer_grabbed && window) {
-            if (GdkDisplay *display = gtk_widget_get_display(window))
+        if (pointer_grabbed) {
+            GdkDisplay *display = nullptr;
+            if (foreign_window)
+                display = gdk_window_get_display(foreign_window);
+            else if (window)
+                display = gtk_widget_get_display(window);
+            if (display)
                 gdk_seat_ungrab(gdk_display_get_default_seat(display));
         }
-        if (window)
+        if (foreign_window)
+            g_object_unref(foreign_window);
+        if (window && !wrapped)
             gtk_widget_destroy(window);
         if (im_context)
             g_object_unref(im_context);
@@ -2233,7 +2244,10 @@ void apply_geometry_hints(const GtkWindowResource &resource) {
         geometry.max_aspect = geometry.min_aspect;
         hints = static_cast<GdkWindowHints>(hints | GDK_HINT_ASPECT);
     }
-    gtk_window_set_geometry_hints(GTK_WINDOW(resource.window), nullptr, &geometry, hints);
+    if (resource.wrapped)
+        gdk_window_set_geometry_hints(resource.foreign_window, &geometry, hints);
+    else
+        gtk_window_set_geometry_hints(GTK_WINDOW(resource.window), nullptr, &geometry, hints);
 }
 
 std::shared_ptr<GtkWebViewResource> webview(nk_handle handle) {
@@ -2348,9 +2362,15 @@ GdkCursor *effective_cursor(const GtkWindowResource &resource, GdkDisplay *displ
     return resource.cursor ? resource.cursor->cursor : nullptr;
 }
 
-nk_result apply_cursor(GtkWindowResource &resource) {
+GdkWindow *native_window(GtkWindowResource &resource) {
+    if (resource.wrapped)
+        return resource.foreign_window;
     gtk_widget_realize(resource.window);
-    GdkWindow *native = gtk_widget_get_window(resource.window);
+    return gtk_widget_get_window(resource.window);
+}
+
+nk_result apply_cursor(GtkWindowResource &resource) {
+    GdkWindow *native = native_window(resource);
     if (!native)
         return fail(NK_ERROR_UNKNOWN, "GTK window is not realized");
     GdkDisplay *display = gdk_window_get_display(native);
@@ -2364,8 +2384,7 @@ nk_result apply_cursor_mode(GtkWindowResource &resource, nk_cursor_mode mode) {
     if (mode == NK_CURSOR_MODE_DISABLED)
         return fail(NK_ERROR_UNSUPPORTED,
                     "GTK does not provide portable disabled relative pointer motion");
-    gtk_widget_realize(resource.window);
-    GdkWindow *native = gtk_widget_get_window(resource.window);
+    GdkWindow *native = native_window(resource);
     if (!native)
         return fail(NK_ERROR_UNKNOWN, "GTK window is not realized");
     GdkDisplay *display = gdk_window_get_display(native);
@@ -2715,6 +2734,9 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
         parent = window(parent_handle);
         if (!parent)
             return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale parent window handle");
+        if (parent->wrapped)
+            return fail(NK_ERROR_UNSUPPORTED,
+                        "GTK file dialogs cannot use a wrapped window as their parent");
     }
     if (!ensure_gtk())
         return NK_ERROR_UNSUPPORTED;
@@ -3040,7 +3062,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
            NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
            NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_SHARING |
-           NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE | NK_CAP_ACCESSIBILITY;
+           NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE | NK_CAP_ACCESSIBILITY |
+           NK_CAP_WRAP_NATIVE_WINDOW;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -3060,6 +3083,9 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         auto owner = options->owner ? window(options->owner) : nullptr;
         if (options->owner && !owner)
             return invalid_handle("owner window");
+        if (owner && owner->wrapped)
+            return fail(NK_ERROR_UNSUPPORTED,
+                        "GTK child windows cannot use a wrapped window as their owner");
         if (owner)
             owner->owned_windows.reserve(owner->owned_windows.size() + 1);
         auto resource = std::make_shared<GtkWindowResource>();
@@ -3149,6 +3175,17 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     const auto surfaces = resource->surfaces;
     for (auto child = surfaces.rbegin(); child != surfaces.rend(); ++child)
         nk_surface_destroy(*child);
+    if (resource->wrapped) {
+        if (resource->pointer_grabbed) {
+            if (GdkDisplay *display = gdk_window_get_display(resource->foreign_window))
+                gdk_seat_ungrab(gdk_display_get_default_seat(display));
+            resource->pointer_grabbed = false;
+        }
+        g_object_unref(resource->foreign_window);
+        resource->foreign_window = nullptr;
+        nk::core::handles().erase(handle, nk::core::ResourceType::window);
+        return NK_OK;
+    }
     if (resource->pointer_grabbed) {
         GdkDisplay *display = gtk_widget_get_display(resource->window);
         gdk_seat_ungrab(gdk_display_get_default_seat(display));
@@ -3172,6 +3209,10 @@ nk_result NK_CALL nk_window_show(nk_handle handle, uint32_t visible) {
     auto resource = window(handle);
     if (!resource)
         return invalid_handle("window");
+    if (resource->wrapped) {
+        visible ? gdk_window_show(resource->foreign_window) : gdk_window_hide(resource->foreign_window);
+        return NK_OK;
+    }
     visible ? gtk_widget_show_all(resource->window) : gtk_widget_hide(resource->window);
     return NK_OK;
 }
@@ -3182,6 +3223,10 @@ nk_result NK_CALL nk_window_set_title(nk_handle handle, const char *title) {
     auto resource = window(handle);
     if (!resource)
         return invalid_handle("window");
+    if (resource->wrapped) {
+        gdk_window_set_title(resource->foreign_window, title ? title : "");
+        return NK_OK;
+    }
     gtk_window_set_title(GTK_WINDOW(resource->window), title ? title : "");
     return NK_OK;
 }
@@ -3195,6 +3240,10 @@ nk_result NK_CALL nk_window_set_bounds(nk_handle handle, int32_t x, int32_t y, i
     auto resource = window(handle);
     if (!resource)
         return invalid_handle("window");
+    if (resource->wrapped) {
+        gdk_window_move_resize(resource->foreign_window, x, y, width, height);
+        return NK_OK;
+    }
     gtk_window_move(GTK_WINDOW(resource->window), x, y);
     gtk_window_resize(GTK_WINDOW(resource->window), width, height);
     return NK_OK;
@@ -3208,6 +3257,10 @@ nk_result NK_CALL nk_window_get_scale(nk_handle handle, float *out_scale) {
     auto resource = window(handle);
     if (!resource)
         return invalid_handle("window");
+    if (resource->wrapped) {
+        *out_scale = static_cast<float>(gdk_window_get_scale_factor(resource->foreign_window));
+        return NK_OK;
+    }
     *out_scale = static_cast<float>(gtk_widget_get_scale_factor(resource->window));
     return NK_OK;
 }
@@ -3221,6 +3274,15 @@ nk_result NK_CALL nk_window_get_content_scale(nk_handle handle,
     auto resource = window(handle);
     if (!resource)
         return invalid_handle("window");
+    if (resource->wrapped) {
+        const float scale = static_cast<float>(gdk_window_get_scale_factor(resource->foreign_window));
+        const auto size = out_scale->struct_size;
+        *out_scale = {};
+        out_scale->struct_size = size;
+        out_scale->x = scale;
+        out_scale->y = scale;
+        return NK_OK;
+    }
     const float scale = static_cast<float>(gtk_widget_get_scale_factor(resource->window));
     const auto size = out_scale->struct_size;
     *out_scale = {};
@@ -3239,9 +3301,17 @@ nk_result NK_CALL nk_window_get_position(nk_handle handle, int32_t *out_x, int32
     if (!resource)
         return invalid_handle("window");
 #ifdef GDK_WINDOWING_WAYLAND
-    if (GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(resource->window)))
+    if (!resource->wrapped && GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(resource->window)))
         return fail(NK_ERROR_UNSUPPORTED, "Wayland does not expose global window positions");
 #endif
+    if (resource->wrapped) {
+        gint x = 0;
+        gint y = 0;
+        gdk_window_get_origin(resource->foreign_window, &x, &y);
+        *out_x = x;
+        *out_y = y;
+        return NK_OK;
+    }
     gint x = 0;
     gint y = 0;
     gtk_window_get_position(GTK_WINDOW(resource->window), &x, &y);
@@ -3258,6 +3328,10 @@ nk_result NK_CALL nk_window_get_size(nk_handle handle, int32_t *out_width, int32
     auto resource = window(handle);
     if (!resource)
         return invalid_handle("window");
+    if (resource->wrapped) {
+        gdk_window_get_geometry(resource->foreign_window, nullptr, nullptr, out_width, out_height);
+        return NK_OK;
+    }
     gtk_window_get_size(GTK_WINDOW(resource->window), out_width, out_height);
     return NK_OK;
 }
@@ -3271,6 +3345,15 @@ nk_result NK_CALL nk_window_get_framebuffer_size(nk_handle handle, int32_t *out_
     auto resource = window(handle);
     if (!resource)
         return invalid_handle("window");
+    if (resource->wrapped) {
+        gint width = 0;
+        gint height = 0;
+        gdk_window_get_geometry(resource->foreign_window, nullptr, nullptr, &width, &height);
+        const int scale = gdk_window_get_scale_factor(resource->foreign_window);
+        *out_width = width * scale;
+        *out_height = height * scale;
+        return NK_OK;
+    }
     gint width = 0;
     gint height = 0;
     gtk_window_get_size(GTK_WINDOW(resource->window), &width, &height);
@@ -3291,11 +3374,10 @@ nk_result NK_CALL nk_window_get_frame_extents(nk_handle handle,
     if (!resource)
         return invalid_handle("window");
 #ifdef GDK_WINDOWING_WAYLAND
-    if (GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(resource->window)))
+    if (!resource->wrapped && GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(resource->window)))
         return fail(NK_ERROR_UNSUPPORTED, "Wayland does not expose window frame extents");
 #endif
-    gtk_widget_realize(resource->window);
-    GdkWindow *native = gtk_widget_get_window(resource->window);
+    GdkWindow *native = native_window(*resource);
     if (!native)
         return fail(NK_ERROR_UNKNOWN, "GTK window has no native surface");
     GdkRectangle frame{};
@@ -3326,7 +3408,22 @@ nk_result NK_CALL nk_window_get_state(nk_handle handle, nk_window_state *out) {
     const auto size = out->struct_size;
     *out = {};
     out->struct_size = size;
-    out->flags = resource->state_flags;
+    if (resource->wrapped) {
+        const auto state = gdk_window_get_state(resource->foreign_window);
+        if (state & GDK_WINDOW_STATE_WITHDRAWN)
+            out->flags = 0;
+        else {
+            out->flags = NK_WINDOW_STATE_VISIBLE;
+            if (state & GDK_WINDOW_STATE_ICONIFIED)
+                out->flags |= NK_WINDOW_STATE_MINIMIZED;
+            if (state & GDK_WINDOW_STATE_MAXIMIZED)
+                out->flags |= NK_WINDOW_STATE_MAXIMIZED;
+            if (state & GDK_WINDOW_STATE_FULLSCREEN)
+                out->flags |= NK_WINDOW_STATE_FULLSCREEN;
+        }
+    } else {
+        out->flags = resource->state_flags;
+    }
     return NK_OK;
 }
 
@@ -3533,6 +3630,10 @@ nk_result NK_CALL nk_window_minimize(nk_handle h) {
     auto w = window(h);
     if (!w)
         return invalid_handle("window");
+    if (w->wrapped) {
+        gdk_window_iconify(w->foreign_window);
+        return NK_OK;
+    }
     gtk_window_iconify(GTK_WINDOW(w->window));
     return NK_OK;
 }
@@ -3542,6 +3643,10 @@ nk_result NK_CALL nk_window_maximize(nk_handle h) {
     auto w = window(h);
     if (!w)
         return invalid_handle("window");
+    if (w->wrapped) {
+        gdk_window_maximize(w->foreign_window);
+        return NK_OK;
+    }
     gtk_window_maximize(GTK_WINDOW(w->window));
     return NK_OK;
 }
@@ -3551,6 +3656,12 @@ nk_result NK_CALL nk_window_restore(nk_handle h) {
     auto w = window(h);
     if (!w)
         return invalid_handle("window");
+    if (w->wrapped) {
+        gdk_window_deiconify(w->foreign_window);
+        gdk_window_unmaximize(w->foreign_window);
+        gdk_window_unfullscreen(w->foreign_window);
+        return NK_OK;
+    }
     gtk_window_deiconify(GTK_WINDOW(w->window));
     gtk_window_unmaximize(GTK_WINDOW(w->window));
     gtk_window_unfullscreen(GTK_WINDOW(w->window));
@@ -3562,6 +3673,11 @@ nk_result NK_CALL nk_window_activate(nk_handle h) {
     auto w = window(h);
     if (!w)
         return invalid_handle("window");
+    if (w->wrapped) {
+        gdk_window_raise(w->foreign_window);
+        gdk_window_focus(w->foreign_window, GDK_CURRENT_TIME);
+        return NK_OK;
+    }
     gtk_window_present(GTK_WINDOW(w->window));
     return NK_OK;
 }
@@ -3571,6 +3687,11 @@ nk_result NK_CALL nk_window_set_fullscreen(nk_handle h, uint32_t enabled) {
     auto w = window(h);
     if (!w)
         return invalid_handle("window");
+    if (w->wrapped) {
+        enabled ? gdk_window_fullscreen(w->foreign_window)
+                : gdk_window_unfullscreen(w->foreign_window);
+        return NK_OK;
+    }
     enabled ? gtk_window_fullscreen(GTK_WINDOW(w->window))
             : gtk_window_unfullscreen(GTK_WINDOW(w->window));
     return NK_OK;
@@ -3581,6 +3702,8 @@ nk_result NK_CALL nk_window_request_attention(nk_handle h) {
     auto w = window(h);
     if (!w)
         return invalid_handle("window");
+    if (w->wrapped)
+        return fail(NK_ERROR_UNSUPPORTED, "wrapped GTK windows do not support attention hints");
     if ((w->state_flags & (NK_WINDOW_STATE_ACTIVE | NK_WINDOW_STATE_VISIBLE)) !=
         (NK_WINDOW_STATE_ACTIVE | NK_WINDOW_STATE_VISIBLE)) {
         gtk_window_set_urgency_hint(GTK_WINDOW(w->window), TRUE);
@@ -3627,6 +3750,10 @@ nk_result NK_CALL nk_window_set_resizable(nk_handle h, uint32_t enabled) {
     auto resource = window(h);
     if (!resource)
         return invalid_handle("window");
+    if (resource->wrapped) {
+        resource->resizable = enabled != 0;
+        return NK_OK;
+    }
     gtk_window_set_resizable(GTK_WINDOW(resource->window), enabled != 0);
     return NK_OK;
 }
@@ -3637,6 +3764,12 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
     auto resource = window(h);
     if (!resource)
         return invalid_handle("window");
+    if (resource->wrapped) {
+        resource->decorated = enabled != 0;
+        gdk_window_set_decorations(resource->foreign_window,
+                                    enabled ? GDK_DECOR_ALL : static_cast<GdkWMDecoration>(0));
+        return NK_OK;
+    }
     gtk_window_set_decorated(GTK_WINDOW(resource->window), enabled != 0);
     return NK_OK;
 }
@@ -3647,6 +3780,10 @@ nk_result NK_CALL nk_window_set_floating(nk_handle h, uint32_t enabled) {
     auto resource = window(h);
     if (!resource)
         return invalid_handle("window");
+    if (resource->wrapped) {
+        gdk_window_set_keep_above(resource->foreign_window, enabled != 0);
+        return NK_OK;
+    }
     gtk_window_set_keep_above(GTK_WINDOW(resource->window), enabled != 0);
     return NK_OK;
 }
@@ -3659,6 +3796,10 @@ nk_result NK_CALL nk_window_set_opacity(nk_handle h, float opacity) {
     auto resource = window(h);
     if (!resource)
         return invalid_handle("window");
+    if (resource->wrapped) {
+        gdk_window_set_opacity(resource->foreign_window, opacity);
+        return NK_OK;
+    }
     gtk_widget_set_opacity(resource->window, opacity);
     return NK_OK;
 }
@@ -3669,8 +3810,7 @@ nk_result NK_CALL nk_window_set_mouse_passthrough(nk_handle h, uint32_t enabled)
     auto resource = window(h);
     if (!resource)
         return invalid_handle("window");
-    gtk_widget_realize(resource->window);
-    GdkWindow *native = gtk_widget_get_window(resource->window);
+    GdkWindow *native = native_window(*resource);
     if (!native)
         return fail(NK_ERROR_UNKNOWN, "GTK window has no native surface");
     gdk_window_set_pass_through(native, enabled != 0);
@@ -3825,14 +3965,16 @@ nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle window_handle,
     if (!window_resource)
         return invalid_handle("window");
     if (monitor_handle == NK_INVALID_HANDLE) {
-        gtk_window_unfullscreen(GTK_WINDOW(window_resource->window));
+        if (window_resource->wrapped)
+            gdk_window_unfullscreen(window_resource->foreign_window);
+        else
+            gtk_window_unfullscreen(GTK_WINDOW(window_resource->window));
         return NK_OK;
     }
     auto monitor_resource = monitor(monitor_handle);
     if (!monitor_resource)
         return invalid_handle("monitor");
-    gtk_widget_realize(window_resource->window);
-    GdkWindow *native = gtk_widget_get_window(window_resource->window);
+    GdkWindow *native = native_window(*window_resource);
     if (!native)
         return fail(NK_ERROR_UNKNOWN, "GTK window has no native surface");
     GdkDisplay *display = gdk_window_get_display(native);
@@ -3858,11 +4000,24 @@ nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window *out_n
     auto resource = window(handle);
     if (!resource)
         return invalid_handle("window");
+    const auto size = out_native->struct_size;
+    if (resource->wrapped) {
+        *out_native = {};
+        out_native->struct_size = size;
+        out_native->kind = NK_NATIVE_WINDOW_X11;
+#ifdef GDK_WINDOWING_X11
+        GdkDisplay *display = gdk_window_get_display(resource->foreign_window);
+        out_native->display = reinterpret_cast<uintptr_t>(gdk_x11_display_get_xdisplay(display));
+        out_native->window = static_cast<uintptr_t>(gdk_x11_window_get_xid(resource->foreign_window));
+        return NK_OK;
+#else
+        return fail(NK_ERROR_UNSUPPORTED, "wrapped GTK window is not an X11 window");
+#endif
+    }
     gtk_widget_realize(resource->window);
     GdkWindow *native = gtk_widget_get_window(resource->window);
     if (!native)
         return fail(NK_ERROR_UNKNOWN, "GTK window has no native surface");
-    const auto size = out_native->struct_size;
     *out_native = {};
     out_native->struct_size = size;
     GdkDisplay *display = gdk_window_get_display(native);
@@ -3887,13 +4042,42 @@ nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window *out_n
 }
 
 nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native, nk_handle *out_window) {
-    if (const auto result = enter_ui(); result != NK_OK)
-        return result;
-    if (!native || native->struct_size < sizeof(*native) || !out_window || !native->window)
-        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid native window descriptor");
-    *out_window = NK_INVALID_HANDLE;
-    return fail(NK_ERROR_UNSUPPORTED,
-                "wrapping caller-owned windows is not safe in the GTK backend yet");
+    return nk::core::result_boundary(
+        "unexpected error while wrapping native GTK window", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!native || native->struct_size < sizeof(*native) || !out_window ||
+                native->kind != NK_NATIVE_WINDOW_X11 || !native->display || !native->window)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid X11 native window descriptor");
+            *out_window = NK_INVALID_HANDLE;
+#ifdef GDK_WINDOWING_X11
+            if (!ensure_gtk())
+                return NK_ERROR_UNSUPPORTED;
+            auto *display = gdk_x11_lookup_xdisplay(reinterpret_cast<Display *>(native->display));
+            if (!display)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "X11 display is not attached to GTK");
+            auto *foreign = gdk_x11_window_foreign_new_for_display(
+                display, static_cast<Window>(native->window));
+            if (!foreign)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "X11 native window is not valid");
+            auto resource = std::make_shared<GtkWindowResource>();
+            resource->foreign_window = foreign;
+            resource->wrapped = true;
+            resource->decorated = true;
+            resource->resizable = true;
+            resource->generation = nk::core::runtime_generation();
+            resource->handle = nk::core::handles().insert(nk::core::ResourceType::window, resource);
+            if (resource->handle == NK_INVALID_HANDLE) {
+                g_object_unref(foreign);
+                resource->foreign_window = nullptr;
+                return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
+            }
+            *out_window = resource->handle;
+            return NK_OK;
+#else
+            return fail(NK_ERROR_UNSUPPORTED, "GTK was built without X11 interoperability");
+#endif
+        });
 }
 
 nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_options *options,
@@ -3910,6 +4094,9 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             auto parent = window(parent_handle);
             if (!parent)
                 return invalid_handle("parent window");
+            if (parent->wrapped)
+                return fail(NK_ERROR_UNSUPPORTED,
+                            "GTK graphics surfaces cannot attach to wrapped windows");
             auto shared = options->share_surface ? surface(options->share_surface) : nullptr;
             if (options->share_surface && !shared)
                 return invalid_handle("shared graphics surface");
@@ -4343,6 +4530,8 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
         auto parent = window(parent_handle);
         if (!parent)
             return invalid_handle("parent window");
+        if (parent->wrapped)
+            return fail(NK_ERROR_UNSUPPORTED, "GTK WebViews cannot attach to wrapped windows");
         auto resource = std::make_shared<GtkWebViewResource>();
         resource->generation = nk::core::runtime_generation();
         resource->content_manager = webkit_user_content_manager_new();
@@ -4604,6 +4793,9 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
                 parent = window(parent_handle);
                 if (!parent)
                     return invalid_handle("parent window");
+                if (parent->wrapped)
+                    return fail(NK_ERROR_UNSUPPORTED,
+                                "GTK message dialogs cannot use a wrapped window as their parent");
             }
             if (!ensure_gtk())
                 return NK_ERROR_UNSUPPORTED;
@@ -4793,6 +4985,8 @@ nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, uint32_t enabled)
     auto resource = window(handle);
     if (!resource)
         return invalid_handle("window");
+    if (resource->wrapped)
+        return fail(NK_ERROR_UNSUPPORTED, "GTK drops cannot attach to wrapped windows");
     if (!!enabled == resource->drops_enabled)
         return NK_OK;
     if (enabled) {

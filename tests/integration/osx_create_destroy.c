@@ -66,6 +66,7 @@ int main(void) {
     assert((nk_get_capabilities() & NK_CAP_MONITOR) != 0);
     assert((nk_get_capabilities() & NK_CAP_MONITOR_FULLSCREEN) != 0);
     assert((nk_get_capabilities() & NK_CAP_JOYSTICK) != 0);
+    assert((nk_get_capabilities() & NK_CAP_WRAP_NATIVE_WINDOW) != 0);
     uint32_t joystick_count = 0;
     const nk_result joystick_result = nk_joystick_list(NULL, &joystick_count);
     assert(joystick_result == NK_OK || joystick_result == NK_ERROR_BUFFER_TOO_SMALL);
@@ -183,6 +184,12 @@ int main(void) {
     native.struct_size = sizeof(native);
     assert(nk_window_get_native(window, &native) == NK_OK);
     assert(native.kind == NK_NATIVE_WINDOW_COCOA);
+    assert(native.window != 0 && native.view != 0);
+    nk_window wrapped = NK_INVALID_HANDLE;
+    assert(nk_window_wrap_native(&native, &wrapped) == NK_OK);
+    assert(wrapped != NK_INVALID_HANDLE);
+    assert(nk_window_destroy(wrapped) == NK_OK);
+    assert(nk_window_get_native(window, &native) == NK_OK);
     assert(native.window != 0 && native.view != 0);
 
     const char clipboard_text[] = "NativeKit pasteboard UTF-8 \xE2\x9C\x93";

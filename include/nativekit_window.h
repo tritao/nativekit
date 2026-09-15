@@ -399,8 +399,10 @@ NK_API nk_result NK_CALL nk_window_get_native(nk_window window,
 
 /**
  * Attaches NativeKit to a caller-owned native window. Destroying the returned
- * handle only detaches NativeKit. Backends return NK_ERROR_UNSUPPORTED until
- * they can guarantee correct event and ownership behavior for the given kind.
+ * handle only detaches NativeKit and never destroys the caller's native object.
+ * Win32, Cocoa, and X11 descriptors are supported by their desktop backends;
+ * other descriptor kinds may return NK_ERROR_UNSUPPORTED. The host retains
+ * ownership of native event dispatch and delegates/procedures.
  */
 NK_API nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native,
                                                nk_window *out_window NK_OUT NK_OWNED);

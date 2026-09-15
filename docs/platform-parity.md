@@ -106,9 +106,9 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 
 | Backend | Required or equivalent today | Deferred today |
 |---|---|---|
-| Linux/GTK | Windows, WebView, path and resource dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick, native export, accessibility | Native wrapping |
-| Windows | Windows, WebView when WebView2 is available, path and resource dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick, native export | Native wrapping |
-| macOS | Windows, WebView, path and resource dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export | Native wrapping |
+| Linux/GTK | Windows, WebView, path and resource dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick, native export, X11 native wrapping, accessibility | Wayland native wrapping |
+| Windows | Windows, WebView when WebView2 is available, path and resource dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick, native export, Win32 native wrapping | — |
+| macOS | Windows, WebView, path and resource dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping | — |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility | — |
 | iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, shell, appearance, notifications, resource I/O, accessibility | Drag/drop, resource sharing, joystick |
 | Web | Window, geometry, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility | Styling, path-based dialogs |
@@ -118,6 +118,13 @@ including hotplug and normalized canonical state. The current macOS adapter
 uses GameController's extended and micro gamepad models. Generic HID joystick
 enumeration remains a separate follow-up from these platform-native gamepad
 equivalents and must not be silently treated as complete parity.
+
+Desktop native-window wrapping is an ownership-safe interoperation primitive.
+Win32, Cocoa, and X11 wrappers retain or reference the caller's native object,
+but destruction of the NativeKit handle only detaches that reference. The host
+continues to own native event dispatch. Linux wrapping is intentionally limited
+to X11; Wayland wrapping remains deferred until foreign-surface lifecycle and
+event ownership can be made explicit.
 
 The Web equivalents are browser-mediated: `window.open` handles URI shell
 opening, `matchMedia` supplies appearance, the Notifications API supplies

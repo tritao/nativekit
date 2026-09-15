@@ -62,9 +62,15 @@ retains ownership, and all values become invalid when the window is destroyed.
 On GTK the descriptor identifies either an X11 display/window pair or a Wayland
 display/surface pair.
 
-Wrapping caller-owned windows is a separate capability because detaching safely
-requires backend-specific event and widget ownership. The GTK backend currently
-returns `NK_ERROR_UNSUPPORTED` and does not advertise `NK_CAP_WRAP_NATIVE_WINDOW`.
+`nk_window_wrap_native()` supports Win32 `HWND`, Cocoa `NSWindow`/`NSView`, and
+X11 display/window descriptors. The returned handle keeps only the references
+needed to operate on the host window; destroying it detaches NativeKit and never
+destroys the host object. GTK wrapping is currently X11-only; Wayland wrapping
+remains deferred because foreign-surface lifecycle ownership is not yet defined.
+The host application retains its native event procedure, delegate, or event
+filter. Wrapped windows therefore provide safe window interoperation without
+silently replacing host event dispatch. Operations requiring a NativeKit-owned
+widget tree may still return `NK_ERROR_UNSUPPORTED`.
 
 ## Mobile hosts
 

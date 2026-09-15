@@ -219,6 +219,7 @@ struct WinWindowResource final : nk::core::Resource {
     bool decorated = true;
     bool drops_enabled = false;
     bool mouse_passthrough = false;
+    bool owns_window = true;
     std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
     std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> pointer_buttons{};
     double pointer_x = 0.0;
@@ -242,7 +243,7 @@ struct WinWindowResource final : nk::core::Resource {
     ~WinWindowResource() override {
         if (pointer_captured && GetCapture() == window)
             ReleaseCapture();
-        if (window && IsWindow(window))
+        if (owns_window && window && IsWindow(window))
             DestroyWindow(window);
     }
 };
@@ -2773,7 +2774,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR |
         NK_CAP_POINTER_CAPTURE |
         NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING | NK_CAP_D3D11_SURFACE |
-        NK_CAP_ACCESSIBILITY | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK;
+        NK_CAP_ACCESSIBILITY | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK |
+        NK_CAP_WRAP_NATIVE_WINDOW;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
@@ -2863,6 +2865,11 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     for (const auto child : children)
         nk_webview_destroy(child);
     cancel_dialogs_for_parent(resource->window);
+    if (!resource->owns_window) {
+        resource->window = nullptr;
+        nk::core::handles().erase(handle, nk::core::ResourceType::window);
+        return NK_OK;
+    }
     SetWindowLongPtrW(resource->window, GWLP_USERDATA, 0);
     DestroyWindow(resource->window);
     resource->window = nullptr;
@@ -3803,8 +3810,33 @@ nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window *out_n
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_wrap_native(const nk_native_window *, nk_handle *) {
-    return unsupported();
+nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native, nk_handle *out_window) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!native || native->struct_size < sizeof(*native) || !out_window ||
+            native->kind != NK_NATIVE_WINDOW_WIN32 || !native->window)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid Win32 native window descriptor");
+        *out_window = NK_INVALID_HANDLE;
+        const auto window = reinterpret_cast<HWND>(native->window);
+        if (!IsWindow(window))
+            return fail(NK_ERROR_INVALID_ARGUMENT, "Win32 native window is not valid");
+        const auto style = GetWindowLongPtrW(window, GWL_STYLE);
+        auto resource = std::make_shared<WinWindowResource>();
+        resource->window = window;
+        resource->owns_window = false;
+        resource->resizable = (style & WS_THICKFRAME) != 0;
+        resource->decorated = (style & WS_POPUP) == 0;
+        resource->handle = nk::core::handles().insert(nk::core::ResourceType::window, resource);
+        if (resource->handle == NK_INVALID_HANDLE)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
+        *out_window = resource->handle;
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while wrapping Win32 window");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while wrapping Win32 window");
+    }
 }
 
 nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_options *options,
