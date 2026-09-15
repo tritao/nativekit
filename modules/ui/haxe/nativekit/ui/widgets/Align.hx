@@ -3,6 +3,7 @@ package nativekit.ui.widgets;
 import LayoutAlignmentX;
 import LayoutAlignmentY;
 import LayoutAxis;
+import LayoutDistribution;
 import LayoutStyle;
 import LayoutVisualKind;
 import nativekit.ui.core.BuildContext;
@@ -25,6 +26,10 @@ class Align implements View {
 		this.style = style == null ? defaultStyle() : style.copy();
 		this.style.childAlignX = alignmentX;
 		this.style.childAlignY = alignmentY;
+		// Alignment covers the cross axis; center the child on the main axis too
+		// so this widget keeps its two-dimensional centering contract for both
+		// row and column parents.
+		this.style.childDistribution = LayoutDistribution.Center;
 	}
 
 	public function build(context:BuildContext):RenderNode {
