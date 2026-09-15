@@ -29,6 +29,8 @@ import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
+import android.view.Display;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityManager;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -39,6 +41,7 @@ import android.view.SurfaceView;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.OrientationEventListener;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.CursorAnchorInfo;
 import android.view.inputmethod.EditorInfo;
@@ -81,7 +84,37 @@ final class NativeKitBridge {
     private static final int NK_NAVIGATION_ERROR_NOT_FOUND = 4;
     private static final int NK_NAVIGATION_ERROR_CONNECTION = 5;
 
+    // Values mirror the stable NativeKit C enums without exposing platform-specific raw
+    // integers at each call site.
+    private static final int NK_DIRECTORY_HOME = 1;
+    private static final int NK_DIRECTORY_DESKTOP = 2;
+    private static final int NK_DIRECTORY_DOCUMENTS = 3;
+    private static final int NK_DIRECTORY_DOWNLOADS = 4;
+    private static final int NK_DIRECTORY_CACHE = 5;
+    private static final int NK_DIRECTORY_CONFIG = 6;
+    private static final int NK_DIRECTORY_DATA = 7;
+    private static final int NK_DIRECTORY_TEMP = 8;
+    private static final int NK_DIRECTORY_APPLICATION = 9;
+    private static final int NK_DIRECTORY_APPLICATION_STORAGE = 10;
+    private static final int NK_DIRECTORY_FONTS = 11;
+    private static final int NK_MOBILE_LIFECYCLE_ACTIVE = 1;
+    private static final int NK_MOBILE_LIFECYCLE_BACKGROUND = 3;
+    private static final int NK_SYSTEM_STRING_PLATFORM_VERSION = 2;
+    private static final int NK_SYSTEM_STRING_DEVICE_VENDOR = 4;
+    private static final int NK_SYSTEM_STRING_DEVICE_MODEL = 5;
+    private static final int NK_ORIENTATION_UNKNOWN = 0;
+    private static final int NK_ORIENTATION_PORTRAIT = 1;
+    private static final int NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN = 2;
+    private static final int NK_ORIENTATION_LANDSCAPE_LEFT = 3;
+    private static final int NK_ORIENTATION_LANDSCAPE_RIGHT = 4;
+    private static final int NK_ORIENTATION_ANGLE_QUARTER = 45;
+    private static final int NK_ORIENTATION_ANGLE_HALF = 135;
+    private static final int NK_ORIENTATION_ANGLE_THREE_QUARTERS = 225;
+    private static final int NK_ORIENTATION_ANGLE_FULL = 315;
+
     private static final Map<Long, ViewGroup> observedHosts = new HashMap<>();
+    private static final Map<Long, OrientationEventListener> orientationListeners =
+        new HashMap<>();
     private static final Map<Long, ArrayList<DragAndDropPermissions>> dropPermissions =
         new HashMap<>();
     private static final Set<Long> cancelledDialogs = new HashSet<>();
@@ -1241,12 +1274,23 @@ final class NativeKitBridge {
         for (int i = 0; i < parent.getChildCount(); ++i) {
             View child = parent.getChildAt(i);
             if (child instanceof WebView) {
-                if (state == 1) {
+                if (state == NK_MOBILE_LIFECYCLE_ACTIVE) {
                     ((WebView)child).onResume();
                 } else {
                     ((WebView)child).onPause();
                 }
             }
+        }
+        for (Map.Entry<Long, ViewGroup> entry : observedHosts.entrySet()) {
+            if (entry.getValue() != parent)
+                continue;
+            OrientationEventListener listener = orientationListeners.get(entry.getKey());
+            if (listener == null)
+                continue;
+            if (state == NK_MOBILE_LIFECYCLE_BACKGROUND)
+                listener.disable();
+            else
+                listener.enable();
         }
     }
 
@@ -1695,17 +1739,19 @@ final class NativeKitBridge {
     static String systemDirectory(ViewGroup parent, int kind) {
         Context context = parent.getContext();
         switch (kind) {
-            case 1:
-            case 6:
-            case 7:
+            case NK_DIRECTORY_HOME:
+            case NK_DIRECTORY_CONFIG:
+            case NK_DIRECTORY_DATA:
                 return context.getFilesDir().getAbsolutePath();
-            case 3:
+            case NK_DIRECTORY_DOCUMENTS:
                 return externalDirectory(context, Environment.DIRECTORY_DOCUMENTS);
-            case 4:
+            case NK_DIRECTORY_DOWNLOADS:
                 return externalDirectory(context, Environment.DIRECTORY_DOWNLOADS);
-            case 5:
-            case 8:
+            case NK_DIRECTORY_CACHE:
+            case NK_DIRECTORY_TEMP:
                 return context.getCacheDir().getAbsolutePath();
+            case NK_DIRECTORY_APPLICATION_STORAGE:
+                return context.getFilesDir().getAbsolutePath();
             default:
                 return null;
         }
@@ -1725,6 +1771,58 @@ final class NativeKitBridge {
         return locale.toLanguageTag();
     }
 
+    @Nullable
+    static String systemString(ViewGroup parent, int kind) {
+        switch (kind) {
+            case NK_SYSTEM_STRING_PLATFORM_VERSION:
+                return Build.VERSION.RELEASE;
+            case NK_SYSTEM_STRING_DEVICE_VENDOR:
+                return Build.MANUFACTURER;
+            case NK_SYSTEM_STRING_DEVICE_MODEL:
+                return Build.MODEL;
+            default:
+                return null;
+        }
+    }
+
+    static int systemOrientation(ViewGroup parent) {
+        int device = NK_ORIENTATION_UNKNOWN;
+        int display = NK_ORIENTATION_UNKNOWN;
+        Configuration configuration = parent.getResources().getConfiguration();
+        if (configuration.orientation == Configuration.ORIENTATION_PORTRAIT)
+            display = NK_ORIENTATION_PORTRAIT;
+        else if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
+            display = NK_ORIENTATION_LANDSCAPE_RIGHT;
+        Display displayObject = parent.getDisplay();
+        if (displayObject != null) {
+            switch (displayObject.getRotation()) {
+                case Surface.ROTATION_90:
+                    display = NK_ORIENTATION_LANDSCAPE_LEFT;
+                    break;
+                case Surface.ROTATION_180:
+                    display = NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN;
+                    break;
+                case Surface.ROTATION_270:
+                    display = NK_ORIENTATION_LANDSCAPE_RIGHT;
+                    break;
+                default:
+                    break;
+            }
+        }
+        return device | (display << 8);
+    }
+
+    static boolean setKeepAwake(ViewGroup parent, boolean enabled) {
+        Activity hostActivity = activity(parent.getContext());
+        if (hostActivity == null || hostActivity.getWindow() == null)
+            return false;
+        if (enabled)
+            hostActivity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else
+            hostActivity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        return true;
+    }
+
     static int systemAppearance(ViewGroup parent) {
         int night = parent.getResources().getConfiguration().uiMode &
             Configuration.UI_MODE_NIGHT_MASK;
@@ -1740,13 +1838,36 @@ final class NativeKitBridge {
         observedHosts.put(handle, parent);
         observeInputDevices(parent.getContext());
         View.OnLayoutChangeListener listener = (view, left, top, right, bottom, oldLeft, oldTop,
-                                                oldRight, oldBottom) -> emitGeometry(parent, handle);
+                                                oldRight, oldBottom) -> {
+            emitGeometry(parent, handle);
+            emitDisplayOrientation(parent, handle);
+        };
         parent.setTag(io.nativekit.R.id.nativekit_layout_listener, listener);
         parent.addOnLayoutChangeListener(listener);
         ViewCompat.setOnApplyWindowInsetsListener(parent, (view, insets) -> {
             emitGeometry(parent, handle, insets);
+            emitDisplayOrientation(parent, handle);
             return insets;
         });
+        OrientationEventListener orientationListener = new OrientationEventListener(parent.getContext()) {
+            private int lastDevice = NK_ORIENTATION_UNKNOWN;
+            private int lastDisplay = NK_ORIENTATION_UNKNOWN;
+
+            @Override
+            public void onOrientationChanged(int orientation) {
+                int device = deviceOrientation(orientation);
+                int display = (systemOrientation(parent) >> 8) & 0xff;
+                if (device == lastDevice && display == lastDisplay)
+                    return;
+                lastDevice = device;
+                lastDisplay = display;
+                nativeOnOrientation(handle, device, display);
+            }
+        };
+        if (orientationListener.canDetectOrientation()) {
+            orientationListeners.put(handle, orientationListener);
+            orientationListener.enable();
+        }
         parent.post(() -> emitGeometry(parent, handle));
     }
 
@@ -1758,6 +1879,9 @@ final class NativeKitBridge {
         if (value instanceof View.OnLayoutChangeListener)
             parent.removeOnLayoutChangeListener((View.OnLayoutChangeListener)value);
         ViewCompat.setOnApplyWindowInsetsListener(parent, null);
+        OrientationEventListener orientationListener = orientationListeners.remove(handle);
+        if (orientationListener != null)
+            orientationListener.disable();
         setDropEnabled(parent, handle, false);
         if (observedHosts.isEmpty() && inputManager != null && inputDeviceListener != null) {
             for (int deviceId : InputDevice.getDeviceIds())
@@ -1831,6 +1955,23 @@ final class NativeKitBridge {
                          Math.round(bars.left / density), Math.round(bars.top / density),
                          Math.round(bars.right / density), Math.round(bars.bottom / density),
                          Math.round(keyboard.bottom / density));
+    }
+
+    private static int deviceOrientation(int degrees) {
+        if (degrees == OrientationEventListener.ORIENTATION_UNKNOWN)
+            return NK_ORIENTATION_UNKNOWN;
+        if (degrees < NK_ORIENTATION_ANGLE_QUARTER || degrees >= NK_ORIENTATION_ANGLE_FULL)
+            return NK_ORIENTATION_PORTRAIT;
+        if (degrees < NK_ORIENTATION_ANGLE_HALF)
+            return NK_ORIENTATION_LANDSCAPE_LEFT;
+        if (degrees < NK_ORIENTATION_ANGLE_THREE_QUARTERS)
+            return NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN;
+        return NK_ORIENTATION_LANDSCAPE_RIGHT;
+    }
+
+    private static void emitDisplayOrientation(ViewGroup parent, long handle) {
+        int display = (systemOrientation(parent) >> 8) & 0xff;
+        nativeOnOrientation(handle, NK_ORIENTATION_UNKNOWN, display);
     }
 
     private static long viewHandle(WebView view) {
@@ -1998,6 +2139,7 @@ final class NativeKitBridge {
     private static native void nativeOnGeometry(long handle, int width, int height, float scale,
                                                 int insetLeft, int insetTop, int insetRight,
                                                 int insetBottom, int keyboardBottom);
+    private static native void nativeOnOrientation(long handle, int device, int display);
     static native void nativeOnFileDialog(long request, boolean accepted,
                                           @Nullable String[] uris, @Nullable String[] mimeTypes,
                                           @Nullable String[] displayNames,

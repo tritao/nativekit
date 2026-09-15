@@ -3,6 +3,7 @@
 #include "core/error.hpp"
 #include "core/event_queue.hpp"
 #include "core/runtime.hpp"
+#include "core/system_internal.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -113,7 +114,9 @@ uint32_t NK_CALL nk_api_version(void) {
 nk_result NK_CALL nk_init(const nk_init_options *options) {
     try {
         nk::core::clear_error();
-        if (!options || options->struct_size < sizeof(nk_init_options)) {
+        constexpr auto init_prefix_size =
+            offsetof(nk_init_options, application_id);
+        if (!options || options->struct_size < init_prefix_size) {
             nk::core::set_error("nk_init_options is missing or too small");
             return NK_ERROR_INVALID_ARGUMENT;
         }
@@ -128,6 +131,7 @@ nk_result NK_CALL nk_init(const nk_init_options *options) {
         }
         const auto capacity = options->event_queue_capacity == 0 ? default_queue_capacity
                                                                  : options->event_queue_capacity;
+        nk::core::system_initialize(options);
         event_queue = std::make_unique<nk::core::EventQueue>(capacity);
         ui_thread = std::this_thread::get_id();
         auto generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -136,9 +140,11 @@ nk_result NK_CALL nk_init(const nk_init_options *options) {
         active_generation.store(generation, std::memory_order_release);
         return NK_OK;
     } catch (const std::bad_alloc &) {
+        nk::core::system_shutdown();
         nk::core::set_error("out of memory while initializing NativeKit");
         return NK_ERROR_OUT_OF_MEMORY;
     } catch (...) {
+        nk::core::system_shutdown();
         nk::core::set_error("unexpected exception while initializing NativeKit");
         return NK_ERROR_UNKNOWN;
     }
@@ -146,6 +152,8 @@ nk_result NK_CALL nk_init(const nk_init_options *options) {
 
 void NK_CALL nk_shutdown(void) {
     try {
+        /* Backend resources are still valid while system leases are released. */
+        nk::core::system_shutdown();
         nk::backend::shutdown();
         std::lock_guard lock(state_mutex);
         handle_registry.clear();

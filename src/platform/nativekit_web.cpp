@@ -2,6 +2,7 @@
 #include "nativekit_clipboard.h"
 #include "nativekit_input.h"
 #include "nativekit_resource.h"
+#include "nativekit_system.h"
 #include "nativekit_window.h"
 
 #include "core/boundary.hpp"
@@ -816,7 +817,20 @@ extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_INPUT | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
-           NK_CAP_POINTER_CAPTURE | NK_CAP_CLIPBOARD | NK_CAP_WINDOW_GEOMETRY | NK_CAP_RESOURCE_IO;
+           NK_CAP_POINTER_CAPTURE | NK_CAP_CLIPBOARD | NK_CAP_WINDOW_GEOMETRY | NK_CAP_RESOURCE_IO |
+           NK_CAP_SYSTEM_INFO;
+}
+
+nk_result NK_CALL nk_system_directory(nk_system_directory_kind, char *, uint32_t *) {
+    return unsupported("browser filesystem paths are unavailable");
+}
+
+nk_result NK_CALL nk_system_locale(char *, uint32_t *) {
+    return unsupported("browser locale queries are not implemented");
+}
+
+nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *) {
+    return unsupported("browser appearance queries are not implemented");
 }
 
 nk_result NK_CALL nk_clipboard_set_text(const char *text) {

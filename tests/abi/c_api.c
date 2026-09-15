@@ -28,6 +28,12 @@ _Static_assert(offsetof(nk_surface_frame_target, native_device) == 40,
                "native frame-target tokens are appended after the original ABI prefix");
 _Static_assert(offsetof(nk_surface_frame_target, native_present_target) == 64,
                "present target token has a stable ABI offset");
+_Static_assert(offsetof(nk_init_options, application_id) == 16,
+               "application identity is appended after the original init prefix");
+_Static_assert(sizeof(nk_init_options) == 32, "init options ABI layout is stable");
+_Static_assert(sizeof(nk_system_info) == 40, "system info ABI layout is stable");
+_Static_assert(sizeof(nk_system_orientation) == 32, "system orientation ABI layout is stable");
+_Static_assert(sizeof(nk_orientation_event) == 32, "orientation event ABI layout is stable");
 
 int main(void) {
     assert(nk_time_now_ns() > 0);
@@ -35,8 +41,78 @@ int main(void) {
     nk_init_options options = {0};
     options.struct_size = sizeof(options);
     options.api_version = NK_API_VERSION;
+    options.application_id = "com.example/nativekit";
+    options.application_name = "NativeKit ABI test";
     assert(nk_api_version() == NK_API_VERSION);
     assert(nk_init(&options) == NK_OK);
+    nk_system_info system_info = {0};
+    system_info.struct_size = sizeof(system_info);
+    assert(nk_system_get_info(&system_info) == NK_OK);
+    assert(system_info.endianness == NK_SYSTEM_ENDIAN_LITTLE ||
+           system_info.endianness == NK_SYSTEM_ENDIAN_BIG);
+    uint32_t application_id_size = 0;
+    assert(nk_system_get_string(NK_SYSTEM_STRING_APPLICATION_ID, NULL, &application_id_size) ==
+           NK_ERROR_BUFFER_TOO_SMALL);
+    assert(application_id_size == sizeof("com.example_nativekit"));
+    char application_id[64] = {0};
+    assert(nk_system_get_string(NK_SYSTEM_STRING_APPLICATION_ID, application_id,
+                                &application_id_size) == NK_OK);
+    assert(strcmp(application_id, "com.example_nativekit") == 0);
+    const nk_capabilities system_capabilities = nk_get_capabilities();
+    if (system_capabilities & NK_CAP_APPLICATION_STORAGE) {
+        uint32_t storage_size = 0;
+        assert(nk_system_directory(NK_DIRECTORY_APPLICATION_STORAGE, NULL, &storage_size) ==
+               NK_ERROR_BUFFER_TOO_SMALL);
+        assert(storage_size > 1);
+        char storage[4096] = {0};
+        uint32_t storage_capacity = sizeof(storage);
+        assert(nk_system_directory(NK_DIRECTORY_APPLICATION_STORAGE, storage,
+                                   &storage_capacity) == NK_OK);
+        assert(strstr(storage, "com.example_nativekit") != NULL);
+        uint32_t font_size = 0;
+        const nk_result font_result =
+            nk_system_directory(NK_DIRECTORY_FONTS, NULL, &font_size);
+        if (system_capabilities & NK_CAP_SYSTEM_FONTS)
+            assert(font_result == NK_ERROR_BUFFER_TOO_SMALL);
+        else
+            assert(font_result == NK_ERROR_UNSUPPORTED);
+    }
+    if (system_capabilities & NK_CAP_APPLICATION_PATH) {
+        uint32_t application_size = 0;
+        assert(nk_system_directory(NK_DIRECTORY_APPLICATION, NULL, &application_size) ==
+               NK_ERROR_BUFFER_TOO_SMALL);
+        assert(application_size > 1);
+    }
+    nk_system_orientation system_orientation = {0};
+    system_orientation.struct_size = sizeof(system_orientation);
+    const nk_result orientation_result = nk_system_get_orientation(&system_orientation);
+    assert(orientation_result == NK_OK || orientation_result == NK_ERROR_UNSUPPORTED);
+    if (orientation_result == NK_OK) {
+        assert(system_orientation.device <= NK_ORIENTATION_FACE_DOWN);
+        assert(system_orientation.display <= NK_ORIENTATION_FACE_DOWN);
+    }
+    nk_keep_awake_options keep_awake_options = {0};
+    keep_awake_options.struct_size = sizeof(keep_awake_options);
+    keep_awake_options.flags = NK_KEEP_AWAKE_DISPLAY;
+    nk_keep_awake first_lease = 0;
+    nk_keep_awake second_lease = 0;
+    nk_keep_awake shutdown_lease = 0;
+    const nk_result keep_awake_result =
+        nk_system_keep_awake_acquire(&keep_awake_options, &first_lease);
+    if ((system_capabilities & NK_CAP_KEEP_AWAKE) && keep_awake_result == NK_OK) {
+        assert(keep_awake_result == NK_OK);
+        assert(first_lease != 0);
+        assert(nk_system_keep_awake_acquire(&keep_awake_options, &second_lease) == NK_OK);
+        assert(second_lease != 0 && second_lease != first_lease);
+        assert(nk_system_keep_awake_release(first_lease) == NK_OK);
+        assert(nk_system_keep_awake_release(second_lease) == NK_OK);
+        assert(nk_system_keep_awake_release(second_lease) == NK_ERROR_INVALID_HANDLE);
+        assert(nk_system_keep_awake_acquire(&keep_awake_options, &shutdown_lease) == NK_OK);
+    } else if (system_capabilities & NK_CAP_KEEP_AWAKE) {
+        assert(keep_awake_result == NK_ERROR_UNSUPPORTED);
+    } else {
+        assert(keep_awake_result == NK_ERROR_UNSUPPORTED);
+    }
     const nk_capabilities capabilities = nk_get_capabilities();
     const nk_result accessibility_handle_result =
         (capabilities & NK_CAP_ACCESSIBILITY) ? NK_ERROR_INVALID_HANDLE : NK_ERROR_UNSUPPORTED;
@@ -325,6 +401,8 @@ int main(void) {
     nk_shutdown();
     assert(nk_poll_event(&event) == NK_ERROR_NOT_INITIALIZED);
     assert(nk_init(&options) == NK_OK);
+    if (shutdown_lease)
+        assert(nk_system_keep_awake_release(shutdown_lease) == NK_ERROR_INVALID_HANDLE);
     assert(nk_poll_event(&event) == NK_OK);
     assert(event.kind == NK_EVENT_NONE);
     nk_shutdown();

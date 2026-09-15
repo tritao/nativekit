@@ -6,6 +6,7 @@
 /* ------------------------------------------------------------------------- */
 
 #include "nativekit.h"
+#include "nativekit_system.h"
 
 /* ------------------------------------------------------------------------- */
 /* C linkage                                                                 */
@@ -101,6 +102,9 @@ NK_API nk_result NK_CALL nk_monitor_get_current_mode(nk_monitor monitor,
  */
 NK_API nk_result NK_CALL nk_monitor_get_modes(nk_monitor monitor, nk_video_mode *modes,
                                               uint32_t *inout_count);
+/** Returns the current orientation used by this display. */
+NK_API nk_result NK_CALL nk_monitor_get_orientation(nk_monitor monitor,
+                                                    nk_orientation *out_orientation NK_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Window and monitor integration                                            */

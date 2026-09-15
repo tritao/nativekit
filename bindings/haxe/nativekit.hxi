@@ -551,6 +551,34 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * The backend can create a Metal surface.
 		 */
 		NK_CAP_METAL_SURFACE = 67108864;
+		/**
+		 * The backend can report stable platform and endianness information.
+		 */
+		NK_CAP_SYSTEM_INFO = 134217728;
+		/**
+		 * The backend can report a path-backed application installation location.
+		 */
+		NK_CAP_APPLICATION_PATH = 268435456;
+		/**
+		 * The backend can report private persistent application storage.
+		 */
+		NK_CAP_APPLICATION_STORAGE = 536870912;
+		/**
+		 * The backend can report a best-known system font directory.
+		 */
+		NK_CAP_SYSTEM_FONTS = 1073741824;
+		/**
+		 * The backend can keep the application display awake with leases.
+		 */
+		NK_CAP_KEEP_AWAKE = 2147483648;
+		/**
+		 * The backend can report physical device orientation.
+		 */
+		NK_CAP_DEVICE_ORIENTATION = 4294967296;
+		/**
+		 * The backend can report application display orientation.
+		 */
+		NK_CAP_DISPLAY_ORIENTATION = 8589934592;
 	}
 	/**
 	 * System color-scheme values returned in nk_system_appearance.
@@ -757,6 +785,14 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * A monitor was disconnected and its handle invalidated.
 		 */
 		NK_EVENT_MONITOR_DISCONNECTED = 21;
+		/**
+		 * The physical device orientation changed.
+		 */
+		NK_EVENT_DEVICE_ORIENTATION_CHANGED = 22;
+		/**
+		 * The application display orientation changed.
+		 */
+		NK_EVENT_DISPLAY_ORIENTATION_CHANGED = 23;
 		/**
 		 * A raw joystick became available.
 		 */
@@ -1089,6 +1125,15 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * The hat is pressed to the left.
 		 */
 		NK_JOYSTICK_HAT_LEFT = 8;
+	}
+	/**
+	 * Reasons and options for an ownership-safe keep-awake lease.
+	 */
+	flags nk_keep_awake_flags : u32 {
+		/**
+		 * Keep the application display awake while the lease is held.
+		 */
+		NK_KEEP_AWAKE_DISPLAY = 1;
 	}
 	/**
 	 * Normalized physical or logical keyboard key identifier.
@@ -1777,6 +1822,18 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		NK_NOTIFICATION_SILENT = 1;
 	}
 	/**
+	 * Physical and presentation orientations.
+	 */
+	enum nk_orientation : u32 {
+		NK_ORIENTATION_UNKNOWN = 0;
+		NK_ORIENTATION_PORTRAIT = 1;
+		NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN = 2;
+		NK_ORIENTATION_LANDSCAPE_LEFT = 3;
+		NK_ORIENTATION_LANDSCAPE_RIGHT = 4;
+		NK_ORIENTATION_FACE_UP = 5;
+		NK_ORIENTATION_FACE_DOWN = 6;
+	}
+	/**
 	 * Mouse or pointer button identifier.
 	 */
 	enum nk_pointer_button : u32 {
@@ -1999,6 +2056,50 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * Temporary-file directory.
 		 */
 		NK_DIRECTORY_TEMP = 8;
+		/**
+		 * Read-only installation or bundle directory, when path-backed.
+		 */
+		NK_DIRECTORY_APPLICATION = 9;
+		/**
+		 * Private, persistent, application-specific writable storage.
+		 */
+		NK_DIRECTORY_APPLICATION_STORAGE = 10;
+		/**
+		 * Best-known system font directory on desktop platforms.
+		 */
+		NK_DIRECTORY_FONTS = 11;
+	}
+	/**
+	 * Native byte order of the running platform.
+	 */
+	enum nk_system_endianness : u32 {
+		NK_SYSTEM_ENDIAN_UNKNOWN = 0;
+		NK_SYSTEM_ENDIAN_LITTLE = 1;
+		NK_SYSTEM_ENDIAN_BIG = 2;
+	}
+	/**
+	 * Stable platform identity reported by nk_system_get_info().
+	 */
+	enum nk_system_platform : u32 {
+		NK_SYSTEM_PLATFORM_UNKNOWN = 0;
+		NK_SYSTEM_PLATFORM_LINUX = 1;
+		NK_SYSTEM_PLATFORM_WINDOWS = 2;
+		NK_SYSTEM_PLATFORM_MACOS = 3;
+		NK_SYSTEM_PLATFORM_ANDROID = 4;
+		NK_SYSTEM_PLATFORM_IOS = 5;
+		NK_SYSTEM_PLATFORM_WEB = 6;
+	}
+	/**
+	 * String values accepted by nk_system_get_string().
+	 */
+	enum nk_system_string_kind : u32 {
+		NK_SYSTEM_STRING_PLATFORM_NAME = 1;
+		NK_SYSTEM_STRING_PLATFORM_VERSION = 2;
+		NK_SYSTEM_STRING_PLATFORM_LABEL = 3;
+		NK_SYSTEM_STRING_DEVICE_VENDOR = 4;
+		NK_SYSTEM_STRING_DEVICE_MODEL = 5;
+		NK_SYSTEM_STRING_APPLICATION_ID = 6;
+		NK_SYSTEM_STRING_APPLICATION_NAME = 7;
 	}
 	/**
 	 * Operation represented by an NK_EVENT_TEXT_EDIT transaction.
@@ -2486,6 +2587,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_monitor_get_name(monitor: nk_monitor, buffer: nullable<ptr<c_char>> @out_buffer("inout_size"), inout_size: ptr<u32> @inout) -> nk_result;
 	/**
+	 * Returns the current orientation used by this display.
+	 */
+	extern fn nk_monitor_get_orientation(monitor: nk_monitor, out_orientation: ptr<nk_orientation> @out) -> nk_result;
+	/**
 	 * Returns the primary monitor handle.
 	 */
 	extern fn nk_monitor_get_primary(out_monitor: ptr<nk_monitor> @out) -> nk_result;
@@ -2757,6 +2862,26 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Returns the current desktop appearance. UI thread only.
 	 */
 	extern fn nk_system_get_appearance(appearance: ptr<nk_system_appearance>) -> nk_result;
+	/**
+	 * Returns stable platform identity and native endianness.
+	 */
+	extern fn nk_system_get_info(out_info: ptr<nk_system_info> @out) -> nk_result;
+	/**
+	 * Returns physical device and application display orientation.
+	 */
+	extern fn nk_system_get_orientation(out_orientation: ptr<nk_system_orientation> @out) -> nk_result;
+	/**
+	 * Copies a privacy-safe platform, device, or configured application string.
+	 */
+	extern fn nk_system_get_string(kind: nk_system_string_kind, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
+	/**
+	 * Acquires an independent keep-awake lease.
+	 */
+	extern fn nk_system_keep_awake_acquire(options: ptr<const<nk_keep_awake_options>>, out_lock: ptr<nk_keep_awake> @out) -> nk_result;
+	/**
+	 * Releases a previously acquired keep-awake lease.
+	 */
+	extern fn nk_system_keep_awake_release(lock: nk_keep_awake) -> nk_result;
 	/**
 	 * Copies the current system locale identifier into a caller-owned UTF-8 buffer.
 	 */
@@ -3566,9 +3691,9 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Options used to start one NativeKit runtime generation.
 	 */
-	struct nk_init_options @layout(16, 4) {
+	struct nk_init_options @layout(32, 8) {
 		/**
-		 * Size of this structure in bytes; must be at least sizeof(nk_init_options).
+		 * Size of this structure in bytes; old prefixes remain valid.
 		 */
 		struct_size: u32 @offset(0) @struct_size;
 		/**
@@ -3583,6 +3708,14 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * Reserved for compatible extensions; initialize to zero.
 		 */
 		reserved: u32 @offset(12);
+		/**
+		 * Stable reverse-DNS or package-style application identifier.
+		 */
+		application_id: nullable<utf8> @offset(16);
+		/**
+		 * Optional human-readable application name.
+		 */
+		application_name: nullable<utf8> @offset(24);
 	}
 	/**
 	 * Payload of NK_EVENT_JOYSTICK_AXIS.
@@ -3622,6 +3755,24 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * Bitwise OR of NK_JOYSTICK_HAT_* direction values.
 		 */
 		value: nk_joystick_hat_flags @offset(4);
+	}
+	struct nk_keep_awake_options @layout(40, 8) {
+		/**
+		 * Set to sizeof(nk_keep_awake_options) before acquiring a lease.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Optional diagnostic reason copied only for the duration of the call.
+		 */
+		reason: nullable<utf8> @offset(8);
+		/**
+		 * Requested keep-awake facilities.
+		 */
+		flags: nk_keep_awake_flags @offset(16);
+		/**
+		 * Reserved for future lease options; set all elements to zero.
+		 */
+		reserved: array<u64, 2> @offset(24);
 	}
 	/**
 	 * Payload of NK_EVENT_KEY. Scancodes remain platform-specific.
@@ -3902,6 +4053,27 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * Reserved for future notification options; set all elements to zero.
 		 */
 		reserved2: array<u64, 2> @offset(40);
+	}
+	/**
+	 * Payload shared by device and display orientation events.
+	 */
+	struct nk_orientation_event @layout(32, 8) {
+		/**
+		 * Set to sizeof(nk_orientation_event).
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * New orientation value.
+		 */
+		orientation: nk_orientation @offset(4);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(8);
+		/**
+		 * Reserved for future orientation event information; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(16);
 	}
 	/**
 	 * Payload of NK_EVENT_POINTER_BUTTON in surface-local logical pixels.
@@ -4333,6 +4505,60 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		reserved: u32 @offset(12);
 		/**
 		 * Reserved for future appearance information; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(16);
+	}
+	/**
+	 * Compact platform and device identity information.
+	 */
+	struct nk_system_info @layout(40, 8) {
+		/**
+		 * Set to sizeof(nk_system_info) before the query.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Stable NativeKit platform identifier.
+		 */
+		platform: nk_system_platform @offset(4);
+		/**
+		 * Native byte order.
+		 */
+		endianness: nk_system_endianness @offset(8);
+		/**
+		 * Non-zero for mobile platforms.
+		 */
+		mobile: nk_bool @offset(12);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(16);
+		/**
+		 * Reserved for future system information; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(24);
+	}
+	/**
+	 * Current physical device posture and application display orientation.
+	 */
+	struct nk_system_orientation @layout(32, 8) {
+		/**
+		 * Set to sizeof(nk_system_orientation) before the query.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Physical device posture, when the platform reports it.
+		 */
+		device: nk_orientation @offset(4);
+		/**
+		 * Orientation used to present application content.
+		 */
+		display: nk_orientation @offset(8);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(12);
+		/**
+		 * Reserved for future orientation information; set all elements to zero.
 		 */
 		reserved2: array<u64, 2> @offset(16);
 	}
@@ -4806,6 +5032,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	handle nk_handle : u32;
 	handle nk_joystick : u32;
+	type nk_keep_awake = u32;
 	handle nk_mobile_host : u32 @destroy("nk_mobile_host_destroy");
 	handle nk_monitor : u32;
 	type nk_nullable_surface_frame_callback = nullable<nk_surface_frame_callback>;

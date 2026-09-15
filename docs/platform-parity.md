@@ -94,6 +94,11 @@ needed; graphics API bits are alternatives within the GPU family.
 | Accessibility | `NK_CAP_ACCESSIBILITY` |
 | Monitors | `NK_CAP_MONITOR`, `NK_CAP_MONITOR_FULLSCREEN` |
 | Joystick/gamepad | `NK_CAP_JOYSTICK` |
+| Platform/device identity | `NK_CAP_SYSTEM_INFO` |
+| Application paths | `NK_CAP_APPLICATION_PATH`, `NK_CAP_APPLICATION_STORAGE` |
+| System fonts | `NK_CAP_SYSTEM_FONTS` |
+| Keep-awake leases | `NK_CAP_KEEP_AWAKE` |
+| Orientation | `NK_CAP_DEVICE_ORIENTATION`, `NK_CAP_DISPLAY_ORIENTATION` |
 
 `NK_CAP_WINDOW_GEOMETRY` and `NK_CAP_WINDOW_STYLING` are checked separately by
 the executable baseline because a backend may have implemented geometry while
@@ -106,12 +111,12 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 
 | Backend | Required or equivalent today | Deferred today |
 |---|---|---|
-| Linux/GTK | Windows, geometry, styling, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, GPU, resource I/O, monitors, joystick, native export | Resource sharing, accessibility, native wrapping |
-| Windows | Windows, WebView when WebView2 is available, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource I/O, accessibility, monitors, joystick, native export | Resource sharing, native wrapping |
-| macOS | Windows, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource I/O, monitors, joystick, native export | Resource sharing, accessibility, native wrapping |
-| Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility | — |
-| iOS | Mobile host, resource I/O | WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, Metal, resource sharing, joystick, accessibility |
-| Web | Window, geometry, clipboard, input, cursor/capture, GLES, resource I/O | Styling, dialogs, drag/drop, shell, appearance, notifications, resource sharing, joystick, accessibility |
+| Linux/GTK | Windows, geometry, styling, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, GPU, resource I/O, monitors, joystick, native export, platform identity, application paths, fonts, keep-awake, display orientation | Resource sharing, accessibility, native wrapping, device orientation |
+| Windows | Windows, WebView when WebView2 is available, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource I/O, accessibility, monitors, joystick, native export, platform identity, application paths, fonts, keep-awake, display orientation | Resource sharing, native wrapping, device orientation |
+| macOS | Windows, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource I/O, monitors, joystick, native export, platform identity, application paths, fonts, keep-awake, display orientation | Resource sharing, accessibility, native wrapping, device orientation |
+| Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility, platform identity, application storage, keep-awake, device/display orientation | Application install path, system fonts |
+| iOS | Mobile host, resource I/O, platform identity, application paths, application storage, keep-awake, device/display orientation | WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, Metal, resource sharing, joystick, accessibility, system fonts |
+| Web | Window, geometry, clipboard, input, cursor/capture, GLES, resource I/O, platform identity | Styling, dialogs, drag/drop, shell, appearance, notifications, resource sharing, joystick, accessibility, application paths, application storage, system fonts, keep-awake, device/display orientation |
 
 The current Windows joystick adapter uses XInput's standard gamepad model,
 including hotplug and normalized canonical state. The current macOS adapter

@@ -14,6 +14,7 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
+#include "core/system_internal.hpp"
 #include "windows/joystick.hpp"
 
 #define UNICODE
@@ -252,6 +253,9 @@ struct WinMonitorResource final : nk::core::Resource {
 };
 
 std::unordered_map<HMONITOR, nk_handle> monitor_handles;
+std::unordered_map<HMONITOR, nk_orientation> monitor_orientations;
+
+void poll_monitor_orientations();
 
 struct WinSurfaceResource final : nk::core::Resource {
     HWND window = nullptr;
@@ -2497,9 +2501,57 @@ nk_handle register_monitor(HMONITOR native) {
     resource->monitor = native;
     resource->name = monitor_name(native);
     resource->handle = nk::core::handles().insert(nk::core::ResourceType::monitor, resource);
-    if (resource->handle != NK_INVALID_HANDLE)
+    if (resource->handle != NK_INVALID_HANDLE) {
         monitor_handles.emplace(native, resource->handle);
+        monitor_orientations.emplace(native, NK_ORIENTATION_UNKNOWN);
+    }
     return resource->handle;
+}
+
+nk_orientation monitor_orientation(HMONITOR native) {
+    MONITORINFOEXW info{};
+    info.cbSize = sizeof(info);
+    if (!GetMonitorInfoW(native, &info))
+        return NK_ORIENTATION_UNKNOWN;
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(mode);
+    if (!EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, &mode))
+        return NK_ORIENTATION_UNKNOWN;
+    switch (mode.dmDisplayOrientation) {
+    case DMDO_90:
+        return NK_ORIENTATION_PORTRAIT;
+    case DMDO_180:
+        return NK_ORIENTATION_LANDSCAPE_LEFT;
+    case DMDO_270:
+        return NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN;
+    default:
+        return mode.dmPelsWidth == mode.dmPelsHeight
+                   ? NK_ORIENTATION_UNKNOWN
+                   : mode.dmPelsWidth > mode.dmPelsHeight ? NK_ORIENTATION_LANDSCAPE_RIGHT
+                                                          : NK_ORIENTATION_PORTRAIT;
+    }
+}
+
+void poll_monitor_orientations() {
+    nk::core::callback_boundary([] {
+        for (const auto &[native, handle] : monitor_handles) {
+            const auto current = monitor_orientation(native);
+            const auto found = monitor_orientations.find(native);
+            if (found == monitor_orientations.end()) {
+                monitor_orientations.emplace(native, current);
+                continue;
+            }
+            if (found->second == current)
+                continue;
+            found->second = current;
+            const nk_orientation_event payload{sizeof(payload), current, 0, {0, 0}};
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_DISPLAY_ORIENTATION_CHANGED;
+            event.source = handle;
+            event.data = bytes_of(payload);
+            nk::core::push_event(std::move(event));
+        }
+    });
 }
 
 nk_result refresh_monitors() {
@@ -2530,6 +2582,7 @@ nk_result refresh_monitors() {
         event.source = handle;
         nk::core::push_event(std::move(event));
         nk::core::handles().erase(handle, nk::core::ResourceType::monitor);
+        monitor_orientations.erase(iterator->first);
         iterator = monitor_handles.erase(iterator);
     }
     return NK_OK;
@@ -2614,8 +2667,26 @@ const KNOWNFOLDERID *directory_id(nk_system_directory_kind kind) {
         return &FOLDERID_RoamingAppData;
     case NK_DIRECTORY_DATA:
         return &FOLDERID_LocalAppData;
+    case NK_DIRECTORY_FONTS:
+        return &FOLDERID_Fonts;
     default:
         return nullptr;
+    }
+}
+
+bool executable_directory(std::wstring &output) {
+    std::vector<wchar_t> path(260);
+    for (;;) {
+        const DWORD length = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
+        if (!length)
+            return false;
+        if (length + 1 < path.size()) {
+            const std::wstring value(path.data(), length);
+            const auto separator = value.find_last_of(L"\\/");
+            output = separator == std::wstring::npos ? L"." : value.substr(0, separator);
+            return true;
+        }
+        path.resize(path.size() * 2);
     }
 }
 
@@ -2635,6 +2706,24 @@ nk_result get_system_directory(nk_system_directory_kind kind, std::string &outpu
         return output.empty() ? fail(NK_ERROR_UNKNOWN, "could not encode temporary directory")
                               : NK_OK;
     }
+    if (kind == NK_DIRECTORY_APPLICATION) {
+        std::wstring path;
+        if (!executable_directory(path))
+            return fail(NK_ERROR_UNSUPPORTED, "application directory is unavailable");
+        output = utf8(path.c_str());
+        return output.empty() ? fail(NK_ERROR_UNKNOWN, "could not encode application directory")
+                              : NK_OK;
+    }
+    if (kind == NK_DIRECTORY_APPLICATION_STORAGE) {
+        const auto id = nk::core::system_application_id();
+        if (id.empty())
+            return fail(NK_ERROR_UNSUPPORTED, "application storage requires an application ID");
+        std::string base;
+        if (get_system_directory(NK_DIRECTORY_DATA, base) != NK_OK)
+            return NK_ERROR_UNSUPPORTED;
+        output = base + "\\" + id;
+        return NK_OK;
+    }
     const auto *id = directory_id(kind);
     if (!id)
         return fail(NK_ERROR_UNSUPPORTED, "unknown system directory");
@@ -2651,6 +2740,23 @@ nk_result get_system_directory(nk_system_directory_kind kind, std::string &outpu
 
 } // namespace
 
+namespace nk::core::system_backend {
+
+nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
+    if (kind != NK_SYSTEM_STRING_PLATFORM_VERSION)
+        return NK_ERROR_UNSUPPORTED;
+    OSVERSIONINFOEXW version{};
+    version.dwOSVersionInfoSize = sizeof(version);
+    if (!GetVersionExW(reinterpret_cast<OSVERSIONINFOW *>(&version)))
+        return NK_ERROR_UNSUPPORTED;
+    out_value = std::to_string(version.dwMajorVersion) + "." +
+                std::to_string(version.dwMinorVersion) + "." +
+                std::to_string(version.dwBuildNumber);
+    return NK_OK;
+}
+
+} // namespace nk::core::system_backend
+
 namespace nk::backend {
 void pump_events() noexcept {
     nk::windows_joystick::pump();
@@ -2660,6 +2766,7 @@ void pump_events() noexcept {
         DispatchMessageW(&message);
     }
     reap_dialogs();
+    poll_monitor_orientations();
 }
 
 void shutdown() noexcept {
@@ -2693,6 +2800,7 @@ void shutdown() noexcept {
     cancel_evaluations(NK_INVALID_HANDLE);
 #endif
     monitor_handles.clear();
+    monitor_orientations.clear();
     nk::core::handles().clear();
     pump_events();
 #if defined(NK_HAS_WEBVIEW2)
@@ -2724,7 +2832,9 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
         NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE |
         NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING | NK_CAP_D3D11_SURFACE |
-        NK_CAP_ACCESSIBILITY | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK;
+        NK_CAP_ACCESSIBILITY | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK |
+        NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
+        NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
@@ -3594,6 +3704,41 @@ nk_result NK_CALL nk_monitor_get_modes(nk_handle handle, nk_video_mode *modes,
     if (!modes || capacity < required)
         return required ? fail(NK_ERROR_BUFFER_TOO_SMALL, "video mode buffer is too small") : NK_OK;
     std::copy(available.begin(), available.end(), modes);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_monitor_get_orientation(nk_handle handle, nk_orientation *out_orientation) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!out_orientation)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "monitor orientation output must not be null");
+    auto resource = get_monitor(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
+    MONITORINFOEXW info{};
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(mode);
+    if (!monitor_info(resource->monitor, info) ||
+        !EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, &mode))
+        return fail(NK_ERROR_UNSUPPORTED, "monitor orientation is unavailable");
+    switch (mode.dmDisplayOrientation) {
+    case DMDO_90:
+        *out_orientation = NK_ORIENTATION_PORTRAIT;
+        break;
+    case DMDO_180:
+        *out_orientation = NK_ORIENTATION_LANDSCAPE_LEFT;
+        break;
+    case DMDO_270:
+        *out_orientation = NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN;
+        break;
+    default:
+        *out_orientation = mode.dmPelsWidth == mode.dmPelsHeight
+                               ? NK_ORIENTATION_UNKNOWN
+                               : mode.dmPelsWidth > mode.dmPelsHeight
+                                   ? NK_ORIENTATION_LANDSCAPE_RIGHT
+                                   : NK_ORIENTATION_PORTRAIT;
+        break;
+    }
     return NK_OK;
 }
 

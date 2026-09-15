@@ -216,6 +216,10 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_MONITOR_CONNECTED = 20,
     /** A monitor was disconnected and its handle invalidated. */
     NK_EVENT_MONITOR_DISCONNECTED = 21,
+    /** The physical device orientation changed. */
+    NK_EVENT_DEVICE_ORIENTATION_CHANGED = 22,
+    /** The application display orientation changed. */
+    NK_EVENT_DISPLAY_ORIENTATION_CHANGED = 23,
     /** A raw joystick became available. */
     NK_EVENT_JOYSTICK_CONNECTED = 30,
     /** A raw joystick was disconnected and its handle invalidated. */
@@ -296,7 +300,7 @@ enum NK_ENUM(nk_event_kind) {
 
 /** Options used to start one NativeKit runtime generation. */
 typedef struct nk_init_options {
-    /** Size of this structure in bytes; must be at least sizeof(nk_init_options). */
+    /** Size of this structure in bytes; old prefixes remain valid. */
     uint32_t struct_size NK_STRUCT_SIZE;
     /** ABI version requested by the caller; normally NK_API_VERSION. */
     uint32_t api_version;
@@ -304,6 +308,10 @@ typedef struct nk_init_options {
     uint32_t event_queue_capacity;
     /** Reserved for compatible extensions; initialize to zero. */
     uint32_t reserved;
+    /** Stable reverse-DNS or package-style application identifier. */
+    const char *application_id NK_NULLABLE_UTF8;
+    /** Optional human-readable application name. */
+    const char *application_name NK_NULLABLE_UTF8;
 } nk_init_options;
 
 /**

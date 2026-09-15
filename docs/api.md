@@ -292,6 +292,39 @@ mode switching is not supported.
 specific monitor. Passing `NK_INVALID_HANDLE` leaves fullscreen and lets the
 window manager restore the previous windowed placement.
 
+`nk_monitor_get_orientation()` reports the best-known presentation orientation
+for that display. A backend may return `NK_ORIENTATION_UNKNOWN` when its
+compositor does not expose rotation.
+
+## System information and application paths
+
+`nk_system_get_info()` reports a stable NativeKit platform enum, native
+endianness, and whether the platform is mobile. The string query uses the same
+size-including-NUL convention as directory queries. Device vendor and model
+are privacy-safe values: unsupported or unavailable values are empty, and
+NativeKit never exposes serial numbers, MAC addresses, advertising IDs, or
+other persistent hardware identifiers.
+
+`nk_init_options` accepts an optional application ID and name. The ID is
+sanitized for use as a path component. The legacy `DATA`, `CONFIG`, and
+`CACHE` directory values retain their existing meanings; the new
+`APPLICATION_STORAGE` value is application-specific and requires a configured
+ID. `APPLICATION` is returned only when the installation or bundle is backed
+by a real directory. `FONTS` is supported only where a meaningful desktop
+system font directory exists; mobile and Web applications should bundle their
+own fonts or use a future font-matching API.
+
+`nk_system_keep_awake_acquire()` returns an independent lease. The display is
+kept awake while at least one lease remains, and releasing one lease never
+releases another. All leases are dropped by `nk_shutdown()`. The lease does
+not prevent explicit user locking and mobile implementations are effective
+only while their host is active and visible.
+
+`nk_system_get_orientation()` separates physical device posture from display
+presentation orientation. Device and display orientation events use the same
+`nk_orientation_event` payload and suppress unchanged values; orientation
+locking is intentionally a separate future API.
+
 ## Linux joysticks
 
 Include `nativekit_joystick.h` for raw joystick access. The GTK/Linux backend

@@ -7,6 +7,7 @@
 #include "core/vulkan_internal.hpp"
 #include "nativekit_accessibility.h"
 #include "nativekit_joystick.h"
+#include "nativekit_system.h"
 #include "nativekit_window.h"
 
 #include <cassert>
@@ -214,6 +215,31 @@ int main() {
     event.struct_size = sizeof(event);
     assert(motion_queue.poll(event) == NK_OK);
     assert(event.kind == NK_EVENT_POINTER_MOVE);
+    nk_event_release(&event);
+
+    nk::core::EventQueue orientation_queue(1);
+    const nk_orientation_event portrait{sizeof(nk_orientation_event), NK_ORIENTATION_PORTRAIT, 0,
+                                        {0, 0}};
+    const nk_orientation_event landscape{sizeof(nk_orientation_event),
+                                         NK_ORIENTATION_LANDSCAPE_RIGHT,
+                                         0,
+                                         {0, 0}};
+    auto queue_orientation = [&](const nk_orientation_event &payload) {
+        nk::core::QueuedEvent item;
+        item.kind = NK_EVENT_DISPLAY_ORIENTATION_CHANGED;
+        item.source = first;
+        const auto *payload_begin = reinterpret_cast<const std::byte *>(&payload);
+        item.data.assign(payload_begin, payload_begin + sizeof(payload));
+        assert(orientation_queue.push(std::move(item)) == NK_OK);
+    };
+    queue_orientation(portrait);
+    queue_orientation(landscape);
+    event = {};
+    event.struct_size = sizeof(event);
+    assert(orientation_queue.poll(event) == NK_OK);
+    assert(event.kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED);
+    assert(static_cast<const nk_orientation_event *>(event.data)->orientation ==
+           NK_ORIENTATION_LANDSCAPE_RIGHT);
     nk_event_release(&event);
 
     nk::core::EventQueue axis_queue(3);

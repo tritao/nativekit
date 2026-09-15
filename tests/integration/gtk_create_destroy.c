@@ -267,6 +267,11 @@ int main(void) {
     modes[0].struct_size = sizeof(modes[0]);
     assert(nk_monitor_get_modes(primary_monitor, modes, &mode_count) == NK_OK);
     assert(modes[0].width == video_mode.width && modes[0].height == video_mode.height);
+    nk_orientation monitor_orientation = NK_ORIENTATION_UNKNOWN;
+    assert(nk_monitor_get_orientation(primary_monitor, &monitor_orientation) == NK_OK);
+    assert(monitor_orientation == NK_ORIENTATION_UNKNOWN ||
+           monitor_orientation == NK_ORIENTATION_PORTRAIT ||
+           monitor_orientation == NK_ORIENTATION_LANDSCAPE_RIGHT);
     assert(nk_window_set_fullscreen_monitor(window, primary_monitor) == NK_OK);
     assert(nk_window_set_fullscreen_monitor(window, NK_INVALID_HANDLE) == NK_OK);
     nk_input_action input_action = NK_INPUT_PRESS;

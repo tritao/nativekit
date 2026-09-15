@@ -76,7 +76,21 @@ enum NK_FLAGS(nk_capabilities) {
     /** The backend can create a Direct3D 11 surface. */
     NK_CAP_D3D11_SURFACE = UINT64_C(1) << 25,
     /** The backend can create a Metal surface. */
-    NK_CAP_METAL_SURFACE = UINT64_C(1) << 26
+    NK_CAP_METAL_SURFACE = UINT64_C(1) << 26,
+    /** The backend can report stable platform and endianness information. */
+    NK_CAP_SYSTEM_INFO = UINT64_C(1) << 27,
+    /** The backend can report a path-backed application installation location. */
+    NK_CAP_APPLICATION_PATH = UINT64_C(1) << 28,
+    /** The backend can report private persistent application storage. */
+    NK_CAP_APPLICATION_STORAGE = UINT64_C(1) << 29,
+    /** The backend can report a best-known system font directory. */
+    NK_CAP_SYSTEM_FONTS = UINT64_C(1) << 30,
+    /** The backend can keep the application display awake with leases. */
+    NK_CAP_KEEP_AWAKE = UINT64_C(1) << 31,
+    /** The backend can report physical device orientation. */
+    NK_CAP_DEVICE_ORIENTATION = UINT64_C(1) << 32,
+    /** The backend can report application display orientation. */
+    NK_CAP_DISPLAY_ORIENTATION = UINT64_C(1) << 33
 };
 
 /** Discriminator identifying the platform representation in nk_native_window. */

@@ -33,6 +33,9 @@ nk_result NK_CALL nk_monitor_get_current_mode(nk_handle, nk_video_mode *) {
 nk_result NK_CALL nk_monitor_get_modes(nk_handle, nk_video_mode *, uint32_t *) {
     return unsupported_monitor();
 }
+nk_result NK_CALL nk_monitor_get_orientation(nk_handle, nk_orientation *) {
+    return unsupported_monitor();
+}
 nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle, nk_handle) {
     return unsupported_monitor();
 }

@@ -18,6 +18,7 @@
 #include "core/graphics_image_registry.h"
 #include "core/gamepad_events.hpp"
 #include "core/runtime.hpp"
+#include "core/system_internal.hpp"
 #include "android/nativekit_android_internal.hpp"
 
 #include <jni.h>
@@ -105,6 +106,9 @@ struct NavigationDecision {
 std::unordered_map<nk_handle, std::shared_ptr<AndroidHost>> hosts;
 std::unordered_map<nk_handle, std::shared_ptr<AndroidWebView>> webviews;
 std::unordered_map<nk_handle, std::shared_ptr<AndroidSurface>> surfaces;
+std::unordered_map<nk_handle, nk_orientation> display_orientations;
+nk_orientation last_device_orientation = NK_ORIENTATION_UNKNOWN;
+nk_handle keep_awake_host = NK_INVALID_HANDLE;
 std::unordered_map<int32_t, std::shared_ptr<AndroidJoystick>> joysticks;
 EGLDisplay egl_display = EGL_NO_DISPLAY;
 std::unordered_map<nk_request_id, nk_handle> evaluations;
@@ -320,6 +324,15 @@ std::shared_ptr<AndroidResourceStream> resource_stream(nk_handle handle) {
 
 std::shared_ptr<AndroidHost> context_host() {
     return hosts.empty() ? nullptr : hosts.begin()->second;
+}
+
+std::shared_ptr<AndroidHost> active_context_host() {
+    for (const auto &[handle, resource] : hosts) {
+        (void)handle;
+        if (resource->lifecycle != NK_MOBILE_LIFECYCLE_BACKGROUND)
+            return resource;
+    }
+    return nullptr;
 }
 
 nk_result require_thread() {
@@ -723,6 +736,87 @@ bool abandon_webview(nk_handle handle) {
 
 } // namespace
 
+namespace nk::core::system_backend {
+
+nk_result keep_awake_apply(bool enabled) noexcept {
+    std::shared_ptr<AndroidHost> resource;
+    if (enabled)
+        resource = active_context_host();
+    else if (const auto found = hosts.find(keep_awake_host); found != hosts.end())
+        resource = found->second;
+    else
+        resource = context_host();
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!resource) {
+        keep_awake_host = NK_INVALID_HANDLE;
+        return enabled ? NK_ERROR_UNSUPPORTED : NK_OK;
+    }
+    if (!env || !bridge)
+        return NK_ERROR_UNSUPPORTED;
+    const auto method = env->GetStaticMethodID(bridge, "setKeepAwake",
+                                               "(Landroid/view/ViewGroup;Z)Z");
+    const auto applied = method && env->CallStaticBooleanMethod(
+                                    bridge, method, resource->view_group,
+                                    enabled ? JNI_TRUE : JNI_FALSE);
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android keep-awake bridge is unavailable"))
+        return NK_ERROR_UNKNOWN;
+    if (!applied) {
+        nk::core::set_error("Android host window cannot control screen timeout");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    keep_awake_host = enabled ? resource->handle : NK_INVALID_HANDLE;
+    return NK_OK;
+}
+
+nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
+    auto resource = context_host();
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!resource || !env || !bridge)
+        return NK_ERROR_UNSUPPORTED;
+    const auto method = env->GetStaticMethodID(bridge, "systemOrientation",
+                                               "(Landroid/view/ViewGroup;)I");
+    const auto packed = method ? env->CallStaticIntMethod(bridge, method, resource->view_group) : 0;
+    env->DeleteLocalRef(bridge);
+    if (!method || clear_java_exception(env, "Android orientation bridge is unavailable"))
+        return NK_ERROR_UNKNOWN;
+    const auto size = out_orientation.struct_size;
+    out_orientation = {};
+    out_orientation.struct_size = size;
+    out_orientation.device = static_cast<nk_orientation>(packed & 0xff);
+    out_orientation.display = static_cast<nk_orientation>((packed >> 8) & 0xff);
+    return NK_OK;
+}
+
+nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
+    auto resource = context_host();
+    auto *env = environment();
+    auto *bridge = env ? bridge_class(env) : nullptr;
+    if (!resource || !env || !bridge)
+        return NK_ERROR_UNSUPPORTED;
+    const auto method = env->GetStaticMethodID(bridge, "systemString",
+                                               "(Landroid/view/ViewGroup;I)Ljava/lang/String;");
+    if (!method || clear_java_exception(env, "Android system string bridge is unavailable")) {
+        env->DeleteLocalRef(bridge);
+        return NK_ERROR_UNKNOWN;
+    }
+    auto value = static_cast<jstring>(env->CallStaticObjectMethod(bridge, method,
+                                                                    resource->view_group,
+                                                                    static_cast<jint>(kind)));
+    env->DeleteLocalRef(bridge);
+    if (clear_java_exception(env, "Android system string query failed"))
+        return NK_ERROR_UNKNOWN;
+    if (!value)
+        return NK_ERROR_UNSUPPORTED;
+    out_value = to_utf8(env, value);
+    env->DeleteLocalRef(value);
+    return NK_OK;
+}
+
+} // namespace nk::core::system_backend
+
 namespace nk::backend {
 
 nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled);
@@ -795,6 +889,9 @@ void shutdown() noexcept {
         }
     }
     hosts.clear();
+    display_orientations.clear();
+    last_device_orientation = NK_ORIENTATION_UNKNOWN;
+    keep_awake_host = NK_INVALID_HANDLE;
     evaluations.clear();
     navigation_decisions.clear();
     file_dialogs.clear();
@@ -836,6 +933,9 @@ nk_result mobile_host_attach(const nk_mobile_host_options &options, nk_handle &o
         return NK_ERROR_OUT_OF_MEMORY;
     }
     hosts.emplace(handle, resource);
+    display_orientations.emplace(handle, NK_ORIENTATION_UNKNOWN);
+    if (nk::core::system_keep_awake_held())
+        (void)nk::core::system_backend::keep_awake_apply(true);
     out_host = handle;
     return NK_OK;
 }
@@ -865,10 +965,16 @@ nk_result mobile_host_destroy(nk_handle handle) {
     for (const auto child : children)
         destroy_webview(child);
     mobile_host_set_drop_enabled(handle, false);
+    const bool keep_awake_held = nk::core::system_keep_awake_held();
+    if (keep_awake_held)
+        found->second->lifecycle = NK_MOBILE_LIFECYCLE_BACKGROUND;
+    if (keep_awake_held)
+        (void)nk::core::system_backend::keep_awake_apply(active_context_host() != nullptr);
     if (auto *env = environment(); env && found->second->view_group)
         env->DeleteGlobalRef(found->second->view_group);
     found->second->view_group = nullptr;
     hosts.erase(found);
+    display_orientations.erase(handle);
     nk::core::handles().erase(handle, nk::core::ResourceType::mobile_host);
     return NK_OK;
 }
@@ -898,6 +1004,8 @@ nk_result mobile_host_set_lifecycle(nk_handle handle, nk_mobile_lifecycle_state 
     }
     env->CallStaticVoidMethod(bridge, method, resource->view_group, static_cast<jint>(state));
     env->DeleteLocalRef(bridge);
+    if (nk::core::system_keep_awake_held())
+        (void)nk::core::system_backend::keep_awake_apply(active_context_host() != nullptr);
     return clear_java_exception(env, "Android lifecycle update failed") ? NK_ERROR_UNKNOWN : NK_OK;
 }
 
@@ -956,7 +1064,9 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
            NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE |
-           NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT | NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY;
+           NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT | NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY |
+           NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_STORAGE | NK_CAP_KEEP_AWAKE |
+           NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION;
 }
 
 nk_result NK_CALL nk_shell_open_url(const char *url) {
@@ -3727,6 +3837,40 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGeometry(
         event.source = static_cast<nk_handle>(handle);
         event.data = bytes_of(geometry);
         nk::core::push_event(std::move(event));
+    });
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnOrientation(
+    JNIEnv *, jclass, jlong handle, jint device, jint display) {
+    nk::core::callback_boundary([&] {
+        if (!host(static_cast<nk_handle>(handle)))
+            return;
+        if (device != NK_ORIENTATION_UNKNOWN && device != last_device_orientation) {
+            last_device_orientation = static_cast<nk_orientation>(device);
+            const nk_orientation_event payload{sizeof(nk_orientation_event),
+                                               static_cast<nk_orientation>(device),
+                                               0,
+                                               {0, 0}};
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_DEVICE_ORIENTATION_CHANGED;
+            event.source = NK_INVALID_HANDLE;
+            event.data = bytes_of(payload);
+            nk::core::push_event(std::move(event));
+        }
+        auto display_state = display_orientations.find(static_cast<nk_handle>(handle));
+        if (display != NK_ORIENTATION_UNKNOWN && display_state != display_orientations.end() &&
+            display != display_state->second) {
+            display_state->second = static_cast<nk_orientation>(display);
+            const nk_orientation_event payload{sizeof(nk_orientation_event),
+                                               static_cast<nk_orientation>(display),
+                                               0,
+                                               {0, 0}};
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_DISPLAY_ORIENTATION_CHANGED;
+            event.source = static_cast<nk_handle>(handle);
+            event.data = bytes_of(payload);
+            nk::core::push_event(std::move(event));
+        }
     });
 }
 

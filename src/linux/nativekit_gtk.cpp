@@ -15,6 +15,7 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
+#include "core/system_internal.hpp"
 
 #include <gtk/gtk.h>
 #include <gdk/gdkconfig.h>
@@ -38,6 +39,7 @@
 #include <new>
 #include <string>
 #include <string_view>
+#include <unistd.h>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -229,6 +231,7 @@ GdkDisplay *monitor_display = nullptr;
 gulong monitor_added_signal = 0;
 gulong monitor_removed_signal = 0;
 std::unordered_map<GdkMonitor *, nk_handle> monitor_handles;
+std::unordered_map<GdkMonitor *, nk_orientation> monitor_orientations;
 std::unordered_map<nk_request_id, DialogContext *> dialogs;
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
 std::unordered_map<nk_request_id, nk_handle> evaluations;
@@ -237,6 +240,8 @@ std::unordered_map<uint32_t, nk_request_id> notification_ids;
 GDBusConnection *notification_bus = nullptr;
 guint notification_action_subscription = 0;
 guint notification_closed_subscription = 0;
+GDBusConnection *keep_awake_bus = nullptr;
+gchar *keep_awake_handle = nullptr;
 
 nk_result fail(nk_result result, std::string_view message) {
     nk::core::set_error(message);
@@ -1075,6 +1080,35 @@ std::string monitor_name(GdkMonitor *native) {
     return "Unknown monitor";
 }
 
+nk_orientation monitor_orientation(GdkMonitor *native) {
+    GdkRectangle geometry{};
+    gdk_monitor_get_geometry(native, &geometry);
+    if (geometry.width == geometry.height)
+        return NK_ORIENTATION_UNKNOWN;
+    return geometry.width > geometry.height ? NK_ORIENTATION_LANDSCAPE_RIGHT
+                                            : NK_ORIENTATION_PORTRAIT;
+}
+
+void poll_monitor_orientations() {
+    for (const auto &[native, handle] : monitor_handles) {
+        const auto current = monitor_orientation(native);
+        const auto found = monitor_orientations.find(native);
+        if (found == monitor_orientations.end()) {
+            monitor_orientations.emplace(native, current);
+            continue;
+        }
+        if (found->second == current)
+            continue;
+        found->second = current;
+        const nk_orientation_event payload{sizeof(payload), current, 0, {0, 0}};
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_DISPLAY_ORIENTATION_CHANGED;
+        event.source = handle;
+        event.data = bytes_of(payload);
+        nk::core::push_event(std::move(event));
+    }
+}
+
 nk_handle register_monitor(GdkMonitor *native) {
     const auto found = monitor_handles.find(native);
     if (found != monitor_handles.end())
@@ -1083,8 +1117,10 @@ nk_handle register_monitor(GdkMonitor *native) {
     resource->monitor = GDK_MONITOR(g_object_ref(native));
     resource->name = monitor_name(native);
     resource->handle = nk::core::handles().insert(nk::core::ResourceType::monitor, resource);
-    if (resource->handle != NK_INVALID_HANDLE)
+    if (resource->handle != NK_INVALID_HANDLE) {
         monitor_handles.emplace(native, resource->handle);
+        monitor_orientations.emplace(native, monitor_orientation(native));
+    }
     return resource->handle;
 }
 
@@ -1111,6 +1147,7 @@ void on_monitor_removed(GdkDisplay *, GdkMonitor *native, gpointer) {
         event.source = handle;
         nk::core::push_event(std::move(event));
         monitor_handles.erase(found);
+        monitor_orientations.erase(native);
         nk::core::handles().erase(handle, nk::core::ResourceType::monitor);
     });
 }
@@ -1552,26 +1589,62 @@ nk_result open_path(const char *path) {
     return result;
 }
 
-const char *system_directory_path(nk_system_directory_kind kind) {
+std::string system_directory_path(nk_system_directory_kind kind) {
     switch (kind) {
     case NK_DIRECTORY_HOME:
-        return g_get_home_dir();
+        return g_get_home_dir() ? g_get_home_dir() : "";
     case NK_DIRECTORY_DESKTOP:
-        return g_get_user_special_dir(G_USER_DIRECTORY_DESKTOP);
+        return g_get_user_special_dir(G_USER_DIRECTORY_DESKTOP)
+                   ? g_get_user_special_dir(G_USER_DIRECTORY_DESKTOP)
+                   : "";
     case NK_DIRECTORY_DOCUMENTS:
-        return g_get_user_special_dir(G_USER_DIRECTORY_DOCUMENTS);
+        return g_get_user_special_dir(G_USER_DIRECTORY_DOCUMENTS)
+                   ? g_get_user_special_dir(G_USER_DIRECTORY_DOCUMENTS)
+                   : "";
     case NK_DIRECTORY_DOWNLOADS:
-        return g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD);
+        return g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD)
+                   ? g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD)
+                   : "";
     case NK_DIRECTORY_CACHE:
-        return g_get_user_cache_dir();
+        return g_get_user_cache_dir() ? g_get_user_cache_dir() : "";
     case NK_DIRECTORY_CONFIG:
-        return g_get_user_config_dir();
+        return g_get_user_config_dir() ? g_get_user_config_dir() : "";
     case NK_DIRECTORY_DATA:
-        return g_get_user_data_dir();
+        return g_get_user_data_dir() ? g_get_user_data_dir() : "";
     case NK_DIRECTORY_TEMP:
-        return g_get_tmp_dir();
+        return g_get_tmp_dir() ? g_get_tmp_dir() : "";
+    case NK_DIRECTORY_APPLICATION: {
+        std::array<char, 4096> executable{};
+        const auto length = readlink("/proc/self/exe", executable.data(), executable.size() - 1);
+        if (length <= 0)
+            return {};
+        executable[static_cast<std::size_t>(length)] = '\0';
+        char *directory = g_path_get_dirname(executable.data());
+        std::string result = directory ? directory : "";
+        g_free(directory);
+        return result;
+    }
+    case NK_DIRECTORY_APPLICATION_STORAGE: {
+        const auto id = nk::core::system_application_id();
+        const auto base = g_get_user_data_dir();
+        if (id.empty() || !base)
+            return {};
+        return std::string(base) + G_DIR_SEPARATOR_S + id;
+    }
+    case NK_DIRECTORY_FONTS: {
+        const auto *const *system_data = g_get_system_data_dirs();
+        if (system_data) {
+            for (std::size_t index = 0; system_data[index]; ++index) {
+                const auto candidate = std::string(system_data[index]) + G_DIR_SEPARATOR_S + "fonts";
+                if (g_file_test(candidate.c_str(), G_FILE_TEST_IS_DIR))
+                    return candidate;
+            }
+        }
+        const auto candidate = std::string("/usr/share/fonts");
+        return g_file_test(candidate.c_str(), G_FILE_TEST_IS_DIR) ? candidate : std::string();
+    }
     default:
-        return nullptr;
+        return {};
     }
 }
 
@@ -1703,11 +1776,60 @@ void on_notification_shown(GObject *object, GAsyncResult *result, gpointer data)
 
 } // namespace
 
+namespace nk::core::system_backend {
+
+nk_result keep_awake_apply(bool enabled) noexcept {
+    if (!enabled) {
+        if (keep_awake_handle && keep_awake_bus) {
+            g_dbus_connection_call_sync(
+                keep_awake_bus, "org.freedesktop.portal.Desktop", keep_awake_handle,
+                "org.freedesktop.portal.Request", "Close", nullptr, nullptr,
+                G_DBUS_CALL_FLAGS_NONE, 1000, nullptr, nullptr);
+        }
+        g_clear_pointer(&keep_awake_handle, g_free);
+        g_clear_object(&keep_awake_bus);
+        return NK_OK;
+    }
+    if (keep_awake_handle)
+        return NK_OK;
+    GError *error = nullptr;
+    keep_awake_bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
+    if (!keep_awake_bus) {
+        if (error)
+            g_error_free(error);
+        return NK_ERROR_UNSUPPORTED;
+    }
+    GVariantBuilder options;
+    g_variant_builder_init(&options, G_VARIANT_TYPE_VARDICT);
+    GVariant *reply = g_dbus_connection_call_sync(
+        keep_awake_bus, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.Inhibit", "Inhibit", g_variant_new("(sua{sv})", "", 8u,
+                                                                       &options),
+        nullptr, G_DBUS_CALL_FLAGS_NONE, 1000, nullptr, &error);
+    if (!reply) {
+        if (error)
+            g_error_free(error);
+        g_clear_object(&keep_awake_bus);
+        return NK_ERROR_UNSUPPORTED;
+    }
+    g_variant_get(reply, "(o)", &keep_awake_handle);
+    g_variant_unref(reply);
+    if (!keep_awake_handle || !*keep_awake_handle) {
+        g_clear_pointer(&keep_awake_handle, g_free);
+        g_clear_object(&keep_awake_bus);
+        return NK_ERROR_UNSUPPORTED;
+    }
+    return NK_OK;
+}
+
+} // namespace nk::core::system_backend
+
 namespace nk::backend {
 void pump_events() noexcept {
     nk::linux_joystick::pump();
     while (g_main_context_iteration(nullptr, FALSE)) {
     }
+    nk::core::callback_boundary([] { poll_monitor_orientations(); });
 }
 
 void shutdown() noexcept {
@@ -1752,6 +1874,7 @@ void shutdown() noexcept {
         if (monitor_removed_signal)
             g_signal_handler_disconnect(monitor_display, monitor_removed_signal);
         monitor_handles.clear();
+        monitor_orientations.clear();
         monitor_display = nullptr;
         monitor_added_signal = 0;
         monitor_removed_signal = 0;
@@ -1770,7 +1893,9 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
            NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
            NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_IO |
-           NK_CAP_VULKAN_SURFACE;
+           NK_CAP_VULKAN_SURFACE | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
+           NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE |
+           NK_CAP_DISPLAY_ORIENTATION;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -3435,10 +3560,10 @@ nk_result NK_CALL nk_shell_reveal_file(const char *path) {
 nk_result NK_CALL nk_system_directory(nk_system_directory_kind kind, char *buffer,
                                       uint32_t *inout_size) {
     nk::core::clear_error();
-    const char *value = system_directory_path(kind);
-    if (!value)
+    const auto value = system_directory_path(kind);
+    if (value.empty())
         return fail(NK_ERROR_UNSUPPORTED, "system directory is unavailable");
-    return copy_utf8(value, buffer, inout_size);
+    return copy_utf8(value.c_str(), buffer, inout_size);
 }
 
 nk_result NK_CALL nk_system_locale(char *buffer, uint32_t *inout_size) {
@@ -3473,6 +3598,18 @@ nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
         std::strstr(normalized, "highcontrast") || std::strstr(normalized, "high-contrast");
     g_free(normalized);
     g_free(theme);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_monitor_get_orientation(nk_handle handle, nk_orientation *out_orientation) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_orientation)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "monitor orientation output must not be null");
+    auto resource = monitor(handle);
+    if (!resource)
+        return invalid_handle("monitor");
+    *out_orientation = monitor_orientation(resource->monitor);
     return NK_OK;
 }
 

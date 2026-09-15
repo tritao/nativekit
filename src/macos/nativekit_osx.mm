@@ -22,6 +22,7 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
+#include "core/system_internal.hpp"
 #include "macos/joystick.hpp"
 
 #include <algorithm>
@@ -123,6 +124,9 @@ struct MacMonitorResource final : nk::core::Resource {
 };
 
 std::unordered_map<CGDirectDisplayID, nk_handle> monitor_handles;
+std::unordered_map<CGDirectDisplayID, nk_orientation> monitor_orientations;
+
+void poll_monitor_orientations();
 
 struct MacSurfaceResource final : nk::core::Resource {
     __strong NKMetalSurfaceView *view = nil;
@@ -400,9 +404,48 @@ nk_handle register_monitor(NSScreen *screen, CGDirectDisplayID display) {
     resource->display = display;
     resource->name = monitor_name(screen, display);
     resource->handle = nk::core::handles().insert(nk::core::ResourceType::monitor, resource);
-    if (resource->handle != NK_INVALID_HANDLE)
+    if (resource->handle != NK_INVALID_HANDLE) {
         monitor_handles.emplace(display, resource->handle);
+        monitor_orientations.emplace(display, NK_ORIENTATION_UNKNOWN);
+    }
     return resource->handle;
+}
+
+nk_orientation monitor_orientation(CGDirectDisplayID display) {
+    const auto rotation = static_cast<int>(std::lround(CGDisplayRotation(display)));
+    if (rotation == 90)
+        return NK_ORIENTATION_PORTRAIT;
+    if (rotation == 180)
+        return NK_ORIENTATION_LANDSCAPE_LEFT;
+    if (rotation == 270)
+        return NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN;
+    const auto width = CGDisplayPixelsWide(display);
+    const auto height = CGDisplayPixelsHigh(display);
+    return width == height ? NK_ORIENTATION_UNKNOWN
+                           : width > height ? NK_ORIENTATION_LANDSCAPE_RIGHT
+                                            : NK_ORIENTATION_PORTRAIT;
+}
+
+void poll_monitor_orientations() {
+    nk::core::callback_boundary([] {
+        for (const auto &[display, handle] : monitor_handles) {
+            const auto current = monitor_orientation(display);
+            const auto found = monitor_orientations.find(display);
+            if (found == monitor_orientations.end()) {
+                monitor_orientations.emplace(display, current);
+                continue;
+            }
+            if (found->second == current)
+                continue;
+            found->second = current;
+            const nk_orientation_event payload{sizeof(payload), current, 0, {0, 0}};
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_DISPLAY_ORIENTATION_CHANGED;
+            event.source = handle;
+            event.data = bytes_of(payload);
+            nk::core::push_event(std::move(event));
+        }
+    });
 }
 
 nk_result refresh_monitors() {
@@ -436,6 +479,7 @@ nk_result refresh_monitors() {
         event.source = handle;
         nk::core::push_event(std::move(event));
         nk::core::handles().erase(handle, nk::core::ResourceType::monitor);
+        monitor_orientations.erase(iterator->first);
         iterator = monitor_handles.erase(iterator);
     }
     return NK_OK;
@@ -1541,6 +1585,27 @@ nk_result copy_output(NSString *value, char *buffer, uint32_t *inout_size) {
 
 NSURL *directory_url(nk_system_directory_kind kind) {
     NSFileManager *manager = NSFileManager.defaultManager;
+    if (kind == NK_DIRECTORY_APPLICATION)
+        return NSBundle.mainBundle.bundleURL;
+    if (kind == NK_DIRECTORY_APPLICATION_STORAGE) {
+        NSURL *base = [manager URLForDirectory:NSApplicationSupportDirectory
+                                       inDomain:NSUserDomainMask
+                              appropriateForURL:nil
+                                         create:NO
+                                          error:nil];
+        const auto id = nk::core::system_application_id();
+        NSString *component = id.empty() ? NSBundle.mainBundle.bundleIdentifier
+                                         : [NSString stringWithUTF8String:id.c_str()];
+        return base && component ? [base URLByAppendingPathComponent:component isDirectory:YES]
+                                 : nil;
+    }
+    if (kind == NK_DIRECTORY_FONTS) {
+        NSURL *fonts = [NSURL fileURLWithPath:@"/System/Library/Fonts" isDirectory:YES];
+        BOOL is_directory = NO;
+        return [manager fileExistsAtPath:fonts.path isDirectory:&is_directory] && is_directory
+                   ? fonts
+                   : nil;
+    }
     NSSearchPathDirectory directory;
     switch (kind) {
     case NK_DIRECTORY_DESKTOP:
@@ -2287,6 +2352,70 @@ void emit_window_state(MacWindowResource &resource) noexcept {
 }
 @end
 
+namespace {
+__strong id keep_awake_activity = nil;
+}
+
+namespace nk::core::system_backend {
+
+nk_result keep_awake_apply(bool enabled) noexcept {
+    @autoreleasepool {
+        NSProcessInfo *process = NSProcessInfo.processInfo;
+        if (enabled && !keep_awake_activity) {
+            keep_awake_activity = [process beginActivityWithOptions:NSActivityIdleDisplaySleepDisabled
+                                                               reason:@"NativeKit keep-awake"];
+            return keep_awake_activity ? NK_OK : NK_ERROR_UNSUPPORTED;
+        }
+        if (!enabled && keep_awake_activity) {
+            [process endActivity:keep_awake_activity];
+            keep_awake_activity = nil;
+        }
+        return NK_OK;
+    }
+}
+
+nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
+    const auto size = out_orientation.struct_size;
+    out_orientation = {};
+    out_orientation.struct_size = size;
+    const auto display = CGMainDisplayID();
+    const auto rotation = static_cast<int>(std::lround(CGDisplayRotation(display)));
+    if (rotation == 90)
+        out_orientation.display = NK_ORIENTATION_PORTRAIT;
+    else if (rotation == 180)
+        out_orientation.display = NK_ORIENTATION_LANDSCAPE_LEFT;
+    else if (rotation == 270)
+        out_orientation.display = NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN;
+    else {
+        const auto width = CGDisplayPixelsWide(display);
+        const auto height = CGDisplayPixelsHigh(display);
+        out_orientation.display = width == height
+                                       ? NK_ORIENTATION_UNKNOWN
+                                       : width > height ? NK_ORIENTATION_LANDSCAPE_RIGHT
+                                                        : NK_ORIENTATION_PORTRAIT;
+    }
+    return NK_OK;
+}
+
+nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
+    switch (kind) {
+    case NK_SYSTEM_STRING_PLATFORM_VERSION: {
+        const auto *value = NSProcessInfo.processInfo.operatingSystemVersionString.UTF8String;
+        if (!value)
+            return NK_ERROR_UNSUPPORTED;
+        out_value = value;
+        return NK_OK;
+    }
+    case NK_SYSTEM_STRING_DEVICE_VENDOR:
+        out_value = "Apple";
+        return NK_OK;
+    default:
+        return NK_ERROR_UNSUPPORTED;
+    }
+}
+
+} // namespace nk::core::system_backend
+
 namespace nk::backend {
 void pump_events() noexcept {
     nk::macos_joystick::pump();
@@ -2299,6 +2428,7 @@ void pump_events() noexcept {
             [NSApp sendEvent:event];
         [NSApp updateWindows];
     }
+    poll_monitor_orientations();
 }
 
 void shutdown() noexcept {
@@ -2338,6 +2468,7 @@ void shutdown() noexcept {
     pump_events();
     dialogs.clear();
     monitor_handles.clear();
+    monitor_orientations.clear();
     nk::core::handles().clear();
 }
 } // namespace nk::backend
@@ -2349,7 +2480,9 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO | NK_CAP_INPUT |
            NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
-           NK_CAP_METAL_SURFACE | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK;
+           NK_CAP_METAL_SURFACE | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK |
+           NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
+           NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -3169,6 +3302,32 @@ nk_result NK_CALL nk_monitor_get_modes(nk_handle handle, nk_video_mode *modes,
     if (!modes || capacity < required)
         return required ? fail(NK_ERROR_BUFFER_TOO_SMALL, "video mode buffer is too small") : NK_OK;
     std::copy(available.begin(), available.end(), modes);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_monitor_get_orientation(nk_handle handle, nk_orientation *out_orientation) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!out_orientation)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "monitor orientation output must not be null");
+    auto resource = monitor(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
+    const auto rotation = static_cast<int>(std::lround(CGDisplayRotation(resource->display)));
+    if (rotation == 90)
+        *out_orientation = NK_ORIENTATION_PORTRAIT;
+    else if (rotation == 180)
+        *out_orientation = NK_ORIENTATION_LANDSCAPE_LEFT;
+    else if (rotation == 270)
+        *out_orientation = NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN;
+    else {
+        const auto width = CGDisplayPixelsWide(resource->display);
+        const auto height = CGDisplayPixelsHigh(resource->display);
+        *out_orientation = width == height
+                               ? NK_ORIENTATION_UNKNOWN
+                               : width > height ? NK_ORIENTATION_LANDSCAPE_RIGHT
+                                                : NK_ORIENTATION_PORTRAIT;
+    }
     return NK_OK;
 }
 

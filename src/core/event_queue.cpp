@@ -27,7 +27,8 @@ bool is_coalescible(nk_event_kind kind) {
     return kind == NK_EVENT_WINDOW_RESIZE || kind == NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE ||
            kind == NK_EVENT_WINDOW_MOVE || kind == NK_EVENT_POINTER_MOVE ||
            kind == NK_EVENT_SURFACE_RESIZE || kind == NK_EVENT_JOYSTICK_AXIS ||
-           kind == NK_EVENT_GAMEPAD_AXIS;
+           kind == NK_EVENT_GAMEPAD_AXIS || kind == NK_EVENT_DEVICE_ORIENTATION_CHANGED ||
+           kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED;
 }
 
 bool same_coalescing_target(const QueuedEvent &first, const QueuedEvent &second) {
