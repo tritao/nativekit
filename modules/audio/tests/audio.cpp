@@ -283,6 +283,52 @@ int main() {
     assert(nk_audio_voice_create(clip, &voice_options, &first_voice) == NK_OK);
     assert(nk_audio_voice_create(clip, &voice_options, &second_voice) == NK_OK);
     assert(first_voice != second_voice);
+
+    nk_audio_bus_concurrency_options concurrency{};
+    concurrency.struct_size = sizeof(concurrency);
+    concurrency.max_voices = 1;
+    concurrency.steal_policy = NK_AUDIO_VOICE_STEAL_NONE;
+    concurrency.virtualize = 0;
+    assert(nk_audio_bus_set_concurrency(bus, &concurrency) == NK_OK);
+    nk_audio_bus_concurrency_options queried_concurrency{};
+    queried_concurrency.struct_size = sizeof(queried_concurrency);
+    assert(nk_audio_bus_get_concurrency(bus, &queried_concurrency) == NK_OK);
+    assert(queried_concurrency.max_voices == 1 &&
+           queried_concurrency.steal_policy == NK_AUDIO_VOICE_STEAL_NONE &&
+           queried_concurrency.virtualize == 0);
+    queried_concurrency.struct_size = 0;
+    assert(nk_audio_bus_get_concurrency(bus, &queried_concurrency) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_voice_set_priority(first_voice, 1) == NK_OK);
+    assert(nk_audio_voice_set_priority(second_voice, 2) == NK_OK);
+    uint32_t priority = 0;
+    assert(nk_audio_voice_get_priority(second_voice, &priority) == NK_OK && priority == 2);
+    assert(nk_audio_voice_start(first_voice) == NK_OK);
+    assert(nk_audio_voice_start(second_voice) == NK_ERROR_INVALID_REQUEST);
+    assert(nk_audio_voice_stop(first_voice) == NK_OK);
+    assert(nk_audio_voice_start(second_voice) == NK_OK);
+    concurrency.steal_policy = NK_AUDIO_VOICE_STEAL_LOWEST_PRIORITY;
+    assert(nk_audio_bus_set_concurrency(bus, &concurrency) == NK_OK);
+    assert(nk_audio_voice_stop(second_voice) == NK_OK);
+    assert(nk_audio_voice_start(first_voice) == NK_OK);
+    assert(nk_audio_voice_start(second_voice) == NK_OK);
+    assert(nk_audio_voice_is_playing(first_voice, &state) == NK_OK && state == 0);
+    assert(nk_audio_voice_is_playing(second_voice, &state) == NK_OK && state == 1);
+    concurrency.steal_policy = NK_AUDIO_VOICE_STEAL_NONE;
+    concurrency.virtualize = 1;
+    assert(nk_audio_bus_set_concurrency(bus, &concurrency) == NK_OK);
+    assert(nk_audio_voice_stop(second_voice) == NK_OK);
+    assert(nk_audio_voice_start(first_voice) == NK_OK);
+    assert(nk_audio_voice_start(second_voice) == NK_OK);
+    assert(nk_audio_voice_is_virtualized(second_voice, &state) == NK_OK && state == 1);
+    assert(nk_audio_voice_is_playing(second_voice, &state) == NK_OK && state == 1);
+    assert(nk_audio_voice_stop(first_voice) == NK_OK);
+    assert(nk_audio_voice_is_virtualized(second_voice, &state) == NK_OK && state == 0);
+    assert(nk_audio_voice_is_playing(second_voice, &state) == NK_OK && state == 1);
+    concurrency.max_voices = 0;
+    concurrency.virtualize = 0;
+    assert(nk_audio_bus_set_concurrency(bus, &concurrency) == NK_OK);
+    assert(nk_audio_voice_stop(second_voice) == NK_OK);
+
     nk_audio_vec3 source_position{8.0f, -1.0f, -6.0f};
     nk_audio_vec3 source_direction{0.0f, 0.0f, 1.0f};
     nk_audio_vec3 source_velocity{-2.0f, 0.0f, 0.5f};

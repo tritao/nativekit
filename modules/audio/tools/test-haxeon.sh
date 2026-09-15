@@ -42,6 +42,7 @@ fi
     "$module_dir/tests/haxeon/AudioSmoke.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/AudioResult.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Bus.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/BusConcurrencyOptions.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/BusEffect.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Clip.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Cone.hx" \

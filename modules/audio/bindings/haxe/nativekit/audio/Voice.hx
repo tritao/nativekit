@@ -116,6 +116,31 @@ class Voice {
 		return result.out_at_end;
 	}
 
+	/** Sets the voice's concurrency priority; larger values are more important. */
+	public function setPriority(priority:Int):Void {
+		ensureLive();
+		if (priority < 0)
+			throw "Audio voice priority must be non-negative";
+		AudioResult.check(NativeKitAudio.nk_audio_voice_set_priority(value, priority),
+			"audio.voice.setPriority");
+	}
+
+	/** Returns the voice's concurrency priority. */
+	public function priority():Int {
+		ensureLive();
+		var result = NativeKitAudio.nk_audio_voice_get_priority(value);
+		AudioResult.check(result.status, "audio.voice.priority");
+		return result.out_priority;
+	}
+
+	/** Returns whether this voice is advancing without an audible bus slot. */
+	public function isVirtualized():Bool {
+		ensureLive();
+		var result = NativeKitAudio.nk_audio_voice_is_virtualized(value);
+		AudioResult.check(result.status, "audio.voice.isVirtualized");
+		return result.out_virtualized;
+	}
+
 	public function setVolume(volume:Float):Void {
 		ensureLive();
 		AudioResult.check(NativeKitAudio.nk_audio_voice_set_volume(value, volume),

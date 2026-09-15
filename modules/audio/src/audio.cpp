@@ -49,6 +49,7 @@ struct AudioEngineResource final : nk::core::Resource {
     ma_engine engine{};
     bool initialized = false;
     std::atomic<bool> interrupted{false};
+    std::vector<std::weak_ptr<nk::core::Resource>> voices;
 
     ~AudioEngineResource() override {
         auto *expected = this;
@@ -89,6 +90,9 @@ struct AudioBusResource final : nk::core::Resource {
     bool initialized = false;
     float volume = 1.0f;
     bool muted = false;
+    uint32_t max_voices = 0;
+    nk_audio_voice_steal_policy steal_policy = NK_AUDIO_VOICE_STEAL_NONE;
+    bool virtualize = false;
     std::vector<std::shared_ptr<AudioEffectResource>> effects;
     std::atomic<nk_audio_bus> handle{NK_INVALID_HANDLE};
 
@@ -161,6 +165,12 @@ struct AudioVoiceResource final : nk::core::Resource {
     std::atomic<bool> load_notification_signaled{false};
     std::atomic<bool> load_status_query_ready{false};
     std::atomic<bool> load_event_emitted{false};
+    std::atomic<bool> logically_playing{false};
+    std::atomic<bool> virtualized{false};
+    uint32_t priority = 0;
+    uint64_t start_order = 0;
+    uint64_t virtual_cursor_frames = 0;
+    uint64_t virtual_start_time_frames = 0;
     AudioVoiceLoadNotification load_notification{};
     ma_decoder decoder{};
     bool decoder_initialized = false;
@@ -226,6 +236,8 @@ void audio_voice_end_callback(void *user_data, ma_sound *) noexcept {
     auto *voice = static_cast<AudioVoiceResource *>(user_data);
     if (!voice)
         return;
+    voice->logically_playing.store(false, std::memory_order_release);
+    voice->virtualized.store(false, std::memory_order_release);
     const auto handle = voice->handle.load(std::memory_order_acquire);
     if (handle == NK_INVALID_HANDLE)
         return;
@@ -235,6 +247,7 @@ void audio_voice_end_callback(void *user_data, ma_sound *) noexcept {
     nk::core::push_event(std::move(event));
 }
 std::weak_ptr<AudioEngineResource> engine_resource;
+std::atomic<uint64_t> next_voice_order{1};
 
 nk_result invalid_argument(const char *message) {
     nk::core::set_error(message);
@@ -665,10 +678,15 @@ nk_result enter_audio_ui() {
     return nk::core::require_ui_thread();
 }
 
+bool valid_voice_steal_policy(nk_audio_voice_steal_policy policy) {
+    return policy <= NK_AUDIO_VOICE_STEAL_LOWEST_PRIORITY;
+}
+
 nk_result voice_options(const nk_audio_voice_options *options, uint32_t &flags,
-                        nk_audio_bus &bus) {
+                        nk_audio_bus &bus, uint32_t &priority) {
     flags = 0;
     bus = NK_INVALID_HANDLE;
+    priority = 0;
     if (!options)
         return NK_OK;
     if (options->struct_size < sizeof(nk_audio_voice_options))
@@ -677,6 +695,7 @@ nk_result voice_options(const nk_audio_voice_options *options, uint32_t &flags,
         return invalid_argument("audio voice options contain unsupported flags");
     flags = options->flags;
     bus = options->bus;
+    priority = options->priority;
     return NK_OK;
 }
 
@@ -1100,7 +1119,8 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
     out_result = NK_OK;
     uint32_t flags = 0;
     nk_audio_bus bus_handle = NK_INVALID_HANDLE;
-    if (const auto result = voice_options(options, flags, bus_handle); result != NK_OK) {
+    uint32_t priority = 0;
+    if (const auto result = voice_options(options, flags, bus_handle, priority); result != NK_OK) {
         out_result = result;
         return {};
     }
@@ -1129,6 +1149,7 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
     voice->engine = clip->engine;
     voice->clip = std::move(clip);
     voice->bus = std::move(bus);
+    voice->priority = priority;
     const bool asynchronous = (flags & NK_AUDIO_VOICE_ASYNC) != 0;
     voice->asynchronous.store(asynchronous, std::memory_order_relaxed);
     if (asynchronous)
@@ -1217,6 +1238,7 @@ nk_result insert_voice(std::shared_ptr<AudioVoiceResource> voice, nk_audio_voice
         return NK_ERROR_OUT_OF_MEMORY;
     }
     voice->handle.store(handle, std::memory_order_release);
+    voice->engine->voices.emplace_back(voice);
     *out_voice = handle;
     audio_voice_update_load_state(*voice);
     audio_voice_publish_load_event(*voice);
@@ -1250,6 +1272,303 @@ nk_result with_effect(nk_audio_bus_effect handle, const char *message, Function 
         return NK_ERROR_INVALID_HANDLE;
     }
     return function(*effect, *bus, message);
+}
+
+std::vector<std::shared_ptr<AudioVoiceResource>> live_engine_voices(AudioEngineResource &engine) {
+    std::vector<std::shared_ptr<AudioVoiceResource>> result;
+    result.reserve(engine.voices.size());
+    engine.voices.erase(
+        std::remove_if(engine.voices.begin(), engine.voices.end(), [&](const auto &weak_voice) {
+            auto resource = weak_voice.lock();
+            if (!resource)
+                return true;
+            auto voice = std::dynamic_pointer_cast<AudioVoiceResource>(std::move(resource));
+            if (!voice || voice->handle.load(std::memory_order_acquire) == NK_INVALID_HANDLE)
+                return true;
+            result.push_back(std::move(voice));
+            return false;
+        }),
+        engine.voices.end());
+    return result;
+}
+
+bool voice_in_bus_scope(const AudioVoiceResource &voice, const AudioBusResource &bus) {
+    for (auto current = voice.bus; current; current = current->parent) {
+        if (current.get() == &bus)
+            return true;
+    }
+    return false;
+}
+
+std::vector<std::shared_ptr<AudioBusResource>> voice_bus_scope(const AudioVoiceResource &voice) {
+    std::vector<std::shared_ptr<AudioBusResource>> result;
+    for (auto current = voice.bus; current; current = current->parent)
+        result.push_back(current);
+    return result;
+}
+
+uint32_t active_voice_count(const std::vector<std::shared_ptr<AudioVoiceResource>> &voices,
+                            const AudioBusResource &bus, const AudioVoiceResource *exclude) {
+    uint32_t count = 0;
+    for (const auto &voice : voices) {
+        if (voice.get() != exclude &&
+            (voice->virtualized.load(std::memory_order_acquire) ||
+             ma_sound_is_playing(&voice->sound)) &&
+            voice_in_bus_scope(*voice, bus))
+            ++count;
+    }
+    return count;
+}
+
+std::shared_ptr<AudioVoiceResource> choose_voice_to_steal(
+    const std::vector<std::shared_ptr<AudioVoiceResource>> &voices, const AudioBusResource &bus,
+    const AudioVoiceResource &requesting_voice) {
+    std::shared_ptr<AudioVoiceResource> selected;
+    for (const auto &candidate : voices) {
+        if (candidate.get() == &requesting_voice ||
+            candidate->virtualized.load(std::memory_order_acquire) ||
+            !ma_sound_is_playing(&candidate->sound) ||
+            candidate->priority > requesting_voice.priority ||
+            !voice_in_bus_scope(*candidate, bus))
+            continue;
+        if (!selected) {
+            selected = candidate;
+            continue;
+        }
+
+        bool replace = false;
+        switch (bus.steal_policy) {
+        case NK_AUDIO_VOICE_STEAL_OLDEST:
+            replace = candidate->start_order < selected->start_order;
+            break;
+        case NK_AUDIO_VOICE_STEAL_QUIETEST:
+            replace = ma_sound_get_volume(&candidate->sound) <
+                      ma_sound_get_volume(&selected->sound);
+            if (!replace && ma_sound_get_volume(&candidate->sound) ==
+                                ma_sound_get_volume(&selected->sound))
+                replace = candidate->start_order < selected->start_order;
+            break;
+        case NK_AUDIO_VOICE_STEAL_LOWEST_PRIORITY:
+            replace = candidate->priority < selected->priority ||
+                      (candidate->priority == selected->priority &&
+                       candidate->start_order < selected->start_order);
+            break;
+        case NK_AUDIO_VOICE_STEAL_NONE:
+        default:
+            break;
+        }
+        if (replace)
+            selected = candidate;
+    }
+    return selected;
+}
+
+void virtualize_voice(AudioVoiceResource &voice) {
+    if (voice.virtualized.load(std::memory_order_acquire))
+        return;
+    ma_uint64 cursor = 0;
+    if (ma_sound_get_cursor_in_pcm_frames(&voice.sound, &cursor) != MA_SUCCESS)
+        cursor = 0;
+    voice.virtual_cursor_frames = cursor;
+    voice.virtual_start_time_frames = ma_engine_get_time_in_pcm_frames(&voice.engine->engine);
+    voice.virtualized.store(true, std::memory_order_release);
+}
+
+void publish_virtual_voice_completion(AudioVoiceResource &voice) {
+    const auto handle = voice.handle.load(std::memory_order_acquire);
+    if (handle == NK_INVALID_HANDLE)
+        return;
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_AUDIO_VOICE_COMPLETE;
+    event.source = handle;
+    nk::core::push_event(std::move(event));
+}
+
+nk_result admit_voice(AudioVoiceResource &voice,
+                      const std::vector<std::shared_ptr<AudioVoiceResource>> &voices) {
+    for (const auto &bus : voice_bus_scope(voice)) {
+        if (bus->max_voices == 0)
+            continue;
+        while (active_voice_count(voices, *bus, &voice) >= bus->max_voices) {
+            if (bus->steal_policy != NK_AUDIO_VOICE_STEAL_NONE) {
+                auto victim = choose_voice_to_steal(voices, *bus, voice);
+                if (victim) {
+                    const auto result = ma_sound_stop(&victim->sound);
+                    if (result != MA_SUCCESS)
+                        return map_miniaudio_result(result, "could not steal an audio voice");
+                    victim->logically_playing.store(false, std::memory_order_release);
+                    victim->virtualized.store(false, std::memory_order_release);
+                    continue;
+                }
+            }
+            if (bus->virtualize) {
+                virtualize_voice(voice);
+                return NK_OK;
+            }
+            return invalid_request("audio voice concurrency limit reached");
+        }
+    }
+    return NK_OK;
+}
+
+uint64_t virtual_voice_cursor(const AudioVoiceResource &voice) {
+    const auto now = ma_engine_get_time_in_pcm_frames(&voice.engine->engine);
+    const auto elapsed = now >= voice.virtual_start_time_frames
+                             ? now - voice.virtual_start_time_frames
+                             : 0;
+    const auto cursor = voice.virtual_cursor_frames + elapsed;
+    ma_uint64 length = 0;
+    if (ma_sound_get_length_in_pcm_frames(&voice.sound, &length) != MA_SUCCESS || length == 0)
+        return cursor;
+    if (ma_sound_is_looping(&voice.sound))
+        return cursor % length;
+    return static_cast<uint64_t>(std::min(cursor, length));
+}
+
+bool finish_virtual_voice_if_at_end(AudioVoiceResource &voice) {
+    if (!voice.virtualized.load(std::memory_order_acquire) ||
+        ma_sound_is_looping(&voice.sound))
+        return false;
+    ma_uint64 length = 0;
+    if (ma_sound_get_length_in_pcm_frames(&voice.sound, &length) != MA_SUCCESS || length == 0 ||
+        virtual_voice_cursor(voice) < length)
+        return false;
+    voice.logically_playing.store(false, std::memory_order_release);
+    voice.virtualized.store(false, std::memory_order_release);
+    publish_virtual_voice_completion(voice);
+    return true;
+}
+
+nk_result start_voice_backend(AudioVoiceResource &voice, const char *message) {
+    if (voice.virtualized.load(std::memory_order_acquire)) {
+        const auto cursor = virtual_voice_cursor(voice);
+        ma_uint64 length = 0;
+        if (!ma_sound_is_looping(&voice.sound) &&
+            ma_sound_get_length_in_pcm_frames(&voice.sound, &length) == MA_SUCCESS &&
+            length != 0 && cursor >= length) {
+            voice.logically_playing.store(false, std::memory_order_release);
+            voice.virtualized.store(false, std::memory_order_release);
+            publish_virtual_voice_completion(voice);
+            return NK_OK;
+        }
+        auto result = ma_sound_seek_to_pcm_frame(&voice.sound, cursor);
+        if (result != MA_SUCCESS)
+            return map_miniaudio_result(result, message);
+    }
+    const auto result = ma_sound_start(&voice.sound);
+    if (result != MA_SUCCESS)
+        return map_miniaudio_result(result, message);
+    voice.virtualized.store(false, std::memory_order_release);
+    voice.logically_playing.store(ma_sound_is_playing(&voice.sound), std::memory_order_release);
+    return NK_OK;
+}
+
+nk_result start_voice_internal(AudioVoiceResource &voice, const char *message) {
+    if (voice.logically_playing.load(std::memory_order_acquire)) {
+        if (!voice.virtualized.load(std::memory_order_acquire) &&
+            ma_sound_is_playing(&voice.sound))
+            return NK_OK;
+        voice.logically_playing.store(false, std::memory_order_release);
+    }
+
+    voice.start_order = next_voice_order.fetch_add(1, std::memory_order_relaxed);
+    voice.logically_playing.store(true, std::memory_order_release);
+    auto voices = live_engine_voices(*voice.engine);
+    const auto admission_result = admit_voice(voice, voices);
+    if (admission_result != NK_OK) {
+        voice.logically_playing.store(false, std::memory_order_release);
+        return admission_result;
+    }
+    if (voice.virtualized.load(std::memory_order_acquire))
+        return NK_OK;
+    const auto result = start_voice_backend(voice, message);
+    if (result != NK_OK)
+        voice.logically_playing.store(false, std::memory_order_release);
+    return result;
+}
+
+nk_result promote_virtual_voice(AudioVoiceResource &voice, const char *message) {
+    if (!voice.virtualized.load(std::memory_order_acquire))
+        return NK_OK;
+    voice.logically_playing.store(false, std::memory_order_release);
+    auto voices = live_engine_voices(*voice.engine);
+    const auto admission_result = admit_voice(voice, voices);
+    if (admission_result != NK_OK) {
+        voice.logically_playing.store(true, std::memory_order_release);
+        return admission_result;
+    }
+    const auto scope = voice_bus_scope(voice);
+    const auto still_blocked = std::any_of(scope.begin(), scope.end(), [&](const auto &bus) {
+        return bus->max_voices != 0 &&
+               active_voice_count(voices, *bus, &voice) >= bus->max_voices;
+    });
+    if (still_blocked) {
+        voice.logically_playing.store(true, std::memory_order_release);
+        return NK_OK;
+    }
+    voice.logically_playing.store(true, std::memory_order_release);
+    const auto result = start_voice_backend(voice, message);
+    if (result != NK_OK)
+        voice.logically_playing.store(false, std::memory_order_release);
+    return result;
+}
+
+void promote_virtual_voices(AudioEngineResource &engine) {
+    auto voices = live_engine_voices(engine);
+    std::sort(voices.begin(), voices.end(), [](const auto &left, const auto &right) {
+        if (left->priority != right->priority)
+            return left->priority > right->priority;
+        return left->start_order < right->start_order;
+    });
+    for (const auto &voice : voices) {
+        if (voice->virtualized.load(std::memory_order_acquire))
+            promote_virtual_voice(*voice, "could not resume virtualized audio voice");
+    }
+}
+
+nk_result start_bus_voices(AudioBusResource &bus, const char *message) {
+    nk_result first_error = NK_OK;
+    for (const auto &voice : live_engine_voices(*bus.engine)) {
+        if (!voice_in_bus_scope(*voice, bus))
+            continue;
+        const auto result = start_voice_internal(*voice, message);
+        if (result != NK_OK && first_error == NK_OK)
+            first_error = result;
+    }
+    return first_error;
+}
+
+bool bus_has_concurrency_policy(AudioBusResource &bus) {
+    for (const auto &voice : live_engine_voices(*bus.engine)) {
+        if (!voice_in_bus_scope(*voice, bus))
+            continue;
+        for (auto current = voice->bus; current; current = current->parent) {
+            if (current->max_voices != 0 || current->virtualize)
+                return true;
+        }
+    }
+    return false;
+}
+
+nk_result stop_voice_internal(AudioVoiceResource &voice, const char *message) {
+    const bool was_virtual = voice.virtualized.exchange(false, std::memory_order_acq_rel);
+    voice.logically_playing.store(false, std::memory_order_release);
+    if (was_virtual)
+        return NK_OK;
+    return map_miniaudio_result(ma_sound_stop(&voice.sound), message);
+}
+
+nk_result stop_bus_voices(AudioBusResource &bus, const char *message) {
+    nk_result first_error = NK_OK;
+    for (const auto &voice : live_engine_voices(*bus.engine)) {
+        if (!voice_in_bus_scope(*voice, bus))
+            continue;
+        const auto result = stop_voice_internal(*voice, message);
+        if (result != NK_OK && first_error == NK_OK)
+            first_error = result;
+    }
+    promote_virtual_voices(*bus.engine);
+    return first_error;
 }
 
 nk_result audio_device_state(AudioEngineResource &engine, nk_audio_device_state &state) {
@@ -1656,7 +1975,9 @@ nk_result NK_CALL nk_audio_bus_start(nk_audio_bus bus) {
             return result;
         return with_bus(bus, "could not start audio bus", [](AudioBusResource &value,
                                                               const char *message) {
-            return map_miniaudio_result(ma_sound_group_start(&value.group), message);
+            if (!bus_has_concurrency_policy(value))
+                return map_miniaudio_result(ma_sound_group_start(&value.group), message);
+            return start_bus_voices(value, message);
         });
     });
 }
@@ -1667,7 +1988,9 @@ nk_result NK_CALL nk_audio_bus_stop(nk_audio_bus bus) {
             return result;
         return with_bus(bus, "could not stop audio bus", [](AudioBusResource &value,
                                                              const char *message) {
-            return map_miniaudio_result(ma_sound_group_stop(&value.group), message);
+            if (!bus_has_concurrency_policy(value))
+                return map_miniaudio_result(ma_sound_group_stop(&value.group), message);
+            return stop_bus_voices(value, message);
         });
     });
 }
@@ -1725,7 +2048,16 @@ nk_result NK_CALL nk_audio_bus_is_playing(nk_audio_bus bus, nk_bool *out_playing
                 return invalid_argument("audio bus playing output is missing");
             return with_bus(bus, "could not query audio bus", [&](AudioBusResource &value,
                                                                    const char *) {
-                *out_playing = ma_sound_group_is_playing(&value.group) ? 1u : 0u;
+                promote_virtual_voices(*value.engine);
+                const auto voices = live_engine_voices(*value.engine);
+                const auto virtual_playing = std::any_of(
+                    voices.begin(), voices.end(), [&](const auto &voice) {
+                        return voice_in_bus_scope(*voice, value) &&
+                               voice->virtualized.load(std::memory_order_acquire);
+                    });
+                *out_playing = (virtual_playing || ma_sound_group_is_playing(&value.group))
+                                   ? 1u
+                                   : 0u;
                 return NK_OK;
             });
         });
@@ -1827,6 +2159,54 @@ nk_result NK_CALL nk_audio_bus_is_muted(nk_audio_bus bus, nk_bool *out_muted) {
                 *out_muted = value.muted ? 1u : 0u;
                 return NK_OK;
             });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_set_concurrency(
+    nk_audio_bus bus, const nk_audio_bus_concurrency_options *options) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio bus concurrency", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!options)
+                return invalid_argument("audio bus concurrency options are missing");
+            if (options->struct_size < sizeof(nk_audio_bus_concurrency_options))
+                return invalid_argument("audio bus concurrency options are missing or too small");
+            if (!valid_voice_steal_policy(options->steal_policy))
+                return invalid_argument("audio bus concurrency steal policy is invalid");
+            if (options->virtualize > 1)
+                return invalid_argument("audio bus concurrency virtualization must be zero or one");
+            return with_bus(bus, "could not set audio bus concurrency",
+                            [&](AudioBusResource &value, const char *) {
+                                value.max_voices = options->max_voices;
+                                value.steal_policy = options->steal_policy;
+                                value.virtualize = options->virtualize != 0;
+                                promote_virtual_voices(*value.engine);
+                                return NK_OK;
+                            });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_get_concurrency(
+    nk_audio_bus bus, nk_audio_bus_concurrency_options *out_options) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio bus concurrency", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_options)
+                return invalid_argument("audio bus concurrency output is missing");
+            if (out_options->struct_size < sizeof(nk_audio_bus_concurrency_options))
+                return invalid_argument("audio bus concurrency output is missing or too small");
+            return with_bus(bus, "could not get audio bus concurrency",
+                            [&](AudioBusResource &value, const char *) {
+                                out_options->max_voices = value.max_voices;
+                                out_options->steal_policy = value.steal_policy;
+                                out_options->virtualize = value.virtualize ? 1u : 0u;
+                                out_options->reserved = 0;
+                                out_options->reserved2[0] = 0;
+                                out_options->reserved2[1] = 0;
+                                return NK_OK;
+                            });
         });
 }
 
@@ -2547,9 +2927,12 @@ nk_result NK_CALL nk_audio_voice_destroy(nk_audio_voice sound) {
         auto voice = get_voice(sound);
         if (!voice)
             return NK_ERROR_INVALID_HANDLE;
+        const auto engine = voice->engine;
+        stop_voice_internal(*voice, "could not stop audio voice");
         voice->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
         if (!nk::core::handles().erase(sound, nk::core::ResourceType::audio_voice))
             return invalid_handle("invalid audio voice handle");
+        promote_virtual_voices(*engine);
         return NK_OK;
     });
 }
@@ -2560,7 +2943,7 @@ nk_result NK_CALL nk_audio_voice_start(nk_audio_voice sound) {
             return result;
         return with_voice(sound, "could not start audio voice", [](AudioVoiceResource &value,
                                                                   const char *message) {
-            return map_miniaudio_result(ma_sound_start(&value.sound), message);
+            return start_voice_internal(value, message);
         });
     });
 }
@@ -2571,7 +2954,9 @@ nk_result NK_CALL nk_audio_voice_stop(nk_audio_voice sound) {
             return result;
         return with_voice(sound, "could not stop audio voice", [](AudioVoiceResource &value,
                                                                  const char *message) {
-            return map_miniaudio_result(ma_sound_stop(&value.sound), message);
+            const auto result = stop_voice_internal(value, message);
+            promote_virtual_voices(*value.engine);
+            return result;
         });
     });
 }
@@ -2581,7 +2966,13 @@ nk_result NK_CALL nk_audio_voice_rewind(nk_audio_voice sound) {
         if (const auto result = enter_audio_ui(); result != NK_OK)
             return result;
         return with_voice(sound, "could not rewind audio voice", [](AudioVoiceResource &value,
-                                                                    const char *message) {
+                                                                    const char *message) -> nk_result {
+            if (value.virtualized.load(std::memory_order_acquire)) {
+                value.virtual_cursor_frames = 0;
+                value.virtual_start_time_frames =
+                    ma_engine_get_time_in_pcm_frames(&value.engine->engine);
+                return NK_OK;
+            }
             return map_miniaudio_result(ma_sound_seek_to_pcm_frame(&value.sound, 0), message);
         });
     });
@@ -2679,7 +3070,10 @@ nk_result NK_CALL nk_audio_voice_is_playing(nk_audio_voice sound, nk_bool *out_p
                 return invalid_argument("audio playing output is missing");
             return with_voice(sound, "could not query audio voice", [&](AudioVoiceResource &value,
                                                                          const char *) {
-                *out_playing = ma_sound_is_playing(&value.sound) ? 1u : 0u;
+                finish_virtual_voice_if_at_end(value);
+                *out_playing = value.virtualized.load(std::memory_order_acquire)
+                                   ? 1u
+                                   : (ma_sound_is_playing(&value.sound) ? 1u : 0u);
                 return NK_OK;
             });
         });
@@ -2711,7 +3105,56 @@ nk_result NK_CALL nk_audio_voice_at_end(nk_audio_voice sound, nk_bool *out_at_en
                 return invalid_argument("audio end-state output is missing");
             return with_voice(sound, "could not query audio voice end state",
                               [&](AudioVoiceResource &value, const char *) {
-                                  *out_at_end = ma_sound_at_end(&value.sound) ? 1u : 0u;
+                                  if (value.virtualized.load(std::memory_order_acquire))
+                                      *out_at_end = finish_virtual_voice_if_at_end(value) ? 1u : 0u;
+                                  else
+                                      *out_at_end = ma_sound_at_end(&value.sound) ? 1u : 0u;
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_priority(nk_audio_voice sound, uint32_t priority) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice priority", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return with_voice(sound, "could not set audio voice priority",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  value.priority = priority;
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_priority(nk_audio_voice sound, uint32_t *out_priority) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio voice priority", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_priority)
+                return invalid_argument("audio voice priority output is missing");
+            return with_voice(sound, "could not get audio voice priority",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_priority = value.priority;
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_is_virtualized(nk_audio_voice sound,
+                                                 nk_bool *out_virtualized) {
+    return nk::core::result_boundary(
+        "unexpected error while querying audio voice virtualization", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_virtualized)
+                return invalid_argument("audio voice virtualization output is missing");
+            return with_voice(sound, "could not query audio voice virtualization",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  finish_virtual_voice_if_at_end(value);
+                                  *out_virtualized =
+                                      value.virtualized.load(std::memory_order_acquire) ? 1u : 0u;
                                   return NK_OK;
                               });
         });
@@ -2838,7 +3281,16 @@ nk_result NK_CALL nk_audio_voice_get_time_seconds(nk_audio_voice sound, float *o
             if (!out_seconds)
                 return invalid_argument("audio time output is missing");
             return with_voice(sound, "could not get audio voice time",
-                              [&](AudioVoiceResource &value, const char *message) {
+                              [&](AudioVoiceResource &value, const char *message) -> nk_result {
+                                  if (value.virtualized.load(std::memory_order_acquire)) {
+                                      const auto sample_rate =
+                                          ma_engine_get_sample_rate(&value.engine->engine);
+                                      if (sample_rate == 0)
+                                          return invalid_request("audio sample rate is unavailable");
+                                      *out_seconds = static_cast<float>(virtual_voice_cursor(value)) /
+                                                     static_cast<float>(sample_rate);
+                                      return NK_OK;
+                                  }
                                   return map_miniaudio_result(
                                       ma_sound_get_cursor_in_seconds(&value.sound, out_seconds),
                                       message);
@@ -3469,6 +3921,7 @@ nk_result NK_CALL nk_audio_get_time_pcm_frames(uint64_t *out_time_pcm_frames) {
             auto engine = ensure_engine(engine_result);
             if (!engine)
                 return engine_result;
+            promote_virtual_voices(*engine);
             *out_time_pcm_frames = ma_engine_get_time_in_pcm_frames(&engine->engine);
             return NK_OK;
         });

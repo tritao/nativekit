@@ -132,6 +132,27 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		NK_AUDIO_VOICE_LOAD_FAILED = 2;
 	}
 	/**
+	 * Policy used when a bus must make room for a higher-priority voice.
+	 */
+	enum nk_audio_voice_steal_policy : u32 {
+		/**
+		 * Never steal an existing voice. A new voice is rejected or virtualized.
+		 */
+		NK_AUDIO_VOICE_STEAL_NONE = 0;
+		/**
+		 * Steal the oldest eligible voice.
+		 */
+		NK_AUDIO_VOICE_STEAL_OLDEST = 1;
+		/**
+		 * Steal the eligible voice with the lowest configured gain.
+		 */
+		NK_AUDIO_VOICE_STEAL_QUIETEST = 2;
+		/**
+		 * Steal the eligible voice with the lowest priority, then the oldest.
+		 */
+		NK_AUDIO_VOICE_STEAL_LOWEST_PRIORITY = 3;
+	}
+	/**
 	 * Optional behavior flags for file and resource dialogs.
 	 */
 	flags nk_dialog_flags : u32 {
@@ -424,6 +445,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_bus_fade_at(bus: nk_audio_bus, volume_begin: f32, volume_end: f32, duration_pcm_frames: u64, absolute_start_time_pcm_frames: u64) -> nk_result;
 	/**
+	 * Returns the voice-concurrency policy configured for a bus.
+	 */
+	extern fn nk_audio_bus_get_concurrency(bus: nk_audio_bus, out_options: ptr<nk_audio_bus_concurrency_options> @out) -> nk_result;
+	/**
 	 * Returns the live parent bus handle, or NK_INVALID_HANDLE for the master endpoint.
 	 */
 	extern fn nk_audio_bus_get_parent(bus: nk_audio_bus, out_parent: ptr<nk_audio_bus> @out) -> nk_result;
@@ -450,6 +475,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * process-wide audio time in PCM frames.
 	 */
 	extern fn nk_audio_bus_schedule_stop(bus: nk_audio_bus, absolute_time_pcm_frames: u64) -> nk_result;
+	/**
+	 * Configures the voice limit and admission policy for a bus subtree.
+	 */
+	extern fn nk_audio_bus_set_concurrency(bus: nk_audio_bus, options: ptr<const<nk_audio_bus_concurrency_options>>) -> nk_result;
 	/**
 	 * Enables or disables the bus mute state without changing its configured gain.
 	 */
@@ -720,6 +749,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_voice_get_positioning(voice: nk_audio_voice, out_positioning: ptr<nk_audio_positioning> @out) -> nk_result;
 	/**
+	 * Returns the voice's concurrency priority.
+	 */
+	extern fn nk_audio_voice_get_priority(voice: nk_audio_voice, out_priority: ptr<u32> @out) -> nk_result;
+	/**
 	 * Returns the distance attenuation rolloff.
 	 */
 	extern fn nk_audio_voice_get_rolloff(voice: nk_audio_voice, out_rolloff: ptr<f32> @out) -> nk_result;
@@ -747,6 +780,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Returns whether 3D spatialization is enabled for a voice.
 	 */
 	extern fn nk_audio_voice_is_spatialization_enabled(voice: nk_audio_voice, out_enabled: ptr<nk_bool> @out) -> nk_result;
+	/**
+	 * Returns whether the voice is currently running without an audible bus slot.
+	 */
+	extern fn nk_audio_voice_is_virtualized(voice: nk_audio_voice, out_virtualized: ptr<nk_bool> @out) -> nk_result;
 	/**
 	 * Seeks a voice back to its beginning without changing its playing state.
 	 */
@@ -809,6 +846,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Sets whether the voice position is absolute or listener-relative.
 	 */
 	extern fn nk_audio_voice_set_positioning(voice: nk_audio_voice, positioning: nk_audio_positioning) -> nk_result;
+	/**
+	 * Sets the voice's concurrency priority; larger values are more important.
+	 */
+	extern fn nk_audio_voice_set_priority(voice: nk_audio_voice, priority: u32) -> nk_result;
 	/**
 	 * Sets the distance attenuation rolloff; zero disables falloff progression.
 	 */
@@ -962,6 +1003,35 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_shell_open_resource(resource: ptr<const<nk_resource>>) -> nk_result;
 	/**
+	 * Voice-concurrency policy applied to a bus and all of its child buses.
+	 */
+	struct nk_audio_bus_concurrency_options @layout(40, 8) {
+		/**
+		 * Set to sizeof(nk_audio_bus_concurrency_options) before passing the structure.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Maximum number of playing voices in this bus subtree; zero means unlimited.
+		 */
+		max_voices: u32 @offset(4);
+		/**
+		 * Policy used to make room when max_voices is reached.
+		 */
+		steal_policy: nk_audio_voice_steal_policy @offset(8);
+		/**
+		 * Keep an admitted voice silent and advance it until a slot becomes available.
+		 */
+		virtualize: nk_bool @offset(12);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(16);
+		/**
+		 * Reserved for compatible extensions; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(24);
+	}
+	/**
 	 * Optional creation settings for one audio mixer bus.
 	 */
 	struct nk_audio_bus_options @layout(32, 8) {
@@ -1058,9 +1128,9 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 */
 		bus: nk_audio_bus @offset(8);
 		/**
-		 * Reserved; set to zero.
+		 * Priority used by bus concurrency policies; larger values win.
 		 */
-		reserved: u32 @offset(12);
+		priority: u32 @offset(12);
 		/**
 		 * Reserved for compatible extensions; set all elements to zero.
 		 */

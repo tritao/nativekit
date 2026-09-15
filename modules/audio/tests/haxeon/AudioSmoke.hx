@@ -5,6 +5,7 @@ import haxe.io.Bytes;
 import NativeKitEventValue;
 import NativeKitEvents.NativeKitEventSubscription;
 import nativekit.audio.Bus;
+import nativekit.audio.BusConcurrencyOptions;
 import nativekit.audio.BusEffect;
 import nativekit.audio.Clip;
 import nativekit.audio.Cone;
@@ -16,6 +17,7 @@ import nativekit.audio.MixSnapshot;
 import nativekit.audio.Voice;
 import nativekit.audio.VoiceOptions;
 import nativekit.audio.Vector3;
+import nativekit.audio.Enums.VoiceStealPolicy;
 import nativekit.resource.Resource;
 
 class AudioSmoke {
@@ -216,6 +218,48 @@ class AudioSmoke {
 				throw "Haxe audio voices did not receive independent handles";
 			if (!completion.isReady())
 				throw "Haxe synchronous audio voice did not start ready";
+			var concurrency = new BusConcurrencyOptions();
+			concurrency.maxVoices = 1;
+			bus.setConcurrency(concurrency);
+			var queriedConcurrency = bus.concurrency();
+			if (queriedConcurrency.maxVoices != 1 || queriedConcurrency.stealPolicy != VoiceStealPolicy.None ||
+				queriedConcurrency.virtualize)
+				throw "Haxe audio bus concurrency policy did not round-trip";
+			first.setPriority(1);
+			second.setPriority(2);
+			first.start();
+			var rejected = false;
+			try {
+				second.start();
+			} catch (_:Dynamic) {
+				rejected = true;
+			}
+			if (!rejected)
+				throw "Haxe audio bus concurrency limit did not reject a voice";
+			first.stop();
+			second.start();
+			concurrency.stealPolicy = VoiceStealPolicy.LowestPriority;
+			bus.setConcurrency(concurrency);
+			second.stop();
+			first.start();
+			second.start();
+			if (first.isPlaying() || !second.isPlaying())
+				throw "Haxe audio bus priority stealing did not select the lower-priority voice";
+			concurrency.stealPolicy = VoiceStealPolicy.None;
+			concurrency.virtualize = true;
+			bus.setConcurrency(concurrency);
+			second.stop();
+			first.start();
+			second.start();
+			if (!second.isVirtualized() || !second.isPlaying())
+				throw "Haxe audio voice virtualization did not activate";
+			first.stop();
+			if (second.isVirtualized() || !second.isPlaying())
+				throw "Haxe audio virtualized voice did not resume";
+			concurrency.maxVoices = 0;
+			concurrency.virtualize = false;
+			bus.setConcurrency(concurrency);
+			second.stop();
 			clip.dispose();
 			clip = null;
 			if (!first.isLooping())

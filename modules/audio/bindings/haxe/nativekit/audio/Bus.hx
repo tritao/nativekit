@@ -138,6 +138,23 @@ class Bus {
 		return result.out_muted;
 	}
 
+	/** Configures voice limits for this bus and all descendant buses. */
+	public function setConcurrency(options:BusConcurrencyOptions):Void {
+		ensureLive();
+		if (options == null)
+			throw "Audio bus concurrency options must not be null";
+		AudioResult.check(NativeKitAudio.nk_audio_bus_set_concurrency(value, options.nativeValue()),
+			"audio.bus.setConcurrency");
+	}
+
+	/** Returns the voice-concurrency policy configured for this bus. */
+	public function concurrency():BusConcurrencyOptions {
+		ensureLive();
+		var result = NativeKitAudio.nk_audio_bus_get_concurrency(value);
+		AudioResult.check(result.status, "audio.bus.concurrency");
+		return BusConcurrencyOptions.fromNative(result.out_options);
+	}
+
 	/** Appends a low-pass filter to this bus's effect chain. */
 	public function addLowPass(cutoffFrequencyHz:Float, ?order:Int):BusEffect {
 		ensureLive();

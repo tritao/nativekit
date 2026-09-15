@@ -3,6 +3,7 @@
   "enumNames": {
     "nk_result": "NativeKit.Result",
     "nk_audio_voice_flags": "NativeVoiceFlags",
+    "nk_audio_voice_steal_policy": "VoiceStealPolicy",
     "nk_audio_voice_load_state": "VoiceLoadState",
     "nk_audio_clip_load_state": "ClipLoadState",
     "nk_audio_device_state": "DeviceState",
@@ -21,6 +22,7 @@
     "nk_audio_bus_options": "NativeBusOptions",
     "nk_audio_device_options": "NativeDeviceOptions",
     "nk_audio_voice_options": "NativeVoiceOptions",
+    "nk_audio_bus_concurrency_options": "NativeBusConcurrencyOptions",
     "nk_audio_vec3": "AudioVector3Value"
   }
 }

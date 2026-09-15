@@ -64,6 +64,19 @@ enum NK_ENUM(nk_audio_voice_load_state) {
     NK_AUDIO_VOICE_LOAD_FAILED = 2
 };
 
+/** Policy used when a bus must make room for a higher-priority voice. */
+typedef uint32_t nk_audio_voice_steal_policy;
+enum NK_ENUM(nk_audio_voice_steal_policy) {
+    /** Never steal an existing voice. A new voice is rejected or virtualized. */
+    NK_AUDIO_VOICE_STEAL_NONE = 0,
+    /** Steal the oldest eligible voice. */
+    NK_AUDIO_VOICE_STEAL_OLDEST = 1,
+    /** Steal the eligible voice with the lowest configured gain. */
+    NK_AUDIO_VOICE_STEAL_QUIETEST = 2,
+    /** Steal the eligible voice with the lowest priority, then the oldest. */
+    NK_AUDIO_VOICE_STEAL_LOWEST_PRIORITY = 3
+};
+
 /** Loading lifecycle for an audio clip. Synchronous clips start ready. */
 typedef uint32_t nk_audio_clip_load_state;
 enum NK_ENUM(nk_audio_clip_load_state) {
@@ -125,6 +138,22 @@ typedef struct nk_audio_bus_options {
     /** Reserved for compatible extensions; set all elements to zero. */
     uint64_t reserved2[2];
 } nk_audio_bus_options;
+
+/** Voice-concurrency policy applied to a bus and all of its child buses. */
+typedef struct nk_audio_bus_concurrency_options {
+    /** Set to sizeof(nk_audio_bus_concurrency_options) before passing the structure. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Maximum number of playing voices in this bus subtree; zero means unlimited. */
+    uint32_t max_voices;
+    /** Policy used to make room when max_voices is reached. */
+    nk_audio_voice_steal_policy steal_policy;
+    /** Keep an admitted voice silent and advance it until a slot becomes available. */
+    nk_bool virtualize;
+    /** Reserved; set to zero. */
+    uint32_t reserved;
+    /** Reserved for compatible extensions; set all elements to zero. */
+    uint64_t reserved2[2];
+} nk_audio_bus_concurrency_options;
 
 /** Opaque handle for one effect inserted into an audio mixer bus. */
 typedef uint32_t nk_audio_bus_effect NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_effect_destroy);
@@ -191,8 +220,8 @@ typedef struct nk_audio_voice_options {
     nk_audio_voice_flags flags;
     /** Optional mixer bus; NK_INVALID_HANDLE routes the voice to the master bus. */
     nk_audio_bus bus;
-    /** Reserved; set to zero. */
-    uint32_t reserved;
+    /** Priority used by bus concurrency policies; larger values win. */
+    uint32_t priority;
     /** Reserved for compatible extensions; set all elements to zero. */
     uint64_t reserved2[2];
 } nk_audio_voice_options;
@@ -294,6 +323,12 @@ NKAUDIO_API nk_result NK_CALL nk_audio_bus_set_muted(nk_audio_bus bus, nk_bool m
 /** Returns whether the bus is muted. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_is_muted(nk_audio_bus bus,
                                                     nk_bool *out_muted NK_OUT);
+/** Configures the voice limit and admission policy for a bus subtree. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_set_concurrency(
+    nk_audio_bus bus, const nk_audio_bus_concurrency_options *options);
+/** Returns the voice-concurrency policy configured for a bus. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_get_concurrency(
+    nk_audio_bus bus, nk_audio_bus_concurrency_options *out_options NK_OUT);
 
 /* Mixer snapshots                                                         */
 
@@ -491,6 +526,15 @@ NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_load_state(
 /** Returns whether a voice has reached its end. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_at_end(nk_audio_voice voice,
                                                      nk_bool *out_at_end NK_OUT);
+/** Sets the voice's concurrency priority; larger values are more important. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_priority(nk_audio_voice voice,
+                                                          uint32_t priority);
+/** Returns the voice's concurrency priority. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_priority(nk_audio_voice voice,
+                                                          uint32_t *out_priority NK_OUT);
+/** Returns whether the voice is currently running without an audible bus slot. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_is_virtualized(nk_audio_voice voice,
+                                                             nk_bool *out_virtualized NK_OUT);
 
 /** Sets linear voice gain; zero mutes the voice. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_volume(nk_audio_voice voice, float volume);

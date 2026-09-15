@@ -73,6 +73,17 @@ Buses support the same schedule and fade operations for all routed voices. This
 allows music transitions and voice/SFX ducking to be coordinated at the mixer
 boundary instead of issuing one operation per voice.
 
+Voice concurrency is configured per bus subtree with
+`nk_audio_bus_set_concurrency()`. A non-zero `max_voices` counts all currently
+playing voices routed through that bus or any descendant. New voices carry a
+priority (larger values win); `OLDEST`, `QUIETEST`, and `LOWEST_PRIORITY`
+policies can reclaim an eligible equal- or lower-priority voice. With
+`STEAL_NONE`, a full bus returns `NK_ERROR_INVALID_REQUEST` unless
+`virtualize` is enabled. Virtualized voices remain logically playing, advance
+against the process-wide audio clock, and are promoted automatically when a
+slot opens; `nk_audio_voice_is_virtualized()` exposes that state. Stopping a
+voice or a bus immediately makes room for the highest-priority virtual voice.
+
 `nk_audio_mix_snapshot` stores explicit bus volume and mute targets. Capture a
 bus's current mix with `nk_audio_mix_snapshot_capture_bus()`, or define a
 target directly with `nk_audio_mix_snapshot_set_bus()`, then apply the snapshot
@@ -123,8 +134,8 @@ completion event.
 
 The module also provides a generated Haxeon ABI interface in
 `bindings/nativekit-audio.hxi` and a small typed Haxe facade under
-`bindings/haxe/nativekit/audio`. The public facade consists of `Clip`, `Voice`,
-`VoiceOptions`, `Bus`, `MixSnapshot`, `DeviceOptions`, and `Mixer`. `Mixer` exposes device
+`bindings/haxe/nativekit/audio`. The public facade consists of `Clip`, `Voice`, `VoiceOptions`,
+`Bus`, `BusConcurrencyOptions`, `MixSnapshot`, `DeviceOptions`, and `Mixer`. `Mixer` exposes device
 enumeration and lifecycle controls, while `Clip.fromResourceAsync()` exposes
 the asynchronous resource path; `loadRequest()`, `loadState()`, and `isReady()`
 mirror the native lifecycle.
