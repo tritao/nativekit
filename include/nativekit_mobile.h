@@ -29,7 +29,7 @@ typedef uint32_t nk_mobile_host_event_kind;
 enum NK_ENUM(nk_mobile_host_kind) {
     /** Android android.view.ViewGroup; requires Android JNI values. */
     NK_MOBILE_HOST_ANDROID_VIEW_GROUP = 1,
-    /** iOS UIView container; requires a caller-owned UIView*. */
+    /** iOS UIView container; reserved for the UIKit backend. */
     NK_MOBILE_HOST_UIKIT_VIEW = 2
 };
 
@@ -113,9 +113,7 @@ typedef struct nk_mobile_host_event {
  *
  * On Android, platform_context is a JNIEnv* and native_view is a local or
  * global jobject referring to an android.view.ViewGroup. Both values are used
- * only during this call; NativeKit retains its own global reference. On iOS,
- * native_view is a borrowed UIView* and platform_context must be zero; NativeKit
- * retains the view until nk_mobile_host_destroy().
+ * only during this call; NativeKit retains its own global reference.
  */
 NK_API nk_result NK_CALL nk_mobile_host_attach(const nk_mobile_host_options *options,
                                                nk_mobile_host *out_host NK_OUT NK_OWNED);

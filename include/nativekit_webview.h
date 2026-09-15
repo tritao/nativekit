@@ -89,7 +89,7 @@ typedef struct nk_webview_options {
 
 /**
  * Creates a native child WebView inside `parent`. Desktop backends accept an
- * nk_window parent and mobile hosts accept an nk_mobile_host; zero is accepted
+ * nk_window parent and Android accepts an nk_mobile_host; zero is accepted
  * where the backend supports an unparented WebView. Bounds are logical pixels;
  * width and height must be positive. `initial_url` is nullable UTF-8. Creation
  * may finish asynchronously; NK_EVENT_WEBVIEW_READY reports when the native
