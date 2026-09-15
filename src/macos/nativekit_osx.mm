@@ -132,10 +132,12 @@ void refresh_mac_accessibility_elements(MacSurfaceResource &resource) noexcept;
 struct MacWindowResource final : nk::core::Resource {
     __strong NSWindow *window = nil;
     __strong NKContentView *content = nil;
+    __strong NSView *native_content = nil;
     __strong NKWindowDelegate *delegate = nil;
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle owner = NK_INVALID_HANDLE;
     bool modal = false;
+    bool owns_window = true;
     bool sheet_active = false;
     bool child_attached = false;
     std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
@@ -171,7 +173,7 @@ struct MacWindowResource final : nk::core::Resource {
             [NSCursor unhide];
             cursor_hidden = false;
         }
-        if (window) {
+        if (window && owns_window) {
             content.resource = nullptr;
             window.delegate = nil;
             [window orderOut:nil];
@@ -190,6 +192,10 @@ std::unordered_map<CGDirectDisplayID, nk_handle> monitor_handles;
 std::unordered_map<CGDirectDisplayID, nk_orientation> monitor_orientations;
 
 void poll_monitor_orientations();
+
+NSView *window_content_view(const MacWindowResource &resource) {
+    return resource.owns_window ? resource.content : resource.native_content;
+}
 
 struct MacSurfaceResource final : nk::core::Resource {
     __strong NKMetalSurfaceView *view = nil;
@@ -479,8 +485,8 @@ bool emit_drop(MacWindowResource &resource, id<NSDraggingInfo> information) noex
                 items.push_back(utf8(text));
             }
         }
-        const NSPoint point = [resource.content convertPoint:information.draggingLocation
-                                                    fromView:nil];
+        NSView *content_view = window_content_view(*resource);
+        const NSPoint point = [content_view convertPoint:information.draggingLocation fromView:nil];
         if (!items.empty()) {
             nk::core::QueuedEvent event;
             event.kind = kind;
@@ -3544,7 +3550,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_METAL_SURFACE | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK |
            NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
            NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION |
-           NK_CAP_ACCESSIBILITY | NK_CAP_RESOURCE_SHARING | nk::core::optional_capabilities();
+           NK_CAP_ACCESSIBILITY | NK_CAP_RESOURCE_SHARING | NK_CAP_WRAP_NATIVE_WINDOW |
+           nk::core::optional_capabilities();
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -3643,6 +3650,12 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     for (const auto child : children)
         nk_webview_destroy(child);
     cancel_dialogs_for_parent(resource->window);
+    if (!resource->owns_window) {
+        resource->window = nil;
+        resource->native_content = nil;
+        nk::core::handles().erase(handle, nk::core::ResourceType::window);
+        return NK_OK;
+    }
     if (auto owner = window(resource->owner)) {
         if (resource->sheet_active)
             [owner->window endSheet:resource->window];
@@ -3806,7 +3819,10 @@ nk_result NK_CALL nk_window_get_frame_extents(nk_handle handle,
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
     const NSRect frame = resource->window.frame;
-    const NSRect content = [resource->window convertRectToScreen:resource->content.frame];
+    NSView *content_view = window_content_view(*resource);
+    if (!content_view)
+        return fail(NK_ERROR_UNSUPPORTED, "Cocoa window has no content view");
+    const NSRect content = [resource->window convertRectToScreen:content_view.frame];
     const auto size = out_extents->struct_size;
     *out_extents = {};
     out_extents->struct_size = size;
@@ -4100,6 +4116,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
             if (!resource)
                 return fail(NK_ERROR_INVALID_HANDLE,
                             "text input state requires a desktop window on this backend");
+            if (!resource->owns_window)
+                return unsupported("wrapped Cocoa windows do not own NativeKit text input views");
             resource->text_input_text = state->text;
             resource->text_input_state = *state;
             resource->text_input_state.text = resource->text_input_text.c_str();
@@ -4141,6 +4159,8 @@ nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t ac
             if (!resource)
                 return fail(NK_ERROR_INVALID_HANDLE,
                             "text input activation requires a desktop window on this backend");
+            if (!resource->owns_window)
+                return unsupported("wrapped Cocoa windows do not own NativeKit text input views");
             if (active) {
                 resource->text_input_active = true;
                 [resource->window makeFirstResponder:resource->content];
@@ -4517,12 +4537,42 @@ nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window *out_n
     out_native->struct_size = size;
     out_native->kind = NK_NATIVE_WINDOW_COCOA;
     out_native->window = reinterpret_cast<uintptr_t>((__bridge void *)resource->window);
-    out_native->view = reinterpret_cast<uintptr_t>((__bridge void *)resource->content);
+    out_native->view = reinterpret_cast<uintptr_t>((__bridge void *)window_content_view(*resource));
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_wrap_native(const nk_native_window *, nk_handle *) {
-    return unsupported();
+nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native, nk_handle *out_window) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!native || native->struct_size < sizeof(*native) || !out_window ||
+            native->kind != NK_NATIVE_WINDOW_COCOA || !native->window)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid Cocoa native window descriptor");
+        *out_window = NK_INVALID_HANDLE;
+        id object = (__bridge id)(reinterpret_cast<void *>(native->window));
+        if (![object isKindOfClass:[NSWindow class]])
+            return fail(NK_ERROR_INVALID_ARGUMENT, "Cocoa native window is not an NSWindow");
+        NSView *view = nil;
+        if (native->view) {
+            id view_object = (__bridge id)(reinterpret_cast<void *>(native->view));
+            if (![view_object isKindOfClass:[NSView class]])
+                return fail(NK_ERROR_INVALID_ARGUMENT, "Cocoa native view is not an NSView");
+            view = (NSView *)view_object;
+        }
+        auto resource = std::make_shared<MacWindowResource>();
+        resource->window = (NSWindow *)object;
+        resource->native_content = view ?: resource->window.contentView;
+        resource->owns_window = false;
+        resource->handle = nk::core::handles().insert(nk::core::ResourceType::window, resource);
+        if (resource->handle == NK_INVALID_HANDLE)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
+        *out_window = resource->handle;
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while wrapping Cocoa window");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while wrapping Cocoa window");
+    }
 }
 
 nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_options *options,
@@ -4550,6 +4600,9 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
                             "shared surfaces must use the same graphics API");
             if (shared && shared->share_dependents == UINT32_MAX)
                 return fail(NK_ERROR_INVALID_REQUEST, "graphics surface has too many dependents");
+            NSView *parent_content = window_content_view(*parent);
+            if (!parent_content)
+                return fail(NK_ERROR_UNSUPPORTED, "wrapped Cocoa window has no content view");
 
             parent->surfaces.reserve(parent->surfaces.size() + 1);
             auto resource = std::make_shared<MacSurfaceResource>();
@@ -4590,8 +4643,8 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             if (!resource->accessibility_container)
                 return fail(NK_ERROR_OUT_OF_MEMORY, "could not create the macOS accessibility container");
             resource->accessibility_container.hidden = resource->view.hidden;
-            [parent->content addSubview:resource->view positioned:NSWindowAbove relativeTo:nil];
-            [parent->content addSubview:resource->accessibility_container
+            [parent_content addSubview:resource->view positioned:NSWindowAbove relativeTo:nil];
+            [parent_content addSubview:resource->accessibility_container
                          positioned:NSWindowAbove
                          relativeTo:resource->view];
             set_surface_native_bounds(*resource);
@@ -5046,7 +5099,10 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
         if (@available(macOS 13.3, *))
             resource->view.inspectable = (options->flags & NK_WEBVIEW_DEVTOOLS) != 0;
         resource->view.hidden = (options->flags & NK_WEBVIEW_HIDDEN) != 0;
-        [parent->content addSubview:resource->view];
+        NSView *parent_content = window_content_view(*parent);
+        if (!parent_content)
+            return fail(NK_ERROR_UNSUPPORTED, "wrapped Cocoa window has no content view");
+        [parent_content addSubview:resource->view];
         parent->children.push_back(resource->handle);
         *out_webview = resource->handle;
 
@@ -5653,11 +5709,14 @@ nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, uint32_t enabled)
     auto resource = window(handle);
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    NSView *content_view = window_content_view(*resource);
+    if (!content_view)
+        return fail(NK_ERROR_UNSUPPORTED, "wrapped Cocoa window has no content view");
     if (enabled)
-        [resource->content
+        [content_view
             registerForDraggedTypes:@[ NSPasteboardTypeFileURL, NSPasteboardTypeString ]];
     else
-        [resource->content unregisterDraggedTypes];
+        [content_view unregisterDraggedTypes];
     return NK_OK;
 }
 

@@ -85,7 +85,8 @@ UI interface owns only its `nkui_*` functions.
 `tools/test-wine.sh` cross-builds a static Windows test suite with MinGW and runs
 it under Wine using a fresh temporary prefix. It covers DLL-independent C ABI
 loading, Win32 window creation, UTF-8 title conversion, visibility, bounds, DPI,
-native descriptor export, message pumping, asynchronous file and message dialog
+native descriptor export and borrowed-window wrapping/destruction, message pumping,
+asynchronous file and message dialog
 cancellation, known-folder and locale queries, appearance detection, shell input
 validation, Unicode clipboard text/file round trips, synthesized shell file drops,
 destruction, and stale handles.

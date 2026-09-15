@@ -33,7 +33,7 @@ native services on Windows, macOS, and Android.
 - **Safe opaque handles** — generation-checked handles reject stale resources.
 - **Graphics-ready** — OpenGL, OpenGL ES, Metal, and Vulkan presentation surfaces,
   with explicit capability discovery.
-- **Interop-friendly** — desktop applications can export native window
+- **Interop-friendly** — desktop applications can export or wrap native window
   descriptors when they need a platform escape hatch.
 
 ## 🗺️ Platform feature matrix
@@ -59,7 +59,7 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 | Vulkan | ✅ | — | — | ✅ | 🚧 | 🚧 |
 | URI resources and sharing | ✅ | ✅ | ✅ | ✅ | 🚧 | Partial |
 | Custom-surface accessibility | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Native interoperability | Export | Export | Export | Host view | Host view | — |
+| Native interoperability | Export + wrap | Export + wrap | Export + wrap | Host view | Host view | — |
 
 **Legend:** ✅ supported · **Partial** a subset is supported · 🚧 coming soon ·
 — not currently advertised
