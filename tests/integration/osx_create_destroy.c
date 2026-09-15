@@ -1,5 +1,6 @@
 #include "nativekit.h"
 #include "nativekit_clipboard.h"
+#include "nativekit_monitor.h"
 #include "nativekit_notification.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
@@ -61,6 +62,8 @@ int main(void) {
     assert((nk_get_capabilities() & NK_CAP_NOTIFICATION) != 0);
     assert((nk_get_capabilities() & NK_CAP_WINDOW_GEOMETRY) != 0);
     assert((nk_get_capabilities() & NK_CAP_WINDOW_STYLING) != 0);
+    assert((nk_get_capabilities() & NK_CAP_MONITOR) != 0);
+    assert((nk_get_capabilities() & NK_CAP_MONITOR_FULLSCREEN) != 0);
     assert(nk_notification_show(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_notification_close(NK_INVALID_REQUEST_ID) == NK_ERROR_INVALID_REQUEST);
 
@@ -124,6 +127,44 @@ int main(void) {
     assert(nk_window_set_opacity(window, 1.0f) == NK_OK);
     assert(nk_window_set_mouse_passthrough(window, 1) == NK_OK);
     assert(nk_window_set_mouse_passthrough(window, 0) == NK_OK);
+    uint32_t monitor_count = 0;
+    assert(nk_monitor_list(NULL, &monitor_count) == NK_ERROR_BUFFER_TOO_SMALL);
+    assert(monitor_count > 0);
+    nk_monitor monitors[16] = {0};
+    assert(monitor_count <= 16);
+    uint32_t monitor_capacity = 16;
+    assert(nk_monitor_list(monitors, &monitor_capacity) == NK_OK);
+    assert(monitor_capacity == monitor_count);
+    nk_monitor primary_monitor = NK_INVALID_HANDLE;
+    assert(nk_monitor_get_primary(&primary_monitor) == NK_OK);
+    assert(primary_monitor != NK_INVALID_HANDLE);
+    uint32_t monitor_name_size = 0;
+    assert(nk_monitor_get_name(primary_monitor, NULL, &monitor_name_size) == NK_ERROR_BUFFER_TOO_SMALL);
+    assert(monitor_name_size > 1);
+    char monitor_name[256] = {0};
+    uint32_t monitor_name_capacity = sizeof(monitor_name);
+    assert(nk_monitor_get_name(primary_monitor, monitor_name, &monitor_name_capacity) == NK_OK);
+    assert(monitor_name[0] != '\0');
+    nk_monitor_geometry monitor_geometry = {0};
+    monitor_geometry.struct_size = sizeof(monitor_geometry);
+    assert(nk_monitor_get_geometry(primary_monitor, &monitor_geometry) == NK_OK);
+    assert(monitor_geometry.width > 0 && monitor_geometry.height > 0);
+    assert(monitor_geometry.work_width > 0 && monitor_geometry.work_height > 0);
+    assert(monitor_geometry.scale_x > 0.0f && monitor_geometry.scale_y > 0.0f);
+    nk_video_mode video_mode = {0};
+    video_mode.struct_size = sizeof(video_mode);
+    assert(nk_monitor_get_current_mode(primary_monitor, &video_mode) == NK_OK);
+    assert(video_mode.width > 0 && video_mode.height > 0);
+    uint32_t mode_count = 0;
+    assert(nk_monitor_get_modes(primary_monitor, NULL, &mode_count) == NK_ERROR_BUFFER_TOO_SMALL);
+    assert(mode_count > 0);
+    nk_video_mode modes[128] = {0};
+    assert(mode_count <= 128);
+    uint32_t mode_capacity = 128;
+    assert(nk_monitor_get_modes(primary_monitor, modes, &mode_capacity) == NK_OK);
+    assert(mode_capacity == mode_count);
+    assert(nk_window_set_fullscreen_monitor(window, primary_monitor) == NK_OK);
+    assert(nk_window_set_fullscreen_monitor(window, NK_INVALID_HANDLE) == NK_OK);
     nk_window_state state = {0};
     state.struct_size = sizeof(state);
     assert(nk_window_get_state(window, &state) == NK_OK);

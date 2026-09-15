@@ -114,6 +114,14 @@ struct MacWindowResource final : nk::core::Resource {
     }
 };
 
+struct MacMonitorResource final : nk::core::Resource {
+    CGDirectDisplayID display = kCGNullDirectDisplay;
+    std::string name;
+    nk_handle handle = NK_INVALID_HANDLE;
+};
+
+std::unordered_map<CGDirectDisplayID, nk_handle> monitor_handles;
+
 struct MacSurfaceResource final : nk::core::Resource {
     __strong NKMetalSurfaceView *view = nil;
     __strong CAMetalLayer *layer = nil;
@@ -356,6 +364,88 @@ std::shared_ptr<MacWindowResource> window(nk_handle handle) {
 std::shared_ptr<MacSurfaceResource> surface(nk_handle handle) {
     return std::dynamic_pointer_cast<MacSurfaceResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::surface));
+}
+
+std::shared_ptr<MacMonitorResource> monitor(nk_handle handle) {
+    return std::dynamic_pointer_cast<MacMonitorResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::monitor));
+}
+
+CGDirectDisplayID display_id(NSScreen *screen) {
+    NSNumber *number = screen.deviceDescription[NSDeviceDescriptionKey(@"NSScreenNumber")];
+    return number ? static_cast<CGDirectDisplayID>(number.unsignedIntValue) : kCGNullDirectDisplay;
+}
+
+NSScreen *screen_for_display(CGDirectDisplayID display) {
+    for (NSScreen *screen in NSScreen.screens)
+        if (display_id(screen) == display)
+            return screen;
+    return nil;
+}
+
+std::string monitor_name(NSScreen *screen, CGDirectDisplayID display) {
+    NSString *name = screen.localizedName;
+    if (name.length)
+        return utf8(name);
+    return "Display " + std::to_string(static_cast<unsigned int>(display));
+}
+
+nk_handle register_monitor(NSScreen *screen, CGDirectDisplayID display) {
+    const auto found = monitor_handles.find(display);
+    if (found != monitor_handles.end())
+        return found->second;
+    auto resource = std::make_shared<MacMonitorResource>();
+    resource->display = display;
+    resource->name = monitor_name(screen, display);
+    resource->handle = nk::core::handles().insert(nk::core::ResourceType::monitor, resource);
+    if (resource->handle != NK_INVALID_HANDLE)
+        monitor_handles.emplace(display, resource->handle);
+    return resource->handle;
+}
+
+nk_result refresh_monitors() {
+    const bool had_monitors = !monitor_handles.empty();
+    std::unordered_set<CGDirectDisplayID> current;
+    for (NSScreen *screen in NSScreen.screens) {
+        const CGDirectDisplayID display = display_id(screen);
+        if (display == kCGNullDirectDisplay)
+            continue;
+        current.insert(display);
+        if (monitor_handles.find(display) != monitor_handles.end())
+            continue;
+        const nk_handle handle = register_monitor(screen, display);
+        if (handle == NK_INVALID_HANDLE)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "monitor handle registry is full");
+        if (had_monitors) {
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_MONITOR_CONNECTED;
+            event.source = handle;
+            nk::core::push_event(std::move(event));
+        }
+    }
+    for (auto iterator = monitor_handles.begin(); iterator != monitor_handles.end();) {
+        if (current.find(iterator->first) != current.end()) {
+            ++iterator;
+            continue;
+        }
+        const nk_handle handle = iterator->second;
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_MONITOR_DISCONNECTED;
+        event.source = handle;
+        nk::core::push_event(std::move(event));
+        nk::core::handles().erase(handle, nk::core::ResourceType::monitor);
+        iterator = monitor_handles.erase(iterator);
+    }
+    return NK_OK;
+}
+
+nk_video_mode make_video_mode(CGDisplayModeRef native) {
+    nk_video_mode result{};
+    result.struct_size = sizeof(result);
+    result.width = static_cast<int32_t>(CGDisplayModeGetPixelWidth(native));
+    result.height = static_cast<int32_t>(CGDisplayModeGetPixelHeight(native));
+    result.refresh_rate = CGDisplayModeGetRefreshRate(native);
+    return result;
 }
 
 uint64_t metal_object_token(id object) {
@@ -2243,6 +2333,7 @@ void shutdown() noexcept {
     cancel_evaluations(NK_INVALID_HANDLE);
     pump_events();
     dialogs.clear();
+    monitor_handles.clear();
     nk::core::handles().clear();
 }
 } // namespace nk::backend
@@ -2254,7 +2345,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO | NK_CAP_INPUT |
            NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
-           NK_CAP_WINDOW_STYLING | NK_CAP_METAL_SURFACE;
+           NK_CAP_WINDOW_STYLING | NK_CAP_METAL_SURFACE | NK_CAP_MONITOR |
+           NK_CAP_MONITOR_FULLSCREEN;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -2938,6 +3030,165 @@ nk_result NK_CALL nk_window_set_size_limits(nk_handle h, const nk_window_size_li
     w->window.contentMinSize = NSMakeSize(l->min_width, l->min_height);
     w->window.contentMaxSize =
         NSMakeSize(l->max_width ? l->max_width : FLT_MAX, l->max_height ? l->max_height : FLT_MAX);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_monitor_list(nk_handle *monitors, uint32_t *inout_count) {
+    return nk::core::result_boundary(
+        "unexpected error while enumerating monitors", [&]() -> nk_result {
+            if (const auto r = enter_ui(); r != NK_OK)
+                return r;
+            if (!inout_count)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "monitor count must not be null");
+            if (const auto r = refresh_monitors(); r != NK_OK)
+                return r;
+            const uint32_t required = static_cast<uint32_t>(monitor_handles.size());
+            const uint32_t capacity = *inout_count;
+            *inout_count = required;
+            if (!monitors || capacity < required)
+                return required ? fail(NK_ERROR_BUFFER_TOO_SMALL,
+                                       "monitor handle buffer is too small")
+                                 : NK_OK;
+            uint32_t index = 0;
+            for (NSScreen *screen in NSScreen.screens) {
+                const auto display = display_id(screen);
+                if (display != kCGNullDirectDisplay)
+                    monitors[index++] = monitor_handles.at(display);
+            }
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_monitor_get_primary(nk_handle *out_monitor) {
+    return nk::core::result_boundary(
+        "unexpected error while finding primary monitor", [&]() -> nk_result {
+            if (const auto r = enter_ui(); r != NK_OK)
+                return r;
+            if (!out_monitor)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "monitor output must not be null");
+            *out_monitor = NK_INVALID_HANDLE;
+            if (const auto r = refresh_monitors(); r != NK_OK)
+                return r;
+            const auto found = monitor_handles.find(CGMainDisplayID());
+            if (found == monitor_handles.end())
+                return fail(NK_ERROR_UNSUPPORTED, "macOS reports no connected primary monitor");
+            *out_monitor = found->second;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_monitor_get_name(nk_handle handle, char *buffer, uint32_t *inout_size) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto resource = monitor(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
+    NSString *name = [NSString stringWithUTF8String:resource->name.c_str()];
+    return copy_output(name, buffer, inout_size);
+}
+
+nk_result NK_CALL nk_monitor_get_geometry(nk_handle handle, nk_monitor_geometry *out_geometry) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!out_geometry || out_geometry->struct_size < sizeof(*out_geometry))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "monitor geometry output is missing or too small");
+    auto resource = monitor(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
+    NSScreen *screen = screen_for_display(resource->display);
+    if (!screen)
+        return fail(NK_ERROR_INVALID_HANDLE, "monitor is no longer connected");
+    const NSRect geometry = screen.frame;
+    const NSRect workarea = screen.visibleFrame;
+    const CGFloat scale = screen.backingScaleFactor > 0.0 ? screen.backingScaleFactor : 1.0;
+    const CGSize physical_size = CGDisplayScreenSize(resource->display);
+    const auto size = out_geometry->struct_size;
+    *out_geometry = {};
+    out_geometry->struct_size = size;
+    out_geometry->x = static_cast<int32_t>(std::lround(geometry.origin.x));
+    out_geometry->y = static_cast<int32_t>(std::lround(geometry.origin.y));
+    out_geometry->width = static_cast<int32_t>(std::lround(geometry.size.width));
+    out_geometry->height = static_cast<int32_t>(std::lround(geometry.size.height));
+    out_geometry->work_x = static_cast<int32_t>(std::lround(workarea.origin.x));
+    out_geometry->work_y = static_cast<int32_t>(std::lround(workarea.origin.y));
+    out_geometry->work_width = static_cast<int32_t>(std::lround(workarea.size.width));
+    out_geometry->work_height = static_cast<int32_t>(std::lround(workarea.size.height));
+    out_geometry->width_mm = static_cast<int32_t>(std::lround(physical_size.width));
+    out_geometry->height_mm = static_cast<int32_t>(std::lround(physical_size.height));
+    out_geometry->scale_x = static_cast<float>(scale);
+    out_geometry->scale_y = static_cast<float>(scale);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_monitor_get_current_mode(nk_handle handle, nk_video_mode *out_mode) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!out_mode || out_mode->struct_size < sizeof(*out_mode))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "video mode output is missing or too small");
+    auto resource = monitor(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
+    CGDisplayModeRef native = CGDisplayCopyDisplayMode(resource->display);
+    if (!native)
+        return fail(NK_ERROR_UNSUPPORTED, "current monitor mode is unavailable");
+    const auto size = out_mode->struct_size;
+    *out_mode = make_video_mode(native);
+    out_mode->struct_size = size;
+    CGDisplayModeRelease(native);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_monitor_get_modes(nk_handle handle, nk_video_mode *modes,
+                                       uint32_t *inout_count) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!inout_count)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "video mode count must not be null");
+    auto resource = monitor(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
+    CFArrayRef native_modes = CGDisplayCopyAllDisplayModes(resource->display, nullptr);
+    if (!native_modes)
+        return fail(NK_ERROR_UNSUPPORTED, "monitor modes are unavailable");
+    std::vector<nk_video_mode> available;
+    const CFIndex count = CFArrayGetCount(native_modes);
+    available.reserve(static_cast<std::size_t>(count));
+    for (CFIndex index = 0; index < count; ++index) {
+        auto mode = static_cast<CGDisplayModeRef>(const_cast<void *>(
+            CFArrayGetValueAtIndex(native_modes, index)));
+        if (mode)
+            available.push_back(make_video_mode(mode));
+    }
+    CFRelease(native_modes);
+    const uint32_t required = static_cast<uint32_t>(available.size());
+    const uint32_t capacity = *inout_count;
+    *inout_count = required;
+    if (!modes || capacity < required)
+        return required ? fail(NK_ERROR_BUFFER_TOO_SMALL, "video mode buffer is too small") : NK_OK;
+    std::copy(available.begin(), available.end(), modes);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle window_handle,
+                                                   nk_handle monitor_handle) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto window_resource = window(window_handle);
+    if (!window_resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    if (monitor_handle == NK_INVALID_HANDLE)
+        return nk_window_set_fullscreen(window_handle, 0);
+    auto monitor_resource = monitor(monitor_handle);
+    if (!monitor_resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
+    NSScreen *screen = screen_for_display(monitor_resource->display);
+    if (!screen)
+        return fail(NK_ERROR_INVALID_HANDLE, "monitor is no longer connected");
+    if (window_resource->window.styleMask & NSWindowStyleMaskFullScreen)
+        [window_resource->window toggleFullScreen:nil];
+    [window_resource->window setFrameOrigin:screen.frame.origin];
+    if (!(window_resource->window.styleMask & NSWindowStyleMaskFullScreen))
+        [window_resource->window toggleFullScreen:nil];
     return NK_OK;
 }
 

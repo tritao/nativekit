@@ -5,6 +5,7 @@
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
+#include "nativekit_monitor.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
 
@@ -242,6 +243,14 @@ struct WinWindowResource final : nk::core::Resource {
             DestroyWindow(window);
     }
 };
+
+struct WinMonitorResource final : nk::core::Resource {
+    HMONITOR monitor = nullptr;
+    std::string name;
+    nk_handle handle = NK_INVALID_HANDLE;
+};
+
+std::unordered_map<HMONITOR, nk_handle> monitor_handles;
 
 struct WinSurfaceResource final : nk::core::Resource {
     HWND window = nullptr;
@@ -1404,6 +1413,11 @@ std::shared_ptr<WinWindowResource> get_window(nk_handle handle) {
         nk::core::handles().get(handle, nk::core::ResourceType::window));
 }
 
+std::shared_ptr<WinMonitorResource> get_monitor(nk_handle handle) {
+    return std::dynamic_pointer_cast<WinMonitorResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::monitor));
+}
+
 std::shared_ptr<WinSurfaceResource> get_surface(nk_handle handle) {
     return std::dynamic_pointer_cast<WinSurfaceResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::surface));
@@ -2453,6 +2467,97 @@ nk_result copy_utf8_output(const std::string &value, char *buffer, uint32_t *ino
     return NK_OK;
 }
 
+BOOL CALLBACK enumerate_monitors(HMONITOR monitor, HDC, LPRECT, LPARAM data) {
+    auto *monitors = reinterpret_cast<std::vector<HMONITOR> *>(data);
+    monitors->push_back(monitor);
+    return TRUE;
+}
+
+std::vector<HMONITOR> connected_monitors() {
+    std::vector<HMONITOR> result;
+    EnumDisplayMonitors(nullptr, nullptr, enumerate_monitors,
+                        reinterpret_cast<LPARAM>(&result));
+    return result;
+}
+
+std::string monitor_name(HMONITOR native) {
+    MONITORINFOEXW info{};
+    info.cbSize = sizeof(info);
+    if (!GetMonitorInfoW(native, &info))
+        return "Unknown monitor";
+    const auto result = utf8(info.szDevice);
+    return result.empty() ? "Unknown monitor" : result;
+}
+
+nk_handle register_monitor(HMONITOR native) {
+    const auto found = monitor_handles.find(native);
+    if (found != monitor_handles.end())
+        return found->second;
+    auto resource = std::make_shared<WinMonitorResource>();
+    resource->monitor = native;
+    resource->name = monitor_name(native);
+    resource->handle = nk::core::handles().insert(nk::core::ResourceType::monitor, resource);
+    if (resource->handle != NK_INVALID_HANDLE)
+        monitor_handles.emplace(native, resource->handle);
+    return resource->handle;
+}
+
+nk_result refresh_monitors() {
+    const auto native_monitors = connected_monitors();
+    const bool had_monitors = !monitor_handles.empty();
+    std::unordered_set<HMONITOR> current(native_monitors.begin(), native_monitors.end());
+    for (const auto native : native_monitors) {
+        if (monitor_handles.find(native) != monitor_handles.end())
+            continue;
+        const nk_handle handle = register_monitor(native);
+        if (handle == NK_INVALID_HANDLE)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "monitor handle registry is full");
+        if (had_monitors) {
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_MONITOR_CONNECTED;
+            event.source = handle;
+            nk::core::push_event(std::move(event));
+        }
+    }
+    for (auto iterator = monitor_handles.begin(); iterator != monitor_handles.end();) {
+        if (current.find(iterator->first) != current.end()) {
+            ++iterator;
+            continue;
+        }
+        const nk_handle handle = iterator->second;
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_MONITOR_DISCONNECTED;
+        event.source = handle;
+        nk::core::push_event(std::move(event));
+        nk::core::handles().erase(handle, nk::core::ResourceType::monitor);
+        iterator = monitor_handles.erase(iterator);
+    }
+    return NK_OK;
+}
+
+UINT monitor_dpi() {
+    const UINT dpi = GetDpiForSystem();
+    return dpi ? dpi : 96;
+}
+
+bool monitor_info(HMONITOR native, MONITORINFOEXW &out_info) {
+    out_info = {};
+    out_info.cbSize = sizeof(out_info);
+    return GetMonitorInfoW(native, &out_info) != FALSE;
+}
+
+nk_video_mode video_mode(const DEVMODEW &native) {
+    nk_video_mode result{};
+    result.struct_size = sizeof(result);
+    result.width = static_cast<int32_t>(native.dmPelsWidth);
+    result.height = static_cast<int32_t>(native.dmPelsHeight);
+    result.refresh_rate = native.dmDisplayFrequency;
+    result.red_bits = 0;
+    result.green_bits = 0;
+    result.blue_bits = 0;
+    return result;
+}
+
 bool valid_uri_scheme(const char *value) {
     if (!value || !((*value >= 'A' && *value <= 'Z') || (*value >= 'a' && *value <= 'z')))
         return false;
@@ -2571,6 +2676,7 @@ void shutdown() noexcept {
     navigation_decisions.clear();
     cancel_evaluations(NK_INVALID_HANDLE);
 #endif
+    monitor_handles.clear();
     nk::core::handles().clear();
     pump_events();
 #if defined(NK_HAS_WEBVIEW2)
@@ -2602,7 +2708,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
         NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE |
         NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING | NK_CAP_D3D11_SURFACE |
-        NK_CAP_ACCESSIBILITY;
+        NK_CAP_ACCESSIBILITY | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
@@ -3332,6 +3438,177 @@ nk_result NK_CALL nk_window_set_size_limits(nk_handle h, const nk_window_size_li
     w->max_height = l->max_height;
     SetWindowPos(w->window, nullptr, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_monitor_list(nk_handle *monitors, uint32_t *inout_count) {
+    return nk::core::result_boundary(
+        "unexpected error while enumerating monitors", [&]() -> nk_result {
+            if (const auto r = enter_ui(); r != NK_OK)
+                return r;
+            if (!inout_count)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "monitor count must not be null");
+            if (const auto r = refresh_monitors(); r != NK_OK)
+                return r;
+            const uint32_t required = static_cast<uint32_t>(monitor_handles.size());
+            const uint32_t capacity = *inout_count;
+            *inout_count = required;
+            if (!monitors || capacity < required)
+                return required ? fail(NK_ERROR_BUFFER_TOO_SMALL,
+                                       "monitor handle buffer is too small")
+                                 : NK_OK;
+            uint32_t index = 0;
+            for (const auto native : connected_monitors())
+                monitors[index++] = monitor_handles.at(native);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_monitor_get_primary(nk_handle *out_monitor) {
+    return nk::core::result_boundary(
+        "unexpected error while finding primary monitor", [&]() -> nk_result {
+            if (const auto r = enter_ui(); r != NK_OK)
+                return r;
+            if (!out_monitor)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "monitor output must not be null");
+            *out_monitor = NK_INVALID_HANDLE;
+            if (const auto r = refresh_monitors(); r != NK_OK)
+                return r;
+            for (const auto native : connected_monitors()) {
+                MONITORINFOEXW info{};
+                if (monitor_info(native, info) && (info.dwFlags & MONITORINFOF_PRIMARY)) {
+                    *out_monitor = monitor_handles.at(native);
+                    return NK_OK;
+                }
+            }
+            return fail(NK_ERROR_UNSUPPORTED, "Windows reports no connected primary monitor");
+        });
+}
+
+nk_result NK_CALL nk_monitor_get_name(nk_handle handle, char *buffer, uint32_t *inout_size) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto resource = get_monitor(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
+    return copy_utf8_output(resource->name, buffer, inout_size);
+}
+
+nk_result NK_CALL nk_monitor_get_geometry(nk_handle handle, nk_monitor_geometry *out_geometry) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!out_geometry || out_geometry->struct_size < sizeof(*out_geometry))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "monitor geometry output is missing or too small");
+    auto resource = get_monitor(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
+    MONITORINFOEXW info{};
+    if (!monitor_info(resource->monitor, info))
+        return fail(NK_ERROR_INVALID_HANDLE, "monitor is no longer connected");
+    const UINT dpi = monitor_dpi();
+    const auto size = out_geometry->struct_size;
+    *out_geometry = {};
+    out_geometry->struct_size = size;
+    out_geometry->x = MulDiv(info.rcMonitor.left, 96, static_cast<int>(dpi));
+    out_geometry->y = MulDiv(info.rcMonitor.top, 96, static_cast<int>(dpi));
+    out_geometry->width = MulDiv(info.rcMonitor.right - info.rcMonitor.left, 96,
+                                 static_cast<int>(dpi));
+    out_geometry->height = MulDiv(info.rcMonitor.bottom - info.rcMonitor.top, 96,
+                                  static_cast<int>(dpi));
+    out_geometry->work_x = MulDiv(info.rcWork.left, 96, static_cast<int>(dpi));
+    out_geometry->work_y = MulDiv(info.rcWork.top, 96, static_cast<int>(dpi));
+    out_geometry->work_width = MulDiv(info.rcWork.right - info.rcWork.left, 96,
+                                      static_cast<int>(dpi));
+    out_geometry->work_height = MulDiv(info.rcWork.bottom - info.rcWork.top, 96,
+                                       static_cast<int>(dpi));
+    HDC device = CreateDCW(info.szDevice, info.szDevice, nullptr, nullptr);
+    if (device) {
+        out_geometry->width_mm = GetDeviceCaps(device, HORZSIZE);
+        out_geometry->height_mm = GetDeviceCaps(device, VERTSIZE);
+        DeleteDC(device);
+    }
+    out_geometry->scale_x = static_cast<float>(dpi) / 96.0f;
+    out_geometry->scale_y = out_geometry->scale_x;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_monitor_get_current_mode(nk_handle handle, nk_video_mode *out_mode) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!out_mode || out_mode->struct_size < sizeof(*out_mode))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "video mode output is missing or too small");
+    auto resource = get_monitor(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
+    MONITORINFOEXW info{};
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(mode);
+    if (!monitor_info(resource->monitor, info) ||
+        !EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, &mode))
+        return fail(NK_ERROR_UNSUPPORTED, "current monitor mode is unavailable");
+    const auto size = out_mode->struct_size;
+    *out_mode = video_mode(mode);
+    out_mode->struct_size = size;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_monitor_get_modes(nk_handle handle, nk_video_mode *modes,
+                                       uint32_t *inout_count) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    if (!inout_count)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "video mode count must not be null");
+    auto resource = get_monitor(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
+    MONITORINFOEXW info{};
+    if (!monitor_info(resource->monitor, info))
+        return fail(NK_ERROR_INVALID_HANDLE, "monitor is no longer connected");
+    std::vector<nk_video_mode> available;
+    for (DWORD index = 0;; ++index) {
+        DEVMODEW mode{};
+        mode.dmSize = sizeof(mode);
+        if (!EnumDisplaySettingsW(info.szDevice, index, &mode))
+            break;
+        available.push_back(video_mode(mode));
+    }
+    const uint32_t required = static_cast<uint32_t>(available.size());
+    const uint32_t capacity = *inout_count;
+    *inout_count = required;
+    if (!modes || capacity < required)
+        return required ? fail(NK_ERROR_BUFFER_TOO_SMALL, "video mode buffer is too small") : NK_OK;
+    std::copy(available.begin(), available.end(), modes);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle window_handle,
+                                                   nk_handle monitor_handle) {
+    if (const auto r = enter_ui(); r != NK_OK)
+        return r;
+    auto window = get_window(window_handle);
+    if (!window)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    if (monitor_handle == NK_INVALID_HANDLE)
+        return nk_window_set_fullscreen(window_handle, 0);
+    auto selected = get_monitor(monitor_handle);
+    if (!selected)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale monitor handle");
+    MONITORINFOEXW info{};
+    if (!monitor_info(selected->monitor, info))
+        return fail(NK_ERROR_INVALID_HANDLE, "monitor is no longer connected");
+    if (!window->fullscreen) {
+        window->placement.length = sizeof(window->placement);
+        if (!GetWindowPlacement(window->window, &window->placement))
+            return fail(NK_ERROR_UNKNOWN, "could not save window placement");
+        window->windowed_style = GetWindowLongPtrW(window->window, GWL_STYLE);
+    }
+    SetWindowLongPtrW(window->window, GWL_STYLE, window->windowed_style & ~WS_OVERLAPPEDWINDOW);
+    if (!SetWindowPos(window->window, HWND_TOP, info.rcMonitor.left, info.rcMonitor.top,
+                      info.rcMonitor.right - info.rcMonitor.left,
+                      info.rcMonitor.bottom - info.rcMonitor.top,
+                      SWP_FRAMECHANGED | SWP_NOOWNERZORDER))
+        return fail(NK_ERROR_UNKNOWN, "could not enter fullscreen on monitor");
+    window->fullscreen = true;
     return NK_OK;
 }
 
