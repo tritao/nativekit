@@ -20,7 +20,7 @@ nk_result unsupported() {
 } // namespace
 
 namespace nk::backend {
-#if !defined(NK_STUB_ANDROID)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_WEB) && !defined(NK_BACKEND_IOS)
 void pump_events() noexcept {}
 void shutdown() noexcept {}
 #endif

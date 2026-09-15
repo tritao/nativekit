@@ -96,26 +96,22 @@ static void test_writable_resource_stream(void) {
         const uri = "nativekit-file-handle://web-smoke";
         Module._nkNativeKitResourceHandles = {};
         Module._nkNativeKitResourceHandles[uri] = {
-            createWritable: () => {
-                document.documentElement.dataset.nativekitResourceStage = "create";
-                return Promise.resolve({
+            createWritable: () => Promise.resolve({
                 write: bytes => {
-                    document.documentElement.dataset.nativekitResourceStage =
-                        "write:" + bytes.length;
                     Module._nkWebSmokeResourceBytes = Array.from(bytes);
                     return Promise.resolve();
                 },
                 close: () => {
-            document.documentElement.dataset.nativekitResourceStage = "close";
-            const bytes = Module._nkWebSmokeResourceBytes || [];
-            const valid = bytes.length == 3 && bytes[0] == 0x4e && bytes[1] ==
-                0x4b && bytes[2] == 0x21;
-            document.documentElement.dataset.nativekitResourceWrite = valid ? "verified" : "failed";
-            document.documentElement.dataset.nativekitSystemResult = valid ? "passed" : "failed";
-            return Promise.resolve();
-        }
-                });
-            }
+                    const bytes = Module._nkWebSmokeResourceBytes || [];
+                    const valid = bytes.length == 3 && bytes[0] == 0x4e && bytes[1] ==
+                                  0x4b && bytes[2] == 0x21;
+                    document.documentElement.dataset.nativekitResourceWrite =
+                        valid ? "verified" : "failed";
+                    document.documentElement.dataset.nativekitSystemResult =
+                        valid ? "passed" : "failed";
+                    return Promise.resolve();
+                }
+            })
 };
 });
 // clang-format on
@@ -157,8 +153,7 @@ EM_ASM({
                 return;
             if (++attempts >= 100) {
                 document.documentElement.dataset.nativekitSystemResult = "failed";
-                const stage = document.documentElement.dataset.nativekitResourceStage || "none";
-                throw new Error("NativeKit Web resource write was not flushed (stage=" + stage + ")");
+                throw new Error("NativeKit Web resource write was not flushed");
             }
             setTimeout(check, 10);
         };
