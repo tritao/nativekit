@@ -13,6 +13,10 @@ import Renderer;
 import Surface;
 import nativekit.ui.core.NativeInputAdapter;
 import nativekit.ui.core.UiContext;
+import nativekit.ui.core.UiEventKind;
+import nativekit.ui.core.UiKey;
+import nativekit.ui.core.UiModifier;
+import nativekit.ui.core.WidgetId;
 import nativekit.ui.core.View;
 import nativekit.ui.animation.AnimationController;
 import nativekit.ui.animation.SpringController;
@@ -26,6 +30,7 @@ import nativekit.ui.widgets.Stack;
 import nativekit.ui.widgets.StackChild;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TextArea;
+import nativekit.ui.widgets.TextEditorDiagnostics;
 import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.VirtualList;
 import ExplorerCatalog;
@@ -149,7 +154,7 @@ class UiExplorer {
 		ExplorerSmokeSequence.apply(state, frame);
 	}
 
-	/** Selects one of the deterministic browser screenshot states, 0-22. */
+	/** Selects one of the deterministic browser screenshot states, 0-23. */
 	public function setVisualCase(caseId:Int):Bool {
 		return ExplorerVisualCases.apply(this, caseId);
 	}
@@ -237,6 +242,42 @@ class UiExplorer {
 
 	function textArea():TextArea
 		return ShowcaseKit.textArea(this);
+
+	/** Focuses a text editor by its semantic label for showcase test controls. */
+	function focusTextEditor(label:String):Bool {
+		for (record in context.inspect())
+			if (record.visible && record.enabled && record.focusable && record.label == label)
+				return context.focusWidget(new WidgetId(record.id));
+		return false;
+	}
+
+	/** Sends a platform-equivalent editing shortcut to a named showcase editor. */
+	function textCommand(label:String, key:Int):Bool {
+		if (!focusTextEditor(label))
+			return false;
+		var modifiers = #if (mac || ios)
+			UiModifier.Super;
+		#else
+			UiModifier.Control;
+		#end
+		context.key(UiEventKind.KeyDown, key, modifiers);
+		return true;
+	}
+
+	function recordTextDiagnostics(value:TextEditorDiagnostics):Void {
+		if (value == null)
+			return;
+		if (value.focused)
+			state.textDiagnostics = value;
+		else if (state.textDiagnostics != null && state.textDiagnostics.key == value.key)
+			state.textDiagnostics = null;
+	}
+
+	function recordTextClipboardAction(action:String):Void
+		state.textLastClipboardAction = action;
+
+	function recordTextSubmit(label:String):Void
+		state.textLastSubmit = label;
 
 	function slider():Slider
 		return ShowcaseKit.slider(this);
