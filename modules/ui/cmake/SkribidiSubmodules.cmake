@@ -25,6 +25,17 @@ if(NK_LIBRARY_TYPE STREQUAL "SHARED" AND NOT EMSCRIPTEN)
     set_target_properties(harfbuzz PROPERTIES
         CXX_VISIBILITY_PRESET hidden
         VISIBILITY_INLINES_HIDDEN YES)
+    target_compile_definitions(harfbuzz PRIVATE
+        HB_NO_BUFFER_MESSAGE
+        HB_NO_BUFFER_SERIALIZE
+        HB_NO_BUFFER_VERIFY
+        HB_NO_MATH
+        HB_NO_META
+        HB_NO_OT_FONT_GLYPH_NAMES
+        HB_NO_OT_SHAPE_FRACTIONS)
+    if(NOT APPLE)
+        target_compile_definitions(harfbuzz PRIVATE HB_NO_AAT)
+    endif()
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
         target_compile_options(harfbuzz PRIVATE -fno-semantic-interposition)
     endif()
