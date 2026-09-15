@@ -116,6 +116,13 @@ int main(void) {
     assert(hwnd != NULL);
     SetForegroundWindow(hwnd);
     SetFocus(hwnd);
+    // Prefer the installed Japanese Microsoft IME when this runner has it.
+    // Keep the default layout as a fallback so ordinary Windows runners still
+    // validate caret positioning and committed WM_IME_CHAR behavior.
+    HKL ime_layout = LoadKeyboardLayoutW(L"0411", KLF_ACTIVATE | KLF_SUBSTITUTE_OK);
+    if (ime_layout != NULL)
+        ActivateKeyboardLayout(ime_layout, KLF_SETFORPROCESS);
+    SetFocus(hwnd);
 
     float scale = 0.0f;
     assert(nk_window_get_scale(window, &scale) == NK_OK);
