@@ -37,6 +37,8 @@ static int activate_japanese_ime_profile(void) {
         {0x33c53a50, 0xf456, 0x4884, {0xb0, 0x49, 0x85, 0xfd, 0x64, 0x3e, 0xcf, 0xed}};
     static const GUID iid_input_processor_profiles =
         {0x1f02b6c5, 0x7842, 0x4ee6, {0x8a, 0x0b, 0x9a, 0x24, 0x18, 0x3a, 0x95, 0xca}};
+    static const GUID iid_input_processor_profile_mgr =
+        {0x71c6e74c, 0x0f28, 0x11d8, {0xa8, 0x2a, 0x00, 0x06, 0x5b, 0x84, 0x43, 0x5c}};
     GUID clsid = {0};
     GUID profile = {0};
     ITfInputProcessorProfiles *profiles = NULL;
@@ -54,16 +56,28 @@ static int activate_japanese_ime_profile(void) {
                                        (void **)&profiles);
     int activated = 0;
     if (SUCCEEDED(created)) {
+        const LANGID japanese = MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN);
         HRESULT result = profiles->lpVtbl->ActivateLanguageProfile(
-            profiles, &clsid, MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN), &profile);
+            profiles, &clsid, japanese, &profile);
         activated = SUCCEEDED(result);
+        ITfInputProcessorProfileMgr *profile_mgr = NULL;
+        HRESULT queried = profiles->lpVtbl->QueryInterface(
+            profiles, &iid_input_processor_profile_mgr, (void **)&profile_mgr);
+        HRESULT process_result = E_NOINTERFACE;
+        if (SUCCEEDED(queried)) {
+            process_result = profile_mgr->lpVtbl->ActivateProfile(
+                profile_mgr, TF_PROFILETYPE_INPUTPROCESSOR, japanese, &clsid, &profile, NULL,
+                TF_IPPMF_FORPROCESS);
+            profile_mgr->lpVtbl->Release(profile_mgr);
+        }
         LANGID active_language = 0;
         GUID active_profile = {0};
         HRESULT active_result = profiles->lpVtbl->GetActiveLanguageProfile(
             profiles, &clsid, &active_language, &active_profile);
-        fprintf(stderr, "win_text_input: profile_result=0x%08lx active_result=0x%08lx "
-                        "active_language=%04x active_profile=%d\n",
-                (unsigned long)result, (unsigned long)active_result,
+        fprintf(stderr, "win_text_input: profile_result=0x%08lx process_result=0x%08lx "
+                        "active_result=0x%08lx active_language=%04x active_profile=%d\n",
+                (unsigned long)result, (unsigned long)process_result,
+                (unsigned long)active_result,
                 (unsigned int)active_language, IsEqualGUID(&active_profile, &profile) ? 1 : 0);
         profiles->lpVtbl->Release(profiles);
     }
