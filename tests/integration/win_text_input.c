@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <windows.h>
 #include <imm.h>
+#include <msctf.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -19,11 +20,39 @@ static HKL activate_japanese_layout(void) {
     for (size_t index = 0; index < sizeof(layout_ids) / sizeof(layout_ids[0]); ++index) {
         HKL layout = LoadKeyboardLayoutW(layout_ids[index], KLF_ACTIVATE | KLF_SUBSTITUTE_OK);
         if (layout != NULL) {
-            ActivateKeyboardLayout(layout, KLF_SETFORPROCESS);
+            ActivateKeyboardLayout(layout, 0);
             return layout;
         }
     }
     return NULL;
+}
+
+static int activate_japanese_ime_profile(void) {
+    GUID clsid = {0};
+    GUID profile = {0};
+    ITfInputProcessorProfiles *profiles = NULL;
+    HRESULT initialized = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    if (FAILED(initialized) && initialized != RPC_E_CHANGED_MODE)
+        return 0;
+    if (FAILED(CLSIDFromString(L"{03B5835F-F03C-411B-9CE2-AA23E1171E36}", &clsid)) ||
+        FAILED(CLSIDFromString(L"{A76C93D9-5523-4E90-AAFA-4DB112F9AC76}", &profile))) {
+        if (SUCCEEDED(initialized))
+            CoUninitialize();
+        return 0;
+    }
+    HRESULT created = CoCreateInstance(&CLSID_TF_InputProcessorProfiles, NULL,
+                                       CLSCTX_INPROC_SERVER, &IID_ITfInputProcessorProfiles,
+                                       (void **)&profiles);
+    int activated = 0;
+    if (SUCCEEDED(created)) {
+        HRESULT result = profiles->lpVtbl->ActivateLanguageProfile(
+            profiles, &clsid, MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN), &profile);
+        activated = SUCCEEDED(result);
+        profiles->lpVtbl->Release(profiles);
+    }
+    if (SUCCEEDED(initialized))
+        CoUninitialize();
+    return activated;
 }
 
 static int skip_test(nk_window window, HWND hwnd, HIMC context) {
@@ -137,6 +166,7 @@ int main(void) {
     // Keep the default layout as a fallback so ordinary Windows runners still
     // validate caret positioning and committed WM_IME_CHAR behavior.
     HKL ime_layout = activate_japanese_layout();
+    const int ime_profile = activate_japanese_ime_profile();
     SetFocus(hwnd);
     wchar_t active_layout[KL_NAMELENGTH] = {0};
     wchar_t ime_name[MAX_PATH] = {0};
@@ -144,8 +174,8 @@ int main(void) {
         GetKeyboardLayoutNameW(active_layout);
     if (ime_layout != NULL)
         ImmGetDescriptionW(ime_layout, ime_name, MAX_PATH);
-    fprintf(stderr, "win_text_input: layout=%p active=%ls ime=%ls\n",
-            (void *)ime_layout, active_layout, ime_name);
+    fprintf(stderr, "win_text_input: layout=%p active=%ls ime=%ls profile=%d\n",
+            (void *)ime_layout, active_layout, ime_name, ime_profile);
 
     float scale = 0.0f;
     assert(nk_window_get_scale(window, &scale) == NK_OK);
