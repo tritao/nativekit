@@ -88,7 +88,7 @@ nk_result NK_CALL nk_window_wrap_native(const nk_native_window *, nk_handle *) {
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_webview_create(nk_handle, const nk_webview_options *, nk_handle *) {
     return unsupported();
 }

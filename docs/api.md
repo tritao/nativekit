@@ -92,8 +92,8 @@ iOS hosts pass a caller-owned `UIView*` as `native_view` with
 The iOS backend retains the view, emits an initial geometry event, and tracks
 bounds, safe-area, and display-scale changes. The view controller remains
 responsible for forwarding lifecycle transitions. Metal surfaces, touch and
-pointer events, hardware-key events, and UIKit text editing are available on
-iOS; WebView and the remaining system services are still being added.
+pointer events, hardware-key events, UIKit text editing, and WKWebView are
+available on iOS; the remaining system services are still being added.
 
 Container size, display scale, system-bar safe insets, and software-keyboard
 inset changes produce `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED`. Geometry and
@@ -237,6 +237,10 @@ window's client view receives IME composition and committed-text transactions.
 Android, iOS, and Web use graphics-surface handles. On iOS, the surface's
 UIKit responder translates touch, indirect-pointer, hardware-key, composition,
 selection, deletion, and committed-text callbacks into the same public events.
+
+On iOS, pass the mobile-host handle to `nk_webview_create()`. The WebView is a
+caller-owned-host child and uses `WKWebView`; its URL, HTML, history, scripting,
+message, title, navigation, and failure events follow the desktop contract.
 
 The state also declares keyboard purpose, capitalization, autocorrection,
 multiline behavior, enter-key action, and a logical-pixel caret rectangle. These
