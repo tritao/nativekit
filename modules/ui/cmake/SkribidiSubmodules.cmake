@@ -1,9 +1,13 @@
-foreach(dependency IN ITEMS harfbuzz sheenbidi libunibreak budouxc skribidi)
+foreach(dependency IN ITEMS harfbuzz sheenbidi libunibreak skribidi)
     if(NOT EXISTS "${NK_VENDOR_DIR}/${dependency}/.git")
         message(FATAL_ERROR
             "${dependency} submodule is missing; run git submodule update --init")
     endif()
 endforeach()
+if(NKUI_ENABLE_BUDOUX AND NOT EXISTS "${NK_VENDOR_DIR}/budouxc/.git")
+    message(FATAL_ERROR
+        "budouxc submodule is missing; run git submodule update --init")
+endif()
 
 set(HB_BUILD_SUBSET OFF CACHE BOOL "" FORCE)
 set(HB_BUILD_UTILS OFF CACHE BOOL "" FORCE)
@@ -76,12 +80,14 @@ add_library(nkui_libunibreak STATIC
 target_include_directories(nkui_libunibreak PUBLIC
     "$<BUILD_INTERFACE:${NK_VENDOR_DIR}/libunibreak/src>")
 
-add_library(nkui_budouxc STATIC
-    "${NK_VENDOR_DIR}/budouxc/src/budoux.c")
-target_compile_features(nkui_budouxc PUBLIC c_std_17)
-target_include_directories(nkui_budouxc
-    PUBLIC "$<BUILD_INTERFACE:${NK_VENDOR_DIR}/budouxc/include>"
-    PRIVATE "${NK_VENDOR_DIR}/budouxc/src")
+if(NKUI_ENABLE_BUDOUX)
+    add_library(nkui_budouxc STATIC
+        "${NK_VENDOR_DIR}/budouxc/src/budoux.c")
+    target_compile_features(nkui_budouxc PUBLIC c_std_17)
+    target_include_directories(nkui_budouxc
+        PUBLIC "$<BUILD_INTERFACE:${NK_VENDOR_DIR}/budouxc/include>"
+        PRIVATE "${NK_VENDOR_DIR}/budouxc/src")
+endif()
 
 set(NKUI_SKRIBIDI_DIR "${NK_VENDOR_DIR}/skribidi")
 add_library(nkui_skribidi STATIC
@@ -107,12 +113,21 @@ target_include_directories(nkui_skribidi
 target_link_libraries(nkui_skribidi PRIVATE
     "$<BUILD_INTERFACE:harfbuzz>"
     "$<INSTALL_INTERFACE:NativeKit::ui_harfbuzz>"
-    nkui_sheenbidi nkui_libunibreak nkui_budouxc)
+    nkui_sheenbidi nkui_libunibreak)
+if(NKUI_ENABLE_BUDOUX)
+    target_link_libraries(nkui_skribidi PRIVATE nkui_budouxc)
+else()
+    target_compile_definitions(nkui_skribidi PRIVATE SKB_DISABLE_BUDOUX)
+endif()
 if(NOT WIN32)
     target_link_libraries(nkui_skribidi PRIVATE m)
 endif()
 
-foreach(target IN ITEMS nkui_sheenbidi nkui_libunibreak nkui_budouxc nkui_skribidi)
+set(NKUI_SKRIBIDI_TARGETS nkui_sheenbidi nkui_libunibreak nkui_skribidi)
+if(TARGET nkui_budouxc)
+    list(APPEND NKUI_SKRIBIDI_TARGETS nkui_budouxc)
+endif()
+foreach(target IN LISTS NKUI_SKRIBIDI_TARGETS)
     set_target_properties(${target} PROPERTIES
         POSITION_INDEPENDENT_CODE YES
         C_VISIBILITY_PRESET hidden)

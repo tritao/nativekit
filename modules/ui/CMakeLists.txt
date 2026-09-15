@@ -1,12 +1,15 @@
-include(cmake/SkribidiSubmodules.cmake)
-include(cmake/NanoVGSubmodules.cmake)
-
 option(NKUI_ENABLE_SECTION_GC
     "Compile UI code into discardable sections and garbage-collect unused sections"
     ON)
 option(NKUI_ENABLE_CLAY_DEBUG
     "Keep Clay's internal debug view in the NativeKit UI build"
     OFF)
+option(NKUI_ENABLE_BUDOUX
+    "Enable Skribidi's language-specific BudouX word-break models"
+    OFF)
+
+include(cmake/SkribidiSubmodules.cmake)
+include(cmake/NanoVGSubmodules.cmake)
 
 add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/api.cpp
@@ -61,9 +64,13 @@ set_target_properties(nativekit_ui PROPERTIES
 if(NKUI_ENABLE_SECTION_GC AND
    CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang" AND
    CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
-    foreach(NKUI_SIZE_TARGET IN ITEMS
-            nativekit_ui harfbuzz nkui_sheenbidi nkui_libunibreak nkui_budouxc
-            nkui_skribidi nkui_nanovg_core)
+    set(NKUI_SIZE_TARGETS
+        nativekit_ui harfbuzz nkui_sheenbidi nkui_libunibreak
+        nkui_skribidi nkui_nanovg_core)
+    if(TARGET nkui_budouxc)
+        list(APPEND NKUI_SIZE_TARGETS nkui_budouxc)
+    endif()
+    foreach(NKUI_SIZE_TARGET IN LISTS NKUI_SIZE_TARGETS)
         target_compile_options(${NKUI_SIZE_TARGET} PRIVATE
             -ffunction-sections -fdata-sections)
     endforeach()
