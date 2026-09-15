@@ -5,6 +5,7 @@ import LayoutVisualKind;
 import LayoutStyle;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.RenderNode;
+import nativekit.ui.core.TextStyleOverride;
 import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
@@ -13,18 +14,24 @@ import nativekit.ui.semantics.Semantics;
 class Text implements View {
 	public var value:String;
 	public final style:LayoutStyle;
-	public var color:Color;
+	public var color:Null<Color>;
+	public final textStyle:Null<TextStyleOverride>;
 
-	public function new(value:String, ?style:LayoutStyle, ?color:Color) {
+	public function new(value:String, ?style:LayoutStyle, ?color:Color,
+			?textStyle:TextStyleOverride) {
 		this.value = value == null ? "" : value;
 		this.style = style == null ? new LayoutStyle() : style;
-		this.color = color == null ? Color.rgba(1.0, 1.0, 1.0, 1.0) : color;
+		this.color = color;
+		this.textStyle = textStyle;
 	}
 
 	public function build(context:BuildContext):RenderNode {
 		var node = new RenderNode(context.id("text"), LayoutVisualKind.Text, style);
 		node.layout.text = value;
-		node.layout.textColor = color;
+		var resolved = context.resolveTextStyle(textStyle);
+		if (color != null)
+			resolved = resolved.withTextColor(color);
+		node.applyTextStyle(resolved);
 		node.semantics = new Semantics(AccessibilityRole.Text, value);
 		return node;
 	}

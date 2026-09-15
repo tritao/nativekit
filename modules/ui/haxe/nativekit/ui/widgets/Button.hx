@@ -8,6 +8,7 @@ import LayoutVisualKind;
 import TextWrap;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.RenderNode;
+import nativekit.ui.core.TextStyleOverride;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.State;
@@ -89,8 +90,10 @@ class Button implements View {
 		var labelNode = context.withScope(new Key("label"), function() {
 			var text = new RenderNode(context.id("label"), LayoutVisualKind.Text);
 			text.layout.text = label;
-			text.layout.textColor = context.theme.buttonLabelColor(enabled, resolvedStyle.background);
-			text.layout.paragraphStyle.wrap = TextWrap.None;
+			var labelStyle = context.resolveTextStyle(TextStyleOverride.paragraph(TextWrap.None));
+			labelStyle = labelStyle.withTextColor(
+				context.theme.buttonLabelColor(enabled, resolvedStyle.background));
+			text.applyTextStyle(labelStyle);
 			return text;
 		});
 		node.add(labelNode);

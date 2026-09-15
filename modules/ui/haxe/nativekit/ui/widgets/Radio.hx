@@ -77,7 +77,8 @@ class Radio implements View {
 
 			var text = new RenderNode(context.id("label"), LayoutVisualKind.Text);
 			text.layout.text = label;
-			text.layout.textColor = context.theme.textColor(enabled);
+			text.applyTextStyle(context.resolveTextStyle().withTextColor(
+				context.theme.textColor(enabled)));
 			node.add(text);
 			if (enabled && hasSelectHandler) {
 				var select = function(_:UiEvent) { onSelect(value); };

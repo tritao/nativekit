@@ -16,8 +16,10 @@ import TextStyle;
 import Transform2D;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.Key;
+import nativekit.ui.core.ResolvedTextStyle;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
+import nativekit.ui.core.TextStyleOverride;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
@@ -36,8 +38,8 @@ class TextField implements View {
 	public var label:Null<String>;
 	public final multiline:Bool;
 	public final style:LayoutStyle;
-	public final textStyle:TextStyle;
-	public final textColor:Color;
+	public final textStyle:Null<TextStyle>;
+	public final textColor:Null<Color>;
 	public var enabled:Bool;
 	public var onChange:Null<String->Void>;
 	public var onSubmit:Null<String->Void>;
@@ -55,9 +57,9 @@ class TextField implements View {
 		this.label = label;
 		this.multiline = multiline;
 		this.style = style == null ? defaultStyle(multiline) : style.copy();
-		this.textStyle = textStyle == null ? new TextStyle() :
+		this.textStyle = textStyle == null ? null :
 			new TextStyle(textStyle.fontSize, textStyle.font, textStyle.letterSpacing);
-		this.textColor = textColor == null ? Color.rgba(0.96, 0.97, 0.99, 1.0) : textColor;
+		this.textColor = textColor;
 		enabled = true;
 		onDiagnostics = null;
 	}
@@ -65,8 +67,17 @@ class TextField implements View {
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
 			var id = context.id("field");
-			var stored:State<TextEditorState> = acquireState(context, id, value, textStyle, multiline);
+			var resolved = context.resolveTextStyle(TextStyleOverride.fromTextStyle(textStyle));
+			if (textColor != null)
+				resolved = resolved.withTextColor(textColor);
+			var paragraph = new ParagraphStyle(resolved.paragraphStyle.wrap,
+				resolved.paragraphStyle.alignment, resolved.paragraphStyle.lineHeight,
+				resolved.paragraphStyle.direction);
+			paragraph.wrap = multiline ? TextWrap.WordCharacter : TextWrap.None;
+			resolved = new ResolvedTextStyle(resolved.textStyle, paragraph, resolved.textColor);
+			var stored:State<TextEditorState> = acquireState(context, id, value, resolved);
 			var editor:TextEditorState = cast stored.value;
+			editor.updateStyle(resolved.textStyle, resolved.paragraphStyle);
 			if (editor.syncExternal(value))
 				editor.resetCaretBlink(context.gestures.timeSeconds());
 
@@ -117,13 +128,8 @@ class TextField implements View {
 			editorContent.add(selectionNode);
 			var textNode = new RenderNode(context.id("text"), LayoutVisualKind.Text, textNodeStyle);
 			textNode.layout.text = editor.layoutText();
-			textNode.layout.textColor = textColor;
-			textNode.layout.textStyle.font = textStyle.font;
-			textNode.layout.textStyle.fontSize = textStyle.fontSize;
-			textNode.layout.textStyle.letterSpacing = textStyle.letterSpacing;
-			textNode.layout.paragraphStyle.wrap = editor.paragraphStyle.wrap;
-			textNode.layout.paragraphStyle.alignment = editor.paragraphStyle.alignment;
-			textNode.layout.paragraphStyle.direction = editor.paragraphStyle.direction;
+			textNode.applyTextStyle(new ResolvedTextStyle(editor.textStyle,
+				editor.paragraphStyle, resolved.textColor));
 			editorContent.add(textNode);
 			var paintStyle = new LayoutStyle();
 			paintStyle.width = LayoutAxis.grow();
@@ -410,15 +416,14 @@ class TextField implements View {
 	}
 
 	static function acquireState(context:BuildContext, id:nativekit.ui.core.WidgetId,
-			value:String, textStyle:TextStyle, multiline:Bool):State<TextEditorState> {
+			value:String, resolved:ResolvedTextStyle):State<TextEditorState> {
 		if (context.fonts == null || context.fonts.isDisposed())
 			throw "Text fields require fonts on their build context";
 		var fonts = context.fonts;
 		return context.resourceState(id,
 			function() {
-				var paragraph = new ParagraphStyle();
-				paragraph.wrap = multiline ? TextWrap.WordCharacter : TextWrap.None;
-				return new TextEditorState(cast fonts, value, textStyle, paragraph);
+				return new TextEditorState(cast fonts, value, resolved.textStyle,
+					resolved.paragraphStyle);
 			},
 			function(editor:TextEditorState) { editor.dispose(); });
 	}

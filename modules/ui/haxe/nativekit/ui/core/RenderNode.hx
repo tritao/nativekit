@@ -55,6 +55,21 @@ class RenderNode {
 		return child;
 	}
 
+	/** Copies resolved typography onto this node's concrete layout payload. */
+	public function applyTextStyle(style:ResolvedTextStyle):RenderNode {
+		if (style == null)
+			throw "Render text styles cannot be null";
+		layout.textColor = style.textColor;
+		layout.textStyle.font = style.textStyle.font;
+		layout.textStyle.fontSize = style.textStyle.fontSize;
+		layout.textStyle.letterSpacing = style.textStyle.letterSpacing;
+		layout.paragraphStyle.wrap = style.paragraphStyle.wrap;
+		layout.paragraphStyle.alignment = style.paragraphStyle.alignment;
+		layout.paragraphStyle.lineHeight = style.paragraphStyle.lineHeight;
+		layout.paragraphStyle.direction = style.paragraphStyle.direction;
+		return this;
+	}
+
 	public function on(kind:String, handler:UiEvent->Void, phase:String = "bubble"):RenderNode {
 		if (kind == null || kind.length == 0 || handler == null ||
 			(phase != "capture" && phase != "target" && phase != "bubble"))

@@ -2,6 +2,8 @@ package nativekit.ui.theme;
 
 import Color;
 import LayoutStyle;
+import ParagraphStyle;
+import TextStyle;
 
 /** Haxe-owned color and state palette resolved before the layout transaction. */
 class Theme {
@@ -27,6 +29,8 @@ class Theme {
 	public var panelBackground:Color;
 	public var overlayBackdrop:Color;
 	public var tooltipBackground:Color;
+	public var textStyle:TextStyle;
+	public var paragraphStyle:ParagraphStyle;
 
 	public function new() {
 		accent = Color.rgba(0.22, 0.48, 0.86, 1.0);
@@ -49,6 +53,8 @@ class Theme {
 		panelBackground = Color.rgba(0.13, 0.14, 0.17, 1.0);
 		overlayBackdrop = Color.rgba(0.0, 0.0, 0.0, 0.48);
 		tooltipBackground = Color.rgba(0.08, 0.09, 0.11, 0.96);
+		textStyle = new TextStyle();
+		paragraphStyle = new ParagraphStyle();
 	}
 
 	/** Applies state colors while preserving caller-provided normal layout styling. */

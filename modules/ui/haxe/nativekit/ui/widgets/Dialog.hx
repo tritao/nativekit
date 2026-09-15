@@ -94,7 +94,7 @@ class Dialog implements View {
 				var heading = context.withScope(new Key("title"), function() {
 					var node = new RenderNode(context.id("heading"), LayoutVisualKind.Text);
 					node.layout.text = title;
-					node.layout.textColor = context.theme.text;
+					node.applyTextStyle(context.resolveTextStyle());
 					node.semantics = new Semantics(AccessibilityRole.Heading, title);
 					return node;
 				});

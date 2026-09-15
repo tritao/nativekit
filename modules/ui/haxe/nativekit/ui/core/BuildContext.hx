@@ -19,6 +19,7 @@ class BuildContext {
 	var focusRequester:WidgetId->Bool;
 	final claimed:Map<Int, String>;
 	var scope:KeyScope;
+	var textStyleStack:Array<ResolvedTextStyle>;
 
 	public function new(stateStore:StateStore, ?fonts:FontCollection, ?textInput:TextInputBridge,
 			?clipboard:ClipboardService, ?theme:Theme, ?gestures:GestureArena,
@@ -36,6 +37,7 @@ class BuildContext {
 		focusRequester = function(_) { return false; };
 		claimed = new Map();
 		scope = new KeyScope();
+		textStyleStack = [ResolvedTextStyle.fromTheme(this.theme)];
 	}
 
 	/** Replaces the palette used by subsequently built widgets. */
@@ -43,6 +45,8 @@ class BuildContext {
 		if (theme == null)
 			throw "Build context requires a theme";
 		this.theme = theme;
+		if (textStyleStack.length <= 1)
+			textStyleStack = [ResolvedTextStyle.fromTheme(theme)];
 	}
 
 	/** Installs the UiContext focus route used by composite keyboard widgets. */
@@ -74,6 +78,30 @@ class BuildContext {
 		claimed.clear();
 		scope = new KeyScope();
 		stateStore.beginFrame();
+		textStyleStack = [ResolvedTextStyle.fromTheme(theme)];
+	}
+
+	/** Returns the concrete typography currently inherited by the build. */
+	public function currentTextStyle():ResolvedTextStyle
+		return textStyleStack[textStyleStack.length - 1];
+
+	/** Resolves a local sparse override against the current inherited style. */
+	public function resolveTextStyle(?override:TextStyleOverride):ResolvedTextStyle
+		return currentTextStyle().merge(override);
+
+	/** Builds a subtree under a nested typography scope and restores the parent scope. */
+	public function withTextStyle<T>(override:TextStyleOverride, build:Void->T):T {
+		if (override == null || build == null)
+			throw "A text style scope requires a style and callback";
+		textStyleStack.push(resolveTextStyle(override));
+		try {
+			var result = build();
+			textStyleStack.pop();
+			return result;
+		} catch (error:Dynamic) {
+			textStyleStack.pop();
+			throw error;
+		}
 	}
 
 	public function id(localKey:String):WidgetId {

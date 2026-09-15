@@ -120,6 +120,33 @@ class TextEditorState {
 		clampScrollOffset();
 	}
 
+	/** Updates inherited typography without replacing the retained editor state. */
+	public function updateStyle(nextTextStyle:TextStyle, nextParagraphStyle:ParagraphStyle):Bool {
+		ensureLive();
+		if (nextTextStyle == null || nextParagraphStyle == null)
+			throw "Text editor styles cannot be null";
+		var changed = textStyle.font != nextTextStyle.font ||
+			textStyle.fontSize != nextTextStyle.fontSize ||
+			textStyle.letterSpacing != nextTextStyle.letterSpacing ||
+			paragraphStyle.wrap != nextParagraphStyle.wrap ||
+			paragraphStyle.alignment != nextParagraphStyle.alignment ||
+			paragraphStyle.lineHeight != nextParagraphStyle.lineHeight ||
+			paragraphStyle.direction != nextParagraphStyle.direction;
+		if (!changed)
+			return false;
+		textStyle.font = nextTextStyle.font;
+		textStyle.fontSize = nextTextStyle.fontSize;
+		textStyle.letterSpacing = nextTextStyle.letterSpacing;
+		paragraphStyle.wrap = nextParagraphStyle.wrap;
+		paragraphStyle.alignment = nextParagraphStyle.alignment;
+		paragraphStyle.lineHeight = nextParagraphStyle.lineHeight;
+		paragraphStyle.direction = nextParagraphStyle.direction;
+		layout.update(layoutText(), Math.max(1.0, lastLayoutWidth), textStyle, paragraphStyle);
+		lastLayoutText = layoutText();
+		clampScrollOffset();
+		return true;
+	}
+
 	/** Inserts committed text over the current selection. */
 	public function insert(value:String):Bool {
 		if (value == null || value.length == 0)

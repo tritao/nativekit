@@ -12,10 +12,13 @@ import LayoutDirection;
 import LayoutFrame;
 import LayoutStyle;
 import LayoutVisualKind;
+import TextAlignment;
 import Rect;
 import ResolvedLayoutItem;
 import Transform2D;
 import TextLayout;
+import TextDirection;
+import TextStyle;
 import TextWrap;
 import NativeKit.InputAction;
 import NativeKit.TouchAction;
@@ -51,6 +54,7 @@ import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Padding;
 import nativekit.ui.widgets.ProgressBar;
 import nativekit.ui.widgets.Dialog;
+import nativekit.ui.widgets.DefaultTextStyle;
 import nativekit.ui.widgets.Menu;
 import nativekit.ui.widgets.MenuItem;
 import nativekit.ui.widgets.Popup;
@@ -60,6 +64,7 @@ import nativekit.ui.widgets.ScrollController;
 import nativekit.ui.widgets.ScrollView;
 import nativekit.ui.widgets.SizedBox;
 import nativekit.ui.widgets.Text;
+import nativekit.ui.core.TextStyleOverride;
 import nativekit.ui.widgets.TextEditorState;
 import nativekit.ui.widgets.TextEditorDiagnostics;
 import nativekit.ui.widgets.TextArea;
@@ -1139,7 +1144,59 @@ class FrameworkSmoke {
 		theme.buttonPressed = Color.rgba(0.7, 0.05, 0.05, 1.0);
 		theme.buttonFocused = Color.rgba(0.4, 0.2, 0.8, 1.0);
 		theme.buttonDisabled = Color.rgba(0.2, 0.2, 0.2, 1.0);
+		theme.textStyle = new TextStyle(17.0, FontFamily.Default, -0.25);
+		theme.paragraphStyle = new ParagraphStyle(TextWrap.Word, TextAlignment.Start, 21.0,
+			TextDirection.Ltr);
 		context.setTheme(theme);
+		var themedTextRoot = context.submit(new Text("Theme typography"),
+			new LayoutFrame(256.0, 192.0));
+		if (themedTextRoot.layout.textStyle.fontSize != 17.0 ||
+			themedTextRoot.layout.textStyle.letterSpacing != -0.25 ||
+			themedTextRoot.layout.paragraphStyle.wrap != TextWrap.Word ||
+			themedTextRoot.layout.paragraphStyle.lineHeight != 21.0 ||
+			themedTextRoot.layout.paragraphStyle.direction != TextDirection.Ltr ||
+			themedTextRoot.layout.textColor != theme.text)
+			return 214;
+		var inheritedColor = Color.rgba(0.24, 0.31, 0.42, 1.0);
+		var nestedColor = Color.rgba(0.76, 0.42, 0.18, 1.0);
+		var typography = new DefaultTextStyle(new Column("typography", [
+			new KeyedView("outer", new Text("Outer")),
+			new KeyedView("nested", new DefaultTextStyle(new Text("Nested"),
+				TextStyleOverride.text(28.0, null, nestedColor))),
+			new KeyedView("after", new Text("After"))
+		]), TextStyleOverride.combine(
+			TextStyleOverride.text(22.0, 1.25, inheritedColor),
+			TextStyleOverride.paragraph(null, TextAlignment.Center, 30.0, TextDirection.Rtl)));
+		var typographyRoot = context.submit(typography, new LayoutFrame(320.0, 192.0));
+		var outerText = typographyRoot.children[0];
+		var nestedText = typographyRoot.children[1];
+		var afterText = typographyRoot.children[2];
+		if (outerText.layout.textStyle.fontSize != 22.0 ||
+			outerText.layout.textStyle.letterSpacing != 1.25 ||
+			outerText.layout.paragraphStyle.alignment != TextAlignment.Center ||
+			outerText.layout.paragraphStyle.lineHeight != 30.0 ||
+			outerText.layout.paragraphStyle.direction != TextDirection.Rtl ||
+			outerText.layout.textColor != inheritedColor ||
+			nestedText.layout.textStyle.fontSize != 28.0 ||
+			nestedText.layout.textStyle.letterSpacing != 1.25 ||
+			nestedText.layout.paragraphStyle.alignment != TextAlignment.Center ||
+			nestedText.layout.textColor != nestedColor ||
+			afterText.layout.textStyle.fontSize != 22.0 ||
+			afterText.layout.textColor != inheritedColor)
+			return 215;
+		var inheritedField = new TextField("inherited-style-field", "edit");
+		var inheritedFieldRoot = context.submit(new DefaultTextStyle(inheritedField,
+			TextStyleOverride.text(19.0)), new LayoutFrame(320.0, 192.0));
+		if (inheritedFieldRoot.children[0].children[1].layout.textStyle.fontSize != 19.0)
+			return 216;
+		inheritedFieldRoot = context.submit(new DefaultTextStyle(inheritedField,
+			TextStyleOverride.text(23.0)), new LayoutFrame(320.0, 192.0));
+		var inheritedEditorState:State<TextEditorState> =
+			context.buildContext.existingState(inheritedFieldRoot.id);
+		var inheritedEditor:TextEditorState = cast inheritedEditorState.value;
+		if (inheritedFieldRoot.children[0].children[1].layout.textStyle.fontSize != 23.0 ||
+			inheritedEditor.textStyle.fontSize != 23.0)
+			return 217;
 		var themedClicks = 0;
 		var themedButton = new Button("Themed", null, function() { themedClicks++; }, "theme-key");
 		var themedFrame = new LayoutFrame(256.0, 192.0);

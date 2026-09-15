@@ -109,7 +109,8 @@ class BinaryControl implements View {
 			node.add(indicator);
 			var labelNode = new RenderNode(context.id("label"), LayoutVisualKind.Text);
 			labelNode.layout.text = label;
-			labelNode.layout.textColor = context.theme.textColor(enabled);
+			labelNode.applyTextStyle(context.resolveTextStyle().withTextColor(
+				context.theme.textColor(enabled)));
 			node.add(labelNode);
 
 			var invalidation:State<Bool> = context.state(node.id, checked);
