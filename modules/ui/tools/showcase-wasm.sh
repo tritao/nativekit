@@ -5,13 +5,31 @@ module_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 repo_dir=$(cd "$module_dir/../.." && pwd)
 haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/realtime-haxe"}
 compiler_module=${NATIVEKIT_HAXEON_COMPILER_MODULE:-"$haxeon_dir/bootstrap/compiler.hl"}
+haxe_bin=${NATIVEKIT_HAXE_BIN:-"$haxeon_dir/.tools/haxe/haxe"}
 build_dir=${NATIVEKIT_WASM_BUILD_DIR:-"$repo_dir/build-wasm"}
-artifact="$build_dir/nativekit_ui_showcase_wasm32.wasm"
+wasm_target=${NATIVEKIT_HAXEON_TARGET:-wasm32}
+wasm_target_file=${wasm_target//-/_}
+entry=ShowcaseWeb
+[[ $wasm_target == wasm-gc ]] && entry=ShowcaseWebGcEntry
+artifact="$build_dir/nativekit_ui_showcase_${wasm_target_file}.wasm"
 memory_contract=${NATIVEKIT_HAXEON_MEMORY_CONTRACT:-"$build_dir/nativekit_haxeon_memory_contract.json"}
+exception_mode=${NATIVEKIT_HAXEON_EXCEPTION_MODE:-legacy}
 
 if [[ $# -ne 0 ]]; then
     echo "usage: modules/ui/tools/showcase-wasm.sh" >&2
     exit 2
+fi
+if [[ $wasm_target != wasm32 && $wasm_target != wasm-gc ]]; then
+	echo "showcase-wasm: unsupported target $wasm_target (expected wasm32 or wasm-gc)" >&2
+	exit 2
+fi
+if [[ $wasm_target == wasm-gc && ${NATIVEKIT_HAXEON_MEMORY_STATS:-0} == 1 ]]; then
+	echo "showcase-wasm: allocator statistics are currently available only for wasm32" >&2
+	exit 2
+fi
+if [[ $wasm_target == wasm-gc && $exception_mode != legacy && $exception_mode != try-table ]]; then
+	echo "showcase-wasm: unsupported exception mode $exception_mode (expected legacy or try-table)" >&2
+	exit 2
 fi
 
 if [[ ${NATIVEKIT_HAXEON_SELF_HOSTED:-0} == 1 ]]; then
@@ -20,9 +38,9 @@ if [[ ${NATIVEKIT_HAXEON_SELF_HOSTED:-0} == 1 ]]; then
 		exit 1
 	fi
 else
-	if [[ ! -x "$haxeon_dir/.tools/haxe/haxe" ]]; then
+	if [[ ! -x "$haxe_bin" ]]; then
 		echo "showcase-wasm: Haxeon toolchain not found at $haxeon_dir" >&2
-		echo "showcase-wasm: set HAXEON_DIR to the realtime-haxe checkout" >&2
+		echo "showcase-wasm: set HAXEON_DIR and/or NATIVEKIT_HAXE_BIN to a compiler checkout and Haxe binary" >&2
 		exit 1
 	fi
 fi
@@ -66,7 +84,7 @@ else
 	HAXEON_DIR="$haxeon_dir" "$module_dir/tools/update-haxeon-wasm-hxi.sh" --check
 fi
 
-compiler=("$haxeon_dir/.tools/haxe/haxe" -cp src --run compiler.tools.HaxeonCompiler)
+compiler=("$haxe_bin" -cp src --run compiler.tools.HaxeonCompiler)
 if [[ ${NATIVEKIT_HAXEON_SELF_HOSTED:-0} == 1 ]]; then
 	compiler=("$haxeon_dir/.tools/hashlink/hl")
 	if [[ -n ${NATIVEKIT_HAXEON_DIAGNOSTICS_PORT:-} ]]; then
@@ -76,9 +94,9 @@ if [[ ${NATIVEKIT_HAXEON_SELF_HOSTED:-0} == 1 ]]; then
 fi
 
 compiler_args=(
-	--target=wasm32
+	--target="$wasm_target"
 	--output="$artifact"
-	--entry=ShowcaseWeb
+	--entry="$entry"
 	--wasm-import-memory
 	--wasm-memory-contract="$memory_contract"
 	--export=ShowcaseWeb.main
@@ -105,6 +123,7 @@ compiler_args=(
 	--ffi-projection="$module_dir/bindings/nativekit-ui-showcase.hxmap"
 	"$module_dir/examples/ui_showcase/Showcase.hx"
 	"$module_dir/examples/ui_showcase/ShowcaseWeb.hx"
+	"$module_dir/examples/ui_showcase/ShowcaseWebGcEntry.hx"
 	"$module_dir/examples/ui_showcase/UiExplorer.hx"
 	"$module_dir/examples/ui_showcase/ShowcaseCube.hx"
 	"$module_dir/haxe/nativekit/ui/core/"*.hx
@@ -130,15 +149,31 @@ compiler_args=(
 	"$repo_dir/bindings/haxe/NativeKitWindow.hx"
 	"$repo_dir/bindings/haxe/NativeKitWebView.hx"
 )
+
+# Chrome currently ships the structured exception opcodes but gates the
+# standardized try_table/exnref lowering behind an experimental flag. Keep
+# the browser-facing GC artifact usable by default, while allowing the newer
+# encoding to be selected explicitly for experiments and runtimes that support
+# it.
+compiler_env=()
+if [[ $wasm_target == wasm-gc ]]; then
+	if [[ $exception_mode == legacy ]]; then
+		compiler_env+=(HAXEON_WASM_LEGACY_EXCEPTIONS=1)
+		echo "showcase-wasm: using legacy Wasm exceptions for wasm-gc (no exnref flag required)"
+	else
+		compiler_env+=(HAXEON_WASM_LEGACY_EXCEPTIONS=0)
+		echo "showcase-wasm: using try_table Wasm exceptions for wasm-gc (experimental browser support)"
+	fi
+fi
 if [[ ${NATIVEKIT_HAXEON_MEMORY_STATS:-0} == 1 ]]; then
 	compiler_args+=(--wasm-memory-stats)
 fi
 
 if [[ -n ${NATIVEKIT_HAXEON_TIME_FILE:-} ]]; then
 	(cd "$haxeon_dir" && /usr/bin/time -f 'wall=%e user=%U sys=%S maxrss_kb=%M' \
-		-o "$NATIVEKIT_HAXEON_TIME_FILE" "${compiler[@]}" "${compiler_args[@]}")
+		-o "$NATIVEKIT_HAXEON_TIME_FILE" env "${compiler_env[@]}" "${compiler[@]}" "${compiler_args[@]}")
 else
-	(cd "$haxeon_dir" && "${compiler[@]}" "${compiler_args[@]}")
+	(cd "$haxeon_dir" && env "${compiler_env[@]}" "${compiler[@]}" "${compiler_args[@]}")
 fi
 
 node - "$artifact" <<'NODE'
@@ -150,6 +185,8 @@ const exports = WebAssembly.Module.exports(module).map(value => value.name);
 const importsMemory = imports.some(value => value.kind === 'memory' && value.module === 'env' && value.name === 'memory');
 if (!exports.includes('main') || (!exports.includes('memory') && !importsMemory))
     throw new Error('Showcase wasm is missing the main export or memory contract');
+if (process.env.NATIVEKIT_HAXEON_TARGET === 'wasm-gc' && exports.includes('memory'))
+    throw new Error('Wasm GC Showcase unexpectedly exported its imported memory');
 if (process.env.NATIVEKIT_HAXEON_MEMORY_STATS === '1') {
   for (const name of ['haxeon.memory.heap_base', 'haxeon.memory.heap_top',
       'haxeon.memory.root_base', 'haxeon.memory.root_top', 'haxeon.memory.root_limit',
@@ -158,5 +195,5 @@ if (process.env.NATIVEKIT_HAXEON_MEMORY_STATS === '1') {
       'haxeon.memory.collection_count'])
     if (!exports.includes(name)) throw new Error(`Showcase wasm is missing allocator diagnostic ${name}`);
 }
-console.log(`showcase-wasm: built ${path} (${imports.length} imports; exports ${exports.join(', ')})`);
+console.log(`showcase-wasm: built ${process.env.NATIVEKIT_HAXEON_TARGET || 'wasm32'} artifact ${path} (${imports.length} imports; exports ${exports.join(', ')})`);
 NODE

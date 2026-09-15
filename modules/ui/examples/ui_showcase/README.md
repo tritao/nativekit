@@ -77,3 +77,12 @@ host exports with the guest Wasm contract section before instantiating the
 guest. This keeps the two allocators from silently overlapping; a future
 dynamic-memory implementation must negotiate a new contract version instead of
 enabling independent growth.
+
+The browser guest defaults to Haxeon's `wasm32` target. To build the Wasm GC
+guest, use `NKUI_HAXEON_TARGET=wasm-gc tools/build-web.sh`; the Emscripten host
+and shared-memory contract remain unchanged. GC web builds use Haxeon's legacy
+structured exception encoding by default, which works in current Chrome
+without enabling the experimental `exnref` flag. Set
+`NATIVEKIT_HAXEON_EXCEPTION_MODE=try-table` to opt into the newer encoding when
+the browser/runtime supports it. The GC target currently does not support
+`NKUI_HAXEON_MEMORY_STATS`.

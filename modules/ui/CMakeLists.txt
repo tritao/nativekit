@@ -255,7 +255,11 @@ if(NK_BUILD_EXAMPLES)
     if(NOT NKUI_HAXEON_DIR)
         set(NKUI_HAXEON_DIR "${PROJECT_SOURCE_DIR}/../realtime-haxe")
     endif()
-    if(EXISTS "${NKUI_HAXEON_DIR}/.tools/haxe/haxe")
+    set(NKUI_HAXEON_HAXE_BIN "$ENV{NATIVEKIT_HAXE_BIN}")
+    if(NOT NKUI_HAXEON_HAXE_BIN)
+        set(NKUI_HAXEON_HAXE_BIN "${NKUI_HAXEON_DIR}/.tools/haxe/haxe")
+    endif()
+    if(EXISTS "${NKUI_HAXEON_HAXE_BIN}")
         file(GLOB_RECURSE NKUI_HAXEON_DEPS CONFIGURE_DEPENDS
             "${NKUI_HAXEON_DIR}/src/*.hx")
         add_custom_target(nativekit_ui_showcase
@@ -299,8 +303,28 @@ if(NK_BUILD_EXAMPLES)
         endif()
 
         if(EMSCRIPTEN)
+            set(NKUI_HAXEON_TARGET "wasm32" CACHE STRING
+                "Haxeon WebAssembly target used by the browser UI Explorer guest")
+            set_property(CACHE NKUI_HAXEON_TARGET PROPERTY STRINGS wasm32 wasm-gc)
+            if(NOT NKUI_HAXEON_TARGET STREQUAL "wasm32" AND
+               NOT NKUI_HAXEON_TARGET STREQUAL "wasm-gc")
+                message(FATAL_ERROR
+                    "Unsupported NKUI_HAXEON_TARGET=${NKUI_HAXEON_TARGET}; expected wasm32 or wasm-gc")
+            endif()
+            set(NKUI_HAXEON_EXCEPTION_MODE "legacy" CACHE STRING
+                "Wasm exception encoding used by the browser UI Explorer guest")
+            set_property(CACHE NKUI_HAXEON_EXCEPTION_MODE PROPERTY STRINGS legacy try-table)
+            if(NOT NKUI_HAXEON_EXCEPTION_MODE STREQUAL "legacy" AND
+               NOT NKUI_HAXEON_EXCEPTION_MODE STREQUAL "try-table")
+                message(FATAL_ERROR
+                    "Unsupported NKUI_HAXEON_EXCEPTION_MODE=${NKUI_HAXEON_EXCEPTION_MODE}; expected legacy or try-table")
+            endif()
             option(NKUI_HAXEON_MEMORY_STATS
                 "Export Haxeon guest allocator counters for Wasm benchmark profiling" OFF)
+            if(NKUI_HAXEON_MEMORY_STATS AND NKUI_HAXEON_TARGET STREQUAL "wasm-gc")
+                message(FATAL_ERROR
+                    "NKUI_HAXEON_MEMORY_STATS is currently supported only with NKUI_HAXEON_TARGET=wasm32")
+            endif()
             file(GLOB_RECURSE NKUI_HAXEON_GUEST_HX_DEPS CONFIGURE_DEPENDS
                 "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_showcase/*.hx"
                 "${CMAKE_CURRENT_SOURCE_DIR}/haxe/nativekit/ui/*.hx"
@@ -323,8 +347,9 @@ if(NK_BUILD_EXAMPLES)
             configure_file(
                 "${CMAKE_CURRENT_SOURCE_DIR}/cmake/wasm_memory_contract.h.in"
                 "${NKUI_HAXEON_MEMORY_CONTRACT_HEADER}" @ONLY)
+            string(REPLACE "-" "_" NKUI_HAXEON_TARGET_FILE "${NKUI_HAXEON_TARGET}")
             set(NKUI_HAXEON_GUEST_WASM
-                "${CMAKE_CURRENT_BINARY_DIR}/nativekit_ui_showcase_wasm32.wasm")
+                "${CMAKE_CURRENT_BINARY_DIR}/nativekit_ui_showcase_${NKUI_HAXEON_TARGET_FILE}.wasm")
             set(NKUI_HAXEON_MEMORY_STATS_VALUE 0)
             if(NKUI_HAXEON_MEMORY_STATS)
                 set(NKUI_HAXEON_MEMORY_STATS_VALUE 1)
@@ -333,6 +358,9 @@ if(NK_BUILD_EXAMPLES)
                 COMMAND ${CMAKE_COMMAND} -E env
                     "NATIVEKIT_WASM_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
                     "HAXEON_DIR=${NKUI_HAXEON_DIR}"
+                    "NATIVEKIT_HAXE_BIN=${NKUI_HAXEON_HAXE_BIN}"
+                    "NATIVEKIT_HAXEON_TARGET=${NKUI_HAXEON_TARGET}"
+                    "NATIVEKIT_HAXEON_EXCEPTION_MODE=${NKUI_HAXEON_EXCEPTION_MODE}"
                     "NATIVEKIT_HAXEON_MEMORY_CONTRACT=${NKUI_HAXEON_MEMORY_CONTRACT}"
                     "NATIVEKIT_HAXEON_MEMORY_STATS=${NKUI_HAXEON_MEMORY_STATS_VALUE}"
                     "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase-wasm.sh"
