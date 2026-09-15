@@ -4464,7 +4464,8 @@ nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
         return result;
     std::lock_guard lock(dialogs_mutex);
     const auto found = dialogs.find(request);
-    if (request == NK_INVALID_REQUEST_ID || found == dialogs.end() || found->second->complete)
+    if (request == NK_INVALID_REQUEST_ID || found == dialogs.end() || found->second->canceled ||
+        found->second->complete)
         return fail(NK_ERROR_INVALID_REQUEST, "invalid or completed dialog request");
     request_dialog_close(found->second);
     return NK_OK;

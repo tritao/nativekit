@@ -928,7 +928,7 @@ EM_JS(int, nk_web_share, (const char *title, const char *text, const char *uris)
         return 0;
     const titleValue = UTF8ToString(title);
     const textValue = UTF8ToString(text);
-    const uriLines = UTF8ToString(uris).split(/\r?\n/).filter(value => value.length);
+    const uriLines = UTF8ToString(uris).split(String.fromCharCode(10)).filter(value => value.length);
     const data = {title: titleValue};
     if (textValue)
         data.text = textValue;
