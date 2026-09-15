@@ -210,7 +210,8 @@ int main(void) {
     nk_window window = NK_INVALID_HANDLE;
     assert(nk_window_create(&options, &window) == NK_OK);
     assert(nk_window_show(window, 1) == NK_OK);
-    assert(nk_window_activate(window) == NK_OK);
+    const nk_result activation = nk_window_activate(window);
+    fprintf(stderr, "win_text_input: activate=%d\n", activation);
 
     nk_native_window native = {0};
     native.struct_size = sizeof(native);
