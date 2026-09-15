@@ -87,7 +87,10 @@ void observe_view(const std::shared_ptr<IOSHost> &resource, nk_handle handle) {
     resource->observer = observer;
     [resource->view addObserver:observer forKeyPath:@"bounds" options:0 context:nullptr];
     [resource->view addObserver:observer forKeyPath:@"safeAreaInsets" options:0 context:nullptr];
-    [resource->view addObserver:observer forKeyPath:@"contentScaleFactor" options:0 context:nullptr];
+    [resource->view addObserver:observer
+                     forKeyPath:@"contentScaleFactor"
+                        options:0
+                        context:nullptr];
 }
 
 } // namespace
@@ -207,5 +210,4 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO;
 }
-
 }
