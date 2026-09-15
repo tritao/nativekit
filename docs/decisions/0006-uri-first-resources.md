@@ -30,14 +30,16 @@ New resource entry points cover the non-path cases:
 
 - `nk_shell_open_resource` asks the platform to view one URI.
 - `nk_share` submits optional text and zero or more resource URIs to the system
-  share UI.
+  share UI or platform-equivalent handoff.
 - `nk_clipboard_set_resources` and `nk_clipboard_read_resources` exchange URI
   items without reducing them to paths.
 - Resource variants of open, save, and directory dialogs return URI items.
 
 Clipboard reads and dialogs stay asynchronous and correlate their completion
 events with request IDs. Sharing and shell opening report whether the request
-was handed to the platform synchronously. They do not claim that another
+was handed to the platform synchronously. On desktop systems without a common
+unpackaged share-sheet data contract, the equivalent handoff is a URI-list
+clipboard write. They do not claim that another
 application consumed the content: Android and several desktops provide no
 reliable, portable completion signal for that action.
 

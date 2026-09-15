@@ -16,6 +16,7 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
+#include "platform/resource_events.hpp"
 
 #include <gtk/gtk.h>
 #include <atk/atk.h>
@@ -1383,6 +1384,7 @@ struct DialogContext {
     nk_handle parent = NK_INVALID_HANDLE;
     uint32_t kind = 0;
     bool native_dialog = false;
+    bool resources = false;
     uint64_t generation = 0;
 };
 
@@ -1395,6 +1397,7 @@ struct ClipboardRequest {
 struct ClipboardFileOwner {
     std::vector<std::string> uris;
     std::vector<char *> pointers;
+    std::string text;
 };
 
 struct NavigationDecision {
@@ -2445,6 +2448,22 @@ void on_clipboard_uris(GtkClipboard *, gchar **uris, gpointer data) {
     if (!nk::core::is_runtime_generation(request->generation))
         return;
     nk::core::callback_boundary([&] {
+        if (request->event_kind == NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE) {
+            std::vector<nk::platform::ResourceValue> resources;
+            for (gchar **uri = uris; uri && *uri; ++uri) {
+                if (!*uri || !**uri)
+                    continue;
+                resources.push_back(nk::platform::resource_from_uri(
+                    *uri, NK_RESOURCE_READABLE));
+            }
+            nk::core::QueuedEvent event;
+            event.kind = request->event_kind;
+            event.request_id = request->request;
+            event.data_count = static_cast<uint32_t>(resources.size());
+            event.data = nk::platform::resource_payload(false, resources);
+            nk::core::push_event(std::move(event));
+            return;
+        }
         std::vector<std::string> paths;
         for (gchar **uri = uris; uri && *uri; ++uri) {
             char *path = g_filename_from_uri(*uri, nullptr, nullptr);
@@ -2463,14 +2482,40 @@ void on_clipboard_uris(GtkClipboard *, gchar **uris, gpointer data) {
     });
 }
 
-void provide_clipboard_files(GtkClipboard *, GtkSelectionData *selection, guint, gpointer data) {
+void provide_clipboard_files(GtkClipboard *, GtkSelectionData *selection, guint info, gpointer data) {
     auto *owner = static_cast<ClipboardFileOwner *>(data);
-    gtk_selection_data_set_uris(selection, owner->pointers.data());
+    if (info == 2)
+        gtk_selection_data_set_text(selection, owner->text.c_str(), -1);
+    else
+        gtk_selection_data_set_uris(selection, owner->pointers.data());
 }
 
 void clear_clipboard_files(GtkClipboard *, gpointer data) {
     clipboard_owned = false;
     delete static_cast<ClipboardFileOwner *>(data);
+}
+
+nk_result set_clipboard_uris(std::vector<std::string> uris, const char *text = nullptr) {
+    if (!ensure_gtk())
+        return NK_ERROR_UNSUPPORTED;
+    auto owner = std::make_unique<ClipboardFileOwner>();
+    owner->uris = std::move(uris);
+    if (text)
+        owner->text = text;
+    owner->pointers.reserve(owner->uris.size() + 1);
+    for (auto &uri : owner->uris)
+        owner->pointers.push_back(uri.data());
+    owner->pointers.push_back(nullptr);
+    GtkTargetEntry targets[] = {{const_cast<gchar *>("text/uri-list"), 0, 1},
+                                {const_cast<gchar *>("UTF8_STRING"), 0, 2}};
+    const auto target_count = text ? 2u : 1u;
+    if (!gtk_clipboard_set_with_data(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), targets,
+                                     target_count, provide_clipboard_files,
+                                     clear_clipboard_files, owner.get()))
+        return fail(NK_ERROR_UNKNOWN, "desktop rejected clipboard ownership");
+    owner.release();
+    clipboard_owned = true;
+    return NK_OK;
 }
 
 enum { drop_target_uri = 1, drop_target_text = 2 };
@@ -2481,11 +2526,15 @@ void on_drag_data_received(GtkWidget *, GdkDragContext *context, gint x, gint y,
     nk::core::callback_boundary([&] {
         const auto *resource = static_cast<GtkWindowResource *>(data);
         std::vector<std::string> items;
+        std::vector<nk::platform::ResourceValue> resources;
         nk_event_kind kind = NK_EVENT_DROP_TEXT;
         if (info == drop_target_uri) {
             kind = NK_EVENT_DROP_FILES;
             gchar **uris = gtk_selection_data_get_uris(selection);
             for (gchar **uri = uris; uri && *uri; ++uri) {
+                if (*uri && **uri)
+                    resources.push_back(nk::platform::resource_from_uri(
+                        *uri, NK_RESOURCE_READABLE));
                 char *path = g_filename_from_uri(*uri, nullptr, nullptr);
                 if (path) {
                     items.emplace_back(path);
@@ -2509,7 +2558,16 @@ void on_drag_data_received(GtkWidget *, GdkDragContext *context, gint x, gint y,
             event.data = string_list_payload(header, items, &nk_drop_data::strings_offset);
             nk::core::push_event(std::move(event));
         }
-        gtk_drag_finish(context, !items.empty(), FALSE, time);
+        if (!resources.empty()) {
+            nk::core::QueuedEvent resource_event;
+            resource_event.kind = NK_EVENT_RESOURCE_DROP;
+            resource_event.source = resource->handle;
+            resource_event.data_count = static_cast<uint32_t>(resources.size());
+            resource_event.data = nk::platform::resource_drop_payload(
+                static_cast<float>(x), static_cast<float>(y), {}, resources);
+            nk::core::push_event(std::move(resource_event));
+        }
+        gtk_drag_finish(context, !items.empty() || !resources.empty(), FALSE, time);
         completed = true;
     });
     if (!completed)
@@ -2539,11 +2597,23 @@ void emit_file_dialog_completion(DialogContext *context, int response) {
         g_slist_free(filenames);
     }
     nk::core::QueuedEvent event;
-    event.kind = NK_EVENT_DIALOG_PATHS_COMPLETE;
+    event.kind = context->resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE
+                                    : NK_EVENT_DIALOG_PATHS_COMPLETE;
     event.request_id = context->request;
     event.flags = context->kind;
     event.data_count = static_cast<uint32_t>(paths.size());
-    event.data = dialog_paths_payload(paths, accepted);
+    if (context->resources) {
+        const auto access = context->kind == NK_DIALOG_OPEN_RESOURCE
+                                ? NK_RESOURCE_READABLE
+                                : NK_RESOURCE_WRITABLE;
+        std::vector<nk::platform::ResourceValue> resources;
+        resources.reserve(paths.size());
+        for (auto &path : paths)
+            resources.push_back(nk::platform::resource_from_file_path(std::move(path), access));
+        event.data = nk::platform::resource_payload(accepted, resources);
+    } else {
+        event.data = dialog_paths_payload(paths, accepted);
+    }
     nk::core::push_event(std::move(event));
 }
 
@@ -2633,7 +2703,7 @@ void add_filters(GtkFileChooser *chooser, const nk_file_dialog_options *options)
 }
 
 nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_options *options,
-                            nk_request_id *out_request, uint32_t kind) {
+                            nk_request_id *out_request, uint32_t kind, bool resources = false) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     if (!options || options->struct_size < sizeof(*options) || !out_request ||
@@ -2649,9 +2719,9 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
     if (!ensure_gtk())
         return NK_ERROR_UNSUPPORTED;
     GtkFileChooserAction action = GTK_FILE_CHOOSER_ACTION_OPEN;
-    if (kind == NK_DIALOG_SAVE_FILE)
+    if (kind == NK_DIALOG_SAVE_FILE || kind == NK_DIALOG_SAVE_RESOURCE)
         action = GTK_FILE_CHOOSER_ACTION_SAVE;
-    if (kind == NK_DIALOG_SELECT_DIRECTORY)
+    if (kind == NK_DIALOG_SELECT_DIRECTORY || kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY)
         action = GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER;
     GtkFileChooserNative *chooser = gtk_file_chooser_native_new(
         options->title ? options->title : "", parent ? GTK_WINDOW(parent->window) : nullptr, action,
@@ -2666,22 +2736,32 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
     context->generation = nk::core::runtime_generation();
     context->parent = parent_handle;
     context->kind = kind;
+    context->resources = resources;
     context->native_dialog = true;
     auto *interface = GTK_FILE_CHOOSER(chooser);
     gtk_file_chooser_set_select_multiple(
-        interface, kind == NK_DIALOG_OPEN_FILE && (options->flags & NK_DIALOG_ALLOW_MULTIPLE));
+        interface, (kind == NK_DIALOG_OPEN_FILE || kind == NK_DIALOG_OPEN_RESOURCE) &&
+                       (options->flags & NK_DIALOG_ALLOW_MULTIPLE));
     gtk_file_chooser_set_do_overwrite_confirmation(
         interface, (options->flags & NK_DIALOG_CONFIRM_OVERWRITE) != 0);
     gtk_file_chooser_set_show_hidden(interface, (options->flags & NK_DIALOG_SHOW_HIDDEN) != 0);
     if (options->initial_path) {
-        if (g_file_test(options->initial_path, G_FILE_TEST_IS_DIR))
-            gtk_file_chooser_set_current_folder(interface, options->initial_path);
-        else
-            gtk_file_chooser_set_filename(interface, options->initial_path);
+        const char *initial_path = options->initial_path;
+        char *resource_path = nullptr;
+        if (resources)
+            resource_path = g_filename_from_uri(options->initial_path, nullptr, nullptr);
+        if (resource_path)
+            initial_path = resource_path;
+        if (g_file_test(initial_path, G_FILE_TEST_IS_DIR))
+            gtk_file_chooser_set_current_folder(interface, initial_path);
+        else if (!resources || resource_path)
+            gtk_file_chooser_set_filename(interface, initial_path);
+        g_free(resource_path);
     }
-    if (options->suggested_name && kind == NK_DIALOG_SAVE_FILE)
+    if (options->suggested_name &&
+        (kind == NK_DIALOG_SAVE_FILE || kind == NK_DIALOG_SAVE_RESOURCE))
         gtk_file_chooser_set_current_name(interface, options->suggested_name);
-    if (kind != NK_DIALOG_SELECT_DIRECTORY)
+    if (kind != NK_DIALOG_SELECT_DIRECTORY && kind != NK_DIALOG_SELECT_RESOURCE_DIRECTORY)
         add_filters(interface, options);
     dialogs.emplace(context->request, context.get());
     g_signal_connect(chooser, "response", G_CALLBACK(on_dialog_response), context.get());
@@ -2959,8 +3039,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_INPUT |
            NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
            NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
-           NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_IO |
-           NK_CAP_VULKAN_SURFACE | NK_CAP_ACCESSIBILITY;
+           NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_SHARING |
+           NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE | NK_CAP_ACCESSIBILITY;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -4668,6 +4748,45 @@ nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request) {
         });
 }
 
+nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources,
+                                             uint32_t resource_count) {
+    return nk::core::result_boundary(
+        "unexpected error while writing resource clipboard", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (const auto result = nk::platform::validate_resources(resources, resource_count, false);
+                result != NK_OK)
+                return result;
+            if (!ensure_gtk())
+                return NK_ERROR_UNSUPPORTED;
+            std::vector<std::string> uris;
+            uris.reserve(resource_count);
+            for (uint32_t index = 0; index < resource_count; ++index)
+                uris.emplace_back(resources[index].uri);
+            return set_clipboard_uris(std::move(uris));
+        });
+}
+
+nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while reading resource clipboard", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!out_request)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+            if (!ensure_gtk())
+                return NK_ERROR_UNSUPPORTED;
+            auto request = std::make_unique<ClipboardRequest>();
+            request->request = nk::core::next_request_id();
+            request->event_kind = NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE;
+            request->generation = nk::core::runtime_generation();
+            *out_request = request->request;
+            gtk_clipboard_request_uris(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
+                                       on_clipboard_uris, request.release());
+            return NK_OK;
+        });
+}
+
 nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, uint32_t enabled) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
@@ -4712,31 +4831,50 @@ nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource) {
     return launch_uri(resource->uri);
 }
 
-nk_result NK_CALL nk_share(const nk_share_options *) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource sharing is not implemented by the GTK backend");
+nk_result NK_CALL nk_share(const nk_share_options *options) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!options || options->struct_size < sizeof(*options) || options->flags != 0 ||
+        (!options->text && options->resource_count == 0))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid or empty share options");
+    if (const auto result = nk::platform::validate_resources(options->resources,
+                                                              options->resource_count, true);
+        result != NK_OK)
+        return result;
+    // Linux desktops have no common native share-sheet contract. Preserve the
+    // URI-first payload through the desktop clipboard as the portable equivalent.
+    if (!options->resource_count)
+        return nk_clipboard_set_text(options->text);
+    std::vector<std::string> uris;
+    uris.reserve(options->resource_count);
+    for (uint32_t index = 0; index < options->resource_count; ++index)
+        uris.emplace_back(options->resources[index].uri);
+    return set_clipboard_uris(std::move(uris), options->text);
 }
 
-nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *, uint32_t) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource clipboard is not implemented by the GTK backend");
+nk_result NK_CALL nk_dialog_open_resource(nk_handle parent, const nk_file_dialog_options *options,
+                                          nk_request_id *request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening resource dialog", [&]() -> nk_result {
+            return start_file_dialog(parent, options, request, NK_DIALOG_OPEN_RESOURCE, true);
+        });
 }
 
-nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource clipboard is not implemented by the GTK backend");
+nk_result NK_CALL nk_dialog_save_resource(nk_handle parent, const nk_file_dialog_options *options,
+                                          nk_request_id *request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening resource save dialog", [&]() -> nk_result {
+            return start_file_dialog(parent, options, request, NK_DIALOG_SAVE_RESOURCE, true);
+        });
 }
 
-nk_result NK_CALL nk_dialog_open_resource(nk_handle, const nk_file_dialog_options *,
-                                          nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the GTK backend");
-}
-
-nk_result NK_CALL nk_dialog_save_resource(nk_handle, const nk_file_dialog_options *,
-                                          nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the GTK backend");
-}
-
-nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle, const nk_file_dialog_options *,
-                                                      nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the GTK backend");
+nk_result NK_CALL nk_dialog_select_resource_directory(
+    nk_handle parent, const nk_file_dialog_options *options, nk_request_id *request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening resource directory dialog", [&]() -> nk_result {
+            return start_file_dialog(parent, options, request,
+                                     NK_DIALOG_SELECT_RESOURCE_DIRECTORY, true);
+        });
 }
 
 nk_result NK_CALL nk_shell_open_file(const char *path) {

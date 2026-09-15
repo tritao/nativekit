@@ -57,7 +57,7 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 | OpenGL / OpenGL ES | ✅ | — | — | GLES | — | Partial |
 | Metal | — | — | ✅ | — | ✅ | — |
 | Vulkan | ✅ | — | — | ✅ | 🚧 | 🚧 |
-| URI resources and sharing | Partial | Partial | Partial | ✅ | 🚧 | 🚧 |
+| URI resources and sharing | ✅ | ✅ | ✅ | ✅ | 🚧 | Partial |
 | Custom-surface accessibility | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Native interoperability | Export | Export | Export | Host view | Host view | — |
 

@@ -22,6 +22,7 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
+#include "platform/resource_events.hpp"
 #include "macos/joystick.hpp"
 
 #include <algorithm>
@@ -265,6 +266,7 @@ struct DialogContext {
     __strong NSWindow *parent = nil;
     __strong id dialog = nil;
     std::vector<uint32_t> message_results;
+    bool resources = false;
     uint64_t generation = 0;
 };
 
@@ -275,7 +277,28 @@ std::unordered_map<nk_request_id, nk_handle> evaluations;
 std::mutex notifications_mutex;
 std::unordered_map<nk_request_id, uint64_t> notifications;
 __strong NKNotificationDelegate *notification_delegate = nil;
+__strong NSMutableSet<NSSharingServicePicker *> *sharing_pickers = nil;
+__strong NSMutableDictionary<NSString *, NSURL *> *security_scoped_urls = nil;
 bool notification_center_initialized = false;
+
+void retain_security_scope(NSURL *url) {
+    if (!url.fileURL || !url.absoluteString.length)
+        return;
+    if (!security_scoped_urls)
+        security_scoped_urls = [NSMutableDictionary dictionary];
+    NSString *key = url.absoluteString;
+    if (security_scoped_urls[key])
+        return;
+    if ([url startAccessingSecurityScopedResource])
+        security_scoped_urls[key] = url;
+}
+
+void release_security_scopes() {
+    for (NSURL *url in security_scoped_urls.allValues)
+        [url stopAccessingSecurityScopedResource];
+    [security_scoped_urls removeAllObjects];
+    security_scoped_urls = nil;
+}
 
 void cancel_dialog_context(const std::shared_ptr<DialogContext> &context) {
     if ([context->dialog isKindOfClass:[NSSavePanel class]])
@@ -392,36 +415,89 @@ NSArray<NSURL *> *pasteboard_file_urls(NSPasteboard *pasteboard) {
     return files;
 }
 
+NSArray<NSURL *> *pasteboard_resource_urls(NSPasteboard *pasteboard) {
+    NSDictionary *options = @{NSPasteboardURLReadingFileURLsOnlyKey : @NO};
+    NSArray *values = [pasteboard readObjectsForClasses:@[ [NSURL class] ] options:options];
+    NSMutableArray<NSURL *> *resources = [NSMutableArray array];
+    for (id value in values)
+        if ([value isKindOfClass:[NSURL class]] && ((NSURL *)value).scheme.length)
+            [resources addObject:value];
+    if (!resources.count) {
+        NSString *url_text = [pasteboard stringForType:NSPasteboardTypeURL];
+        NSURL *url = url_text.length ? [NSURL URLWithString:url_text] : nil;
+        if (url.scheme.length)
+            [resources addObject:url];
+    }
+    return resources;
+}
+
 bool emit_drop(MacWindowResource &resource, id<NSDraggingInfo> information) noexcept {
     return nk::core::callback_boundary_or(false, [&]() -> bool {
         NSPasteboard *pasteboard = information.draggingPasteboard;
         NSArray<NSURL *> *urls = pasteboard_file_urls(pasteboard);
         std::vector<std::string> items;
+        std::vector<nk::platform::ResourceValue> resources;
         nk_event_kind kind = NK_EVENT_DROP_FILES;
         if (urls.count) {
             for (NSURL *url in urls) {
                 const bool scoped = [url startAccessingSecurityScopedResource];
-                items.push_back(utf8(url.path));
+                const auto path = utf8(url.path);
+                items.push_back(path);
+                resources.push_back(nk::platform::resource_from_uri(
+                    utf8(url.absoluteString), NK_RESOURCE_READABLE, {}, url.lastPathComponent
+                                                                        ? utf8(url.lastPathComponent)
+                                                                        : std::string{}));
                 if (scoped)
                     [url stopAccessingSecurityScopedResource];
             }
         } else {
-            NSString *text = [pasteboard stringForType:NSPasteboardTypeString];
-            if (!text)
-                return false;
-            kind = NK_EVENT_DROP_TEXT;
-            items.push_back(utf8(text));
+            NSArray<NSURL *> *resource_urls = pasteboard_resource_urls(pasteboard);
+            if (resource_urls.count) {
+                for (NSURL *url in resource_urls) {
+                    const bool scoped = [url startAccessingSecurityScopedResource];
+                    if (url.fileURL)
+                        items.push_back(utf8(url.path));
+                    resources.push_back(nk::platform::resource_from_uri(
+                        utf8(url.absoluteString), NK_RESOURCE_READABLE,
+                        {}, url.lastPathComponent ? utf8(url.lastPathComponent)
+                                                   : std::string{}));
+                    if (scoped)
+                        [url stopAccessingSecurityScopedResource];
+                }
+                if (items.empty())
+                    kind = NK_EVENT_DROP_FILES;
+            } else {
+                NSString *text = [pasteboard stringForType:NSPasteboardTypeString];
+                if (!text)
+                    return false;
+                kind = NK_EVENT_DROP_TEXT;
+                items.push_back(utf8(text));
+            }
         }
         const NSPoint point = [resource.content convertPoint:information.draggingLocation
                                                     fromView:nil];
-        nk::core::QueuedEvent event;
-        event.kind = kind;
-        event.source = resource.handle;
-        event.data_count = static_cast<uint32_t>(items.size());
-        nk_drop_data header{static_cast<int32_t>(point.x), static_cast<int32_t>(point.y),
-                            static_cast<uint32_t>(items.size()), 0};
-        event.data = string_list_payload(header, items, &nk_drop_data::strings_offset);
-        return nk::core::push_event(std::move(event)) == NK_OK;
+        if (!items.empty()) {
+            nk::core::QueuedEvent event;
+            event.kind = kind;
+            event.source = resource.handle;
+            event.data_count = static_cast<uint32_t>(items.size());
+            nk_drop_data header{static_cast<int32_t>(point.x), static_cast<int32_t>(point.y),
+                                static_cast<uint32_t>(items.size()), 0};
+            event.data = string_list_payload(header, items, &nk_drop_data::strings_offset);
+            if (nk::core::push_event(std::move(event)) != NK_OK)
+                return false;
+        }
+        if (!resources.empty()) {
+            nk::core::QueuedEvent resource_event;
+            resource_event.kind = NK_EVENT_RESOURCE_DROP;
+            resource_event.source = resource.handle;
+            resource_event.data_count = static_cast<uint32_t>(resources.size());
+            resource_event.data = nk::platform::resource_drop_payload(
+                static_cast<float>(point.x), static_cast<float>(point.y), {}, resources);
+            if (nk::core::push_event(std::move(resource_event)) != NK_OK)
+                return false;
+        }
+        return true;
     });
 }
 
@@ -1939,11 +2015,32 @@ void finish_file_dialog(nk_request_id request, NSInteger response,
                 paths.push_back(utf8(url.path));
         }
         nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_DIALOG_PATHS_COMPLETE;
+        event.kind = context->resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE
+                                        : NK_EVENT_DIALOG_PATHS_COMPLETE;
         event.request_id = request;
         event.flags = context->kind;
-        event.data_count = static_cast<uint32_t>(paths.size());
-        event.data = dialog_paths_payload(paths, accepted);
+        if (context->resources) {
+            const auto access = context->kind == NK_DIALOG_OPEN_RESOURCE
+                                    ? NK_RESOURCE_READABLE
+                                    : NK_RESOURCE_WRITABLE;
+            std::vector<nk::platform::ResourceValue> resources;
+            resources.reserve(urls.count);
+            if (accepted) {
+                for (NSURL *url in urls) {
+                    if (!url.absoluteString.length)
+                        continue;
+                    retain_security_scope(url);
+                    resources.push_back(nk::platform::resource_from_uri(
+                        utf8(url.absoluteString), access, {},
+                        url.lastPathComponent ? utf8(url.lastPathComponent) : std::string{}));
+                }
+            }
+            event.data_count = static_cast<uint32_t>(resources.size());
+            event.data = nk::platform::resource_payload(accepted, resources);
+        } else {
+            event.data_count = static_cast<uint32_t>(paths.size());
+            event.data = dialog_paths_payload(paths, accepted);
+        }
         nk::core::push_event(std::move(event));
     });
 }
@@ -1974,15 +2071,22 @@ void finish_message_dialog(nk_request_id request, NSInteger response) noexcept {
     });
 }
 
-void configure_file_panel(NSSavePanel *panel, const nk_file_dialog_options *options) {
+void configure_file_panel(NSSavePanel *panel, const nk_file_dialog_options *options,
+                          bool resources) {
     panel.title = string(options->title) ?: @"";
     panel.showsHiddenFiles = (options->flags & NK_DIALOG_SHOW_HIDDEN) != 0;
     if (options->suggested_name)
         panel.nameFieldStringValue = string(options->suggested_name) ?: @"";
     if (options->initial_path) {
         NSString *path = string(options->initial_path);
-        if (path)
-            panel.directoryURL = [NSURL fileURLWithPath:path isDirectory:YES];
+        if (path) {
+            NSURL *url = resources ? [NSURL URLWithString:path] : nil;
+            if (!url || !url.fileURL)
+                url = [NSURL fileURLWithPath:path isDirectory:YES];
+            panel.directoryURL = url.isFileURL && !url.hasDirectoryPath
+                                     ? url.URLByDeletingLastPathComponent
+                                     : url;
+        }
     }
     NSMutableArray<NSString *> *extensions = [NSMutableArray array];
     for (uint32_t index = 0; index < options->filter_count; ++index) {
@@ -1997,7 +2101,7 @@ void configure_file_panel(NSSavePanel *panel, const nk_file_dialog_options *opti
 }
 
 nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_options *options,
-                            nk_request_id *out_request, uint32_t kind) {
+                            nk_request_id *out_request, uint32_t kind, bool resources = false) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     if (!options || options->struct_size < sizeof(*options) || !out_request ||
@@ -2021,19 +2125,23 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
     context->request = nk::core::next_request_id();
     context->generation = nk::core::runtime_generation();
     context->kind = kind;
+    context->resources = resources;
     context->parent = parent ? parent->window : nil;
     NSSavePanel *panel = nil;
-    if (kind == NK_DIALOG_SAVE_FILE) {
+    if (kind == NK_DIALOG_SAVE_FILE || kind == NK_DIALOG_SAVE_RESOURCE) {
         panel = [NSSavePanel savePanel];
     } else {
         NSOpenPanel *open = [NSOpenPanel openPanel];
-        open.canChooseDirectories = kind == NK_DIALOG_SELECT_DIRECTORY;
-        open.canChooseFiles = kind != NK_DIALOG_SELECT_DIRECTORY;
+        open.canChooseDirectories = kind == NK_DIALOG_SELECT_DIRECTORY ||
+                                    kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY;
+        open.canChooseFiles = kind != NK_DIALOG_SELECT_DIRECTORY &&
+                              kind != NK_DIALOG_SELECT_RESOURCE_DIRECTORY;
         open.allowsMultipleSelection =
-            kind == NK_DIALOG_OPEN_FILE && (options->flags & NK_DIALOG_ALLOW_MULTIPLE);
+            (kind == NK_DIALOG_OPEN_FILE || kind == NK_DIALOG_OPEN_RESOURCE) &&
+            (options->flags & NK_DIALOG_ALLOW_MULTIPLE);
         panel = open;
     }
-    configure_file_panel(panel, options);
+    configure_file_panel(panel, options, resources);
     context->dialog = panel;
     {
         std::lock_guard lock(dialogs_mutex);
@@ -3287,6 +3395,7 @@ void shutdown() noexcept {
     navigation_decisions.clear();
     cancel_evaluations(NK_INVALID_HANDLE);
     pump_events();
+    release_security_scopes();
     dialogs.clear();
     monitor_handles.clear();
     nk::core::handles().clear();
@@ -3298,7 +3407,8 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_WEBVIEW |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-           NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO | NK_CAP_INPUT |
+           NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_SHARING |
+           NK_CAP_RESOURCE_IO | NK_CAP_INPUT |
            NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
            NK_CAP_WINDOW_STYLING | NK_CAP_METAL_SURFACE | NK_CAP_MONITOR |
            NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY;
@@ -5110,31 +5220,122 @@ nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource) {
     return nk_shell_open_url(resource->uri);
 }
 
-nk_result NK_CALL nk_share(const nk_share_options *) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource sharing is not implemented by the macOS backend");
+nk_result NK_CALL nk_share(const nk_share_options *options) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!options || options->struct_size < sizeof(*options) || options->flags != 0 ||
+        (!options->text && options->resource_count == 0))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid or empty share options");
+    if (const auto result = nk::platform::validate_resources(options->resources,
+                                                              options->resource_count, true);
+        result != NK_OK)
+        return result;
+    NSMutableArray *items = [NSMutableArray arrayWithCapacity:options->resource_count + 1];
+    if (options->text) {
+        NSString *text = string(options->text);
+        if (!text)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "share text is not valid UTF-8");
+        [items addObject:text];
+    }
+    for (uint32_t index = 0; index < options->resource_count; ++index) {
+        NSURL *url = [NSURL URLWithString:string(options->resources[index].uri)];
+        if (!url || !url.scheme.length)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "resource URI is not a valid URL");
+        [items addObject:url];
+    }
+    NSWindow *window = NSApp.keyWindow ?: NSApp.mainWindow;
+    NSView *anchor = window.contentView;
+    if (!anchor)
+        return fail(NK_ERROR_UNSUPPORTED, "macOS sharing requires an application window");
+    NSSharingServicePicker *picker = [[NSSharingServicePicker alloc] initWithItems:items];
+    if (!picker)
+        return fail(NK_ERROR_OUT_OF_MEMORY, "could not create macOS share picker");
+    if (!sharing_pickers)
+        sharing_pickers = [NSMutableSet set];
+    [sharing_pickers addObject:picker];
+    [picker showRelativeToRect:anchor.bounds ofView:anchor preferredEdge:NSMinYEdge];
+    return NK_OK;
 }
 
-nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *, uint32_t) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource clipboard is not implemented by the macOS backend");
+nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources,
+                                             uint32_t resource_count) {
+    return nk::core::result_boundary(
+        "unexpected error while writing resource clipboard", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (const auto result = nk::platform::validate_resources(resources, resource_count, false);
+                result != NK_OK)
+                return result;
+            NSMutableArray<NSURL *> *urls = [NSMutableArray arrayWithCapacity:resource_count];
+            for (uint32_t index = 0; index < resource_count; ++index) {
+                NSURL *url = [NSURL URLWithString:string(resources[index].uri)];
+                if (!url || !url.scheme.length)
+                    return fail(NK_ERROR_INVALID_ARGUMENT, "resource URI is not a valid URL");
+                [urls addObject:url];
+            }
+            NSPasteboard *pasteboard = NSPasteboard.generalPasteboard;
+            [pasteboard clearContents];
+            return [pasteboard writeObjects:urls]
+                       ? NK_OK
+                       : fail(NK_ERROR_UNKNOWN, "macOS rejected resource clipboard data");
+        });
 }
 
-nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource clipboard is not implemented by the macOS backend");
+nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while reading resource clipboard", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!out_request)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+            *out_request = NK_INVALID_REQUEST_ID;
+            std::vector<nk::platform::ResourceValue> resources;
+            for (NSURL *url in pasteboard_resource_urls(NSPasteboard.generalPasteboard)) {
+                if (url.fileURL)
+                    retain_security_scope(url);
+                resources.push_back(nk::platform::resource_from_uri(
+                    utf8(url.absoluteString), NK_RESOURCE_READABLE, {},
+                    url.lastPathComponent ? utf8(url.lastPathComponent) : std::string{}));
+            }
+            const auto request = nk::core::next_request_id();
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE;
+            event.request_id = request;
+            event.data_count = static_cast<uint32_t>(resources.size());
+            event.data = nk::platform::resource_payload(false, resources);
+            const auto result = nk::core::push_event(std::move(event));
+            if (result != NK_OK)
+                return fail(result, "could not queue resource clipboard result");
+            *out_request = request;
+            return NK_OK;
+        });
 }
 
-nk_result NK_CALL nk_dialog_open_resource(nk_handle, const nk_file_dialog_options *,
-                                          nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the macOS backend");
+nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
+                                          const nk_file_dialog_options *options,
+                                          nk_request_id *request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening resource dialog", [&]() -> nk_result {
+            return start_file_dialog(parent, options, request, NK_DIALOG_OPEN_RESOURCE, true);
+        });
 }
 
-nk_result NK_CALL nk_dialog_save_resource(nk_handle, const nk_file_dialog_options *,
-                                          nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the macOS backend");
+nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
+                                          const nk_file_dialog_options *options,
+                                          nk_request_id *request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening resource save dialog", [&]() -> nk_result {
+            return start_file_dialog(parent, options, request, NK_DIALOG_SAVE_RESOURCE, true);
+        });
 }
 
-nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle, const nk_file_dialog_options *,
-                                                      nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource dialogs are not implemented by the macOS backend");
+nk_result NK_CALL nk_dialog_select_resource_directory(
+    nk_handle parent, const nk_file_dialog_options *options, nk_request_id *request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening resource directory dialog", [&]() -> nk_result {
+            return start_file_dialog(parent, options, request,
+                                     NK_DIALOG_SELECT_RESOURCE_DIRECTORY, true);
+        });
 }
 
 nk_result NK_CALL nk_shell_open_file(const char *path) {

@@ -14,6 +14,7 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
+#include "platform/resource_events.hpp"
 #include "windows/joystick.hpp"
 
 #define UNICODE
@@ -95,6 +96,7 @@ struct WinDialogContext {
     uint32_t flags = 0;
     uint32_t message_kind = 0;
     uint32_t buttons = 0;
+    bool resources = false;
     std::vector<std::pair<std::wstring, std::wstring>> filters;
     std::atomic<DWORD> thread_id{0};
     std::atomic<bool> canceled{false};
@@ -1028,6 +1030,25 @@ bool open_clipboard() {
     return false;
 }
 
+UINT resource_clipboard_format() {
+    static const UINT format = RegisterClipboardFormatW(L"text/uri-list");
+    return format;
+}
+
+HGLOBAL clipboard_bytes(const std::string &value) {
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, value.size() + 1);
+    if (!memory)
+        return nullptr;
+    auto *destination = GlobalLock(memory);
+    if (!destination) {
+        GlobalFree(memory);
+        return nullptr;
+    }
+    std::memcpy(destination, value.data(), value.size());
+    GlobalUnlock(memory);
+    return memory;
+}
+
 struct ClipboardCloseGuard {
     ~ClipboardCloseGuard() { CloseClipboard(); }
 };
@@ -1058,13 +1079,20 @@ void emit_drop_files(WinWindowResource &resource, HDROP drop) noexcept {
         DragQueryPoint(drop, &point);
         const UINT count = DragQueryFileW(drop, 0xffffffffu, nullptr, 0);
         std::vector<std::string> paths;
+        std::vector<nk::platform::ResourceValue> resources;
         paths.reserve(count);
+        resources.reserve(count);
         for (UINT index = 0; index < count; ++index) {
             const UINT length = DragQueryFileW(drop, index, nullptr, 0);
             std::wstring path(static_cast<std::size_t>(length) + 1, L'\0');
             if (DragQueryFileW(drop, index, path.data(), length + 1)) {
                 path.resize(length);
-                paths.push_back(utf8(path.c_str()));
+                auto value = utf8(path.c_str());
+                if (!value.empty()) {
+                    paths.push_back(value);
+                    resources.push_back(nk::platform::resource_from_file_path(
+                        value, NK_RESOURCE_READABLE));
+                }
             }
         }
         if (!paths.empty()) {
@@ -1075,6 +1103,15 @@ void emit_drop_files(WinWindowResource &resource, HDROP drop) noexcept {
             nk_drop_data header{point.x, point.y, static_cast<uint32_t>(paths.size()), 0};
             event.data = string_list_payload(header, paths, &nk_drop_data::strings_offset);
             nk::core::push_event(std::move(event));
+            if (!resources.empty()) {
+                nk::core::QueuedEvent resource_event;
+                resource_event.kind = NK_EVENT_RESOURCE_DROP;
+                resource_event.source = resource.handle;
+                resource_event.data_count = static_cast<uint32_t>(resources.size());
+                resource_event.data = nk::platform::resource_drop_payload(
+                    static_cast<float>(point.x), static_cast<float>(point.y), {}, resources);
+                nk::core::push_event(std::move(resource_event));
+            }
         }
     } catch (...) {
     }
@@ -2201,12 +2238,24 @@ void emit_file_completion(const WinDialogContext &context, std::vector<std::stri
     if (!nk::core::is_runtime_generation(context.generation))
         return;
     nk::core::QueuedEvent event;
-    event.kind = NK_EVENT_DIALOG_PATHS_COMPLETE;
+    event.kind = context.resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE
+                                   : NK_EVENT_DIALOG_PATHS_COMPLETE;
     event.request_id = context.request;
     event.flags = context.kind;
     event.result = result;
     event.data_count = static_cast<uint32_t>(paths.size());
-    event.data = dialog_paths_payload(paths, accepted);
+    if (context.resources) {
+        const auto access = context.kind == NK_DIALOG_OPEN_RESOURCE
+                                ? NK_RESOURCE_READABLE
+                                : NK_RESOURCE_WRITABLE;
+        std::vector<nk::platform::ResourceValue> resources;
+        resources.reserve(paths.size());
+        for (auto &path : paths)
+            resources.push_back(nk::platform::resource_from_file_path(std::move(path), access));
+        event.data = nk::platform::resource_payload(accepted, resources);
+    } else {
+        event.data = dialog_paths_payload(paths, accepted);
+    }
     nk::core::push_event(std::move(event));
 }
 
@@ -2216,7 +2265,7 @@ void run_file_dialog(const std::shared_ptr<WinDialogContext> &context) noexcept 
     IFileDialog *dialog = nullptr;
     HRESULT status = E_FAIL;
     if (SUCCEEDED(initialized)) {
-        if (context->kind == NK_DIALOG_SAVE_FILE)
+        if (context->kind == NK_DIALOG_SAVE_FILE || context->kind == NK_DIALOG_SAVE_RESOURCE)
             status = CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER,
                                       IID_IFileSaveDialog, reinterpret_cast<void **>(&dialog));
         else
@@ -2229,13 +2278,16 @@ void run_file_dialog(const std::shared_ptr<WinDialogContext> &context) noexcept 
         FILEOPENDIALOGOPTIONS options = 0;
         dialog->GetOptions(&options);
         options |= FOS_FORCEFILESYSTEM | FOS_NOCHANGEDIR;
-        if (context->kind == NK_DIALOG_SELECT_DIRECTORY)
+        if (context->kind == NK_DIALOG_SELECT_DIRECTORY ||
+            context->kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY)
             options |= FOS_PICKFOLDERS;
-        if (context->kind == NK_DIALOG_OPEN_FILE && (context->flags & NK_DIALOG_ALLOW_MULTIPLE))
+        if ((context->kind == NK_DIALOG_OPEN_FILE || context->kind == NK_DIALOG_OPEN_RESOURCE) &&
+            (context->flags & NK_DIALOG_ALLOW_MULTIPLE))
             options |= FOS_ALLOWMULTISELECT;
         if (context->flags & NK_DIALOG_SHOW_HIDDEN)
             options |= FOS_FORCESHOWHIDDEN;
-        if (context->kind == NK_DIALOG_SAVE_FILE && !(context->flags & NK_DIALOG_CONFIRM_OVERWRITE))
+        if ((context->kind == NK_DIALOG_SAVE_FILE || context->kind == NK_DIALOG_SAVE_RESOURCE) &&
+            !(context->flags & NK_DIALOG_CONFIRM_OVERWRITE))
             options &= ~FOS_OVERWRITEPROMPT;
         dialog->SetOptions(options);
         if (!context->title.empty())
@@ -2263,7 +2315,7 @@ void run_file_dialog(const std::shared_ptr<WinDialogContext> &context) noexcept 
             status = dialog->Show(context->parent);
         if (SUCCEEDED(status)) {
             accepted = true;
-            if (context->kind == NK_DIALOG_OPEN_FILE &&
+            if ((context->kind == NK_DIALOG_OPEN_FILE || context->kind == NK_DIALOG_OPEN_RESOURCE) &&
                 (context->flags & NK_DIALOG_ALLOW_MULTIPLE)) {
                 IFileOpenDialog *open_dialog = nullptr;
                 IShellItemArray *items = nullptr;
@@ -2396,7 +2448,7 @@ void reap_dialogs() noexcept {
 }
 
 nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_options *options,
-                            nk_request_id *out_request, uint32_t kind) {
+                            nk_request_id *out_request, uint32_t kind, bool resources = false) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     if (!options || options->struct_size < sizeof(*options) || !out_request ||
@@ -2412,11 +2464,20 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
     context->request = nk::core::next_request_id();
     context->generation = nk::core::runtime_generation();
     context->kind = kind;
+    context->resources = resources;
     context->flags = options->flags;
     if (!copy_wide(options->title, context->title) ||
-        !copy_wide(options->initial_path, context->initial_path) ||
         !copy_wide(options->suggested_name, context->suggested_name))
         return fail(NK_ERROR_INVALID_ARGUMENT, "file dialog option is not valid UTF-8");
+    std::string initial_path;
+    if (options->initial_path && resources &&
+        nk::platform::file_path_from_uri(options->initial_path, initial_path)) {
+        context->initial_path = wide(initial_path.c_str());
+        if (context->initial_path.empty())
+            return fail(NK_ERROR_INVALID_ARGUMENT, "resource dialog initial URI is invalid");
+    } else if (!copy_wide(options->initial_path, context->initial_path)) {
+        return fail(NK_ERROR_INVALID_ARGUMENT, "file dialog option is not valid UTF-8");
+    }
     for (uint32_t index = 0; index < options->filter_count; ++index) {
         const auto &filter = options->filters[index];
         if (!filter.patterns)
@@ -2709,7 +2770,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
     nk_capabilities capabilities =
         NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
         NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
-        NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE |
+        NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR |
+        NK_CAP_POINTER_CAPTURE |
         NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING | NK_CAP_D3D11_SURFACE |
         NK_CAP_ACCESSIBILITY | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK;
 #if defined(NK_HAS_WEBVIEW2)
@@ -4613,6 +4675,109 @@ nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request) {
     }
 }
 
+nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources,
+                                             uint32_t resource_count) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (const auto result = nk::platform::validate_resources(resources, resource_count, false);
+            result != NK_OK)
+            return result;
+        std::string uri_list;
+        for (uint32_t index = 0; index < resource_count; ++index) {
+            uri_list += resources[index].uri;
+            uri_list += "\r\n";
+        }
+        auto memory = clipboard_bytes(uri_list);
+        if (!memory)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate resource clipboard data");
+        if (!open_clipboard()) {
+            GlobalFree(memory);
+            return fail(NK_ERROR_UNKNOWN, "clipboard is busy");
+        }
+        EmptyClipboard();
+        if (!SetClipboardData(resource_clipboard_format(), memory)) {
+            CloseClipboard();
+            GlobalFree(memory);
+            return fail(NK_ERROR_UNKNOWN, "Windows rejected resource clipboard data");
+        }
+        CloseClipboard();
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while writing resource clipboard");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while writing resource clipboard");
+    }
+}
+
+nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!out_request)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+        *out_request = NK_INVALID_REQUEST_ID;
+        std::vector<nk::platform::ResourceValue> resources;
+        if (IsClipboardFormatAvailable(resource_clipboard_format())) {
+            if (!open_clipboard())
+                return fail(NK_ERROR_UNKNOWN, "clipboard is busy");
+            ClipboardCloseGuard close;
+            HANDLE memory = GetClipboardData(resource_clipboard_format());
+            const auto *value = memory ? static_cast<const char *>(GlobalLock(memory)) : nullptr;
+            if (!memory || !value)
+                return fail(NK_ERROR_UNKNOWN, "could not read resource clipboard");
+            GlobalUnlockGuard unlock{static_cast<HGLOBAL>(memory)};
+            const std::string list(value);
+            std::size_t start = 0;
+            while (start < list.size()) {
+                const auto end = list.find('\n', start);
+                const auto line_end = end == std::string::npos ? list.size() : end;
+                std::string uri = list.substr(start, line_end - start);
+                if (!uri.empty() && uri.back() == '\r')
+                    uri.pop_back();
+                if (!uri.empty() && nk::platform::valid_utf8(uri) && uri.find(':') != std::string::npos)
+                    resources.push_back(nk::platform::resource_from_uri(
+                        std::move(uri), NK_RESOURCE_READABLE));
+                start = end == std::string::npos ? list.size() : end + 1;
+            }
+        } else if (IsClipboardFormatAvailable(CF_HDROP)) {
+            if (!open_clipboard())
+                return fail(NK_ERROR_UNKNOWN, "clipboard is busy");
+            ClipboardCloseGuard close;
+            HDROP drop = static_cast<HDROP>(GetClipboardData(CF_HDROP));
+            if (drop) {
+                const UINT count = DragQueryFileW(drop, 0xffffffffu, nullptr, 0);
+                for (UINT index = 0; index < count; ++index) {
+                    const UINT length = DragQueryFileW(drop, index, nullptr, 0);
+                    std::wstring path(static_cast<std::size_t>(length) + 1, L'\0');
+                    if (DragQueryFileW(drop, index, path.data(), length + 1)) {
+                        path.resize(length);
+                        const auto value = utf8(path.c_str());
+                        if (!value.empty())
+                            resources.push_back(nk::platform::resource_from_file_path(
+                                value, NK_RESOURCE_READABLE));
+                    }
+                }
+            }
+        }
+        const auto request = nk::core::next_request_id();
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE;
+        event.request_id = request;
+        event.data_count = static_cast<uint32_t>(resources.size());
+        event.data = nk::platform::resource_payload(false, resources);
+        const auto result = nk::core::push_event(std::move(event));
+        if (result != NK_OK)
+            return fail(result, "could not queue resource clipboard result");
+        *out_request = request;
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading resource clipboard");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading resource clipboard");
+    }
+}
+
 nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, uint32_t enabled) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
@@ -4637,36 +4802,76 @@ nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource) {
     return shell_open(resource->uri, true);
 }
 
-nk_result NK_CALL nk_share(const nk_share_options *) {
-    return fail(NK_ERROR_UNSUPPORTED, "resource sharing is not implemented by the Windows backend");
+nk_result NK_CALL nk_share(const nk_share_options *options) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!options || options->struct_size < sizeof(*options) || options->flags != 0 ||
+        (!options->text && options->resource_count == 0))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid or empty share options");
+    if (const auto result = nk::platform::validate_resources(options->resources,
+                                                              options->resource_count, true);
+        result != NK_OK)
+        return result;
+    // Win32 applications without a package identity cannot populate the
+    // Windows Share contract portably. Preserve the URI payload on the system
+    // clipboard so it remains available to shell-aware desktop applications.
+    if (!options->resource_count)
+        return nk_clipboard_set_text(options->text);
+    const auto result = nk_clipboard_set_resources(options->resources, options->resource_count);
+    if (result != NK_OK || !options->text)
+        return result;
+    const auto value = wide(options->text);
+    if (*options->text && value.empty())
+        return fail(NK_ERROR_INVALID_ARGUMENT, "share text is not valid UTF-8");
+    const std::size_t bytes = (value.size() + 1) * sizeof(wchar_t);
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+    if (!memory)
+        return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate share text");
+    void *destination = GlobalLock(memory);
+    if (!destination) {
+        GlobalFree(memory);
+        return fail(NK_ERROR_UNKNOWN, "could not lock share text");
+    }
+    std::memcpy(destination, value.c_str(), bytes);
+    GlobalUnlock(memory);
+    if (!open_clipboard()) {
+        GlobalFree(memory);
+        return fail(NK_ERROR_UNKNOWN, "clipboard is busy");
+    }
+    if (!SetClipboardData(CF_UNICODETEXT, memory)) {
+        CloseClipboard();
+        GlobalFree(memory);
+        return fail(NK_ERROR_UNKNOWN, "Windows rejected share text");
+    }
+    CloseClipboard();
+    return NK_OK;
 }
 
-nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *, uint32_t) {
-    return fail(NK_ERROR_UNSUPPORTED,
-                "resource clipboard is not implemented by the Windows backend");
+nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
+                                          const nk_file_dialog_options *options,
+                                          nk_request_id *request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening resource dialog", [&]() -> nk_result {
+            return start_file_dialog(parent, options, request, NK_DIALOG_OPEN_RESOURCE, true);
+        });
 }
 
-nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED,
-                "resource clipboard is not implemented by the Windows backend");
+nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
+                                          const nk_file_dialog_options *options,
+                                          nk_request_id *request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening resource save dialog", [&]() -> nk_result {
+            return start_file_dialog(parent, options, request, NK_DIALOG_SAVE_RESOURCE, true);
+        });
 }
 
-nk_result NK_CALL nk_dialog_open_resource(nk_handle, const nk_file_dialog_options *,
-                                          nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED,
-                "resource dialogs are not implemented by the Windows backend");
-}
-
-nk_result NK_CALL nk_dialog_save_resource(nk_handle, const nk_file_dialog_options *,
-                                          nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED,
-                "resource dialogs are not implemented by the Windows backend");
-}
-
-nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle, const nk_file_dialog_options *,
-                                                      nk_request_id *) {
-    return fail(NK_ERROR_UNSUPPORTED,
-                "resource dialogs are not implemented by the Windows backend");
+nk_result NK_CALL nk_dialog_select_resource_directory(
+    nk_handle parent, const nk_file_dialog_options *options, nk_request_id *request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening resource directory dialog", [&]() -> nk_result {
+            return start_file_dialog(parent, options, request,
+                                     NK_DIALOG_SELECT_RESOURCE_DIRECTORY, true);
+        });
 }
 
 nk_result NK_CALL nk_shell_open_file(const char *path) {

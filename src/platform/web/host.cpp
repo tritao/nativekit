@@ -2,6 +2,7 @@
 
 #include "core/event_queue.hpp"
 #include "core/runtime.hpp"
+#include "platform/resource_events.hpp"
 #include "nativekit_web_config.h"
 
 #include <emscripten/emscripten.h>
@@ -217,6 +218,55 @@ EM_JS(void, nk_web_set_canvas_cursor, (const char *selector, const char *cursor)
     const canvas = document.querySelector(UTF8ToString(selector));
     if (canvas)
         canvas.style.cursor = UTF8ToString(cursor);
+});
+
+EM_JS(void, nk_web_install_drop_handlers, (const char *selector), {
+    const canvas = document.querySelector(UTF8ToString(selector));
+    if (!canvas)
+        return;
+    if (canvas._nkDropHandlers)
+        return;
+    const dragover = event => event.preventDefault();
+    const drop = event => {
+        event.preventDefault();
+        const transfer = event.dataTransfer;
+        if (!transfer || !Module.ccall)
+            return;
+        const uris = [];
+        if (transfer.files && transfer.files.length) {
+            canvas._nkDropUrls = canvas._nkDropUrls || [];
+            for (const file of transfer.files) {
+                const uri = URL.createObjectURL(file);
+                canvas._nkDropUrls.push(uri);
+                uris.push(uri);
+            }
+        } else {
+            const listed = transfer.getData("text/uri-list");
+            if (listed)
+                for (const uri of listed.split(/\r?\n/))
+                    if (uri && !uri.startsWith("#"))
+                        uris.push(uri);
+        }
+        const text = transfer.getData("text/plain") || "";
+        Module.ccall("nk_web_host_resource_drop", null,
+                     ["number", "number", "string", "string"],
+                     [event.offsetX || 0, event.offsetY || 0, uris.join("\r\n"), text]);
+    };
+    canvas.addEventListener("dragover", dragover);
+    canvas.addEventListener("drop", drop);
+    canvas._nkDropHandlers = {dragover, drop};
+});
+
+EM_JS(void, nk_web_remove_drop_handlers, (const char *selector), {
+    const canvas = document.querySelector(UTF8ToString(selector));
+    if (!canvas || !canvas._nkDropHandlers)
+        return;
+    canvas.removeEventListener("dragover", canvas._nkDropHandlers.dragover);
+    canvas.removeEventListener("drop", canvas._nkDropHandlers.drop);
+    for (const uri of canvas._nkDropUrls || [])
+        URL.revokeObjectURL(uri);
+    delete canvas._nkDropUrls;
+    delete canvas._nkDropHandlers;
 });
 
 EM_JS(void, nk_web_configure_text_input,
@@ -738,6 +788,24 @@ EM_JS(int, nk_web_set_clipboard_text, (const char *text), {
     return copied ? 1 : 0;
 });
 
+EM_JS(int, nk_web_set_clipboard_resources, (const char *uris), {
+    const value = UTF8ToString(uris);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).catch(() => {});
+        return 1;
+    }
+    const input = document.createElement("textarea");
+    input.value = value;
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.focus();
+    input.select();
+    const copied = document.execCommand && document.execCommand("copy");
+    input.remove();
+    return copied ? 1 : 0;
+});
+
 EM_JS(void, nk_web_read_clipboard_text, (double request), {
     const complete = (result, value) => {
         if (Module.ccall)
@@ -749,6 +817,40 @@ EM_JS(void, nk_web_read_clipboard_text, (double request), {
         return;
     }
     navigator.clipboard.readText().then(value => complete(0, value)).catch(() => complete(-1, ""));
+});
+
+EM_JS(void, nk_web_read_clipboard_resources, (double request), {
+    const complete = (result, value) => {
+        if (Module.ccall)
+            Module.ccall("nk_web_host_clipboard_resources_complete", null,
+                         ["number", "number", "string"], [request, result, value || ""]);
+    };
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+        complete(-4, "");
+        return;
+    }
+    navigator.clipboard.readText().then(value => complete(0, value)).catch(() => complete(-1, ""));
+});
+
+EM_JS(int, nk_web_share, (const char *title, const char *text, const char *uris), {
+    if (!navigator.share)
+        return 0;
+    const titleValue = UTF8ToString(title);
+    const textValue = UTF8ToString(text);
+    const uriLines = UTF8ToString(uris).split(/\r?\n/).filter(value => value.length);
+    const data = {title: titleValue};
+    if (textValue)
+        data.text = textValue;
+    if (uriLines.length === 1 && !textValue)
+        data.url = uriLines[0];
+    else if (uriLines.length)
+        data.text = (data.text ? data.text + "\n" : "") + uriLines.join("\n");
+    try {
+        navigator.share(data).catch(() => {});
+        return 1;
+    } catch (error) {
+        return 0;
+    }
 });
 
 EM_JS(void, nk_web_fetch_resource, (const char *uri, double request), {
@@ -818,6 +920,18 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_accessibility_action(
     host_state.callbacks.accessibility_action(event, host_state.user_data);
 }
 
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_drop(
+    float x, float y, const char *uris, const char *text) {
+    if (!host_state.callbacks.drop)
+        return;
+    nk::web::ResourceDropEvent event{};
+    event.x = x;
+    event.y = y;
+    event.uris = uris;
+    event.text = text;
+    host_state.callbacks.drop(event, host_state.user_data);
+}
+
 extern "C" EMSCRIPTEN_KEEPALIVE void
 nk_web_host_clipboard_text_complete(uint32_t request, nk_result result, const char *text) {
     nk::core::QueuedEvent event;
@@ -828,6 +942,21 @@ nk_web_host_clipboard_text_complete(uint32_t request, nk_result result, const ch
         const auto length = std::strlen(text);
         const auto *first = reinterpret_cast<const std::byte *>(text);
         event.data.assign(first, first + length);
+    }
+    nk::core::push_event(std::move(event));
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_clipboard_resources_complete(
+    uint32_t request, nk_result result, const char *uris) {
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE;
+    event.request_id = static_cast<nk_request_id>(request);
+    event.result = result;
+    if (result == NK_OK && uris) {
+        const auto resources = nk::platform::resources_from_uri_list(
+            uris, NK_RESOURCE_READABLE);
+        event.data_count = static_cast<uint32_t>(resources.size());
+        event.data = nk::platform::resource_payload(false, resources);
     }
     nk::core::push_event(std::move(event));
 }
@@ -940,9 +1069,22 @@ bool set_clipboard_text(const char *text) noexcept {
     return text && nk_web_set_clipboard_text(text) != 0;
 }
 
+bool set_clipboard_resources(const char *uris) noexcept {
+    return uris && nk_web_set_clipboard_resources(uris) != 0;
+}
+
 bool read_clipboard_text(nk_request_id request) noexcept {
     nk_web_read_clipboard_text(static_cast<double>(request));
     return true;
+}
+
+bool read_clipboard_resources(nk_request_id request) noexcept {
+    nk_web_read_clipboard_resources(static_cast<double>(request));
+    return true;
+}
+
+bool share(const char *title, const char *text, const char *uris) noexcept {
+    return title && text && uris && nk_web_share(title, text, uris) != 0;
 }
 
 bool fetch_resource(const char *uri, nk_request_id request) noexcept {
@@ -1034,7 +1176,8 @@ bool install_callbacks(const HostCallbacks &callbacks, void *user_data) noexcept
     emscripten_set_webglcontextrestored_callback(canvas_selector(), &host_state, EM_TRUE,
                                                  context_callback);
     emscripten_set_pointerlockchange_callback(canvas_selector(), &host_state, EM_TRUE,
-                                              pointer_lock_callback);
+                                               pointer_lock_callback);
+    nk_web_install_drop_handlers(canvas_selector());
     return true;
 }
 
@@ -1060,6 +1203,7 @@ void remove_callbacks() noexcept {
     emscripten_set_webglcontextlost_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
     emscripten_set_webglcontextrestored_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
     emscripten_set_pointerlockchange_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
+    nk_web_remove_drop_handlers(canvas_selector());
     host_state = {};
 }
 

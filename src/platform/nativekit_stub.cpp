@@ -172,7 +172,7 @@ nk_result NK_CALL nk_shell_open_resource(const nk_resource *) {
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_share(const nk_share_options *) {
     return unsupported();
 }
@@ -228,9 +228,11 @@ nk_result NK_CALL nk_clipboard_read_files(nk_request_id *) {
     return unsupported();
 }
 #endif
+#if !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_window_set_drop_enabled(nk_handle, uint32_t) {
     return unsupported();
 }
+#endif
 #if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_notification_show(const nk_notification_options *, nk_request_id *) {
     return unsupported();

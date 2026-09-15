@@ -200,7 +200,7 @@ typedef struct nk_resource_drop {
 
 /** URI inputs are copied before return. These functions are UI-thread-only. */
 NK_API nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource);
-/** Launches the platform share UI with optional text and URI resources. */
+/** Launches the platform share UI or platform-equivalent URI handoff. */
 NK_API nk_result NK_CALL nk_share(const nk_share_options *options);
 /** Copies URI resources into the system clipboard. */
 NK_API nk_result NK_CALL nk_clipboard_set_resources(
