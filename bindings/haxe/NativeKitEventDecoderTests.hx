@@ -115,6 +115,18 @@ class NativeKitEventDecoderTests {
 			case AudioVoiceComplete(source): source.rawValue() == 16;
 			case _: false;
 		};
+		var audioTransitionEventsOk = switch [
+			NativeKitEvent.decodeContext(new NativeKitEventContext(EventKind.AudioVoiceStolen,
+				handle(21), zero, 0, 0, 0, empty)),
+			NativeKitEvent.decodeContext(new NativeKitEventContext(EventKind.AudioVoiceVirtualized,
+				handle(22), zero, 0, 0, 0, empty)),
+			NativeKitEvent.decodeContext(new NativeKitEventContext(EventKind.AudioVoiceResumed,
+				handle(23), zero, 0, 0, 0, empty))
+		] {
+			case [AudioVoiceStolen(stolen), AudioVoiceVirtualized(virtualized), AudioVoiceResumed(resumed)]:
+				stolen.rawValue() == 21 && virtualized.rawValue() == 22 && resumed.rawValue() == 23;
+			case _: false;
+		};
 		var audioReadyContext = new NativeKitEventContext(EventKind.AudioVoiceReady,
 			handle(17), zero, 0, 0, 0, empty);
 		var audioReadyOk = switch NativeKitEvent.decodeContext(audioReadyContext) {
@@ -160,6 +172,7 @@ class NativeKitEventDecoderTests {
 		return rawOk && nonMatch && editOk && typedKeyOk && typedHatOk && typedNavigationOk && accessibilityOk && taskOk && audioOk
 			&& audioReadyOk && audioFailedOk
 			&& audioClipReadyOk && audioClipFailedOk
+			&& audioTransitionEventsOk
 			&& audioDeviceEventsOk
 			&& throws(function() { NativeKitEventBytes.requireSize(haxe.io.Bytes.alloc(3), 4); })
 			&& throws(function() { NativeKitEventBytes.readU32(haxe.io.Bytes.alloc(3), 0); })

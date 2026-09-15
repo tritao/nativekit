@@ -13,6 +13,29 @@ const unsigned char tiny_wav[] = {
     1, 0, 8, 0, 'd', 'a', 't', 'a', 8, 0, 0, 0, 128, 128, 128, 128,
     128, 128, 128, 128};
 
+bool poll_audio_voice_event(nk_event_kind kind, nk_audio_voice source) {
+    for (int attempt = 0; attempt < 16; ++attempt) {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        const bool empty = event.kind == NK_EVENT_NONE;
+        const bool match = event.kind == kind && event.source == source;
+        if (match) {
+            assert(event.flags == 0);
+            assert(event.request_id == NK_INVALID_REQUEST_ID);
+            assert(event.result == NK_OK);
+            assert(event.data_count == 0);
+            assert(event.data_size == 0);
+        }
+        nk_event_release(&event);
+        if (match)
+            return true;
+        if (empty)
+            return false;
+    }
+    return false;
+}
+
 } // namespace
 
 int main() {
@@ -311,6 +334,7 @@ int main() {
     assert(nk_audio_voice_stop(second_voice) == NK_OK);
     assert(nk_audio_voice_start(first_voice) == NK_OK);
     assert(nk_audio_voice_start(second_voice) == NK_OK);
+    assert(poll_audio_voice_event(NK_EVENT_AUDIO_VOICE_STOLEN, first_voice));
     assert(nk_audio_voice_is_playing(first_voice, &state) == NK_OK && state == 0);
     assert(nk_audio_voice_is_playing(second_voice, &state) == NK_OK && state == 1);
     concurrency.steal_policy = NK_AUDIO_VOICE_STEAL_NONE;
@@ -319,9 +343,11 @@ int main() {
     assert(nk_audio_voice_stop(second_voice) == NK_OK);
     assert(nk_audio_voice_start(first_voice) == NK_OK);
     assert(nk_audio_voice_start(second_voice) == NK_OK);
+    assert(poll_audio_voice_event(NK_EVENT_AUDIO_VOICE_VIRTUALIZED, second_voice));
     assert(nk_audio_voice_is_virtualized(second_voice, &state) == NK_OK && state == 1);
     assert(nk_audio_voice_is_playing(second_voice, &state) == NK_OK && state == 1);
     assert(nk_audio_voice_stop(first_voice) == NK_OK);
+    assert(poll_audio_voice_event(NK_EVENT_AUDIO_VOICE_RESUMED, second_voice));
     assert(nk_audio_voice_is_virtualized(second_voice, &state) == NK_OK && state == 0);
     assert(nk_audio_voice_is_playing(second_voice, &state) == NK_OK && state == 1);
     concurrency.max_voices = 0;

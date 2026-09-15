@@ -2,7 +2,7 @@ import NativeKit.EventKind;
 import NativeKitEventContext;
 import NativeKitEventValue;
 
-/** Decodes lifecycle and completion events emitted by the optional audio module. */
+/** Decodes lifecycle, completion, and concurrency events emitted by the optional audio module. */
 class NativeKitAudioEvents {
 	public static function decode(c:NativeKitEventContext):Null<NativeKitEventValue>
 		return switch c.kind {
@@ -11,6 +11,9 @@ class NativeKitAudioEvents {
 			case EventKind.AudioVoiceReady: AudioVoiceReady(c.source);
 			case EventKind.AudioVoiceLoadFailed: AudioVoiceLoadFailed(c.source, c.result);
 			case EventKind.AudioVoiceComplete: AudioVoiceComplete(c.source);
+			case EventKind.AudioVoiceStolen: AudioVoiceStolen(c.source);
+			case EventKind.AudioVoiceVirtualized: AudioVoiceVirtualized(c.source);
+			case EventKind.AudioVoiceResumed: AudioVoiceResumed(c.source);
 			case EventKind.AudioDeviceStarted: AudioDeviceStarted;
 			case EventKind.AudioDeviceStopped: AudioDeviceStopped;
 			case EventKind.AudioDeviceRerouted: AudioDeviceRerouted;

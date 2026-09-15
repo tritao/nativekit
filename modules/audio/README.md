@@ -83,6 +83,10 @@ policies can reclaim an eligible equal- or lower-priority voice. With
 against the process-wide audio clock, and are promoted automatically when a
 slot opens; `nk_audio_voice_is_virtualized()` exposes that state. Stopping a
 voice or a bus immediately makes room for the highest-priority virtual voice.
+Concurrency transitions emit `NK_EVENT_AUDIO_VOICE_STOLEN`,
+`NK_EVENT_AUDIO_VOICE_VIRTUALIZED`, and `NK_EVENT_AUDIO_VOICE_RESUMED`; each
+uses the affected voice in `source` and has no payload. A stolen voice does
+not emit natural-end completion.
 
 `nk_audio_mix_snapshot` stores explicit bus volume and mute targets. Capture a
 bus's current mix with `nk_audio_mix_snapshot_capture_bus()`, or define a
@@ -124,7 +128,8 @@ Non-looping voices emit `NK_EVENT_AUDIO_VOICE_COMPLETE` when playback reaches
 the natural end. The event is queued from miniaudio's audio callback and must
 be consumed on the NativeKit UI thread with `nk_poll_event()`. Haxe clients
 receive these as `AudioVoiceReady`, `AudioVoiceLoadFailed`, and
-`AudioVoiceComplete` through `NativeKitEvents.listen()`. Device notifications
+`AudioVoiceComplete`, `AudioVoiceStolen`, `AudioVoiceVirtualized`, and
+`AudioVoiceResumed` through `NativeKitEvents.listen()`. Device notifications
 arrive as `AudioDeviceStarted`, `AudioDeviceStopped`, `AudioDeviceRerouted`,
 `AudioDeviceInterruptionBegan`, or `AudioDeviceInterruptionEnded`. Asynchronous
 clip loads arrive as `AudioClipReady` or `AudioClipLoadFailed`, including the

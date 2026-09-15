@@ -150,6 +150,7 @@ void audio_voice_load_callback(ma_async_notification *notification) noexcept;
 void audio_voice_update_load_state(AudioVoiceResource &voice) noexcept;
 void audio_voice_publish_load_event(AudioVoiceResource &voice) noexcept;
 void audio_clip_publish_load_event(AudioClipResource &clip) noexcept;
+void publish_voice_event(AudioVoiceResource &voice, nk_event_kind kind) noexcept;
 void audio_resource_load_callback(nk_request_id request, nk_result result, const void *data,
                                   uint64_t data_size, void *user_data) noexcept;
 void audio_resource_load_cleanup(void *user_data) noexcept;
@@ -238,13 +239,7 @@ void audio_voice_end_callback(void *user_data, ma_sound *) noexcept {
         return;
     voice->logically_playing.store(false, std::memory_order_release);
     voice->virtualized.store(false, std::memory_order_release);
-    const auto handle = voice->handle.load(std::memory_order_acquire);
-    if (handle == NK_INVALID_HANDLE)
-        return;
-    nk::core::QueuedEvent event;
-    event.kind = NK_EVENT_AUDIO_VOICE_COMPLETE;
-    event.source = handle;
-    nk::core::push_event(std::move(event));
+    publish_voice_event(*voice, NK_EVENT_AUDIO_VOICE_COMPLETE);
 }
 std::weak_ptr<AudioEngineResource> engine_resource;
 std::atomic<uint64_t> next_voice_order{1};
@@ -1363,6 +1358,16 @@ std::shared_ptr<AudioVoiceResource> choose_voice_to_steal(
     return selected;
 }
 
+void publish_voice_event(AudioVoiceResource &voice, nk_event_kind kind) noexcept {
+    const auto handle = voice.handle.load(std::memory_order_acquire);
+    if (handle == NK_INVALID_HANDLE)
+        return;
+    nk::core::QueuedEvent event;
+    event.kind = kind;
+    event.source = handle;
+    nk::core::push_event(std::move(event));
+}
+
 void virtualize_voice(AudioVoiceResource &voice) {
     if (voice.virtualized.load(std::memory_order_acquire))
         return;
@@ -1372,16 +1377,11 @@ void virtualize_voice(AudioVoiceResource &voice) {
     voice.virtual_cursor_frames = cursor;
     voice.virtual_start_time_frames = ma_engine_get_time_in_pcm_frames(&voice.engine->engine);
     voice.virtualized.store(true, std::memory_order_release);
+    publish_voice_event(voice, NK_EVENT_AUDIO_VOICE_VIRTUALIZED);
 }
 
 void publish_virtual_voice_completion(AudioVoiceResource &voice) {
-    const auto handle = voice.handle.load(std::memory_order_acquire);
-    if (handle == NK_INVALID_HANDLE)
-        return;
-    nk::core::QueuedEvent event;
-    event.kind = NK_EVENT_AUDIO_VOICE_COMPLETE;
-    event.source = handle;
-    nk::core::push_event(std::move(event));
+    publish_voice_event(voice, NK_EVENT_AUDIO_VOICE_COMPLETE);
 }
 
 nk_result admit_voice(AudioVoiceResource &voice,
@@ -1398,6 +1398,7 @@ nk_result admit_voice(AudioVoiceResource &voice,
                         return map_miniaudio_result(result, "could not steal an audio voice");
                     victim->logically_playing.store(false, std::memory_order_release);
                     victim->virtualized.store(false, std::memory_order_release);
+                    publish_voice_event(*victim, NK_EVENT_AUDIO_VOICE_STOLEN);
                     continue;
                 }
             }
@@ -1440,7 +1441,8 @@ bool finish_virtual_voice_if_at_end(AudioVoiceResource &voice) {
 }
 
 nk_result start_voice_backend(AudioVoiceResource &voice, const char *message) {
-    if (voice.virtualized.load(std::memory_order_acquire)) {
+    const bool was_virtualized = voice.virtualized.load(std::memory_order_acquire);
+    if (was_virtualized) {
         const auto cursor = virtual_voice_cursor(voice);
         ma_uint64 length = 0;
         if (!ma_sound_is_looping(&voice.sound) &&
@@ -1460,6 +1462,8 @@ nk_result start_voice_backend(AudioVoiceResource &voice, const char *message) {
         return map_miniaudio_result(result, message);
     voice.virtualized.store(false, std::memory_order_release);
     voice.logically_playing.store(ma_sound_is_playing(&voice.sound), std::memory_order_release);
+    if (was_virtualized)
+        publish_voice_event(voice, NK_EVENT_AUDIO_VOICE_RESUMED);
     return NK_OK;
 }
 

@@ -20,6 +20,9 @@ bool is_terminal_request_event(const QueuedEvent &event) {
         event.kind == NK_EVENT_AUDIO_DEVICE_REROUTED ||
         event.kind == NK_EVENT_AUDIO_DEVICE_INTERRUPTION_BEGAN ||
         event.kind == NK_EVENT_AUDIO_DEVICE_INTERRUPTION_ENDED ||
+        event.kind == NK_EVENT_AUDIO_VOICE_STOLEN ||
+        event.kind == NK_EVENT_AUDIO_VOICE_VIRTUALIZED ||
+        event.kind == NK_EVENT_AUDIO_VOICE_RESUMED ||
         event.kind == NK_EVENT_TASK_COMPLETE || event.kind == NK_EVENT_TASK_FAILED ||
         event.kind == NK_EVENT_TASK_CANCELLED)
         return true;

@@ -65,7 +65,11 @@ class AudioSmoke {
 		var first:Voice = null;
 		var second:Voice = null;
 		var completion:Voice = null;
+		var transitionSubscription:NativeKitEventSubscription = null;
 		var completionSubscription:NativeKitEventSubscription = null;
+		var stolenTransition = false;
+		var virtualizedTransition = false;
+		var resumedTransition = false;
 		try {
 			var resource = new Resource("file:///nativekit-audio-smoke.wav", "audio/wav", "smoke.wav");
 			if (resource.uri != "file:///nativekit-audio-smoke.wav" || resource.mimeType != "audio/wav" ||
@@ -236,6 +240,17 @@ class AudioSmoke {
 			}
 			if (!rejected)
 				throw "Haxe audio bus concurrency limit did not reject a voice";
+			transitionSubscription = runtime.events.listen(function(value) {
+				switch value {
+					case AudioVoiceStolen(source) if (source.rawValue() == first.nativeHandle().rawValue()):
+						stolenTransition = true;
+					case AudioVoiceVirtualized(source) if (source.rawValue() == second.nativeHandle().rawValue()):
+						virtualizedTransition = true;
+					case AudioVoiceResumed(source) if (source.rawValue() == second.nativeHandle().rawValue()):
+						resumedTransition = true;
+					case _:
+				}
+			});
 			first.stop();
 			second.start();
 			concurrency.stealPolicy = VoiceStealPolicy.LowestPriority;
@@ -243,6 +258,9 @@ class AudioSmoke {
 			second.stop();
 			first.start();
 			second.start();
+			while (runtime.events.poll()) {}
+			if (!stolenTransition)
+				throw "Haxe audio voice stealing event was not delivered";
 			if (first.isPlaying() || !second.isPlaying())
 				throw "Haxe audio bus priority stealing did not select the lower-priority voice";
 			concurrency.stealPolicy = VoiceStealPolicy.None;
@@ -251,11 +269,19 @@ class AudioSmoke {
 			second.stop();
 			first.start();
 			second.start();
+			while (runtime.events.poll()) {}
+			if (!virtualizedTransition)
+				throw "Haxe audio voice virtualization event was not delivered";
 			if (!second.isVirtualized() || !second.isPlaying())
 				throw "Haxe audio voice virtualization did not activate";
 			first.stop();
+			while (runtime.events.poll()) {}
+			if (!resumedTransition)
+				throw "Haxe audio voice resume event was not delivered";
 			if (second.isVirtualized() || !second.isPlaying())
 				throw "Haxe audio virtualized voice did not resume";
+			transitionSubscription.dispose();
+			transitionSubscription = null;
 			concurrency.maxVoices = 0;
 			concurrency.virtualize = false;
 			bus.setConcurrency(concurrency);
@@ -363,6 +389,8 @@ class AudioSmoke {
 				throw "Haxe audio bus did not release its child effect";
 			lowPass = null;
 		} catch (error:Dynamic) {
+			if (transitionSubscription != null)
+				transitionSubscription.dispose();
 			if (completionSubscription != null)
 				completionSubscription.dispose();
 			if (first != null)
