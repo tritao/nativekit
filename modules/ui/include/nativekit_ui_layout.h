@@ -17,8 +17,8 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 10,
-    NKUI_LAYOUT_TRANSACTION_VERSION = 9,
+    NKUI_LAYOUT_API_VERSION = 11,
+    NKUI_LAYOUT_TRANSACTION_VERSION = 10,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
     NKUI_LAYOUT_NODE_RECORD_BYTES = 220,
     NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16 * 1024 * 1024,
@@ -77,7 +77,9 @@ typedef uint32_t nkui_layout_alignment;
 enum NK_ENUM(nkui_layout_alignment) {
     NKUI_LAYOUT_ALIGNMENT_START = 0,
     NKUI_LAYOUT_ALIGNMENT_END = 1,
-    NKUI_LAYOUT_ALIGNMENT_CENTER = 2
+    NKUI_LAYOUT_ALIGNMENT_CENTER = 2,
+    /** Aligns child baselines in horizontal rows; baseline-less children use their bottom edge. */
+    NKUI_LAYOUT_ALIGNMENT_BASELINE = 3
 };
 
 /** Main-axis free-space distribution policies. */

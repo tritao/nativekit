@@ -6,7 +6,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_API_VERSION = 6;
 	const NKUI_COMMAND_VERSION = 1;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
-	const NKUI_LAYOUT_API_VERSION = 10;
+	const NKUI_LAYOUT_API_VERSION = 11;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	/**
 	 * Width divided by height; zero disables aspect-ratio sizing.
@@ -96,7 +96,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184;
 	const NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96;
 	const NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16;
-	const NKUI_LAYOUT_TRANSACTION_VERSION = 9;
+	const NKUI_LAYOUT_TRANSACTION_VERSION = 10;
 	/**
 	 * 16-bit opcode identifying one display-list command record.
 	 */
@@ -204,6 +204,10 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		NKUI_LAYOUT_ALIGNMENT_START = 0;
 		NKUI_LAYOUT_ALIGNMENT_END = 1;
 		NKUI_LAYOUT_ALIGNMENT_CENTER = 2;
+		/**
+		 * Aligns child baselines in horizontal rows; baseline-less children use their bottom edge.
+		 */
+		NKUI_LAYOUT_ALIGNMENT_BASELINE = 3;
 	}
 	/**
 	 * Bit flags stored in each node's clip-flags field.

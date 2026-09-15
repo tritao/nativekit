@@ -341,6 +341,14 @@ int main() {
         !(text_item.flags & NKUI_LAYOUT_RESOLVED_VISIBLE))
         return 19;
 
+    auto baseline = bytes;
+    write_u32(baseline, panel_record + NKUI_LAYOUT_NODE_DIRECTION_OFFSET,
+              NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT);
+    write_u32(baseline, panel_record + NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET,
+              NKUI_LAYOUT_ALIGNMENT_CENTER | (NKUI_LAYOUT_ALIGNMENT_BASELINE << 8));
+    if (nkui_layout_session_submit(session, baseline.data(), baseline.size(), &frame) != NKUI_OK)
+        return 36;
+
     auto hidden = bytes;
     write_u32(hidden, panel_record + NKUI_LAYOUT_NODE_FLAGS_OFFSET, 0);
     if (nkui_layout_session_submit(session, hidden.data(), hidden.size(), &frame) != NKUI_OK ||
@@ -360,10 +368,16 @@ int main() {
         return 8;
     invalid = bytes;
     write_u32(invalid, panel_record + NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET,
-              NKUI_LAYOUT_ALIGNMENT_CENTER | (3u << 8));
+              NKUI_LAYOUT_ALIGNMENT_BASELINE | (NKUI_LAYOUT_ALIGNMENT_CENTER << 8));
     if (nkui_layout_session_submit(session, invalid.data(), invalid.size(), &frame) !=
         NKUI_ERROR_INVALID_TRANSACTION)
         return 13;
+    invalid = bytes;
+    write_u32(invalid, panel_record + NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET,
+              NKUI_LAYOUT_ALIGNMENT_CENTER | ((NKUI_LAYOUT_ALIGNMENT_BASELINE + 1u) << 8));
+    if (nkui_layout_session_submit(session, invalid.data(), invalid.size(), &frame) !=
+        NKUI_ERROR_INVALID_TRANSACTION)
+        return 37;
     invalid = bytes;
     write_u32(invalid, panel_record + NKUI_LAYOUT_NODE_CHILD_DISTRIBUTION_OFFSET,
               NKUI_LAYOUT_DISTRIBUTION_SPACE_EVENLY + 1u);

@@ -60,12 +60,12 @@ class LayoutTransaction {
 				throw "Layout sizing values are invalid";
 			var determinant = style.transform.a * style.transform.d -
 				style.transform.b * style.transform.c;
-			var childAlignX:Int = cast style.childAlignX;
-			var childAlignY:Int = cast style.childAlignY;
-			var childDistribution:Int = cast style.childDistribution;
-			var positioning:Int = cast style.positioning;
+			var childAlignX:Int = style.childAlignX;
+			var childAlignY:Int = style.childAlignY;
+			var childDistribution:Int = style.childDistribution;
+			var positioning:Int = style.positioning;
 			if (childAlignX < LayoutAlignment.Start || childAlignX > LayoutAlignment.Center ||
-				childAlignY < LayoutAlignment.Start || childAlignY > LayoutAlignment.Center ||
+				childAlignY < LayoutAlignment.Start || childAlignY > LayoutAlignment.Baseline ||
 				childDistribution < LayoutDistribution.Start ||
 				childDistribution > LayoutDistribution.SpaceEvenly ||
 				(positioning != LayoutPositioning.Flow && positioning != LayoutPositioning.Absolute) ||
@@ -216,7 +216,7 @@ class LayoutTransaction {
 
 	static function validAxis(axis:LayoutAxis):Bool {
 		var sizing:Int = axis == null ? -1 : cast axis.sizing;
-		if (axis == null || sizing < cast LayoutSizing.Fit || sizing > cast LayoutSizing.Percent ||
+		if (axis == null || sizing < LayoutSizing.Fit || sizing > LayoutSizing.Percent ||
 			!finite(axis.value) || axis.value < 0.0 || !finite(axis.min) ||
 			axis.min < 0.0 || !finite(axis.max) || axis.max < 0.0 ||
 			!finite(axis.growWeight) || axis.growWeight <= 0.0)

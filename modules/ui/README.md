@@ -34,6 +34,9 @@ Main-axis free space is controlled with `LayoutStyle.childDistribution`, which
 supports start, center, end, space-between, space-around, and space-evenly.
 `childAlignX` and `childAlignY` now describe cross-axis alignment; distribution
 owns the axis selected by `direction`.
+`LayoutAlignment.Baseline` is available for `childAlignY` in horizontal rows;
+NativeKit aligns text baselines and explicitly bottom-aligns children without
+baseline metrics.
 
 The layout facade keeps Clay types private and uses its external paragraph
 layout callback: Skribidi provides shaping, bidirectional text, line breaks,

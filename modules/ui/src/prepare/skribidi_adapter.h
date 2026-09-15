@@ -98,6 +98,12 @@ struct TextRect {
     float height = 0.0f;
 };
 
+struct TextIntrinsicMetrics {
+    TextRect bounds{};
+    float baseline = 0.0f;
+    bool has_baseline = false;
+};
+
 struct TextLayoutLine {
     std::size_t text_offset = 0;
     std::size_t text_length = 0;
@@ -180,7 +186,7 @@ class SkribidiAdapter {
                                    FontFamily family = FontFamily::Default);
     bool add_system_fallbacks();
     bool measure_intrinsic_utf8(const char *text, const TextLayoutOptions &options,
-                                TextRect *result);
+                                TextIntrinsicMetrics *result);
     bool layout_utf8(const char *text, float width, float font_size);
     bool layout_utf8(const char *text, float width, const TextLayoutOptions &options);
     bool layout_utf8(const char *text, float width, const TextLayoutOptions &options,

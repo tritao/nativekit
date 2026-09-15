@@ -201,12 +201,14 @@ LayoutEngine::Impl::measure_intrinsic_text(Clay_StringSlice text, Clay_TextEleme
     const auto *node = static_cast<const LayoutNode *>(config->userData);
     TextLayoutOptions options = text_options_for_node(node, config);
     options.wrap = TextWrapMode::None;
-    TextRect bounds;
-    if (!state.text.measure_intrinsic_utf8(value.c_str(), options, &bounds))
+    TextIntrinsicMetrics metrics;
+    if (!state.text.measure_intrinsic_utf8(value.c_str(), options, &metrics))
         return result;
-    result.unwrappedDimensions = {bounds.width, config->lineHeight > 0
+    result.unwrappedDimensions = {metrics.bounds.width, config->lineHeight > 0
                                                     ? static_cast<float>(config->lineHeight)
-                                                    : bounds.height};
+                                                    : metrics.bounds.height};
+    result.baseline = metrics.baseline;
+    result.hasBaseline = metrics.has_baseline && std::isfinite(metrics.baseline);
     // External paragraph engines may break at character boundaries, so the
     // safe lower bound is zero unless the engine exposes a stronger one.
     result.minWidth = 0.0f;
@@ -281,6 +283,8 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
                  {static_cast<int32_t>(line.text_length), line_chars, text.chars},
                  {line.bounds.x, 0.0f}});
         }
+        result.baseline = native_layout.first_line_baseline;
+        result.hasBaseline = native_layout.has_baseline && std::isfinite(result.baseline);
         state.text_layouts[shaped.id] = std::move(native_layout);
         result.success = true;
         result.dimensions = {available_width, shaped.bounds.height};
@@ -310,8 +314,8 @@ Clay_ElementDeclaration declaration_for(const LayoutNode &node) {
                                   node.style.padding_top, node.style.padding_bottom};
     declaration.layout.childGap = node.style.child_gap;
     declaration.layout.childAlignment = {
-        static_cast<Clay_LayoutAlignmentX>(node.style.child_align_x),
-        static_cast<Clay_LayoutAlignmentY>(node.style.child_align_y)};
+        static_cast<Clay_LayoutAlignmentX>(static_cast<uint8_t>(node.style.child_align_x)),
+        static_cast<Clay_LayoutAlignmentY>(static_cast<uint8_t>(node.style.child_align_y))};
     declaration.layout.childDistribution =
         static_cast<Clay_ChildDistribution>(node.style.child_distribution);
     declaration.aspectRatio.aspectRatio = node.style.aspect_ratio;

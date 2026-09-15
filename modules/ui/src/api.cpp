@@ -438,7 +438,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             if (visual_kind < NKUI_LAYOUT_VISUAL_BOX || visual_kind > NKUI_LAYOUT_VISUAL_CUSTOM ||
                 (child_alignment & 0xffff0000u) != 0 ||
                 child_align_x > NKUI_LAYOUT_ALIGNMENT_CENTER ||
-                child_align_y > NKUI_LAYOUT_ALIGNMENT_CENTER ||
+                child_align_y > NKUI_LAYOUT_ALIGNMENT_BASELINE ||
                 child_distribution > NKUI_LAYOUT_DISTRIBUTION_SPACE_EVENLY ||
                 (node_flags & ~(NKUI_LAYOUT_NODE_VISIBLE | NKUI_LAYOUT_NODE_FLOATING |
                                 NKUI_LAYOUT_NODE_CLIP_TO_PARENT)) != 0 ||
@@ -466,8 +466,10 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             node.style.height.grow_weight = height_grow_weight;
             node.style.aspect_ratio = aspect_ratio;
             node.style.direction = static_cast<nkui::LayoutDirection>(direction);
-            node.style.child_align_x = static_cast<uint8_t>(child_align_x);
-            node.style.child_align_y = static_cast<uint8_t>(child_align_y);
+            node.style.child_align_x =
+                static_cast<nkui::LayoutAlignmentX>(child_align_x);
+            node.style.child_align_y =
+                static_cast<nkui::LayoutAlignmentY>(child_align_y);
             node.style.child_distribution =
                 static_cast<nkui::LayoutDistribution>(child_distribution);
             node.style.positioning =

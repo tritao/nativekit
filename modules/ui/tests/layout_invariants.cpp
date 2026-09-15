@@ -82,8 +82,8 @@ std::vector<LayoutNode> random_tree(Rng &rng) {
     root.style.padding_top = static_cast<uint16_t>(rng.next() % 9u);
     root.style.padding_bottom = static_cast<uint16_t>(rng.next() % 9u);
     root.style.child_gap = static_cast<uint16_t>(rng.next() % 7u);
-    root.style.child_align_x = static_cast<uint8_t>(rng.next() % 3u);
-    root.style.child_align_y = static_cast<uint8_t>(rng.next() % 3u);
+    root.style.child_align_x = static_cast<LayoutAlignmentX>(rng.next() % 3u);
+    root.style.child_align_y = static_cast<LayoutAlignmentY>(rng.next() % 4u);
     nodes.push_back(root);
 
     std::vector<std::size_t> containers{0};
@@ -101,8 +101,8 @@ std::vector<LayoutNode> random_tree(Rng &rng) {
         node.style.padding_top = static_cast<uint16_t>(rng.next() % 5u);
         node.style.padding_bottom = static_cast<uint16_t>(rng.next() % 5u);
         node.style.child_gap = static_cast<uint16_t>(rng.next() % 5u);
-        node.style.child_align_x = static_cast<uint8_t>(rng.next() % 3u);
-        node.style.child_align_y = static_cast<uint8_t>(rng.next() % 3u);
+        node.style.child_align_x = static_cast<LayoutAlignmentX>(rng.next() % 3u);
+        node.style.child_align_y = static_cast<LayoutAlignmentY>(rng.next() % 4u);
         node.style.clip_horizontal = rng.next() % 4u == 0;
         node.style.clip_vertical = rng.next() % 4u == 0;
 

@@ -392,7 +392,7 @@ bool SkribidiAdapter::add_system_fallbacks() {
 }
 
 bool SkribidiAdapter::measure_intrinsic_utf8(const char *text, const TextLayoutOptions &options,
-                                             TextRect *result) {
+                                             TextIntrinsicMetrics *result) {
     if (!valid() || !text || !std::isfinite(options.font_size) || options.font_size <= 0.0f ||
         !std::isfinite(options.letter_spacing) || !std::isfinite(options.line_height) ||
         options.line_height < 0.0f)
@@ -420,9 +420,13 @@ bool SkribidiAdapter::measure_intrinsic_utf8(const char *text, const TextLayoutO
     skb_layout_set_utf8(layout, state_->temporary, &params, text, -1,
                         SKB_ATTRIBUTE_SET_FROM_STATIC_ARRAY(attributes));
     const skb_rect2_t bounds = skb_layout_get_bounds(layout);
+    const int32_t line_count = skb_layout_get_lines_count(layout);
+    const skb_layout_line_t *lines = skb_layout_get_lines(layout);
+    const bool has_baseline = line_count > 0 && lines && std::isfinite(lines[0].baseline);
+    const float baseline = has_baseline ? lines[0].baseline - bounds.y : 0.0f;
     skb_layout_destroy(layout);
     if (result)
-        *result = {bounds.x, bounds.y, bounds.width, bounds.height};
+        *result = {{bounds.x, bounds.y, bounds.width, bounds.height}, baseline, has_baseline};
     return true;
 }
 

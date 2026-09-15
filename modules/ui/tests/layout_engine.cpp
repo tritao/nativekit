@@ -85,7 +85,8 @@ int main(int argc, char **argv) {
         snapshot.text_layouts.begin(), snapshot.text_layouts.end(),
         [](const LayoutTextLayout &layout) { return layout.node_id == 2; });
     if (text_layout == snapshot.text_layouts.end() || text_layout->id == 0 ||
-        text_layout->lines.size() < 2)
+        text_layout->lines.size() < 2 || !text_layout->has_baseline ||
+        !std::isfinite(text_layout->first_line_baseline))
         return 10;
     uint32_t title_line_count = 0;
     for (const auto &primitive : snapshot.primitives) {
@@ -380,6 +381,28 @@ int main(int argc, char **argv) {
             return 38;
     }
 
+    LayoutNode baseline_root = box(720, -1);
+    baseline_root.style.width = {LayoutSizing::Fixed, 320.0f};
+    baseline_root.style.height = {LayoutSizing::Fixed, 80.0f};
+    baseline_root.style.direction = LayoutDirection::LeftToRight;
+    baseline_root.style.child_align_y = LayoutAlignmentY::Baseline;
+    LayoutNode baseline_text = text(721, 0, "Settings");
+    baseline_text.style.width = {LayoutSizing::Fit, 0.0f};
+    baseline_text.style.height = {LayoutSizing::Fit, 0.0f};
+    LayoutNode baseline_control = box(722, 0);
+    baseline_control.style.width = {LayoutSizing::Fixed, 32.0f};
+    baseline_control.style.height = {LayoutSizing::Fixed, 32.0f};
+    std::vector<LayoutNode> baseline_nodes{baseline_root, baseline_text, baseline_control};
+    if (!engine.layout(baseline_nodes, 320.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 39;
+    const auto *baseline_text_item = snapshot.find(721);
+    const auto *baseline_control_item = snapshot.find(722);
+    if (!baseline_text_item || !baseline_control_item || !baseline_text_item->has_baseline ||
+        baseline_control_item->has_baseline ||
+        std::abs(baseline_text_item->baseline -
+                 (baseline_control_item->bounds.y + baseline_control_item->bounds.height)) >
+            0.01f)
+        return 40;
     std::cout << "PASS: Clay layout boxes, text, transforms, and geometry\n";
     return 0;
 #endif
