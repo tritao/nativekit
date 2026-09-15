@@ -41,6 +41,9 @@ baseline metrics.
 Set `LayoutStyle.wrapMode` to `LayoutWrapMode.Wrap` to flow children onto
 additional rows or columns. `rowGap` and `columnGap` keep the two axes
 unambiguous; wrapping distributes main-axis free space independently per line.
+Set `LayoutStyle.alignSelf` to override the parent cross-axis alignment for an
+individual child; `LayoutSelfAlignment.Baseline` is meaningful in horizontal
+rows.
 
 The layout facade keeps Clay types private and uses its external paragraph
 layout callback: Skribidi provides shaping, bidirectional text, line breaks,

@@ -6,8 +6,12 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	const NKUI_API_VERSION = 6;
 	const NKUI_COMMAND_VERSION = 1;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
-	const NKUI_LAYOUT_API_VERSION = 12;
+	const NKUI_LAYOUT_API_VERSION = 13;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
+	/**
+	 * Per-child cross-axis alignment override; zero inherits the parent.
+	 */
+	const NKUI_LAYOUT_NODE_ALIGN_SELF_OFFSET = 232;
 	/**
 	 * Width divided by height; zero disables aspect-ratio sizing.
 	 */
@@ -65,7 +69,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_RADIUS_BOTTOM_RIGHT_OFFSET = 80;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET = 68;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET = 72;
-	const NKUI_LAYOUT_NODE_RECORD_BYTES = 232;
+	const NKUI_LAYOUT_NODE_RECORD_BYTES = 236;
 	/**
 	 * Vertical gap between wrapped rows.
 	 */
@@ -108,7 +112,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184;
 	const NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96;
 	const NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16;
-	const NKUI_LAYOUT_TRANSACTION_VERSION = 11;
+	const NKUI_LAYOUT_TRANSACTION_VERSION = 12;
 	/**
 	 * 16-bit opcode identifying one display-list command record.
 	 */
@@ -260,6 +264,16 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	flags nkui_layout_resolved_flags : u32 {
 		NKUI_LAYOUT_RESOLVED_VISIBLE = 1;
 		NKUI_LAYOUT_RESOLVED_HAS_BASELINE = 2;
+	}
+	/**
+	 * Optional per-child cross-axis alignment override.
+	 */
+	enum nkui_layout_self_alignment : u32 {
+		NKUI_LAYOUT_SELF_ALIGNMENT_INHERIT = 0;
+		NKUI_LAYOUT_SELF_ALIGNMENT_START = 1;
+		NKUI_LAYOUT_SELF_ALIGNMENT_END = 2;
+		NKUI_LAYOUT_SELF_ALIGNMENT_CENTER = 3;
+		NKUI_LAYOUT_SELF_ALIGNMENT_BASELINE = 4;
 	}
 	/**
 	 * Sizing modes encoded for each node axis.

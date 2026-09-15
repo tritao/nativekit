@@ -366,6 +366,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             uint16_t row_gap = 0;
             uint16_t column_gap = 0;
             uint32_t wrap_mode = 0;
+            uint32_t align_self = 0;
             if (!read_node_u32(record, NKUI_LAYOUT_NODE_ID_OFFSET, id) ||
                 !read_node_i32(record, NKUI_LAYOUT_NODE_PARENT_OFFSET, node.parent) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET, visual_kind) ||
@@ -424,6 +425,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_node_u32(record, NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET, child_alignment) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_CHILD_DISTRIBUTION_OFFSET,
                                child_distribution) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_ALIGN_SELF_OFFSET, align_self) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_POSITION_X_OFFSET, position_x) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_POSITION_Y_OFFSET, position_y) ||
                 !read_node_i32(record, NKUI_LAYOUT_NODE_Z_INDEX_OFFSET, z_index) ||
@@ -447,6 +449,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 child_align_y > NKUI_LAYOUT_ALIGNMENT_BASELINE ||
                 child_distribution > NKUI_LAYOUT_DISTRIBUTION_SPACE_EVENLY ||
                 wrap_mode > NKUI_LAYOUT_WRAP_WRAP ||
+                align_self > NKUI_LAYOUT_SELF_ALIGNMENT_BASELINE ||
                 (node_flags & ~(NKUI_LAYOUT_NODE_VISIBLE | NKUI_LAYOUT_NODE_FLOATING |
                                 NKUI_LAYOUT_NODE_CLIP_TO_PARENT)) != 0 ||
                 (clip_to_parent && !floating) || z_index < std::numeric_limits<int16_t>::min() ||
@@ -482,6 +485,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             node.style.row_gap = row_gap;
             node.style.column_gap = column_gap;
             node.style.wrap_mode = static_cast<nkui::LayoutWrapMode>(wrap_mode);
+            node.style.align_self = static_cast<nkui::LayoutSelfAlignment>(align_self);
             node.style.positioning =
                 floating ? nkui::LayoutPositioning::Absolute : nkui::LayoutPositioning::Flow;
             node.style.position_x = position_x;

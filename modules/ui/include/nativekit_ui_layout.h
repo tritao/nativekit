@@ -17,10 +17,10 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 12,
-    NKUI_LAYOUT_TRANSACTION_VERSION = 11,
+    NKUI_LAYOUT_API_VERSION = 13,
+    NKUI_LAYOUT_TRANSACTION_VERSION = 12,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
-    NKUI_LAYOUT_NODE_RECORD_BYTES = 232,
+    NKUI_LAYOUT_NODE_RECORD_BYTES = 236,
     NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16 * 1024 * 1024,
     NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96
 };
@@ -100,6 +100,16 @@ enum NK_ENUM(nkui_layout_wrap_mode) {
     NKUI_LAYOUT_WRAP_WRAP = 1
 };
 
+/** Optional per-child cross-axis alignment override. */
+typedef uint32_t nkui_layout_self_alignment;
+enum NK_ENUM(nkui_layout_self_alignment) {
+    NKUI_LAYOUT_SELF_ALIGNMENT_INHERIT = 0,
+    NKUI_LAYOUT_SELF_ALIGNMENT_START = 1,
+    NKUI_LAYOUT_SELF_ALIGNMENT_END = 2,
+    NKUI_LAYOUT_SELF_ALIGNMENT_CENTER = 3,
+    NKUI_LAYOUT_SELF_ALIGNMENT_BASELINE = 4
+};
+
 /** Byte offsets within each fixed-size node record. */
 enum {
     NKUI_LAYOUT_NODE_ID_OFFSET = 0,
@@ -168,7 +178,9 @@ enum {
     /** Horizontal gap between wrapped columns. */
     NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET = 224,
     /** Wrap policy: zero keeps one row/column, one enables wrapping. */
-    NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET = 228
+    NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET = 228,
+    /** Per-child cross-axis alignment override; zero inherits the parent. */
+    NKUI_LAYOUT_NODE_ALIGN_SELF_OFFSET = 232
 };
 
 /** Opaque retained layout session used by a Haxe-owned component tree. */

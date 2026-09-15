@@ -80,6 +80,14 @@ enum class LayoutWrapMode : uint8_t {
     Wrap,
 };
 
+enum class LayoutSelfAlignment : uint8_t {
+    Inherit = 0,
+    Start,
+    End,
+    Center,
+    Baseline,
+};
+
 enum class LayoutDistribution : uint8_t {
     Start = 0,
     Center,
@@ -143,6 +151,7 @@ struct LayoutStyle {
     uint16_t row_gap = 0;
     uint16_t column_gap = 0;
     LayoutWrapMode wrap_mode = LayoutWrapMode::NoWrap;
+    LayoutSelfAlignment align_self = LayoutSelfAlignment::Inherit;
     LayoutAlignmentX child_align_x = LayoutAlignmentX::Start;
     LayoutAlignmentY child_align_y = LayoutAlignmentY::Start;
     LayoutDistribution child_distribution = LayoutDistribution::Start;

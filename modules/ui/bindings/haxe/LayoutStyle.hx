@@ -16,6 +16,8 @@ class LayoutStyle {
 	public var rowGap:Float;
 	/** Horizontal gap between wrapped columns. */
 	public var columnGap:Float;
+	/** Cross-axis alignment override when this node is a child. */
+	public var alignSelf:LayoutSelfAlignment;
 	public var positionX:Float;
 	public var positionY:Float;
 	public var zIndex:Int;
@@ -44,6 +46,7 @@ class LayoutStyle {
 		wrapMode = LayoutWrapMode.NoWrap;
 		rowGap = 0.0;
 		columnGap = 0.0;
+		alignSelf = LayoutSelfAlignment.Inherit;
 		positionX = 0.0;
 		positionY = 0.0;
 		zIndex = 0;
@@ -75,6 +78,7 @@ class LayoutStyle {
 		result.wrapMode = wrapMode;
 		result.rowGap = rowGap;
 		result.columnGap = columnGap;
+		result.alignSelf = alignSelf;
 		result.positionX = positionX;
 		result.positionY = positionY;
 		result.zIndex = zIndex;

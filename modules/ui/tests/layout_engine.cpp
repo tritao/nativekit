@@ -498,6 +498,39 @@ int main(int argc, char **argv) {
         std::abs(wrapped_column_third_item->bounds.x - 27.0f) > 0.01f ||
         std::abs(wrapped_column_third_item->bounds.y) > 0.01f)
         return 44;
+
+    LayoutNode align_self_row_root = box(745, -1);
+    align_self_row_root.style.width = {LayoutSizing::Fixed, 100.0f};
+    align_self_row_root.style.height = {LayoutSizing::Fixed, 40.0f};
+    align_self_row_root.style.direction = LayoutDirection::LeftToRight;
+    align_self_row_root.style.child_align_y = LayoutAlignmentY::Start;
+    LayoutNode align_self_row_child = box(746, 0);
+    align_self_row_child.style.width = {LayoutSizing::Fixed, 20.0f};
+    align_self_row_child.style.height = {LayoutSizing::Fixed, 10.0f};
+    align_self_row_child.style.align_self = LayoutSelfAlignment::End;
+    std::vector<LayoutNode> align_self_row_nodes{align_self_row_root, align_self_row_child};
+    if (!engine.layout(align_self_row_nodes, 100.0f, 40.0f, 1.0f / 60.0f, snapshot, &error))
+        return 47;
+    const auto *align_self_row_item = snapshot.find(746);
+    if (!align_self_row_item || std::abs(align_self_row_item->bounds.y - 30.0f) > 0.01f)
+        return 48;
+
+    LayoutNode align_self_column_root = box(747, -1);
+    align_self_column_root.style.width = {LayoutSizing::Fixed, 40.0f};
+    align_self_column_root.style.height = {LayoutSizing::Fixed, 100.0f};
+    align_self_column_root.style.direction = LayoutDirection::TopToBottom;
+    align_self_column_root.style.child_align_x = LayoutAlignmentX::Start;
+    LayoutNode align_self_column_child = box(748, 0);
+    align_self_column_child.style.width = {LayoutSizing::Fixed, 10.0f};
+    align_self_column_child.style.height = {LayoutSizing::Fixed, 20.0f};
+    align_self_column_child.style.align_self = LayoutSelfAlignment::Center;
+    std::vector<LayoutNode> align_self_column_nodes{align_self_column_root,
+                                                    align_self_column_child};
+    if (!engine.layout(align_self_column_nodes, 40.0f, 100.0f, 1.0f / 60.0f, snapshot, &error))
+        return 49;
+    const auto *align_self_column_item = snapshot.find(748);
+    if (!align_self_column_item || std::abs(align_self_column_item->bounds.x - 15.0f) > 0.01f)
+        return 50;
     std::cout << "PASS: Clay layout boxes, text, transforms, and geometry\n";
     return 0;
 #endif

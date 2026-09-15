@@ -317,6 +317,8 @@ Clay_ElementDeclaration declaration_for(const LayoutNode &node) {
     declaration.layout.columnGap = node.style.column_gap;
     declaration.layout.wrapMode =
         static_cast<Clay_LayoutWrapMode>(static_cast<uint8_t>(node.style.wrap_mode));
+    declaration.layout.alignSelf =
+        static_cast<Clay_AlignSelf>(static_cast<uint8_t>(node.style.align_self));
     declaration.layout.childAlignment = {
         static_cast<Clay_LayoutAlignmentX>(static_cast<uint8_t>(node.style.child_align_x)),
         static_cast<Clay_LayoutAlignmentY>(static_cast<uint8_t>(node.style.child_align_y))};

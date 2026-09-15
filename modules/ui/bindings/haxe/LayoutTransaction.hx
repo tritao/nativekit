@@ -65,11 +65,13 @@ class LayoutTransaction {
 			var childDistribution:Int = style.childDistribution;
 			var positioning:Int = style.positioning;
 			var wrapMode:Int = style.wrapMode;
+			var alignSelf:Int = style.alignSelf;
 			if (childAlignX < LayoutAlignmentX.Start || childAlignX > LayoutAlignmentX.Center ||
 				childAlignY < LayoutAlignmentY.Start || childAlignY > LayoutAlignmentY.Baseline ||
 				childDistribution < LayoutDistribution.Start ||
 				childDistribution > LayoutDistribution.SpaceEvenly ||
 				wrapMode < LayoutWrapMode.NoWrap || wrapMode > LayoutWrapMode.Wrap ||
+				alignSelf < LayoutSelfAlignment.Inherit || alignSelf > LayoutSelfAlignment.Baseline ||
 				(positioning != LayoutPositioning.Flow && positioning != LayoutPositioning.Absolute) ||
 				!finite(style.positionX) || !finite(style.positionY) ||
 				style.zIndex < -32768 || style.zIndex > 32767)
@@ -145,6 +147,8 @@ class LayoutTransaction {
 				roundedInt(style.columnGap));
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET,
 				wrapMode);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_ALIGN_SELF_OFFSET,
+				alignSelf);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_X_OFFSET,
 				style.positionX);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_Y_OFFSET,
