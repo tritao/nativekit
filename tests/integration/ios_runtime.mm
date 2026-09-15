@@ -58,31 +58,42 @@ enum class NKRuntimeStage {
     dismiss_share
 };
 
-@interface NKRuntimeTestRunner : NSObject
+@interface NKRuntimeTestRunner : NSObject {
+    __strong UIView *_hostView;
+    __strong NSTimer *_timer;
+    nk_mobile_host _host;
+    nk_surface _surface;
+    nk_webview _webview;
+    nk_request_id _evaluation;
+    nk_request_id _clipboardRequest;
+    NKRuntimeStage _stage;
+    int _frameCount;
+    int _shareTicks;
+    bool _initialized;
+    bool _finished;
+}
 - (instancetype)initWithHostView:(UIView *)hostView;
 - (void)start;
 - (void)poll:(NSTimer *)timer;
 @end
 
-@implementation NKRuntimeTestRunner {
-    __strong UIView *_hostView;
-    __strong NSTimer *_timer;
-    nk_mobile_host _host = NK_INVALID_HANDLE;
-    nk_surface _surface = NK_INVALID_HANDLE;
-    nk_webview _webview = NK_INVALID_HANDLE;
-    nk_request_id _evaluation = NK_INVALID_REQUEST_ID;
-    nk_request_id _clipboardRequest = NK_INVALID_REQUEST_ID;
-    NKRuntimeStage _stage = NKRuntimeStage::wait_frame;
-    int _frameCount = 0;
-    int _shareTicks = 0;
-    bool _initialized = false;
-    bool _finished = false;
-}
+@implementation NKRuntimeTestRunner
 
 - (instancetype)initWithHostView:(UIView *)hostView {
     self = [super init];
-    if (self)
+    if (self) {
         _hostView = hostView;
+        _host = NK_INVALID_HANDLE;
+        _surface = NK_INVALID_HANDLE;
+        _webview = NK_INVALID_HANDLE;
+        _evaluation = NK_INVALID_REQUEST_ID;
+        _clipboardRequest = NK_INVALID_REQUEST_ID;
+        _stage = NKRuntimeStage::wait_frame;
+        _frameCount = 0;
+        _shareTicks = 0;
+        _initialized = false;
+        _finished = false;
+    }
     return self;
 }
 
