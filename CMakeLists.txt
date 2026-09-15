@@ -243,8 +243,8 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
     target_link_libraries(nativekit PRIVATE
         "-framework Foundation" "-framework UIKit" "-framework CoreGraphics"
-        "-framework Metal" "-framework QuartzCore" "-framework UserNotifications"
-        "-framework WebKit")
+        "-framework Metal" "-framework QuartzCore" "-framework UniformTypeIdentifiers"
+        "-framework UserNotifications" "-framework WebKit")
 elseif(APPLE)
     target_sources(nativekit PRIVATE
         src/macos/nativekit_osx.mm

@@ -1,4 +1,5 @@
 #include "nativekit_clipboard.h"
+#include "nativekit_dialog.h"
 #include "nativekit_mobile.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
@@ -18,6 +19,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <UIKit/UIKit.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <UserNotifications/UserNotifications.h>
 #import <WebKit/WebKit.h>
 
@@ -57,6 +59,10 @@
 @end
 
 @interface NKIOSNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
+@end
+
+@interface NKIOSDocumentPickerDelegate : NSObject <UIDocumentPickerDelegate>
+@property(nonatomic, assign) nk_request_id request;
 @end
 
 namespace {
@@ -187,6 +193,40 @@ std::mutex notifications_mutex;
 std::unordered_map<nk_request_id, IOSNotification> notifications;
 __strong NKIOSNotificationDelegate *notification_delegate = nil;
 bool notification_center_initialized = false;
+
+struct IOSResourceValue {
+    uint32_t flags = 0;
+    std::string uri;
+    std::string mime_type;
+    std::string display_name;
+};
+
+struct IOSDialogContext {
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    nk_handle parent = NK_INVALID_HANDLE;
+    uint32_t kind = 0;
+    uint64_t generation = 0;
+    __strong UIViewController *presenter = nil;
+    __strong UIViewController *dialog = nil;
+    __strong UIDocumentPickerViewController *picker = nil;
+    __strong NKIOSDocumentPickerDelegate *picker_delegate = nil;
+    __strong NSURL *temporary_url = nil;
+    std::vector<uint32_t> message_results;
+
+    ~IOSDialogContext() {
+        if (temporary_url)
+            [NSFileManager.defaultManager removeItemAtURL:temporary_url error:nil];
+    }
+};
+
+std::mutex dialogs_mutex;
+std::unordered_map<nk_request_id, std::shared_ptr<IOSDialogContext>> dialogs;
+__strong NSMutableDictionary<NSString *, NSURL *> *security_scoped_urls = nil;
+
+void finish_document_dialog(nk_request_id request, bool accepted,
+                            NSArray<NSURL *> *urls) noexcept;
+void finish_message_dialog(nk_request_id request, nk_message_result result) noexcept;
+void cancel_dialogs_for_parent(nk_handle parent);
 
 struct IOSNavigationDecision {
     nk_handle source = NK_INVALID_HANDLE;
@@ -344,6 +384,81 @@ bool get_notification(nk_request_id request, IOSNotification &value) {
         return false;
     value = found->second;
     return true;
+}
+
+std::vector<std::byte> resource_payload(bool accepted,
+                                        const std::vector<IOSResourceValue> &resources) {
+    const auto items_offset = sizeof(nk_resource_list);
+    const auto strings_offset = items_offset + resources.size() * sizeof(nk_resource_item);
+    std::size_t total = strings_offset;
+    for (const auto &resource : resources) {
+        total += resource.uri.size() + 1;
+        if (!resource.mime_type.empty())
+            total += resource.mime_type.size() + 1;
+        if (!resource.display_name.empty())
+            total += resource.display_name.size() + 1;
+    }
+    std::vector<std::byte> result(total);
+    const nk_resource_list header{accepted ? 1u : 0u,
+                                  static_cast<uint32_t>(resources.size()),
+                                  static_cast<uint32_t>(items_offset),
+                                  static_cast<uint32_t>(strings_offset)};
+    std::memcpy(result.data(), &header, sizeof(header));
+    std::size_t cursor = strings_offset;
+    for (std::size_t index = 0; index < resources.size(); ++index) {
+        const auto &resource = resources[index];
+        nk_resource_item item{};
+        item.flags = resource.flags;
+        auto append = [&](const std::string &value, uint32_t &offset) {
+            if (value.empty())
+                return;
+            offset = static_cast<uint32_t>(cursor);
+            std::memcpy(result.data() + cursor, value.c_str(), value.size() + 1);
+            cursor += value.size() + 1;
+        };
+        append(resource.uri, item.uri_offset);
+        append(resource.mime_type, item.mime_type_offset);
+        append(resource.display_name, item.display_name_offset);
+        std::memcpy(result.data() + items_offset + index * sizeof(item), &item, sizeof(item));
+    }
+    return result;
+}
+
+void retain_security_scope(NSURL *url) {
+    if (!url.fileURL || !url.absoluteString.length)
+        return;
+    if (!security_scoped_urls)
+        security_scoped_urls = [NSMutableDictionary dictionary];
+    NSString *key = url.absoluteString;
+    if (security_scoped_urls[key])
+        return;
+    if ([url startAccessingSecurityScopedResource])
+        security_scoped_urls[key] = url;
+}
+
+void release_security_scopes() {
+    for (NSURL *url in security_scoped_urls.allValues)
+        [url stopAccessingSecurityScopedResource];
+    [security_scoped_urls removeAllObjects];
+    security_scoped_urls = nil;
+}
+
+UIViewController *view_controller_for_view(UIView *view) {
+    if (!view)
+        return nil;
+    UIResponder *responder = view;
+    while (responder) {
+        if ([responder isKindOfClass:[UIViewController class]])
+            return (UIViewController *)responder;
+        responder = responder.nextResponder;
+    }
+    return view.window.rootViewController;
+}
+
+UIViewController *top_view_controller(UIViewController *controller) {
+    while (controller.presentedViewController && !controller.presentedViewController.isBeingDismissed)
+        controller = controller.presentedViewController;
+    return controller;
 }
 
 nk_result ios_fail(nk_result result, const char *message) {
@@ -1641,6 +1756,341 @@ void frame_tick(nk_handle handle) noexcept {
 }
 @end
 
+IOSResourceValue resource_value_from_url(NSURL *url, uint32_t kind) {
+    IOSResourceValue result;
+    if (!url)
+        return result;
+    result.uri = utf8_string(url.absoluteString);
+    result.display_name = utf8_string(url.lastPathComponent);
+    result.flags = kind == NK_DIALOG_SAVE_RESOURCE
+                       ? NK_RESOURCE_WRITABLE
+                       : NK_RESOURCE_READABLE;
+    if (kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY)
+        result.flags |= NK_RESOURCE_WRITABLE;
+    retain_security_scope(url);
+    return result;
+}
+
+void finish_document_dialog(nk_request_id request, bool accepted,
+                            NSArray<NSURL *> *urls) noexcept {
+    nk::core::callback_boundary([&] {
+        std::shared_ptr<IOSDialogContext> context;
+        {
+            std::lock_guard lock(dialogs_mutex);
+            const auto found = dialogs.find(request);
+            if (found == dialogs.end())
+                return;
+            context = found->second;
+            dialogs.erase(found);
+        }
+        if (context->picker)
+            context->picker.delegate = nil;
+        if (context->temporary_url)
+            [NSFileManager.defaultManager removeItemAtURL:context->temporary_url error:nil];
+        if (!nk::core::is_runtime_generation(context->generation))
+            return;
+        std::vector<IOSResourceValue> resources;
+        if (accepted) {
+            resources.reserve(urls.count);
+            for (NSURL *url in urls) {
+                auto resource = resource_value_from_url(url, context->kind);
+                if (!resource.uri.empty())
+                    resources.push_back(std::move(resource));
+            }
+        }
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_DIALOG_RESOURCES_COMPLETE;
+        event.request_id = request;
+        event.flags = context->kind;
+        event.data = resource_payload(accepted, resources);
+        nk::core::push_event(std::move(event));
+    });
+}
+
+void finish_message_dialog(nk_request_id request, nk_message_result result) noexcept {
+    nk::core::callback_boundary([&] {
+        std::shared_ptr<IOSDialogContext> context;
+        {
+            std::lock_guard lock(dialogs_mutex);
+            const auto found = dialogs.find(request);
+            if (found == dialogs.end())
+                return;
+            context = found->second;
+            dialogs.erase(found);
+        }
+        if (context->dialog)
+            context->dialog = nil;
+        if (!nk::core::is_runtime_generation(context->generation))
+            return;
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
+        event.request_id = request;
+        event.flags = NK_DIALOG_MESSAGE;
+        event.data = bytes_of(nk_dialog_message_result{result});
+        nk::core::push_event(std::move(event));
+    });
+}
+
+nk_result cancel_dialog_request(nk_request_id request) {
+    std::shared_ptr<IOSDialogContext> context;
+    {
+        std::lock_guard lock(dialogs_mutex);
+        const auto found = dialogs.find(request);
+        if (!request || found == dialogs.end())
+            return ios_fail(NK_ERROR_INVALID_REQUEST,
+                            "invalid or completed iOS dialog request");
+        context = found->second;
+        dialogs.erase(found);
+    }
+    if (context->picker) {
+        context->picker.delegate = nil;
+        [context->picker dismissViewControllerAnimated:YES completion:nil];
+    } else if (context->dialog) {
+        [context->dialog dismissViewControllerAnimated:YES completion:nil];
+    }
+    if (context->temporary_url)
+        [NSFileManager.defaultManager removeItemAtURL:context->temporary_url error:nil];
+    if (!nk::core::is_runtime_generation(context->generation))
+        return NK_OK;
+    nk::core::QueuedEvent event;
+    event.request_id = request;
+    event.flags = context->kind;
+    if (context->kind == NK_DIALOG_MESSAGE) {
+        event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
+        event.data = bytes_of(nk_dialog_message_result{NK_MESSAGE_RESULT_NONE});
+    } else {
+        event.kind = NK_EVENT_DIALOG_RESOURCES_COMPLETE;
+        event.data = resource_payload(false, {});
+    }
+    const auto result = nk::core::push_event(std::move(event));
+    return result == NK_OK ? NK_OK : ios_fail(result, "could not queue iOS dialog cancellation");
+}
+
+void cancel_dialogs_for_parent(nk_handle parent) {
+    std::vector<nk_request_id> requests;
+    {
+        std::lock_guard lock(dialogs_mutex);
+        for (const auto &[request, context] : dialogs)
+            if (context->parent == parent)
+                requests.push_back(request);
+    }
+    for (const auto request : requests)
+        cancel_dialog_request(request);
+}
+
+std::shared_ptr<IOSHost> dialog_host(nk_handle parent) {
+    if (parent)
+        return host(parent);
+    return hosts.empty() ? nullptr : hosts.begin()->second;
+}
+
+UIViewController *dialog_presenter(nk_handle parent, nk_handle &out_parent) {
+    auto resource = dialog_host(parent);
+    if (!resource)
+        return nil;
+    out_parent = resource->handle;
+    return top_view_controller(view_controller_for_view(resource->view));
+}
+
+NSArray<UTType *> *document_content_types(const nk_file_dialog_options *options, uint32_t kind) {
+    NSMutableArray<UTType *> *types = [NSMutableArray array];
+    if (kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY) {
+        UTType *folder = [UTType typeWithIdentifier:@"public.folder"];
+        if (folder)
+            [types addObject:folder];
+        return types;
+    }
+    for (uint32_t index = 0; index < options->filter_count; ++index) {
+        NSString *patterns = native_string(options->filters[index].patterns);
+        for (NSString *pattern in [patterns componentsSeparatedByString:@";"]) {
+            NSString *value = [pattern stringByTrimmingCharactersInSet:
+                                             NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            NSRange marker = [value rangeOfString:@"*."];
+            if (marker.location == NSNotFound)
+                continue;
+            NSString *extension = [value substringFromIndex:marker.location + marker.length];
+            if (!extension.length || [extension rangeOfString:@"*"].location != NSNotFound)
+                continue;
+            UTType *type = [UTType typeWithFilenameExtension:extension.lowercaseString];
+            if (type && ![types containsObject:type])
+                [types addObject:type];
+        }
+    }
+    if (!types.count) {
+        UTType *item = [UTType typeWithIdentifier:@"public.item"];
+        if (item)
+            [types addObject:item];
+    }
+    return types;
+}
+
+nk_result start_resource_dialog(nk_handle parent_handle, const nk_file_dialog_options *options,
+                                nk_request_id *out_request, uint32_t kind) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    constexpr nk_dialog_flags supported_flags = NK_DIALOG_ALLOW_MULTIPLE |
+                                                NK_DIALOG_CONFIRM_OVERWRITE |
+                                                NK_DIALOG_SHOW_HIDDEN;
+    if (!options || options->struct_size < sizeof(*options) || !out_request ||
+        (options->flags & ~supported_flags) != 0 || (options->filter_count && !options->filters))
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "invalid iOS resource dialog options");
+    if (!valid_utf8(options->title) || !valid_utf8(options->initial_path) ||
+        !valid_utf8(options->suggested_name))
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT,
+                        "iOS resource dialog option is not valid UTF-8");
+    for (uint32_t index = 0; index < options->filter_count; ++index)
+        if (!valid_utf8(options->filters[index].name) ||
+            !valid_utf8(options->filters[index].patterns))
+            return ios_fail(NK_ERROR_INVALID_ARGUMENT,
+                            "iOS resource dialog filter is not valid UTF-8");
+    *out_request = NK_INVALID_REQUEST_ID;
+    nk_handle dialog_parent = NK_INVALID_HANDLE;
+    UIViewController *presenter = dialog_presenter(parent_handle, dialog_parent);
+    if (parent_handle && !dialog_parent)
+        return ios_fail(NK_ERROR_INVALID_HANDLE, "invalid iOS resource dialog parent");
+    if (!presenter)
+        return ios_fail(NK_ERROR_UNSUPPORTED,
+                        "iOS resource dialogs require an attached host view controller");
+
+    auto context = std::make_shared<IOSDialogContext>();
+    context->request = nk::core::next_request_id();
+    context->parent = dialog_parent;
+    context->kind = kind;
+    context->generation = nk::core::runtime_generation();
+    UIDocumentPickerViewController *picker = nil;
+    if (kind == NK_DIALOG_SAVE_RESOURCE) {
+        NSString *name = native_string(options->suggested_name);
+        name = name.lastPathComponent;
+        if (!name.length)
+            name = @"NativeKit Document";
+        NSString *filename = [NSString stringWithFormat:@"nativekit-%@-%@",
+                                                        NSProcessInfo.processInfo.globallyUniqueString,
+                                                        name];
+        NSURL *temporary_url = [NSURL fileURLWithPath:
+                                           [NSTemporaryDirectory() stringByAppendingPathComponent:
+                                                                     filename]];
+        if (![[NSData data] writeToURL:temporary_url atomically:YES])
+            return ios_fail(NK_ERROR_UNKNOWN, "could not create the iOS document export source");
+        context->temporary_url = temporary_url;
+        if (@available(iOS 14.0, *))
+            picker = [[UIDocumentPickerViewController alloc]
+                initForExportingURLs:@[ temporary_url ]
+                              asCopy:YES];
+        else
+            picker = [[UIDocumentPickerViewController alloc]
+                initWithURL:temporary_url
+                      inMode:UIDocumentPickerModeExportToService];
+    } else if (@available(iOS 14.0, *)) {
+        picker = [[UIDocumentPickerViewController alloc]
+            initForOpeningContentTypes:document_content_types(options, kind)
+                                asCopy:NO];
+    } else {
+        NSArray<NSString *> *types = kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY
+                                         ? @[ @"public.folder" ]
+                                         : @[ @"public.item" ];
+        picker = [[UIDocumentPickerViewController alloc]
+            initWithDocumentTypes:types
+                            inMode:UIDocumentPickerModeOpen];
+    }
+    if (!picker)
+        return ios_fail(NK_ERROR_UNKNOWN, "could not create the iOS document picker");
+    picker.title = native_string(options->title) ?: @"";
+    picker.allowsMultipleSelection =
+        kind == NK_DIALOG_OPEN_RESOURCE && (options->flags & NK_DIALOG_ALLOW_MULTIPLE) != 0;
+    auto delegate = [NKIOSDocumentPickerDelegate new];
+    if (!delegate)
+        return ios_fail(NK_ERROR_OUT_OF_MEMORY, "could not create the iOS document picker delegate");
+    delegate.request = context->request;
+    context->picker = picker;
+    context->picker_delegate = delegate;
+    context->presenter = presenter;
+    picker.delegate = delegate;
+    {
+        std::lock_guard lock(dialogs_mutex);
+        dialogs.emplace(context->request, context);
+    }
+    [presenter presentViewController:picker animated:YES completion:nil];
+    *out_request = context->request;
+    return NK_OK;
+}
+
+nk_result start_message_dialog(nk_handle parent_handle,
+                               const nk_message_dialog_options *options,
+                               nk_request_id *out_request) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    constexpr nk_message_buttons supported_buttons = NK_MESSAGE_BUTTON_OK |
+                                                      NK_MESSAGE_BUTTON_CANCEL |
+                                                      NK_MESSAGE_BUTTON_YES |
+                                                      NK_MESSAGE_BUTTON_NO;
+    if (!options || options->struct_size < sizeof(*options) || !options->message || !out_request ||
+        options->kind > NK_MESSAGE_QUESTION || (options->buttons & ~supported_buttons) != 0 ||
+        !valid_utf8(options->title) || !valid_utf8(options->message))
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "invalid iOS message dialog options");
+    *out_request = NK_INVALID_REQUEST_ID;
+    nk_handle dialog_parent = NK_INVALID_HANDLE;
+    UIViewController *presenter = dialog_presenter(parent_handle, dialog_parent);
+    if (parent_handle && !dialog_parent)
+        return ios_fail(NK_ERROR_INVALID_HANDLE, "invalid iOS message dialog parent");
+    if (!presenter)
+        return ios_fail(NK_ERROR_UNSUPPORTED,
+                        "iOS message dialogs require an attached host view controller");
+    auto context = std::make_shared<IOSDialogContext>();
+    context->request = nk::core::next_request_id();
+    context->parent = dialog_parent;
+    context->kind = NK_DIALOG_MESSAGE;
+    context->generation = nk::core::runtime_generation();
+    const auto request = context->request;
+    UIAlertControllerStyle style = UIAlertControllerStyleAlert;
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:native_string(options->title) ?: @""
+                         message:native_string(options->message)
+                  preferredStyle:style];
+    if (!alert)
+        return ios_fail(NK_ERROR_OUT_OF_MEMORY, "could not create the iOS message dialog");
+    auto add_action = [&](uint32_t flag, NSString *title, nk_message_result result) {
+        if (!(options->buttons & flag))
+            return;
+        UIAlertActionStyle action_style =
+            flag == NK_MESSAGE_BUTTON_CANCEL ? UIAlertActionStyleCancel : UIAlertActionStyleDefault;
+        [alert addAction:[UIAlertAction actionWithTitle:title
+                                                 style:action_style
+                                                 handler:^(UIAlertAction *) {
+                                                   finish_message_dialog(request, result);
+                                                 }]];
+    };
+    add_action(NK_MESSAGE_BUTTON_OK, @"OK", NK_MESSAGE_RESULT_OK);
+    add_action(NK_MESSAGE_BUTTON_YES, @"Yes", NK_MESSAGE_RESULT_YES);
+    add_action(NK_MESSAGE_BUTTON_NO, @"No", NK_MESSAGE_RESULT_NO);
+    add_action(NK_MESSAGE_BUTTON_CANCEL, @"Cancel", NK_MESSAGE_RESULT_CANCEL);
+    if (!alert.actions.count)
+        add_action(NK_MESSAGE_BUTTON_OK, @"OK", NK_MESSAGE_RESULT_OK);
+    context->dialog = alert;
+    context->presenter = presenter;
+    {
+        std::lock_guard lock(dialogs_mutex);
+        dialogs.emplace(context->request, context);
+    }
+    [presenter presentViewController:alert animated:YES completion:nil];
+    *out_request = context->request;
+    return NK_OK;
+}
+
+@implementation NKIOSDocumentPickerDelegate
+- (void)documentPicker:(UIDocumentPickerViewController *)controller
+    didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    (void)controller;
+    finish_document_dialog(self.request, true, urls);
+}
+
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
+    (void)controller;
+    finish_document_dialog(self.request, false, @[]);
+}
+@end
+
 @implementation NKIOSNotificationDelegate
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center
     didReceiveNotificationResponse:(UNNotificationResponse *)response
@@ -1704,6 +2154,26 @@ void shutdown() noexcept {
         notification_center_initialized = false;
     }
     notification_delegate = nil;
+    std::vector<std::shared_ptr<IOSDialogContext>> pending_dialogs;
+    {
+        std::lock_guard lock(dialogs_mutex);
+        for (const auto &[request, context] : dialogs) {
+            (void)request;
+            pending_dialogs.push_back(context);
+        }
+        dialogs.clear();
+    }
+    for (const auto &context : pending_dialogs) {
+        if (context->picker) {
+            context->picker.delegate = nil;
+            [context->picker dismissViewControllerAnimated:NO completion:nil];
+        } else if (context->dialog) {
+            [context->dialog dismissViewControllerAnimated:NO completion:nil];
+        }
+        if (context->temporary_url)
+            [NSFileManager.defaultManager removeItemAtURL:context->temporary_url error:nil];
+    }
+    release_security_scopes();
     for (auto &[request, decision] : navigation_decisions) {
         (void)request;
         decision.handler(WKNavigationActionPolicyCancel);
@@ -1781,6 +2251,7 @@ nk_result mobile_host_destroy(nk_handle handle) {
         nk::core::set_error("invalid iOS mobile host handle");
         return NK_ERROR_INVALID_HANDLE;
     }
+    cancel_dialogs_for_parent(handle);
     const auto child_surfaces = found->second->surfaces;
     const auto child_webviews = found->second->webviews;
     for (auto iter = child_webviews.rbegin(); iter != child_webviews.rend(); ++iter)
@@ -2911,6 +3382,48 @@ nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request) {
         });
 }
 
+nk_result NK_CALL nk_dialog_open_resource(nk_handle parent, const nk_file_dialog_options *options,
+                                          nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening an iOS resource dialog", [&]() -> nk_result {
+            return start_resource_dialog(parent, options, out_request, NK_DIALOG_OPEN_RESOURCE);
+        });
+}
+
+nk_result NK_CALL nk_dialog_save_resource(nk_handle parent, const nk_file_dialog_options *options,
+                                          nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening an iOS resource save dialog", [&]() -> nk_result {
+            return start_resource_dialog(parent, options, out_request, NK_DIALOG_SAVE_RESOURCE);
+        });
+}
+
+nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle parent,
+                                                       const nk_file_dialog_options *options,
+                                                       nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening an iOS resource directory dialog",
+        [&]() -> nk_result {
+            return start_resource_dialog(parent, options, out_request,
+                                         NK_DIALOG_SELECT_RESOURCE_DIRECTORY);
+        });
+}
+
+nk_result NK_CALL nk_dialog_message(nk_handle parent, const nk_message_dialog_options *options,
+                                    nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while opening an iOS message dialog", [&]() -> nk_result {
+            return start_message_dialog(parent, options, out_request);
+        });
+}
+
+nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    return cancel_dialog_request(request);
+}
+
 nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
                                        nk_request_id *out_request) {
     return nk::core::result_boundary(
@@ -3055,7 +3568,7 @@ nk_result NK_CALL nk_notification_close(nk_request_id request) {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_METAL_SURFACE | NK_CAP_INPUT |
-           NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-           NK_CAP_NOTIFICATION;
+           NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_SHELL |
+           NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION;
 }
 }
