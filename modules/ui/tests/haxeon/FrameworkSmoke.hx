@@ -1204,6 +1204,50 @@ class FrameworkSmoke {
 			appShellContentSlot.resolved.width <= 0.0 ||
 			appShellContentSlot.resolved.height <= 0.0)
 			return 225;
+		for (mask in 0...8) {
+			var hasTopBar = (mask & 1) != 0;
+			var hasSidebar = (mask & 2) != 0;
+			var hasInspector = (mask & 4) != 0;
+			var permutation = new AppShell('app-shell-permutation-$mask', new Text("Content"),
+				hasTopBar ? new Text("Top bar") : null,
+				hasSidebar ? new Text("Sidebar") : null,
+				hasInspector ? new Text("Inspector") : null);
+			var permutationRoot = context.submit(permutation, new LayoutFrame(320.0, 192.0));
+			var bodyIndex = hasTopBar ? 1 : 0;
+			var expectedBodyChildren = 1 + (hasSidebar ? 1 : 0) + (hasInspector ? 1 : 0);
+			if (permutationRoot.children.length != (hasTopBar ? 2 : 1) ||
+				permutationRoot.children[bodyIndex].children.length != expectedBodyChildren)
+				return 226;
+			var permutationBody = permutationRoot.children[bodyIndex];
+			var contentIndex = hasSidebar ? 1 : 0;
+			var permutationContent = permutationBody.children[contentIndex];
+			if (permutationContent.children.length != 1 || permutationContent.resolved == null ||
+				permutationContent.resolved.width <= 0.0 || permutationContent.resolved.height <= 0.0)
+				return 227;
+			var rebuiltRoot = context.submit(permutation, new LayoutFrame(320.0, 192.0));
+			var rebuiltBody = rebuiltRoot.children[bodyIndex];
+			if (!permutationRoot.id.equals(rebuiltRoot.id) ||
+				!permutationContent.id.equals(rebuiltBody.children[contentIndex].id))
+				return 228;
+		}
+		var sourceStyle = new LayoutStyle();
+		sourceStyle.width = LayoutAxis.fixed(280.0);
+		sourceStyle.height = LayoutAxis.fixed(120.0);
+		sourceStyle.padding = new Insets(11.0, 12.0, 13.0, 14.0);
+		var sourceBodyStyle = new LayoutStyle();
+		sourceBodyStyle.direction = LayoutDirection.TopToBottom;
+		sourceBodyStyle.childGap = 17.0;
+		var copiedAppShell = new AppShell("app-shell-style-copy", new Text("Content"),
+			null, null, null, sourceStyle, sourceBodyStyle);
+		sourceStyle.width.value = 1.0;
+		sourceStyle.padding.left = 1.0;
+		sourceBodyStyle.childGap = 1.0;
+		if (copiedAppShell.style.width.value != 280.0 ||
+			copiedAppShell.style.padding.left != 11.0 ||
+			copiedAppShell.bodyStyle.childGap != 17.0 ||
+			copiedAppShell.bodyStyle.direction != LayoutDirection.LeftToRight ||
+			sourceBodyStyle.direction != LayoutDirection.TopToBottom)
+			return 229;
 		var inheritedColor = Color.rgba(0.24, 0.31, 0.42, 1.0);
 		var nestedColor = Color.rgba(0.76, 0.42, 0.18, 1.0);
 		var typography = new DefaultTextStyle(new Column("typography", [
