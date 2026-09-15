@@ -2,6 +2,8 @@
 #include <emscripten/emscripten.h>
 #endif
 
+#include "nativekit.h"
+
 #include <string>
 
 namespace {
@@ -17,6 +19,11 @@ extern "C" {
 void nkui_showcase_diagnostic_report(int, const char *message, const char *stack,
                                      const char *breadcrumbs) {
     diagnostic_message = message ? message : "";
+    if (const auto native_diagnostic = nk_last_error(); native_diagnostic && *native_diagnostic) {
+        diagnostic_message += " [NativeKit: ";
+        diagnostic_message += native_diagnostic;
+        diagnostic_message += ']';
+    }
     diagnostic_stack = stack ? stack : "";
     diagnostic_breadcrumbs = breadcrumbs ? breadcrumbs : "";
 }
