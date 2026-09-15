@@ -1,5 +1,6 @@
 #include "nativekit_mobile.h"
 #include "nativekit_graphics.h"
+#include "nativekit_input.h"
 #include "nativekit_window.h"
 
 #include "core/event_queue.hpp"
@@ -14,10 +15,14 @@
 #import <UIKit/UIKit.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -32,6 +37,11 @@
 - (void)tick:(CADisplayLink *)link;
 @end
 
+@interface NKIOSInputView : UITextView
+@property(nonatomic, assign) nk_handle surface;
+- (void)handleHover:(UIHoverGestureRecognizer *)gesture;
+@end
+
 namespace {
 
 template <typename T> std::vector<std::byte> bytes_of(const T &value) {
@@ -41,8 +51,18 @@ template <typename T> std::vector<std::byte> bytes_of(const T &value) {
 
 struct IOSHost;
 struct IOSSurface;
+struct IOSTouchState {
+    uint32_t pointer_id = 0;
+    nk_touch_tool tool = NK_TOUCH_TOOL_FINGER;
+    double x = 0;
+    double y = 0;
+    float pressure = 0;
+    float tilt_x = 0;
+    float tilt_y = 0;
+};
 void queue_geometry(const std::shared_ptr<IOSHost> &host);
 void update_host_surfaces(const std::shared_ptr<IOSHost> &host);
+void reset_surface_input(IOSSurface &surface, uint32_t event_flags = 1u);
 
 struct IOSHost final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
@@ -55,6 +75,7 @@ struct IOSHost final : nk::core::Resource {
 struct IOSSurface final : nk::core::Resource {
     __strong UIView *host_view = nil;
     __strong CAMetalLayer *layer = nil;
+    __strong NKIOSInputView *input_view = nil;
     __strong id<MTLDevice> device = nil;
     __strong id<MTLCommandQueue> queue = nil;
     __strong id<CAMetalDrawable> drawable = nil;
@@ -79,8 +100,26 @@ struct IOSSurface final : nk::core::Resource {
     bool ready = false;
     bool lost_reported = false;
     bool destroying = false;
+    std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
+    std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> pointer_buttons{};
+    double pointer_x = 0;
+    double pointer_y = 0;
+    std::unordered_map<uintptr_t, IOSTouchState> touch_pointers;
+    uint32_t next_touch_pointer_id = 1;
+    std::string text_input_text;
+    nk_text_input_state text_input_state{};
+    bool text_input_active = false;
+    bool text_composing = false;
+    nk_text_position text_composition_start = NK_TEXT_POSITION_NONE;
+    nk_text_position text_composition_end = NK_TEXT_POSITION_NONE;
+    std::string marked_text;
+    NSRange marked_native_range{NSNotFound, 0};
+    bool syncing_input_view = false;
 
     ~IOSSurface() override {
+        input_view.surface = NK_INVALID_HANDLE;
+        [input_view removeFromSuperview];
+        input_view = nil;
         [frame_timer invalidate];
         frame_timer = nil;
         frame_timer_target = nil;
@@ -103,6 +142,635 @@ std::shared_ptr<IOSHost> host(nk_handle handle) {
 std::shared_ptr<IOSSurface> surface(nk_handle handle) {
     const auto found = surfaces.find(handle);
     return found == surfaces.end() ? nullptr : found->second;
+}
+
+void queue_input_event(nk_event_kind kind, nk_handle source, std::vector<std::byte> data,
+                       uint32_t flags = 0) {
+    nk::core::QueuedEvent event;
+    event.kind = kind;
+    event.source = source;
+    event.flags = flags;
+    event.data = std::move(data);
+    nk::core::push_event(std::move(event));
+}
+
+bool decode_utf8(std::string_view text, std::vector<uint32_t> &codepoints) {
+    codepoints.clear();
+    for (std::size_t index = 0; index < text.size();) {
+        const auto first = static_cast<uint8_t>(text[index]);
+        uint32_t value = 0;
+        std::size_t count = 0;
+        if (first < 0x80) {
+            value = first;
+            count = 1;
+        } else if (first >= 0xc2 && first <= 0xdf) {
+            value = first & 0x1fu;
+            count = 2;
+        } else if (first >= 0xe0 && first <= 0xef) {
+            value = first & 0x0fu;
+            count = 3;
+        } else if (first >= 0xf0 && first <= 0xf4) {
+            value = first & 0x07u;
+            count = 4;
+        } else {
+            return false;
+        }
+        if (index + count > text.size())
+            return false;
+        for (std::size_t part = 1; part < count; ++part) {
+            const auto next = static_cast<uint8_t>(text[index + part]);
+            if ((next & 0xc0u) != 0x80u)
+                return false;
+            value = (value << 6) | (next & 0x3fu);
+        }
+        if ((count == 2 && value < 0x80) || (count == 3 && value < 0x800) ||
+            (count == 4 && value < 0x10000) || value > 0x10ffff ||
+            (value >= 0xd800 && value <= 0xdfff))
+            return false;
+        codepoints.push_back(value);
+        index += count;
+    }
+    return true;
+}
+
+NSString *native_string(const char *value) {
+    return value ? [NSString stringWithUTF8String:value] : nil;
+}
+
+std::string utf8_string(NSString *value) {
+    if (!value)
+        return {};
+    const char *bytes = value.UTF8String;
+    return bytes ? std::string(bytes) : std::string();
+}
+
+NSUInteger utf16_offset_for_codepoint(const std::vector<uint32_t> &codepoints,
+                                      uint32_t codepoint_index) {
+    NSUInteger result = 0;
+    const auto count = std::min<std::size_t>(codepoint_index, codepoints.size());
+    for (std::size_t index = 0; index < count; ++index)
+        result += codepoints[index] > 0xffff ? 2u : 1u;
+    return result;
+}
+
+uint32_t codepoint_index_for_utf16(const std::vector<uint32_t> &codepoints,
+                                   NSUInteger utf16_index) {
+    NSUInteger offset = 0;
+    uint32_t result = 0;
+    for (const auto codepoint : codepoints) {
+        const NSUInteger units = codepoint > 0xffff ? 2u : 1u;
+        if (offset + units > utf16_index)
+            break;
+        offset += units;
+        ++result;
+    }
+    return result;
+}
+
+NSRange native_range_for_positions(const IOSSurface &resource, nk_text_position start,
+                                   nk_text_position end) {
+    std::vector<uint32_t> points;
+    decode_utf8(resource.text_input_text, points);
+    const auto local_start =
+        start == NK_TEXT_POSITION_NONE || start < resource.text_input_state.text_start
+            ? 0u
+            : start - resource.text_input_state.text_start;
+    const auto local_end =
+        end == NK_TEXT_POSITION_NONE || end < resource.text_input_state.text_start
+            ? local_start
+            : end - resource.text_input_state.text_start;
+    const NSUInteger start_offset = utf16_offset_for_codepoint(points, local_start);
+    const NSUInteger end_offset = utf16_offset_for_codepoint(points, local_end);
+    return NSMakeRange(start_offset, end_offset >= start_offset ? end_offset - start_offset : 0);
+}
+
+bool codepoint_range_for_native_range(const IOSSurface &resource, NSRange range,
+                                      nk_text_position &out_start, nk_text_position &out_end) {
+    if (range.location == NSNotFound)
+        return false;
+    std::vector<uint32_t> points;
+    if (!decode_utf8(resource.text_input_text, points))
+        return false;
+    const NSUInteger total_units = utf16_offset_for_codepoint(points, points.size());
+    const uint64_t range_end = static_cast<uint64_t>(range.location) + range.length;
+    if (range_end > total_units)
+        return false;
+    const auto local_start = codepoint_index_for_utf16(points, range.location);
+    const auto local_end = codepoint_index_for_utf16(points, static_cast<NSUInteger>(range_end));
+    out_start = static_cast<nk_text_position>(resource.text_input_state.text_start + local_start);
+    out_end = static_cast<nk_text_position>(resource.text_input_state.text_start + local_end);
+    return true;
+}
+
+void sync_input_view(IOSSurface &resource) {
+    if (!resource.input_view)
+        return;
+    NSString *text = native_string(resource.text_input_text.c_str());
+    if (!text)
+        return;
+    const auto selection = native_range_for_positions(
+        resource, resource.text_input_state.selection_start, resource.text_input_state.selection_end);
+    resource.syncing_input_view = true;
+    resource.input_view.text = text;
+    resource.input_view.selectedRange = selection;
+    resource.input_view.hidden = (resource.flags & NK_SURFACE_HIDDEN) != 0;
+    resource.syncing_input_view = false;
+    [resource.input_view reloadInputViews];
+}
+
+void update_text_snapshot(IOSSurface &resource, nk_text_position replace_start,
+                          nk_text_position replace_end, std::string_view inserted) {
+    std::vector<uint32_t> old_codepoints;
+    if (!decode_utf8(resource.text_input_text, old_codepoints) ||
+        replace_start < resource.text_input_state.text_start || replace_end < replace_start ||
+        static_cast<uint64_t>(replace_end) >
+            static_cast<uint64_t>(resource.text_input_state.text_start) + old_codepoints.size())
+        return;
+    std::vector<uint32_t> inserted_codepoints;
+    if (!decode_utf8(inserted, inserted_codepoints))
+        return;
+    const auto first =
+        static_cast<std::size_t>(replace_start - resource.text_input_state.text_start);
+    const auto last =
+        static_cast<std::size_t>(replace_end - resource.text_input_state.text_start);
+    const auto byte_offset = [&](std::size_t codepoint_index) {
+        std::size_t bytes = 0;
+        for (std::size_t index = 0; index < codepoint_index; ++index) {
+            const auto value = old_codepoints[index];
+            bytes += value < 0x80 ? 1u : (value < 0x800 ? 2u : (value < 0x10000 ? 3u : 4u));
+        }
+        return bytes;
+    };
+    std::string updated = resource.text_input_text;
+    updated.replace(byte_offset(first), byte_offset(last) - byte_offset(first), inserted.data(),
+                    inserted.size());
+    const int64_t delta = static_cast<int64_t>(inserted_codepoints.size()) -
+                          static_cast<int64_t>(last - first);
+    resource.text_input_text = std::move(updated);
+    resource.text_input_state.text = resource.text_input_text.c_str();
+    resource.text_input_state.document_length = static_cast<nk_text_position>(std::max<int64_t>(
+        0, static_cast<int64_t>(resource.text_input_state.document_length) + delta));
+}
+
+void emit_text_edit(IOSSurface &resource, nk_text_edit_event payload,
+                    const std::string &text = {}) {
+    payload.text_offset = text.empty() ? 0u : sizeof(payload);
+    payload.text_length = static_cast<uint32_t>(text.size());
+    std::vector<std::byte> data(sizeof(payload) + text.size() + (text.empty() ? 0u : 1u));
+    std::memcpy(data.data(), &payload, sizeof(payload));
+    if (!text.empty())
+        std::memcpy(data.data() + sizeof(payload), text.c_str(), text.size() + 1);
+    queue_input_event(NK_EVENT_TEXT_EDIT, resource.handle, std::move(data));
+}
+
+void apply_text_edit_state(IOSSurface &resource, nk_text_edit_action action,
+                           nk_text_position replace_start, nk_text_position replace_end,
+                           const std::string &text, nk_text_position selection_start,
+                           nk_text_position selection_end, nk_text_position composition_start,
+                           nk_text_position composition_end) {
+    if (replace_start != NK_TEXT_POSITION_NONE && replace_end != NK_TEXT_POSITION_NONE)
+        update_text_snapshot(resource, replace_start, replace_end, text);
+    resource.text_input_state.selection_start = selection_start;
+    resource.text_input_state.selection_end = selection_end;
+    resource.text_input_state.composition_start = composition_start;
+    resource.text_input_state.composition_end = composition_end;
+    resource.text_composing = composition_start != NK_TEXT_POSITION_NONE;
+    resource.text_composition_start = composition_start;
+    resource.text_composition_end = composition_end;
+    if (resource.text_composing) {
+        resource.marked_text = text;
+        resource.marked_native_range =
+            native_range_for_positions(resource, composition_start, composition_end);
+    } else {
+        resource.marked_text.clear();
+        resource.marked_native_range = NSMakeRange(NSNotFound, 0);
+    }
+    sync_input_view(resource);
+    nk_text_edit_event payload{};
+    payload.action = action;
+    payload.replace_start = replace_start;
+    payload.replace_end = replace_end;
+    payload.selection_start = selection_start;
+    payload.selection_end = selection_end;
+    payload.composition_start = composition_start;
+    payload.composition_end = composition_end;
+    emit_text_edit(resource, payload, text);
+}
+
+nk_text_position text_replacement_start(const IOSSurface &resource) {
+    return resource.text_composing ? resource.text_composition_start
+                                   : resource.text_input_state.selection_start;
+}
+
+nk_text_position text_replacement_end(const IOSSurface &resource) {
+    return resource.text_composing ? resource.text_composition_end
+                                   : resource.text_input_state.selection_end;
+}
+
+void emit_committed_text(IOSSurface &resource, const std::string &text) {
+    std::vector<uint32_t> points;
+    if (!decode_utf8(text, points))
+        return;
+    if (!resource.text_input_active) {
+        for (const auto point : points) {
+            const nk_text_input_event payload{point, 0};
+            queue_input_event(NK_EVENT_TEXT_INPUT, resource.handle, bytes_of(payload));
+        }
+        resource.text_composing = false;
+        resource.text_composition_start = NK_TEXT_POSITION_NONE;
+        resource.text_composition_end = NK_TEXT_POSITION_NONE;
+        resource.text_input_state.composition_start = NK_TEXT_POSITION_NONE;
+        resource.text_input_state.composition_end = NK_TEXT_POSITION_NONE;
+        resource.marked_text.clear();
+        resource.marked_native_range = NSMakeRange(NSNotFound, 0);
+        return;
+    }
+    const auto start = text_replacement_start(resource);
+    const auto end = text_replacement_end(resource);
+    const auto selection = static_cast<nk_text_position>(start + points.size());
+    apply_text_edit_state(resource, NK_TEXT_EDIT_COMMIT, start, end, text, selection, selection,
+                          NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+}
+
+void finish_text_composition(IOSSurface &resource) {
+    if (!resource.text_composing)
+        return;
+    auto selection_start = resource.text_input_state.selection_start;
+    auto selection_end = resource.text_input_state.selection_end;
+    if (selection_start == NK_TEXT_POSITION_NONE)
+        selection_start = selection_end = resource.text_composition_end;
+    apply_text_edit_state(resource, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
+                          NK_TEXT_POSITION_NONE, {}, selection_start, selection_end,
+                          NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+}
+
+nk_modifiers modifiers_from_native(UIKeyModifierFlags flags) {
+    nk_modifiers result = 0;
+    if (flags & UIKeyModifierShift)
+        result |= NK_MOD_SHIFT;
+    if (flags & UIKeyModifierControl)
+        result |= NK_MOD_CONTROL;
+    if (flags & UIKeyModifierAlternate)
+        result |= NK_MOD_ALT;
+    if (flags & UIKeyModifierCommand)
+        result |= NK_MOD_SUPER;
+    if (flags & UIKeyModifierAlphaShift)
+        result |= NK_MOD_CAPS_LOCK;
+    return result;
+}
+
+nk_key key_from_hid(UIKeyboardHIDUsage code) {
+    if (code >= UIKeyboardHIDUsageKeyboardA && code <= UIKeyboardHIDUsageKeyboardZ)
+        return static_cast<nk_key>(NK_KEY_A + code - UIKeyboardHIDUsageKeyboardA);
+    if (code >= UIKeyboardHIDUsageKeyboard1 && code <= UIKeyboardHIDUsageKeyboard0) {
+        constexpr nk_key digits[] = {NK_KEY_1, NK_KEY_2, NK_KEY_3, NK_KEY_4, NK_KEY_5,
+                                     NK_KEY_6, NK_KEY_7, NK_KEY_8, NK_KEY_9, NK_KEY_0};
+        return digits[code - UIKeyboardHIDUsageKeyboard1];
+    }
+    if (code >= UIKeyboardHIDUsageKeyboardF1 && code <= UIKeyboardHIDUsageKeyboardF12)
+        return static_cast<nk_key>(NK_KEY_F1 + code - UIKeyboardHIDUsageKeyboardF1);
+    if (code >= UIKeyboardHIDUsageKeyboardF13 && code <= UIKeyboardHIDUsageKeyboardF24)
+        return static_cast<nk_key>(NK_KEY_F13 + code - UIKeyboardHIDUsageKeyboardF13);
+    switch (code) {
+    case UIKeyboardHIDUsageKeyboardSpacebar:
+        return NK_KEY_SPACE;
+    case UIKeyboardHIDUsageKeyboardHyphen:
+        return NK_KEY_MINUS;
+    case UIKeyboardHIDUsageKeyboardEqualSign:
+        return NK_KEY_EQUAL;
+    case UIKeyboardHIDUsageKeyboardOpenBracket:
+        return NK_KEY_LEFT_BRACKET;
+    case UIKeyboardHIDUsageKeyboardCloseBracket:
+        return NK_KEY_RIGHT_BRACKET;
+    case UIKeyboardHIDUsageKeyboardBackslash:
+        return NK_KEY_BACKSLASH;
+    case UIKeyboardHIDUsageKeyboardSemicolon:
+        return NK_KEY_SEMICOLON;
+    case UIKeyboardHIDUsageKeyboardQuote:
+        return NK_KEY_APOSTROPHE;
+    case UIKeyboardHIDUsageKeyboardGraveAccentAndTilde:
+        return NK_KEY_GRAVE_ACCENT;
+    case UIKeyboardHIDUsageKeyboardComma:
+        return NK_KEY_COMMA;
+    case UIKeyboardHIDUsageKeyboardPeriod:
+        return NK_KEY_PERIOD;
+    case UIKeyboardHIDUsageKeyboardSlash:
+        return NK_KEY_SLASH;
+    case UIKeyboardHIDUsageKeyboardReturnOrEnter:
+        return NK_KEY_ENTER;
+    case UIKeyboardHIDUsageKeyboardEscape:
+        return NK_KEY_ESCAPE;
+    case UIKeyboardHIDUsageKeyboardDeleteOrBackspace:
+        return NK_KEY_BACKSPACE;
+    case UIKeyboardHIDUsageKeyboardTab:
+        return NK_KEY_TAB;
+    case UIKeyboardHIDUsageKeyboardCapsLock:
+        return NK_KEY_CAPS_LOCK;
+    case UIKeyboardHIDUsageKeyboardPrintScreen:
+        return NK_KEY_PRINT_SCREEN;
+    case UIKeyboardHIDUsageKeyboardScrollLock:
+        return NK_KEY_SCROLL_LOCK;
+    case UIKeyboardHIDUsageKeyboardPause:
+        return NK_KEY_PAUSE;
+    case UIKeyboardHIDUsageKeyboardInsert:
+        return NK_KEY_INSERT;
+    case UIKeyboardHIDUsageKeyboardHome:
+        return NK_KEY_HOME;
+    case UIKeyboardHIDUsageKeyboardPageUp:
+        return NK_KEY_PAGE_UP;
+    case UIKeyboardHIDUsageKeyboardDeleteForward:
+        return NK_KEY_DELETE;
+    case UIKeyboardHIDUsageKeyboardEnd:
+        return NK_KEY_END;
+    case UIKeyboardHIDUsageKeyboardPageDown:
+        return NK_KEY_PAGE_DOWN;
+    case UIKeyboardHIDUsageKeyboardRightArrow:
+        return NK_KEY_RIGHT;
+    case UIKeyboardHIDUsageKeyboardLeftArrow:
+        return NK_KEY_LEFT;
+    case UIKeyboardHIDUsageKeyboardDownArrow:
+        return NK_KEY_DOWN;
+    case UIKeyboardHIDUsageKeyboardUpArrow:
+        return NK_KEY_UP;
+    case UIKeyboardHIDUsageKeypadNumLock:
+        return NK_KEY_NUM_LOCK;
+    case UIKeyboardHIDUsageKeypadSlash:
+        return NK_KEY_KP_DIVIDE;
+    case UIKeyboardHIDUsageKeypadAsterisk:
+        return NK_KEY_KP_MULTIPLY;
+    case UIKeyboardHIDUsageKeypadHyphen:
+        return NK_KEY_KP_SUBTRACT;
+    case UIKeyboardHIDUsageKeypadPlus:
+        return NK_KEY_KP_ADD;
+    case UIKeyboardHIDUsageKeypadEnter:
+        return NK_KEY_KP_ENTER;
+    case UIKeyboardHIDUsageKeypad1:
+        return NK_KEY_KP_1;
+    case UIKeyboardHIDUsageKeypad2:
+        return NK_KEY_KP_2;
+    case UIKeyboardHIDUsageKeypad3:
+        return NK_KEY_KP_3;
+    case UIKeyboardHIDUsageKeypad4:
+        return NK_KEY_KP_4;
+    case UIKeyboardHIDUsageKeypad5:
+        return NK_KEY_KP_5;
+    case UIKeyboardHIDUsageKeypad6:
+        return NK_KEY_KP_6;
+    case UIKeyboardHIDUsageKeypad7:
+        return NK_KEY_KP_7;
+    case UIKeyboardHIDUsageKeypad8:
+        return NK_KEY_KP_8;
+    case UIKeyboardHIDUsageKeypad9:
+        return NK_KEY_KP_9;
+    case UIKeyboardHIDUsageKeypad0:
+        return NK_KEY_KP_0;
+    case UIKeyboardHIDUsageKeypadPeriod:
+        return NK_KEY_KP_DECIMAL;
+    case UIKeyboardHIDUsageKeypadEqualSign:
+        return NK_KEY_KP_EQUAL;
+    case UIKeyboardHIDUsageKeyboardLeftControl:
+        return NK_KEY_LEFT_CONTROL;
+    case UIKeyboardHIDUsageKeyboardLeftShift:
+        return NK_KEY_LEFT_SHIFT;
+    case UIKeyboardHIDUsageKeyboardLeftAlt:
+        return NK_KEY_LEFT_ALT;
+    case UIKeyboardHIDUsageKeyboardLeftGUI:
+        return NK_KEY_LEFT_SUPER;
+    case UIKeyboardHIDUsageKeyboardRightControl:
+        return NK_KEY_RIGHT_CONTROL;
+    case UIKeyboardHIDUsageKeyboardRightShift:
+        return NK_KEY_RIGHT_SHIFT;
+    case UIKeyboardHIDUsageKeyboardRightAlt:
+        return NK_KEY_RIGHT_ALT;
+    case UIKeyboardHIDUsageKeyboardRightGUI:
+        return NK_KEY_RIGHT_SUPER;
+    default:
+        return NK_KEY_UNKNOWN;
+    }
+}
+
+void emit_key_transition(IOSSurface &resource, UIKey *key, nk_input_action action) {
+    if (!key)
+        return;
+    const auto code = key.keyCode;
+    const auto normalized = key_from_hid(code);
+    const auto modifiers = modifiers_from_native(key.modifierFlags);
+    if (normalized != NK_KEY_UNKNOWN)
+        resource.keys[normalized] = action == NK_INPUT_RELEASE ? NK_INPUT_RELEASE : NK_INPUT_PRESS;
+    const nk_key_event payload{normalized, static_cast<uint32_t>(code), action, modifiers};
+    queue_input_event(NK_EVENT_KEY, resource.handle, bytes_of(payload));
+}
+
+void emit_pointer_move(IOSSurface &resource, double x, double y) {
+    resource.pointer_x = x;
+    resource.pointer_y = y;
+    const nk_pointer_move_event payload{x, y};
+    queue_input_event(NK_EVENT_POINTER_MOVE, resource.handle, bytes_of(payload));
+}
+
+void emit_pointer_button(IOSSurface &resource, nk_pointer_button button, nk_input_action action,
+                         nk_modifiers modifiers, double x, double y, uint32_t flags = 0) {
+    resource.pointer_buttons[button] = action;
+    resource.pointer_x = x;
+    resource.pointer_y = y;
+    const nk_pointer_button_event payload{button, action, modifiers, 0, x, y};
+    queue_input_event(NK_EVENT_POINTER_BUTTON, resource.handle, bytes_of(payload), flags);
+}
+
+void emit_touch(IOSSurface &resource, const IOSTouchState &touch, nk_touch_action action,
+                nk_modifiers modifiers, uint32_t flags = 0) {
+    const nk_touch_event payload{touch.pointer_id,
+                                 action,
+                                 touch.tool,
+                                 modifiers,
+                                 touch.x,
+                                 touch.y,
+                                 touch.pressure,
+                                 touch.tilt_x,
+                                 touch.tilt_y,
+                                 0};
+    queue_input_event(NK_EVENT_TOUCH, resource.handle, bytes_of(payload), flags);
+}
+
+bool is_indirect_pointer(UITouch *touch) {
+    return touch.type == UITouchTypeIndirect || touch.type == UITouchTypeIndirectPointer;
+}
+
+IOSTouchState touch_state_for(UITouch *touch, UIView *view, uint32_t pointer_id) {
+    const CGPoint point = [touch locationInView:view];
+    const CGFloat maximum_force = touch.maximumPossibleForce;
+    const CGFloat force = touch.force;
+    const float pressure = maximum_force > 0 && force > 0
+                               ? static_cast<float>(std::min<CGFloat>(1.0, force / maximum_force))
+                               : 1.0f;
+    IOSTouchState result;
+    result.pointer_id = pointer_id;
+    result.tool = (touch.type == UITouchTypePencil || touch.type == UITouchTypeStylus)
+                      ? NK_TOUCH_TOOL_STYLUS
+                      : NK_TOUCH_TOOL_FINGER;
+    result.x = point.x;
+    result.y = point.y;
+    result.pressure = pressure;
+    if (result.tool == NK_TOUCH_TOOL_STYLUS) {
+        const CGFloat tilt = std::max<CGFloat>(0, 1.5707963267948966 - touch.altitudeAngle);
+        const CGFloat azimuth = [touch azimuthAngleInView:view];
+        result.tilt_x = static_cast<float>(std::sin(tilt) * std::cos(azimuth));
+        result.tilt_y = static_cast<float>(std::sin(tilt) * std::sin(azimuth));
+    }
+    return result;
+}
+
+void emit_touch_transition(NKIOSInputView *view, NSSet<UITouch *> *touches,
+                           nk_touch_action action, UIEvent *event) {
+    auto resource = surface(view.surface);
+    if (!resource || resource->destroying)
+        return;
+    const auto modifiers = modifiers_from_native(event.modifierFlags);
+    for (UITouch *touch in touches) {
+        const auto identity = reinterpret_cast<uintptr_t>((__bridge void *)touch);
+        auto found = resource->touch_pointers.find(identity);
+        if (action == NK_TOUCH_BEGIN) {
+            if (found == resource->touch_pointers.end()) {
+                uint32_t pointer_id = resource->next_touch_pointer_id++;
+                if (!pointer_id)
+                    pointer_id = resource->next_touch_pointer_id++;
+                found = resource->touch_pointers
+                            .emplace(identity, touch_state_for(touch, view, pointer_id))
+                            .first;
+            }
+        } else if (found == resource->touch_pointers.end()) {
+            continue;
+        }
+        found->second = touch_state_for(touch, view, found->second.pointer_id);
+        if (is_indirect_pointer(touch)) {
+            if (action == NK_TOUCH_MOVE)
+                emit_pointer_move(*resource, found->second.x, found->second.y);
+            else if (action == NK_TOUCH_BEGIN)
+                emit_pointer_button(*resource, NK_POINTER_BUTTON_LEFT, NK_INPUT_PRESS, modifiers,
+                                    found->second.x, found->second.y);
+            else if (action == NK_TOUCH_END || action == NK_TOUCH_CANCEL)
+                emit_pointer_button(*resource, NK_POINTER_BUTTON_LEFT, NK_INPUT_RELEASE, modifiers,
+                                    found->second.x, found->second.y,
+                                    action == NK_TOUCH_CANCEL ? 1u : 0u);
+        } else {
+            emit_touch(*resource, found->second, action, modifiers,
+                       action == NK_TOUCH_CANCEL ? 1u : 0u);
+        }
+        if (action == NK_TOUCH_END || action == NK_TOUCH_CANCEL)
+            resource->touch_pointers.erase(found);
+    }
+}
+
+UITextRange *native_text_range(NKIOSInputView *view, NSRange range) {
+    if (range.location == NSNotFound)
+        return nil;
+    UITextPosition *start = [view positionFromPosition:view.beginningOfDocument
+                                                  offset:static_cast<NSInteger>(range.location)];
+    UITextPosition *end = [view positionFromPosition:start offset:static_cast<NSInteger>(range.length)];
+    return start && end ? [view textRangeFromPosition:start toPosition:end] : nil;
+}
+
+NSRange native_range_for_text_range(NKIOSInputView *view, UITextRange *range) {
+    if (!range)
+        return NSMakeRange(NSNotFound, 0);
+    const NSInteger start = [view offsetFromPosition:view.beginningOfDocument toPosition:range.start];
+    const NSInteger end = [view offsetFromPosition:view.beginningOfDocument toPosition:range.end];
+    if (start < 0 || end < start)
+        return NSMakeRange(NSNotFound, 0);
+    return NSMakeRange(static_cast<NSUInteger>(start), static_cast<NSUInteger>(end - start));
+}
+
+void set_input_traits(IOSSurface &resource) {
+    if (!resource.input_view)
+        return;
+    switch (resource.text_input_state.input_type) {
+    case NK_TEXT_INPUT_EMAIL:
+        resource.input_view.keyboardType = UIKeyboardTypeEmailAddress;
+        break;
+    case NK_TEXT_INPUT_URL:
+        resource.input_view.keyboardType = UIKeyboardTypeURL;
+        break;
+    case NK_TEXT_INPUT_NUMBER:
+        resource.input_view.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
+        break;
+    case NK_TEXT_INPUT_PHONE:
+        resource.input_view.keyboardType = UIKeyboardTypePhonePad;
+        break;
+    default:
+        resource.input_view.keyboardType = UIKeyboardTypeDefault;
+        break;
+    }
+    resource.input_view.secureTextEntry =
+        resource.text_input_state.input_type == NK_TEXT_INPUT_PASSWORD;
+    resource.input_view.autocorrectionType =
+        (resource.text_input_state.flags & NK_TEXT_INPUT_AUTOCORRECT) ? UITextAutocorrectionTypeYes
+                                                                      : UITextAutocorrectionTypeNo;
+    resource.input_view.autocapitalizationType =
+        (resource.text_input_state.flags & NK_TEXT_INPUT_CAPITALIZE_SENTENCES)
+            ? UITextAutocapitalizationTypeSentences
+            : UITextAutocapitalizationTypeNone;
+    if (resource.text_input_state.flags & NK_TEXT_INPUT_MULTILINE) {
+        resource.input_view.returnKeyType = UIReturnKeyDefault;
+    } else {
+        switch (resource.text_input_state.action) {
+        case NK_TEXT_INPUT_ACTION_DONE:
+            resource.input_view.returnKeyType = UIReturnKeyDone;
+            break;
+        case NK_TEXT_INPUT_ACTION_GO:
+            resource.input_view.returnKeyType = UIReturnKeyGo;
+            break;
+        case NK_TEXT_INPUT_ACTION_NEXT:
+            resource.input_view.returnKeyType = UIReturnKeyNext;
+            break;
+        case NK_TEXT_INPUT_ACTION_SEARCH:
+            resource.input_view.returnKeyType = UIReturnKeySearch;
+            break;
+        case NK_TEXT_INPUT_ACTION_SEND:
+            resource.input_view.returnKeyType = UIReturnKeySend;
+            break;
+        case NK_TEXT_INPUT_ACTION_NONE:
+            resource.input_view.returnKeyType = UIReturnKeyNone;
+            break;
+        default:
+            resource.input_view.returnKeyType = UIReturnKeyDefault;
+            break;
+        }
+    }
+    [resource.input_view reloadInputViews];
+}
+
+void reset_surface_input(IOSSurface &resource, uint32_t event_flags) {
+    if (resource.text_input_active)
+        finish_text_composition(resource);
+    else {
+        resource.text_composing = false;
+        resource.text_composition_start = NK_TEXT_POSITION_NONE;
+        resource.text_composition_end = NK_TEXT_POSITION_NONE;
+        resource.text_input_state.composition_start = NK_TEXT_POSITION_NONE;
+        resource.text_input_state.composition_end = NK_TEXT_POSITION_NONE;
+        resource.marked_text.clear();
+        resource.marked_native_range = NSMakeRange(NSNotFound, 0);
+    }
+    for (nk_key key = 1; key <= NK_KEY_LAST; ++key) {
+        if (resource.keys[key] != NK_INPUT_PRESS)
+            continue;
+        resource.keys[key] = NK_INPUT_RELEASE;
+        const nk_key_event payload{key, 0, NK_INPUT_RELEASE, 0};
+        queue_input_event(NK_EVENT_KEY, resource.handle, bytes_of(payload), event_flags);
+    }
+    for (nk_pointer_button button = 0; button <= NK_POINTER_BUTTON_LAST; ++button) {
+        if (resource.pointer_buttons[button] != NK_INPUT_PRESS)
+            continue;
+        const nk_pointer_button_event payload{button, NK_INPUT_RELEASE, 0, 0,
+                                              resource.pointer_x, resource.pointer_y};
+        resource.pointer_buttons[button] = NK_INPUT_RELEASE;
+        queue_input_event(NK_EVENT_POINTER_BUTTON, resource.handle, bytes_of(payload), event_flags);
+    }
+    for (const auto &[identity, touch] : resource.touch_pointers) {
+        (void)identity;
+        emit_touch(resource, touch, NK_TOUCH_CANCEL, 0, event_flags);
+    }
+    resource.touch_pointers.clear();
 }
 
 void stop_observing(const std::shared_ptr<IOSHost> &resource) {
@@ -209,6 +877,8 @@ bool set_surface_native_bounds(IOSSurface &resource) {
     if (!resource.layer)
         return false;
     resource.layer.frame = CGRectMake(resource.x, resource.y, resource.width, resource.height);
+    if (resource.input_view)
+        resource.input_view.frame = resource.layer.frame;
     sync_surface_drawable_size(resource);
     return true;
 }
@@ -294,6 +964,280 @@ void frame_tick(nk_handle handle) noexcept {
 - (void)tick:(CADisplayLink *)link {
     (void)link;
     frame_tick(self.surface);
+}
+@end
+
+@implementation NKIOSInputView
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.backgroundColor = UIColor.clearColor;
+        self.textColor = UIColor.clearColor;
+        self.tintColor = UIColor.clearColor;
+        self.editable = YES;
+        self.selectable = NO;
+        self.scrollEnabled = NO;
+        self.userInteractionEnabled = YES;
+        self.multipleTouchEnabled = YES;
+        self.textContainerInset = UIEdgeInsetsZero;
+        self.textContainer.lineFragmentPadding = 0;
+        auto *hover = [[UIHoverGestureRecognizer alloc] initWithTarget:self
+                                                                  action:@selector(handleHover:)];
+        hover.cancelsTouchesInView = NO;
+        [self addGestureRecognizer:hover];
+    }
+    return self;
+}
+
+- (BOOL)canBecomeFirstResponder {
+    return YES;
+}
+
+- (void)handleHover:(UIHoverGestureRecognizer *)gesture {
+    auto resource = surface(self.surface);
+    if (!resource || resource->destroying)
+        return;
+    const CGPoint point = [gesture locationInView:self];
+    switch (gesture.state) {
+    case UIGestureRecognizerStateBegan: {
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_POINTER_ENTER;
+        event.source = resource->handle;
+        event.flags = 1u;
+        nk::core::push_event(std::move(event));
+        emit_pointer_move(*resource, point.x, point.y);
+        break;
+    }
+    case UIGestureRecognizerStateChanged:
+        emit_pointer_move(*resource, point.x, point.y);
+        break;
+    case UIGestureRecognizerStateEnded:
+    case UIGestureRecognizerStateCancelled:
+    case UIGestureRecognizerStateFailed: {
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_POINTER_ENTER;
+        event.source = resource->handle;
+        event.flags = 0;
+        nk::core::push_event(std::move(event));
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    emit_touch_transition(self, touches, NK_TOUCH_BEGIN, event);
+}
+
+- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    emit_touch_transition(self, touches, NK_TOUCH_MOVE, event);
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    emit_touch_transition(self, touches, NK_TOUCH_END, event);
+}
+
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    emit_touch_transition(self, touches, NK_TOUCH_CANCEL, event);
+}
+
+- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    auto resource = surface(self.surface);
+    if (resource && !resource->destroying)
+        for (UIPress *press in presses)
+            if (press.key)
+                emit_key_transition(*resource, press.key,
+                                    press.key.isKeyRepeat ? NK_INPUT_REPEAT : NK_INPUT_PRESS);
+    [super pressesBegan:presses withEvent:event];
+}
+
+- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    auto resource = surface(self.surface);
+    if (resource && !resource->destroying)
+        for (UIPress *press in presses)
+            if (press.key)
+                emit_key_transition(*resource, press.key, NK_INPUT_RELEASE);
+    [super pressesEnded:presses withEvent:event];
+}
+
+- (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    auto resource = surface(self.surface);
+    if (resource && !resource->destroying)
+        for (UIPress *press in presses)
+            if (press.key)
+                emit_key_transition(*resource, press.key, NK_INPUT_RELEASE);
+    [super pressesCancelled:presses withEvent:event];
+}
+
+- (UITextRange *)markedTextRange {
+    auto resource = surface(self.surface);
+    if (!resource || !resource->text_composing)
+        return nil;
+    return native_text_range(
+        self, native_range_for_positions(*resource, resource->text_composition_start,
+                                          resource->text_composition_end));
+}
+
+- (void)setMarkedText:(NSString *)markedText selectedRange:(NSRange)selectedRange {
+    auto resource = surface(self.surface);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        const std::string text = utf8_string(markedText ?: @"");
+        std::vector<uint32_t> points;
+        if (!decode_utf8(text, points))
+            return;
+        NSRange replacement = resource->text_composing
+                                  ? native_range_for_positions(*resource,
+                                                               resource->text_composition_start,
+                                                               resource->text_composition_end)
+                                  : self.selectedRange;
+        nk_text_position start = 0;
+        nk_text_position end = 0;
+        if (!codepoint_range_for_native_range(*resource, replacement, start, end)) {
+            start = text_replacement_start(*resource);
+            end = text_replacement_end(*resource);
+        }
+        const NSUInteger text_units = utf16_offset_for_codepoint(points, points.size());
+        const NSUInteger selected_start =
+            selectedRange.location == NSNotFound
+                ? text_units
+                : std::min<NSUInteger>(selectedRange.location, text_units);
+        const NSUInteger selected_end =
+            selectedRange.location == NSNotFound
+                ? selected_start
+                : std::min<NSUInteger>(selectedRange.location + selectedRange.length, text_units);
+        const auto selection_start = static_cast<nk_text_position>(
+            start + codepoint_index_for_utf16(points, selected_start));
+        const auto selection_end = static_cast<nk_text_position>(
+            start + codepoint_index_for_utf16(points, selected_end));
+        const auto composition_end = static_cast<nk_text_position>(start + points.size());
+        if (resource->text_input_active) {
+            apply_text_edit_state(*resource, NK_TEXT_EDIT_COMPOSE, start, end, text,
+                                  selection_start, selection_end, start, composition_end);
+        } else {
+            update_text_snapshot(*resource, start, end, text);
+            resource->text_composing = true;
+            resource->text_composition_start = start;
+            resource->text_composition_end = composition_end;
+            resource->text_input_state.composition_start = start;
+            resource->text_input_state.composition_end = composition_end;
+            resource->text_input_state.selection_start = selection_start;
+            resource->text_input_state.selection_end = selection_end;
+            resource->marked_text = text;
+            resource->marked_native_range = NSMakeRange(replacement.location, text_units);
+            sync_input_view(*resource);
+        }
+    });
+}
+
+- (void)unmarkText {
+    auto resource = surface(self.surface);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        if (resource->text_input_active)
+            finish_text_composition(*resource);
+        else {
+            resource->text_composing = false;
+            resource->text_composition_start = NK_TEXT_POSITION_NONE;
+            resource->text_composition_end = NK_TEXT_POSITION_NONE;
+            resource->text_input_state.composition_start = NK_TEXT_POSITION_NONE;
+            resource->text_input_state.composition_end = NK_TEXT_POSITION_NONE;
+            resource->marked_text.clear();
+            resource->marked_native_range = NSMakeRange(NSNotFound, 0);
+        }
+    });
+}
+
+- (void)insertText:(NSString *)text {
+    auto resource = surface(self.surface);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] { emit_committed_text(*resource, utf8_string(text ?: @"")); });
+}
+
+- (void)deleteBackward {
+    auto resource = surface(self.surface);
+    if (!resource || !resource->text_input_active)
+        return;
+    nk::core::callback_boundary([&] {
+        nk_text_position replace_start = std::min(resource->text_input_state.selection_start,
+                                                   resource->text_input_state.selection_end);
+        nk_text_position replace_end = std::max(resource->text_input_state.selection_start,
+                                                 resource->text_input_state.selection_end);
+        if (replace_start == replace_end && replace_start > resource->text_input_state.text_start)
+            --replace_start;
+        if (replace_start == replace_end)
+            return;
+        apply_text_edit_state(*resource, NK_TEXT_EDIT_DELETE, replace_start, replace_end, {},
+                              replace_start, replace_start, NK_TEXT_POSITION_NONE,
+                              NK_TEXT_POSITION_NONE);
+    });
+}
+
+- (void)replaceRange:(UITextRange *)range withText:(NSString *)text {
+    auto resource = surface(self.surface);
+    if (!resource)
+        return;
+    nk::core::callback_boundary([&] {
+        nk_text_position start = 0;
+        nk_text_position end = 0;
+        if (!codepoint_range_for_native_range(*resource, native_range_for_text_range(self, range),
+                                              start, end))
+            return;
+        const std::string value = utf8_string(text ?: @"");
+        std::vector<uint32_t> points;
+        if (!decode_utf8(value, points))
+            return;
+        const auto selection = static_cast<nk_text_position>(start + points.size());
+        if (resource->text_input_active)
+            apply_text_edit_state(*resource, NK_TEXT_EDIT_COMMIT, start, end, value, selection,
+                                  selection, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+        else
+            emit_committed_text(*resource, value);
+    });
+}
+
+- (void)setSelectedTextRange:(UITextRange *)range {
+    [super setSelectedTextRange:range];
+    auto resource = surface(self.surface);
+    if (!resource || resource->syncing_input_view || !resource->text_input_active || !range)
+        return;
+    nk::core::callback_boundary([&] {
+        nk_text_position start = 0;
+        nk_text_position end = 0;
+        if (!codepoint_range_for_native_range(*resource, native_range_for_text_range(self, range),
+                                              start, end) ||
+            (start == resource->text_input_state.selection_start &&
+             end == resource->text_input_state.selection_end))
+            return;
+        apply_text_edit_state(*resource, NK_TEXT_EDIT_SET_SELECTION, NK_TEXT_POSITION_NONE,
+                              NK_TEXT_POSITION_NONE, {}, start, end,
+                              resource->text_input_state.composition_start,
+                              resource->text_input_state.composition_end);
+    });
+}
+
+- (CGRect)firstRectForRange:(UITextRange *)range {
+    (void)range;
+    auto resource = surface(self.surface);
+    if (!resource)
+        return CGRectZero;
+    return CGRectMake(resource->text_input_state.cursor_x, resource->text_input_state.cursor_y,
+                      std::max(1.f, resource->text_input_state.cursor_width),
+                      std::max(1.f, resource->text_input_state.cursor_height));
+}
+
+- (CGRect)caretRectForPosition:(UITextPosition *)position {
+    (void)position;
+    auto resource = surface(self.surface);
+    if (!resource)
+        return CGRectZero;
+    return CGRectMake(resource->text_input_state.cursor_x, resource->text_input_state.cursor_y,
+                      std::max(1.f, resource->text_input_state.cursor_width),
+                      std::max(1.f, resource->text_input_state.cursor_height));
 }
 @end
 
@@ -394,8 +1338,10 @@ nk_result mobile_host_set_lifecycle(nk_handle handle, nk_mobile_lifecycle_state 
     resource->lifecycle = state;
     if (becoming_unavailable)
         for (const nk_handle child_handle : resource->surfaces)
-            if (auto child = surface(child_handle))
+            if (auto child = surface(child_handle)) {
+                reset_surface_input(*child);
                 emit_surface_lost(*child);
+            }
     return NK_OK;
 }
 
@@ -484,7 +1430,14 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             resource->layer.framebufferOnly = YES;
             resource->layer.opaque = (options->flags & NK_SURFACE_ALPHA) == 0;
             resource->layer.hidden = (options->flags & NK_SURFACE_HIDDEN) != 0;
+            resource->input_view = [[NKIOSInputView alloc] initWithFrame:CGRectZero];
+            if (!resource->input_view) {
+                nk::core::set_error("could not create the iOS input surface");
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            resource->input_view.hidden = (options->flags & NK_SURFACE_HIDDEN) != 0;
             [parent->view.layer addSublayer:resource->layer];
+            [parent->view addSubview:resource->input_view];
             if (!set_surface_native_bounds(*resource)) {
                 nk::core::set_error("could not attach the iOS Metal layer");
                 return NK_ERROR_UNKNOWN;
@@ -500,6 +1453,7 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             }
             if (!resource->device_handle)
                 resource->device_handle = resource->handle;
+            resource->input_view.surface = resource->handle;
             try {
                 surfaces.emplace(resource->handle, resource);
                 parent->surfaces.push_back(resource->handle);
@@ -538,6 +1492,8 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
         nk::core::set_error("graphics surface still owns retained GPU resources");
         return NK_ERROR_INVALID_REQUEST;
     }
+    reset_surface_input(*resource);
+    [resource->input_view resignFirstResponder];
     resource->destroying = true;
     resource->frame_prepared = false;
     [resource->frame_timer invalidate];
@@ -572,6 +1528,7 @@ nk_result NK_CALL nk_surface_show(nk_handle handle, uint32_t visible) {
         return NK_ERROR_INVALID_HANDLE;
     }
     resource->layer.hidden = visible == 0;
+    resource->input_view.hidden = visible == 0;
     return NK_OK;
 }
 
@@ -757,7 +1714,170 @@ nk_result NK_CALL nk_surface_get_proc_address(nk_handle handle, const char *name
     return NK_ERROR_UNSUPPORTED;
 }
 
+nk_result NK_CALL nk_key_get_state(nk_handle handle, nk_key key, nk_input_action *out_action) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (!out_action || key == NK_KEY_UNKNOWN || key > NK_KEY_LAST) {
+        nk::core::set_error("invalid key state query");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto resource = surface(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS graphics surface handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    *out_action = resource->keys[key];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_pointer_button_get_state(nk_handle handle, nk_pointer_button button,
+                                              nk_input_action *out_action) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (!out_action || button > NK_POINTER_BUTTON_LAST) {
+        nk::core::set_error("invalid pointer button state query");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto resource = surface(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS graphics surface handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    *out_action = resource->pointer_buttons[button];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_pointer_get_position(nk_handle handle, double *out_x, double *out_y) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (!out_x || !out_y) {
+        nk::core::set_error("pointer position outputs must not be null");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto resource = surface(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS graphics surface handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    *out_x = resource->pointer_x;
+    *out_y = resource->pointer_y;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
+                                                  const nk_text_input_state *state) {
+    return nk::core::result_boundary(
+        "unexpected error while setting iOS text input state", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            if (!state || state->struct_size < sizeof(*state)) {
+                nk::core::set_error("iOS text input state is missing or too small");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            const char *text = state->text ? state->text : "";
+            NSString *native_text = native_string(text);
+            std::vector<uint32_t> points;
+            if (!native_text || !decode_utf8(text, points)) {
+                nk::core::set_error("iOS text input state text is not valid UTF-8");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            const uint64_t text_end = static_cast<uint64_t>(state->text_start) + points.size();
+            const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
+                                        state->composition_end == NK_TEXT_POSITION_NONE;
+            const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
+                                           state->composition_end != NK_TEXT_POSITION_NONE &&
+                                           state->composition_start <= state->composition_end &&
+                                           state->composition_start >= state->text_start &&
+                                           state->composition_end <= text_end;
+            const bool valid_cursor =
+                std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
+                std::isfinite(state->cursor_width) && std::isfinite(state->cursor_height) &&
+                state->cursor_width >= 0.f && state->cursor_height >= 0.f;
+            if ((state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
+                                  NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) ||
+                state->text_start > state->document_length || text_end > state->document_length ||
+                state->selection_start > state->selection_end ||
+                state->selection_start < state->text_start || state->selection_end > text_end ||
+                (!no_composition && !valid_composition) ||
+                state->input_type > NK_TEXT_INPUT_PASSWORD ||
+                state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor) {
+                nk::core::set_error("iOS text input ranges or hints are invalid");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            auto resource = surface(handle);
+            if (!resource) {
+                nk::core::set_error("invalid or stale iOS graphics surface handle");
+                return NK_ERROR_INVALID_HANDLE;
+            }
+            resource->text_input_text = text;
+            resource->text_input_state = *state;
+            resource->text_input_state.text = resource->text_input_text.c_str();
+            resource->text_composition_start = state->composition_start;
+            resource->text_composition_end = state->composition_end;
+            resource->text_composing = !no_composition;
+            resource->marked_native_range =
+                resource->text_composing
+                    ? native_range_for_positions(*resource, state->composition_start,
+                                                 state->composition_end)
+                    : NSMakeRange(NSNotFound, 0);
+            if (resource->text_composing)
+                resource->marked_text = utf8_string([native_text
+                    substringWithRange:resource->marked_native_range]);
+            else
+                resource->marked_text.clear();
+            set_input_traits(*resource);
+            sync_input_view(*resource);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t active) {
+    return nk::core::result_boundary(
+        "unexpected error while changing iOS text input", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            if (active > 1) {
+                nk::core::set_error("text input active state must be zero or one");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            auto resource = surface(handle);
+            if (!resource) {
+                nk::core::set_error("invalid or stale iOS graphics surface handle");
+                return NK_ERROR_INVALID_HANDLE;
+            }
+            if (active) {
+                resource->text_input_active = true;
+                set_input_traits(*resource);
+                if (![resource->input_view becomeFirstResponder]) {
+                    resource->text_input_active = false;
+                    nk::core::set_error("iOS could not activate the text input responder");
+                    return NK_ERROR_UNKNOWN;
+                }
+            } else {
+                if (resource->text_input_active)
+                    finish_text_composition(*resource);
+                resource->text_input_active = false;
+                [resource->input_view resignFirstResponder];
+                if (resource->text_composing) {
+                    resource->text_composing = false;
+                    resource->text_composition_start = NK_TEXT_POSITION_NONE;
+                    resource->text_composition_end = NK_TEXT_POSITION_NONE;
+                    resource->text_input_state.composition_start = NK_TEXT_POSITION_NONE;
+                    resource->text_input_state.composition_end = NK_TEXT_POSITION_NONE;
+                    resource->marked_text.clear();
+                    resource->marked_native_range = NSMakeRange(NSNotFound, 0);
+                }
+            }
+            return NK_OK;
+        });
+}
+
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_METAL_SURFACE;
+    return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_METAL_SURFACE | NK_CAP_INPUT;
 }
 }

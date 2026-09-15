@@ -51,7 +51,7 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 | Dialogs and system services | ✅ | ✅ | ✅ | ✅ | 🚧 | 🚧 |
 | Clipboard and drag/drop | ✅ | ✅ | ✅ | ✅ | 🚧 | Partial |
 | Notifications | ✅ | ✅ | ✅ | ✅ | 🚧 | 🚧 |
-| Input, cursors, and capture | ✅ | ✅ | ✅ | Partial | 🚧 | Partial |
+| Input, cursors, and capture | ✅ | ✅ | ✅ | Partial | Partial | Partial |
 | Monitors and fullscreen modes | ✅ | ✅ | ✅ | — | — | — |
 | Joysticks and gamepads | ✅ | ✅ | ✅ | ✅ | 🚧 | 🚧 |
 | OpenGL / OpenGL ES | ✅ | — | — | GLES | — | Partial |
@@ -66,8 +66,9 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 
 - iOS currently has compile-only CI coverage for the core library on device and
   simulator SDKs. The initial UIKit host attachment, geometry lifecycle, and
-  Metal presentation surface are available; WebView, input, system services,
-  resource sharing, and simulator runtime integration are still being added.
+  Metal presentation surface, touch/pointer input, hardware-key events, and
+  UIKit text editing are available; WebView, system services, resource sharing,
+  and simulator runtime integration are still being added.
 - Linux desktop support requires GTK 3 and WebKitGTK 4.1. Without them, the
   library builds with a stub backend and reports the services as unsupported.
 - Windows WebViews require the Microsoft Edge WebView2 Evergreen Runtime.
