@@ -1,0 +1,29 @@
+name: Capability parity
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install GTK test dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libgtk-3-dev libwebkit2gtk-4.1-dev xvfb dbus-x11 ninja-build
+      - name: Configure
+        run: >-
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug
+          -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=OFF -DNK_BUILD_TESTS=ON
+          -DNK_BUILD_GPU=OFF -DNK_BUILD_UI=OFF
+      - name: Build parity tests
+        run: cmake --build build --target nativekit_platform_parity nativekit_capability_conformance
+      - name: Run capability contract and conformance
+        run: >-
+          ctest --test-dir build --output-on-failure --timeout 120
+          -R '^(platform_parity|capability_conformance)$'

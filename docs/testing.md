@@ -9,10 +9,10 @@ runtime generation.
 ## Capability contract and shared conformance
 
 `platform_parity` loads the checked-in capability snapshot at
-`tests/capability-snapshots.txt`. It verifies that each backend advertises all
-required capabilities, does not advertise deferred or not-applicable bits, and
-classifies every public capability bit exactly once. An intentional capability
-change must update the snapshot, the normative
+`tests/capability-snapshots.txt`. It validates every backend row's classification
+and verifies that the running backend advertises all required capabilities,
+without deferred or not-applicable bits. An intentional capability change must
+update the snapshot, the normative
 [platform parity contract](platform-parity.md), and behavior coverage together.
 
 Desktop backends also run `capability_conformance`, a shared operation-level
@@ -22,6 +22,11 @@ and WebView operations. Linux runs it under Xvfb; Windows and macOS run the
 same executable natively. The suite is capability-driven so platform-specific
 equivalents can share semantic coverage without requiring identical native
 objects.
+
+`platform_parity` validates every row in the snapshot on each native build, then
+compares the running backend's advertised mask with its own row. The Linux CI
+contract job also runs the shared capability conformance suite, while the
+Windows and macOS jobs run that suite through their native CTest matrices.
 
 On Linux, `linux_notification_failure` runs in an isolated D-Bus session with
 no notification daemon. It verifies that an accepted asynchronous request
@@ -132,11 +137,13 @@ integration, and browser behavior.
 The iOS workflow builds the library for device and simulator SDKs. The
 simulator job additionally builds `nativekit_ios_runtime_tests`, installs it on
 an available iPhone simulator, and launches the app through `simctl`. The app
-attaches a real UIKit host and exercises capability discovery, Metal frame
-acquisition and callbacks, UIKit text input, custom-surface accessibility,
-WKWebView evaluation, appearance, and clipboard before reporting a pass/fail
-marker. This keeps the device build as a compile/link check while giving the
-simulator backend runtime coverage.
+attaches a real UIKit host and exercises capability discovery, host drop
+registration, Metal frame acquisition and callbacks, UIKit text input,
+custom-surface accessibility, WKWebView evaluation, appearance, text and URI
+clipboard round trips, the iOS share sheet, and GameController enumeration
+before reporting a pass/fail marker. This keeps the device build as a
+compile/link check while giving the simulator backend runtime coverage for its
+advertised mobile capabilities.
 
 ## macOS native tests
 
