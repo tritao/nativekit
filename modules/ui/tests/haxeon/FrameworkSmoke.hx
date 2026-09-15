@@ -47,6 +47,7 @@ import nativekit.ui.semantics.Semantics;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.Align;
+import nativekit.ui.widgets.AppShell;
 import nativekit.ui.widgets.CanvasView;
 import nativekit.ui.widgets.Checkbox;
 import nativekit.ui.widgets.ImageView;
@@ -1185,6 +1186,24 @@ class FrameworkSmoke {
 		if (roleRoot.children[4].layout.textStyle.fontSize != 15.0 ||
 			roleRoot.children[4].layout.paragraphStyle.wrap != TextWrap.None)
 			return 222;
+		var appShell = new AppShell("app-shell-smoke", new Text("Content"),
+			new Text("Top bar"), new Text("Sidebar"), new Text("Inspector"));
+		var appShellRoot = context.submit(appShell, new LayoutFrame(320.0, 192.0));
+		if (appShellRoot.children.length != 2 ||
+			appShellRoot.children[0].layout.visualKind != LayoutVisualKind.Text ||
+			appShellRoot.children[1].layout.style.direction != LayoutDirection.LeftToRight ||
+			appShellRoot.children[1].children.length != 3)
+			return 224;
+		var appShellBody = appShellRoot.children[1];
+		var appShellContentSlot = appShellBody.children[1];
+		if (appShellBody.children[0].layout.visualKind != LayoutVisualKind.Text ||
+			appShellContentSlot.children.length != 1 ||
+			appShellContentSlot.children[0].layout.visualKind != LayoutVisualKind.Text ||
+			appShellBody.children[2].layout.visualKind != LayoutVisualKind.Text ||
+			appShellContentSlot.resolved == null ||
+			appShellContentSlot.resolved.width <= 0.0 ||
+			appShellContentSlot.resolved.height <= 0.0)
+			return 225;
 		var inheritedColor = Color.rgba(0.24, 0.31, 0.42, 1.0);
 		var nestedColor = Color.rgba(0.76, 0.42, 0.18, 1.0);
 		var typography = new DefaultTextStyle(new Column("typography", [
