@@ -11,6 +11,7 @@ class ExplorerSmokeSequence {
 		state.overlays.dialogOpen = false;
 		state.overlays.popupOpen = false;
 		state.overlays.menuOpen = false;
+		state.inspector.open = true;
 		state.smokeFocusTextField = false;
 		switch frame % FRAME_COUNT {
 			case ExplorerSmokeFrame.Overview: state.selectedPage = "overview";
