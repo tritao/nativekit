@@ -57,6 +57,14 @@ static int activate_japanese_ime_profile(void) {
         HRESULT result = profiles->lpVtbl->ActivateLanguageProfile(
             profiles, &clsid, MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN), &profile);
         activated = SUCCEEDED(result);
+        LANGID active_language = 0;
+        GUID active_profile = {0};
+        HRESULT active_result = profiles->lpVtbl->GetActiveLanguageProfile(
+            profiles, &clsid, &active_language, &active_profile);
+        fprintf(stderr, "win_text_input: profile_result=0x%08lx active_result=0x%08lx "
+                        "active_language=%04x active_profile=%d\n",
+                (unsigned long)result, (unsigned long)active_result,
+                (unsigned int)active_language, IsEqualGUID(&active_profile, &profile) ? 1 : 0);
         profiles->lpVtbl->Release(profiles);
     }
     if (SUCCEEDED(initialized))
