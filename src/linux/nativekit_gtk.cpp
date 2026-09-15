@@ -1,4 +1,5 @@
 #include "nativekit_clipboard.h"
+#include "nativekit_accessibility.h"
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
@@ -17,6 +18,7 @@
 #include "core/runtime.hpp"
 
 #include <gtk/gtk.h>
+#include <atk/atk.h>
 #include <gdk/gdkconfig.h>
 #ifdef GDK_WINDOWING_WAYLAND
 #include <gdk/gdkwayland.h>
@@ -31,8 +33,10 @@
 #include <algorithm>
 #include <array>
 #include <climits>
+#include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <new>
@@ -145,6 +149,50 @@ struct GtkWindowResource final : nk::core::Resource {
     }
 };
 
+struct GtkAccessibilityTextRange {
+    nk_accessibility_text_position start = 0;
+    nk_accessibility_text_position end = 0;
+    float x = 0;
+    float y = 0;
+    float width = 0;
+    float height = 0;
+};
+
+struct GtkAccessibilityNode {
+    nk_accessibility_node_id id = NK_ACCESSIBILITY_ROOT;
+    nk_accessibility_node_id parent = NK_ACCESSIBILITY_ROOT;
+    uint32_t child_index = 0;
+    nk_accessibility_role role = NK_ACCESSIBILITY_GROUP;
+    nk_accessibility_states states = 0;
+    nk_accessibility_actions actions = 0;
+    float x = 0;
+    float y = 0;
+    float width = 0;
+    float height = 0;
+    std::string label;
+    std::string value;
+    double numeric_value = 0;
+    double numeric_minimum = 0;
+    double numeric_maximum = 0;
+    nk_accessibility_text_position text_start = 0;
+    nk_accessibility_text_position document_length = 0;
+    nk_accessibility_text_position selection_start = NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    nk_accessibility_text_position selection_end = NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    uint32_t set_size = 0;
+    uint32_t position_in_set = 0;
+    uint32_t row_count = 0;
+    uint32_t column_count = 0;
+    uint32_t row_index = NK_ACCESSIBILITY_INDEX_NONE;
+    uint32_t column_index = NK_ACCESSIBILITY_INDEX_NONE;
+    uint32_t row_span = 0;
+    uint32_t column_span = 0;
+    uint32_t hierarchy_level = 0;
+    nk_accessibility_orientation orientation = NK_ACCESSIBILITY_ORIENTATION_UNSPECIFIED;
+    std::vector<GtkAccessibilityTextRange> text_ranges;
+};
+
+constexpr const char *k_accessibility_resource_data = "nativekit-surface-resource";
+
 struct GtkSurfaceResource final : nk::core::Resource {
     GtkWidget *widget = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
@@ -158,12 +206,1154 @@ struct GtkSurfaceResource final : nk::core::Resource {
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
     std::shared_ptr<GtkSurfaceResource> shared_surface;
+    std::unordered_map<nk_accessibility_node_id, GtkAccessibilityNode> accessibility_nodes;
+    nk_accessibility_node_id accessibility_focus = NK_ACCESSIBILITY_ROOT;
 
     ~GtkSurfaceResource() override {
-        if (widget)
+        if (widget) {
+            g_object_set_data(G_OBJECT(widget), k_accessibility_resource_data, nullptr);
             gtk_widget_destroy(widget);
+        }
     }
 };
+
+struct NkAccessibilityRoot;
+struct NkAccessibilityElement;
+
+struct NkAccessibilityRoot {
+    AtkObject parent;
+    GtkWidget *widget = nullptr;
+    GPtrArray *children = nullptr;
+};
+
+struct NkAccessibilityRootClass {
+    AtkObjectClass parent_class;
+};
+
+struct NkAccessibilityElement {
+    AtkObject parent;
+    NkAccessibilityRoot *root = nullptr;
+    nk_accessibility_node_id id = NK_ACCESSIBILITY_ROOT;
+    GPtrArray *children = nullptr;
+};
+
+struct NkAccessibilityElementClass {
+    AtkObjectClass parent_class;
+};
+
+struct NkGLArea {
+    GtkGLArea parent;
+};
+
+struct NkGLAreaClass {
+    GtkGLAreaClass parent_class;
+};
+
+static void gtk_accessibility_action_init(AtkActionIface *iface);
+static void gtk_accessibility_component_init(AtkComponentIface *iface);
+static void gtk_accessibility_text_init(AtkTextIface *iface);
+static void gtk_accessibility_value_init(AtkValueIface *iface);
+static void refresh_gtk_accessibility(GtkSurfaceResource &resource);
+
+G_DEFINE_TYPE(NkAccessibilityRoot, nk_accessibility_root, ATK_TYPE_OBJECT)
+G_DEFINE_TYPE_WITH_CODE(
+    NkAccessibilityElement, nk_accessibility_element, ATK_TYPE_OBJECT,
+    G_IMPLEMENT_INTERFACE(ATK_TYPE_ACTION, gtk_accessibility_action_init)
+        G_IMPLEMENT_INTERFACE(ATK_TYPE_COMPONENT, gtk_accessibility_component_init)
+            G_IMPLEMENT_INTERFACE(ATK_TYPE_TEXT, gtk_accessibility_text_init)
+                G_IMPLEMENT_INTERFACE(ATK_TYPE_VALUE, gtk_accessibility_value_init))
+
+const GtkSurfaceResource *accessibility_resource(const NkAccessibilityRoot *root) {
+    if (!root || !root->widget)
+        return nullptr;
+    return static_cast<const GtkSurfaceResource *>(
+        g_object_get_data(G_OBJECT(root->widget), k_accessibility_resource_data));
+}
+
+GtkSurfaceResource *accessibility_resource(NkAccessibilityRoot *root) {
+    return const_cast<GtkSurfaceResource *>(
+        accessibility_resource(const_cast<const NkAccessibilityRoot *>(root)));
+}
+
+const GtkAccessibilityNode *accessibility_node(const NkAccessibilityElement *element) {
+    const auto *resource = accessibility_resource(element ? element->root : nullptr);
+    if (!resource)
+        return nullptr;
+    const auto found = resource->accessibility_nodes.find(element->id);
+    return found == resource->accessibility_nodes.end() ? nullptr : &found->second;
+}
+
+AtkRole gtk_accessibility_role(nk_accessibility_role role) {
+    switch (role) {
+    case NK_ACCESSIBILITY_BUTTON:
+        return ATK_ROLE_PUSH_BUTTON;
+    case NK_ACCESSIBILITY_CHECKBOX:
+        return ATK_ROLE_CHECK_BOX;
+    case NK_ACCESSIBILITY_RADIO:
+        return ATK_ROLE_RADIO_BUTTON;
+    case NK_ACCESSIBILITY_TEXT:
+        return ATK_ROLE_STATIC;
+    case NK_ACCESSIBILITY_TEXT_FIELD:
+        return ATK_ROLE_ENTRY;
+    case NK_ACCESSIBILITY_LINK:
+        return ATK_ROLE_LINK;
+    case NK_ACCESSIBILITY_IMAGE:
+        return ATK_ROLE_IMAGE;
+    case NK_ACCESSIBILITY_HEADING:
+        return ATK_ROLE_HEADING;
+    case NK_ACCESSIBILITY_LIST:
+        return ATK_ROLE_LIST;
+    case NK_ACCESSIBILITY_LIST_ITEM:
+        return ATK_ROLE_LIST_ITEM;
+    case NK_ACCESSIBILITY_SLIDER:
+        return ATK_ROLE_SLIDER;
+    case NK_ACCESSIBILITY_SCROLL_AREA:
+        return ATK_ROLE_SCROLL_PANE;
+    case NK_ACCESSIBILITY_DIALOG:
+        return ATK_ROLE_DIALOG;
+    case NK_ACCESSIBILITY_MENU:
+        return ATK_ROLE_MENU;
+    case NK_ACCESSIBILITY_MENU_BAR:
+        return ATK_ROLE_MENU_BAR;
+    case NK_ACCESSIBILITY_MENU_ITEM:
+        return ATK_ROLE_MENU_ITEM;
+    case NK_ACCESSIBILITY_TAB_LIST:
+        return ATK_ROLE_PAGE_TAB_LIST;
+    case NK_ACCESSIBILITY_TAB:
+        return ATK_ROLE_PAGE_TAB;
+    case NK_ACCESSIBILITY_TAB_PANEL:
+        return ATK_ROLE_PANEL;
+    case NK_ACCESSIBILITY_SWITCH:
+        return ATK_ROLE_TOGGLE_BUTTON;
+    case NK_ACCESSIBILITY_PROGRESS_BAR:
+        return ATK_ROLE_PROGRESS_BAR;
+    case NK_ACCESSIBILITY_COMBO_BOX:
+        return ATK_ROLE_COMBO_BOX;
+    case NK_ACCESSIBILITY_GRID:
+        return ATK_ROLE_TABLE;
+    case NK_ACCESSIBILITY_ROW:
+        return ATK_ROLE_TABLE_ROW;
+    case NK_ACCESSIBILITY_CELL:
+        return ATK_ROLE_TABLE_CELL;
+    case NK_ACCESSIBILITY_COLUMN_HEADER:
+        return ATK_ROLE_COLUMN_HEADER;
+    case NK_ACCESSIBILITY_ROW_HEADER:
+        return ATK_ROLE_ROW_HEADER;
+    case NK_ACCESSIBILITY_TREE:
+        return ATK_ROLE_TREE;
+    case NK_ACCESSIBILITY_TREE_ITEM:
+        return ATK_ROLE_TREE_ITEM;
+    case NK_ACCESSIBILITY_SEPARATOR:
+        return ATK_ROLE_SEPARATOR;
+    case NK_ACCESSIBILITY_TOOLBAR:
+        return ATK_ROLE_TOOL_BAR;
+    case NK_ACCESSIBILITY_STATUS:
+        return ATK_ROLE_STATUSBAR;
+    case NK_ACCESSIBILITY_ALERT:
+        return ATK_ROLE_ALERT;
+    case NK_ACCESSIBILITY_COLLECTION:
+    case NK_ACCESSIBILITY_COLLECTION_ITEM:
+    case NK_ACCESSIBILITY_GROUP:
+    default:
+        return role == NK_ACCESSIBILITY_COLLECTION_ITEM ? ATK_ROLE_LIST_ITEM : ATK_ROLE_PANEL;
+    }
+}
+
+AtkStateSet *gtk_accessibility_state_set(const GtkAccessibilityNode *node,
+                                         const GtkSurfaceResource *resource) {
+    auto *states = atk_state_set_new();
+    if (!node)
+        return states;
+    if (!(node->states & NK_ACCESSIBILITY_DISABLED)) {
+        atk_state_set_add_state(states, ATK_STATE_ENABLED);
+        atk_state_set_add_state(states, ATK_STATE_SENSITIVE);
+    }
+    if (node->states & NK_ACCESSIBILITY_FOCUSABLE)
+        atk_state_set_add_state(states, ATK_STATE_FOCUSABLE);
+    if ((node->states & NK_ACCESSIBILITY_FOCUSED) ||
+        (resource && resource->accessibility_focus == node->id))
+        atk_state_set_add_state(states, ATK_STATE_FOCUSED);
+    if (node->states & NK_ACCESSIBILITY_SELECTED)
+        atk_state_set_add_state(states, ATK_STATE_SELECTED);
+    if (node->states & NK_ACCESSIBILITY_CHECKED)
+        atk_state_set_add_state(states, ATK_STATE_CHECKED);
+    if (node->states & NK_ACCESSIBILITY_READ_ONLY)
+        atk_state_set_add_state(states, ATK_STATE_READ_ONLY);
+    else if (node->role == NK_ACCESSIBILITY_TEXT_FIELD)
+        atk_state_set_add_state(states, ATK_STATE_EDITABLE);
+    if (node->states & NK_ACCESSIBILITY_MULTILINE)
+        atk_state_set_add_state(states, ATK_STATE_MULTI_LINE);
+    if (node->states & NK_ACCESSIBILITY_PASSWORD)
+        atk_state_set_add_state(states, ATK_STATE_READ_ONLY);
+    if (node->states & NK_ACCESSIBILITY_EXPANDED)
+        atk_state_set_add_state(states, ATK_STATE_EXPANDED);
+    else if (node->actions & (NK_ACCESSIBILITY_CAN_EXPAND | NK_ACCESSIBILITY_CAN_COLLAPSE))
+        atk_state_set_add_state(states, ATK_STATE_COLLAPSED);
+    if (node->states & NK_ACCESSIBILITY_MODAL)
+        atk_state_set_add_state(states, ATK_STATE_MODAL);
+    if (node->states & NK_ACCESSIBILITY_REQUIRED)
+        atk_state_set_add_state(states, ATK_STATE_REQUIRED);
+    if (node->states & NK_ACCESSIBILITY_INVALID)
+        atk_state_set_add_state(states, ATK_STATE_INVALID_ENTRY);
+    if (node->states & NK_ACCESSIBILITY_BUSY)
+        atk_state_set_add_state(states, ATK_STATE_BUSY);
+    if (node->states & NK_ACCESSIBILITY_HAS_POPUP)
+        atk_state_set_add_state(states, ATK_STATE_HAS_POPUP);
+    if (node->orientation == NK_ACCESSIBILITY_ORIENTATION_HORIZONTAL)
+        atk_state_set_add_state(states, ATK_STATE_HORIZONTAL);
+    else if (node->orientation == NK_ACCESSIBILITY_ORIENTATION_VERTICAL)
+        atk_state_set_add_state(states, ATK_STATE_VERTICAL);
+    if (resource && resource->widget && gtk_widget_get_visible(resource->widget)) {
+        atk_state_set_add_state(states, ATK_STATE_VISIBLE);
+        if (gtk_widget_is_drawable(resource->widget))
+            atk_state_set_add_state(states, ATK_STATE_SHOWING);
+    }
+    if (node->actions & NK_ACCESSIBILITY_CAN_SET_SELECTION)
+        atk_state_set_add_state(states, ATK_STATE_SELECTABLE_TEXT);
+    return states;
+}
+
+struct GtkAccessibilityActionSpec {
+    nk_accessibility_action action;
+    nk_accessibility_actions bit;
+    const char *name;
+};
+
+constexpr GtkAccessibilityActionSpec k_accessibility_actions[] = {
+    {NK_ACCESSIBILITY_ACTION_ACTIVATE, NK_ACCESSIBILITY_CAN_ACTIVATE, "activate"},
+    {NK_ACCESSIBILITY_ACTION_FOCUS, NK_ACCESSIBILITY_CAN_FOCUS, "focus"},
+    {NK_ACCESSIBILITY_ACTION_CLEAR_FOCUS, NK_ACCESSIBILITY_CAN_FOCUS, "clear-focus"},
+    {NK_ACCESSIBILITY_ACTION_SET_VALUE, NK_ACCESSIBILITY_CAN_SET_VALUE, "set-value"},
+    {NK_ACCESSIBILITY_ACTION_SET_SELECTION, NK_ACCESSIBILITY_CAN_SET_SELECTION, "set-selection"},
+    {NK_ACCESSIBILITY_ACTION_INCREMENT, NK_ACCESSIBILITY_CAN_INCREMENT, "increment"},
+    {NK_ACCESSIBILITY_ACTION_DECREMENT, NK_ACCESSIBILITY_CAN_DECREMENT, "decrement"},
+    {NK_ACCESSIBILITY_ACTION_SCROLL_FORWARD, NK_ACCESSIBILITY_CAN_SCROLL_FORWARD, "scroll-forward"},
+    {NK_ACCESSIBILITY_ACTION_SCROLL_BACKWARD, NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD, "scroll-backward"},
+    {NK_ACCESSIBILITY_ACTION_MOVE_NEXT, NK_ACCESSIBILITY_CAN_MOVE_NEXT, "move-next"},
+    {NK_ACCESSIBILITY_ACTION_MOVE_PREVIOUS, NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS, "move-previous"},
+    {NK_ACCESSIBILITY_ACTION_TOGGLE, NK_ACCESSIBILITY_CAN_TOGGLE, "toggle"},
+    {NK_ACCESSIBILITY_ACTION_SELECT, NK_ACCESSIBILITY_CAN_SELECT, "select"},
+    {NK_ACCESSIBILITY_ACTION_DESELECT, NK_ACCESSIBILITY_CAN_DESELECT, "deselect"},
+    {NK_ACCESSIBILITY_ACTION_EXPAND, NK_ACCESSIBILITY_CAN_EXPAND, "expand"},
+    {NK_ACCESSIBILITY_ACTION_COLLAPSE, NK_ACCESSIBILITY_CAN_COLLAPSE, "collapse"},
+    {NK_ACCESSIBILITY_ACTION_DISMISS, NK_ACCESSIBILITY_CAN_DISMISS, "dismiss"},
+    {NK_ACCESSIBILITY_ACTION_SHOW_CONTEXT_MENU, NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU,
+     "show-context-menu"},
+    {NK_ACCESSIBILITY_ACTION_SCROLL_INTO_VIEW, NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW,
+     "scroll-into-view"},
+};
+
+nk_accessibility_actions gtk_accessibility_action_bit(nk_accessibility_action action) {
+    for (const auto &spec : k_accessibility_actions)
+        if (spec.action == action)
+            return spec.bit;
+    return 0;
+}
+
+nk_result emit_gtk_accessibility_action(
+    NkAccessibilityRoot *root, nk_accessibility_node_id node, nk_accessibility_action action,
+    const std::string &value = {},
+    nk_accessibility_text_position selection_start = NK_ACCESSIBILITY_TEXT_POSITION_NONE,
+    nk_accessibility_text_position selection_end = NK_ACCESSIBILITY_TEXT_POSITION_NONE,
+    nk_accessibility_text_granularity granularity = 0) noexcept {
+    return nk::core::callback_boundary_or<nk_result>(NK_ERROR_UNKNOWN, [&]() -> nk_result {
+        auto *resource = accessibility_resource(root);
+        if (!resource)
+            return NK_ERROR_INVALID_HANDLE;
+        const auto found = resource->accessibility_nodes.find(node);
+        const auto required = gtk_accessibility_action_bit(action);
+        if (found == resource->accessibility_nodes.end() || !required ||
+            !(found->second.actions & required))
+            return NK_ERROR_UNSUPPORTED;
+        if (action == NK_ACCESSIBILITY_ACTION_FOCUS)
+            resource->accessibility_focus = node;
+        else if (action == NK_ACCESSIBILITY_ACTION_CLEAR_FOCUS &&
+                 resource->accessibility_focus == node)
+            resource->accessibility_focus = NK_ACCESSIBILITY_ROOT;
+        nk_accessibility_action_event payload{};
+        payload.node_id = node;
+        payload.action = action;
+        payload.value_offset = value.empty() ? 0u : sizeof(payload);
+        payload.value_length = static_cast<uint32_t>(value.size());
+        payload.selection_start = selection_start;
+        payload.selection_end = selection_end;
+        payload.granularity = granularity;
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_ACCESSIBILITY_ACTION;
+        event.source = resource->handle;
+        event.data.resize(sizeof(payload) + value.size() + (value.empty() ? 0u : 1u));
+        std::memcpy(event.data.data(), &payload, sizeof(payload));
+        if (!value.empty())
+            std::memcpy(event.data.data() + sizeof(payload), value.c_str(), value.size() + 1);
+        return nk::core::push_event(std::move(event));
+    });
+}
+
+const char *gtk_accessibility_element_name(AtkObject *object) {
+    const auto *node = accessibility_node(reinterpret_cast<NkAccessibilityElement *>(object));
+    return node && !node->label.empty() ? node->label.c_str() : nullptr;
+}
+
+const char *gtk_accessibility_element_description(AtkObject *object) {
+    const auto *node = accessibility_node(reinterpret_cast<NkAccessibilityElement *>(object));
+    return node && !node->value.empty() ? node->value.c_str() : nullptr;
+}
+
+AtkStateSet *gtk_accessibility_element_state_set(AtkObject *object) {
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(object);
+    return gtk_accessibility_state_set(
+        accessibility_node(element), accessibility_resource(element ? element->root : nullptr));
+}
+
+gint gtk_accessibility_element_n_children(AtkObject *object) {
+    const auto *element = reinterpret_cast<NkAccessibilityElement *>(object);
+    return element && element->children ? static_cast<gint>(element->children->len) : 0;
+}
+
+AtkObject *gtk_accessibility_element_ref_child(AtkObject *object, gint index) {
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(object);
+    if (!element || !element->children || index < 0 ||
+        static_cast<guint>(index) >= element->children->len)
+        return nullptr;
+    return reinterpret_cast<AtkObject *>(g_object_ref(g_ptr_array_index(element->children, index)));
+}
+
+gint gtk_accessibility_element_index(AtkObject *object) {
+    auto *parent = atk_object_get_parent(object);
+    if (!parent)
+        return -1;
+    for (gint index = 0; index < atk_object_get_n_accessible_children(parent); ++index) {
+        auto *child = atk_object_ref_accessible_child(parent, index);
+        const bool match = child == object;
+        if (child)
+            g_object_unref(child);
+        if (match)
+            return index;
+    }
+    return -1;
+}
+
+AtkObject *gtk_accessibility_root_ref_child(AtkObject *object, gint index) {
+    auto *root = reinterpret_cast<NkAccessibilityRoot *>(object);
+    if (!root || !root->children || index < 0 || static_cast<guint>(index) >= root->children->len)
+        return nullptr;
+    return reinterpret_cast<AtkObject *>(g_object_ref(g_ptr_array_index(root->children, index)));
+}
+
+gint gtk_accessibility_root_n_children(AtkObject *object) {
+    auto *root = reinterpret_cast<NkAccessibilityRoot *>(object);
+    return root && root->children ? static_cast<gint>(root->children->len) : 0;
+}
+
+const char *gtk_accessibility_root_name(AtkObject *) {
+    return "NativeKit surface";
+}
+
+AtkStateSet *gtk_accessibility_root_state_set(AtkObject *object) {
+    auto *root = reinterpret_cast<NkAccessibilityRoot *>(object);
+    auto *states = atk_state_set_new();
+    if (root && root->widget) {
+        if (gtk_widget_get_visible(root->widget))
+            atk_state_set_add_state(states, ATK_STATE_VISIBLE);
+        if (gtk_widget_is_drawable(root->widget))
+            atk_state_set_add_state(states, ATK_STATE_SHOWING);
+        if (gtk_widget_get_sensitive(root->widget)) {
+            atk_state_set_add_state(states, ATK_STATE_ENABLED);
+            atk_state_set_add_state(states, ATK_STATE_SENSITIVE);
+        }
+    }
+    return states;
+}
+
+void nk_accessibility_root_finalize(GObject *object) {
+    auto *root = reinterpret_cast<NkAccessibilityRoot *>(object);
+    if (root->children)
+        g_ptr_array_unref(root->children);
+    G_OBJECT_CLASS(nk_accessibility_root_parent_class)->finalize(object);
+}
+
+void nk_accessibility_root_class_init(NkAccessibilityRootClass *klass) {
+    auto *object_class = ATK_OBJECT_CLASS(klass);
+    object_class->get_name = gtk_accessibility_root_name;
+    object_class->get_n_children = gtk_accessibility_root_n_children;
+    object_class->ref_child = gtk_accessibility_root_ref_child;
+    object_class->get_role = [](AtkObject *) { return ATK_ROLE_PANEL; };
+    object_class->ref_state_set = gtk_accessibility_root_state_set;
+    auto *gobject_class = G_OBJECT_CLASS(klass);
+    gobject_class->finalize = nk_accessibility_root_finalize;
+}
+
+void nk_accessibility_root_init(NkAccessibilityRoot *root) {
+    root->children = g_ptr_array_new_with_free_func([](gpointer child) {
+        if (child)
+            g_object_unref(child);
+    });
+}
+
+void nk_accessibility_element_finalize(GObject *object) {
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(object);
+    if (element->children)
+        g_ptr_array_unref(element->children);
+    G_OBJECT_CLASS(nk_accessibility_element_parent_class)->finalize(object);
+}
+
+void nk_accessibility_element_class_init(NkAccessibilityElementClass *klass) {
+    auto *object_class = ATK_OBJECT_CLASS(klass);
+    object_class->get_name = gtk_accessibility_element_name;
+    object_class->get_description = gtk_accessibility_element_description;
+    object_class->get_n_children = gtk_accessibility_element_n_children;
+    object_class->ref_child = gtk_accessibility_element_ref_child;
+    object_class->get_index_in_parent = gtk_accessibility_element_index;
+    object_class->get_role = [](AtkObject *object) {
+        const auto *node = accessibility_node(reinterpret_cast<NkAccessibilityElement *>(object));
+        return node ? gtk_accessibility_role(node->role) : ATK_ROLE_UNKNOWN;
+    };
+    object_class->ref_state_set = gtk_accessibility_element_state_set;
+    G_OBJECT_CLASS(klass)->finalize = nk_accessibility_element_finalize;
+}
+
+void nk_accessibility_element_init(NkAccessibilityElement *element) {
+    element->children = g_ptr_array_new_with_free_func([](gpointer child) {
+        if (child)
+            g_object_unref(child);
+    });
+}
+
+G_DEFINE_TYPE(NkGLArea, nk_gl_area, GTK_TYPE_GL_AREA)
+
+void destroy_accessibility_root(gpointer data) {
+    if (data)
+        g_object_unref(data);
+}
+
+AtkObject *nk_gl_area_get_accessible(GtkWidget *widget) {
+    auto *root = reinterpret_cast<NkAccessibilityRoot *>(
+        g_object_get_data(G_OBJECT(widget), "nativekit-accessibility-root"));
+    if (!root) {
+        root = reinterpret_cast<NkAccessibilityRoot *>(
+            g_object_new(nk_accessibility_root_get_type(), nullptr));
+        root->widget = widget;
+        atk_object_initialize(ATK_OBJECT(root), widget);
+        g_object_set_data_full(G_OBJECT(widget), "nativekit-accessibility-root", root,
+                               destroy_accessibility_root);
+    }
+    return ATK_OBJECT(root);
+}
+
+void nk_gl_area_class_init(NkGLAreaClass *klass) {
+    GTK_WIDGET_CLASS(klass)->get_accessible = nk_gl_area_get_accessible;
+}
+
+void nk_gl_area_init(NkGLArea *) {}
+
+GtkWidget *nk_gl_area_new() {
+    return GTK_WIDGET(g_object_new(nk_gl_area_get_type(), nullptr));
+}
+
+const GtkAccessibilityNode *accessibility_node_from_object(AtkObject *object) {
+    return accessibility_node(reinterpret_cast<NkAccessibilityElement *>(object));
+}
+
+bool accessibility_action_for_index(const GtkAccessibilityNode &node, gint index,
+                                    nk_accessibility_action &action) {
+    if (index < 0)
+        return false;
+    for (const auto &spec : k_accessibility_actions) {
+        if (!(node.actions & spec.bit))
+            continue;
+        if (index-- == 0) {
+            action = spec.action;
+            return true;
+        }
+    }
+    return false;
+}
+
+gint gtk_accessibility_action_count(AtkAction *action) {
+    const auto *node = accessibility_node_from_object(ATK_OBJECT(action));
+    if (!node)
+        return 0;
+    gint count = 0;
+    for (const auto &spec : k_accessibility_actions)
+        if (node->actions & spec.bit)
+            ++count;
+    return count;
+}
+
+const GtkAccessibilityActionSpec *gtk_accessibility_action_spec(AtkAction *action, gint index) {
+    const auto *node = accessibility_node_from_object(ATK_OBJECT(action));
+    if (!node || index < 0)
+        return nullptr;
+    for (const auto &spec : k_accessibility_actions) {
+        if (!(node->actions & spec.bit))
+            continue;
+        if (index-- == 0)
+            return &spec;
+    }
+    return nullptr;
+}
+
+gboolean gtk_accessibility_do_action(AtkAction *action, gint index) {
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(ATK_OBJECT(action));
+    const auto *node = accessibility_node(element);
+    nk_accessibility_action requested = 0;
+    if (!node || !accessibility_action_for_index(*node, index, requested))
+        return FALSE;
+    return emit_gtk_accessibility_action(element->root, element->id, requested) == NK_OK;
+}
+
+const gchar *gtk_accessibility_action_name(AtkAction *action, gint index) {
+    const auto *spec = gtk_accessibility_action_spec(action, index);
+    return spec ? spec->name : nullptr;
+}
+
+const gchar *gtk_accessibility_action_description(AtkAction *action, gint index) {
+    return gtk_accessibility_action_name(action, index);
+}
+
+void gtk_accessibility_action_init(AtkActionIface *iface) {
+    iface->do_action = gtk_accessibility_do_action;
+    iface->get_n_actions = gtk_accessibility_action_count;
+    iface->get_description = gtk_accessibility_action_description;
+    iface->get_name = gtk_accessibility_action_name;
+    iface->get_localized_name = gtk_accessibility_action_name;
+}
+
+void accessibility_origin(const NkAccessibilityElement &element, AtkCoordType coords, gint &x,
+                          gint &y);
+
+const GtkAccessibilityNode *gtk_accessibility_text_node(AtkText *text) {
+    return accessibility_node(reinterpret_cast<NkAccessibilityElement *>(ATK_OBJECT(text)));
+}
+
+gint gtk_accessibility_text_length(const GtkAccessibilityNode *node) {
+    return node ? static_cast<gint>(g_utf8_strlen(node->value.c_str(), -1)) : 0;
+}
+
+gchar *gtk_accessibility_text_slice(const GtkAccessibilityNode *node, gint start, gint end) {
+    const gint length = gtk_accessibility_text_length(node);
+    if (!node || start < 0 || end < start || start > length)
+        return g_strdup("");
+    end = std::min(end, length);
+    const auto *begin = g_utf8_offset_to_pointer(node->value.c_str(), start);
+    const auto *finish = g_utf8_offset_to_pointer(node->value.c_str(), end);
+    return g_strndup(begin, static_cast<gsize>(finish - begin));
+}
+
+gchar *gtk_accessibility_text_get(AtkText *text, gint start, gint end) {
+    return gtk_accessibility_text_slice(gtk_accessibility_text_node(text), start, end);
+}
+
+gunichar gtk_accessibility_text_character(AtkText *text, gint offset) {
+    const auto *node = gtk_accessibility_text_node(text);
+    if (!node || offset < 0 || offset >= gtk_accessibility_text_length(node))
+        return 0;
+    return g_utf8_get_char(g_utf8_offset_to_pointer(node->value.c_str(), offset));
+}
+
+void gtk_accessibility_text_boundary(const GtkAccessibilityNode *node, gint offset,
+                                     AtkTextGranularity granularity, gint *start, gint *end) {
+    const gint length = gtk_accessibility_text_length(node);
+    offset = std::clamp(offset, 0, std::max(length - 1, 0));
+    gint result_start = offset;
+    gint result_end = std::min(offset + 1, length);
+    if (!node || !length) {
+        result_start = result_end = 0;
+    } else if (granularity == ATK_TEXT_GRANULARITY_WORD) {
+        const auto points = [&](gint index) {
+            return g_utf8_get_char(g_utf8_offset_to_pointer(node->value.c_str(), index));
+        };
+        const bool word = g_unichar_isalnum(points(offset)) != FALSE;
+        while (result_start > 0 &&
+               (g_unichar_isalnum(points(result_start - 1)) != FALSE) == word)
+            --result_start;
+        while (result_end < length &&
+               (g_unichar_isalnum(points(result_end)) != FALSE) == word)
+            ++result_end;
+    } else if (granularity == ATK_TEXT_GRANULARITY_LINE ||
+               granularity == ATK_TEXT_GRANULARITY_PARAGRAPH) {
+        while (result_start > 0 &&
+               g_utf8_get_char(g_utf8_offset_to_pointer(node->value.c_str(), result_start - 1)) !=
+                   '\n')
+            --result_start;
+        while (result_end < length &&
+               g_utf8_get_char(g_utf8_offset_to_pointer(node->value.c_str(), result_end)) != '\n')
+            ++result_end;
+    } else if (granularity == ATK_TEXT_GRANULARITY_SENTENCE) {
+        auto terminal = [](gunichar point) {
+            return point == '.' || point == '!' || point == '?';
+        };
+        while (result_start > 0 &&
+               !terminal(g_utf8_get_char(g_utf8_offset_to_pointer(node->value.c_str(),
+                                                                  result_start - 1))))
+            --result_start;
+        while (result_end < length &&
+               !terminal(g_utf8_get_char(g_utf8_offset_to_pointer(node->value.c_str(),
+                                                                  result_end - 1))))
+            ++result_end;
+    }
+    if (start)
+        *start = result_start;
+    if (end)
+        *end = result_end;
+}
+
+gchar *gtk_accessibility_text_string_at_offset(AtkText *text, gint offset,
+                                               AtkTextGranularity granularity, gint *start,
+                                               gint *end) {
+    const auto *node = gtk_accessibility_text_node(text);
+    gint local_start = 0;
+    gint local_end = 0;
+    gtk_accessibility_text_boundary(node, offset, granularity, &local_start, &local_end);
+    if (start)
+        *start = local_start;
+    if (end)
+        *end = local_end;
+    return gtk_accessibility_text_slice(node, local_start, local_end);
+}
+
+gint gtk_accessibility_text_caret(AtkText *text) {
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(ATK_OBJECT(text));
+    const auto *node = gtk_accessibility_text_node(text);
+    if (!element || !node || node->selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE ||
+        node->selection_end < node->text_start)
+        return -1;
+    return static_cast<gint>(node->selection_end - node->text_start);
+}
+
+gint gtk_accessibility_text_count(AtkText *text) {
+    return gtk_accessibility_text_length(gtk_accessibility_text_node(text));
+}
+
+void gtk_accessibility_text_extents(AtkText *text, gint offset, gint *x, gint *y, gint *width,
+                                    gint *height, AtkCoordType coords) {
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(ATK_OBJECT(text));
+    const auto *node = gtk_accessibility_text_node(text);
+    gint left = 0;
+    gint top = 0;
+    if (element)
+        accessibility_origin(*element, coords, left, top);
+    if (x)
+        *x = left + (node ? static_cast<gint>(node->x) : 0);
+    if (y)
+        *y = top + (node ? static_cast<gint>(node->y) : 0);
+    if (width)
+        *width = node ? static_cast<gint>(node->width) : 0;
+    if (height)
+        *height = node ? static_cast<gint>(node->height) : 0;
+    if (!node)
+        return;
+    const auto absolute = node->text_start + static_cast<nk_accessibility_text_position>(
+                                             std::max(offset, 0));
+    for (const auto &range : node->text_ranges) {
+        if (absolute >= range.start && absolute < range.end) {
+            if (x)
+                *x = left + static_cast<gint>(range.x);
+            if (y)
+                *y = top + static_cast<gint>(range.y);
+            if (width)
+                *width = static_cast<gint>(range.width);
+            if (height)
+                *height = static_cast<gint>(range.height);
+            return;
+        }
+    }
+}
+
+void gtk_accessibility_text_range_extents(AtkText *text, gint start, gint end,
+                                          AtkCoordType coords, AtkTextRectangle *rectangle) {
+    if (!rectangle)
+        return;
+    gtk_accessibility_text_extents(text, start, &rectangle->x, &rectangle->y, &rectangle->width,
+                                   &rectangle->height, coords);
+    const auto *node = gtk_accessibility_text_node(text);
+    if (!node)
+        return;
+    const gint length = gtk_accessibility_text_length(node);
+    start = std::clamp(start, 0, length);
+    end = std::clamp(end, start, length);
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(ATK_OBJECT(text));
+    gint origin_x = 0;
+    gint origin_y = 0;
+    if (element)
+        accessibility_origin(*element, coords, origin_x, origin_y);
+    bool found = false;
+    for (const auto &range : node->text_ranges) {
+        const auto local_start = static_cast<nk_accessibility_text_position>(start) + node->text_start;
+        const auto local_end = static_cast<nk_accessibility_text_position>(end) + node->text_start;
+        if (range.end <= local_start || range.start >= local_end)
+            continue;
+        const gint x = origin_x + static_cast<gint>(range.x);
+        const gint y = origin_y + static_cast<gint>(range.y);
+        const gint right = x + static_cast<gint>(range.width);
+        const gint bottom = y + static_cast<gint>(range.height);
+        if (!found) {
+            rectangle->x = x;
+            rectangle->y = y;
+            rectangle->width = right - x;
+            rectangle->height = bottom - y;
+            found = true;
+        } else {
+            const gint old_right = rectangle->x + rectangle->width;
+            const gint old_bottom = rectangle->y + rectangle->height;
+            rectangle->x = std::min(rectangle->x, x);
+            rectangle->y = std::min(rectangle->y, y);
+            rectangle->width = std::max(old_right, right) - rectangle->x;
+            rectangle->height = std::max(old_bottom, bottom) - rectangle->y;
+        }
+    }
+}
+
+gint gtk_accessibility_text_offset_at_point(AtkText *text, gint x, gint y,
+                                            AtkCoordType coords) {
+    const auto *node = gtk_accessibility_text_node(text);
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(ATK_OBJECT(text));
+    if (!node || !element)
+        return -1;
+    gint origin_x = 0;
+    gint origin_y = 0;
+    accessibility_origin(*element, coords, origin_x, origin_y);
+    for (const auto &range : node->text_ranges) {
+        const gint left = origin_x + static_cast<gint>(range.x);
+        const gint top = origin_y + static_cast<gint>(range.y);
+        if (x >= left && y >= top && x < left + static_cast<gint>(range.width) &&
+            y < top + static_cast<gint>(range.height))
+            return static_cast<gint>(range.start - node->text_start);
+    }
+    return -1;
+}
+
+gint gtk_accessibility_text_selection_count(AtkText *text) {
+    const auto *node = gtk_accessibility_text_node(text);
+    return node && node->selection_start != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                   node->selection_end != NK_ACCESSIBILITY_TEXT_POSITION_NONE
+               ? 1
+               : 0;
+}
+
+gchar *gtk_accessibility_text_selection(AtkText *text, gint index, gint *start, gint *end) {
+    const auto *node = gtk_accessibility_text_node(text);
+    if (!node || index != 0 || gtk_accessibility_text_selection_count(text) == 0)
+        return g_strdup("");
+    const gint local_start = static_cast<gint>(node->selection_start - node->text_start);
+    const gint local_end = static_cast<gint>(node->selection_end - node->text_start);
+    if (start)
+        *start = local_start;
+    if (end)
+        *end = local_end;
+    return gtk_accessibility_text_slice(node, local_start, local_end);
+}
+
+gboolean gtk_accessibility_text_set_selection(AtkText *text, gint index, gint start, gint end) {
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(ATK_OBJECT(text));
+    const auto *node = gtk_accessibility_text_node(text);
+    const gint length = gtk_accessibility_text_length(node);
+    if (!element || !node || index != 0 || start < 0 || end < start || end > length ||
+        !(node->actions & NK_ACCESSIBILITY_CAN_SET_SELECTION))
+        return FALSE;
+    const auto absolute_start = node->text_start + static_cast<nk_accessibility_text_position>(start);
+    const auto absolute_end = node->text_start + static_cast<nk_accessibility_text_position>(end);
+    return emit_gtk_accessibility_action(element->root, element->id,
+                                         NK_ACCESSIBILITY_ACTION_SET_SELECTION, {}, absolute_start,
+                                         absolute_end) == NK_OK;
+}
+
+gboolean gtk_accessibility_text_add_selection(AtkText *text, gint start, gint end) {
+    return gtk_accessibility_text_set_selection(text, 0, start, end);
+}
+
+gboolean gtk_accessibility_text_remove_selection(AtkText *, gint) {
+    return FALSE;
+}
+
+gboolean gtk_accessibility_text_set_caret(AtkText *text, gint offset) {
+    return gtk_accessibility_text_set_selection(text, 0, offset, offset);
+}
+
+AtkTextGranularity gtk_accessibility_text_legacy_granularity(AtkTextBoundary boundary) {
+    switch (boundary) {
+    case ATK_TEXT_BOUNDARY_WORD_START:
+    case ATK_TEXT_BOUNDARY_WORD_END:
+        return ATK_TEXT_GRANULARITY_WORD;
+    case ATK_TEXT_BOUNDARY_SENTENCE_START:
+    case ATK_TEXT_BOUNDARY_SENTENCE_END:
+        return ATK_TEXT_GRANULARITY_SENTENCE;
+    case ATK_TEXT_BOUNDARY_LINE_START:
+    case ATK_TEXT_BOUNDARY_LINE_END:
+        return ATK_TEXT_GRANULARITY_LINE;
+    case ATK_TEXT_BOUNDARY_CHAR:
+    default:
+        return ATK_TEXT_GRANULARITY_CHAR;
+    }
+}
+
+gchar *gtk_accessibility_text_after_offset(AtkText *text, gint offset,
+                                           AtkTextBoundary boundary, gint *start, gint *end) {
+    const auto *node = gtk_accessibility_text_node(text);
+    gint local_start = 0;
+    gint local_end = 0;
+    gtk_accessibility_text_boundary(node, offset + 1,
+                                    gtk_accessibility_text_legacy_granularity(boundary),
+                                    &local_start, &local_end);
+    if (start)
+        *start = local_start;
+    if (end)
+        *end = local_end;
+    return gtk_accessibility_text_slice(node, local_start, local_end);
+}
+
+gchar *gtk_accessibility_text_at_offset(AtkText *text, gint offset, AtkTextBoundary boundary,
+                                       gint *start, gint *end) {
+    return gtk_accessibility_text_string_at_offset(
+        text, offset, gtk_accessibility_text_legacy_granularity(boundary), start, end);
+}
+
+gchar *gtk_accessibility_text_before_offset(AtkText *text, gint offset,
+                                            AtkTextBoundary boundary, gint *start, gint *end) {
+    const auto *node = gtk_accessibility_text_node(text);
+    gint local_start = 0;
+    gint local_end = 0;
+    gtk_accessibility_text_boundary(node, std::max(offset - 1, 0),
+                                    gtk_accessibility_text_legacy_granularity(boundary),
+                                    &local_start, &local_end);
+    if (start)
+        *start = local_start;
+    if (end)
+        *end = local_end;
+    return gtk_accessibility_text_slice(node, local_start, local_end);
+}
+
+void gtk_accessibility_text_init(AtkTextIface *iface) {
+    iface->get_text = gtk_accessibility_text_get;
+    iface->get_text_after_offset = gtk_accessibility_text_after_offset;
+    iface->get_text_at_offset = gtk_accessibility_text_at_offset;
+    iface->get_text_before_offset = gtk_accessibility_text_before_offset;
+    iface->get_character_at_offset = gtk_accessibility_text_character;
+    iface->get_caret_offset = gtk_accessibility_text_caret;
+    iface->get_character_extents = gtk_accessibility_text_extents;
+    iface->get_character_count = gtk_accessibility_text_count;
+    iface->get_offset_at_point = gtk_accessibility_text_offset_at_point;
+    iface->get_n_selections = gtk_accessibility_text_selection_count;
+    iface->get_selection = gtk_accessibility_text_selection;
+    iface->add_selection = gtk_accessibility_text_add_selection;
+    iface->remove_selection = gtk_accessibility_text_remove_selection;
+    iface->set_selection = gtk_accessibility_text_set_selection;
+    iface->set_caret_offset = gtk_accessibility_text_set_caret;
+    iface->get_range_extents = gtk_accessibility_text_range_extents;
+    iface->get_string_at_offset = gtk_accessibility_text_string_at_offset;
+}
+
+void accessibility_origin(const NkAccessibilityElement &element, AtkCoordType coords, gint &x,
+                          gint &y) {
+    x = 0;
+    y = 0;
+    auto *root = element.root;
+    if (!root || !root->widget)
+        return;
+    if (coords == ATK_XY_SCREEN) {
+        if (auto *native = gtk_widget_get_window(root->widget))
+            gdk_window_get_origin(native, &x, &y);
+    } else if (coords == ATK_XY_WINDOW) {
+        auto *top = gtk_widget_get_toplevel(root->widget);
+        if (top && top != root->widget)
+            gtk_widget_translate_coordinates(root->widget, top, 0, 0, &x, &y);
+    }
+}
+
+void gtk_accessibility_component_extents(AtkComponent *component, gint *x, gint *y, gint *width,
+                                         gint *height, AtkCoordType coords) {
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(ATK_OBJECT(component));
+    const auto *node = accessibility_node(element);
+    gint origin_x = 0;
+    gint origin_y = 0;
+    if (element)
+        accessibility_origin(*element, coords, origin_x, origin_y);
+    if (x)
+        *x = origin_x + (node ? static_cast<gint>(node->x) : 0);
+    if (y)
+        *y = origin_y + (node ? static_cast<gint>(node->y) : 0);
+    if (width)
+        *width = node ? static_cast<gint>(node->width) : 0;
+    if (height)
+        *height = node ? static_cast<gint>(node->height) : 0;
+}
+
+gboolean gtk_accessibility_component_contains(AtkComponent *component, gint x, gint y,
+                                              AtkCoordType coords) {
+    gint left = 0;
+    gint top = 0;
+    gint width = 0;
+    gint height = 0;
+    gtk_accessibility_component_extents(component, &left, &top, &width, &height, coords);
+    return x >= left && y >= top && x < left + width && y < top + height;
+}
+
+gboolean gtk_accessibility_component_grab_focus(AtkComponent *component) {
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(ATK_OBJECT(component));
+    return element && emit_gtk_accessibility_action(element->root, element->id,
+                                                    NK_ACCESSIBILITY_ACTION_FOCUS) == NK_OK;
+}
+
+gboolean gtk_accessibility_component_scroll_to(AtkComponent *component, AtkScrollType) {
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(ATK_OBJECT(component));
+    return element && emit_gtk_accessibility_action(element->root, element->id,
+                                                    NK_ACCESSIBILITY_ACTION_SCROLL_INTO_VIEW) == NK_OK;
+}
+
+gboolean gtk_accessibility_component_scroll_to_point(AtkComponent *component, AtkCoordType,
+                                                     gint, gint) {
+    return gtk_accessibility_component_scroll_to(component, ATK_SCROLL_ANYWHERE);
+}
+
+AtkObject *gtk_accessibility_component_at_point(AtkComponent *component, gint x, gint y,
+                                                AtkCoordType coords) {
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(ATK_OBJECT(component));
+    if (!element || !gtk_accessibility_component_contains(component, x, y, coords))
+        return nullptr;
+    for (guint index = 0; element->children && index < element->children->len; ++index) {
+        auto *child = ATK_COMPONENT(g_ptr_array_index(element->children, index));
+        if (gtk_accessibility_component_contains(child, x, y, coords))
+            return reinterpret_cast<AtkObject *>(g_object_ref(child));
+    }
+    return reinterpret_cast<AtkObject *>(g_object_ref(element));
+}
+
+AtkLayer gtk_accessibility_component_layer(AtkComponent *) {
+    return ATK_LAYER_WIDGET;
+}
+
+gint gtk_accessibility_component_mdi_zorder(AtkComponent *) {
+    return 0;
+}
+
+gdouble gtk_accessibility_component_alpha(AtkComponent *) {
+    return 1.0;
+}
+
+void gtk_accessibility_component_init(AtkComponentIface *iface) {
+    iface->contains = gtk_accessibility_component_contains;
+    iface->ref_accessible_at_point = gtk_accessibility_component_at_point;
+    iface->get_extents = gtk_accessibility_component_extents;
+    iface->get_position = [](AtkComponent *component, gint *x, gint *y, AtkCoordType coords) {
+        gtk_accessibility_component_extents(component, x, y, nullptr, nullptr, coords);
+    };
+    iface->get_size = [](AtkComponent *component, gint *width, gint *height) {
+        gtk_accessibility_component_extents(component, nullptr, nullptr, width, height,
+                                            ATK_XY_PARENT);
+    };
+    iface->grab_focus = gtk_accessibility_component_grab_focus;
+    iface->get_layer = gtk_accessibility_component_layer;
+    iface->get_mdi_zorder = gtk_accessibility_component_mdi_zorder;
+    iface->get_alpha = gtk_accessibility_component_alpha;
+    iface->scroll_to = gtk_accessibility_component_scroll_to;
+    iface->scroll_to_point = gtk_accessibility_component_scroll_to_point;
+}
+
+void gtk_accessibility_value_current(AtkValue *value, GValue *out) {
+    const auto *node = accessibility_node_from_object(ATK_OBJECT(value));
+    if (!out)
+        return;
+    g_value_init(out, G_TYPE_DOUBLE);
+    g_value_set_double(out, node ? node->numeric_value : 0.0);
+}
+
+void gtk_accessibility_value_maximum(AtkValue *value, GValue *out) {
+    const auto *node = accessibility_node_from_object(ATK_OBJECT(value));
+    if (!out)
+        return;
+    g_value_init(out, G_TYPE_DOUBLE);
+    g_value_set_double(out, node ? node->numeric_maximum : 0.0);
+}
+
+void gtk_accessibility_value_minimum(AtkValue *value, GValue *out) {
+    const auto *node = accessibility_node_from_object(ATK_OBJECT(value));
+    if (!out)
+        return;
+    g_value_init(out, G_TYPE_DOUBLE);
+    g_value_set_double(out, node ? node->numeric_minimum : 0.0);
+}
+
+void gtk_accessibility_value_set(AtkValue *value, gdouble new_value);
+
+gboolean gtk_accessibility_value_set_current(AtkValue *value, const GValue *new_value) {
+    if (!new_value || !G_VALUE_HOLDS_DOUBLE(new_value))
+        return FALSE;
+    gtk_accessibility_value_set(ATK_VALUE(value), g_value_get_double(new_value));
+    return TRUE;
+}
+
+void gtk_accessibility_value_and_text(AtkValue *value, gdouble *out_value, gchar **out_text) {
+    const auto *node = accessibility_node_from_object(ATK_OBJECT(value));
+    if (out_value)
+        *out_value = node ? node->numeric_value : 0.0;
+    if (out_text)
+        *out_text = node && !node->value.empty() ? g_strdup(node->value.c_str()) : nullptr;
+}
+
+AtkRange *gtk_accessibility_value_range(AtkValue *value) {
+    const auto *node = accessibility_node_from_object(ATK_OBJECT(value));
+    return node ? atk_range_new(node->numeric_minimum, node->numeric_maximum, nullptr) : nullptr;
+}
+
+gdouble gtk_accessibility_value_increment(AtkValue *) {
+    return 0.0;
+}
+
+void gtk_accessibility_value_set(AtkValue *value, const gdouble new_value) {
+    auto *element = reinterpret_cast<NkAccessibilityElement *>(ATK_OBJECT(value));
+    if (!element)
+        return;
+    char text[G_ASCII_DTOSTR_BUF_SIZE];
+    g_ascii_dtostr(text, sizeof(text), new_value);
+    emit_gtk_accessibility_action(element->root, element->id, NK_ACCESSIBILITY_ACTION_SET_VALUE,
+                                  text);
+}
+
+void gtk_accessibility_value_init(AtkValueIface *iface) {
+    iface->get_current_value = gtk_accessibility_value_current;
+    iface->get_maximum_value = gtk_accessibility_value_maximum;
+    iface->get_minimum_value = gtk_accessibility_value_minimum;
+    iface->set_current_value = gtk_accessibility_value_set_current;
+    iface->get_value_and_text = gtk_accessibility_value_and_text;
+    iface->get_range = gtk_accessibility_value_range;
+    iface->get_increment = gtk_accessibility_value_increment;
+    iface->set_value = gtk_accessibility_value_set;
+}
+
+void refresh_gtk_accessibility(GtkSurfaceResource &resource) {
+    if (!resource.widget)
+        return;
+    auto *root = reinterpret_cast<NkAccessibilityRoot *>(gtk_widget_get_accessible(resource.widget));
+    if (!root || !root->children)
+        return;
+    g_ptr_array_set_size(root->children, 0);
+    std::function<void(AtkObject *, GPtrArray *, nk_accessibility_node_id)> append_children =
+        [&](AtkObject *parent, GPtrArray *children, nk_accessibility_node_id parent_id) {
+            std::vector<nk_accessibility_node_id> ids;
+            for (const auto &[id, node] : resource.accessibility_nodes)
+                if (node.parent == parent_id)
+                    ids.push_back(id);
+            std::sort(ids.begin(), ids.end(), [&](auto left, auto right) {
+                const auto &a = resource.accessibility_nodes.at(left);
+                const auto &b = resource.accessibility_nodes.at(right);
+                return a.child_index == b.child_index ? left < right : a.child_index < b.child_index;
+            });
+            for (const auto id : ids) {
+                auto *element = static_cast<NkAccessibilityElement *>(
+                    g_object_new(nk_accessibility_element_get_type(), nullptr));
+                if (!element)
+                    continue;
+                element->root = root;
+                element->id = id;
+                atk_object_initialize(ATK_OBJECT(element), resource.widget);
+                atk_object_set_parent(ATK_OBJECT(element), parent);
+                g_ptr_array_add(children, element);
+                append_children(ATK_OBJECT(element), element->children, id);
+            }
+        };
+    append_children(ATK_OBJECT(root), root->children, NK_ACCESSIBILITY_ROOT);
+    g_signal_emit_by_name(root, "children-changed", 0u, nullptr);
+}
+
+bool copy_gtk_accessibility_node(
+    const nk_accessibility_node &node,
+    const std::unordered_map<nk_accessibility_node_id, GtkAccessibilityNode> &nodes,
+    GtkAccessibilityNode &copy) {
+    const char *value = node.value ? node.value : "";
+    if (node.struct_size < sizeof(node) || node.id == NK_ACCESSIBILITY_ROOT ||
+        node.role > NK_ACCESSIBILITY_ALERT ||
+        node.orientation > NK_ACCESSIBILITY_ORIENTATION_VERTICAL ||
+        !g_utf8_validate(value, -1, nullptr) ||
+        (node.label && !g_utf8_validate(node.label, -1, nullptr)) ||
+        (node.states & ~(NK_ACCESSIBILITY_FOCUSABLE | NK_ACCESSIBILITY_FOCUSED |
+                         NK_ACCESSIBILITY_SELECTED | NK_ACCESSIBILITY_CHECKED |
+                         NK_ACCESSIBILITY_DISABLED | NK_ACCESSIBILITY_READ_ONLY |
+                         NK_ACCESSIBILITY_MULTILINE | NK_ACCESSIBILITY_PASSWORD |
+                         NK_ACCESSIBILITY_EXPANDED | NK_ACCESSIBILITY_MODAL |
+                         NK_ACCESSIBILITY_REQUIRED | NK_ACCESSIBILITY_INVALID |
+                         NK_ACCESSIBILITY_BUSY | NK_ACCESSIBILITY_HAS_POPUP)) ||
+        (node.actions & ~(NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS |
+                          NK_ACCESSIBILITY_CAN_SET_VALUE | NK_ACCESSIBILITY_CAN_SET_SELECTION |
+                          NK_ACCESSIBILITY_CAN_INCREMENT | NK_ACCESSIBILITY_CAN_DECREMENT |
+                          NK_ACCESSIBILITY_CAN_SCROLL_FORWARD | NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD |
+                          NK_ACCESSIBILITY_CAN_MOVE_NEXT | NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS |
+                          NK_ACCESSIBILITY_CAN_TOGGLE | NK_ACCESSIBILITY_CAN_SELECT |
+                          NK_ACCESSIBILITY_CAN_DESELECT | NK_ACCESSIBILITY_CAN_EXPAND |
+                          NK_ACCESSIBILITY_CAN_COLLAPSE | NK_ACCESSIBILITY_CAN_DISMISS |
+                          NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU |
+                          NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW)) ||
+        !std::isfinite(node.x) || !std::isfinite(node.y) || !std::isfinite(node.width) ||
+        !std::isfinite(node.height) || node.width < 0 || node.height < 0 ||
+        !std::isfinite(node.numeric_value) || !std::isfinite(node.numeric_minimum) ||
+        !std::isfinite(node.numeric_maximum) ||
+        (node.role == NK_ACCESSIBILITY_SLIDER &&
+         (node.numeric_minimum > node.numeric_maximum ||
+          node.numeric_value < node.numeric_minimum || node.numeric_value > node.numeric_maximum)))
+        return false;
+    const auto value_length = static_cast<uint64_t>(g_utf8_strlen(value, -1));
+    const uint64_t text_end = static_cast<uint64_t>(node.text_start) + value_length;
+    const bool no_selection = node.selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                              node.selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    const bool valid_selection = node.selection_start != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                                 node.selection_end != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                                 node.selection_start <= node.selection_end &&
+                                 node.selection_start >= node.text_start &&
+                                 node.selection_end <= text_end;
+    if (text_end > node.document_length || (!no_selection && !valid_selection) ||
+        (node.parent_id != NK_ACCESSIBILITY_ROOT && nodes.find(node.parent_id) == nodes.end()))
+        return false;
+    auto ancestor = node.parent_id;
+    for (std::size_t depth = 0; ancestor != NK_ACCESSIBILITY_ROOT; ++depth) {
+        if (ancestor == node.id || depth > nodes.size())
+            return false;
+        const auto parent = nodes.find(ancestor);
+        if (parent == nodes.end())
+            break;
+        ancestor = parent->second.parent;
+    }
+    copy.id = node.id;
+    copy.parent = node.parent_id;
+    copy.child_index = node.child_index;
+    copy.role = node.role;
+    copy.states = node.states;
+    copy.actions = node.actions;
+    copy.x = node.x;
+    copy.y = node.y;
+    copy.width = node.width;
+    copy.height = node.height;
+    copy.label = node.label ? node.label : "";
+    copy.value = value;
+    copy.numeric_value = node.numeric_value;
+    copy.numeric_minimum = node.numeric_minimum;
+    copy.numeric_maximum = node.numeric_maximum;
+    copy.text_start = node.text_start;
+    copy.document_length = node.document_length;
+    copy.selection_start = node.selection_start;
+    copy.selection_end = node.selection_end;
+    copy.set_size = node.set_size;
+    copy.position_in_set = node.position_in_set;
+    copy.row_count = node.row_count;
+    copy.column_count = node.column_count;
+    copy.row_index = node.row_index;
+    copy.column_index = node.column_index;
+    copy.row_span = node.row_span;
+    copy.column_span = node.column_span;
+    copy.hierarchy_level = node.hierarchy_level;
+    copy.orientation = node.orientation;
+    return true;
+}
+
+void remove_gtk_accessibility_descendants(
+    std::unordered_map<nk_accessibility_node_id, GtkAccessibilityNode> &nodes,
+    nk_accessibility_node_id node) {
+    std::vector<nk_accessibility_node_id> pending{node};
+    for (std::size_t index = 0; index < pending.size(); ++index)
+        for (const auto &[id, value] : nodes)
+            if (value.parent == pending[index])
+                pending.push_back(id);
+    for (const auto id : pending)
+        nodes.erase(id);
+}
 
 struct GtkWebViewResource final : nk::core::Resource {
     GtkWidget *widget = nullptr;
@@ -1770,7 +2960,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
            NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
            NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_IO |
-           NK_CAP_VULKAN_SURFACE;
+           NK_CAP_VULKAN_SURFACE | NK_CAP_ACCESSIBILITY;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -2660,7 +3850,9 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             resource->flags =
                 options->flags & (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE);
             resource->shared_surface = std::move(shared);
-            resource->widget = gtk_gl_area_new();
+            resource->widget = nk_gl_area_new();
+            g_object_set_data(G_OBJECT(resource->widget), k_accessibility_resource_data,
+                              resource.get());
             g_object_add_weak_pointer(G_OBJECT(resource->widget),
                                       reinterpret_cast<gpointer *>(&resource->widget));
             auto *area = GTK_GL_AREA(resource->widget);
@@ -2726,6 +3918,7 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
         return fail(NK_ERROR_INVALID_REQUEST,
                     "graphics surface still owns retained sampled images");
     g_signal_handlers_disconnect_by_data(resource->widget, resource.get());
+    g_object_set_data(G_OBJECT(resource->widget), k_accessibility_resource_data, nullptr);
     gtk_widget_destroy(resource->widget);
     resource->widget = nullptr;
     if (auto parent = window(resource->parent)) {
@@ -2763,6 +3956,168 @@ nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, 
     gtk_fixed_move(GTK_FIXED(parent->container), resource->widget, x, y);
     gtk_widget_set_size_request(resource->widget, width, height);
     return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle handle,
+                                                    const nk_accessibility_node *node) {
+    return nk::core::result_boundary(
+        "unexpected error while setting a Linux accessibility node", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = surface(handle);
+            if (!resource)
+                return invalid_handle("graphics surface");
+            if (!node)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "Linux accessibility node is missing");
+            GtkAccessibilityNode copy;
+            if (!copy_gtk_accessibility_node(*node, resource->accessibility_nodes, copy))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid Linux accessibility node");
+            if (const auto old = resource->accessibility_nodes.find(node->id);
+                old != resource->accessibility_nodes.end())
+                copy.text_ranges = old->second.text_ranges;
+            resource->accessibility_nodes[node->id] = std::move(copy);
+            refresh_gtk_accessibility(*resource);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_remove_node(nk_handle handle,
+                                                       nk_accessibility_node_id node) {
+    return nk::core::result_boundary(
+        "unexpected error while removing a Linux accessibility node", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = surface(handle);
+            if (!resource)
+                return invalid_handle("graphics surface");
+            if (!node || resource->accessibility_nodes.find(node) == resource->accessibility_nodes.end())
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "invalid or unknown Linux accessibility node");
+            remove_gtk_accessibility_descendants(resource->accessibility_nodes, node);
+            if (resource->accessibility_nodes.find(resource->accessibility_focus) ==
+                resource->accessibility_nodes.end())
+                resource->accessibility_focus = NK_ACCESSIBILITY_ROOT;
+            refresh_gtk_accessibility(*resource);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_clear(nk_handle handle) {
+    return nk::core::result_boundary(
+        "unexpected error while clearing Linux accessibility nodes", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = surface(handle);
+            if (!resource)
+                return invalid_handle("graphics surface");
+            resource->accessibility_nodes.clear();
+            resource->accessibility_focus = NK_ACCESSIBILITY_ROOT;
+            refresh_gtk_accessibility(*resource);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle handle,
+                                                    nk_accessibility_node_id node) {
+    return nk::core::result_boundary(
+        "unexpected error while focusing a Linux accessibility node", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = surface(handle);
+            if (!resource)
+                return invalid_handle("graphics surface");
+            if (node != NK_ACCESSIBILITY_ROOT && resource->accessibility_nodes.find(node) ==
+                                                    resource->accessibility_nodes.end())
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "cannot focus an unknown Linux accessibility node");
+            resource->accessibility_focus = node;
+            refresh_gtk_accessibility(*resource);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
+                                                  const nk_accessibility_update *update) {
+    return nk::core::result_boundary(
+        "unexpected error while updating Linux accessibility nodes", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = surface(handle);
+            if (!resource)
+                return invalid_handle("graphics surface");
+            if (!update || update->struct_size < sizeof(*update) ||
+                (update->flags & ~NK_ACCESSIBILITY_UPDATE_FOCUS) ||
+                (update->node_count && !update->nodes) ||
+                (update->removed_node_count && !update->removed_nodes))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid Linux accessibility update");
+            auto nodes = resource->accessibility_nodes;
+            for (uint32_t index = 0; index < update->removed_node_count; ++index) {
+                const auto removed = update->removed_nodes[index];
+                if (!removed || nodes.find(removed) == nodes.end())
+                    return fail(NK_ERROR_INVALID_ARGUMENT,
+                                "Linux accessibility update removes an unknown node");
+                remove_gtk_accessibility_descendants(nodes, removed);
+            }
+            for (uint32_t index = 0; index < update->node_count; ++index) {
+                const auto &node = update->nodes[index];
+                GtkAccessibilityNode copy;
+                if (!copy_gtk_accessibility_node(node, nodes, copy))
+                    return fail(NK_ERROR_INVALID_ARGUMENT,
+                                "invalid node in Linux accessibility update");
+                if (const auto old = nodes.find(node.id); old != nodes.end())
+                    copy.text_ranges = old->second.text_ranges;
+                nodes[node.id] = std::move(copy);
+            }
+            if ((update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS) && update->focus !=
+                                                                  NK_ACCESSIBILITY_ROOT &&
+                nodes.find(update->focus) == nodes.end())
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "Linux accessibility update focuses an unknown node");
+            resource->accessibility_nodes = std::move(nodes);
+            if (update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS)
+                resource->accessibility_focus = update->focus;
+            else if (resource->accessibility_focus != NK_ACCESSIBILITY_ROOT &&
+                     resource->accessibility_nodes.find(resource->accessibility_focus) ==
+                         resource->accessibility_nodes.end())
+                resource->accessibility_focus = NK_ACCESSIBILITY_ROOT;
+            refresh_gtk_accessibility(*resource);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
+    nk_handle handle, nk_accessibility_node_id node, const nk_accessibility_text_range *ranges,
+    uint32_t range_count) {
+    return nk::core::result_boundary(
+        "unexpected error while setting Linux accessibility text ranges", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = surface(handle);
+            if (!resource)
+                return invalid_handle("graphics surface");
+            const auto found = resource->accessibility_nodes.find(node);
+            if (!node || found == resource->accessibility_nodes.end() ||
+                (range_count && !ranges))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid Linux accessibility text ranges");
+            std::vector<GtkAccessibilityTextRange> copy;
+            copy.reserve(range_count);
+            nk_accessibility_text_position previous = 0;
+            for (uint32_t index = 0; index < range_count; ++index) {
+                const auto &range = ranges[index];
+                if (range.start >= range.end || range.start < previous ||
+                    range.end > found->second.document_length || !std::isfinite(range.x) ||
+                    !std::isfinite(range.y) || !std::isfinite(range.width) ||
+                    !std::isfinite(range.height) || range.width < 0 || range.height < 0)
+                    return fail(NK_ERROR_INVALID_ARGUMENT,
+                                "invalid or unordered Linux accessibility text ranges");
+                copy.push_back({range.start, range.end, range.x, range.y, range.width,
+                                range.height});
+                previous = range.end;
+            }
+            found->second.text_ranges = std::move(copy);
+            refresh_gtk_accessibility(*resource);
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_surface_make_current(nk_handle handle) {

@@ -58,7 +58,7 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 | Metal | — | — | ✅ | — | ✅ | — |
 | Vulkan | ✅ | — | — | ✅ | 🚧 | 🚧 |
 | URI resources and sharing | Partial | Partial | Partial | ✅ | 🚧 | 🚧 |
-| Custom-surface accessibility | — | ✅ | ✅ | ✅ | ✅ | 🚧 |
+| Custom-surface accessibility | ✅ | ✅ | ✅ | ✅ | ✅ | 🚧 |
 | Native interoperability | Export | Export | Export | Host view | Host view | — |
 
 **Legend:** ✅ supported · **Partial** a subset is supported · 🚧 coming soon ·

@@ -106,7 +106,7 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 
 | Backend | Required or equivalent today | Deferred today |
 |---|---|---|
-| Linux/GTK | Windows, geometry, styling, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, GPU, resource I/O, monitors, joystick, native export | Resource sharing, accessibility, native wrapping |
+| Linux/GTK | Windows, geometry, styling, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, GPU, resource I/O, monitors, joystick, native export, accessibility | Resource sharing, native wrapping |
 | Windows | Windows, WebView when WebView2 is available, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource I/O, accessibility, monitors, joystick, native export | Resource sharing, native wrapping |
 | macOS | Windows, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource I/O, accessibility, monitors, joystick, native export | Resource sharing, native wrapping |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility | — |

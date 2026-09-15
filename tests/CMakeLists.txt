@@ -68,6 +68,11 @@ if(NK_BACKEND_GTK_AVAILABLE)
         set_target_properties(nativekit_gtk_surface_frame PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_surface_frame
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_surface_frame>)
+        add_executable(nativekit_gtk_accessibility integration/gtk_accessibility.c)
+        target_link_libraries(nativekit_gtk_accessibility PRIVATE NativeKit::nativekit)
+        set_target_properties(nativekit_gtk_accessibility PROPERTIES LINKER_LANGUAGE CXX)
+        add_test(NAME gtk_accessibility
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_accessibility>)
         add_executable(nativekit_gtk_webview_resize integration/gtk_webview_resize.c)
         target_link_libraries(nativekit_gtk_webview_resize PRIVATE NativeKit::nativekit)
         set_target_properties(nativekit_gtk_webview_resize PROPERTIES LINKER_LANGUAGE CXX)
