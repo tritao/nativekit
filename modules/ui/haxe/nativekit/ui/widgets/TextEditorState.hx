@@ -4,6 +4,7 @@ import FontCollection;
 import NativeKit.TextEditAction;
 import NativeKitEventValue.NativeKitTextEdit;
 import ParagraphStyle;
+import Rect;
 import TextLayout;
 import TextStyle;
 
@@ -20,6 +21,8 @@ class TextEditorState {
 	public var selectionFocusLayoutOffset(default, null):Int;
 	public var selectionAnchorAffinity(default, null):Int;
 	public var selectionFocusAffinity(default, null):Int;
+	/** Vertical scroll offset in the editor's content coordinate space. */
+	public var scrollOffsetY(default, null):Float;
 	public var focused:Bool;
 	public var draggingSelection:Bool;
 	public final layout:TextLayout;
@@ -35,6 +38,9 @@ class TextEditorState {
 	var lastPointerClickCount:Int;
 	var lastPointerClickArmed:Bool;
 	var pointerClickPending:Bool;
+	var viewportHeight:Float;
+	var desiredVerticalX:Float;
+	var hasDesiredVerticalX:Bool;
 	var disposed:Bool;
 
 	public function new(fonts:FontCollection, text:String, ?textStyle:TextStyle,
@@ -53,6 +59,7 @@ class TextEditorState {
 		selectionFocusLayoutOffset = end;
 		selectionAnchorAffinity = 0;
 		selectionFocusAffinity = 0;
+		scrollOffsetY = 0.0;
 		compositionStart = -1;
 		compositionEnd = -1;
 		focused = false;
@@ -68,6 +75,9 @@ class TextEditorState {
 		lastPointerClickCount = 0;
 		lastPointerClickArmed = false;
 		pointerClickPending = false;
+		viewportHeight = 0.0;
+		desiredVerticalX = 0.0;
+		hasDesiredVerticalX = false;
 		disposed = false;
 	}
 
@@ -87,6 +97,7 @@ class TextEditorState {
 		selectionFocusLayoutOffset = caret;
 		selectionAnchorAffinity = 0;
 		selectionFocusAffinity = 0;
+		resetVerticalNavigation();
 		clearComposition();
 		layout.setText(layoutText());
 		lastLayoutText = layoutText();
@@ -102,6 +113,7 @@ class TextEditorState {
 			lastLayoutWidth = nextWidth;
 			lastLayoutText = value;
 		}
+		clampScrollOffset();
 	}
 
 	/** Inserts committed text over the current selection. */
@@ -136,6 +148,7 @@ class TextEditorState {
 		selectionFocusLayoutOffset = caret;
 		selectionAnchorAffinity = 0;
 		selectionFocusAffinity = 0;
+		resetVerticalNavigation();
 		clearComposition();
 		layout.setText(layoutText());
 		lastLayoutText = layoutText();
@@ -198,6 +211,7 @@ class TextEditorState {
 		selectionFocusLayoutOffset = last;
 		selectionAnchorAffinity = 0;
 		selectionFocusAffinity = 0;
+		resetVerticalNavigation();
 		return changed;
 	}
 
@@ -215,12 +229,14 @@ class TextEditorState {
 		selectionEnd = selectionFocus;
 		selectionAnchorAffinity = 0;
 		selectionFocusAffinity = 0;
+		resetVerticalNavigation();
 		return first;
 	}
 
 	/** Places a caret and optionally extends the existing anchored selection. */
 	public function placeCaret(offset:Int, extend:Bool, affinity:Int = 0):Bool {
 		ensureLive();
+		resetVerticalNavigation();
 		var next = clamp(layout.alignGrapheme(clamp(offset, 0, Utf8Text.length(text))),
 			0, Utf8Text.length(text));
 		var previousFocusLayoutOffset = selectionFocusLayoutOffset;
@@ -253,6 +269,7 @@ class TextEditorState {
 		ensureLive();
 		if (direction == 0)
 			return false;
+		resetVerticalNavigation();
 		var next:Int;
 		if (!extend && selectionStart != selectionEnd)
 			next = direction < 0 ? selectionStart : selectionEnd;
@@ -267,6 +284,7 @@ class TextEditorState {
 		ensureLive();
 		if (direction == 0)
 			return false;
+		resetVerticalNavigation();
 		var next = !extend && selectionStart != selectionEnd
 			? (direction < 0 ? selectionStart : selectionEnd)
 			: layout.moveWord(selectionFocus, direction, macStyle);
@@ -280,11 +298,111 @@ class TextEditorState {
 		ensureLive();
 		if (direction == 0)
 			return false;
+		resetVerticalNavigation();
 		var next = !extend && selectionStart != selectionEnd
 			? (direction < 0 ? selectionStart : selectionEnd)
 			: layout.moveParagraph(selectionFocus, direction, macStyle);
 		cancelPointerClick();
 		return moveFocusTo(next, extend);
+	}
+
+	/** Moves to the nearest visual line while preserving the requested x column. */
+	public function moveCaretVertically(direction:Int, extend:Bool):Bool {
+		ensureLive();
+		if (direction == 0)
+			return false;
+		if (!extend && selectionStart != selectionEnd) {
+			resetVerticalNavigation();
+			return moveFocusTo(direction < 0 ? selectionStart : selectionEnd, false);
+		}
+
+		var current = focusPosition();
+		var currentCaret = layout.caret(current);
+		if (!hasDesiredVerticalX) {
+			desiredVerticalX = currentCaret.x;
+			hasDesiredVerticalX = true;
+		}
+		var lineStep = paragraphStyle.lineHeight == null ?
+			absolute(currentCaret.descender - currentCaret.ascender) : paragraphStyle.lineHeight;
+		lineStep = Math.max(1.0, lineStep);
+
+		var candidate:TextPosition = null;
+		var candidateCaret:TextCaret = null;
+		// Hit testing at the next baseline handles wrapped visual lines and keeps
+		// the shaping engine's bidi affinity. A small widening probe is useful at
+		// line boundaries where hit testing deliberately favors the current line.
+		for (probe in 0...5) {
+			var distance = lineStep * (1.0 + probe * 0.25);
+			var hit = layout.hitTest(desiredVerticalX, currentCaret.y + direction * distance);
+			var hitCaret = layout.caret(hit);
+			if ((direction < 0 && hitCaret.y < currentCaret.y - 0.01) ||
+				(direction > 0 && hitCaret.y > currentCaret.y + 0.01)) {
+				candidate = hit;
+				candidateCaret = hitCaret;
+				break;
+			}
+		}
+		if (candidate == null || candidateCaret == null)
+			return false;
+
+		var currentRange = layout.lineRangeAt(current.offset);
+		var candidateRange = layout.lineRangeAt(candidate.offset);
+		if (currentRange.start == candidateRange.start && currentRange.end == candidateRange.end)
+			return false;
+		cancelPointerClick();
+		var changed = placeCaretAt(candidate, extend);
+		// placeCaretAt resets navigation state as a normal horizontal/pointer
+		// move would. Restore the column for a continued up/down sequence.
+		hasDesiredVerticalX = true;
+		return changed;
+	}
+
+	/** Moves to the start or end of the current visual line. */
+	public function moveCaretToLineBoundary(endOfLine:Bool, extend:Bool):Bool {
+		ensureLive();
+		var range = layout.lineRangeAt(selectionFocusLayoutOffset);
+		var target = endOfLine ? trimLineBreak(range.end, range.start) : range.start;
+		resetVerticalNavigation();
+		return placeCaret(target, extend);
+	}
+
+	/** Adjusts internal scrolling so the active caret or selection remains in the viewport. */
+	public function ensureCaretVisible(height:Float):Bool {
+		ensureLive();
+		if (!Math.isFinite(height) || height <= 0.0)
+			return false;
+		viewportHeight = height;
+		var metrics = layout.measure();
+		var contentHeight = Math.max(height, metrics.height);
+		var caret = layout.caret(focusPosition());
+		var top = caret.y + Math.min(caret.ascender, caret.descender);
+		var bottom = caret.y + Math.max(caret.ascender, caret.descender);
+		if (selectionStart != selectionEnd) {
+			var selectionTop = top;
+			var selectionBottom = bottom;
+			for (rect in layout.selectionRects(anchorPosition(), focusPosition())) {
+				selectionTop = Math.min(selectionTop, rect.y);
+				selectionBottom = Math.max(selectionBottom, rect.y + rect.height);
+			}
+			// A selection can be taller than the viewport. In that case both
+			// endpoints cannot be shown simultaneously, so keep the active focus
+			// visible instead of jumping away from it.
+			if (selectionBottom - selectionTop <= height) {
+				top = selectionTop;
+				bottom = selectionBottom;
+			}
+		}
+		var next = scrollOffsetY;
+		if (top < next)
+			next = top;
+		else if (bottom > next + height)
+			next = bottom - height;
+		var maximum = Math.max(0.0, contentHeight - height);
+		next = clampFloat(next, 0.0, maximum);
+		if (next == scrollOffsetY)
+			return false;
+		scrollOffsetY = next;
+		return true;
 	}
 
 	function moveFocusTo(next:Int, extend:Bool):Bool {
@@ -340,6 +458,7 @@ class TextEditorState {
 	/** Places the caret from a shaping-engine hit while keeping its visual affinity. */
 	public function placeCaretAt(position:TextPosition, extend:Bool):Bool {
 		ensureLive();
+		resetVerticalNavigation();
 		if (position == null)
 			return false;
 		var previousFocusLayoutOffset = selectionFocusLayoutOffset;
@@ -362,6 +481,14 @@ class TextEditorState {
 
 	public function anchorPosition():TextPosition
 		return new TextPosition(selectionAnchorLayoutOffset, selectionAnchorAffinity);
+
+	/** Returns the shaped rectangles used to paint the active IME preedit underline. */
+	public function compositionRects():Array<Rect> {
+		if (compositionStart < 0 || compositionEnd <= compositionStart)
+			return [];
+		return layout.selectionRects(new TextPosition(compositionStart, 0),
+			new TextPosition(compositionEnd, 0));
+	}
 
 	/** Selects the word under a pointer position using the shaped text engine's boundaries. */
 	public function selectWordAt(position:TextPosition):Bool {
@@ -475,6 +602,27 @@ class TextEditorState {
 		return true;
 	}
 
+	function trimLineBreak(offset:Int, lineStart:Int):Int {
+		var result = offset;
+		while (result > lineStart) {
+			var value = Utf8Text.slice(text, result - 1, result);
+			if (value != "\n" && value != "\r")
+				break;
+			result--;
+		}
+		return result;
+	}
+
+	function resetVerticalNavigation():Void
+		hasDesiredVerticalX = false;
+
+	function clampScrollOffset():Void {
+		if (viewportHeight <= 0.0)
+			return;
+		var maximum = Math.max(0.0, layout.measure().height - viewportHeight);
+		scrollOffsetY = clampFloat(scrollOffsetY, 0.0, maximum);
+	}
+
 	function ensureLive():Void {
 		if (disposed)
 			throw "Text editor state has been disposed";
@@ -494,5 +642,11 @@ class TextEditorState {
 		return new ParagraphStyle(value.wrap, value.alignment, value.lineHeight, value.direction);
 
 	static inline function clamp(value:Int, minimum:Int, maximum:Int):Int
+		return value < minimum ? minimum : value > maximum ? maximum : value;
+
+	static inline function absolute(value:Float):Float
+		return value < 0.0 ? -value : value;
+
+	static inline function clampFloat(value:Float, minimum:Float, maximum:Float):Float
 		return value < minimum ? minimum : value > maximum ? maximum : value;
 }

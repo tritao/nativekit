@@ -9,7 +9,7 @@ import Rect;
 class TextInputBridge {
 	var surface:Null<NativeKitSurface>;
 	var requestedActive:Bool;
-	var platformActive:Bool;
+	public var platformActive(default, null):Bool;
 	public var platformSupported(default, null):Bool;
 	public var platformChecked(default, null):Bool;
 	var disposed:Bool;

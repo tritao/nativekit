@@ -25,10 +25,15 @@ class ExplorerVisualCases {
 		state.controls.selectedTab = "preview";
 		state.controls.nameValue = "NativeKit UI";
 		state.controls.notesValue = "مرحبا NativeKit — שלום — こんにちは 👋";
+		state.textArabicValue = "مرحبا بالعالم";
+		state.textHebrewValue = "שלום עולם";
+		state.textJapaneseValue = "こんにちは世界";
+		state.textEmojiValue = "NativeKit 👋 🌍 ✨";
 		state.controls.menuSelection = "No command selected";
 		state.listController.jumpTo(0.0, 0.0);
 		state.visualFocusLabel = null;
 		state.visualTextAreaSelection = false;
+		state.visualTextComposition = false;
 		state.selectedPage = "overview";
 		switch caseId {
 			case ExplorerVisualCase.Overview, ExplorerVisualCase.OverviewCompact:
@@ -70,6 +75,10 @@ class ExplorerVisualCases {
 				state.selectedPage = "text";
 				state.visualFocusLabel = "Multilingual notes";
 				state.visualTextAreaSelection = true;
+			case ExplorerVisualCase.TextComposition:
+				state.selectedPage = "text";
+				state.visualFocusLabel = "Multilingual notes";
+				state.visualTextComposition = true;
 			case ExplorerVisualCase.MenuLight:
 				state.selectedPage = "overlays";
 				state.lightTheme = true;

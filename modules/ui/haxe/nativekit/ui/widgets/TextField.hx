@@ -12,7 +12,6 @@ import NativeKitEventValue.NativeKitTextEdit;
 import ParagraphStyle;
 import Rect;
 import ResolvedLayoutItem;
-import TextPosition;
 import TextStyle;
 import Transform2D;
 import nativekit.ui.core.BuildContext;
@@ -30,7 +29,7 @@ import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
 
-/** Single-line text editor composed from a Haxe box and NativeUI text primitive. */
+/** Text editor composed from a Haxe box and NativeUI text primitive. */
 class TextField implements View {
 	public final key:String;
 	public var value:String;
@@ -42,6 +41,7 @@ class TextField implements View {
 	public var enabled:Bool;
 	public var onChange:Null<String->Void>;
 	public var onSubmit:Null<String->Void>;
+	public var onDiagnostics:Null<TextEditorDiagnostics->Void>;
 
 	public function new(key:String, value:String = "", ?onChange:String->Void,
 			?style:LayoutStyle, ?label:String, ?textStyle:TextStyle, ?textColor:Color,
@@ -59,6 +59,7 @@ class TextField implements View {
 			new TextStyle(textStyle.fontSize, textStyle.font, textStyle.letterSpacing);
 		this.textColor = textColor == null ? Color.rgba(0.96, 0.97, 0.99, 1.0) : textColor;
 		enabled = true;
+		onDiagnostics = null;
 	}
 
 	public function build(context:BuildContext):RenderNode {
@@ -88,11 +89,16 @@ class TextField implements View {
 
 			var textNodeStyle = new LayoutStyle();
 			textNodeStyle.width = LayoutAxis.grow();
-			textNodeStyle.height = LayoutAxis.grow();
+			textNodeStyle.height = multiline ? LayoutAxis.fit() : LayoutAxis.grow();
+			var builtScrollOffset = multiline ? editor.scrollOffsetY : 0.0;
+			textNodeStyle.transform = Transform2D.identity().translated(0.0,
+				-builtScrollOffset);
 			textNodeStyle.zIndex = 1;
 			var editorContentStyle = new LayoutStyle();
 			editorContentStyle.width = LayoutAxis.grow();
 			editorContentStyle.height = LayoutAxis.grow();
+			editorContentStyle.clipHorizontal = true;
+			editorContentStyle.clipVertical = multiline;
 			var editorContent = new RenderNode(context.id("editor-content"),
 				LayoutVisualKind.Box, editorContentStyle);
 			var selectionStyle = new LayoutStyle();
@@ -140,15 +146,28 @@ class TextField implements View {
 				semantics.selectionStart = editor.selectionStart;
 				semantics.selectionEnd = editor.selectionEnd;
 				stored.update(editor);
+				if (multiline && editorContent.resolved != null &&
+					editor.ensureCaretVisible(editorContent.resolved.height))
+					stored.update(editor);
 			};
 			var publishTextChange = function(previous:String) {
 				updateState();
 				if (previous != value && onChange != null)
 					onChange(value);
 			};
-			var syncCursor = function(geometry:ResolvedLayoutItem) {
-				if (!editor.focused || context.platformSurface == null || context.platformSurface.isDisposed())
+			var publishDiagnostics = function(caretRect:Null<Rect>) {
+				if (onDiagnostics == null)
 					return;
+				var compositionText = editor.compositionStart >= 0 &&
+					editor.compositionEnd >= editor.compositionStart
+					? Utf8Text.slice(editor.layoutText(), editor.compositionStart, editor.compositionEnd) : "";
+				onDiagnostics(new TextEditorDiagnostics(key, label == null ? key : label,
+					editor.focused, editor.selectionStart, editor.selectionEnd,
+					editor.selectionFocus, editor.compositionStart, editor.compositionEnd,
+					compositionText, caretRect, context.textInput.platformSupported,
+					context.textInput.platformActive));
+			};
+			var syncCursor = function(geometry:ResolvedLayoutItem) {
 				var caret = editor.layout.caret(editor.focusPosition());
 				var topX = geometry.x + caret.x + caret.ascender * caret.slope;
 				var topY = geometry.y + caret.y + caret.ascender;
@@ -159,15 +178,39 @@ class TextField implements View {
 				var screenTopY = transform.b * topX + transform.d * topY + transform.ty;
 				var screenBottomX = transform.a * bottomX + transform.c * bottomY + transform.tx;
 				var screenBottomY = transform.b * bottomX + transform.d * bottomY + transform.ty;
+				if (multiline) {
+					// Resolution callbacks can reveal the caret after the node's
+					// transform was built. Keep the same-frame IME anchor in sync.
+					var scrollDelta = editor.scrollOffsetY - builtScrollOffset;
+					screenTopX -= transform.c * scrollDelta;
+					screenTopY -= transform.d * scrollDelta;
+					screenBottomX -= transform.c * scrollDelta;
+					screenBottomY -= transform.d * scrollDelta;
+				}
+				var caretRect = new Rect(Math.min(screenTopX, screenBottomX), Math.min(screenTopY, screenBottomY),
+					Math.max(1.0, absolute(screenBottomX - screenTopX)),
+					Math.max(1.0, absolute(screenBottomY - screenTopY)));
+				publishDiagnostics(caretRect);
+				if (!editor.focused || context.platformSurface == null || context.platformSurface.isDisposed())
+					return;
 				context.textInput.update(editor.layoutText(), Utf8Text.length(editor.text),
 					editor.selectionStart, editor.selectionEnd, editor.compositionStart,
-					editor.compositionEnd, 0, 0,
-					new Rect(Math.min(screenTopX, screenBottomX), Math.min(screenTopY, screenBottomY),
-						Math.max(1.0, absolute(screenBottomX - screenTopX)),
-						Math.max(1.0, absolute(screenBottomY - screenTopY))));
+					editor.compositionEnd, 0,
+					multiline ? 1 : 0,
+					caretRect);
 			};
+			editorContent.onResolved(function(geometry) {
+				if (multiline) {
+					editor.updateLayout(geometry.width);
+					if (editor.ensureCaretVisible(geometry.height))
+						stored.update(editor);
+				}
+			});
 			textNode.onResolved(function(geometry) {
 				editor.updateLayout(geometry.width);
+				if (multiline && editorContent.resolved != null &&
+					editor.ensureCaretVisible(editorContent.resolved.height))
+					stored.update(editor);
 				syncCursor(geometry);
 			});
 			node.on(UiEventKind.Focus, function(_) {
@@ -179,6 +222,8 @@ class TextField implements View {
 				context.textInput.activate();
 				if (textNode.resolved != null)
 					syncCursor(cast textNode.resolved);
+				else
+					publishDiagnostics(null);
 			});
 			var blur = function(event:UiEvent) {
 				if (!editor.focused && !editor.draggingSelection)
@@ -189,6 +234,7 @@ class TextField implements View {
 				semantics.states &= ~AccessibilityState.Focused;
 				stored.update(editor);
 				context.textInput.deactivate();
+				publishDiagnostics(null);
 			};
 			node.on(UiEventKind.Blur, blur);
 			node.on(UiEventKind.FocusLost, blur);
@@ -277,6 +323,10 @@ class TextField implements View {
 					changed = editor.moveCaretByParagraph(-1, extend, macWordNavigation);
 				else if (wordNavigation && event.key == UiKey.Down)
 					changed = editor.moveCaretByParagraph(1, extend, macWordNavigation);
+				else if (multiline && event.key == UiKey.Up)
+					changed = editor.moveCaretVertically(-1, extend);
+				else if (multiline && event.key == UiKey.Down)
+					changed = editor.moveCaretVertically(1, extend);
 				#if (mac || ios)
 				else if ((event.modifiers & UiModifier.Super) != 0 && event.key == UiKey.Up)
 					changed = editor.placeCaret(0, extend);
@@ -288,9 +338,11 @@ class TextField implements View {
 				else if (event.key == UiKey.Right)
 					changed = editor.moveCaret(1, extend);
 				else if (event.key == UiKey.Home)
-					changed = editor.placeCaret(0, extend);
+					changed = multiline && !command ? editor.moveCaretToLineBoundary(false, extend) :
+						editor.placeCaret(0, extend);
 				else if (event.key == UiKey.End)
-					changed = editor.placeCaret(Utf8Text.length(editor.text), extend);
+					changed = multiline && !command ? editor.moveCaretToLineBoundary(true, extend) :
+						editor.placeCaret(Utf8Text.length(editor.text), extend);
 				else if (event.key == UiKey.Backspace)
 					changed = editor.deleteBackward();
 				else if (event.key == UiKey.Delete)
@@ -363,15 +415,17 @@ class TextField implements View {
 
 	static function paintSelection(canvas:Canvas, editor:TextEditorState):Void {
 		if (editor.selectionStart != editor.selectionEnd) {
+			canvas.translate(0.0, -editor.scrollOffsetY);
 			for (rect in editor.layout.selectionRects(editor.anchorPosition(), editor.focusPosition()))
 				canvas.fillRect(rect, Color.rgba(0.2, 0.43, 0.82, 0.55));
 		}
 	}
 
 	static function paintEditorDecorations(canvas:Canvas, editor:TextEditorState):Void {
+		if (editor.scrollOffsetY != 0.0)
+			canvas.translate(0.0, -editor.scrollOffsetY);
 		if (editor.compositionStart >= 0 && editor.compositionStart != editor.compositionEnd) {
-			for (rect in editor.layout.selectionRects(new TextPosition(editor.compositionStart, 0),
-					new TextPosition(editor.compositionEnd, 0)))
+			for (rect in editor.compositionRects())
 				canvas.fillRect(new Rect(rect.x, rect.y + rect.height - 1.0, rect.width, 1.0),
 					Color.rgba(0.95, 0.75, 0.24, 1.0));
 		}

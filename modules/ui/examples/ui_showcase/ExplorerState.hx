@@ -3,6 +3,7 @@ import state.ControlsDemoState;
 import state.GestureDemoState;
 import state.InspectorState;
 import state.OverlayState;
+import nativekit.ui.widgets.TextEditorDiagnostics;
 
 /** Typed, persistent showcase state, separate from runtime/render ownership. */
 class ExplorerState {
@@ -17,6 +18,14 @@ class ExplorerState {
 	public var smokeFocusTextField:Bool = false;
 	public var visualFocusLabel:Null<String> = null;
 	public var visualTextAreaSelection:Bool = false;
+	public var visualTextComposition:Bool = false;
+	public var textDiagnostics:Null<TextEditorDiagnostics> = null;
+	public var textLastClipboardAction:String = "No clipboard command requested";
+	public var textLastSubmit:String = "No editor submitted yet";
+	public var textArabicValue:String = "مرحبا بالعالم";
+	public var textHebrewValue:String = "שלום עולם";
+	public var textJapaneseValue:String = "こんにちは世界";
+	public var textEmojiValue:String = "NativeKit 👋 🌍 ✨";
 
 	public function new() {
 		inspector = new InspectorState();

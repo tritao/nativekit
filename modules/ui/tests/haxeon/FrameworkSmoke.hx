@@ -59,6 +59,7 @@ import nativekit.ui.widgets.ScrollView;
 import nativekit.ui.widgets.SizedBox;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TextEditorState;
+import nativekit.ui.widgets.TextEditorDiagnostics;
 import nativekit.ui.widgets.TextArea;
 import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.Spacer;
@@ -130,6 +131,8 @@ class FrameworkSmoke {
 		var field = new TextField("entry", "hello", function(next) { editedValue = next; },
 			null, "Message");
 		field.onSubmit = function(next) { submittedValue = next; };
+		var fieldDiagnostics:Null<TextEditorDiagnostics> = null;
+		field.onDiagnostics = function(next) { fieldDiagnostics = next; };
 		var fieldRoot = context.submit(field, new LayoutFrame(256.0, 192.0));
 		if (fieldRoot.children.length != 1 ||
 			fieldRoot.children[0].layout.visualKind != LayoutVisualKind.Box ||
@@ -148,6 +151,10 @@ class FrameworkSmoke {
 		var fieldEditor:TextEditorState = cast fieldState.value;
 		if (!context.focusWidget(fieldRoot.id))
 			return 41;
+		if (fieldDiagnostics == null || !fieldDiagnostics.focused ||
+			fieldDiagnostics.selectionStart != 5 || fieldDiagnostics.selectionEnd != 5 ||
+			fieldDiagnostics.caretOffset != 5 || fieldDiagnostics.caretRect == null)
+			return 209;
 		context.key(UiEventKind.KeyDown, UiKey.A, UiModifier.Control);
 		context.text(UiEventKind.TextInput, "á🙂");
 		if (field.value != "á🙂" || editedValue != "á🙂" || fieldEditor.selectionEnd != 3)
@@ -163,11 +170,23 @@ class FrameworkSmoke {
 		if (field.value != "🙂x" || fieldEditor.compositionStart != 1 ||
 			fieldEditor.compositionEnd != 2)
 			return 44;
+		fieldRoot = context.submit(field, new LayoutFrame(256.0, 192.0));
+		if (fieldDiagnostics == null || !fieldDiagnostics.focused ||
+			fieldDiagnostics.compositionStart != 1 || fieldDiagnostics.compositionEnd != 2 ||
+			fieldDiagnostics.compositionText != "x" || fieldDiagnostics.caretRect == null)
+			return 213;
 		var commitEdit = new NativeKitTextEdit(TextEditAction.Commit, "x", 1, 2,
 			2, 2, -1, -1);
 		context.text(UiEventKind.TextEdit, null, commitEdit);
 		if (fieldEditor.compositionStart != -1 || field.value != "🙂x")
 			return 45;
+		var cancelEdit = new NativeKitTextEdit(TextEditAction.SetComposition, null, 0, 0,
+			2, 2, 1, 2);
+		if (!fieldEditor.applyTextEdit(cancelEdit) || fieldEditor.compositionStart != 1 ||
+			fieldEditor.compositionRects().length == 0 ||
+			!fieldEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.FinishComposition,
+				null, 0, 0, 2, 2, -1, -1)) || fieldEditor.compositionStart != -1)
+			return 210;
 		if (!context.accessibilityAction(fieldRoot.id.value, AccessibilityRequest.SetSelection,
 			null, 0, 1, 2) || fieldEditor.selectionStart != 0 || fieldEditor.selectionEnd != 1)
 			return 46;
@@ -299,6 +318,41 @@ class FrameworkSmoke {
 		if (wordEditor.selectionFocus != 8)
 			return 198;
 		#end
+		var lineArea = new TextArea("visual-line-navigation", "first line\nsecond\nthird line");
+		var lineRoot = context.submit(lineArea, new LayoutFrame(256.0, 192.0));
+		var lineState:State<TextEditorState> = context.buildContext.existingState(lineRoot.id);
+		var lineEditor:TextEditorState = cast lineState.value;
+		var lineTextGeometry:ResolvedLayoutItem =
+			cast lineRoot.children[0].children[1].resolved;
+		lineEditor.updateLayout(lineTextGeometry.width);
+		lineEditor.placeCaret(15, false);
+		if (!lineEditor.moveCaretToLineBoundary(false, false) || lineEditor.selectionFocus != 11)
+			return 203;
+		lineEditor.placeCaret(15, false);
+		if (!lineEditor.moveCaretToLineBoundary(true, false) || lineEditor.selectionFocus != 17)
+			return 204;
+		lineEditor.placeCaret(15, false);
+		if (!lineEditor.moveCaretVertically(-1, false) ||
+			lineEditor.layout.lineRangeAt(lineEditor.selectionFocus).start != 0)
+			return 205;
+		if (!lineEditor.moveCaretVertically(1, false) ||
+			lineEditor.layout.lineRangeAt(lineEditor.selectionFocus).start != 11)
+			return 206;
+		lineEditor.replace(0, Utf8Text.length(lineEditor.text),
+			"one\ntwo\nthree\nfour\nfive\nsix\nseven\neight");
+		lineEditor.updateLayout(lineTextGeometry.width);
+		lineEditor.placeCaret(Utf8Text.length(lineEditor.text), false);
+		if (!lineEditor.ensureCaretVisible(30.0) || lineEditor.scrollOffsetY <= 0.0)
+			return 207;
+		lineEditor.placeCaret(0, false);
+		if (!lineEditor.ensureCaretVisible(30.0) || lineEditor.scrollOffsetY != 0.0)
+			return 208;
+		lineEditor.setSelection(0, Utf8Text.length(lineEditor.text));
+		if (!lineEditor.ensureCaretVisible(30.0) || lineEditor.scrollOffsetY <= 0.0)
+			return 211;
+		lineEditor.placeCaret(0, false);
+		if (!lineEditor.ensureCaretVisible(30.0) || lineEditor.scrollOffsetY != 0.0)
+			return 212;
 		var clickField = new TextField("single-double-click", "first last", null,
 			null, "Click selection");
 		var clickFieldRoot = context.submit(clickField, new LayoutFrame(256.0, 192.0));
