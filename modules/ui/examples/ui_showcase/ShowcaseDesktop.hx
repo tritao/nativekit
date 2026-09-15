@@ -102,7 +102,7 @@ class ShowcaseDesktop {
             surfaceOptions.set_api(graphicsApi);
             surfaceOptions.set_width(initialWidth);
             surfaceOptions.set_height(initialHeight);
-            var createdSurface = NativeKit.nk_surface_create(window, surfaceOptions);
+            var createdSurface = NativeKit.nk_surface_create(new Handle(window.rawValue()), surfaceOptions);
             if (createdSurface.status != Result.Ok) {
                 NativeKit.nk_window_destroy(window);
                 NativeKit.nk_shutdown();

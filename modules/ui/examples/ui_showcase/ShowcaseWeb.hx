@@ -113,7 +113,7 @@ class ShowcaseWeb {
             surfaceOptions.set_major_version(3);
             surfaceOptions.set_width(requestedWidth);
             surfaceOptions.set_height(requestedHeight);
-            var createdSurface = NativeKit.nk_surface_create(window, surfaceOptions);
+            var createdSurface = NativeKit.nk_surface_create(new Handle(window.rawValue()), surfaceOptions);
             if (createdSurface.status != Result.Ok)
                 return fail(12);
             surface = createdSurface.out_surface.borrow();

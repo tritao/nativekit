@@ -31,7 +31,7 @@ class NativeKitWindow {
 
 	public function createSurface(options:SurfaceOptions):NativeKitSurface {
 		ensureLive();
-		var surface = NativeKitSurface.adopt(NativeKit.nk_surface_create_checked(value, options));
+		var surface = NativeKitSurface.adopt(NativeKit.nk_surface_create_checked(new Handle(value.rawValue()), options));
 		surfaces.push(surface);
 		return surface;
 	}

@@ -1,4 +1,5 @@
 import NativeKit;
+import NativeKit.Handle;
 import NativeKit.GraphicsApi;
 import NativeKit.Result;
 import NativeKit.InitOptions;
@@ -36,7 +37,7 @@ class Transaction {
 		surfaceOptions.set_minor_version(3);
 		surfaceOptions.set_width(256);
 		surfaceOptions.set_height(192);
-		var createdSurface = NativeKit.nk_surface_create(window, surfaceOptions);
+		var createdSurface = NativeKit.nk_surface_create(new Handle(window.rawValue()), surfaceOptions);
 		if (createdSurface.status != Result.Ok) {
 			NativeKit.nk_window_destroy(window);
 			runtime.dispose();
