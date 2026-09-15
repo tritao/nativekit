@@ -18,8 +18,16 @@ import NativeKitEventValue;
 import NativeKitEvents;
 import NativeKitEvents.NativeKitEventSubscription;
 import NativeKitSurface;
+import haxe.io.Bytes;
 import nativekit.ui.core.NativeInputAdapter;
 import haxe.CallStack;
+
+typedef ShowcaseWebFont = {
+    var name:String;
+    var uri:String;
+    var bundledPath:String;
+    var family:FontFamily;
+};
 
 /** Browser host entry points for the Haxeon UI Explorer wasm guest. */
 class ShowcaseWeb {
@@ -28,6 +36,9 @@ class ShowcaseWeb {
     static var explorerInput:Null<NativeInputAdapter>;
     static var events:Null<NativeKitEvents>;
     static var eventSubscription:Null<NativeKitEventSubscription>;
+    static var webFontBytes:Null<Map<String, Bytes>>;
+    static var pendingWebFonts:Null<Map<String, ShowcaseWebFont>>;
+    static var pendingWebFontCount = 0;
     static var initialized = false;
     static var running = false;
     static var ready = false;
@@ -126,41 +137,21 @@ class ShowcaseWeb {
             if (createdSurface.status != Result.Ok)
                 return fail(12);
             surface = createdSurface.out_surface.borrow();
-            try {
-                if (graphicsMode) {
-                    var fonts = createWebFonts();
-                    var sampleText:Null<String> = null;
-                    if (benchmarkScenario == 2) {
-                        var repeated = new StringBuf();
-                        for (_ in 0...8)
-                            repeated.add("NativeKit — مرحبا — שלום — こんにちは 👋 · ");
-                        sampleText = repeated.toString();
-                    }
-                    graphics = new Showcase(fonts, sampleText);
-                    if (benchmarkScenario == 1)
-                        graphics.setBenchmarkAnimation(false);
-                } else {
-                    explorer = new UiExplorer(createWebFonts(), "WEBGL2 · WASM", function() {
-                        openGraphicsRequested = true;
-                    });
-                    explorer.attachSurface(NativeKitSurface.borrowNativeHandle(surface));
-                    explorer.setViewport(logicalWidth, logicalHeight, requestedWidth,
-                        requestedHeight, scale);
-                    if (requestedUiVisualCase >= 0 &&
-                        !explorer.setVisualCase(requestedUiVisualCase))
-                        return fail(23);
-                }
-            } catch (error:Dynamic) {
-                failureStage = 91;
-                reportException(error, "ShowcaseWeb.main > create-showcase");
-                return fail(22);
-            }
             var activePump = new NativeKitEvents();
             events = activePump;
             eventSubscription = activePump.listen(handleEvent);
-            if (!graphicsMode && explorer != null)
-                explorerInput = explorer.attachInput(activePump, new Handle(window.rawValue()));
             running = true;
+            try {
+                #if nativekit_bundle_web_fonts
+                createShowcase(createWebFonts());
+                #else
+                startWebFontLoads();
+                #end
+            } catch (error:Dynamic) {
+                failureStage = 91;
+                reportException(error, "ShowcaseWeb.main > load-showcase-fonts");
+                return fail(22);
+            }
             return 0;
         } catch (error:Dynamic) {
             failureStage = 92;
@@ -172,7 +163,7 @@ class ShowcaseWeb {
     /** Called by the browser host once per requestAnimationFrame tick. */
     public static function frame(time:Float):Int {
         if (!running)
-            return 0;
+            return result != 0 ? -result : 0;
         try {
             failureStage = 1;
             while (running && events != null && events.poll()) {}
@@ -274,6 +265,9 @@ class ShowcaseWeb {
             NativeKit.nk_shutdown();
         if (eventPump != null)
             eventPump.runtimeShutdown();
+        webFontBytes = null;
+        pendingWebFonts = null;
+        pendingWebFontCount = 0;
         initialized = false;
     }
 
@@ -287,11 +281,18 @@ class ShowcaseWeb {
     static function createWebFonts():FontCollection {
         var fonts = FontCollection.create();
         try {
-            fonts.add("/assets/IBMPlexSans-Regular.ttf");
-            fonts.add("/assets/IBMPlexSansArabic-Regular.ttf");
-            fonts.add("/assets/IBMPlexSansHebrew-Regular.ttf");
-            fonts.add("/assets/IBMPlexSansJP-Regular.ttf");
-            fonts.add("/assets/NotoEmoji-Regular.ttf", FontFamily.Emoji);
+            for (font in webFontSpecs()) {
+                #if nativekit_bundle_web_fonts
+                fonts.add(font.bundledPath, font.family);
+                #else
+                if (webFontBytes == null)
+                    throw "Web fonts have not finished loading";
+                var data = webFontBytes.get(font.name);
+                if (data == null)
+                    throw "Missing downloaded web font " + font.name;
+                fonts.addData(font.name, data, font.family);
+                #end
+            }
             return fonts;
         } catch (error:Dynamic) {
             fonts.dispose();
@@ -299,8 +300,92 @@ class ShowcaseWeb {
         }
     }
 
+    static function webFontSpecs():Array<ShowcaseWebFont> return [
+        {name: "IBMPlexSans-Regular", uri: "assets/IBMPlexSans-Regular.ttf",
+            bundledPath: "/assets/IBMPlexSans-Regular.ttf", family: FontFamily.Default},
+        {name: "IBMPlexSansArabic-Regular", uri: "assets/IBMPlexSansArabic-Regular.ttf",
+            bundledPath: "/assets/IBMPlexSansArabic-Regular.ttf", family: FontFamily.Default},
+        {name: "IBMPlexSansHebrew-Regular", uri: "assets/IBMPlexSansHebrew-Regular.ttf",
+            bundledPath: "/assets/IBMPlexSansHebrew-Regular.ttf", family: FontFamily.Default},
+        {name: "IBMPlexSansJP-Regular", uri: "assets/IBMPlexSansJP-Regular.ttf",
+            bundledPath: "/assets/IBMPlexSansJP-Regular.ttf", family: FontFamily.Default},
+        {name: "NotoEmoji-Regular", uri: "assets/NotoEmoji-Regular.ttf",
+            bundledPath: "/assets/NotoEmoji-Regular.ttf", family: FontFamily.Emoji}
+    ];
+
+    static function startWebFontLoads():Void {
+        webFontBytes = new Map();
+        pendingWebFonts = new Map();
+        pendingWebFontCount = 0;
+        for (font in webFontSpecs()) {
+            var resource = new Resource();
+            resource.set_struct_size(Resource.size());
+            resource.set_flags(NativeKit.ResourceFlags.Readable);
+            resource.set_uri(font.uri);
+            resource.set_mime_type("font/ttf");
+            resource.set_display_name(font.name);
+            var request = NativeKit.nk_resource_load_async_checked(resource);
+            pendingWebFonts.set(Std.string(request), font);
+            pendingWebFontCount++;
+        }
+    }
+
+    static function createShowcase(fonts:FontCollection):Void {
+        if (graphicsMode) {
+            var sampleText:Null<String> = null;
+            if (benchmarkScenario == 2) {
+                var repeated = new StringBuf();
+                for (_ in 0...8)
+                    repeated.add("NativeKit — مرحبا — שלום — こんにちは 👋 · ");
+                sampleText = repeated.toString();
+            }
+            graphics = new Showcase(fonts, sampleText);
+            if (benchmarkScenario == 1)
+                graphics.setBenchmarkAnimation(false);
+        } else {
+            explorer = new UiExplorer(fonts, "WEBGL2 · WASM", function() {
+                openGraphicsRequested = true;
+            });
+            explorer.attachSurface(NativeKitSurface.borrowNativeHandle(surface));
+            explorer.setViewport(logicalWidth, logicalHeight, requestedWidth,
+                requestedHeight, scale);
+            if (requestedUiVisualCase >= 0 && !explorer.setVisualCase(requestedUiVisualCase))
+                throw "UI Explorer rejected the requested visual case";
+            if (events != null)
+                explorerInput = explorer.attachInput(events, new Handle(window.rawValue()));
+        }
+    }
+
+    static function handleWebFontLoaded(request:haxe.Int64, loadResult:Result, data:Bytes):Void {
+        if (pendingWebFonts == null)
+            return;
+        var key = Std.string(request);
+        var font = pendingWebFonts.get(key);
+        if (font == null)
+            return;
+        pendingWebFonts.remove(key);
+        if (loadResult != Result.Ok || data.length == 0) {
+            failureStage = 90;
+            reportException("Failed to load web font " + font.uri,
+                "ShowcaseWeb.font-load > " + font.name);
+            fail(22);
+            return;
+        }
+        if (webFontBytes == null)
+            webFontBytes = new Map();
+        webFontBytes.set(font.name, data);
+        pendingWebFontCount--;
+        if (pendingWebFontCount == 0) {
+            pendingWebFonts = null;
+            createShowcase(createWebFonts());
+        }
+    }
+
     static function handleEvent(value:NativeKitEventValue):Void {
         switch (value) {
+            case Raw(kind, _, request, loadResult, _, _, data)
+                if (kind == NativeKit.EventKind.ResourceDataComplete):
+                handleWebFontLoaded(request, loadResult, data);
             case WindowClose(source) if (source.rawValue() == window.rawValue()):
                 running = false;
             case WindowResize(source, width, height) if (source.rawValue() == window.rawValue()):

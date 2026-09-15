@@ -303,6 +303,9 @@ if(NK_BUILD_EXAMPLES)
         endif()
 
         if(EMSCRIPTEN)
+            option(NKUI_HAXEON_BUNDLE_FONTS
+                "Bundle Haxeon showcase fonts into the Emscripten data file"
+                OFF)
             set(NKUI_HAXEON_TARGET "wasm32" CACHE STRING
                 "Haxeon WebAssembly target used by the browser UI Explorer guest")
             set_property(CACHE NKUI_HAXEON_TARGET PROPERTY STRINGS wasm32 wasm-gc)
@@ -354,6 +357,10 @@ if(NK_BUILD_EXAMPLES)
             if(NKUI_HAXEON_MEMORY_STATS)
                 set(NKUI_HAXEON_MEMORY_STATS_VALUE 1)
             endif()
+            set(NKUI_HAXEON_BUNDLE_FONTS_VALUE 0)
+            if(NKUI_HAXEON_BUNDLE_FONTS)
+                set(NKUI_HAXEON_BUNDLE_FONTS_VALUE 1)
+            endif()
             add_custom_command(OUTPUT "${NKUI_HAXEON_GUEST_WASM}"
                 COMMAND ${CMAKE_COMMAND} -E env
                     "NATIVEKIT_WASM_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
@@ -363,6 +370,7 @@ if(NK_BUILD_EXAMPLES)
                     "NATIVEKIT_HAXEON_EXCEPTION_MODE=${NKUI_HAXEON_EXCEPTION_MODE}"
                     "NATIVEKIT_HAXEON_MEMORY_CONTRACT=${NKUI_HAXEON_MEMORY_CONTRACT}"
                     "NATIVEKIT_HAXEON_MEMORY_STATS=${NKUI_HAXEON_MEMORY_STATS_VALUE}"
+                    "NATIVEKIT_HAXEON_BUNDLE_FONTS=${NKUI_HAXEON_BUNDLE_FONTS_VALUE}"
                     "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase-wasm.sh"
                 DEPENDS
                     "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase-wasm.sh"
@@ -405,6 +413,7 @@ if(NK_BUILD_EXAMPLES)
                 _nk_init
                 _nk_last_error
                 _nk_poll_event
+                _nk_resource_load_async
                 _nk_shutdown
                 _nk_time_seconds
                 _nk_surface_accessibility_clear
@@ -429,6 +438,7 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_display_list_reset
                 _nkui_display_list_submit
                 _nkui_font_collection_add
+                _nkui_font_collection_add_data
                 _nkui_font_collection_add_system_fallbacks
                 _nkui_font_collection_create
                 _nkui_image_create
@@ -488,19 +498,46 @@ if(NK_BUILD_EXAMPLES)
                 "-sINITIAL_MEMORY=${NKUI_HAXEON_MEMORY_LIMIT}"
                 "-sALLOW_MEMORY_GROWTH=0"
                 "-sEXPORTED_FUNCTIONS=[${NKUI_HAXEON_EXPORTED_FUNCTIONS_CSV}]"
-                "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSans-Regular.ttf@/assets/IBMPlexSans-Regular.ttf"
-                "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansArabic-Regular.ttf@/assets/IBMPlexSansArabic-Regular.ttf"
-                "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansHebrew-Regular.ttf@/assets/IBMPlexSansHebrew-Regular.ttf"
-                "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansJP-Regular.ttf@/assets/IBMPlexSansJP-Regular.ttf"
-                "--preload-file=${NKUI_HAXEON_FONT_DIR}/NotoEmoji-Regular.ttf@/assets/NotoEmoji-Regular.ttf"
                 "-sNO_EXIT_RUNTIME=1")
-            add_custom_target(nativekit_ui_haxeon_assets
+            if(NKUI_HAXEON_BUNDLE_FONTS)
+                target_link_options(nativekit_ui_haxeon PRIVATE
+                    "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSans-Regular.ttf@/assets/IBMPlexSans-Regular.ttf"
+                    "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansArabic-Regular.ttf@/assets/IBMPlexSansArabic-Regular.ttf"
+                    "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansHebrew-Regular.ttf@/assets/IBMPlexSansHebrew-Regular.ttf"
+                    "--preload-file=${NKUI_HAXEON_FONT_DIR}/IBMPlexSansJP-Regular.ttf@/assets/IBMPlexSansJP-Regular.ttf"
+                    "--preload-file=${NKUI_HAXEON_FONT_DIR}/NotoEmoji-Regular.ttf@/assets/NotoEmoji-Regular.ttf")
+            endif()
+            set(NKUI_HAXEON_ASSET_COMMANDS
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${NKUI_HAXEON_GUEST_WASM}"
                     "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/nativekit_ui_haxeon_guest.wasm"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${CMAKE_CURRENT_SOURCE_DIR}/examples/ui_haxeon/web_shell.html"
-                    "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/nativekit_ui_haxeon.html"
+                    "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/nativekit_ui_haxeon.html")
+            if(NOT NKUI_HAXEON_BUNDLE_FONTS)
+                list(APPEND NKUI_HAXEON_ASSET_COMMANDS
+                    COMMAND ${CMAKE_COMMAND} -E rm -f
+                        "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/nativekit_ui_haxeon.data"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory
+                        "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/assets"
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${NKUI_HAXEON_FONT_DIR}/IBMPlexSans-Regular.ttf"
+                        "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/assets/IBMPlexSans-Regular.ttf"
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${NKUI_HAXEON_FONT_DIR}/IBMPlexSansArabic-Regular.ttf"
+                        "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/assets/IBMPlexSansArabic-Regular.ttf"
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${NKUI_HAXEON_FONT_DIR}/IBMPlexSansHebrew-Regular.ttf"
+                        "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/assets/IBMPlexSansHebrew-Regular.ttf"
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${NKUI_HAXEON_FONT_DIR}/IBMPlexSansJP-Regular.ttf"
+                        "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/assets/IBMPlexSansJP-Regular.ttf"
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${NKUI_HAXEON_FONT_DIR}/NotoEmoji-Regular.ttf"
+                        "$<TARGET_FILE_DIR:nativekit_ui_haxeon>/assets/NotoEmoji-Regular.ttf")
+            endif()
+            add_custom_target(nativekit_ui_haxeon_assets
+                ${NKUI_HAXEON_ASSET_COMMANDS}
                 DEPENDS
                     nativekit_ui_haxeon_guest
                     ${NKUI_HAXEON_FONT_PATHS}

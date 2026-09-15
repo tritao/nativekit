@@ -72,5 +72,10 @@ Set up Emscripten, then build and test with:
 python3 -m http.server --directory build-web/modules/ui 8080
 ```
 
+The Haxeon showcase fetches its five font assets separately by default, so the
+initial WASM host is not accompanied by a font `.data` payload. For an offline
+or deterministic bundle, build with `NKUI_HAXEON_BUNDLE_FONTS=ON`; this puts
+the fonts back into `nativekit_ui_haxeon.data`.
+
 The browser owns the frame loop through `nk_surface_set_frame_callback()`;
 Emscripten types do not appear in NativeKit's public headers.
