@@ -63,6 +63,9 @@ class ShowcaseWeb {
 
     static function reportException(error:Dynamic, breadcrumbs:String):Void {
         var message = Std.string(error);
+        var nativeDiagnostic = NativeKit.nk_last_error();
+        if (nativeDiagnostic != null && nativeDiagnostic.length > 0)
+            message += " [NativeKit: " + nativeDiagnostic + "]";
         var stack = CallStack.toString(CallStack.exceptionStack(true));
         NativeKitUIShowcase.nkui_showcase_diagnostic_report(failureStage,
             message == null ? "Unknown Haxe exception" : message,
