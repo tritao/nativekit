@@ -772,6 +772,7 @@ static int probe_webview(nk_capabilities capabilities, nk_window window) {
         !require_ok("nk_webview_set_bounds", nk_webview_set_bounds(webview, 0, 0, 320, 240)) ||
         !require_ok("nk_webview_set_html",
                     nk_webview_set_html(webview, "<title>conformance</title>", NULL)) ||
+        !wait_for_event(webview, NK_EVENT_WEBVIEW_NAVIGATED) ||
         !require_ok("nk_webview_navigate", nk_webview_navigate(webview, "about:blank")) ||
         !wait_for_event(webview, NK_EVENT_WEBVIEW_NAVIGATED) ||
         !require_ok("nk_webview_can_go_back", nk_webview_can_go_back(webview, &can_go_back)) ||
