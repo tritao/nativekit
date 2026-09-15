@@ -77,6 +77,7 @@ class BuildContext {
 
 	public function id(localKey:String):WidgetId {
 		var id = scope.widgetId(localKey);
+		stateStore.rememberPath(id, scope.pathValue() + localKey.length + ":" + localKey);
 		if (claimed.exists(id.value))
 			throw 'Duplicate widget ID ${id.value}; use distinct keys for sibling views';
 		claimed.set(id.value, scope.pathValue() + localKey);
@@ -107,7 +108,7 @@ class BuildContext {
 	/** Opens an already initialized value without supplying an unused placeholder. */
 	public function existingState<T>(id:WidgetId):State<T> {
 		if (!stateStore.contains(id))
-			throw 'Widget state has not been initialized for ${id == null ? "null" : id.value}';
+			throw 'Widget state has not been initialized for ${stateStore.describe(id)}';
 		var value:State<Dynamic> = new State<Dynamic>(stateStore, id);
 		return cast value;
 	}
