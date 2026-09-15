@@ -177,6 +177,13 @@ if(NK_BUILD_TESTS)
         NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
     target_link_libraries(nativekit_ui_layout_engine_test PRIVATE nkui_skribidi)
     add_test(NAME nativekit_ui_layout_engine COMMAND nativekit_ui_layout_engine_test)
+    add_executable(nativekit_ui_clay_measure_element_test
+        "${NK_VENDOR_DIR}/clay/tests/measure_element.cpp")
+    target_compile_features(nativekit_ui_clay_measure_element_test PRIVATE cxx_std_20)
+    target_include_directories(nativekit_ui_clay_measure_element_test PRIVATE
+        "${NK_VENDOR_DIR}/clay")
+    add_test(NAME nativekit_ui_clay_measure_element
+        COMMAND nativekit_ui_clay_measure_element_test)
     add_executable(nativekit_ui_layout_invariants_test
         tests/layout_invariants.cpp
         src/layout/clay_layout_backend.cpp
