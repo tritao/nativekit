@@ -27,7 +27,7 @@ void shutdown() noexcept {}
 } // namespace nk::backend
 
 extern "C" {
-#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_WEB)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_WEB) && !defined(NK_BACKEND_IOS)
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_RESOURCE_IO;
 }

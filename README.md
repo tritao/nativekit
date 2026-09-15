@@ -62,8 +62,9 @@ optional system components and build configuration can affect availability.
 — not currently advertised
 
 - iOS currently has compile-only CI coverage for the core library on device and
-  simulator SDKs. UIKit window/event integration and simulator runtime tests
-  are not implemented yet.
+  simulator SDKs. The initial UIKit host attachment and geometry lifecycle are
+  available; WebView, Metal, input, resource, and simulator runtime integration
+  are still being added.
 - Linux desktop support requires GTK 3 and WebKitGTK 4.1. Without them, the
   library builds with a stub backend and reports the services as unsupported.
 - Windows WebViews require the Microsoft Edge WebView2 Evergreen Runtime.

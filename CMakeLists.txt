@@ -229,10 +229,18 @@ elseif(WIN32)
     target_link_libraries(nativekit PRIVATE user32 shell32 ole32 oleaut32 advapi32 imm32
         d3d11 dxgi)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    # The UIKit window and event backend is not implemented yet. Keep the
-    # portable API compiling on iOS while reporting desktop services as
-    # unsupported through the stub backend.
-    target_sources(nativekit PRIVATE src/platform/nativekit_stub.cpp)
+    target_sources(nativekit PRIVATE
+        src/ios/nativekit_ios.mm
+        src/platform/nativekit_stub.cpp)
+    target_compile_definitions(nativekit PRIVATE NK_BACKEND_IOS=1)
+    set_target_properties(nativekit PROPERTIES
+        OBJCXX_STANDARD 17
+        OBJCXX_STANDARD_REQUIRED YES)
+    target_compile_options(nativekit PRIVATE
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
+    target_link_libraries(nativekit PRIVATE
+        "-framework Foundation" "-framework UIKit")
 elseif(APPLE)
     target_sources(nativekit PRIVATE src/macos/nativekit_osx.mm)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_MACOS=1)

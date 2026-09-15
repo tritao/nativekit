@@ -87,6 +87,13 @@ wrapper supplies the JNI details: call it for the Activity's initial
 `ACTION_VIEW`, `ACTION_SEND`, and `ACTION_SEND_MULTIPLE` intents become queued
 resource or sharing events. Unrecognized actions return `NK_ERROR_UNSUPPORTED`.
 
+iOS hosts pass a caller-owned `UIView*` as `native_view` with
+`NK_MOBILE_HOST_UIKIT_VIEW`; `platform_context` is reserved and must be zero.
+The iOS backend retains the view, emits an initial geometry event, and tracks
+bounds, safe-area, and display-scale changes. The view controller remains
+responsible for forwarding lifecycle transitions. WebView, resource, input, and
+Metal integrations are being added in subsequent iOS backend work.
+
 Container size, display scale, system-bar safe insets, and software-keyboard
 inset changes produce `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED`. Geometry and
 WebView bounds use logical pixels on mobile just as they do on desktop.

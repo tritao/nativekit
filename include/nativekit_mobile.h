@@ -113,7 +113,9 @@ typedef struct nk_mobile_host_event {
  *
  * On Android, platform_context is a JNIEnv* and native_view is a local or
  * global jobject referring to an android.view.ViewGroup. Both values are used
- * only during this call; NativeKit retains its own global reference.
+ * only during this call; NativeKit retains its own global reference. On iOS,
+ * native_view is a borrowed UIView* and platform_context must be zero; NativeKit
+ * retains the view until nk_mobile_host_destroy().
  */
 NK_API nk_result NK_CALL nk_mobile_host_attach(const nk_mobile_host_options *options,
                                                nk_mobile_host *out_host NK_OUT NK_OWNED);

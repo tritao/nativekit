@@ -5,7 +5,7 @@
 #include "core/runtime.hpp"
 
 namespace nk::backend {
-#if defined(__ANDROID__)
+#if defined(NK_BACKEND_ANDROID) || defined(NK_BACKEND_IOS)
 nk_result mobile_host_attach(const nk_mobile_host_options &options, nk_handle &out_host);
 nk_result mobile_host_destroy(nk_handle host);
 nk_result mobile_host_set_lifecycle(nk_handle host, nk_mobile_lifecycle_state state);
@@ -15,7 +15,7 @@ nk_result mobile_host_set_drop_enabled(nk_handle host, bool enabled);
 } // namespace nk::backend
 
 namespace {
-#if !defined(__ANDROID__)
+#if !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_IOS)
 nk_result unsupported() {
     const auto thread = nk::core::require_ui_thread();
     if (thread != NK_OK)
@@ -40,7 +40,7 @@ nk_result NK_CALL nk_mobile_host_attach(const nk_mobile_host_options *options,
                 return NK_ERROR_INVALID_ARGUMENT;
             }
             *out_host = NK_INVALID_HANDLE;
-#if defined(__ANDROID__)
+#if defined(NK_BACKEND_ANDROID) || defined(NK_BACKEND_IOS)
             return nk::backend::mobile_host_attach(*options, *out_host);
 #else
         return unsupported();
@@ -51,7 +51,7 @@ nk_result NK_CALL nk_mobile_host_attach(const nk_mobile_host_options *options,
 nk_result NK_CALL nk_mobile_host_destroy(nk_handle host) {
     return nk::core::result_boundary("unexpected error while destroying a mobile host",
                                      [&]() -> nk_result {
-#if defined(__ANDROID__)
+#if defined(NK_BACKEND_ANDROID) || defined(NK_BACKEND_IOS)
                                          return nk::backend::mobile_host_destroy(host);
 #else
         (void)host;
@@ -63,7 +63,7 @@ nk_result NK_CALL nk_mobile_host_destroy(nk_handle host) {
 nk_result NK_CALL nk_mobile_host_set_lifecycle(nk_handle host, nk_mobile_lifecycle_state state) {
     return nk::core::result_boundary("unexpected error while updating a mobile host",
                                      [&]() -> nk_result {
-#if defined(__ANDROID__)
+#if defined(NK_BACKEND_ANDROID) || defined(NK_BACKEND_IOS)
                                          return nk::backend::mobile_host_set_lifecycle(host, state);
 #else
         (void)host;
@@ -82,7 +82,7 @@ nk_result NK_CALL nk_mobile_host_dispatch_event(nk_handle host, const nk_mobile_
                 nk::core::set_error("mobile host event is missing or too small");
                 return NK_ERROR_INVALID_ARGUMENT;
             }
-#if defined(__ANDROID__)
+#if defined(NK_BACKEND_ANDROID) || defined(NK_BACKEND_IOS)
             return nk::backend::mobile_host_dispatch_event(host, *event);
 #else
         (void)host;
@@ -100,7 +100,7 @@ nk_result NK_CALL nk_mobile_host_set_drop_enabled(nk_handle host, uint32_t enabl
                 nk::core::set_error("mobile host drop state must be zero or one");
                 return NK_ERROR_INVALID_ARGUMENT;
             }
-#if defined(__ANDROID__)
+#if defined(NK_BACKEND_ANDROID) || defined(NK_BACKEND_IOS)
             return nk::backend::mobile_host_set_drop_enabled(host, enabled != 0);
 #else
         (void)host;
