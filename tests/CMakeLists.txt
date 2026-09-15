@@ -99,6 +99,12 @@ if(WIN32)
     set_target_properties(nativekit_win_surface_d3d11 PROPERTIES LINKER_LANGUAGE CXX)
     add_test(NAME win_surface_d3d11 COMMAND nativekit_win_surface_d3d11)
     set_tests_properties(win_surface_d3d11 PROPERTIES LABELS "windows;graphics" TIMEOUT 120)
+    add_executable(nativekit_win_text_input integration/win_text_input.c)
+    target_link_libraries(nativekit_win_text_input PRIVATE NativeKit::nativekit imm32)
+    set_target_properties(nativekit_win_text_input PROPERTIES LINKER_LANGUAGE CXX)
+    add_test(NAME win_text_input COMMAND nativekit_win_text_input)
+    set_tests_properties(win_text_input PROPERTIES LABELS "windows;text-input" TIMEOUT 120
+        SKIP_RETURN_CODE 77)
     add_executable(nativekit_win_accessibility_uia integration/win_accessibility_uia.cpp)
     target_link_libraries(nativekit_win_accessibility_uia PRIVATE NativeKit::nativekit
         ole32 oleaut32)
