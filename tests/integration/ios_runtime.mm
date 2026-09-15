@@ -7,6 +7,7 @@
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
+#include "nativekit_window.h"
 
 #import <dispatch/dispatch.h>
 #import <UIKit/UIKit.h>
@@ -26,10 +27,10 @@ bool check_result(const char *operation, nk_result result) {
 }
 
 bool check_capabilities(nk_capabilities capabilities) {
-    const nk_capabilities expected = NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW |
-                                     NK_CAP_METAL_SURFACE | NK_CAP_INPUT | NK_CAP_RESOURCE_IO |
-                                     NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-                                     NK_CAP_NOTIFICATION | NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP |
+    const nk_capabilities expected = NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_METAL_SURFACE |
+                                     NK_CAP_INPUT | NK_CAP_RESOURCE_IO | NK_CAP_CLIPBOARD |
+                                     NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
+                                     NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP |
                                      NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK;
     if (capabilities == expected)
         return true;
