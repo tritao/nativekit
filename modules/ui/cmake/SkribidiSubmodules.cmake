@@ -17,6 +17,18 @@ add_subdirectory("${NK_VENDOR_DIR}/harfbuzz" "${NKUI_HARFBUZZ_BUILD_DIR}" EXCLUD
 set(BUILD_SHARED_LIBS "${NKUI_SAVED_BUILD_SHARED_LIBS}")
 unset(NKUI_SAVED_BUILD_SHARED_LIBS)
 set_target_properties(harfbuzz PROPERTIES POSITION_INDEPENDENT_CODE YES)
+
+# HarfBuzz is linked privately into the shared UI library. Keep its API and
+# implementation symbols out of the UI library's dynamic symbol table; the
+# public HarfBuzz target used by static builds retains its normal visibility.
+if(NK_LIBRARY_TYPE STREQUAL "SHARED" AND NOT EMSCRIPTEN)
+    set_target_properties(harfbuzz PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        target_compile_options(harfbuzz PRIVATE -fno-semantic-interposition)
+    endif()
+endif()
 set_property(TARGET harfbuzz PROPERTY INTERFACE_INCLUDE_DIRECTORIES
     "$<BUILD_INTERFACE:${NK_VENDOR_DIR}/harfbuzz/src>"
     "$<BUILD_INTERFACE:${NKUI_HARFBUZZ_BUILD_DIR}/src>")
