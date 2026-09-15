@@ -3,6 +3,7 @@
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
 #include "nativekit_gpu.h"
+#include "nativekit_system.h"
 #include "nativekit_ui.h"
 #include "nativekit_window.h"
 
@@ -310,6 +311,53 @@ struct WebShowcase {
             if ((capabilities & (NK_CAP_CLIPBOARD | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE)) !=
                 (NK_CAP_CLIPBOARD | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE))
                 return fail(8);
+
+            nk_system_info system_info{};
+            system_info.struct_size = sizeof(system_info);
+            if (nk_system_get_info(&system_info) != NK_OK ||
+                system_info.platform != NK_SYSTEM_PLATFORM_WEB ||
+                system_info.endianness != NK_SYSTEM_ENDIAN_LITTLE || system_info.mobile)
+                return fail(9);
+
+            uint32_t locale_size = 0;
+            if (nk_system_locale(nullptr, &locale_size) != NK_ERROR_BUFFER_TOO_SMALL ||
+                locale_size < 2)
+                return fail(9);
+            std::vector<char> locale(locale_size);
+            if (nk_system_locale(locale.data(), &locale_size) != NK_OK || locale.back() != '\0')
+                return fail(9);
+
+            if (capabilities & NK_CAP_SYSTEM_APPEARANCE) {
+                nk_system_appearance appearance{};
+                appearance.struct_size = sizeof(appearance);
+                if (nk_system_get_appearance(&appearance) != NK_OK ||
+                    (appearance.color_scheme != NK_COLOR_SCHEME_LIGHT &&
+                     appearance.color_scheme != NK_COLOR_SCHEME_DARK))
+                    return fail(9);
+            }
+
+            if (capabilities & NK_CAP_DISPLAY_ORIENTATION) {
+                nk_system_orientation orientation{};
+                orientation.struct_size = sizeof(orientation);
+                if (nk_system_get_orientation(&orientation) != NK_OK ||
+                    orientation.display == NK_ORIENTATION_UNKNOWN)
+                    return fail(9);
+            }
+
+            if (capabilities & NK_CAP_KEEP_AWAKE) {
+                nk_keep_awake_options keep_awake_options{};
+                keep_awake_options.struct_size = sizeof(keep_awake_options);
+                keep_awake_options.flags = NK_KEEP_AWAKE_DISPLAY;
+                nk_keep_awake first_lock = 0;
+                nk_keep_awake second_lock = 0;
+                if (nk_system_keep_awake_acquire(&keep_awake_options, &first_lock) != NK_OK ||
+                    nk_system_keep_awake_acquire(&keep_awake_options, &second_lock) != NK_OK ||
+                    first_lock == 0 || second_lock == 0 || first_lock == second_lock ||
+                    nk_system_keep_awake_release(first_lock) != NK_OK ||
+                    nk_system_keep_awake_release(second_lock) != NK_OK)
+                    return fail(9);
+            }
+
             nk_cursor cursor = 0;
             nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
             if (nk_cursor_create_standard(NK_CURSOR_HAND, &cursor) != NK_OK ||
