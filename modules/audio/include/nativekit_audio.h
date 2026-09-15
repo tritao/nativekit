@@ -52,6 +52,17 @@ enum NK_FLAGS(nk_audio_voice_flags) {
     NK_AUDIO_VOICE_ASYNC = 1u << 2
 };
 
+/** Loading lifecycle for an audio voice. Synchronous voices start ready. */
+typedef uint32_t nk_audio_voice_load_state;
+enum NK_ENUM(nk_audio_voice_load_state) {
+    /** The asynchronous source is still loading. */
+    NK_AUDIO_VOICE_LOADING = 0,
+    /** The source has reached its playable readiness point. */
+    NK_AUDIO_VOICE_READY = 1,
+    /** The source failed to load; the failure event carries the result code. */
+    NK_AUDIO_VOICE_LOAD_FAILED = 2
+};
+
 /** Opaque handle for one audio mixer bus. */
 typedef uint32_t nk_audio_bus NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_destroy);
 
@@ -190,6 +201,9 @@ NKAUDIO_API nk_result NK_CALL nk_audio_voice_fade_at(
 /** Returns whether a voice is currently playing. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_is_playing(nk_audio_voice voice,
                                                          nk_bool *out_playing NK_OUT);
+/** Returns the asynchronous loading lifecycle state of a voice. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_load_state(
+    nk_audio_voice voice, nk_audio_voice_load_state *out_state NK_OUT);
 /** Returns whether a voice has reached its end. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_at_end(nk_audio_voice voice,
                                                      nk_bool *out_at_end NK_OUT);

@@ -96,6 +96,19 @@ class Voice {
 		return result.out_playing;
 	}
 
+	/** Returns the loading state of this voice's source. */
+	public function loadState():NativeKitAudio.VoiceLoadState {
+		ensureLive();
+		var result = NativeKitAudio.nk_audio_voice_get_load_state(value);
+		AudioResult.check(result.status, "audio.voice.loadState");
+		return result.out_state;
+	}
+
+	/** Returns true once this voice's source has reached its playable readiness point. */
+	public function isReady():Bool {
+		return loadState() == NativeKitAudio.VoiceLoadState.Ready;
+	}
+
 	public function atEnd():Bool {
 		ensureLive();
 		var result = NativeKitAudio.nk_audio_voice_at_end(value);

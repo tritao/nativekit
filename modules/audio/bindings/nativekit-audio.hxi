@@ -18,6 +18,23 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		NK_AUDIO_VOICE_ASYNC = 4;
 	}
 	/**
+	 * Loading lifecycle for an audio voice. Synchronous voices start ready.
+	 */
+	enum nk_audio_voice_load_state : u32 {
+		/**
+		 * The asynchronous source is still loading.
+		 */
+		NK_AUDIO_VOICE_LOADING = 0;
+		/**
+		 * The source has reached its playable readiness point.
+		 */
+		NK_AUDIO_VOICE_READY = 1;
+		/**
+		 * The source failed to load; the failure event carries the result code.
+		 */
+		NK_AUDIO_VOICE_LOAD_FAILED = 2;
+	}
+	/**
 	 * Clears the bus's scheduled start, stop, and fade transitions.
 	 */
 	extern fn nk_audio_bus_clear_schedule(bus: nk_audio_bus) -> nk_result;
@@ -138,6 +155,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Returns the decoded voice length in seconds.
 	 */
 	extern fn nk_audio_voice_get_length_seconds(voice: nk_audio_voice, out_seconds: ptr<f32> @out) -> nk_result;
+	/**
+	 * Returns the asynchronous loading lifecycle state of a voice.
+	 */
+	extern fn nk_audio_voice_get_load_state(voice: nk_audio_voice, out_state: ptr<nk_audio_voice_load_state> @out) -> nk_result;
 	/**
 	 * Returns stereo voice pan in the range [-1, 1].
 	 */

@@ -247,6 +247,16 @@ int main() {
     assert(completion_event.source == first);
     nk_event_release(&completion_event);
 
+    for (const auto kind : {NK_EVENT_AUDIO_VOICE_READY, NK_EVENT_AUDIO_VOICE_LOAD_FAILED}) {
+        nk::core::EventQueue audio_lifecycle_queue(1);
+        nk::core::QueuedEvent lifecycle_occupied;
+        lifecycle_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
+        assert(audio_lifecycle_queue.push(std::move(lifecycle_occupied)) == NK_OK);
+        nk::core::QueuedEvent lifecycle_event;
+        lifecycle_event.kind = kind;
+        assert(audio_lifecycle_queue.push(std::move(lifecycle_event)) == NK_OK);
+    }
+
     nk_event event{};
 
     nk::core::EventQueue readiness_queue(1);

@@ -8,6 +8,7 @@
 
 #include "miniaudio.h"
 
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -54,19 +55,35 @@ struct AudioBusResource final : nk::core::Resource {
 };
 
 struct AudioVoiceResource;
+struct AudioVoiceLoadNotification {
+    ma_async_notification_callbacks callbacks{};
+    AudioVoiceResource *voice = nullptr;
+};
+
 void audio_voice_end_callback(void *user_data, ma_sound *sound) noexcept;
+void audio_voice_load_callback(ma_async_notification *notification) noexcept;
+void audio_voice_update_load_state(AudioVoiceResource &voice) noexcept;
+void audio_voice_publish_load_event(AudioVoiceResource &voice) noexcept;
 
 struct AudioVoiceResource final : nk::core::Resource {
     std::shared_ptr<AudioEngineResource> engine;
     std::shared_ptr<AudioClipResource> clip;
     std::shared_ptr<AudioBusResource> bus;
-    nk_audio_voice handle = NK_INVALID_HANDLE;
+    std::atomic<nk_audio_voice> handle{NK_INVALID_HANDLE};
+    std::atomic<nk_audio_voice_load_state> load_state{NK_AUDIO_VOICE_READY};
+    std::atomic<nk_result> load_result{NK_OK};
+    std::atomic<bool> asynchronous{false};
+    std::atomic<bool> load_notification_signaled{false};
+    std::atomic<bool> load_status_query_ready{false};
+    std::atomic<bool> load_event_emitted{false};
+    AudioVoiceLoadNotification load_notification{};
     ma_decoder decoder{};
     bool decoder_initialized = false;
     ma_sound sound{};
     bool sound_initialized = false;
 
     ~AudioVoiceResource() override {
+        handle.store(NK_INVALID_HANDLE, std::memory_order_release);
         if (sound_initialized)
             ma_sound_uninit(&sound);
         if (decoder_initialized)
@@ -76,11 +93,14 @@ struct AudioVoiceResource final : nk::core::Resource {
 
 void audio_voice_end_callback(void *user_data, ma_sound *) noexcept {
     auto *voice = static_cast<AudioVoiceResource *>(user_data);
-    if (!voice || voice->handle == NK_INVALID_HANDLE)
+    if (!voice)
+        return;
+    const auto handle = voice->handle.load(std::memory_order_acquire);
+    if (handle == NK_INVALID_HANDLE)
         return;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_AUDIO_VOICE_COMPLETE;
-    event.source = voice->handle;
+    event.source = handle;
     nk::core::push_event(std::move(event));
 }
 
@@ -105,23 +125,81 @@ bool valid_fade_volume(float volume, bool allow_current) {
     return volume >= 0.0f;
 }
 
-nk_result map_miniaudio_result(ma_result result, const char *message) {
+nk_result miniaudio_result_code(ma_result result) {
     if (result == MA_SUCCESS)
         return NK_OK;
-    if (result == MA_INVALID_ARGS) {
-        nk::core::set_error(message);
+    if (result == MA_INVALID_ARGS)
         return NK_ERROR_INVALID_ARGUMENT;
-    }
-    if (result == MA_OUT_OF_MEMORY) {
-        nk::core::set_error(message);
+    if (result == MA_OUT_OF_MEMORY)
         return NK_ERROR_OUT_OF_MEMORY;
-    }
-    if (result == MA_NO_BACKEND || result == MA_NO_DEVICE || result == MA_NOT_IMPLEMENTED) {
-        nk::core::set_error(message);
+    if (result == MA_NO_BACKEND || result == MA_NO_DEVICE || result == MA_NOT_IMPLEMENTED)
         return NK_ERROR_UNSUPPORTED;
-    }
-    nk::core::set_error(message);
     return NK_ERROR_UNKNOWN;
+}
+
+nk_result map_miniaudio_result(ma_result result, const char *message) {
+    const auto mapped = miniaudio_result_code(result);
+    if (mapped == NK_OK)
+        return NK_OK;
+    nk::core::set_error(message);
+    return mapped;
+}
+
+void audio_voice_publish_load_event(AudioVoiceResource &voice) noexcept {
+    const auto state = voice.load_state.load(std::memory_order_acquire);
+    if (state == NK_AUDIO_VOICE_LOADING)
+        return;
+    const auto handle = voice.handle.load(std::memory_order_acquire);
+    if (handle == NK_INVALID_HANDLE)
+        return;
+
+    bool expected = false;
+    if (!voice.load_event_emitted.compare_exchange_strong(expected, true,
+                                                           std::memory_order_acq_rel))
+        return;
+
+    nk::core::QueuedEvent event;
+    event.kind = state == NK_AUDIO_VOICE_READY ? NK_EVENT_AUDIO_VOICE_READY
+                                               : NK_EVENT_AUDIO_VOICE_LOAD_FAILED;
+    event.source = handle;
+    event.result = voice.load_result.load(std::memory_order_acquire);
+    if (nk::core::push_event(std::move(event)) != NK_OK)
+        voice.load_event_emitted.store(false, std::memory_order_release);
+}
+
+void audio_voice_update_load_state(AudioVoiceResource &voice) noexcept {
+    if (!voice.asynchronous.load(std::memory_order_acquire) ||
+        !voice.load_notification_signaled.load(std::memory_order_acquire) ||
+        !voice.load_status_query_ready.load(std::memory_order_acquire))
+        return;
+
+    const auto *data_source = ma_sound_get_data_source(&voice.sound);
+    if (!data_source)
+        return;
+    const auto result = ma_resource_manager_data_source_result(
+        reinterpret_cast<const ma_resource_manager_data_source *>(data_source));
+    if (result == MA_BUSY)
+        return;
+
+    const auto mapped = miniaudio_result_code(result);
+    voice.load_result.store(mapped, std::memory_order_release);
+    std::uint32_t expected = static_cast<std::uint32_t>(NK_AUDIO_VOICE_LOADING);
+    voice.load_state.compare_exchange_strong(expected,
+                                             mapped == NK_OK
+                                                 ? static_cast<std::uint32_t>(NK_AUDIO_VOICE_READY)
+                                                 : static_cast<std::uint32_t>(
+                                                       NK_AUDIO_VOICE_LOAD_FAILED),
+                                             std::memory_order_acq_rel);
+    audio_voice_publish_load_event(voice);
+}
+
+void audio_voice_load_callback(ma_async_notification *notification) noexcept {
+    auto *load_notification = reinterpret_cast<AudioVoiceLoadNotification *>(notification);
+    if (!load_notification || !load_notification->voice)
+        return;
+    auto &voice = *load_notification->voice;
+    voice.load_notification_signaled.store(true, std::memory_order_release);
+    audio_voice_update_load_state(voice);
 }
 
 nk_result enter_audio_ui() {
@@ -316,6 +394,10 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
     voice->engine = clip->engine;
     voice->clip = std::move(clip);
     voice->bus = std::move(bus);
+    const bool asynchronous = (flags & NK_AUDIO_VOICE_ASYNC) != 0;
+    voice->asynchronous.store(asynchronous, std::memory_order_relaxed);
+    if (asynchronous)
+        voice->load_state.store(NK_AUDIO_VOICE_LOADING, std::memory_order_relaxed);
 
     ma_result result = MA_SUCCESS;
     if (voice->clip->from_memory) {
@@ -332,6 +414,20 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
         result = ma_sound_init_from_data_source(
             &voice->engine->engine, &voice->decoder, sound_flags,
             voice->bus ? &voice->bus->group : nullptr, &voice->sound);
+    } else if (asynchronous) {
+        voice->load_notification.voice = voice.get();
+        voice->load_notification.callbacks.onSignal = audio_voice_load_callback;
+        auto config = ma_sound_config_init_2(&voice->engine->engine);
+        config.pFilePath = voice->clip->path.c_str();
+        config.flags = miniaudio_voice_flags(flags);
+        config.pInitialAttachment = voice->bus ? &voice->bus->group : nullptr;
+        auto *notification = reinterpret_cast<ma_async_notification *>(
+            &voice->load_notification.callbacks);
+        if (flags & NK_AUDIO_VOICE_STREAM)
+            config.initNotifications.init.pNotification = notification;
+        else
+            config.initNotifications.done.pNotification = notification;
+        result = ma_sound_init_ex(&voice->engine->engine, &config, &voice->sound);
     } else {
         result = ma_sound_init_from_file(
             &voice->engine->engine, voice->clip->path.c_str(), miniaudio_voice_flags(flags),
@@ -342,6 +438,8 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
         return {};
     }
     voice->sound_initialized = true;
+    if (asynchronous)
+        voice->load_status_query_ready.store(true, std::memory_order_release);
     const auto callback_result =
         ma_sound_set_end_callback(&voice->sound, audio_voice_end_callback, voice.get());
     if (callback_result != MA_SUCCESS) {
@@ -349,6 +447,8 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
                                           "could not configure audio voice completion");
         return {};
     }
+    if (asynchronous)
+        audio_voice_update_load_state(*voice);
     return voice;
 }
 
@@ -358,8 +458,10 @@ nk_result insert_voice(std::shared_ptr<AudioVoiceResource> voice, nk_audio_voice
         nk::core::set_error("could not allocate an audio voice handle");
         return NK_ERROR_OUT_OF_MEMORY;
     }
-    voice->handle = handle;
+    voice->handle.store(handle, std::memory_order_release);
     *out_voice = handle;
+    audio_voice_update_load_state(*voice);
+    audio_voice_publish_load_event(*voice);
     return NK_OK;
 }
 
@@ -667,6 +769,10 @@ nk_result NK_CALL nk_audio_voice_destroy(nk_audio_voice sound) {
                                      [&]() -> nk_result {
         if (const auto result = enter_audio_ui(); result != NK_OK)
             return result;
+        auto voice = get_voice(sound);
+        if (!voice)
+            return NK_ERROR_INVALID_HANDLE;
+        voice->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
         if (!nk::core::handles().erase(sound, nk::core::ResourceType::audio_voice))
             return invalid_handle("invalid audio voice handle");
         return NK_OK;
@@ -801,6 +907,23 @@ nk_result NK_CALL nk_audio_voice_is_playing(nk_audio_voice sound, nk_bool *out_p
                 *out_playing = ma_sound_is_playing(&value.sound) ? 1u : 0u;
                 return NK_OK;
             });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_load_state(nk_audio_voice sound,
+                                                nk_audio_voice_load_state *out_state) {
+    return nk::core::result_boundary(
+        "unexpected error while querying an audio voice load state", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_state)
+                return invalid_argument("audio voice load state output is missing");
+            return with_voice(sound, "could not query audio voice load state",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  audio_voice_update_load_state(value);
+                                  *out_state = value.load_state.load(std::memory_order_acquire);
+                                  return NK_OK;
+                              });
         });
 }
 

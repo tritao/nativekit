@@ -101,7 +101,6 @@ class NativeKitEventDecoderTests {
 			case WebViewNavigationFailed(source, category, _): source.rawValue() == 14 && category == NavigationError.NotFound;
 			case _: false;
 		};
-<<<<<<< HEAD
 		var taskPayload = haxe.io.Bytes.alloc(4);
 		putU32(taskPayload, 0, 0x1234);
 		var taskContext = new NativeKitEventContext(EventKind.TaskComplete, handle(21), zero, 0,
@@ -116,10 +115,24 @@ class NativeKitEventDecoderTests {
 			case AudioVoiceComplete(source): source.rawValue() == 16;
 			case _: false;
 		};
+		var audioReadyContext = new NativeKitEventContext(EventKind.AudioVoiceReady,
+			handle(17), zero, 0, 0, 0, empty);
+		var audioReadyOk = switch NativeKitEvent.decodeContext(audioReadyContext) {
+			case AudioVoiceReady(source): source.rawValue() == 17;
+			case _: false;
+		};
+		var audioFailedContext = new NativeKitEventContext(EventKind.AudioVoiceLoadFailed,
+			handle(18), zero, NativeKit.Result.Unknown, 0, 0, empty);
+		var audioFailedOk = switch NativeKitEvent.decodeContext(audioFailedContext) {
+			case AudioVoiceLoadFailed(source, result):
+				source.rawValue() == 18 && result == NativeKit.Result.Unknown;
+			case _: false;
+		};
 
 		if (!messageOk) throw "message completion decoding failed";
 		if (!resourcesOk) throw "resource completion decoding failed";
 		return rawOk && nonMatch && editOk && typedKeyOk && typedHatOk && typedNavigationOk && accessibilityOk && taskOk && audioOk
+			&& audioReadyOk && audioFailedOk
 			&& throws(function() { NativeKitEventBytes.requireSize(haxe.io.Bytes.alloc(3), 4); })
 			&& throws(function() { NativeKitEventBytes.readU32(haxe.io.Bytes.alloc(3), 0); })
 			&& throws(function() { NativeKitEventBytes.decodeClipboardFiles(unterminated, 1); })

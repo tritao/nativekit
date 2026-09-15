@@ -328,6 +328,10 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_HTTP_COMPLETE = 903,
     /** A non-looping audio voice reached its natural end; source is its voice handle. */
     NK_EVENT_AUDIO_VOICE_COMPLETE = 904,
+    /** An asynchronous audio voice became ready; source is its voice handle. */
+    NK_EVENT_AUDIO_VOICE_READY = 905,
+    /** An asynchronous audio voice failed to load; source is its voice handle. */
+    NK_EVENT_AUDIO_VOICE_LOAD_FAILED = 906,
     /** A plugin service call reached its terminal state. */
     NK_EVENT_PLUGIN_COMPLETE = 1000,
     /** A plugin emitted an unsolicited notification. */

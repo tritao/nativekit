@@ -72,6 +72,8 @@ class AudioSmoke {
 			completion = clip.createVoice(new VoiceOptions(bus));
 			if (first.nativeHandle().rawValue() == second.nativeHandle().rawValue())
 				throw "Haxe audio voices did not receive independent handles";
+			if (!completion.isReady())
+				throw "Haxe synchronous audio voice did not start ready";
 			clip.dispose();
 			clip = null;
 			if (!first.isLooping())

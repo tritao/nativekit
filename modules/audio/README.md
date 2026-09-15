@@ -23,10 +23,21 @@ Buses support the same schedule and fade operations for all routed voices. This
 allows music transitions and voice/SFX ducking to be coordinated at the mixer
 boundary instead of issuing one operation per voice.
 
+File voices created with `NK_AUDIO_VOICE_ASYNC` expose an explicit loading
+lifecycle. `nk_audio_voice_get_load_state()` returns `NK_AUDIO_VOICE_LOADING`
+until the source reaches its readiness point, then returns
+`NK_AUDIO_VOICE_READY`. A stream is ready when its first playable page is
+available; a decoded async voice is ready when decoding has completed. If the
+load fails, the state is `NK_AUDIO_VOICE_LOAD_FAILED` and
+`NK_EVENT_AUDIO_VOICE_LOAD_FAILED` carries the mapped `nk_result` in the event's
+`result` field. Ready and failed events are queued once and are not dropped when
+the event queue is full. Synchronous voices start in the ready state.
+
 Non-looping voices emit `NK_EVENT_AUDIO_VOICE_COMPLETE` when playback reaches
 the natural end. The event is queued from miniaudio's audio callback and must
 be consumed on the NativeKit UI thread with `nk_poll_event()`. Haxe clients
-receive it as `AudioVoiceComplete` through `NativeKitEvents.listen()`.
+receive these as `AudioVoiceReady`, `AudioVoiceLoadFailed`, and
+`AudioVoiceComplete` through `NativeKitEvents.listen()`.
 Scheduled stops are transport operations and do not emit this natural-end
 completion event.
 

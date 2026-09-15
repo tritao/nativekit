@@ -2,6 +2,8 @@
 #include "nativekit_time.h"
 
 #include <cassert>
+#include <cstdio>
+#include <filesystem>
 
 namespace {
 
@@ -64,6 +66,9 @@ int main() {
     voice_options.flags = 0;
     nk_audio_voice completion_voice = NK_INVALID_HANDLE;
     assert(nk_audio_voice_create(clip, &voice_options, &completion_voice) == NK_OK);
+    nk_audio_voice_load_state load_state = NK_AUDIO_VOICE_LOADING;
+    assert(nk_audio_voice_get_load_state(completion_voice, &load_state) == NK_OK);
+    assert(load_state == NK_AUDIO_VOICE_READY);
     nk_audio_voice timed_voice = NK_INVALID_HANDLE;
     voice_options.flags = NK_AUDIO_VOICE_LOOPING;
     assert(nk_audio_voice_create(clip, &voice_options, &timed_voice) == NK_OK);
@@ -140,6 +145,62 @@ int main() {
     }
     assert(completion_seen == 1);
     assert(nk_audio_voice_destroy(completion_voice) == NK_OK);
+
+    const auto async_path =
+        (std::filesystem::temp_directory_path() / "nativekit-audio-async-test.wav").string();
+    auto *async_file = std::fopen(async_path.c_str(), "wb");
+    assert(async_file != nullptr);
+    assert(std::fwrite(tiny_wav, 1, sizeof(tiny_wav), async_file) == sizeof(tiny_wav));
+    assert(std::fclose(async_file) == 0);
+
+    nk_audio_clip async_clip = NK_INVALID_HANDLE;
+    assert(nk_audio_clip_create_from_file(async_path.c_str(), &async_clip) == NK_OK);
+    voice_options.bus = NK_INVALID_HANDLE;
+    voice_options.flags = NK_AUDIO_VOICE_ASYNC;
+    nk_audio_voice async_decode_voice = NK_INVALID_HANDLE;
+    assert(nk_audio_voice_create(async_clip, &voice_options, &async_decode_voice) == NK_OK);
+    voice_options.flags = NK_AUDIO_VOICE_ASYNC | NK_AUDIO_VOICE_STREAM;
+    nk_audio_voice async_stream_voice = NK_INVALID_HANDLE;
+    assert(nk_audio_voice_create(async_clip, &voice_options, &async_stream_voice) == NK_OK);
+    assert(nk_audio_clip_destroy(async_clip) == NK_OK);
+
+    nk_bool decode_ready = 0;
+    nk_bool stream_ready = 0;
+    nk_bool decode_event_seen = 0;
+    nk_bool stream_event_seen = 0;
+    for (int attempt = 0; attempt < 40 && (!decode_event_seen || !stream_event_seen); ++attempt) {
+        assert(nk_audio_voice_get_load_state(async_decode_voice, &load_state) == NK_OK);
+        if (load_state == NK_AUDIO_VOICE_READY)
+            decode_ready = 1;
+        assert(nk_audio_voice_get_load_state(async_stream_voice, &load_state) == NK_OK);
+        if (load_state == NK_AUDIO_VOICE_READY)
+            stream_ready = 1;
+
+        assert(nk_wait_events_timeout(0.05) == NK_OK);
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_AUDIO_VOICE_READY) {
+            assert(event.result == NK_OK);
+            if (event.source == async_decode_voice)
+                decode_event_seen = 1;
+            if (event.source == async_stream_voice)
+                stream_event_seen = 1;
+        }
+        if (event.kind == NK_EVENT_AUDIO_VOICE_LOAD_FAILED)
+            assert(false);
+        nk_event_release(&event);
+    }
+    assert(decode_ready == 1 && stream_ready == 1 && decode_event_seen == 1 &&
+           stream_event_seen == 1);
+    assert(nk_audio_voice_get_load_state(async_decode_voice, &load_state) == NK_OK);
+    assert(load_state == NK_AUDIO_VOICE_READY);
+    assert(nk_audio_voice_get_load_state(async_stream_voice, &load_state) == NK_OK);
+    assert(load_state == NK_AUDIO_VOICE_READY);
+    assert(nk_audio_voice_destroy(async_decode_voice) == NK_OK);
+    assert(nk_audio_voice_destroy(async_stream_voice) == NK_OK);
+    assert(std::remove(async_path.c_str()) == 0);
+
     assert(nk_audio_voice_destroy(timed_voice) == NK_OK);
     assert(nk_audio_voice_destroy(first_voice) == NK_OK);
     assert(nk_audio_bus_is_playing(bus, &state) == NK_OK && state == 1);
