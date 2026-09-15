@@ -13,9 +13,14 @@
 
 static HKL activate_japanese_layout(void) {
     static const wchar_t *layout_ids[] = {
-        L"00000411",
+        // The Microsoft Japanese IME is normally exposed as E0010411.  Try
+        // it before the plain Japanese keyboard layout, which cannot produce
+        // composition events even when the Japanese language is installed.
+        L"E0010411",
+        L"E0200411",
         L"0411:00000411",
-        L"0411"
+        L"0411",
+        L"00000411"
     };
     for (size_t index = 0; index < sizeof(layout_ids) / sizeof(layout_ids[0]); ++index) {
         HKL layout = LoadKeyboardLayoutW(layout_ids[index], KLF_ACTIVATE | KLF_SUBSTITUTE_OK);
