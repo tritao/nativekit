@@ -51,6 +51,7 @@ namespace {
 JavaVM *java_vm = nullptr;
 
 struct AndroidHost final : nk::core::Resource {
+    nk_handle handle = NK_INVALID_HANDLE;
     jobject view_group = nullptr;
     nk_mobile_lifecycle_state lifecycle = NK_MOBILE_LIFECYCLE_ACTIVE;
 };
@@ -962,6 +963,7 @@ nk_result mobile_host_attach(const nk_mobile_host_options &options, nk_handle &o
         return NK_ERROR_OUT_OF_MEMORY;
     }
     hosts.emplace(handle, resource);
+    resource->handle = handle;
     display_orientations.emplace(handle, NK_ORIENTATION_UNKNOWN);
     if (nk::core::system_keep_awake_held())
         (void)nk::core::system_backend::keep_awake_apply(true);
@@ -3875,7 +3877,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnOrientation(
     nk::core::callback_boundary([&] {
         if (!host(static_cast<nk_handle>(handle)))
             return;
-        if (device != NK_ORIENTATION_UNKNOWN && device != last_device_orientation) {
+        if (device != static_cast<jint>(NK_ORIENTATION_UNKNOWN) &&
+            static_cast<nk_orientation>(device) != last_device_orientation) {
             last_device_orientation = static_cast<nk_orientation>(device);
             const nk_orientation_event payload{sizeof(nk_orientation_event),
                                                static_cast<nk_orientation>(device),
@@ -3888,8 +3891,9 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnOrientation(
             nk::core::push_event(std::move(event));
         }
         auto display_state = display_orientations.find(static_cast<nk_handle>(handle));
-        if (display != NK_ORIENTATION_UNKNOWN && display_state != display_orientations.end() &&
-            display != display_state->second) {
+        if (display != static_cast<jint>(NK_ORIENTATION_UNKNOWN) &&
+            display_state != display_orientations.end() &&
+            static_cast<nk_orientation>(display) != display_state->second) {
             display_state->second = static_cast<nk_orientation>(display);
             const nk_orientation_event payload{sizeof(nk_orientation_event),
                                                static_cast<nk_orientation>(display),

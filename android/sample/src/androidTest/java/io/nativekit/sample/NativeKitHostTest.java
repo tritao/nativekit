@@ -40,6 +40,7 @@ public final class NativeKitHostTest {
     private static final int EVENT_NOTIFICATION_DELIVERED = 500;
     private static final int EVENT_NOTIFICATION_ACTIVATED = 501;
     private static final int EVENT_NOTIFICATION_DISMISSED = 502;
+    private static final int EVENT_DISPLAY_ORIENTATION_CHANGED = 23;
     private static final int EVENT_HOST_GEOMETRY_CHANGED = 600;
 
     @Test
@@ -93,7 +94,11 @@ public final class NativeKitHostTest {
 
             scenario.onActivity(activity -> activity.setRequestedOrientation(
                                     ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
-            awaitLandscapeGeometry(scenario);
+            NativeKitEvent displayOrientation = awaitLandscapeAndDisplayOrientation(scenario);
+            assertTrue(displayOrientation.source != 0);
+            assertNotNull(displayOrientation.data);
+            assertTrue(displayOrientation.data.length >= 32);
+            assertTrue(orientationData(displayOrientation).getInt(4) > 0);
 
             scenario.onActivity(activity ->
                 activity.host.createWebView(16, 16, "file:///definitely-not-present-nativekit"));
@@ -164,13 +169,16 @@ public final class NativeKitHostTest {
             assertEquals(notificationRequest[0], dismissed.requestId);
 
             scenario.onActivity(activity -> {
-                int[] directories = {1, 3, 4, 5, 6, 7, 8};
+                int[] directories = {1, 3, 4, 5, 6, 7, 8, 10};
                 for (int kind : directories) {
                     String path = activity.host.systemDirectory(kind);
                     assertNotNull(path);
                     assertTrue(new File(path).isAbsolute());
                 }
+                assertTrue(new File(activity.host.systemDirectory(10)).canWrite());
                 assertEquals(null, activity.host.systemDirectory(2));
+                assertEquals(null, activity.host.systemDirectory(9));
+                assertEquals(null, activity.host.systemDirectory(11));
                 assertTrue(!activity.host.systemLocale().isEmpty());
                 int scheme = activity.host.systemAppearance() & 0xff;
                 assertTrue(scheme >= 0 && scheme <= 2);
@@ -327,28 +335,38 @@ public final class NativeKitHostTest {
         throw new AssertionError("timed out waiting for event " + kind + " from " + source);
     }
 
-    private static void awaitLandscapeGeometry(ActivityScenario<NativeKitTestActivity> scenario)
-        throws Exception {
+    private static NativeKitEvent awaitLandscapeAndDisplayOrientation(
+        ActivityScenario<NativeKitTestActivity> scenario) throws Exception {
         long deadline = System.currentTimeMillis() + 10_000;
         while (System.currentTimeMillis() < deadline) {
             boolean[] landscape = {false};
+            NativeKitEvent[] displayOrientation = {null};
+            long[] host = {0};
             scenario.onActivity(activity -> {
+                host[0] = activity.host.handle();
                 NativeKitEvent event;
                 while ((event = activity.host.pollEvent()) != null) {
                     if (event.kind == EVENT_HOST_GEOMETRY_CHANGED && event.data != null) {
                         ByteBuffer geometry = geometryData(event);
                         landscape[0] |= geometry.getInt(4) > geometry.getInt(8);
                     }
+                    if (event.kind == EVENT_DISPLAY_ORIENTATION_CHANGED &&
+                        event.source == host[0])
+                        displayOrientation[0] = event;
                 }
             });
-            if (landscape[0])
-                return;
+            if (landscape[0] && displayOrientation[0] != null)
+                return displayOrientation[0];
             Thread.sleep(50);
         }
-        throw new AssertionError("timed out waiting for landscape geometry");
+        throw new AssertionError("timed out waiting for landscape geometry and display orientation");
     }
 
     private static ByteBuffer geometryData(NativeKitEvent event) {
+        return ByteBuffer.wrap(event.data).order(ByteOrder.nativeOrder());
+    }
+
+    private static ByteBuffer orientationData(NativeKitEvent event) {
         return ByteBuffer.wrap(event.data).order(ByteOrder.nativeOrder());
     }
 
