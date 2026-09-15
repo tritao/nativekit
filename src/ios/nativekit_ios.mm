@@ -67,7 +67,7 @@
 @property(nonatomic, assign) nk_accessibility_node_id node;
 @end
 
-@interface NKIOSAccessibilityContainer : UIView <UIAccessibilityContainer>
+@interface NKIOSAccessibilityContainer : UIView
 @property(nonatomic, assign) nk_handle surface;
 @property(nonatomic, strong) NSArray<NKIOSAccessibilityElement *> *elements;
 @end
@@ -114,7 +114,6 @@ void set_orientation_observing(const std::shared_ptr<IOSHost> &host, bool enable
 struct IOSSurface;
 void update_host_surfaces(const std::shared_ptr<IOSHost> &host);
 void reset_surface_input(IOSSurface &surface, uint32_t event_flags = 1u);
-void refresh_accessibility_elements(IOSSurface &surface);
 
 struct IOSHost final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
@@ -311,11 +310,6 @@ struct IOSDialogContext {
 std::mutex dialogs_mutex;
 std::unordered_map<nk_request_id, std::shared_ptr<IOSDialogContext>> dialogs;
 __strong NSMutableDictionary<NSString *, NSURL *> *security_scoped_urls = nil;
-
-void finish_document_dialog(nk_request_id request, bool accepted,
-                            NSArray<NSURL *> *urls) noexcept;
-void finish_message_dialog(nk_request_id request, nk_message_result result) noexcept;
-void cancel_dialogs_for_parent(nk_handle parent);
 
 struct IOSNavigationDecision {
     nk_handle source = NK_INVALID_HANDLE;
@@ -1568,7 +1562,7 @@ void set_input_traits(IOSSurface &resource) {
             resource.input_view.returnKeyType = UIReturnKeySend;
             break;
         case NK_TEXT_INPUT_ACTION_NONE:
-            resource.input_view.returnKeyType = UIReturnKeyNone;
+            resource.input_view.returnKeyType = UIReturnKeyDefault;
             break;
         default:
             resource.input_view.returnKeyType = UIReturnKeyDefault;
@@ -1840,6 +1834,11 @@ void frame_tick(nk_handle handle) noexcept {
 
 } // namespace
 
+void finish_document_dialog(nk_request_id request, bool accepted,
+                            NSArray<NSURL *> *urls) noexcept;
+void finish_message_dialog(nk_request_id request, nk_message_result result) noexcept;
+void cancel_dialogs_for_parent(nk_handle parent);
+
 @implementation NKIOSHostObserver
 - (void)observeValueForKeyPath:(NSString *)keyPath
                       ofObject:(id)object
@@ -2058,8 +2057,7 @@ void frame_tick(nk_handle handle) noexcept {
     if (resource && !resource->destroying)
         for (UIPress *press in presses)
             if (press.key)
-                emit_key_transition(*resource, press.key,
-                                    press.key.isKeyRepeat ? NK_INPUT_REPEAT : NK_INPUT_PRESS);
+                emit_key_transition(*resource, press.key, NK_INPUT_PRESS);
     [super pressesBegan:presses withEvent:event];
 }
 
@@ -2391,7 +2389,7 @@ IOSResourceValue resource_value_from_url(NSURL *url, uint32_t kind) {
     dispatch_group_t group = dispatch_group_create();
     NSMutableArray<NSURL *> *urls = [NSMutableArray array];
     NSMutableArray<NSString *> *texts = [NSMutableArray array];
-    for (id<UIDropItem> item in session.items) {
+    for (UIDragItem *item in session.items) {
         NSItemProvider *provider = item.itemProvider;
         NSString *type = nil;
         if ([provider hasItemConformingToTypeIdentifier:@"public.file-url"])
