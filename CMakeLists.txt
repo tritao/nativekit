@@ -124,7 +124,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
 )
 add_library(NativeKit::nativekit ALIAS nativekit)
 
-if(NOT ANDROID)
+if(NOT ANDROID AND NOT EMSCRIPTEN)
     target_sources(nativekit PRIVATE src/platform/nativekit_resource_io.cpp)
 endif()
 

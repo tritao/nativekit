@@ -122,9 +122,11 @@ equivalents and must not be silently treated as complete parity.
 The Web equivalents are browser-mediated: `window.open` handles URI shell
 opening, `matchMedia` supplies appearance, the Notifications API supplies
 notifications, the File System Access API or `<input type=file>` supplies
-resource selection, and the Gamepad API supplies controller state. These APIs
-can require a user activation, a permission grant, or a secure context. Web
-path-based dialogs remain deferred because a browser cannot safely expose a
+resource selection, and the Gamepad API supplies controller state. Save and
+directory selections retain browser handles behind opaque NativeKit URIs, while
+open-file contents use temporary `blob:` URIs and asynchronous fetch. These
+APIs can require a user activation, a permission grant, or a secure context.
+Web path-based dialogs remain deferred because a browser cannot safely expose a
 process-local filesystem path through this URI-first API.
 
 The baseline is guarded by `platform_parity` in CTest. It checks that:

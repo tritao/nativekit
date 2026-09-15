@@ -29,6 +29,7 @@
 #include <cstdio>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -157,10 +158,25 @@ struct WebGamepadResource final : nk::core::Resource {
     bool seen = false;
 };
 
+struct WebResourceStream final : nk::core::Resource {
+    std::mutex mutex;
+    std::string uri;
+    std::vector<std::byte> data;
+    uint64_t position = 0;
+    uint32_t flags = 0;
+};
+
+struct PendingWebResourceWrite {
+    std::string uri;
+    std::vector<std::byte> data;
+};
+
 std::weak_ptr<WebWindowResource> active_window;
 std::unordered_map<int32_t, std::shared_ptr<WebGamepadResource>> web_gamepads;
 std::unordered_map<nk_request_id, nk_dialog_operation> pending_resource_dialogs;
 std::unordered_set<nk_request_id> pending_notifications;
+std::mutex pending_resource_writes_mutex;
+std::vector<PendingWebResourceWrite> pending_resource_writes;
 
 constexpr uint32_t web_appearance_scheme_mask = 0xffu;
 constexpr uint32_t web_appearance_high_contrast_flag = 1u << 8;
@@ -185,6 +201,12 @@ nk_result unsupported(const char *message) {
     return NK_ERROR_UNSUPPORTED;
 }
 
+nk_result resource_error(nk_result result, const char *message) {
+    nk::core::clear_error();
+    nk::core::set_error(message);
+    return result;
+}
+
 template <typename Resource>
 std::shared_ptr<Resource> get_resource(nk_handle handle, nk::core::ResourceType type,
                                        const char *message) {
@@ -204,6 +226,35 @@ std::shared_ptr<WebWindowResource> get_window(nk_handle handle) {
 std::shared_ptr<WebSurfaceResource> get_surface(nk_handle handle) {
     return get_resource<WebSurfaceResource>(handle, nk::core::ResourceType::surface,
                                             "invalid web surface handle");
+}
+
+std::shared_ptr<WebResourceStream> get_resource_stream(nk_handle handle) {
+    return get_resource<WebResourceStream>(handle, nk::core::ResourceType::resource_stream,
+                                           "invalid web resource stream handle");
+}
+
+constexpr std::string_view web_file_handle_uri_prefix = "nativekit-file-handle://";
+
+bool is_web_file_handle_uri(const char *uri) {
+    return uri && std::string_view(uri).compare(
+                         0, web_file_handle_uri_prefix.size(), web_file_handle_uri_prefix) == 0;
+}
+
+void flush_web_resource_writes() noexcept {
+    try {
+        std::vector<PendingWebResourceWrite> writes;
+        {
+            std::lock_guard lock(pending_resource_writes_mutex);
+            writes.swap(pending_resource_writes);
+        }
+        for (const auto &write : writes) {
+            if (write.data.size() > std::numeric_limits<uint32_t>::max())
+                continue;
+            nk::web::write_resource(write.uri.c_str(), write.data.data(),
+                                    static_cast<uint32_t>(write.data.size()));
+        }
+    } catch (...) {
+    }
 }
 
 template <typename T>
@@ -1638,6 +1689,7 @@ void remove_surface_from_window(WebSurfaceResource &surface) {
 
 void shutdown_web() noexcept {
     nk::web::stop_frame_loop();
+    flush_web_resource_writes();
     nk::web::remove_callbacks();
     nk::web_gamepad::shutdown();
     pending_resource_dialogs.clear();
@@ -1725,6 +1777,7 @@ void pump_events() noexcept {
     try {
         if (auto window = active_window.lock())
             sync_canvas_size(*window);
+        flush_web_resource_writes();
         nk::web_gamepad::poll();
     } catch (...) {
     }
@@ -2054,6 +2107,189 @@ nk_result NK_CALL nk_resource_load_async(const nk_resource *resource, nk_request
         return unsupported("browser resource fetch is unavailable");
     *out_request = request;
     return NK_OK;
+}
+
+nk_result NK_CALL nk_resource_set_persisted_access(const nk_resource *resource,
+                                                   uint32_t access_flags, uint32_t *out_flags) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+        !*resource->uri || !out_flags ||
+        (access_flags & ~(NK_RESOURCE_READABLE | NK_RESOURCE_WRITABLE)) != 0)
+        return invalid_argument("web persisted resource access arguments are invalid");
+    *out_flags = 0;
+    return unsupported("browser resource permissions are runtime-scoped");
+}
+
+nk_result NK_CALL nk_resource_get_persisted_access(const nk_resource *resource,
+                                                   uint32_t *out_flags) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+        !*resource->uri || !out_flags)
+        return invalid_argument("web persisted resource access arguments are invalid");
+    *out_flags = 0;
+    return unsupported("browser resource permissions are runtime-scoped");
+}
+
+nk_result NK_CALL nk_resource_open(const nk_resource *resource, uint32_t flags,
+                                   nk_handle *out_stream) {
+    return nk::core::result_boundary("unexpected error while opening web resource",
+                                     [&]() -> nk_result {
+        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+            return result;
+        if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+            !*resource->uri || !out_stream ||
+            (flags & (NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE)) == 0 ||
+            (flags & ~(NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE | NK_RESOURCE_OPEN_CREATE |
+                       NK_RESOURCE_OPEN_TRUNCATE)) != 0 ||
+            ((flags & (NK_RESOURCE_OPEN_CREATE | NK_RESOURCE_OPEN_TRUNCATE)) != 0 &&
+             (flags & NK_RESOURCE_OPEN_WRITE) == 0))
+            return invalid_argument("web resource open arguments are invalid");
+        *out_stream = NK_INVALID_HANDLE;
+        if ((flags & NK_RESOURCE_OPEN_READ) != 0)
+            return unsupported("browser resource reads use nk_resource_load_async");
+        if (!is_web_file_handle_uri(resource->uri))
+            return unsupported("web resource streams require a retained file handle");
+        if (!nk::web::has_resource_handle(resource->uri))
+            return unsupported("browser file handle is no longer available");
+
+        auto resource_stream = std::make_shared<WebResourceStream>();
+        resource_stream->uri = resource->uri;
+        resource_stream->flags = NK_RESOURCE_STREAM_WRITABLE |
+                                 NK_RESOURCE_STREAM_SEEKABLE |
+                                 NK_RESOURCE_STREAM_SIZE_KNOWN;
+        const auto handle = nk::core::handles().insert(nk::core::ResourceType::resource_stream,
+                                                       resource_stream);
+        if (handle == NK_INVALID_HANDLE)
+            return resource_error(NK_ERROR_OUT_OF_MEMORY,
+                                  "could not allocate web resource stream handle");
+        *out_stream = handle;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_resource_stream_info_get(nk_handle handle, nk_resource_stream_info *out_info) {
+    if (!out_info || out_info->struct_size < sizeof(nk_resource_stream_info))
+        return resource_error(NK_ERROR_INVALID_ARGUMENT, "web resource stream info is invalid");
+    auto resource = get_resource_stream(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    const auto struct_size = out_info->struct_size;
+    std::lock_guard lock(resource->mutex);
+    *out_info = {};
+    out_info->struct_size = struct_size;
+    out_info->flags = resource->flags;
+    out_info->size = resource->data.size();
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_resource_read(nk_handle handle, void *buffer, uint64_t size,
+                                   uint64_t *out_read) {
+    if ((!buffer && size) || !out_read)
+        return resource_error(NK_ERROR_INVALID_ARGUMENT, "web resource read arguments are invalid");
+    auto resource = get_resource_stream(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    std::lock_guard lock(resource->mutex);
+    if (!(resource->flags & NK_RESOURCE_STREAM_READABLE))
+        return resource_error(NK_ERROR_UNSUPPORTED, "web resource stream is not readable");
+    *out_read = 0;
+    if (resource->position >= resource->data.size())
+        return NK_OK;
+    const auto available = static_cast<uint64_t>(resource->data.size()) - resource->position;
+    const auto count = std::min(size, available);
+    if (count != 0)
+        std::memcpy(buffer, resource->data.data() + static_cast<std::size_t>(resource->position),
+                    static_cast<std::size_t>(count));
+    resource->position += count;
+    *out_read = count;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_resource_write(nk_handle handle, const void *buffer, uint64_t size,
+                                    uint64_t *out_written) {
+    return nk::core::result_boundary("unexpected error while writing web resource",
+                                     [&]() -> nk_result {
+        if ((!buffer && size) || !out_written)
+            return resource_error(NK_ERROR_INVALID_ARGUMENT,
+                                  "web resource write arguments are invalid");
+        auto resource = get_resource_stream(handle);
+        if (!resource)
+            return NK_ERROR_INVALID_HANDLE;
+        std::lock_guard lock(resource->mutex);
+        if (!(resource->flags & NK_RESOURCE_STREAM_WRITABLE))
+            return resource_error(NK_ERROR_UNSUPPORTED, "web resource stream is not writable");
+        if (size > std::numeric_limits<uint64_t>::max() - resource->position)
+            return resource_error(NK_ERROR_INVALID_ARGUMENT, "web resource write is too large");
+        const auto end = resource->position + size;
+        if (end > std::numeric_limits<std::size_t>::max())
+            return resource_error(NK_ERROR_INVALID_ARGUMENT, "web resource write is too large");
+        if (end > resource->data.size())
+            resource->data.resize(static_cast<std::size_t>(end));
+        if (size != 0)
+            std::memcpy(resource->data.data() + static_cast<std::size_t>(resource->position),
+                        buffer, static_cast<std::size_t>(size));
+        resource->position = end;
+        *out_written = size;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_resource_seek(nk_handle handle, int64_t offset, nk_seek_origin origin,
+                                   uint64_t *out_position) {
+    if (!out_position || origin > NK_SEEK_END)
+        return resource_error(NK_ERROR_INVALID_ARGUMENT, "web resource seek arguments are invalid");
+    auto resource = get_resource_stream(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    std::lock_guard lock(resource->mutex);
+    if (!(resource->flags & NK_RESOURCE_STREAM_SEEKABLE))
+        return resource_error(NK_ERROR_UNSUPPORTED, "web resource stream is not seekable");
+    const auto base = origin == NK_SEEK_START     ? uint64_t{0}
+                      : origin == NK_SEEK_CURRENT ? resource->position
+                                                  : static_cast<uint64_t>(resource->data.size());
+    uint64_t position = 0;
+    if (offset >= 0) {
+        const auto distance = static_cast<uint64_t>(offset);
+        if (distance > std::numeric_limits<uint64_t>::max() - base)
+            return resource_error(NK_ERROR_UNKNOWN, "web resource seek failed");
+        position = base + distance;
+    } else {
+        const auto distance = static_cast<uint64_t>(-(offset + 1)) + 1;
+        if (distance > base)
+            return resource_error(NK_ERROR_UNKNOWN, "web resource seek failed");
+        position = base - distance;
+    }
+    if (position > std::numeric_limits<std::size_t>::max())
+        return resource_error(NK_ERROR_UNKNOWN, "web resource seek failed");
+    resource->position = position;
+    *out_position = position;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_resource_close(nk_handle handle) {
+    return nk::core::result_boundary("unexpected error while closing web resource",
+                                     [&]() -> nk_result {
+        auto resource = get_resource_stream(handle);
+        if (!resource)
+            return NK_ERROR_INVALID_HANDLE;
+        PendingWebResourceWrite write;
+        {
+            std::lock_guard lock(resource->mutex);
+            if (resource->flags & NK_RESOURCE_STREAM_WRITABLE) {
+                write.uri = resource->uri;
+                write.data = resource->data;
+            }
+        }
+        if (write.uri.size() != 0) {
+            std::lock_guard lock(pending_resource_writes_mutex);
+            pending_resource_writes.push_back(std::move(write));
+        }
+        if (!nk::core::handles().erase(handle, nk::core::ResourceType::resource_stream))
+            return resource_error(NK_ERROR_INVALID_HANDLE, "invalid web resource stream handle");
+        return NK_OK;
+    });
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {

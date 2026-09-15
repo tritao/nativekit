@@ -603,11 +603,14 @@ use the resource variants to preserve provider URI identity. Message dialogs use
 `UIAlertController` and return `NK_MESSAGE_RESULT_NONE` when cancelled.
 
 Web resource dialogs use the File System Access API where available and fall
-back to an HTML file input for open operations. Selected files are represented
-by temporary `blob:` URIs and complete with the same resource-list payload;
-browser picker cancellation is a successful completion with `accepted == 0`.
-The picker must be started from a browser user activation. Path-based dialog
-entry points remain unavailable.
+back to an HTML file input for open operations. Open selections are represented
+by temporary `blob:` URIs and should be read with `nk_resource_load_async()`.
+Save selections complete with an opaque `nativekit-file-handle://` URI whose
+browser handle remains retained while the NativeKit runtime is alive. Directory
+selections similarly retain a `nativekit-directory-handle://` URI; browsers do
+not expose a filesystem path. Browser picker cancellation is a successful
+completion with `accepted == 0`. The picker must be started from a browser user
+activation. Path-based dialog entry points remain unavailable.
 
 ## URI resources and sharing
 
@@ -662,6 +665,14 @@ also reports its current byte size with `NK_RESOURCE_STREAM_SIZE_KNOWN`.
 Desktop backends open RFC 8089 local `file:` URIs directly and reject other
 schemes. `NK_CAP_RESOURCE_IO` reports this support independently from system
 sharing support.
+
+On Web, `nk_resource_open()` currently supports write-only streams for retained
+File System Access save handles. The stream is seekable and memory-backed, so
+callers can use the same write/seek contract as other backends; closing it
+queues a browser `createWritable()`/`write()`/`close()` flush for the next event
+pump. Web reads remain asynchronous through `nk_resource_load_async()`, and
+browser permission handles are runtime-scoped, so the persisted-access APIs
+remain unsupported.
 
 ## Notifications
 
