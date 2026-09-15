@@ -460,8 +460,8 @@ bool copy_web_accessibility_node(
         !std::isfinite(node.numeric_maximum))
         return invalid_node("Web accessibility node numeric metadata is invalid");
     if (node.role == NK_ACCESSIBILITY_SLIDER &&
-        (node.numeric_minimum > node.numeric_maximum ||
-         node.numeric_value < node.numeric_minimum || node.numeric_value > node.numeric_maximum))
+        (node.numeric_minimum > node.numeric_maximum || node.numeric_value < node.numeric_minimum ||
+         node.numeric_value > node.numeric_maximum))
         return invalid_node("Web accessibility slider value is outside its range");
 
     const uint64_t text_end = static_cast<uint64_t>(node.text_start) + value_codepoints;
