@@ -290,6 +290,11 @@ adjustment, scrolling, and custom actions produce the same
 `NK_EVENT_ACCESSIBILITY_ACTION` payloads. Bounds and text-range geometry are
 converted from surface logical pixels to screen coordinates.
 
+Linux/GTK projects the tree as ATK objects beneath the custom `GtkGLArea`
+accessible. ATK actions, component geometry, text selections, and ranged
+values are translated into the shared NativeKit accessibility action event.
+The adapter is consumed by AT-SPI screen readers such as Orca.
+
 Cursor resources may be standard platform shapes or copied RGBA8 images.
 Destroying a cursor handle does not invalidate a cursor already selected by a
 window. Windows supports normal, hidden, and captured pointer modes; disabled
