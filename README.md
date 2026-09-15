@@ -50,7 +50,7 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 | WebView | ✅ | ✅ | ✅ | ✅ | ✅ | Native DOM |
 | Dialogs and system services | ✅ | ✅ | ✅ | ✅ | Partial | 🚧 |
 | Clipboard and drag/drop | ✅ | ✅ | ✅ | ✅ | Partial | Partial |
-| Notifications | ✅ | ✅ | ✅ | ✅ | 🚧 | 🚧 |
+| Notifications | ✅ | ✅ | ✅ | ✅ | ✅ | 🚧 |
 | Input, cursors, and capture | ✅ | ✅ | ✅ | Partial | Partial | Partial |
 | Monitors and fullscreen modes | ✅ | ✅ | ✅ | — | — | — |
 | Joysticks and gamepads | ✅ | ✅ | ✅ | ✅ | 🚧 | 🚧 |
@@ -68,8 +68,8 @@ maintained in the [platform parity contract](docs/platform-parity.md).
   simulator SDKs. The initial UIKit host attachment, geometry lifecycle, Metal
   presentation surface, touch/pointer input, hardware-key events, UIKit text
   editing, WKWebView, clipboard, URI opening, sandbox directory queries, locale,
-  and appearance support are available; dialogs, drops, notifications, resource
-  sharing, and simulator runtime integration are still being added.
+  appearance, and notifications are available; dialogs, drops, resource sharing,
+  and simulator runtime integration are still being added.
 - Linux desktop support requires GTK 3 and WebKitGTK 4.1. Without them, the
   library builds with a stub backend and reports the services as unsupported.
 - Windows WebViews require the Microsoft Edge WebView2 Evergreen Runtime.
