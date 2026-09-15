@@ -19,6 +19,8 @@ class RenderNode {
 	public var hitTestSelf:Bool;
 	public var enabled:Bool;
 	public var tabIndex:Int;
+	/** Cursor intent used while this node is hovered or holds pointer capture. */
+	public var cursor:Null<CursorShape>;
 	public var semantics:Null<Semantics>;
 	final handlers:Map<String, Array<UiEvent->Void>>;
 	final resolvedHandlers:Array<ResolvedLayoutItem->Void>;
@@ -37,6 +39,7 @@ class RenderNode {
 		hitTestSelf = true;
 		enabled = true;
 		tabIndex = 0;
+		cursor = null;
 		semantics = null;
 		handlers = new Map();
 		resolvedHandlers = [];

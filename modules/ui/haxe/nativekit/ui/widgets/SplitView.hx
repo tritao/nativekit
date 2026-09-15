@@ -8,6 +8,7 @@ import LayoutStyle;
 import LayoutVisualKind;
 import LayoutWrapMode;
 import nativekit.ui.core.BuildContext;
+import nativekit.ui.core.CursorShape;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.UiEvent;
@@ -85,6 +86,7 @@ class SplitView implements View {
 			if (dividerExtent > 0.0) {
 				var divider = new RenderNode(context.id("divider"), LayoutVisualKind.Box,
 					dividerLayoutStyle(horizontal));
+				divider.cursor = horizontal ? CursorShape.HorizontalResize : CursorShape.VerticalResize;
 				divider.semantics = new Semantics(AccessibilityRole.Separator);
 				installDividerHandlers(divider, horizontal);
 				root.add(divider);

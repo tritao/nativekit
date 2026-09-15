@@ -41,6 +41,8 @@ class UiContext {
 	var customLists:Map<Int, DisplayList>;
 	var accessibilityBridge:Null<AccessibilityBridge>;
 	var accessibilitySurface:Null<NativeKitSurface>;
+	var cursorHandler:Null<CursorShape->Void>;
+	var currentCursor:CursorShape;
 	var diagnosticStage:Int = 0;
 	public final textInput:TextInputBridge;
 
@@ -66,6 +68,8 @@ class UiContext {
 		customLists = new Map();
 		accessibilityBridge = null;
 		accessibilitySurface = null;
+		cursorHandler = null;
+		currentCursor = CursorShape.Arrow;
 		animations.onFrameRequested = function() {
 			if (!disposed && onAnimationFrameRequested != null)
 				onAnimationFrameRequested();
@@ -138,6 +142,7 @@ class UiContext {
 		root = next;
 		events.setRoot(next);
 		gestures.setRoot(next);
+		updateCursor();
 		if (nextFocus != null && (previousFocus == null || !previousFocus.equals(nextFocus)))
 			events.focusEvent(nextFocus, UiEventKind.Focus);
 		submittedStateRevision = stateStore.revision;
@@ -315,6 +320,7 @@ class UiContext {
 	public function windowFocusLost():Void {
 		ensureLive();
 		events.cancelPointers();
+		updateCursor();
 		gestures.cancelAll();
 		var previous = focus.focusedId;
 		if (previous != null)
@@ -327,29 +333,42 @@ class UiContext {
 			pointerId:Int = 0, data:Dynamic = null):Void {
 		ensureLive();
 		events.pointerMove(x, y, modifiers, pointerId, data);
+		updateCursor();
 	}
 
 	public function pointerDown(x:Float, y:Float, button:Int, modifiers:Int = 0,
 			pointerId:Int = 0, data:Dynamic = null, timestamp:Float = -1.0):Void {
 		ensureLive();
 		events.pointerDown(x, y, button, modifiers, pointerId, data, timestamp);
+		updateCursor();
 	}
 
 	public function pointerUp(x:Float, y:Float, button:Int, modifiers:Int = 0,
 			pointerId:Int = 0, data:Dynamic = null):Void {
 		ensureLive();
 		events.pointerUp(x, y, button, modifiers, pointerId, data);
+		updateCursor();
 	}
 
 	public function pointerCancel(pointerId:Int, x:Float, y:Float,
 			modifiers:Int = 0, data:Dynamic = null):Void {
 		ensureLive();
 		events.pointerCancel(pointerId, x, y, modifiers, data);
+		updateCursor();
 	}
 
 	public function pointerLeave(pointerId:Int = 0):Void {
 		ensureLive();
 		events.clearPointer(pointerId);
+		updateCursor();
+	}
+
+	/** Installs the platform bridge that applies the context's effective cursor. */
+	public function setCursorHandler(handler:Null<CursorShape->Void>):Void {
+		ensureLive();
+		cursorHandler = handler;
+		if (handler != null)
+			handler(currentCursor);
 	}
 
 	public function scroll(x:Float, y:Float, deltaX:Float, deltaY:Float, modifiers:Int = 0):Void {
@@ -412,6 +431,10 @@ class UiContext {
 		clipboard.dispose();
 		textInput.dispose();
 		gestures.cancelAll();
+		if (cursorHandler != null)
+			cursorHandler(CursorShape.Arrow);
+		cursorHandler = null;
+		currentCursor = CursorShape.Arrow;
 		animations.cancelAll();
 		if (accessibilityBridge != null)
 			accessibilityBridge.dispose();
@@ -420,6 +443,15 @@ class UiContext {
 		root = null;
 		accessibilityBridge = null;
 		accessibilitySurface = null;
+	}
+
+	function updateCursor():Void {
+		var next = events.cursorShape();
+		if (next == currentCursor)
+			return;
+		currentCursor = next;
+		if (cursorHandler != null)
+			cursorHandler(next);
 	}
 
 	function dispatchFocusChange(previous:Null<WidgetId>, next:Null<WidgetId>):Void {

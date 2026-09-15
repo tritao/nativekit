@@ -13,6 +13,7 @@ class NativeInputAdapter {
 	final context:UiContext;
 	final source:Handle;
 	final accessibilitySource:Handle;
+	final cursor:NativeCursorController;
 	var attachedEvents:Null<NativeKitEvents>;
 	var eventSubscription:Null<NativeKitEventSubscription>;
 	final eventListener:NativeKitEventValue->Void;
@@ -25,6 +26,7 @@ class NativeInputAdapter {
 		this.context = context;
 		this.source = source;
 		this.accessibilitySource = accessibilitySource == null ? source : accessibilitySource;
+		cursor = new NativeCursorController(source);
 		attachedEvents = null;
 		eventSubscription = null;
 		eventListener = function(event) { consume(event); };
@@ -43,16 +45,19 @@ class NativeInputAdapter {
 		detach();
 		eventSubscription = events.listen(eventListener);
 		attachedEvents = events;
+		context.setCursorHandler(function(shape) { cursor.apply(shape); });
 	}
 
 	/** Stops routing events from the attached pump. */
 	public function detach():Void {
-		if (attachedEvents == null)
-			return;
-		if (eventSubscription != null)
-			eventSubscription.dispose();
-		eventSubscription = null;
-		attachedEvents = null;
+		if (attachedEvents != null) {
+			if (eventSubscription != null)
+				eventSubscription.dispose();
+			eventSubscription = null;
+			attachedEvents = null;
+			context.setCursorHandler(null);
+			cursor.reset();
+		}
 	}
 
 	/** Consumes recognized input for this window; other event kinds/sources pass through. */

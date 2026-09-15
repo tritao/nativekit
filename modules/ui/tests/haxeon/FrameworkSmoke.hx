@@ -30,6 +30,7 @@ import NativeKitEvents;
 import NativeKitRuntime;
 import NativeKitEventDecoderTests;
 import nativekit.ui.core.NativeInputAdapter;
+import nativekit.ui.core.CursorShape as UiCursorShape;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
 import nativekit.ui.core.UiContext;
@@ -1271,11 +1272,21 @@ class FrameworkSmoke {
 		var splitDividerGeometry:ResolvedLayoutItem = cast splitRoot.children[1].resolved;
 		var splitPointerX = splitDividerGeometry.x + splitDividerGeometry.width * 0.5;
 		var splitPointerY = splitDividerGeometry.y + splitDividerGeometry.height * 0.5;
+		context.pointerMove(splitPointerX, splitPointerY);
+		if (context.events.cursorShape() != UiCursorShape.HorizontalResize)
+			return 236;
 		context.pointerDown(splitPointerX, splitPointerY, 0);
 		context.pointerMove(splitPointerX + 20.0, splitPointerY);
+		if (context.events.cursorShape() != UiCursorShape.HorizontalResize)
+			return 237;
 		context.pointerUp(splitPointerX + 20.0, splitPointerY, 0);
 		if (resizedExtent != 76.0 || split.secondaryExtent != 76.0)
 			return 231;
+		context.pointerMove(splitPointerX, splitPointerY);
+		context.pointerDown(splitPointerX, splitPointerY, 0);
+		context.pointerCancel(0, splitPointerX + 40.0, splitPointerY);
+		if (context.events.cursorShape() != UiCursorShape.Arrow)
+			return 238;
 		split.collapsed = true;
 		splitRoot = context.submit(split, new LayoutFrame(320.0, 192.0));
 		var collapsedSecondaryGeometry:ResolvedLayoutItem = cast splitRoot.children[2].resolved;
@@ -1302,8 +1313,13 @@ class FrameworkSmoke {
 		var verticalDividerGeometry:ResolvedLayoutItem = cast verticalRoot.children[1].resolved;
 		var verticalPointerX = verticalDividerGeometry.x + verticalDividerGeometry.width * 0.5;
 		var verticalPointerY = verticalDividerGeometry.y + verticalDividerGeometry.height * 0.5;
+		context.pointerMove(verticalPointerX, verticalPointerY);
+		if (context.events.cursorShape() != UiCursorShape.VerticalResize)
+			return 239;
 		context.pointerDown(verticalPointerX, verticalPointerY, 0);
 		context.pointerMove(verticalPointerX, verticalPointerY + 20.0);
+		if (context.events.cursorShape() != UiCursorShape.VerticalResize)
+			return 240;
 		context.pointerUp(verticalPointerX, verticalPointerY + 20.0, 0);
 		if (resizedExtent != 52.0 || verticalSplit.secondaryExtent != 52.0)
 			return 235;

@@ -1,12 +1,13 @@
 package nativekit.ui.core;
 
 import NativeKit;
+import nativekit.ui.core.CursorShape as UiCursorShape;
 
 /** Capture/target/bubble dispatch with per-pointer hover and pointer capture. */
 class EventDispatcher {
 	var root:Null<RenderNode>;
 	final focus:FocusManager;
-	final hoverPaths:Map<Int, Array<RenderNode>>;
+	var hoverPaths:Map<Int, Array<RenderNode>>;
 	final capturedIds:Map<Int, WidgetId>;
 
 	public function new(focus:FocusManager) {
@@ -26,6 +27,16 @@ class EventDispatcher {
 		}
 		for (pointerId in stale)
 			capturedIds.remove(pointerId);
+		var reboundHover = new Map<Int, Array<RenderNode>>();
+		for (pointerId in hoverPaths.keys()) {
+			var path = hoverPaths.get(pointerId);
+			if (path == null || path.length == 0)
+				continue;
+			var current = root == null ? null : root.find(path[path.length - 1].id);
+			if (current != null)
+				reboundHover.set(pointerId, HitTest.pathTo(current));
+		}
+		hoverPaths = reboundHover;
 	}
 
 	public function pointerMove(x:Float, y:Float, modifiers:Int = 0,
@@ -171,6 +182,22 @@ class EventDispatcher {
 	/** Returns the node holding pointer capture after a press, if any. */
 	public function pressedId(pointerId:Int = 0):Null<WidgetId>
 		return capturedIds.get(pointerId);
+
+	/** Returns the deepest cursor intent for the hovered or captured pointer path. */
+	public function cursorShape(pointerId:Int = 0):UiCursorShape {
+		var path = capturedPath(pointerId);
+		if (path.length == 0)
+			path = hoverPaths.get(pointerId);
+		if (path == null)
+			return UiCursorShape.Arrow;
+		var index = path.length - 1;
+		while (index >= 0) {
+			if (path[index].cursor != null)
+				return cast path[index].cursor;
+			index--;
+		}
+		return UiCursorShape.Arrow;
+	}
 
 	function updateHover(pointerId:Int, path:Array<RenderNode>, x:Float, y:Float):Void {
 		var previous = hoverPaths.get(pointerId);
