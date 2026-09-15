@@ -20,6 +20,7 @@ output=${1:-"$module_dir/bindings/nativekit-audio.hxi"}
     --include="$module_dir/bindings" \
     --include="$repo_dir/include" \
     --exclude-header="$repo_dir/include/nativekit.h" \
+    --exclude-header="$repo_dir/include/nativekit_resource.h" \
     --source-label=modules/audio/bindings/nativekit_audio_import.h \
     --output="$output" \
     "$module_dir/bindings/nativekit_audio_import.h"

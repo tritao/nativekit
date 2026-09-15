@@ -1,6 +1,7 @@
 #include "nativekit_resource.h"
 
 #include "core/boundary.hpp"
+#include "core/resource_cache.hpp"
 #include "core/error.hpp"
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
@@ -42,7 +43,7 @@ struct ResourceCacheEntry final {
     std::atomic<nk_request_id> load_request{NK_INVALID_REQUEST_ID};
     std::atomic<bool> cancelled{false};
     std::mutex mutex;
-    std::vector<std::byte> data;
+    std::shared_ptr<const std::vector<std::byte>> data;
     std::vector<std::weak_ptr<ResourceAssetResource>> assets;
 };
 
@@ -309,10 +310,12 @@ void resource_cache_load_callback(nk_request_id request, nk_result result, const
             else if (data_size != 0 && !data)
                 load_result = NK_ERROR_UNKNOWN;
             else {
-                std::lock_guard lock(entry.mutex);
-                entry.data.resize(static_cast<std::size_t>(data_size));
+                auto bytes = std::make_shared<std::vector<std::byte>>(
+                    static_cast<std::size_t>(data_size));
                 if (data_size != 0)
-                    std::memcpy(entry.data.data(), data, static_cast<std::size_t>(data_size));
+                    std::memcpy(bytes->data(), data, static_cast<std::size_t>(data_size));
+                std::lock_guard lock(entry.mutex);
+                entry.data = std::move(bytes);
             }
         }
     } catch (const std::bad_alloc &) {
@@ -333,6 +336,30 @@ void resource_cache_load_cleanup(void *user_data) noexcept {
 }
 
 } // namespace
+
+namespace nk::core {
+
+nk_result resource_asset_get_bytes(nk_resource_asset asset,
+                                   ResourceAssetBytes &out_bytes) noexcept {
+    out_bytes.reset();
+    auto value = get_asset(asset);
+    if (!value)
+        return NK_ERROR_INVALID_HANDLE;
+
+    const auto state = value->entry->load_state.load(std::memory_order_acquire);
+    if (state != NK_RESOURCE_ASSET_READY)
+        return state == NK_RESOURCE_ASSET_LOADING
+                   ? NK_ERROR_INVALID_REQUEST
+                   : value->entry->load_result.load(std::memory_order_acquire);
+
+    std::lock_guard lock(value->entry->mutex);
+    if (!value->entry->data)
+        return NK_ERROR_UNKNOWN;
+    out_bytes = value->entry->data;
+    return NK_OK;
+}
+
+} // namespace nk::core
 
 extern "C" {
 
@@ -396,9 +423,10 @@ nk_result NK_CALL nk_resource_cache_load(nk_resource_cache cache, const nk_resou
         const auto read_result = read_resource_bytes(resource, data);
         if (read_result != NK_OK)
             return read_result;
+        auto bytes = std::make_shared<std::vector<std::byte>>(std::move(data));
         {
             std::lock_guard lock(entry->mutex);
-            entry->data = std::move(data);
+            entry->data = std::move(bytes);
         }
         entry->load_result.store(NK_OK, std::memory_order_release);
         entry->load_state.store(NK_RESOURCE_ASSET_READY, std::memory_order_release);
@@ -600,7 +628,9 @@ nk_result NK_CALL nk_resource_asset_get_size(nk_resource_asset asset, uint64_t *
                        ? NK_ERROR_INVALID_REQUEST
                        : value->entry->load_result.load(std::memory_order_acquire);
         std::lock_guard lock(value->entry->mutex);
-        *out_size = static_cast<uint64_t>(value->entry->data.size());
+        if (!value->entry->data)
+            return NK_ERROR_UNKNOWN;
+        *out_size = static_cast<uint64_t>(value->entry->data->size());
         return NK_OK;
     });
 }
@@ -620,13 +650,15 @@ nk_result NK_CALL nk_resource_asset_copy_data(nk_resource_asset asset, void *buf
                        ? NK_ERROR_INVALID_REQUEST
                        : value->entry->load_result.load(std::memory_order_acquire);
         std::lock_guard lock(value->entry->mutex);
-        const auto required = static_cast<uint64_t>(value->entry->data.size());
+        if (!value->entry->data)
+            return NK_ERROR_UNKNOWN;
+        const auto required = static_cast<uint64_t>(value->entry->data->size());
         if (!buffer || *inout_size < required) {
             *inout_size = required;
             return NK_ERROR_BUFFER_TOO_SMALL;
         }
         if (required != 0)
-            std::memcpy(buffer, value->entry->data.data(), value->entry->data.size());
+            std::memcpy(buffer, value->entry->data->data(), value->entry->data->size());
         *inout_size = required;
         return NK_OK;
     });

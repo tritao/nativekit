@@ -57,6 +57,7 @@ fi
     "$module_dir/bindings/haxe/nativekit/audio/VoiceOptions.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Vector3.hx" \
     "$nativekit_dir/bindings/haxe/nativekit/resource/Resource.hx" \
+    "$nativekit_dir/bindings/haxe/nativekit/resource/ResourceAsset.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitError.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEvent.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEventValue.hx" \

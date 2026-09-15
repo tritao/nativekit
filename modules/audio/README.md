@@ -5,32 +5,19 @@ mixing on top of the pinned miniaudio submodule. Enable it with
 `-DNK_BUILD_AUDIO=ON` after initializing `vendor/miniaudio`.
 
 The first API slice supports WAV, FLAC, and MP3 playback from native filesystem
-paths, provider-backed URI resources, or caller-provided encoded memory.
+paths, cached URI assets, or caller-provided encoded memory.
 `nk_audio_clip` owns a reusable source, while each `nk_audio_voice` has
 independent transport and voice controls, so a single clip can play
 simultaneously through multiple voices. The original one-shot path is
 intentionally expressed by creating a clip and one voice.
 
-`nk_audio_clip_create_from_resource()` accepts the same top-level `nk_resource`
-descriptor used by NativeKit dialogs, drops, shares, and clipboard APIs. The
-clip retains the URI, while every voice opens its own provider stream and keeps
-its decoder attached to that stream. This preserves reusable clips and allows
-Android content URIs or other platform resource providers without converting
-them to filesystem paths. Resource-backed clips are opened synchronously and
-therefore reject `NK_AUDIO_VOICE_ASYNC`.
-
-`nk_audio_clip_create_from_resource_async()` is the asynchronous counterpart
-for providers such as browser fetch. It returns a real clip handle immediately
-in `NK_AUDIO_CLIP_LOADING` together with a request ID. NativeKit consumes the
-matching raw resource completion internally, validates and retains the encoded
-audio bytes, then emits `NK_EVENT_AUDIO_CLIP_READY` or
-`NK_EVENT_AUDIO_CLIP_LOAD_FAILED`. Query `nk_audio_clip_get_load_state()` and
-create voices only after the clip is ready. Providers without asynchronous
-loading support return `NK_ERROR_UNSUPPORTED`. Resource-backed voices are
-already decoder-backed streams; `NK_AUDIO_VOICE_STREAM` is optional for them
-and does not change the provider stream lifetime. Destroying a pending async
-clip requests cancellation of its underlying resource load and suppresses any
-late completion event.
+Use the core `ResourceCache` to load a top-level `nk_resource` descriptor. Once
+its `nk_resource_asset` is ready, pass that handle to
+`nk_audio_clip_create_from_asset()` (or Haxe `Clip.fromAsset()`). Audio retains
+the cache's immutable encoded byte storage, so the asset and cache may be
+released after clip creation. Resource cache ready and failure events are the
+single loading lifecycle for URI-backed audio; attempting to create a clip
+before the asset is ready returns `NK_ERROR_INVALID_REQUEST`.
 
 The process-wide playback device can be enumerated with
 `nk_audio_device_get_count()`, `nk_audio_device_get_name()`, and
@@ -131,9 +118,7 @@ receive these as `AudioVoiceReady`, `AudioVoiceLoadFailed`, and
 `AudioVoiceComplete`, `AudioVoiceStolen`, `AudioVoiceVirtualized`, and
 `AudioVoiceResumed` through `NativeKitEvents.listen()`. Device notifications
 arrive as `AudioDeviceStarted`, `AudioDeviceStopped`, `AudioDeviceRerouted`,
-`AudioDeviceInterruptionBegan`, or `AudioDeviceInterruptionEnded`. Asynchronous
-clip loads arrive as `AudioClipReady` or `AudioClipLoadFailed`, including the
-associated request ID.
+`AudioDeviceInterruptionBegan`, or `AudioDeviceInterruptionEnded`.
 Scheduled stops are transport operations and do not emit this natural-end
 completion event.
 
@@ -141,9 +126,8 @@ The module also provides a generated Haxeon ABI interface in
 `bindings/nativekit-audio.hxi` and a small typed Haxe facade under
 `bindings/haxe/nativekit/audio`. The public facade consists of `Clip`, `Voice`, `VoiceOptions`,
 `Bus`, `BusConcurrencyOptions`, `MixSnapshot`, `DeviceOptions`, and `Mixer`. `Mixer` exposes device
-enumeration and lifecycle controls, while `Clip.fromResourceAsync()` exposes
-the asynchronous resource path; `loadRequest()`, `loadState()`, and `isReady()`
-mirror the native lifecycle.
+enumeration and lifecycle controls, while `Clip.fromAsset()` consumes a ready
+`nativekit.resource.ResourceAsset` from the core cache.
 
 With Haxeon available, run the native and managed smoke test with:
 

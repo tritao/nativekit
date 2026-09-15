@@ -5,7 +5,6 @@
     "nk_audio_voice_flags": "NativeVoiceFlags",
     "nk_audio_voice_steal_policy": "VoiceStealPolicy",
     "nk_audio_voice_load_state": "VoiceLoadState",
-    "nk_audio_clip_load_state": "ClipLoadState",
     "nk_audio_device_state": "DeviceState",
     "nk_audio_attenuation_model": "AttenuationModel",
     "nk_audio_positioning": "Positioning",
@@ -13,7 +12,7 @@
   },
   "enumValuePrefixes": ["NK_AUDIO_VOICE_"],
   "typeNames": {
-    "nk_resource": "NativeKit.ResourceValue",
+    "nk_resource_asset": "NativeKit.ResourceAssetHandle",
     "nk_audio_clip": "ClipHandle",
     "nk_audio_bus": "BusHandle",
     "nk_audio_mix_snapshot": "MixSnapshotHandle",

@@ -67,8 +67,8 @@ defaults to readable access; the descriptor is not itself an opened stream or
 an owned resource handle. The generated low-level ABI value is named
 `NativeKit.ResourceValue` to keep it distinct from this managed descriptor.
 Call `Resource.cancelLoad(request)` to cancel a generic asynchronous resource
-load; audio clip loads are cancelled automatically when their `Clip` is
-disposed.
+load. Pass a ready `ResourceAsset` to `nativekit.audio.Clip.fromAsset()` to
+create a reusable audio source that retains the asset's immutable bytes.
 
 `nativekit.resource.ResourceCache` deduplicates complete readable resource loads
 by exact URI. `load()` is synchronous, while `loadAsync()` returns a

@@ -77,17 +77,6 @@ enum NK_ENUM(nk_audio_voice_steal_policy) {
     NK_AUDIO_VOICE_STEAL_LOWEST_PRIORITY = 3
 };
 
-/** Loading lifecycle for an audio clip. Synchronous clips start ready. */
-typedef uint32_t nk_audio_clip_load_state;
-enum NK_ENUM(nk_audio_clip_load_state) {
-    /** The encoded resource bytes are still loading. */
-    NK_AUDIO_CLIP_LOADING = 0,
-    /** The encoded resource bytes have been validated and are ready for voices. */
-    NK_AUDIO_CLIP_READY = 1,
-    /** The resource or its encoded audio data failed to load. */
-    NK_AUDIO_CLIP_LOAD_FAILED = 2
-};
-
 /** Three-dimensional audio coordinate in the right-handed OpenGL convention. */
 typedef struct nk_audio_vec3 {
     /** Positive X points right. */
@@ -444,24 +433,6 @@ NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_file(
     const char *path NK_UTF8, nk_audio_clip *out_clip NK_OUT NK_OWNED);
 
 /**
- * Creates a reusable clip from a readable URI resource. NativeKit opens the
- * resource through its platform provider and keeps each voice's decoder
- * backed by an independent resource stream.
- */
-NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_resource(
-    const nk_resource *resource, nk_audio_clip *out_clip NK_OUT NK_OWNED);
-
-/**
- * Starts loading a reusable clip from a URI resource. The clip handle is
- * returned immediately in NK_AUDIO_CLIP_LOADING; completion is reported by
- * NK_EVENT_AUDIO_CLIP_READY or NK_EVENT_AUDIO_CLIP_LOAD_FAILED with the
- * returned request ID.
- */
-NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_resource_async(
-    const nk_resource *resource, nk_audio_clip *out_clip NK_OUT NK_OWNED,
-    nk_request_id *out_request NK_OUT);
-
-/**
  * Creates a reusable clip from encoded audio bytes. NativeKit copies the
  * bytes before returning, so the caller may release its buffer after the
  * call. The source currently supports WAV, FLAC, and MP3.
@@ -470,12 +441,16 @@ NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_memory(
     const void *data NK_BORROWED_BUFFER(data_size), uint64_t data_size,
     nk_audio_clip *out_clip NK_OUT NK_OWNED);
 
+/**
+ * Creates a reusable clip from a ready asset in the core resource cache.
+ * NativeKit retains the immutable encoded bytes; the asset may be destroyed
+ * after this call returns.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_asset(
+    nk_resource_asset asset, nk_audio_clip *out_clip NK_OUT NK_OWNED);
+
 /** Stops using and destroys a clip. Existing voices retain their source. */
 NKAUDIO_API nk_result NK_CALL nk_audio_clip_destroy(nk_audio_clip clip);
-
-/** Returns the loading lifecycle state of an audio clip. */
-NKAUDIO_API nk_result NK_CALL nk_audio_clip_get_load_state(
-    nk_audio_clip clip, nk_audio_clip_load_state *out_state NK_OUT);
 
 /** Creates a stopped independent playback voice from a reusable clip. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_create(
