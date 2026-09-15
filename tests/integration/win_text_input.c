@@ -127,7 +127,10 @@ static int send_virtual_key(WORD key) {
     inputs[0].ki.wVk = key;
     inputs[1] = inputs[0];
     inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-    return SendInput(2, inputs, sizeof(inputs[0])) == 2;
+    const UINT sent = SendInput(2, inputs, sizeof(inputs[0]));
+    fprintf(stderr, "win_text_input: key=%u sent=%u foreground=%p\n",
+            (unsigned int)key, (unsigned int)sent, (void *)GetForegroundWindow());
+    return sent == 2;
 }
 
 static int send_ime_roman(const char *letters) {
@@ -203,6 +206,8 @@ int main(void) {
     assert(hwnd != NULL);
     SetForegroundWindow(hwnd);
     SetFocus(hwnd);
+    fprintf(stderr, "win_text_input: hwnd=%p foreground=%p focus=%p\n",
+            (void *)hwnd, (void *)GetForegroundWindow(), (void *)GetFocus());
     // Prefer the installed Japanese Microsoft IME when this runner has it.
     // Keep the default layout as a fallback so ordinary Windows runners still
     // validate caret positioning and committed WM_IME_CHAR behavior.
