@@ -21,7 +21,7 @@ import components.PropertyRow;
 class InspectorPanel {
 	public static function build(explorer:UiExplorer):Column {
 		var style = new LayoutStyle();
-		style.width = LayoutAxis.fixed(270.0);
+		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.grow();
 		style.padding = new Insets(12.0, 12.0, 12.0, 12.0);
 		style.childGap = 8.0;

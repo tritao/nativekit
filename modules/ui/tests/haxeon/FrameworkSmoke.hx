@@ -77,6 +77,9 @@ import nativekit.ui.widgets.StackChild;
 import nativekit.ui.widgets.Spinner;
 import nativekit.ui.widgets.SpinnerPainter;
 import nativekit.ui.widgets.SpinnerKind;
+import nativekit.ui.widgets.SplitOrientation;
+import nativekit.ui.widgets.SplitView;
+import nativekit.ui.widgets.SplitViewOptions;
 import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Utf8Text;
@@ -1248,6 +1251,62 @@ class FrameworkSmoke {
 			copiedAppShell.bodyStyle.direction != LayoutDirection.LeftToRight ||
 			sourceBodyStyle.direction != LayoutDirection.TopToBottom)
 			return 229;
+		var resizedExtent = 0.0;
+		var splitOptions = new SplitViewOptions();
+		splitOptions.secondaryExtent = 96.0;
+		splitOptions.minimumExtent = 64.0;
+		splitOptions.maximumExtent = 144.0;
+		splitOptions.onResize = function(value) { resizedExtent = value; };
+		var split = new SplitView("split-smoke", new Text("Primary"),
+			new Text("Secondary"), splitOptions);
+		var splitRoot = context.submit(split, new LayoutFrame(320.0, 192.0));
+		if (splitRoot.children.length != 3 ||
+			splitRoot.children[0].children.length != 1 ||
+			splitRoot.children[2].children.length != 1)
+			return 230;
+		var splitDividerSemantics:Semantics = cast splitRoot.children[1].semantics;
+		if (splitDividerSemantics == null ||
+			splitDividerSemantics.role != AccessibilityRole.Separator)
+			return 230;
+		var splitDividerGeometry:ResolvedLayoutItem = cast splitRoot.children[1].resolved;
+		var splitPointerX = splitDividerGeometry.x + splitDividerGeometry.width * 0.5;
+		var splitPointerY = splitDividerGeometry.y + splitDividerGeometry.height * 0.5;
+		context.pointerDown(splitPointerX, splitPointerY, 0);
+		context.pointerMove(splitPointerX + 20.0, splitPointerY);
+		context.pointerUp(splitPointerX + 20.0, splitPointerY, 0);
+		if (resizedExtent != 76.0 || split.secondaryExtent != 76.0)
+			return 231;
+		split.collapsed = true;
+		splitRoot = context.submit(split, new LayoutFrame(320.0, 192.0));
+		var collapsedSecondaryGeometry:ResolvedLayoutItem = cast splitRoot.children[2].resolved;
+		if (splitRoot.children[2].layout.style.visible ||
+			collapsedSecondaryGeometry.width != 0.0)
+			return 232;
+		split.collapsed = false;
+		var expandedSplitRoot = context.submit(split, new LayoutFrame(320.0, 192.0));
+		if (!expandedSplitRoot.children[2].layout.style.visible ||
+			!splitRoot.children[2].id.equals(expandedSplitRoot.children[2].id))
+			return 233;
+		var verticalOptions = new SplitViewOptions();
+		verticalOptions.orientation = SplitOrientation.Vertical;
+		verticalOptions.secondaryExtent = 72.0;
+		verticalOptions.minimumExtent = 48.0;
+		verticalOptions.maximumExtent = 120.0;
+		verticalOptions.onResize = function(value) { resizedExtent = value; };
+		var verticalSplit = new SplitView("vertical-split-smoke", new Text("Top"),
+			new Text("Bottom"), verticalOptions);
+		var verticalRoot = context.submit(verticalSplit, new LayoutFrame(320.0, 192.0));
+		if (verticalRoot.children.length != 3 ||
+			verticalRoot.layout.style.direction != LayoutDirection.TopToBottom)
+			return 234;
+		var verticalDividerGeometry:ResolvedLayoutItem = cast verticalRoot.children[1].resolved;
+		var verticalPointerX = verticalDividerGeometry.x + verticalDividerGeometry.width * 0.5;
+		var verticalPointerY = verticalDividerGeometry.y + verticalDividerGeometry.height * 0.5;
+		context.pointerDown(verticalPointerX, verticalPointerY, 0);
+		context.pointerMove(verticalPointerX, verticalPointerY + 20.0);
+		context.pointerUp(verticalPointerX, verticalPointerY + 20.0, 0);
+		if (resizedExtent != 52.0 || verticalSplit.secondaryExtent != 52.0)
+			return 235;
 		var inheritedColor = Color.rgba(0.24, 0.31, 0.42, 1.0);
 		var nestedColor = Color.rgba(0.76, 0.42, 0.18, 1.0);
 		var typography = new DefaultTextStyle(new Column("typography", [
