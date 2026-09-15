@@ -171,6 +171,7 @@ int main(void) {
     const DWORD preedit_bytes = (DWORD)(wcslen(preedit) * sizeof(wchar_t));
     const BOOL injected = ImmSetCompositionStringW(context, SCS_SETSTR, (void *)preedit,
                                                     preedit_bytes, NULL, 0);
+    int composition_supported = 0;
     if (injected) {
         SendMessageW(hwnd, WM_IME_COMPOSITION, 0, GCS_COMPSTR | GCS_CURSORPOS);
         nk_event compose = {0};
@@ -182,30 +183,31 @@ int main(void) {
         if (nk_text_edit_event_text(&compose, &compose_text, &compose_length) != NK_OK ||
             compose_length == 0) {
             nk_event_release(&compose);
-            return skip_test(window, hwnd, context);
-        }
-        const int compose_result =
-            verify_edit(&compose, NK_TEXT_EDIT_COMPOSE, 2, 2, 2, 2, 2, 7, "kanji");
-        if (compose_result != 0) {
+        } else {
+            const int compose_result =
+                verify_edit(&compose, NK_TEXT_EDIT_COMPOSE, 2, 2, 2, 2, 2, 7, "kanji");
+            if (compose_result != 0) {
+                nk_event_release(&compose);
+                return 2;
+            }
             nk_event_release(&compose);
-            return 2;
-        }
-        nk_event_release(&compose);
 
-        SendMessageW(hwnd, WM_IME_ENDCOMPOSITION, 0, 0);
-        nk_event finish = {0};
-        finish.struct_size = sizeof(finish);
-        if (!wait_for_edit(window, NK_TEXT_EDIT_FINISH_COMPOSITION, &finish))
-            return skip_test(window, hwnd, context);
-        const int finish_result =
-            verify_edit(&finish, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
-                        NK_TEXT_POSITION_NONE, 2, 2, NK_TEXT_POSITION_NONE,
-                        NK_TEXT_POSITION_NONE, "");
-        if (finish_result != 0) {
+            SendMessageW(hwnd, WM_IME_ENDCOMPOSITION, 0, 0);
+            nk_event finish = {0};
+            finish.struct_size = sizeof(finish);
+            if (!wait_for_edit(window, NK_TEXT_EDIT_FINISH_COMPOSITION, &finish))
+                return skip_test(window, hwnd, context);
+            const int finish_result =
+                verify_edit(&finish, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
+                            NK_TEXT_POSITION_NONE, 2, 2, NK_TEXT_POSITION_NONE,
+                            NK_TEXT_POSITION_NONE, "");
+            if (finish_result != 0) {
+                nk_event_release(&finish);
+                return 2;
+            }
             nk_event_release(&finish);
-            return 2;
+            composition_supported = 1;
         }
-        nk_event_release(&finish);
     }
 
     ImmReleaseContext(hwnd, context);
@@ -216,5 +218,5 @@ int main(void) {
     assert(nk_surface_set_text_input_active(window, 0) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);
     nk_shutdown();
-    return injected ? 0 : 77;
+    return injected && composition_supported ? 0 : 77;
 }
