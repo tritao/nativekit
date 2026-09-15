@@ -255,9 +255,12 @@ bool run_nativekit_tests(UIView *host_view) {
                           nk_webview_create(host, &webview_options, &webview)) ||
             !check_result("nk_webview_set_bounds",
                           nk_webview_set_bounds(webview, 0, 0, 320, 240)) ||
+            !check_result("nk_webview_show", nk_webview_show(webview, 1)) ||
             !check_result("nk_webview_set_html",
-                          nk_webview_set_html(webview, "<title>runtime</title>", nullptr)) ||
-            !check_result("nk_webview_show", nk_webview_show(webview, 1))) {
+                          nk_webview_set_html(
+                              webview,
+                              "<html><head><title>runtime</title></head><body>ready</body></html>",
+                              "https://nativekit.invalid/"))) {
             success = false;
             break;
         }
