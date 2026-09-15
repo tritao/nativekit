@@ -34,16 +34,16 @@ class ExplorerFocusSequence {
 					var editor:TextEditorState = cast editorState.value;
 					if (selectTextArea && !editor.setSelection(6, 15))
 						throw "UI visual test could not select TextArea text";
-						if (showComposition) {
-							editor.setSelection(15, 15);
-							if (editor.selectionStart != 15 || editor.selectionEnd != 15)
-								throw "UI visual test could not place composition caret";
-							var composition = new NativeKitTextEdit(TextEditAction.SetComposition, null,
-								0, 0, 15, 15, 6, 15);
-							editor.applyTextEdit(composition);
-							if (editor.compositionStart != 6 || editor.compositionEnd != 15)
-								throw "UI visual test could not set composition range";
-					}
+					if (showComposition) {
+						editor.setSelection(15, 15);
+						if (editor.selectionStart != 15 || editor.selectionEnd != 15)
+							throw "UI visual test could not place composition caret";
+						var composition = new NativeKitTextEdit(TextEditAction.SetComposition, null,
+							0, 0, 15, 15, 6, 15);
+						editor.applyTextEdit(composition);
+						if (editor.compositionStart != 6 || editor.compositionEnd != 15)
+							throw "UI visual test could not set composition range";
+						}
 					editorState.update(editor);
 				}
 			}
