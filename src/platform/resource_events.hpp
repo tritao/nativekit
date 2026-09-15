@@ -49,8 +49,7 @@ inline bool valid_utf8(std::string_view value) {
                 return false;
             codepoint = (codepoint << 6) | (continuation & 0x3fu);
         }
-        if ((count == 2 && codepoint < 0x80u) ||
-            (count == 3 && codepoint < 0x800u) ||
+        if ((count == 2 && codepoint < 0x80u) || (count == 3 && codepoint < 0x800u) ||
             (count == 4 && codepoint < 0x10000u) || codepoint > 0x10ffffu ||
             (codepoint >= 0xd800u && codepoint <= 0xdfffu))
             return false;
@@ -87,8 +86,7 @@ inline std::string percent_encode_path(std::string_view path) {
     result.reserve(path.size());
     for (const auto byte : path) {
         const auto value = static_cast<unsigned char>(byte);
-        const bool unreserved = (value >= 'a' && value <= 'z') ||
-                                (value >= 'A' && value <= 'Z') ||
+        const bool unreserved = (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
                                 (value >= '0' && value <= '9') || value == '-' || value == '_' ||
                                 value == '.' || value == '~' || value == '/' || value == ':';
         if (unreserved)
@@ -164,14 +162,13 @@ inline std::string uri_display_name(std::string_view uri) {
 }
 
 inline ResourceValue resource_from_uri(std::string uri, nk_resource_flags flags,
-                                       std::string mime_type = {},
-                                       std::string display_name = {}) {
+                                       std::string mime_type = {}, std::string display_name = {}) {
     ResourceValue result;
     result.flags = flags;
     result.uri = std::move(uri);
     result.mime_type = std::move(mime_type);
-    result.display_name = display_name.empty() ? uri_display_name(result.uri)
-                                                : std::move(display_name);
+    result.display_name =
+        display_name.empty() ? uri_display_name(result.uri) : std::move(display_name);
     return result;
 }
 
@@ -180,7 +177,7 @@ inline ResourceValue resource_from_file_path(std::string path, nk_resource_flags
 }
 
 inline std::vector<ResourceValue> resources_from_uri_list(std::string_view value,
-                                                           nk_resource_flags flags) {
+                                                          nk_resource_flags flags) {
     std::vector<ResourceValue> resources;
     std::size_t start = 0;
     while (start < value.size()) {
@@ -198,7 +195,7 @@ inline std::vector<ResourceValue> resources_from_uri_list(std::string_view value
 }
 
 inline std::vector<std::byte> resource_payload(bool accepted,
-                                                const std::vector<ResourceValue> &resources) {
+                                               const std::vector<ResourceValue> &resources) {
     const auto items_offset = sizeof(nk_resource_list);
     const auto strings_offset = items_offset + resources.size() * sizeof(nk_resource_item);
     std::size_t total = strings_offset;

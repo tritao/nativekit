@@ -51,9 +51,8 @@ int main(void) {
     nk_surface surface = NK_INVALID_HANDLE;
     assert(nk_surface_create(window, &surface_options, &surface) == NK_OK);
 
-    nk_accessibility_node root =
-        make_node(1, NK_ACCESSIBILITY_ROOT, NK_ACCESSIBILITY_GROUP,
-                  NK_ACCESSIBILITY_CAN_FOCUS, "Document", NULL);
+    nk_accessibility_node root = make_node(1, NK_ACCESSIBILITY_ROOT, NK_ACCESSIBILITY_GROUP,
+                                           NK_ACCESSIBILITY_CAN_FOCUS, "Document", NULL);
     nk_accessibility_node button =
         make_node(2, 1, NK_ACCESSIBILITY_BUTTON,
                   NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS, "Continue", NULL);
@@ -71,12 +70,11 @@ int main(void) {
 
 #ifdef __EMSCRIPTEN__
     EM_ASM({
-        const node = document.querySelector(
-            "[data-nativekit-accessibility-node='2']");
+        const node = document.querySelector("[data-nativekit-accessibility-node='2']");
         if (!node) {
             document.documentElement.dataset.nativekitAccessibilityResult = "missing";
         } else {
-            node.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+            node.dispatchEvent(new MouseEvent("click", {bubbles : true}));
         }
     });
 #endif

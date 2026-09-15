@@ -1094,8 +1094,8 @@ void emit_drop_files(WinWindowResource &resource, HDROP drop) noexcept {
                 auto value = utf8(path.c_str());
                 if (!value.empty()) {
                     paths.push_back(value);
-                    resources.push_back(nk::platform::resource_from_file_path(
-                        value, NK_RESOURCE_READABLE));
+                    resources.push_back(
+                        nk::platform::resource_from_file_path(value, NK_RESOURCE_READABLE));
                 }
             }
         }
@@ -2225,8 +2225,8 @@ void emit_file_completion(const WinDialogContext &context, std::vector<std::stri
     event.flags = context.kind;
     event.result = result;
     event.data_count = static_cast<uint32_t>(paths.size());
-    const auto access = context.kind == NK_DIALOG_OPEN_RESOURCE ? NK_RESOURCE_READABLE
-                                                                  : NK_RESOURCE_WRITABLE;
+    const auto access =
+        context.kind == NK_DIALOG_OPEN_RESOURCE ? NK_RESOURCE_READABLE : NK_RESOURCE_WRITABLE;
     std::vector<nk::platform::ResourceValue> resources;
     resources.reserve(paths.size());
     for (auto &path : paths)
@@ -4864,9 +4864,10 @@ nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
                 std::string uri = list.substr(start, line_end - start);
                 if (!uri.empty() && uri.back() == '\r')
                     uri.pop_back();
-                if (!uri.empty() && nk::platform::valid_utf8(uri) && uri.find(':') != std::string::npos)
-                    resources.push_back(nk::platform::resource_from_uri(
-                        std::move(uri), NK_RESOURCE_READABLE));
+                if (!uri.empty() && nk::platform::valid_utf8(uri) &&
+                    uri.find(':') != std::string::npos)
+                    resources.push_back(
+                        nk::platform::resource_from_uri(std::move(uri), NK_RESOURCE_READABLE));
                 start = end == std::string::npos ? list.size() : end + 1;
             }
         } else if (IsClipboardFormatAvailable(CF_HDROP)) {
@@ -4883,8 +4884,8 @@ nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
                         path.resize(length);
                         const auto value = utf8(path.c_str());
                         if (!value.empty())
-                            resources.push_back(nk::platform::resource_from_file_path(
-                                value, NK_RESOURCE_READABLE));
+                            resources.push_back(
+                                nk::platform::resource_from_file_path(value, NK_RESOURCE_READABLE));
                     }
                 }
             }
@@ -4937,8 +4938,8 @@ nk_result NK_CALL nk_share(const nk_share_options *options) {
     if (!options || options->struct_size < sizeof(*options) || options->flags != 0 ||
         (!options->text && options->resource_count == 0))
         return fail(NK_ERROR_INVALID_ARGUMENT, "invalid or empty share options");
-    if (const auto result = nk::platform::validate_resources(options->resources,
-                                                              options->resource_count, true);
+    if (const auto result =
+            nk::platform::validate_resources(options->resources, options->resource_count, true);
         result != NK_OK)
         return result;
     // Win32 applications without a package identity cannot populate the
@@ -4976,8 +4977,7 @@ nk_result NK_CALL nk_share(const nk_share_options *options) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
-                                          const nk_file_dialog_options *options,
+nk_result NK_CALL nk_dialog_open_resource(nk_handle parent, const nk_file_dialog_options *options,
                                           nk_request_id *request) {
     return nk::core::result_boundary(
         "unexpected error while opening resource dialog", [&]() -> nk_result {
@@ -4985,8 +4985,7 @@ nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
         });
 }
 
-nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
-                                          const nk_file_dialog_options *options,
+nk_result NK_CALL nk_dialog_save_resource(nk_handle parent, const nk_file_dialog_options *options,
                                           nk_request_id *request) {
     return nk::core::result_boundary(
         "unexpected error while opening resource save dialog", [&]() -> nk_result {
@@ -4994,12 +4993,12 @@ nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
         });
 }
 
-nk_result NK_CALL nk_dialog_select_resource_directory(
-    nk_handle parent, const nk_file_dialog_options *options, nk_request_id *request) {
+nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle parent,
+                                                      const nk_file_dialog_options *options,
+                                                      nk_request_id *request) {
     return nk::core::result_boundary(
         "unexpected error while opening resource directory dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, request,
-                                     NK_DIALOG_SELECT_RESOURCE_DIRECTORY);
+            return start_file_dialog(parent, options, request, NK_DIALOG_SELECT_RESOURCE_DIRECTORY);
         });
 }
 

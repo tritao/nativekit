@@ -51,8 +51,7 @@ int main(void) {
     nk_accessibility_node root =
         make_node(1, NK_ACCESSIBILITY_ROOT, NK_ACCESSIBILITY_GROUP, "Document", NULL);
     assert(nk_surface_accessibility_set_node(surface, &root) == NK_OK);
-    nk_accessibility_node field =
-        make_node(2, 1, NK_ACCESSIBILITY_TEXT_FIELD, "Name", "Hello");
+    nk_accessibility_node field = make_node(2, 1, NK_ACCESSIBILITY_TEXT_FIELD, "Name", "Hello");
     assert(nk_surface_accessibility_set_node(surface, &field) == NK_OK);
     assert(nk_surface_accessibility_set_focus(surface, 2) == NK_OK);
 

@@ -1699,8 +1699,7 @@ nk_result NK_CALL nk_dialog_save_resource(nk_handle parent, const nk_file_dialog
 nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle parent,
                                                       const nk_file_dialog_options *options,
                                                       nk_request_id *out_request) {
-    return start_file_dialog(NK_DIALOG_SELECT_RESOURCE_DIRECTORY, parent, options,
-                             out_request);
+    return start_file_dialog(NK_DIALOG_SELECT_RESOURCE_DIRECTORY, parent, options, out_request);
 }
 
 nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
@@ -3606,8 +3605,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
             ResourceValue resource;
             resource.uri = std::move(uris[index]);
             auto mime = index < static_cast<std::size_t>(mime_count)
-                            ? static_cast<jstring>(env->GetObjectArrayElement(
-                                  mime_types, static_cast<jsize>(index)))
+                            ? static_cast<jstring>(
+                                  env->GetObjectArrayElement(mime_types, static_cast<jsize>(index)))
                             : nullptr;
             auto name = index < static_cast<std::size_t>(name_count)
                             ? static_cast<jstring>(env->GetObjectArrayElement(

@@ -113,12 +113,11 @@ int main(void) {
     init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
     const nk_capabilities expected =
-        NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP |
-        NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION | NK_CAP_INPUT |
-        NK_CAP_OPENGL_SURFACE | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
-        NK_CAP_WINDOW_STYLING | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN |
-        NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE |
-        NK_CAP_WRAP_NATIVE_WINDOW;
+        NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
+        NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION | NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE |
+        NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
+        NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO |
+        NK_CAP_VULKAN_SURFACE | NK_CAP_WRAP_NATIVE_WINDOW;
     assert((nk_get_capabilities() & expected) == expected);
     assert(nk_window_create(NULL, NULL) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_webview_navigate(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
@@ -564,7 +563,8 @@ int main(void) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == NK_EVENT_DIALOG_RESOURCES_COMPLETE && event.request_id == dialog_request) {
+        if (event.kind == NK_EVENT_DIALOG_RESOURCES_COMPLETE &&
+            event.request_id == dialog_request) {
             assert(event.flags == NK_DIALOG_OPEN_RESOURCE);
             assert(event.data_size >= sizeof(nk_resource_list));
             const nk_resource_list *resources = (const nk_resource_list *)event.data;

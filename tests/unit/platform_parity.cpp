@@ -255,10 +255,9 @@ bool parse_capability_list(std::string_view text, mask &out, const char *backend
     while (!text.empty()) {
         const auto separator = text.find(',');
         const auto token = trim(text.substr(0, separator));
-        const auto found = std::find_if(k_capability_names.begin(), k_capability_names.end(),
-                                        [token](const capability_name &item) {
-                                            return item.name == token;
-                                        });
+        const auto found =
+            std::find_if(k_capability_names.begin(), k_capability_names.end(),
+                         [token](const capability_name &item) { return item.name == token; });
         if (token.empty() || found == k_capability_names.end()) {
             std::fprintf(stderr, "%s snapshot has unknown %s capability '%.*s'\n", backend,
                          category, static_cast<int>(token.size()), token.data());
@@ -278,8 +277,8 @@ bool parse_capability_list(std::string_view text, mask &out, const char *backend
     return true;
 }
 
-bool check_disjoint_masks(const char *backend, mask required, mask deferred,
-                          mask not_applicable, mask optional) {
+bool check_disjoint_masks(const char *backend, mask required, mask deferred, mask not_applicable,
+                          mask optional) {
     const mask categories = required | deferred | not_applicable | optional;
     const mask overlap = (required & deferred) | (required & not_applicable) |
                          (required & optional) | (deferred & not_applicable) |
@@ -300,7 +299,8 @@ bool check_disjoint_masks(const char *backend, mask required, mask deferred,
 bool load_contract(backend_contract &contract) {
     std::ifstream input(NK_CAPABILITY_SNAPSHOT_FILE);
     if (!input) {
-        std::fprintf(stderr, "could not open capability snapshot: %s\n", NK_CAPABILITY_SNAPSHOT_FILE);
+        std::fprintf(stderr, "could not open capability snapshot: %s\n",
+                     NK_CAPABILITY_SNAPSHOT_FILE);
         return false;
     }
     std::string line;
@@ -354,7 +354,8 @@ bool load_contract(backend_contract &contract) {
         contract.optional = optional;
     }
     for (const auto expected : k_contract_backend_names) {
-        if (std::find(seen_backends.begin(), seen_backends.end(), expected) == seen_backends.end()) {
+        if (std::find(seen_backends.begin(), seen_backends.end(), expected) ==
+            seen_backends.end()) {
             std::fprintf(stderr, "capability snapshot has no row for %.*s\n",
                          static_cast<int>(expected.size()), expected.data());
             return false;
@@ -376,9 +377,9 @@ bool check_disjoint(const backend_contract &contract) {
 
 #if defined(__EMSCRIPTEN__)
 static void mark_browser_result(bool passed) {
-    EM_ASM({
-        document.documentElement.dataset.nativekitPlatformParity = $0 ? "passed" : "failed";
-    }, passed ? 1 : 0);
+    EM_ASM(
+        { document.documentElement.dataset.nativekitPlatformParity = $0 ? "passed" : "failed"; },
+        passed ? 1 : 0);
 }
 #endif
 

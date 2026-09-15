@@ -245,8 +245,8 @@ std::shared_ptr<WebResourceStream> get_resource_stream(nk_handle handle) {
 constexpr std::string_view web_file_handle_uri_prefix = "nativekit-file-handle://";
 
 bool is_web_file_handle_uri(const char *uri) {
-    return uri && std::string_view(uri).compare(
-                         0, web_file_handle_uri_prefix.size(), web_file_handle_uri_prefix) == 0;
+    return uri && std::string_view(uri).compare(0, web_file_handle_uri_prefix.size(),
+                                                web_file_handle_uri_prefix) == 0;
 }
 
 void flush_web_resource_writes() noexcept {
@@ -267,8 +267,7 @@ void flush_web_resource_writes() noexcept {
 }
 
 template <typename T>
-nk_result copy_web_array(const T *source, std::size_t count, T *output,
-                         uint32_t *inout_count) {
+nk_result copy_web_array(const T *source, std::size_t count, T *output, uint32_t *inout_count) {
     if (!inout_count)
         return invalid_argument("web array count output is null");
     if (count == 0) {
@@ -316,8 +315,8 @@ std::string web_gamepad_guid(std::string_view id, int32_t index) {
 
 bool valid_resource_dialog_options(const nk_file_dialog_options *options) {
     if (!options || options->struct_size < sizeof(*options) ||
-        (options->flags & ~(NK_DIALOG_ALLOW_MULTIPLE | NK_DIALOG_CONFIRM_OVERWRITE |
-                            NK_DIALOG_SHOW_HIDDEN)) ||
+        (options->flags &
+         ~(NK_DIALOG_ALLOW_MULTIPLE | NK_DIALOG_CONFIRM_OVERWRITE | NK_DIALOG_SHOW_HIDDEN)) ||
         (options->filter_count && !options->filters) || !nk::platform::valid_utf8(options->title) ||
         !nk::platform::valid_utf8(options->initial_path) ||
         !nk::platform::valid_utf8(options->suggested_name))
@@ -420,15 +419,14 @@ constexpr nk_accessibility_states web_accessibility_states =
     NK_ACCESSIBILITY_BUSY | NK_ACCESSIBILITY_HAS_POPUP;
 
 constexpr nk_accessibility_actions web_accessibility_actions =
-    NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS |
-    NK_ACCESSIBILITY_CAN_SET_VALUE | NK_ACCESSIBILITY_CAN_SET_SELECTION |
-    NK_ACCESSIBILITY_CAN_INCREMENT | NK_ACCESSIBILITY_CAN_DECREMENT |
-    NK_ACCESSIBILITY_CAN_SCROLL_FORWARD | NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD |
-    NK_ACCESSIBILITY_CAN_MOVE_NEXT | NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS |
-    NK_ACCESSIBILITY_CAN_TOGGLE | NK_ACCESSIBILITY_CAN_SELECT |
-    NK_ACCESSIBILITY_CAN_DESELECT | NK_ACCESSIBILITY_CAN_EXPAND |
-    NK_ACCESSIBILITY_CAN_COLLAPSE | NK_ACCESSIBILITY_CAN_DISMISS |
-    NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU | NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW;
+    NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS | NK_ACCESSIBILITY_CAN_SET_VALUE |
+    NK_ACCESSIBILITY_CAN_SET_SELECTION | NK_ACCESSIBILITY_CAN_INCREMENT |
+    NK_ACCESSIBILITY_CAN_DECREMENT | NK_ACCESSIBILITY_CAN_SCROLL_FORWARD |
+    NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD | NK_ACCESSIBILITY_CAN_MOVE_NEXT |
+    NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS | NK_ACCESSIBILITY_CAN_TOGGLE | NK_ACCESSIBILITY_CAN_SELECT |
+    NK_ACCESSIBILITY_CAN_DESELECT | NK_ACCESSIBILITY_CAN_EXPAND | NK_ACCESSIBILITY_CAN_COLLAPSE |
+    NK_ACCESSIBILITY_CAN_DISMISS | NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU |
+    NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW;
 
 bool copy_web_accessibility_node(
     const nk_accessibility_node &node,
@@ -446,8 +444,7 @@ bool copy_web_accessibility_node(
         !std::isfinite(node.numeric_maximum) ||
         (node.role == NK_ACCESSIBILITY_SLIDER &&
          (node.numeric_minimum > node.numeric_maximum ||
-          node.numeric_value < node.numeric_minimum ||
-          node.numeric_value > node.numeric_maximum)))
+          node.numeric_value < node.numeric_minimum || node.numeric_value > node.numeric_maximum)))
         return false;
 
     const uint64_t text_end = static_cast<uint64_t>(node.text_start) + value_codepoints;
@@ -531,8 +528,7 @@ constexpr WebAccessibilityActionSpec web_accessibility_action_specs[] = {
     {NK_ACCESSIBILITY_ACTION_SET_SELECTION, NK_ACCESSIBILITY_CAN_SET_SELECTION, "set_selection"},
     {NK_ACCESSIBILITY_ACTION_INCREMENT, NK_ACCESSIBILITY_CAN_INCREMENT, "increment"},
     {NK_ACCESSIBILITY_ACTION_DECREMENT, NK_ACCESSIBILITY_CAN_DECREMENT, "decrement"},
-    {NK_ACCESSIBILITY_ACTION_SCROLL_FORWARD, NK_ACCESSIBILITY_CAN_SCROLL_FORWARD,
-     "scroll_forward"},
+    {NK_ACCESSIBILITY_ACTION_SCROLL_FORWARD, NK_ACCESSIBILITY_CAN_SCROLL_FORWARD, "scroll_forward"},
     {NK_ACCESSIBILITY_ACTION_SCROLL_BACKWARD, NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD,
      "scroll_backward"},
     {NK_ACCESSIBILITY_ACTION_MOVE_NEXT, NK_ACCESSIBILITY_CAN_MOVE_NEXT, "move_next"},
@@ -811,9 +807,8 @@ void refresh_web_accessibility(WebSurfaceResource &surface) {
     nodes.reserve(surface.accessibility_nodes.size());
     for (const auto &[id, node] : surface.accessibility_nodes)
         nodes.push_back(&node);
-    std::sort(nodes.begin(), nodes.end(), [](const auto *left, const auto *right) {
-        return left->id < right->id;
-    });
+    std::sort(nodes.begin(), nodes.end(),
+              [](const auto *left, const auto *right) { return left->id < right->id; });
 
     std::string json = "{\"actions\":{";
     for (std::size_t index = 0;
@@ -872,9 +867,8 @@ nk_result emit_web_accessibility_action(
         if (!value.empty())
             std::memcpy(event.data.data() + sizeof(payload), value.c_str(), value.size() + 1);
         const auto result = nk::core::push_event(std::move(event));
-        if (result == NK_OK &&
-            (action == NK_ACCESSIBILITY_ACTION_FOCUS ||
-             action == NK_ACCESSIBILITY_ACTION_CLEAR_FOCUS))
+        if (result == NK_OK && (action == NK_ACCESSIBILITY_ACTION_FOCUS ||
+                                action == NK_ACCESSIBILITY_ACTION_CLEAR_FOCUS))
             refresh_web_accessibility(surface);
         return result;
     });
@@ -1532,8 +1526,8 @@ void on_drop(const nk::web::ResourceDropEvent &event, void *user_data) {
             !nk::core::is_runtime_generation(window->generation))
             return;
         const std::string uri_list = event.uris ? event.uris : "";
-        const auto resources = nk::platform::resources_from_uri_list(
-            uri_list, NK_RESOURCE_READABLE);
+        const auto resources =
+            nk::platform::resources_from_uri_list(uri_list, NK_RESOURCE_READABLE);
         const std::string text = event.text ? event.text : "";
         if (resources.empty() && text.empty())
             return;
@@ -1553,9 +1547,9 @@ void on_resource_dialog(const nk::web::ResourceDialogEvent &event, void *user_da
             pending_resource_dialogs.erase(event.request) == 0)
             return;
         const auto flags = event.kind == NK_DIALOG_OPEN_RESOURCE ? NK_RESOURCE_READABLE
-                         : event.kind == NK_DIALOG_SAVE_RESOURCE
-                             ? NK_RESOURCE_WRITABLE
-                             : NK_RESOURCE_READABLE | NK_RESOURCE_WRITABLE;
+                           : event.kind == NK_DIALOG_SAVE_RESOURCE
+                               ? NK_RESOURCE_WRITABLE
+                               : NK_RESOURCE_READABLE | NK_RESOURCE_WRITABLE;
         const auto resources = event.result == NK_OK && event.accepted && event.uris
                                    ? nk::platform::resources_from_uri_list(event.uris, flags)
                                    : std::vector<nk::platform::ResourceValue>{};
@@ -1623,17 +1617,17 @@ void update_web_gamepad(WebGamepadResource &device, const nk::web::GamepadStateE
         if (device.axes[index] == event.axes[index])
             continue;
         device.axes[index] = event.axes[index];
-        emit_web_joystick_input(NK_EVENT_JOYSTICK_AXIS, device.handle,
-                                nk_joystick_axis_event{static_cast<uint32_t>(index),
-                                                       device.axes[index]});
+        emit_web_joystick_input(
+            NK_EVENT_JOYSTICK_AXIS, device.handle,
+            nk_joystick_axis_event{static_cast<uint32_t>(index), device.axes[index]});
     }
     for (std::size_t index = 0; index < device.buttons.size(); ++index) {
         if (device.buttons[index] == event.buttons[index])
             continue;
         device.buttons[index] = event.buttons[index];
-        emit_web_joystick_input(NK_EVENT_JOYSTICK_BUTTON, device.handle,
-                                nk_joystick_button_event{static_cast<uint32_t>(index),
-                                                         device.buttons[index]});
+        emit_web_joystick_input(
+            NK_EVENT_JOYSTICK_BUTTON, device.handle,
+            nk_joystick_button_event{static_cast<uint32_t>(index), device.buttons[index]});
     }
     const auto hat = web_gamepad_hat(device);
     if (device.hats[0] != hat) {
@@ -1953,8 +1947,8 @@ nk_result NK_CALL nk_share(const nk_share_options *options) {
     if (!options || options->struct_size < sizeof(*options) || options->flags != 0 ||
         (!options->text && options->resource_count == 0))
         return invalid_argument("invalid or empty web share options");
-    if (const auto result = nk::platform::validate_resources(options->resources,
-                                                              options->resource_count, true);
+    if (const auto result =
+            nk::platform::validate_resources(options->resources, options->resource_count, true);
         result != NK_OK)
         return result;
     std::string uris;
@@ -1963,8 +1957,8 @@ nk_result NK_CALL nk_share(const nk_share_options *options) {
             uris += "\r\n";
         uris += options->resources[index].uri;
     }
-    if (!nk::web::share(options->title ? options->title : "",
-                        options->text ? options->text : "", uris.c_str()))
+    if (!nk::web::share(options->title ? options->title : "", options->text ? options->text : "",
+                        uris.c_str()))
         return unsupported("browser Web Share API is unavailable or requires a user gesture");
     return NK_OK;
 }
@@ -2017,12 +2011,12 @@ nk_result start_web_resource_dialog(nk_dialog_operation operation, nk_handle par
     *out_request = NK_INVALID_REQUEST_ID;
     const auto request = nk::core::next_request_id();
     pending_resource_dialogs.emplace(request, operation);
-    const bool multiple = operation == NK_DIALOG_OPEN_RESOURCE &&
-                          (options->flags & NK_DIALOG_ALLOW_MULTIPLE) != 0;
+    const bool multiple =
+        operation == NK_DIALOG_OPEN_RESOURCE && (options->flags & NK_DIALOG_ALLOW_MULTIPLE) != 0;
     const auto accept = resource_dialog_accept(options);
     if (!nk::web::pick_resources(request, operation, multiple, options->title ? options->title : "",
-                                 accept.c_str(), options->suggested_name ? options->suggested_name
-                                                                          : "")) {
+                                 accept.c_str(),
+                                 options->suggested_name ? options->suggested_name : "")) {
         pending_resource_dialogs.erase(request);
         return unsupported("browser resource picker is unavailable");
     }
@@ -2030,21 +2024,19 @@ nk_result start_web_resource_dialog(nk_dialog_operation operation, nk_handle par
     return NK_OK;
 }
 
-nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
-                                           const nk_file_dialog_options *options,
-                                           nk_request_id *out_request) {
+nk_result NK_CALL nk_dialog_open_resource(nk_handle parent, const nk_file_dialog_options *options,
+                                          nk_request_id *out_request) {
     return start_web_resource_dialog(NK_DIALOG_OPEN_RESOURCE, parent, options, out_request);
 }
 
-nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
-                                           const nk_file_dialog_options *options,
-                                           nk_request_id *out_request) {
+nk_result NK_CALL nk_dialog_save_resource(nk_handle parent, const nk_file_dialog_options *options,
+                                          nk_request_id *out_request) {
     return start_web_resource_dialog(NK_DIALOG_SAVE_RESOURCE, parent, options, out_request);
 }
 
 nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle parent,
-                                                       const nk_file_dialog_options *options,
-                                                       nk_request_id *out_request) {
+                                                      const nk_file_dialog_options *options,
+                                                      nk_request_id *out_request) {
     return start_web_resource_dialog(NK_DIALOG_SELECT_RESOURCE_DIRECTORY, parent, options,
                                      out_request);
 }
@@ -2082,8 +2074,8 @@ nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
     const auto request = nk::core::next_request_id();
     pending_notifications.insert(request);
     if (!nk::web::show_notification(request, options->title, options->body ? options->body : "",
-                                     options->icon ? options->icon : "",
-                                     (options->flags & NK_NOTIFICATION_SILENT) != 0)) {
+                                    options->icon ? options->icon : "",
+                                    (options->flags & NK_NOTIFICATION_SILENT) != 0)) {
         pending_notifications.erase(request);
         return unsupported("browser notifications are unavailable");
     }
@@ -2224,39 +2216,38 @@ nk_result NK_CALL nk_resource_get_persisted_access(const nk_resource *resource,
 
 nk_result NK_CALL nk_resource_open(const nk_resource *resource, uint32_t flags,
                                    nk_handle *out_stream) {
-    return nk::core::result_boundary("unexpected error while opening web resource",
-                                     [&]() -> nk_result {
-        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-            return result;
-        if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
-            !*resource->uri || !out_stream ||
-            (flags & (NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE)) == 0 ||
-            (flags & ~(NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE | NK_RESOURCE_OPEN_CREATE |
-                       NK_RESOURCE_OPEN_TRUNCATE)) != 0 ||
-            ((flags & (NK_RESOURCE_OPEN_CREATE | NK_RESOURCE_OPEN_TRUNCATE)) != 0 &&
-             (flags & NK_RESOURCE_OPEN_WRITE) == 0))
-            return invalid_argument("web resource open arguments are invalid");
-        *out_stream = NK_INVALID_HANDLE;
-        if ((flags & NK_RESOURCE_OPEN_READ) != 0)
-            return unsupported("browser resource reads use nk_resource_load_async");
-        if (!is_web_file_handle_uri(resource->uri))
-            return unsupported("web resource streams require a retained file handle");
-        if (!nk::web::has_resource_handle(resource->uri))
-            return unsupported("browser file handle is no longer available");
+    return nk::core::result_boundary(
+        "unexpected error while opening web resource", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
+                !*resource->uri || !out_stream ||
+                (flags & (NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE)) == 0 ||
+                (flags & ~(NK_RESOURCE_OPEN_READ | NK_RESOURCE_OPEN_WRITE |
+                           NK_RESOURCE_OPEN_CREATE | NK_RESOURCE_OPEN_TRUNCATE)) != 0 ||
+                ((flags & (NK_RESOURCE_OPEN_CREATE | NK_RESOURCE_OPEN_TRUNCATE)) != 0 &&
+                 (flags & NK_RESOURCE_OPEN_WRITE) == 0))
+                return invalid_argument("web resource open arguments are invalid");
+            *out_stream = NK_INVALID_HANDLE;
+            if ((flags & NK_RESOURCE_OPEN_READ) != 0)
+                return unsupported("browser resource reads use nk_resource_load_async");
+            if (!is_web_file_handle_uri(resource->uri))
+                return unsupported("web resource streams require a retained file handle");
+            if (!nk::web::has_resource_handle(resource->uri))
+                return unsupported("browser file handle is no longer available");
 
-        auto resource_stream = std::make_shared<WebResourceStream>();
-        resource_stream->uri = resource->uri;
-        resource_stream->flags = NK_RESOURCE_STREAM_WRITABLE |
-                                 NK_RESOURCE_STREAM_SEEKABLE |
-                                 NK_RESOURCE_STREAM_SIZE_KNOWN;
-        const auto handle = nk::core::handles().insert(nk::core::ResourceType::resource_stream,
-                                                       resource_stream);
-        if (handle == NK_INVALID_HANDLE)
-            return resource_error(NK_ERROR_OUT_OF_MEMORY,
-                                  "could not allocate web resource stream handle");
-        *out_stream = handle;
-        return NK_OK;
-    });
+            auto resource_stream = std::make_shared<WebResourceStream>();
+            resource_stream->uri = resource->uri;
+            resource_stream->flags = NK_RESOURCE_STREAM_WRITABLE | NK_RESOURCE_STREAM_SEEKABLE |
+                                     NK_RESOURCE_STREAM_SIZE_KNOWN;
+            const auto handle = nk::core::handles().insert(nk::core::ResourceType::resource_stream,
+                                                           resource_stream);
+            if (handle == NK_INVALID_HANDLE)
+                return resource_error(NK_ERROR_OUT_OF_MEMORY,
+                                      "could not allocate web resource stream handle");
+            *out_stream = handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_stream_info_get(nk_handle handle, nk_resource_stream_info *out_info) {
@@ -2299,31 +2290,31 @@ nk_result NK_CALL nk_resource_read(nk_handle handle, void *buffer, uint64_t size
 
 nk_result NK_CALL nk_resource_write(nk_handle handle, const void *buffer, uint64_t size,
                                     uint64_t *out_written) {
-    return nk::core::result_boundary("unexpected error while writing web resource",
-                                     [&]() -> nk_result {
-        if ((!buffer && size) || !out_written)
-            return resource_error(NK_ERROR_INVALID_ARGUMENT,
-                                  "web resource write arguments are invalid");
-        auto resource = get_resource_stream(handle);
-        if (!resource)
-            return NK_ERROR_INVALID_HANDLE;
-        std::lock_guard lock(resource->mutex);
-        if (!(resource->flags & NK_RESOURCE_STREAM_WRITABLE))
-            return resource_error(NK_ERROR_UNSUPPORTED, "web resource stream is not writable");
-        if (size > std::numeric_limits<uint64_t>::max() - resource->position)
-            return resource_error(NK_ERROR_INVALID_ARGUMENT, "web resource write is too large");
-        const auto end = resource->position + size;
-        if (end > std::numeric_limits<std::size_t>::max())
-            return resource_error(NK_ERROR_INVALID_ARGUMENT, "web resource write is too large");
-        if (end > resource->data.size())
-            resource->data.resize(static_cast<std::size_t>(end));
-        if (size != 0)
-            std::memcpy(resource->data.data() + static_cast<std::size_t>(resource->position),
-                        buffer, static_cast<std::size_t>(size));
-        resource->position = end;
-        *out_written = size;
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while writing web resource", [&]() -> nk_result {
+            if ((!buffer && size) || !out_written)
+                return resource_error(NK_ERROR_INVALID_ARGUMENT,
+                                      "web resource write arguments are invalid");
+            auto resource = get_resource_stream(handle);
+            if (!resource)
+                return NK_ERROR_INVALID_HANDLE;
+            std::lock_guard lock(resource->mutex);
+            if (!(resource->flags & NK_RESOURCE_STREAM_WRITABLE))
+                return resource_error(NK_ERROR_UNSUPPORTED, "web resource stream is not writable");
+            if (size > std::numeric_limits<uint64_t>::max() - resource->position)
+                return resource_error(NK_ERROR_INVALID_ARGUMENT, "web resource write is too large");
+            const auto end = resource->position + size;
+            if (end > std::numeric_limits<std::size_t>::max())
+                return resource_error(NK_ERROR_INVALID_ARGUMENT, "web resource write is too large");
+            if (end > resource->data.size())
+                resource->data.resize(static_cast<std::size_t>(end));
+            if (size != 0)
+                std::memcpy(resource->data.data() + static_cast<std::size_t>(resource->position),
+                            buffer, static_cast<std::size_t>(size));
+            resource->position = end;
+            *out_written = size;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_seek(nk_handle handle, int64_t offset, nk_seek_origin origin,
@@ -2359,27 +2350,28 @@ nk_result NK_CALL nk_resource_seek(nk_handle handle, int64_t offset, nk_seek_ori
 }
 
 nk_result NK_CALL nk_resource_close(nk_handle handle) {
-    return nk::core::result_boundary("unexpected error while closing web resource",
-                                     [&]() -> nk_result {
-        auto resource = get_resource_stream(handle);
-        if (!resource)
-            return NK_ERROR_INVALID_HANDLE;
-        PendingWebResourceWrite write;
-        {
-            std::lock_guard lock(resource->mutex);
-            if (resource->flags & NK_RESOURCE_STREAM_WRITABLE) {
-                write.uri = resource->uri;
-                write.data = resource->data;
+    return nk::core::result_boundary(
+        "unexpected error while closing web resource", [&]() -> nk_result {
+            auto resource = get_resource_stream(handle);
+            if (!resource)
+                return NK_ERROR_INVALID_HANDLE;
+            PendingWebResourceWrite write;
+            {
+                std::lock_guard lock(resource->mutex);
+                if (resource->flags & NK_RESOURCE_STREAM_WRITABLE) {
+                    write.uri = resource->uri;
+                    write.data = resource->data;
+                }
             }
-        }
-        if (write.uri.size() != 0) {
-            std::lock_guard lock(pending_resource_writes_mutex);
-            pending_resource_writes.push_back(std::move(write));
-        }
-        if (!nk::core::handles().erase(handle, nk::core::ResourceType::resource_stream))
-            return resource_error(NK_ERROR_INVALID_HANDLE, "invalid web resource stream handle");
-        return NK_OK;
-    });
+            if (write.uri.size() != 0) {
+                std::lock_guard lock(pending_resource_writes_mutex);
+                pending_resource_writes.push_back(std::move(write));
+            }
+            if (!nk::core::handles().erase(handle, nk::core::ResourceType::resource_stream))
+                return resource_error(NK_ERROR_INVALID_HANDLE,
+                                      "invalid web resource stream handle");
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -2474,7 +2466,7 @@ nk_result NK_CALL nk_window_show(nk_handle handle, nk_bool visible) {
     for (const auto surface_handle : window->surfaces) {
         if (auto surface = get_surface(surface_handle))
             nk::web::set_accessibility_visible(surface->handle,
-                                                window->visible && surface->visible);
+                                               window->visible && surface->visible);
     }
     queue_window_state(*window);
     return NK_OK;
@@ -2596,8 +2588,7 @@ nk_result NK_CALL nk_window_request_attention(nk_handle) {
     return unsupported("browser canvases have no window-manager attention state");
 }
 
-nk_result NK_CALL nk_window_set_size_limits(nk_handle handle,
-                                            const nk_window_size_limits *limits) {
+nk_result NK_CALL nk_window_set_size_limits(nk_handle handle, const nk_window_size_limits *limits) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
     if (!limits || limits->struct_size < sizeof(*limits) || limits->min_width < 0 ||
@@ -2777,8 +2768,8 @@ nk_result NK_CALL nk_surface_accessibility_remove_node(nk_handle handle,
             auto surface = get_surface(handle);
             if (!surface)
                 return invalid_handle("invalid web accessibility surface handle");
-            if (!node || surface->accessibility_nodes.find(node) ==
-                              surface->accessibility_nodes.end())
+            if (!node ||
+                surface->accessibility_nodes.find(node) == surface->accessibility_nodes.end())
                 return invalid_argument("invalid or unknown Web accessibility node");
             remove_web_accessibility_descendants(surface->accessibility_nodes, node);
             if (surface->accessibility_nodes.find(surface->accessibility_focus) ==
@@ -2805,7 +2796,7 @@ nk_result NK_CALL nk_surface_accessibility_clear(nk_handle handle) {
 }
 
 nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle handle,
-                                                    nk_accessibility_node_id node) {
+                                                     nk_accessibility_node_id node) {
     return nk::core::result_boundary(
         "unexpected error while focusing a Web accessibility node", [&]() -> nk_result {
             if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
@@ -2813,8 +2804,8 @@ nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle handle,
             auto surface = get_surface(handle);
             if (!surface)
                 return invalid_handle("invalid web accessibility surface handle");
-            if (node != NK_ACCESSIBILITY_ROOT && surface->accessibility_nodes.find(node) ==
-                                                    surface->accessibility_nodes.end())
+            if (node != NK_ACCESSIBILITY_ROOT &&
+                surface->accessibility_nodes.find(node) == surface->accessibility_nodes.end())
                 return invalid_argument("cannot focus an unknown Web accessibility node");
             surface->accessibility_focus = node;
             refresh_web_accessibility(*surface);
@@ -2852,9 +2843,8 @@ nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
                     copy.text_ranges = old->second.text_ranges;
                 nodes[node.id] = std::move(copy);
             }
-            if ((update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS) && update->focus !=
-                                                                  NK_ACCESSIBILITY_ROOT &&
-                nodes.find(update->focus) == nodes.end())
+            if ((update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS) &&
+                update->focus != NK_ACCESSIBILITY_ROOT && nodes.find(update->focus) == nodes.end())
                 return invalid_argument("Web accessibility update focuses an unknown node");
             surface->accessibility_nodes = std::move(nodes);
             if (update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS)
@@ -2879,8 +2869,7 @@ nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
             if (!surface)
                 return invalid_handle("invalid web accessibility surface handle");
             const auto found = surface->accessibility_nodes.find(node);
-            if (!node || found == surface->accessibility_nodes.end() ||
-                (range_count && !ranges))
+            if (!node || found == surface->accessibility_nodes.end() || (range_count && !ranges))
                 return invalid_argument("invalid Web accessibility text ranges");
             std::vector<WebAccessibilityTextRange> copy;
             copy.reserve(range_count);
@@ -2892,8 +2881,8 @@ nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
                     !std::isfinite(range.y) || !std::isfinite(range.width) ||
                     !std::isfinite(range.height) || range.width < 0 || range.height < 0)
                     return invalid_argument("invalid or unordered Web accessibility text ranges");
-                copy.push_back({range.start, range.end, range.x, range.y, range.width,
-                                range.height});
+                copy.push_back(
+                    {range.start, range.end, range.x, range.y, range.width, range.height});
                 previous = range.end;
             }
             found->second.text_ranges = std::move(copy);
