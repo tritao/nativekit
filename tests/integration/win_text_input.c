@@ -121,37 +121,61 @@ static int wait_for_text(nk_window window, uint32_t codepoint) {
     return 0;
 }
 
-static int verify_edit(const nk_event *event, nk_text_edit_action action,
-                       nk_text_position replace_start, nk_text_position replace_end,
-                       nk_text_position selection_start, nk_text_position selection_end,
-                       nk_text_position composition_start, nk_text_position composition_end,
-                       const char *text) {
+static int send_virtual_key(WORD key) {
+    INPUT inputs[2] = {0};
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = key;
+    inputs[1] = inputs[0];
+    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    return SendInput(2, inputs, sizeof(inputs[0])) == 2;
+}
+
+static int send_ime_roman(const char *letters) {
+    for (const char *letter = letters; *letter; ++letter) {
+        if (*letter < 'A' || *letter > 'Z' || !send_virtual_key((WORD)*letter))
+            return 0;
+        Sleep(30);
+    }
+    return 1;
+}
+
+static int verify_native_composition(const nk_event *event) {
     nk_text_edit_event edit = {0};
     memcpy(&edit, event->data, sizeof(edit));
-    if (edit.action != action)
-        return 1;
-    if (edit.replace_start != replace_start)
-        return 1;
-    if (edit.replace_end != replace_end)
-        return 1;
-    if (edit.composition_start != composition_start)
-        return 1;
-    if (edit.composition_end != composition_end)
-        return 1;
-    if (action == NK_TEXT_EDIT_COMPOSE || action == NK_TEXT_EDIT_FINISH_COMPOSITION) {
-        if (edit.selection_start != edit.selection_end || edit.selection_start < 2 ||
-            edit.selection_start > 7)
-            return 1;
-    } else if (edit.selection_start != selection_start || edit.selection_end != selection_end) {
-        return 1;
-    }
     const char *event_text = NULL;
     uint32_t event_length = 0;
-    if (nk_text_edit_event_text(event, &event_text, &event_length) != NK_OK ||
-        event_length != strlen(text) ||
-        (event_length != 0 && memcmp(event_text, text, event_length) != 0))
-        return 1;
-    return 0;
+    return edit.action == NK_TEXT_EDIT_COMPOSE && edit.replace_start == 2 &&
+           edit.replace_end == 2 && edit.composition_start == 2 && edit.composition_end > 2 &&
+           edit.selection_start == edit.selection_end &&
+           nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK &&
+           event_length != 0;
+}
+
+static int verify_native_commit(const nk_event *event) {
+    nk_text_edit_event edit = {0};
+    memcpy(&edit, event->data, sizeof(edit));
+    const char *event_text = NULL;
+    uint32_t event_length = 0;
+    return edit.action == NK_TEXT_EDIT_COMMIT && edit.replace_start == 2 &&
+           edit.replace_end > edit.replace_start && edit.selection_start == edit.selection_end &&
+           edit.selection_start > edit.replace_start &&
+           edit.composition_start == NK_TEXT_POSITION_NONE &&
+           edit.composition_end == NK_TEXT_POSITION_NONE &&
+           nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK &&
+           event_length != 0;
+}
+
+static int verify_native_finish(const nk_event *event) {
+    nk_text_edit_event edit = {0};
+    memcpy(&edit, event->data, sizeof(edit));
+    const char *event_text = NULL;
+    uint32_t event_length = 0;
+    return edit.action == NK_TEXT_EDIT_FINISH_COMPOSITION &&
+           edit.selection_start == edit.selection_end &&
+           edit.composition_start == NK_TEXT_POSITION_NONE &&
+           edit.composition_end == NK_TEXT_POSITION_NONE &&
+           nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK &&
+           event_length == 0;
 }
 
 int main(void) {
@@ -244,76 +268,57 @@ int main(void) {
 
     if (!ImmSetOpenStatus(context, TRUE))
         return skip_test(window, hwnd, context);
-    SendMessageW(hwnd, WM_IME_STARTCOMPOSITION, 0, 0);
-    const wchar_t preedit[] = L"kanji";
-    const DWORD preedit_bytes = (DWORD)(wcslen(preedit) * sizeof(wchar_t));
-    const BOOL injected = ImmSetCompositionStringW(context, SCS_SETSTR, (void *)preedit,
-                                                    preedit_bytes, NULL, 0);
-    fprintf(stderr, "win_text_input: injected=%d\n", injected ? 1 : 0);
+    const BOOL conversion_set = ImmSetConversionStatus(
+        context, IME_CMODE_NATIVE | IME_CMODE_ROMAN, IME_SMODE_NONE);
+    fprintf(stderr, "win_text_input: conversion_set=%d\n", conversion_set ? 1 : 0);
     int composition_supported = 0;
-    if (injected) {
-        SendMessageW(hwnd, WM_IME_COMPOSITION, 0, GCS_COMPSTR | GCS_CURSORPOS);
+    if (ime_profile && conversion_set && send_ime_roman("KANJI")) {
         nk_event compose = {0};
         compose.struct_size = sizeof(compose);
         if (!wait_for_edit(window, NK_TEXT_EDIT_COMPOSE, &compose))
             return skip_test(window, hwnd, context);
-        const char *compose_text = NULL;
-        uint32_t compose_length = 0;
-        if (nk_text_edit_event_text(&compose, &compose_text, &compose_length) != NK_OK ||
-            compose_length == 0) {
+        if (!verify_native_composition(&compose)) {
             nk_event_release(&compose);
-        } else {
-            const int compose_result =
-                verify_edit(&compose, NK_TEXT_EDIT_COMPOSE, 2, 2, 2, 2, 2, 7, "kanji");
-            if (compose_result != 0) {
-                nk_event_release(&compose);
-                return 2;
-            }
-            nk_event_release(&compose);
-
-            if (!ImmNotifyIME(context, NI_COMPOSITIONSTR, CPS_COMPLETE, 0))
-                return skip_test(window, hwnd, context);
-            nk_event commit = {0};
-            commit.struct_size = sizeof(commit);
-            if (!wait_for_edit(window, NK_TEXT_EDIT_COMMIT, &commit))
-                return skip_test(window, hwnd, context);
-            const int commit_result =
-                verify_edit(&commit, NK_TEXT_EDIT_COMMIT, 2, 7, 7, 7,
-                            NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, "kanji");
-            nk_event_release(&commit);
-            if (commit_result != 0)
-                return 2;
-
-            SendMessageW(hwnd, WM_IME_STARTCOMPOSITION, 0, 0);
-            const wchar_t cancelled[] = L"cancel";
-            const DWORD cancelled_bytes = (DWORD)(wcslen(cancelled) * sizeof(wchar_t));
-            if (!ImmSetCompositionStringW(context, SCS_SETSTR, (void *)cancelled,
-                                           cancelled_bytes, NULL, 0))
-                return skip_test(window, hwnd, context);
-            SendMessageW(hwnd, WM_IME_COMPOSITION, 0, GCS_COMPSTR | GCS_CURSORPOS);
-            nk_event cancelled_compose = {0};
-            cancelled_compose.struct_size = sizeof(cancelled_compose);
-            if (!wait_for_edit(window, NK_TEXT_EDIT_COMPOSE, &cancelled_compose))
-                return skip_test(window, hwnd, context);
-            nk_event_release(&cancelled_compose);
-            if (!ImmNotifyIME(context, NI_COMPOSITIONSTR, CPS_CANCEL, 0))
-                return skip_test(window, hwnd, context);
-            SendMessageW(hwnd, WM_IME_ENDCOMPOSITION, 0, 0);
-            nk_event finish = {0};
-            finish.struct_size = sizeof(finish);
-            if (!wait_for_edit(window, NK_TEXT_EDIT_FINISH_COMPOSITION, &finish))
-                return skip_test(window, hwnd, context);
-            const int finish_result =
-                verify_edit(&finish, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
-                            NK_TEXT_POSITION_NONE, 2, 2, NK_TEXT_POSITION_NONE,
-                            NK_TEXT_POSITION_NONE, "");
-            if (finish_result != 0) {
-                nk_event_release(&finish);
-                return 2;
-            }
-            nk_event_release(&finish);
-            composition_supported = 1;
+            return 2;
         }
+        nk_event_release(&compose);
+
+        if (!send_virtual_key(VK_RETURN))
+            return skip_test(window, hwnd, context);
+        nk_event commit = {0};
+        commit.struct_size = sizeof(commit);
+        if (!wait_for_edit(window, NK_TEXT_EDIT_COMMIT, &commit))
+            return skip_test(window, hwnd, context);
+        if (!verify_native_commit(&commit)) {
+            nk_event_release(&commit);
+            return 2;
+        }
+        nk_event_release(&commit);
+
+        if (!send_ime_roman("KANJI"))
+            return skip_test(window, hwnd, context);
+        nk_event cancelled_compose = {0};
+        cancelled_compose.struct_size = sizeof(cancelled_compose);
+        if (!wait_for_edit(window, NK_TEXT_EDIT_COMPOSE, &cancelled_compose))
+            return skip_test(window, hwnd, context);
+        if (!verify_native_composition(&cancelled_compose)) {
+            nk_event_release(&cancelled_compose);
+            return 2;
+        }
+        nk_event_release(&cancelled_compose);
+
+        if (!send_virtual_key(VK_ESCAPE))
+            return skip_test(window, hwnd, context);
+        nk_event finish = {0};
+        finish.struct_size = sizeof(finish);
+        if (!wait_for_edit(window, NK_TEXT_EDIT_FINISH_COMPOSITION, &finish))
+            return skip_test(window, hwnd, context);
+        if (!verify_native_finish(&finish)) {
+            nk_event_release(&finish);
+            return 2;
+        }
+        nk_event_release(&finish);
+        composition_supported = 1;
     }
 
     ImmReleaseContext(hwnd, context);
@@ -324,5 +329,5 @@ int main(void) {
     assert(nk_surface_set_text_input_active(window, 0) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);
     nk_shutdown();
-    return injected && composition_supported ? 0 : 77;
+    return composition_supported ? 0 : 77;
 }
