@@ -88,6 +88,9 @@ serving WOFF2 would require a WOFF2 decoder before calling `FontCollection.addDa
 Supported GNU and Clang native builds enable function/data sections and linker
 section garbage collection by default. Set `NKUI_ENABLE_SECTION_GC=OFF` to
 disable this size optimization for a toolchain that does not support it.
+Native shared builds also use HarfBuzz's `HB_MINI` profile by default, removing
+legacy and AAT shaping from the private copy while retaining OpenType shaping.
+Set `NKUI_ENABLE_HARFBUZZ_MINI=OFF` when those font formats are required.
 
 The browser owns the frame loop through `nk_surface_set_frame_callback()`;
 Emscripten types do not appear in NativeKit's public headers.
