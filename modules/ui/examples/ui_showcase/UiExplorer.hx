@@ -23,6 +23,7 @@ import nativekit.ui.animation.SpringController;
 import nativekit.ui.theme.Theme;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
+import nativekit.ui.widgets.DefaultTextStyle;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Row;
 import nativekit.ui.widgets.Slider;
@@ -32,6 +33,8 @@ import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TextArea;
 import nativekit.ui.widgets.TextEditorDiagnostics;
 import nativekit.ui.widgets.TextField;
+import nativekit.ui.core.TextStyleOverride;
+import TextWrap;
 import nativekit.ui.widgets.VirtualList;
 import ExplorerCatalog;
 import shell.ExplorerShell;
@@ -211,11 +214,11 @@ class UiExplorer {
 		return new Stack("showcase-root", layers, rootStyle);
 	}
 
-	function buildShell():Column {
+	function buildShell():View {
 		return ExplorerShell.build(this);
 	}
 
-	function buildPage():Column {
+	function buildPage():View {
 		var items:Array<KeyedView> = [];
 		var page = ExplorerCatalog.find(state.selectedPage);
 		if (page == null)
@@ -226,11 +229,13 @@ class UiExplorer {
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.fit();
 		style.childGap = 16.0;
-		return new Column("page-content-" + (page == null ? "overview" : page.id), items, style);
+		var pageContent = new Column("page-content-" + (page == null ? "overview" : page.id), items, style);
+		return new DefaultTextStyle(pageContent,
+			TextStyleOverride.paragraph(TextWrap.WordCharacter));
 	}
 
 	function pageHeading(items:Array<KeyedView>, title:String, description:String):Void {
-		PageHeader.append(items, title, description, paletteText(), paletteMuted());
+		PageHeader.append(items, title, description);
 	}
 
 	function buildInspector():Column {
@@ -317,20 +322,23 @@ class UiExplorer {
 	function keyed(key:String, view:View):KeyedView
 		return ShowcaseKit.keyed(key, view);
 
-	function text(value:String, color:Color):Text
+	function text(value:String, ?color:Color):Text
 		return ShowcaseKit.text(value, color);
+
+	function heading(value:String):Text
+		return ShowcaseKit.heading(value);
+
+	function caption(value:String):Text
+		return ShowcaseKit.caption(value);
+
+	function label(value:String):Text
+		return ShowcaseKit.label(value);
 
 	function paletteBackground():Color
 		return ShowcaseKit.paletteBackground(this);
 
 	function paletteSidebar():Color
 		return ShowcaseKit.paletteSidebar(this);
-
-	function paletteText():Color
-		return ShowcaseKit.paletteText(this);
-
-	function paletteMuted():Color
-		return ShowcaseKit.paletteMuted(this);
 
 	static function makeTheme(light:Bool):Theme
 		return ShowcaseKit.makeTheme(light);

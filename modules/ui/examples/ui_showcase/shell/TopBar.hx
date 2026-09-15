@@ -23,9 +23,9 @@ class TopBar {
 		style.background = explorer.paletteSidebar();
 		var children:Array<KeyedView> = [
 			explorer.keyed("brand-mark", explorer.text("NK", UiExplorer.color(0.31, 0.91, 0.72))),
-			explorer.keyed("brand", explorer.text("NativeKit UI Explorer", explorer.paletteText())),
+			explorer.keyed("brand", explorer.heading("NativeKit UI Explorer")),
 			explorer.keyed("space", new Spacer("top-spacer", LayoutAxis.grow(), LayoutAxis.fit())),
-			explorer.keyed("platform", explorer.text(explorer.platformLabel, explorer.paletteMuted())),
+			explorer.keyed("platform", explorer.caption(explorer.platformLabel)),
 			explorer.keyed("theme", explorer.button(explorer.state.lightTheme ? "Light theme" : "Dark theme",
 				"theme-toggle", function() {
 					explorer.state.lightTheme = !explorer.state.lightTheme;

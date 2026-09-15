@@ -30,8 +30,8 @@ class InspectorPanel {
 		var issues:Array<AccessibilityIssue> = explorer.context.auditAccessibility();
 		var selected = chooseInspectionRecord(explorer, records);
 		var children:Array<KeyedView> = [
-			explorer.keyed("title", explorer.text("INSPECT", explorer.paletteText())),
-			explorer.keyed("subtitle", explorer.text("Hover to preview · click to pin", explorer.paletteMuted())),
+			explorer.keyed("title", explorer.heading("INSPECT")),
+			explorer.keyed("subtitle", explorer.caption("Hover to preview · click to pin")),
 			explorer.keyed("tab-row-one", new Row("inspector-tab-row-one", [
 				explorer.keyed("preview", tabButton(explorer, "Preview", "preview")),
 				explorer.keyed("state", tabButton(explorer, "State", "state"))
@@ -70,88 +70,83 @@ class InspectorPanel {
 			records:Array<UiNodeSnapshot>, issues:Array<AccessibilityIssue>):Column {
 		var children:Array<KeyedView> = [];
 		if (record == null) {
-			children.push(explorer.keyed("empty", explorer.text(
-				"Move over a widget in the preview to inspect it. Click to keep it selected.",
-				explorer.paletteMuted())));
+			children.push(explorer.keyed("empty", explorer.caption(
+				"Move over a widget in the preview to inspect it. Click to keep it selected.")));
 			return new Column("inspector-empty-content", children);
 		}
 		var label = record.label == null || record.label.length == 0 ? "Unnamed node" : record.label;
-		children.push(explorer.keyed("selected-label", explorer.text(label, explorer.paletteText())));
-		children.push(explorer.keyed("selected-id", explorer.text(
-			'#${record.id} · ${WidgetDocsRegistry.visualName(record.visualKind)} · ${WidgetDocsRegistry.roleName(record.role)}',
-			explorer.paletteMuted())));
+		children.push(explorer.keyed("selected-label", explorer.heading(label)));
+		children.push(explorer.keyed("selected-id", explorer.caption(
+			'#${record.id} · ${WidgetDocsRegistry.visualName(record.visualKind)} · ${WidgetDocsRegistry.roleName(record.role)}'
+		)));
 		switch explorer.state.inspector.tab {
 			case "state":
-				children.push(explorer.keyed("state-heading", explorer.text("LIVE STATE", explorer.paletteText())));
+				children.push(explorer.keyed("state-heading", explorer.label("LIVE STATE")));
 				children.push(PropertyRow.build("state-focus",
-					'focused=${record.focused}  focusable=${record.focusable}', explorer.paletteMuted()));
+					'focused=${record.focused}  focusable=${record.focusable}'));
 				children.push(PropertyRow.build("state-pointer",
-					'hovered=${record.hovered}  pressed=${record.pressed}', explorer.paletteMuted()));
+					'hovered=${record.hovered}  pressed=${record.pressed}'));
 				children.push(PropertyRow.build("state-enabled",
-					'enabled=${record.enabled}  visible=${record.visible}', explorer.paletteMuted()));
+					'enabled=${record.enabled}  visible=${record.visible}'));
 				children.push(PropertyRow.build("state-value",
-					'value=${record.value == null ? "(none)" : record.value}', explorer.paletteMuted()));
+					'value=${record.value == null ? "(none)" : record.value}'));
 				children.push(PropertyRow.build("state-semantic",
-					'semantic states: ${WidgetDocsRegistry.semanticStateNames(record.semanticStates)}',
-					explorer.paletteMuted()));
+					'semantic states: ${WidgetDocsRegistry.semanticStateNames(record.semanticStates)}'));
 				children.push(PropertyRow.build("state-bounds",
-					'bounds: ${WidgetDocsRegistry.rectText(record.bounds)}\nclip: ${WidgetDocsRegistry.rectText(record.clipBounds)}\nz-order: ${record.zIndex}',
-					explorer.paletteMuted()));
+					'bounds: ${WidgetDocsRegistry.rectText(record.bounds)}\nclip: ${WidgetDocsRegistry.rectText(record.clipBounds)}\nz-order: ${record.zIndex}'));
 			case "semantics":
-				children.push(explorer.keyed("sem-heading", explorer.text("ACCESSIBILITY", explorer.paletteText())));
+				children.push(explorer.keyed("sem-heading", explorer.label("ACCESSIBILITY")));
 				children.push(PropertyRow.build("sem-role",
-					'role: ${WidgetDocsRegistry.roleName(record.role)}', explorer.paletteMuted()));
-				children.push(PropertyRow.build("sem-label", 'label: ${label}', explorer.paletteMuted()));
+					'role: ${WidgetDocsRegistry.roleName(record.role)}'));
+				children.push(PropertyRow.build("sem-label", 'label: ${label}'));
 				children.push(PropertyRow.build("sem-value",
-					'value: ${record.value == null ? "(none)" : record.value}', explorer.paletteMuted()));
+					'value: ${record.value == null ? "(none)" : record.value}'));
 				children.push(PropertyRow.build("sem-states",
-					'states: ${WidgetDocsRegistry.semanticStateNames(record.semanticStates)}',
-					explorer.paletteMuted()));
+					'states: ${WidgetDocsRegistry.semanticStateNames(record.semanticStates)}'));
 				children.push(PropertyRow.build("sem-actions",
-					'actions: ${WidgetDocsRegistry.actionNames(record.actions)}', explorer.paletteMuted()));
+					'actions: ${WidgetDocsRegistry.actionNames(record.actions)}'));
 				var nodeIssues:Array<String> = [];
 				for (issue in issues)
 					if (issue.nodeId == record.id)
 						nodeIssues.push(issue.code + ": " + issue.message);
 				children.push(explorer.keyed("sem-audit-heading",
-					explorer.text("AUDIT FINDINGS", explorer.paletteText())));
+					explorer.label("AUDIT FINDINGS")));
 				children.push(explorer.keyed("sem-audit", explorer.text(nodeIssues.length == 0
 					? "No accessibility issues for this node." : nodeIssues.join("\n"),
 					nodeIssues.length == 0 ? UiExplorer.color(0.35, 0.85, 0.69)
 						: UiExplorer.color(0.96, 0.58, 0.31))));
 			case "tree":
-				children.push(explorer.keyed("tree-heading", explorer.text("ANCESTRY", explorer.paletteText())));
+				children.push(explorer.keyed("tree-heading", explorer.label("ANCESTRY")));
 				for (line in treeAncestry(record, records))
 					children.push(explorer.keyed("ancestor-" + children.length,
-						explorer.text(line, explorer.paletteMuted())));
+						explorer.caption(line)));
 				children.push(explorer.keyed("children-heading",
-					explorer.text("CHILD NODES", explorer.paletteText())));
+					explorer.label("CHILD NODES")));
 				var shown = 0;
 				for (child in records)
-					if (child.parentId == record.id && shown < 8) {
-						children.push(explorer.keyed('child-${shown}',
-							explorer.text(treeNodeText(child), explorer.paletteMuted())));
+				if (child.parentId == record.id && shown < 8) {
+					children.push(explorer.keyed('child-${shown}',
+						explorer.caption(treeNodeText(child))));
 						shown++;
 					}
 				if (shown == 0)
 					children.push(explorer.keyed("tree-leaf",
-						explorer.text("No child render nodes.", explorer.paletteMuted())));
+						explorer.caption("No child render nodes.")));
 			default:
 				var synopsis = WidgetDocsRegistry.describe(record.role);
-				children.push(explorer.keyed("preview-heading", explorer.text("WHAT THIS IS", explorer.paletteText())));
+				children.push(explorer.keyed("preview-heading", explorer.label("WHAT THIS IS")));
 				children.push(explorer.keyed("preview-description",
-					explorer.text(synopsis.description, explorer.paletteMuted())));
-				children.push(explorer.keyed("behavior-heading", explorer.text("BEHAVIOR", explorer.paletteText())));
+					explorer.caption(synopsis.description)));
+				children.push(explorer.keyed("behavior-heading", explorer.label("BEHAVIOR")));
 				children.push(explorer.keyed("behavior-description",
-					explorer.text(synopsis.behavior, explorer.paletteMuted())));
-				children.push(explorer.keyed("code-heading", explorer.text("HAXE", explorer.paletteText())));
+					explorer.caption(synopsis.behavior)));
+				children.push(explorer.keyed("code-heading", explorer.label("HAXE")));
 				children.push(CodeSample.build("code-snippet", synopsis.code,
 					UiExplorer.color(0.48, 0.82, 0.75)));
 				children.push(explorer.keyed("geometry-heading",
-					explorer.text("RESOLVED GEOMETRY", explorer.paletteText())));
-				children.push(explorer.keyed("geometry", explorer.text(
-					'bounds ${WidgetDocsRegistry.rectText(record.bounds)}\nclip ${WidgetDocsRegistry.rectText(record.clipBounds)}\nz ${record.zIndex}',
-					explorer.paletteMuted())));
+					explorer.label("RESOLVED GEOMETRY")));
+				children.push(explorer.keyed("geometry", explorer.caption(
+					'bounds ${WidgetDocsRegistry.rectText(record.bounds)}\nclip ${WidgetDocsRegistry.rectText(record.clipBounds)}\nz ${record.zIndex}')));
 		}
 		return new Column("inspector-content-" + explorer.state.inspector.tab, children,
 			explorer.panelStyle());

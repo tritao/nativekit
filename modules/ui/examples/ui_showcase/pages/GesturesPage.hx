@@ -64,16 +64,15 @@ class GesturesPage {
 				function(_) { explorer.state.gestures.message = "Drag ended."; })
 		], cardStyle);
 		items.push(explorer.keyed("gesture-playground", explorer.panel("gesture-playground-card", [
-			explorer.keyed("heading", explorer.text("Gesture arena", explorer.paletteText())),
-			explorer.keyed("copy", explorer.text("Tap and double-tap the card, hold for a long press, or move past the drag threshold. A recognized drag cancels tap delivery.", explorer.paletteMuted())),
+			explorer.keyed("heading", explorer.heading("Gesture arena")),
+			explorer.keyed("copy", explorer.caption("Tap and double-tap the card, hold for a long press, or move past the drag threshold. A recognized drag cancels tap delivery.")),
 			explorer.keyed("stage", new Stack("gesture-playground-stage", [
 				new StackChild("draggable-card", detector, explorer.state.gestures.dragCardX, explorer.state.gestures.dragCardY, 1,
 					LayoutAxis.fixed(230.0), LayoutAxis.fixed(48.0))
 			], stageStyle)),
 			explorer.keyed("gesture-status", explorer.text(explorer.state.gestures.message,
 				UiExplorer.color(0.35, 0.85, 0.69))),
-			explorer.keyed("gesture-counts", explorer.text('Tap ${explorer.state.gestures.tapCount}  ·  Double tap ${explorer.state.gestures.doubleTapCount}  ·  Long press ${explorer.state.gestures.longPressCount}  ·  Drag ${explorer.state.gestures.dragCount}',
-				explorer.paletteMuted()))
+			explorer.keyed("gesture-counts", explorer.caption('Tap ${explorer.state.gestures.tapCount}  ·  Double tap ${explorer.state.gestures.doubleTapCount}  ·  Long press ${explorer.state.gestures.longPressCount}  ·  Drag ${explorer.state.gestures.dragCount}'))
 		])));
 
 		var motionStyle = explorer.panelStyle();
@@ -81,8 +80,8 @@ class GesturesPage {
 		var tweenX = 8.0 + explorer.state.gestures.tweenValue * 150.0;
 		var springX = 8.0 + explorer.state.gestures.springValue * 150.0;
 		items.push(explorer.keyed("motion-playground", explorer.panel("motion-playground-card", [
-			explorer.keyed("heading", explorer.text("Animated properties", explorer.paletteText())),
-			explorer.keyed("copy", explorer.text("These cards move by rebuilding positioned layout from Haxe-owned tween and spring values.", explorer.paletteMuted())),
+			explorer.keyed("heading", explorer.heading("Animated properties")),
+			explorer.keyed("copy", explorer.caption("These cards move by rebuilding positioned layout from Haxe-owned tween and spring values.")),
 			explorer.keyed("stage", new Stack("motion-stage", [
 				new StackChild("tween-marker", motionMarker("Tween", UiExplorer.color(0.20, 0.52, 0.82)), tweenX, 12.0, 1),
 				new StackChild("spring-marker", motionMarker("Spring", UiExplorer.color(0.24, 0.58, 0.48)), springX, 66.0, 1)
@@ -96,8 +95,7 @@ class GesturesPage {
 					explorer.springController.setTarget(explorer.state.gestures.springValue < 0.5 ? 1.0 : 0.18);
 				}))
 			], explorer.rowStyle(10.0))),
-			explorer.keyed("motion-values", explorer.text('Tween ${Std.int(explorer.state.gestures.tweenValue * 100)}%  ·  Spring ${Std.int(explorer.state.gestures.springValue * 100)}%',
-				explorer.paletteMuted()))
+			explorer.keyed("motion-values", explorer.caption('Tween ${Std.int(explorer.state.gestures.tweenValue * 100)}%  ·  Spring ${Std.int(explorer.state.gestures.springValue * 100)}%'))
 		])));
 	}
 

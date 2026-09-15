@@ -3,7 +3,6 @@ package pages;
 import Insets;
 import LayoutAxis;
 import LayoutStyle;
-import TextStyle;
 import UiExplorer;
 import nativekit.ui.core.UiKey;
 import nativekit.ui.widgets.KeyedView;
@@ -20,28 +19,28 @@ class TextPage {
 
 		items.push(explorer.keyed("text-editors", new Row("text-editors", [
 			explorer.keyed("latin-and-rtl", explorer.panel("latin-and-rtl-card", [
-				explorer.keyed("heading", explorer.text("Latin, Arabic & Hebrew", explorer.paletteText())),
-				explorer.keyed("latin-label", explorer.text("Display name · Enter submits", explorer.paletteMuted())),
+				explorer.keyed("heading", explorer.heading("Latin, Arabic & Hebrew")),
+				explorer.keyed("latin-label", explorer.label("Display name · Enter submits")),
 				explorer.keyed("latin", editor(explorer, "demo-name", explorer.state.controls.nameValue,
 				"Display name", false, function(value) {
 					explorer.state.controls.nameValue = value;
 				})),
-				explorer.keyed("arabic-label", explorer.text("Arabic", explorer.paletteMuted())),
+				explorer.keyed("arabic-label", explorer.label("Arabic")),
 				explorer.keyed("arabic", editor(explorer, "text-arabic", explorer.state.textArabicValue,
 				"Arabic", false, function(value) { explorer.state.textArabicValue = value; })),
-				explorer.keyed("hebrew-label", explorer.text("Hebrew", explorer.paletteMuted())),
+				explorer.keyed("hebrew-label", explorer.label("Hebrew")),
 				explorer.keyed("hebrew", editor(explorer, "text-hebrew", explorer.state.textHebrewValue,
 				"Hebrew", false, function(value) { explorer.state.textHebrewValue = value; }))
 			])),
 			explorer.keyed("cjk-and-emoji", explorer.panel("cjk-and-emoji-card", [
-				explorer.keyed("heading", explorer.text("Japanese, emoji & multiline", explorer.paletteText())),
-				explorer.keyed("japanese-label", explorer.text("Japanese", explorer.paletteMuted())),
+				explorer.keyed("heading", explorer.heading("Japanese, emoji & multiline")),
+				explorer.keyed("japanese-label", explorer.label("Japanese")),
 				explorer.keyed("japanese", editor(explorer, "text-japanese", explorer.state.textJapaneseValue,
 				"Japanese", false, function(value) { explorer.state.textJapaneseValue = value; })),
-				explorer.keyed("emoji-label", explorer.text("Emoji", explorer.paletteMuted())),
+				explorer.keyed("emoji-label", explorer.label("Emoji")),
 				explorer.keyed("emoji", editor(explorer, "text-emoji", explorer.state.textEmojiValue,
 				"Emoji", false, function(value) { explorer.state.textEmojiValue = value; })),
-				explorer.keyed("notes-label", explorer.text("Multilingual notes · ↑ / ↓ and Home / End are line-aware", explorer.paletteMuted())),
+				explorer.keyed("notes-label", explorer.caption("Multilingual notes · ↑ / ↓ and Home / End are line-aware")),
 				explorer.keyed("notes", editor(explorer, "demo-notes", explorer.state.controls.notesValue,
 				"Multilingual notes", true, function(value) {
 					explorer.state.controls.notesValue = value;
@@ -50,8 +49,8 @@ class TextPage {
 		], explorer.rowStyle(14.0))));
 
 		items.push(explorer.keyed("text-actions", explorer.panel("text-actions-card", [
-			explorer.keyed("heading", explorer.text("Clipboard & focus tests", explorer.paletteText())),
-			explorer.keyed("copy", explorer.text("The buttons focus Display name before invoking the same shortcuts used by the platform keyboard.", explorer.paletteMuted())),
+			explorer.keyed("heading", explorer.heading("Clipboard & focus tests")),
+			explorer.keyed("copy", explorer.caption("The buttons focus Display name before invoking the same shortcuts used by the platform keyboard.")),
 			explorer.keyed("buttons", new Row("text-action-buttons", [
 				explorer.keyed("copy-button", explorer.button("Copy", "text-copy", function() {
 					if (explorer.textCommand("Display name", UiKey.C))
@@ -78,15 +77,15 @@ class TextPage {
 					explorer.focusTextEditor("Multilingual notes");
 				}))
 		], explorer.rowStyle(8.0))),
-			explorer.keyed("tab-hint", explorer.text("Tab order: Display name → Arabic → Hebrew → Japanese → Emoji → Multilingual notes. Shift+Tab reverses it.", explorer.paletteMuted())),
-			explorer.keyed("clipboard-status", explorer.text(explorer.state.textLastClipboardAction, explorer.paletteText())),
-			explorer.keyed("submit-status", explorer.text("Submit: ${explorer.state.textLastSubmit}", explorer.paletteText()))
+			explorer.keyed("tab-hint", explorer.caption("Tab order: Display name → Arabic → Hebrew → Japanese → Emoji → Multilingual notes. Shift+Tab reverses it.")),
+			explorer.keyed("clipboard-status", explorer.label(explorer.state.textLastClipboardAction)),
+			explorer.keyed("submit-status", explorer.label("Submit: ${explorer.state.textLastSubmit}"))
 		])));
 
 		items.push(explorer.keyed("text-diagnostics", explorer.panel("text-diagnostics-card", [
-			explorer.keyed("heading", explorer.text("Live Text / IME diagnostics", explorer.paletteText())),
-			explorer.keyed("copy", explorer.text(diagnosticsText(explorer), explorer.paletteMuted())),
-			explorer.keyed("status", explorer.text(textInputStatus(explorer), explorer.paletteMuted()))
+			explorer.keyed("heading", explorer.heading("Live Text / IME diagnostics")),
+			explorer.keyed("copy", explorer.caption(diagnosticsText(explorer))),
+			explorer.keyed("status", explorer.caption(textInputStatus(explorer)))
 		])));
 	}
 
@@ -95,9 +94,9 @@ class TextPage {
 		var result:TextField;
 		var style = editorStyle(explorer, multiline ? 142.0 : 42.0);
 		if (multiline)
-			result = new TextArea(key, value, onChange, style, label, new TextStyle(15.0), explorer.paletteText());
+			result = new TextArea(key, value, onChange, style, label);
 		else
-			result = new TextField(key, value, onChange, style, label, new TextStyle(15.0), explorer.paletteText());
+			result = new TextField(key, value, onChange, style, label);
 		result.onDiagnostics = explorer.recordTextDiagnostics;
 		if (!multiline)
 			result.onSubmit = function(_) { explorer.recordTextSubmit(label); };

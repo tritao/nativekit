@@ -8,14 +8,17 @@ import UiExplorer;
 import shell.CatalogSidebar;
 import shell.TopBar;
 import nativekit.ui.widgets.Column;
+import nativekit.ui.widgets.DefaultTextStyle;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Row;
 import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollView;
+import nativekit.ui.core.TextStyleOverride;
+import nativekit.ui.core.View;
 
 /** Persistent three-column shell around the selected Explorer page. */
 class ExplorerShell {
-	public static function build(explorer:UiExplorer):Column {
+	public static function build(explorer:UiExplorer):View {
 		var bodyStyle = new LayoutStyle();
 		bodyStyle.width = LayoutAxis.grow();
 		bodyStyle.height = LayoutAxis.grow();
@@ -43,9 +46,10 @@ class ExplorerShell {
 		shellStyle.width = LayoutAxis.grow();
 		shellStyle.height = LayoutAxis.grow();
 		shellStyle.background = explorer.paletteBackground();
-		return new Column("app-shell", [
+		var shell = new Column("app-shell", [
 			explorer.keyed("top", TopBar.build(explorer)),
 			explorer.keyed("workspace", body)
 		], shellStyle);
+		return new DefaultTextStyle(shell, TextStyleOverride.text(15.0));
 	}
 }

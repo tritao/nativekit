@@ -18,8 +18,8 @@ class LayoutPage {
 			"Resize the window to watch the native layout transaction reflow these Haxe compositions.");
 		var layoutCards:Array<KeyedView> = [
 			explorer.keyed("row-column", explorer.panel("row-column", [
-				explorer.keyed("heading", explorer.text("Row + Column", explorer.paletteText())),
-				explorer.keyed("copy", explorer.text("Fixed gaps and grow sizing", explorer.paletteMuted())),
+				explorer.keyed("heading", explorer.heading("Row + Column")),
+				explorer.keyed("copy", explorer.caption("Fixed gaps and grow sizing")),
 				explorer.keyed("row", new Row("sample-row", [
 					explorer.keyed("one", explorer.colorTile("One", UiExplorer.color(0.24, 0.48, 0.77))),
 					explorer.keyed("two", explorer.colorTile("Two", UiExplorer.color(0.39, 0.34, 0.72))),
@@ -27,7 +27,7 @@ class LayoutPage {
 				], explorer.rowStyle(8.0)))
 			])),
 			explorer.keyed("padding-align", explorer.panel("padding-align", [
-				explorer.keyed("heading", explorer.text("Padding + Align", explorer.paletteText())),
+				explorer.keyed("heading", explorer.heading("Padding + Align")),
 				explorer.keyed("aligned", new Align("centered-content",
 					explorer.colorTile("Centered in a padded box", UiExplorer.color(0.30, 0.40, 0.59)),
 					LayoutAlignmentX.Center, LayoutAlignmentY.Center, explorer.fixedBoxStyle(270.0, 90.0)))
@@ -44,9 +44,8 @@ class LayoutPage {
 			layoutPrimitives = new Row("layout-primitives", layoutCards, explorer.rowStyle(14.0));
 		items.push(explorer.keyed("layout-primitives", layoutPrimitives));
 		items.push(explorer.keyed("layout-stack", explorer.panel("stack-demo", [
-			explorer.keyed("heading", explorer.text("Stack + clipping", explorer.paletteText())),
-			explorer.keyed("copy", explorer.text("Positioned children paint by z-index and inherit their parent's clip.",
-				explorer.paletteMuted())),
+			explorer.keyed("heading", explorer.heading("Stack + clipping")),
+			explorer.keyed("copy", explorer.caption("Positioned children paint by z-index and inherit their parent's clip.")),
 			explorer.keyed("stack", explorer.stackDemo())
 		])));
 	}

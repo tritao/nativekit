@@ -3,7 +3,6 @@ package shell;
 import Insets;
 import LayoutAxis;
 import LayoutStyle;
-import TextStyle;
 import UiExplorer;
 import ExplorerCatalog;
 import ExplorerPage;
@@ -25,7 +24,7 @@ class CatalogSidebar {
 		style.childGap = 8.0;
 		style.background = explorer.paletteSidebar();
 		var children:Array<KeyedView> = [
-			explorer.keyed("catalog-label", explorer.text("COMPONENT CATALOG", explorer.paletteMuted()))
+			explorer.keyed("catalog-label", explorer.label("COMPONENT CATALOG"))
 		];
 		var searchStyle = new LayoutStyle();
 		searchStyle.width = LayoutAxis.grow();
@@ -36,7 +35,7 @@ class CatalogSidebar {
 			: UiExplorer.color(0.09, 0.12, 0.18);
 		var search = new TextField("catalog-search", explorer.state.searchText, function(value) {
 			explorer.state.searchText = value;
-		}, searchStyle, "Search components", new TextStyle(14.0), explorer.paletteText());
+		}, searchStyle, "Search components");
 		children.push(explorer.keyed("search", search));
 		var navItems:Array<KeyedView> = [];
 		var lastGroup:Null<String> = null;
@@ -47,7 +46,7 @@ class CatalogSidebar {
 			if (lastGroup != page.group) {
 				lastGroup = page.group;
 				navItems.push(SectionHeader.build("group-" + page.group,
-					ExplorerCatalog.groupTitle(page.group), explorer.paletteMuted()));
+					ExplorerCatalog.groupTitle(page.group)));
 			}
 			appendNav(explorer, navItems, page);
 		}
@@ -63,7 +62,7 @@ class CatalogSidebar {
 			new Column("catalog-navigation-items", navItems, navStyle), navScrollStyle,
 			ScrollAxis.Vertical)));
 		children.push(explorer.keyed("catalog-foot",
-			explorer.text("Haxe composition\nNative layout + render", explorer.paletteMuted())));
+			explorer.caption("Haxe composition\nNative layout + render")));
 		return new Column("component-catalog", children, style);
 	}
 

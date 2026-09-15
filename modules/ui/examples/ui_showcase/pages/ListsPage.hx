@@ -27,8 +27,7 @@ class ListsPage {
 						: UiExplorer.color(0.91, 0.94, 0.98))
 					: (index % 2 == 0 ? UiExplorer.color(0.11, 0.14, 0.20)
 						: UiExplorer.color(0.13, 0.16, 0.23));
-				return new Text('ROW ${index + 1}  ·  virtual item', rowStyle,
-					explorer.paletteText());
+				return new Text('ROW ${index + 1}  ·  virtual item', rowStyle);
 			}, listStyle, null, explorer.state.listController, 350.0);
 	}
 
@@ -45,8 +44,7 @@ class ListsPage {
 		items.push(explorer.keyed("list-status", explorer.panel("list-status", [
 			StatusBadge.build("status", 'Rendering rows ${first}–${last} / ${UiExplorer.LIST_COUNT}',
 				UiExplorer.color(0.35, 0.85, 0.69)),
-			explorer.keyed("copy", explorer.text("Scroll inside the list. Only the viewport window and a small overscan are built as Haxe widgets.",
-				explorer.paletteMuted())),
+			explorer.keyed("copy", explorer.caption("Scroll inside the list. Only the viewport window and a small overscan are built as Haxe widgets.")),
 			explorer.keyed("jump", explorer.button("Jump to row 415", "jump-row", function() {
 				explorer.state.listController.jumpTo(0.0, 414.0 * UiExplorer.LIST_ROW_HEIGHT);
 			}))

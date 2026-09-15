@@ -5,10 +5,10 @@ import Insets;
 import LayoutAxis;
 import LayoutDirection;
 import LayoutStyle;
-import TextStyle;
 import UiExplorer;
 import nativekit.ui.core.View;
 import nativekit.ui.theme.Theme;
+import nativekit.ui.theme.TextRole;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
@@ -34,7 +34,7 @@ class ShowcaseKit {
 		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
 		return new TextField("demo-name", explorer.state.controls.nameValue, function(value) {
 			explorer.state.controls.nameValue = value;
-		}, style, "Display name", new TextStyle(15.0), paletteText(explorer));
+		}, style, "Display name");
 	}
 
 	static function textArea(explorer:UiExplorer):TextArea {
@@ -48,7 +48,7 @@ class ShowcaseKit {
 		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
 		return new TextArea("demo-notes", explorer.state.controls.notesValue, function(value) {
 			explorer.state.controls.notesValue = value;
-		}, style, "Multilingual notes", new TextStyle(15.0), paletteText(explorer));
+		}, style, "Multilingual notes");
 	}
 
 	static function slider(explorer:UiExplorer):Slider {
@@ -153,8 +153,17 @@ class ShowcaseKit {
 	static function keyed(key:String, view:View):KeyedView
 		return new KeyedView(key, view);
 
-	static function text(value:String, color:Color):Text
-		return new Text(value, null, color);
+	static function text(value:String, ?color:Color, role:TextRole = TextRole.Body):Text
+		return new Text(value, null, color, null, role);
+
+	static function heading(value:String):Text
+		return text(value, null, TextRole.Heading);
+
+	static function caption(value:String):Text
+		return text(value, null, TextRole.Caption);
+
+	static function label(value:String):Text
+		return text(value, null, TextRole.Label);
 
 	static function paletteBackground(explorer:UiExplorer):Color
 		return explorer.state.lightTheme
@@ -164,20 +173,14 @@ class ShowcaseKit {
 		return explorer.state.lightTheme
 			? color(0.88, 0.91, 0.96) : color(0.08, 0.11, 0.17);
 
-	static function paletteText(explorer:UiExplorer):Color
-		return explorer.state.lightTheme
-			? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
-
-	static function paletteMuted(explorer:UiExplorer):Color
-		return explorer.state.lightTheme
-			? color(0.32, 0.38, 0.47) : color(0.62, 0.68, 0.77);
-
 	static function makeTheme(light:Bool):Theme {
 		var theme = new Theme();
 		theme.accent = light ? color(0.12, 0.37, 0.72) : color(0.25, 0.61, 0.89);
-		theme.text = light ? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
-		theme.mutedText = light ? color(0.32, 0.38, 0.47) : color(0.62, 0.68, 0.77);
-		theme.buttonText = color(1.0, 1.0, 1.0);
+		theme.body.color = light ? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
+		theme.heading.color = theme.body.color;
+		theme.label.color = theme.body.color;
+		theme.caption.color = light ? color(0.32, 0.38, 0.47) : color(0.62, 0.68, 0.77);
+		theme.button.color = color(1.0, 1.0, 1.0);
 		theme.disabledButtonText = light ? color(0.38, 0.41, 0.46) : color(0.53, 0.55, 0.59);
 		theme.buttonHover = light ? color(0.16, 0.38, 0.69) : color(0.22, 0.48, 0.82);
 		theme.buttonPressed = light ? color(0.11, 0.29, 0.54) : color(0.13, 0.34, 0.67);

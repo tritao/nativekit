@@ -16,9 +16,8 @@ class OverlayHost {
 		if (explorer.state.overlays.dialogOpen) {
 			var dialog = new Dialog("showcase-dialog", "NativeKit dialog",
 				new Column("dialog-content", [
-					explorer.keyed("copy", explorer.text(
-						"A modal overlay rendered in the same resolved UI tree.",
-						explorer.paletteMuted())),
+					explorer.keyed("copy", explorer.caption(
+						"A modal overlay rendered in the same resolved UI tree.")),
 					explorer.keyed("close", explorer.button("Done", "dialog-done", function() {
 						explorer.state.overlays.dialogOpen = false;
 					}))
@@ -28,9 +27,8 @@ class OverlayHost {
 			layers.push(new StackChild("dialog-layer", dialog, 0.0, 0.0, 30));
 		} else if (explorer.state.overlays.popupOpen) {
 			var popupContent = new Column("popup-content", [
-				explorer.keyed("title", explorer.text("Quick actions", explorer.paletteText())),
-				explorer.keyed("copy", explorer.text("This popup escapes the page clip.",
-					explorer.paletteMuted())),
+				explorer.keyed("title", explorer.heading("Quick actions")),
+				explorer.keyed("copy", explorer.caption("This popup escapes the page clip.")),
 				explorer.keyed("dismiss", explorer.button("Close popup", "popup-close", function() {
 					explorer.state.overlays.popupOpen = false;
 				}))
