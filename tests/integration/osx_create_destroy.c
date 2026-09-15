@@ -55,7 +55,6 @@ int main(void) {
     init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
     assert((nk_get_capabilities() & NK_CAP_WINDOW) != 0);
-    assert((nk_get_capabilities() & NK_CAP_FILE_DIALOG) != 0);
     assert((nk_get_capabilities() & NK_CAP_CLIPBOARD) != 0);
     assert((nk_get_capabilities() & NK_CAP_DRAG_DROP) != 0);
     assert((nk_get_capabilities() & NK_CAP_SHELL) != 0);

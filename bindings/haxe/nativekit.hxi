@@ -452,10 +452,6 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		NK_CAP_WEBVIEW = 2;
 		/**
-		 * The backend can show native file dialogs.
-		 */
-		NK_CAP_FILE_DIALOG = 4;
-		/**
 		 * The backend can read and write the system clipboard.
 		 */
 		NK_CAP_CLIPBOARD = 8;
@@ -636,7 +632,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		NK_CURSOR_NOT_ALLOWED = 10;
 	}
 	/**
-	 * Optional behavior flags for file and resource dialogs.
+	 * Optional behavior flags for URI-resource dialogs.
 	 */
 	flags nk_dialog_flags : u32 {
 		/**
@@ -656,18 +652,6 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Operation encoded in a dialog completion event's flags.
 	 */
 	enum nk_dialog_operation : u32 {
-		/**
-		 * Select one or more local files.
-		 */
-		NK_DIALOG_OPEN_FILE = 1;
-		/**
-		 * Select a destination for a local file.
-		 */
-		NK_DIALOG_SAVE_FILE = 2;
-		/**
-		 * Select a local directory.
-		 */
-		NK_DIALOG_SELECT_DIRECTORY = 3;
 		/**
 		 * Show a native message and collect the selected button.
 		 */
@@ -785,10 +769,6 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * A mapped gamepad button changed.
 		 */
 		NK_EVENT_GAMEPAD_BUTTON = 36;
-		/**
-		 * An asynchronous file or directory dialog returned paths.
-		 */
-		NK_EVENT_DIALOG_PATHS_COMPLETE = 100;
 		/**
 		 * An asynchronous resource dialog returned resource URIs.
 		 */
@@ -2278,23 +2258,15 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_dialog_cancel(request: nk_request_id) -> nk_result;
 	/**
-	 * Validates and returns a path from a dialog event. The returned UTF-8 view is
-	 * owned by the event and remains valid until nk_event_release().
-	 */
-	extern fn nk_dialog_event_path(event: ptr<const<nk_event>>, index: u32, out_path: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
-	/**
-	 * Starts an asynchronous native message dialog.
-	 */
-	extern fn nk_dialog_message(parent: nk_handle, options: ptr<const<nk_message_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
-	/**
 	 * Starts a non-blocking native dialog on the UI thread. `parent` may be zero;
 	 * where a parent is supported, desktop backends accept an nk_window and Android
 	 * resource dialogs accept an nk_mobile_host. All strings and filters are copied
-	 * before the function returns. Completion uses NK_EVENT_DIALOG_PATHS_COMPLETE
-	 * or NK_EVENT_DIALOG_MESSAGE_COMPLETE, with the operation in event.flags and the
-	 * returned request ID in event.request_id.
+	 * before the function returns. Resource dialogs complete with
+	 * NK_EVENT_DIALOG_RESOURCES_COMPLETE; message dialogs complete with
+	 * NK_EVENT_DIALOG_MESSAGE_COMPLETE. The operation is in event.flags and the
+	 * returned request ID is in event.request_id.
 	 */
-	extern fn nk_dialog_open_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	extern fn nk_dialog_message(parent: nk_handle, options: ptr<const<nk_message_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
 	/**
 	 * Resource dialogs return NK_EVENT_DIALOG_RESOURCES_COMPLETE with
 	 * nk_resource_list data. `parent` is a desktop nk_window or an Android
@@ -2303,17 +2275,9 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_dialog_open_resource(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
 	/**
-	 * Starts an asynchronous native save-file dialog.
-	 */
-	extern fn nk_dialog_save_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
-	/**
 	 * Starts an asynchronous native URI-resource save dialog.
 	 */
 	extern fn nk_dialog_save_resource(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
-	/**
-	 * Starts an asynchronous native directory-selection dialog.
-	 */
-	extern fn nk_dialog_select_directory(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
 	/**
 	 * Starts an asynchronous native URI-resource directory dialog.
 	 */
@@ -2582,7 +2546,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_resource_write(stream: nk_resource_stream, buffer: ptr<const<void>>, size: u64, out_written: ptr<u64>) -> nk_result;
 	/**
-	 * Launches the platform share UI with optional text and URI resources.
+	 * Launches the platform share UI or platform-equivalent URI handoff.
 	 */
 	extern fn nk_share(options: ptr<const<nk_share_options>>) -> nk_result;
 	/**
@@ -3009,8 +2973,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	extern fn nk_window_show(window: nk_window, visible: nk_bool) -> nk_result;
 	/**
 	 * Attaches NativeKit to a caller-owned native window. Destroying the returned
-	 * handle only detaches NativeKit. Backends return NK_ERROR_UNSUPPORTED until
-	 * they can guarantee correct event and ownership behavior for the given kind.
+	 * handle only detaches NativeKit and never destroys the caller's native object.
+	 * Win32, Cocoa, and X11 descriptors are supported by their desktop backends;
+	 * other descriptor kinds may return NK_ERROR_UNSUPPORTED. The host retains
+	 * ownership of native event dispatch and delegates/procedures.
 	 */
 	extern fn nk_window_wrap_native(native: ptr<const<nk_native_window>>, out_window: ptr<nk_window> @out @owned) -> nk_result;
 	/**
@@ -3310,7 +3276,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		reserved: array<u64, 2> @offset(32);
 	}
 	/**
-	 * One user-visible name and glob pattern set for a file dialog.
+	 * One user-visible name and glob pattern set for a URI-resource dialog.
 	 */
 	struct nk_dialog_filter @layout(16, 8) {
 		/**
@@ -3330,27 +3296,6 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * Button selected by the user, or NK_MESSAGE_RESULT_NONE on cancellation.
 		 */
 		button: nk_message_result @offset(0);
-	}
-	/**
-	 * Header at the start of NK_EVENT_DIALOG_PATHS_COMPLETE data.
-	 */
-	struct nk_dialog_paths @layout(16, 4) {
-		/**
-		 * 1 when the user accepted the dialog, and 0 when it was cancelled.
-		 */
-		accepted: nk_bool @offset(0);
-		/**
-		 * Number of returned paths.
-		 */
-		path_count: u32 @offset(4);
-		/**
-		 * Byte offset from the payload start to the uint32_t path-offset table.
-		 */
-		offsets_offset: u32 @offset(8);
-		/**
-		 * Byte offset from the payload start to the packed NUL-terminated paths.
-		 */
-		strings_offset: u32 @offset(12);
 	}
 	/**
 	 * Header at the start of NK_EVENT_DROP_FILES and NK_EVENT_DROP_TEXT data.
@@ -3422,7 +3367,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		reserved: array<u64, 2> @offset(48);
 	}
 	/**
-	 * Options shared by local-file and URI-resource dialogs.
+	 * Options for URI-resource dialogs.
 	 */
 	struct nk_file_dialog_options @layout(48, 8) {
 		/**
@@ -3438,7 +3383,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		title: nullable<utf8> @offset(8);
 		/**
-		 * Optional initial local path or platform resource location.
+		 * Optional initial URI or platform resource location.
 		 */
 		initial_path: nullable<utf8> @offset(16);
 		/**

@@ -230,8 +230,6 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_GAMEPAD_AXIS = 35,
     /** A mapped gamepad button changed. */
     NK_EVENT_GAMEPAD_BUTTON = 36,
-    /** An asynchronous file or directory dialog returned paths. */
-    NK_EVENT_DIALOG_PATHS_COMPLETE = 100,
     /** An asynchronous resource dialog returned resource URIs. */
     NK_EVENT_DIALOG_RESOURCES_COMPLETE = 101,
     /** An asynchronous message dialog returned a button result. */

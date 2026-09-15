@@ -46,24 +46,6 @@ class NativeKitRequests {
 		return request;
 	}
 
-	public function openFile(parent:NativeKitWindow, configured:FileDialogOptions,
-		handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
-		var request = NativeKit.nk_dialog_open_file_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
-		return trackDialog("open-file dialog", request, handler);
-	}
-
-	public function saveFile(parent:NativeKitWindow, configured:FileDialogOptions,
-		handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
-		var request = NativeKit.nk_dialog_save_file_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
-		return trackDialog("save-file dialog", request, handler);
-	}
-
-	public function selectDirectory(parent:NativeKitWindow, configured:FileDialogOptions,
-		handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
-		var request = NativeKit.nk_dialog_select_directory_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
-		return trackDialog("directory dialog", request, handler);
-	}
-
 	public function openResource(parent:NativeKitWindow, configured:FileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
 		var request = NativeKit.nk_dialog_open_resource_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
@@ -132,16 +114,6 @@ class NativeKitRequests {
 		return count;
 	}
 
-	function trackDialog(name:String, request:haxe.Int64,
-		handler:NativeKitRequestOutcome<Array<String>>->Void):haxe.Int64 {
-		track(request, function(value) switch value {
-			case DialogPaths(_, result, accepted, paths):
-				handler(acceptedOutcome(result, accepted, paths));
-			case _: wrongEvent(name);
-		});
-		return request;
-	}
-
 	function trackResourceDialog(name:String, request:haxe.Int64,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
 		track(request, function(value) switch value {
@@ -157,7 +129,6 @@ class NativeKitRequests {
 		var key:Null<String> = switch value {
 			case ClipboardText(id, _, _): Std.string(id);
 			case ClipboardFiles(id, _, _): Std.string(id);
-			case DialogPaths(id, _, _, _): Std.string(id);
 			case DialogMessage(id, _, _): Std.string(id);
 			case WebViewEvaluation(_, id, _, _): Std.string(id);
 			case WebViewNavigationRequest(_, id, _): Std.string(id);

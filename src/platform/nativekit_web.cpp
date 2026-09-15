@@ -113,6 +113,14 @@ struct WebWindowResource final : nk::core::Resource {
     bool focused = true;
     bool hovered = false;
     bool resizable = true;
+    int32_t min_width = 0;
+    int32_t min_height = 0;
+    int32_t max_width = 0;
+    int32_t max_height = 0;
+    int32_t aspect_numerator = 0;
+    int32_t aspect_denominator = 0;
+    float opacity = 1.0f;
+    bool mouse_passthrough = false;
     bool drops_enabled = false;
     bool fullscreen = false;
     nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
@@ -1799,8 +1807,9 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_INPUT | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
            NK_CAP_POINTER_CAPTURE | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_WINDOW_GEOMETRY |
-           NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION | NK_CAP_JOYSTICK |
-           NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_ACCESSIBILITY;
+           NK_CAP_WINDOW_STYLING | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
+           NK_CAP_NOTIFICATION | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO |
+           NK_CAP_ACCESSIBILITY;
 }
 
 nk_result NK_CALL nk_clipboard_set_text(const char *text) {
@@ -2335,6 +2344,11 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             callbacks.gamepad = on_gamepad;
             callbacks.accessibility_action = on_accessibility_action;
             nk::web::install_callbacks(callbacks, window.get());
+            nk::web::set_canvas_size_limits(0, 0, 0, 0);
+            nk::web::set_canvas_aspect_ratio(0, 0);
+            nk::web::set_canvas_resizable(window->resizable);
+            nk::web::set_canvas_opacity(window->opacity);
+            nk::web::set_canvas_mouse_passthrough(window->mouse_passthrough);
             nk::web::set_canvas_visible(window->visible);
             if (!window->title.empty())
                 nk::web::set_title(window->title.c_str());
@@ -2499,8 +2513,25 @@ nk_result NK_CALL nk_window_request_attention(nk_handle) {
     return unsupported("browser canvases have no window-manager attention state");
 }
 
-nk_result NK_CALL nk_window_set_size_limits(nk_handle, const nk_window_size_limits *) {
-    return unsupported("browser canvas size limits are controlled by page CSS");
+nk_result NK_CALL nk_window_set_size_limits(nk_handle handle,
+                                            const nk_window_size_limits *limits) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!limits || limits->struct_size < sizeof(*limits) || limits->min_width < 0 ||
+        limits->min_height < 0 || limits->max_width < 0 || limits->max_height < 0 ||
+        (limits->max_width && limits->max_width < limits->min_width) ||
+        (limits->max_height && limits->max_height < limits->min_height))
+        return invalid_argument("invalid web window size limits");
+    auto window = get_window(handle);
+    if (!window)
+        return invalid_handle("invalid web window handle");
+    window->min_width = limits->min_width;
+    window->min_height = limits->min_height;
+    window->max_width = limits->max_width;
+    window->max_height = limits->max_height;
+    nk::web::set_canvas_size_limits(window->min_width, window->min_height, window->max_width,
+                                    window->max_height);
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_window_get_native(nk_handle, nk_native_window *) {
@@ -3136,8 +3167,19 @@ nk_result NK_CALL nk_window_get_frame_extents(nk_handle handle,
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle, int32_t, int32_t) {
-    return unsupported("browser canvas aspect ratio is controlled by page CSS");
+nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle handle, int32_t numerator,
+                                             int32_t denominator) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if ((numerator == 0) != (denominator == 0) || numerator < 0 || denominator < 0)
+        return invalid_argument("invalid web window aspect ratio");
+    auto window = get_window(handle);
+    if (!window)
+        return invalid_handle("invalid web window handle");
+    window->aspect_numerator = numerator;
+    window->aspect_denominator = denominator;
+    nk::web::set_canvas_aspect_ratio(numerator, denominator);
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_window_set_resizable(nk_handle handle, nk_bool enabled) {
@@ -3147,6 +3189,7 @@ nk_result NK_CALL nk_window_set_resizable(nk_handle handle, nk_bool enabled) {
     if (!window)
         return invalid_handle("invalid web window handle");
     window->resizable = enabled != 0;
+    nk::web::set_canvas_resizable(window->resizable);
     return NK_OK;
 }
 
@@ -3156,11 +3199,30 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle, nk_bool) {
 nk_result NK_CALL nk_window_set_floating(nk_handle, nk_bool) {
     return unsupported("browser canvases have no window-manager stacking state");
 }
-nk_result NK_CALL nk_window_set_opacity(nk_handle, float) {
-    return unsupported("browser canvas opacity is controlled by page CSS");
+nk_result NK_CALL nk_window_set_opacity(nk_handle handle, float opacity) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!(opacity >= 0.0f && opacity <= 1.0f))
+        return invalid_argument("web window opacity must be between zero and one");
+    auto window = get_window(handle);
+    if (!window)
+        return invalid_handle("invalid web window handle");
+    window->opacity = opacity;
+    nk::web::set_canvas_opacity(window->opacity);
+    return NK_OK;
 }
-nk_result NK_CALL nk_window_set_mouse_passthrough(nk_handle, nk_bool) {
-    return unsupported("browser canvas pointer behavior is controlled by page CSS");
+
+nk_result NK_CALL nk_window_set_mouse_passthrough(nk_handle handle, nk_bool enabled) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    auto window = get_window(handle);
+    if (!window)
+        return invalid_handle("invalid web window handle");
+    window->mouse_passthrough = enabled != 0;
+    if (window->mouse_passthrough)
+        window->hovered = false;
+    nk::web::set_canvas_mouse_passthrough(window->mouse_passthrough);
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_window_get_hovered(nk_handle handle, nk_bool *out_hovered) {

@@ -21,8 +21,6 @@ class NativeKitEventDecoderTests {
 		var none = new NativeKitEventContext(EventKind.None, handle(0), zero, 0, 0, 0, empty);
 		var nonMatch = NativeKitWindowEvents.decode(none) == null && NativeKitInputEvents.decode(none) == null && NativeKitResourceEvents.decode(none) == null;
 
-		var badDialog = haxe.io.Bytes.alloc(16);
-		putU32(badDialog, 4, 1); putU32(badDialog, 8, 16); putU32(badDialog, 12, 16);
 		var unterminated = haxe.io.Bytes.alloc(9);
 		putU32(unterminated, 0, 1); putU32(unterminated, 4, 8); unterminated.set(8, 65);
 		var badResource = haxe.io.Bytes.alloc(16);
@@ -30,13 +28,6 @@ class NativeKitEventDecoderTests {
 		var shortKey = new NativeKitEventContext(EventKind.Key, handle(0), zero, 0, 0, 0, haxe.io.Bytes.alloc(15));
 		var shortWindow = new NativeKitEventContext(EventKind.WindowResize, handle(0), zero, 0, 0, 0, haxe.io.Bytes.alloc(7));
 		var shortEdit = new NativeKitEventContext(EventKind.TextEdit, handle(0), zero, 0, 0, 0, haxe.io.Bytes.alloc(47));
-		var pathsPayload = haxe.io.Bytes.alloc(16);
-		putU32(pathsPayload, 8, 16); putU32(pathsPayload, 12, 16);
-		var pathsContext = new NativeKitEventContext(EventKind.DialogPathsComplete, handle(0), zero, 0, 1, 0, pathsPayload);
-		var pathsOk = switch NativeKitEvent.decodeContext(pathsContext) {
-			case DialogPaths(_, 0, false, paths): paths.length == 0;
-			case _: false;
-		};
 		var messagePayload = haxe.io.Bytes.alloc(4);
 		putU32(messagePayload, 0, 3);
 		var messageContext = new NativeKitEventContext(EventKind.DialogMessageComplete, handle(0), zero, 0, 4, 0, messagePayload);
@@ -111,13 +102,11 @@ class NativeKitEventDecoderTests {
 			case _: false;
 		};
 
-		if (!pathsOk) throw "path completion decoding failed";
 		if (!messageOk) throw "message completion decoding failed";
 		if (!resourcesOk) throw "resource completion decoding failed";
 		return rawOk && nonMatch && editOk && typedKeyOk && typedHatOk && typedNavigationOk && accessibilityOk
 			&& throws(function() { NativeKitEventBytes.requireSize(haxe.io.Bytes.alloc(3), 4); })
 			&& throws(function() { NativeKitEventBytes.readU32(haxe.io.Bytes.alloc(3), 0); })
-			&& throws(function() { NativeKitEventBytes.decodeDialogPaths(badDialog); })
 			&& throws(function() { NativeKitEventBytes.decodeClipboardFiles(unterminated, 1); })
 			&& throws(function() { NativeKitEventBytes.decodeResourceList(badResource, 0); })
 			&& throws(function() { NativeKitInputEvents.decode(shortKey); })

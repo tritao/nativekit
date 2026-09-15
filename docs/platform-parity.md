@@ -37,7 +37,7 @@ the equivalent is the native DOM.
 | Desktop windows | Required | Required | Required | Not applicable | Not applicable | Platform-specific equivalent |
 | Extended window API | Required | Required | Required | Not applicable | Not applicable | Platform-specific equivalent |
 | WebView | Required | Required | Required | Required | Required | Not applicable (native DOM) |
-| Dialogs | Required | Required | Required | Required | Required | Platform-specific equivalent |
+| Dialogs and resource pickers | Required | Required | Required | Required | Required | Platform-specific equivalent |
 | Clipboard | Required | Required | Required | Required | Required | Required |
 | Drag/drop | Required | Required | Required | Required | Required | Required |
 | Shell/open URI | Required | Required | Required | Required | Required | Required |
@@ -78,7 +78,7 @@ needed; graphics API bits are alternatives within the GPU family.
 | Extended window geometry | `NK_CAP_WINDOW_GEOMETRY` |
 | Window styling | `NK_CAP_WINDOW_STYLING` |
 | WebView | `NK_CAP_WEBVIEW` |
-| Dialogs | `NK_CAP_FILE_DIALOG` |
+| Dialogs and resource pickers | `nk_dialog_open_resource`, `nk_dialog_save_resource`, `nk_dialog_select_resource_directory`, `nk_dialog_message` |
 | Clipboard | `NK_CAP_CLIPBOARD` |
 | Drag/drop | `NK_CAP_DRAG_DROP` |
 | Shell/open URI | `NK_CAP_SHELL` |
@@ -98,6 +98,9 @@ needed; graphics API bits are alternatives within the GPU family.
 `NK_CAP_WINDOW_GEOMETRY` and `NK_CAP_WINDOW_STYLING` are checked separately by
 the executable baseline because a backend may have implemented geometry while
 styling remains deferred. The target `Extended window API` row requires both.
+Dialogs and resource pickers are a required API family without a dedicated
+capability bit; their resource and message operations are part of each backend's
+contract and are exercised by the platform integration suites.
 
 ## Current baseline and executable enforcement
 
@@ -106,12 +109,12 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 
 | Backend | Required or equivalent today | Deferred today |
 |---|---|---|
-| Linux/GTK | Windows, WebView, path and resource dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick, native export, X11 native wrapping, accessibility | Wayland native wrapping |
-| Windows | Windows, WebView when WebView2 is available, path and resource dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick, native export, Win32 native wrapping | — |
-| macOS | Windows, WebView, path and resource dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping | — |
+| Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick, native export, X11 native wrapping, accessibility | Wayland native wrapping |
+| Windows | Windows, WebView when WebView2 is available, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick, native export, Win32 native wrapping | — |
+| macOS | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping | — |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility | — |
 | iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, accessibility | — |
-| Web | Window, geometry, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility | Styling, path-based dialogs |
+| Web | Window, geometry and CSS-backed styling, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility | — |
 
 The current Windows joystick adapter uses XInput's standard gamepad model,
 including hotplug and normalized canonical state. The macOS and iOS adapters use
@@ -131,10 +134,12 @@ opening, `matchMedia` supplies appearance, the Notifications API supplies
 notifications, the File System Access API or `<input type=file>` supplies
 resource selection, and the Gamepad API supplies controller state. Save and
 directory selections retain browser handles behind opaque NativeKit URIs, while
-open-file contents use temporary `blob:` URIs and asynchronous fetch. These
-APIs can require a user activation, a permission grant, or a secure context.
-Web path-based dialogs remain deferred because a browser cannot safely expose a
-process-local filesystem path through this URI-first API.
+open-file contents use temporary `blob:` URIs and asynchronous fetch. Window
+size limits, aspect ratio, resizability, opacity, and mouse passthrough map to
+canvas CSS styles; decorations, stacking, and activation remain page-owned.
+These APIs can require a user activation, a permission grant, or a secure
+context. NativeKit has no path-returning dialog API, so browser path leakage is
+not part of the contract.
 
 The baseline is guarded by `platform_parity` in CTest and the shared
 `capability_conformance` suite on desktop. The snapshot-backed parity test

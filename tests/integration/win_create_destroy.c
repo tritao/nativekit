@@ -20,7 +20,7 @@ static nk_event wait_for_dialog(nk_request_id request) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
-        if ((event.kind == NK_EVENT_DIALOG_PATHS_COMPLETE ||
+        if ((event.kind == NK_EVENT_DIALOG_RESOURCES_COMPLETE ||
              event.kind == NK_EVENT_DIALOG_MESSAGE_COMPLETE) &&
             event.request_id == request)
             return event;
@@ -396,20 +396,20 @@ int main(void) {
         assert(nk_webview_create(window, &webview_options, &webview) == NK_ERROR_UNSUPPORTED);
     }
 
-    nk_file_dialog_options file_options = {0};
-    file_options.struct_size = sizeof(file_options);
-    file_options.title = "NativeKit cancellation test";
+    nk_file_dialog_options resource_options = {0};
+    resource_options.struct_size = sizeof(resource_options);
+    resource_options.title = "NativeKit resource cancellation test";
     nk_request_id file_request = NK_INVALID_REQUEST_ID;
-    assert(nk_dialog_open_file(window, &file_options, &file_request) == NK_OK);
+    assert(nk_dialog_open_resource(window, &resource_options, &file_request) == NK_OK);
     assert(nk_dialog_cancel(file_request) == NK_OK);
     nk_event file_event = wait_for_dialog(file_request);
-    assert(file_event.kind == NK_EVENT_DIALOG_PATHS_COMPLETE);
-    assert(file_event.flags == NK_DIALOG_OPEN_FILE);
+    assert(file_event.kind == NK_EVENT_DIALOG_RESOURCES_COMPLETE);
+    assert(file_event.flags == NK_DIALOG_OPEN_RESOURCE);
     assert(file_event.result == NK_OK);
-    assert(file_event.data_size >= sizeof(nk_dialog_paths));
-    const nk_dialog_paths *paths = (const nk_dialog_paths *)file_event.data;
-    assert(paths->accepted == 0);
-    assert(paths->path_count == 0);
+    assert(file_event.data_size >= sizeof(nk_resource_list));
+    const nk_resource_list *resources = (const nk_resource_list *)file_event.data;
+    assert(resources->accepted == 0);
+    assert(resources->item_count == 0);
     nk_event_release(&file_event);
     assert(nk_dialog_cancel(file_request) == NK_ERROR_INVALID_REQUEST);
 

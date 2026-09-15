@@ -132,18 +132,6 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id, uint32_t) {
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID)
-nk_result NK_CALL nk_dialog_open_file(nk_handle, const nk_file_dialog_options *, nk_request_id *) {
-    return unsupported();
-}
-nk_result NK_CALL nk_dialog_save_file(nk_handle, const nk_file_dialog_options *, nk_request_id *) {
-    return unsupported();
-}
-nk_result NK_CALL nk_dialog_select_directory(nk_handle, const nk_file_dialog_options *,
-                                             nk_request_id *) {
-    return unsupported();
-}
-#endif
 #if !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_dialog_message(nk_handle, const nk_message_dialog_options *, nk_request_id *) {
     return unsupported();

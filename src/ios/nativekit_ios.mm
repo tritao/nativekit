@@ -4508,7 +4508,7 @@ nk_result NK_CALL nk_notification_close(nk_request_id request) {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_METAL_SURFACE | NK_CAP_INPUT |
-           NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_SHELL |
+           NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_SHELL |
            NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION | NK_CAP_ACCESSIBILITY |
            NK_CAP_DRAG_DROP | NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK;
 }

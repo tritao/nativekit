@@ -272,7 +272,6 @@ struct DialogContext {
     __strong NSWindow *parent = nil;
     __strong id dialog = nil;
     std::vector<uint32_t> message_results;
-    bool resources = false;
     uint64_t generation = 0;
 };
 
@@ -1978,28 +1977,6 @@ uint32_t navigation_error_category(NSError *error) {
     }
 }
 
-std::vector<std::byte> dialog_paths_payload(const std::vector<std::string> &paths, bool accepted) {
-    const std::size_t offsets_offset = sizeof(nk_dialog_paths);
-    const std::size_t strings_offset = offsets_offset + paths.size() * sizeof(uint32_t);
-    std::size_t total = strings_offset;
-    for (const auto &path : paths)
-        total += path.size() + 1;
-    std::vector<std::byte> result(total);
-    const nk_dialog_paths header{accepted ? 1u : 0u, static_cast<uint32_t>(paths.size()),
-                                 static_cast<uint32_t>(offsets_offset),
-                                 static_cast<uint32_t>(strings_offset)};
-    std::memcpy(result.data(), &header, sizeof(header));
-    std::size_t cursor = strings_offset;
-    for (std::size_t index = 0; index < paths.size(); ++index) {
-        const auto offset = static_cast<uint32_t>(cursor);
-        std::memcpy(result.data() + offsets_offset + index * sizeof(offset), &offset,
-                    sizeof(offset));
-        std::memcpy(result.data() + cursor, paths[index].c_str(), paths[index].size() + 1);
-        cursor += paths[index].size() + 1;
-    }
-    return result;
-}
-
 void finish_file_dialog(nk_request_id request, NSInteger response,
                         NSArray<NSURL *> *urls) noexcept {
     nk::core::callback_boundary([&] {
@@ -2015,38 +1992,26 @@ void finish_file_dialog(nk_request_id request, NSInteger response,
         if (!nk::core::is_runtime_generation(context->generation))
             return;
         const bool accepted = response == NSModalResponseOK;
-        std::vector<std::string> paths;
-        if (accepted) {
-            for (NSURL *url in urls)
-                paths.push_back(utf8(url.path));
-        }
         nk::core::QueuedEvent event;
-        event.kind = context->resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE
-                                        : NK_EVENT_DIALOG_PATHS_COMPLETE;
+        event.kind = NK_EVENT_DIALOG_RESOURCES_COMPLETE;
         event.request_id = request;
         event.flags = context->kind;
-        if (context->resources) {
-            const auto access = context->kind == NK_DIALOG_OPEN_RESOURCE
-                                    ? NK_RESOURCE_READABLE
-                                    : NK_RESOURCE_WRITABLE;
-            std::vector<nk::platform::ResourceValue> resources;
-            resources.reserve(urls.count);
-            if (accepted) {
-                for (NSURL *url in urls) {
-                    if (!url.absoluteString.length)
-                        continue;
-                    retain_security_scope(url);
-                    resources.push_back(nk::platform::resource_from_uri(
-                        utf8(url.absoluteString), access, {},
-                        url.lastPathComponent ? utf8(url.lastPathComponent) : std::string{}));
-                }
+        const auto access = context->kind == NK_DIALOG_OPEN_RESOURCE ? NK_RESOURCE_READABLE
+                                                                       : NK_RESOURCE_WRITABLE;
+        std::vector<nk::platform::ResourceValue> resources;
+        resources.reserve(urls.count);
+        if (accepted) {
+            for (NSURL *url in urls) {
+                if (!url.absoluteString.length)
+                    continue;
+                retain_security_scope(url);
+                resources.push_back(nk::platform::resource_from_uri(
+                    utf8(url.absoluteString), access, {},
+                    url.lastPathComponent ? utf8(url.lastPathComponent) : std::string{}));
             }
-            event.data_count = static_cast<uint32_t>(resources.size());
-            event.data = nk::platform::resource_payload(accepted, resources);
-        } else {
-            event.data_count = static_cast<uint32_t>(paths.size());
-            event.data = dialog_paths_payload(paths, accepted);
         }
+        event.data_count = static_cast<uint32_t>(resources.size());
+        event.data = nk::platform::resource_payload(accepted, resources);
         nk::core::push_event(std::move(event));
     });
 }
@@ -2077,8 +2042,7 @@ void finish_message_dialog(nk_request_id request, NSInteger response) noexcept {
     });
 }
 
-void configure_file_panel(NSSavePanel *panel, const nk_file_dialog_options *options,
-                          bool resources) {
+void configure_file_panel(NSSavePanel *panel, const nk_file_dialog_options *options) {
     panel.title = string(options->title) ?: @"";
     panel.showsHiddenFiles = (options->flags & NK_DIALOG_SHOW_HIDDEN) != 0;
     if (options->suggested_name)
@@ -2086,9 +2050,7 @@ void configure_file_panel(NSSavePanel *panel, const nk_file_dialog_options *opti
     if (options->initial_path) {
         NSString *path = string(options->initial_path);
         if (path) {
-            NSURL *url = resources ? [NSURL URLWithString:path] : nil;
-            if (!url || !url.fileURL)
-                url = [NSURL fileURLWithPath:path isDirectory:YES];
+            NSURL *url = [NSURL URLWithString:path];
             panel.directoryURL = url.isFileURL && !url.hasDirectoryPath
                                      ? url.URLByDeletingLastPathComponent
                                      : url;
@@ -2107,7 +2069,7 @@ void configure_file_panel(NSSavePanel *panel, const nk_file_dialog_options *opti
 }
 
 nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_options *options,
-                            nk_request_id *out_request, uint32_t kind, bool resources = false) {
+                            nk_request_id *out_request, uint32_t kind) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     if (!options || options->struct_size < sizeof(*options) || !out_request ||
@@ -2131,23 +2093,19 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
     context->request = nk::core::next_request_id();
     context->generation = nk::core::runtime_generation();
     context->kind = kind;
-    context->resources = resources;
     context->parent = parent ? parent->window : nil;
     NSSavePanel *panel = nil;
-    if (kind == NK_DIALOG_SAVE_FILE || kind == NK_DIALOG_SAVE_RESOURCE) {
+    if (kind == NK_DIALOG_SAVE_RESOURCE) {
         panel = [NSSavePanel savePanel];
     } else {
         NSOpenPanel *open = [NSOpenPanel openPanel];
-        open.canChooseDirectories = kind == NK_DIALOG_SELECT_DIRECTORY ||
-                                    kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY;
-        open.canChooseFiles = kind != NK_DIALOG_SELECT_DIRECTORY &&
-                              kind != NK_DIALOG_SELECT_RESOURCE_DIRECTORY;
-        open.allowsMultipleSelection =
-            (kind == NK_DIALOG_OPEN_FILE || kind == NK_DIALOG_OPEN_RESOURCE) &&
-            (options->flags & NK_DIALOG_ALLOW_MULTIPLE);
+        open.canChooseDirectories = kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY;
+        open.canChooseFiles = kind != NK_DIALOG_SELECT_RESOURCE_DIRECTORY;
+        open.allowsMultipleSelection = kind == NK_DIALOG_OPEN_RESOURCE &&
+                                       (options->flags & NK_DIALOG_ALLOW_MULTIPLE);
         panel = open;
     }
-    configure_file_panel(panel, options, resources);
+    configure_file_panel(panel, options);
     context->dialog = panel;
     {
         std::lock_guard lock(dialogs_mutex);
@@ -3411,7 +3369,7 @@ void shutdown() noexcept {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_WEBVIEW |
+    return NK_CAP_WINDOW | NK_CAP_CLIPBOARD | NK_CAP_WEBVIEW |
            NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_SHARING |
            NK_CAP_RESOURCE_IO | NK_CAP_INPUT |
@@ -5156,29 +5114,6 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t a
     return NK_OK;
 }
 
-nk_result NK_CALL nk_dialog_open_file(nk_handle parent, const nk_file_dialog_options *options,
-                                      nk_request_id *request) {
-    return nk::core::result_boundary(
-        "unexpected error while opening file dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, request, NK_DIALOG_OPEN_FILE);
-        });
-}
-nk_result NK_CALL nk_dialog_save_file(nk_handle parent, const nk_file_dialog_options *options,
-                                      nk_request_id *request) {
-    return nk::core::result_boundary(
-        "unexpected error while opening save dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, request, NK_DIALOG_SAVE_FILE);
-        });
-}
-nk_result NK_CALL nk_dialog_select_directory(nk_handle parent,
-                                             const nk_file_dialog_options *options,
-                                             nk_request_id *request) {
-    return nk::core::result_boundary(
-        "unexpected error while opening directory dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, request, NK_DIALOG_SELECT_DIRECTORY);
-        });
-}
-
 nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
                                     const nk_message_dialog_options *options,
                                     nk_request_id *out_request) {
@@ -5372,7 +5307,7 @@ nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
                                           nk_request_id *request) {
     return nk::core::result_boundary(
         "unexpected error while opening resource dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, request, NK_DIALOG_OPEN_RESOURCE, true);
+            return start_file_dialog(parent, options, request, NK_DIALOG_OPEN_RESOURCE);
         });
 }
 
@@ -5381,7 +5316,7 @@ nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
                                           nk_request_id *request) {
     return nk::core::result_boundary(
         "unexpected error while opening resource save dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, request, NK_DIALOG_SAVE_RESOURCE, true);
+            return start_file_dialog(parent, options, request, NK_DIALOG_SAVE_RESOURCE);
         });
 }
 
@@ -5390,7 +5325,7 @@ nk_result NK_CALL nk_dialog_select_resource_directory(
     return nk::core::result_boundary(
         "unexpected error while opening resource directory dialog", [&]() -> nk_result {
             return start_file_dialog(parent, options, request,
-                                     NK_DIALOG_SELECT_RESOURCE_DIRECTORY, true);
+                                     NK_DIALOG_SELECT_RESOURCE_DIRECTORY);
         });
 }
 

@@ -448,24 +448,6 @@ static int probe_system_and_validation(nk_capabilities capabilities) {
             !require_result("nk_notification_show(validation)", result, NK_ERROR_INVALID_ARGUMENT))
             return 0;
     }
-    if (capabilities & NK_CAP_FILE_DIALOG) {
-        nk_file_dialog_options file_options = {0};
-        file_options.struct_size = sizeof(file_options);
-        const nk_result open_result = nk_dialog_open_file(NK_INVALID_HANDLE, &file_options, NULL);
-        const nk_result save_result = nk_dialog_save_file(NK_INVALID_HANDLE, &file_options, NULL);
-        const nk_result directory_result =
-            nk_dialog_select_directory(NK_INVALID_HANDLE, &file_options, NULL);
-        if (!require_not_unsupported("nk_dialog_open_file(validation)", open_result) ||
-            !require_result("nk_dialog_open_file(validation)", open_result,
-                            NK_ERROR_INVALID_ARGUMENT) ||
-            !require_not_unsupported("nk_dialog_save_file(validation)", save_result) ||
-            !require_result("nk_dialog_save_file(validation)", save_result,
-                            NK_ERROR_INVALID_ARGUMENT) ||
-            !require_not_unsupported("nk_dialog_select_directory(validation)", directory_result) ||
-            !require_result("nk_dialog_select_directory(validation)", directory_result,
-                            NK_ERROR_INVALID_ARGUMENT))
-            return 0;
-    }
     return 1;
 }
 

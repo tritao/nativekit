@@ -9,6 +9,83 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
 
+static void test_window_styling(void) {
+    nk_window_options options = {0};
+    options.struct_size = sizeof(options);
+    options.flags = NK_WINDOW_HIDDEN | NK_WINDOW_RESIZABLE;
+    options.width = 320;
+    options.height = 240;
+    nk_window window = NK_INVALID_HANDLE;
+    assert(nk_window_create(&options, &window) == NK_OK);
+
+    nk_window_size_limits limits = {0};
+    limits.struct_size = sizeof(limits);
+    limits.min_width = 320;
+    limits.min_height = 240;
+    limits.max_width = 1280;
+    limits.max_height = 960;
+    assert(nk_window_set_size_limits(window, &limits) == NK_OK);
+    assert(nk_window_set_aspect_ratio(window, 4, 3) == NK_OK);
+    assert(nk_window_set_resizable(window, 0) == NK_OK);
+    assert(nk_window_set_opacity(window, 0.75f) == NK_OK);
+    assert(nk_window_set_mouse_passthrough(window, 1) == NK_OK);
+
+    assert(EM_ASM_INT({
+        const canvas = document.querySelector("#canvas");
+        return canvas && canvas.style.minWidth === "320px" &&
+               canvas.style.minHeight === "240px" &&
+               canvas.style.maxWidth === "1280px" &&
+               canvas.style.maxHeight === "960px" &&
+               canvas.style.aspectRatio === "4 / 3" &&
+               canvas.style.resize === "none" &&
+               canvas.style.opacity === "0.75" &&
+               canvas.style.pointerEvents === "none" ? 1 : 0;
+    }) == 1);
+
+    nk_bool hovered = 1;
+    assert(nk_window_get_hovered(window, &hovered) == NK_OK);
+    assert(hovered == 0);
+
+    EM_ASM({
+        Module._nkNativeKitOriginalShowOpenFilePicker = window.showOpenFilePicker;
+        window.showOpenFilePicker = () => Promise.resolve([]);
+    });
+    nk_file_dialog_options dialog_options = {0};
+    dialog_options.struct_size = sizeof(dialog_options);
+    dialog_options.title = "NativeKit Web resource cancellation";
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    assert(nk_dialog_open_resource(window, &dialog_options, &request) == NK_OK);
+    assert(nk_dialog_cancel(request) == NK_OK);
+    nk_event event = {0};
+    event.struct_size = sizeof(event);
+    int dialog_seen = 0;
+    for (int attempt = 0; attempt < 8 && !dialog_seen; ++attempt) {
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_DIALOG_RESOURCES_COMPLETE && event.request_id == request) {
+            assert(event.result == NK_OK);
+            assert(event.flags == NK_DIALOG_OPEN_RESOURCE);
+            assert(event.data_size >= sizeof(nk_resource_list));
+            const nk_resource_list *resources = (const nk_resource_list *)event.data;
+            assert(resources->accepted == 0);
+            assert(resources->item_count == 0);
+            dialog_seen = 1;
+        }
+        nk_event_release(&event);
+        event.struct_size = sizeof(event);
+    }
+    assert(dialog_seen);
+    EM_ASM({
+        window.showOpenFilePicker = Module._nkNativeKitOriginalShowOpenFilePicker;
+        delete Module._nkNativeKitOriginalShowOpenFilePicker;
+    });
+    assert(nk_window_set_mouse_passthrough(window, 0) == NK_OK);
+    assert(nk_window_set_resizable(window, 1) == NK_OK);
+    assert(nk_window_set_aspect_ratio(window, 0, 0) == NK_OK);
+    assert(nk_window_set_size_limits(window, &(nk_window_size_limits){
+        sizeof(nk_window_size_limits), 0, 0, 0, 0, {0, 0}}) == NK_OK);
+    assert(nk_window_destroy(window) == NK_OK);
+}
+
 static void test_writable_resource_stream(void) {
     EM_ASM({
         const uri = "nativekit-file-handle://web-smoke";
@@ -77,6 +154,7 @@ int main(void) {
     assert((capabilities & NK_CAP_NOTIFICATION) != 0);
     assert((capabilities & NK_CAP_JOYSTICK) != 0);
     assert((capabilities & NK_CAP_RESOURCE_IO) != 0);
+    assert((capabilities & NK_CAP_WINDOW_STYLING) != 0);
 
     nk_system_appearance appearance = {0};
     appearance.struct_size = sizeof(appearance);
@@ -90,6 +168,7 @@ int main(void) {
 
     assert(nk_shell_open_url("not a URI") == NK_ERROR_INVALID_ARGUMENT);
 #ifdef __EMSCRIPTEN__
+    test_window_styling();
     test_writable_resource_stream();
 #endif
     nk_shutdown();

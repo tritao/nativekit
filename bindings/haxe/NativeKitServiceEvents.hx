@@ -10,8 +10,6 @@ class NativeKitServiceEvents {
 		case EventKind.ClipboardFilesComplete: ClipboardFiles(c.request,c.result,NativeKitEventBytes.decodeClipboardFiles(c.data,c.dataCount));
 		case EventKind.DropFiles: DropFiles(c.source,NativeKitEventBytes.decodeDropItems(c.data,c.dataCount));
 		case EventKind.DropText: DropText(c.source,NativeKitEventBytes.decodeDropItems(c.data,c.dataCount).join(""));
-		case EventKind.DialogPathsComplete:
-			DialogPaths(c.request,c.result,NativeKitEventBytes.readU32(c.data,0)!=0,NativeKitEventBytes.decodeDialogPaths(c.data));
 		case EventKind.DialogMessageComplete:
 			NativeKitEventBytes.requireSize(c.data,4); DialogMessage(c.request,c.result,NativeKitEventBytes.readU32(c.data,0));
 		case EventKind.WebviewNavigated: WebViewNavigated(c.source,c.data.toString());

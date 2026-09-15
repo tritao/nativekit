@@ -96,7 +96,6 @@ struct WinDialogContext {
     uint32_t flags = 0;
     uint32_t message_kind = 0;
     uint32_t buttons = 0;
-    bool resources = false;
     std::vector<std::pair<std::wstring, std::wstring>> filters;
     std::atomic<DWORD> thread_id{0};
     std::atomic<bool> canceled{false};
@@ -2206,28 +2205,6 @@ void begin_webview_creation(const std::shared_ptr<WinWebViewResource> &resource)
 }
 #endif
 
-std::vector<std::byte> dialog_paths_payload(const std::vector<std::string> &paths, bool accepted) {
-    const std::size_t offsets_offset = sizeof(nk_dialog_paths);
-    const std::size_t strings_offset = offsets_offset + paths.size() * sizeof(uint32_t);
-    std::size_t total = strings_offset;
-    for (const auto &path : paths)
-        total += path.size() + 1;
-    std::vector<std::byte> result(total);
-    const nk_dialog_paths header{accepted ? 1u : 0u, static_cast<uint32_t>(paths.size()),
-                                 static_cast<uint32_t>(offsets_offset),
-                                 static_cast<uint32_t>(strings_offset)};
-    std::memcpy(result.data(), &header, sizeof(header));
-    std::size_t cursor = strings_offset;
-    for (std::size_t index = 0; index < paths.size(); ++index) {
-        const auto offset = static_cast<uint32_t>(cursor);
-        std::memcpy(result.data() + offsets_offset + index * sizeof(offset), &offset,
-                    sizeof(offset));
-        std::memcpy(result.data() + cursor, paths[index].c_str(), paths[index].size() + 1);
-        cursor += paths[index].size() + 1;
-    }
-    return result;
-}
-
 template <typename T> void release(T *&value) {
     if (value)
         value->Release();
@@ -2239,24 +2216,18 @@ void emit_file_completion(const WinDialogContext &context, std::vector<std::stri
     if (!nk::core::is_runtime_generation(context.generation))
         return;
     nk::core::QueuedEvent event;
-    event.kind = context.resources ? NK_EVENT_DIALOG_RESOURCES_COMPLETE
-                                   : NK_EVENT_DIALOG_PATHS_COMPLETE;
+    event.kind = NK_EVENT_DIALOG_RESOURCES_COMPLETE;
     event.request_id = context.request;
     event.flags = context.kind;
     event.result = result;
     event.data_count = static_cast<uint32_t>(paths.size());
-    if (context.resources) {
-        const auto access = context.kind == NK_DIALOG_OPEN_RESOURCE
-                                ? NK_RESOURCE_READABLE
-                                : NK_RESOURCE_WRITABLE;
-        std::vector<nk::platform::ResourceValue> resources;
-        resources.reserve(paths.size());
-        for (auto &path : paths)
-            resources.push_back(nk::platform::resource_from_file_path(std::move(path), access));
-        event.data = nk::platform::resource_payload(accepted, resources);
-    } else {
-        event.data = dialog_paths_payload(paths, accepted);
-    }
+    const auto access = context.kind == NK_DIALOG_OPEN_RESOURCE ? NK_RESOURCE_READABLE
+                                                                  : NK_RESOURCE_WRITABLE;
+    std::vector<nk::platform::ResourceValue> resources;
+    resources.reserve(paths.size());
+    for (auto &path : paths)
+        resources.push_back(nk::platform::resource_from_file_path(std::move(path), access));
+    event.data = nk::platform::resource_payload(accepted, resources);
     nk::core::push_event(std::move(event));
 }
 
@@ -2266,7 +2237,7 @@ void run_file_dialog(const std::shared_ptr<WinDialogContext> &context) noexcept 
     IFileDialog *dialog = nullptr;
     HRESULT status = E_FAIL;
     if (SUCCEEDED(initialized)) {
-        if (context->kind == NK_DIALOG_SAVE_FILE || context->kind == NK_DIALOG_SAVE_RESOURCE)
+        if (context->kind == NK_DIALOG_SAVE_RESOURCE)
             status = CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER,
                                       IID_IFileSaveDialog, reinterpret_cast<void **>(&dialog));
         else
@@ -2279,15 +2250,13 @@ void run_file_dialog(const std::shared_ptr<WinDialogContext> &context) noexcept 
         FILEOPENDIALOGOPTIONS options = 0;
         dialog->GetOptions(&options);
         options |= FOS_FORCEFILESYSTEM | FOS_NOCHANGEDIR;
-        if (context->kind == NK_DIALOG_SELECT_DIRECTORY ||
-            context->kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY)
+        if (context->kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY)
             options |= FOS_PICKFOLDERS;
-        if ((context->kind == NK_DIALOG_OPEN_FILE || context->kind == NK_DIALOG_OPEN_RESOURCE) &&
-            (context->flags & NK_DIALOG_ALLOW_MULTIPLE))
+        if (context->kind == NK_DIALOG_OPEN_RESOURCE && (context->flags & NK_DIALOG_ALLOW_MULTIPLE))
             options |= FOS_ALLOWMULTISELECT;
         if (context->flags & NK_DIALOG_SHOW_HIDDEN)
             options |= FOS_FORCESHOWHIDDEN;
-        if ((context->kind == NK_DIALOG_SAVE_FILE || context->kind == NK_DIALOG_SAVE_RESOURCE) &&
+        if (context->kind == NK_DIALOG_SAVE_RESOURCE &&
             !(context->flags & NK_DIALOG_CONFIRM_OVERWRITE))
             options &= ~FOS_OVERWRITEPROMPT;
         dialog->SetOptions(options);
@@ -2316,7 +2285,7 @@ void run_file_dialog(const std::shared_ptr<WinDialogContext> &context) noexcept 
             status = dialog->Show(context->parent);
         if (SUCCEEDED(status)) {
             accepted = true;
-            if ((context->kind == NK_DIALOG_OPEN_FILE || context->kind == NK_DIALOG_OPEN_RESOURCE) &&
+            if (context->kind == NK_DIALOG_OPEN_RESOURCE &&
                 (context->flags & NK_DIALOG_ALLOW_MULTIPLE)) {
                 IFileOpenDialog *open_dialog = nullptr;
                 IShellItemArray *items = nullptr;
@@ -2449,7 +2418,7 @@ void reap_dialogs() noexcept {
 }
 
 nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_options *options,
-                            nk_request_id *out_request, uint32_t kind, bool resources = false) {
+                            nk_request_id *out_request, uint32_t kind) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     if (!options || options->struct_size < sizeof(*options) || !out_request ||
@@ -2465,19 +2434,18 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
     context->request = nk::core::next_request_id();
     context->generation = nk::core::runtime_generation();
     context->kind = kind;
-    context->resources = resources;
     context->flags = options->flags;
     if (!copy_wide(options->title, context->title) ||
         !copy_wide(options->suggested_name, context->suggested_name))
         return fail(NK_ERROR_INVALID_ARGUMENT, "file dialog option is not valid UTF-8");
     std::string initial_path;
-    if (options->initial_path && resources &&
+    if (options->initial_path &&
         nk::platform::file_path_from_uri(options->initial_path, initial_path)) {
         context->initial_path = wide(initial_path.c_str());
         if (context->initial_path.empty())
             return fail(NK_ERROR_INVALID_ARGUMENT, "resource dialog initial URI is invalid");
-    } else if (!copy_wide(options->initial_path, context->initial_path)) {
-        return fail(NK_ERROR_INVALID_ARGUMENT, "file dialog option is not valid UTF-8");
+    } else if (options->initial_path) {
+        return fail(NK_ERROR_INVALID_ARGUMENT, "resource dialog initial URI is invalid");
     }
     for (uint32_t index = 0; index < options->filter_count; ++index) {
         const auto &filter = options->filters[index];
@@ -2769,7 +2737,7 @@ extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     nk_capabilities capabilities =
-        NK_CAP_WINDOW | NK_CAP_FILE_DIALOG | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
+        NK_CAP_WINDOW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
         NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
         NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR |
         NK_CAP_POINTER_CAPTURE |
@@ -4447,34 +4415,6 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id, uint32_t) {
     return unsupported();
 }
 #endif
-nk_result NK_CALL nk_dialog_open_file(nk_handle parent, const nk_file_dialog_options *options,
-                                      nk_request_id *out_request) {
-    try {
-        return start_file_dialog(parent, options, out_request, NK_DIALOG_OPEN_FILE);
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while opening file dialog");
-    }
-}
-
-nk_result NK_CALL nk_dialog_save_file(nk_handle parent, const nk_file_dialog_options *options,
-                                      nk_request_id *out_request) {
-    try {
-        return start_file_dialog(parent, options, out_request, NK_DIALOG_SAVE_FILE);
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while opening save dialog");
-    }
-}
-
-nk_result NK_CALL nk_dialog_select_directory(nk_handle parent,
-                                             const nk_file_dialog_options *options,
-                                             nk_request_id *out_request) {
-    try {
-        return start_file_dialog(parent, options, out_request, NK_DIALOG_SELECT_DIRECTORY);
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while opening directory dialog");
-    }
-}
-
 nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
                                     const nk_message_dialog_options *options,
                                     nk_request_id *out_request) {
@@ -4884,7 +4824,7 @@ nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
                                           nk_request_id *request) {
     return nk::core::result_boundary(
         "unexpected error while opening resource dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, request, NK_DIALOG_OPEN_RESOURCE, true);
+            return start_file_dialog(parent, options, request, NK_DIALOG_OPEN_RESOURCE);
         });
 }
 
@@ -4893,7 +4833,7 @@ nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
                                           nk_request_id *request) {
     return nk::core::result_boundary(
         "unexpected error while opening resource save dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, request, NK_DIALOG_SAVE_RESOURCE, true);
+            return start_file_dialog(parent, options, request, NK_DIALOG_SAVE_RESOURCE);
         });
 }
 
@@ -4902,7 +4842,7 @@ nk_result NK_CALL nk_dialog_select_resource_directory(
     return nk::core::result_boundary(
         "unexpected error while opening resource directory dialog", [&]() -> nk_result {
             return start_file_dialog(parent, options, request,
-                                     NK_DIALOG_SELECT_RESOURCE_DIRECTORY, true);
+                                     NK_DIALOG_SELECT_RESOURCE_DIRECTORY);
         });
 }
 

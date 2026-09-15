@@ -3,6 +3,7 @@
 #include "nativekit_dialog.h"
 #include "nativekit_input.h"
 #include "nativekit_notification.h"
+#include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -232,27 +233,27 @@ static void create_utility_window(app *state) {
         log_text(state, "error", nk_last_error());
 }
 
-static void start_file_dialog(app *state, uint32_t kind) {
+static void start_resource_dialog(app *state, uint32_t kind) {
     const nk_dialog_filter filters[] = {{"Images", "*.png;*.jpg;*.jpeg"}, {"All files", "*"}};
     nk_file_dialog_options options = {0};
     options.struct_size = sizeof(options);
     options.title = "NativeKit Lab";
-    if (kind != NK_DIALOG_SELECT_DIRECTORY) {
+    if (kind != NK_DIALOG_SELECT_RESOURCE_DIRECTORY) {
         options.filters = filters;
         options.filter_count = 2;
     }
-    if (kind == NK_DIALOG_SAVE_FILE)
+    if (kind == NK_DIALOG_SAVE_RESOURCE)
         options.suggested_name = "nativekit-demo.txt";
     nk_request_id request = NK_INVALID_REQUEST_ID;
     nk_result result = NK_ERROR_INVALID_ARGUMENT;
-    if (kind == NK_DIALOG_OPEN_FILE) {
+    if (kind == NK_DIALOG_OPEN_RESOURCE) {
         options.flags = NK_DIALOG_ALLOW_MULTIPLE;
-        result = nk_dialog_open_file(state->window, &options, &request);
-    } else if (kind == NK_DIALOG_SAVE_FILE) {
+        result = nk_dialog_open_resource(state->window, &options, &request);
+    } else if (kind == NK_DIALOG_SAVE_RESOURCE) {
         options.flags = NK_DIALOG_CONFIRM_OVERWRITE;
-        result = nk_dialog_save_file(state->window, &options, &request);
+        result = nk_dialog_save_resource(state->window, &options, &request);
     } else {
-        result = nk_dialog_select_directory(state->window, &options, &request);
+        result = nk_dialog_select_resource_directory(state->window, &options, &request);
     }
     if (result != NK_OK)
         log_text(state, "error", nk_last_error());
@@ -280,11 +281,11 @@ static void system_info(app *state) {
 
 static void dispatch(app *state, const nk_event *event) {
     if (command_is(event, "dialog.open"))
-        start_file_dialog(state, NK_DIALOG_OPEN_FILE);
+        start_resource_dialog(state, NK_DIALOG_OPEN_RESOURCE);
     else if (command_is(event, "dialog.save"))
-        start_file_dialog(state, NK_DIALOG_SAVE_FILE);
+        start_resource_dialog(state, NK_DIALOG_SAVE_RESOURCE);
     else if (command_is(event, "dialog.directory"))
-        start_file_dialog(state, NK_DIALOG_SELECT_DIRECTORY);
+        start_resource_dialog(state, NK_DIALOG_SELECT_RESOURCE_DIRECTORY);
     else if (command_is(event, "dialog.message")) {
         nk_message_dialog_options options = {0};
         options.struct_size = sizeof(options);
@@ -371,10 +372,10 @@ static void report_dialog(app *state, const nk_event *event) {
         return;
     }
     for (uint32_t i = 0; i < event->data_count; ++i) {
-        const char *path = NULL;
-        uint32_t length = 0;
-        if (nk_dialog_event_path(event, i, &path, &length) == NK_OK)
-            log_data(state, "selected", path, length);
+        nk_resource_view resource = {0};
+        resource.struct_size = sizeof(resource);
+        if (nk_resource_event_item(event, i, &resource) == NK_OK)
+            log_data(state, "selected", resource.uri, resource.uri_length);
     }
 }
 
@@ -385,7 +386,7 @@ static void show_capabilities(app *state) {
              "capabilities 0x%llx · window %s · webview %s · dialogs %s · clipboard %s · "
              "notifications %s",
              (unsigned long long)caps, caps & NK_CAP_WINDOW ? "yes" : "no",
-             caps & NK_CAP_WEBVIEW ? "yes" : "no", caps & NK_CAP_FILE_DIALOG ? "yes" : "no",
+             caps & NK_CAP_WEBVIEW ? "yes" : "no", "URI resources",
              caps & NK_CAP_CLIPBOARD ? "yes" : "no", caps & NK_CAP_NOTIFICATION ? "yes" : "no");
     char *encoded = js_string(text, strlen(text));
     if (encoded) {
@@ -424,7 +425,7 @@ static void handle_event(app *state, const nk_event *event) {
         show_capabilities(state);
     } else if (event->kind == NK_EVENT_WEBVIEW_MESSAGE && event->source == state->webview) {
         dispatch(state, event);
-    } else if (event->kind == NK_EVENT_DIALOG_PATHS_COMPLETE ||
+    } else if (event->kind == NK_EVENT_DIALOG_RESOURCES_COMPLETE ||
                event->kind == NK_EVENT_DIALOG_MESSAGE_COMPLETE) {
         report_dialog(state, event);
     } else if (event->kind == NK_EVENT_CLIPBOARD_TEXT_COMPLETE) {
