@@ -18,6 +18,7 @@ import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.theme.TextRole;
 
 /** Selectable radio option; use RadioGroup for exclusive selection and arrow keys. */
 class Radio implements View {
@@ -77,8 +78,8 @@ class Radio implements View {
 
 			var text = new RenderNode(context.id("label"), LayoutVisualKind.Text);
 			text.layout.text = label;
-			text.applyTextStyle(context.resolveTextStyle().withTextColor(
-				context.theme.textColor(enabled)));
+			text.applyTextStyle(context.resolveTextRole(TextRole.Label).withTextColor(
+				context.theme.textRoleColor(TextRole.Label, enabled)));
 			node.add(text);
 			if (enabled && hasSelectHandler) {
 				var select = function(_:UiEvent) { onSelect(value); };

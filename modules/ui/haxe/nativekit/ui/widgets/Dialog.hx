@@ -18,6 +18,7 @@ import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.theme.TextRole;
 
 /** Centered modal composition with trapped keyboard focus and dismissal hooks. */
 class Dialog implements View {
@@ -94,7 +95,7 @@ class Dialog implements View {
 				var heading = context.withScope(new Key("title"), function() {
 					var node = new RenderNode(context.id("heading"), LayoutVisualKind.Text);
 					node.layout.text = title;
-					node.applyTextStyle(context.resolveTextStyle());
+					node.applyTextStyle(context.resolveTextRole(TextRole.Heading));
 					node.semantics = new Semantics(AccessibilityRole.Heading, title);
 					return node;
 				});

@@ -30,6 +30,7 @@ import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.theme.TextRole;
 
 /** Text editor composed from a Haxe box and NativeUI text primitive. */
 class TextField implements View {
@@ -67,7 +68,8 @@ class TextField implements View {
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
 			var id = context.id("field");
-			var resolved = context.resolveTextStyle(TextStyleOverride.fromTextStyle(textStyle));
+			var resolved = context.resolveTextRole(TextRole.Body,
+				TextStyleOverride.fromTextStyle(textStyle));
 			if (textColor != null)
 				resolved = resolved.withTextColor(textColor);
 			var paragraph = new ParagraphStyle(resolved.paragraphStyle.wrap,

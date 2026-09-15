@@ -3,6 +3,7 @@ package nativekit.ui.core;
 import FontCollection;
 import NativeKitSurface;
 import nativekit.ui.theme.Theme;
+import nativekit.ui.theme.TextRole;
 import nativekit.ui.gestures.GestureArena;
 import nativekit.ui.animation.AnimationScheduler;
 
@@ -88,6 +89,15 @@ class BuildContext {
 	/** Resolves a local sparse override against the current inherited style. */
 	public function resolveTextStyle(?override:TextStyleOverride):ResolvedTextStyle
 		return currentTextStyle().merge(override);
+
+	/** Resolves a semantic theme role, then applies an optional local override. */
+	public function resolveTextRole(role:TextRole,
+			?override:TextStyleOverride):ResolvedTextStyle {
+		var resolved = role == null || role == TextRole.Body
+			? currentTextStyle()
+			: currentTextStyle().merge(theme.textRole(role).toOverride());
+		return resolved.merge(override);
+	}
 
 	/** Builds a subtree under a nested typography scope and restores the parent scope. */
 	public function withTextStyle<T>(override:TextStyleOverride, build:Void->T):T {

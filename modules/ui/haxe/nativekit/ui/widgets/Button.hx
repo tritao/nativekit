@@ -14,6 +14,7 @@ import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.State;
 import nativekit.ui.core.View;
 import nativekit.ui.theme.InteractionState;
+import nativekit.ui.theme.TextRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
@@ -90,7 +91,8 @@ class Button implements View {
 		var labelNode = context.withScope(new Key("label"), function() {
 			var text = new RenderNode(context.id("label"), LayoutVisualKind.Text);
 			text.layout.text = label;
-			var labelStyle = context.resolveTextStyle(TextStyleOverride.paragraph(TextWrap.None));
+			var labelStyle = context.resolveTextRole(TextRole.Button,
+				TextStyleOverride.paragraph(TextWrap.None));
 			labelStyle = labelStyle.withTextColor(
 				context.theme.buttonLabelColor(enabled, resolvedStyle.background));
 			text.applyTextStyle(labelStyle);

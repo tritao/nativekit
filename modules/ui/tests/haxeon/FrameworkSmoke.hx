@@ -81,6 +81,7 @@ import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualList;
 import nativekit.ui.theme.Theme;
+import nativekit.ui.theme.TextRole;
 import nativekit.ui.gestures.GestureEvent;
 import nativekit.ui.gestures.TapRecognizer;
 import nativekit.ui.gestures.DoubleTapRecognizer;
@@ -1132,21 +1133,26 @@ class FrameworkSmoke {
 			return 98;
 
 		var theme = new Theme();
-		theme.text = Color.rgba(0.10, 0.14, 0.21, 1.0);
-		theme.buttonText = Color.rgba(1.0, 1.0, 1.0, 1.0);
+		theme.body.color = Color.rgba(0.10, 0.14, 0.21, 1.0);
+		theme.button.color = Color.rgba(1.0, 1.0, 1.0, 1.0);
 		var lightNeutral = Color.rgba(0.87, 0.90, 0.95, 1.0);
 		var accentButton = Color.rgba(0.18, 0.39, 0.70, 1.0);
-		if (theme.buttonLabelColor(true, lightNeutral) != theme.text ||
-			theme.buttonLabelColor(true, accentButton) != theme.buttonText ||
+		if (theme.buttonLabelColor(true, lightNeutral) != theme.body.color ||
+			theme.buttonLabelColor(true, accentButton) != theme.button.color ||
 			theme.buttonLabelColor(false, accentButton) != theme.disabledButtonText)
 			return 101;
 		theme.buttonHover = Color.rgba(0.8, 0.1, 0.1, 1.0);
 		theme.buttonPressed = Color.rgba(0.7, 0.05, 0.05, 1.0);
 		theme.buttonFocused = Color.rgba(0.4, 0.2, 0.8, 1.0);
 		theme.buttonDisabled = Color.rgba(0.2, 0.2, 0.2, 1.0);
-		theme.textStyle = new TextStyle(17.0, FontFamily.Default, -0.25);
-		theme.paragraphStyle = new ParagraphStyle(TextWrap.Word, TextAlignment.Start, 21.0,
+		theme.body.textStyle = new TextStyle(17.0, FontFamily.Default, -0.25);
+		theme.body.paragraphStyle = new ParagraphStyle(TextWrap.Word, TextAlignment.Start, 21.0,
 			TextDirection.Ltr);
+		theme.heading.textStyle = new TextStyle(26.0);
+		theme.label.textStyle = new TextStyle(13.0);
+		theme.label.color = Color.rgba(0.32, 0.58, 0.76, 1.0);
+		theme.caption.textStyle = new TextStyle(11.0);
+		theme.button.textStyle = new TextStyle(15.0);
 		context.setTheme(theme);
 		var themedTextRoot = context.submit(new Text("Theme typography"),
 			new LayoutFrame(256.0, 192.0));
@@ -1155,8 +1161,30 @@ class FrameworkSmoke {
 			themedTextRoot.layout.paragraphStyle.wrap != TextWrap.Word ||
 			themedTextRoot.layout.paragraphStyle.lineHeight != 21.0 ||
 			themedTextRoot.layout.paragraphStyle.direction != TextDirection.Ltr ||
-			themedTextRoot.layout.textColor != theme.text)
+			themedTextRoot.layout.textColor != theme.body.color)
 			return 214;
+		var roleRoot = context.submit(new Column("text-roles", [
+			new KeyedView("body", new Text("Body")),
+			new KeyedView("heading", new Text("Heading", null, null, null, TextRole.Heading)),
+			new KeyedView("label", new Text("Label", null, null, null, TextRole.Label)),
+			new KeyedView("caption", new Text("Caption", null, null, null, TextRole.Caption)),
+			new KeyedView("button", new Text("Button", null, null, null, TextRole.Button))
+		]), new LayoutFrame(320.0, 320.0));
+		if (roleRoot.children[0].layout.textStyle.fontSize != 17.0)
+			return 218;
+		if (roleRoot.children[1].layout.textStyle.fontSize != 26.0)
+			return 219;
+		if (roleRoot.children[2].layout.textStyle.fontSize != 13.0 ||
+			roleRoot.children[2].layout.textColor != theme.label.color)
+			return 220;
+		if (roleRoot.children[2].layout.paragraphStyle.wrap != TextWrap.None)
+			return 223;
+		if (roleRoot.children[3].layout.textStyle.fontSize != 11.0 ||
+			roleRoot.children[3].layout.textColor != theme.caption.color)
+			return 221;
+		if (roleRoot.children[4].layout.textStyle.fontSize != 15.0 ||
+			roleRoot.children[4].layout.paragraphStyle.wrap != TextWrap.None)
+			return 222;
 		var inheritedColor = Color.rgba(0.24, 0.31, 0.42, 1.0);
 		var nestedColor = Color.rgba(0.76, 0.42, 0.18, 1.0);
 		var typography = new DefaultTextStyle(new Column("typography", [

@@ -2,6 +2,7 @@ package nativekit.ui.core;
 
 import Color;
 import nativekit.ui.theme.Theme;
+import nativekit.ui.theme.TextRoleStyle;
 
 /** Concrete typography snapshot emitted onto a text-capable render node. */
 class ResolvedTextStyle {
@@ -20,7 +21,13 @@ class ResolvedTextStyle {
 	public static function fromTheme(theme:Theme):ResolvedTextStyle {
 		if (theme == null)
 			throw "Resolved text styles require a theme";
-		return new ResolvedTextStyle(theme.textStyle, theme.paragraphStyle, theme.text);
+		return fromRoleStyle(theme.body);
+	}
+
+	public static function fromRoleStyle(role:TextRoleStyle):ResolvedTextStyle {
+		if (role == null)
+			throw "Resolved text styles require a role";
+		return new ResolvedTextStyle(role.textStyle, role.paragraphStyle, role.color);
 	}
 
 	/** Applies sparse local changes without mutating either input style. */

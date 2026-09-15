@@ -21,6 +21,7 @@ import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.theme.TextRole;
 
 /** Shared Haxe implementation for checkbox and switch-style boolean controls. */
 class BinaryControl implements View {
@@ -109,8 +110,8 @@ class BinaryControl implements View {
 			node.add(indicator);
 			var labelNode = new RenderNode(context.id("label"), LayoutVisualKind.Text);
 			labelNode.layout.text = label;
-			labelNode.applyTextStyle(context.resolveTextStyle().withTextColor(
-				context.theme.textColor(enabled)));
+			labelNode.applyTextStyle(context.resolveTextRole(TextRole.Label).withTextColor(
+				context.theme.textRoleColor(TextRole.Label, enabled)));
 			node.add(labelNode);
 
 			var invalidation:State<Bool> = context.state(node.id, checked);
