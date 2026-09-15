@@ -50,6 +50,10 @@ class AudioSmoke {
 			Mixer.setMasterVolume(0.75);
 			if (Mixer.masterVolume() != 0.75)
 				throw "Haxe audio master volume did not round-trip";
+			var sampleRate = Mixer.sampleRate();
+			if (sampleRate <= 0)
+				throw "Haxe audio sample rate was invalid";
+			var nowFrames = Mixer.timeFrames();
 			bus = Bus.create();
 			bus.setVolume(0.5);
 			if (bus.volume() != 0.5)
@@ -69,6 +73,13 @@ class AudioSmoke {
 			first.setVolume(0.5);
 			if (first.volume() != 0.5)
 				throw "Haxe audio volume did not round-trip";
+			var fadeFrames = Std.int(sampleRate / 100);
+			first.fade(Voice.CURRENT_VOLUME, 0.25, haxe.Int64.ofInt(fadeFrames));
+			first.fadeAt(0.25, 0.5, haxe.Int64.ofInt(fadeFrames),
+				haxe.Int64.add(nowFrames, haxe.Int64.ofInt(sampleRate)));
+			first.scheduleStart(nowFrames);
+			first.scheduleStop(haxe.Int64.add(nowFrames, haxe.Int64.ofInt(sampleRate * 2)));
+			first.clearSchedule();
 			first.start();
 			second.start();
 			completion.start();

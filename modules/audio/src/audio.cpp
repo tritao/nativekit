@@ -97,6 +97,14 @@ nk_result invalid_handle(const char *message) {
     return NK_ERROR_INVALID_HANDLE;
 }
 
+bool valid_fade_volume(float volume, bool allow_current) {
+    if (!std::isfinite(volume))
+        return false;
+    if (allow_current && volume == NK_AUDIO_VOLUME_CURRENT)
+        return true;
+    return volume >= 0.0f;
+}
+
 nk_result map_miniaudio_result(ma_result result, const char *message) {
     if (result == MA_SUCCESS)
         return NK_OK;
@@ -615,6 +623,89 @@ nk_result NK_CALL nk_audio_voice_rewind(nk_audio_voice sound) {
     });
 }
 
+nk_result NK_CALL nk_audio_voice_schedule_start(nk_audio_voice sound,
+                                                 uint64_t absolute_time_pcm_frames) {
+    return nk::core::result_boundary(
+        "unexpected error while scheduling an audio voice start", [&]() {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return with_voice(sound, "could not schedule audio voice start",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_start_time_in_pcm_frames(
+                                      &value.sound, absolute_time_pcm_frames);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_schedule_stop(nk_audio_voice sound,
+                                                uint64_t absolute_time_pcm_frames) {
+    return nk::core::result_boundary(
+        "unexpected error while scheduling an audio voice stop", [&]() {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return with_voice(sound, "could not schedule audio voice stop",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_stop_time_in_pcm_frames(
+                                      &value.sound, absolute_time_pcm_frames);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_clear_schedule(nk_audio_voice sound) {
+    return nk::core::result_boundary(
+        "unexpected error while clearing an audio voice schedule", [&]() {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return with_voice(sound, "could not clear audio voice schedule",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_reset_start_time(&value.sound);
+                                  ma_sound_reset_stop_time_and_fade(&value.sound);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_fade(nk_audio_voice sound, float volume_begin,
+                                      float volume_end, uint64_t duration_pcm_frames) {
+    return nk::core::result_boundary("unexpected error while fading an audio voice", [&]() {
+        if (const auto result = enter_audio_ui(); result != NK_OK)
+            return result;
+        if (!valid_fade_volume(volume_begin, true) || !valid_fade_volume(volume_end, false))
+            return invalid_argument(
+                "audio voice fade volumes must be finite and non-negative; the start may be "
+                "NK_AUDIO_VOLUME_CURRENT");
+        return with_voice(sound, "could not fade audio voice", [&](AudioVoiceResource &value,
+                                                                     const char *) {
+            ma_sound_set_fade_in_pcm_frames(&value.sound, volume_begin, volume_end,
+                                            duration_pcm_frames);
+            return NK_OK;
+        });
+    });
+}
+
+nk_result NK_CALL nk_audio_voice_fade_at(nk_audio_voice sound, float volume_begin,
+                                         float volume_end, uint64_t duration_pcm_frames,
+                                         uint64_t absolute_start_time_pcm_frames) {
+    return nk::core::result_boundary(
+        "unexpected error while scheduling an audio voice fade", [&]() {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_fade_volume(volume_begin, true) || !valid_fade_volume(volume_end, false))
+                return invalid_argument(
+                    "audio voice fade volumes must be finite and non-negative; the start may be "
+                    "NK_AUDIO_VOLUME_CURRENT");
+            return with_voice(sound, "could not schedule audio voice fade",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_fade_start_in_pcm_frames(
+                                      &value.sound, volume_begin, volume_end, duration_pcm_frames,
+                                      absolute_start_time_pcm_frames);
+                                  return NK_OK;
+                              });
+        });
+}
+
 nk_result NK_CALL nk_audio_voice_is_playing(nk_audio_voice sound, nk_bool *out_playing) {
     return nk::core::result_boundary(
         "unexpected error while querying an audio voice", [&]() -> nk_result {
@@ -787,6 +878,38 @@ nk_result NK_CALL nk_audio_voice_get_length_seconds(nk_audio_voice sound, float 
                                       ma_sound_get_length_in_seconds(&value.sound, out_seconds),
                                       message);
                               });
+    });
+}
+
+nk_result NK_CALL nk_audio_get_time_pcm_frames(uint64_t *out_time_pcm_frames) {
+    return nk::core::result_boundary(
+        "unexpected error while getting the audio engine clock", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_time_pcm_frames)
+                return invalid_argument("audio engine clock output is missing");
+            nk_result engine_result = NK_OK;
+            auto engine = ensure_engine(engine_result);
+            if (!engine)
+                return engine_result;
+            *out_time_pcm_frames = ma_engine_get_time_in_pcm_frames(&engine->engine);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_get_sample_rate(uint32_t *out_sample_rate) {
+    return nk::core::result_boundary(
+        "unexpected error while getting the audio engine sample rate", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_sample_rate)
+                return invalid_argument("audio engine sample rate output is missing");
+            nk_result engine_result = NK_OK;
+            auto engine = ensure_engine(engine_result);
+            if (!engine)
+                return engine_result;
+            *out_sample_rate = ma_engine_get_sample_rate(&engine->engine);
+            return NK_OK;
         });
 }
 

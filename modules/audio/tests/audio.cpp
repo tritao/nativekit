@@ -29,7 +29,10 @@ int main() {
     assert(nk_audio_voice_set_volume(NK_INVALID_HANDLE, -1.0f) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_audio_voice_set_pan(NK_INVALID_HANDLE, 2.0f) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_audio_voice_set_pitch(NK_INVALID_HANDLE, 0.0f) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_voice_fade(NK_INVALID_HANDLE, -2.0f, 1.0f, 0) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_audio_set_master_volume(-1.0f) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_get_time_pcm_frames(nullptr) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_get_sample_rate(nullptr) == NK_ERROR_INVALID_ARGUMENT);
 
     nk_audio_bus bus = NK_INVALID_HANDLE;
     assert(nk_audio_bus_create(&bus) == NK_OK);
@@ -60,6 +63,9 @@ int main() {
     voice_options.flags = 0;
     nk_audio_voice completion_voice = NK_INVALID_HANDLE;
     assert(nk_audio_voice_create(clip, &voice_options, &completion_voice) == NK_OK);
+    nk_audio_voice timed_voice = NK_INVALID_HANDLE;
+    voice_options.flags = NK_AUDIO_VOICE_LOOPING;
+    assert(nk_audio_voice_create(clip, &voice_options, &timed_voice) == NK_OK);
     voice_options.flags = NK_AUDIO_VOICE_LOOPING;
     voice_options.bus = bus;
     nk_audio_voice first_voice = NK_INVALID_HANDLE;
@@ -68,6 +74,29 @@ int main() {
     assert(nk_audio_voice_create(clip, &voice_options, &second_voice) == NK_OK);
     assert(first_voice != second_voice);
     assert(nk_audio_clip_destroy(clip) == NK_OK);
+
+    uint32_t sample_rate = 0;
+    uint64_t now_frames = 0;
+    assert(nk_audio_get_sample_rate(&sample_rate) == NK_OK && sample_rate > 0);
+    assert(nk_audio_get_time_pcm_frames(&now_frames) == NK_OK);
+    assert(nk_audio_voice_fade(timed_voice, NK_AUDIO_VOLUME_CURRENT, 0.25f,
+                               sample_rate / 100) == NK_OK);
+    assert(nk_audio_voice_fade_at(timed_voice, 0.25f, 0.5f, sample_rate / 100,
+                                  now_frames + sample_rate) == NK_OK);
+    assert(nk_audio_voice_schedule_start(timed_voice, now_frames + sample_rate * 5) == NK_OK);
+    assert(nk_audio_voice_start(timed_voice) == NK_OK);
+    assert(nk_audio_voice_is_playing(timed_voice, &state) == NK_OK && state == 0);
+    assert(nk_audio_voice_clear_schedule(timed_voice) == NK_OK);
+    assert(nk_audio_voice_stop(timed_voice) == NK_OK);
+    assert(nk_audio_voice_start(timed_voice) == NK_OK);
+    assert(nk_audio_get_time_pcm_frames(&now_frames) == NK_OK);
+    assert(nk_audio_voice_schedule_stop(timed_voice, now_frames + sample_rate * 5) == NK_OK);
+    assert(nk_audio_voice_is_playing(timed_voice, &state) == NK_OK && state == 1);
+    assert(nk_audio_voice_clear_schedule(timed_voice) == NK_OK);
+    assert(nk_audio_voice_is_playing(timed_voice, &state) == NK_OK && state == 1);
+    assert(nk_audio_voice_stop(timed_voice) == NK_OK);
+    assert(nk_audio_voice_fade(timed_voice, -2.0f, 1.0f, 0) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_voice_fade(timed_voice, 0.0f, -1.0f, 0) == NK_ERROR_INVALID_ARGUMENT);
 
     assert(nk_audio_voice_start(first_voice) == NK_OK);
     assert(nk_audio_voice_start(second_voice) == NK_OK);
@@ -94,6 +123,7 @@ int main() {
     }
     assert(completion_seen == 1);
     assert(nk_audio_voice_destroy(completion_voice) == NK_OK);
+    assert(nk_audio_voice_destroy(timed_voice) == NK_OK);
     assert(nk_audio_voice_destroy(first_voice) == NK_OK);
     assert(nk_audio_bus_is_playing(bus, &state) == NK_OK && state == 1);
     assert(nk_audio_bus_stop(bus) == NK_OK);

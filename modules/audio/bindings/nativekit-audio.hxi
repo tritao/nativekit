@@ -74,6 +74,14 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_get_master_volume(out_volume: ptr<f32> @out) -> nk_result;
 	/**
+	 * Returns the process-wide audio engine sample rate in frames per second.
+	 */
+	extern fn nk_audio_get_sample_rate(out_sample_rate: ptr<u32> @out) -> nk_result;
+	/**
+	 * Returns the process-wide audio engine clock in PCM frames.
+	 */
+	extern fn nk_audio_get_time_pcm_frames(out_time_pcm_frames: ptr<u64> @out) -> nk_result;
+	/**
 	 * Sets linear gain for the process-wide NativeKit audio mixer.
 	 */
 	extern fn nk_audio_set_master_volume(volume: f32) -> nk_result;
@@ -82,6 +90,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_voice_at_end(voice: nk_audio_voice, out_at_end: ptr<nk_bool> @out) -> nk_result;
 	/**
+	 * Clears a voice's scheduled start, stop, and fade transitions.
+	 */
+	extern fn nk_audio_voice_clear_schedule(voice: nk_audio_voice) -> nk_result;
+	/**
 	 * Creates a stopped independent playback voice from a reusable clip.
 	 */
 	extern fn nk_audio_voice_create(clip: nk_audio_clip, options: ptr<const<nk_audio_voice_options>>, out_voice: ptr<nk_audio_voice> @out @owned) -> nk_result;
@@ -89,6 +101,15 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Stops and destroys a playback voice, invalidating its handle.
 	 */
 	extern fn nk_audio_voice_destroy(voice: nk_audio_voice) -> nk_result;
+	/**
+	 * Fades a voice over a duration in PCM frames. volume_begin may be
+	 * NK_AUDIO_VOLUME_CURRENT; volume_end must be finite and non-negative.
+	 */
+	extern fn nk_audio_voice_fade(voice: nk_audio_voice, volume_begin: f32, volume_end: f32, duration_pcm_frames: u64) -> nk_result;
+	/**
+	 * Fades a voice starting at an absolute process-wide audio time in PCM frames.
+	 */
+	extern fn nk_audio_voice_fade_at(voice: nk_audio_voice, volume_begin: f32, volume_end: f32, duration_pcm_frames: u64, absolute_start_time_pcm_frames: u64) -> nk_result;
 	/**
 	 * Returns the decoded voice length in seconds.
 	 */
@@ -121,6 +142,16 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Seeks a voice back to its beginning without changing its playing state.
 	 */
 	extern fn nk_audio_voice_rewind(voice: nk_audio_voice) -> nk_result;
+	/**
+	 * Schedules a voice to start at an absolute process-wide audio time in PCM
+	 * frames. Call nk_audio_voice_start() after setting the schedule.
+	 */
+	extern fn nk_audio_voice_schedule_start(voice: nk_audio_voice, absolute_time_pcm_frames: u64) -> nk_result;
+	/**
+	 * Schedules a voice to stop at an absolute process-wide audio time in PCM
+	 * frames. A scheduled stop does not emit a natural-end completion event.
+	 */
+	extern fn nk_audio_voice_schedule_stop(voice: nk_audio_voice, absolute_time_pcm_frames: u64) -> nk_result;
 	/**
 	 * Enables or disables voice looping.
 	 */

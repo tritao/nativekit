@@ -6,6 +6,9 @@ import NativeKitError;
 
 /** One independent playback instance created from a reusable audio clip. */
 class Voice {
+	/** Passed as fade's starting volume to use the current fader volume. */
+	public static inline var CURRENT_VOLUME:Float = -1.0;
+
 	final value:NativeKitAudio.VoiceHandle;
 	final owned:NativeKitAudio.OwnedVoiceHandle;
 	var disposed:Bool = false;
@@ -43,6 +46,47 @@ class Voice {
 	public function rewind():Void {
 		ensureLive();
 		AudioResult.check(NativeKitAudio.nk_audio_voice_rewind(value), "audio.voice.rewind");
+	}
+
+	/** Schedules playback at an absolute process-wide audio time in PCM frames. */
+	public function scheduleStart(timeFrames:haxe.Int64):Void {
+		ensureLive();
+		AudioResult.check(
+			NativeKitAudio.nk_audio_voice_schedule_start(value, timeFrames),
+			"audio.voice.scheduleStart");
+	}
+
+	/** Schedules playback to stop at an absolute process-wide audio time in PCM frames. */
+	public function scheduleStop(timeFrames:haxe.Int64):Void {
+		ensureLive();
+		AudioResult.check(
+			NativeKitAudio.nk_audio_voice_schedule_stop(value, timeFrames),
+			"audio.voice.scheduleStop");
+	}
+
+	/** Clears scheduled start, stop, and fade transitions. */
+	public function clearSchedule():Void {
+		ensureLive();
+		AudioResult.check(NativeKitAudio.nk_audio_voice_clear_schedule(value),
+			"audio.voice.clearSchedule");
+	}
+
+	/** Fades between linear gains over a duration in PCM frames. */
+	public function fade(volumeBegin:Float, volumeEnd:Float, durationFrames:haxe.Int64):Void {
+		ensureLive();
+		AudioResult.check(
+			NativeKitAudio.nk_audio_voice_fade(value, volumeBegin, volumeEnd, durationFrames),
+			"audio.voice.fade");
+	}
+
+	/** Fades between linear gains at an absolute process-wide audio time in PCM frames. */
+	public function fadeAt(volumeBegin:Float, volumeEnd:Float, durationFrames:haxe.Int64,
+		timeFrames:haxe.Int64):Void {
+		ensureLive();
+		AudioResult.check(
+			NativeKitAudio.nk_audio_voice_fade_at(value, volumeBegin, volumeEnd, durationFrames,
+				timeFrames),
+			"audio.voice.fadeAt");
 	}
 
 	public function isPlaying():Bool {

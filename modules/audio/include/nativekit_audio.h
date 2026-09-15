@@ -69,6 +69,9 @@ typedef struct nk_audio_voice_options {
     uint64_t reserved2[2];
 } nk_audio_voice_options;
 
+/** Use the voice's current fader volume as the start of a fade. */
+#define NK_AUDIO_VOLUME_CURRENT (-1.0f)
+
 /* ------------------------------------------------------------------------- */
 /* Mixer buses                                                                */
 /* ------------------------------------------------------------------------- */
@@ -133,6 +136,32 @@ NKAUDIO_API nk_result NK_CALL nk_audio_voice_start(nk_audio_voice voice);
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_stop(nk_audio_voice voice);
 /** Seeks a voice back to its beginning without changing its playing state. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_rewind(nk_audio_voice voice);
+
+/**
+ * Schedules a voice to start at an absolute process-wide audio time in PCM
+ * frames. Call nk_audio_voice_start() after setting the schedule.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_schedule_start(
+    nk_audio_voice voice, uint64_t absolute_time_pcm_frames);
+/**
+ * Schedules a voice to stop at an absolute process-wide audio time in PCM
+ * frames. A scheduled stop does not emit a natural-end completion event.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_schedule_stop(
+    nk_audio_voice voice, uint64_t absolute_time_pcm_frames);
+/** Clears a voice's scheduled start, stop, and fade transitions. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_clear_schedule(nk_audio_voice voice);
+
+/**
+ * Fades a voice over a duration in PCM frames. volume_begin may be
+ * NK_AUDIO_VOLUME_CURRENT; volume_end must be finite and non-negative.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_fade(
+    nk_audio_voice voice, float volume_begin, float volume_end, uint64_t duration_pcm_frames);
+/** Fades a voice starting at an absolute process-wide audio time in PCM frames. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_fade_at(
+    nk_audio_voice voice, float volume_begin, float volume_end, uint64_t duration_pcm_frames,
+    uint64_t absolute_start_time_pcm_frames);
 /** Returns whether a voice is currently playing. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_is_playing(nk_audio_voice voice,
                                                          nk_bool *out_playing NK_OUT);
@@ -170,6 +199,12 @@ NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_length_seconds(nk_audio_voice v
 /* ------------------------------------------------------------------------- */
 /* Global mixer                                                               */
 /* ------------------------------------------------------------------------- */
+
+/** Returns the process-wide audio engine clock in PCM frames. */
+NKAUDIO_API nk_result NK_CALL nk_audio_get_time_pcm_frames(
+    uint64_t *out_time_pcm_frames NK_OUT);
+/** Returns the process-wide audio engine sample rate in frames per second. */
+NKAUDIO_API nk_result NK_CALL nk_audio_get_sample_rate(uint32_t *out_sample_rate NK_OUT);
 
 /** Sets linear gain for the process-wide NativeKit audio mixer. */
 NKAUDIO_API nk_result NK_CALL nk_audio_set_master_volume(float volume);
