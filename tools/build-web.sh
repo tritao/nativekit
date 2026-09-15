@@ -20,7 +20,7 @@ source "$emsdk_dir/emsdk_env.sh" >/dev/null
 emcmake cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE="$build_type" \
     -DNK_BUILD_SHARED=OFF \
-    -DNK_BUILD_TESTS=OFF \
+    -DNK_BUILD_TESTS=ON \
     -DNK_BUILD_EXAMPLES=ON \
     -DNK_BUILD_GPU=OFF \
     -DNK_BUILD_UI=ON \
@@ -30,17 +30,20 @@ emcmake cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
     -DNKUI_HAXEON_BUNDLE_FONTS="$bundle_fonts" \
     -DNKUI_HAXEON_SUBSET_FONTS="$subset_fonts" \
     -DNK_SOKOL_BACKEND=gles3
-cmake --build "$build_dir" --target nativekit_ui_c_api nativekit_ui_haxeon
+cmake --build "$build_dir" --target nativekit_ui_c_api nativekit_ui_haxeon \
+    nativekit_web_accessibility nativekit_web_system_equivalents
 
 artifact_dir="$build_dir/modules/ui"
 echo
 echo "Web build complete:"
 echo "  $artifact_dir/nativekit_ui_c_api.html"
 echo "  $artifact_dir/nativekit_ui_haxeon.html"
+echo "  $build_dir/tests/nativekit_web_accessibility.html"
+echo "  $build_dir/tests/nativekit_web_system_equivalents.html"
 echo
 if [[ "$bundle_fonts" == "ON" || "$bundle_fonts" == "1" ]]; then
-    echo "Serve it over HTTP (fonts are bundled in nativekit_ui_haxeon.data):"
+    echo "Serve it over HTTP (fonts are bundled in nativekit_ui_haxeon.data; browser tests use the build root):"
 else
-    echo "Serve it over HTTP (required for the external font assets):"
+    echo "Serve it over HTTP (required for the external font assets and browser tests):"
 fi
-echo "  python3 -m http.server --directory \"$artifact_dir\" 8080"
+echo "  python3 -m http.server --directory \"$build_dir\" 8080"

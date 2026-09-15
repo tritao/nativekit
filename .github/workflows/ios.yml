@@ -34,3 +34,34 @@ jobs:
         run: >-
           cmake --build "build-${{ matrix.sdk }}" --config Debug
           --target nativekit_c_abi nativekit_core_tests nativekit_time_tests nativekit_platform_parity
+      - name: Build iOS simulator runtime test app
+        if: matrix.sdk == 'iphonesimulator'
+        run: >-
+          cmake --build "build-${{ matrix.sdk }}" --config Debug
+          --target nativekit_ios_runtime_tests
+      - name: Select and boot iOS simulator
+        if: matrix.sdk == 'iphonesimulator'
+        run: |
+          simulator_id=$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ {print $2; exit}')
+          if [[ -z "$simulator_id" ]]; then
+            echo "No available iPhone simulator found" >&2
+            exit 1
+          fi
+          echo "IOS_SIMULATOR_ID=$simulator_id" >> "$GITHUB_ENV"
+          xcrun simctl boot "$simulator_id" 2>/dev/null || true
+          xcrun simctl bootstatus "$simulator_id" -b
+      - name: Run iOS simulator runtime tests
+        if: matrix.sdk == 'iphonesimulator'
+        run: |
+          xcrun simctl install "$IOS_SIMULATOR_ID" \
+            "build-iphonesimulator/Debug/nativekit_ios_runtime_tests.app"
+          set +e
+          xcrun simctl launch --console "$IOS_SIMULATOR_ID" \
+            org.nativekit.tests.ios-runtime 2>&1 | tee ios-runtime.log
+          launch_status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$launch_status" -ne 0 ]] ||
+             ! grep -q 'NATIVEKIT_IOS_RUNTIME_RESULT=PASS' ios-runtime.log; then
+            cat ios-runtime.log >&2
+            exit 1
+          fi

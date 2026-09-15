@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 artifact_dir=${NATIVEKIT_WEB_ARTIFACT_DIR:-"$repo_dir/build-web/modules/ui"}
+build_dir=${NATIVEKIT_WEB_BUILD_DIR:-"$repo_dir/build-web"}
 browser=${NK_WEB_BROWSER:-}
 
 if [[ ! -f "$artifact_dir/nativekit_ui_c_api.html" ]]; then
@@ -41,11 +42,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-python3 -m http.server "$http_port" --bind 127.0.0.1 --directory "$artifact_dir" \
+python3 -m http.server "$http_port" --bind 127.0.0.1 --directory "$build_dir" \
     >"$temp_dir/http.log" 2>&1 &
 http_pid=$!
 
-page_url="http://127.0.0.1:${http_port}/nativekit_ui_c_api.html?smoke"
+artifact_rel=$(realpath --relative-to="$build_dir" "$artifact_dir")
+page_url="http://127.0.0.1:${http_port}/${artifact_rel}/nativekit_ui_c_api.html?smoke"
 "$browser" --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu \
     --enable-unsafe-swiftshader --no-first-run --user-data-dir="$temp_dir/profile" \
     --remote-debugging-port="$debug_port" --remote-allow-origins='*' \
@@ -74,4 +76,14 @@ if ! python3 "$repo_dir/tools/web_smoke.py" --debug-port "$debug_port" --page-ur
     cat "$temp_dir/browser.log" >&2 || true
     cat "$temp_dir/http.log" >&2 || true
     exit 1
+fi
+
+if [[ -f "$build_dir/tests/nativekit_web_accessibility.html" &&
+      -f "$build_dir/tests/nativekit_web_system_equivalents.html" ]]; then
+    python3 "$repo_dir/tools/web_dataset_smoke.py" \
+        --debug-port "$debug_port" --page-url "$page_url" \
+        --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_accessibility.html" \
+        --dataset-key nativekitAccessibilityResult \
+        --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_system_equivalents.html" \
+        --dataset-key nativekitSystemResult
 fi

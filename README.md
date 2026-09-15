@@ -64,13 +64,13 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 **Legend:** ✅ supported · **Partial** a subset is supported · 🚧 coming soon ·
 — not currently advertised
 
-- iOS currently has compile-only CI coverage for the core library on device and
-  simulator SDKs. The initial UIKit host attachment, geometry lifecycle, Metal
+- iOS has device compile/link coverage and simulator runtime CI for the core
+  library. The initial UIKit host attachment, geometry lifecycle, Metal
   presentation surface, touch/pointer input, hardware-key events, UIKit text
   editing, WKWebView, resource dialogs, message dialogs, clipboard, URI opening,
   sandbox directory queries, locale, appearance, and notifications are available;
-  path-based dialogs, drops, resource sharing, joystick support, and simulator
-  runtime integration are still being added. Custom-surface accessibility is
+  path-based dialogs, drops, resource sharing, and joystick support remain
+  deferred. Custom-surface accessibility is
   projected into UIKit and Cocoa accessibility elements and VoiceOver/Voice Control actions.
 - Web custom-surface accessibility mirrors the NativeKit semantic tree into an
   accessible DOM overlay. Focus, activation, keyboard adjustments, text value,
@@ -150,10 +150,10 @@ browser UI showcase with:
 ./tools/build-web.sh
 ./tools/test-web.sh
 ./tools/benchmark-web-haxeon.sh
-python3 -m http.server --directory build-web/modules/ui 8080
+python3 -m http.server --directory build-web 8080
 ```
 
-Then open `http://localhost:8080/nativekit_ui_c_api.html`. Add `?smoke` to run
+Then open `http://localhost:8080/modules/ui/nativekit_ui_c_api.html`. Add `?smoke` to run
 the 30-frame browser smoke test. The generated web host is an example/deploy
 shell; Emscripten remains private to the platform implementation.
 
@@ -238,6 +238,8 @@ backend. Platform CI additionally covers:
 - An isolated MinGW/Wine compatibility suite via `tools/test-wine.sh`.
 - Native Intel and Apple Silicon macOS builds.
 - Android unit and instrumentation tests.
+- Shared desktop capability conformance, Web browser-equivalent integration,
+  and iOS simulator runtime tests.
 - Generated Haxeon binding drift and runtime smoke tests.
 
 See [the testing guide](docs/testing.md) for prerequisites, exact coverage, and

@@ -147,17 +147,25 @@ APIs can require a user activation, a permission grant, or a secure context.
 Web path-based dialogs remain deferred because a browser cannot safely expose a
 process-local filesystem path through this URI-first API.
 
-The baseline is guarded by `platform_parity` in CTest. It checks that:
+The baseline is guarded by `platform_parity` in CTest and the shared
+`capability_conformance` suite on desktop. The snapshot-backed parity test
+checks that:
 
 * every capability currently classified as required or equivalent is present;
 * a capability classified as not applicable is absent;
 * deferred capabilities are not mistaken for a completed family; and
 * no backend advertises a capability bit absent from this contract.
 
-An intentional capability change must update this document, the per-backend
-expectation in `tests/unit/platform_parity.cpp`, and the relevant behavior
-tests in the same change. This makes the capability mask a reviewable snapshot
-while the target table remains the definition of completion.
+The desktop conformance suite then calls the public operations associated with
+each advertised capability and fails if an operation returns
+`NK_ERROR_UNSUPPORTED`. Existing Android, Web, and platform-specific native
+tests provide the corresponding host or browser behavior coverage; iOS also
+has a simulator-hosted runtime test in CI.
+
+An intentional capability change must update this document,
+`tests/capability-snapshots.txt`, and the relevant behavior tests in the same
+change. This makes the capability mask a reviewable snapshot while the target
+table remains the definition of completion.
 
 The fallback stub used when a native desktop dependency is unavailable is not a
 platform backend. It is tested separately and advertises only the portable

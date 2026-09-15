@@ -27,6 +27,10 @@ add_test(NAME time COMMAND nativekit_time_tests)
 add_executable(nativekit_platform_parity unit/platform_parity.cpp)
 target_compile_features(nativekit_platform_parity PRIVATE cxx_std_17)
 target_link_libraries(nativekit_platform_parity PRIVATE NativeKit::nativekit)
+configure_file(${PROJECT_SOURCE_DIR}/tests/capability-snapshots.txt
+    ${CMAKE_CURRENT_BINARY_DIR}/capability-snapshots.txt COPYONLY)
+target_compile_definitions(nativekit_platform_parity PRIVATE
+    NK_CAPABILITY_SNAPSHOT_FILE="${CMAKE_CURRENT_BINARY_DIR}/capability-snapshots.txt")
 if(ANDROID)
     target_compile_definitions(nativekit_platform_parity PRIVATE NK_PARITY_BACKEND_ANDROID=1)
 elseif(WIN32)
@@ -41,6 +45,13 @@ elseif(NK_BACKEND_GTK_AVAILABLE)
     target_compile_definitions(nativekit_platform_parity PRIVATE NK_PARITY_BACKEND_LINUX=1)
 endif()
 add_test(NAME platform_parity COMMAND nativekit_platform_parity)
+
+if(WIN32 OR (APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS") OR NK_BACKEND_GTK_AVAILABLE)
+    add_executable(nativekit_capability_conformance integration/capability_conformance.c)
+    target_compile_features(nativekit_capability_conformance PRIVATE c_std_11)
+    target_link_libraries(nativekit_capability_conformance PRIVATE NativeKit::nativekit)
+    set_target_properties(nativekit_capability_conformance PROPERTIES LINKER_LANGUAGE CXX)
+endif()
 
 add_executable(nativekit_wasm_host_allocator_test
     unit/wasm_host_allocator.cpp
@@ -96,6 +107,10 @@ if(NK_BACKEND_GTK_AVAILABLE)
         set_target_properties(nativekit_gtk_resource_workflow PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_resource_workflow
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_resource_workflow>)
+        add_test(NAME capability_conformance
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_capability_conformance>)
+        set_tests_properties(capability_conformance PROPERTIES
+            LABELS "linux;conformance" TIMEOUT 120)
     endif()
     find_program(DBUS_RUN_SESSION dbus-run-session)
     if(DBUS_RUN_SESSION)
@@ -135,6 +150,9 @@ if(WIN32)
     set_tests_properties(win_accessibility_uia PROPERTIES
         LABELS "windows;accessibility;graphics"
         TIMEOUT 120)
+    add_test(NAME capability_conformance COMMAND nativekit_capability_conformance)
+    set_tests_properties(capability_conformance PROPERTIES
+        LABELS "windows;conformance" TIMEOUT 120)
     if(NK_WEBVIEW2_LOADER_DLL)
         add_custom_command(TARGET nativekit_win_integration POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -159,11 +177,15 @@ if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set_target_properties(nativekit_osx_text_input PROPERTIES LINKER_LANGUAGE OBJCXX)
     add_test(NAME osx_text_input COMMAND nativekit_osx_text_input)
     set_tests_properties(osx_text_input PROPERTIES LABELS "macos;text-input" TIMEOUT 120)
+    add_test(NAME capability_conformance COMMAND nativekit_capability_conformance)
+    set_tests_properties(capability_conformance PROPERTIES
+        LABELS "macos;conformance" TIMEOUT 120)
 endif()
 
 if(MINGW)
     foreach(target nativekit_c_abi nativekit_core_tests nativekit_win_integration
-            nativekit_win_accessibility_uia nativekit_win_text_input)
+            nativekit_win_accessibility_uia nativekit_win_text_input
+            nativekit_capability_conformance)
         if(TARGET ${target})
             # Keep Wine smoke tests and redistributed test binaries independent
             # of the compiler runtime DLLs installed with a particular MinGW.
@@ -173,14 +195,37 @@ if(MINGW)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    # These binaries are compile/link probes for the iOS SDK. Running them
-    # requires an application host and a simulator or physical device.
+    add_executable(nativekit_ios_runtime_tests MACOSX_BUNDLE integration/ios_runtime.mm)
+    target_compile_features(nativekit_ios_runtime_tests PRIVATE cxx_std_17)
+    target_link_libraries(nativekit_ios_runtime_tests PRIVATE NativeKit::nativekit
+        "-framework Foundation" "-framework UIKit" "-framework CoreGraphics"
+        "-framework Metal" "-framework QuartzCore" "-framework UniformTypeIdentifiers"
+        "-framework UserNotifications" "-framework WebKit")
+    set_target_properties(nativekit_ios_runtime_tests PROPERTIES
+        LINKER_LANGUAGE OBJCXX
+        MACOSX_BUNDLE_INFO_PLIST
+            "${PROJECT_SOURCE_DIR}/tests/integration/ios_runtime-Info.plist"
+        XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
+        XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED NO
+        XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED NO
+        XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+        XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET 15.0
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "org.nativekit.tests.ios-runtime"
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2")
+    target_compile_options(nativekit_ios_runtime_tests PRIVATE
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
+    # The portable binaries remain compile/link probes for the iOS SDK. The
+    # application-hosted runtime target is launched by the simulator workflow.
     set_tests_properties(c_abi core time platform_parity wasm_host_allocator PROPERTIES DISABLED TRUE)
 endif()
 
 if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     set(sanitized_test_targets nativekit_c_abi nativekit_core_tests nativekit_time_tests
         nativekit_platform_parity)
+    if(TARGET nativekit_capability_conformance)
+        list(APPEND sanitized_test_targets nativekit_capability_conformance)
+    endif()
     if(TARGET nativekit_gtk_integration)
         list(APPEND sanitized_test_targets nativekit_gtk_integration)
     endif()
@@ -205,6 +250,10 @@ if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         # keep address/undefined checks here and leak checks in the core tests.
         set_tests_properties(gtk_create_destroy PROPERTIES
             ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+        if(TEST capability_conformance)
+            set_tests_properties(capability_conformance PROPERTIES
+                ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+        endif()
     endif()
     if(TARGET nativekit_gtk_webview_resize)
         set_tests_properties(gtk_webview_resize PROPERTIES
