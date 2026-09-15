@@ -89,9 +89,9 @@ constexpr backend_contract current_contract() {
             0};
 #elif defined(NK_PARITY_BACKEND_IOS)
     return {"iOS",
-            cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_INPUT) |
-                cap(NK_CAP_RESOURCE_IO),
-            cap(NK_CAP_WEBVIEW) | cap(NK_CAP_FILE_DIALOG) | cap(NK_CAP_CLIPBOARD) |
+            cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_METAL_SURFACE) |
+                cap(NK_CAP_INPUT) | cap(NK_CAP_RESOURCE_IO),
+            cap(NK_CAP_FILE_DIALOG) | cap(NK_CAP_CLIPBOARD) |
                 cap(NK_CAP_DRAG_DROP) | cap(NK_CAP_SHELL) | cap(NK_CAP_SYSTEM_APPEARANCE) |
                 cap(NK_CAP_NOTIFICATION) | cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_JOYSTICK) |
                 cap(NK_CAP_ACCESSIBILITY),

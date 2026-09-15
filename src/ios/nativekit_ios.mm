@@ -1,6 +1,7 @@
 #include "nativekit_mobile.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
+#include "nativekit_webview.h"
 #include "nativekit_window.h"
 
 #include "core/event_queue.hpp"
@@ -13,6 +14,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <UIKit/UIKit.h>
+#import <WebKit/WebKit.h>
 
 #include <algorithm>
 #include <array>
@@ -42,6 +44,10 @@
 - (void)handleHover:(UIHoverGestureRecognizer *)gesture;
 @end
 
+@interface NKIOSWebViewDelegate : NSObject <WKNavigationDelegate, WKScriptMessageHandler>
+@property(nonatomic, assign) void *resource;
+@end
+
 namespace {
 
 template <typename T> std::vector<std::byte> bytes_of(const T &value) {
@@ -51,6 +57,7 @@ template <typename T> std::vector<std::byte> bytes_of(const T &value) {
 
 struct IOSHost;
 struct IOSSurface;
+struct IOSWebView;
 struct IOSTouchState {
     uint32_t pointer_id = 0;
     nk_touch_tool tool = NK_TOUCH_TOOL_FINGER;
@@ -70,6 +77,7 @@ struct IOSHost final : nk::core::Resource {
     __strong NKIOSHostObserver *observer = nil;
     nk_mobile_lifecycle_state lifecycle = NK_MOBILE_LIFECYCLE_ACTIVE;
     std::vector<nk_handle> surfaces;
+    std::vector<nk_handle> webviews;
 };
 
 struct IOSSurface final : nk::core::Resource {
@@ -131,8 +139,41 @@ struct IOSSurface final : nk::core::Resource {
     }
 };
 
+struct IOSWebView final : nk::core::Resource {
+    __strong WKWebView *view = nil;
+    __strong WKUserContentController *content_controller = nil;
+    __strong NKIOSWebViewDelegate *delegate = nil;
+    nk_handle handle = NK_INVALID_HANDLE;
+    nk_handle parent = NK_INVALID_HANDLE;
+    bool observing_title = false;
+    bool navigation_policy = false;
+    uint64_t generation = 0;
+
+    ~IOSWebView() override {
+        if (!view)
+            return;
+        if (observing_title)
+            [view removeObserver:delegate forKeyPath:@"title"];
+        view.navigationDelegate = nil;
+        [content_controller removeScriptMessageHandlerForName:@"nativekit"];
+        delegate.resource = nullptr;
+        [view stopLoading];
+        [view removeFromSuperview];
+        view = nil;
+    }
+};
+
 std::unordered_map<nk_handle, std::shared_ptr<IOSHost>> hosts;
 std::unordered_map<nk_handle, std::shared_ptr<IOSSurface>> surfaces;
+std::unordered_map<nk_handle, std::shared_ptr<IOSWebView>> webviews;
+
+struct IOSNavigationDecision {
+    nk_handle source = NK_INVALID_HANDLE;
+    __strong void (^handler)(WKNavigationActionPolicy) = nil;
+};
+
+std::unordered_map<nk_request_id, IOSNavigationDecision> navigation_decisions;
+std::unordered_map<nk_request_id, nk_handle> evaluations;
 
 std::shared_ptr<IOSHost> host(nk_handle handle) {
     return std::dynamic_pointer_cast<IOSHost>(
@@ -142,6 +183,11 @@ std::shared_ptr<IOSHost> host(nk_handle handle) {
 std::shared_ptr<IOSSurface> surface(nk_handle handle) {
     const auto found = surfaces.find(handle);
     return found == surfaces.end() ? nullptr : found->second;
+}
+
+std::shared_ptr<IOSWebView> webview(nk_handle handle) {
+    return std::dynamic_pointer_cast<IOSWebView>(
+        nk::core::handles().get(handle, nk::core::ResourceType::webview));
 }
 
 void queue_input_event(nk_event_kind kind, nk_handle source, std::vector<std::byte> data,
@@ -202,6 +248,120 @@ std::string utf8_string(NSString *value) {
         return {};
     const char *bytes = value.UTF8String;
     return bytes ? std::string(bytes) : std::string();
+}
+
+bool valid_utf8(const char *value) {
+    return !value || native_string(value) != nil;
+}
+
+std::vector<std::byte> text_bytes(const std::string &value) {
+    const auto *begin = reinterpret_cast<const std::byte *>(value.data());
+    return {begin, begin + value.size()};
+}
+
+NSString *javascript_json_wrapper(NSString *source) {
+    NSError *error = nil;
+    NSData *encoded = [NSJSONSerialization dataWithJSONObject:@[ source ] options:0 error:&error];
+    if (!encoded || error)
+        return nil;
+    NSString *array = [[NSString alloc] initWithData:encoded encoding:NSUTF8StringEncoding];
+    if (!array || array.length < 2)
+        return nil;
+    NSString *literal = [array substringWithRange:NSMakeRange(1, array.length - 2)];
+    return [NSString
+        stringWithFormat:
+            @"(()=>{const v=(0,eval)(%@);const j=JSON.stringify(v);"
+             "if(j===undefined)throw new TypeError('JavaScript result is not JSON-serializable');"
+             "return j;})()",
+            literal];
+}
+
+NSString *json_text(id value) {
+    NSError *error = nil;
+    NSData *encoded = [NSJSONSerialization dataWithJSONObject:value
+                                                        options:NSJSONWritingFragmentsAllowed
+                                                          error:&error];
+    if (!encoded || error)
+        return nil;
+    return [[NSString alloc] initWithData:encoded encoding:NSUTF8StringEncoding];
+}
+
+void emit_webview_text(nk_event_kind kind, nk_handle source, NSString *text,
+                       nk_result result = NK_OK, uint32_t flags = 0,
+                       nk_request_id request = NK_INVALID_REQUEST_ID) noexcept {
+    nk::core::callback_boundary([&] {
+        auto resource = webview(source);
+        if (!resource || !nk::core::is_runtime_generation(resource->generation))
+            return;
+        nk::core::QueuedEvent event;
+        event.kind = kind;
+        event.source = source;
+        event.result = result;
+        event.flags = flags;
+        event.request_id = request;
+        event.data = text_bytes(utf8_string(text));
+        nk::core::push_event(std::move(event));
+    });
+}
+
+void cancel_navigation_decisions(nk_handle source) {
+    for (auto item = navigation_decisions.begin(); item != navigation_decisions.end();) {
+        if (item->second.source == source) {
+            item->second.handler(WKNavigationActionPolicyCancel);
+            item = navigation_decisions.erase(item);
+        } else {
+            ++item;
+        }
+    }
+}
+
+void cancel_evaluations(nk_handle source) noexcept {
+    for (auto item = evaluations.begin(); item != evaluations.end();) {
+        if (source && item->second != source) {
+            ++item;
+            continue;
+        }
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WEBVIEW_EVAL_COMPLETE;
+        event.source = item->second;
+        event.request_id = item->first;
+        event.result = NK_ERROR_INVALID_REQUEST;
+        nk::core::push_event(std::move(event));
+        item = evaluations.erase(item);
+    }
+}
+
+uint32_t navigation_error_category(NSError *error) {
+    if (![error.domain isEqualToString:NSURLErrorDomain])
+        return NK_NAVIGATION_ERROR_OTHER;
+    switch (error.code) {
+    case NSURLErrorCancelled:
+        return NK_NAVIGATION_ERROR_CANCELLED;
+    case NSURLErrorBadURL:
+    case NSURLErrorUnsupportedURL:
+        return NK_NAVIGATION_ERROR_REQUEST;
+    case NSURLErrorUserAuthenticationRequired:
+    case NSURLErrorUserCancelledAuthentication:
+        return NK_NAVIGATION_ERROR_AUTH;
+    case NSURLErrorServerCertificateHasBadDate:
+    case NSURLErrorServerCertificateUntrusted:
+    case NSURLErrorServerCertificateHasUnknownRoot:
+    case NSURLErrorServerCertificateNotYetValid:
+    case NSURLErrorSecureConnectionFailed:
+        return NK_NAVIGATION_ERROR_SECURITY;
+    case NSURLErrorFileDoesNotExist:
+    case NSURLErrorResourceUnavailable:
+        return NK_NAVIGATION_ERROR_NOT_FOUND;
+    case NSURLErrorTimedOut:
+    case NSURLErrorCannotFindHost:
+    case NSURLErrorCannotConnectToHost:
+    case NSURLErrorNetworkConnectionLost:
+    case NSURLErrorDNSLookupFailed:
+    case NSURLErrorNotConnectedToInternet:
+        return NK_NAVIGATION_ERROR_CONNECTION;
+    default:
+        return NK_NAVIGATION_ERROR_OTHER;
+    }
 }
 
 NSUInteger utf16_offset_for_codepoint(const std::vector<uint32_t> &codepoints,
@@ -1241,11 +1401,124 @@ void frame_tick(nk_handle handle) noexcept {
 }
 @end
 
+@implementation NKIOSWebViewDelegate
+- (void)webView:(WKWebView *)view
+    decidePolicyForNavigationAction:(WKNavigationAction *)action
+                    decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    auto *resource = static_cast<IOSWebView *>(self.resource);
+    if (!resource || !resource->navigation_policy ||
+        (action.targetFrame && !action.targetFrame.mainFrame)) {
+        decisionHandler(WKNavigationActionPolicyAllow);
+        return;
+    }
+    bool completed = false;
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    bool inserted = false;
+    nk::core::callback_boundary([&] {
+        request = nk::core::next_request_id();
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WEBVIEW_NAVIGATION_REQUEST;
+        event.source = resource->handle;
+        event.request_id = request;
+        event.data = text_bytes(utf8_string(action.request.URL.absoluteString));
+        navigation_decisions.emplace(
+            request, IOSNavigationDecision{resource->handle, [decisionHandler copy]});
+        inserted = true;
+        if (nk::core::push_event(std::move(event)) != NK_OK) {
+            navigation_decisions.erase(request);
+            inserted = false;
+            decisionHandler(WKNavigationActionPolicyAllow);
+            completed = true;
+            return;
+        }
+        completed = true;
+    });
+    if (!completed) {
+        if (inserted)
+            navigation_decisions.erase(request);
+        decisionHandler(WKNavigationActionPolicyAllow);
+    }
+}
+
+- (void)webView:(WKWebView *)view didFinishNavigation:(WKNavigation *)navigation {
+    (void)navigation;
+    auto *resource = static_cast<IOSWebView *>(self.resource);
+    if (resource)
+        emit_webview_text(NK_EVENT_WEBVIEW_NAVIGATED, resource->handle, view.URL.absoluteString);
+}
+
+- (void)webView:(WKWebView *)view
+    didFailNavigation:(WKNavigation *)navigation
+            withError:(NSError *)error {
+    (void)view;
+    (void)navigation;
+    auto *resource = static_cast<IOSWebView *>(self.resource);
+    if (resource)
+        emit_webview_text(NK_EVENT_WEBVIEW_NAVIGATION_FAILED, resource->handle,
+                          error.localizedDescription, NK_ERROR_UNKNOWN,
+                          navigation_error_category(error));
+}
+
+- (void)webView:(WKWebView *)view
+    didFailProvisionalNavigation:(WKNavigation *)navigation
+                       withError:(NSError *)error {
+    [self webView:view didFailNavigation:navigation withError:error];
+}
+
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)view {
+    auto *resource = static_cast<IOSWebView *>(self.resource);
+    if (resource)
+        emit_webview_text(NK_EVENT_WEBVIEW_PROCESS_TERMINATED, resource->handle,
+                          @"WebKit content process terminated", NK_ERROR_UNKNOWN);
+    (void)view;
+}
+
+- (void)userContentController:(WKUserContentController *)controller
+      didReceiveScriptMessage:(WKScriptMessage *)message {
+    (void)controller;
+    auto *resource = static_cast<IOSWebView *>(self.resource);
+    if (!resource)
+        return;
+    NSString *value = json_text(message.body);
+    emit_webview_text(NK_EVENT_WEBVIEW_MESSAGE, resource->handle,
+                      value ?: @"JavaScript message is not JSON-serializable",
+                      value ? NK_OK : NK_ERROR_UNKNOWN);
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary<NSKeyValueChangeKey, id> *)change
+                       context:(void *)context {
+    (void)change;
+    (void)context;
+    auto *resource = static_cast<IOSWebView *>(self.resource);
+    if (resource && [keyPath isEqualToString:@"title"])
+        emit_webview_text(NK_EVENT_WEBVIEW_TITLE_CHANGED, resource->handle,
+                          ((WKWebView *)object).title);
+}
+@end
+
 namespace nk::backend {
 
 void pump_events() noexcept {}
 
 void shutdown() noexcept {
+    for (auto &[request, decision] : navigation_decisions) {
+        (void)request;
+        decision.handler(WKNavigationActionPolicyCancel);
+    }
+    navigation_decisions.clear();
+    cancel_evaluations(NK_INVALID_HANDLE);
+    evaluations.clear();
+    for (auto &[handle, resource] : webviews) {
+        resource->delegate.resource = nullptr;
+        resource->view.navigationDelegate = nil;
+        [resource->content_controller removeScriptMessageHandlerForName:@"nativekit"];
+        [resource->view stopLoading];
+        [resource->view removeFromSuperview];
+        nk::core::handles().erase(handle, nk::core::ResourceType::webview);
+    }
+    webviews.clear();
     for (auto &[handle, resource] : surfaces) {
         resource->destroying = true;
         resource->frame_prepared = false;
@@ -1308,6 +1581,13 @@ nk_result mobile_host_destroy(nk_handle handle) {
         return NK_ERROR_INVALID_HANDLE;
     }
     const auto child_surfaces = found->second->surfaces;
+    const auto child_webviews = found->second->webviews;
+    for (auto iter = child_webviews.rbegin(); iter != child_webviews.rend(); ++iter)
+        if (webview(*iter)) {
+            const auto result = nk_webview_destroy(*iter);
+            if (result != NK_OK)
+                return result;
+        }
     for (auto iter = child_surfaces.rbegin(); iter != child_surfaces.rend(); ++iter)
         if (surface(*iter)) {
             const auto result = nk_surface_destroy(*iter);
@@ -1438,6 +1718,9 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             resource->input_view.hidden = (options->flags & NK_SURFACE_HIDDEN) != 0;
             [parent->view.layer addSublayer:resource->layer];
             [parent->view addSubview:resource->input_view];
+            for (const nk_handle webview_handle : parent->webviews)
+                if (auto child = webview(webview_handle))
+                    [parent->view bringSubviewToFront:child->view];
             if (!set_surface_native_bounds(*resource)) {
                 nk::core::set_error("could not attach the iOS Metal layer");
                 return NK_ERROR_UNKNOWN;
@@ -1714,6 +1997,369 @@ nk_result NK_CALL nk_surface_get_proc_address(nk_handle handle, const char *name
     return NK_ERROR_UNSUPPORTED;
 }
 
+nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_options *options,
+                                    nk_webview *out_webview) {
+    return nk::core::result_boundary(
+        "unexpected error while creating an iOS WebView", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            constexpr nk_webview_flags supported_flags = NK_WEBVIEW_DEVTOOLS |
+                                                         NK_WEBVIEW_HIDDEN |
+                                                         NK_WEBVIEW_NAVIGATION_POLICY;
+            if (!options || options->struct_size < sizeof(*options) || !out_webview ||
+                options->width <= 0 || options->height <= 0 ||
+                (options->flags & ~supported_flags) != 0) {
+                nk::core::set_error("invalid iOS WebView options");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            if (!valid_utf8(options->initial_url)) {
+                nk::core::set_error("iOS WebView URL is not valid UTF-8");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            *out_webview = NK_INVALID_HANDLE;
+            auto parent = host(parent_handle);
+            if (!parent) {
+                nk::core::set_error("iOS WebView parent is not a mobile host");
+                return NK_ERROR_INVALID_HANDLE;
+            }
+            NSURL *initial_url = nil;
+            if (options->initial_url) {
+                NSString *value = native_string(options->initial_url);
+                initial_url = value ? [NSURL URLWithString:value] : nil;
+                if (!initial_url) {
+                    nk::core::set_error("iOS WebView URL is malformed");
+                    return NK_ERROR_INVALID_ARGUMENT;
+                }
+            }
+            parent->webviews.reserve(parent->webviews.size() + 1);
+            auto resource = std::make_shared<IOSWebView>();
+            resource->parent = parent_handle;
+            resource->navigation_policy =
+                (options->flags & NK_WEBVIEW_NAVIGATION_POLICY) != 0;
+            resource->generation = nk::core::runtime_generation();
+            resource->content_controller = [WKUserContentController new];
+            resource->delegate = [NKIOSWebViewDelegate new];
+            if (!resource->content_controller || !resource->delegate) {
+                nk::core::set_error("could not create iOS WebView support objects");
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            [resource->content_controller addScriptMessageHandler:resource->delegate
+                                                              name:@"nativekit"];
+            WKWebViewConfiguration *configuration = [WKWebViewConfiguration new];
+            configuration.userContentController = resource->content_controller;
+            resource->view = [[WKWebView alloc]
+                initWithFrame:CGRectMake(options->x, options->y, options->width, options->height)
+                configuration:configuration];
+            if (!resource->view) {
+                nk::core::set_error("could not create iOS WKWebView");
+                return NK_ERROR_UNKNOWN;
+            }
+            resource->view.navigationDelegate = resource->delegate;
+            resource->view.hidden = (options->flags & NK_WEBVIEW_HIDDEN) != 0;
+            if (@available(iOS 16.4, *))
+                resource->view.inspectable = (options->flags & NK_WEBVIEW_DEVTOOLS) != 0;
+            resource->handle = nk::core::handles().insert(nk::core::ResourceType::webview, resource);
+            if (!resource->handle) {
+                nk::core::set_error("iOS WebView handle registry is full");
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            resource->delegate.resource = resource.get();
+            [resource->view addObserver:resource->delegate
+                             forKeyPath:@"title"
+                                options:NSKeyValueObservingOptionNew
+                                context:nullptr];
+            resource->observing_title = true;
+            [parent->view addSubview:resource->view];
+            try {
+                webviews.emplace(resource->handle, resource);
+                parent->webviews.push_back(resource->handle);
+            } catch (...) {
+                webviews.erase(resource->handle);
+                nk::core::handles().erase(resource->handle, nk::core::ResourceType::webview);
+                nk::core::set_error("could not retain the iOS WebView");
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            *out_webview = resource->handle;
+            emit_webview_text(NK_EVENT_WEBVIEW_READY, resource->handle, nil);
+            if (initial_url)
+                [resource->view loadRequest:[NSURLRequest requestWithURL:initial_url]];
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_webview_destroy(nk_webview handle) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    auto resource = webview(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS WebView handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    cancel_navigation_decisions(handle);
+    cancel_evaluations(handle);
+    if (auto parent = host(resource->parent)) {
+        auto &children = parent->webviews;
+        children.erase(std::remove(children.begin(), children.end(), handle), children.end());
+    }
+    if (resource->observing_title) {
+        [resource->view removeObserver:resource->delegate forKeyPath:@"title"];
+        resource->observing_title = false;
+    }
+    resource->view.navigationDelegate = nil;
+    [resource->content_controller removeScriptMessageHandlerForName:@"nativekit"];
+    resource->delegate.resource = nullptr;
+    [resource->view stopLoading];
+    [resource->view removeFromSuperview];
+    resource->view = nil;
+    webviews.erase(handle);
+    nk::core::handles().erase(handle, nk::core::ResourceType::webview);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_show(nk_webview handle, uint32_t visible) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (visible > 1) {
+        nk::core::set_error("WebView visibility must be zero or one");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto resource = webview(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS WebView handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    resource->view.hidden = visible == 0;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_set_bounds(nk_webview handle, int32_t x, int32_t y, int32_t width,
+                                        int32_t height) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (width <= 0 || height <= 0) {
+        nk::core::set_error("WebView dimensions must be positive");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto resource = webview(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS WebView handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    resource->view.frame = CGRectMake(x, y, width, height);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_navigate(nk_webview handle, const char *url) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    auto resource = webview(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS WebView handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    NSString *value = native_string(url);
+    NSURL *target = value ? [NSURL URLWithString:value] : nil;
+    if (!target) {
+        nk::core::set_error("URL is null, invalid UTF-8, or malformed");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    [resource->view loadRequest:[NSURLRequest requestWithURL:target]];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_set_html(nk_webview handle, const char *html, const char *base_url) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    auto resource = webview(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS WebView handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    NSString *document = native_string(html);
+    NSString *base = native_string(base_url);
+    if (!document || (base_url && !base)) {
+        nk::core::set_error("HTML or base URL is invalid UTF-8");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    NSURL *base_target = base.length ? [NSURL URLWithString:base] : nil;
+    if (base.length && !base_target) {
+        nk::core::set_error("base URL is malformed");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    [resource->view loadHTMLString:document baseURL:base_target];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_can_go_back(nk_webview handle, uint32_t *out_can_go_back) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    auto resource = webview(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS WebView handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    if (!out_can_go_back) {
+        nk::core::set_error("history output is null");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    *out_can_go_back = resource->view.canGoBack ? 1u : 0u;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_can_go_forward(nk_webview handle, uint32_t *out_can_go_forward) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    auto resource = webview(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS WebView handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    if (!out_can_go_forward) {
+        nk::core::set_error("history output is null");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    *out_can_go_forward = resource->view.canGoForward ? 1u : 0u;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_go_back(nk_webview handle) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    auto resource = webview(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS WebView handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    [resource->view goBack];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_go_forward(nk_webview handle) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    auto resource = webview(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS WebView handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    [resource->view goForward];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_reload(nk_webview handle) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    auto resource = webview(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS WebView handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    [resource->view reload];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_stop(nk_webview handle) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    auto resource = webview(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS WebView handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    [resource->view stopLoading];
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_webview_eval(nk_webview handle, const char *script,
+                                  nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while evaluating iOS JavaScript", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            if (!out_request) {
+                nk::core::set_error("evaluation request output is null");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            *out_request = NK_INVALID_REQUEST_ID;
+            auto resource = webview(handle);
+            if (!resource) {
+                nk::core::set_error("invalid or stale iOS WebView handle");
+                return NK_ERROR_INVALID_HANDLE;
+            }
+            NSString *source = native_string(script);
+            if (!source) {
+                nk::core::set_error("script is null or invalid UTF-8");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            NSString *wrapped = javascript_json_wrapper(source);
+            if (!wrapped) {
+                nk::core::set_error("could not encode JavaScript source");
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            const nk_handle webview_handle = handle;
+            const auto request = nk::core::next_request_id();
+            const auto generation = nk::core::runtime_generation();
+            try {
+                evaluations.emplace(request, webview_handle);
+            } catch (...) {
+                nk::core::set_error("could not retain JavaScript evaluation");
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            [resource->view
+                evaluateJavaScript:wrapped
+                 completionHandler:^(id value, NSError *error) {
+                   if (!nk::core::is_runtime_generation(generation))
+                       return;
+                   const auto pending = evaluations.find(request);
+                   if (pending == evaluations.end() || pending->second != webview_handle)
+                       return;
+                   evaluations.erase(pending);
+                   if (error)
+                       emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, webview_handle,
+                                         error.localizedDescription, NK_ERROR_UNKNOWN, 0, request);
+                   else
+                       emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, webview_handle,
+                                         [value isKindOfClass:[NSString class]] ? value
+                                                                                : json_text(value),
+                                         NK_OK, 0, request);
+                 }];
+            *out_request = request;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t allow) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (allow > 1) {
+        nk::core::set_error("navigation decision must be zero or one");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    const auto item = navigation_decisions.find(request);
+    if (item == navigation_decisions.end()) {
+        nk::core::set_error("invalid or completed navigation request");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    auto handler = item->second.handler;
+    navigation_decisions.erase(item);
+    handler(allow ? WKNavigationActionPolicyAllow : WKNavigationActionPolicyCancel);
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_key_get_state(nk_handle handle, nk_key key, nk_input_action *out_action) {
     nk::core::clear_error();
     if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
@@ -1878,6 +2524,7 @@ nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t ac
 }
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_METAL_SURFACE | NK_CAP_INPUT;
+    return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_METAL_SURFACE | NK_CAP_INPUT |
+           NK_CAP_WEBVIEW;
 }
 }

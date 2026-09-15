@@ -110,7 +110,7 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 | Windows | Windows, WebView when WebView2 is available, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource I/O, accessibility, monitors, joystick, native export | Resource sharing, native wrapping |
 | macOS | Windows, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource I/O, monitors, joystick, native export | Resource sharing, accessibility, native wrapping |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility | — |
-| iOS | Mobile host, Metal, input, resource I/O | WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, resource sharing, joystick, accessibility |
+| iOS | Mobile host, WebView, Metal, input, resource I/O | Dialogs, clipboard, drag/drop, shell, appearance, notifications, resource sharing, joystick, accessibility |
 | Web | Window, geometry, clipboard, input, cursor/capture, GLES, resource I/O | Styling, dialogs, drag/drop, shell, appearance, notifications, resource sharing, joystick, accessibility |
 
 The current Windows joystick adapter uses XInput's standard gamepad model,
