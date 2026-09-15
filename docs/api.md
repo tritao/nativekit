@@ -91,8 +91,9 @@ iOS hosts pass a caller-owned `UIView*` as `native_view` with
 `NK_MOBILE_HOST_UIKIT_VIEW`; `platform_context` is reserved and must be zero.
 The iOS backend retains the view, emits an initial geometry event, and tracks
 bounds, safe-area, and display-scale changes. The view controller remains
-responsible for forwarding lifecycle transitions. WebView, resource, input, and
-Metal integrations are being added in subsequent iOS backend work.
+responsible for forwarding lifecycle transitions. Metal surfaces, touch and
+pointer events, hardware-key events, and UIKit text editing are available on
+iOS; WebView and the remaining system services are still being added.
 
 Container size, display scale, system-bar safe insets, and software-keyboard
 inset changes produce `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED`. Geometry and
@@ -211,10 +212,11 @@ buttons with synthetic events when a window loses focus; those releases set
 `event.flags` to one. Windows converts client pixels to logical pixels using the
 window DPI, while Cocoa reports view points directly.
 
-GTK, Windows, and macOS route physical key events through their platform text
-input services. Dead keys and committed text are reported as Unicode code points
-through `NK_EVENT_TEXT_INPUT` for compatibility clients. Windows uses IMM32 and
-Cocoa implements `NSTextInputClient` for custom-rendered editors.
+GTK, Windows, macOS, and iOS route physical key events through their platform
+text input services. Dead keys and committed text are reported as Unicode code
+points through `NK_EVENT_TEXT_INPUT` for compatibility clients. Windows uses
+IMM32, Cocoa implements `NSTextInputClient`, and iOS uses a transparent UIKit
+`UITextView` responder for custom-rendered editors.
 
 Custom-rendered editors opt into transactional IME input by calling
 `nk_surface_set_text_input_state()` with a bounded UTF-8 window, its absolute
@@ -232,7 +234,9 @@ without exposing Android UTF-16 indices. Committed `NK_EVENT_TEXT_INPUT` remains
 the compatibility path for clients that do not publish structured editor state.
 On Windows and macOS, pass a NativeKit window handle to these two functions; the
 window's client view receives IME composition and committed-text transactions.
-Android and Web continue to use graphics-surface handles.
+Android, iOS, and Web use graphics-surface handles. On iOS, the surface's
+UIKit responder translates touch, indirect-pointer, hardware-key, composition,
+selection, deletion, and committed-text callbacks into the same public events.
 
 The state also declares keyboard purpose, capitalization, autocorrection,
 multiline behavior, enter-key action, and a logical-pixel caret rectangle. These

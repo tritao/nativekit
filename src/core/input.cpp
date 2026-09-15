@@ -17,6 +17,7 @@ nk_result unsupported_input() {
 
 extern "C" {
 
+#if !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_key_get_state(nk_handle, nk_key, nk_input_action *) {
     return unsupported_input();
 }
@@ -28,6 +29,7 @@ nk_result NK_CALL nk_pointer_button_get_state(nk_handle, nk_pointer_button, nk_i
 nk_result NK_CALL nk_pointer_get_position(nk_handle, double *, double *) {
     return unsupported_input();
 }
+#endif
 nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape, nk_handle *) {
     return unsupported_input();
 }
