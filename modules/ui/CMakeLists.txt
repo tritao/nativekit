@@ -1,6 +1,10 @@
 include(cmake/SkribidiSubmodules.cmake)
 include(cmake/NanoVGSubmodules.cmake)
 
+option(NKUI_ENABLE_SECTION_GC
+    "Compile UI code into discardable sections and garbage-collect unused sections"
+    ON)
+
 add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/api.cpp
     src/compositor/compositor.cpp
@@ -47,6 +51,20 @@ set_target_properties(nativekit_ui PROPERTIES
     VISIBILITY_INLINES_HIDDEN YES
     VERSION ${PROJECT_VERSION}
     SOVERSION 0)
+
+if(NKUI_ENABLE_SECTION_GC AND
+   CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang" AND
+   CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    foreach(NKUI_SIZE_TARGET IN ITEMS
+            nativekit_ui harfbuzz nkui_sheenbidi nkui_libunibreak nkui_budouxc
+            nkui_skribidi nkui_nanovg_core)
+        target_compile_options(${NKUI_SIZE_TARGET} PRIVATE
+            -ffunction-sections -fdata-sections)
+    endforeach()
+    if(NK_LIBRARY_TYPE STREQUAL "SHARED" AND NOT APPLE)
+        target_link_options(nativekit_ui PRIVATE -Wl,--gc-sections)
+    endif()
+endif()
 
 if(NK_BUILD_TESTS)
     add_test(NAME nativekit_ui_dependencies

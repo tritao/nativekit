@@ -85,5 +85,9 @@ NativeKit currently accepts TTF/OTF data directly. Configure the web server to
 apply Brotli or gzip content encoding to these assets for transfer compression;
 serving WOFF2 would require a WOFF2 decoder before calling `FontCollection.addData`.
 
+Supported GNU and Clang native builds enable function/data sections and linker
+section garbage collection by default. Set `NKUI_ENABLE_SECTION_GC=OFF` to
+disable this size optimization for a toolchain that does not support it.
+
 The browser owns the frame loop through `nk_surface_set_frame_callback()`;
 Emscripten types do not appear in NativeKit's public headers.
