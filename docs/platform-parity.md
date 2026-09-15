@@ -110,12 +110,12 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 | Windows | Windows, WebView when WebView2 is available, path and resource dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick, native export, Win32 native wrapping | — |
 | macOS | Windows, WebView, path and resource dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping | — |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility | — |
-| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, shell, appearance, notifications, resource I/O, accessibility | Drag/drop, resource sharing, joystick |
+| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, accessibility | — |
 | Web | Window, geometry, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility | Styling, path-based dialogs |
 
 The current Windows joystick adapter uses XInput's standard gamepad model,
-including hotplug and normalized canonical state. The current macOS adapter
-uses GameController's extended and micro gamepad models. Generic HID joystick
+including hotplug and normalized canonical state. The macOS and iOS adapters use
+GameController's extended and micro gamepad models. Generic HID joystick
 enumeration remains a separate follow-up from these platform-native gamepad
 equivalents and must not be silently treated as complete parity.
 

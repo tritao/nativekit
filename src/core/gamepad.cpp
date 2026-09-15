@@ -13,6 +13,8 @@
 #include "windows/joystick.hpp"
 #elif defined(NK_BACKEND_MACOS)
 #include "macos/joystick.hpp"
+#elif defined(NK_BACKEND_IOS)
+#include "ios/joystick.hpp"
 #elif defined(NK_BACKEND_WEB)
 #include "platform/web/gamepad.hpp"
 #endif
@@ -46,6 +48,8 @@ std::unordered_map<nk_handle, nk_gamepad_state> event_states;
     return nk::windows_joystick::standard_gamepad(joystick);
 #elif defined(NK_BACKEND_MACOS)
     return nk::macos_joystick::standard_gamepad(joystick);
+#elif defined(NK_BACKEND_IOS)
+    return nk::ios_joystick::standard_gamepad(joystick);
 #elif defined(NK_BACKEND_WEB)
     return nk::web_gamepad::standard_gamepad(joystick);
 #else
@@ -60,6 +64,8 @@ std::unordered_map<nk_handle, nk_gamepad_state> event_states;
     return nk::windows_joystick::standard_gamepad_state(joystick, out_state);
 #elif defined(NK_BACKEND_MACOS)
     return nk::macos_joystick::standard_gamepad_state(joystick, out_state);
+#elif defined(NK_BACKEND_IOS)
+    return nk::ios_joystick::standard_gamepad_state(joystick, out_state);
 #elif defined(NK_BACKEND_WEB)
     return nk::web_gamepad::standard_gamepad_state(joystick, out_state);
 #else
@@ -99,6 +105,8 @@ const char *current_platform() {
     return "Android";
 #elif defined(_WIN32)
     return "Windows";
+#elif defined(__APPLE__) && defined(NK_BACKEND_IOS)
+    return "iOS";
 #elif defined(__APPLE__)
     return "Mac OS X";
 #elif defined(NK_BACKEND_WEB)
@@ -274,7 +282,8 @@ nk_result NK_CALL nk_gamepad_is_mapped(nk_handle joystick, uint32_t *out_mapped)
                 return NK_OK;
             }
 #endif
-#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_WEB)
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_IOS) || \
+    defined(NK_BACKEND_WEB)
             if (native_standard_gamepad(joystick)) {
                 *out_mapped = 1;
                 return NK_OK;
@@ -303,7 +312,8 @@ nk_result NK_CALL nk_gamepad_get_mapping_source(nk_handle joystick,
                 return NK_OK;
             }
 #endif
-#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_WEB)
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_IOS) || \
+    defined(NK_BACKEND_WEB)
             if (native_standard_gamepad(joystick)) {
                 *out_source = NK_GAMEPAD_MAPPING_BUILT_IN;
                 return NK_OK;
@@ -333,7 +343,8 @@ nk_result NK_CALL nk_gamepad_get_name(nk_handle joystick, char *buffer, uint32_t
             if (nk::backend::android_standard_gamepad(joystick))
                 return nk_joystick_get_name(joystick, buffer, inout_size);
 #endif
-#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_WEB)
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_IOS) || \
+    defined(NK_BACKEND_WEB)
             if (native_standard_gamepad(joystick))
                 return nk_joystick_get_name(joystick, buffer, inout_size);
 #endif
@@ -362,7 +373,8 @@ nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick, nk_gamepad_state *out
                 return result;
             }
 #endif
-#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_WEB)
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_IOS) || \
+    defined(NK_BACKEND_WEB)
             if (native_standard_gamepad(joystick)) {
                 const auto result = native_gamepad_state(joystick, out_state);
                 if (result == NK_OK)

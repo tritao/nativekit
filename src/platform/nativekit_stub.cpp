@@ -172,7 +172,7 @@ nk_result NK_CALL nk_shell_open_resource(const nk_resource *) {
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_WEB)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS) && !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_share(const nk_share_options *) {
     return unsupported();
 }
