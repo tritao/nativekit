@@ -260,7 +260,9 @@ bool run_nativekit_tests(UIView *host_view) {
                           nk_webview_set_html(
                               webview,
                               "<html><head><title>runtime</title></head><body>ready</body></html>",
-                              "https://nativekit.invalid/"))) {
+                              "https://nativekit.invalid/")) ||
+            !check_result("nk_webview_navigate",
+                          nk_webview_navigate(webview, "data:text/html,<title>runtime</title>"))) {
             success = false;
             break;
         }
