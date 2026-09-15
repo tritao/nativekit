@@ -1,4 +1,4 @@
-if(NOT DEFINED NK_REPO_DIR OR NOT IS_DIRECTORY "${NK_REPO_DIR}/.git")
+if(NOT DEFINED NK_REPO_DIR OR NOT EXISTS "${NK_REPO_DIR}/.git")
     message(FATAL_ERROR "NK_REPO_DIR must point to the NativeKit Git checkout")
 endif()
 
