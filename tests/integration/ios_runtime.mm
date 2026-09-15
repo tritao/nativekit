@@ -83,6 +83,11 @@ bool wait_for_navigation(nk_webview webview) {
         event.struct_size = sizeof(event);
         if (!check_result("nk_poll_event", nk_poll_event(&event)))
             return false;
+        if (event.kind != NK_EVENT_NONE)
+            std::fprintf(stderr,
+                         "iOS WebView wait saw event kind=%d source=%llu expected=%llu result=%d\n",
+                         event.kind, static_cast<unsigned long long>(event.source),
+                         static_cast<unsigned long long>(webview), event.result);
         if (event.source == webview && event.kind == NK_EVENT_WEBVIEW_NAVIGATED) {
             nk_event_release(&event);
             return true;
