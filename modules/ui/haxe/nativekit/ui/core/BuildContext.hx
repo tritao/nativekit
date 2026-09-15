@@ -107,7 +107,7 @@ class BuildContext {
 	/** Opens an already initialized value without supplying an unused placeholder. */
 	public function existingState<T>(id:WidgetId):State<T> {
 		if (!stateStore.contains(id))
-			throw "Widget state has not been initialized";
+			throw 'Widget state has not been initialized for ${id == null ? "null" : id.value}';
 		var value:State<Dynamic> = new State<Dynamic>(stateStore, id);
 		return cast value;
 	}
