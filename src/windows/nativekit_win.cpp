@@ -2567,7 +2567,10 @@ nk_result refresh_monitors() {
 }
 
 UINT monitor_dpi() {
-    const UINT dpi = GetDpiForSystem();
+    using GetDpiForSystemFn = UINT(WINAPI *)();
+    const auto get_dpi = reinterpret_cast<GetDpiForSystemFn>(
+        GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForSystem"));
+    const UINT dpi = get_dpi ? get_dpi() : 96;
     return dpi ? dpi : 96;
 }
 
