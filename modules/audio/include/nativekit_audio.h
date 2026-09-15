@@ -84,6 +84,21 @@ NKAUDIO_API nk_result NK_CALL nk_audio_bus_destroy(nk_audio_bus bus);
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_start(nk_audio_bus bus);
 /** Stops all voices routed through the bus without destroying them. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_stop(nk_audio_bus bus);
+/**
+ * Schedules all voices routed through the bus to start at an absolute
+ * process-wide audio time in PCM frames. Call nk_audio_bus_start() after
+ * setting the schedule.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_schedule_start(
+    nk_audio_bus bus, uint64_t absolute_time_pcm_frames);
+/**
+ * Schedules all voices routed through the bus to stop at an absolute
+ * process-wide audio time in PCM frames.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_schedule_stop(
+    nk_audio_bus bus, uint64_t absolute_time_pcm_frames);
+/** Clears the bus's scheduled start, stop, and fade transitions. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_clear_schedule(nk_audio_bus bus);
 /** Returns whether at least one voice routed through the bus is playing. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_is_playing(nk_audio_bus bus,
                                                        nk_bool *out_playing NK_OUT);
@@ -92,6 +107,16 @@ NKAUDIO_API nk_result NK_CALL nk_audio_bus_set_volume(nk_audio_bus bus, float vo
 /** Returns the bus's configured linear gain. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_get_volume(nk_audio_bus bus,
                                                        float *out_volume NK_OUT);
+/**
+ * Fades the bus between linear gains over a duration in PCM frames. The
+ * starting volume may be NK_AUDIO_VOLUME_CURRENT.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_fade(
+    nk_audio_bus bus, float volume_begin, float volume_end, uint64_t duration_pcm_frames);
+/** Fades the bus at an absolute process-wide audio time in PCM frames. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_fade_at(
+    nk_audio_bus bus, float volume_begin, float volume_end, uint64_t duration_pcm_frames,
+    uint64_t absolute_start_time_pcm_frames);
 /** Enables or disables the bus mute state without changing its configured gain. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_set_muted(nk_audio_bus bus, nk_bool muted);
 /** Returns whether the bus is muted. */

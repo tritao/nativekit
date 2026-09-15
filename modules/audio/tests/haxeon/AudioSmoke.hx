@@ -58,6 +58,12 @@ class AudioSmoke {
 			bus.setVolume(0.5);
 			if (bus.volume() != 0.5)
 				throw "Haxe audio bus volume did not round-trip";
+			bus.fade(Bus.CURRENT_VOLUME, 0.75, haxe.Int64.ofInt(1));
+			bus.fadeAt(0.75, 0.5, haxe.Int64.ofInt(1),
+				haxe.Int64.add(nowFrames, haxe.Int64.ofInt(sampleRate)));
+			bus.scheduleStart(haxe.Int64.add(nowFrames, haxe.Int64.ofInt(sampleRate * 5)));
+			bus.scheduleStop(haxe.Int64.add(nowFrames, haxe.Int64.ofInt(sampleRate * 6)));
+			bus.clearSchedule();
 			clip = Clip.fromMemory(tinyWav());
 			var options = new VoiceOptions(bus);
 			options.looping = true;

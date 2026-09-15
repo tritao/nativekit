@@ -77,4 +77,4 @@ if [[ $status -ne 0 ]]; then
 	echo "test-haxeon: audio smoke test returned $status" >&2
 	exit 1
 fi
-echo "PASS: Haxeon audio facade clocked, scheduled, faded, played, grouped, completed, and disposed voices from one clip"
+echo "PASS: Haxeon audio facade clocked, scheduled, faded, played, grouped, completed, and disposed audio resources"

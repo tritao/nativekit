@@ -19,6 +19,10 @@ scheduled linear fades. Scheduling a start still requires an explicit
 start, stop, and fade transitions. Audio calls are UI-thread-only; miniaudio
 owns the device and audio callback thread.
 
+Buses support the same schedule and fade operations for all routed voices. This
+allows music transitions and voice/SFX ducking to be coordinated at the mixer
+boundary instead of issuing one operation per voice.
+
 Non-looping voices emit `NK_EVENT_AUDIO_VOICE_COMPLETE` when playback reaches
 the natural end. The event is queued from miniaudio's audio callback and must
 be consumed on the NativeKit UI thread with `nk_poll_event()`. Haxe clients

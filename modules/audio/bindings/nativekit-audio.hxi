@@ -18,6 +18,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		NK_AUDIO_VOICE_ASYNC = 4;
 	}
 	/**
+	 * Clears the bus's scheduled start, stop, and fade transitions.
+	 */
+	extern fn nk_audio_bus_clear_schedule(bus: nk_audio_bus) -> nk_result;
+	/**
 	 * Creates an active mixer bus. Voices retain their bus until destroyed.
 	 */
 	extern fn nk_audio_bus_create(out_bus: ptr<nk_audio_bus> @out @owned) -> nk_result;
@@ -25,6 +29,15 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Stops and destroys a mixer bus, invalidating its handle.
 	 */
 	extern fn nk_audio_bus_destroy(bus: nk_audio_bus) -> nk_result;
+	/**
+	 * Fades the bus between linear gains over a duration in PCM frames. The
+	 * starting volume may be NK_AUDIO_VOLUME_CURRENT.
+	 */
+	extern fn nk_audio_bus_fade(bus: nk_audio_bus, volume_begin: f32, volume_end: f32, duration_pcm_frames: u64) -> nk_result;
+	/**
+	 * Fades the bus at an absolute process-wide audio time in PCM frames.
+	 */
+	extern fn nk_audio_bus_fade_at(bus: nk_audio_bus, volume_begin: f32, volume_end: f32, duration_pcm_frames: u64, absolute_start_time_pcm_frames: u64) -> nk_result;
 	/**
 	 * Returns the bus's configured linear gain.
 	 */
@@ -37,6 +50,17 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Returns whether at least one voice routed through the bus is playing.
 	 */
 	extern fn nk_audio_bus_is_playing(bus: nk_audio_bus, out_playing: ptr<nk_bool> @out) -> nk_result;
+	/**
+	 * Schedules all voices routed through the bus to start at an absolute
+	 * process-wide audio time in PCM frames. Call nk_audio_bus_start() after
+	 * setting the schedule.
+	 */
+	extern fn nk_audio_bus_schedule_start(bus: nk_audio_bus, absolute_time_pcm_frames: u64) -> nk_result;
+	/**
+	 * Schedules all voices routed through the bus to stop at an absolute
+	 * process-wide audio time in PCM frames.
+	 */
+	extern fn nk_audio_bus_schedule_stop(bus: nk_audio_bus, absolute_time_pcm_frames: u64) -> nk_result;
 	/**
 	 * Enables or disables the bus mute state without changing its configured gain.
 	 */

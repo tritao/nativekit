@@ -439,6 +439,50 @@ nk_result NK_CALL nk_audio_bus_stop(nk_audio_bus bus) {
     });
 }
 
+nk_result NK_CALL nk_audio_bus_schedule_start(nk_audio_bus bus,
+                                              uint64_t absolute_time_pcm_frames) {
+    return nk::core::result_boundary(
+        "unexpected error while scheduling an audio bus start", [&]() {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return with_bus(bus, "could not schedule audio bus start",
+                            [&](AudioBusResource &value, const char *) {
+                                ma_sound_group_set_start_time_in_pcm_frames(
+                                    &value.group, absolute_time_pcm_frames);
+                                return NK_OK;
+                            });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_schedule_stop(nk_audio_bus bus,
+                                             uint64_t absolute_time_pcm_frames) {
+    return nk::core::result_boundary(
+        "unexpected error while scheduling an audio bus stop", [&]() {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return with_bus(bus, "could not schedule audio bus stop",
+                            [&](AudioBusResource &value, const char *) {
+                                ma_sound_group_set_stop_time_in_pcm_frames(
+                                    &value.group, absolute_time_pcm_frames);
+                                return NK_OK;
+                            });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_clear_schedule(nk_audio_bus bus) {
+    return nk::core::result_boundary(
+        "unexpected error while clearing an audio bus schedule", [&]() {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return with_bus(bus, "could not clear audio bus schedule",
+                            [&](AudioBusResource &value, const char *) {
+                                ma_sound_reset_start_time(&value.group);
+                                ma_sound_reset_stop_time_and_fade(&value.group);
+                                return NK_OK;
+                            });
+        });
+}
+
 nk_result NK_CALL nk_audio_bus_is_playing(nk_audio_bus bus, nk_bool *out_playing) {
     return nk::core::result_boundary(
         "unexpected error while querying an audio bus", [&]() -> nk_result {
@@ -482,6 +526,45 @@ nk_result NK_CALL nk_audio_bus_get_volume(nk_audio_bus bus, float *out_volume) {
             return NK_OK;
         });
     });
+}
+
+nk_result NK_CALL nk_audio_bus_fade(nk_audio_bus bus, float volume_begin, float volume_end,
+                                    uint64_t duration_pcm_frames) {
+    return nk::core::result_boundary("unexpected error while fading an audio bus", [&]() {
+        if (const auto result = enter_audio_ui(); result != NK_OK)
+            return result;
+        if (!valid_fade_volume(volume_begin, true) || !valid_fade_volume(volume_end, false))
+            return invalid_argument(
+                "audio bus fade volumes must be finite and non-negative; the start may be "
+                "NK_AUDIO_VOLUME_CURRENT");
+        return with_bus(bus, "could not fade audio bus", [&](AudioBusResource &value,
+                                                               const char *) {
+            ma_sound_group_set_fade_in_pcm_frames(&value.group, volume_begin, volume_end,
+                                                  duration_pcm_frames);
+            return NK_OK;
+        });
+    });
+}
+
+nk_result NK_CALL nk_audio_bus_fade_at(nk_audio_bus bus, float volume_begin, float volume_end,
+                                       uint64_t duration_pcm_frames,
+                                       uint64_t absolute_start_time_pcm_frames) {
+    return nk::core::result_boundary(
+        "unexpected error while scheduling an audio bus fade", [&]() {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_fade_volume(volume_begin, true) || !valid_fade_volume(volume_end, false))
+                return invalid_argument(
+                    "audio bus fade volumes must be finite and non-negative; the start may be "
+                    "NK_AUDIO_VOLUME_CURRENT");
+            return with_bus(bus, "could not schedule audio bus fade",
+                            [&](AudioBusResource &value, const char *) {
+                                ma_sound_set_fade_start_in_pcm_frames(
+                                    &value.group, volume_begin, volume_end, duration_pcm_frames,
+                                    absolute_start_time_pcm_frames);
+                                return NK_OK;
+                            });
+        });
 }
 
 nk_result NK_CALL nk_audio_bus_set_muted(nk_audio_bus bus, nk_bool muted) {
