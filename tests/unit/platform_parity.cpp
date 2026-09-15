@@ -31,7 +31,19 @@ constexpr mask k_known_capabilities =
     cap(NK_CAP_RESOURCE_IO) | cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_ACCESSIBILITY) |
     cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_SYSTEM_INFO) |
     cap(NK_CAP_APPLICATION_PATH) | cap(NK_CAP_APPLICATION_STORAGE) | cap(NK_CAP_SYSTEM_FONTS) |
-    cap(NK_CAP_KEEP_AWAKE) | cap(NK_CAP_DEVICE_ORIENTATION) | cap(NK_CAP_DISPLAY_ORIENTATION);
+    cap(NK_CAP_KEEP_AWAKE) | cap(NK_CAP_DEVICE_ORIENTATION) | cap(NK_CAP_DISPLAY_ORIENTATION) |
+    cap(NK_CAP_HTTP_CLIENT) | cap(NK_CAP_HTTP_STREAMING);
+
+#if defined(NK_BUILD_NET) && defined(NK_NET_BACKEND_STREAMING)
+constexpr mask k_net_required = cap(NK_CAP_HTTP_CLIENT) | cap(NK_CAP_HTTP_STREAMING);
+constexpr mask k_net_deferred = 0;
+#elif defined(NK_BUILD_NET) && defined(NK_NET_BACKEND_FETCH)
+constexpr mask k_net_required = cap(NK_CAP_HTTP_CLIENT);
+constexpr mask k_net_deferred = cap(NK_CAP_HTTP_STREAMING);
+#else
+constexpr mask k_net_required = 0;
+constexpr mask k_net_deferred = cap(NK_CAP_HTTP_CLIENT) | cap(NK_CAP_HTTP_STREAMING);
+#endif
 
 constexpr mask k_new_system_capabilities =
     cap(NK_CAP_SYSTEM_INFO) | cap(NK_CAP_APPLICATION_PATH) |
@@ -52,7 +64,7 @@ constexpr mask k_desktop_common =
     cap(NK_CAP_NOTIFICATION) | cap(NK_CAP_INPUT) | cap(NK_CAP_CURSOR) |
     cap(NK_CAP_POINTER_CAPTURE) | cap(NK_CAP_RESOURCE_IO);
 
-constexpr backend_contract current_contract() {
+constexpr backend_contract platform_contract() {
 #if defined(NK_PARITY_BACKEND_LINUX)
     return {"Linux/GTK",
             k_desktop_common | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_OPENGL_SURFACE) |
@@ -127,6 +139,13 @@ constexpr backend_contract current_contract() {
             k_known_capabilities & ~(cap(NK_CAP_RESOURCE_IO) | k_new_system_capabilities), 0,
             k_new_system_capabilities};
 #endif
+}
+
+constexpr backend_contract current_contract() {
+    auto contract = platform_contract();
+    contract.required |= k_net_required;
+    contract.deferred |= k_net_deferred;
+    return contract;
 }
 
 bool check_disjoint(const backend_contract &contract) {

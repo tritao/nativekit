@@ -277,6 +277,27 @@ JNIEnv *environment() {
     return env;
 }
 
+JNIEnv *attach_environment(bool *attached) {
+    if (attached)
+        *attached = false;
+    if (!java_vm)
+        return nullptr;
+    JNIEnv *env = nullptr;
+    const auto state = java_vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
+    if (state == JNI_OK)
+        return env;
+    if (state != JNI_EDETACHED || java_vm->AttachCurrentThread(&env, nullptr) != JNI_OK)
+        return nullptr;
+    if (attached)
+        *attached = true;
+    return env;
+}
+
+void detach_environment(bool attached) {
+    if (attached && java_vm)
+        java_vm->DetachCurrentThread();
+}
+
 bool clear_java_exception(JNIEnv *env, const char *operation) {
     if (!env->ExceptionCheck())
         return false;
@@ -819,6 +840,14 @@ nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
 
 namespace nk::backend {
 
+JNIEnv *android_jni_attach(bool *attached) {
+    return attach_environment(attached);
+}
+
+void android_jni_detach(bool attached) {
+    detach_environment(attached);
+}
+
 nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled);
 
 nk_result android_vulkan_window(nk_handle handle, ANativeWindow **out_window, bool require_ready) {
@@ -1066,7 +1095,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE |
            NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT | NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY |
            NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_STORAGE | NK_CAP_KEEP_AWAKE |
-           NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION;
+           NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION |
+           nk::core::optional_capabilities();
 }
 
 nk_result NK_CALL nk_shell_open_url(const char *url) {

@@ -7,6 +7,7 @@ dependencies and independently consumable CMake targets.
 |---|---|---|---|
 | [`gpu`](gpu/) | `NK_BUILD_GPU` | `NativeKit::gpu` | Low-level GPU API backed by Sokol for Haxeon and C callers |
 | [`ui`](ui/) | `NK_BUILD_UI` | `NativeKit::ui` | UI layout/rendering boundary with private Clay/Skribidi adapters |
+| [`net`](net/) | `NK_BUILD_NET` | `NativeKit::net` | Portable asynchronous HTTP boundary with private platform transports |
 
 Both modules are disabled by default. Third-party implementation types must not
 cross their public C ABIs.

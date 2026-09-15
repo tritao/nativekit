@@ -90,7 +90,11 @@ enum NK_FLAGS(nk_capabilities) {
     /** The backend can report physical device orientation. */
     NK_CAP_DEVICE_ORIENTATION = UINT64_C(1) << 32,
     /** The backend can report application display orientation. */
-    NK_CAP_DISPLAY_ORIENTATION = UINT64_C(1) << 33
+    NK_CAP_DISPLAY_ORIENTATION = UINT64_C(1) << 33,
+    /** The optional networking module can perform HTTP requests. */
+    NK_CAP_HTTP_CLIENT = UINT64_C(1) << 34,
+    /** The optional networking module can stream HTTP response bodies. */
+    NK_CAP_HTTP_STREAMING = UINT64_C(1) << 35
 };
 
 /** Discriminator identifying the platform representation in nk_native_window. */

@@ -18,7 +18,9 @@ enum class ResourceType : std::uint8_t {
     cursor,
     monitor,
     joystick,
-    resource_stream
+    resource_stream,
+    http_client,
+    http_stream
 };
 
 struct Resource {

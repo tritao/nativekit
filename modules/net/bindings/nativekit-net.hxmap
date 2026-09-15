@@ -1,0 +1,23 @@
+{
+  "interface": "NativeKitNet",
+  "typePrefix": "nk_http_",
+  "enumNames": {
+    "nk_http_error": "HttpError",
+    "nk_http_method": "HttpMethod",
+    "nk_http_request_mode": "HttpRequestMode",
+    "nk_http_proxy_kind": "HttpProxyKind",
+    "nk_http_cookie_policy": "HttpCookiePolicy",
+    "nk_http_cache_policy": "HttpCachePolicy",
+    "nk_http_tls_version": "HttpTlsVersion"
+  },
+  "typeNames": {
+    "nk_http_client": "HttpClientHandle",
+    "nk_http_stream": "HttpStreamHandle",
+    "nk_http_header": "HttpHeader",
+    "nk_http_client_options": "HttpClientOptions",
+    "nk_http_request_options": "HttpRequestOptions",
+    "nk_http_response": "HttpResponse",
+    "nk_http_stream_info": "HttpStreamInfo",
+    "nk_http_progress": "HttpProgress"
+  }
+}

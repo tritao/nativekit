@@ -1895,7 +1895,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_IO |
            NK_CAP_VULKAN_SURFACE | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
            NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE |
-           NK_CAP_DISPLAY_ORIENTATION;
+           NK_CAP_DISPLAY_ORIENTATION | nk::core::optional_capabilities();
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {

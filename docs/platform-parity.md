@@ -100,6 +100,12 @@ needed; graphics API bits are alternatives within the GPU family.
 | Keep-awake leases | `NK_CAP_KEEP_AWAKE` |
 | Orientation | `NK_CAP_DEVICE_ORIENTATION`, `NK_CAP_DISPLAY_ORIENTATION` |
 
+The optional `NativeKit::net` module is outside the core platform baseline. When
+enabled, it reports `NK_CAP_HTTP_CLIENT` and, where the selected transport can
+provide safe bounded pull-backpressure, `NK_CAP_HTTP_STREAMING`. The module's
+transport matrix and its Web buffered-only limitation are specified in
+[`0011-nativekit-networking.md`](decisions/0011-nativekit-networking.md).
+
 `NK_CAP_WINDOW_GEOMETRY` and `NK_CAP_WINDOW_STYLING` are checked separately by
 the executable baseline because a backend may have implemented geometry while
 styling remains deferred. The target `Extended window API` row requires both.

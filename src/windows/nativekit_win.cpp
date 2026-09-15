@@ -2839,7 +2839,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
 #endif
-    return capabilities;
+    return capabilities | nk::core::optional_capabilities();
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {

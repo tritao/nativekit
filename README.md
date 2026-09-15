@@ -108,8 +108,10 @@ ctest --test-dir build --output-on-failure
 Experimental higher-level modules live in the same repository but remain
 optional so the core platform library stays compact. Enable the low-level GPU
 module with `-DNK_BUILD_GPU=ON`, or the retained UI module with
-`-DNK_BUILD_UI=ON` (which also builds its GPU dependency). Their architecture
-and build notes live under [`modules/`](modules/).
+`-DNK_BUILD_UI=ON` (which also builds its GPU dependency). Enable the optional
+HTTP module with `-DNK_BUILD_NET=ON`; Linux builds currently select the system
+libcurl backend with `-DNK_USE_SYSTEM_CURL=ON`. Their architecture and build
+notes live under [`modules/`](modules/).
 
 ### Web / WASM preview
 

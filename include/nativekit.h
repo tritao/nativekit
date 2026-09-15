@@ -291,7 +291,15 @@ enum NK_ENUM(nk_event_kind) {
     /** A mobile host received dropped resources or text. */
     NK_EVENT_RESOURCE_DROP = 802,
     /** An asynchronous URI resource load completed with raw byte data. */
-    NK_EVENT_RESOURCE_DATA_COMPLETE = 803
+    NK_EVENT_RESOURCE_DATA_COMPLETE = 803,
+    /** HTTP response headers became available. */
+    NK_EVENT_HTTP_HEADERS = 900,
+    /** A streaming HTTP response has data available to read. */
+    NK_EVENT_HTTP_DATA_AVAILABLE = 901,
+    /** HTTP transfer progress was coalesced and is available to inspect. */
+    NK_EVENT_HTTP_PROGRESS = 902,
+    /** An HTTP request reached its terminal state. */
+    NK_EVENT_HTTP_COMPLETE = 903
 };
 
 /* ------------------------------------------------------------------------- */

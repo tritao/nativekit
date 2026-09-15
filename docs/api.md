@@ -165,6 +165,10 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_RESOURCE_OPENED` | mobile host | none | `nk_resource_list` |
 | `NK_EVENT_SHARE_RECEIVED` | mobile host | none | `nk_received_share` followed by its resource list and strings |
 | `NK_EVENT_RESOURCE_DROP` | mobile host | none | `nk_resource_drop` followed by its resource list and optional text |
+| `NK_EVENT_HTTP_HEADERS` | HTTP request | request ID | `nk_http_response` without a buffered body |
+| `NK_EVENT_HTTP_DATA_AVAILABLE` | HTTP stream | request ID | empty; pull bytes with `nk_http_stream_read()` |
+| `NK_EVENT_HTTP_PROGRESS` | HTTP request | request ID | `nk_http_progress` |
+| `NK_EVENT_HTTP_COMPLETE` | HTTP request | request ID | `nk_http_response`; terminal result in `event.result` |
 | `NK_EVENT_KEY` | window or graphics surface | none | `nk_key_event` |
 | `NK_EVENT_TEXT_INPUT` | window or graphics surface | none | `nk_text_input_event` |
 | `NK_EVENT_TEXT_EDIT` | window or graphics surface | none | `nk_text_edit_event` followed by UTF-8 text |
@@ -546,6 +550,34 @@ Its path-based dialog entry points are unsupported because document-provider
 results are not filesystem paths. Use the resource dialog variants, which complete
 with `NK_EVENT_DIALOG_RESOURCES_COMPLETE` and return the original `content:` URI
 and access flags through `nk_resource_event_item()`.
+
+## HTTP networking
+
+Include `nativekit_net.h` and enable the optional `NK_BUILD_NET` module to use
+the asynchronous HTTP API. `nk_http_client` owns copied session configuration;
+each `nk_http_request()` returns a 64-bit request ID and optionally a
+generation-checked streaming handle. Requests never invoke application
+callbacks from transport threads.
+
+Buffered requests place the response body in the terminal
+`NK_EVENT_HTTP_COMPLETE` payload and enforce `max_response_size`. Streaming
+requests announce readable bytes with `NK_EVENT_HTTP_DATA_AVAILABLE`; callers
+pull them with `nk_http_stream_read()` until `NK_HTTP_STREAM_COMPLETE` or
+`NK_HTTP_STREAM_FAILED`. `NK_EVENT_HTTP_HEADERS` exposes final metadata before
+completion when available, and `NK_EVENT_HTTP_PROGRESS` carries coalesced
+transfer counters.
+
+HTTP status codes, including 4xx and 5xx responses, are valid responses. DNS,
+connection, TLS, timeout, cancellation, protocol, proxy, redirect, and size
+failures are reported through the `NK_HTTP_ERROR_*` result values. HTTPS and
+certificate verification are enabled by default; plain HTTP and HTTPS-to-HTTP
+redirects require explicit client flags. Cookie and cache policies are
+explicit, and persistent storage is not part of this module.
+
+The module is disabled by default. Platform transports are private: Android
+uses `HttpsURLConnection`, Apple uses shared `NSURLSession`, Windows uses
+WinHTTP, Linux uses libcurl, and Web/WASM uses Fetch. Query
+`NK_CAP_HTTP_CLIENT` and `NK_CAP_HTTP_STREAMING` before using optional features.
 
 ## URI resources and sharing
 

@@ -466,6 +466,7 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_SYSTEM_INFO |
            NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_KEEP_AWAKE |
-           NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION;
+           NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION |
+           nk::core::optional_capabilities();
 }
 }

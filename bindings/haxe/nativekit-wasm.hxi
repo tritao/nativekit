@@ -579,6 +579,14 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * The backend can report application display orientation.
 		 */
 		NK_CAP_DISPLAY_ORIENTATION = 8589934592;
+		/**
+		 * The optional networking module can perform HTTP requests.
+		 */
+		NK_CAP_HTTP_CLIENT = 17179869184;
+		/**
+		 * The optional networking module can stream HTTP response bodies.
+		 */
+		NK_CAP_HTTP_STREAMING = 34359738368;
 	}
 	/**
 	 * System color-scheme values returned in nk_system_appearance.
@@ -937,6 +945,22 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * An asynchronous URI resource load completed with raw byte data.
 		 */
 		NK_EVENT_RESOURCE_DATA_COMPLETE = 803;
+		/**
+		 * HTTP response headers became available.
+		 */
+		NK_EVENT_HTTP_HEADERS = 900;
+		/**
+		 * A streaming HTTP response has data available to read.
+		 */
+		NK_EVENT_HTTP_DATA_AVAILABLE = 901;
+		/**
+		 * HTTP transfer progress was coalesced and is available to inspect.
+		 */
+		NK_EVENT_HTTP_PROGRESS = 902;
+		/**
+		 * An HTTP request reached its terminal state.
+		 */
+		NK_EVENT_HTTP_COMPLETE = 903;
 	}
 	/**
 	 * Canonical axis index in nk_gamepad_state and gamepad events.
