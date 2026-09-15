@@ -34,6 +34,16 @@ that the resulting `NK_EVENT_ACCESSIBILITY_ACTION` reaches NativeKit. Serve
 the generated HTML over HTTP and run it in the same browser environment used by
 the Web smoke tests.
 
+## Web system-equivalents test
+
+When Emscripten tests are enabled, `nativekit_web_system_equivalents` is a
+browser-hosted compile/link and smoke artifact. It checks the advertised shell,
+appearance, notification, and joystick capabilities, validates the appearance
+query and URI input boundary, and performs an initial Gamepad enumeration.
+Resource pickers and notification permission prompts must be exercised from a
+user-activated browser test because browsers intentionally reject those APIs
+outside a trusted user gesture.
+
 ## Android tests
 
 The Android workflow pins Java 17, API 36, NDK 30.0.16248370, and CMake 3.22.1.

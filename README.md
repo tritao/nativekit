@@ -48,12 +48,12 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | Windows and lifecycle | ✅ | ✅ | ✅ | Host view | Host view | Partial |
 | WebView | ✅ | ✅ | ✅ | ✅ | ✅ | Native DOM |
-| Dialogs and system services | ✅ | ✅ | ✅ | ✅ | Partial | 🚧 |
+| Dialogs and system services | ✅ | ✅ | ✅ | ✅ | Partial | Partial |
 | Clipboard and drag/drop | ✅ | ✅ | ✅ | ✅ | Partial | Partial |
-| Notifications | ✅ | ✅ | ✅ | ✅ | ✅ | 🚧 |
+| Notifications | ✅ | ✅ | ✅ | ✅ | ✅ | Partial |
 | Input, cursors, and capture | ✅ | ✅ | ✅ | Partial | Partial | Partial |
 | Monitors and fullscreen modes | ✅ | ✅ | ✅ | — | — | — |
-| Joysticks and gamepads | ✅ | ✅ | ✅ | ✅ | 🚧 | 🚧 |
+| Joysticks and gamepads | ✅ | ✅ | ✅ | ✅ | 🚧 | Partial |
 | OpenGL / OpenGL ES | ✅ | — | — | GLES | — | Partial |
 | Metal | — | — | ✅ | — | ✅ | — |
 | Vulkan | ✅ | — | — | ✅ | 🚧 | 🚧 |
@@ -75,6 +75,10 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 - Web custom-surface accessibility mirrors the NativeKit semantic tree into an
   accessible DOM overlay. Focus, activation, keyboard adjustments, text value,
   and selection actions return through the shared accessibility event contract.
+- Web shell opening, appearance, notifications, resource pickers, and gamepads
+  use browser APIs. Resource pickers and notifications are subject to browser
+  permissions and user-activation rules; path-based dialogs remain deferred
+  because browsers do not expose process-local filesystem paths.
 - Linux desktop support requires GTK 3 and WebKitGTK 4.1. Without them, the
   library builds with a stub backend and reports the services as unsupported.
 - Windows WebViews require the Microsoft Edge WebView2 Evergreen Runtime.

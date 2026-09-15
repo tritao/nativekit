@@ -55,6 +55,11 @@ if(EMSCRIPTEN)
     target_link_libraries(nativekit_web_accessibility PRIVATE NativeKit::nativekit)
     set_target_properties(nativekit_web_accessibility PROPERTIES SUFFIX ".html"
         LINKER_LANGUAGE CXX)
+    add_executable(nativekit_web_system_equivalents integration/web_system_equivalents.c)
+    target_compile_features(nativekit_web_system_equivalents PRIVATE c_std_11)
+    target_link_libraries(nativekit_web_system_equivalents PRIVATE NativeKit::nativekit)
+    set_target_properties(nativekit_web_system_equivalents PROPERTIES SUFFIX ".html"
+        LINKER_LANGUAGE CXX)
 endif()
 
 if(NK_BACKEND_GTK_AVAILABLE)

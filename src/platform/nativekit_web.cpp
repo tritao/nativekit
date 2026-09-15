@@ -1,7 +1,11 @@
 #include "nativekit_graphics.h"
 #include "nativekit_accessibility.h"
 #include "nativekit_clipboard.h"
+#include "nativekit_dialog.h"
+#include "nativekit_gamepad.h"
 #include "nativekit_input.h"
+#include "nativekit_joystick.h"
+#include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_window.h"
@@ -10,8 +14,10 @@
 #include "core/error.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
+#include "core/gamepad_events.hpp"
 #include "core/runtime.hpp"
 #include "platform/resource_events.hpp"
+#include "platform/web/gamepad.hpp"
 #include "platform/web/host.h"
 
 #include <algorithm>
@@ -20,10 +26,13 @@
 #include <cstdint>
 #include <cstring>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -137,7 +146,25 @@ struct WebSurfaceResource final : nk::core::Resource {
     }
 };
 
+struct WebGamepadResource final : nk::core::Resource {
+    int32_t index = -1;
+    nk_handle handle = NK_INVALID_HANDLE;
+    bool standard = false;
+    std::string name;
+    std::string guid;
+    std::array<float, 6> axes{};
+    std::array<uint8_t, 17> buttons{};
+    std::array<uint8_t, 1> hats{};
+    bool seen = false;
+};
+
 std::weak_ptr<WebWindowResource> active_window;
+std::unordered_map<int32_t, std::shared_ptr<WebGamepadResource>> web_gamepads;
+std::unordered_map<nk_request_id, nk_dialog_operation> pending_resource_dialogs;
+std::unordered_set<nk_request_id> pending_notifications;
+
+constexpr uint32_t web_appearance_scheme_mask = 0xffu;
+constexpr uint32_t web_appearance_high_contrast_flag = 1u << 8;
 
 nk_result invalid_argument(const char *message) {
     nk::core::clear_error();
@@ -178,6 +205,88 @@ std::shared_ptr<WebWindowResource> get_window(nk_handle handle) {
 std::shared_ptr<WebSurfaceResource> get_surface(nk_handle handle) {
     return get_resource<WebSurfaceResource>(handle, nk::core::ResourceType::surface,
                                             "invalid web surface handle");
+}
+
+template <typename T>
+nk_result copy_web_array(const T *source, std::size_t count, T *output,
+                         uint32_t *inout_count) {
+    if (!inout_count)
+        return invalid_argument("web array count output is null");
+    if (count == 0) {
+        *inout_count = 0;
+        return NK_OK;
+    }
+    if (!output || *inout_count < count) {
+        *inout_count = static_cast<uint32_t>(count);
+        return NK_ERROR_BUFFER_TOO_SMALL;
+    }
+    std::copy(source, source + count, output);
+    *inout_count = static_cast<uint32_t>(count);
+    return NK_OK;
+}
+
+nk_result copy_web_string(const std::string &value, char *buffer, uint32_t *inout_size) {
+    if (!inout_size)
+        return invalid_argument("web string size output is null");
+    const auto required = static_cast<uint32_t>(value.size() + 1);
+    if (!buffer || *inout_size < required) {
+        *inout_size = required;
+        return NK_ERROR_BUFFER_TOO_SMALL;
+    }
+    std::memcpy(buffer, value.c_str(), required);
+    *inout_size = required;
+    return NK_OK;
+}
+
+std::string web_gamepad_guid(std::string_view id, int32_t index) {
+    const std::string descriptor = std::string(id) + "\n" + std::to_string(index);
+    const auto hash = [&](uint64_t seed) {
+        uint64_t value = seed;
+        for (const auto byte : descriptor) {
+            value ^= static_cast<unsigned char>(byte);
+            value *= UINT64_C(1099511628211);
+        }
+        return value;
+    };
+    char result[33]{};
+    std::snprintf(result, sizeof(result), "%016llx%016llx",
+                  static_cast<unsigned long long>(hash(UINT64_C(1469598103934665603))),
+                  static_cast<unsigned long long>(hash(UINT64_C(1099511628211))));
+    return result;
+}
+
+bool valid_resource_dialog_options(const nk_file_dialog_options *options) {
+    if (!options || options->struct_size < sizeof(*options) ||
+        (options->flags & ~(NK_DIALOG_ALLOW_MULTIPLE | NK_DIALOG_CONFIRM_OVERWRITE |
+                            NK_DIALOG_SHOW_HIDDEN)) ||
+        (options->filter_count && !options->filters) || !nk::platform::valid_utf8(options->title) ||
+        !nk::platform::valid_utf8(options->initial_path) ||
+        !nk::platform::valid_utf8(options->suggested_name))
+        return false;
+    for (uint32_t index = 0; index < options->filter_count; ++index) {
+        const auto &filter = options->filters[index];
+        if (!filter.patterns || !*filter.patterns || !nk::platform::valid_utf8(filter.name) ||
+            !nk::platform::valid_utf8(filter.patterns))
+            return false;
+    }
+    return true;
+}
+
+std::string resource_dialog_accept(const nk_file_dialog_options *options) {
+    std::string result;
+    for (uint32_t index = 0; index < options->filter_count; ++index) {
+        if (!result.empty())
+            result += ';';
+        result += options->filters[index].patterns;
+    }
+    return result;
+}
+
+bool valid_web_uri(const char *uri) {
+    if (!uri || !*uri || !nk::platform::valid_utf8(uri))
+        return false;
+    const auto scheme_end = std::strchr(uri, ':');
+    return scheme_end && scheme_end != uri;
 }
 
 uint32_t utf8_codepoints(const std::string &text) {
@@ -1378,6 +1487,147 @@ void on_drop(const nk::web::ResourceDropEvent &event, void *user_data) {
     });
 }
 
+void on_resource_dialog(const nk::web::ResourceDialogEvent &event, void *user_data) {
+    nk::core::callback_boundary([&] {
+        auto *window = static_cast<WebWindowResource *>(user_data);
+        if (!window || !nk::core::is_runtime_generation(window->generation) ||
+            pending_resource_dialogs.erase(event.request) == 0)
+            return;
+        const auto flags = event.kind == NK_DIALOG_OPEN_RESOURCE ? NK_RESOURCE_READABLE
+                         : event.kind == NK_DIALOG_SAVE_RESOURCE
+                             ? NK_RESOURCE_WRITABLE
+                             : NK_RESOURCE_READABLE | NK_RESOURCE_WRITABLE;
+        const auto resources = event.result == NK_OK && event.accepted && event.uris
+                                   ? nk::platform::resources_from_uri_list(event.uris, flags)
+                                   : std::vector<nk::platform::ResourceValue>{};
+        nk::core::QueuedEvent queued;
+        queued.kind = NK_EVENT_DIALOG_RESOURCES_COMPLETE;
+        queued.source = window->handle;
+        queued.request_id = event.request;
+        queued.flags = event.kind;
+        queued.result = event.result;
+        queued.data_count = static_cast<uint32_t>(resources.size());
+        queued.data = nk::platform::resource_payload(event.accepted, resources);
+        nk::core::push_event(std::move(queued));
+    });
+}
+
+void on_notification(const nk::web::NotificationEvent &event, void *user_data) {
+    nk::core::callback_boundary([&] {
+        auto *window = static_cast<WebWindowResource *>(user_data);
+        if (!window || !nk::core::is_runtime_generation(window->generation) ||
+            pending_notifications.find(event.request) == pending_notifications.end())
+            return;
+        if (event.kind == NK_EVENT_NOTIFICATION_DISMISSED ||
+            event.kind == NK_EVENT_NOTIFICATION_FAILED)
+            pending_notifications.erase(event.request);
+        nk::core::QueuedEvent queued;
+        queued.kind = event.kind;
+        queued.source = NK_INVALID_HANDLE;
+        queued.request_id = event.request;
+        queued.result = event.result;
+        nk::core::push_event(std::move(queued));
+    });
+}
+
+void emit_web_joystick(nk_event_kind kind, nk_handle source) {
+    nk::core::QueuedEvent event;
+    event.kind = kind;
+    event.source = source;
+    nk::core::push_event(std::move(event));
+}
+
+template <typename Payload>
+void emit_web_joystick_input(nk_event_kind kind, nk_handle source, const Payload &payload) {
+    nk::core::QueuedEvent event;
+    event.kind = kind;
+    event.source = source;
+    event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
+uint8_t web_gamepad_hat(const WebGamepadResource &device) {
+    uint8_t result = NK_JOYSTICK_HAT_CENTERED;
+    if (device.buttons[13])
+        result |= NK_JOYSTICK_HAT_UP;
+    if (device.buttons[14])
+        result |= NK_JOYSTICK_HAT_RIGHT;
+    if (device.buttons[15])
+        result |= NK_JOYSTICK_HAT_DOWN;
+    if (device.buttons[16])
+        result |= NK_JOYSTICK_HAT_LEFT;
+    return result;
+}
+
+void update_web_gamepad(WebGamepadResource &device, const nk::web::GamepadStateEvent &event) {
+    for (std::size_t index = 0; index < device.axes.size(); ++index) {
+        if (device.axes[index] == event.axes[index])
+            continue;
+        device.axes[index] = event.axes[index];
+        emit_web_joystick_input(NK_EVENT_JOYSTICK_AXIS, device.handle,
+                                nk_joystick_axis_event{static_cast<uint32_t>(index),
+                                                       device.axes[index]});
+    }
+    for (std::size_t index = 0; index < device.buttons.size(); ++index) {
+        if (device.buttons[index] == event.buttons[index])
+            continue;
+        device.buttons[index] = event.buttons[index];
+        emit_web_joystick_input(NK_EVENT_JOYSTICK_BUTTON, device.handle,
+                                nk_joystick_button_event{static_cast<uint32_t>(index),
+                                                         device.buttons[index]});
+    }
+    const auto hat = web_gamepad_hat(device);
+    if (device.hats[0] != hat) {
+        device.hats[0] = hat;
+        emit_web_joystick_input(NK_EVENT_JOYSTICK_HAT, device.handle,
+                                nk_joystick_hat_event{0, device.hats[0]});
+    }
+}
+
+void remove_web_gamepad(int32_t index) {
+    const auto found = web_gamepads.find(index);
+    if (found == web_gamepads.end())
+        return;
+    const auto handle = found->second->handle;
+    emit_web_joystick(NK_EVENT_JOYSTICK_DISCONNECTED, handle);
+    nk::core::gamepad_events::disconnect(handle);
+    nk::core::handles().erase(handle, nk::core::ResourceType::joystick);
+    web_gamepads.erase(found);
+}
+
+void on_gamepad(const nk::web::GamepadStateEvent &event, void *) {
+    nk::core::callback_boundary([&] {
+        if (event.index < 0)
+            return;
+        const auto found = web_gamepads.find(event.index);
+        if (!event.connected) {
+            remove_web_gamepad(event.index);
+            return;
+        }
+        std::shared_ptr<WebGamepadResource> device;
+        if (found == web_gamepads.end()) {
+            device = std::make_shared<WebGamepadResource>();
+            device->index = event.index;
+            device->standard = event.standard;
+            device->name = event.id && *event.id ? event.id : "Web Gamepad";
+            device->guid = web_gamepad_guid(device->name, event.index);
+            device->handle = nk::core::handles().insert(nk::core::ResourceType::joystick, device);
+            if (!device->handle)
+                return;
+            web_gamepads.emplace(event.index, device);
+            update_web_gamepad(*device, event);
+            nk::core::gamepad_events::update(device->handle, false);
+            emit_web_joystick(NK_EVENT_JOYSTICK_CONNECTED, device->handle);
+        } else {
+            device = found->second;
+            device->standard = event.standard;
+            update_web_gamepad(*device, event);
+            nk::core::gamepad_events::update(device->handle, true);
+        }
+        device->seen = true;
+    });
+}
+
 EM_BOOL frame_loop(double, void *user_data) {
     auto *surface = static_cast<WebSurfaceResource *>(user_data);
     if (!surface || !nk::core::is_runtime_generation(surface->generation) ||
@@ -1407,10 +1657,85 @@ void remove_surface_from_window(WebSurfaceResource &surface) {
 void shutdown_web() noexcept {
     nk::web::stop_frame_loop();
     nk::web::remove_callbacks();
+    nk::web_gamepad::shutdown();
+    pending_resource_dialogs.clear();
+    pending_notifications.clear();
     active_window.reset();
 }
 
 } // namespace
+
+namespace nk::web_gamepad {
+
+void poll() noexcept {
+    try {
+        for (const auto &[index, device] : web_gamepads) {
+            (void)index;
+            device->seen = false;
+        }
+        if (!nk::web::poll_gamepads())
+            return;
+        std::vector<int32_t> disconnected;
+        for (const auto &[index, device] : web_gamepads)
+            if (!device->seen)
+                disconnected.push_back(index);
+        for (const auto index : disconnected)
+            remove_web_gamepad(index);
+    } catch (...) {
+    }
+}
+
+void shutdown() noexcept {
+    try {
+        std::vector<int32_t> indexes;
+        indexes.reserve(web_gamepads.size());
+        for (const auto &[index, device] : web_gamepads) {
+            (void)device;
+            indexes.push_back(index);
+        }
+        for (const auto index : indexes)
+            remove_web_gamepad(index);
+        web_gamepads.clear();
+    } catch (...) {
+    }
+}
+
+bool standard_gamepad(nk_handle handle) noexcept {
+    const auto device = std::dynamic_pointer_cast<WebGamepadResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::joystick));
+    return device && device->standard;
+}
+
+nk_result standard_gamepad_state(nk_handle handle, nk_gamepad_state *out_state) noexcept {
+    const auto device = std::dynamic_pointer_cast<WebGamepadResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::joystick));
+    if (!device)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!out_state || out_state->struct_size < sizeof(*out_state))
+        return NK_ERROR_INVALID_ARGUMENT;
+    const auto size = out_state->struct_size;
+    *out_state = {};
+    out_state->struct_size = size;
+    std::copy(device->axes.begin(), device->axes.end(), out_state->axes);
+    out_state->buttons[NK_GAMEPAD_BUTTON_A] = device->buttons[0];
+    out_state->buttons[NK_GAMEPAD_BUTTON_B] = device->buttons[1];
+    out_state->buttons[NK_GAMEPAD_BUTTON_X] = device->buttons[2];
+    out_state->buttons[NK_GAMEPAD_BUTTON_Y] = device->buttons[3];
+    out_state->buttons[NK_GAMEPAD_BUTTON_LEFT_BUMPER] = device->buttons[4];
+    out_state->buttons[NK_GAMEPAD_BUTTON_RIGHT_BUMPER] = device->buttons[5];
+    out_state->buttons[NK_GAMEPAD_BUTTON_BACK] = device->buttons[8];
+    out_state->buttons[NK_GAMEPAD_BUTTON_START] = device->buttons[9];
+    out_state->buttons[NK_GAMEPAD_BUTTON_GUIDE] = device->buttons[10];
+    out_state->buttons[NK_GAMEPAD_BUTTON_LEFT_THUMB] = device->buttons[11];
+    out_state->buttons[NK_GAMEPAD_BUTTON_RIGHT_THUMB] = device->buttons[12];
+    out_state->buttons[NK_GAMEPAD_BUTTON_DPAD_UP] = device->buttons[13];
+    out_state->buttons[NK_GAMEPAD_BUTTON_DPAD_RIGHT] = device->buttons[14];
+    out_state->buttons[NK_GAMEPAD_BUTTON_DPAD_DOWN] = device->buttons[15];
+    out_state->buttons[NK_GAMEPAD_BUTTON_DPAD_LEFT] = device->buttons[16];
+    return NK_OK;
+}
+
+} // namespace nk::web_gamepad
 
 namespace nk::backend {
 
@@ -1418,6 +1743,7 @@ void pump_events() noexcept {
     try {
         if (auto window = active_window.lock())
             sync_canvas_size(*window);
+        nk::web_gamepad::poll();
     } catch (...) {
     }
 }
@@ -1451,6 +1777,11 @@ nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
 }
 
 } // namespace nk::core::system_backend
+
+std::shared_ptr<WebGamepadResource> web_gamepad_handle(nk_handle handle) {
+    return std::dynamic_pointer_cast<WebGamepadResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::joystick));
+}
 
 extern "C" {
 
@@ -1577,6 +1908,212 @@ nk_result NK_CALL nk_share(const nk_share_options *options) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_shell_open_url(const char *url) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!valid_web_uri(url))
+        return invalid_argument("web shell URL is invalid");
+    if (!nk::web::open_url(url))
+        return unsupported("browser URL opening is unavailable");
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!resource || resource->struct_size < sizeof(*resource) || !valid_web_uri(resource->uri) ||
+        !nk::platform::valid_utf8(resource->mime_type) ||
+        !nk::platform::valid_utf8(resource->display_name))
+        return invalid_argument("web resource shell arguments are invalid");
+    if (!nk::web::open_url(resource->uri))
+        return unsupported("browser resource opening is unavailable");
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!appearance || appearance->struct_size < sizeof(*appearance))
+        return invalid_argument("web appearance output is invalid");
+    const auto size = appearance->struct_size;
+    *appearance = {};
+    appearance->struct_size = size;
+    const auto packed = nk::web::appearance();
+    appearance->color_scheme = packed & web_appearance_scheme_mask;
+    appearance->high_contrast = (packed & web_appearance_high_contrast_flag) != 0;
+    return NK_OK;
+}
+
+nk_result start_web_resource_dialog(nk_dialog_operation operation, nk_handle parent,
+                                    const nk_file_dialog_options *options,
+                                    nk_request_id *out_request) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!out_request || !valid_resource_dialog_options(options))
+        return invalid_argument("invalid web resource dialog options");
+    if (parent != NK_INVALID_HANDLE && !get_window(parent))
+        return invalid_handle("invalid web dialog parent");
+    *out_request = NK_INVALID_REQUEST_ID;
+    const auto request = nk::core::next_request_id();
+    pending_resource_dialogs.emplace(request, operation);
+    const bool multiple = operation == NK_DIALOG_OPEN_RESOURCE &&
+                          (options->flags & NK_DIALOG_ALLOW_MULTIPLE) != 0;
+    const auto accept = resource_dialog_accept(options);
+    if (!nk::web::pick_resources(request, operation, multiple, options->title ? options->title : "",
+                                 accept.c_str(), options->suggested_name ? options->suggested_name
+                                                                          : "")) {
+        pending_resource_dialogs.erase(request);
+        return unsupported("browser resource picker is unavailable");
+    }
+    *out_request = request;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
+                                           const nk_file_dialog_options *options,
+                                           nk_request_id *out_request) {
+    return start_web_resource_dialog(NK_DIALOG_OPEN_RESOURCE, parent, options, out_request);
+}
+
+nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
+                                           const nk_file_dialog_options *options,
+                                           nk_request_id *out_request) {
+    return start_web_resource_dialog(NK_DIALOG_SAVE_RESOURCE, parent, options, out_request);
+}
+
+nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle parent,
+                                                       const nk_file_dialog_options *options,
+                                                       nk_request_id *out_request) {
+    return start_web_resource_dialog(NK_DIALOG_SELECT_RESOURCE_DIRECTORY, parent, options,
+                                     out_request);
+}
+
+nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    const auto found = pending_resource_dialogs.find(request);
+    if (!request || found == pending_resource_dialogs.end()) {
+        nk::core::set_error("invalid or completed web resource dialog request");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    const auto operation = found->second;
+    pending_resource_dialogs.erase(found);
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_DIALOG_RESOURCES_COMPLETE;
+    const auto window = active_window.lock();
+    event.source = window ? window->handle : NK_INVALID_HANDLE;
+    event.flags = operation;
+    event.request_id = request;
+    event.data = nk::platform::resource_payload(false, {});
+    return nk::core::push_event(std::move(event));
+}
+
+nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
+                                       nk_request_id *out_request) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!options || options->struct_size < sizeof(*options) || !out_request || !options->title ||
+        !*options->title || (options->flags & ~NK_NOTIFICATION_SILENT) || options->reserved != 0 ||
+        !nk::platform::valid_utf8(options->title) || !nk::platform::valid_utf8(options->body) ||
+        !nk::platform::valid_utf8(options->icon))
+        return invalid_argument("invalid web notification options");
+    *out_request = NK_INVALID_REQUEST_ID;
+    const auto request = nk::core::next_request_id();
+    pending_notifications.insert(request);
+    if (!nk::web::show_notification(request, options->title, options->body ? options->body : "",
+                                     options->icon ? options->icon : "",
+                                     (options->flags & NK_NOTIFICATION_SILENT) != 0)) {
+        pending_notifications.erase(request);
+        return unsupported("browser notifications are unavailable");
+    }
+    *out_request = request;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_notification_close(nk_request_id request) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!request || pending_notifications.find(request) == pending_notifications.end()) {
+        nk::core::set_error("invalid or completed web notification request");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    if (!nk::web::close_notification(request)) {
+        nk::core::set_error("web notification is no longer active");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    pending_notifications.erase(request);
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_NOTIFICATION_DISMISSED;
+    event.request_id = request;
+    return nk::core::push_event(std::move(event));
+}
+
+nk_result NK_CALL nk_joystick_list(nk_handle *output, uint32_t *inout_count) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    nk::web_gamepad::poll();
+    std::vector<nk_handle> handles;
+    handles.reserve(web_gamepads.size());
+    for (const auto &[index, device] : web_gamepads) {
+        (void)index;
+        handles.push_back(device->handle);
+    }
+    std::sort(handles.begin(), handles.end());
+    return copy_web_array(handles.data(), handles.size(), output, inout_count);
+}
+
+nk_result NK_CALL nk_joystick_get_name(nk_handle handle, char *buffer, uint32_t *inout_size) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    const auto device = web_gamepad_handle(handle);
+    if (!device)
+        return invalid_handle("invalid web joystick handle");
+    return copy_web_string(device->name, buffer, inout_size);
+}
+
+nk_result NK_CALL nk_joystick_get_guid(nk_handle handle, char *buffer, uint32_t *inout_size) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    const auto device = web_gamepad_handle(handle);
+    if (!device)
+        return invalid_handle("invalid web joystick handle");
+    return copy_web_string(device->guid, buffer, inout_size);
+}
+
+nk_result NK_CALL nk_joystick_get_axes(nk_handle handle, float *axes, uint32_t *inout_count) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    const auto device = web_gamepad_handle(handle);
+    if (!device)
+        return invalid_handle("invalid web joystick handle");
+    return copy_web_array(device->axes.data(), device->axes.size(), axes, inout_count);
+}
+
+nk_result NK_CALL nk_joystick_get_buttons(nk_handle handle, uint8_t *buttons,
+                                          uint32_t *inout_count) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    const auto device = web_gamepad_handle(handle);
+    if (!device)
+        return invalid_handle("invalid web joystick handle");
+    return copy_web_array(device->buttons.data(), device->buttons.size(), buttons, inout_count);
+}
+
+nk_result NK_CALL nk_joystick_get_hats(nk_handle handle, uint8_t *hats, uint32_t *inout_count) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    const auto device = web_gamepad_handle(handle);
+    if (!device)
+        return invalid_handle("invalid web joystick handle");
+    return copy_web_array(device->hats.data(), device->hats.size(), hats, inout_count);
+}
+
+nk_result NK_CALL nk_joystick_get_diagnostics(char *buffer, uint32_t *inout_size) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    return copy_web_string({}, buffer, inout_size);
+}
+
 nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, nk_bool enabled) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
@@ -1641,6 +2178,9 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             callbacks.pointer_lock = on_pointer_lock;
             callbacks.display_orientation = on_display_orientation;
             callbacks.drop = on_drop;
+            callbacks.resource_dialog = on_resource_dialog;
+            callbacks.notification = on_notification;
+            callbacks.gamepad = on_gamepad;
             callbacks.accessibility_action = on_accessibility_action;
             nk::web::install_callbacks(callbacks, window.get());
             nk::web::set_canvas_visible(window->visible);

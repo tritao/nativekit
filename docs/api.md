@@ -451,6 +451,13 @@ gamepad events use generation-safe joystick handles as their source rather than
 transient Android device IDs. Key and pointer state queries accept an Android
 graphics-surface handle.
 
+Web controllers are sourced from the browser Gamepad API. Standard-mapped
+controllers expose the canonical NativeKit gamepad layout; non-standard
+controllers remain available through the raw joystick arrays and do not claim a
+NativeKit mapping. Browsers may hide controller state until the page has user
+interaction, so applications should treat an empty enumeration as a normal
+runtime result.
+
 ## Graphics surfaces
 
 Graphics surfaces are separate resources attached to NativeKit-owned windows or
@@ -596,6 +603,11 @@ UI thread. A file reveal is the platform-specific equivalent of opening the
 file with its registered document handler; iOS does not expose a Finder-like
 filesystem browser.
 
+On Web, `nk_shell_open_url()` and `nk_shell_open_resource()` use the browser's
+URL navigation or new-window facilities. Local-path shell operations remain
+unavailable because a browser does not expose process-local paths. Appearance
+queries use `prefers-color-scheme` and `forced-colors` media features.
+
 Standard directories and locale queries are initialization-independent and may
 be called from any thread. They use a two-call buffer convention: query the size
 including NUL, allocate, then call again. A short buffer is never partially filled.
@@ -647,6 +659,13 @@ dialogs, retaining security-scoped access for returned file URLs while the
 NativeKit runtime is alive. Its path-based dialog entry points are unsupported;
 use the resource variants to preserve provider URI identity. Message dialogs use
 `UIAlertController` and return `NK_MESSAGE_RESULT_NONE` when cancelled.
+
+Web resource dialogs use the File System Access API where available and fall
+back to an HTML file input for open operations. Selected files are represented
+by temporary `blob:` URIs and complete with the same resource-list payload;
+browser picker cancellation is a successful completion with `accepted == 0`.
+The picker must be started from a browser user activation. Path-based dialog
+entry points remain unavailable.
 
 ## HTTP networking
 
@@ -752,3 +771,9 @@ may prompt for permission; denial produces `NK_EVENT_NOTIFICATION_FAILED`.
 Delivery, activation, dismissal, and explicit close use the same request IDs as
 the other backends. Silent notifications suppress sound, while icon paths are
 copied as notification attachments when iOS accepts the file.
+
+Web notifications use the browser Notifications API. The first request may
+prompt for permission, browser policy can require a user activation, and the
+browser's default display lifetime controls timeout because the API has no
+portable programmatic timeout. Permission denial and unavailable notification
+support produce `NK_EVENT_NOTIFICATION_FAILED`.

@@ -4,6 +4,7 @@
 #include "core/runtime.hpp"
 #include "platform/resource_events.hpp"
 #include "nativekit_web_config.h"
+#include "nativekit_system.h"
 
 #include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
@@ -225,6 +226,29 @@ EM_JS(void, nk_web_set_canvas_cursor, (const char *selector, const char *cursor)
         canvas.style.cursor = UTF8ToString(cursor);
 });
 
+EM_JS(int, nk_web_open_url, (const char *url), {
+    const value = UTF8ToString(url);
+    if (!value)
+        return 0;
+    try {
+        const opened = window.open(value, "_blank", "noopener,noreferrer");
+        if (!opened)
+            window.location.assign(value);
+        return 1;
+    } catch (error) {
+        return 0;
+    }
+});
+
+EM_JS(int, nk_web_appearance, (int light_scheme, int dark_scheme, int high_contrast_flag), {
+    const dark = window.matchMedia &&
+                 window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const forced = window.matchMedia &&
+                   window.matchMedia("(forced-colors: active)").matches;
+    const colorScheme = dark ? dark_scheme : light_scheme;
+    return colorScheme | (forced ? high_contrast_flag : 0);
+});
+
 EM_JS(void, nk_web_install_drop_handlers, (const char *selector), {
     const canvas = document.querySelector(UTF8ToString(selector));
     if (!canvas)
@@ -264,14 +288,19 @@ EM_JS(void, nk_web_install_drop_handlers, (const char *selector), {
 
 EM_JS(void, nk_web_remove_drop_handlers, (const char *selector), {
     const canvas = document.querySelector(UTF8ToString(selector));
-    if (!canvas || !canvas._nkDropHandlers)
+    if (!canvas)
         return;
-    canvas.removeEventListener("dragover", canvas._nkDropHandlers.dragover);
-    canvas.removeEventListener("drop", canvas._nkDropHandlers.drop);
     for (const uri of canvas._nkDropUrls || [])
         URL.revokeObjectURL(uri);
     delete canvas._nkDropUrls;
-    delete canvas._nkDropHandlers;
+    for (const uri of canvas._nkResourceUrls || [])
+        URL.revokeObjectURL(uri);
+    delete canvas._nkResourceUrls;
+    if (canvas._nkDropHandlers) {
+        canvas.removeEventListener("dragover", canvas._nkDropHandlers.dragover);
+        canvas.removeEventListener("drop", canvas._nkDropHandlers.drop);
+        delete canvas._nkDropHandlers;
+    }
 });
 
 EM_JS(void, nk_web_configure_text_input,
@@ -858,6 +887,225 @@ EM_JS(int, nk_web_share, (const char *title, const char *text, const char *uris)
     }
 });
 
+EM_JS(void, nk_web_pick_resources,
+      (const char *selector, double request, int kind, int multiple, const char *title,
+       const char *accept, const char *suggested_name, int result_ok, int result_unsupported,
+       int result_unknown, int open_resource, int save_resource, int select_resource_directory), {
+          const complete = (result, accepted, uris) => {
+              if (Module.ccall)
+                  Module.ccall("nk_web_host_resource_dialog_complete", null,
+                               ["number", "number", "number", "number", "string"],
+                               [request, kind, result, accepted ? 1 : 0, uris || ""]);
+          };
+          const titleValue = title ? UTF8ToString(title) : "";
+          const acceptValue = accept ? UTF8ToString(accept) : "";
+          const suggestedValue = suggested_name ? UTF8ToString(suggested_name) : "";
+          const patterns = acceptValue.split(";").map(value => value.trim()).filter(Boolean);
+          const pickerTypes = () => {
+              if (!patterns.length)
+                  return undefined;
+              const extensions = patterns.filter(value => value.startsWith("*."))
+                  .map(value => value.slice(1));
+              const mimeTypes = patterns.filter(value => value.includes("/"));
+              const accepted = {};
+              if (mimeTypes.length)
+                  for (const mime of mimeTypes)
+                      accepted[mime] = extensions;
+              else if (extensions.length)
+                  accepted["application/octet-stream"] = extensions;
+              return Object.keys(accepted).length
+                  ? [{description: titleValue || "Files", accept: accepted}]
+                  : undefined;
+          };
+          const release = file => {
+              const uri = URL.createObjectURL(file);
+              const canvas = document.querySelector(UTF8ToString(selector));
+              if (canvas) {
+                  canvas._nkResourceUrls = canvas._nkResourceUrls || [];
+                  canvas._nkResourceUrls.push(uri);
+              }
+              return uri;
+          };
+          const completeFiles = files => {
+              const uris = Array.from(files || []).map(release);
+              complete(result_ok, uris.length > 0, uris.join("\r\n"));
+          };
+          const openWithInput = () => {
+              const input = document.createElement("input");
+              let completed = false;
+              const onFocus = () => window.setTimeout(() => finish(null, false), 100);
+              const finish = (files, accepted) => {
+                  if (completed)
+                      return;
+                  completed = true;
+                  window.removeEventListener("focus", onFocus);
+                  if (accepted)
+                      completeFiles(files);
+                  else
+                      complete(result_ok, false, "");
+                  input.remove();
+              };
+              input.type = "file";
+              input.multiple = !!multiple;
+              input.accept = acceptValue;
+              input.style.display = "none";
+              input.addEventListener("change", () => {
+                  finish(input.files, input.files && input.files.length > 0);
+              }, {once: true});
+              input.addEventListener("cancel", () => finish(null, false), {once: true});
+              document.body.appendChild(input);
+              window.addEventListener("focus", onFocus, {once: true});
+              input.click();
+          };
+          const openWithFileSystemAccess = async () => {
+              try {
+                  if (kind === select_resource_directory && window.showDirectoryPicker) {
+                      const handle = await window.showDirectoryPicker({mode: "readwrite"});
+                      const uri = "nativekit-directory://" + encodeURIComponent(handle.name);
+                      complete(result_ok, true, uri);
+                      return;
+                  }
+                  if (kind === save_resource && window.showSaveFilePicker) {
+                      const handle = await window.showSaveFilePicker({
+                          suggestedName: suggestedValue || "untitled",
+                          types: pickerTypes() || []
+                      });
+                      const file = await handle.getFile();
+                      completeFiles([file]);
+                      return;
+                  }
+                  if (kind === open_resource && window.showOpenFilePicker) {
+                      const handles = await window.showOpenFilePicker({
+                          multiple: !!multiple,
+                          types: pickerTypes() || []
+                      });
+                      const files = [];
+                      for (const handle of handles)
+                          files.push(await handle.getFile());
+                      completeFiles(files);
+                      return;
+                  }
+                  if (kind === open_resource) {
+                      openWithInput();
+                      return;
+                  }
+                  complete(result_unsupported, false, "");
+              } catch (error) {
+                  if (error && error.name === "AbortError")
+                      complete(result_ok, false, "");
+                  else
+                      complete(result_unknown, false, "");
+              }
+          };
+          openWithFileSystemAccess();
+      });
+
+EM_JS(int, nk_web_show_notification,
+      (double request, const char *title, const char *body, const char *icon, int silent,
+       int event_delivered, int event_activated, int event_dismissed, int event_failed,
+       int result_ok, int result_unsupported, int result_unknown), {
+          if (typeof Notification === "undefined")
+              return 0;
+          const requestKey = String(request);
+          const titleValue = UTF8ToString(title);
+          const bodyValue = body ? UTF8ToString(body) : "";
+          const iconValue = icon ? UTF8ToString(icon) : "";
+          const options = {body: bodyValue, silent: !!silent};
+          if (iconValue)
+              options.icon = iconValue;
+          const complete = (kind, result) => {
+              if (Module.ccall)
+                  Module.ccall("nk_web_host_notification_event", null,
+                               ["number", "number", "number"], [request, kind, result]);
+          };
+          const show = () => {
+              try {
+                  const notification = new Notification(titleValue, options);
+                  Module._nkNativeKitNotifications = Module._nkNativeKitNotifications || {};
+                  Module._nkNativeKitNotifications[requestKey] = notification;
+                  notification.onclick = () => complete(event_activated, result_ok);
+                  notification.onclose = () => {
+                      if (Module._nkNativeKitNotifications[requestKey] !== notification)
+                          return;
+                      delete Module._nkNativeKitNotifications[requestKey];
+                      complete(event_dismissed, result_ok);
+                  };
+                  notification.onerror = () => {
+                      if (Module._nkNativeKitNotifications[requestKey] === notification)
+                          delete Module._nkNativeKitNotifications[requestKey];
+                      complete(event_failed, result_unknown);
+                  };
+                  complete(event_delivered, result_ok);
+              } catch (error) {
+                  complete(event_failed, result_unknown);
+              }
+          };
+          if (Notification.permission === "granted")
+              show();
+          else if (Notification.permission === "default")
+              Notification.requestPermission().then(permission => {
+                  if (permission === "granted")
+                      show();
+                  else
+                      complete(event_failed, result_unsupported);
+              }).catch(() => complete(event_failed, result_unknown));
+          else
+              complete(event_failed, result_unsupported);
+          return 1;
+      });
+
+EM_JS(int, nk_web_close_notification, (double request), {
+    const key = String(request);
+    const notifications = Module._nkNativeKitNotifications || {};
+    const notification = notifications[key];
+    if (!notification)
+        return 0;
+    delete notifications[key];
+    notification.close();
+    return 1;
+});
+
+EM_JS(int, nk_web_poll_gamepads, (), {
+    if (!navigator.getGamepads || !Module.ccall)
+        return 0;
+    const gamepads = navigator.getGamepads() || [];
+    const standardAxisCount = 4;
+    const standardButtonCount = 17;
+    const leftTriggerButton = 6;
+    const rightTriggerButton = 7;
+    for (let index = 0; index < gamepads.length; ++index) {
+        const gamepad = gamepads[index];
+        if (!gamepad)
+            continue;
+        const axes = [];
+        for (let axis = 0; axis < standardAxisCount; ++axis)
+            axes.push(Number.isFinite(gamepad.axes[axis]) ? gamepad.axes[axis] : 0);
+        const leftTrigger = gamepad.buttons[leftTriggerButton]
+                                ? gamepad.buttons[leftTriggerButton].value : 0;
+        const rightTrigger = gamepad.buttons[rightTriggerButton]
+                                 ? gamepad.buttons[rightTriggerButton].value : 0;
+        axes.push(leftTrigger * 2 - 1);
+        axes.push(rightTrigger * 2 - 1);
+        const buttons = [];
+        for (let button = 0; button < standardButtonCount; ++button) {
+            const value = gamepad.buttons[button];
+            buttons.push(value && value.pressed ? 1 : 0);
+        }
+        Module.ccall("nk_web_host_gamepad_state", null,
+                     ["number", "number", "string", "number", "number", "number",
+                      "number", "number", "number", "number", "number", "number",
+                      "number", "number", "number", "number", "number", "number",
+                      "number", "number", "number", "number", "number", "number",
+                      "number", "number", "number"],
+                     [index, 1, gamepad.id || "Web Gamepad",
+                      gamepad.mapping === "standard" ? 1 : 0, axes[0], axes[1], axes[2], axes[3],
+                      axes[4], axes[5], buttons[0], buttons[1], buttons[2], buttons[3], buttons[4],
+                      buttons[5], buttons[6], buttons[7], buttons[8], buttons[9], buttons[10],
+                      buttons[11], buttons[12], buttons[13], buttons[14], buttons[15], buttons[16]]);
+    }
+    return 1;
+});
+
 EM_JS(void, nk_web_fetch_resource, (const char *uri, double request), {
     const complete = (result, pointer, size) => {
         if (Module.ccall)
@@ -1135,6 +1383,56 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_drop(
     host_state.callbacks.drop(event, host_state.user_data);
 }
 
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_dialog_complete(
+    uint32_t request, uint32_t kind, nk_result result, int accepted, const char *uris) {
+    if (!host_state.callbacks.resource_dialog)
+        return;
+    nk::web::ResourceDialogEvent event{};
+    event.request = static_cast<nk_request_id>(request);
+    event.kind = kind;
+    event.result = result;
+    event.accepted = accepted != 0;
+    event.uris = uris;
+    host_state.callbacks.resource_dialog(event, host_state.user_data);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_notification_event(
+    uint32_t request, nk_event_kind kind, nk_result result) {
+    if (!host_state.callbacks.notification)
+        return;
+    nk::web::NotificationEvent event{};
+    event.request = static_cast<nk_request_id>(request);
+    event.kind = kind;
+    event.result = result;
+    host_state.callbacks.notification(event, host_state.user_data);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_gamepad_state(
+    int32_t index, int connected, const char *id, int standard, float axis0, float axis1,
+    float axis2, float axis3, float axis4, float axis5, int button0, int button1, int button2,
+    int button3, int button4, int button5, int button6, int button7, int button8, int button9,
+    int button10, int button11, int button12, int button13, int button14, int button15,
+    int button16) {
+    if (!host_state.callbacks.gamepad)
+        return;
+    nk::web::GamepadStateEvent event{};
+    event.index = index;
+    event.connected = connected != 0;
+    event.standard = standard != 0;
+    event.id = id;
+    event.axes = {axis0, axis1, axis2, axis3, axis4, axis5};
+    event.buttons = {static_cast<uint8_t>(button0 != 0), static_cast<uint8_t>(button1 != 0),
+                     static_cast<uint8_t>(button2 != 0), static_cast<uint8_t>(button3 != 0),
+                     static_cast<uint8_t>(button4 != 0), static_cast<uint8_t>(button5 != 0),
+                     static_cast<uint8_t>(button6 != 0), static_cast<uint8_t>(button7 != 0),
+                     static_cast<uint8_t>(button8 != 0), static_cast<uint8_t>(button9 != 0),
+                     static_cast<uint8_t>(button10 != 0), static_cast<uint8_t>(button11 != 0),
+                     static_cast<uint8_t>(button12 != 0), static_cast<uint8_t>(button13 != 0),
+                     static_cast<uint8_t>(button14 != 0), static_cast<uint8_t>(button15 != 0),
+                     static_cast<uint8_t>(button16 != 0)};
+    host_state.callbacks.gamepad(event, host_state.user_data);
+}
+
 extern "C" EMSCRIPTEN_KEEPALIVE void
 nk_web_host_display_orientation_changed(int orientation) {
     if (host_state.callbacks.display_orientation)
@@ -1246,6 +1544,17 @@ bool set_cursor(const char *cursor) noexcept {
     return true;
 }
 
+bool open_url(const char *url) noexcept {
+    return url && nk_web_open_url(url) != 0;
+}
+
+uint32_t appearance() noexcept {
+    constexpr auto high_contrast_flag = 1u << 8;
+    return static_cast<uint32_t>(nk_web_appearance(
+        static_cast<int>(NK_COLOR_SCHEME_LIGHT), static_cast<int>(NK_COLOR_SCHEME_DARK),
+        static_cast<int>(high_contrast_flag)));
+}
+
 void configure_text_input(const TextInputConfig &config) noexcept {
     nk_web_configure_text_input(
         canvas_selector(), config.active ? 1 : 0, static_cast<int>(config.flags),
@@ -1295,6 +1604,37 @@ bool read_clipboard_resources(nk_request_id request) noexcept {
 
 bool share(const char *title, const char *text, const char *uris) noexcept {
     return title && text && uris && nk_web_share(title, text, uris) != 0;
+}
+
+bool pick_resources(nk_request_id request, uint32_t kind, bool multiple, const char *title,
+                    const char *accept, const char *suggested_name) noexcept {
+    if (!title || !accept || !suggested_name || request == NK_INVALID_REQUEST_ID)
+        return false;
+    nk_web_pick_resources(canvas_selector(), static_cast<double>(request), static_cast<int>(kind),
+                          multiple ? 1 : 0, title, accept, suggested_name, NK_OK,
+                          NK_ERROR_UNSUPPORTED, NK_ERROR_UNKNOWN, NK_DIALOG_OPEN_RESOURCE,
+                          NK_DIALOG_SAVE_RESOURCE, NK_DIALOG_SELECT_RESOURCE_DIRECTORY);
+    return true;
+}
+
+bool show_notification(nk_request_id request, const char *title, const char *body,
+                       const char *icon, bool silent) noexcept {
+    if (!title || !body || !icon || request == NK_INVALID_REQUEST_ID)
+        return false;
+    return nk_web_show_notification(
+               static_cast<double>(request), title, body, icon, silent ? 1 : 0,
+               NK_EVENT_NOTIFICATION_DELIVERED, NK_EVENT_NOTIFICATION_ACTIVATED,
+               NK_EVENT_NOTIFICATION_DISMISSED, NK_EVENT_NOTIFICATION_FAILED, NK_OK,
+               NK_ERROR_UNSUPPORTED, NK_ERROR_UNKNOWN) != 0;
+}
+
+bool close_notification(nk_request_id request) noexcept {
+    return request != NK_INVALID_REQUEST_ID &&
+           nk_web_close_notification(static_cast<double>(request)) != 0;
+}
+
+bool poll_gamepads() noexcept {
+    return nk_web_poll_gamepads() != 0;
 }
 
 bool fetch_resource(const char *uri, nk_request_id request) noexcept {

@@ -1,9 +1,12 @@
 #pragma once
 
 #include "nativekit_accessibility.h"
+#include "nativekit_dialog.h"
 #include "nativekit_input.h"
 #include "nativekit_system.h"
+#include "nativekit_notification.h"
 
+#include <array>
 #include <cstdint>
 
 #include <emscripten/html5.h>
@@ -87,6 +90,29 @@ struct ResourceDropEvent {
     const char *text = nullptr;
 };
 
+struct ResourceDialogEvent {
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    uint32_t kind = 0;
+    nk_result result = NK_OK;
+    bool accepted = false;
+    const char *uris = nullptr;
+};
+
+struct NotificationEvent {
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    nk_event_kind kind = NK_EVENT_NOTIFICATION_FAILED;
+    nk_result result = NK_ERROR_UNKNOWN;
+};
+
+struct GamepadStateEvent {
+    int32_t index = -1;
+    bool connected = false;
+    bool standard = false;
+    const char *id = nullptr;
+    std::array<float, 6> axes{};
+    std::array<uint8_t, 17> buttons{};
+};
+
 struct TextInputConfig {
     bool active = false;
     uint32_t flags = 0;
@@ -116,6 +142,9 @@ struct HostCallbacks {
     void (*pointer_lock)(bool active, void *) = nullptr;
     void (*display_orientation)(nk_orientation orientation, void *) = nullptr;
     void (*drop)(const ResourceDropEvent &, void *) = nullptr;
+    void (*resource_dialog)(const ResourceDialogEvent &, void *) = nullptr;
+    void (*notification)(const NotificationEvent &, void *) = nullptr;
+    void (*gamepad)(const GamepadStateEvent &, void *) = nullptr;
     void (*accessibility_action)(const AccessibilityActionEvent &, void *) = nullptr;
 };
 
@@ -133,6 +162,8 @@ bool set_canvas_size(int32_t width, int32_t height) noexcept;
 bool set_canvas_visible(bool visible) noexcept;
 bool set_title(const char *title) noexcept;
 bool set_cursor(const char *cursor) noexcept;
+bool open_url(const char *url) noexcept;
+uint32_t appearance() noexcept;
 void configure_text_input(const TextInputConfig &config) noexcept;
 void set_accessibility_tree(nk_handle surface, int32_t width, int32_t height, bool visible,
                             nk_accessibility_node_id focus, const char *json) noexcept;
@@ -143,6 +174,12 @@ bool set_clipboard_resources(const char *uris) noexcept;
 bool read_clipboard_text(nk_request_id request) noexcept;
 bool read_clipboard_resources(nk_request_id request) noexcept;
 bool share(const char *title, const char *text, const char *uris) noexcept;
+bool pick_resources(nk_request_id request, uint32_t kind, bool multiple, const char *title,
+                    const char *accept, const char *suggested_name) noexcept;
+bool show_notification(nk_request_id request, const char *title, const char *body,
+                       const char *icon, bool silent) noexcept;
+bool close_notification(nk_request_id request) noexcept;
+bool poll_gamepads() noexcept;
 bool fetch_resource(const char *uri, nk_request_id request) noexcept;
 
 bool create_webgl_context(const WebGLContextOptions &options,
