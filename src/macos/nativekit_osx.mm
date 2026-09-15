@@ -79,6 +79,10 @@
 @interface NKNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
 @end
 
+NSString *const NKMacAccessibilityHeadingRole = @"AXHeading";
+NSString *const NKMacAccessibilityFrameAttribute = @"AXFrame";
+NSString *const NKMacAccessibilityScrollToVisibleAction = @"AXScrollToVisible";
+
 namespace {
 
 struct MacCursorResource;
@@ -973,7 +977,7 @@ NSString *mac_accessibility_role(nk_accessibility_role role) {
     case NK_ACCESSIBILITY_ALERT:
         return NSAccessibilityStaticTextRole;
     case NK_ACCESSIBILITY_HEADING:
-        return NSAccessibilityHeadingRole;
+        return NKMacAccessibilityHeadingRole;
     case NK_ACCESSIBILITY_TEXT_FIELD:
         return NSAccessibilityTextFieldRole;
     case NK_ACCESSIBILITY_LINK:
@@ -1081,59 +1085,63 @@ void refresh_mac_accessibility_elements(MacSurfaceResource &resource) noexcept {
             [NSMutableArray arrayWithCapacity:resource.accessibility_nodes.size()];
         NSMutableArray<NKMacAccessibilityElement *> *root_elements = [NSMutableArray array];
         std::unordered_map<nk_accessibility_node_id, NKMacAccessibilityElement *> elements_by_id;
-        std::function<void(nk_accessibility_node_id)> append_children = [&](nk_accessibility_node_id
-                                                                                parent) {
-            std::vector<nk_accessibility_node_id> children;
-            for (const auto &[id, node] : resource.accessibility_nodes)
-                if (node.parent == parent)
-                    children.push_back(id);
-            std::sort(children.begin(), children.end(), [&](auto lhs, auto rhs) {
-                const auto &left = resource.accessibility_nodes.at(lhs);
-                const auto &right = resource.accessibility_nodes.at(rhs);
-                return left.child_index == right.child_index ? lhs < rhs
-                                                             : left.child_index < right.child_index;
-            });
-            for (const auto id : children) {
-                const auto &node = resource.accessibility_nodes.at(id);
-                auto element = [[NKMacAccessibilityElement alloc] init];
-                if (!element)
-                    continue;
-                element.surface = resource.handle;
-                element.node = id;
-                element.nativeContainer = resource.accessibility_container;
-                element.nativeFrame = mac_accessibility_screen_frame(resource, node.x, node.y,
-                                                                     node.width, node.height);
-                element.accessibilityElement = YES;
-                element.accessibilityRole = mac_accessibility_role(node.role);
-                element.accessibilityLabel = node.label.empty() ? nil : string(node.label.c_str());
-                element.accessibilityEnabled = (node.states & NK_ACCESSIBILITY_DISABLED) == 0;
-                element.accessibilitySelected = (node.states & NK_ACCESSIBILITY_SELECTED) != 0;
-                element.accessibilityExpanded = (node.states & NK_ACCESSIBILITY_EXPANDED) != 0;
-                element.accessibilityRequired = (node.states & NK_ACCESSIBILITY_REQUIRED) != 0;
-                element.accessibilityProtectedContent =
-                    (node.states & NK_ACCESSIBILITY_PASSWORD) != 0;
-                element.accessibilityValueDescription =
-                    node.value.empty() ? nil : string(node.value.c_str());
-                if (node.orientation == NK_ACCESSIBILITY_ORIENTATION_HORIZONTAL)
-                    element.accessibilityOrientation = NSAccessibilityHorizontalOrientationValue;
-                else if (node.orientation == NK_ACCESSIBILITY_ORIENTATION_VERTICAL)
-                    element.accessibilityOrientation = NSAccessibilityVerticalOrientationValue;
-                if (node.role == NK_ACCESSIBILITY_CHECKBOX || node.role == NK_ACCESSIBILITY_SWITCH)
-                    element.accessibilityValue = @((node.states & NK_ACCESSIBILITY_CHECKED) != 0);
-                else if (node.role == NK_ACCESSIBILITY_SLIDER ||
-                         node.role == NK_ACCESSIBILITY_PROGRESS_BAR)
-                    element.accessibilityValue = @(node.numeric_value);
-                else
-                    element.accessibilityValue =
+        std::function<void(nk_accessibility_node_id)> append_children =
+            [&](nk_accessibility_node_id parent) {
+                std::vector<nk_accessibility_node_id> children;
+                for (const auto &[id, node] : resource.accessibility_nodes)
+                    if (node.parent == parent)
+                        children.push_back(id);
+                std::sort(children.begin(), children.end(), [&](auto lhs, auto rhs) {
+                    const auto &left = resource.accessibility_nodes.at(lhs);
+                    const auto &right = resource.accessibility_nodes.at(rhs);
+                    return left.child_index == right.child_index
+                               ? lhs < rhs
+                               : left.child_index < right.child_index;
+                });
+                for (const auto id : children) {
+                    const auto &node = resource.accessibility_nodes.at(id);
+                    auto element = [[NKMacAccessibilityElement alloc] init];
+                    if (!element)
+                        continue;
+                    element.surface = resource.handle;
+                    element.node = id;
+                    element.nativeContainer = resource.accessibility_container;
+                    element.nativeFrame = mac_accessibility_screen_frame(resource, node.x, node.y,
+                                                                         node.width, node.height);
+                    element.accessibilityElement = YES;
+                    element.accessibilityRole = mac_accessibility_role(node.role);
+                    element.accessibilityLabel =
+                        node.label.empty() ? nil : string(node.label.c_str());
+                    element.accessibilityEnabled = (node.states & NK_ACCESSIBILITY_DISABLED) == 0;
+                    element.accessibilitySelected = (node.states & NK_ACCESSIBILITY_SELECTED) != 0;
+                    element.accessibilityExpanded = (node.states & NK_ACCESSIBILITY_EXPANDED) != 0;
+                    element.accessibilityRequired = (node.states & NK_ACCESSIBILITY_REQUIRED) != 0;
+                    element.accessibilityProtectedContent =
+                        (node.states & NK_ACCESSIBILITY_PASSWORD) != 0;
+                    element.accessibilityValueDescription =
                         node.value.empty() ? nil : string(node.value.c_str());
-                element.accessibilityFrame = element.nativeFrame;
-                elements_by_id.emplace(id, element);
-                [all_elements addObject:element];
-                if (parent == NK_ACCESSIBILITY_ROOT)
-                    [root_elements addObject:element];
-                append_children(id);
-            }
-        };
+                    if (node.orientation == NK_ACCESSIBILITY_ORIENTATION_HORIZONTAL)
+                        element.accessibilityOrientation = NSAccessibilityOrientationHorizontal;
+                    else if (node.orientation == NK_ACCESSIBILITY_ORIENTATION_VERTICAL)
+                        element.accessibilityOrientation = NSAccessibilityOrientationVertical;
+                    if (node.role == NK_ACCESSIBILITY_CHECKBOX ||
+                        node.role == NK_ACCESSIBILITY_SWITCH)
+                        element.accessibilityValue =
+                            @((node.states & NK_ACCESSIBILITY_CHECKED) != 0);
+                    else if (node.role == NK_ACCESSIBILITY_SLIDER ||
+                             node.role == NK_ACCESSIBILITY_PROGRESS_BAR)
+                        element.accessibilityValue = @(node.numeric_value);
+                    else
+                        element.accessibilityValue =
+                            node.value.empty() ? nil : string(node.value.c_str());
+                    element.accessibilityFrame = element.nativeFrame;
+                    elements_by_id.emplace(id, element);
+                    [all_elements addObject:element];
+                    if (parent == NK_ACCESSIBILITY_ROOT)
+                        [root_elements addObject:element];
+                    append_children(id);
+                }
+            };
         append_children(NK_ACCESSIBILITY_ROOT);
         for (const auto &[node_id, node] : resource.accessibility_nodes) {
             const auto element = elements_by_id.find(node_id);
@@ -2172,6 +2180,12 @@ nk_result unsupported() {
     return fail(NK_ERROR_UNSUPPORTED, "this macOS service is not implemented yet");
 }
 
+nk_result unsupported(const char *message) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    return fail(NK_ERROR_UNSUPPORTED, message ? message : "macOS service is unavailable");
+}
+
 NSString *notification_identifier(nk_request_id request) {
     return [NSString stringWithFormat:@"%llu", static_cast<unsigned long long>(request)];
 }
@@ -2828,7 +2842,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
             return NSAccessibilityVerticalOrientationValue;
         return NSAccessibilityUnknownOrientationValue;
     }
-    if ([attribute isEqualToString:NSAccessibilityFrameAttribute]) {
+    if ([attribute isEqualToString:NKMacAccessibilityFrameAttribute]) {
         const NSRect frame =
             mac_accessibility_screen_frame(*resource, node.x, node.y, node.width, node.height);
         return [NSValue valueWithRect:frame];
@@ -2952,7 +2966,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         NSAccessibilityModalAttribute,
         NSAccessibilityContainsProtectedContentAttribute,
         NSAccessibilityOrientationAttribute,
-        NSAccessibilityFrameAttribute,
+        NKMacAccessibilityFrameAttribute,
         NSAccessibilityPositionAttribute,
         NSAccessibilitySizeAttribute,
         NSAccessibilityParentAttribute,
@@ -3048,7 +3062,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     if (actions & NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU)
         [result addObject:NSAccessibilityShowMenuAction];
     if (actions & NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW)
-        [result addObject:NSAccessibilityScrollToVisibleAction];
+        [result addObject:NKMacAccessibilityScrollToVisibleAction];
     auto add = [&](nk_accessibility_actions bit, NSString *name) {
         if (actions & bit)
             [result addObject:name];
@@ -3078,7 +3092,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         requested = NK_ACCESSIBILITY_ACTION_DECREMENT;
     else if ([action isEqualToString:NSAccessibilityShowMenuAction])
         requested = NK_ACCESSIBILITY_ACTION_SHOW_CONTEXT_MENU;
-    else if ([action isEqualToString:NSAccessibilityScrollToVisibleAction])
+    else if ([action isEqualToString:NKMacAccessibilityScrollToVisibleAction])
         requested = NK_ACCESSIBILITY_ACTION_SCROLL_INTO_VIEW;
     else
         requested = mac_accessibility_action_for_name(action);
@@ -3095,7 +3109,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         return @"Decrement";
     if ([action isEqualToString:NSAccessibilityShowMenuAction])
         return @"Show menu";
-    if ([action isEqualToString:NSAccessibilityScrollToVisibleAction])
+    if ([action isEqualToString:NKMacAccessibilityScrollToVisibleAction])
         return @"Scroll into view";
     if ([action isEqualToString:NKMacAccessibilitySetValueAction])
         return @"Set value";
@@ -3164,7 +3178,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         return self.elements ?: @[];
     if ([attribute isEqualToString:NSAccessibilityEnabledAttribute])
         return @YES;
-    if ([attribute isEqualToString:NSAccessibilityFrameAttribute]) {
+    if ([attribute isEqualToString:NKMacAccessibilityFrameAttribute]) {
         const NSRect local = self.bounds;
         if (self.window)
             return [NSValue valueWithRect:[self.window convertRectToScreen:[self convertRect:local
@@ -3189,7 +3203,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     return @[
         NSAccessibilityRoleAttribute, NSAccessibilityRoleDescriptionAttribute,
         NSAccessibilityChildrenAttribute, NSAccessibilityEnabledAttribute,
-        NSAccessibilityFrameAttribute, NSAccessibilityParentAttribute,
+        NKMacAccessibilityFrameAttribute, NSAccessibilityParentAttribute,
         NSAccessibilityFocusedUIElementAttribute
     ];
 }
@@ -3201,7 +3215,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
 
 - (id)accessibilityHitTest:(NSPoint)point {
     for (NKMacAccessibilityElement *element in self.allElements) {
-        NSValue *frame = [element accessibilityAttributeValue:NSAccessibilityFrameAttribute];
+        NSValue *frame = [element accessibilityAttributeValue:NKMacAccessibilityFrameAttribute];
         if (frame && NSPointInRect(point, frame.rectValue))
             return element;
     }
