@@ -33,6 +33,9 @@ class LayoutEngine {
                             FontFamily family = FontFamily::Default);
     bool add_system_fallbacks();
 
+    /** Installs a NativeKit-owned synchronous measurer for external content. */
+    void set_measure_callback(LayoutMeasureCallback callback);
+
     bool layout(const std::vector<LayoutNode> &nodes, float width, float height,
                 float delta_seconds, LayoutSnapshot &out, LayoutError *error = nullptr);
 

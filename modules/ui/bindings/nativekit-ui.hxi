@@ -6,7 +6,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_API_VERSION = 6;
 	const NKUI_COMMAND_VERSION = 1;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
-	const NKUI_LAYOUT_API_VERSION = 14;
+	const NKUI_LAYOUT_API_VERSION = 15;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	/**
 	 * Per-child cross-axis alignment override; zero inherits the parent.
@@ -249,6 +249,12 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		NKUI_LAYOUT_DISTRIBUTION_SPACE_BETWEEN = 3;
 		NKUI_LAYOUT_DISTRIBUTION_SPACE_AROUND = 4;
 		NKUI_LAYOUT_DISTRIBUTION_SPACE_EVENLY = 5;
+	}
+	/**
+	 * Flags returned in nkui_layout_measure_result.flags.
+	 */
+	flags nkui_layout_measure_flags : u32 {
+		NKUI_LAYOUT_MEASURE_HAS_BASELINE = 1;
 	}
 	/**
 	 * Node flags stored at NKUI_LAYOUT_NODE_FLAGS_OFFSET.
@@ -554,6 +560,13 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * Copies the font collection configuration into the layout session.
 	 */
 	extern fn nkui_layout_session_set_font_collection(session: nkui_layout_session, fonts: nkui_resource) -> nkui_result;
+	/**
+	 * Installs or removes the synchronous intrinsic measurer for custom-visual
+	 * nodes. The callback is invoked during submit on the submitting thread. Its
+	 * user data is borrowed and the callback must be detached before its Haxe/C
+	 * callback handle is closed.
+	 */
+	extern fn nkui_layout_session_set_measure_callback(session: nkui_layout_session, callback: nkui_nullable_layout_measure_callback @retained, user_data: nullable<ptr<void>>) -> nkui_result;
 	/**
 	 * Submits one flat, Haxe-owned render/layout tree transaction.
 	 *
@@ -909,6 +922,32 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		 */
 		baseline: f32 @offset(84);
 		reserved: array<u32, 2> @offset(88);
+	}
+	/**
+	 * Constraints supplied to an external intrinsic measurer for one custom node.
+	 */
+	struct nkui_layout_measure_constraints @layout(20, 4) {
+		/**
+		 * Always sizeof(nkui_layout_measure_constraints) for this ABI.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		min_width: f32 @offset(4);
+		max_width: f32 @offset(8);
+		min_height: f32 @offset(12);
+		max_height: f32 @offset(16);
+	}
+	/**
+	 * Optional metrics returned by an external intrinsic measurer.
+	 */
+	struct nkui_layout_measure_result @layout(20, 4) {
+		/**
+		 * Set to sizeof(nkui_layout_measure_result) when returned.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		width: f32 @offset(4);
+		height: f32 @offset(8);
+		baseline: f32 @offset(12);
+		flags: nkui_layout_measure_flags @offset(16);
 	}
 	/**
 	 * Paragraph-level wrapping, alignment, and line-height inputs.
@@ -1332,9 +1371,14 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 */
 	handle nkui_display_list : u32;
 	/**
+	 * Synchronous intrinsic measurement callback for custom-visual nodes.
+	 */
+	callback nkui_layout_measure_callback = fn(arg0: u32, arg1: nkui_layout_measure_constraints, arg2: nullable<ptr<void>>) -> nkui_layout_measure_result;
+	/**
 	 * Opaque retained layout session used by a Haxe-owned component tree.
 	 */
 	handle nkui_layout_session : u32;
+	type nkui_nullable_layout_measure_callback = nullable<nkui_layout_measure_callback>;
 	/**
 	 * Opaque handle for a renderer and its backend resources.
 	 */

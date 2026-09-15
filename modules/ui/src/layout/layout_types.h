@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstddef>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -182,6 +183,25 @@ struct LayoutNode {
     TextStyle text_style{};
     ParagraphStyle paragraph_style{};
 };
+
+/** NativeKit-owned constraints for opaque external content measurement. */
+struct LayoutMeasureConstraints {
+    float min_width = 0.0f;
+    float max_width = 0.0f;
+    float min_height = 0.0f;
+    float max_height = 0.0f;
+};
+
+/** NativeKit-owned intrinsic metrics for opaque external content. */
+struct LayoutMeasureResult {
+    float width = 0.0f;
+    float height = 0.0f;
+    float baseline = 0.0f;
+    bool has_baseline = false;
+};
+
+using LayoutMeasureCallback =
+    std::function<LayoutMeasureResult(uint32_t, const LayoutMeasureConstraints &)>;
 
 struct LayoutError {
     std::size_t node_index = 0;

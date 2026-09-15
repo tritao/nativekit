@@ -36,6 +36,8 @@ static_assert(sizeof(nkui_text_rect) == 5 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_style) == 4 * sizeof(uint32_t));
 static_assert(sizeof(nkui_paragraph_style) == 5 * sizeof(uint32_t));
 static_assert(sizeof(nkui_layout_frame_input) == 4 * sizeof(uint32_t));
+static_assert(sizeof(nkui_layout_measure_constraints) == 5 * sizeof(uint32_t));
+static_assert(sizeof(nkui_layout_measure_result) == 5 * sizeof(uint32_t));
 static_assert(sizeof(nkui_path_element) == 7 * sizeof(uint32_t));
 static_assert(sizeof(nkui_color) == 4 * sizeof(uint32_t));
 static_assert(sizeof(nkui_gradient_stop) == 5 * sizeof(uint32_t));
@@ -147,9 +149,37 @@ struct LayoutSessionState {
     nkui::LayoutRenderFrame frame;
     nkui::LayoutSnapshot snapshot;
     std::unordered_map<uint32_t, nkui_display_list> custom_paints;
+    nkui_nullable_layout_measure_callback measure_callback = nullptr;
+    void *measure_user_data = nullptr;
     bool fonts_configured = false;
     bool submitted = false;
 };
+
+void configure_layout_measure_callback(LayoutSessionState &state) {
+    const auto callback = state.measure_callback;
+    void *const user_data = state.measure_user_data;
+    if (!callback) {
+        state.engine->set_measure_callback({});
+        return;
+    }
+    state.engine->set_measure_callback(
+        [callback, user_data](uint32_t node_id,
+                              const nkui::LayoutMeasureConstraints &constraints) {
+            nkui_layout_measure_constraints native_constraints{};
+            native_constraints.struct_size = sizeof(native_constraints);
+            native_constraints.min_width = constraints.min_width;
+            native_constraints.max_width = constraints.max_width;
+            native_constraints.min_height = constraints.min_height;
+            native_constraints.max_height = constraints.max_height;
+            const nkui_layout_measure_result measured =
+                callback(node_id, native_constraints, user_data);
+            return nkui::LayoutMeasureResult{
+                measured.width,
+                measured.height,
+                measured.baseline,
+                (measured.flags & NKUI_LAYOUT_MEASURE_HAS_BASELINE) != 0};
+        });
+}
 
 struct LayoutSessionSlot {
     std::unique_ptr<LayoutSessionState> session;
@@ -1263,7 +1293,25 @@ extern "C" nkui_result nkui_layout_session_set_font_collection(nkui_layout_sessi
         if (!state->engine->valid())
             return NKUI_ERROR_OUT_OF_MEMORY;
         state->compiler.set_font_collection(shared_fonts);
+        configure_layout_measure_callback(*state);
         state->fonts_configured = true;
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_layout_session_set_measure_callback(
+    nkui_layout_session session, nkui_nullable_layout_measure_callback callback,
+    void *user_data) {
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    auto *state = resolve(session);
+    if (!state)
+        return NKUI_ERROR_INVALID_HANDLE;
+    try {
+        state->measure_callback = callback;
+        state->measure_user_data = callback ? user_data : nullptr;
+        configure_layout_measure_callback(*state);
     } catch (...) {
         return NKUI_ERROR_OUT_OF_MEMORY;
     }

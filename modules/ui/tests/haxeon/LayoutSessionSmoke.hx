@@ -84,6 +84,34 @@ class LayoutSessionSmoke {
 		if (resolved[2].x != resolved[1].x + 20.0 || resolved[2].y != resolved[1].y + 10.0)
 			return 7;
 
+		var measuredNode = LayoutNode.box(103);
+		measuredNode.visualKind = LayoutVisualKind.Custom;
+		measuredNode.style.width = LayoutAxis.fit();
+		measuredNode.style.height = LayoutAxis.fit();
+		panel.add(measuredNode);
+		var measureCalls = 0;
+		session.setMeasureCallback(function(nodeId:Int, constraints:LayoutMeasureConstraints) {
+			measureCalls++;
+			if (nodeId != 103) {
+				Sys.println('unexpected measure node=$nodeId');
+				throw "Unexpected custom measurement request";
+			}
+			return new LayoutMeasureResult(48.0, 20.0, 15.0, true);
+		});
+		resolved = session.submit(root, frame);
+		var measuredItem:Null<ResolvedLayoutItem> = null;
+		for (item in resolved)
+			if (item.id == 103)
+				measuredItem = item;
+		var callsAfterFirst = measureCalls;
+		if (callsAfterFirst == 0 || measuredItem == null || measuredItem.width != 48.0 ||
+			measuredItem.height != 20.0 || !measuredItem.hasBaseline)
+			return 41;
+		resolved = session.submit(root, frame);
+		if (measureCalls <= callsAfterFirst)
+			return 42;
+		session.setMeasureCallback(null);
+
 		session.dispose();
 		fonts.dispose();
 		Sys.println("PASS: Haxeon layout session transaction");

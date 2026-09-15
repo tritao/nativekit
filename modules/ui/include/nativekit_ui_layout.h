@@ -17,7 +17,7 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 14,
+    NKUI_LAYOUT_API_VERSION = 15,
     NKUI_LAYOUT_TRANSACTION_VERSION = 13,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
     NKUI_LAYOUT_NODE_RECORD_BYTES = 236,
@@ -223,6 +223,37 @@ typedef struct nkui_layout_frame_input {
     float delta_seconds;
 } nkui_layout_frame_input;
 
+/** Constraints supplied to an external intrinsic measurer for one custom node. */
+typedef struct nkui_layout_measure_constraints {
+    /** Always sizeof(nkui_layout_measure_constraints) for this ABI. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    float min_width;
+    float max_width;
+    float min_height;
+    float max_height;
+} nkui_layout_measure_constraints;
+
+/** Flags returned in nkui_layout_measure_result.flags. */
+typedef uint32_t nkui_layout_measure_flags;
+enum NK_FLAGS(nkui_layout_measure_flags) {
+    NKUI_LAYOUT_MEASURE_HAS_BASELINE = 1u << 0
+};
+
+/** Optional metrics returned by an external intrinsic measurer. */
+typedef struct nkui_layout_measure_result {
+    /** Set to sizeof(nkui_layout_measure_result) when returned. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    float width;
+    float height;
+    float baseline;
+    nkui_layout_measure_flags flags;
+} nkui_layout_measure_result;
+
+/** Synchronous intrinsic measurement callback for custom-visual nodes. */
+typedef nkui_layout_measure_result(NK_CALL *nkui_layout_measure_callback)(
+    uint32_t node_id, nkui_layout_measure_constraints constraints, void *NK_NULLABLE user_data);
+typedef nkui_layout_measure_callback NK_NULLABLE nkui_nullable_layout_measure_callback;
+
 /** Creates a private layout session. */
 NKUI_API nkui_result NK_CALL nkui_layout_session_create(nkui_layout_session *out_session NKUI_OUT);
 
@@ -232,6 +263,16 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_destroy(nkui_layout_session ses
 /** Copies the font collection configuration into the layout session. */
 NKUI_API nkui_result NK_CALL nkui_layout_session_set_font_collection(nkui_layout_session session,
                                                                      nkui_resource fonts);
+
+/**
+ * Installs or removes the synchronous intrinsic measurer for custom-visual
+ * nodes. The callback is invoked during submit on the submitting thread. Its
+ * user data is borrowed and the callback must be detached before its Haxe/C
+ * callback handle is closed.
+ */
+NKUI_API nkui_result NK_CALL nkui_layout_session_set_measure_callback(
+        nkui_layout_session session, nkui_nullable_layout_measure_callback callback NK_RETAINED,
+        void *NK_NULLABLE user_data);
 
 /** Clears all custom-paint display lists attached to the session. */
 NKUI_API nkui_result NK_CALL nkui_layout_session_clear_custom_paints(nkui_layout_session session);

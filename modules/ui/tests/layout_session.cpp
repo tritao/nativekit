@@ -130,6 +130,22 @@ std::vector<uint8_t> transaction_with_nodes(uint32_t node_count) {
     return bytes;
 }
 
+struct MeasureState {
+    uint32_t calls = 0;
+};
+
+nkui_layout_measure_result measure_custom_node(uint32_t node_id,
+                                               nkui_layout_measure_constraints constraints,
+                                               void *user_data) {
+    auto *state = static_cast<MeasureState *>(user_data);
+    if (state)
+        ++state->calls;
+    if (node_id != 2)
+        return {sizeof(nkui_layout_measure_result), 0.0f, 0.0f, 0.0f, 0};
+    return {sizeof(nkui_layout_measure_result), 48.0f, 20.0f, 15.0f,
+            NKUI_LAYOUT_MEASURE_HAS_BASELINE};
+}
+
 } // namespace
 
 int main() {
@@ -144,6 +160,11 @@ int main() {
         nkui_layout_session_create(&session) != NKUI_OK ||
         nkui_layout_session_set_font_collection(session, fonts) != NKUI_OK)
         return 3;
+
+    MeasureState measure_state;
+    if (nkui_layout_session_set_measure_callback(session, measure_custom_node, &measure_state) !=
+        NKUI_OK)
+        return 43;
 
     const auto bytes = transaction();
     nkui_layout_frame_input frame{sizeof(frame), 256.0f, 192.0f, 1.0f / 60.0f};
@@ -320,6 +341,36 @@ int main() {
         std::abs(text_item.y -
                  (button_item.y + (button_item.height - text_item.height) * 0.5f)) > 0.01f)
         return 17;
+
+    measure_state.calls = 0;
+    auto measured = transaction_with_nodes(2);
+    const std::size_t measured_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
+                                        NKUI_LAYOUT_NODE_RECORD_BYTES;
+    write_u32(measured, measured_record + NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET,
+              NKUI_LAYOUT_VISUAL_CUSTOM);
+    write_u32(measured, measured_record + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET,
+              NKUI_LAYOUT_SIZING_FIT);
+    write_u32(measured, measured_record + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET,
+              NKUI_LAYOUT_SIZING_FIT);
+    if (nkui_layout_session_submit(session, measured.data(), measured.size(), &frame) != NKUI_OK ||
+        measure_state.calls != 1 ||
+        nkui_layout_session_get_resolved_items(session, nullptr, &resolved_bytes) != NKUI_OK)
+        return 44;
+    std::vector<uint8_t> measured_resolved(resolved_bytes);
+    if (nkui_layout_session_get_resolved_items(session, measured_resolved.data(),
+                                                &resolved_bytes) != NKUI_OK)
+        return 45;
+    std::memcpy(&button_item, measured_resolved.data() + sizeof(root_item), sizeof(button_item));
+    if (button_item.width != 48.0f || button_item.height != 20.0f ||
+        !(button_item.flags & NKUI_LAYOUT_RESOLVED_HAS_BASELINE) ||
+        std::abs(button_item.baseline - 15.0f) > 0.01f)
+        return 46;
+    if (nkui_layout_session_submit(session, measured.data(), measured.size(), &frame) != NKUI_OK ||
+        measure_state.calls != 2)
+        return 47;
+    if (nkui_layout_session_set_measure_callback(session, nullptr, nullptr) != NKUI_OK)
+        return 48;
+    resolved_bytes = static_cast<uint32_t>(resolved.size());
 
     auto floating = bytes;
     const std::size_t text_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +

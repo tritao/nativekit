@@ -6,6 +6,8 @@
 #include "clay.h"
 
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -131,6 +133,7 @@ struct LayoutEngine::Impl {
             return false;
         Clay_SetMeasureTextFunction(measure_text, this);
         Clay_SetMeasureTextIntrinsicFunction(measure_intrinsic_text, this);
+        Clay_SetMeasureElementFunction(measure_element, this);
         Clay_SetLayoutTextFunction(layout_text, this);
         return true;
     }
@@ -165,6 +168,9 @@ struct LayoutEngine::Impl {
                                         void *user_data);
     static Clay_TextIntrinsicDimensions
     measure_intrinsic_text(Clay_StringSlice text, Clay_TextElementConfig *config, void *user_data);
+    static Clay_MeasureResult measure_element(Clay_ElementId id,
+                                              Clay_MeasureConstraints constraints,
+                                              void *user_data);
     static Clay_TextLayoutResult layout_text(Clay_StringSlice text, Clay_TextElementConfig *config,
                                              float available_width, void *user_data);
 
@@ -176,6 +182,27 @@ struct LayoutEngine::Impl {
     std::vector<std::vector<std::size_t>> children;
     std::vector<Clay_ElementId> element_ids;
     std::unordered_map<TextLayoutId, LayoutTextLayout> text_layouts;
+    struct MeasureCacheKey {
+        uint32_t node_id = 0;
+        std::array<uint32_t, 4> constraints{};
+
+        bool operator==(const MeasureCacheKey &other) const {
+            return node_id == other.node_id && constraints == other.constraints;
+        }
+    };
+    struct MeasureCacheKeyHash {
+        std::size_t operator()(const MeasureCacheKey &key) const {
+            std::size_t hash = key.node_id;
+            for (uint32_t value : key.constraints)
+                hash = (hash * 0x9E3779B1u) ^ value;
+            return hash;
+        }
+    };
+    LayoutMeasureCallback measure_callback;
+    std::unordered_map<uint32_t, uint32_t> measure_node_ids;
+    std::unordered_map<MeasureCacheKey, LayoutMeasureResult, MeasureCacheKeyHash>
+        measure_cache;
+    std::unordered_map<uint32_t, LayoutMeasureResult> frame_measurements;
     std::vector<Clay_TextLayoutLine> callback_lines;
     std::string clay_error;
 };
@@ -212,6 +239,47 @@ LayoutEngine::Impl::measure_intrinsic_text(Clay_StringSlice text, Clay_TextEleme
     // External paragraph engines may break at character boundaries, so the
     // safe lower bound is zero unless the engine exposes a stronger one.
     result.minWidth = 0.0f;
+    return result;
+}
+
+Clay_MeasureResult LayoutEngine::Impl::measure_element(Clay_ElementId id,
+                                                       Clay_MeasureConstraints constraints,
+                                                       void *user_data) {
+    auto &state = *static_cast<Impl *>(user_data);
+    Clay_MeasureResult result{};
+    if (!state.measure_callback)
+        return result;
+
+    const auto node_id = state.measure_node_ids.find(id.id);
+    const uint32_t native_node_id =
+        node_id == state.measure_node_ids.end() ? id.id : node_id->second;
+
+    const MeasureCacheKey key{
+        native_node_id,
+        {std::bit_cast<uint32_t>(constraints.minWidth),
+         std::bit_cast<uint32_t>(constraints.maxWidth),
+         std::bit_cast<uint32_t>(constraints.minHeight),
+         std::bit_cast<uint32_t>(constraints.maxHeight)}};
+    const auto cached = state.measure_cache.find(key);
+    LayoutMeasureResult measured;
+    if (cached != state.measure_cache.end()) {
+        measured = cached->second;
+    } else {
+        measured = state.measure_callback(
+            native_node_id,
+            {constraints.minWidth, constraints.maxWidth, constraints.minHeight,
+             constraints.maxHeight});
+        if (std::isfinite(measured.width) && std::isfinite(measured.height) &&
+            measured.width >= 0.0f && measured.height >= 0.0f) {
+            state.measure_cache.emplace(key, measured);
+            state.frame_measurements[native_node_id] = measured;
+        }
+    }
+    if (cached != state.measure_cache.end())
+        state.frame_measurements[native_node_id] = measured;
+    result.dimensions = {measured.width, measured.height};
+    result.baseline = measured.baseline;
+    result.hasBaseline = measured.has_baseline;
     return result;
 }
 
@@ -553,8 +621,11 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
     state.nodes = &nodes;
     state.children.assign(nodes.size(), {});
     state.element_ids.resize(nodes.size());
+    state.measure_node_ids.clear();
     state.clay_error.clear();
     state.text_layouts.clear();
+    state.measure_cache.clear();
+    state.frame_measurements.clear();
     state.callback_lines.clear();
 
     std::size_t root = nodes.size();
@@ -570,6 +641,7 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
             return false;
         }
         state.element_ids[index] = element_id(node.id);
+        state.measure_node_ids[state.element_ids[index].id] = node.id;
         if (node.parent < 0) {
             if (root != nodes.size()) {
                 if (error) {
@@ -727,6 +799,13 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
             item.has_baseline = true;
             item.baseline = item.bounds.y + text_layout->first_line_baseline;
         }
+        const auto measured = state.frame_measurements.find(node.id);
+        if (measured != state.frame_measurements.end() && measured->second.has_baseline &&
+            std::isfinite(measured->second.baseline) && measured->second.baseline >= 0.0f &&
+            measured->second.baseline <= item.bounds.height) {
+            item.has_baseline = true;
+            item.baseline = item.bounds.y + measured->second.baseline;
+        }
         out.items[index] = item;
 
         LayoutRect child_clip = item_clip;
@@ -816,6 +895,11 @@ bool LayoutEngine::add_font_from_data(const char *name, const void *data, std::s
 
 bool LayoutEngine::add_system_fallbacks() {
     return impl_ && impl_->add_system_fallbacks();
+}
+
+void LayoutEngine::set_measure_callback(LayoutMeasureCallback callback) {
+    if (impl_)
+        impl_->measure_callback = std::move(callback);
 }
 
 bool LayoutEngine::layout(const std::vector<LayoutNode> &nodes, float width, float height,

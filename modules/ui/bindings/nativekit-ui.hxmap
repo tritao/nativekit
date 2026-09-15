@@ -1,5 +1,6 @@
 {
   "interface": "NativeKitUI",
+	"callbackErrorType": "NativeKitUICallbackError",
   "enumNames": {
     "nkui_result": "UiStatus",
     "nkui_command_opcode": "CommandOpcode",

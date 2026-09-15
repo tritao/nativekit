@@ -1,5 +1,6 @@
 import NativeKit;
 import NativeKitUI;
+import NativeKitUI.nkui_layout_measure_callbackCallback;
 import haxe.io.Bytes;
 
 /** Batched bridge from a Haxe-owned render tree to NativeKit layout/rendering. */
@@ -8,12 +9,14 @@ class LayoutSession {
 	var disposed:Bool;
 	final transaction:LayoutTransaction;
 	final resolved:Array<ResolvedLayoutItem>;
+	var measureCallback:Null<nkui_layout_measure_callbackCallback>;
 
 	private function new(value:nkui_layout_session) {
 		this.value = value;
 		disposed = false;
 		transaction = new LayoutTransaction();
 		resolved = [];
+		measureCallback = null;
 	}
 
 	public static function create():LayoutSession {
@@ -27,6 +30,34 @@ class LayoutSession {
 		ensureLive();
 		UiResult.check(NativeKitUI.nkui_layout_session_set_font_collection(value,
 			fonts.nativeHandle()), "layoutSession.setFonts");
+	}
+
+	/**
+	 * Installs a synchronous intrinsic measurer for Custom nodes. The callback
+	 * runs during submit and remains retained by this session until replaced or
+	 * cleared.
+	 */
+	public function setMeasureCallback(callback:Null<LayoutMeasureCallback>):Void {
+		ensureLive();
+		detachMeasureCallback();
+		if (callback == null)
+			return;
+		var nativeCallback = new nkui_layout_measure_callbackCallback(
+			function(nodeId:Int, constraints:nkui_layout_measure_constraints,
+				_userData:Null<hl.Abstract<"native_pointer">>) {
+				var measured = callback(nodeId, LayoutMeasureConstraints.fromNative(constraints));
+				if (measured == null)
+					throw "Layout measurement callback returned null";
+				return measured.nativeValue();
+			});
+		try {
+			UiResult.check(NativeKitUI.nkui_layout_session_set_measure_callback(value, nativeCallback,
+				null), "layoutSession.setMeasureCallback");
+		} catch (error:Dynamic) {
+			nativeCallback.close();
+			throw error;
+		}
+		measureCallback = nativeCallback;
 	}
 
 	/** Submits one render tree and returns geometry for the complete resolved frame. */
@@ -95,6 +126,7 @@ class LayoutSession {
 	public function dispose():Void {
 		if (disposed)
 			return;
+		detachMeasureCallback();
 		var status = NativeKitUI.nkui_layout_session_destroy(value);
 		disposed = true;
 		UiResult.check(status, "layoutSession.dispose");
@@ -106,5 +138,15 @@ class LayoutSession {
 	function ensureLive():Void {
 		if (disposed)
 			throw "Layout session has been disposed";
+	}
+
+	function detachMeasureCallback():Void {
+		if (measureCallback == null)
+			return;
+		UiResult.check(NativeKitUI.nkui_layout_session_set_measure_callback(value, null, null),
+			"layoutSession.clearMeasureCallback");
+		var callback = measureCallback;
+		measureCallback = null;
+		callback.close();
 	}
 }
