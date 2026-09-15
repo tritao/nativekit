@@ -223,10 +223,12 @@ struct CApiShowcase {
 
 #if defined(__EMSCRIPTEN__)
 
+// clang-format off
 EM_JS(void, nk_web_example_report, (int result), {
     if (typeof Module !== "undefined" && Module.onNativeKitResult)
         Module.onNativeKitResult(result);
 });
+// clang-format on
 
 struct WebShowcase {
     nk_window window = 0;
@@ -302,7 +304,7 @@ struct WebShowcase {
         nk_resource asset{};
         asset.struct_size = sizeof(asset);
         asset.flags = NK_RESOURCE_READABLE;
-        asset.uri = "/assets/IBMPlexSans-Regular.ttf";
+        asset.uri = "assets/IBMPlexSans-Regular.ttf";
         if (nk_resource_load_async(&asset, &asset_request) != NK_OK)
             return fail(1);
 

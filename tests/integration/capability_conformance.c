@@ -73,6 +73,24 @@ static int wait_for_request(nk_request_id request, nk_event *out_event) {
     return 0;
 }
 
+static int wait_for_event(nk_handle source, nk_event_kind kind) {
+    for (int attempt = 0; attempt < 500; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        if (!require_ok("nk_poll_event", nk_poll_event(&event)))
+            return 0;
+        if (event.source == source && event.kind == kind) {
+            nk_event_release(&event);
+            return 1;
+        }
+        nk_event_release(&event);
+        if (!require_ok("nk_wait_events_timeout", nk_wait_events_timeout(0.01)))
+            return 0;
+    }
+    fprintf(stderr, "timed out waiting for event %d from %llu\n", kind, (unsigned long long)source);
+    return 0;
+}
+
 static int probe_window(nk_capabilities capabilities, nk_window *out_window,
                         nk_native_window *out_native) {
     if (!(capabilities & NK_CAP_WINDOW))
@@ -744,6 +762,7 @@ static int probe_webview(nk_capabilities capabilities, nk_window window) {
     nk_bool can_go_back = 0;
     nk_bool can_go_forward = 0;
     if (!require_ok("nk_webview_create", nk_webview_create(window, &options, &webview)) ||
+        !wait_for_event(webview, NK_EVENT_WEBVIEW_READY) ||
         !require_ok("nk_webview_show", nk_webview_show(webview, 1)) ||
         !require_ok("nk_webview_set_bounds", nk_webview_set_bounds(webview, 0, 0, 320, 240)) ||
         !require_ok("nk_webview_set_html",

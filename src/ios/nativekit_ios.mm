@@ -35,6 +35,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -2286,9 +2287,23 @@ void cancel_dialogs_for_parent(nk_handle parent);
 
 - (void)webView:(WKWebView *)view didFinishNavigation:(WKNavigation *)navigation {
     (void)navigation;
+    std::fprintf(stderr, "iOS WebView didFinishNavigation URL=%s\n",
+                 view.URL.absoluteString.UTF8String ?: "(null)");
     auto *resource = static_cast<IOSWebView *>(self.resource);
     if (resource)
         emit_webview_text(NK_EVENT_WEBVIEW_NAVIGATED, resource->handle, view.URL.absoluteString);
+}
+
+- (void)webView:(WKWebView *)view didStartProvisionalNavigation:(WKNavigation *)navigation {
+    (void)navigation;
+    std::fprintf(stderr, "iOS WebView didStartProvisionalNavigation URL=%s\n",
+                 view.URL.absoluteString.UTF8String ?: "(null)");
+}
+
+- (void)webView:(WKWebView *)view didCommitNavigation:(WKNavigation *)navigation {
+    (void)navigation;
+    std::fprintf(stderr, "iOS WebView didCommitNavigation URL=%s\n",
+                 view.URL.absoluteString.UTF8String ?: "(null)");
 }
 
 - (void)webView:(WKWebView *)view
@@ -2296,6 +2311,8 @@ void cancel_dialogs_for_parent(nk_handle parent);
             withError:(NSError *)error {
     (void)view;
     (void)navigation;
+    std::fprintf(stderr, "iOS WebView didFailNavigation error=%s\n",
+                 error.localizedDescription.UTF8String ?: "(null)");
     auto *resource = static_cast<IOSWebView *>(self.resource);
     if (resource)
         emit_webview_text(NK_EVENT_WEBVIEW_NAVIGATION_FAILED, resource->handle,
