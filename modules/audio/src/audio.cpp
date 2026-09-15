@@ -220,6 +220,46 @@ nk_result map_miniaudio_result(ma_result result, const char *message) {
     return mapped;
 }
 
+constexpr float audio_full_angle_radians = 6.28318530717958647692f;
+
+bool valid_audio_vec3(const nk_audio_vec3 &value) {
+    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
+
+bool valid_audio_direction(const nk_audio_vec3 &value) {
+    return valid_audio_vec3(value) && (value.x != 0.0f || value.y != 0.0f || value.z != 0.0f);
+}
+
+bool valid_audio_cone(float inner_angle_radians, float outer_angle_radians, float outer_gain) {
+    return std::isfinite(inner_angle_radians) && std::isfinite(outer_angle_radians) &&
+           std::isfinite(outer_gain) && inner_angle_radians >= 0.0f &&
+           inner_angle_radians <= outer_angle_radians &&
+           outer_angle_radians <= audio_full_angle_radians && outer_gain >= 0.0f &&
+           outer_gain <= 1.0f;
+}
+
+bool valid_audio_gain_limits(float min_gain, float max_gain) {
+    return std::isfinite(min_gain) && std::isfinite(max_gain) && min_gain >= 0.0f &&
+           min_gain <= max_gain;
+}
+
+bool valid_audio_distance_limits(float min_distance, float max_distance) {
+    return std::isfinite(min_distance) && std::isfinite(max_distance) && min_distance > 0.0f &&
+           min_distance <= max_distance;
+}
+
+bool valid_audio_attenuation_model(nk_audio_attenuation_model model) {
+    return model <= NK_AUDIO_ATTENUATION_EXPONENTIAL;
+}
+
+bool valid_audio_positioning(nk_audio_positioning positioning) {
+    return positioning <= NK_AUDIO_POSITIONING_RELATIVE;
+}
+
+nk_audio_vec3 audio_vec3(ma_vec3f value) {
+    return {value.x, value.y, value.z};
+}
+
 void audio_clip_publish_load_event(AudioClipResource &clip) noexcept {
     const auto state = clip.load_state.load(std::memory_order_acquire);
     if (state == NK_AUDIO_CLIP_LOADING || clip.load_request == NK_INVALID_REQUEST_ID)
@@ -341,6 +381,15 @@ std::shared_ptr<AudioEngineResource> ensure_engine(nk_result &out_result) {
     }
     engine_resource = next;
     return next;
+}
+
+template <typename Function>
+nk_result with_engine(const char *message, Function &&function) {
+    nk_result engine_result = NK_OK;
+    auto engine = ensure_engine(engine_result);
+    if (!engine)
+        return engine_result;
+    return function(*engine, message);
 }
 
 std::shared_ptr<AudioClipResource> get_clip(nk_audio_clip handle) {
@@ -1390,6 +1439,602 @@ nk_result NK_CALL nk_audio_voice_get_length_seconds(nk_audio_voice sound, float 
                                       message);
                               });
     });
+}
+
+nk_result NK_CALL nk_audio_listener_set_position(nk_audio_vec3 position) {
+    return nk::core::result_boundary(
+        "unexpected error while setting the audio listener position", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_vec3(position))
+                return invalid_argument("audio listener position must contain finite values");
+            return with_engine("could not set audio listener position",
+                               [&](AudioEngineResource &value, const char *) {
+                                   ma_engine_listener_set_position(&value.engine, 0, position.x,
+                                                                   position.y, position.z);
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_listener_get_position(nk_audio_vec3 *out_position) {
+    return nk::core::result_boundary(
+        "unexpected error while getting the audio listener position", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_position)
+                return invalid_argument("audio listener position output is missing");
+            return with_engine("could not get audio listener position",
+                               [&](AudioEngineResource &value, const char *) {
+                                   *out_position = audio_vec3(
+                                       ma_engine_listener_get_position(&value.engine, 0));
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_listener_set_direction(nk_audio_vec3 direction) {
+    return nk::core::result_boundary(
+        "unexpected error while setting the audio listener direction", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_direction(direction))
+                return invalid_argument(
+                    "audio listener direction must contain finite, non-zero values");
+            return with_engine("could not set audio listener direction",
+                               [&](AudioEngineResource &value, const char *) {
+                                   ma_engine_listener_set_direction(&value.engine, 0, direction.x,
+                                                                    direction.y, direction.z);
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_listener_get_direction(nk_audio_vec3 *out_direction) {
+    return nk::core::result_boundary(
+        "unexpected error while getting the audio listener direction", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_direction)
+                return invalid_argument("audio listener direction output is missing");
+            return with_engine("could not get audio listener direction",
+                               [&](AudioEngineResource &value, const char *) {
+                                   *out_direction = audio_vec3(
+                                       ma_engine_listener_get_direction(&value.engine, 0));
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_listener_set_velocity(nk_audio_vec3 velocity) {
+    return nk::core::result_boundary(
+        "unexpected error while setting the audio listener velocity", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_vec3(velocity))
+                return invalid_argument("audio listener velocity must contain finite values");
+            return with_engine("could not set audio listener velocity",
+                               [&](AudioEngineResource &value, const char *) {
+                                   ma_engine_listener_set_velocity(&value.engine, 0, velocity.x,
+                                                                   velocity.y, velocity.z);
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_listener_get_velocity(nk_audio_vec3 *out_velocity) {
+    return nk::core::result_boundary(
+        "unexpected error while getting the audio listener velocity", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_velocity)
+                return invalid_argument("audio listener velocity output is missing");
+            return with_engine("could not get audio listener velocity",
+                               [&](AudioEngineResource &value, const char *) {
+                                   *out_velocity = audio_vec3(
+                                       ma_engine_listener_get_velocity(&value.engine, 0));
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_listener_set_world_up(nk_audio_vec3 world_up) {
+    return nk::core::result_boundary(
+        "unexpected error while setting the audio listener world up", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_direction(world_up))
+                return invalid_argument(
+                    "audio listener world up must contain finite, non-zero values");
+            return with_engine("could not set audio listener world up",
+                               [&](AudioEngineResource &value, const char *) {
+                                   ma_engine_listener_set_world_up(&value.engine, 0, world_up.x,
+                                                                   world_up.y, world_up.z);
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_listener_get_world_up(nk_audio_vec3 *out_world_up) {
+    return nk::core::result_boundary(
+        "unexpected error while getting the audio listener world up", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_world_up)
+                return invalid_argument("audio listener world up output is missing");
+            return with_engine("could not get audio listener world up",
+                               [&](AudioEngineResource &value, const char *) {
+                                   *out_world_up = audio_vec3(
+                                       ma_engine_listener_get_world_up(&value.engine, 0));
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_listener_set_cone(float inner_angle_radians, float outer_angle_radians,
+                                             float outer_gain) {
+    return nk::core::result_boundary(
+        "unexpected error while setting the audio listener cone", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_cone(inner_angle_radians, outer_angle_radians, outer_gain))
+                return invalid_argument(
+                    "audio listener cone angles or gain are outside their valid ranges");
+            return with_engine("could not set audio listener cone",
+                               [&](AudioEngineResource &value, const char *) {
+                                   ma_engine_listener_set_cone(&value.engine, 0, inner_angle_radians,
+                                                               outer_angle_radians, outer_gain);
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_listener_get_cone(float *out_inner_angle_radians,
+                                             float *out_outer_angle_radians, float *out_outer_gain) {
+    return nk::core::result_boundary(
+        "unexpected error while getting the audio listener cone", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_inner_angle_radians || !out_outer_angle_radians || !out_outer_gain)
+                return invalid_argument("audio listener cone output is missing");
+            return with_engine("could not get audio listener cone",
+                               [&](AudioEngineResource &value, const char *) {
+                                   ma_engine_listener_get_cone(&value.engine, 0,
+                                                               out_inner_angle_radians,
+                                                               out_outer_angle_radians, out_outer_gain);
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_listener_set_speed_of_sound(float speed) {
+    return nk::core::result_boundary(
+        "unexpected error while setting the audio listener speed of sound", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!std::isfinite(speed) || speed <= 0.0f)
+                return invalid_argument("audio listener speed of sound must be finite and positive");
+            return with_engine("could not set audio listener speed of sound",
+                               [&](AudioEngineResource &value, const char *) {
+                                   auto *listener = &value.engine.listeners[0];
+                                   ma_spatializer_listener_set_speed_of_sound(listener, speed);
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_listener_get_speed_of_sound(float *out_speed) {
+    return nk::core::result_boundary(
+        "unexpected error while getting the audio listener speed of sound", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_speed)
+                return invalid_argument("audio listener speed of sound output is missing");
+            return with_engine("could not get audio listener speed of sound",
+                               [&](AudioEngineResource &value, const char *) {
+                                   *out_speed = ma_spatializer_listener_get_speed_of_sound(
+                                       &value.engine.listeners[0]);
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_spatialization_enabled(nk_audio_voice sound, nk_bool enabled) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice spatialization", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (enabled > 1)
+                return invalid_argument("audio voice spatialization must be zero or one");
+            return with_voice(sound, "could not set audio voice spatialization",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_spatialization_enabled(&value.sound,
+                                                                      enabled != 0 ? MA_TRUE
+                                                                                   : MA_FALSE);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_is_spatialization_enabled(nk_audio_voice sound,
+                                                            nk_bool *out_enabled) {
+    return nk::core::result_boundary(
+        "unexpected error while querying audio voice spatialization", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_enabled)
+                return invalid_argument("audio voice spatialization output is missing");
+            return with_voice(sound, "could not query audio voice spatialization",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_enabled = ma_sound_is_spatialization_enabled(&value.sound)
+                                                     ? 1u
+                                                     : 0u;
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_position(nk_audio_voice sound, nk_audio_vec3 position) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice position", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_vec3(position))
+                return invalid_argument("audio voice position must contain finite values");
+            return with_voice(sound, "could not set audio voice position",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_position(&value.sound, position.x, position.y,
+                                                        position.z);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_position(nk_audio_voice sound, nk_audio_vec3 *out_position) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio voice position", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_position)
+                return invalid_argument("audio voice position output is missing");
+            return with_voice(sound, "could not get audio voice position",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_position = audio_vec3(ma_sound_get_position(&value.sound));
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_direction(nk_audio_voice sound, nk_audio_vec3 direction) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice direction", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_direction(direction))
+                return invalid_argument(
+                    "audio voice direction must contain finite, non-zero values");
+            return with_voice(sound, "could not set audio voice direction",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_direction(&value.sound, direction.x, direction.y,
+                                                         direction.z);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_direction(nk_audio_voice sound,
+                                               nk_audio_vec3 *out_direction) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio voice direction", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_direction)
+                return invalid_argument("audio voice direction output is missing");
+            return with_voice(sound, "could not get audio voice direction",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_direction = audio_vec3(ma_sound_get_direction(&value.sound));
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_velocity(nk_audio_voice sound, nk_audio_vec3 velocity) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice velocity", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_vec3(velocity))
+                return invalid_argument("audio voice velocity must contain finite values");
+            return with_voice(sound, "could not set audio voice velocity",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_velocity(&value.sound, velocity.x, velocity.y,
+                                                        velocity.z);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_velocity(nk_audio_voice sound,
+                                              nk_audio_vec3 *out_velocity) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio voice velocity", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_velocity)
+                return invalid_argument("audio voice velocity output is missing");
+            return with_voice(sound, "could not get audio voice velocity",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_velocity = audio_vec3(ma_sound_get_velocity(&value.sound));
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_attenuation_model(nk_audio_voice sound,
+                                                       nk_audio_attenuation_model model) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice attenuation model", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_attenuation_model(model))
+                return invalid_argument("audio voice attenuation model is invalid");
+            return with_voice(sound, "could not set audio voice attenuation model",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_attenuation_model(
+                                      &value.sound, static_cast<ma_attenuation_model>(model));
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_attenuation_model(nk_audio_voice sound,
+                                                       nk_audio_attenuation_model *out_model) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio voice attenuation model", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_model)
+                return invalid_argument("audio voice attenuation model output is missing");
+            return with_voice(sound, "could not get audio voice attenuation model",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_model = static_cast<nk_audio_attenuation_model>(
+                                      ma_sound_get_attenuation_model(&value.sound));
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_positioning(nk_audio_voice sound,
+                                                 nk_audio_positioning positioning) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice positioning", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_positioning(positioning))
+                return invalid_argument("audio voice positioning is invalid");
+            return with_voice(sound, "could not set audio voice positioning",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_positioning(
+                                      &value.sound, static_cast<ma_positioning>(positioning));
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_positioning(nk_audio_voice sound,
+                                                 nk_audio_positioning *out_positioning) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio voice positioning", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_positioning)
+                return invalid_argument("audio voice positioning output is missing");
+            return with_voice(sound, "could not get audio voice positioning",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_positioning = static_cast<nk_audio_positioning>(
+                                      ma_sound_get_positioning(&value.sound));
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_rolloff(nk_audio_voice sound, float rolloff) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice rolloff", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!std::isfinite(rolloff) || rolloff < 0.0f)
+                return invalid_argument("audio voice rolloff must be finite and non-negative");
+            return with_voice(sound, "could not set audio voice rolloff",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_rolloff(&value.sound, rolloff);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_rolloff(nk_audio_voice sound, float *out_rolloff) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio voice rolloff", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_rolloff)
+                return invalid_argument("audio voice rolloff output is missing");
+            return with_voice(sound, "could not get audio voice rolloff",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_rolloff = ma_sound_get_rolloff(&value.sound);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_gain_limits(nk_audio_voice sound, float min_gain,
+                                                 float max_gain) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice gain limits", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_gain_limits(min_gain, max_gain))
+                return invalid_argument(
+                    "audio voice gain limits must be finite, non-negative, and ordered");
+            return with_voice(sound, "could not set audio voice gain limits",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_min_gain(&value.sound, min_gain);
+                                  ma_sound_set_max_gain(&value.sound, max_gain);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_gain_limits(nk_audio_voice sound, float *out_min_gain,
+                                                 float *out_max_gain) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio voice gain limits", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_min_gain || !out_max_gain)
+                return invalid_argument("audio voice gain limits output is missing");
+            return with_voice(sound, "could not get audio voice gain limits",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_min_gain = ma_sound_get_min_gain(&value.sound);
+                                  *out_max_gain = ma_sound_get_max_gain(&value.sound);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_distance_limits(nk_audio_voice sound, float min_distance,
+                                                     float max_distance) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice distance limits", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_distance_limits(min_distance, max_distance))
+                return invalid_argument(
+                    "audio voice distance limits must be finite, positive, and ordered");
+            return with_voice(sound, "could not set audio voice distance limits",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_min_distance(&value.sound, min_distance);
+                                  ma_sound_set_max_distance(&value.sound, max_distance);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_distance_limits(nk_audio_voice sound, float *out_min_distance,
+                                                     float *out_max_distance) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio voice distance limits", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_min_distance || !out_max_distance)
+                return invalid_argument("audio voice distance limits output is missing");
+            return with_voice(sound, "could not get audio voice distance limits",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_min_distance = ma_sound_get_min_distance(&value.sound);
+                                  *out_max_distance = ma_sound_get_max_distance(&value.sound);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_doppler_factor(nk_audio_voice sound, float factor) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice Doppler factor", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!std::isfinite(factor) || factor < 0.0f)
+                return invalid_argument(
+                    "audio voice Doppler factor must be finite and non-negative");
+            return with_voice(sound, "could not set audio voice Doppler factor",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_doppler_factor(&value.sound, factor);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_doppler_factor(nk_audio_voice sound, float *out_factor) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio voice Doppler factor", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_factor)
+                return invalid_argument("audio voice Doppler factor output is missing");
+            return with_voice(sound, "could not get audio voice Doppler factor",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_factor = ma_sound_get_doppler_factor(&value.sound);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_cone(nk_audio_voice sound, float inner_angle_radians,
+                                          float outer_angle_radians, float outer_gain) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice cone", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_cone(inner_angle_radians, outer_angle_radians, outer_gain))
+                return invalid_argument("audio voice cone angles or gain are outside their valid ranges");
+            return with_voice(sound, "could not set audio voice cone",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_cone(&value.sound, inner_angle_radians,
+                                                    outer_angle_radians, outer_gain);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_cone(nk_audio_voice sound, float *out_inner_angle_radians,
+                                          float *out_outer_angle_radians, float *out_outer_gain) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio voice cone", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_inner_angle_radians || !out_outer_angle_radians || !out_outer_gain)
+                return invalid_argument("audio voice cone output is missing");
+            return with_voice(sound, "could not get audio voice cone",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_get_cone(&value.sound, out_inner_angle_radians,
+                                                    out_outer_angle_radians, out_outer_gain);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_directional_attenuation_factor(nk_audio_voice sound,
+                                                                    float factor) {
+    return nk::core::result_boundary(
+        "unexpected error while setting audio voice directional attenuation", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!std::isfinite(factor) || factor < 0.0f || factor > 1.0f)
+                return invalid_argument(
+                    "audio voice directional attenuation factor must be in the range [0, 1]");
+            return with_voice(sound, "could not set audio voice directional attenuation",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  ma_sound_set_directional_attenuation_factor(&value.sound, factor);
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_directional_attenuation_factor(nk_audio_voice sound,
+                                                                    float *out_factor) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio voice directional attenuation", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_factor)
+                return invalid_argument("audio voice directional attenuation output is missing");
+            return with_voice(sound, "could not get audio voice directional attenuation",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_factor =
+                                      ma_sound_get_directional_attenuation_factor(&value.sound);
+                                  return NK_OK;
+                              });
+        });
 }
 
 nk_result NK_CALL nk_audio_get_time_pcm_frames(uint64_t *out_time_pcm_frames) {

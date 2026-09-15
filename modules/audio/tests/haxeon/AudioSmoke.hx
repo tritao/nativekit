@@ -1,13 +1,18 @@
 import NativeKit;
+import NativeKitAudio;
 import NativeKitEventDecoderTests;
 import haxe.io.Bytes;
 import NativeKitEventValue;
 import NativeKitEvents.NativeKitEventSubscription;
 import nativekit.audio.Bus;
 import nativekit.audio.Clip;
+import nativekit.audio.Cone;
+import nativekit.audio.DistanceLimits;
+import nativekit.audio.GainLimits;
 import nativekit.audio.Mixer;
 import nativekit.audio.Voice;
 import nativekit.audio.VoiceOptions;
+import nativekit.audio.Vector3;
 import nativekit.resource.Resource;
 
 class AudioSmoke {
@@ -64,6 +69,30 @@ class AudioSmoke {
 			Mixer.setMasterVolume(0.75);
 			if (Mixer.masterVolume() != 0.75)
 				throw "Haxe audio master volume did not round-trip";
+			Mixer.setListenerPosition(new Vector3(4.0, 2.0, -3.0));
+			var listenerPosition = Mixer.listenerPosition();
+			if (listenerPosition.x != 4.0 || listenerPosition.y != 2.0 || listenerPosition.z != -3.0)
+				throw "Haxe audio listener position did not round-trip";
+			Mixer.setListenerDirection(new Vector3(0.0, 0.0, -1.0));
+			var listenerDirection = Mixer.listenerDirection();
+			if (listenerDirection.x != 0.0 || listenerDirection.y != 0.0 || listenerDirection.z != -1.0)
+				throw "Haxe audio listener direction did not round-trip";
+			Mixer.setListenerVelocity(new Vector3(1.0, 0.0, 0.0));
+			var listenerVelocity = Mixer.listenerVelocity();
+			if (listenerVelocity.x != 1.0 || listenerVelocity.y != 0.0 || listenerVelocity.z != 0.0)
+				throw "Haxe audio listener velocity did not round-trip";
+			Mixer.setListenerWorldUp(new Vector3(0.0, 1.0, 0.0));
+			var listenerWorldUp = Mixer.listenerWorldUp();
+			if (listenerWorldUp.x != 0.0 || listenerWorldUp.y != 1.0 || listenerWorldUp.z != 0.0)
+				throw "Haxe audio listener world up did not round-trip";
+			Mixer.setListenerCone(new Cone(0.5, 1.5, 0.25));
+			var listenerCone = Mixer.listenerCone();
+			if (listenerCone.innerAngleRadians != 0.5 || listenerCone.outerAngleRadians != 1.5 ||
+				listenerCone.outerGain != 0.25)
+				throw "Haxe audio listener cone did not round-trip";
+			Mixer.setSpeedOfSound(340.0);
+			if (Mixer.speedOfSound() != 340.0)
+				throw "Haxe audio speed of sound did not round-trip";
 			var sampleRate = Mixer.sampleRate();
 			if (sampleRate <= 0)
 				throw "Haxe audio sample rate was invalid";
@@ -95,6 +124,49 @@ class AudioSmoke {
 			first.setVolume(0.5);
 			if (first.volume() != 0.5)
 				throw "Haxe audio volume did not round-trip";
+			first.setSpatializationEnabled(true);
+			if (!first.isSpatializationEnabled())
+				throw "Haxe audio spatialization state did not round-trip";
+			first.setPosition(new Vector3(8.0, -1.0, -6.0));
+			var sourcePosition = first.position();
+			if (sourcePosition.x != 8.0 || sourcePosition.y != -1.0 || sourcePosition.z != -6.0)
+				throw "Haxe audio voice position did not round-trip";
+			first.setDirection(new Vector3(0.0, 0.0, 1.0));
+			var sourceDirection = first.direction();
+			if (sourceDirection.x != 0.0 || sourceDirection.y != 0.0 || sourceDirection.z != 1.0)
+				throw "Haxe audio voice direction did not round-trip";
+			first.setVelocity(new Vector3(-2.0, 0.0, 0.5));
+			var sourceVelocity = first.velocity();
+			if (sourceVelocity.x != -2.0 || sourceVelocity.y != 0.0 || sourceVelocity.z != 0.5)
+				throw "Haxe audio voice velocity did not round-trip";
+			first.setAttenuationModel(NativeKitAudio.AttenuationModel.Linear);
+			if (first.attenuationModel() != NativeKitAudio.AttenuationModel.Linear)
+				throw "Haxe audio attenuation model did not round-trip";
+			first.setPositioning(NativeKitAudio.Positioning.Relative);
+			if (first.positioning() != NativeKitAudio.Positioning.Relative)
+				throw "Haxe audio positioning did not round-trip";
+			first.setRolloff(0.75);
+			if (first.rolloff() != 0.75)
+				throw "Haxe audio rolloff did not round-trip";
+			first.setGainLimits(0.25, 0.75);
+			var gainLimits:GainLimits = first.gainLimits();
+			if (gainLimits.min != 0.25 || gainLimits.max != 0.75)
+				throw "Haxe audio gain limits did not round-trip";
+			first.setDistanceLimits(2.0, 100.0);
+			var distanceLimits:DistanceLimits = first.distanceLimits();
+			if (distanceLimits.min != 2.0 || distanceLimits.max != 100.0)
+				throw "Haxe audio distance limits did not round-trip";
+			first.setDopplerFactor(0.5);
+			if (first.dopplerFactor() != 0.5)
+				throw "Haxe audio Doppler factor did not round-trip";
+			first.setCone(new Cone(0.25, 1.25, 0.25));
+			var sourceCone = first.cone();
+			if (sourceCone.innerAngleRadians != 0.25 || sourceCone.outerAngleRadians != 1.25 ||
+				sourceCone.outerGain != 0.25)
+				throw "Haxe audio voice cone did not round-trip";
+			first.setDirectionalAttenuationFactor(0.25);
+			if (first.directionalAttenuationFactor() != 0.25)
+				throw "Haxe audio directional attenuation did not round-trip";
 			var fadeFrames = Std.int(sampleRate / 100);
 			first.fade(Voice.CURRENT_VOLUME, 0.25, haxe.Int64.ofInt(fadeFrames));
 			first.fadeAt(0.25, 0.5, haxe.Int64.ofInt(fadeFrames),

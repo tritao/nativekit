@@ -43,10 +43,14 @@ fi
     "$module_dir/bindings/haxe/nativekit/audio/AudioResult.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Bus.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Clip.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/Cone.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DistanceLimits.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Enums.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/GainLimits.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Mixer.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Voice.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/VoiceOptions.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/Vector3.hx" \
     "$nativekit_dir/bindings/haxe/nativekit/resource/Resource.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitError.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEvent.hx" \

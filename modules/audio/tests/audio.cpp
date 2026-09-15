@@ -53,6 +53,38 @@ int main() {
     assert(nk_audio_bus_set_muted(bus, 0) == NK_OK);
     assert(nk_audio_bus_is_muted(bus, &state) == NK_OK && state == 0);
 
+    nk_audio_vec3 listener_position{4.0f, 2.0f, -3.0f};
+    nk_audio_vec3 listener_direction{0.0f, 0.0f, -1.0f};
+    nk_audio_vec3 listener_velocity{1.0f, 0.0f, 0.0f};
+    nk_audio_vec3 listener_world_up{0.0f, 1.0f, 0.0f};
+    nk_audio_vec3 listener_value{};
+    assert(nk_audio_listener_set_position(listener_position) == NK_OK);
+    assert(nk_audio_listener_get_position(&listener_value) == NK_OK);
+    assert(listener_value.x == listener_position.x && listener_value.y == listener_position.y &&
+           listener_value.z == listener_position.z);
+    assert(nk_audio_listener_set_direction(listener_direction) == NK_OK);
+    assert(nk_audio_listener_get_direction(&listener_value) == NK_OK);
+    assert(listener_value.x == listener_direction.x && listener_value.y == listener_direction.y &&
+           listener_value.z == listener_direction.z);
+    assert(nk_audio_listener_set_velocity(listener_velocity) == NK_OK);
+    assert(nk_audio_listener_get_velocity(&listener_value) == NK_OK);
+    assert(listener_value.x == listener_velocity.x && listener_value.y == listener_velocity.y &&
+           listener_value.z == listener_velocity.z);
+    assert(nk_audio_listener_set_world_up(listener_world_up) == NK_OK);
+    assert(nk_audio_listener_get_world_up(&listener_value) == NK_OK);
+    assert(listener_value.x == listener_world_up.x && listener_value.y == listener_world_up.y &&
+           listener_value.z == listener_world_up.z);
+    assert(nk_audio_listener_set_cone(0.5f, 1.5f, 0.25f) == NK_OK);
+    float inner_angle = 0;
+    float outer_angle = 0;
+    float outer_gain = 0;
+    assert(nk_audio_listener_get_cone(&inner_angle, &outer_angle, &outer_gain) == NK_OK);
+    assert(inner_angle == 0.5f && outer_angle == 1.5f && outer_gain == 0.25f);
+    assert(nk_audio_listener_set_speed_of_sound(340.0f) == NK_OK);
+    assert(nk_audio_listener_get_speed_of_sound(&value) == NK_OK && value == 340.0f);
+    assert(nk_audio_listener_set_direction({0.0f, 0.0f, 0.0f}) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_listener_set_position({0.0f, 0.0f, 0.0f}) == NK_OK);
+
     const nk_result clip_result =
         nk_audio_clip_create_from_memory(tiny_wav, sizeof(tiny_wav), &clip);
     if (clip_result == NK_ERROR_UNSUPPORTED) {
@@ -88,6 +120,58 @@ int main() {
     assert(nk_audio_voice_create(clip, &voice_options, &first_voice) == NK_OK);
     assert(nk_audio_voice_create(clip, &voice_options, &second_voice) == NK_OK);
     assert(first_voice != second_voice);
+    nk_audio_vec3 source_position{8.0f, -1.0f, -6.0f};
+    nk_audio_vec3 source_direction{0.0f, 0.0f, 1.0f};
+    nk_audio_vec3 source_velocity{-2.0f, 0.0f, 0.5f};
+    nk_audio_vec3 source_value{};
+    assert(nk_audio_voice_set_spatialization_enabled(first_voice, 1) == NK_OK);
+    assert(nk_audio_voice_is_spatialization_enabled(first_voice, &state) == NK_OK && state == 1);
+    assert(nk_audio_voice_set_position(first_voice, source_position) == NK_OK);
+    assert(nk_audio_voice_get_position(first_voice, &source_value) == NK_OK);
+    assert(source_value.x == source_position.x && source_value.y == source_position.y &&
+           source_value.z == source_position.z);
+    assert(nk_audio_voice_set_direction(first_voice, source_direction) == NK_OK);
+    assert(nk_audio_voice_get_direction(first_voice, &source_value) == NK_OK);
+    assert(source_value.x == source_direction.x && source_value.y == source_direction.y &&
+           source_value.z == source_direction.z);
+    assert(nk_audio_voice_set_velocity(first_voice, source_velocity) == NK_OK);
+    assert(nk_audio_voice_get_velocity(first_voice, &source_value) == NK_OK);
+    assert(source_value.x == source_velocity.x && source_value.y == source_velocity.y &&
+           source_value.z == source_velocity.z);
+    nk_audio_attenuation_model attenuation_model = NK_AUDIO_ATTENUATION_NONE;
+    assert(nk_audio_voice_set_attenuation_model(first_voice, NK_AUDIO_ATTENUATION_LINEAR) == NK_OK);
+    assert(nk_audio_voice_get_attenuation_model(first_voice, &attenuation_model) == NK_OK &&
+           attenuation_model == NK_AUDIO_ATTENUATION_LINEAR);
+    nk_audio_positioning positioning = NK_AUDIO_POSITIONING_ABSOLUTE;
+    assert(nk_audio_voice_set_positioning(first_voice, NK_AUDIO_POSITIONING_RELATIVE) == NK_OK);
+    assert(nk_audio_voice_get_positioning(first_voice, &positioning) == NK_OK &&
+           positioning == NK_AUDIO_POSITIONING_RELATIVE);
+    assert(nk_audio_voice_set_rolloff(first_voice, 0.75f) == NK_OK);
+    assert(nk_audio_voice_get_rolloff(first_voice, &value) == NK_OK && value == 0.75f);
+    assert(nk_audio_voice_set_gain_limits(first_voice, 0.1f, 0.8f) == NK_OK);
+    float min_gain = 0;
+    float max_gain = 0;
+    assert(nk_audio_voice_get_gain_limits(first_voice, &min_gain, &max_gain) == NK_OK);
+    assert(min_gain == 0.1f && max_gain == 0.8f);
+    assert(nk_audio_voice_set_distance_limits(first_voice, 2.0f, 100.0f) == NK_OK);
+    float min_distance = 0;
+    float max_distance = 0;
+    assert(nk_audio_voice_get_distance_limits(first_voice, &min_distance, &max_distance) == NK_OK);
+    assert(min_distance == 2.0f && max_distance == 100.0f);
+    assert(nk_audio_voice_set_doppler_factor(first_voice, 0.5f) == NK_OK);
+    assert(nk_audio_voice_get_doppler_factor(first_voice, &value) == NK_OK && value == 0.5f);
+    assert(nk_audio_voice_set_cone(first_voice, 0.25f, 1.25f, 0.2f) == NK_OK);
+    assert(nk_audio_voice_get_cone(first_voice, &inner_angle, &outer_angle, &outer_gain) == NK_OK);
+    assert(inner_angle == 0.25f && outer_angle == 1.25f && outer_gain == 0.2f);
+    assert(nk_audio_voice_set_directional_attenuation_factor(first_voice, 0.4f) == NK_OK);
+    assert(nk_audio_voice_get_directional_attenuation_factor(first_voice, &value) == NK_OK &&
+           value == 0.4f);
+    assert(nk_audio_voice_set_direction(first_voice, {0.0f, 0.0f, 0.0f}) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_voice_set_attenuation_model(first_voice, 99) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_voice_set_gain_limits(first_voice, 1.0f, 0.5f) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_voice_set_distance_limits(first_voice, 2.0f, 1.0f) ==
+           NK_ERROR_INVALID_ARGUMENT);
     assert(nk_audio_clip_destroy(clip) == NK_OK);
 
     uint32_t sample_rate = 0;

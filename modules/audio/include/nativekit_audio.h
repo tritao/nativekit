@@ -75,6 +75,38 @@ enum NK_ENUM(nk_audio_clip_load_state) {
     NK_AUDIO_CLIP_LOAD_FAILED = 2
 };
 
+/** Three-dimensional audio coordinate in the right-handed OpenGL convention. */
+typedef struct nk_audio_vec3 {
+    /** Positive X points right. */
+    float x;
+    /** Positive Y points up. */
+    float y;
+    /** Negative Z points forward. */
+    float z;
+} nk_audio_vec3;
+
+/** Distance attenuation model applied by a spatialized voice. */
+typedef uint32_t nk_audio_attenuation_model;
+enum NK_ENUM(nk_audio_attenuation_model) {
+    /** No distance attenuation. */
+    NK_AUDIO_ATTENUATION_NONE = 0,
+    /** Inverse-distance attenuation, clamped to the configured distances. */
+    NK_AUDIO_ATTENUATION_INVERSE = 1,
+    /** Linear attenuation between the configured distances. */
+    NK_AUDIO_ATTENUATION_LINEAR = 2,
+    /** Exponential attenuation between the configured distances. */
+    NK_AUDIO_ATTENUATION_EXPONENTIAL = 3
+};
+
+/** Coordinate space used by a voice's spatial position. */
+typedef uint32_t nk_audio_positioning;
+enum NK_ENUM(nk_audio_positioning) {
+    /** The voice position is expressed in world space. */
+    NK_AUDIO_POSITIONING_ABSOLUTE = 0,
+    /** The voice position is expressed relative to the listener. */
+    NK_AUDIO_POSITIONING_RELATIVE = 1
+};
+
 /** Opaque handle for one audio mixer bus. */
 typedef uint32_t nk_audio_bus NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_destroy);
 
@@ -268,6 +300,115 @@ NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_time_seconds(nk_audio_voice voi
 /** Returns the decoded voice length in seconds. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_length_seconds(nk_audio_voice voice,
                                                                  float *out_seconds NK_OUT);
+
+/* ------------------------------------------------------------------------- */
+/* Spatial audio                                                             */
+/* ------------------------------------------------------------------------- */
+
+/** Sets the single process-wide listener's world position. */
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_set_position(nk_audio_vec3 position);
+/** Returns the single process-wide listener's world position. */
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_get_position(nk_audio_vec3 *out_position NK_OUT);
+/** Sets the listener's forward direction; it must be finite and non-zero. */
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_set_direction(nk_audio_vec3 direction);
+/** Returns the listener's forward direction. */
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_get_direction(nk_audio_vec3 *out_direction NK_OUT);
+/** Sets the listener's velocity in world units per second. */
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_set_velocity(nk_audio_vec3 velocity);
+/** Returns the listener's velocity in world units per second. */
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_get_velocity(nk_audio_vec3 *out_velocity NK_OUT);
+/** Sets the listener's world-up direction; it must be finite and non-zero. */
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_set_world_up(nk_audio_vec3 world_up);
+/** Returns the listener's world-up direction. */
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_get_world_up(nk_audio_vec3 *out_world_up NK_OUT);
+/** Sets the listener's directional attenuation cone in radians and linear gain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_set_cone(float inner_angle_radians,
+                                                          float outer_angle_radians,
+                                                          float outer_gain);
+/** Returns the listener's directional attenuation cone. */
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_get_cone(
+    float *out_inner_angle_radians NK_OUT, float *out_outer_angle_radians NK_OUT,
+    float *out_outer_gain NK_OUT);
+/** Sets the speed of sound used for Doppler calculations in world units per second. */
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_set_speed_of_sound(float speed);
+/** Returns the speed of sound used for Doppler calculations. */
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_get_speed_of_sound(float *out_speed NK_OUT);
+
+/** Enables or disables 3D spatialization for a voice. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_spatialization_enabled(nk_audio_voice voice,
+                                                                         nk_bool enabled);
+/** Returns whether 3D spatialization is enabled for a voice. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_is_spatialization_enabled(
+    nk_audio_voice voice, nk_bool *out_enabled NK_OUT);
+/** Sets a voice's position in world or listener-relative coordinates. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_position(nk_audio_voice voice,
+                                                           nk_audio_vec3 position);
+/** Returns a voice's position. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_position(nk_audio_voice voice,
+                                                           nk_audio_vec3 *out_position NK_OUT);
+/** Sets a voice's forward direction; it must be finite and non-zero. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_direction(nk_audio_voice voice,
+                                                            nk_audio_vec3 direction);
+/** Returns a voice's forward direction. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_direction(nk_audio_voice voice,
+                                                            nk_audio_vec3 *out_direction NK_OUT);
+/** Sets a voice's velocity in world units per second. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_velocity(nk_audio_voice voice,
+                                                           nk_audio_vec3 velocity);
+/** Returns a voice's velocity. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_velocity(nk_audio_voice voice,
+                                                           nk_audio_vec3 *out_velocity NK_OUT);
+/** Sets the voice's distance attenuation model. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_attenuation_model(
+    nk_audio_voice voice, nk_audio_attenuation_model model);
+/** Returns the voice's distance attenuation model. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_attenuation_model(
+    nk_audio_voice voice, nk_audio_attenuation_model *out_model NK_OUT);
+/** Sets whether the voice position is absolute or listener-relative. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_positioning(nk_audio_voice voice,
+                                                             nk_audio_positioning positioning);
+/** Returns the voice's position interpretation. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_positioning(
+    nk_audio_voice voice, nk_audio_positioning *out_positioning NK_OUT);
+/** Sets the distance attenuation rolloff; zero disables falloff progression. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_rolloff(nk_audio_voice voice, float rolloff);
+/** Returns the distance attenuation rolloff. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_rolloff(nk_audio_voice voice,
+                                                          float *out_rolloff NK_OUT);
+/** Sets the minimum and maximum gain applied by spatialization. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_gain_limits(nk_audio_voice voice, float min_gain,
+                                                              float max_gain);
+/** Returns the minimum and maximum gain applied by spatialization. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_gain_limits(nk_audio_voice voice,
+                                                              float *out_min_gain NK_OUT,
+                                                              float *out_max_gain NK_OUT);
+/** Sets the minimum and maximum distances used by attenuation. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_distance_limits(
+    nk_audio_voice voice, float min_distance, float max_distance);
+/** Returns the minimum and maximum distances used by attenuation. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_distance_limits(
+    nk_audio_voice voice, float *out_min_distance NK_OUT, float *out_max_distance NK_OUT);
+/** Sets the voice's Doppler multiplier; zero disables Doppler pitch shifting. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_doppler_factor(nk_audio_voice voice,
+                                                                float factor);
+/** Returns the voice's Doppler multiplier. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_doppler_factor(nk_audio_voice voice,
+                                                                float *out_factor NK_OUT);
+/** Sets the voice's directional attenuation cone in radians and linear gain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_cone(nk_audio_voice voice,
+                                                       float inner_angle_radians,
+                                                       float outer_angle_radians,
+                                                       float outer_gain);
+/** Returns the voice's directional attenuation cone. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_cone(
+    nk_audio_voice voice, float *out_inner_angle_radians NK_OUT,
+    float *out_outer_angle_radians NK_OUT, float *out_outer_gain NK_OUT);
+/** Sets how strongly source direction affects per-channel spatial gain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_directional_attenuation_factor(
+    nk_audio_voice voice, float factor);
+/** Returns how strongly source direction affects per-channel spatial gain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_directional_attenuation_factor(
+    nk_audio_voice voice, float *out_factor NK_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Global mixer                                                               */

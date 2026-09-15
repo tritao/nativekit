@@ -45,6 +45,16 @@ Buses support the same schedule and fade operations for all routed voices. This
 allows music transitions and voice/SFX ducking to be coordinated at the mixer
 boundary instead of issuing one operation per voice.
 
+Spatialized voices use a right-handed OpenGL-style coordinate system: +X is
+right, +Y is up, and -Z is forward. `Mixer` exposes the single process-wide
+listener's position, orientation, velocity, cone, and speed of sound. Voices
+expose their own position, direction, velocity, absolute/relative positioning,
+distance attenuation model, rolloff, gain and distance limits, Doppler factor,
+  and directional cone. Spatialization is enabled by default per voice and can
+  be toggled at runtime; configure the listener and source transforms before
+  playback. Vector directions must be finite and non-zero, cone angles are
+  radians, and gains are linear [0, 1].
+
 File voices created with `NK_AUDIO_VOICE_ASYNC` expose an explicit loading
 lifecycle. `nk_audio_voice_get_load_state()` returns `NK_AUDIO_VOICE_LOADING`
 until the source reaches its readiness point, then returns
