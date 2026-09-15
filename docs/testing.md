@@ -25,6 +25,15 @@ Leak detection remains enabled for the core tests. It is disabled only for the
 GTK integration process because GTK, Pango, and Fontconfig retain
 process-lifetime caches outside NativeKit's ownership.
 
+## Web accessibility test
+
+When Emscripten tests are enabled, `nativekit_web_accessibility` produces a
+browser-hosted HTML integration binary. It publishes a small semantic tree,
+checks focus and text-range updates, dispatches a DOM activation, and verifies
+that the resulting `NK_EVENT_ACCESSIBILITY_ACTION` reaches NativeKit. Serve
+the generated HTML over HTTP and run it in the same browser environment used by
+the Web smoke tests.
+
 ## Android tests
 
 The Android workflow pins Java 17, API 36, NDK 30.0.16248370, and CMake 3.22.1.

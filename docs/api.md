@@ -295,6 +295,14 @@ accessible. ATK actions, component geometry, text selections, and ranged
 values are translated into the shared NativeKit accessibility action event.
 The adapter is consumed by AT-SPI screen readers such as Orca.
 
+Web mirrors the tree into an accessible DOM overlay positioned over the canvas.
+The browser exposes the corresponding ARIA roles, names, states, values,
+collection metadata, and logical bounds to browser accessibility services.
+DOM focus, activation, keyboard adjustments, text edits, and selections are
+routed back as the shared `NK_EVENT_ACCESSIBILITY_ACTION` event. The overlay is
+transparent and pointer-through, so the canvas remains the input surface; text
+range geometry is retained as DOM metadata for host integrations that need it.
+
 Cursor resources may be standard platform shapes or copied RGBA8 images.
 Destroying a cursor handle does not invalidate a cursor already selected by a
 window. Windows supports normal, hidden, and captured pointer modes; disabled

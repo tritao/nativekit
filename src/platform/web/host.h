@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativekit_accessibility.h"
 #include "nativekit_input.h"
 #include "nativekit_system.h"
 
@@ -69,6 +70,16 @@ struct TextInputEvent {
     uint32_t selection_end = 0;
 };
 
+struct AccessibilityActionEvent {
+    nk_handle surface = NK_INVALID_HANDLE;
+    nk_accessibility_node_id node = NK_ACCESSIBILITY_ROOT;
+    nk_accessibility_action action = 0;
+    const char *value = nullptr;
+    nk_accessibility_text_position selection_start = NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    nk_accessibility_text_position selection_end = NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    nk_accessibility_text_granularity granularity = 0;
+};
+
 struct TextInputConfig {
     bool active = false;
     uint32_t flags = 0;
@@ -97,6 +108,7 @@ struct HostCallbacks {
     void (*context)(bool restored, void *) = nullptr;
     void (*pointer_lock)(bool active, void *) = nullptr;
     void (*display_orientation)(nk_orientation orientation, void *) = nullptr;
+    void (*accessibility_action)(const AccessibilityActionEvent &, void *) = nullptr;
 };
 
 struct WebGLContextOptions {
@@ -114,6 +126,10 @@ bool set_canvas_visible(bool visible) noexcept;
 bool set_title(const char *title) noexcept;
 bool set_cursor(const char *cursor) noexcept;
 void configure_text_input(const TextInputConfig &config) noexcept;
+void set_accessibility_tree(nk_handle surface, int32_t width, int32_t height, bool visible,
+                            nk_accessibility_node_id focus, const char *json) noexcept;
+void clear_accessibility_tree(nk_handle surface) noexcept;
+void set_accessibility_visible(nk_handle surface, bool visible) noexcept;
 bool set_clipboard_text(const char *text) noexcept;
 bool read_clipboard_text(nk_request_id request) noexcept;
 bool fetch_resource(const char *uri, nk_request_id request) noexcept;
