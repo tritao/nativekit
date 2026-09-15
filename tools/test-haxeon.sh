@@ -57,6 +57,7 @@ fi
         "$repo_dir/bindings/haxe/NativeKitEventContext.hx" \
 		"$repo_dir/bindings/haxe/NativeKitEventBytes.hx" \
 		"$repo_dir/bindings/haxe/NativeKitEventDecoderTests.hx" \
+		"$repo_dir/bindings/haxe/NativeKitAudioEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitWindowEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitInputEvents.hx" \
 		"$repo_dir/bindings/haxe/NativeKitTextInput.hx" \

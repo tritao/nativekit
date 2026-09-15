@@ -1,5 +1,7 @@
 import NativeKit;
 import haxe.io.Bytes;
+import NativeKitEventValue;
+import NativeKitEvents.NativeKitEventSubscription;
 import nativekit.audio.Bus;
 import nativekit.audio.Clip;
 import nativekit.audio.Mixer;
@@ -37,11 +39,13 @@ class AudioSmoke {
 	static function main():Void {
 		var init = new InitOptions();
 		init.set_api_version(NativeKit.nk_api_version());
-		NativeKit.nk_init_checked(init);
+		var runtime = NativeKitRuntime.start(init);
 		var bus:Bus = null;
 		var clip:Clip = null;
 		var first:Voice = null;
 		var second:Voice = null;
+		var completion:Voice = null;
+		var completionSubscription:NativeKitEventSubscription = null;
 		try {
 			Mixer.setMasterVolume(0.75);
 			if (Mixer.masterVolume() != 0.75)
@@ -55,6 +59,7 @@ class AudioSmoke {
 			options.looping = true;
 			first = clip.createVoice(options);
 			second = clip.createVoice(options);
+			completion = clip.createVoice(new VoiceOptions(bus));
 			if (first.nativeHandle().rawValue() == second.nativeHandle().rawValue())
 				throw "Haxe audio voices did not receive independent handles";
 			clip.dispose();
@@ -66,8 +71,28 @@ class AudioSmoke {
 				throw "Haxe audio volume did not round-trip";
 			first.start();
 			second.start();
+			completion.start();
 			if (!bus.isPlaying())
 				throw "Haxe audio bus did not observe playback";
+			var completed = false;
+			completionSubscription = runtime.events.listen(function(value) {
+				switch value {
+					case AudioVoiceComplete(source) if (source.rawValue() == completion.nativeHandle().rawValue()):
+						completed = true;
+					case _:
+						completed = completed;
+				}
+			});
+			for (attempt in 0...20) {
+				if (completed)
+					break;
+				NativeKit.nk_wait_events_timeout_checked(0.05);
+				runtime.events.poll();
+			}
+			if (!completed)
+				throw "Haxe audio voice completion event was not delivered";
+			completionSubscription.dispose();
+			completionSubscription = null;
 			bus.setMuted(true);
 			if (!bus.isMuted())
 				throw "Haxe audio mute state did not round-trip";
@@ -75,24 +100,31 @@ class AudioSmoke {
 			bus.stop();
 			first.stop();
 			second.stop();
+			completion.stop();
 			first.dispose();
 			first = null;
 			second.dispose();
 			second = null;
+			completion.dispose();
+			completion = null;
 			bus.dispose();
 			bus = null;
 		} catch (error:Dynamic) {
+			if (completionSubscription != null)
+				completionSubscription.dispose();
 			if (first != null)
 				first.dispose();
 			if (second != null)
 				second.dispose();
+			if (completion != null)
+				completion.dispose();
 			if (clip != null)
 				clip.dispose();
 			if (bus != null)
 				bus.dispose();
-			NativeKit.nk_shutdown();
+			runtime.dispose();
 			throw error;
 		}
-		NativeKit.nk_shutdown();
+		runtime.dispose();
 	}
 }

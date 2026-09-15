@@ -5,6 +5,7 @@ import NativeKit.Handle;
 import NativeKit.Result;
 import NativeKitEventContext;
 import NativeKitEventValue;
+import NativeKitAudioEvents;
 import NativeKitInputEvents;
 import NativeKitResourceEvents;
 import NativeKitServiceEvents;
@@ -46,6 +47,7 @@ class NativeKitEvent {
 			return None;
 		var value = NativeKitWindowEvents.decode(context);
 		if (value == null) value = NativeKitInputEvents.decode(context);
+		if (value == null) value = NativeKitAudioEvents.decode(context);
 		if (value == null) value = NativeKitServiceEvents.decode(context);
 		if (value == null) value = NativeKitResourceEvents.decode(context);
 		return value != null ? value : Raw(context.kind, context.source, context.request,

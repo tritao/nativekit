@@ -326,6 +326,8 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_HTTP_PROGRESS = 902,
     /** An HTTP request reached its terminal state. */
     NK_EVENT_HTTP_COMPLETE = 903,
+    /** A non-looping audio voice reached its natural end; source is its voice handle. */
+    NK_EVENT_AUDIO_VOICE_COMPLETE = 904,
     /** A plugin service call reached its terminal state. */
     NK_EVENT_PLUGIN_COMPLETE = 1000,
     /** A plugin emitted an unsolicited notification. */

@@ -15,6 +15,11 @@ through generation-checked mixer buses. Each bus supports volume, mute, start,
 and stop controls. Audio calls are UI-thread-only; miniaudio owns the device
 and audio callback thread.
 
+Non-looping voices emit `NK_EVENT_AUDIO_VOICE_COMPLETE` when playback reaches
+the natural end. The event is queued from miniaudio's audio callback and must
+be consumed on the NativeKit UI thread with `nk_poll_event()`. Haxe clients
+receive it as `AudioVoiceComplete` through `NativeKitEvents.listen()`.
+
 The module also provides a generated Haxeon ABI interface in
 `bindings/nativekit-audio.hxi` and a small typed Haxe facade under
 `bindings/haxe/nativekit/audio`. The public facade consists of `Clip`, `Voice`,

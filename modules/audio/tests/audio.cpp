@@ -1,4 +1,5 @@
 #include "nativekit_audio.h"
+#include "nativekit_time.h"
 
 #include <cassert>
 
@@ -56,6 +57,9 @@ int main() {
     assert(nk_audio_voice_create(clip, &voice_options, &voice) == NK_ERROR_INVALID_ARGUMENT);
     voice_options.flags = NK_AUDIO_VOICE_ASYNC;
     assert(nk_audio_voice_create(clip, &voice_options, &voice) == NK_ERROR_INVALID_ARGUMENT);
+    voice_options.flags = 0;
+    nk_audio_voice completion_voice = NK_INVALID_HANDLE;
+    assert(nk_audio_voice_create(clip, &voice_options, &completion_voice) == NK_OK);
     voice_options.flags = NK_AUDIO_VOICE_LOOPING;
     voice_options.bus = bus;
     nk_audio_voice first_voice = NK_INVALID_HANDLE;
@@ -67,6 +71,7 @@ int main() {
 
     assert(nk_audio_voice_start(first_voice) == NK_OK);
     assert(nk_audio_voice_start(second_voice) == NK_OK);
+    assert(nk_audio_voice_start(completion_voice) == NK_OK);
     assert(nk_audio_bus_is_playing(bus, &state) == NK_OK && state == 1);
     assert(nk_audio_voice_set_volume(first_voice, 0.25f) == NK_OK);
     assert(nk_audio_voice_get_volume(first_voice, &value) == NK_OK && value == 0.25f);
@@ -76,6 +81,19 @@ int main() {
     assert(nk_audio_voice_get_pitch(first_voice, &value) == NK_OK && value == 1.25f);
     assert(nk_audio_voice_is_looping(first_voice, &state) == NK_OK && state == 1);
     assert(nk_audio_voice_get_length_seconds(first_voice, &value) == NK_OK && value > 0);
+    nk_bool completion_seen = 0;
+    for (int attempt = 0; attempt < 20 && !completion_seen; ++attempt) {
+        assert(nk_wait_events_timeout(0.05) == NK_OK);
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_AUDIO_VOICE_COMPLETE && event.source == completion_voice)
+            completion_seen = 1;
+        assert(event.data_size == 0);
+        nk_event_release(&event);
+    }
+    assert(completion_seen == 1);
+    assert(nk_audio_voice_destroy(completion_voice) == NK_OK);
     assert(nk_audio_voice_destroy(first_voice) == NK_OK);
     assert(nk_audio_bus_is_playing(bus, &state) == NK_OK && state == 1);
     assert(nk_audio_bus_stop(bus) == NK_OK);
@@ -87,6 +105,13 @@ int main() {
     assert(nk_audio_get_master_volume(&value) == NK_OK && value == 0.75f);
     assert(nk_audio_bus_destroy(bus) == NK_OK);
 
+    nk_audio_clip shutdown_clip = NK_INVALID_HANDLE;
+    nk_audio_voice shutdown_voice = NK_INVALID_HANDLE;
+    assert(nk_audio_clip_create_from_memory(tiny_wav, sizeof(tiny_wav), &shutdown_clip) == NK_OK);
+    voice_options.flags = NK_AUDIO_VOICE_LOOPING;
+    voice_options.bus = NK_INVALID_HANDLE;
+    assert(nk_audio_voice_create(shutdown_clip, &voice_options, &shutdown_voice) == NK_OK);
+    assert(nk_audio_voice_start(shutdown_voice) == NK_OK);
     nk_shutdown();
     return 0;
 }

@@ -47,7 +47,21 @@ fi
     "$module_dir/bindings/haxe/nativekit/audio/Mixer.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Voice.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/VoiceOptions.hx" \
-    "$nativekit_dir/bindings/haxe/NativeKitError.hx")
+    "$nativekit_dir/bindings/haxe/NativeKitError.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitEvent.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitEventValue.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitEventContext.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitEventBytes.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitAudioEvents.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitWindowEvents.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitInputEvents.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitTextInput.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitServiceEvents.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitResourceEvents.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitEvents.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitRuntime.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitWindow.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitSurface.hx")
 
 set +e
 (cd "$haxeon_dir/out" && \
@@ -63,4 +77,4 @@ if [[ $status -ne 0 ]]; then
 	echo "test-haxeon: audio smoke test returned $status" >&2
 	exit 1
 fi
-echo "PASS: Haxeon audio facade created, played, grouped, and disposed two voices from one clip"
+echo "PASS: Haxeon audio facade created, played, grouped, completed, and disposed voices from one clip"

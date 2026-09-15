@@ -229,6 +229,24 @@ int main() {
     notification_terminal.request_id = 43;
     NK_CHECK(queue.push(std::move(notification_terminal)) == NK_OK);
 
+    nk::core::EventQueue completion_queue(1);
+    nk::core::QueuedEvent occupied;
+    occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
+    assert(completion_queue.push(std::move(occupied)) == NK_OK);
+    nk::core::QueuedEvent audio_completion;
+    audio_completion.kind = NK_EVENT_AUDIO_VOICE_COMPLETE;
+    audio_completion.source = first;
+    assert(completion_queue.push(std::move(audio_completion)) == NK_OK);
+    nk_event completion_event{};
+    completion_event.struct_size = sizeof(completion_event);
+    assert(completion_queue.poll(completion_event) == NK_OK);
+    nk_event_release(&completion_event);
+    completion_event.struct_size = sizeof(completion_event);
+    assert(completion_queue.poll(completion_event) == NK_OK);
+    assert(completion_event.kind == NK_EVENT_AUDIO_VOICE_COMPLETE);
+    assert(completion_event.source == first);
+    nk_event_release(&completion_event);
+
     nk_event event{};
 
     nk::core::EventQueue readiness_queue(1);

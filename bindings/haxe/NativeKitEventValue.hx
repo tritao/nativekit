@@ -48,6 +48,7 @@ enum NativeKitEventValue {
 	Resources(kind:NativeKit.EventKind, request:haxe.Int64, result:NativeKit.Result, accepted:Bool, items:Array<NativeKitResource>);
 	ShareReceived(text:Null<String>, subject:Null<String>, items:Array<NativeKitResource>);
 	ResourceDrop(source:NativeKit.Handle, x:Float, y:Float, text:Null<String>, items:Array<NativeKitResource>);
+	AudioVoiceComplete(source:NativeKit.Handle);
 }
 
 class NativeKitTextEdit {

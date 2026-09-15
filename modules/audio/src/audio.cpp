@@ -2,6 +2,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/event_queue.hpp"
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
 
@@ -52,10 +53,14 @@ struct AudioBusResource final : nk::core::Resource {
     }
 };
 
+struct AudioVoiceResource;
+void audio_voice_end_callback(void *user_data, ma_sound *sound) noexcept;
+
 struct AudioVoiceResource final : nk::core::Resource {
     std::shared_ptr<AudioEngineResource> engine;
     std::shared_ptr<AudioClipResource> clip;
     std::shared_ptr<AudioBusResource> bus;
+    nk_audio_voice handle = NK_INVALID_HANDLE;
     ma_decoder decoder{};
     bool decoder_initialized = false;
     ma_sound sound{};
@@ -68,6 +73,16 @@ struct AudioVoiceResource final : nk::core::Resource {
             ma_decoder_uninit(&decoder);
     }
 };
+
+void audio_voice_end_callback(void *user_data, ma_sound *) noexcept {
+    auto *voice = static_cast<AudioVoiceResource *>(user_data);
+    if (!voice || voice->handle == NK_INVALID_HANDLE)
+        return;
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_AUDIO_VOICE_COMPLETE;
+    event.source = voice->handle;
+    nk::core::push_event(std::move(event));
+}
 
 std::mutex engine_mutex;
 std::weak_ptr<AudioEngineResource> engine_resource;
@@ -319,6 +334,13 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
         return {};
     }
     voice->sound_initialized = true;
+    const auto callback_result =
+        ma_sound_set_end_callback(&voice->sound, audio_voice_end_callback, voice.get());
+    if (callback_result != MA_SUCCESS) {
+        out_result = map_miniaudio_result(callback_result,
+                                          "could not configure audio voice completion");
+        return {};
+    }
     return voice;
 }
 
@@ -328,6 +350,7 @@ nk_result insert_voice(std::shared_ptr<AudioVoiceResource> voice, nk_audio_voice
         nk::core::set_error("could not allocate an audio voice handle");
         return NK_ERROR_OUT_OF_MEMORY;
     }
+    voice->handle = handle;
     *out_voice = handle;
     return NK_OK;
 }

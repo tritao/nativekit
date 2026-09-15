@@ -13,7 +13,8 @@ namespace nk::core {
 
 namespace {
 bool is_terminal_request_event(const QueuedEvent &event) {
-    if (event.kind == NK_EVENT_TASK_COMPLETE || event.kind == NK_EVENT_TASK_FAILED ||
+    if (event.kind == NK_EVENT_AUDIO_VOICE_COMPLETE ||
+        event.kind == NK_EVENT_TASK_COMPLETE || event.kind == NK_EVENT_TASK_FAILED ||
         event.kind == NK_EVENT_TASK_CANCELLED)
         return true;
     if (event.request_id == NK_INVALID_REQUEST_ID)
