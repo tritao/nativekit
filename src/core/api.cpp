@@ -176,6 +176,7 @@ void NK_CALL nk_shutdown(void) {
     /* Backend resources are still valid while system leases are released. */
     nk::core::system_shutdown();
     nk::backend::shutdown();
+    nk::core::clear_resource_data_handlers();
     nk::core::requests().clear();
     std::lock_guard lock(state_mutex);
     handle_registry.clear();
@@ -206,8 +207,14 @@ nk_result NK_CALL nk_poll_event(nk_event *event) {
     nk::core::drain_app_tasks();
     nk::backend::pump_events();
     nk::core::run_cooperative_tasks();
-    std::lock_guard lock(state_mutex);
-    return event_queue->poll(*event);
+    nk_result result = NK_OK;
+    {
+        std::lock_guard lock(state_mutex);
+        result = event_queue->poll(*event);
+    }
+    if (result == NK_OK && nk::core::dispatch_resource_data_event(*event))
+        nk_event_release(event);
+    return result;
 }
 
 void NK_CALL nk_event_release(nk_event *event) {

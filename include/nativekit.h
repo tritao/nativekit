@@ -332,6 +332,10 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_AUDIO_VOICE_READY = 905,
     /** An asynchronous audio voice failed to load; source is its voice handle. */
     NK_EVENT_AUDIO_VOICE_LOAD_FAILED = 906,
+    /** An asynchronous audio clip became ready; source is its clip handle. */
+    NK_EVENT_AUDIO_CLIP_READY = 907,
+    /** An asynchronous audio clip failed to load; source is its clip handle. */
+    NK_EVENT_AUDIO_CLIP_LOAD_FAILED = 908,
     /** A plugin service call reached its terminal state. */
     NK_EVENT_PLUGIN_COMPLETE = 1000,
     /** A plugin emitted an unsolicited notification. */

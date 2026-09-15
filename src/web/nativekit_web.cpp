@@ -2048,6 +2048,14 @@ void shutdown() noexcept {
     shutdown_web();
 }
 
+nk_result load_resource_async(const struct nk_resource *resource, nk_request_id request) noexcept {
+    if (!nk::web::fetch_resource(resource->uri, request)) {
+        nk::core::set_error("browser resource fetch is unavailable");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    return NK_OK;
+}
+
 } // namespace nk::backend
 
 namespace nk::core::system_backend {
@@ -2483,20 +2491,6 @@ nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, nk_bool enabled) 
     if (!window)
         return invalid_handle("invalid web window handle");
     window->drops_enabled = enabled != 0;
-    return NK_OK;
-}
-
-nk_result NK_CALL nk_resource_load_async(const nk_resource *resource, nk_request_id *out_request) {
-    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-        return result;
-    if (!resource || resource->struct_size < sizeof(nk_resource) || !resource->uri ||
-        !*resource->uri || !out_request)
-        return invalid_argument("web resource load arguments are invalid");
-    *out_request = NK_INVALID_REQUEST_ID;
-    const auto request = nk::core::next_request_id();
-    if (!nk::web::fetch_resource(resource->uri, request))
-        return unsupported("browser resource fetch is unavailable");
-    *out_request = request;
     return NK_OK;
 }
 

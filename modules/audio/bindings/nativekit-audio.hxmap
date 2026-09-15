@@ -3,7 +3,8 @@
   "enumNames": {
     "nk_result": "NativeKit.Result",
     "nk_audio_voice_flags": "NativeVoiceFlags",
-    "nk_audio_voice_load_state": "VoiceLoadState"
+    "nk_audio_voice_load_state": "VoiceLoadState",
+    "nk_audio_clip_load_state": "ClipLoadState"
   },
   "enumValuePrefixes": ["NK_AUDIO_VOICE_"],
   "typeNames": {

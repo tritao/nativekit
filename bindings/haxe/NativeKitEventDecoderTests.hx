@@ -122,10 +122,25 @@ class NativeKitEventDecoderTests {
 			case _: false;
 		};
 		var audioFailedContext = new NativeKitEventContext(EventKind.AudioVoiceLoadFailed,
-			handle(18), zero, NativeKit.Result.Unknown, 0, 0, empty);
+			handle(18), zero, NativeKit.Result.ErrorUnknown, 0, 0, empty);
 		var audioFailedOk = switch NativeKitEvent.decodeContext(audioFailedContext) {
 			case AudioVoiceLoadFailed(source, result):
-				source.rawValue() == 18 && result == NativeKit.Result.Unknown;
+				source.rawValue() == 18 && result == NativeKit.Result.ErrorUnknown;
+			case _: false;
+		};
+		var audioClipRequest = haxe.Int64.ofInt(19);
+		var audioClipReadyContext = new NativeKitEventContext(EventKind.AudioClipReady,
+			handle(19), audioClipRequest, NativeKit.Result.Ok, 0, 0, empty);
+		var audioClipReadyOk = switch NativeKitEvent.decodeContext(audioClipReadyContext) {
+			case AudioClipReady(source, request):
+				source.rawValue() == 19 && Std.string(request) == "19";
+			case _: false;
+		};
+		var audioClipFailedContext = new NativeKitEventContext(EventKind.AudioClipLoadFailed,
+			handle(20), haxe.Int64.ofInt(20), NativeKit.Result.ErrorUnknown, 0, 0, empty);
+		var audioClipFailedOk = switch NativeKitEvent.decodeContext(audioClipFailedContext) {
+			case AudioClipLoadFailed(source, request, result):
+				source.rawValue() == 20 && Std.string(request) == "20" && result == NativeKit.Result.ErrorUnknown;
 			case _: false;
 		};
 
@@ -133,6 +148,7 @@ class NativeKitEventDecoderTests {
 		if (!resourcesOk) throw "resource completion decoding failed";
 		return rawOk && nonMatch && editOk && typedKeyOk && typedHatOk && typedNavigationOk && accessibilityOk && taskOk && audioOk
 			&& audioReadyOk && audioFailedOk
+			&& audioClipReadyOk && audioClipFailedOk
 			&& throws(function() { NativeKitEventBytes.requireSize(haxe.io.Bytes.alloc(3), 4); })
 			&& throws(function() { NativeKitEventBytes.readU32(haxe.io.Bytes.alloc(3), 0); })
 			&& throws(function() { NativeKitEventBytes.decodeClipboardFiles(unterminated, 1); })

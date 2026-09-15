@@ -15,6 +15,7 @@ namespace {
 bool is_terminal_request_event(const QueuedEvent &event) {
     if (event.kind == NK_EVENT_AUDIO_VOICE_COMPLETE || event.kind == NK_EVENT_AUDIO_VOICE_READY ||
         event.kind == NK_EVENT_AUDIO_VOICE_LOAD_FAILED ||
+        event.kind == NK_EVENT_AUDIO_CLIP_READY || event.kind == NK_EVENT_AUDIO_CLIP_LOAD_FAILED ||
         event.kind == NK_EVENT_TASK_COMPLETE || event.kind == NK_EVENT_TASK_FAILED ||
         event.kind == NK_EVENT_TASK_CANCELLED)
         return true;

@@ -64,6 +64,17 @@ enum NK_ENUM(nk_audio_voice_load_state) {
     NK_AUDIO_VOICE_LOAD_FAILED = 2
 };
 
+/** Loading lifecycle for an audio clip. Synchronous clips start ready. */
+typedef uint32_t nk_audio_clip_load_state;
+enum NK_ENUM(nk_audio_clip_load_state) {
+    /** The encoded resource bytes are still loading. */
+    NK_AUDIO_CLIP_LOADING = 0,
+    /** The encoded resource bytes have been validated and are ready for voices. */
+    NK_AUDIO_CLIP_READY = 1,
+    /** The resource or its encoded audio data failed to load. */
+    NK_AUDIO_CLIP_LOAD_FAILED = 2
+};
+
 /** Opaque handle for one audio mixer bus. */
 typedef uint32_t nk_audio_bus NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_destroy);
 
@@ -156,6 +167,16 @@ NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_resource(
     const nk_resource *resource, nk_audio_clip *out_clip NK_OUT NK_OWNED);
 
 /**
+ * Starts loading a reusable clip from a URI resource. The clip handle is
+ * returned immediately in NK_AUDIO_CLIP_LOADING; completion is reported by
+ * NK_EVENT_AUDIO_CLIP_READY or NK_EVENT_AUDIO_CLIP_LOAD_FAILED with the
+ * returned request ID.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_resource_async(
+    const nk_resource *resource, nk_audio_clip *out_clip NK_OUT NK_OWNED,
+    nk_request_id *out_request NK_OUT);
+
+/**
  * Creates a reusable clip from encoded audio bytes. NativeKit copies the
  * bytes before returning, so the caller may release its buffer after the
  * call. The source currently supports WAV, FLAC, and MP3.
@@ -166,6 +187,10 @@ NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_memory(
 
 /** Stops using and destroys a clip. Existing voices retain their source. */
 NKAUDIO_API nk_result NK_CALL nk_audio_clip_destroy(nk_audio_clip clip);
+
+/** Returns the loading lifecycle state of an audio clip. */
+NKAUDIO_API nk_result NK_CALL nk_audio_clip_get_load_state(
+    nk_audio_clip clip, nk_audio_clip_load_state *out_state NK_OUT);
 
 /** Creates a stopped independent playback voice from a reusable clip. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_create(

@@ -16,6 +16,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -39,8 +40,17 @@ struct AudioClipResource final : nk::core::Resource {
     std::string path;
     std::string resource_uri;
     std::vector<std::byte> encoded_data;
+    std::atomic<nk_audio_clip> handle{NK_INVALID_HANDLE};
+    std::atomic<nk_audio_clip_load_state> load_state{NK_AUDIO_CLIP_READY};
+    std::atomic<nk_result> load_result{NK_OK};
+    std::atomic<bool> load_event_emitted{false};
+    nk_request_id load_request = NK_INVALID_REQUEST_ID;
     bool from_memory = false;
     bool from_resource = false;
+
+    ~AudioClipResource() override {
+        handle.store(NK_INVALID_HANDLE, std::memory_order_release);
+    }
 };
 
 struct AudioBusResource final : nk::core::Resource {
@@ -66,10 +76,18 @@ struct AudioVoiceLoadNotification {
     AudioVoiceResource *voice = nullptr;
 };
 
+struct AudioResourceLoadContext {
+    std::shared_ptr<AudioClipResource> clip;
+};
+
 void audio_voice_end_callback(void *user_data, ma_sound *sound) noexcept;
 void audio_voice_load_callback(ma_async_notification *notification) noexcept;
 void audio_voice_update_load_state(AudioVoiceResource &voice) noexcept;
 void audio_voice_publish_load_event(AudioVoiceResource &voice) noexcept;
+void audio_clip_publish_load_event(AudioClipResource &clip) noexcept;
+void audio_resource_load_callback(nk_request_id request, nk_result result, const void *data,
+                                  uint64_t data_size, void *user_data) noexcept;
+void audio_resource_load_cleanup(void *user_data) noexcept;
 
 struct AudioVoiceResource final : nk::core::Resource {
     std::shared_ptr<AudioEngineResource> engine;
@@ -169,6 +187,11 @@ nk_result invalid_handle(const char *message) {
     return NK_ERROR_INVALID_HANDLE;
 }
 
+nk_result invalid_request(const char *message) {
+    nk::core::set_error(message);
+    return NK_ERROR_INVALID_REQUEST;
+}
+
 bool valid_fade_volume(float volume, bool allow_current) {
     if (!std::isfinite(volume))
         return false;
@@ -195,6 +218,29 @@ nk_result map_miniaudio_result(ma_result result, const char *message) {
         return NK_OK;
     nk::core::set_error(message);
     return mapped;
+}
+
+void audio_clip_publish_load_event(AudioClipResource &clip) noexcept {
+    const auto state = clip.load_state.load(std::memory_order_acquire);
+    if (state == NK_AUDIO_CLIP_LOADING || clip.load_request == NK_INVALID_REQUEST_ID)
+        return;
+    const auto handle = clip.handle.load(std::memory_order_acquire);
+    if (handle == NK_INVALID_HANDLE)
+        return;
+
+    bool expected = false;
+    if (!clip.load_event_emitted.compare_exchange_strong(expected, true,
+                                                         std::memory_order_acq_rel))
+        return;
+
+    nk::core::QueuedEvent event;
+    event.kind = state == NK_AUDIO_CLIP_READY ? NK_EVENT_AUDIO_CLIP_READY
+                                              : NK_EVENT_AUDIO_CLIP_LOAD_FAILED;
+    event.source = handle;
+    event.request_id = clip.load_request;
+    event.result = clip.load_result.load(std::memory_order_acquire);
+    if (nk::core::push_event(std::move(event)) != NK_OK)
+        clip.load_event_emitted.store(false, std::memory_order_release);
 }
 
 void audio_voice_publish_load_event(AudioVoiceResource &voice) noexcept {
@@ -315,6 +361,7 @@ nk_result insert_clip(std::shared_ptr<AudioClipResource> clip, nk_audio_clip *ou
         nk::core::set_error("could not allocate an audio clip handle");
         return NK_ERROR_OUT_OF_MEMORY;
     }
+    clip->handle.store(handle, std::memory_order_release);
     *out_clip = handle;
     return NK_OK;
 }
@@ -381,6 +428,58 @@ std::shared_ptr<AudioClipResource> create_clip_from_resource(const nk_resource *
     return clip;
 }
 
+nk_result create_clip_from_resource_async(const nk_resource *resource, nk_audio_clip *out_clip,
+                                          nk_request_id *out_request) {
+    nk_result engine_result = NK_OK;
+    auto engine = ensure_engine(engine_result);
+    if (!engine)
+        return engine_result;
+
+    auto clip = std::make_shared<AudioClipResource>();
+    clip->engine = std::move(engine);
+    clip->resource_uri = resource->uri;
+    clip->from_resource = true;
+    clip->load_state.store(NK_AUDIO_CLIP_LOADING, std::memory_order_relaxed);
+
+    auto context = std::make_unique<AudioResourceLoadContext>();
+    context->clip = clip;
+    const auto insert_result = insert_clip(clip, out_clip);
+    if (insert_result != NK_OK)
+        return insert_result;
+
+    const auto load_result = nk::core::start_resource_load(
+        resource, out_request, audio_resource_load_callback, context.release(),
+        audio_resource_load_cleanup);
+    if (load_result != NK_OK) {
+        clip->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
+        nk::core::handles().erase(*out_clip, nk::core::ResourceType::audio_clip);
+        *out_clip = NK_INVALID_HANDLE;
+        *out_request = NK_INVALID_REQUEST_ID;
+        return load_result;
+    }
+    clip->load_request = *out_request;
+    return NK_OK;
+}
+
+nk_result initialize_clip_from_memory(AudioClipResource &clip, const void *data,
+                                      uint64_t data_size) {
+    if (!data || data_size == 0 ||
+        data_size > static_cast<uint64_t>(std::numeric_limits<std::size_t>::max()))
+        return invalid_argument("audio clip memory data is invalid");
+    clip.encoded_data.resize(static_cast<std::size_t>(data_size));
+    std::memcpy(clip.encoded_data.data(), data, clip.encoded_data.size());
+
+    ma_decoder decoder{};
+    const auto result = ma_decoder_init_memory(clip.encoded_data.data(), clip.encoded_data.size(),
+                                               nullptr, &decoder);
+    if (result != MA_SUCCESS)
+        return map_miniaudio_result(result, "could not validate audio clip memory");
+    ma_decoder_uninit(&decoder);
+    clip.from_memory = true;
+    clip.from_resource = false;
+    return NK_OK;
+}
+
 std::shared_ptr<AudioClipResource> create_clip_from_memory(const void *data, uint64_t data_size,
                                                            nk_result &out_result) {
     out_result = NK_OK;
@@ -393,19 +492,40 @@ std::shared_ptr<AudioClipResource> create_clip_from_memory(const void *data, uin
 
     auto clip = std::make_shared<AudioClipResource>();
     clip->engine = std::move(engine);
-    clip->encoded_data.resize(static_cast<std::size_t>(data_size));
-    std::memcpy(clip->encoded_data.data(), data, clip->encoded_data.size());
-
-    ma_decoder decoder{};
-    const auto result = ma_decoder_init_memory(clip->encoded_data.data(), clip->encoded_data.size(),
-                                               nullptr, &decoder);
-    if (result != MA_SUCCESS) {
-        out_result = map_miniaudio_result(result, "could not validate audio clip memory");
+    out_result = initialize_clip_from_memory(*clip, data, data_size);
+    if (out_result != NK_OK)
         return {};
-    }
-    ma_decoder_uninit(&decoder);
-    clip->from_memory = true;
     return clip;
+}
+
+void audio_resource_load_callback(nk_request_id request, nk_result result, const void *data,
+                                  uint64_t data_size, void *user_data) noexcept {
+    auto *context = static_cast<AudioResourceLoadContext *>(user_data);
+    if (!context || !context->clip)
+        return;
+    auto &clip = *context->clip;
+    clip.load_request = request;
+    auto load_result = result;
+    if (load_result == NK_OK) {
+        try {
+            load_result = initialize_clip_from_memory(clip, data, data_size);
+        } catch (const std::bad_alloc &) {
+            nk::core::set_error("out of memory while storing audio resource data");
+            load_result = NK_ERROR_OUT_OF_MEMORY;
+        } catch (...) {
+            nk::core::set_error("unexpected error while storing audio resource data");
+            load_result = NK_ERROR_UNKNOWN;
+        }
+    }
+    clip.load_result.store(load_result, std::memory_order_release);
+    clip.load_state.store(load_result == NK_OK ? NK_AUDIO_CLIP_READY
+                                               : NK_AUDIO_CLIP_LOAD_FAILED,
+                          std::memory_order_release);
+    audio_clip_publish_load_event(clip);
+}
+
+void audio_resource_load_cleanup(void *user_data) noexcept {
+    delete static_cast<AudioResourceLoadContext *>(user_data);
 }
 
 std::shared_ptr<AudioBusResource> get_bus(nk_audio_bus handle) {
@@ -463,6 +583,11 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
     nk_audio_bus bus_handle = NK_INVALID_HANDLE;
     if (const auto result = voice_options(options, flags, bus_handle); result != NK_OK) {
         out_result = result;
+        return {};
+    }
+
+    if (clip->load_state.load(std::memory_order_acquire) != NK_AUDIO_CLIP_READY) {
+        out_result = invalid_request("audio clip is not ready for voice creation");
         return {};
     }
 
@@ -848,6 +973,24 @@ nk_result NK_CALL nk_audio_clip_create_from_resource(const nk_resource *resource
         });
 }
 
+nk_result NK_CALL nk_audio_clip_create_from_resource_async(const nk_resource *resource,
+                                                           nk_audio_clip *out_clip,
+                                                           nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while creating an asynchronous audio clip from a resource",
+        [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!resource || resource->struct_size < sizeof(nk_resource) ||
+                (resource->flags & NK_RESOURCE_READABLE) == 0 || !resource->uri ||
+                !*resource->uri || !out_clip || !out_request)
+                return invalid_argument("audio resource or output is invalid");
+            *out_clip = NK_INVALID_HANDLE;
+            *out_request = NK_INVALID_REQUEST_ID;
+            return create_clip_from_resource_async(resource, out_clip, out_request);
+        });
+}
+
 nk_result NK_CALL nk_audio_clip_create_from_memory(const void *data, uint64_t data_size,
                                                    nk_audio_clip *out_clip) {
     return nk::core::result_boundary(
@@ -871,10 +1014,31 @@ nk_result NK_CALL nk_audio_clip_destroy(nk_audio_clip clip) {
                                      [&]() -> nk_result {
         if (const auto result = enter_audio_ui(); result != NK_OK)
             return result;
+        auto value = get_clip(clip);
+        if (!value)
+            return NK_ERROR_INVALID_HANDLE;
+        value->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
         if (!nk::core::handles().erase(clip, nk::core::ResourceType::audio_clip))
             return invalid_handle("invalid audio clip handle");
         return NK_OK;
     });
+}
+
+nk_result NK_CALL nk_audio_clip_get_load_state(nk_audio_clip clip,
+                                               nk_audio_clip_load_state *out_state) {
+    return nk::core::result_boundary(
+        "unexpected error while querying an audio clip load state", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_state)
+                return invalid_argument("audio clip load state output is missing");
+            auto value = get_clip(clip);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            audio_clip_publish_load_event(*value);
+            *out_state = value->load_state.load(std::memory_order_acquire);
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_audio_voice_create(nk_audio_clip clip, const nk_audio_voice_options *options,

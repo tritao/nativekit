@@ -1,4 +1,5 @@
 import NativeKit;
+import NativeKitEventDecoderTests;
 import haxe.io.Bytes;
 import NativeKitEventValue;
 import NativeKitEvents.NativeKitEventSubscription;
@@ -38,6 +39,8 @@ class AudioSmoke {
 	}
 
 	static function main():Void {
+		if (!NativeKitEventDecoderTests.run())
+			throw "NativeKit audio event decoder tests failed";
 		var init = new InitOptions();
 		init.set_api_version(NativeKit.nk_api_version());
 		var runtime = NativeKitRuntime.start(init);

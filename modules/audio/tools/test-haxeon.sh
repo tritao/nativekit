@@ -53,12 +53,15 @@ fi
     "$nativekit_dir/bindings/haxe/NativeKitEventValue.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEventContext.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEventBytes.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitEventDecoderTests.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitAudioEvents.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitWindowEvents.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitInputEvents.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitTextInput.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitServiceEvents.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitResourceEvents.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitRequestOutcome.hx" \
+    "$nativekit_dir/bindings/haxe/NativeKitRequests.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEvents.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitRuntime.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitWindow.hx" \

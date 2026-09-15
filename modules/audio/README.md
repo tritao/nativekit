@@ -17,11 +17,18 @@ clip retains the URI, while every voice opens its own provider stream and keeps
 its decoder attached to that stream. This preserves reusable clips and allows
 Android content URIs or other platform resource providers without converting
 them to filesystem paths. Resource-backed clips are opened synchronously and
-therefore reject `NK_AUDIO_VOICE_ASYNC`; providers that only expose asynchronous
-loading can first use `nk_resource_load_async()` and create a memory clip from
-the completed bytes. Resource-backed voices are already decoder-backed streams;
-`NK_AUDIO_VOICE_STREAM` is optional for them and does not change the provider
-stream lifetime.
+therefore reject `NK_AUDIO_VOICE_ASYNC`.
+
+`nk_audio_clip_create_from_resource_async()` is the asynchronous counterpart
+for providers such as browser fetch. It returns a real clip handle immediately
+in `NK_AUDIO_CLIP_LOADING` together with a request ID. NativeKit consumes the
+matching raw resource completion internally, validates and retains the encoded
+audio bytes, then emits `NK_EVENT_AUDIO_CLIP_READY` or
+`NK_EVENT_AUDIO_CLIP_LOAD_FAILED`. Query `nk_audio_clip_get_load_state()` and
+create voices only after the clip is ready. Providers without asynchronous
+loading support return `NK_ERROR_UNSUPPORTED`. Resource-backed voices are
+already decoder-backed streams; `NK_AUDIO_VOICE_STREAM` is optional for them
+and does not change the provider stream lifetime.
 
 Sounds and voices are generation-checked NativeKit resources and can be routed
 through generation-checked mixer buses. Each bus supports volume, mute, start,
@@ -50,14 +57,18 @@ Non-looping voices emit `NK_EVENT_AUDIO_VOICE_COMPLETE` when playback reaches
 the natural end. The event is queued from miniaudio's audio callback and must
 be consumed on the NativeKit UI thread with `nk_poll_event()`. Haxe clients
 receive these as `AudioVoiceReady`, `AudioVoiceLoadFailed`, and
-`AudioVoiceComplete` through `NativeKitEvents.listen()`.
+`AudioVoiceComplete` through `NativeKitEvents.listen()`. Asynchronous clip
+loads arrive as `AudioClipReady` or `AudioClipLoadFailed`, including the
+associated request ID.
 Scheduled stops are transport operations and do not emit this natural-end
 completion event.
 
 The module also provides a generated Haxeon ABI interface in
 `bindings/nativekit-audio.hxi` and a small typed Haxe facade under
 `bindings/haxe/nativekit/audio`. The public facade consists of `Clip`, `Voice`,
-`VoiceOptions`, `Bus`, and `Mixer`.
+`VoiceOptions`, `Bus`, and `Mixer`. `Clip.fromResourceAsync()` exposes the
+asynchronous resource path; `loadRequest()`, `loadState()`, and `isReady()`
+mirror the native lifecycle.
 
 With Haxeon available, run the native and managed smoke test with:
 

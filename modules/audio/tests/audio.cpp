@@ -62,6 +62,10 @@ int main() {
     }
     assert(clip_result == NK_OK);
 
+    nk_audio_clip_load_state clip_load_state = NK_AUDIO_CLIP_LOADING;
+    assert(nk_audio_clip_get_load_state(clip, &clip_load_state) == NK_OK);
+    assert(clip_load_state == NK_AUDIO_CLIP_READY);
+
     nk_audio_voice_options voice_options{};
     voice_options.struct_size = sizeof(voice_options);
     voice_options.flags = 1u << 31;
@@ -172,6 +176,13 @@ int main() {
     resource.uri = resource_uri.c_str();
     resource.mime_type = "audio/wav";
     resource.display_name = "nativekit-audio-async-test.wav";
+    nk_audio_clip unsupported_async_clip = NK_INVALID_HANDLE;
+    nk_request_id unsupported_async_request = 123;
+    assert(nk_audio_clip_create_from_resource_async(&resource, &unsupported_async_clip,
+                                                    &unsupported_async_request) ==
+           NK_ERROR_UNSUPPORTED);
+    assert(unsupported_async_clip == NK_INVALID_HANDLE);
+    assert(unsupported_async_request == NK_INVALID_REQUEST_ID);
     nk_audio_clip resource_clip = NK_INVALID_HANDLE;
     assert(nk_audio_clip_create_from_resource(&resource, &resource_clip) == NK_OK);
     voice_options.bus = NK_INVALID_HANDLE;

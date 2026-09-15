@@ -11,10 +11,23 @@
 
 namespace nk::core {
 
+using ResourceDataHandler = void (*)(nk_request_id request, nk_result result, const void *data,
+                                     uint64_t data_size, void *user_data) noexcept;
+using ResourceDataHandlerCleanup = void (*)(void *user_data) noexcept;
+
 nk_result require_ui_thread() noexcept;
 HandleRegistry &handles() noexcept;
 nk_result push_event(QueuedEvent event) noexcept;
 nk_request_id next_request_id() noexcept;
+nk_result register_resource_data_handler(nk_request_id request, ResourceDataHandler handler,
+                                         void *user_data,
+                                         ResourceDataHandlerCleanup cleanup) noexcept;
+void unregister_resource_data_handler(nk_request_id request) noexcept;
+bool dispatch_resource_data_event(const nk_event &event) noexcept;
+void clear_resource_data_handlers() noexcept;
+nk_result start_resource_load(const struct nk_resource *resource, nk_request_id *out_request,
+                              ResourceDataHandler handler = nullptr, void *user_data = nullptr,
+                              ResourceDataHandlerCleanup cleanup = nullptr) noexcept;
 std::uint64_t runtime_generation() noexcept;
 bool is_runtime_generation(std::uint64_t generation) noexcept;
 /** Capabilities supplied by optional modules compiled into this library. */
@@ -40,4 +53,5 @@ nk_result file_watch_destroy(nk_file_watch watch) noexcept;
 nk_result clipboard_watch_start(const nk_clipboard_watch_options *options,
                                 nk_clipboard_watch *out_watch) noexcept;
 nk_result clipboard_watch_stop(nk_clipboard_watch watch) noexcept;
+nk_result load_resource_async(const struct nk_resource *resource, nk_request_id request) noexcept;
 } // namespace nk::backend
