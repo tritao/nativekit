@@ -6,8 +6,25 @@
 #include <windows.h>
 #include <imm.h>
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 #include <wchar.h>
+
+static HKL activate_japanese_layout(void) {
+    static const wchar_t *layout_ids[] = {
+        L"00000411",
+        L"0411:00000411",
+        L"0411"
+    };
+    for (size_t index = 0; index < sizeof(layout_ids) / sizeof(layout_ids[0]); ++index) {
+        HKL layout = LoadKeyboardLayoutW(layout_ids[index], KLF_ACTIVATE | KLF_SUBSTITUTE_OK);
+        if (layout != NULL) {
+            ActivateKeyboardLayout(layout, KLF_SETFORPROCESS);
+            return layout;
+        }
+    }
+    return NULL;
+}
 
 static int skip_test(nk_window window, HWND hwnd, HIMC context) {
     if (context)
@@ -119,10 +136,16 @@ int main(void) {
     // Prefer the installed Japanese Microsoft IME when this runner has it.
     // Keep the default layout as a fallback so ordinary Windows runners still
     // validate caret positioning and committed WM_IME_CHAR behavior.
-    HKL ime_layout = LoadKeyboardLayoutW(L"0411", KLF_ACTIVATE | KLF_SUBSTITUTE_OK);
-    if (ime_layout != NULL)
-        ActivateKeyboardLayout(ime_layout, KLF_SETFORPROCESS);
+    HKL ime_layout = activate_japanese_layout();
     SetFocus(hwnd);
+    wchar_t active_layout[KL_NAMELENGTH] = {0};
+    wchar_t ime_name[MAX_PATH] = {0};
+    if (ime_layout != NULL)
+        GetKeyboardLayoutNameW(active_layout);
+    if (ime_layout != NULL)
+        ImmGetDescriptionW(ime_layout, ime_name, MAX_PATH);
+    fprintf(stderr, "win_text_input: layout=%p active=%ls ime=%ls\n",
+            (void *)ime_layout, active_layout, ime_name);
 
     float scale = 0.0f;
     assert(nk_window_get_scale(window, &scale) == NK_OK);
@@ -145,6 +168,7 @@ int main(void) {
     assert(nk_surface_set_text_input_active(window, 1) == NK_OK);
 
     HIMC context = ImmGetContext(hwnd);
+    fprintf(stderr, "win_text_input: himc=%p\n", (void *)context);
     if (!context) {
         assert(nk_surface_set_text_input_active(window, 0) == NK_OK);
         assert(nk_window_destroy(window) == NK_OK);
@@ -178,6 +202,7 @@ int main(void) {
     const DWORD preedit_bytes = (DWORD)(wcslen(preedit) * sizeof(wchar_t));
     const BOOL injected = ImmSetCompositionStringW(context, SCS_SETSTR, (void *)preedit,
                                                     preedit_bytes, NULL, 0);
+    fprintf(stderr, "win_text_input: injected=%d\n", injected ? 1 : 0);
     int composition_supported = 0;
     if (injected) {
         SendMessageW(hwnd, WM_IME_COMPOSITION, 0, GCS_COMPSTR | GCS_CURSORPOS);
