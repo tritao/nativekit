@@ -438,6 +438,11 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_text_layout_word_range
                 _nkui_showcase_cube_create
                 _nkui_showcase_cube_set_rotation
+                _nkui_showcase_diagnostic_report
+                _nkui_showcase_diagnostic_message
+                _nkui_showcase_diagnostic_stack
+                _nkui_showcase_diagnostic_breadcrumbs
+                _nkgpu_last_error
                 _nkui_haxeon_memory_contract_status
                 _nkui_haxeon_memory_contract_version
                 _nkui_haxeon_memory_contract_page_size

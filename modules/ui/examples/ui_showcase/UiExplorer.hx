@@ -173,7 +173,12 @@ class UiExplorer {
 		}
 		ExplorerFocusSequence.applyAfterSubmit(this);
 		diagnosticStage = 5;
-		context.render(renderer, Surface.fromNativeHandle(surface), frameInfo);
+		try {
+			context.render(renderer, Surface.fromNativeHandle(surface), frameInfo);
+		} catch (error:Dynamic) {
+			diagnosticStage = 30 + context.getDiagnosticStage();
+			throw error;
+		}
 		frames++;
 		diagnosticStage = 0;
 	}

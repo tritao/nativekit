@@ -19,6 +19,7 @@ import NativeKitEvents;
 import NativeKitEvents.NativeKitEventSubscription;
 import NativeKitSurface;
 import nativekit.ui.core.NativeInputAdapter;
+import haxe.CallStack;
 
 /** Browser host entry points for the Haxeon UI Explorer wasm guest. */
 class ShowcaseWeb {
@@ -48,6 +49,14 @@ class ShowcaseWeb {
     static var requestedUiVisualCase = -1;
     static var graphicsMode = false;
     static var openGraphicsRequested = false;
+
+    static function reportException(error:Dynamic, breadcrumbs:String):Void {
+        var message = Std.string(error);
+        var stack = CallStack.toString(CallStack.exceptionStack(true));
+        NativeKitUIShowcase.nkui_showcase_diagnostic_report(failureStage,
+            message == null ? "Unknown Haxe exception" : message,
+            stack == null ? "" : stack, breadcrumbs);
+    }
 
     public static function configure(width:Int, height:Int):Int {
         if (initialized || width <= 0 || height <= 0)
@@ -143,6 +152,7 @@ class ShowcaseWeb {
                 }
             } catch (error:Dynamic) {
                 failureStage = 91;
+                reportException(error, "ShowcaseWeb.main > create-showcase");
                 return fail(22);
             }
             var activePump = new NativeKitEvents();
@@ -154,6 +164,7 @@ class ShowcaseWeb {
             return 0;
         } catch (error:Dynamic) {
             failureStage = 92;
+            reportException(error, "ShowcaseWeb.main > initialize-runtime");
             return fail(20);
         }
     }
@@ -205,11 +216,18 @@ class ShowcaseWeb {
             }
             return running ? 1 : 0;
         } catch (error:UiError) {
-            failureStage = 1000 + cast(error.status, Int);
+            if (explorer != null && explorer.getDiagnosticStage() > 0)
+                failureStage = 100 + explorer.getDiagnosticStage();
+            else
+                failureStage = 1000 + cast(error.status, Int);
+            reportException(error, "ShowcaseWeb.frame > native-ui-operation: " + error.operation);
             return -fail(19);
         } catch (error:Dynamic) {
             if (explorer != null && explorer.getDiagnosticStage() > 0)
                 failureStage = 100 + explorer.getDiagnosticStage();
+            reportException(error, failureStage >= 130
+                ? "ShowcaseWeb.frame > UiExplorer.render > UiContext.render"
+                : "ShowcaseWeb.frame > render");
             return -fail(19);
         }
     }

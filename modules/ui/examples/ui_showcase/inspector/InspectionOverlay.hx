@@ -24,9 +24,12 @@ class InspectionOverlay {
 		var style = new LayoutStyle();
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.grow();
+		// Snapshot the previously resolved tree while building the next frame. Calling
+		// inspect() from the paint callback recursively traverses the same tree that
+		// UiContext is already walking to build custom display lists.
+		var highlighted = findSnapshot(explorer.context.inspect(), highlightId);
 		var highlight = new CanvasView("inspector-highlight", function(canvas, _) {
-			drawHighlight(canvas,
-				findSnapshot(explorer.context.inspect(), highlightId));
+			drawHighlight(canvas, highlighted);
 		}, style, null, false);
 		layers.push(new StackChild("inspector-highlight-layer", highlight, 0.0, 0.0, 32767));
 	}

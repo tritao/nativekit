@@ -1,7 +1,6 @@
 package nativekit.ui.debug;
 
 import nativekit.ui.core.RenderNode;
-import nativekit.ui.core.HitTest;
 import nativekit.ui.core.WidgetId;
 import nativekit.ui.semantics.Semantics;
 
@@ -77,18 +76,22 @@ class UiInspector {
 	static function interactionOwner(root:RenderNode, id:Null<WidgetId>):Null<WidgetId> {
 		if (id == null)
 			return null;
-		var path = HitTest.pathTo(root.find(id));
-		var semantic:Null<WidgetId> = null;
-		var index = path.length - 1;
-		while (index >= 0) {
-			var node = path[index];
-			if (node.semantics != null && semantic == null)
-				semantic = node.id;
-			if (node.focusable)
-				return node.id;
-			index--;
+		var owner = findInteractionOwner(root, id, null, null);
+		return owner == null ? id : owner;
+	}
+
+	static function findInteractionOwner(node:RenderNode, id:WidgetId,
+			semantic:Null<WidgetId>, focusable:Null<WidgetId>):Null<WidgetId> {
+		var nextSemantic = node.semantics == null ? semantic : node.id;
+		var nextFocusable = node.focusable ? node.id : focusable;
+		if (node.id.equals(id))
+			return nextFocusable == null ? nextSemantic : nextFocusable;
+		for (child in node.children) {
+			var owner = findInteractionOwner(child, id, nextSemantic, nextFocusable);
+			if (owner != null)
+				return owner;
 		}
-		return semantic == null ? id : semantic;
+		return null;
 	}
 
 	static function visualName(kind:Int):String {

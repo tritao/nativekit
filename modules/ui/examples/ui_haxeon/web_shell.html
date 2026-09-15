@@ -180,6 +180,89 @@
       return new TextDecoder().decode(heap.subarray(pointer, end));
     }
 
+    function readHostString(exportName) {
+      const value = Module[exportName];
+      if (typeof value !== "function" || !hostMemory)
+        return "";
+      const pointer = value();
+      if (!pointer)
+        return "";
+      const heap = new Uint8Array(hostMemory.buffer);
+      let end = pointer;
+      while (end < heap.length && heap[end])
+        end++;
+      return new TextDecoder().decode(heap.subarray(pointer, end));
+    }
+
+    function diagnosticPhase(stage) {
+      const fixed = {
+        0: "idle",
+        1: "event-pump",
+        2: "make-surface-current",
+        3: "graphics-lab-render",
+        4: "present-surface",
+        91: "create-showcase",
+        92: "initialize-runtime",
+        101: "explorer.prepare-frame",
+        102: "explorer.build-view-tree",
+        103: "explorer.submit-view-tree",
+        105: "explorer.paint-and-render"
+      };
+      if (fixed[stage])
+        return fixed[stage];
+      if (stage >= 111 && stage <= 119) {
+        return ["", "validate-context", "advance-gestures", "advance-animations",
+          "build-render-tree", "submit-native-layout", "index-resolved-layout",
+          "attach-resolved-geometry", "validate-resolved-geometry", "rebuild-focus"][stage - 110];
+      }
+      if (stage >= 150 && stage <= 154) {
+        return ["validate-render-context", "clear-custom-paints", "build-custom-paints",
+          "remove-stale-paints", "render-native-frame"][stage - 150];
+      }
+      if (stage >= 1000)
+        return "native-ui-operation";
+      return "unknown";
+    }
+
+    function guestDiagnostic(stage) {
+      const nativeError = readNativeError();
+      const gpuError = readHostString("_nkgpu_last_error");
+      return {
+        code: stage,
+        phase: diagnosticPhase(stage),
+        message: readHostString("_nkui_showcase_diagnostic_message"),
+        breadcrumbs: readHostString("_nkui_showcase_diagnostic_breadcrumbs"),
+        stack: readHostString("_nkui_showcase_diagnostic_stack"),
+        native_error: nativeError === "unknown NativeKit error" ? "" : nativeError,
+        gpu_error: gpuError,
+        frame: frameCount,
+        viewport: {
+          canvas_width: canvas.width,
+          canvas_height: canvas.height,
+          css_width: canvas.clientWidth,
+          css_height: canvas.clientHeight,
+          device_pixel_ratio: window.devicePixelRatio || 1
+        },
+        browser: navigator.userAgent
+      };
+    }
+
+    function guestFailureMessage(prefix, result, stage) {
+      const diagnostic = guestDiagnostic(stage);
+      document.documentElement.dataset.nativekitDiagnostic = JSON.stringify(diagnostic);
+      console.error(prefix, diagnostic);
+      const details = [diagnostic.message, diagnostic.native_error, diagnostic.gpu_error]
+        .filter((value, index, values) => value && values.indexOf(value) === index);
+      let message = `${prefix} (${result}) during ${diagnostic.phase} [diagnostic ${stage}]`;
+      if (details.length)
+        message += `: ${details.join(" | ")}`;
+      if (diagnostic.breadcrumbs)
+        message += ` | ${diagnostic.breadcrumbs}`;
+      if (diagnostic.stack)
+        message += `\n${diagnostic.stack}`;
+      return message;
+    }
+
     function validateMemoryContract() {
       const contract = {
         version: Module["_nkui_haxeon_memory_contract_version"](),
@@ -323,7 +406,9 @@
           if (benchmarkFirstFrameAt === null)
             benchmarkFirstFrameAt = performance.now();
           if (sample.result < 0) {
-            setResult(-sample.result, "Haxeon Showcase frame failed (" + sample.result + "): " + readNativeError());
+            const diagnostic = guest["ShowcaseWeb.diagnostic"]();
+            setResult(-sample.result, guestFailureMessage("Haxeon Showcase frame failed",
+              sample.result, diagnostic));
             return;
           }
           if (index + 1 === benchmarkWarmupFrames)
@@ -379,7 +464,7 @@
         "nkui_layout_session_get_resolved_items",
         "nkui_layout_session_render_frame", "nkui_layout_session_set_font_collection",
         "nkui_layout_session_submit", "nkui_showcase_cube_create",
-        "nkui_showcase_cube_set_rotation"
+        "nkui_showcase_cube_set_rotation", "nkui_showcase_diagnostic_report"
       ]);
     }
 
@@ -456,8 +541,8 @@
           }
           if (started !== 0) {
             const diagnostic = guest["ShowcaseWeb.diagnostic"]();
-            setResult(started, "Haxeon Showcase failed to initialize (" + started + "): " +
-              readNativeError() + (diagnostic ? " | diagnostic stage " + diagnostic : ""));
+            setResult(started, guestFailureMessage("Haxeon Showcase failed to initialize",
+              started, diagnostic));
             return;
           }
           benchmarkGuestInitMs = performance.now() - initStarted;
@@ -486,8 +571,8 @@
           benchmarkFirstFrameAt = performance.now();
         if (frameResult < 0) {
             const diagnostic = guest["ShowcaseWeb.diagnostic"]();
-            setResult(-frameResult, "Haxeon Showcase frame failed (" + frameResult + "): " +
-              readNativeError() + (diagnostic ? " | diagnostic stage " + diagnostic : ""));
+            setResult(-frameResult, guestFailureMessage("Haxeon Showcase frame failed",
+              frameResult, diagnostic));
           return;
         }
         if (benchmark && frameCount === benchmarkWarmupFrames)

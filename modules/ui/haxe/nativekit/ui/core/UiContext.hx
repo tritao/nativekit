@@ -158,11 +158,14 @@ class UiContext {
 	}
 
 	public function render(renderer:Renderer, surface:Surface, frame:FrameInfo):Void {
+		diagnosticStage = 20;
 		ensureLive();
 		if (root == null)
 			throw "Submit a view before rendering the UI context";
+		diagnosticStage = 21;
 		session.clearCustomPaints();
 		var painted = new Map<Int, Bool>();
+		diagnosticStage = 22;
 		root.walk(function(node) {
 			if (!node.hasPaintHandler() || node.resolved == null ||
 				node.resolved.clipBounds.width <= 0.0 || node.resolved.clipBounds.height <= 0.0)
@@ -192,6 +195,7 @@ class UiContext {
 				session.setCustomPaint(nodeId, displayList);
 			painted.set(nodeId, true);
 		});
+		diagnosticStage = 23;
 		var stale:Array<Int> = [];
 		for (nodeId in customLists.keys())
 			if (!painted.exists(nodeId))
@@ -206,7 +210,9 @@ class UiContext {
 			customCanvases.remove(nodeId);
 			customLists.remove(nodeId);
 		}
+		diagnosticStage = 24;
 		session.render(renderer, surface, frame);
+		diagnosticStage = 0;
 	}
 
 	public function focusWidget(id:WidgetId):Bool {
