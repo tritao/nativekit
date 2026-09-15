@@ -4,6 +4,7 @@
 #include "nativekit_notification.h"
 #include "nativekit_monitor.h"
 #include "nativekit_joystick.h"
+#include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"

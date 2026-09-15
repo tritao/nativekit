@@ -30,23 +30,27 @@ static void test_window_styling(void) {
     assert(nk_window_set_opacity(window, 0.75f) == NK_OK);
     assert(nk_window_set_mouse_passthrough(window, 1) == NK_OK);
 
+    // clang-format off
     assert(EM_ASM_INT({
                const canvas = document.querySelector("#canvas");
-               return canvas && canvas.style.minWidth == = "320px" && canvas.style.minHeight ==
-                      = "240px" && canvas.style.maxWidth == = "1280px" && canvas.style.maxHeight ==
-                      = "960px" && canvas.style.aspectRatio == = "4 / 3" && canvas.style.resize ==
-                      = "none" && canvas.style.opacity == = "0.75" && canvas.style.pointerEvents ==
-                      = "none" ? 1 : 0;
+               return canvas && canvas.style.minWidth == "320px" && canvas.style.minHeight ==
+                      "240px" && canvas.style.maxWidth == "1280px" && canvas.style.maxHeight ==
+                      "960px" && canvas.style.aspectRatio == "4 / 3" && canvas.style.resize ==
+                      "none" && canvas.style.opacity == "0.75" && canvas.style.pointerEvents ==
+                      "none" ? 1 : 0;
            }) == 1);
+    // clang-format on
 
     nk_bool hovered = 1;
     assert(nk_window_get_hovered(window, &hovered) == NK_OK);
     assert(hovered == 0);
 
+    // clang-format off
     EM_ASM({
         Module._nkNativeKitOriginalShowOpenFilePicker = window.showOpenFilePicker;
-        window.showOpenFilePicker = () = > Promise.resolve([]);
+        window.showOpenFilePicker = () => Promise.resolve([]);
     });
+    // clang-format on
     nk_file_dialog_options dialog_options = {0};
     dialog_options.struct_size = sizeof(dialog_options);
     dialog_options.title = "NativeKit Web resource cancellation";
@@ -71,10 +75,12 @@ static void test_window_styling(void) {
         event.struct_size = sizeof(event);
     }
     assert(dialog_seen);
+    // clang-format off
     EM_ASM({
         window.showOpenFilePicker = Module._nkNativeKitOriginalShowOpenFilePicker;
         delete Module._nkNativeKitOriginalShowOpenFilePicker;
     });
+    // clang-format on
     assert(nk_window_set_mouse_passthrough(window, 0) == NK_OK);
     assert(nk_window_set_resizable(window, 1) == NK_OK);
     assert(nk_window_set_aspect_ratio(window, 0, 0) == NK_OK);
@@ -85,6 +91,7 @@ static void test_window_styling(void) {
 }
 
 static void test_writable_resource_stream(void) {
+    // clang-format off
     EM_ASM({
         const uri = "nativekit-file-handle://web-smoke";
         Module._nkNativeKitResourceHandles = {};
@@ -96,8 +103,8 @@ static void test_writable_resource_stream(void) {
                 },
                 close: () => {
             const bytes = Module._nkWebSmokeResourceBytes || [];
-            const valid = bytes.length == = 3 && bytes[0] == = 0x4e && bytes[1] ==
-                = 0x4b && bytes[2] == = 0x21;
+            const valid = bytes.length == 3 && bytes[0] == 0x4e && bytes[1] ==
+                0x4b && bytes[2] == 0x21;
             document.documentElement.dataset.nativekitResourceWrite = valid ? "verified" : "failed";
             document.documentElement.dataset.nativekitSystemResult = valid ? "passed" : "failed";
             return Promise.resolve();
@@ -105,6 +112,7 @@ static void test_writable_resource_stream(void) {
     })
 };
 });
+// clang-format on
 
 nk_resource resource = {0};
 resource.struct_size = sizeof(resource);
@@ -128,16 +136,18 @@ assert(info.size == sizeof(bytes));
 assert(nk_resource_close(stream) == NK_OK);
 
 /* The File System Access write and close are promise-based. */
+// clang-format off
 EM_ASM({
-    if (typeof setTimeout == = "function")
-        setTimeout(() = >
+    if (typeof setTimeout == "function")
+        setTimeout(() =>
                         {
                             if (document.documentElement.dataset.nativekitResourceWrite !=
-                                = "verified")
+                                "verified")
                                 throw new Error("NativeKit Web resource write was not flushed");
                         },
                    0);
 });
+// clang-format on
 }
 #endif
 

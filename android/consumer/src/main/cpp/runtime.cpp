@@ -6,6 +6,7 @@
 #include "nativekit_resource.h"
 #include "nativekit_vulkan.h"
 #include "nativekit_webview.h"
+#include "nativekit_window.h"
 
 #include <jni.h>
 #include <dlfcn.h>
