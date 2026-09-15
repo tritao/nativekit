@@ -170,6 +170,9 @@ constexpr backend_contract current_contract() {
     return contract;
 }
 
+constexpr std::array<std::string_view, 7> k_contract_backend_names = {
+    "Linux/GTK", "Windows", "macOS", "Android", "iOS", "Web", "fallback-stub"};
+
 const char *current_backend_name() {
 #if defined(NK_PARITY_BACKEND_LINUX)
     return "Linux/GTK";
@@ -272,6 +275,25 @@ bool parse_capability_list(std::string_view text, mask &out, const char *backend
     return true;
 }
 
+bool check_disjoint_masks(const char *backend, mask required, mask deferred,
+                          mask not_applicable, mask optional) {
+    const mask categories = required | deferred | not_applicable | optional;
+    const mask overlap = (required & deferred) | (required & not_applicable) |
+                         (required & optional) | (deferred & not_applicable) |
+                         (deferred & optional) | (not_applicable & optional);
+    if (categories != k_known_capabilities) {
+        std::fprintf(stderr, "%s contract does not classify every capability bit: 0x%llx\n",
+                     backend, static_cast<unsigned long long>(k_known_capabilities ^ categories));
+        return false;
+    }
+    if (overlap != 0) {
+        std::fprintf(stderr, "%s contract has overlapping categories: 0x%llx\n", backend,
+                     static_cast<unsigned long long>(overlap));
+        return false;
+    }
+    return true;
+}
+
 bool load_contract(backend_contract &contract) {
     std::ifstream input(NK_CAPABILITY_SNAPSHOT_FILE);
     if (!input) {
@@ -279,6 +301,7 @@ bool load_contract(backend_contract &contract) {
         return false;
     }
     std::string line;
+    std::vector<std::string> seen_backends;
     bool found_backend = false;
     while (std::getline(input, line)) {
         const auto content = trim(line);
@@ -293,22 +316,46 @@ bool load_contract(backend_contract &contract) {
             std::fprintf(stderr, "malformed capability snapshot row: %s\n", line.c_str());
             return false;
         }
-        if (trim(fields[0]) != contract.name)
-            continue;
-        if (found_backend) {
-            std::fprintf(stderr, "duplicate capability snapshot row for %s\n", contract.name);
+        const auto backend = trim(fields[0]);
+        if (std::find(k_contract_backend_names.begin(), k_contract_backend_names.end(), backend) ==
+            k_contract_backend_names.end()) {
+            std::fprintf(stderr, "unknown capability snapshot backend '%.*s'\n",
+                         static_cast<int>(backend.size()), backend.data());
             return false;
         }
-        found_backend = true;
-        contract.required = 0;
-        contract.deferred = 0;
-        contract.not_applicable = 0;
-        contract.optional = 0;
-        if (!parse_capability_list(fields[1], contract.required, contract.name, "required") ||
-            !parse_capability_list(fields[2], contract.deferred, contract.name, "deferred") ||
-            !parse_capability_list(fields[3], contract.not_applicable, contract.name, "not-applicable") ||
-            !parse_capability_list(fields[4], contract.optional, contract.name, "optional"))
+        if (std::find(seen_backends.begin(), seen_backends.end(), backend) != seen_backends.end()) {
+            std::fprintf(stderr, "duplicate capability snapshot row for %.*s\n",
+                         static_cast<int>(backend.size()), backend.data());
             return false;
+        }
+        seen_backends.emplace_back(backend);
+        mask required = 0;
+        mask deferred = 0;
+        mask not_applicable = 0;
+        mask optional = 0;
+        const std::string backend_name(backend);
+        if (!parse_capability_list(fields[1], required, backend_name.c_str(), "required") ||
+            !parse_capability_list(fields[2], deferred, backend_name.c_str(), "deferred") ||
+            !parse_capability_list(fields[3], not_applicable, backend_name.c_str(),
+                                   "not-applicable") ||
+            !parse_capability_list(fields[4], optional, backend_name.c_str(), "optional") ||
+            !check_disjoint_masks(backend_name.c_str(), required, deferred, not_applicable,
+                                  optional))
+            return false;
+        if (backend != contract.name)
+            continue;
+        found_backend = true;
+        contract.required = required;
+        contract.deferred = deferred;
+        contract.not_applicable = not_applicable;
+        contract.optional = optional;
+    }
+    for (const auto expected : k_contract_backend_names) {
+        if (std::find(seen_backends.begin(), seen_backends.end(), expected) == seen_backends.end()) {
+            std::fprintf(stderr, "capability snapshot has no row for %.*s\n",
+                         static_cast<int>(expected.size()), expected.data());
+            return false;
+        }
     }
     if (!found_backend) {
         std::fprintf(stderr, "capability snapshot has no row for %s\n", contract.name);
@@ -318,24 +365,8 @@ bool load_contract(backend_contract &contract) {
 }
 
 bool check_disjoint(const backend_contract &contract) {
-    const mask categories =
-        contract.required | contract.deferred | contract.not_applicable | contract.optional;
-    const mask overlap =
-        (contract.required & contract.deferred) | (contract.required & contract.not_applicable) |
-        (contract.required & contract.optional) | (contract.deferred & contract.not_applicable) |
-        (contract.deferred & contract.optional) | (contract.not_applicable & contract.optional);
-    if (categories != k_known_capabilities) {
-        std::fprintf(stderr, "%s contract does not classify every capability bit: 0x%llx\n",
-                     contract.name,
-                     static_cast<unsigned long long>(k_known_capabilities ^ categories));
-        return false;
-    }
-    if (overlap != 0) {
-        std::fprintf(stderr, "%s contract has overlapping categories: 0x%llx\n", contract.name,
-                     static_cast<unsigned long long>(overlap));
-        return false;
-    }
-    return true;
+    return check_disjoint_masks(contract.name, contract.required, contract.deferred,
+                                 contract.not_applicable, contract.optional);
 }
 
 } // namespace
