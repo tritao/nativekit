@@ -176,6 +176,8 @@ bool read_clipboard_resources(nk_request_id request) noexcept;
 bool share(const char *title, const char *text, const char *uris) noexcept;
 bool pick_resources(nk_request_id request, uint32_t kind, bool multiple, const char *title,
                     const char *accept, const char *suggested_name) noexcept;
+bool has_resource_handle(const char *uri) noexcept;
+bool write_resource(const char *uri, const void *data, uint32_t size) noexcept;
 bool show_notification(nk_request_id request, const char *title, const char *body,
                        const char *icon, bool silent) noexcept;
 bool close_notification(nk_request_id request) noexcept;

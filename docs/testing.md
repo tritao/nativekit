@@ -38,11 +38,13 @@ the Web smoke tests.
 
 When Emscripten tests are enabled, `nativekit_web_system_equivalents` is a
 browser-hosted compile/link and smoke artifact. It checks the advertised shell,
-appearance, notification, and joystick capabilities, validates the appearance
-query and URI input boundary, and performs an initial Gamepad enumeration.
-Resource pickers and notification permission prompts must be exercised from a
-user-activated browser test because browsers intentionally reject those APIs
-outside a trusted user gesture.
+appearance, notification, joystick, and resource-I/O capabilities, validates
+the appearance and URI input boundaries, performs an initial Gamepad
+enumeration, and exercises a writable retained-handle stream through a fake
+File System Access handle. The asynchronous flush is marked on the document
+for browser-runner assertions. Resource pickers and notification permission
+prompts still require a user-activated browser test because browsers
+intentionally reject those APIs outside a trusted user gesture.
 
 ## Android tests
 

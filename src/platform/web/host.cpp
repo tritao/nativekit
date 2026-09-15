@@ -288,14 +288,20 @@ EM_JS(void, nk_web_install_drop_handlers, (const char *selector), {
 
 EM_JS(void, nk_web_remove_drop_handlers, (const char *selector), {
     const canvas = document.querySelector(UTF8ToString(selector));
-    if (!canvas)
+    const handles = Module._nkNativeKitResourceHandles || {};
+    if (!canvas) {
+        Module._nkNativeKitResourceHandles = {};
         return;
+    }
     for (const uri of canvas._nkDropUrls || [])
         URL.revokeObjectURL(uri);
     delete canvas._nkDropUrls;
     for (const uri of canvas._nkResourceUrls || [])
         URL.revokeObjectURL(uri);
     delete canvas._nkResourceUrls;
+    for (const uri of canvas._nkResourceHandleUris || [])
+        delete handles[uri];
+    delete canvas._nkResourceHandleUris;
     if (canvas._nkDropHandlers) {
         canvas.removeEventListener("dragover", canvas._nkDropHandlers.dragover);
         canvas.removeEventListener("drop", canvas._nkDropHandlers.drop);
@@ -926,6 +932,16 @@ EM_JS(void, nk_web_pick_resources,
               }
               return uri;
           };
+          const retainHandle = (handle, uri) => {
+              Module._nkNativeKitResourceHandles = Module._nkNativeKitResourceHandles || {};
+              Module._nkNativeKitResourceHandles[uri] = handle;
+              const canvas = document.querySelector(UTF8ToString(selector));
+              if (canvas) {
+                  canvas._nkResourceHandleUris = canvas._nkResourceHandleUris || [];
+                  canvas._nkResourceHandleUris.push(uri);
+              }
+              return uri;
+          };
           const completeFiles = files => {
               const uris = Array.from(files || []).map(release);
               complete(result_ok, uris.length > 0, uris.join("\r\n"));
@@ -961,7 +977,7 @@ EM_JS(void, nk_web_pick_resources,
               try {
                   if (kind === select_resource_directory && window.showDirectoryPicker) {
                       const handle = await window.showDirectoryPicker({mode: "readwrite"});
-                      const uri = "nativekit-directory://" + encodeURIComponent(handle.name);
+                      const uri = retainHandle(handle, "nativekit-directory-handle://" + request);
                       complete(result_ok, true, uri);
                       return;
                   }
@@ -970,8 +986,8 @@ EM_JS(void, nk_web_pick_resources,
                           suggestedName: suggestedValue || "untitled",
                           types: pickerTypes() || []
                       });
-                      const file = await handle.getFile();
-                      completeFiles([file]);
+                      const uri = retainHandle(handle, "nativekit-file-handle://" + request);
+                      complete(result_ok, true, uri);
                       return;
                   }
                   if (kind === open_resource && window.showOpenFilePicker) {
@@ -1335,6 +1351,26 @@ EM_JS(int, nk_web_keep_awake_apply, (int enabled), {
     state.request();
     return 1;
 });
+EM_JS(int, nk_web_has_resource_handle, (const char *uri), {
+    const handles = Module._nkNativeKitResourceHandles || {};
+    return handles[UTF8ToString(uri)] ? 1 : 0;
+});
+
+EM_JS(int, nk_web_write_resource, (const char *uri, const void *data, uint32_t size), {
+    const handles = Module._nkNativeKitResourceHandles || {};
+    const handle = handles[UTF8ToString(uri)];
+    if (!handle || !handle.createWritable)
+        return 0;
+    const bytes = HEAPU8.slice(data, data + size);
+    try {
+        handle.createWritable().then(writable =>
+            writable.write(bytes).then(() => writable.close()).catch(() => {})
+        ).catch(() => {});
+        return 1;
+    } catch (error) {
+        return 0;
+    }
+});
 
 // clang-format on
 
@@ -1642,6 +1678,16 @@ bool fetch_resource(const char *uri, nk_request_id request) noexcept {
         return false;
     nk_web_fetch_resource(uri, static_cast<double>(request));
     return true;
+}
+
+bool has_resource_handle(const char *uri) noexcept {
+    return uri && nk_web_has_resource_handle(uri) != 0;
+}
+
+bool write_resource(const char *uri, const void *data, uint32_t size) noexcept {
+    if (!uri || (size && !data))
+        return false;
+    return nk_web_write_resource(uri, data, size) != 0;
 }
 
 bool create_webgl_context(const WebGLContextOptions &options,
