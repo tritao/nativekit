@@ -17,6 +17,9 @@ set(SKIP_INSTALL_LIBRARIES ON)
 option(NKUI_ENABLE_HARFBUZZ_MINI
     "Build the private native HarfBuzz copy without legacy and AAT shaping"
     ON)
+option(NKUI_ENABLE_HARFBUZZ_SIZE_OPTIMIZATION
+    "Compile the private HarfBuzz copy for smaller Release code"
+    ON)
 set(NKUI_HARFBUZZ_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/third_party/harfbuzz")
 set(NKUI_SAVED_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
 set(BUILD_SHARED_LIBS OFF)
@@ -50,6 +53,10 @@ if(NK_LIBRARY_TYPE STREQUAL "SHARED" AND NOT EMSCRIPTEN)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
         target_compile_options(harfbuzz PRIVATE -fno-semantic-interposition)
     endif()
+endif()
+if(NKUI_ENABLE_HARFBUZZ_SIZE_OPTIMIZATION AND
+   CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(harfbuzz PRIVATE $<$<CONFIG:Release>:-Os>)
 endif()
 set_property(TARGET harfbuzz PROPERTY INTERFACE_INCLUDE_DIRECTORIES
     "$<BUILD_INTERFACE:${NK_VENDOR_DIR}/harfbuzz/src>"

@@ -91,6 +91,9 @@ disable this size optimization for a toolchain that does not support it.
 Native shared builds also use HarfBuzz's `HB_MINI` profile by default, removing
 legacy and AAT shaping from the private copy while retaining OpenType shaping.
 Set `NKUI_ENABLE_HARFBUZZ_MINI=OFF` when those font formats are required.
+Release builds also compile the private HarfBuzz copy with size-focused
+optimization by default; set `NKUI_ENABLE_HARFBUZZ_SIZE_OPTIMIZATION=OFF` when
+shaping throughput is preferred over binary size.
 NativeKit does not expose Clay's internal debug view, so it is excluded by
 default as well. Set `NKUI_ENABLE_CLAY_DEBUG=ON` when developing against that
 private Clay API. NativeKit also does not currently expose Skribidi language
