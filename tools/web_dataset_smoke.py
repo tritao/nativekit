@@ -40,8 +40,12 @@ def main():
                     break
                 time.sleep(0.1)
             if result != "passed":
+                details = ""
+                if websocket.errors:
+                    details = "; browser reported errors: " + json.dumps(websocket.errors)
                 raise RuntimeError(
                     f"browser integration {test_page} returned {dataset_key}={result!r}"
+                    f"{details}"
                 )
             if websocket.errors:
                 raise RuntimeError("browser reported errors: " + json.dumps(websocket.errors))
