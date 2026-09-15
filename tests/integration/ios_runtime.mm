@@ -1,5 +1,6 @@
 #include "nativekit.h"
 #include "nativekit_accessibility.h"
+#include "nativekit_clipboard.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
 #include "nativekit_joystick.h"
