@@ -7,6 +7,7 @@
 #import <WebKit/WebKit.h>
 
 #include "nativekit_clipboard.h"
+#include "nativekit_accessibility.h"
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
@@ -31,6 +32,7 @@
 #include <cfloat>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -53,6 +55,21 @@
 @interface NKMetalSurfaceView : NSView
 @end
 
+@interface NKMacAccessibilityElement : NSAccessibilityElement
+@property(nonatomic, assign) nk_handle surface;
+@property(nonatomic, assign) nk_accessibility_node_id node;
+@property(nonatomic, weak) id nativeParent;
+@property(nonatomic, weak) id nativeContainer;
+@property(nonatomic, strong) NSArray<NKMacAccessibilityElement *> *nativeChildren;
+@property(nonatomic, assign) NSRect nativeFrame;
+@end
+
+@interface NKMacAccessibilityContainer : NSView
+@property(nonatomic, assign) nk_handle surface;
+@property(nonatomic, strong) NSArray<NKMacAccessibilityElement *> *elements;
+@property(nonatomic, strong) NSArray<NKMacAccessibilityElement *> *allElements;
+@end
+
 @interface NKWebViewDelegate : NSObject <WKNavigationDelegate, WKScriptMessageHandler>
 @property(nonatomic, assign) void *resource;
 @end
@@ -63,6 +80,51 @@
 namespace {
 
 struct MacCursorResource;
+struct MacSurfaceResource;
+
+struct MacAccessibilityTextRange {
+    nk_accessibility_text_position start = 0;
+    nk_accessibility_text_position end = 0;
+    float x = 0;
+    float y = 0;
+    float width = 0;
+    float height = 0;
+};
+
+struct MacAccessibilityNode {
+    nk_accessibility_node_id id = NK_ACCESSIBILITY_ROOT;
+    nk_accessibility_node_id parent = NK_ACCESSIBILITY_ROOT;
+    uint32_t child_index = 0;
+    nk_accessibility_role role = NK_ACCESSIBILITY_GROUP;
+    nk_accessibility_states states = 0;
+    nk_accessibility_actions actions = 0;
+    float x = 0;
+    float y = 0;
+    float width = 0;
+    float height = 0;
+    std::string label;
+    std::string value;
+    double numeric_value = 0;
+    double numeric_minimum = 0;
+    double numeric_maximum = 0;
+    nk_accessibility_text_position text_start = 0;
+    nk_accessibility_text_position document_length = 0;
+    nk_accessibility_text_position selection_start = NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    nk_accessibility_text_position selection_end = NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    uint32_t set_size = 0;
+    uint32_t position_in_set = 0;
+    uint32_t row_count = 0;
+    uint32_t column_count = 0;
+    uint32_t row_index = NK_ACCESSIBILITY_INDEX_NONE;
+    uint32_t column_index = NK_ACCESSIBILITY_INDEX_NONE;
+    uint32_t row_span = 0;
+    uint32_t column_span = 0;
+    uint32_t hierarchy_level = 0;
+    nk_accessibility_orientation orientation = NK_ACCESSIBILITY_ORIENTATION_UNSPECIFIED;
+    std::vector<MacAccessibilityTextRange> text_ranges;
+};
+
+void refresh_mac_accessibility_elements(MacSurfaceResource &resource) noexcept;
 
 struct MacWindowResource final : nk::core::Resource {
     __strong NSWindow *window = nil;
@@ -125,6 +187,7 @@ std::unordered_map<CGDirectDisplayID, nk_handle> monitor_handles;
 
 struct MacSurfaceResource final : nk::core::Resource {
     __strong NKMetalSurfaceView *view = nil;
+    __strong NKMacAccessibilityContainer *accessibility_container = nil;
     __strong CAMetalLayer *layer = nil;
     __strong id<MTLDevice> device = nil;
     __strong id<MTLCommandQueue> queue = nil;
@@ -150,10 +213,15 @@ struct MacSurfaceResource final : nk::core::Resource {
     bool ready = false;
     bool lost_reported = false;
     bool destroying = false;
+    std::unordered_map<nk_accessibility_node_id, MacAccessibilityNode> accessibility_nodes;
+    nk_accessibility_node_id accessibility_focus = NK_ACCESSIBILITY_ROOT;
 
     ~MacSurfaceResource() override {
         [frame_timer invalidate];
         drawable = nil;
+        accessibility_container.surface = NK_INVALID_HANDLE;
+        [accessibility_container removeFromSuperview];
+        accessibility_container = nil;
         if (view)
             [view removeFromSuperview];
     }
@@ -501,6 +569,10 @@ bool set_surface_native_bounds(MacSurfaceResource &resource) {
     if (!resource.view)
         return false;
     [resource.view setFrame:NSMakeRect(resource.x, resource.y, resource.width, resource.height)];
+    if (resource.accessibility_container)
+        [resource.accessibility_container setFrame:
+                                             NSMakeRect(resource.x, resource.y, resource.width,
+                                                        resource.height)];
     sync_surface_drawable_size(resource);
     return true;
 }
@@ -621,6 +693,467 @@ uint32_t codepoint_index_for_utf16(const std::vector<uint32_t> &codepoints,
         ++result;
     }
     return result;
+}
+
+constexpr nk_accessibility_states mac_accessibility_states =
+    NK_ACCESSIBILITY_FOCUSABLE | NK_ACCESSIBILITY_FOCUSED | NK_ACCESSIBILITY_SELECTED |
+    NK_ACCESSIBILITY_CHECKED | NK_ACCESSIBILITY_DISABLED | NK_ACCESSIBILITY_READ_ONLY |
+    NK_ACCESSIBILITY_MULTILINE | NK_ACCESSIBILITY_PASSWORD | NK_ACCESSIBILITY_EXPANDED |
+    NK_ACCESSIBILITY_MODAL | NK_ACCESSIBILITY_REQUIRED | NK_ACCESSIBILITY_INVALID |
+    NK_ACCESSIBILITY_BUSY | NK_ACCESSIBILITY_HAS_POPUP;
+
+constexpr nk_accessibility_actions mac_accessibility_actions =
+    NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS |
+    NK_ACCESSIBILITY_CAN_SET_VALUE | NK_ACCESSIBILITY_CAN_SET_SELECTION |
+    NK_ACCESSIBILITY_CAN_INCREMENT | NK_ACCESSIBILITY_CAN_DECREMENT |
+    NK_ACCESSIBILITY_CAN_SCROLL_FORWARD | NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD |
+    NK_ACCESSIBILITY_CAN_MOVE_NEXT | NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS |
+    NK_ACCESSIBILITY_CAN_TOGGLE | NK_ACCESSIBILITY_CAN_SELECT |
+    NK_ACCESSIBILITY_CAN_DESELECT | NK_ACCESSIBILITY_CAN_EXPAND |
+    NK_ACCESSIBILITY_CAN_COLLAPSE | NK_ACCESSIBILITY_CAN_DISMISS |
+    NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU | NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW;
+
+bool copy_mac_accessibility_node(
+    const nk_accessibility_node &node,
+    const std::unordered_map<nk_accessibility_node_id, MacAccessibilityNode> &nodes,
+    MacAccessibilityNode &copy) {
+    std::vector<uint32_t> value_codepoints;
+    if (!decode_utf8(node.value ? node.value : "", value_codepoints) ||
+        !valid_utf8(node.label) || node.struct_size < sizeof(node) ||
+        node.id == NK_ACCESSIBILITY_ROOT || node.role > NK_ACCESSIBILITY_ALERT ||
+        node.orientation > NK_ACCESSIBILITY_ORIENTATION_VERTICAL ||
+        (node.states & ~mac_accessibility_states) || (node.actions & ~mac_accessibility_actions) ||
+        !std::isfinite(node.x) || !std::isfinite(node.y) || !std::isfinite(node.width) ||
+        !std::isfinite(node.height) || node.width < 0 || node.height < 0 ||
+        !std::isfinite(node.numeric_value) || !std::isfinite(node.numeric_minimum) ||
+        !std::isfinite(node.numeric_maximum) ||
+        (node.role == NK_ACCESSIBILITY_SLIDER &&
+         (node.numeric_minimum > node.numeric_maximum ||
+          node.numeric_value < node.numeric_minimum ||
+          node.numeric_value > node.numeric_maximum)))
+        return false;
+
+    const uint64_t text_end = static_cast<uint64_t>(node.text_start) + value_codepoints.size();
+    const bool no_selection = node.selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                              node.selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    const bool valid_selection = node.selection_start != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                                 node.selection_end != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                                 node.selection_start <= node.selection_end &&
+                                 node.selection_start >= node.text_start &&
+                                 node.selection_end <= text_end;
+    if (text_end > node.document_length || (!no_selection && !valid_selection) ||
+        (node.parent_id != NK_ACCESSIBILITY_ROOT && nodes.find(node.parent_id) == nodes.end()))
+        return false;
+
+    auto ancestor = node.parent_id;
+    for (std::size_t depth = 0; ancestor != NK_ACCESSIBILITY_ROOT; ++depth) {
+        if (ancestor == node.id || depth > nodes.size())
+            return false;
+        const auto parent = nodes.find(ancestor);
+        if (parent == nodes.end())
+            break;
+        ancestor = parent->second.parent;
+    }
+
+    copy.id = node.id;
+    copy.parent = node.parent_id;
+    copy.child_index = node.child_index;
+    copy.role = node.role;
+    copy.states = node.states;
+    copy.actions = node.actions;
+    copy.x = node.x;
+    copy.y = node.y;
+    copy.width = node.width;
+    copy.height = node.height;
+    copy.label = node.label ? node.label : "";
+    copy.value = node.value ? node.value : "";
+    copy.numeric_value = node.numeric_value;
+    copy.numeric_minimum = node.numeric_minimum;
+    copy.numeric_maximum = node.numeric_maximum;
+    copy.text_start = node.text_start;
+    copy.document_length = node.document_length;
+    copy.selection_start = node.selection_start;
+    copy.selection_end = node.selection_end;
+    copy.set_size = node.set_size;
+    copy.position_in_set = node.position_in_set;
+    copy.row_count = node.row_count;
+    copy.column_count = node.column_count;
+    copy.row_index = node.row_index;
+    copy.column_index = node.column_index;
+    copy.row_span = node.row_span;
+    copy.column_span = node.column_span;
+    copy.hierarchy_level = node.hierarchy_level;
+    copy.orientation = node.orientation;
+    return true;
+}
+
+void remove_mac_accessibility_descendants(
+    std::unordered_map<nk_accessibility_node_id, MacAccessibilityNode> &nodes,
+    nk_accessibility_node_id node) {
+    std::vector<nk_accessibility_node_id> pending{node};
+    for (std::size_t index = 0; index < pending.size(); ++index) {
+        for (const auto &[candidate, value] : nodes)
+            if (value.parent == pending[index])
+                pending.push_back(candidate);
+    }
+    for (const auto id : pending)
+        nodes.erase(id);
+}
+
+nk_accessibility_actions mac_accessibility_action_bit(nk_accessibility_action action) {
+    switch (action) {
+    case NK_ACCESSIBILITY_ACTION_ACTIVATE:
+        return NK_ACCESSIBILITY_CAN_ACTIVATE;
+    case NK_ACCESSIBILITY_ACTION_FOCUS:
+    case NK_ACCESSIBILITY_ACTION_CLEAR_FOCUS:
+        return NK_ACCESSIBILITY_CAN_FOCUS;
+    case NK_ACCESSIBILITY_ACTION_SET_VALUE:
+        return NK_ACCESSIBILITY_CAN_SET_VALUE;
+    case NK_ACCESSIBILITY_ACTION_SET_SELECTION:
+        return NK_ACCESSIBILITY_CAN_SET_SELECTION;
+    case NK_ACCESSIBILITY_ACTION_INCREMENT:
+        return NK_ACCESSIBILITY_CAN_INCREMENT;
+    case NK_ACCESSIBILITY_ACTION_DECREMENT:
+        return NK_ACCESSIBILITY_CAN_DECREMENT;
+    case NK_ACCESSIBILITY_ACTION_SCROLL_FORWARD:
+        return NK_ACCESSIBILITY_CAN_SCROLL_FORWARD;
+    case NK_ACCESSIBILITY_ACTION_SCROLL_BACKWARD:
+        return NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD;
+    case NK_ACCESSIBILITY_ACTION_MOVE_NEXT:
+        return NK_ACCESSIBILITY_CAN_MOVE_NEXT;
+    case NK_ACCESSIBILITY_ACTION_MOVE_PREVIOUS:
+        return NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS;
+    case NK_ACCESSIBILITY_ACTION_TOGGLE:
+        return NK_ACCESSIBILITY_CAN_TOGGLE;
+    case NK_ACCESSIBILITY_ACTION_SELECT:
+        return NK_ACCESSIBILITY_CAN_SELECT;
+    case NK_ACCESSIBILITY_ACTION_DESELECT:
+        return NK_ACCESSIBILITY_CAN_DESELECT;
+    case NK_ACCESSIBILITY_ACTION_EXPAND:
+        return NK_ACCESSIBILITY_CAN_EXPAND;
+    case NK_ACCESSIBILITY_ACTION_COLLAPSE:
+        return NK_ACCESSIBILITY_CAN_COLLAPSE;
+    case NK_ACCESSIBILITY_ACTION_DISMISS:
+        return NK_ACCESSIBILITY_CAN_DISMISS;
+    case NK_ACCESSIBILITY_ACTION_SHOW_CONTEXT_MENU:
+        return NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU;
+    case NK_ACCESSIBILITY_ACTION_SCROLL_INTO_VIEW:
+        return NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW;
+    default:
+        return 0;
+    }
+}
+
+nk_result emit_mac_accessibility_action(
+    nk_handle surface_handle, nk_accessibility_node_id node, nk_accessibility_action action,
+    const std::string &value = {},
+    nk_accessibility_text_position selection_start = NK_ACCESSIBILITY_TEXT_POSITION_NONE,
+    nk_accessibility_text_position selection_end = NK_ACCESSIBILITY_TEXT_POSITION_NONE,
+    nk_accessibility_text_granularity granularity = 0) noexcept {
+    return nk::core::callback_boundary_or<NK_ERROR_UNKNOWN>(NK_ERROR_UNKNOWN, [&]() -> nk_result {
+        auto resource = surface(surface_handle);
+        if (!resource || resource->destroying)
+            return NK_ERROR_INVALID_HANDLE;
+        const auto found = resource->accessibility_nodes.find(node);
+        const auto required = mac_accessibility_action_bit(action);
+        if (found == resource->accessibility_nodes.end() || !required ||
+            !(found->second.actions & required))
+            return NK_ERROR_UNSUPPORTED;
+        if (action == NK_ACCESSIBILITY_ACTION_FOCUS)
+            resource->accessibility_focus = node;
+        else if (action == NK_ACCESSIBILITY_ACTION_CLEAR_FOCUS &&
+                 resource->accessibility_focus == node)
+            resource->accessibility_focus = NK_ACCESSIBILITY_ROOT;
+        nk_accessibility_action_event payload{};
+        payload.node_id = node;
+        payload.action = action;
+        payload.value_offset = value.empty() ? 0u : sizeof(payload);
+        payload.value_length = static_cast<uint32_t>(value.size());
+        payload.selection_start = selection_start;
+        payload.selection_end = selection_end;
+        payload.granularity = granularity;
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_ACCESSIBILITY_ACTION;
+        event.source = surface_handle;
+        event.data.resize(sizeof(payload) + value.size() + (value.empty() ? 0u : 1u));
+        std::memcpy(event.data.data(), &payload, sizeof(payload));
+        if (!value.empty())
+            std::memcpy(event.data.data() + sizeof(payload), value.c_str(), value.size() + 1);
+        return nk::core::push_event(std::move(event));
+    });
+}
+
+NSString *mac_accessibility_role(nk_accessibility_role role) {
+    switch (role) {
+    case NK_ACCESSIBILITY_BUTTON:
+        return NSAccessibilityButtonRole;
+    case NK_ACCESSIBILITY_CHECKBOX:
+        return NSAccessibilityCheckBoxRole;
+    case NK_ACCESSIBILITY_RADIO:
+        return NSAccessibilityRadioButtonRole;
+    case NK_ACCESSIBILITY_TEXT:
+    case NK_ACCESSIBILITY_STATUS:
+    case NK_ACCESSIBILITY_ALERT:
+        return NSAccessibilityStaticTextRole;
+    case NK_ACCESSIBILITY_HEADING:
+        return NSAccessibilityHeadingRole;
+    case NK_ACCESSIBILITY_TEXT_FIELD:
+        return NSAccessibilityTextFieldRole;
+    case NK_ACCESSIBILITY_LINK:
+        return NSAccessibilityLinkRole;
+    case NK_ACCESSIBILITY_IMAGE:
+        return NSAccessibilityImageRole;
+    case NK_ACCESSIBILITY_LIST:
+        return NSAccessibilityListRole;
+    case NK_ACCESSIBILITY_LIST_ITEM:
+    case NK_ACCESSIBILITY_ROW:
+        return NSAccessibilityRowRole;
+    case NK_ACCESSIBILITY_SLIDER:
+        return NSAccessibilitySliderRole;
+    case NK_ACCESSIBILITY_SCROLL_AREA:
+        return NSAccessibilityScrollAreaRole;
+    case NK_ACCESSIBILITY_DIALOG:
+        return NSAccessibilityGroupRole;
+    case NK_ACCESSIBILITY_MENU:
+        return NSAccessibilityMenuRole;
+    case NK_ACCESSIBILITY_MENU_BAR:
+        return NSAccessibilityMenuBarRole;
+    case NK_ACCESSIBILITY_MENU_ITEM:
+        return NSAccessibilityMenuItemRole;
+    case NK_ACCESSIBILITY_TAB_LIST:
+        return NSAccessibilityTabGroupRole;
+    case NK_ACCESSIBILITY_TAB:
+        return NSAccessibilityRadioButtonRole;
+    case NK_ACCESSIBILITY_TAB_PANEL:
+        return NSAccessibilityGroupRole;
+    case NK_ACCESSIBILITY_SWITCH:
+        return NSAccessibilityCheckBoxRole;
+    case NK_ACCESSIBILITY_PROGRESS_BAR:
+        return NSAccessibilityProgressIndicatorRole;
+    case NK_ACCESSIBILITY_COMBO_BOX:
+        return NSAccessibilityComboBoxRole;
+    case NK_ACCESSIBILITY_GRID:
+    case NK_ACCESSIBILITY_COLLECTION:
+        return NSAccessibilityTableRole;
+    case NK_ACCESSIBILITY_CELL:
+        return NSAccessibilityCellRole;
+    case NK_ACCESSIBILITY_COLUMN_HEADER:
+    case NK_ACCESSIBILITY_ROW_HEADER:
+        return NSAccessibilityStaticTextRole;
+    case NK_ACCESSIBILITY_TREE:
+        return NSAccessibilityOutlineRole;
+    case NK_ACCESSIBILITY_TREE_ITEM:
+        return NSAccessibilityRowRole;
+    case NK_ACCESSIBILITY_SEPARATOR:
+        return NSAccessibilitySplitterRole;
+    case NK_ACCESSIBILITY_TOOLBAR:
+        return NSAccessibilityToolbarRole;
+    case NK_ACCESSIBILITY_COLLECTION_ITEM:
+    case NK_ACCESSIBILITY_GROUP:
+    default:
+        return NSAccessibilityGroupRole;
+    }
+}
+
+NSRect mac_accessibility_screen_frame(const MacSurfaceResource &resource, float x, float y,
+                                      float width, float height) {
+    const NSRect local = NSMakeRect(x, y, width, height);
+    if (!resource.view || !resource.view.window)
+        return local;
+    const NSRect window_rect = [resource.view convertRect:local toView:nil];
+    return [resource.view.window convertRectToScreen:window_rect];
+}
+
+NSRange mac_accessibility_value_range(const MacAccessibilityNode &node) {
+    std::vector<uint32_t> codepoints;
+    if (!decode_utf8(node.value, codepoints))
+        return NSMakeRange(NSNotFound, 0);
+    if (node.selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE ||
+        node.selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE ||
+        node.selection_start < node.text_start || node.selection_end < node.text_start)
+        return NSMakeRange(NSNotFound, 0);
+    const auto start = static_cast<uint64_t>(node.selection_start - node.text_start);
+    const auto end = static_cast<uint64_t>(node.selection_end - node.text_start);
+    if (end > codepoints.size() || start > end)
+        return NSMakeRange(NSNotFound, 0);
+    const auto first = utf16_offset_for_codepoint(codepoints, static_cast<uint32_t>(start));
+    const auto last = utf16_offset_for_codepoint(codepoints, static_cast<uint32_t>(end));
+    return NSMakeRange(first, last - first);
+}
+
+bool mac_accessibility_codepoint_range(const MacAccessibilityNode &node, NSRange range,
+                                       nk_accessibility_text_position &start,
+                                       nk_accessibility_text_position &end) {
+    std::vector<uint32_t> codepoints;
+    if (!decode_utf8(node.value, codepoints))
+        return false;
+    const auto length = utf16_offset_for_codepoint(codepoints, codepoints.size());
+    if (range.location == NSNotFound || range.location > length || range.length > length - range.location)
+        return false;
+    start = node.text_start + codepoint_index_for_utf16(codepoints, range.location);
+    end = node.text_start +
+          codepoint_index_for_utf16(codepoints, range.location + range.length);
+    return true;
+}
+
+void refresh_mac_accessibility_elements(MacSurfaceResource &resource) noexcept {
+    nk::core::callback_boundary([&] {
+        if (!resource.accessibility_container)
+            return;
+        NSMutableArray<NKMacAccessibilityElement *> *all_elements =
+            [NSMutableArray arrayWithCapacity:resource.accessibility_nodes.size()];
+        NSMutableArray<NKMacAccessibilityElement *> *root_elements = [NSMutableArray array];
+        std::unordered_map<nk_accessibility_node_id, NKMacAccessibilityElement *> elements_by_id;
+        std::function<void(nk_accessibility_node_id)> append_children =
+            [&](nk_accessibility_node_id parent) {
+                std::vector<nk_accessibility_node_id> children;
+                for (const auto &[id, node] : resource.accessibility_nodes)
+                    if (node.parent == parent)
+                        children.push_back(id);
+                std::sort(children.begin(), children.end(), [&](auto lhs, auto rhs) {
+                    const auto &left = resource.accessibility_nodes.at(lhs);
+                    const auto &right = resource.accessibility_nodes.at(rhs);
+                    return left.child_index == right.child_index ? lhs < rhs
+                                                                  : left.child_index < right.child_index;
+                });
+                for (const auto id : children) {
+                    const auto &node = resource.accessibility_nodes.at(id);
+                    auto element = [[NKMacAccessibilityElement alloc] init];
+                    if (!element)
+                        continue;
+                    element.surface = resource.handle;
+                    element.node = id;
+                    element.nativeContainer = resource.accessibility_container;
+                    element.nativeFrame = mac_accessibility_screen_frame(resource, node.x, node.y,
+                                                                         node.width, node.height);
+                    element.accessibilityElement = YES;
+                    element.accessibilityRole = mac_accessibility_role(node.role);
+                    element.accessibilityLabel = node.label.empty() ? nil : string(node.label.c_str());
+                    element.accessibilityEnabled =
+                        (node.states & NK_ACCESSIBILITY_DISABLED) == 0;
+                    element.accessibilitySelected =
+                        (node.states & NK_ACCESSIBILITY_SELECTED) != 0;
+                    element.accessibilityExpanded =
+                        (node.states & NK_ACCESSIBILITY_EXPANDED) != 0;
+                    element.accessibilityRequired =
+                        (node.states & NK_ACCESSIBILITY_REQUIRED) != 0;
+                    element.accessibilityProtectedContent =
+                        (node.states & NK_ACCESSIBILITY_PASSWORD) != 0;
+                    element.accessibilityValueDescription =
+                        node.value.empty() ? nil : string(node.value.c_str());
+                    if (node.orientation == NK_ACCESSIBILITY_ORIENTATION_HORIZONTAL)
+                        element.accessibilityOrientation = NSAccessibilityHorizontalOrientationValue;
+                    else if (node.orientation == NK_ACCESSIBILITY_ORIENTATION_VERTICAL)
+                        element.accessibilityOrientation = NSAccessibilityVerticalOrientationValue;
+                    if (node.role == NK_ACCESSIBILITY_CHECKBOX ||
+                        node.role == NK_ACCESSIBILITY_SWITCH)
+                        element.accessibilityValue = @((node.states & NK_ACCESSIBILITY_CHECKED) != 0);
+                    else if (node.role == NK_ACCESSIBILITY_SLIDER ||
+                             node.role == NK_ACCESSIBILITY_PROGRESS_BAR)
+                        element.accessibilityValue = @(node.numeric_value);
+                    else
+                        element.accessibilityValue = node.value.empty() ? nil : string(node.value.c_str());
+                    element.accessibilityFrame = element.nativeFrame;
+                    elements_by_id.emplace(id, element);
+                    [all_elements addObject:element];
+                    if (parent == NK_ACCESSIBILITY_ROOT)
+                        [root_elements addObject:element];
+                    append_children(id);
+                }
+            };
+        append_children(NK_ACCESSIBILITY_ROOT);
+        for (const auto &[node_id, node] : resource.accessibility_nodes) {
+            const auto element = elements_by_id.find(node_id);
+            if (element == elements_by_id.end())
+                continue;
+            NSObject *parent = resource.accessibility_container;
+            if (node.parent != NK_ACCESSIBILITY_ROOT) {
+                const auto parent_element = elements_by_id.find(node.parent);
+                if (parent_element != elements_by_id.end())
+                    parent = parent_element->second;
+            }
+            element->second.nativeParent = parent;
+            element->second.accessibilityParent = parent;
+            NSMutableArray<NKMacAccessibilityElement *> *children = [NSMutableArray array];
+            std::vector<nk_accessibility_node_id> child_ids;
+            for (const auto &[child_id, child] : resource.accessibility_nodes)
+                if (child.parent == node_id)
+                    child_ids.push_back(child_id);
+            std::sort(child_ids.begin(), child_ids.end(), [&](auto lhs, auto rhs) {
+                const auto &left = resource.accessibility_nodes.at(lhs);
+                const auto &right = resource.accessibility_nodes.at(rhs);
+                return left.child_index == right.child_index ? lhs < rhs
+                                                              : left.child_index < right.child_index;
+            });
+            for (const auto child_id : child_ids) {
+                const auto child = elements_by_id.find(child_id);
+                if (child != elements_by_id.end())
+                    [children addObject:child->second];
+            }
+            element->second.nativeChildren = children;
+            element->second.accessibilityChildren = children;
+            NSMutableArray<NKMacAccessibilityElement *> *selected_children = [NSMutableArray array];
+            for (NKMacAccessibilityElement *child in children) {
+                const auto child_node = resource.accessibility_nodes.find(child.node);
+                if (child_node != resource.accessibility_nodes.end() &&
+                    (child_node->second.states & NK_ACCESSIBILITY_SELECTED))
+                    [selected_children addObject:child];
+            }
+            element->second.accessibilitySelectedChildren = selected_children;
+        }
+        resource.accessibility_container.elements = root_elements;
+        resource.accessibility_container.allElements = all_elements;
+        resource.accessibility_container.accessibilityChildren = root_elements;
+        NSAccessibilityPostNotification(resource.accessibility_container,
+                                        NSAccessibilityLayoutChangedNotification);
+    });
+}
+
+NSString *const NKMacAccessibilityToggleAction = @"NativeKitToggle";
+NSString *const NKMacAccessibilitySelectAction = @"NativeKitSelect";
+NSString *const NKMacAccessibilityDeselectAction = @"NativeKitDeselect";
+NSString *const NKMacAccessibilityExpandAction = @"NativeKitExpand";
+NSString *const NKMacAccessibilityCollapseAction = @"NativeKitCollapse";
+NSString *const NKMacAccessibilityDismissAction = @"NativeKitDismiss";
+NSString *const NKMacAccessibilityMoveNextAction = @"NativeKitMoveNext";
+NSString *const NKMacAccessibilityMovePreviousAction = @"NativeKitMovePrevious";
+NSString *const NKMacAccessibilityScrollForwardAction = @"NativeKitScrollForward";
+NSString *const NKMacAccessibilityScrollBackwardAction = @"NativeKitScrollBackward";
+NSString *const NKMacAccessibilityScrollIntoViewAction = @"NativeKitScrollIntoView";
+NSString *const NKMacAccessibilitySetValueAction = @"NativeKitSetValue";
+NSString *const NKMacAccessibilitySetSelectionAction = @"NativeKitSetSelection";
+NSString *const NKMacAccessibilityShowContextMenuAction = @"NativeKitShowContextMenu";
+
+nk_accessibility_action mac_accessibility_action_for_name(NSString *name) {
+    if ([name isEqualToString:NKMacAccessibilityToggleAction])
+        return NK_ACCESSIBILITY_ACTION_TOGGLE;
+    if ([name isEqualToString:NKMacAccessibilitySelectAction])
+        return NK_ACCESSIBILITY_ACTION_SELECT;
+    if ([name isEqualToString:NKMacAccessibilityDeselectAction])
+        return NK_ACCESSIBILITY_ACTION_DESELECT;
+    if ([name isEqualToString:NKMacAccessibilityExpandAction])
+        return NK_ACCESSIBILITY_ACTION_EXPAND;
+    if ([name isEqualToString:NKMacAccessibilityCollapseAction])
+        return NK_ACCESSIBILITY_ACTION_COLLAPSE;
+    if ([name isEqualToString:NKMacAccessibilityDismissAction])
+        return NK_ACCESSIBILITY_ACTION_DISMISS;
+    if ([name isEqualToString:NKMacAccessibilityMoveNextAction])
+        return NK_ACCESSIBILITY_ACTION_MOVE_NEXT;
+    if ([name isEqualToString:NKMacAccessibilityMovePreviousAction])
+        return NK_ACCESSIBILITY_ACTION_MOVE_PREVIOUS;
+    if ([name isEqualToString:NKMacAccessibilityScrollForwardAction])
+        return NK_ACCESSIBILITY_ACTION_SCROLL_FORWARD;
+    if ([name isEqualToString:NKMacAccessibilityScrollBackwardAction])
+        return NK_ACCESSIBILITY_ACTION_SCROLL_BACKWARD;
+    if ([name isEqualToString:NKMacAccessibilityScrollIntoViewAction])
+        return NK_ACCESSIBILITY_ACTION_SCROLL_INTO_VIEW;
+    if ([name isEqualToString:NKMacAccessibilitySetValueAction])
+        return NK_ACCESSIBILITY_ACTION_SET_VALUE;
+    if ([name isEqualToString:NKMacAccessibilitySetSelectionAction])
+        return NK_ACCESSIBILITY_ACTION_SET_SELECTION;
+    if ([name isEqualToString:NKMacAccessibilityShowContextMenuAction])
+        return NK_ACCESSIBILITY_ACTION_SHOW_CONTEXT_MENU;
+    return 0;
 }
 
 std::vector<uint32_t> current_text_codepoints(const MacWindowResource &resource) {
@@ -2181,6 +2714,425 @@ void emit_window_state(MacWindowResource &resource) noexcept {
 }
 @end
 
+@implementation NKMacAccessibilityElement
+- (BOOL)accessibilityIsIgnored {
+    return NO;
+}
+
+- (id)accessibilityAttributeValue:(NSString *)attribute {
+    auto resource = surface(self.surface);
+    if (!resource)
+        return nil;
+    const auto found = resource->accessibility_nodes.find(self.node);
+    if (found == resource->accessibility_nodes.end())
+        return nil;
+    const auto &node = found->second;
+    if ([attribute isEqualToString:NSAccessibilityRoleAttribute])
+        return mac_accessibility_role(node.role);
+    if ([attribute isEqualToString:NSAccessibilityRoleDescriptionAttribute])
+        return NSAccessibilityRoleDescription(mac_accessibility_role(node.role), nil);
+    if ([attribute isEqualToString:NSAccessibilityTitleAttribute] ||
+        [attribute isEqualToString:NSAccessibilityDescriptionAttribute])
+        return node.label.empty() ? nil : string(node.label.c_str());
+    if ([attribute isEqualToString:NSAccessibilityValueAttribute]) {
+        if (node.role == NK_ACCESSIBILITY_CHECKBOX || node.role == NK_ACCESSIBILITY_SWITCH)
+            return @((node.states & NK_ACCESSIBILITY_CHECKED) != 0);
+        if (node.role == NK_ACCESSIBILITY_SLIDER || node.role == NK_ACCESSIBILITY_PROGRESS_BAR)
+            return @(node.numeric_value);
+        return node.value.empty() ? nil : string(node.value.c_str());
+    }
+    if ([attribute isEqualToString:NSAccessibilityValueDescriptionAttribute])
+        return node.value.empty() ? nil : string(node.value.c_str());
+    if ([attribute isEqualToString:NSAccessibilityEnabledAttribute])
+        return @((node.states & NK_ACCESSIBILITY_DISABLED) == 0);
+    if ([attribute isEqualToString:NSAccessibilityFocusedAttribute])
+        return @(resource->accessibility_focus == node.id ||
+                 (node.states & NK_ACCESSIBILITY_FOCUSED));
+    if ([attribute isEqualToString:NSAccessibilitySelectedAttribute])
+        return @((node.states & NK_ACCESSIBILITY_SELECTED) != 0);
+    if ([attribute isEqualToString:NSAccessibilityExpandedAttribute])
+        return @((node.states & NK_ACCESSIBILITY_EXPANDED) != 0);
+    if ([attribute isEqualToString:NSAccessibilityRequiredAttribute])
+        return @((node.states & NK_ACCESSIBILITY_REQUIRED) != 0);
+    if ([attribute isEqualToString:NSAccessibilityModalAttribute])
+        return @((node.states & NK_ACCESSIBILITY_MODAL) != 0);
+    if ([attribute isEqualToString:NSAccessibilityContainsProtectedContentAttribute])
+        return @((node.states & NK_ACCESSIBILITY_PASSWORD) != 0);
+    if ([attribute isEqualToString:NSAccessibilityOrientationAttribute]) {
+        if (node.orientation == NK_ACCESSIBILITY_ORIENTATION_HORIZONTAL)
+            return NSAccessibilityHorizontalOrientationValue;
+        if (node.orientation == NK_ACCESSIBILITY_ORIENTATION_VERTICAL)
+            return NSAccessibilityVerticalOrientationValue;
+        return NSAccessibilityUnknownOrientationValue;
+    }
+    if ([attribute isEqualToString:NSAccessibilityFrameAttribute]) {
+        const NSRect frame = mac_accessibility_screen_frame(*resource, node.x, node.y,
+                                                             node.width, node.height);
+        return [NSValue valueWithRect:frame];
+    }
+    if ([attribute isEqualToString:NSAccessibilityPositionAttribute]) {
+        const NSRect frame = mac_accessibility_screen_frame(*resource, node.x, node.y,
+                                                             node.width, node.height);
+        return [NSValue valueWithPoint:frame.origin];
+    }
+    if ([attribute isEqualToString:NSAccessibilitySizeAttribute])
+        return [NSValue valueWithSize:NSMakeSize(node.width, node.height)];
+    if ([attribute isEqualToString:NSAccessibilityParentAttribute])
+        return self.nativeParent;
+    if ([attribute isEqualToString:NSAccessibilityChildrenAttribute])
+        return self.nativeChildren ?: @[];
+    if ([attribute isEqualToString:NSAccessibilitySelectedChildrenAttribute]) {
+        NSMutableArray<NKMacAccessibilityElement *> *selected = [NSMutableArray array];
+        for (NKMacAccessibilityElement *element in self.nativeChildren) {
+            const auto child = resource->accessibility_nodes.find(element.node);
+            if (child != resource->accessibility_nodes.end() &&
+                (child->second.states & NK_ACCESSIBILITY_SELECTED))
+                [selected addObject:element];
+        }
+        return selected;
+    }
+    if ([attribute isEqualToString:NSAccessibilityMinValueAttribute])
+        return @(node.numeric_minimum);
+    if ([attribute isEqualToString:NSAccessibilityMaxValueAttribute])
+        return @(node.numeric_maximum);
+    if ([attribute isEqualToString:NSAccessibilitySelectedTextRangeAttribute]) {
+        const NSRange range = mac_accessibility_value_range(node);
+        return range.location == NSNotFound ? nil : [NSValue valueWithRange:range];
+    }
+    if ([attribute isEqualToString:NSAccessibilityNumberOfCharactersAttribute] ||
+        [attribute isEqualToString:NSAccessibilityVisibleCharacterRangeAttribute]) {
+        std::vector<uint32_t> codepoints;
+        if (!decode_utf8(node.value, codepoints))
+            return nil;
+        const NSUInteger length = utf16_offset_for_codepoint(codepoints, codepoints.size());
+        if ([attribute isEqualToString:NSAccessibilityNumberOfCharactersAttribute])
+            return @(length);
+        return [NSValue valueWithRange:NSMakeRange(0, length)];
+    }
+    return nil;
+}
+
+- (id)accessibilityAttributeValue:(NSString *)attribute forParameter:(id)parameter {
+    auto resource = surface(self.surface);
+    if (!resource)
+        return nil;
+    const auto found = resource->accessibility_nodes.find(self.node);
+    if (found == resource->accessibility_nodes.end())
+        return nil;
+    const auto &node = found->second;
+    if (![parameter isKindOfClass:[NSValue class]])
+        return nil;
+    if ([attribute isEqualToString:NSAccessibilityStringForRangeParameterizedAttribute]) {
+        const NSRange range = [parameter rangeValue];
+        NSString *value = string(node.value.c_str());
+        if (!value || range.location == NSNotFound || range.location > value.length ||
+            range.length > value.length - range.location)
+            return nil;
+        return [value substringWithRange:range];
+    }
+    if ([attribute isEqualToString:NSAccessibilityBoundsForRangeParameterizedAttribute]) {
+        const NSRange requested = [parameter rangeValue];
+        std::vector<uint32_t> codepoints;
+        if (!decode_utf8(node.value, codepoints))
+            return nil;
+        for (const auto &text_range : node.text_ranges) {
+            if (text_range.start < node.text_start || text_range.end < text_range.start)
+                continue;
+            const auto local_start = static_cast<uint32_t>(text_range.start - node.text_start);
+            const auto local_end = static_cast<uint32_t>(text_range.end - node.text_start);
+            const NSUInteger start = utf16_offset_for_codepoint(codepoints, local_start);
+            const NSRange native = NSMakeRange(
+                start, utf16_offset_for_codepoint(codepoints, local_end) - start);
+            if (NSIntersectionRange(requested, native).length == 0)
+                continue;
+            return [NSValue valueWithRect:mac_accessibility_screen_frame(
+                                             *resource, text_range.x, text_range.y,
+                                             text_range.width, text_range.height)];
+        }
+        return nil;
+    }
+    if ([attribute isEqualToString:NSAccessibilityRangeForPositionParameterizedAttribute]) {
+        const NSPoint point = [parameter pointValue];
+        std::vector<uint32_t> codepoints;
+        if (!decode_utf8(node.value, codepoints))
+            return nil;
+        for (const auto &text_range : node.text_ranges) {
+            const NSRect frame = mac_accessibility_screen_frame(
+                *resource, text_range.x, text_range.y, text_range.width, text_range.height);
+            if (!NSPointInRect(point, frame) || text_range.start < node.text_start ||
+                text_range.end < text_range.start)
+                continue;
+            const auto local_start = static_cast<uint32_t>(text_range.start - node.text_start);
+            const auto local_end = static_cast<uint32_t>(text_range.end - node.text_start);
+            const NSUInteger start = utf16_offset_for_codepoint(codepoints, local_start);
+            return [NSValue valueWithRange:NSMakeRange(
+                                               start,
+                                               utf16_offset_for_codepoint(codepoints, local_end) -
+                                                   start)];
+        }
+    }
+    return nil;
+}
+
+- (NSArray<NSString *> *)accessibilityAttributeNames {
+    return @[ NSAccessibilityRoleAttribute, NSAccessibilityRoleDescriptionAttribute,
+               NSAccessibilityTitleAttribute, NSAccessibilityDescriptionAttribute,
+               NSAccessibilityValueAttribute, NSAccessibilityValueDescriptionAttribute,
+               NSAccessibilityEnabledAttribute, NSAccessibilityFocusedAttribute,
+               NSAccessibilitySelectedAttribute, NSAccessibilityExpandedAttribute,
+               NSAccessibilityRequiredAttribute, NSAccessibilityModalAttribute,
+               NSAccessibilityContainsProtectedContentAttribute,
+               NSAccessibilityOrientationAttribute,
+               NSAccessibilityFrameAttribute, NSAccessibilityPositionAttribute,
+               NSAccessibilitySizeAttribute, NSAccessibilityParentAttribute,
+               NSAccessibilityChildrenAttribute, NSAccessibilitySelectedChildrenAttribute,
+               NSAccessibilityMinValueAttribute,
+               NSAccessibilityMaxValueAttribute, NSAccessibilitySelectedTextRangeAttribute,
+               NSAccessibilityNumberOfCharactersAttribute,
+               NSAccessibilityVisibleCharacterRangeAttribute,
+               NSAccessibilityStringForRangeParameterizedAttribute,
+               NSAccessibilityBoundsForRangeParameterizedAttribute,
+               NSAccessibilityRangeForPositionParameterizedAttribute ];
+}
+
+- (BOOL)accessibilityIsAttributeSettable:(NSString *)attribute {
+    auto resource = surface(self.surface);
+    if (!resource)
+        return NO;
+    const auto found = resource->accessibility_nodes.find(self.node);
+    if (found == resource->accessibility_nodes.end())
+        return NO;
+    const auto actions = found->second.actions;
+    if ([attribute isEqualToString:NSAccessibilityFocusedAttribute])
+        return (actions & NK_ACCESSIBILITY_CAN_FOCUS) != 0;
+    if ([attribute isEqualToString:NSAccessibilityValueAttribute])
+        return (actions & NK_ACCESSIBILITY_CAN_SET_VALUE) != 0;
+    if ([attribute isEqualToString:NSAccessibilitySelectedTextRangeAttribute])
+        return (actions & NK_ACCESSIBILITY_CAN_SET_SELECTION) != 0;
+    if ([attribute isEqualToString:NSAccessibilitySelectedAttribute])
+        return (actions & (NK_ACCESSIBILITY_CAN_SELECT | NK_ACCESSIBILITY_CAN_DESELECT)) != 0;
+    if ([attribute isEqualToString:NSAccessibilityExpandedAttribute])
+        return (actions & (NK_ACCESSIBILITY_CAN_EXPAND | NK_ACCESSIBILITY_CAN_COLLAPSE)) != 0;
+    return NO;
+}
+
+- (void)accessibilitySetValue:(id)value forAttribute:(NSString *)attribute {
+    auto resource = surface(self.surface);
+    if (!resource)
+        return;
+    const auto found = resource->accessibility_nodes.find(self.node);
+    if (found == resource->accessibility_nodes.end())
+        return;
+    const auto &node = found->second;
+    if ([attribute isEqualToString:NSAccessibilityFocusedAttribute] &&
+        [value respondsToSelector:@selector(boolValue)]) {
+        const auto action = [value boolValue] ? NK_ACCESSIBILITY_ACTION_FOCUS
+                                              : NK_ACCESSIBILITY_ACTION_CLEAR_FOCUS;
+        if (emit_mac_accessibility_action(self.surface, self.node, action) == NK_OK)
+            NSAccessibilityPostNotification(self, NSAccessibilityFocusedUIElementChangedNotification);
+    } else if ([attribute isEqualToString:NSAccessibilityValueAttribute]) {
+        const std::string text = utf8([value isKindOfClass:[NSString class]]
+                                          ? value
+                                          : [value description]);
+        emit_mac_accessibility_action(self.surface, self.node,
+                                      NK_ACCESSIBILITY_ACTION_SET_VALUE, text);
+    } else if ([attribute isEqualToString:NSAccessibilitySelectedTextRangeAttribute] &&
+               [value isKindOfClass:[NSValue class]]) {
+        nk_accessibility_text_position start = NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+        nk_accessibility_text_position end = NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+        if (mac_accessibility_codepoint_range(node, [value rangeValue], start, end))
+            emit_mac_accessibility_action(self.surface, self.node,
+                                          NK_ACCESSIBILITY_ACTION_SET_SELECTION, {}, start, end);
+    } else if ([attribute isEqualToString:NSAccessibilitySelectedAttribute] &&
+               [value respondsToSelector:@selector(boolValue)]) {
+        emit_mac_accessibility_action(
+            self.surface, self.node,
+            [value boolValue] ? NK_ACCESSIBILITY_ACTION_SELECT : NK_ACCESSIBILITY_ACTION_DESELECT);
+    } else if ([attribute isEqualToString:NSAccessibilityExpandedAttribute] &&
+               [value respondsToSelector:@selector(boolValue)]) {
+        emit_mac_accessibility_action(
+            self.surface, self.node,
+            [value boolValue] ? NK_ACCESSIBILITY_ACTION_EXPAND : NK_ACCESSIBILITY_ACTION_COLLAPSE);
+    }
+}
+
+- (NSArray<NSString *> *)accessibilityActionNames {
+    auto resource = surface(self.surface);
+    if (!resource)
+        return @[];
+    const auto found = resource->accessibility_nodes.find(self.node);
+    if (found == resource->accessibility_nodes.end())
+        return @[];
+    const auto actions = found->second.actions;
+    NSMutableArray<NSString *> *result = [NSMutableArray array];
+    if (actions & NK_ACCESSIBILITY_CAN_ACTIVATE)
+        [result addObject:NSAccessibilityPressAction];
+    if (actions & NK_ACCESSIBILITY_CAN_INCREMENT)
+        [result addObject:NSAccessibilityIncrementAction];
+    if (actions & NK_ACCESSIBILITY_CAN_DECREMENT)
+        [result addObject:NSAccessibilityDecrementAction];
+    if (actions & NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU)
+        [result addObject:NSAccessibilityShowMenuAction];
+    if (actions & NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW)
+        [result addObject:NSAccessibilityScrollToVisibleAction];
+    auto add = [&](nk_accessibility_actions bit, NSString *name) {
+        if (actions & bit)
+            [result addObject:name];
+    };
+    add(NK_ACCESSIBILITY_CAN_SET_VALUE, NKMacAccessibilitySetValueAction);
+    add(NK_ACCESSIBILITY_CAN_SET_SELECTION, NKMacAccessibilitySetSelectionAction);
+    add(NK_ACCESSIBILITY_CAN_SCROLL_FORWARD, NKMacAccessibilityScrollForwardAction);
+    add(NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD, NKMacAccessibilityScrollBackwardAction);
+    add(NK_ACCESSIBILITY_CAN_MOVE_NEXT, NKMacAccessibilityMoveNextAction);
+    add(NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS, NKMacAccessibilityMovePreviousAction);
+    add(NK_ACCESSIBILITY_CAN_TOGGLE, NKMacAccessibilityToggleAction);
+    add(NK_ACCESSIBILITY_CAN_SELECT, NKMacAccessibilitySelectAction);
+    add(NK_ACCESSIBILITY_CAN_DESELECT, NKMacAccessibilityDeselectAction);
+    add(NK_ACCESSIBILITY_CAN_EXPAND, NKMacAccessibilityExpandAction);
+    add(NK_ACCESSIBILITY_CAN_COLLAPSE, NKMacAccessibilityCollapseAction);
+    add(NK_ACCESSIBILITY_CAN_DISMISS, NKMacAccessibilityDismissAction);
+    return result;
+}
+
+- (void)accessibilityPerformAction:(NSString *)action {
+    nk_accessibility_action requested = 0;
+    if ([action isEqualToString:NSAccessibilityPressAction])
+        requested = NK_ACCESSIBILITY_ACTION_ACTIVATE;
+    else if ([action isEqualToString:NSAccessibilityIncrementAction])
+        requested = NK_ACCESSIBILITY_ACTION_INCREMENT;
+    else if ([action isEqualToString:NSAccessibilityDecrementAction])
+        requested = NK_ACCESSIBILITY_ACTION_DECREMENT;
+    else if ([action isEqualToString:NSAccessibilityShowMenuAction])
+        requested = NK_ACCESSIBILITY_ACTION_SHOW_CONTEXT_MENU;
+    else if ([action isEqualToString:NSAccessibilityScrollToVisibleAction])
+        requested = NK_ACCESSIBILITY_ACTION_SCROLL_INTO_VIEW;
+    else
+        requested = mac_accessibility_action_for_name(action);
+    if (requested)
+        emit_mac_accessibility_action(self.surface, self.node, requested);
+}
+
+- (NSString *)accessibilityActionDescription:(NSString *)action {
+    if ([action isEqualToString:NSAccessibilityPressAction])
+        return @"Activate";
+    if ([action isEqualToString:NSAccessibilityIncrementAction])
+        return @"Increment";
+    if ([action isEqualToString:NSAccessibilityDecrementAction])
+        return @"Decrement";
+    if ([action isEqualToString:NSAccessibilityShowMenuAction])
+        return @"Show menu";
+    if ([action isEqualToString:NSAccessibilityScrollToVisibleAction])
+        return @"Scroll into view";
+    if ([action isEqualToString:NKMacAccessibilitySetValueAction])
+        return @"Set value";
+    if ([action isEqualToString:NKMacAccessibilitySetSelectionAction])
+        return @"Set selection";
+    if ([action isEqualToString:NKMacAccessibilityToggleAction])
+        return @"Toggle";
+    if ([action isEqualToString:NKMacAccessibilitySelectAction])
+        return @"Select";
+    if ([action isEqualToString:NKMacAccessibilityDeselectAction])
+        return @"Deselect";
+    if ([action isEqualToString:NKMacAccessibilityExpandAction])
+        return @"Expand";
+    if ([action isEqualToString:NKMacAccessibilityCollapseAction])
+        return @"Collapse";
+    if ([action isEqualToString:NKMacAccessibilityDismissAction])
+        return @"Dismiss";
+    if ([action isEqualToString:NKMacAccessibilityMoveNextAction])
+        return @"Next";
+    if ([action isEqualToString:NKMacAccessibilityMovePreviousAction])
+        return @"Previous";
+    if ([action isEqualToString:NKMacAccessibilityScrollForwardAction])
+        return @"Scroll forward";
+    if ([action isEqualToString:NKMacAccessibilityScrollBackwardAction])
+        return @"Scroll backward";
+    return action;
+}
+@end
+
+@implementation NKMacAccessibilityContainer
+- (instancetype)initWithFrame:(NSRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.elements = @[];
+        self.allElements = @[];
+        self.accessibilityElement = YES;
+        self.accessibilityRole = NSAccessibilityGroupRole;
+        self.hidden = NO;
+    }
+    return self;
+}
+
+- (BOOL)isFlipped {
+    return YES;
+}
+
+- (BOOL)acceptsFirstResponder {
+    return NO;
+}
+
+- (NSView *)hitTest:(NSPoint)point {
+    (void)point;
+    return nil;
+}
+
+- (BOOL)accessibilityIsIgnored {
+    return NO;
+}
+
+- (id)accessibilityAttributeValue:(NSString *)attribute {
+    if ([attribute isEqualToString:NSAccessibilityRoleAttribute])
+        return NSAccessibilityGroupRole;
+    if ([attribute isEqualToString:NSAccessibilityRoleDescriptionAttribute])
+        return NSAccessibilityRoleDescription(NSAccessibilityGroupRole, nil);
+    if ([attribute isEqualToString:NSAccessibilityChildrenAttribute])
+        return self.elements ?: @[];
+    if ([attribute isEqualToString:NSAccessibilityEnabledAttribute])
+        return @YES;
+    if ([attribute isEqualToString:NSAccessibilityFrameAttribute]) {
+        const NSRect local = self.bounds;
+        if (self.window)
+            return [NSValue valueWithRect:[self.window convertRectToScreen:
+                                                      [self convertRect:local toView:nil]]];
+        return [NSValue valueWithRect:local];
+    }
+    if ([attribute isEqualToString:NSAccessibilityParentAttribute])
+        return self.superview;
+    if ([attribute isEqualToString:NSAccessibilityFocusedUIElementAttribute]) {
+        auto resource = surface(self.surface);
+        if (!resource || resource->accessibility_focus == NK_ACCESSIBILITY_ROOT)
+            return nil;
+        for (NKMacAccessibilityElement *element in self.allElements)
+            if (element.node == resource->accessibility_focus)
+                return element;
+        return nil;
+    }
+    return nil;
+}
+
+- (NSArray<NSString *> *)accessibilityAttributeNames {
+    return @[ NSAccessibilityRoleAttribute, NSAccessibilityRoleDescriptionAttribute,
+               NSAccessibilityChildrenAttribute, NSAccessibilityEnabledAttribute,
+               NSAccessibilityFrameAttribute, NSAccessibilityParentAttribute,
+               NSAccessibilityFocusedUIElementAttribute ];
+}
+
+- (BOOL)accessibilityIsAttributeSettable:(NSString *)attribute {
+    (void)attribute;
+    return NO;
+}
+
+- (id)accessibilityHitTest:(NSPoint)point {
+    for (NKMacAccessibilityElement *element in self.allElements) {
+        NSValue *frame = [element accessibilityAttributeValue:NSAccessibilityFrameAttribute];
+        if (frame && NSPointInRect(point, frame.rectValue))
+            return element;
+    }
+    return self;
+}
+@end
+
 @implementation NKMetalSurfaceView
 - (BOOL)isFlipped {
     return YES;
@@ -2349,7 +3301,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO | NK_CAP_INPUT |
            NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY |
            NK_CAP_WINDOW_STYLING | NK_CAP_METAL_SURFACE | NK_CAP_MONITOR |
-           NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK;
+           NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -3366,7 +4318,16 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             resource->layer.opaque = (options->flags & NK_SURFACE_ALPHA) == 0;
             resource->view.layer = resource->layer;
             resource->view.hidden = (options->flags & NK_SURFACE_HIDDEN) != 0;
+            resource->accessibility_container =
+                [[NKMacAccessibilityContainer alloc] initWithFrame:NSMakeRect(
+                    resource->x, resource->y, resource->width, resource->height)];
+            if (!resource->accessibility_container)
+                return fail(NK_ERROR_OUT_OF_MEMORY, "could not create the macOS accessibility container");
+            resource->accessibility_container.hidden = resource->view.hidden;
             [parent->content addSubview:resource->view positioned:NSWindowAbove relativeTo:nil];
+            [parent->content addSubview:resource->accessibility_container
+                         positioned:NSWindowAbove
+                         relativeTo:resource->view];
             set_surface_native_bounds(*resource);
             if (resource->framebuffer_width > 0 && resource->framebuffer_height > 0 &&
                 !ensure_surface_depth_target(*resource, resource->framebuffer_width,
@@ -3382,6 +4343,8 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             parent->surfaces.push_back(resource->handle);
             if (shared)
                 ++shared->share_dependents;
+            resource->accessibility_container.surface = resource->handle;
+            refresh_mac_accessibility_elements(*resource);
             resource->ready = true;
             nk::core::QueuedEvent event;
             event.kind = NK_EVENT_SURFACE_READY;
@@ -3409,6 +4372,9 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
     resource->frame_timer = nil;
     resource->drawable = nil;
     resource->depth_stencil = nil;
+    resource->accessibility_container.surface = NK_INVALID_HANDLE;
+    [resource->accessibility_container removeFromSuperview];
+    resource->accessibility_container = nil;
     if (resource->view)
         [resource->view removeFromSuperview];
     resource->view = nil;
@@ -3432,6 +4398,7 @@ nk_result NK_CALL nk_surface_show(nk_handle handle, uint32_t visible) {
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
     resource->view.hidden = visible == 0;
+    resource->accessibility_container.hidden = visible == 0;
     return NK_OK;
 }
 
@@ -3448,9 +4415,186 @@ nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, 
     resource->y = y;
     resource->width = width;
     resource->height = height;
-    return set_surface_native_bounds(*resource)
-               ? NK_OK
-               : fail(NK_ERROR_UNKNOWN, "could not resize the Metal child surface");
+    if (!set_surface_native_bounds(*resource))
+        return fail(NK_ERROR_UNKNOWN, "could not resize the Metal child surface");
+    refresh_mac_accessibility_elements(*resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle handle,
+                                                    const nk_accessibility_node *node) {
+    return nk::core::result_boundary(
+        "unexpected error while setting a macOS accessibility node", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = surface(handle);
+            if (!resource)
+                return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale Metal surface handle");
+            if (!node)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "macOS accessibility node is missing");
+            MacAccessibilityNode copy;
+            if (!copy_mac_accessibility_node(*node, resource->accessibility_nodes, copy))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid macOS accessibility node");
+            if (const auto old = resource->accessibility_nodes.find(node->id);
+                old != resource->accessibility_nodes.end())
+                copy.text_ranges = old->second.text_ranges;
+            resource->accessibility_nodes[node->id] = std::move(copy);
+            refresh_mac_accessibility_elements(*resource);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_remove_node(nk_handle handle,
+                                                       nk_accessibility_node_id node) {
+    return nk::core::result_boundary(
+        "unexpected error while removing a macOS accessibility node", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = surface(handle);
+            if (!resource)
+                return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale Metal surface handle");
+            if (!node || resource->accessibility_nodes.find(node) == resource->accessibility_nodes.end())
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "invalid or unknown macOS accessibility node");
+            remove_mac_accessibility_descendants(resource->accessibility_nodes, node);
+            if (resource->accessibility_nodes.find(resource->accessibility_focus) ==
+                resource->accessibility_nodes.end())
+                resource->accessibility_focus = NK_ACCESSIBILITY_ROOT;
+            refresh_mac_accessibility_elements(*resource);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_clear(nk_handle handle) {
+    return nk::core::result_boundary(
+        "unexpected error while clearing macOS accessibility nodes", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = surface(handle);
+            if (!resource)
+                return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale Metal surface handle");
+            resource->accessibility_nodes.clear();
+            resource->accessibility_focus = NK_ACCESSIBILITY_ROOT;
+            refresh_mac_accessibility_elements(*resource);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle handle,
+                                                    nk_accessibility_node_id node) {
+    return nk::core::result_boundary(
+        "unexpected error while focusing a macOS accessibility node", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = surface(handle);
+            if (!resource)
+                return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale Metal surface handle");
+            if (node != NK_ACCESSIBILITY_ROOT && resource->accessibility_nodes.find(node) ==
+                                                    resource->accessibility_nodes.end())
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "cannot focus an unknown macOS accessibility node");
+            resource->accessibility_focus = node;
+            refresh_mac_accessibility_elements(*resource);
+            if (node == NK_ACCESSIBILITY_ROOT) {
+                NSAccessibilityPostNotification(resource->accessibility_container,
+                                                NSAccessibilityFocusedUIElementChangedNotification);
+            } else {
+                for (NKMacAccessibilityElement *element in
+                     resource->accessibility_container.allElements)
+                    if (element.node == node) {
+                        NSAccessibilityPostNotification(
+                            element, NSAccessibilityFocusedUIElementChangedNotification);
+                        break;
+                    }
+            }
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
+                                                  const nk_accessibility_update *update) {
+    return nk::core::result_boundary(
+        "unexpected error while updating macOS accessibility nodes", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = surface(handle);
+            if (!resource)
+                return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale Metal surface handle");
+            if (!update || update->struct_size < sizeof(*update) ||
+                (update->flags & ~NK_ACCESSIBILITY_UPDATE_FOCUS) ||
+                (update->node_count && !update->nodes) ||
+                (update->removed_node_count && !update->removed_nodes))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid macOS accessibility update");
+
+            auto nodes = resource->accessibility_nodes;
+            for (uint32_t index = 0; index < update->removed_node_count; ++index) {
+                const auto removed = update->removed_nodes[index];
+                if (!removed || nodes.find(removed) == nodes.end())
+                    return fail(NK_ERROR_INVALID_ARGUMENT,
+                                "macOS accessibility update removes an unknown node");
+                remove_mac_accessibility_descendants(nodes, removed);
+            }
+            for (uint32_t index = 0; index < update->node_count; ++index) {
+                const auto &node = update->nodes[index];
+                MacAccessibilityNode copy;
+                if (!copy_mac_accessibility_node(node, nodes, copy))
+                    return fail(NK_ERROR_INVALID_ARGUMENT,
+                                "invalid node in macOS accessibility update");
+                if (const auto old = nodes.find(node.id); old != nodes.end())
+                    copy.text_ranges = old->second.text_ranges;
+                nodes[node.id] = std::move(copy);
+            }
+            if ((update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS) && update->focus !=
+                                                                  NK_ACCESSIBILITY_ROOT &&
+                nodes.find(update->focus) == nodes.end())
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "macOS accessibility update focuses an unknown node");
+            resource->accessibility_nodes = std::move(nodes);
+            if (update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS)
+                resource->accessibility_focus = update->focus;
+            else if (resource->accessibility_focus != NK_ACCESSIBILITY_ROOT &&
+                     resource->accessibility_nodes.find(resource->accessibility_focus) ==
+                         resource->accessibility_nodes.end())
+                resource->accessibility_focus = NK_ACCESSIBILITY_ROOT;
+            refresh_mac_accessibility_elements(*resource);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
+    nk_handle handle, nk_accessibility_node_id node, const nk_accessibility_text_range *ranges,
+    uint32_t range_count) {
+    return nk::core::result_boundary(
+        "unexpected error while setting macOS accessibility text ranges", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = surface(handle);
+            if (!resource)
+                return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale Metal surface handle");
+            const auto found = resource->accessibility_nodes.find(node);
+            if (!node || found == resource->accessibility_nodes.end() ||
+                (range_count && !ranges))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid macOS accessibility text ranges");
+            std::vector<MacAccessibilityTextRange> copy;
+            copy.reserve(range_count);
+            nk_accessibility_text_position previous = 0;
+            for (uint32_t index = 0; index < range_count; ++index) {
+                const auto &range = ranges[index];
+                if (range.start >= range.end || range.start < previous ||
+                    range.end > found->second.document_length ||
+                    !std::isfinite(range.x) || !std::isfinite(range.y) ||
+                    !std::isfinite(range.width) || !std::isfinite(range.height) ||
+                    range.width < 0 || range.height < 0)
+                    return fail(NK_ERROR_INVALID_ARGUMENT,
+                                "invalid or unordered macOS accessibility text ranges");
+                copy.push_back({range.start, range.end, range.x, range.y, range.width,
+                                range.height});
+                previous = range.end;
+            }
+            found->second.text_ranges = std::move(copy);
+            refresh_mac_accessibility_elements(*resource);
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_surface_make_current(nk_handle handle) {

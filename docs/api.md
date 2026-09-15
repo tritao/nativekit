@@ -278,6 +278,12 @@ scrolling, custom actions, and value editing produce the same
 logical pixels to screen coordinates, and `nk_surface_accessibility_set_focus()`
 posts the corresponding UIKit accessibility focus notification.
 
+macOS projects the tree as `NSAccessibilityElement` objects inside the Metal
+surface's accessibility container. Cocoa focus, activation, value, selection,
+adjustment, scrolling, and custom actions produce the same
+`NK_EVENT_ACCESSIBILITY_ACTION` payloads. Bounds and text-range geometry are
+converted from surface logical pixels to screen coordinates.
+
 Cursor resources may be standard platform shapes or copied RGBA8 images.
 Destroying a cursor handle does not invalidate a cursor already selected by a
 window. Windows supports normal, hidden, and captured pointer modes; disabled
