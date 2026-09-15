@@ -28,6 +28,10 @@ static HKL activate_japanese_layout(void) {
 }
 
 static int activate_japanese_ime_profile(void) {
+    static const GUID clsid_input_processor_profiles =
+        {0x33c53a50, 0xf456, 0x4884, {0xb0, 0x49, 0x85, 0xfd, 0x64, 0x3e, 0xcf, 0xed}};
+    static const GUID iid_input_processor_profiles =
+        {0x1f02b6c5, 0x7842, 0x4ee6, {0x8a, 0x0b, 0x9a, 0x24, 0x18, 0x3a, 0x95, 0xca}};
     GUID clsid = {0};
     GUID profile = {0};
     ITfInputProcessorProfiles *profiles = NULL;
@@ -40,8 +44,8 @@ static int activate_japanese_ime_profile(void) {
             CoUninitialize();
         return 0;
     }
-    HRESULT created = CoCreateInstance(&CLSID_TF_InputProcessorProfiles, NULL,
-                                       CLSCTX_INPROC_SERVER, &IID_ITfInputProcessorProfiles,
+    HRESULT created = CoCreateInstance(&clsid_input_processor_profiles, NULL,
+                                       CLSCTX_INPROC_SERVER, &iid_input_processor_profiles,
                                        (void **)&profiles);
     int activated = 0;
     if (SUCCEEDED(created)) {
