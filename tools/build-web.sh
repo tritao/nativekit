@@ -18,7 +18,7 @@ source "$emsdk_dir/emsdk_env.sh" >/dev/null
 emcmake cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE="$build_type" \
     -DNK_BUILD_SHARED=OFF \
-    -DNK_BUILD_TESTS=OFF \
+    -DNK_BUILD_TESTS=ON \
     -DNK_BUILD_EXAMPLES=ON \
     -DNK_BUILD_GPU=OFF \
     -DNK_BUILD_UI=ON \
@@ -26,13 +26,16 @@ emcmake cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
     -DNKUI_HAXEON_EXCEPTION_MODE="$exception_mode" \
     -DNKUI_HAXEON_MEMORY_STATS="$memory_stats" \
     -DNK_SOKOL_BACKEND=gles3
-cmake --build "$build_dir" --target nativekit_ui_c_api nativekit_ui_haxeon
+cmake --build "$build_dir" --target nativekit_ui_c_api nativekit_ui_haxeon \
+    nativekit_web_accessibility nativekit_web_system_equivalents
 
 artifact_dir="$build_dir/modules/ui"
 echo
 echo "Web build complete:"
 echo "  $artifact_dir/nativekit_ui_c_api.html"
 echo "  $artifact_dir/nativekit_ui_haxeon.html"
+echo "  $build_dir/tests/nativekit_web_accessibility.html"
+echo "  $build_dir/tests/nativekit_web_system_equivalents.html"
 echo
-echo "Serve it over HTTP (required for the packaged font):"
-echo "  python3 -m http.server --directory \"$artifact_dir\" 8080"
+echo "Serve it over HTTP (required for the packaged font and browser tests):"
+echo "  python3 -m http.server --directory \"$build_dir\" 8080"

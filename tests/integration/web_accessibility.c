@@ -98,6 +98,10 @@ int main(void) {
     nk_event_release(&event);
     assert(action_seen);
 
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ document.documentElement.dataset.nativekitAccessibilityResult = "passed"; });
+#endif
+
     assert(nk_surface_accessibility_clear(surface) == NK_OK);
     assert(nk_surface_destroy(surface) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);

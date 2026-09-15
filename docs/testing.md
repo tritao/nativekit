@@ -6,6 +6,23 @@ initialization, while the GTK integration test leaves an asynchronous clipboard
 read outstanding across shutdown and verifies that it cannot enter the next
 runtime generation.
 
+## Capability contract and shared conformance
+
+`platform_parity` loads the checked-in capability snapshot at
+`tests/capability-snapshots.txt`. It verifies that each backend advertises all
+required capabilities, does not advertise deferred or not-applicable bits, and
+classifies every public capability bit exactly once. An intentional capability
+change must update the snapshot, the normative
+[platform parity contract](platform-parity.md), and behavior coverage together.
+
+Desktop backends also run `capability_conformance`, a shared operation-level
+suite for windows, extended geometry and styling, input/IME, cursors, monitors,
+resource I/O and sharing, graphics surfaces, accessibility, system services,
+and WebView operations. Linux runs it under Xvfb; Windows and macOS run the
+same executable natively. The suite is capability-driven so platform-specific
+equivalents can share semantic coverage without requiring identical native
+objects.
+
 On Linux, `linux_notification_failure` runs in an isolated D-Bus session with
 no notification daemon. It verifies that an accepted asynchronous request
 produces a queue-guaranteed `NK_EVENT_NOTIFICATION_FAILED` instead of hanging.
@@ -32,7 +49,8 @@ browser-hosted HTML integration binary. It publishes a small semantic tree,
 checks focus and text-range updates, dispatches a DOM activation, and verifies
 that the resulting `NK_EVENT_ACCESSIBILITY_ACTION` reaches NativeKit. Serve
 the generated HTML over HTTP and run it in the same browser environment used by
-the Web smoke tests.
+the Web smoke tests. `tools/build-web.sh` builds this artifact and
+`tools/test-web.sh` runs it automatically when the test artifact is present.
 
 ## Web system-equivalents test
 
@@ -42,8 +60,10 @@ appearance, notification, joystick, and resource-I/O capabilities, validates
 the appearance and URI input boundaries, performs an initial Gamepad
 enumeration, and exercises a writable retained-handle stream through a fake
 File System Access handle. The asynchronous flush is marked on the document
-for browser-runner assertions. Resource pickers and notification permission
-prompts still require a user-activated browser test because browsers
+for browser-runner assertions. `tools/test-web.sh` checks that marker through
+the same Chrome DevTools session as the showcase smoke test. Resource pickers
+and notification permission prompts still require a user-activated browser test
+because browsers
 intentionally reject those APIs outside a trusted user gesture.
 
 ## Android tests
@@ -106,6 +126,17 @@ destruction during initialization when the Evergreen runtime is present; ARM64
 is cross-compiled. Native testing
 remains authoritative for COM, accessibility, per-monitor DPI, system
 integration, and browser behavior.
+
+## iOS simulator runtime tests
+
+The iOS workflow builds the library for device and simulator SDKs. The
+simulator job additionally builds `nativekit_ios_runtime_tests`, installs it on
+an available iPhone simulator, and launches the app through `simctl`. The app
+attaches a real UIKit host and exercises capability discovery, Metal frame
+acquisition and callbacks, UIKit text input, custom-surface accessibility,
+WKWebView evaluation, appearance, and clipboard before reporting a pass/fail
+marker. This keeps the device build as a compile/link check while giving the
+simulator backend runtime coverage.
 
 ## macOS native tests
 

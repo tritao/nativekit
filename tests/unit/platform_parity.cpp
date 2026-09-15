@@ -1,8 +1,21 @@
 #include "nativekit.h"
 #include "nativekit_window.h"
 
+#include <algorithm>
+#include <array>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#ifndef NK_CAPABILITY_SNAPSHOT_FILE
+#define NK_CAPABILITY_SNAPSHOT_FILE "capability-snapshots.txt"
+#endif
 
 namespace {
 
@@ -32,95 +45,142 @@ constexpr mask k_known_capabilities =
     cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_ACCESSIBILITY) | cap(NK_CAP_D3D11_SURFACE) |
     cap(NK_CAP_METAL_SURFACE);
 
-constexpr mask k_desktop_common = cap(NK_CAP_WINDOW) | cap(NK_CAP_FILE_DIALOG) |
-                                   cap(NK_CAP_CLIPBOARD) | cap(NK_CAP_DRAG_DROP) |
-                                   cap(NK_CAP_SHELL) | cap(NK_CAP_SYSTEM_APPEARANCE) |
-                                   cap(NK_CAP_EXPORT_NATIVE_WINDOW) | cap(NK_CAP_NOTIFICATION) |
-                                   cap(NK_CAP_INPUT) | cap(NK_CAP_CURSOR) |
-                                   cap(NK_CAP_POINTER_CAPTURE) | cap(NK_CAP_RESOURCE_IO);
-
-constexpr backend_contract current_contract() {
+const char *current_backend_name() {
 #if defined(NK_PARITY_BACKEND_LINUX)
-    return {"Linux/GTK",
-            k_desktop_common | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_OPENGL_SURFACE) |
-                cap(NK_CAP_OPENGL_ES_SURFACE) | cap(NK_CAP_WINDOW_GEOMETRY) |
-                cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
-                cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_JOYSTICK) |
-                cap(NK_CAP_RESOURCE_SHARING) |
-                cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_ACCESSIBILITY) |
-                cap(NK_CAP_WRAP_NATIVE_WINDOW),
-            cap(NK_CAP_D3D11_SURFACE) |
-                cap(NK_CAP_METAL_SURFACE) |
-                cap(NK_CAP_MOBILE_HOST),
-            0,
-            0};
+    return "Linux/GTK";
 #elif defined(NK_PARITY_BACKEND_WINDOWS)
-    return {"Windows",
-            k_desktop_common | cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) |
-                cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_ACCESSIBILITY) | cap(NK_CAP_MONITOR) |
-                cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_JOYSTICK) |
-                cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_WRAP_NATIVE_WINDOW),
-            cap(NK_CAP_OPENGL_SURFACE) | cap(NK_CAP_OPENGL_ES_SURFACE) |
-                cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_MOBILE_HOST),
-            0,
-            cap(NK_CAP_WEBVIEW)};
+    return "Windows";
 #elif defined(NK_PARITY_BACKEND_MACOS)
-    return {"macOS",
-            k_desktop_common | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_WINDOW_GEOMETRY) |
-                cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_MONITOR) |
-                cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_JOYSTICK) |
-                cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_ACCESSIBILITY) |
-                cap(NK_CAP_WRAP_NATIVE_WINDOW),
-            cap(NK_CAP_OPENGL_SURFACE) |
-                cap(NK_CAP_OPENGL_ES_SURFACE) | cap(NK_CAP_VULKAN_SURFACE) |
-                cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_MOBILE_HOST),
-            0,
-            0};
+    return "macOS";
 #elif defined(NK_PARITY_BACKEND_ANDROID)
-    return {"Android",
-            cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_FILE_DIALOG) |
-                cap(NK_CAP_CLIPBOARD) | cap(NK_CAP_DRAG_DROP) | cap(NK_CAP_SHELL) |
-                cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_NOTIFICATION) | cap(NK_CAP_INPUT) |
-                cap(NK_CAP_OPENGL_ES_SURFACE) | cap(NK_CAP_VULKAN_SURFACE) |
-                cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_RESOURCE_IO) | cap(NK_CAP_JOYSTICK) |
-                cap(NK_CAP_ACCESSIBILITY),
-            0,
-            cap(NK_CAP_WINDOW) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) | cap(NK_CAP_WRAP_NATIVE_WINDOW) |
-                cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
-                cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) |
-                cap(NK_CAP_OPENGL_SURFACE) | cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_METAL_SURFACE),
-            0};
+    return "Android";
 #elif defined(NK_PARITY_BACKEND_IOS)
-    return {"iOS",
-            cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_FILE_DIALOG) |
-                cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_INPUT) | cap(NK_CAP_RESOURCE_IO) |
-                cap(NK_CAP_CLIPBOARD) | cap(NK_CAP_SHELL) | cap(NK_CAP_SYSTEM_APPEARANCE) |
-                cap(NK_CAP_NOTIFICATION) | cap(NK_CAP_ACCESSIBILITY),
-            cap(NK_CAP_DRAG_DROP) | cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_JOYSTICK),
-            cap(NK_CAP_WINDOW) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) | cap(NK_CAP_WRAP_NATIVE_WINDOW) |
-                cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
-                cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) |
-                cap(NK_CAP_OPENGL_SURFACE) | cap(NK_CAP_OPENGL_ES_SURFACE) |
-                cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_D3D11_SURFACE),
-            0};
+    return "iOS";
 #elif defined(NK_PARITY_BACKEND_WEB)
-    return {"Web",
-            cap(NK_CAP_WINDOW) | cap(NK_CAP_INPUT) | cap(NK_CAP_OPENGL_ES_SURFACE) |
-            cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) | cap(NK_CAP_CLIPBOARD) |
-            cap(NK_CAP_DRAG_DROP) | cap(NK_CAP_WINDOW_GEOMETRY) |
-            cap(NK_CAP_SHELL) | cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_NOTIFICATION) |
-            cap(NK_CAP_JOYSTICK) | cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_RESOURCE_IO) |
-            cap(NK_CAP_ACCESSIBILITY),
-            cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_FILE_DIALOG),
-            cap(NK_CAP_WEBVIEW) | cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) |
-                cap(NK_CAP_WRAP_NATIVE_WINDOW) | cap(NK_CAP_MONITOR) |
-                cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_OPENGL_SURFACE) |
-                cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_METAL_SURFACE),
-            0};
+    return "Web";
 #else
-    return {"fallback stub", cap(NK_CAP_RESOURCE_IO), k_known_capabilities & ~cap(NK_CAP_RESOURCE_IO), 0,
-            0};
+    return "fallback-stub";
 #endif
+}
+
+struct capability_name {
+    std::string_view name;
+    nk_capabilities value;
+};
+
+constexpr std::array<capability_name, 27> k_capability_names = {{
+    {"WINDOW", NK_CAP_WINDOW},
+    {"WEBVIEW", NK_CAP_WEBVIEW},
+    {"FILE_DIALOG", NK_CAP_FILE_DIALOG},
+    {"CLIPBOARD", NK_CAP_CLIPBOARD},
+    {"DRAG_DROP", NK_CAP_DRAG_DROP},
+    {"SHELL", NK_CAP_SHELL},
+    {"SYSTEM_APPEARANCE", NK_CAP_SYSTEM_APPEARANCE},
+    {"EXPORT_NATIVE_WINDOW", NK_CAP_EXPORT_NATIVE_WINDOW},
+    {"WRAP_NATIVE_WINDOW", NK_CAP_WRAP_NATIVE_WINDOW},
+    {"NOTIFICATION", NK_CAP_NOTIFICATION},
+    {"MOBILE_HOST", NK_CAP_MOBILE_HOST},
+    {"INPUT", NK_CAP_INPUT},
+    {"OPENGL_SURFACE", NK_CAP_OPENGL_SURFACE},
+    {"OPENGL_ES_SURFACE", NK_CAP_OPENGL_ES_SURFACE},
+    {"CURSOR", NK_CAP_CURSOR},
+    {"POINTER_CAPTURE", NK_CAP_POINTER_CAPTURE},
+    {"WINDOW_GEOMETRY", NK_CAP_WINDOW_GEOMETRY},
+    {"WINDOW_STYLING", NK_CAP_WINDOW_STYLING},
+    {"MONITOR", NK_CAP_MONITOR},
+    {"MONITOR_FULLSCREEN", NK_CAP_MONITOR_FULLSCREEN},
+    {"JOYSTICK", NK_CAP_JOYSTICK},
+    {"RESOURCE_SHARING", NK_CAP_RESOURCE_SHARING},
+    {"RESOURCE_IO", NK_CAP_RESOURCE_IO},
+    {"VULKAN_SURFACE", NK_CAP_VULKAN_SURFACE},
+    {"ACCESSIBILITY", NK_CAP_ACCESSIBILITY},
+    {"D3D11_SURFACE", NK_CAP_D3D11_SURFACE},
+    {"METAL_SURFACE", NK_CAP_METAL_SURFACE},
+}};
+
+std::string_view trim(std::string_view value) {
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())))
+        value.remove_prefix(1);
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())))
+        value.remove_suffix(1);
+    return value;
+}
+
+bool parse_capability_list(std::string_view text, mask &out, const char *backend,
+                           const char *category) {
+    out = 0;
+    text = trim(text);
+    if (text.empty() || text == "NONE")
+        return true;
+    while (!text.empty()) {
+        const auto separator = text.find(',');
+        const auto token = trim(text.substr(0, separator));
+        const auto found = std::find_if(k_capability_names.begin(), k_capability_names.end(),
+                                        [token](const capability_name &item) {
+                                            return item.name == token;
+                                        });
+        if (token.empty() || found == k_capability_names.end()) {
+            std::fprintf(stderr, "%s snapshot has unknown %s capability '%.*s'\n", backend,
+                         category, static_cast<int>(token.size()), token.data());
+            return false;
+        }
+        const auto value = cap(found->value);
+        if (out & value) {
+            std::fprintf(stderr, "%s snapshot repeats %s capability '%.*s'\n", backend, category,
+                         static_cast<int>(token.size()), token.data());
+            return false;
+        }
+        out |= value;
+        if (separator == std::string_view::npos)
+            break;
+        text.remove_prefix(separator + 1);
+    }
+    return true;
+}
+
+bool load_contract(backend_contract &contract) {
+    std::ifstream input(NK_CAPABILITY_SNAPSHOT_FILE);
+    if (!input) {
+        std::fprintf(stderr, "could not open capability snapshot: %s\n", NK_CAPABILITY_SNAPSHOT_FILE);
+        return false;
+    }
+    std::string line;
+    bool found_backend = false;
+    while (std::getline(input, line)) {
+        const auto content = trim(line);
+        if (content.empty() || content.front() == '#')
+            continue;
+        std::istringstream fields_stream{std::string(content)};
+        std::vector<std::string> fields;
+        std::string field;
+        while (std::getline(fields_stream, field, '|'))
+            fields.push_back(std::move(field));
+        if (fields.size() != 5) {
+            std::fprintf(stderr, "malformed capability snapshot row: %s\n", line.c_str());
+            return false;
+        }
+        if (trim(fields[0]) != contract.name)
+            continue;
+        if (found_backend) {
+            std::fprintf(stderr, "duplicate capability snapshot row for %s\n", contract.name);
+            return false;
+        }
+        found_backend = true;
+        contract.required = 0;
+        contract.deferred = 0;
+        contract.not_applicable = 0;
+        contract.optional = 0;
+        if (!parse_capability_list(fields[1], contract.required, contract.name, "required") ||
+            !parse_capability_list(fields[2], contract.deferred, contract.name, "deferred") ||
+            !parse_capability_list(fields[3], contract.not_applicable, contract.name, "not-applicable") ||
+            !parse_capability_list(fields[4], contract.optional, contract.name, "optional"))
+            return false;
+    }
+    if (!found_backend) {
+        std::fprintf(stderr, "capability snapshot has no row for %s\n", contract.name);
+        return false;
+    }
+    return true;
 }
 
 bool check_disjoint(const backend_contract &contract) {
@@ -148,8 +208,8 @@ bool check_disjoint(const backend_contract &contract) {
 } // namespace
 
 int main() {
-    const auto contract = current_contract();
-    if (!check_disjoint(contract))
+    backend_contract contract{current_backend_name(), 0, 0, 0, 0};
+    if (!load_contract(contract) || !check_disjoint(contract))
         return 1;
 
     nk_init_options options = {};

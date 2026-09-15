@@ -111,6 +111,9 @@ struct GtkWindowResource final : nk::core::Resource {
     GtkWidget *container = nullptr;
     GdkWindow *foreign_window = nullptr;
     GtkIMContext *im_context = nullptr;
+    std::string text_input_text;
+    nk_text_input_state text_input_state{};
+    bool text_input_active = false;
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle owner = NK_INVALID_HANDLE;
     std::vector<nk_handle> children;
@@ -3622,6 +3625,82 @@ nk_result NK_CALL nk_window_get_cursor_mode(nk_handle handle, nk_cursor_mode *ou
 
 uint32_t NK_CALL nk_raw_pointer_motion_supported(void) {
     return 0;
+}
+
+nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
+                                                  const nk_text_input_state *state) {
+    return nk::core::result_boundary(
+        "unexpected error while setting GTK text input state", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!state || state->struct_size < sizeof(*state))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid text input state");
+            const char *text = state->text ? state->text : "";
+            if (!g_utf8_validate(text, -1, nullptr))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "text input state text is not valid UTF-8");
+            const auto text_length = static_cast<uint64_t>(g_utf8_strlen(text, -1));
+            const auto text_end = static_cast<uint64_t>(state->text_start) + text_length;
+            const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
+                                        state->composition_end == NK_TEXT_POSITION_NONE;
+            const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
+                                           state->composition_end != NK_TEXT_POSITION_NONE &&
+                                           state->composition_start <= state->composition_end &&
+                                           state->composition_start >= state->text_start &&
+                                           state->composition_end <= text_end;
+            const bool valid_cursor =
+                std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
+                std::isfinite(state->cursor_width) && std::isfinite(state->cursor_height) &&
+                state->cursor_width >= 0.0f && state->cursor_height >= 0.0f;
+            if (text_end > state->document_length || state->selection_start > state->selection_end ||
+                state->selection_start < state->text_start || state->selection_end > text_end ||
+                (!no_composition && !valid_composition) ||
+                (state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
+                                  NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) ||
+                state->input_type > NK_TEXT_INPUT_PASSWORD ||
+                state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "text input state ranges or hints are invalid");
+            auto resource = window(handle);
+            if (!resource)
+                return invalid_handle("window");
+            resource->text_input_text = text;
+            resource->text_input_state = *state;
+            resource->text_input_state.text = resource->text_input_text.c_str();
+            if (resource->im_context) {
+                GdkRectangle cursor{
+                    static_cast<gint>(std::lround(state->cursor_x)),
+                    static_cast<gint>(std::lround(state->cursor_y)),
+                    std::max(static_cast<gint>(std::lround(state->cursor_width)), 1),
+                    std::max(static_cast<gint>(std::lround(state->cursor_height)), 1)};
+                gtk_im_context_set_cursor_location(resource->im_context, &cursor);
+            }
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t active) {
+    return nk::core::result_boundary(
+        "unexpected error while changing GTK text input", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (active > 1)
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "text input active state must be zero or one");
+            auto resource = window(handle);
+            if (!resource)
+                return invalid_handle("window");
+            resource->text_input_active = active != 0;
+            if (!resource->im_context)
+                return NK_OK;
+            if (resource->text_input_active) {
+                gtk_im_context_focus_in(resource->im_context);
+                gtk_widget_grab_focus(resource->window);
+            } else {
+                gtk_im_context_reset(resource->im_context);
+                gtk_im_context_focus_out(resource->im_context);
+            }
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_window_minimize(nk_handle h) {

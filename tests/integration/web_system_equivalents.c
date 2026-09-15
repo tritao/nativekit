@@ -25,6 +25,8 @@ static void test_writable_resource_stream(void) {
                                   bytes[1] === 0x4b && bytes[2] === 0x21;
                     document.documentElement.dataset.nativekitResourceWrite =
                         valid ? "verified" : "failed";
+                    document.documentElement.dataset.nativekitSystemResult =
+                        valid ? "passed" : "failed";
                     return Promise.resolve();
                 }
             })
