@@ -15,11 +15,11 @@ class Voice {
 		this.value = owned.borrow();
 	}
 
-	public static function fromClip(clip:Clip, ?options:SoundOptions):Voice {
+	public static function fromClip(clip:Clip, ?options:VoiceOptions):Voice {
 		if (clip == null)
 			throw "Audio voice clip must not be null";
 		if (options == null)
-			options = new SoundOptions();
+			options = new VoiceOptions();
 		var made = NativeKitAudio.nk_audio_voice_create(clip.nativeHandle(), options.nativeValue());
 		AudioResult.check(made.status, "audio.voice.create");
 		return new Voice(made.out_voice);

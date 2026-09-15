@@ -37,7 +37,7 @@ class Clip {
 		return value;
 	}
 
-	public function createVoice(?options:SoundOptions):Voice {
+	public function createVoice(?options:VoiceOptions):Voice {
 		ensureLive();
 		return Voice.fromClip(this, options);
 	}

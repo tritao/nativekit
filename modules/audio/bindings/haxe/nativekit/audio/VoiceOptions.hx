@@ -1,10 +1,10 @@
 package nativekit.audio;
 
 import NativeKitAudio;
-import nativekit.audio.Enums.SoundLoadFlags;
+import nativekit.audio.Enums.VoiceLoadFlags;
 
-/** Configures how a sound is loaded and which mixer bus receives it. */
-class SoundOptions {
+/** Configures a voice's playback behavior and mixer routing. */
+class VoiceOptions {
 	public var looping:Bool = false;
 	public var streaming:Bool = false;
 	public var asynchronous:Bool = false;
@@ -14,18 +14,17 @@ class SoundOptions {
 		this.bus = bus;
 	}
 
-	@:allow(nativekit.audio.Sound)
 	@:allow(nativekit.audio.Voice)
-	private function nativeValue():NativeKitAudio.NativeSoundOptions {
-		var result = new NativeKitAudio.NativeSoundOptions();
-		result.set_struct_size(NativeKitAudio.NativeSoundOptions.size());
-		var flags:SoundLoadFlags = 0;
+	private function nativeValue():NativeKitAudio.NativeVoiceOptions {
+		var result = new NativeKitAudio.NativeVoiceOptions();
+		result.set_struct_size(NativeKitAudio.NativeVoiceOptions.size());
+		var flags:VoiceLoadFlags = 0;
 		if (looping)
-			flags |= SoundLoadFlags.Looping;
+			flags |= VoiceLoadFlags.Looping;
 		if (streaming)
-			flags |= SoundLoadFlags.Streaming;
+			flags |= VoiceLoadFlags.Streaming;
 		if (asynchronous)
-			flags |= SoundLoadFlags.Asynchronous;
+			flags |= VoiceLoadFlags.Asynchronous;
 		result.set_flags(flags);
 		var busHandle = NativeKitAudio.BusHandle.invalid();
 		if (bus != null)

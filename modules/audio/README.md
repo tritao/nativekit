@@ -6,9 +6,9 @@ mixing on top of the pinned miniaudio submodule. Enable it with
 
 The first API slice supports WAV, FLAC, and MP3 playback from native filesystem
 paths or caller-provided encoded memory. `nk_audio_clip` owns a reusable source,
-while each `nk_audio_voice` has independent transport and sound controls, so a
+while each `nk_audio_voice` has independent transport and voice controls, so a
 single clip can play simultaneously through multiple voices. The original
-`nk_audio_sound_*` API remains available for standalone sounds.
+one-shot path is intentionally expressed by creating a clip and one voice.
 
 Sounds and voices are generation-checked NativeKit resources and can be routed
 through generation-checked mixer buses. Each bus supports volume, mute, start,
@@ -17,7 +17,8 @@ and audio callback thread.
 
 The module also provides a generated Haxeon ABI interface in
 `bindings/nativekit-audio.hxi` and a small typed Haxe facade under
-`bindings/haxe/nativekit/audio`.
+`bindings/haxe/nativekit/audio`. The public facade consists of `Clip`, `Voice`,
+`VoiceOptions`, `Bus`, and `Mixer`.
 
 With Haxeon available, run the native and managed smoke test with:
 

@@ -32,7 +32,7 @@ extern "C" {
 #endif
 
 /* ------------------------------------------------------------------------- */
-/* Sound types and options                                                   */
+/* Audio types and voice options                                             */
 /* ------------------------------------------------------------------------- */
 
 /** Opaque handle for one reusable audio clip source. */
@@ -41,50 +41,47 @@ typedef uint32_t nk_audio_clip NK_HANDLE NK_HANDLE_DESTROY(nk_audio_clip_destroy
 /** Opaque handle for one independent playback voice. */
 typedef uint32_t nk_audio_voice NK_HANDLE NK_HANDLE_DESTROY(nk_audio_voice_destroy);
 
-/** Opaque handle for one standalone compatibility playback voice. */
-typedef uint32_t nk_audio_sound NK_HANDLE NK_HANDLE_DESTROY(nk_audio_sound_destroy);
-
-/** Flags controlling how a sound is loaded and played. */
-typedef uint32_t nk_audio_sound_flags;
-enum NK_FLAGS(nk_audio_sound_flags) {
-    /** Repeats the sound after it reaches its end. */
-    NK_AUDIO_SOUND_LOOPING = 1u << 0,
+/** Flags controlling how a voice is loaded and played. */
+typedef uint32_t nk_audio_voice_flags;
+enum NK_FLAGS(nk_audio_voice_flags) {
+    /** Repeats the voice after it reaches its end. */
+    NK_AUDIO_VOICE_LOOPING = 1u << 0,
     /** Streams the source instead of decoding the complete source up front. */
-    NK_AUDIO_SOUND_STREAM = 1u << 1,
+    NK_AUDIO_VOICE_STREAM = 1u << 1,
     /** Loads the source asynchronously when the backend supports it. */
-    NK_AUDIO_SOUND_ASYNC = 1u << 2
+    NK_AUDIO_VOICE_ASYNC = 1u << 2
 };
 
 /** Opaque handle for one audio mixer bus. */
 typedef uint32_t nk_audio_bus NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_destroy);
 
-/** Optional creation flags for a sound. */
-typedef struct nk_audio_sound_options {
-    /** Set to sizeof(nk_audio_sound_options) before passing the structure. */
+/** Optional creation and routing settings for a voice. */
+typedef struct nk_audio_voice_options {
+    /** Set to sizeof(nk_audio_voice_options) before passing the structure. */
     uint32_t struct_size NK_STRUCT_SIZE;
-    /** Combination of NK_AUDIO_SOUND_* flags. */
-    nk_audio_sound_flags flags;
-    /** Optional mixer bus; NK_INVALID_HANDLE routes the sound to the master bus. */
+    /** Combination of NK_AUDIO_VOICE_* flags. */
+    nk_audio_voice_flags flags;
+    /** Optional mixer bus; NK_INVALID_HANDLE routes the voice to the master bus. */
     nk_audio_bus bus;
     /** Reserved; set to zero. */
     uint32_t reserved;
     /** Reserved for compatible extensions; set all elements to zero. */
     uint64_t reserved2[2];
-} nk_audio_sound_options;
+} nk_audio_voice_options;
 
 /* ------------------------------------------------------------------------- */
 /* Mixer buses                                                                */
 /* ------------------------------------------------------------------------- */
 
-/** Creates an active mixer bus. Sounds retain their bus until destroyed. */
+/** Creates an active mixer bus. Voices retain their bus until destroyed. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_create(nk_audio_bus *out_bus NK_OUT NK_OWNED);
 /** Stops and destroys a mixer bus, invalidating its handle. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_destroy(nk_audio_bus bus);
-/** Starts all sounds routed through the bus. */
+/** Starts all voices routed through the bus. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_start(nk_audio_bus bus);
-/** Stops all sounds routed through the bus without destroying them. */
+/** Stops all voices routed through the bus without destroying them. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_stop(nk_audio_bus bus);
-/** Returns whether at least one sound routed through the bus is playing. */
+/** Returns whether at least one voice routed through the bus is playing. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_is_playing(nk_audio_bus bus,
                                                        nk_bool *out_playing NK_OUT);
 /** Sets the bus's linear gain; zero mutes the bus. */
@@ -99,7 +96,7 @@ NKAUDIO_API nk_result NK_CALL nk_audio_bus_is_muted(nk_audio_bus bus,
                                                     nk_bool *out_muted NK_OUT);
 
 /* ------------------------------------------------------------------------- */
-/* Sound lifetime and transport                                              */
+/* Clip and voice lifetime and transport                                     */
 /* ------------------------------------------------------------------------- */
 
 /**
@@ -124,7 +121,7 @@ NKAUDIO_API nk_result NK_CALL nk_audio_clip_destroy(nk_audio_clip clip);
 
 /** Creates a stopped independent playback voice from a reusable clip. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_create(
-    nk_audio_clip clip, const nk_audio_sound_options *options,
+    nk_audio_clip clip, const nk_audio_voice_options *options,
     nk_audio_voice *out_voice NK_OUT NK_OWNED);
 
 /** Stops and destroys a playback voice, invalidating its handle. */
@@ -168,70 +165,6 @@ NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_time_seconds(nk_audio_voice voi
                                                                float *out_seconds NK_OUT);
 /** Returns the decoded voice length in seconds. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_length_seconds(nk_audio_voice voice,
-                                                                 float *out_seconds NK_OUT);
-
-/**
- * Creates a sound from a UTF-8 native filesystem path. The path is consumed
- * during this call. Sounds are created stopped; call nk_audio_sound_start().
- * The options pointer may be NULL.
- */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_create_from_file(
-    const char *path NK_UTF8, const nk_audio_sound_options *options,
-    nk_audio_sound *out_sound NK_OUT NK_OWNED);
-
-/**
- * Creates a sound from encoded audio bytes. NativeKit copies the bytes before
- * returning, so the caller may release its buffer after the call. The memory
- * source currently supports the built-in WAV, FLAC, and MP3 decoders.
- */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_create_from_memory(
-    const void *data NK_BORROWED_BUFFER(data_size), uint64_t data_size,
-    const nk_audio_sound_options *options, nk_audio_sound *out_sound NK_OUT NK_OWNED);
-
-/** Stops and destroys a sound, invalidating its handle. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_destroy(nk_audio_sound sound);
-/** Starts a sound from its current position. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_start(nk_audio_sound sound);
-/** Stops a sound without rewinding it. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_stop(nk_audio_sound sound);
-/** Seeks a sound back to its beginning without changing its playing state. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_rewind(nk_audio_sound sound);
-/** Returns whether a sound is currently playing. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_is_playing(nk_audio_sound sound,
-                                                         nk_bool *out_playing NK_OUT);
-/** Returns whether a sound has reached its end. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_at_end(nk_audio_sound sound,
-                                                     nk_bool *out_at_end NK_OUT);
-
-/* ------------------------------------------------------------------------- */
-/* Sound controls                                                             */
-/* ------------------------------------------------------------------------- */
-
-/** Sets linear sound gain; zero mutes the sound. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_set_volume(nk_audio_sound sound, float volume);
-/** Returns linear sound gain. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_get_volume(nk_audio_sound sound,
-                                                        float *out_volume NK_OUT);
-/** Sets stereo pan in the range [-1, 1]. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_set_pan(nk_audio_sound sound, float pan);
-/** Returns stereo pan in the range [-1, 1]. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_get_pan(nk_audio_sound sound,
-                                                     float *out_pan NK_OUT);
-/** Sets playback pitch where 1 is the source pitch. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_set_pitch(nk_audio_sound sound, float pitch);
-/** Returns playback pitch. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_get_pitch(nk_audio_sound sound,
-                                                       float *out_pitch NK_OUT);
-/** Enables or disables looping. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_set_looping(nk_audio_sound sound, nk_bool looping);
-/** Returns whether looping is enabled. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_is_looping(nk_audio_sound sound,
-                                                        nk_bool *out_looping NK_OUT);
-/** Returns the current playback position in seconds. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_get_time_seconds(nk_audio_sound sound,
-                                                               float *out_seconds NK_OUT);
-/** Returns the decoded sound length in seconds. */
-NKAUDIO_API nk_result NK_CALL nk_audio_sound_get_length_seconds(nk_audio_sound sound,
                                                                  float *out_seconds NK_OUT);
 
 /* ------------------------------------------------------------------------- */

@@ -3,8 +3,8 @@ import haxe.io.Bytes;
 import nativekit.audio.Bus;
 import nativekit.audio.Clip;
 import nativekit.audio.Mixer;
-import nativekit.audio.SoundOptions;
 import nativekit.audio.Voice;
+import nativekit.audio.VoiceOptions;
 
 class AudioSmoke {
 	static function tinyWav():Bytes {
@@ -51,7 +51,7 @@ class AudioSmoke {
 			if (bus.volume() != 0.5)
 				throw "Haxe audio bus volume did not round-trip";
 			clip = Clip.fromMemory(tinyWav());
-			var options = new SoundOptions(bus);
+			var options = new VoiceOptions(bus);
 			options.looping = true;
 			first = clip.createVoice(options);
 			second = clip.createVoice(options);

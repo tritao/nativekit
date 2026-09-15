@@ -45,9 +45,8 @@ fi
     "$module_dir/bindings/haxe/nativekit/audio/Clip.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Enums.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Mixer.hx" \
-    "$module_dir/bindings/haxe/nativekit/audio/Sound.hx" \
-    "$module_dir/bindings/haxe/nativekit/audio/SoundOptions.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Voice.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/VoiceOptions.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitError.hx")
 
 set +e

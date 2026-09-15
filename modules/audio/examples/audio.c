@@ -17,16 +17,24 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    nk_audio_sound sound = NK_INVALID_HANDLE;
-    const nk_result load_result = nk_audio_sound_create_from_file(argv[1], NULL, &sound);
+    nk_audio_clip clip = NK_INVALID_HANDLE;
+    const nk_result load_result = nk_audio_clip_create_from_file(argv[1], &clip);
     if (load_result != NK_OK) {
         fprintf(stderr, "audio load failed: %s\n", nk_last_error());
         nk_shutdown();
         return 1;
     }
-    if (nk_audio_sound_start(sound) != NK_OK) {
+    nk_audio_voice voice = NK_INVALID_HANDLE;
+    if (nk_audio_voice_create(clip, NULL, &voice) != NK_OK) {
+        fprintf(stderr, "audio voice creation failed: %s\n", nk_last_error());
+        nk_audio_clip_destroy(clip);
+        nk_shutdown();
+        return 1;
+    }
+    nk_audio_clip_destroy(clip);
+    if (nk_audio_voice_start(voice) != NK_OK) {
         fprintf(stderr, "audio start failed: %s\n", nk_last_error());
-        nk_audio_sound_destroy(sound);
+        nk_audio_voice_destroy(voice);
         nk_shutdown();
         return 1;
     }
@@ -35,7 +43,7 @@ int main(int argc, char **argv) {
     const double deadline = nk_time_seconds() + 10.0;
     while (nk_time_seconds() < deadline) {
         nk_bool at_end = 0;
-        if (nk_audio_sound_at_end(sound, &at_end) != NK_OK || at_end)
+        if (nk_audio_voice_at_end(voice, &at_end) != NK_OK || at_end)
             break;
         nk_wait_events_timeout(0.05);
         nk_event event = {0};
@@ -44,7 +52,7 @@ int main(int argc, char **argv) {
             nk_event_release(&event);
     }
 
-    nk_audio_sound_destroy(sound);
+    nk_audio_voice_destroy(voice);
     nk_shutdown();
     return 0;
 }

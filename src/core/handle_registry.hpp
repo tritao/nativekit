@@ -32,7 +32,7 @@ enum class ResourceType : std::uint8_t {
     audio_engine,
     audio_bus,
     audio_clip,
-    audio_sound
+    audio_voice
 };
 
 struct Resource {
