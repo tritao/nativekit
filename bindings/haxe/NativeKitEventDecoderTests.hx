@@ -143,12 +143,24 @@ class NativeKitEventDecoderTests {
 				source.rawValue() == 20 && Std.string(request) == "20" && result == NativeKit.Result.ErrorUnknown;
 			case _: false;
 		};
+		var audioDeviceEventsOk = switch [
+			NativeKitEvent.decodeContext(new NativeKitEventContext(EventKind.AudioDeviceStarted, handle(0), zero, 0, 0, 0, empty)),
+			NativeKitEvent.decodeContext(new NativeKitEventContext(EventKind.AudioDeviceStopped, handle(0), zero, 0, 0, 0, empty)),
+			NativeKitEvent.decodeContext(new NativeKitEventContext(EventKind.AudioDeviceRerouted, handle(0), zero, 0, 0, 0, empty)),
+			NativeKitEvent.decodeContext(new NativeKitEventContext(EventKind.AudioDeviceInterruptionBegan, handle(0), zero, 0, 0, 0, empty)),
+			NativeKitEvent.decodeContext(new NativeKitEventContext(EventKind.AudioDeviceInterruptionEnded, handle(0), zero, 0, 0, 0, empty))
+		] {
+			case [AudioDeviceStarted, AudioDeviceStopped, AudioDeviceRerouted,
+				AudioDeviceInterruptionBegan, AudioDeviceInterruptionEnded]: true;
+			case _: false;
+		};
 
 		if (!messageOk) throw "message completion decoding failed";
 		if (!resourcesOk) throw "resource completion decoding failed";
 		return rawOk && nonMatch && editOk && typedKeyOk && typedHatOk && typedNavigationOk && accessibilityOk && taskOk && audioOk
 			&& audioReadyOk && audioFailedOk
 			&& audioClipReadyOk && audioClipFailedOk
+			&& audioDeviceEventsOk
 			&& throws(function() { NativeKitEventBytes.requireSize(haxe.io.Bytes.alloc(3), 4); })
 			&& throws(function() { NativeKitEventBytes.readU32(haxe.io.Bytes.alloc(3), 0); })
 			&& throws(function() { NativeKitEventBytes.decodeClipboardFiles(unterminated, 1); })

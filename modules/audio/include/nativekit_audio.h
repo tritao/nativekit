@@ -113,6 +113,49 @@ typedef uint32_t nk_audio_bus NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_destroy);
 /** Opaque handle for one effect inserted into an audio mixer bus. */
 typedef uint32_t nk_audio_bus_effect NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_effect_destroy);
 
+/** Selects the backend's default playback device. */
+#define NK_AUDIO_DEVICE_DEFAULT UINT32_MAX
+
+/** Lifecycle state of the process-wide audio playback device. */
+typedef uint32_t nk_audio_device_state;
+enum NK_ENUM(nk_audio_device_state) {
+    /** The engine has not initialized an audio device yet. */
+    NK_AUDIO_DEVICE_UNINITIALIZED = 0,
+    /** The audio device is initialized but not processing audio. */
+    NK_AUDIO_DEVICE_STOPPED = 1,
+    /** The audio device is processing audio. */
+    NK_AUDIO_DEVICE_STARTED = 2,
+    /** The audio device is transitioning to the started state. */
+    NK_AUDIO_DEVICE_STARTING = 3,
+    /** The audio device is transitioning to the stopped state. */
+    NK_AUDIO_DEVICE_STOPPING = 4,
+    /** The backend reported an interruption which has not ended yet. */
+    NK_AUDIO_DEVICE_INTERRUPTED = 5
+};
+
+/** Configuration applied when NativeKit lazily creates its audio device. */
+typedef struct nk_audio_device_options {
+    /** Set to sizeof(nk_audio_device_options) before passing the structure. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Playback device index returned by nk_audio_device_get_count/name; use
+     * NK_AUDIO_DEVICE_DEFAULT to select the backend default. */
+    uint32_t playback_device_index;
+    /** Requested output sample rate, or zero for the backend default. */
+    uint32_t sample_rate;
+    /** Requested output channel count, or zero for the backend default. */
+    uint32_t channels;
+    /** Requested device period in PCM frames, or zero for the backend default. */
+    uint32_t period_size_in_frames;
+    /** Requested device period in milliseconds, or zero for the backend default. */
+    uint32_t period_size_in_milliseconds;
+    /** Do not start the device automatically during engine initialization. */
+    nk_bool no_auto_start;
+    /** Reserved; set to zero. */
+    uint32_t reserved;
+    /** Reserved for compatible extensions; set all elements to zero. */
+    uint64_t reserved2[2];
+} nk_audio_device_options;
+
 /** Built-in processing effect types available on mixer buses. */
 typedef uint32_t nk_audio_effect_type;
 enum NK_ENUM(nk_audio_effect_type) {
@@ -144,6 +187,41 @@ typedef struct nk_audio_voice_options {
 /* ------------------------------------------------------------------------- */
 /* Mixer buses                                                                */
 /* ------------------------------------------------------------------------- */
+
+/* ------------------------------------------------------------------------- */
+/* Audio device lifecycle                                                    */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Configures the process-wide playback device before the first audio engine
+ * use. Configuration becomes immutable for the runtime generation once the
+ * engine has been initialized; call nk_shutdown() before configuring a new
+ * device. Device indices are snapshots and may change when devices are added
+ * or removed.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_device_configure(
+    const nk_audio_device_options *options);
+/** Returns the number of currently enumerated playback devices. */
+NKAUDIO_API nk_result NK_CALL nk_audio_device_get_count(uint32_t *out_count NK_OUT);
+/**
+ * Copies one currently enumerated playback device name into the caller's
+ * UTF-8 buffer. The required size, including the NUL terminator, is always
+ * returned through inout_size.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_device_get_name(
+    uint32_t index, char *buffer NK_OUT_BUFFER(inout_size), uint32_t *inout_size NK_INOUT);
+/** Returns whether one currently enumerated playback device is the backend default. */
+NKAUDIO_API nk_result NK_CALL nk_audio_device_is_default(uint32_t index,
+                                                          nk_bool *out_default NK_OUT);
+/** Starts the process-wide audio playback device. */
+NKAUDIO_API nk_result NK_CALL nk_audio_device_start(void);
+/** Stops the process-wide audio playback device without destroying the engine graph. */
+NKAUDIO_API nk_result NK_CALL nk_audio_device_stop(void);
+/** Stops and starts the process-wide audio playback device to recover from an interruption. */
+NKAUDIO_API nk_result NK_CALL nk_audio_device_restart(void);
+/** Returns the current process-wide audio playback device state. */
+NKAUDIO_API nk_result NK_CALL nk_audio_device_get_state(
+    nk_audio_device_state *out_state NK_OUT);
 
 /** Creates an active mixer bus. Voices retain their bus until destroyed. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_create(nk_audio_bus *out_bus NK_OUT NK_OWNED);

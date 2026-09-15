@@ -26,11 +26,34 @@ namespace {
 constexpr uint32_t supported_voice_flags = NK_AUDIO_VOICE_LOOPING | NK_AUDIO_VOICE_STREAM |
                                            NK_AUDIO_VOICE_ASYNC;
 
+struct AudioEngineResource;
+std::atomic<AudioEngineResource *> active_engine_resource{nullptr};
+std::mutex engine_mutex;
+
+struct PendingAudioDeviceConfig {
+    uint32_t playback_device_index = NK_AUDIO_DEVICE_DEFAULT;
+    uint32_t sample_rate = 0;
+    uint32_t channels = 0;
+    uint32_t period_size_in_frames = 0;
+    uint32_t period_size_in_milliseconds = 0;
+    bool no_auto_start = false;
+    bool has_playback_device_id = false;
+    ma_device_id playback_device_id{};
+};
+
+PendingAudioDeviceConfig pending_device_config;
+
+void audio_device_notification_callback(const ma_device_notification *notification) noexcept;
+
 struct AudioEngineResource final : nk::core::Resource {
     ma_engine engine{};
     bool initialized = false;
+    std::atomic<bool> interrupted{false};
 
     ~AudioEngineResource() override {
+        auto *expected = this;
+        active_engine_resource.compare_exchange_strong(expected, nullptr,
+                                                        std::memory_order_acq_rel);
         if (initialized)
             ma_engine_uninit(&engine);
     }
@@ -197,8 +220,6 @@ void audio_voice_end_callback(void *user_data, ma_sound *) noexcept {
     event.source = handle;
     nk::core::push_event(std::move(event));
 }
-
-std::mutex engine_mutex;
 std::weak_ptr<AudioEngineResource> engine_resource;
 
 nk_result invalid_argument(const char *message) {
@@ -242,6 +263,97 @@ nk_result map_miniaudio_result(ma_result result, const char *message) {
         return NK_OK;
     nk::core::set_error(message);
     return mapped;
+}
+
+struct EnumeratedAudioDevice {
+    ma_device_id id{};
+    std::string name;
+    bool is_default = false;
+};
+
+nk_result enumerate_audio_devices(std::vector<EnumeratedAudioDevice> &devices) {
+    ma_context context{};
+    auto result = ma_context_init(nullptr, 0, nullptr, &context);
+    if (result != MA_SUCCESS)
+        return map_miniaudio_result(result, "could not enumerate audio playback devices");
+
+    ma_device_info *playback_infos = nullptr;
+    ma_uint32 playback_count = 0;
+    result = ma_context_get_devices(&context, &playback_infos, &playback_count, nullptr, nullptr);
+    if (result != MA_SUCCESS) {
+        ma_context_uninit(&context);
+        return map_miniaudio_result(result, "could not enumerate audio playback devices");
+    }
+
+    devices.reserve(playback_count);
+    for (ma_uint32 index = 0; index < playback_count; ++index) {
+        EnumeratedAudioDevice device;
+        device.id = playback_infos[index].id;
+        device.name = playback_infos[index].name;
+        device.is_default = playback_infos[index].isDefault == MA_TRUE;
+        devices.push_back(std::move(device));
+    }
+
+    result = ma_context_uninit(&context);
+    return result == MA_SUCCESS
+               ? NK_OK
+               : map_miniaudio_result(result, "could not finish enumerating audio devices");
+}
+
+nk_result copy_audio_string(const std::string &value, char *buffer, uint32_t *inout_size) {
+    if (!inout_size) {
+        nk::core::set_error("audio device name size output is missing");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    const auto required = static_cast<uint32_t>(value.size() + 1);
+    if (!buffer || *inout_size < required) {
+        *inout_size = required;
+        return NK_ERROR_BUFFER_TOO_SMALL;
+    }
+    std::memcpy(buffer, value.c_str(), required);
+    *inout_size = required;
+    return NK_OK;
+}
+
+void audio_device_notification_callback(const ma_device_notification *notification) noexcept {
+    if (!notification || !notification->pDevice)
+        return;
+
+    auto *engine = static_cast<ma_engine *>(notification->pDevice->pUserData);
+    auto *resource = active_engine_resource.load(std::memory_order_acquire);
+    if (!resource || &resource->engine != engine)
+        return;
+
+    nk_event_kind event_kind = NK_EVENT_NONE;
+    switch (notification->type) {
+    case ma_device_notification_type_started:
+        resource->interrupted.store(false, std::memory_order_release);
+        event_kind = NK_EVENT_AUDIO_DEVICE_STARTED;
+        break;
+    case ma_device_notification_type_stopped:
+        event_kind = NK_EVENT_AUDIO_DEVICE_STOPPED;
+        break;
+    case ma_device_notification_type_rerouted:
+        event_kind = NK_EVENT_AUDIO_DEVICE_REROUTED;
+        break;
+    case ma_device_notification_type_interruption_began:
+        resource->interrupted.store(true, std::memory_order_release);
+        event_kind = NK_EVENT_AUDIO_DEVICE_INTERRUPTION_BEGAN;
+        break;
+    case ma_device_notification_type_interruption_ended:
+        resource->interrupted.store(false, std::memory_order_release);
+        event_kind = NK_EVENT_AUDIO_DEVICE_INTERRUPTION_ENDED;
+        break;
+    case ma_device_notification_type_unlocked:
+        break;
+    }
+
+    if (event_kind == NK_EVENT_NONE)
+        return;
+    nk::core::QueuedEvent event;
+    event.kind = event_kind;
+    event.source = NK_INVALID_HANDLE;
+    nk::core::push_event(std::move(event));
 }
 
 bool valid_audio_filter(float cutoff_frequency_hz, uint32_t order,
@@ -559,8 +671,24 @@ std::shared_ptr<AudioEngineResource> ensure_engine(nk_result &out_result) {
         return current;
 
     auto next = std::make_shared<AudioEngineResource>();
-    const auto result = ma_engine_init(nullptr, &next->engine);
+    auto device_config = pending_device_config;
+    auto config = ma_engine_config_init();
+    config.pPlaybackDeviceID = device_config.has_playback_device_id
+                                   ? &device_config.playback_device_id
+                                   : nullptr;
+    config.sampleRate = device_config.sample_rate;
+    config.channels = device_config.channels;
+    config.periodSizeInFrames = device_config.period_size_in_frames;
+    config.periodSizeInMilliseconds = device_config.period_size_in_milliseconds;
+    config.noAutoStart = device_config.no_auto_start ? MA_TRUE : MA_FALSE;
+    config.notificationCallback = audio_device_notification_callback;
+
+    active_engine_resource.store(next.get(), std::memory_order_release);
+    const auto result = ma_engine_init(&config, &next->engine);
     if (result != MA_SUCCESS) {
+        auto *expected = next.get();
+        active_engine_resource.compare_exchange_strong(expected, nullptr,
+                                                        std::memory_order_acq_rel);
         out_result = map_miniaudio_result(result, "could not initialize the miniaudio audio device");
         return {};
     }
@@ -573,6 +701,11 @@ std::shared_ptr<AudioEngineResource> ensure_engine(nk_result &out_result) {
     }
     engine_resource = next;
     return next;
+}
+
+std::shared_ptr<AudioEngineResource> current_engine() {
+    std::lock_guard lock(engine_mutex);
+    return engine_resource.lock();
 }
 
 template <typename Function>
@@ -999,6 +1132,40 @@ nk_result with_effect(nk_audio_bus_effect handle, const char *message, Function 
     return function(*effect, *bus, message);
 }
 
+nk_result audio_device_state(AudioEngineResource &engine, nk_audio_device_state &state) {
+    const auto *device = ma_engine_get_device(&engine.engine);
+    if (!device) {
+        nk::core::set_error("the miniaudio engine has no playback device");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    if (engine.interrupted.load(std::memory_order_acquire)) {
+        state = NK_AUDIO_DEVICE_INTERRUPTED;
+        return NK_OK;
+    }
+
+    switch (ma_device_get_state(device)) {
+    case ma_device_state_uninitialized:
+        state = NK_AUDIO_DEVICE_UNINITIALIZED;
+        break;
+    case ma_device_state_stopped:
+        state = NK_AUDIO_DEVICE_STOPPED;
+        break;
+    case ma_device_state_started:
+        state = NK_AUDIO_DEVICE_STARTED;
+        break;
+    case ma_device_state_starting:
+        state = NK_AUDIO_DEVICE_STARTING;
+        break;
+    case ma_device_state_stopping:
+        state = NK_AUDIO_DEVICE_STOPPING;
+        break;
+    default:
+        nk::core::set_error("miniaudio returned an unknown playback device state");
+        return NK_ERROR_UNKNOWN;
+    }
+    return NK_OK;
+}
+
 nk_result insert_audio_effect(std::shared_ptr<AudioBusResource> bus,
                               std::shared_ptr<AudioEffectResource> effect,
                               nk_audio_bus_effect *out_effect) {
@@ -1093,6 +1260,159 @@ nk_result create_audio_delay_effect(std::shared_ptr<AudioBusResource> bus,
 } // namespace
 
 extern "C" {
+
+nk_result NK_CALL nk_audio_device_configure(const nk_audio_device_options *options) {
+    return nk::core::result_boundary(
+        "unexpected error while configuring the audio device", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!options)
+                return invalid_argument("audio device options are missing");
+            if (options->struct_size < sizeof(nk_audio_device_options))
+                return invalid_argument("audio device options are missing or too small");
+            if (options->no_auto_start > 1)
+                return invalid_argument("audio device no_auto_start must be zero or one");
+            if (options->period_size_in_frames != 0 &&
+                options->period_size_in_milliseconds != 0)
+                return invalid_argument(
+                    "audio device period must be specified in frames or milliseconds, not both");
+            if (options->channels > MA_MAX_CHANNELS)
+                return invalid_argument("audio device channel count is too large");
+
+            std::lock_guard lock(engine_mutex);
+            if (engine_resource.lock())
+                return invalid_request(
+                    "audio device configuration is immutable after the audio engine starts");
+
+            PendingAudioDeviceConfig next;
+            next.playback_device_index = options->playback_device_index;
+            next.sample_rate = options->sample_rate;
+            next.channels = options->channels;
+            next.period_size_in_frames = options->period_size_in_frames;
+            next.period_size_in_milliseconds = options->period_size_in_milliseconds;
+            next.no_auto_start = options->no_auto_start != 0;
+
+            if (next.playback_device_index != NK_AUDIO_DEVICE_DEFAULT) {
+                std::vector<EnumeratedAudioDevice> devices;
+                if (const auto result = enumerate_audio_devices(devices); result != NK_OK)
+                    return result;
+                if (next.playback_device_index >= devices.size())
+                    return invalid_argument("audio playback device index is out of range");
+                next.playback_device_id = devices[next.playback_device_index].id;
+                next.has_playback_device_id = true;
+            }
+            pending_device_config = next;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_device_get_count(uint32_t *out_count) {
+    return nk::core::result_boundary(
+        "unexpected error while getting audio device count", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_count)
+                return invalid_argument("audio device count output is missing");
+            std::vector<EnumeratedAudioDevice> devices;
+            if (const auto result = enumerate_audio_devices(devices); result != NK_OK)
+                return result;
+            *out_count = static_cast<uint32_t>(devices.size());
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_device_get_name(uint32_t index, char *buffer, uint32_t *inout_size) {
+    return nk::core::result_boundary(
+        "unexpected error while getting an audio device name", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!inout_size)
+                return invalid_argument("audio device name size output is missing");
+            std::vector<EnumeratedAudioDevice> devices;
+            if (const auto result = enumerate_audio_devices(devices); result != NK_OK)
+                return result;
+            if (index >= devices.size())
+                return invalid_argument("audio playback device index is out of range");
+            return copy_audio_string(devices[index].name, buffer, inout_size);
+        });
+}
+
+nk_result NK_CALL nk_audio_device_is_default(uint32_t index, nk_bool *out_default) {
+    return nk::core::result_boundary(
+        "unexpected error while getting an audio device default flag", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_default)
+                return invalid_argument("audio device default flag output is missing");
+            std::vector<EnumeratedAudioDevice> devices;
+            if (const auto result = enumerate_audio_devices(devices); result != NK_OK)
+                return result;
+            if (index >= devices.size())
+                return invalid_argument("audio playback device index is out of range");
+            *out_default = devices[index].is_default ? 1u : 0u;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_device_start(void) {
+    return nk::core::result_boundary(
+        "unexpected error while starting the audio device", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return with_engine("could not start the audio device", [](AudioEngineResource &engine,
+                                                                       const char *message) {
+                return map_miniaudio_result(ma_engine_start(&engine.engine), message);
+            });
+        });
+}
+
+nk_result NK_CALL nk_audio_device_stop(void) {
+    return nk::core::result_boundary(
+        "unexpected error while stopping the audio device", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            auto engine = current_engine();
+            if (!engine)
+                return invalid_request("the audio device has not been initialized");
+            return map_miniaudio_result(ma_engine_stop(&engine->engine),
+                                        "could not stop the audio device");
+        });
+}
+
+nk_result NK_CALL nk_audio_device_restart(void) {
+    return nk::core::result_boundary(
+        "unexpected error while restarting the audio device", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            auto engine = current_engine();
+            if (!engine)
+                return invalid_request("the audio device has not been initialized");
+            auto result = ma_engine_stop(&engine->engine);
+            if (result != MA_SUCCESS)
+                return map_miniaudio_result(result, "could not restart the audio device");
+            result = ma_engine_start(&engine->engine);
+            if (result != MA_SUCCESS)
+                return map_miniaudio_result(result, "could not restart the audio device");
+            engine->interrupted.store(false, std::memory_order_release);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_device_get_state(nk_audio_device_state *out_state) {
+    return nk::core::result_boundary(
+        "unexpected error while getting the audio device state", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_state)
+                return invalid_argument("audio device state output is missing");
+            auto engine = current_engine();
+            if (!engine) {
+                *out_state = NK_AUDIO_DEVICE_UNINITIALIZED;
+                return NK_OK;
+            }
+            return audio_device_state(*engine, *out_state);
+        });
+}
 
 nk_result NK_CALL nk_audio_bus_create(nk_audio_bus *out_bus) {
     return nk::core::result_boundary(

@@ -53,6 +53,11 @@ enum NativeKitEventValue {
 	AudioVoiceReady(source:NativeKit.Handle);
 	AudioVoiceLoadFailed(source:NativeKit.Handle, result:NativeKit.Result);
 	AudioVoiceComplete(source:NativeKit.Handle);
+	AudioDeviceStarted;
+	AudioDeviceStopped;
+	AudioDeviceRerouted;
+	AudioDeviceInterruptionBegan;
+	AudioDeviceInterruptionEnded;
 }
 
 class NativeKitTextEdit {

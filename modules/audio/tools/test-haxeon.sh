@@ -46,6 +46,7 @@ fi
     "$module_dir/bindings/haxe/nativekit/audio/Clip.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Cone.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/DistanceLimits.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DeviceOptions.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Enums.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/FilterSettings.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/GainLimits.hx" \

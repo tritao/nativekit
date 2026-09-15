@@ -9,6 +9,7 @@ import nativekit.audio.BusEffect;
 import nativekit.audio.Clip;
 import nativekit.audio.Cone;
 import nativekit.audio.DistanceLimits;
+import nativekit.audio.DeviceOptions;
 import nativekit.audio.GainLimits;
 import nativekit.audio.Mixer;
 import nativekit.audio.Voice;
@@ -70,6 +71,30 @@ class AudioSmoke {
 				nativeResource.get_mime_type() != resource.mimeType ||
 				nativeResource.get_display_name() != resource.displayName)
 				throw "Haxe resource descriptor did not build its ABI value";
+			var deviceCount = Mixer.deviceCount();
+			if (deviceCount <= 0)
+				throw "Haxe audio device enumeration returned no playback devices";
+			if (Mixer.deviceName(0).length == 0)
+				throw "Haxe audio device enumeration returned an empty device name";
+			Mixer.deviceIsDefault(0);
+			var deviceOptions = new DeviceOptions();
+			deviceOptions.sampleRate = 48000;
+			deviceOptions.channels = 2;
+			deviceOptions.noAutoStart = true;
+			Mixer.configureDevice(deviceOptions);
+			if (Mixer.deviceState() != NativeKitAudio.DeviceState.Uninitialized)
+				throw "Haxe audio device did not remain uninitialized before start";
+			Mixer.startDevice();
+			if (Mixer.deviceState() != NativeKitAudio.DeviceState.Started)
+				throw "Haxe audio device did not start";
+			Mixer.stopDevice();
+			if (Mixer.deviceState() != NativeKitAudio.DeviceState.Stopped)
+				throw "Haxe audio device did not stop";
+			Mixer.restartDevice();
+			if (Mixer.deviceState() != NativeKitAudio.DeviceState.Started)
+				throw "Haxe audio device did not restart";
+			if (Mixer.sampleRate() != 48000)
+				throw "Haxe audio device configuration did not apply its sample rate";
 			Mixer.setMasterVolume(0.75);
 			if (Mixer.masterVolume() != 0.75)
 				throw "Haxe audio master volume did not round-trip";

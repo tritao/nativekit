@@ -32,6 +32,27 @@ and does not change the provider stream lifetime. Destroying a pending async
 clip requests cancellation of its underlying resource load and suppresses any
 late completion event.
 
+The process-wide playback device can be enumerated with
+`nk_audio_device_get_count()`, `nk_audio_device_get_name()`, and
+`nk_audio_device_is_default()`. Apply `nk_audio_device_options` with
+`nk_audio_device_configure()` before the first audio API that initializes the
+engine; the selected device, output format, period, and automatic-start policy
+are then fixed for that runtime generation. Device indices are snapshots, so
+applications should enumerate immediately before choosing one. Configuration
+after engine initialization returns `NK_ERROR_INVALID_REQUEST`; call
+`nk_shutdown()` before configuring a new device generation.
+
+`nk_audio_device_start()`, `nk_audio_device_stop()`, and
+`nk_audio_device_restart()` control the device without destroying the mixer
+graph. `nk_audio_device_get_state()` exposes the transition state and backend
+interruptions. Miniaudio notification callbacks are translated into the
+non-droppable `NK_EVENT_AUDIO_DEVICE_STARTED`, `NK_EVENT_AUDIO_DEVICE_STOPPED`,
+`NK_EVENT_AUDIO_DEVICE_REROUTED`, `NK_EVENT_AUDIO_DEVICE_INTERRUPTION_BEGAN`,
+and `NK_EVENT_AUDIO_DEVICE_INTERRUPTION_ENDED` events. These events are global
+and therefore have `NK_INVALID_HANDLE` as their source. Backends do not report
+every notification type, so applications should treat restart as an explicit
+recovery hook rather than assuming every physical device loss is observable.
+
 Sounds and voices are generation-checked NativeKit resources and can be routed
 through generation-checked mixer buses. Each bus supports volume, mute, start,
 and stop controls. The mixer exposes a process-wide PCM-frame clock and sample
@@ -75,8 +96,10 @@ Non-looping voices emit `NK_EVENT_AUDIO_VOICE_COMPLETE` when playback reaches
 the natural end. The event is queued from miniaudio's audio callback and must
 be consumed on the NativeKit UI thread with `nk_poll_event()`. Haxe clients
 receive these as `AudioVoiceReady`, `AudioVoiceLoadFailed`, and
-`AudioVoiceComplete` through `NativeKitEvents.listen()`. Asynchronous clip
-loads arrive as `AudioClipReady` or `AudioClipLoadFailed`, including the
+`AudioVoiceComplete` through `NativeKitEvents.listen()`. Device notifications
+arrive as `AudioDeviceStarted`, `AudioDeviceStopped`, `AudioDeviceRerouted`,
+`AudioDeviceInterruptionBegan`, or `AudioDeviceInterruptionEnded`. Asynchronous
+clip loads arrive as `AudioClipReady` or `AudioClipLoadFailed`, including the
 associated request ID.
 Scheduled stops are transport operations and do not emit this natural-end
 completion event.
@@ -84,8 +107,9 @@ completion event.
 The module also provides a generated Haxeon ABI interface in
 `bindings/nativekit-audio.hxi` and a small typed Haxe facade under
 `bindings/haxe/nativekit/audio`. The public facade consists of `Clip`, `Voice`,
-`VoiceOptions`, `Bus`, and `Mixer`. `Clip.fromResourceAsync()` exposes the
-asynchronous resource path; `loadRequest()`, `loadState()`, and `isReady()`
+`VoiceOptions`, `Bus`, `DeviceOptions`, and `Mixer`. `Mixer` exposes device
+enumeration and lifecycle controls, while `Clip.fromResourceAsync()` exposes
+the asynchronous resource path; `loadRequest()`, `loadState()`, and `isReady()`
 mirror the native lifecycle.
 
 With Haxeon available, run the native and managed smoke test with:

@@ -336,6 +336,16 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_AUDIO_CLIP_READY = 907,
     /** An asynchronous audio clip failed to load; source is its clip handle. */
     NK_EVENT_AUDIO_CLIP_LOAD_FAILED = 908,
+    /** The process-wide audio playback device started; source is invalid. */
+    NK_EVENT_AUDIO_DEVICE_STARTED = 909,
+    /** The process-wide audio playback device stopped; source is invalid. */
+    NK_EVENT_AUDIO_DEVICE_STOPPED = 910,
+    /** The process-wide audio playback device was rerouted; source is invalid. */
+    NK_EVENT_AUDIO_DEVICE_REROUTED = 911,
+    /** The audio backend reported that playback was interrupted; source is invalid. */
+    NK_EVENT_AUDIO_DEVICE_INTERRUPTION_BEGAN = 912,
+    /** The audio backend reported that playback interruption ended; source is invalid. */
+    NK_EVENT_AUDIO_DEVICE_INTERRUPTION_ENDED = 913,
     /** A plugin service call reached its terminal state. */
     NK_EVENT_PLUGIN_COMPLETE = 1000,
     /** A plugin emitted an unsolicited notification. */

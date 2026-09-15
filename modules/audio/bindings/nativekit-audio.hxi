@@ -39,6 +39,35 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		NK_AUDIO_CLIP_LOAD_FAILED = 2;
 	}
 	/**
+	 * Lifecycle state of the process-wide audio playback device.
+	 */
+	enum nk_audio_device_state : u32 {
+		/**
+		 * The engine has not initialized an audio device yet.
+		 */
+		NK_AUDIO_DEVICE_UNINITIALIZED = 0;
+		/**
+		 * The audio device is initialized but not processing audio.
+		 */
+		NK_AUDIO_DEVICE_STOPPED = 1;
+		/**
+		 * The audio device is processing audio.
+		 */
+		NK_AUDIO_DEVICE_STARTED = 2;
+		/**
+		 * The audio device is transitioning to the started state.
+		 */
+		NK_AUDIO_DEVICE_STARTING = 3;
+		/**
+		 * The audio device is transitioning to the stopped state.
+		 */
+		NK_AUDIO_DEVICE_STOPPING = 4;
+		/**
+		 * The backend reported an interruption which has not ended yet.
+		 */
+		NK_AUDIO_DEVICE_INTERRUPTED = 5;
+	}
+	/**
 	 * Built-in processing effect types available on mixer buses.
 	 */
 	enum nk_audio_effect_type : u32 {
@@ -467,6 +496,44 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_clip_get_load_state(clip: nk_audio_clip, out_state: ptr<nk_audio_clip_load_state> @out) -> nk_result;
 	/**
+	 * Configures the process-wide playback device before the first audio engine
+	 * use. Configuration becomes immutable for the runtime generation once the
+	 * engine has been initialized; call nk_shutdown() before configuring a new
+	 * device. Device indices are snapshots and may change when devices are added
+	 * or removed.
+	 */
+	extern fn nk_audio_device_configure(options: ptr<const<nk_audio_device_options>>) -> nk_result;
+	/**
+	 * Returns the number of currently enumerated playback devices.
+	 */
+	extern fn nk_audio_device_get_count(out_count: ptr<u32> @out) -> nk_result;
+	/**
+	 * Copies one currently enumerated playback device name into the caller's
+	 * UTF-8 buffer. The required size, including the NUL terminator, is always
+	 * returned through inout_size.
+	 */
+	extern fn nk_audio_device_get_name(index: u32, buffer: nullable<ptr<c_char>> @out_buffer("inout_size"), inout_size: ptr<u32> @inout) -> nk_result;
+	/**
+	 * Returns the current process-wide audio playback device state.
+	 */
+	extern fn nk_audio_device_get_state(out_state: ptr<nk_audio_device_state> @out) -> nk_result;
+	/**
+	 * Returns whether one currently enumerated playback device is the backend default.
+	 */
+	extern fn nk_audio_device_is_default(index: u32, out_default: ptr<nk_bool> @out) -> nk_result;
+	/**
+	 * Stops and starts the process-wide audio playback device to recover from an interruption.
+	 */
+	extern fn nk_audio_device_restart() -> nk_result;
+	/**
+	 * Starts the process-wide audio playback device.
+	 */
+	extern fn nk_audio_device_start() -> nk_result;
+	/**
+	 * Stops the process-wide audio playback device without destroying the engine graph.
+	 */
+	extern fn nk_audio_device_stop() -> nk_result;
+	/**
 	 * Returns linear gain for the process-wide NativeKit audio mixer.
 	 */
 	extern fn nk_audio_get_master_volume(out_volume: ptr<f32> @out) -> nk_result;
@@ -849,6 +916,48 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * URI inputs are copied before return. These functions are UI-thread-only.
 	 */
 	extern fn nk_shell_open_resource(resource: ptr<const<nk_resource>>) -> nk_result;
+	/**
+	 * Configuration applied when NativeKit lazily creates its audio device.
+	 */
+	struct nk_audio_device_options @layout(48, 8) {
+		/**
+		 * Set to sizeof(nk_audio_device_options) before passing the structure.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Playback device index returned by nk_audio_device_get_count/name; use
+		 * NK_AUDIO_DEVICE_DEFAULT to select the backend default.
+		 */
+		playback_device_index: u32 @offset(4);
+		/**
+		 * Requested output sample rate, or zero for the backend default.
+		 */
+		sample_rate: u32 @offset(8);
+		/**
+		 * Requested output channel count, or zero for the backend default.
+		 */
+		channels: u32 @offset(12);
+		/**
+		 * Requested device period in PCM frames, or zero for the backend default.
+		 */
+		period_size_in_frames: u32 @offset(16);
+		/**
+		 * Requested device period in milliseconds, or zero for the backend default.
+		 */
+		period_size_in_milliseconds: u32 @offset(20);
+		/**
+		 * Do not start the device automatically during engine initialization.
+		 */
+		no_auto_start: nk_bool @offset(24);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(28);
+		/**
+		 * Reserved for compatible extensions; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(32);
+	}
 	/**
 	 * Three-dimensional audio coordinate in the right-handed OpenGL convention.
 	 */

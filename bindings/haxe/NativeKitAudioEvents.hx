@@ -11,6 +11,11 @@ class NativeKitAudioEvents {
 			case EventKind.AudioVoiceReady: AudioVoiceReady(c.source);
 			case EventKind.AudioVoiceLoadFailed: AudioVoiceLoadFailed(c.source, c.result);
 			case EventKind.AudioVoiceComplete: AudioVoiceComplete(c.source);
+			case EventKind.AudioDeviceStarted: AudioDeviceStarted;
+			case EventKind.AudioDeviceStopped: AudioDeviceStopped;
+			case EventKind.AudioDeviceRerouted: AudioDeviceRerouted;
+			case EventKind.AudioDeviceInterruptionBegan: AudioDeviceInterruptionBegan;
+			case EventKind.AudioDeviceInterruptionEnded: AudioDeviceInterruptionEnded;
 			default: null;
 		}
 }

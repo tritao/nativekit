@@ -4,6 +4,54 @@ import NativeKitAudio;
 
 /** Process-wide NativeKit audio mixer controls. */
 class Mixer {
+	/** Configures the process-wide playback device before the first audio use. */
+	public static function configureDevice(options:DeviceOptions):Void {
+		if (options == null)
+			throw "Audio device options must not be null";
+		AudioResult.check(NativeKitAudio.nk_audio_device_configure(options.nativeValue()),
+			"audio.device.configure");
+	}
+
+	/** Returns the number of currently enumerated playback devices. */
+	public static function deviceCount():Int {
+		var result = NativeKitAudio.nk_audio_device_get_count();
+		AudioResult.check(result.status, "audio.device.count");
+		return result.out_count;
+	}
+
+	/** Returns a currently enumerated playback device name. */
+	public static function deviceName(index:Int):String {
+		var result = NativeKitAudio.nk_audio_device_get_name(index);
+		AudioResult.check(result.status, "audio.device.name");
+		return result.buffer.sub(0, result.buffer.length - 1).toString();
+	}
+
+	/** Returns whether a currently enumerated playback device is the backend default. */
+	public static function deviceIsDefault(index:Int):Bool {
+		var result = NativeKitAudio.nk_audio_device_is_default(index);
+		AudioResult.check(result.status, "audio.device.isDefault");
+		return result.out_default;
+	}
+
+	/** Starts the process-wide audio playback device. */
+	public static function startDevice():Void
+		AudioResult.check(NativeKitAudio.nk_audio_device_start(), "audio.device.start");
+
+	/** Stops the process-wide audio playback device without destroying the graph. */
+	public static function stopDevice():Void
+		AudioResult.check(NativeKitAudio.nk_audio_device_stop(), "audio.device.stop");
+
+	/** Restarts the process-wide audio playback device. */
+	public static function restartDevice():Void
+		AudioResult.check(NativeKitAudio.nk_audio_device_restart(), "audio.device.restart");
+
+	/** Returns the current process-wide playback device state. */
+	public static function deviceState():NativeKitAudio.DeviceState {
+		var result = NativeKitAudio.nk_audio_device_get_state();
+		AudioResult.check(result.status, "audio.device.state");
+		return result.out_state;
+	}
+
 	/** Returns the process-wide audio engine clock in PCM frames. */
 	public static function timeFrames():haxe.Int64 {
 		var result = NativeKitAudio.nk_audio_get_time_pcm_frames();

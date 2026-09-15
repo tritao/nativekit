@@ -42,6 +42,70 @@ int main() {
     assert(nk_audio_get_sample_rate(nullptr) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_audio_bus_fade(NK_INVALID_HANDLE, -2.0f, 1.0f, 0) == NK_ERROR_INVALID_ARGUMENT);
 
+    assert(nk_audio_device_configure(nullptr) == NK_ERROR_INVALID_ARGUMENT);
+    nk_audio_device_options device_options{};
+    device_options.struct_size = sizeof(device_options);
+    device_options.period_size_in_frames = 128;
+    device_options.period_size_in_milliseconds = 10;
+    assert(nk_audio_device_configure(&device_options) == NK_ERROR_INVALID_ARGUMENT);
+    device_options.period_size_in_milliseconds = 0;
+    device_options.playback_device_index = NK_AUDIO_DEVICE_DEFAULT;
+    device_options.sample_rate = 48000;
+    device_options.channels = 2;
+    device_options.no_auto_start = 1;
+    uint32_t device_count = 0;
+    assert(nk_audio_device_get_count(&device_count) == NK_OK);
+    if (device_count == 0) {
+        nk_shutdown();
+        return 77;
+    }
+    uint32_t device_name_size = 0;
+    assert(nk_audio_device_get_name(0, nullptr, &device_name_size) == NK_ERROR_BUFFER_TOO_SMALL);
+    assert(device_name_size > 0 && device_name_size <= 256);
+    char device_name[256]{};
+    device_name_size = sizeof(device_name);
+    assert(nk_audio_device_get_name(0, device_name, &device_name_size) == NK_OK);
+    assert(device_name_size > 0 && device_name[device_name_size - 1] == '\0');
+    nk_bool device_is_default = 0;
+    assert(nk_audio_device_is_default(0, &device_is_default) == NK_OK);
+    assert(nk_audio_device_configure(&device_options) == NK_OK);
+    nk_audio_device_state device_state = NK_AUDIO_DEVICE_UNINITIALIZED;
+    assert(nk_audio_device_get_state(&device_state) == NK_OK);
+    assert(device_state == NK_AUDIO_DEVICE_UNINITIALIZED);
+    assert(nk_audio_device_stop() == NK_ERROR_INVALID_REQUEST);
+    assert(nk_audio_device_restart() == NK_ERROR_INVALID_REQUEST);
+    uint32_t configured_sample_rate = 0;
+    assert(nk_audio_device_start() == NK_OK);
+    assert(nk_audio_get_sample_rate(&configured_sample_rate) == NK_OK);
+    assert(configured_sample_rate == 48000);
+    assert(nk_audio_device_get_state(&device_state) == NK_OK);
+    assert(device_state == NK_AUDIO_DEVICE_STARTED);
+    device_options.sample_rate = 44100;
+    assert(nk_audio_device_configure(&device_options) == NK_ERROR_INVALID_REQUEST);
+    device_options.sample_rate = 48000;
+    assert(nk_audio_device_stop() == NK_OK);
+    assert(nk_audio_device_get_state(&device_state) == NK_OK);
+    assert(device_state == NK_AUDIO_DEVICE_STOPPED);
+    assert(nk_audio_device_restart() == NK_OK);
+    assert(nk_audio_device_get_state(&device_state) == NK_OK);
+    assert(device_state == NK_AUDIO_DEVICE_STARTED);
+    nk_bool started_event = 0;
+    nk_bool stopped_event = 0;
+    for (int attempt = 0; attempt < 20 && (!started_event || !stopped_event); ++attempt) {
+        assert(nk_wait_events_timeout(0.01) == NK_OK);
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_AUDIO_DEVICE_STARTED ||
+            event.kind == NK_EVENT_AUDIO_DEVICE_STOPPED) {
+            assert(event.source == NK_INVALID_HANDLE);
+            started_event |= event.kind == NK_EVENT_AUDIO_DEVICE_STARTED;
+            stopped_event |= event.kind == NK_EVENT_AUDIO_DEVICE_STOPPED;
+        }
+        nk_event_release(&event);
+    }
+    assert(started_event && stopped_event);
+
     nk_audio_bus bus = NK_INVALID_HANDLE;
     assert(nk_audio_bus_create(&bus) == NK_OK);
     assert(nk_audio_bus_set_volume(bus, 0.5f) == NK_OK);
