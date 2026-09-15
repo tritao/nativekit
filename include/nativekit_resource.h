@@ -274,10 +274,18 @@ NK_API nk_result NK_CALL nk_resource_open(const nk_resource *resource, nk_resour
 /**
  * Starts an asynchronous read of the complete URI resource. Completion is
  * delivered through NK_EVENT_RESOURCE_DATA_COMPLETE; its event data contains
- * the loaded bytes and its result reports the fetch outcome.
+ * the loaded bytes and its result reports the fetch outcome. Use
+ * nk_resource_load_cancel() to abort a pending load.
  */
 NK_API nk_result NK_CALL nk_resource_load_async(const nk_resource *resource,
                                                 nk_request_id *out_request NK_OUT);
+/**
+ * Cancels a pending asynchronous resource load. No completion event is
+ * delivered for a successfully cancelled request; a backend completion that
+ * races with cancellation is consumed by NativeKit. This function is
+ * UI-thread-only.
+ */
+NK_API nk_result NK_CALL nk_resource_load_cancel(nk_request_id request);
 /** Returns capabilities and size information for a resource stream. */
 NK_API nk_result NK_CALL nk_resource_stream_info_get(nk_resource_stream stream,
                                                      nk_resource_stream_info *out_info);

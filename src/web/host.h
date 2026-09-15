@@ -196,6 +196,7 @@ bool show_notification(nk_request_id request, const char *title, const char *bod
 bool close_notification(nk_request_id request) noexcept;
 bool poll_gamepads() noexcept;
 bool fetch_resource(const char *uri, nk_request_id request) noexcept;
+bool cancel_resource_fetch(nk_request_id request) noexcept;
 
 bool create_webgl_context(const char *selector, const WebGLContextOptions &options,
                           EMSCRIPTEN_WEBGL_CONTEXT_HANDLE *out_context) noexcept;

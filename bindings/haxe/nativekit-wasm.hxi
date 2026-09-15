@@ -3211,9 +3211,17 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	/**
 	 * Starts an asynchronous read of the complete URI resource. Completion is
 	 * delivered through NK_EVENT_RESOURCE_DATA_COMPLETE; its event data contains
-	 * the loaded bytes and its result reports the fetch outcome.
+	 * the loaded bytes and its result reports the fetch outcome. Use
+	 * nk_resource_load_cancel() to abort a pending load.
 	 */
 	extern fn nk_resource_load_async(resource: ptr<const<nk_resource>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Cancels a pending asynchronous resource load. No completion event is
+	 * delivered for a successfully cancelled request; a backend completion that
+	 * races with cancellation is consumed by NativeKit. This function is
+	 * UI-thread-only.
+	 */
+	extern fn nk_resource_load_cancel(request: nk_request_id) -> nk_result;
 	/**
 	 * Opens a URI-backed stream on the UI thread. Stream operations copy bytes
 	 * synchronously and may be called from worker threads. A successful read may

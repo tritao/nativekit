@@ -364,6 +364,8 @@ int main(void) {
     local_resource.uri = "file:///tmp/nativekit-persisted-access";
     assert(nk_resource_get_persisted_access(&local_resource, &persisted_flags) ==
            NK_ERROR_UNSUPPORTED);
+    assert(nk_resource_load_cancel(NK_INVALID_REQUEST_ID) == NK_ERROR_INVALID_REQUEST);
+    assert(nk_resource_load_cancel(123) == NK_ERROR_INVALID_REQUEST);
     typedef struct resource_test_payload {
         nk_resource_list header;
         nk_resource_item item;

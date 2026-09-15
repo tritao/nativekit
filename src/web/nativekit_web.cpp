@@ -2056,6 +2056,14 @@ nk_result load_resource_async(const struct nk_resource *resource, nk_request_id 
     return NK_OK;
 }
 
+nk_result cancel_resource_load(nk_request_id request) noexcept {
+    if (!nk::web::cancel_resource_fetch(request)) {
+        nk::core::set_error("browser resource fetch cannot be cancelled");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    return NK_OK;
+}
+
 } // namespace nk::backend
 
 namespace nk::core::system_backend {

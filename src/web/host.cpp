@@ -1550,14 +1550,32 @@ EM_JS(int, nk_web_stop_gamepad_rumble, (int index), {
 });
 
 EM_JS(void, nk_web_fetch_resource, (const char *uri, double request), {
+    const requests = Module.nativekitResourceFetches ||
+        (Module.nativekitResourceFetches = Object.create(null));
+    const key = String(request);
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    if (controller)
+        requests[key] = controller;
+    let completed = false;
     const complete = (result, pointer, size) => {
+        if (completed) {
+            if (pointer)
+                _free(pointer);
+            return;
+        }
+        completed = true;
+        if (controller && requests[key] === controller)
+            delete requests[key];
         if (Module.ccall)
             Module.ccall("nk_web_host_resource_complete", null,
                          ["number", "number", "number", "number"],
                          [request, result, pointer || 0, size || 0]);
     };
     try {
-        fetch(UTF8ToString(uri), {credentials: "same-origin"}).then(response => {
+        const options = {credentials: "same-origin"};
+        if (controller)
+            options.signal = controller.signal;
+        fetch(UTF8ToString(uri), options).then(response => {
             if (!response.ok) {
                 complete(-1, 0, 0);
                 return;
@@ -1578,6 +1596,19 @@ EM_JS(void, nk_web_fetch_resource, (const char *uri, double request), {
         }).catch(() => complete(-1, 0, 0));
     } catch (error) {
         complete(-1, 0, 0);
+    }
+});
+
+EM_JS(int, nk_web_cancel_resource, (double request), {
+    const requests = Module.nativekitResourceFetches;
+    const controller = requests && requests[String(request)];
+    if (!controller)
+        return 0;
+    try {
+        controller.abort();
+        return 1;
+    } catch (error) {
+        return 0;
     }
 });
 
@@ -2100,6 +2131,8 @@ nk_web_host_clipboard_resources_complete(uint32_t request, nk_result result, con
 
 extern "C" EMSCRIPTEN_KEEPALIVE void
 nk_web_host_resource_complete(uint32_t request, nk_result result, const void *data, uint32_t size) {
+    if (!nk::core::is_resource_load_pending(static_cast<nk_request_id>(request)))
+        return;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_RESOURCE_DATA_COMPLETE;
     event.request_id = static_cast<nk_request_id>(request);
@@ -2308,6 +2341,10 @@ bool fetch_resource(const char *uri, nk_request_id request) noexcept {
         return false;
     nk_web_fetch_resource(uri, static_cast<double>(request));
     return true;
+}
+
+bool cancel_resource_fetch(nk_request_id request) noexcept {
+    return nk_web_cancel_resource(static_cast<double>(request)) != 0;
 }
 
 bool has_resource_handle(const char *uri) noexcept {

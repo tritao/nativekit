@@ -28,7 +28,9 @@ audio bytes, then emits `NK_EVENT_AUDIO_CLIP_READY` or
 create voices only after the clip is ready. Providers without asynchronous
 loading support return `NK_ERROR_UNSUPPORTED`. Resource-backed voices are
 already decoder-backed streams; `NK_AUDIO_VOICE_STREAM` is optional for them
-and does not change the provider stream lifetime.
+and does not change the provider stream lifetime. Destroying a pending async
+clip requests cancellation of its underlying resource load and suppresses any
+late completion event.
 
 Sounds and voices are generation-checked NativeKit resources and can be routed
 through generation-checked mixer buses. Each bus supports volume, mute, start,

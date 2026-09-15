@@ -504,6 +504,8 @@ void audio_resource_load_callback(nk_request_id request, nk_result result, const
     if (!context || !context->clip)
         return;
     auto &clip = *context->clip;
+    if (clip.handle.load(std::memory_order_acquire) == NK_INVALID_HANDLE)
+        return;
     clip.load_request = request;
     auto load_result = result;
     if (load_result == NK_OK) {
@@ -1017,6 +1019,12 @@ nk_result NK_CALL nk_audio_clip_destroy(nk_audio_clip clip) {
         auto value = get_clip(clip);
         if (!value)
             return NK_ERROR_INVALID_HANDLE;
+        if (value->load_state.load(std::memory_order_acquire) == NK_AUDIO_CLIP_LOADING &&
+            value->load_request != NK_INVALID_REQUEST_ID) {
+            const auto cancel_result = nk::core::cancel_resource_load(value->load_request);
+            if (cancel_result != NK_OK && cancel_result != NK_ERROR_UNSUPPORTED)
+                return cancel_result;
+        }
         value->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
         if (!nk::core::handles().erase(clip, nk::core::ResourceType::audio_clip))
             return invalid_handle("invalid audio clip handle");

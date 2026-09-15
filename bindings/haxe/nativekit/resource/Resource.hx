@@ -1,6 +1,7 @@
 package nativekit.resource;
 
 import NativeKit;
+import NativeKitError;
 
 /** Describes a URI-backed NativeKit resource for NativeKit APIs. */
 class Resource {
@@ -28,5 +29,12 @@ class Resource {
 		value.set_mime_type(mimeType);
 		value.set_display_name(displayName);
 		return value;
+	}
+
+	/** Cancels a pending generic asynchronous resource load. */
+	public static function cancelLoad(request:haxe.Int64):Void {
+		var status = NativeKit.nk_resource_load_cancel(request);
+		if (status != NativeKit.Result.Ok)
+			throw new NativeKitError(status, "resource.cancelLoad", NativeKit.nk_last_error());
 	}
 }

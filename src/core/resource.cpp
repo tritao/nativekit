@@ -11,14 +11,15 @@
 #include <utility>
 
 namespace {
-struct ResourceDataHandlerEntry {
+struct ResourceLoadEntry {
     nk::core::ResourceDataHandler handler = nullptr;
     void *user_data = nullptr;
     nk::core::ResourceDataHandlerCleanup cleanup = nullptr;
+    bool canceled = false;
 };
 
-std::mutex resource_data_handlers_mutex;
-std::unordered_map<nk_request_id, ResourceDataHandlerEntry> resource_data_handlers;
+std::mutex resource_loads_mutex;
+std::unordered_map<nk_request_id, ResourceLoadEntry> resource_loads;
 
 bool string_view(const unsigned char *bytes, std::size_t size, uint32_t offset, uint32_t minimum,
                  const char **out, uint32_t *out_length) {
@@ -41,15 +42,13 @@ bool string_view(const unsigned char *bytes, std::size_t size, uint32_t offset, 
 
 namespace nk::core {
 
-nk_result register_resource_data_handler(nk_request_id request, ResourceDataHandler handler,
-                                         void *user_data,
-                                         ResourceDataHandlerCleanup cleanup) noexcept {
-    if (request == NK_INVALID_REQUEST_ID || !handler)
+nk_result register_resource_load(nk_request_id request, ResourceDataHandler handler, void *user_data,
+                                  ResourceDataHandlerCleanup cleanup) noexcept {
+    if (request == NK_INVALID_REQUEST_ID || (handler == nullptr) != (cleanup == nullptr))
         return NK_ERROR_INVALID_ARGUMENT;
     try {
-        std::lock_guard lock(resource_data_handlers_mutex);
-        if (!resource_data_handlers.emplace(request, ResourceDataHandlerEntry{handler, user_data,
-                                                                                cleanup})
+        std::lock_guard lock(resource_loads_mutex);
+        if (!resource_loads.emplace(request, ResourceLoadEntry{handler, user_data, cleanup, false})
                  .second)
             return NK_ERROR_ALREADY_INITIALIZED;
         return NK_OK;
@@ -58,50 +57,90 @@ nk_result register_resource_data_handler(nk_request_id request, ResourceDataHand
     }
 }
 
-void unregister_resource_data_handler(nk_request_id request) noexcept {
-    ResourceDataHandlerEntry entry;
+void unregister_resource_load(nk_request_id request) noexcept {
+    ResourceLoadEntry entry;
     {
-        std::lock_guard lock(resource_data_handlers_mutex);
-        const auto found = resource_data_handlers.find(request);
-        if (found == resource_data_handlers.end())
+        std::lock_guard lock(resource_loads_mutex);
+        const auto found = resource_loads.find(request);
+        if (found == resource_loads.end())
             return;
         entry = found->second;
-        resource_data_handlers.erase(found);
+        resource_loads.erase(found);
     }
     if (entry.cleanup)
         entry.cleanup(entry.user_data);
+}
+
+bool is_resource_load_pending(nk_request_id request) noexcept {
+    if (request == NK_INVALID_REQUEST_ID)
+        return false;
+    std::lock_guard lock(resource_loads_mutex);
+    return resource_loads.find(request) != resource_loads.end();
 }
 
 bool dispatch_resource_data_event(const nk_event &event) noexcept {
     if (event.kind != NK_EVENT_RESOURCE_DATA_COMPLETE ||
         event.request_id == NK_INVALID_REQUEST_ID)
         return false;
-    ResourceDataHandlerEntry entry;
+    ResourceLoadEntry entry;
     {
-        std::lock_guard lock(resource_data_handlers_mutex);
-        const auto found = resource_data_handlers.find(event.request_id);
-        if (found == resource_data_handlers.end())
+        std::lock_guard lock(resource_loads_mutex);
+        const auto found = resource_loads.find(event.request_id);
+        if (found == resource_loads.end())
             return false;
         entry = found->second;
-        resource_data_handlers.erase(found);
+        resource_loads.erase(found);
     }
+    if (entry.canceled) {
+        if (entry.cleanup)
+            entry.cleanup(entry.user_data);
+        return true;
+    }
+    if (!entry.handler)
+        return false;
     entry.handler(event.request_id, event.result, event.data, event.data_size, entry.user_data);
     if (entry.cleanup)
         entry.cleanup(entry.user_data);
     return true;
 }
 
-void clear_resource_data_handlers() noexcept {
-    std::unordered_map<nk_request_id, ResourceDataHandlerEntry> pending;
+void clear_resource_loads() noexcept {
+    std::unordered_map<nk_request_id, ResourceLoadEntry> pending;
     {
-        std::lock_guard lock(resource_data_handlers_mutex);
-        pending.swap(resource_data_handlers);
+        std::lock_guard lock(resource_loads_mutex);
+        pending.swap(resource_loads);
     }
     for (const auto &[request, entry] : pending) {
-        (void)request;
+        (void)nk::backend::cancel_resource_load(request);
         if (entry.cleanup)
             entry.cleanup(entry.user_data);
     }
+}
+
+nk_result cancel_resource_load(nk_request_id request) noexcept {
+    if (const auto result = require_ui_thread(); result != NK_OK)
+        return result;
+    if (request == NK_INVALID_REQUEST_ID) {
+        set_error("invalid resource load request");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    {
+        std::lock_guard lock(resource_loads_mutex);
+        const auto found = resource_loads.find(request);
+        if (found == resource_loads.end() || found->second.canceled) {
+            set_error("invalid or completed resource load request");
+            return NK_ERROR_INVALID_REQUEST;
+        }
+        found->second.canceled = true;
+    }
+    const auto result = nk::backend::cancel_resource_load(request);
+    if (result != NK_OK) {
+        std::lock_guard lock(resource_loads_mutex);
+        const auto found = resource_loads.find(request);
+        if (found != resource_loads.end() && found->second.canceled)
+            found->second.canceled = false;
+    }
+    return result;
 }
 
 nk_result start_resource_load(const struct nk_resource *resource, nk_request_id *out_request,
@@ -121,20 +160,16 @@ nk_result start_resource_load(const struct nk_resource *resource, nk_request_id 
     }
     *out_request = NK_INVALID_REQUEST_ID;
     const auto request = next_request_id();
-    if (handler) {
-        const auto registration =
-            register_resource_data_handler(request, handler, user_data, cleanup);
-        if (registration != NK_OK) {
-            set_error("could not register resource load handler");
-            if (cleanup)
-                cleanup(user_data);
-            return registration;
-        }
+    const auto registration = register_resource_load(request, handler, user_data, cleanup);
+    if (registration != NK_OK) {
+        set_error("could not register resource load handler");
+        if (cleanup)
+            cleanup(user_data);
+        return registration;
     }
     const auto result = nk::backend::load_resource_async(resource, request);
     if (result != NK_OK) {
-        if (handler)
-            unregister_resource_data_handler(request);
+        unregister_resource_load(request);
         return result;
     }
     *out_request = request;
@@ -151,12 +186,22 @@ nk_result load_resource_async(const struct nk_resource *, nk_request_id) noexcep
     return NK_ERROR_UNSUPPORTED;
 }
 
+nk_result cancel_resource_load(nk_request_id) noexcept {
+    nk::core::set_error("asynchronous URI resource cancellation is unavailable on this platform");
+    return NK_ERROR_UNSUPPORTED;
+}
+
 } // namespace nk::backend
 #endif
 
 extern "C" nk_result NK_CALL nk_resource_load_async(const nk_resource *resource,
                                                     nk_request_id *out_request) {
     return nk::core::start_resource_load(resource, out_request);
+}
+
+extern "C" nk_result NK_CALL nk_resource_load_cancel(nk_request_id request) {
+    nk::core::clear_error();
+    return nk::core::cancel_resource_load(request);
 }
 
 extern "C" nk_result NK_CALL nk_resource_event_item(const nk_event *event, uint32_t index,

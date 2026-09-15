@@ -176,7 +176,7 @@ void NK_CALL nk_shutdown(void) {
     /* Backend resources are still valid while system leases are released. */
     nk::core::system_shutdown();
     nk::backend::shutdown();
-    nk::core::clear_resource_data_handlers();
+    nk::core::clear_resource_loads();
     nk::core::requests().clear();
     std::lock_guard lock(state_mutex);
     handle_registry.clear();
