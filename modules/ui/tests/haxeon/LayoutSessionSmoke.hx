@@ -110,6 +110,37 @@ class LayoutSessionSmoke {
 		resolved = session.submit(root, frame);
 		if (measureCalls <= callsAfterFirst)
 			return 43;
+		var stats = session.measureStats();
+		if (stats.requests < 2 || stats.cacheHits == 0 || stats.cacheMisses == 0 ||
+			stats.callbackCalls != measureCalls || stats.cacheEntries == 0 ||
+			stats.cacheEntries > stats.cacheCapacity)
+			return 46;
+
+		var paintCalls = 0;
+		var renderable = new LayoutRenderableContent(measureContent, function(canvas, geometry) {
+			paintCalls++;
+			canvas.fillRect(new Rect(0.0, 0.0, geometry.width, geometry.height),
+				Color.rgba(0.2, 0.4, 0.8, 1.0));
+		});
+		measuredNode.intrinsicContent = renderable;
+		resolved = session.submit(root, frame);
+		measuredItem = null;
+		for (item in resolved)
+			if (item.id == 103)
+				measuredItem = item;
+		if (measuredItem == null)
+			return 47;
+		var paintedList = renderable.paint(measuredItem);
+		if (paintCalls != 1 || paintedList.info().commandCount == 0)
+			return 48;
+		renderable.paint(measuredItem);
+		if (paintCalls != 1)
+			return 49;
+		measureContent.invalidate();
+		renderable.paint(measuredItem);
+		if (paintCalls != 2)
+			return 52;
+		renderable.dispose();
 
 		var image = Image.create(8, 6, ImageFormat.RGBA8, Bytes.alloc(8 * 6 * 4));
 		panel.add(LayoutNode.custom(104, new LayoutImageContent(image)));

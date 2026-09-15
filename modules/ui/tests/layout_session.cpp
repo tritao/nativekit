@@ -368,10 +368,20 @@ int main() {
     if (nkui_layout_session_submit(session, measured.data(), measured.size(), &frame) != NKUI_OK ||
         measure_state.calls != 1)
         return 47;
+    nkui_layout_measure_stats measure_stats{};
+    if (nkui_layout_session_get_measure_stats(session, &measure_stats) != NKUI_OK ||
+        measure_stats.struct_size != sizeof(measure_stats) || measure_stats.requests < 2 ||
+        measure_stats.cache_hits == 0 || measure_stats.cache_misses == 0 ||
+        measure_stats.callback_calls < measure_state.calls || measure_stats.cache_entries == 0 ||
+        measure_stats.cache_capacity < measure_stats.cache_entries)
+        return 50;
     write_u32(measured, measured_record + NKUI_LAYOUT_NODE_MEASURE_VERSION_OFFSET, 1);
     if (nkui_layout_session_submit(session, measured.data(), measured.size(), &frame) != NKUI_OK ||
         measure_state.calls != 2)
         return 49;
+    if (nkui_layout_session_get_measure_stats(session, &measure_stats) != NKUI_OK ||
+        measure_stats.cache_misses < 2 || measure_stats.callback_calls < measure_state.calls)
+        return 51;
     if (nkui_layout_session_set_measure_callback(session, nullptr, nullptr) != NKUI_OK)
         return 48;
     resolved_bytes = static_cast<uint32_t>(resolved.size());

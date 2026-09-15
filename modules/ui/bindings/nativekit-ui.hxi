@@ -6,7 +6,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_API_VERSION = 6;
 	const NKUI_COMMAND_VERSION = 1;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
-	const NKUI_LAYOUT_API_VERSION = 16;
+	const NKUI_LAYOUT_API_VERSION = 17;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	/**
 	 * Per-child cross-axis alignment override; zero inherits the parent.
@@ -537,6 +537,10 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_layout_session_destroy(session: nkui_layout_session) -> nkui_result;
 	/**
+	 * Returns cumulative intrinsic-measure counters and current cache occupancy.
+	 */
+	extern fn nkui_layout_session_get_measure_stats(session: nkui_layout_session, out_stats: ptr<nkui_layout_measure_stats> @out) -> nkui_result;
+	/**
 	 * Copies the resolved geometry for every node in submission order.
 	 *
 	 * The buffer contains `nkui_layout_item` records with `struct_size` set.
@@ -952,6 +956,39 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		height: f32 @offset(8);
 		baseline: f32 @offset(12);
 		flags: nkui_layout_measure_flags @offset(16);
+	}
+	/**
+	 * Cumulative intrinsic-measure activity for one layout session.
+	 */
+	struct nkui_layout_measure_stats @layout(56, 8) {
+		/**
+		 * Set to sizeof(nkui_layout_measure_stats) when returned by the API.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Intrinsic-measure requests made by Clay.
+		 */
+		requests: u64 @offset(8);
+		/**
+		 * Requests served by the persistent exact-constraint cache.
+		 */
+		cache_hits: u64 @offset(16);
+		/**
+		 * Requests not found in the persistent cache.
+		 */
+		cache_misses: u64 @offset(24);
+		/**
+		 * Calls made to the external intrinsic-measure callback.
+		 */
+		callback_calls: u64 @offset(32);
+		/**
+		 * Current number of entries in the bounded cache.
+		 */
+		cache_entries: u64 @offset(40);
+		/**
+		 * Maximum number of entries retained by the cache.
+		 */
+		cache_capacity: u64 @offset(48);
 	}
 	/**
 	 * Paragraph-level wrapping, alignment, and line-height inputs.

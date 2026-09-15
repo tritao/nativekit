@@ -17,7 +17,7 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 16,
+    NKUI_LAYOUT_API_VERSION = 17,
     NKUI_LAYOUT_TRANSACTION_VERSION = 14,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
     NKUI_LAYOUT_NODE_RECORD_BYTES = 240,
@@ -251,6 +251,24 @@ typedef struct nkui_layout_measure_result {
     nkui_layout_measure_flags flags;
 } nkui_layout_measure_result;
 
+/** Cumulative intrinsic-measure activity for one layout session. */
+typedef struct nkui_layout_measure_stats {
+    /** Set to sizeof(nkui_layout_measure_stats) when returned by the API. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Intrinsic-measure requests made by Clay. */
+    uint64_t requests;
+    /** Requests served by the persistent exact-constraint cache. */
+    uint64_t cache_hits;
+    /** Requests not found in the persistent cache. */
+    uint64_t cache_misses;
+    /** Calls made to the external intrinsic-measure callback. */
+    uint64_t callback_calls;
+    /** Current number of entries in the bounded cache. */
+    uint64_t cache_entries;
+    /** Maximum number of entries retained by the cache. */
+    uint64_t cache_capacity;
+} nkui_layout_measure_stats;
+
 /** Synchronous intrinsic measurement callback for custom-visual nodes. */
 typedef nkui_layout_measure_result(NK_CALL *nkui_layout_measure_callback)(
     uint32_t node_id, nkui_layout_measure_constraints constraints, void *NK_NULLABLE user_data);
@@ -275,6 +293,10 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_set_font_collection(nkui_layout
 NKUI_API nkui_result NK_CALL nkui_layout_session_set_measure_callback(
         nkui_layout_session session, nkui_nullable_layout_measure_callback callback NK_RETAINED,
         void *NK_NULLABLE user_data);
+
+/** Returns cumulative intrinsic-measure counters and current cache occupancy. */
+NKUI_API nkui_result NK_CALL nkui_layout_session_get_measure_stats(
+        nkui_layout_session session, nkui_layout_measure_stats *out_stats NKUI_OUT);
 
 /** Clears all custom-paint display lists attached to the session. */
 NKUI_API nkui_result NK_CALL nkui_layout_session_clear_custom_paints(nkui_layout_session session);

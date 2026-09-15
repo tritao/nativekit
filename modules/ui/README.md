@@ -32,8 +32,12 @@ node ID, the node's application-defined measurement version, and the exact
 four-axis constraints; changing the version invalidates only that node's
 measurements. Haxe callers can use `LayoutNode.custom` with
 `LayoutMeasuredContent` for canvas, native-view, and editor surfaces, or
-`LayoutImageContent` for immutable image dimensions. Rendering remains separate:
-attach the corresponding retained display list with `LayoutSession.setCustomPaint`.
+`LayoutImageContent` for immutable image dimensions. For content that also
+paints, `LayoutRenderableContent` pairs a provider with a retained Canvas
+display list and repaints only when its version or resolved geometry changes.
+The painter receives local-node geometry while the helper applies the resolved
+clip and transform. `measureStats()` exposes cumulative cache hit/miss counts
+for profiling.
 
 GROW axes also accept a positive `growWeight`. Equal weights preserve the
 normal equal-share behavior; for example, `LayoutAxis.grow(0.0, 0.0, 4.0)`

@@ -1320,6 +1320,26 @@ extern "C" nkui_result nkui_layout_session_set_measure_callback(
     return NKUI_OK;
 }
 
+extern "C" nkui_result nkui_layout_session_get_measure_stats(
+    nkui_layout_session session, nkui_layout_measure_stats *out_stats) {
+    if (!out_stats)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    auto *state = resolve(session);
+    if (!state || !state->engine)
+        return NKUI_ERROR_INVALID_HANDLE;
+    const auto stats = state->engine->measure_stats();
+    *out_stats = {};
+    out_stats->struct_size = sizeof(*out_stats);
+    out_stats->requests = stats.requests;
+    out_stats->cache_hits = stats.cache_hits;
+    out_stats->cache_misses = stats.cache_misses;
+    out_stats->callback_calls = stats.callback_calls;
+    out_stats->cache_entries = stats.cache_entries;
+    out_stats->cache_capacity = stats.cache_capacity;
+    return NKUI_OK;
+}
+
 extern "C" nkui_result nkui_layout_session_clear_custom_paints(nkui_layout_session session) {
     std::scoped_lock lock(layout_sessions_mutex, lists_mutex);
     auto *state = resolve(session);

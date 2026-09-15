@@ -36,6 +36,9 @@ class LayoutEngine {
     /** Installs a NativeKit-owned synchronous measurer for external content. */
     void set_measure_callback(LayoutMeasureCallback callback);
 
+    /** Returns cumulative intrinsic-measure activity and current cache occupancy. */
+    LayoutMeasureStats measure_stats() const;
+
     bool layout(const std::vector<LayoutNode> &nodes, float width, float height,
                 float delta_seconds, LayoutSnapshot &out, LayoutError *error = nullptr);
 

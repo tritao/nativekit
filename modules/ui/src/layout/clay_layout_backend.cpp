@@ -210,6 +210,10 @@ struct LayoutEngine::Impl {
     std::unordered_map<uint32_t, MeasureNodeInfo> measure_node_ids;
     std::unordered_map<MeasureCacheKey, LayoutMeasureResult, MeasureCacheKeyHash>
         measure_cache;
+    uint64_t measure_requests = 0;
+    uint64_t measure_cache_hits = 0;
+    uint64_t measure_cache_misses = 0;
+    uint64_t measure_callback_calls = 0;
     std::unordered_map<uint32_t, LayoutMeasureResult> frame_measurements;
     std::vector<Clay_TextLayoutLine> callback_lines;
     std::string clay_error;
@@ -257,6 +261,7 @@ Clay_MeasureResult LayoutEngine::Impl::measure_element(Clay_ElementId id,
     Clay_MeasureResult result{};
     if (!state.measure_callback)
         return result;
+    ++state.measure_requests;
 
     const auto node = state.measure_node_ids.find(id.id);
     const MeasureNodeInfo node_info = node == state.measure_node_ids.end()
@@ -273,8 +278,11 @@ Clay_MeasureResult LayoutEngine::Impl::measure_element(Clay_ElementId id,
     const auto cached = state.measure_cache.find(key);
     LayoutMeasureResult measured;
     if (cached != state.measure_cache.end()) {
+        ++state.measure_cache_hits;
         measured = cached->second;
     } else {
+        ++state.measure_cache_misses;
+        ++state.measure_callback_calls;
         measured = state.measure_callback(
             node_info.node_id,
             {constraints.minWidth, constraints.maxWidth, constraints.minHeight,
@@ -913,6 +921,17 @@ void LayoutEngine::set_measure_callback(LayoutMeasureCallback callback) {
         impl_->measure_callback = std::move(callback);
         impl_->measure_cache.clear();
     }
+}
+
+LayoutMeasureStats LayoutEngine::measure_stats() const {
+    if (!impl_)
+        return {};
+    return {impl_->measure_requests,
+            impl_->measure_cache_hits,
+            impl_->measure_cache_misses,
+            impl_->measure_callback_calls,
+            impl_->measure_cache.size(),
+            kIntrinsicMeasureCacheEntries};
 }
 
 bool LayoutEngine::layout(const std::vector<LayoutNode> &nodes, float width, float height,

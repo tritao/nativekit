@@ -202,6 +202,16 @@ struct LayoutMeasureResult {
     bool has_baseline = false;
 };
 
+/** Cumulative intrinsic-measure activity for one layout session. */
+struct LayoutMeasureStats {
+    uint64_t requests = 0;
+    uint64_t cache_hits = 0;
+    uint64_t cache_misses = 0;
+    uint64_t callback_calls = 0;
+    std::size_t cache_entries = 0;
+    std::size_t cache_capacity = 0;
+};
+
 using LayoutMeasureCallback =
     std::function<LayoutMeasureResult(uint32_t, const LayoutMeasureConstraints &)>;
 

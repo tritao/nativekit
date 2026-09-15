@@ -12,6 +12,7 @@ class LayoutSession {
 	var measureCallback:Null<nkui_layout_measure_callbackCallback>;
 	var measureFunction:Null<LayoutMeasureCallback>;
 	final measureContents:Map<Int, LayoutContent>;
+	final renderableContents:Map<Int, LayoutRenderableContent>;
 	var hasMeasureContents:Bool;
 
 	private function new(value:nkui_layout_session) {
@@ -22,6 +23,7 @@ class LayoutSession {
 		measureCallback = null;
 		measureFunction = null;
 		measureContents = new Map();
+		renderableContents = new Map();
 		hasMeasureContents = false;
 	}
 
@@ -86,6 +88,17 @@ class LayoutSession {
 		throw 'Layout item ${node.id} is not present in the latest resolved frame';
 	}
 
+	/** Returns cumulative intrinsic measurement and cache activity for this session. */
+	public function measureStats():LayoutMeasureStats {
+		ensureLive();
+		var result = NativeKitUI.nkui_layout_session_get_measure_stats(value);
+		UiResult.check(result.status, "layoutSession.measureStats");
+		var stats = result.out_stats;
+		return new LayoutMeasureStats(stats.get_requests(), stats.get_cache_hits(),
+			stats.get_cache_misses(), stats.get_callback_calls(), stats.get_cache_entries(),
+			stats.get_cache_capacity());
+	}
+
 	/** Removes all Haxe custom-paint display lists from this session. */
 	public function clearCustomPaints():Void {
 		ensureLive();
@@ -105,6 +118,7 @@ class LayoutSession {
 	/** Executes the last submitted tree through the existing renderer backend. */
 	public function render(renderer:Renderer, surface:Surface, frame:FrameInfo):Void {
 		ensureLive();
+		updateRenderablePaints();
 		UiResult.check(NativeKitUI.nkui_layout_session_render_frame(renderer.nativeHandle(), value,
 			surface.nativeHandle(), frame.nativeValue(), false), "layoutSession.render");
 	}
@@ -112,6 +126,7 @@ class LayoutSession {
 	/** Composites the last submitted tree over the current surface contents. */
 	public function renderOverlay(renderer:Renderer, surface:Surface, frame:FrameInfo):Void {
 		ensureLive();
+		updateRenderablePaints();
 		UiResult.check(NativeKitUI.nkui_layout_session_render_frame(renderer.nativeHandle(), value,
 			surface.nativeHandle(), frame.nativeValue(), true), "layoutSession.renderOverlay");
 	}
@@ -169,6 +184,7 @@ class LayoutSession {
 
 	function collectMeasureContents(root:LayoutNode):Void {
 		measureContents.clear();
+		renderableContents.clear();
 		hasMeasureContents = false;
 		collectMeasureContentsFrom(root);
 	}
@@ -178,10 +194,32 @@ class LayoutSession {
 			if (node.visualKind != LayoutVisualKind.Custom)
 				throw "Intrinsic content requires a Custom layout node";
 			measureContents.set(node.id, node.intrinsicContent);
+			if (Std.isOfType(node.intrinsicContent, LayoutRenderableContent))
+				renderableContents.set(node.id, cast node.intrinsicContent);
 			hasMeasureContents = true;
 		}
 		for (child in node.children)
 			collectMeasureContentsFrom(child);
+	}
+
+	function updateRenderablePaints():Void {
+		for (nodeId in renderableContents.keys()) {
+			var content = renderableContents.get(nodeId);
+			if (content == null)
+				continue;
+			var geometry:Null<ResolvedLayoutItem> = null;
+			for (item in resolved)
+				if (item.id == nodeId) {
+					geometry = item;
+					break;
+				}
+			if (geometry == null || !geometry.visible || geometry.width <= 0.0 ||
+				geometry.height <= 0.0 || geometry.clipBounds.width <= 0.0 ||
+				geometry.clipBounds.height <= 0.0)
+				continue;
+			var displayList = content.paint(geometry);
+			setCustomPaint(nodeId, displayList);
+		}
 	}
 
 	function detachMeasureCallback():Void {
