@@ -31,7 +31,7 @@ native services on Windows, macOS, and Android.
 - **One asynchronous model** — dialogs, WebViews, clipboard reads,
   notifications, drops, and lifecycle changes arrive through one event queue.
 - **Safe opaque handles** — generation-checked handles reject stale resources.
-- **Graphics-ready** — OpenGL, OpenGL ES, and Vulkan presentation surfaces,
+- **Graphics-ready** — OpenGL, OpenGL ES, Metal, and Vulkan presentation surfaces,
   with explicit capability discovery.
 - **Interop-friendly** — desktop applications can export native window
   descriptors when they need a platform escape hatch.
@@ -54,7 +54,8 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 | Input, cursors, and capture | ✅ | ✅ | ✅ | Partial | 🚧 | Partial |
 | Monitors and fullscreen modes | ✅ | ✅ | ✅ | — | — | — |
 | Joysticks and gamepads | ✅ | ✅ | ✅ | ✅ | 🚧 | 🚧 |
-| OpenGL / OpenGL ES | ✅ | — | — | GLES | 🚧 | Partial |
+| OpenGL / OpenGL ES | ✅ | — | — | GLES | — | Partial |
+| Metal | — | — | ✅ | — | ✅ | — |
 | Vulkan | ✅ | — | — | ✅ | 🚧 | 🚧 |
 | URI resources and sharing | Partial | Partial | Partial | ✅ | 🚧 | 🚧 |
 | Custom-surface accessibility | — | ✅ | — | ✅ | 🚧 | 🚧 |
@@ -64,9 +65,9 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 — not currently advertised
 
 - iOS currently has compile-only CI coverage for the core library on device and
-  simulator SDKs. The initial UIKit host attachment and geometry lifecycle are
-  available; WebView, Metal, input, resource, and simulator runtime integration
-  are still being added.
+  simulator SDKs. The initial UIKit host attachment, geometry lifecycle, and
+  Metal presentation surface are available; WebView, input, system services,
+  resource sharing, and simulator runtime integration are still being added.
 - Linux desktop support requires GTK 3 and WebKitGTK 4.1. Without them, the
   library builds with a stub backend and reports the services as unsupported.
 - Windows WebViews require the Microsoft Edge WebView2 Evergreen Runtime.

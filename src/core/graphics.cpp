@@ -4,7 +4,7 @@
 #include "core/runtime.hpp"
 
 #if !defined(NK_BACKEND_GTK) && !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_WEB) &&        \
-    !defined(NK_BACKEND_WINDOWS) && !defined(NK_BACKEND_MACOS)
+    !defined(NK_BACKEND_WINDOWS) && !defined(NK_BACKEND_MACOS) && !defined(NK_BACKEND_IOS)
 namespace {
 nk_result unsupported_graphics() {
     nk::core::clear_error();
