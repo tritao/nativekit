@@ -258,6 +258,33 @@ int main(void) {
             }
             nk_event_release(&compose);
 
+            if (!ImmNotifyIME(context, NI_COMPOSITIONSTR, CPS_COMPLETE, 0))
+                return skip_test(window, hwnd, context);
+            nk_event commit = {0};
+            commit.struct_size = sizeof(commit);
+            if (!wait_for_edit(window, NK_TEXT_EDIT_COMMIT, &commit))
+                return skip_test(window, hwnd, context);
+            const int commit_result =
+                verify_edit(&commit, NK_TEXT_EDIT_COMMIT, 2, 7, 7, 7,
+                            NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, "kanji");
+            nk_event_release(&commit);
+            if (commit_result != 0)
+                return 2;
+
+            SendMessageW(hwnd, WM_IME_STARTCOMPOSITION, 0, 0);
+            const wchar_t cancelled[] = L"cancel";
+            const DWORD cancelled_bytes = (DWORD)(wcslen(cancelled) * sizeof(wchar_t));
+            if (!ImmSetCompositionStringW(context, SCS_SETSTR, (void *)cancelled,
+                                           cancelled_bytes, NULL, 0))
+                return skip_test(window, hwnd, context);
+            SendMessageW(hwnd, WM_IME_COMPOSITION, 0, GCS_COMPSTR | GCS_CURSORPOS);
+            nk_event cancelled_compose = {0};
+            cancelled_compose.struct_size = sizeof(cancelled_compose);
+            if (!wait_for_edit(window, NK_TEXT_EDIT_COMPOSE, &cancelled_compose))
+                return skip_test(window, hwnd, context);
+            nk_event_release(&cancelled_compose);
+            if (!ImmNotifyIME(context, NI_COMPOSITIONSTR, CPS_CANCEL, 0))
+                return skip_test(window, hwnd, context);
             SendMessageW(hwnd, WM_IME_ENDCOMPOSITION, 0, 0);
             nk_event finish = {0};
             finish.struct_size = sizeof(finish);
