@@ -432,20 +432,38 @@ bool copy_web_accessibility_node(
     const nk_accessibility_node &node,
     const std::unordered_map<nk_accessibility_node_id, WebAccessibilityNode> &nodes,
     WebAccessibilityNode &copy) {
-    uint32_t value_codepoints = 0;
-    if (!decode_utf8(node.value, &value_codepoints) || !decode_utf8(node.label, nullptr) ||
-        node.struct_size < sizeof(node) || node.id == NK_ACCESSIBILITY_ROOT ||
-        node.role > NK_ACCESSIBILITY_ALERT ||
-        node.orientation > NK_ACCESSIBILITY_ORIENTATION_VERTICAL ||
-        (node.states & ~web_accessibility_states) || (node.actions & ~web_accessibility_actions) ||
-        !std::isfinite(node.x) || !std::isfinite(node.y) || !std::isfinite(node.width) ||
-        !std::isfinite(node.height) || node.width < 0 || node.height < 0 ||
-        !std::isfinite(node.numeric_value) || !std::isfinite(node.numeric_minimum) ||
-        !std::isfinite(node.numeric_maximum) ||
-        (node.role == NK_ACCESSIBILITY_SLIDER &&
-         (node.numeric_minimum > node.numeric_maximum ||
-          node.numeric_value < node.numeric_minimum || node.numeric_value > node.numeric_maximum)))
+    const auto invalid_node = [](const char *message) {
+        nk::core::set_error(message);
         return false;
+    };
+    nk::core::clear_error();
+    uint32_t value_codepoints = 0;
+    if (!decode_utf8(node.value, &value_codepoints))
+        return invalid_node("Web accessibility node value is not valid UTF-8");
+    if (!decode_utf8(node.label, nullptr))
+        return invalid_node("Web accessibility node label is not valid UTF-8");
+    if (node.struct_size < sizeof(node))
+        return invalid_node("Web accessibility node struct is too small");
+    if (node.id == NK_ACCESSIBILITY_ROOT)
+        return invalid_node("Web accessibility node ID is the reserved root ID");
+    if (node.role > NK_ACCESSIBILITY_ALERT)
+        return invalid_node("Web accessibility node role is invalid");
+    if (node.orientation > NK_ACCESSIBILITY_ORIENTATION_VERTICAL)
+        return invalid_node("Web accessibility node orientation is invalid");
+    if (node.states & ~web_accessibility_states)
+        return invalid_node("Web accessibility node has unknown state flags");
+    if (node.actions & ~web_accessibility_actions)
+        return invalid_node("Web accessibility node has unknown action flags");
+    if (!std::isfinite(node.x) || !std::isfinite(node.y) || !std::isfinite(node.width) ||
+        !std::isfinite(node.height) || node.width < 0 || node.height < 0)
+        return invalid_node("Web accessibility node geometry is invalid");
+    if (!std::isfinite(node.numeric_value) || !std::isfinite(node.numeric_minimum) ||
+        !std::isfinite(node.numeric_maximum))
+        return invalid_node("Web accessibility node numeric metadata is invalid");
+    if (node.role == NK_ACCESSIBILITY_SLIDER &&
+        (node.numeric_minimum > node.numeric_maximum ||
+         node.numeric_value < node.numeric_minimum || node.numeric_value > node.numeric_maximum))
+        return invalid_node("Web accessibility slider value is outside its range");
 
     const uint64_t text_end = static_cast<uint64_t>(node.text_start) + value_codepoints;
     const bool no_selection = node.selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
@@ -455,17 +473,20 @@ bool copy_web_accessibility_node(
                                  node.selection_start <= node.selection_end &&
                                  node.selection_start >= node.text_start &&
                                  node.selection_end <= text_end;
-    if (text_end > node.document_length || (!no_selection && !valid_selection) ||
-        (node.parent_id != NK_ACCESSIBILITY_ROOT && nodes.find(node.parent_id) == nodes.end()))
-        return false;
+    if (text_end > node.document_length)
+        return invalid_node("Web accessibility node value exceeds its document length");
+    if (!no_selection && !valid_selection)
+        return invalid_node("Web accessibility node selection is invalid");
+    if (node.parent_id != NK_ACCESSIBILITY_ROOT && nodes.find(node.parent_id) == nodes.end())
+        return invalid_node("Web accessibility node parent is missing");
 
     auto ancestor = node.parent_id;
     for (std::size_t depth = 0; ancestor != NK_ACCESSIBILITY_ROOT; ++depth) {
         if (ancestor == node.id || depth > nodes.size())
-            return false;
+            return invalid_node("Web accessibility node contains an ancestor cycle");
         const auto parent = nodes.find(ancestor);
         if (parent == nodes.end())
-            return false;
+            return invalid_node("Web accessibility node ancestor is missing");
         ancestor = parent->second.parent;
     }
 
@@ -2749,7 +2770,7 @@ nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle handle,
                 return invalid_argument("Web accessibility node is missing");
             WebAccessibilityNode copy;
             if (!copy_web_accessibility_node(*node, surface->accessibility_nodes, copy))
-                return invalid_argument("invalid Web accessibility node");
+                return NK_ERROR_INVALID_ARGUMENT;
             if (const auto old = surface->accessibility_nodes.find(node->id);
                 old != surface->accessibility_nodes.end())
                 copy.text_ranges = old->second.text_ranges;
@@ -2838,7 +2859,7 @@ nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
                 const auto &node = update->nodes[index];
                 WebAccessibilityNode copy;
                 if (!copy_web_accessibility_node(node, nodes, copy))
-                    return invalid_argument("invalid node in Web accessibility update");
+                    return NK_ERROR_INVALID_ARGUMENT;
                 if (const auto old = nodes.find(node.id); old != nodes.end())
                     copy.text_ranges = old->second.text_ranges;
                 nodes[node.id] = std::move(copy);
