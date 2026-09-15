@@ -23,6 +23,11 @@ int main() {
 
     nk_audio_clip clip = NK_INVALID_HANDLE;
     assert(nk_audio_clip_create_from_file(nullptr, &clip) == NK_ERROR_INVALID_ARGUMENT);
+    nk_resource unreadable_resource{};
+    unreadable_resource.struct_size = sizeof(unreadable_resource);
+    unreadable_resource.uri = "file:///unused.wav";
+    assert(nk_audio_clip_create_from_resource(&unreadable_resource, &clip) ==
+           NK_ERROR_INVALID_ARGUMENT);
     assert(nk_audio_clip_create_from_memory(nullptr, 0, &clip) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_audio_clip_destroy(NK_INVALID_HANDLE) == NK_ERROR_INVALID_HANDLE);
 
@@ -152,6 +157,37 @@ int main() {
     assert(async_file != nullptr);
     assert(std::fwrite(tiny_wav, 1, sizeof(tiny_wav), async_file) == sizeof(tiny_wav));
     assert(std::fclose(async_file) == 0);
+
+    std::string resource_uri = "file://";
+#if defined(_WIN32)
+    resource_uri += '/';
+    for (auto character : async_path)
+        resource_uri += character == '\\' ? '/' : character;
+#else
+    resource_uri += async_path;
+#endif
+    nk_resource resource{};
+    resource.struct_size = sizeof(resource);
+    resource.flags = NK_RESOURCE_READABLE;
+    resource.uri = resource_uri.c_str();
+    resource.mime_type = "audio/wav";
+    resource.display_name = "nativekit-audio-async-test.wav";
+    nk_audio_clip resource_clip = NK_INVALID_HANDLE;
+    assert(nk_audio_clip_create_from_resource(&resource, &resource_clip) == NK_OK);
+    voice_options.bus = NK_INVALID_HANDLE;
+    voice_options.flags = 0;
+    nk_audio_voice resource_voice = NK_INVALID_HANDLE;
+    assert(nk_audio_voice_create(resource_clip, &voice_options, &resource_voice) == NK_OK);
+    nk_audio_voice resource_second_voice = NK_INVALID_HANDLE;
+    assert(nk_audio_voice_create(resource_clip, &voice_options, &resource_second_voice) == NK_OK);
+    assert(nk_audio_voice_get_load_state(resource_voice, &load_state) == NK_OK);
+    assert(load_state == NK_AUDIO_VOICE_READY);
+    voice_options.flags = NK_AUDIO_VOICE_ASYNC;
+    assert(nk_audio_voice_create(resource_clip, &voice_options, &voice) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_voice_destroy(resource_voice) == NK_OK);
+    assert(nk_audio_voice_destroy(resource_second_voice) == NK_OK);
+    assert(nk_audio_clip_destroy(resource_clip) == NK_OK);
 
     nk_audio_clip async_clip = NK_INVALID_HANDLE;
     assert(nk_audio_clip_create_from_file(async_path.c_str(), &async_clip) == NK_OK);

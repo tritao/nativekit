@@ -5,10 +5,23 @@ mixing on top of the pinned miniaudio submodule. Enable it with
 `-DNK_BUILD_AUDIO=ON` after initializing `vendor/miniaudio`.
 
 The first API slice supports WAV, FLAC, and MP3 playback from native filesystem
-paths or caller-provided encoded memory. `nk_audio_clip` owns a reusable source,
-while each `nk_audio_voice` has independent transport and voice controls, so a
-single clip can play simultaneously through multiple voices. The original
-one-shot path is intentionally expressed by creating a clip and one voice.
+paths, provider-backed URI resources, or caller-provided encoded memory.
+`nk_audio_clip` owns a reusable source, while each `nk_audio_voice` has
+independent transport and voice controls, so a single clip can play
+simultaneously through multiple voices. The original one-shot path is
+intentionally expressed by creating a clip and one voice.
+
+`nk_audio_clip_create_from_resource()` accepts the same top-level `nk_resource`
+descriptor used by NativeKit dialogs, drops, shares, and clipboard APIs. The
+clip retains the URI, while every voice opens its own provider stream and keeps
+its decoder attached to that stream. This preserves reusable clips and allows
+Android content URIs or other platform resource providers without converting
+them to filesystem paths. Resource-backed clips are opened synchronously and
+therefore reject `NK_AUDIO_VOICE_ASYNC`; providers that only expose asynchronous
+loading can first use `nk_resource_load_async()` and create a memory clip from
+the completed bytes. Resource-backed voices are already decoder-backed streams;
+`NK_AUDIO_VOICE_STREAM` is optional for them and does not change the provider
+stream lifetime.
 
 Sounds and voices are generation-checked NativeKit resources and can be routed
 through generation-checked mixer buses. Each bus supports volume, mute, start,

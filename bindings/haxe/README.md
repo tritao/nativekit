@@ -61,6 +61,12 @@ the native queue. Access it as `runtime.events.requests`. The Haxe UI
 `NativeInputAdapter` can attach to the same pump with `attach(events)` and stop
 receiving events with `detach()`.
 
+`nativekit.resource.Resource` is the typed descriptor for a URI resource passed
+to NativeKit modules. It retains the URI and optional MIME/display metadata and
+defaults to readable access; the descriptor is not itself an opened stream or
+an owned resource handle. The generated low-level ABI value is named
+`NativeKit.ResourceValue` to keep it distinct from this managed descriptor.
+
 Request IDs map to one-shot typed completion callbacks.
 Callbacks receive `Success(value)`, `Cancelled`, or `Failure(result, message)`;
 dialogs use `Cancelled` when dismissed. Expected asynchronous failures are

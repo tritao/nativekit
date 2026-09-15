@@ -7,6 +7,7 @@ import nativekit.audio.Clip;
 import nativekit.audio.Mixer;
 import nativekit.audio.Voice;
 import nativekit.audio.VoiceOptions;
+import nativekit.resource.Resource;
 
 class AudioSmoke {
 	static function tinyWav():Bytes {
@@ -47,6 +48,16 @@ class AudioSmoke {
 		var completion:Voice = null;
 		var completionSubscription:NativeKitEventSubscription = null;
 		try {
+			var resource = new Resource("file:///nativekit-audio-smoke.wav", "audio/wav", "smoke.wav");
+			if (resource.uri != "file:///nativekit-audio-smoke.wav" || resource.mimeType != "audio/wav" ||
+				resource.displayName != "smoke.wav")
+				throw "Haxe resource descriptor did not retain metadata";
+			var nativeResource = resource.nativeValue();
+			if (nativeResource.get_struct_size() != NativeKit.ResourceValue.size() ||
+				nativeResource.get_flags() != resource.flags || nativeResource.get_uri() != resource.uri ||
+				nativeResource.get_mime_type() != resource.mimeType ||
+				nativeResource.get_display_name() != resource.displayName)
+				throw "Haxe resource descriptor did not build its ABI value";
 			Mixer.setMasterVolume(0.75);
 			if (Mixer.masterVolume() != 0.75)
 				throw "Haxe audio master volume did not round-trip";

@@ -37,8 +37,10 @@ struct AudioEngineResource final : nk::core::Resource {
 struct AudioClipResource final : nk::core::Resource {
     std::shared_ptr<AudioEngineResource> engine;
     std::string path;
+    std::string resource_uri;
     std::vector<std::byte> encoded_data;
     bool from_memory = false;
+    bool from_resource = false;
 };
 
 struct AudioBusResource final : nk::core::Resource {
@@ -55,6 +57,10 @@ struct AudioBusResource final : nk::core::Resource {
 };
 
 struct AudioVoiceResource;
+struct AudioResourceReader {
+    nk_resource_stream stream = NK_INVALID_HANDLE;
+};
+
 struct AudioVoiceLoadNotification {
     ma_async_notification_callbacks callbacks{};
     AudioVoiceResource *voice = nullptr;
@@ -79,6 +85,7 @@ struct AudioVoiceResource final : nk::core::Resource {
     AudioVoiceLoadNotification load_notification{};
     ma_decoder decoder{};
     bool decoder_initialized = false;
+    AudioResourceReader resource_reader{};
     ma_sound sound{};
     bool sound_initialized = false;
 
@@ -88,8 +95,53 @@ struct AudioVoiceResource final : nk::core::Resource {
             ma_sound_uninit(&sound);
         if (decoder_initialized)
             ma_decoder_uninit(&decoder);
+        if (resource_reader.stream != NK_INVALID_HANDLE)
+            nk_resource_close(resource_reader.stream);
     }
 };
+
+ma_result resource_result(nk_result result) {
+    if (result == NK_OK)
+        return MA_SUCCESS;
+    if (result == NK_ERROR_INVALID_ARGUMENT)
+        return MA_INVALID_ARGS;
+    if (result == NK_ERROR_OUT_OF_MEMORY)
+        return MA_OUT_OF_MEMORY;
+    if (result == NK_ERROR_UNSUPPORTED)
+        return MA_NOT_IMPLEMENTED;
+    if (result == NK_ERROR_INVALID_REQUEST)
+        return MA_INVALID_OPERATION;
+    return MA_IO_ERROR;
+}
+
+ma_result audio_resource_read(ma_decoder *decoder, void *buffer, size_t bytes_to_read,
+                              size_t *bytes_read) {
+    if (bytes_read)
+        *bytes_read = 0;
+    if (!decoder || !decoder->pUserData)
+        return MA_INVALID_ARGS;
+    auto *reader = static_cast<AudioResourceReader *>(decoder->pUserData);
+    uint64_t read = 0;
+    const auto result = nk_resource_read(reader->stream, buffer, bytes_to_read, &read);
+    if (bytes_read)
+        *bytes_read = static_cast<size_t>(read);
+    if (result != NK_OK)
+        return resource_result(result);
+    return read == 0 ? MA_AT_END : MA_SUCCESS;
+}
+
+ma_result audio_resource_seek(ma_decoder *decoder, ma_int64 byte_offset, ma_seek_origin origin) {
+    if (!decoder || !decoder->pUserData)
+        return MA_INVALID_ARGS;
+    auto *reader = static_cast<AudioResourceReader *>(decoder->pUserData);
+    const auto resource_origin = origin == ma_seek_origin_start
+                                     ? NK_SEEK_START
+                                     : origin == ma_seek_origin_current ? NK_SEEK_CURRENT
+                                                                         : NK_SEEK_END;
+    uint64_t position = 0;
+    return resource_result(nk_resource_seek(reader->stream, byte_offset, resource_origin,
+                                            &position));
+}
 
 void audio_voice_end_callback(void *user_data, ma_sound *) noexcept {
     auto *voice = static_cast<AudioVoiceResource *>(user_data);
@@ -291,6 +343,44 @@ std::shared_ptr<AudioClipResource> create_clip_from_file(const char *path,
     return clip;
 }
 
+std::shared_ptr<AudioClipResource> create_clip_from_resource(const nk_resource *resource,
+                                                             nk_result &out_result) {
+    out_result = NK_OK;
+    nk_result engine_result = NK_OK;
+    auto engine = ensure_engine(engine_result);
+    if (!engine) {
+        out_result = engine_result;
+        return {};
+    }
+
+    AudioResourceReader reader{};
+    const auto open_result = nk_resource_open(resource, NK_RESOURCE_OPEN_READ, &reader.stream);
+    if (open_result != NK_OK) {
+        out_result = open_result;
+        return {};
+    }
+
+    ma_decoder decoder{};
+    const auto result = ma_decoder_init(audio_resource_read, audio_resource_seek, &reader,
+                                        nullptr, &decoder);
+    if (result != MA_SUCCESS) {
+        nk_resource_close(reader.stream);
+        out_result = map_miniaudio_result(result, "could not validate audio resource");
+        return {};
+    }
+    ma_decoder_uninit(&decoder);
+    if (const auto close_result = nk_resource_close(reader.stream); close_result != NK_OK) {
+        out_result = close_result;
+        return {};
+    }
+
+    auto clip = std::make_shared<AudioClipResource>();
+    clip->engine = std::move(engine);
+    clip->resource_uri = resource->uri;
+    clip->from_resource = true;
+    return clip;
+}
+
 std::shared_ptr<AudioClipResource> create_clip_from_memory(const void *data, uint64_t data_size,
                                                            nk_result &out_result) {
     out_result = NK_OK;
@@ -385,8 +475,9 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
         }
     }
 
-    if (clip->from_memory && (flags & NK_AUDIO_VOICE_ASYNC)) {
-        out_result = invalid_argument("asynchronous audio loading requires a file clip");
+    if ((clip->from_memory || clip->from_resource) && (flags & NK_AUDIO_VOICE_ASYNC)) {
+        out_result = invalid_argument(
+            "asynchronous audio loading requires a file-backed clip");
         return {};
     }
 
@@ -406,6 +497,29 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
                                         &voice->decoder);
         if (result != MA_SUCCESS) {
             out_result = map_miniaudio_result(result, "could not initialize audio clip decoder");
+            return {};
+        }
+        voice->decoder_initialized = true;
+        const uint32_t sound_flags =
+            (flags & NK_AUDIO_VOICE_LOOPING) ? MA_SOUND_FLAG_LOOPING : 0;
+        result = ma_sound_init_from_data_source(
+            &voice->engine->engine, &voice->decoder, sound_flags,
+            voice->bus ? &voice->bus->group : nullptr, &voice->sound);
+    } else if (voice->clip->from_resource) {
+        nk_resource resource{};
+        resource.struct_size = sizeof(resource);
+        resource.flags = NK_RESOURCE_READABLE;
+        resource.uri = voice->clip->resource_uri.c_str();
+        const auto open_result =
+            nk_resource_open(&resource, NK_RESOURCE_OPEN_READ, &voice->resource_reader.stream);
+        if (open_result != NK_OK) {
+            out_result = open_result;
+            return {};
+        }
+        result = ma_decoder_init(audio_resource_read, audio_resource_seek,
+                                 &voice->resource_reader, nullptr, &voice->decoder);
+        if (result != MA_SUCCESS) {
+            out_result = map_miniaudio_result(result, "could not initialize audio resource decoder");
             return {};
         }
         voice->decoder_initialized = true;
@@ -709,6 +823,25 @@ nk_result NK_CALL nk_audio_clip_create_from_file(const char *path, nk_audio_clip
             *out_clip = NK_INVALID_HANDLE;
             nk_result clip_result = NK_OK;
             auto clip = create_clip_from_file(path, clip_result);
+            if (!clip)
+                return clip_result;
+            return insert_clip(std::move(clip), out_clip);
+        });
+}
+
+nk_result NK_CALL nk_audio_clip_create_from_resource(const nk_resource *resource,
+                                                     nk_audio_clip *out_clip) {
+    return nk::core::result_boundary(
+        "unexpected error while creating an audio clip from a resource", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!resource || resource->struct_size < sizeof(nk_resource) ||
+                (resource->flags & NK_RESOURCE_READABLE) == 0 || !resource->uri ||
+                !*resource->uri || !out_clip)
+                return invalid_argument("audio clip resource or output is invalid");
+            *out_clip = NK_INVALID_HANDLE;
+            nk_result clip_result = NK_OK;
+            auto clip = create_clip_from_resource(resource, clip_result);
             if (!clip)
                 return clip_result;
             return insert_clip(std::move(clip), out_clip);

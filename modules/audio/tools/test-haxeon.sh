@@ -47,6 +47,7 @@ fi
     "$module_dir/bindings/haxe/nativekit/audio/Mixer.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Voice.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/VoiceOptions.hx" \
+    "$nativekit_dir/bindings/haxe/nativekit/resource/Resource.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitError.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEvent.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEventValue.hx" \

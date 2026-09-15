@@ -35,6 +35,199 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		NK_AUDIO_VOICE_LOAD_FAILED = 2;
 	}
 	/**
+	 * Optional behavior flags for file and resource dialogs.
+	 */
+	flags nk_dialog_flags : u32 {
+		/**
+		 * Allow selecting more than one item in an open dialog.
+		 */
+		NK_DIALOG_ALLOW_MULTIPLE = 1;
+		/**
+		 * Ask for confirmation before replacing an existing destination.
+		 */
+		NK_DIALOG_CONFIRM_OVERWRITE = 2;
+		/**
+		 * Show hidden files and directories where supported.
+		 */
+		NK_DIALOG_SHOW_HIDDEN = 4;
+	}
+	/**
+	 * Operation encoded in a dialog completion event's flags.
+	 */
+	enum nk_dialog_operation : u32 {
+		/**
+		 * Select one or more local files.
+		 */
+		NK_DIALOG_OPEN_FILE = 1;
+		/**
+		 * Select a destination for a local file.
+		 */
+		NK_DIALOG_SAVE_FILE = 2;
+		/**
+		 * Select a local directory.
+		 */
+		NK_DIALOG_SELECT_DIRECTORY = 3;
+		/**
+		 * Show a native message and collect the selected button.
+		 */
+		NK_DIALOG_MESSAGE = 4;
+		/**
+		 * Select one or more URI resources.
+		 */
+		NK_DIALOG_OPEN_RESOURCE = 5;
+		/**
+		 * Select a destination URI resource.
+		 */
+		NK_DIALOG_SAVE_RESOURCE = 6;
+		/**
+		 * Select a URI resource directory.
+		 */
+		NK_DIALOG_SELECT_RESOURCE_DIRECTORY = 7;
+	}
+	/**
+	 * Button flags accepted by a message dialog.
+	 */
+	flags nk_message_buttons : u32 {
+		/**
+		 * Show an OK button.
+		 */
+		NK_MESSAGE_BUTTON_OK = 1;
+		/**
+		 * Show a Cancel button.
+		 */
+		NK_MESSAGE_BUTTON_CANCEL = 2;
+		/**
+		 * Show a Yes button.
+		 */
+		NK_MESSAGE_BUTTON_YES = 4;
+		/**
+		 * Show a No button.
+		 */
+		NK_MESSAGE_BUTTON_NO = 8;
+	}
+	/**
+	 * Visual and semantic kind of a message dialog.
+	 */
+	enum nk_message_kind : u32 {
+		/**
+		 * Informational message.
+		 */
+		NK_MESSAGE_INFO = 0;
+		/**
+		 * Warning message.
+		 */
+		NK_MESSAGE_WARNING = 1;
+		/**
+		 * Error message.
+		 */
+		NK_MESSAGE_ERROR = 2;
+		/**
+		 * Question that expects a choice.
+		 */
+		NK_MESSAGE_QUESTION = 3;
+	}
+	/**
+	 * Button value returned in a message-dialog completion payload.
+	 */
+	enum nk_message_result : u32 {
+		/**
+		 * No button was selected, normally because the dialog was cancelled.
+		 */
+		NK_MESSAGE_RESULT_NONE = 0;
+		/**
+		 * The OK button was selected.
+		 */
+		NK_MESSAGE_RESULT_OK = 1;
+		/**
+		 * The Cancel button was selected.
+		 */
+		NK_MESSAGE_RESULT_CANCEL = 2;
+		/**
+		 * The Yes button was selected.
+		 */
+		NK_MESSAGE_RESULT_YES = 3;
+		/**
+		 * The No button was selected.
+		 */
+		NK_MESSAGE_RESULT_NO = 4;
+	}
+	/**
+	 * Access and persistence flags attached to a URI resource.
+	 */
+	flags nk_resource_flags : u32 {
+		/**
+		 * The resource may be opened for reading.
+		 */
+		NK_RESOURCE_READABLE = 1;
+		/**
+		 * The resource may be opened for writing.
+		 */
+		NK_RESOURCE_WRITABLE = 2;
+		/**
+		 * The access grant is retained beyond the originating operation.
+		 */
+		NK_RESOURCE_PERSISTED = 4;
+	}
+	/**
+	 * Access and creation flags accepted by nk_resource_open().
+	 */
+	flags nk_resource_open_flags : u32 {
+		/**
+		 * Open the stream for reading.
+		 */
+		NK_RESOURCE_OPEN_READ = 1;
+		/**
+		 * Open the stream for writing.
+		 */
+		NK_RESOURCE_OPEN_WRITE = 2;
+		/**
+		 * Create the resource when it does not already exist.
+		 */
+		NK_RESOURCE_OPEN_CREATE = 4;
+		/**
+		 * Truncate an existing resource before writing.
+		 */
+		NK_RESOURCE_OPEN_TRUNCATE = 8;
+	}
+	/**
+	 * Capabilities reported for an opened resource stream.
+	 */
+	flags nk_resource_stream_flags : u32 {
+		/**
+		 * The stream accepts reads.
+		 */
+		NK_RESOURCE_STREAM_READABLE = 1;
+		/**
+		 * The stream accepts writes.
+		 */
+		NK_RESOURCE_STREAM_WRITABLE = 2;
+		/**
+		 * The stream supports position changes.
+		 */
+		NK_RESOURCE_STREAM_SEEKABLE = 4;
+		/**
+		 * The stream size field contains a known byte count.
+		 */
+		NK_RESOURCE_STREAM_SIZE_KNOWN = 8;
+	}
+	/**
+	 * Reference point used by nk_resource_seek().
+	 */
+	enum nk_seek_origin : u32 {
+		/**
+		 * Offset from the beginning of the stream.
+		 */
+		NK_SEEK_START = 0;
+		/**
+		 * Offset from the current stream position.
+		 */
+		NK_SEEK_CURRENT = 1;
+		/**
+		 * Offset from the end of the stream.
+		 */
+		NK_SEEK_END = 2;
+	}
+	/**
 	 * Clears the bus's scheduled start, stop, and fade transitions.
 	 */
 	extern fn nk_audio_bus_clear_schedule(bus: nk_audio_bus) -> nk_result;
@@ -106,6 +299,12 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * call. The source currently supports WAV, FLAC, and MP3.
 	 */
 	extern fn nk_audio_clip_create_from_memory(data: ptr<const<void>>, data_size: u64, out_clip: ptr<nk_audio_clip> @out @owned) -> nk_result;
+	/**
+	 * Creates a reusable clip from a readable URI resource. NativeKit opens the
+	 * resource through its platform provider and keeps each voice's decoder
+	 * backed by an independent resource stream.
+	 */
+	extern fn nk_audio_clip_create_from_resource(resource: ptr<const<nk_resource>>, out_clip: ptr<nk_audio_clip> @out @owned) -> nk_result;
 	/**
 	 * Stops using and destroys a clip. Existing voices retain their source.
 	 */
@@ -222,6 +421,126 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_voice_stop(voice: nk_audio_voice) -> nk_result;
 	/**
+	 * Starts an asynchronous read of URI resources from the system clipboard.
+	 */
+	extern fn nk_clipboard_read_resources(out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Copies URI resources into the system clipboard.
+	 */
+	extern fn nk_clipboard_set_resources(resources: ptr<const<nk_resource>> @in_array("resource_count"), resource_count: u32) -> nk_result;
+	/**
+	 * Cancels a pending dialog. Its completion event is still emitted.
+	 */
+	extern fn nk_dialog_cancel(request: nk_request_id) -> nk_result;
+	/**
+	 * Validates and returns a path from a dialog event. The returned UTF-8 view is
+	 * owned by the event and remains valid until nk_event_release().
+	 */
+	extern fn nk_dialog_event_path(event: ptr<const<nk_event>>, index: u32, out_path: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
+	/**
+	 * Starts an asynchronous native message dialog.
+	 */
+	extern fn nk_dialog_message(parent: nk_handle, options: ptr<const<nk_message_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Starts a non-blocking native dialog on the UI thread. `parent` may be zero;
+	 * where a parent is supported, desktop backends accept an nk_window and Android
+	 * resource dialogs accept an nk_mobile_host. All strings and filters are copied
+	 * before the function returns. Completion uses NK_EVENT_DIALOG_PATHS_COMPLETE
+	 * or NK_EVENT_DIALOG_MESSAGE_COMPLETE, with the operation in event.flags and the
+	 * returned request ID in event.request_id.
+	 */
+	extern fn nk_dialog_open_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Resource dialogs return NK_EVENT_DIALOG_RESOURCES_COMPLETE with
+	 * nk_resource_list data. `parent` is a desktop nk_window or an Android
+	 * nk_mobile_host; zero requests an unparented dialog where the backend supports
+	 * it.
+	 */
+	extern fn nk_dialog_open_resource(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Starts an asynchronous native save-file dialog.
+	 */
+	extern fn nk_dialog_save_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Starts an asynchronous native URI-resource save dialog.
+	 */
+	extern fn nk_dialog_save_resource(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Starts an asynchronous native directory-selection dialog.
+	 */
+	extern fn nk_dialog_select_directory(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Starts an asynchronous native URI-resource directory dialog.
+	 */
+	extern fn nk_dialog_select_resource_directory(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Closes a resource stream and invalidates its handle.
+	 */
+	extern fn nk_resource_close(stream: nk_resource_stream) -> nk_result;
+	/**
+	 * Returns optional UTF-8 text from a resource-drop event.
+	 */
+	extern fn nk_resource_drop_event_text(event: ptr<const<nk_event>>, out_text: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
+	/**
+	 * Returned views remain owned by the event until nk_event_release().
+	 */
+	extern fn nk_resource_event_item(event: ptr<const<nk_event>>, index: u32, out_resource: ptr<nk_resource_view>) -> nk_result;
+	/**
+	 * Queries the readable/writable access retained for a URI resource.
+	 */
+	extern fn nk_resource_get_persisted_access(resource: ptr<const<nk_resource>>, out_flags: ptr<nk_resource_flags> @out) -> nk_result;
+	/**
+	 * Starts an asynchronous read of the complete URI resource. Completion is
+	 * delivered through NK_EVENT_RESOURCE_DATA_COMPLETE; its event data contains
+	 * the loaded bytes and its result reports the fetch outcome.
+	 */
+	extern fn nk_resource_load_async(resource: ptr<const<nk_resource>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Opens a URI-backed stream on the UI thread. Stream operations copy bytes
+	 * synchronously and may be called from worker threads. A successful read may
+	 * return fewer bytes than requested; zero bytes means end of stream.
+	 */
+	extern fn nk_resource_open(resource: ptr<const<nk_resource>>, flags: nk_resource_open_flags, out_stream: ptr<nk_resource_stream> @out @owned) -> nk_result;
+	/**
+	 * Reads up to `size` bytes; a successful read may return fewer bytes.
+	 */
+	extern fn nk_resource_read(stream: nk_resource_stream, buffer: ptr<void>, size: u64, out_read: ptr<u64>) -> nk_result;
+	/**
+	 * Moves the stream position and returns the resulting absolute byte offset.
+	 */
+	extern fn nk_resource_seek(stream: nk_resource_stream, offset: i64, origin: nk_seek_origin, out_position: ptr<u64>) -> nk_result;
+	/**
+	 * Controls durable URI access on platforms that support it. access_flags is a
+	 * combination of NK_RESOURCE_READABLE and NK_RESOURCE_WRITABLE; zero releases
+	 * all persisted access. out_flags receives the actual resource flags retained.
+	 * These functions are UI-thread-only.
+	 */
+	extern fn nk_resource_set_persisted_access(resource: ptr<const<nk_resource>>, access_flags: nk_resource_flags, out_flags: ptr<nk_resource_flags> @out) -> nk_result;
+	/**
+	 * Returns capabilities and size information for a resource stream.
+	 */
+	extern fn nk_resource_stream_info_get(stream: nk_resource_stream, out_info: ptr<nk_resource_stream_info>) -> nk_result;
+	/**
+	 * Writes up to `size` bytes; a successful write may transfer fewer bytes.
+	 */
+	extern fn nk_resource_write(stream: nk_resource_stream, buffer: ptr<const<void>>, size: u64, out_written: ptr<u64>) -> nk_result;
+	/**
+	 * Launches the platform share UI with optional text and URI resources.
+	 */
+	extern fn nk_share(options: ptr<const<nk_share_options>>) -> nk_result;
+	/**
+	 * Returns optional UTF-8 subject text from a received-share event.
+	 */
+	extern fn nk_share_event_subject(event: ptr<const<nk_event>>, out_subject: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
+	/**
+	 * Returns optional UTF-8 text from a received-share event.
+	 */
+	extern fn nk_share_event_text(event: ptr<const<nk_event>>, out_text: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
+	/**
+	 * URI inputs are copied before return. These functions are UI-thread-only.
+	 */
+	extern fn nk_shell_open_resource(resource: ptr<const<nk_resource>>) -> nk_result;
+	/**
 	 * Optional creation and routing settings for a voice.
 	 */
 	struct nk_audio_voice_options @layout(32, 8) {
@@ -245,6 +564,335 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 * Reserved for compatible extensions; set all elements to zero.
 		 */
 		reserved2: array<u64, 2> @offset(16);
+	}
+	/**
+	 * One user-visible name and glob pattern set for a file dialog.
+	 */
+	struct nk_dialog_filter @layout(16, 8) {
+		/**
+		 * Optional label shown for the filter.
+		 */
+		name: nullable<utf8> @offset(0);
+		/**
+		 * Semicolon-separated UTF-8 glob patterns, for example "*.png;*.jpg".
+		 */
+		patterns: utf8 @offset(8);
+	}
+	/**
+	 * Payload of NK_EVENT_DIALOG_MESSAGE_COMPLETE.
+	 */
+	struct nk_dialog_message_result @layout(4, 4) {
+		/**
+		 * Button selected by the user, or NK_MESSAGE_RESULT_NONE on cancellation.
+		 */
+		button: nk_message_result @offset(0);
+	}
+	/**
+	 * Header at the start of NK_EVENT_DIALOG_PATHS_COMPLETE data.
+	 */
+	struct nk_dialog_paths @layout(16, 4) {
+		/**
+		 * 1 when the user accepted the dialog, and 0 when it was cancelled.
+		 */
+		accepted: nk_bool @offset(0);
+		/**
+		 * Number of returned paths.
+		 */
+		path_count: u32 @offset(4);
+		/**
+		 * Byte offset from the payload start to the uint32_t path-offset table.
+		 */
+		offsets_offset: u32 @offset(8);
+		/**
+		 * Byte offset from the payload start to the packed NUL-terminated paths.
+		 */
+		strings_offset: u32 @offset(12);
+	}
+	/**
+	 * Options shared by local-file and URI-resource dialogs.
+	 */
+	struct nk_file_dialog_options @layout(48, 8) {
+		/**
+		 * Set to sizeof(nk_file_dialog_options) before starting the dialog.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Bitwise OR of NK_DIALOG_* flags.
+		 */
+		flags: nk_dialog_flags @offset(4);
+		/**
+		 * Optional dialog title.
+		 */
+		title: nullable<utf8> @offset(8);
+		/**
+		 * Optional initial local path or platform resource location.
+		 */
+		initial_path: nullable<utf8> @offset(16);
+		/**
+		 * Optional suggested filename for save operations.
+		 */
+		suggested_name: nullable<utf8> @offset(24);
+		/**
+		 * Caller-owned filters read during the call and copied by NativeKit.
+		 */
+		filters: ptr<const<nk_dialog_filter>> @offset(32) @borrowed @length_field("filter_count");
+		/**
+		 * Number of entries in `filters`.
+		 */
+		filter_count: u32 @offset(40);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(44);
+	}
+	/**
+	 * Options for a native message dialog.
+	 */
+	struct nk_message_dialog_options @layout(32, 8) {
+		/**
+		 * Set to sizeof(nk_message_dialog_options) before starting the dialog.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Message presentation kind.
+		 */
+		kind: nk_message_kind @offset(4);
+		/**
+		 * Bitwise OR of NK_MESSAGE_BUTTON_* values; zero defaults to OK.
+		 */
+		buttons: nk_message_buttons @offset(8);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(12);
+		/**
+		 * Optional dialog title.
+		 */
+		title: nullable<utf8> @offset(16);
+		/**
+		 * Required UTF-8 message text.
+		 */
+		message: utf8 @offset(24);
+	}
+	/**
+	 * Header at the start of NK_EVENT_SHARE_RECEIVED data.
+	 */
+	struct nk_received_share @layout(16, 4) {
+		/**
+		 * Byte offset to the embedded nk_resource_list.
+		 */
+		resources_offset: u32 @offset(0);
+		/**
+		 * Byte offset to optional shared UTF-8 text, or zero when absent.
+		 */
+		text_offset: u32 @offset(4);
+		/**
+		 * Byte offset to optional UTF-8 subject text, or zero when absent.
+		 */
+		subject_offset: u32 @offset(8);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(12);
+	}
+	/**
+	 * URI identity and metadata for a resource.
+	 */
+	struct nk_resource @layout(56, 8) {
+		/**
+		 * Set to sizeof(nk_resource) before passing the structure.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Access and persistence flags known by the producer.
+		 */
+		flags: nk_resource_flags @offset(4);
+		/**
+		 * Required absolute UTF-8 URI; this is not necessarily a filesystem path.
+		 */
+		uri: utf8 @offset(8);
+		/**
+		 * Optional UTF-8 MIME type.
+		 */
+		mime_type: nullable<utf8> @offset(16);
+		/**
+		 * Optional UTF-8 name suitable for display.
+		 */
+		display_name: nullable<utf8> @offset(24);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(32);
+		/**
+		 * Reserved for future resource metadata; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(40);
+	}
+	/**
+	 * Header at the start of NK_EVENT_RESOURCE_DROP data. Coordinates are logical pixels.
+	 */
+	struct nk_resource_drop @layout(32, 8) {
+		/**
+		 * Byte offset to the embedded nk_resource_list.
+		 */
+		resources_offset: u32 @offset(0);
+		/**
+		 * Byte offset to optional dropped UTF-8 text, or zero when absent.
+		 */
+		text_offset: u32 @offset(4);
+		/**
+		 * Drop x coordinate in the host's logical pixels.
+		 */
+		x: f32 @offset(8);
+		/**
+		 * Drop y coordinate in the host's logical pixels.
+		 */
+		y: f32 @offset(12);
+		/**
+		 * Reserved for future drop information; set all elements to zero.
+		 */
+		reserved: array<u64, 2> @offset(16);
+	}
+	/**
+	 * One resource entry in a packed resource-bearing event payload.
+	 */
+	struct nk_resource_item @layout(16, 4) {
+		/**
+		 * Access and persistence flags for this resource.
+		 */
+		flags: nk_resource_flags @offset(0);
+		/**
+		 * Byte offset to the required URI string, relative to the payload start.
+		 */
+		uri_offset: u32 @offset(4);
+		/**
+		 * Byte offset to the optional MIME string, or zero when absent.
+		 */
+		mime_type_offset: u32 @offset(8);
+		/**
+		 * Byte offset to the optional display-name string, or zero when absent.
+		 */
+		display_name_offset: u32 @offset(12);
+	}
+	/**
+	 * Header and item table stored in resource-bearing event data.
+	 */
+	struct nk_resource_list @layout(16, 4) {
+		/**
+		 * 1 when the user accepted the operation, and 0 when it was cancelled.
+		 */
+		accepted: nk_bool @offset(0);
+		/**
+		 * Number of resource items in the following item table.
+		 */
+		item_count: u32 @offset(4);
+		/**
+		 * Byte offset from the payload start to the nk_resource_item table.
+		 */
+		items_offset: u32 @offset(8);
+		/**
+		 * Byte offset from the payload start to packed NUL-terminated strings.
+		 */
+		strings_offset: u32 @offset(12);
+	}
+	/**
+	 * Capabilities and size information for an opened resource stream.
+	 */
+	struct nk_resource_stream_info @layout(32, 8) {
+		/**
+		 * Set to sizeof(nk_resource_stream_info) before querying.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Bitwise OR of NK_RESOURCE_STREAM_* capabilities.
+		 */
+		flags: nk_resource_stream_flags @offset(4);
+		/**
+		 * Size in bytes, or UINT64_MAX when the provider cannot report it.
+		 */
+		size: u64 @offset(8);
+		/**
+		 * Reserved for future stream information; set all elements to zero.
+		 */
+		reserved: array<u64, 2> @offset(16);
+	}
+	/**
+	 * Borrowed resource metadata decoded from an event payload.
+	 */
+	struct nk_resource_view @layout(72, 8) {
+		/**
+		 * Set to sizeof(nk_resource_view) before decoding an item.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Access and persistence flags for this resource.
+		 */
+		flags: nk_resource_flags @offset(4);
+		/**
+		 * Borrowed UTF-8 URI; valid until nk_event_release().
+		 */
+		uri: ptr<const<c_char>> @offset(8);
+		/**
+		 * URI length in bytes, excluding its trailing NUL.
+		 */
+		uri_length: u32 @offset(16);
+		/**
+		 * Borrowed optional MIME string, or NULL when absent.
+		 */
+		mime_type: ptr<const<c_char>> @offset(24);
+		/**
+		 * MIME length in bytes, excluding its trailing NUL.
+		 */
+		mime_type_length: u32 @offset(32);
+		/**
+		 * Borrowed optional display name, or NULL when absent.
+		 */
+		display_name: ptr<const<c_char>> @offset(40);
+		/**
+		 * Display-name length in bytes, excluding its trailing NUL.
+		 */
+		display_name_length: u32 @offset(48);
+		/**
+		 * Reserved for future decoded metadata; set all elements to zero.
+		 */
+		reserved: array<u64, 2> @offset(56);
+	}
+	/**
+	 * Text and URI resources supplied to the platform share UI.
+	 */
+	struct nk_share_options @layout(56, 8) {
+		/**
+		 * Set to sizeof(nk_share_options) before sharing.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Reserved; set to zero.
+		 */
+		flags: u32 @offset(4);
+		/**
+		 * Optional title shown by the share UI.
+		 */
+		title: nullable<utf8> @offset(8);
+		/**
+		 * Optional UTF-8 text to share.
+		 */
+		text: nullable<utf8> @offset(16);
+		/**
+		 * Caller-owned resources read during the call and copied by NativeKit.
+		 */
+		resources: ptr<const<nk_resource>> @offset(24) @borrowed @length_field("resource_count");
+		/**
+		 * Number of entries in `resources`.
+		 */
+		resource_count: u32 @offset(32);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(36);
+		/**
+		 * Reserved for future share options; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(40);
 	}
 	/**
 	 * Opaque handle for one audio mixer bus.

@@ -4,6 +4,7 @@ import NativeKit;
 import NativeKitAudio;
 import NativeKitError;
 import haxe.io.Bytes;
+import nativekit.resource.Resource;
 
 /** Reusable audio source that can create multiple independent voices. */
 class Clip {
@@ -21,6 +22,15 @@ class Clip {
 			throw "Audio clip path must not be empty";
 		var made = NativeKitAudio.nk_audio_clip_create_from_file(path);
 		AudioResult.check(made.status, "audio.clip.fromFile");
+		return new Clip(made.out_clip);
+	}
+
+	/** Creates a clip from a provider-backed URI resource. */
+	public static function fromResource(resource:Resource):Clip {
+		if (resource == null)
+			throw "Audio clip resource must not be null";
+		var made = NativeKitAudio.nk_audio_clip_create_from_resource(resource.nativeValue());
+		AudioResult.check(made.status, "audio.clip.fromResource");
 		return new Clip(made.out_clip);
 	}
 

@@ -6,6 +6,7 @@
 /* ------------------------------------------------------------------------- */
 
 #include "nativekit.h"
+#include "nativekit_resource.h"
 
 /* ------------------------------------------------------------------------- */
 /* Export visibility                                                         */
@@ -145,6 +146,14 @@ NKAUDIO_API nk_result NK_CALL nk_audio_bus_is_muted(nk_audio_bus bus,
  */
 NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_file(
     const char *path NK_UTF8, nk_audio_clip *out_clip NK_OUT NK_OWNED);
+
+/**
+ * Creates a reusable clip from a readable URI resource. NativeKit opens the
+ * resource through its platform provider and keeps each voice's decoder
+ * backed by an independent resource stream.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_resource(
+    const nk_resource *resource, nk_audio_clip *out_clip NK_OUT NK_OWNED);
 
 /**
  * Creates a reusable clip from encoded audio bytes. NativeKit copies the

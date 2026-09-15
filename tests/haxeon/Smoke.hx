@@ -14,7 +14,7 @@ import NativeKit.Capabilities;
 import NativeKit.NotificationFlags;
 import NativeKit.DialogFilter;
 import NativeKit.FileDialogOptions;
-import NativeKit.Resource;
+import NativeKit.ResourceValue;
 import NativeKit.ShareOptions;
 import NativeKit.NotificationOptions;
 import NativeKit.WindowOptions;
@@ -185,8 +185,8 @@ class Smoke {
 		return 42;
 	}
 
-	static function resource(uri:String, mimeType:String, displayName:String):Resource {
-		var value = new Resource();
+	static function resource(uri:String, mimeType:String, displayName:String):ResourceValue {
+		var value = new ResourceValue();
 		value.set_uri(uri);
 		value.set_mime_type(mimeType);
 		value.set_display_name(displayName);
