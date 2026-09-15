@@ -80,6 +80,13 @@ struct AccessibilityActionEvent {
     nk_accessibility_text_granularity granularity = 0;
 };
 
+struct ResourceDropEvent {
+    float x = 0.0f;
+    float y = 0.0f;
+    const char *uris = nullptr;
+    const char *text = nullptr;
+};
+
 struct TextInputConfig {
     bool active = false;
     uint32_t flags = 0;
@@ -108,6 +115,7 @@ struct HostCallbacks {
     void (*context)(bool restored, void *) = nullptr;
     void (*pointer_lock)(bool active, void *) = nullptr;
     void (*display_orientation)(nk_orientation orientation, void *) = nullptr;
+    void (*drop)(const ResourceDropEvent &, void *) = nullptr;
     void (*accessibility_action)(const AccessibilityActionEvent &, void *) = nullptr;
 };
 
@@ -131,7 +139,10 @@ void set_accessibility_tree(nk_handle surface, int32_t width, int32_t height, bo
 void clear_accessibility_tree(nk_handle surface) noexcept;
 void set_accessibility_visible(nk_handle surface, bool visible) noexcept;
 bool set_clipboard_text(const char *text) noexcept;
+bool set_clipboard_resources(const char *uris) noexcept;
 bool read_clipboard_text(nk_request_id request) noexcept;
+bool read_clipboard_resources(nk_request_id request) noexcept;
+bool share(const char *title, const char *text, const char *uris) noexcept;
 bool fetch_resource(const char *uri, nk_request_id request) noexcept;
 
 bool create_webgl_context(const WebGLContextOptions &options,

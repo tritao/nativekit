@@ -11,6 +11,7 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
+#include "platform/resource_events.hpp"
 #include "platform/web/host.h"
 
 #include <algorithm>
@@ -102,6 +103,7 @@ struct WebWindowResource final : nk::core::Resource {
     bool focused = true;
     bool hovered = false;
     bool resizable = true;
+    bool drops_enabled = false;
     bool fullscreen = false;
     nk_orientation last_display_orientation = NK_ORIENTATION_UNKNOWN;
     nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
@@ -1355,6 +1357,27 @@ void on_accessibility_action(const nk::web::AccessibilityActionEvent &event, voi
     });
 }
 
+void on_drop(const nk::web::ResourceDropEvent &event, void *user_data) {
+    nk::core::callback_boundary([&] {
+        auto *window = static_cast<WebWindowResource *>(user_data);
+        if (!window || !window->drops_enabled ||
+            !nk::core::is_runtime_generation(window->generation))
+            return;
+        const std::string uri_list = event.uris ? event.uris : "";
+        const auto resources = nk::platform::resources_from_uri_list(
+            uri_list, NK_RESOURCE_READABLE);
+        const std::string text = event.text ? event.text : "";
+        if (resources.empty() && text.empty())
+            return;
+        nk::core::QueuedEvent queued;
+        queued.kind = NK_EVENT_RESOURCE_DROP;
+        queued.source = window->handle;
+        queued.data_count = static_cast<uint32_t>(resources.size());
+        queued.data = nk::platform::resource_drop_payload(event.x, event.y, text, resources);
+        nk::core::push_event(std::move(queued));
+    });
+}
+
 EM_BOOL frame_loop(double, void *user_data) {
     auto *surface = static_cast<WebSurfaceResource *>(user_data);
     if (!surface || !nk::core::is_runtime_generation(surface->generation) ||
@@ -1434,7 +1457,8 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     auto capabilities = NK_CAP_WINDOW | NK_CAP_INPUT | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
                         NK_CAP_POINTER_CAPTURE | NK_CAP_CLIPBOARD | NK_CAP_WINDOW_GEOMETRY |
-                        NK_CAP_RESOURCE_IO | NK_CAP_SYSTEM_INFO | NK_CAP_ACCESSIBILITY |
+                        NK_CAP_DRAG_DROP | NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO |
+                        NK_CAP_SYSTEM_INFO | NK_CAP_ACCESSIBILITY |
                         nk::core::optional_capabilities();
     if (nk::web::appearance_supported())
         capabilities |= NK_CAP_SYSTEM_APPEARANCE;
@@ -1500,6 +1524,69 @@ nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources,
+                                             uint32_t resource_count) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (const auto result = nk::platform::validate_resources(resources, resource_count, false);
+        result != NK_OK)
+        return result;
+    std::string uris;
+    for (uint32_t index = 0; index < resource_count; ++index) {
+        if (!uris.empty())
+            uris += "\r\n";
+        uris += resources[index].uri;
+    }
+    if (!nk::web::set_clipboard_resources(uris.c_str()))
+        return unsupported("browser resource clipboard write is unavailable");
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!out_request)
+        return invalid_argument("web resource clipboard request output is null");
+    *out_request = NK_INVALID_REQUEST_ID;
+    const auto request = nk::core::next_request_id();
+    if (!nk::web::read_clipboard_resources(request))
+        return unsupported("browser resource clipboard read is unavailable");
+    *out_request = request;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_share(const nk_share_options *options) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (!options || options->struct_size < sizeof(*options) || options->flags != 0 ||
+        (!options->text && options->resource_count == 0))
+        return invalid_argument("invalid or empty web share options");
+    if (const auto result = nk::platform::validate_resources(options->resources,
+                                                              options->resource_count, true);
+        result != NK_OK)
+        return result;
+    std::string uris;
+    for (uint32_t index = 0; index < options->resource_count; ++index) {
+        if (!uris.empty())
+            uris += "\r\n";
+        uris += options->resources[index].uri;
+    }
+    if (!nk::web::share(options->title ? options->title : "",
+                        options->text ? options->text : "", uris.c_str()))
+        return unsupported("browser Web Share API is unavailable or requires a user gesture");
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_drop_enabled(nk_handle handle, nk_bool enabled) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    auto window = get_window(handle);
+    if (!window)
+        return invalid_handle("invalid web window handle");
+    window->drops_enabled = enabled != 0;
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_resource_load_async(const nk_resource *resource, nk_request_id *out_request) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
@@ -1553,6 +1640,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             callbacks.context = on_context;
             callbacks.pointer_lock = on_pointer_lock;
             callbacks.display_orientation = on_display_orientation;
+            callbacks.drop = on_drop;
             callbacks.accessibility_action = on_accessibility_action;
             nk::web::install_callbacks(callbacks, window.get());
             nk::web::set_canvas_visible(window->visible);

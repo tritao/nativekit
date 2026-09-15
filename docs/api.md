@@ -166,7 +166,7 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE` | none | clipboard read ID | `nk_resource_list` |
 | `NK_EVENT_RESOURCE_OPENED` | mobile host | none | `nk_resource_list` |
 | `NK_EVENT_SHARE_RECEIVED` | mobile host | none | `nk_received_share` followed by its resource list and strings |
-| `NK_EVENT_RESOURCE_DROP` | mobile host | none | `nk_resource_drop` followed by its resource list and optional text |
+| `NK_EVENT_RESOURCE_DROP` | mobile host or desktop window | none | `nk_resource_drop` followed by its resource list and optional text |
 | `NK_EVENT_HTTP_HEADERS` | HTTP request | request ID | `nk_http_response` without a buffered body |
 | `NK_EVENT_HTTP_DATA_AVAILABLE` | HTTP stream | request ID | empty; pull bytes with `nk_http_stream_read()` |
 | `NK_EVENT_HTTP_PROGRESS` | HTTP request | request ID | `nk_http_progress` |
@@ -607,9 +607,19 @@ the selection owner may be another process, particularly under Wayland. File-lis
 results use `nk_clipboard_files` followed by NUL-terminated UTF-8 paths and are
 decoded with `nk_clipboard_event_file()`.
 
-Windows opt into drops explicitly. Drop event data starts with `nk_drop_data`,
+Resource clipboard operations preserve URI identity. Desktop backends use the
+native URI-list clipboard format (and retain local `file:` URIs); the browser
+uses the browser clipboard permission and a newline-separated URI list. Resource
+reads complete with `NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE` and are decoded with
+`nk_resource_event_item()`.
+
+Desktop windows opt into drops explicitly. Drop event data starts with `nk_drop_data`,
 including logical window coordinates, followed by strings decoded through
-`nk_drop_event_item()`. Only local file URIs are emitted as file drops.
+`nk_drop_event_item()`. File drops retain their existing path event and also
+produce `NK_EVENT_RESOURCE_DROP`, whose URI items are decoded with
+`nk_resource_event_item()`. The browser maps dropped files to temporary object
+URLs and external URI lists to the same resource event; call
+`nk_window_set_drop_enabled()` before accepting browser drops.
 
 iOS clipboard text and local file URLs use `UIPasteboard`. Clipboard file reads
 return local paths through the same `nk_clipboard_files` payload; drag/drop is a
@@ -674,9 +684,13 @@ clipboard events use `nk_resource_list`; decode individual items with
 `nk_resource_event_item()` while the event remains alive.
 
 `nk_shell_open_resource()` views one URI. `nk_share()` hands optional text and
-resource URIs to the platform share UI; success means the share UI was launched,
-not that a recipient consumed the content. Resource clipboard reads remain
-asynchronous and complete with `NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE`.
+resource URIs to the platform share UI or platform-equivalent resource handoff;
+success means the handoff was accepted, not that a recipient consumed the
+content. macOS uses its native share picker, while Linux and Win32 preserve the
+same URI list through the system clipboard because those desktop application
+models do not provide a common unpackaged share-sheet data contract. The browser
+uses Web Share when permission and a user gesture allow it. Resource clipboard
+reads remain asynchronous and complete with `NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE`.
 
 Android forwards `content:` grants through intents and never exports `file:` URIs.
 Callers must keep the URI and respect its reported readable, writable, and
