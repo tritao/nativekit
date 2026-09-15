@@ -31,16 +31,13 @@ static void test_window_styling(void) {
     assert(nk_window_set_mouse_passthrough(window, 1) == NK_OK);
 
     assert(EM_ASM_INT({
-        const canvas = document.querySelector("#canvas");
-        return canvas && canvas.style.minWidth === "320px" &&
-               canvas.style.minHeight === "240px" &&
-               canvas.style.maxWidth === "1280px" &&
-               canvas.style.maxHeight === "960px" &&
-               canvas.style.aspectRatio === "4 / 3" &&
-               canvas.style.resize === "none" &&
-               canvas.style.opacity === "0.75" &&
-               canvas.style.pointerEvents === "none" ? 1 : 0;
-    }) == 1);
+               const canvas = document.querySelector("#canvas");
+               return canvas && canvas.style.minWidth == = "320px" && canvas.style.minHeight ==
+                      = "240px" && canvas.style.maxWidth == = "1280px" && canvas.style.maxHeight ==
+                      = "960px" && canvas.style.aspectRatio == = "4 / 3" && canvas.style.resize ==
+                      = "none" && canvas.style.opacity == = "0.75" && canvas.style.pointerEvents ==
+                      = "none" ? 1 : 0;
+           }) == 1);
 
     nk_bool hovered = 1;
     assert(nk_window_get_hovered(window, &hovered) == NK_OK);
@@ -48,7 +45,7 @@ static void test_window_styling(void) {
 
     EM_ASM({
         Module._nkNativeKitOriginalShowOpenFilePicker = window.showOpenFilePicker;
-        window.showOpenFilePicker = () => Promise.resolve([]);
+        window.showOpenFilePicker = () = > Promise.resolve([]);
     });
     nk_file_dialog_options dialog_options = {0};
     dialog_options.struct_size = sizeof(dialog_options);
@@ -81,8 +78,9 @@ static void test_window_styling(void) {
     assert(nk_window_set_mouse_passthrough(window, 0) == NK_OK);
     assert(nk_window_set_resizable(window, 1) == NK_OK);
     assert(nk_window_set_aspect_ratio(window, 0, 0) == NK_OK);
-    assert(nk_window_set_size_limits(window, &(nk_window_size_limits){
-        sizeof(nk_window_size_limits), 0, 0, 0, 0, {0, 0}}) == NK_OK);
+    assert(nk_window_set_size_limits(
+               window, &(nk_window_size_limits){
+                           sizeof(nk_window_size_limits), 0, 0, 0, 0, {0, 0}}) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);
 }
 
@@ -97,48 +95,49 @@ static void test_writable_resource_stream(void) {
                     return Promise.resolve();
                 },
                 close: () => {
-                    const bytes = Module._nkWebSmokeResourceBytes || [];
-                    const valid = bytes.length === 3 && bytes[0] === 0x4e &&
-                                  bytes[1] === 0x4b && bytes[2] === 0x21;
-                    document.documentElement.dataset.nativekitResourceWrite =
-                        valid ? "verified" : "failed";
-                    document.documentElement.dataset.nativekitSystemResult =
-                        valid ? "passed" : "failed";
-                    return Promise.resolve();
-                }
-            })
-        };
-    });
+            const bytes = Module._nkWebSmokeResourceBytes || [];
+            const valid = bytes.length == = 3 && bytes[0] == = 0x4e && bytes[1] ==
+                = 0x4b && bytes[2] == = 0x21;
+            document.documentElement.dataset.nativekitResourceWrite = valid ? "verified" : "failed";
+            document.documentElement.dataset.nativekitSystemResult = valid ? "passed" : "failed";
+            return Promise.resolve();
+        }
+    })
+};
+});
 
-    nk_resource resource = {0};
-    resource.struct_size = sizeof(resource);
-    resource.flags = NK_RESOURCE_WRITABLE;
-    resource.uri = "nativekit-file-handle://web-smoke";
-    nk_resource_stream stream = NK_INVALID_HANDLE;
-    assert(nk_resource_open(&resource,
-                            NK_RESOURCE_OPEN_WRITE | NK_RESOURCE_OPEN_CREATE |
-                                NK_RESOURCE_OPEN_TRUNCATE,
-                            &stream) == NK_OK);
-    const unsigned char bytes[] = {'N', 'K', '!'};
-    uint64_t written = 0;
-    assert(nk_resource_write(stream, bytes, sizeof(bytes), &written) == NK_OK);
-    assert(written == sizeof(bytes));
-    nk_resource_stream_info info = {0};
-    info.struct_size = sizeof(info);
-    assert(nk_resource_stream_info_get(stream, &info) == NK_OK);
-    assert((info.flags & NK_RESOURCE_STREAM_WRITABLE) != 0);
-    assert((info.flags & NK_RESOURCE_STREAM_SEEKABLE) != 0);
-    assert(info.size == sizeof(bytes));
-    assert(nk_resource_close(stream) == NK_OK);
+nk_resource resource = {0};
+resource.struct_size = sizeof(resource);
+resource.flags = NK_RESOURCE_WRITABLE;
+resource.uri = "nativekit-file-handle://web-smoke";
+nk_resource_stream stream = NK_INVALID_HANDLE;
+assert(nk_resource_open(&resource,
+                        NK_RESOURCE_OPEN_WRITE | NK_RESOURCE_OPEN_CREATE |
+                            NK_RESOURCE_OPEN_TRUNCATE,
+                        &stream) == NK_OK);
+const unsigned char bytes[] = {'N', 'K', '!'};
+uint64_t written = 0;
+assert(nk_resource_write(stream, bytes, sizeof(bytes), &written) == NK_OK);
+assert(written == sizeof(bytes));
+nk_resource_stream_info info = {0};
+info.struct_size = sizeof(info);
+assert(nk_resource_stream_info_get(stream, &info) == NK_OK);
+assert((info.flags & NK_RESOURCE_STREAM_WRITABLE) != 0);
+assert((info.flags & NK_RESOURCE_STREAM_SEEKABLE) != 0);
+assert(info.size == sizeof(bytes));
+assert(nk_resource_close(stream) == NK_OK);
 
-    /* The File System Access write and close are promise-based. */
-    EM_ASM({
-        if (typeof setTimeout === "function")
-            setTimeout(() => {
-                if (document.documentElement.dataset.nativekitResourceWrite !== "verified")
-                    throw new Error("NativeKit Web resource write was not flushed");
-            }, 0);
-    });
+/* The File System Access write and close are promise-based. */
+EM_ASM({
+    if (typeof setTimeout == = "function")
+        setTimeout(() = >
+                        {
+                            if (document.documentElement.dataset.nativekitResourceWrite !=
+                                = "verified")
+                                throw new Error("NativeKit Web resource write was not flushed");
+                        },
+                   0);
+});
 }
 #endif
 

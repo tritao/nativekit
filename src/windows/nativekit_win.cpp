@@ -1090,8 +1090,8 @@ void emit_drop_files(WinWindowResource &resource, HDROP drop) noexcept {
                 auto value = utf8(path.c_str());
                 if (!value.empty()) {
                     paths.push_back(value);
-                    resources.push_back(nk::platform::resource_from_file_path(
-                        value, NK_RESOURCE_READABLE));
+                    resources.push_back(
+                        nk::platform::resource_from_file_path(value, NK_RESOURCE_READABLE));
                 }
             }
         }
@@ -2221,8 +2221,8 @@ void emit_file_completion(const WinDialogContext &context, std::vector<std::stri
     event.flags = context.kind;
     event.result = result;
     event.data_count = static_cast<uint32_t>(paths.size());
-    const auto access = context.kind == NK_DIALOG_OPEN_RESOURCE ? NK_RESOURCE_READABLE
-                                                                  : NK_RESOURCE_WRITABLE;
+    const auto access =
+        context.kind == NK_DIALOG_OPEN_RESOURCE ? NK_RESOURCE_READABLE : NK_RESOURCE_WRITABLE;
     std::vector<nk::platform::ResourceValue> resources;
     resources.reserve(paths.size());
     for (auto &path : paths)
@@ -2506,8 +2506,7 @@ BOOL CALLBACK enumerate_monitors(HMONITOR monitor, HDC, LPRECT, LPARAM data) {
 
 std::vector<HMONITOR> connected_monitors() {
     std::vector<HMONITOR> result;
-    EnumDisplayMonitors(nullptr, nullptr, enumerate_monitors,
-                        reinterpret_cast<LPARAM>(&result));
+    EnumDisplayMonitors(nullptr, nullptr, enumerate_monitors, reinterpret_cast<LPARAM>(&result));
     return result;
 }
 
@@ -2743,10 +2742,9 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_WINDOW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
         NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
         NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR |
-        NK_CAP_POINTER_CAPTURE |
-        NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING | NK_CAP_D3D11_SURFACE |
-        NK_CAP_ACCESSIBILITY | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK |
-        NK_CAP_WRAP_NATIVE_WINDOW;
+        NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
+        NK_CAP_D3D11_SURFACE | NK_CAP_ACCESSIBILITY | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN |
+        NK_CAP_JOYSTICK | NK_CAP_WRAP_NATIVE_WINDOW;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
@@ -3497,9 +3495,9 @@ nk_result NK_CALL nk_monitor_list(nk_handle *monitors, uint32_t *inout_count) {
             const uint32_t capacity = *inout_count;
             *inout_count = required;
             if (!monitors || capacity < required)
-                return required ? fail(NK_ERROR_BUFFER_TOO_SMALL,
-                                       "monitor handle buffer is too small")
-                                 : NK_OK;
+                return required
+                           ? fail(NK_ERROR_BUFFER_TOO_SMALL, "monitor handle buffer is too small")
+                           : NK_OK;
             uint32_t index = 0;
             for (const auto native : connected_monitors())
                 monitors[index++] = monitor_handles.at(native);
@@ -3554,16 +3552,16 @@ nk_result NK_CALL nk_monitor_get_geometry(nk_handle handle, nk_monitor_geometry 
     out_geometry->struct_size = size;
     out_geometry->x = MulDiv(info.rcMonitor.left, 96, static_cast<int>(dpi));
     out_geometry->y = MulDiv(info.rcMonitor.top, 96, static_cast<int>(dpi));
-    out_geometry->width = MulDiv(info.rcMonitor.right - info.rcMonitor.left, 96,
-                                 static_cast<int>(dpi));
-    out_geometry->height = MulDiv(info.rcMonitor.bottom - info.rcMonitor.top, 96,
-                                  static_cast<int>(dpi));
+    out_geometry->width =
+        MulDiv(info.rcMonitor.right - info.rcMonitor.left, 96, static_cast<int>(dpi));
+    out_geometry->height =
+        MulDiv(info.rcMonitor.bottom - info.rcMonitor.top, 96, static_cast<int>(dpi));
     out_geometry->work_x = MulDiv(info.rcWork.left, 96, static_cast<int>(dpi));
     out_geometry->work_y = MulDiv(info.rcWork.top, 96, static_cast<int>(dpi));
-    out_geometry->work_width = MulDiv(info.rcWork.right - info.rcWork.left, 96,
-                                      static_cast<int>(dpi));
-    out_geometry->work_height = MulDiv(info.rcWork.bottom - info.rcWork.top, 96,
-                                       static_cast<int>(dpi));
+    out_geometry->work_width =
+        MulDiv(info.rcWork.right - info.rcWork.left, 96, static_cast<int>(dpi));
+    out_geometry->work_height =
+        MulDiv(info.rcWork.bottom - info.rcWork.top, 96, static_cast<int>(dpi));
     HDC device = CreateDCW(info.szDevice, info.szDevice, nullptr, nullptr);
     if (device) {
         out_geometry->width_mm = GetDeviceCaps(device, HORZSIZE);
@@ -3655,8 +3653,7 @@ nk_result NK_CALL nk_window_set_fullscreen_monitor(nk_handle window_handle,
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle h, int32_t numerator,
-                                              int32_t denominator) {
+nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle h, int32_t numerator, int32_t denominator) {
     if (const auto r = enter_ui(); r != NK_OK)
         return r;
     if ((numerator == 0) != (denominator == 0) || numerator < 0 || denominator < 0)
@@ -3695,8 +3692,8 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
     auto w = get_window(h);
     if (!w)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    constexpr LONG_PTR decoration_style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX |
-                                          WS_MAXIMIZEBOX | WS_THICKFRAME;
+    constexpr LONG_PTR decoration_style =
+        WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME;
     LONG_PTR style = GetWindowLongPtrW(w->window, GWL_STYLE);
     if (enabled) {
         style |= WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
@@ -3737,8 +3734,8 @@ nk_result NK_CALL nk_window_set_opacity(nk_handle h, float opacity) {
     const LONG_PTR extended_style = GetWindowLongPtrW(w->window, GWL_EXSTYLE);
     if (!(extended_style & WS_EX_LAYERED))
         SetWindowLongPtrW(w->window, GWL_EXSTYLE, extended_style | WS_EX_LAYERED);
-    return SetLayeredWindowAttributes(w->window, 0, static_cast<BYTE>(std::lround(opacity * 255.0f)),
-                                      LWA_ALPHA)
+    return SetLayeredWindowAttributes(w->window, 0,
+                                      static_cast<BYTE>(std::lround(opacity * 255.0f)), LWA_ALPHA)
                ? NK_OK
                : fail(NK_ERROR_UNKNOWN, "could not change window opacity");
 }
@@ -4710,9 +4707,10 @@ nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
                 std::string uri = list.substr(start, line_end - start);
                 if (!uri.empty() && uri.back() == '\r')
                     uri.pop_back();
-                if (!uri.empty() && nk::platform::valid_utf8(uri) && uri.find(':') != std::string::npos)
-                    resources.push_back(nk::platform::resource_from_uri(
-                        std::move(uri), NK_RESOURCE_READABLE));
+                if (!uri.empty() && nk::platform::valid_utf8(uri) &&
+                    uri.find(':') != std::string::npos)
+                    resources.push_back(
+                        nk::platform::resource_from_uri(std::move(uri), NK_RESOURCE_READABLE));
                 start = end == std::string::npos ? list.size() : end + 1;
             }
         } else if (IsClipboardFormatAvailable(CF_HDROP)) {
@@ -4729,8 +4727,8 @@ nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
                         path.resize(length);
                         const auto value = utf8(path.c_str());
                         if (!value.empty())
-                            resources.push_back(nk::platform::resource_from_file_path(
-                                value, NK_RESOURCE_READABLE));
+                            resources.push_back(
+                                nk::platform::resource_from_file_path(value, NK_RESOURCE_READABLE));
                     }
                 }
             }
@@ -4783,8 +4781,8 @@ nk_result NK_CALL nk_share(const nk_share_options *options) {
     if (!options || options->struct_size < sizeof(*options) || options->flags != 0 ||
         (!options->text && options->resource_count == 0))
         return fail(NK_ERROR_INVALID_ARGUMENT, "invalid or empty share options");
-    if (const auto result = nk::platform::validate_resources(options->resources,
-                                                              options->resource_count, true);
+    if (const auto result =
+            nk::platform::validate_resources(options->resources, options->resource_count, true);
         result != NK_OK)
         return result;
     // Win32 applications without a package identity cannot populate the
@@ -4822,8 +4820,7 @@ nk_result NK_CALL nk_share(const nk_share_options *options) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
-                                          const nk_file_dialog_options *options,
+nk_result NK_CALL nk_dialog_open_resource(nk_handle parent, const nk_file_dialog_options *options,
                                           nk_request_id *request) {
     return nk::core::result_boundary(
         "unexpected error while opening resource dialog", [&]() -> nk_result {
@@ -4831,8 +4828,7 @@ nk_result NK_CALL nk_dialog_open_resource(nk_handle parent,
         });
 }
 
-nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
-                                          const nk_file_dialog_options *options,
+nk_result NK_CALL nk_dialog_save_resource(nk_handle parent, const nk_file_dialog_options *options,
                                           nk_request_id *request) {
     return nk::core::result_boundary(
         "unexpected error while opening resource save dialog", [&]() -> nk_result {
@@ -4840,12 +4836,12 @@ nk_result NK_CALL nk_dialog_save_resource(nk_handle parent,
         });
 }
 
-nk_result NK_CALL nk_dialog_select_resource_directory(
-    nk_handle parent, const nk_file_dialog_options *options, nk_request_id *request) {
+nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle parent,
+                                                      const nk_file_dialog_options *options,
+                                                      nk_request_id *request) {
     return nk::core::result_boundary(
         "unexpected error while opening resource directory dialog", [&]() -> nk_result {
-            return start_file_dialog(parent, options, request,
-                                     NK_DIALOG_SELECT_RESOURCE_DIRECTORY);
+            return start_file_dialog(parent, options, request, NK_DIALOG_SELECT_RESOURCE_DIRECTORY);
         });
 }
 

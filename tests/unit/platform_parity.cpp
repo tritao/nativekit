@@ -38,9 +38,8 @@ constexpr mask cap(nk_capabilities value) {
 }
 
 constexpr mask k_known_capabilities =
-    cap(NK_CAP_WINDOW) | cap(NK_CAP_WEBVIEW) |
-    cap(NK_CAP_CLIPBOARD) | cap(NK_CAP_DRAG_DROP) | cap(NK_CAP_SHELL) |
-    cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) |
+    cap(NK_CAP_WINDOW) | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_CLIPBOARD) | cap(NK_CAP_DRAG_DROP) |
+    cap(NK_CAP_SHELL) | cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) |
     cap(NK_CAP_WRAP_NATIVE_WINDOW) | cap(NK_CAP_NOTIFICATION) | cap(NK_CAP_MOBILE_HOST) |
     cap(NK_CAP_INPUT) | cap(NK_CAP_OPENGL_SURFACE) | cap(NK_CAP_OPENGL_ES_SURFACE) |
     cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) | cap(NK_CAP_WINDOW_GEOMETRY) |
@@ -121,10 +120,9 @@ bool parse_capability_list(std::string_view text, mask &out, const char *backend
     while (!text.empty()) {
         const auto separator = text.find(',');
         const auto token = trim(text.substr(0, separator));
-        const auto found = std::find_if(k_capability_names.begin(), k_capability_names.end(),
-                                        [token](const capability_name &item) {
-                                            return item.name == token;
-                                        });
+        const auto found =
+            std::find_if(k_capability_names.begin(), k_capability_names.end(),
+                         [token](const capability_name &item) { return item.name == token; });
         if (token.empty() || found == k_capability_names.end()) {
             std::fprintf(stderr, "%s snapshot has unknown %s capability '%.*s'\n", backend,
                          category, static_cast<int>(token.size()), token.data());
@@ -144,8 +142,8 @@ bool parse_capability_list(std::string_view text, mask &out, const char *backend
     return true;
 }
 
-bool check_disjoint_masks(const char *backend, mask required, mask deferred,
-                          mask not_applicable, mask optional) {
+bool check_disjoint_masks(const char *backend, mask required, mask deferred, mask not_applicable,
+                          mask optional) {
     const mask categories = required | deferred | not_applicable | optional;
     const mask overlap = (required & deferred) | (required & not_applicable) |
                          (required & optional) | (deferred & not_applicable) |
@@ -166,7 +164,8 @@ bool check_disjoint_masks(const char *backend, mask required, mask deferred,
 bool load_contract(backend_contract &contract) {
     std::ifstream input(NK_CAPABILITY_SNAPSHOT_FILE);
     if (!input) {
-        std::fprintf(stderr, "could not open capability snapshot: %s\n", NK_CAPABILITY_SNAPSHOT_FILE);
+        std::fprintf(stderr, "could not open capability snapshot: %s\n",
+                     NK_CAPABILITY_SNAPSHOT_FILE);
         return false;
     }
     std::string line;
@@ -220,7 +219,8 @@ bool load_contract(backend_contract &contract) {
         contract.optional = optional;
     }
     for (const auto expected : k_contract_backend_names) {
-        if (std::find(seen_backends.begin(), seen_backends.end(), expected) == seen_backends.end()) {
+        if (std::find(seen_backends.begin(), seen_backends.end(), expected) ==
+            seen_backends.end()) {
             std::fprintf(stderr, "capability snapshot has no row for %.*s\n",
                          static_cast<int>(expected.size()), expected.data());
             return false;
@@ -242,9 +242,9 @@ bool check_disjoint(const backend_contract &contract) {
 
 #if defined(__EMSCRIPTEN__)
 static void mark_browser_result(bool passed) {
-    EM_ASM({
-        document.documentElement.dataset.nativekitPlatformParity = $0 ? "passed" : "failed";
-    }, passed ? 1 : 0);
+    EM_ASM(
+        { document.documentElement.dataset.nativekitPlatformParity = $0 ? "passed" : "failed"; },
+        passed ? 1 : 0);
 }
 #endif
 
@@ -261,8 +261,8 @@ int main() {
     options.struct_size = sizeof(options);
     options.api_version = NK_API_VERSION;
     if (nk_init(&options) != NK_OK) {
-        std::fprintf(stderr, "could not initialize NativeKit for %s parity test: %s\n", contract.name,
-                     nk_last_error());
+        std::fprintf(stderr, "could not initialize NativeKit for %s parity test: %s\n",
+                     contract.name, nk_last_error());
 #if defined(__EMSCRIPTEN__)
         mark_browser_result(false);
 #endif
@@ -274,13 +274,15 @@ int main() {
     const mask allowed = expected | contract.optional;
     bool valid = true;
     if ((actual & expected) != expected) {
-        std::fprintf(stderr, "%s is missing required capability bits: expected 0x%llx, got 0x%llx\n",
+        std::fprintf(stderr,
+                     "%s is missing required capability bits: expected 0x%llx, got 0x%llx\n",
                      contract.name, static_cast<unsigned long long>(expected),
                      static_cast<unsigned long long>(actual));
         valid = false;
     }
     if ((actual & contract.not_applicable) != 0) {
-        std::fprintf(stderr, "%s advertises not-applicable capability bits: 0x%llx\n", contract.name,
+        std::fprintf(stderr, "%s advertises not-applicable capability bits: 0x%llx\n",
+                     contract.name,
                      static_cast<unsigned long long>(actual & contract.not_applicable));
         valid = false;
     }

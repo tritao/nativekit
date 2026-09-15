@@ -927,10 +927,10 @@ nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled) {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD |
-           NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
-           NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE |
-           NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT | NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY;
+    return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP |
+           NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_SHARING |
+           NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT |
+           NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY;
 }
 
 nk_result NK_CALL nk_shell_open_url(const char *url) {
@@ -1557,8 +1557,7 @@ nk_result NK_CALL nk_dialog_save_resource(nk_handle parent, const nk_file_dialog
 nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle parent,
                                                       const nk_file_dialog_options *options,
                                                       nk_request_id *out_request) {
-    return start_file_dialog(NK_DIALOG_SELECT_RESOURCE_DIRECTORY, parent, options,
-                             out_request);
+    return start_file_dialog(NK_DIALOG_SELECT_RESOURCE_DIRECTORY, parent, options, out_request);
 }
 
 nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
@@ -3464,8 +3463,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnFileDialog(
             ResourceValue resource;
             resource.uri = std::move(uris[index]);
             auto mime = index < static_cast<std::size_t>(mime_count)
-                            ? static_cast<jstring>(env->GetObjectArrayElement(
-                                  mime_types, static_cast<jsize>(index)))
+                            ? static_cast<jstring>(
+                                  env->GetObjectArrayElement(mime_types, static_cast<jsize>(index)))
                             : nullptr;
             auto name = index < static_cast<std::size_t>(name_count)
                             ? static_cast<jstring>(env->GetObjectArrayElement(

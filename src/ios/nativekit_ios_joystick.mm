@@ -39,9 +39,7 @@ struct IOSJoystick final : nk::core::Resource {
             CFRelease(controller_ref);
     }
 
-    GCController *controller() const {
-        return (__bridge GCController *)controller_ref;
-    }
+    GCController *controller() const { return (__bridge GCController *)controller_ref; }
 };
 
 std::unordered_map<void *, std::shared_ptr<IOSJoystick>> devices;
@@ -152,9 +150,8 @@ void update(IOSJoystick &device) {
     GCController *controller = device.controller();
     const auto axes = axes_from(controller);
     const auto buttons = buttons_from(controller);
-    GCControllerDirectionPad *pad = controller.extendedGamepad
-                                         ? controller.extendedGamepad.dpad
-                                         : controller.microGamepad.dpad;
+    GCControllerDirectionPad *pad =
+        controller.extendedGamepad ? controller.extendedGamepad.dpad : controller.microGamepad.dpad;
     const auto hats = std::array<std::uint8_t, 1>{hat_value(pad)};
     for (std::size_t index = 0; index < axes.size(); ++index) {
         if (device.axes[index] == axes[index])
@@ -172,8 +169,7 @@ void update(IOSJoystick &device) {
     }
     if (device.hats[0] != hats[0]) {
         device.hats[0] = hats[0];
-        emit_input(NK_EVENT_JOYSTICK_HAT, device.handle,
-                   nk_joystick_hat_event{0, hats[0]});
+        emit_input(NK_EVENT_JOYSTICK_HAT, device.handle, nk_joystick_hat_event{0, hats[0]});
     }
 }
 

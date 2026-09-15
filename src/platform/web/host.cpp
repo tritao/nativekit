@@ -1243,9 +1243,10 @@ nk_web_host_text_input_event(int type, const char *text, int selection_start, in
     host_state.callbacks.text_input(event, host_state.user_data);
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_accessibility_action(
-    uint32_t surface, uint32_t node, uint32_t action, const char *value, int selection_start,
-    int selection_end, int granularity) {
+extern "C" EMSCRIPTEN_KEEPALIVE void
+nk_web_host_accessibility_action(uint32_t surface, uint32_t node, uint32_t action,
+                                 const char *value, int selection_start, int selection_end,
+                                 int granularity) {
     if (!host_state.callbacks.accessibility_action)
         return;
     nk::web::AccessibilityActionEvent event{};
@@ -1259,13 +1260,13 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_accessibility_action(
     event.selection_end = selection_end < 0
                               ? NK_ACCESSIBILITY_TEXT_POSITION_NONE
                               : static_cast<nk_accessibility_text_position>(selection_end);
-    event.granularity = static_cast<nk_accessibility_text_granularity>(
-        granularity < 0 ? 0 : granularity);
+    event.granularity =
+        static_cast<nk_accessibility_text_granularity>(granularity < 0 ? 0 : granularity);
     host_state.callbacks.accessibility_action(event, host_state.user_data);
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_drop(
-    float x, float y, const char *uris, const char *text) {
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_drop(float x, float y, const char *uris,
+                                                               const char *text) {
     if (!host_state.callbacks.drop)
         return;
     nk::web::ResourceDropEvent event{};
@@ -1284,8 +1285,9 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_canvas_resize() {
         host_state.callbacks.resize(size, host_state.user_data);
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_dialog_complete(
-    uint32_t request, uint32_t kind, nk_result result, int accepted, const char *uris) {
+extern "C" EMSCRIPTEN_KEEPALIVE void
+nk_web_host_resource_dialog_complete(uint32_t request, uint32_t kind, nk_result result,
+                                     int accepted, const char *uris) {
     if (!host_state.callbacks.resource_dialog)
         return;
     nk::web::ResourceDialogEvent event{};
@@ -1297,8 +1299,8 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_dialog_complete(
     host_state.callbacks.resource_dialog(event, host_state.user_data);
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_notification_event(
-    uint32_t request, nk_event_kind kind, nk_result result) {
+extern "C" EMSCRIPTEN_KEEPALIVE void
+nk_web_host_notification_event(uint32_t request, nk_event_kind kind, nk_result result) {
     if (!host_state.callbacks.notification)
         return;
     nk::web::NotificationEvent event{};
@@ -1308,12 +1310,13 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_notification_event(
     host_state.callbacks.notification(event, host_state.user_data);
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_gamepad_state(
-    int32_t index, int connected, const char *id, int standard, float axis0, float axis1,
-    float axis2, float axis3, float axis4, float axis5, int button0, int button1, int button2,
-    int button3, int button4, int button5, int button6, int button7, int button8, int button9,
-    int button10, int button11, int button12, int button13, int button14, int button15,
-    int button16) {
+extern "C" EMSCRIPTEN_KEEPALIVE void
+nk_web_host_gamepad_state(int32_t index, int connected, const char *id, int standard, float axis0,
+                          float axis1, float axis2, float axis3, float axis4, float axis5,
+                          int button0, int button1, int button2, int button3, int button4,
+                          int button5, int button6, int button7, int button8, int button9,
+                          int button10, int button11, int button12, int button13, int button14,
+                          int button15, int button16) {
     if (!host_state.callbacks.gamepad)
         return;
     nk::web::GamepadStateEvent event{};
@@ -1322,11 +1325,11 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_gamepad_state(
     event.standard = standard != 0;
     event.id = id;
     event.axes = {axis0, axis1, axis2, axis3, axis4, axis5};
-    event.buttons = {static_cast<uint8_t>(button0 != 0), static_cast<uint8_t>(button1 != 0),
-                     static_cast<uint8_t>(button2 != 0), static_cast<uint8_t>(button3 != 0),
-                     static_cast<uint8_t>(button4 != 0), static_cast<uint8_t>(button5 != 0),
-                     static_cast<uint8_t>(button6 != 0), static_cast<uint8_t>(button7 != 0),
-                     static_cast<uint8_t>(button8 != 0), static_cast<uint8_t>(button9 != 0),
+    event.buttons = {static_cast<uint8_t>(button0 != 0),  static_cast<uint8_t>(button1 != 0),
+                     static_cast<uint8_t>(button2 != 0),  static_cast<uint8_t>(button3 != 0),
+                     static_cast<uint8_t>(button4 != 0),  static_cast<uint8_t>(button5 != 0),
+                     static_cast<uint8_t>(button6 != 0),  static_cast<uint8_t>(button7 != 0),
+                     static_cast<uint8_t>(button8 != 0),  static_cast<uint8_t>(button9 != 0),
                      static_cast<uint8_t>(button10 != 0), static_cast<uint8_t>(button11 != 0),
                      static_cast<uint8_t>(button12 != 0), static_cast<uint8_t>(button13 != 0),
                      static_cast<uint8_t>(button14 != 0), static_cast<uint8_t>(button15 != 0),
@@ -1348,15 +1351,14 @@ nk_web_host_clipboard_text_complete(uint32_t request, nk_result result, const ch
     nk::core::push_event(std::move(event));
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_clipboard_resources_complete(
-    uint32_t request, nk_result result, const char *uris) {
+extern "C" EMSCRIPTEN_KEEPALIVE void
+nk_web_host_clipboard_resources_complete(uint32_t request, nk_result result, const char *uris) {
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE;
     event.request_id = static_cast<nk_request_id>(request);
     event.result = result;
     if (result == NK_OK && uris) {
-        const auto resources = nk::platform::resources_from_uri_list(
-            uris, NK_RESOURCE_READABLE);
+        const auto resources = nk::platform::resources_from_uri_list(uris, NK_RESOURCE_READABLE);
         event.data_count = static_cast<uint32_t>(resources.size());
         event.data = nk::platform::resource_payload(false, resources);
     }
@@ -1416,8 +1418,7 @@ bool set_canvas_size(int32_t width, int32_t height) noexcept {
 
 void set_canvas_size_limits(int32_t min_width, int32_t min_height, int32_t max_width,
                             int32_t max_height) noexcept {
-    nk_web_set_canvas_size_limits(canvas_selector(), min_width, min_height, max_width,
-                                  max_height);
+    nk_web_set_canvas_size_limits(canvas_selector(), min_width, min_height, max_width, max_height);
 }
 
 void set_canvas_aspect_ratio(int32_t numerator, int32_t denominator) noexcept {
@@ -1466,9 +1467,9 @@ bool open_url(const char *url) noexcept {
 
 uint32_t appearance() noexcept {
     constexpr auto high_contrast_flag = 1u << 8;
-    return static_cast<uint32_t>(nk_web_appearance(
-        static_cast<int>(NK_COLOR_SCHEME_LIGHT), static_cast<int>(NK_COLOR_SCHEME_DARK),
-        static_cast<int>(high_contrast_flag)));
+    return static_cast<uint32_t>(nk_web_appearance(static_cast<int>(NK_COLOR_SCHEME_LIGHT),
+                                                   static_cast<int>(NK_COLOR_SCHEME_DARK),
+                                                   static_cast<int>(high_contrast_flag)));
 }
 
 void configure_text_input(const TextInputConfig &config) noexcept {
@@ -1533,15 +1534,15 @@ bool pick_resources(nk_request_id request, uint32_t kind, bool multiple, const c
     return true;
 }
 
-bool show_notification(nk_request_id request, const char *title, const char *body,
-                       const char *icon, bool silent) noexcept {
+bool show_notification(nk_request_id request, const char *title, const char *body, const char *icon,
+                       bool silent) noexcept {
     if (!title || !body || !icon || request == NK_INVALID_REQUEST_ID)
         return false;
-    return nk_web_show_notification(
-               static_cast<double>(request), title, body, icon, silent ? 1 : 0,
-               NK_EVENT_NOTIFICATION_DELIVERED, NK_EVENT_NOTIFICATION_ACTIVATED,
-               NK_EVENT_NOTIFICATION_DISMISSED, NK_EVENT_NOTIFICATION_FAILED, NK_OK,
-               NK_ERROR_UNSUPPORTED, NK_ERROR_UNKNOWN) != 0;
+    return nk_web_show_notification(static_cast<double>(request), title, body, icon, silent ? 1 : 0,
+                                    NK_EVENT_NOTIFICATION_DELIVERED,
+                                    NK_EVENT_NOTIFICATION_ACTIVATED,
+                                    NK_EVENT_NOTIFICATION_DISMISSED, NK_EVENT_NOTIFICATION_FAILED,
+                                    NK_OK, NK_ERROR_UNSUPPORTED, NK_ERROR_UNKNOWN) != 0;
 }
 
 bool close_notification(nk_request_id request) noexcept {
@@ -1652,7 +1653,7 @@ bool install_callbacks(const HostCallbacks &callbacks, void *user_data) noexcept
     emscripten_set_webglcontextrestored_callback(canvas_selector(), &host_state, EM_TRUE,
                                                  context_callback);
     emscripten_set_pointerlockchange_callback(canvas_selector(), &host_state, EM_TRUE,
-                                               pointer_lock_callback);
+                                              pointer_lock_callback);
     nk_web_install_drop_handlers(canvas_selector());
     return true;
 }

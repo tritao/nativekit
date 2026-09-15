@@ -282,7 +282,7 @@ nk_result NK_CALL nk_gamepad_is_mapped(nk_handle joystick, uint32_t *out_mapped)
                 return NK_OK;
             }
 #endif
-#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_IOS) || \
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_IOS) ||         \
     defined(NK_BACKEND_WEB)
             if (native_standard_gamepad(joystick)) {
                 *out_mapped = 1;
@@ -312,7 +312,7 @@ nk_result NK_CALL nk_gamepad_get_mapping_source(nk_handle joystick,
                 return NK_OK;
             }
 #endif
-#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_IOS) || \
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_IOS) ||         \
     defined(NK_BACKEND_WEB)
             if (native_standard_gamepad(joystick)) {
                 *out_source = NK_GAMEPAD_MAPPING_BUILT_IN;
@@ -343,7 +343,7 @@ nk_result NK_CALL nk_gamepad_get_name(nk_handle joystick, char *buffer, uint32_t
             if (nk::backend::android_standard_gamepad(joystick))
                 return nk_joystick_get_name(joystick, buffer, inout_size);
 #endif
-#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_IOS) || \
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_IOS) ||         \
     defined(NK_BACKEND_WEB)
             if (native_standard_gamepad(joystick))
                 return nk_joystick_get_name(joystick, buffer, inout_size);
@@ -373,7 +373,7 @@ nk_result NK_CALL nk_gamepad_get_state(nk_handle joystick, nk_gamepad_state *out
                 return result;
             }
 #endif
-#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_IOS) || \
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_IOS) ||         \
     defined(NK_BACKEND_WEB)
             if (native_standard_gamepad(joystick)) {
                 const auto result = native_gamepad_state(joystick, out_state);

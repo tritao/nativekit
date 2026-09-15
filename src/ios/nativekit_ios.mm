@@ -472,8 +472,7 @@ std::vector<std::byte> resource_payload(bool accepted,
             total += resource.display_name.size() + 1;
     }
     std::vector<std::byte> result(total);
-    const nk_resource_list header{accepted ? 1u : 0u,
-                                  static_cast<uint32_t>(resources.size()),
+    const nk_resource_list header{accepted ? 1u : 0u, static_cast<uint32_t>(resources.size()),
                                   static_cast<uint32_t>(items_offset),
                                   static_cast<uint32_t>(strings_offset)};
     std::memcpy(result.data(), &header, sizeof(header));
@@ -529,7 +528,8 @@ UIViewController *view_controller_for_view(UIView *view) {
 }
 
 UIViewController *top_view_controller(UIViewController *controller) {
-    while (controller.presentedViewController && !controller.presentedViewController.isBeingDismissed)
+    while (controller.presentedViewController &&
+           !controller.presentedViewController.isBeingDismissed)
         controller = controller.presentedViewController;
     return controller;
 }
@@ -562,24 +562,23 @@ constexpr nk_accessibility_states ios_accessibility_states =
     NK_ACCESSIBILITY_BUSY | NK_ACCESSIBILITY_HAS_POPUP;
 
 constexpr nk_accessibility_actions ios_accessibility_actions =
-    NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS |
-    NK_ACCESSIBILITY_CAN_SET_VALUE | NK_ACCESSIBILITY_CAN_SET_SELECTION |
-    NK_ACCESSIBILITY_CAN_INCREMENT | NK_ACCESSIBILITY_CAN_DECREMENT |
-    NK_ACCESSIBILITY_CAN_SCROLL_FORWARD | NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD |
-    NK_ACCESSIBILITY_CAN_MOVE_NEXT | NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS |
-    NK_ACCESSIBILITY_CAN_TOGGLE | NK_ACCESSIBILITY_CAN_SELECT |
-    NK_ACCESSIBILITY_CAN_DESELECT | NK_ACCESSIBILITY_CAN_EXPAND |
-    NK_ACCESSIBILITY_CAN_COLLAPSE | NK_ACCESSIBILITY_CAN_DISMISS |
-    NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU | NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW;
+    NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS | NK_ACCESSIBILITY_CAN_SET_VALUE |
+    NK_ACCESSIBILITY_CAN_SET_SELECTION | NK_ACCESSIBILITY_CAN_INCREMENT |
+    NK_ACCESSIBILITY_CAN_DECREMENT | NK_ACCESSIBILITY_CAN_SCROLL_FORWARD |
+    NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD | NK_ACCESSIBILITY_CAN_MOVE_NEXT |
+    NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS | NK_ACCESSIBILITY_CAN_TOGGLE | NK_ACCESSIBILITY_CAN_SELECT |
+    NK_ACCESSIBILITY_CAN_DESELECT | NK_ACCESSIBILITY_CAN_EXPAND | NK_ACCESSIBILITY_CAN_COLLAPSE |
+    NK_ACCESSIBILITY_CAN_DISMISS | NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU |
+    NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW;
 
-bool copy_accessibility_node(const nk_accessibility_node &node,
-                             const std::unordered_map<nk_accessibility_node_id,
-                                                      IOSAccessibilityNode> &nodes,
-                             IOSAccessibilityNode &copy) {
+bool copy_accessibility_node(
+    const nk_accessibility_node &node,
+    const std::unordered_map<nk_accessibility_node_id, IOSAccessibilityNode> &nodes,
+    IOSAccessibilityNode &copy) {
     std::vector<uint32_t> value_codepoints;
-    if (!decode_utf8(node.value ? node.value : "", value_codepoints) ||
-        !valid_utf8(node.label) || node.struct_size < sizeof(node) ||
-        node.id == NK_ACCESSIBILITY_ROOT || node.role > NK_ACCESSIBILITY_ALERT ||
+    if (!decode_utf8(node.value ? node.value : "", value_codepoints) || !valid_utf8(node.label) ||
+        node.struct_size < sizeof(node) || node.id == NK_ACCESSIBILITY_ROOT ||
+        node.role > NK_ACCESSIBILITY_ALERT ||
         node.orientation > NK_ACCESSIBILITY_ORIENTATION_VERTICAL ||
         (node.states & ~ios_accessibility_states) || (node.actions & ~ios_accessibility_actions) ||
         !std::isfinite(node.x) || !std::isfinite(node.y) || !std::isfinite(node.width) ||
@@ -588,8 +587,7 @@ bool copy_accessibility_node(const nk_accessibility_node &node,
         !std::isfinite(node.numeric_maximum) ||
         (node.role == NK_ACCESSIBILITY_SLIDER &&
          (node.numeric_minimum > node.numeric_maximum ||
-          node.numeric_value < node.numeric_minimum ||
-          node.numeric_value > node.numeric_maximum)))
+          node.numeric_value < node.numeric_minimum || node.numeric_value > node.numeric_maximum)))
         return false;
 
     const uint64_t text_end = static_cast<uint64_t>(node.text_start) + value_codepoints.size();
@@ -748,14 +746,12 @@ nk_accessibility_actions accessibility_action_bit(nk_accessibility_action action
     }
 }
 
-nk_result emit_accessibility_action(nk_handle surface_handle, nk_accessibility_node_id node,
-                                    nk_accessibility_action action,
-                                    const std::string &value = {},
-                                    nk_accessibility_text_position selection_start =
-                                        NK_ACCESSIBILITY_TEXT_POSITION_NONE,
-                                    nk_accessibility_text_position selection_end =
-                                        NK_ACCESSIBILITY_TEXT_POSITION_NONE,
-                                    nk_accessibility_text_granularity granularity = 0) noexcept {
+nk_result emit_accessibility_action(
+    nk_handle surface_handle, nk_accessibility_node_id node, nk_accessibility_action action,
+    const std::string &value = {},
+    nk_accessibility_text_position selection_start = NK_ACCESSIBILITY_TEXT_POSITION_NONE,
+    nk_accessibility_text_position selection_end = NK_ACCESSIBILITY_TEXT_POSITION_NONE,
+    nk_accessibility_text_granularity granularity = 0) noexcept {
     return nk::core::callback_boundary_or<nk_result>(NK_ERROR_UNKNOWN, [&]() -> nk_result {
         auto resource = surface(surface_handle);
         if (!resource || resource->destroying)
@@ -804,8 +800,9 @@ void refresh_accessibility_elements(IOSSurface &resource) noexcept {
                 std::sort(children.begin(), children.end(), [&](auto lhs, auto rhs) {
                     const auto &left = resource.accessibility_nodes.at(lhs);
                     const auto &right = resource.accessibility_nodes.at(rhs);
-                    return left.child_index == right.child_index ? lhs < rhs
-                                                                  : left.child_index < right.child_index;
+                    return left.child_index == right.child_index
+                               ? lhs < rhs
+                               : left.child_index < right.child_index;
                 });
                 for (const auto id : children) {
                     const auto &node = resource.accessibility_nodes.at(id);
@@ -815,13 +812,15 @@ void refresh_accessibility_elements(IOSSurface &resource) noexcept {
                         continue;
                     element.surface = resource.handle;
                     element.node = id;
-                    element.accessibilityLabel = node.label.empty() ? nil : native_string(node.label.c_str());
-                    element.accessibilityValue = node.value.empty() ? nil : native_string(node.value.c_str());
+                    element.accessibilityLabel =
+                        node.label.empty() ? nil : native_string(node.label.c_str());
+                    element.accessibilityValue =
+                        node.value.empty() ? nil : native_string(node.value.c_str());
                     element.accessibilityTraits = accessibility_traits(node);
                     const CGRect local = CGRectMake(node.x, node.y, node.width, node.height);
-                    element.accessibilityFrame = resource.input_view
-                                                     ? [resource.input_view convertRect:local toView:nil]
-                                                     : local;
+                    element.accessibilityFrame =
+                        resource.input_view ? [resource.input_view convertRect:local toView:nil]
+                                            : local;
                     [elements addObject:element];
                     append_children(id);
                 }
@@ -849,29 +848,31 @@ nk_result begin_accessibility_value_edit(nk_handle surface_handle,
         NSString *label = native_string(found->second.label.c_str()) ?: @"";
         NSString *value = native_string(found->second.value.c_str()) ?: @"";
         const bool password = (found->second.states & NK_ACCESSIBILITY_PASSWORD) != 0;
-        UIAlertController *alert = [UIAlertController
-            alertControllerWithTitle:label
-                             message:@"Enter a new value"
-                      preferredStyle:UIAlertControllerStyleAlert];
+        UIAlertController *alert =
+            [UIAlertController alertControllerWithTitle:label
+                                                message:@"Enter a new value"
+                                         preferredStyle:UIAlertControllerStyleAlert];
         if (!alert)
             return NK_ERROR_OUT_OF_MEMORY;
         [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
-            field.text = value;
-            field.secureTextEntry = password;
+          field.text = value;
+          field.secureTextEntry = password;
         }];
         __weak UIAlertController *weak_alert = alert;
         [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
-                                                   style:UIAlertActionStyleCancel
-                                                 handler:nil]];
-        [alert addAction:[UIAlertAction actionWithTitle:@"Set"
-                                                   style:UIAlertActionStyleDefault
-                                                 handler:^(UIAlertAction *) {
-                                                   UIAlertController *strong_alert = weak_alert;
-                                                   NSString *text = strong_alert.textFields.firstObject.text ?: @"";
-                                                   emit_accessibility_action(surface_handle, node,
-                                                                             NK_ACCESSIBILITY_ACTION_SET_VALUE,
-                                                                             utf8_string(text));
-                                                 }]];
+                                                  style:UIAlertActionStyleCancel
+                                                handler:nil]];
+        [alert addAction:[UIAlertAction
+                             actionWithTitle:@"Set"
+                                       style:UIAlertActionStyleDefault
+                                     handler:^(UIAlertAction *) {
+                                       UIAlertController *strong_alert = weak_alert;
+                                       NSString *text =
+                                           strong_alert.textFields.firstObject.text ?: @"";
+                                       emit_accessibility_action(surface_handle, node,
+                                                                 NK_ACCESSIBILITY_ACTION_SET_VALUE,
+                                                                 utf8_string(text));
+                                     }]];
         [presenter presentViewController:alert animated:YES completion:nil];
         return NK_OK;
     });
@@ -893,9 +894,8 @@ NSString *ios_system_directory_path(nk_system_directory_kind kind) {
         return [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES)
             firstObject];
     case NK_DIRECTORY_DATA:
-        return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,
-                                                     NSUserDomainMask, YES)
-            firstObject];
+        return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask,
+                                                    YES) firstObject];
     case NK_DIRECTORY_DESKTOP:
     case NK_DIRECTORY_DOWNLOADS:
     default:
@@ -933,8 +933,8 @@ NSString *javascript_json_wrapper(NSString *source) {
 NSString *json_text(id value) {
     NSError *error = nil;
     NSData *encoded = [NSJSONSerialization dataWithJSONObject:value
-                                                        options:NSJSONWritingFragmentsAllowed
-                                                          error:&error];
+                                                      options:NSJSONWritingFragmentsAllowed
+                                                        error:&error];
     if (!encoded || error)
         return nil;
     return [[NSString alloc] initWithData:encoded encoding:NSUTF8StringEncoding];
@@ -1082,8 +1082,9 @@ void sync_input_view(IOSSurface &resource) {
     NSString *text = native_string(resource.text_input_text.c_str());
     if (!text)
         return;
-    const auto selection = native_range_for_positions(
-        resource, resource.text_input_state.selection_start, resource.text_input_state.selection_end);
+    const auto selection =
+        native_range_for_positions(resource, resource.text_input_state.selection_start,
+                                   resource.text_input_state.selection_end);
     resource.syncing_input_view = true;
     resource.input_view.text = text;
     resource.input_view.selectedRange = selection;
@@ -1105,8 +1106,7 @@ void update_text_snapshot(IOSSurface &resource, nk_text_position replace_start,
         return;
     const auto first =
         static_cast<std::size_t>(replace_start - resource.text_input_state.text_start);
-    const auto last =
-        static_cast<std::size_t>(replace_end - resource.text_input_state.text_start);
+    const auto last = static_cast<std::size_t>(replace_end - resource.text_input_state.text_start);
     const auto byte_offset = [&](std::size_t codepoint_index) {
         std::size_t bytes = 0;
         for (std::size_t index = 0; index < codepoint_index; ++index) {
@@ -1118,8 +1118,8 @@ void update_text_snapshot(IOSSurface &resource, nk_text_position replace_start,
     std::string updated = resource.text_input_text;
     updated.replace(byte_offset(first), byte_offset(last) - byte_offset(first), inserted.data(),
                     inserted.size());
-    const int64_t delta = static_cast<int64_t>(inserted_codepoints.size()) -
-                          static_cast<int64_t>(last - first);
+    const int64_t delta =
+        static_cast<int64_t>(inserted_codepoints.size()) - static_cast<int64_t>(last - first);
     resource.text_input_text = std::move(updated);
     resource.text_input_state.text = resource.text_input_text.c_str();
     resource.text_input_state.document_length = static_cast<nk_text_position>(std::max<int64_t>(
@@ -1393,16 +1393,9 @@ void emit_pointer_button(IOSSurface &resource, nk_pointer_button button, nk_inpu
 
 void emit_touch(IOSSurface &resource, const IOSTouchState &touch, nk_touch_action action,
                 nk_modifiers modifiers, uint32_t flags = 0) {
-    const nk_touch_event payload{touch.pointer_id,
-                                 action,
-                                 touch.tool,
-                                 modifiers,
-                                 touch.x,
-                                 touch.y,
-                                 touch.pressure,
-                                 touch.tilt_x,
-                                 touch.tilt_y,
-                                 0};
+    const nk_touch_event payload{touch.pointer_id, action,  touch.tool,     modifiers,
+                                 touch.x,          touch.y, touch.pressure, touch.tilt_x,
+                                 touch.tilt_y,     0};
     queue_input_event(NK_EVENT_TOUCH, resource.handle, bytes_of(payload), flags);
 }
 
@@ -1434,8 +1427,8 @@ IOSTouchState touch_state_for(UITouch *touch, UIView *view, uint32_t pointer_id)
     return result;
 }
 
-void emit_touch_transition(NKIOSInputView *view, NSSet<UITouch *> *touches,
-                           nk_touch_action action, UIEvent *event) {
+void emit_touch_transition(NKIOSInputView *view, NSSet<UITouch *> *touches, nk_touch_action action,
+                           UIEvent *event) {
     auto resource = surface(view.surface);
     if (!resource || resource->destroying)
         return;
@@ -1479,15 +1472,17 @@ UITextRange *native_text_range(NKIOSInputView *view, NSRange range) {
     if (range.location == NSNotFound)
         return nil;
     UITextPosition *start = [view positionFromPosition:view.beginningOfDocument
-                                                  offset:static_cast<NSInteger>(range.location)];
-    UITextPosition *end = [view positionFromPosition:start offset:static_cast<NSInteger>(range.length)];
+                                                offset:static_cast<NSInteger>(range.location)];
+    UITextPosition *end = [view positionFromPosition:start
+                                              offset:static_cast<NSInteger>(range.length)];
     return start && end ? [view textRangeFromPosition:start toPosition:end] : nil;
 }
 
 NSRange native_range_for_text_range(NKIOSInputView *view, UITextRange *range) {
     if (!range)
         return NSMakeRange(NSNotFound, 0);
-    const NSInteger start = [view offsetFromPosition:view.beginningOfDocument toPosition:range.start];
+    const NSInteger start = [view offsetFromPosition:view.beginningOfDocument
+                                          toPosition:range.start];
     const NSInteger end = [view offsetFromPosition:view.beginningOfDocument toPosition:range.end];
     if (start < 0 || end < start)
         return NSMakeRange(NSNotFound, 0);
@@ -1575,8 +1570,8 @@ void reset_surface_input(IOSSurface &resource, uint32_t event_flags) {
     for (nk_pointer_button button = 0; button <= NK_POINTER_BUTTON_LAST; ++button) {
         if (resource.pointer_buttons[button] != NK_INPUT_PRESS)
             continue;
-        const nk_pointer_button_event payload{button, NK_INPUT_RELEASE, 0, 0,
-                                              resource.pointer_x, resource.pointer_y};
+        const nk_pointer_button_event payload{button, NK_INPUT_RELEASE,   0,
+                                              0,      resource.pointer_x, resource.pointer_y};
         resource.pointer_buttons[button] = NK_INPUT_RELEASE;
         queue_input_event(NK_EVENT_POINTER_BUTTON, resource.handle, bytes_of(payload), event_flags);
     }
@@ -1665,9 +1660,8 @@ void emit_surface_resize(IOSSurface &resource) {
 void sync_surface_drawable_size(IOSSurface &resource) {
     if (!resource.host_view || !resource.layer)
         return;
-    const CGFloat scale = resource.host_view.contentScaleFactor > 0
-                              ? resource.host_view.contentScaleFactor
-                              : 1.0;
+    const CGFloat scale =
+        resource.host_view.contentScaleFactor > 0 ? resource.host_view.contentScaleFactor : 1.0;
     const CGSize size = resource.layer.bounds.size;
     resource.layer.contentsScale = scale;
     resource.layer.drawableSize = CGSizeMake(std::max<CGFloat>(0, size.width * scale),
@@ -1763,8 +1757,7 @@ void frame_tick(nk_handle handle) noexcept {
 
 } // namespace
 
-void finish_document_dialog(nk_request_id request, bool accepted,
-                            NSArray<NSURL *> *urls) noexcept;
+void finish_document_dialog(nk_request_id request, bool accepted, NSArray<NSURL *> *urls) noexcept;
 void finish_message_dialog(nk_request_id request, nk_message_result result) noexcept;
 void cancel_dialogs_for_parent(nk_handle parent);
 
@@ -1792,8 +1785,8 @@ void cancel_dialogs_for_parent(nk_handle parent);
 
 @implementation NKIOSAccessibilityElement
 - (BOOL)accessibilityActivate {
-    return emit_accessibility_action(self.surface, self.node,
-                                     NK_ACCESSIBILITY_ACTION_ACTIVATE) == NK_OK;
+    return emit_accessibility_action(self.surface, self.node, NK_ACCESSIBILITY_ACTION_ACTIVATE) ==
+           NK_OK;
 }
 
 - (void)accessibilityElementDidBecomeFocused {
@@ -1844,12 +1837,14 @@ void cancel_dialogs_for_parent(nk_handle parent);
         if (!(actions & accessibility_action_bit(action)))
             return;
         [result addObject:[[UIAccessibilityCustomAction alloc]
-                              initWithName:title
+                               initWithName:title
                               actionHandler:^BOOL(UIAccessibilityCustomAction *custom_action) {
-                                  (void)custom_action;
-                                  if (action == NK_ACCESSIBILITY_ACTION_SET_VALUE)
-                                      return begin_accessibility_value_edit(surface_handle, node) == NK_OK;
-                                  return emit_accessibility_action(surface_handle, node, action) == NK_OK;
+                                (void)custom_action;
+                                if (action == NK_ACCESSIBILITY_ACTION_SET_VALUE)
+                                    return begin_accessibility_value_edit(surface_handle, node) ==
+                                           NK_OK;
+                                return emit_accessibility_action(surface_handle, node, action) ==
+                                       NK_OK;
                               }]];
     };
     add_action(NK_ACCESSIBILITY_ACTION_SET_VALUE, @"Edit value");
@@ -1913,7 +1908,7 @@ void cancel_dialogs_for_parent(nk_handle parent);
         self.textContainerInset = UIEdgeInsetsZero;
         self.textContainer.lineFragmentPadding = 0;
         auto *hover = [[UIHoverGestureRecognizer alloc] initWithTarget:self
-                                                                  action:@selector(handleHover:)];
+                                                                action:@selector(handleHover:)];
         hover.cancelsTouchesInView = NO;
         [self addGestureRecognizer:hover];
     }
@@ -2004,9 +1999,9 @@ void cancel_dialogs_for_parent(nk_handle parent);
     auto resource = surface(self.surface);
     if (!resource || !resource->text_composing)
         return nil;
-    return native_text_range(
-        self, native_range_for_positions(*resource, resource->text_composition_start,
-                                          resource->text_composition_end));
+    return native_text_range(self,
+                             native_range_for_positions(*resource, resource->text_composition_start,
+                                                        resource->text_composition_end));
 }
 
 - (void)setMarkedText:(NSString *)markedText selectedRange:(NSRange)selectedRange {
@@ -2018,11 +2013,11 @@ void cancel_dialogs_for_parent(nk_handle parent);
         std::vector<uint32_t> points;
         if (!decode_utf8(text, points))
             return;
-        NSRange replacement = resource->text_composing
-                                  ? native_range_for_positions(*resource,
-                                                               resource->text_composition_start,
-                                                               resource->text_composition_end)
-                                  : self.selectedRange;
+        NSRange replacement =
+            resource->text_composing
+                ? native_range_for_positions(*resource, resource->text_composition_start,
+                                             resource->text_composition_end)
+                : self.selectedRange;
         nk_text_position start = 0;
         nk_text_position end = 0;
         if (!codepoint_range_for_native_range(*resource, replacement, start, end)) {
@@ -2040,8 +2035,8 @@ void cancel_dialogs_for_parent(nk_handle parent);
                 : std::min<NSUInteger>(selectedRange.location + selectedRange.length, text_units);
         const auto selection_start = static_cast<nk_text_position>(
             start + codepoint_index_for_utf16(points, selected_start));
-        const auto selection_end = static_cast<nk_text_position>(
-            start + codepoint_index_for_utf16(points, selected_end));
+        const auto selection_end =
+            static_cast<nk_text_position>(start + codepoint_index_for_utf16(points, selected_end));
         const auto composition_end = static_cast<nk_text_position>(start + points.size());
         if (resource->text_input_active) {
             apply_text_edit_state(*resource, NK_TEXT_EDIT_COMPOSE, start, end, text,
@@ -2094,9 +2089,9 @@ void cancel_dialogs_for_parent(nk_handle parent);
         return;
     nk::core::callback_boundary([&] {
         nk_text_position replace_start = std::min(resource->text_input_state.selection_start,
-                                                   resource->text_input_state.selection_end);
+                                                  resource->text_input_state.selection_end);
         nk_text_position replace_end = std::max(resource->text_input_state.selection_start,
-                                                 resource->text_input_state.selection_end);
+                                                resource->text_input_state.selection_end);
         if (replace_start == replace_end && replace_start > resource->text_input_state.text_start)
             --replace_start;
         if (replace_start == replace_end)
@@ -2274,9 +2269,7 @@ IOSResourceValue resource_value_from_url(NSURL *url, uint32_t kind) {
         return result;
     result.uri = utf8_string(url.absoluteString);
     result.display_name = utf8_string(url.lastPathComponent);
-    result.flags = kind == NK_DIALOG_SAVE_RESOURCE
-                       ? NK_RESOURCE_WRITABLE
-                       : NK_RESOURCE_READABLE;
+    result.flags = kind == NK_DIALOG_SAVE_RESOURCE ? NK_RESOURCE_WRITABLE : NK_RESOURCE_READABLE;
     if (kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY)
         result.flags |= NK_RESOURCE_WRITABLE;
     retain_security_scope(url);
@@ -2285,21 +2278,21 @@ IOSResourceValue resource_value_from_url(NSURL *url, uint32_t kind) {
 
 @implementation NKIOSDropDelegate
 - (BOOL)dropInteraction:(UIDropInteraction *)interaction
-    canHandleSession:(id<UIDropSession>)session {
+       canHandleSession:(id<UIDropSession>)session {
     (void)interaction;
-    return [session hasItemsConformingToTypeIdentifiers:@[ @"public.file-url", @"public.url",
-                                                            @"public.plain-text" ]];
+    return [session hasItemsConformingToTypeIdentifiers:@[
+        @"public.file-url", @"public.url", @"public.plain-text"
+    ]];
 }
 
 - (UIDropProposal *)dropInteraction:(UIDropInteraction *)interaction
-                     sessionDidUpdate:(id<UIDropSession>)session {
+                   sessionDidUpdate:(id<UIDropSession>)session {
     (void)interaction;
     (void)session;
     return [[UIDropProposal alloc] initWithDropOperation:UIDropOperationCopy];
 }
 
-- (void)dropInteraction:(UIDropInteraction *)interaction
-             performDrop:(id<UIDropSession>)session {
+- (void)dropInteraction:(UIDropInteraction *)interaction performDrop:(id<UIDropSession>)session {
     (void)interaction;
     const auto host_handle = self.host;
     const auto generation = nk::core::runtime_generation();
@@ -2323,29 +2316,28 @@ IOSResourceValue resource_value_from_url(NSURL *url, uint32_t kind) {
             continue;
 
         dispatch_group_enter(group);
-        if ([type isEqualToString:@"public.file-url"] ||
-            [type isEqualToString:@"public.url"]) {
+        if ([type isEqualToString:@"public.file-url"] || [type isEqualToString:@"public.url"]) {
             [provider loadObjectOfClass:[NSURL class]
-                     completionHandler:^(id<NSItemProviderReading> object, NSError *error) {
-                       (void)error;
-                       if ([object isKindOfClass:[NSURL class]]) {
-                           @synchronized(urls) {
-                               [urls addObject:(NSURL *)object];
-                           }
-                       }
-                       dispatch_group_leave(group);
-                     }];
+                      completionHandler:^(id<NSItemProviderReading> object, NSError *error) {
+                        (void)error;
+                        if ([object isKindOfClass:[NSURL class]]) {
+                            @synchronized(urls) {
+                                [urls addObject:(NSURL *)object];
+                            }
+                        }
+                        dispatch_group_leave(group);
+                      }];
         } else {
             [provider loadObjectOfClass:[NSString class]
-                     completionHandler:^(id<NSItemProviderReading> object, NSError *error) {
-                       (void)error;
-                       if ([object isKindOfClass:[NSString class]]) {
-                           @synchronized(texts) {
-                               [texts addObject:(NSString *)object];
-                           }
-                       }
-                       dispatch_group_leave(group);
-                     }];
+                      completionHandler:^(id<NSItemProviderReading> object, NSError *error) {
+                        (void)error;
+                        if ([object isKindOfClass:[NSString class]]) {
+                            @synchronized(texts) {
+                                [texts addObject:(NSString *)object];
+                            }
+                        }
+                        dispatch_group_leave(group);
+                      }];
         }
     }
     dispatch_group_notify(group, dispatch_get_main_queue(), ^{
@@ -2380,17 +2372,15 @@ IOSResourceValue resource_value_from_url(NSURL *url, uint32_t kind) {
           event.kind = NK_EVENT_RESOURCE_DROP;
           event.source = host_handle;
           event.data_count = static_cast<uint32_t>(resources.size());
-          event.data = nk::platform::resource_drop_payload(static_cast<float>(location.x),
-                                                           static_cast<float>(location.y), text,
-                                                           resources);
+          event.data = nk::platform::resource_drop_payload(
+              static_cast<float>(location.x), static_cast<float>(location.y), text, resources);
           nk::core::push_event(std::move(event));
       });
     });
 }
 @end
 
-void finish_document_dialog(nk_request_id request, bool accepted,
-                            NSArray<NSURL *> *urls) noexcept {
+void finish_document_dialog(nk_request_id request, bool accepted, NSArray<NSURL *> *urls) noexcept {
     nk::core::callback_boundary([&] {
         std::shared_ptr<IOSDialogContext> context;
         {
@@ -2455,8 +2445,7 @@ nk_result cancel_dialog_request(nk_request_id request) {
         std::lock_guard lock(dialogs_mutex);
         const auto found = dialogs.find(request);
         if (!request || found == dialogs.end())
-            return ios_fail(NK_ERROR_INVALID_REQUEST,
-                            "invalid or completed iOS dialog request");
+            return ios_fail(NK_ERROR_INVALID_REQUEST, "invalid or completed iOS dialog request");
         context = found->second;
         dialogs.erase(found);
     }
@@ -2521,8 +2510,8 @@ NSArray<UTType *> *document_content_types(const nk_file_dialog_options *options,
     for (uint32_t index = 0; index < options->filter_count; ++index) {
         NSString *patterns = native_string(options->filters[index].patterns);
         for (NSString *pattern in [patterns componentsSeparatedByString:@";"]) {
-            NSString *value = [pattern stringByTrimmingCharactersInSet:
-                                             NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            NSString *value = [pattern
+                stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
             NSRange marker = [value rangeOfString:@"*."];
             if (marker.location == NSNotFound)
                 continue;
@@ -2547,16 +2536,14 @@ nk_result start_resource_dialog(nk_handle parent_handle, const nk_file_dialog_op
     nk::core::clear_error();
     if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
         return thread;
-    constexpr nk_dialog_flags supported_flags = NK_DIALOG_ALLOW_MULTIPLE |
-                                                NK_DIALOG_CONFIRM_OVERWRITE |
-                                                NK_DIALOG_SHOW_HIDDEN;
+    constexpr nk_dialog_flags supported_flags =
+        NK_DIALOG_ALLOW_MULTIPLE | NK_DIALOG_CONFIRM_OVERWRITE | NK_DIALOG_SHOW_HIDDEN;
     if (!options || options->struct_size < sizeof(*options) || !out_request ||
         (options->flags & ~supported_flags) != 0 || (options->filter_count && !options->filters))
         return ios_fail(NK_ERROR_INVALID_ARGUMENT, "invalid iOS resource dialog options");
     if (!valid_utf8(options->title) || !valid_utf8(options->initial_path) ||
         !valid_utf8(options->suggested_name))
-        return ios_fail(NK_ERROR_INVALID_ARGUMENT,
-                        "iOS resource dialog option is not valid UTF-8");
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "iOS resource dialog option is not valid UTF-8");
     for (uint32_t index = 0; index < options->filter_count; ++index)
         if (!valid_utf8(options->filters[index].name) ||
             !valid_utf8(options->filters[index].patterns))
@@ -2582,23 +2569,21 @@ nk_result start_resource_dialog(nk_handle parent_handle, const nk_file_dialog_op
         name = name.lastPathComponent;
         if (!name.length)
             name = @"NativeKit Document";
-        NSString *filename = [NSString stringWithFormat:@"nativekit-%@-%@",
-                                                        NSProcessInfo.processInfo.globallyUniqueString,
-                                                        name];
-        NSURL *temporary_url = [NSURL fileURLWithPath:
-                                           [NSTemporaryDirectory() stringByAppendingPathComponent:
-                                                                     filename]];
+        NSString *filename =
+            [NSString stringWithFormat:@"nativekit-%@-%@",
+                                       NSProcessInfo.processInfo.globallyUniqueString, name];
+        NSURL *temporary_url = [NSURL
+            fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:filename]];
         if (![[NSData data] writeToURL:temporary_url atomically:YES])
             return ios_fail(NK_ERROR_UNKNOWN, "could not create the iOS document export source");
         context->temporary_url = temporary_url;
         if (@available(iOS 14.0, *))
-            picker = [[UIDocumentPickerViewController alloc]
-                initForExportingURLs:@[ temporary_url ]
-                              asCopy:YES];
+            picker = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[ temporary_url ]
+                                                                           asCopy:YES];
         else
             picker = [[UIDocumentPickerViewController alloc]
                 initWithURL:temporary_url
-                      inMode:UIDocumentPickerModeExportToService];
+                     inMode:UIDocumentPickerModeExportToService];
     } else if (@available(iOS 14.0, *)) {
         picker = [[UIDocumentPickerViewController alloc]
             initForOpeningContentTypes:document_content_types(options, kind)
@@ -2607,9 +2592,9 @@ nk_result start_resource_dialog(nk_handle parent_handle, const nk_file_dialog_op
         NSArray<NSString *> *types = kind == NK_DIALOG_SELECT_RESOURCE_DIRECTORY
                                          ? @[ @"public.folder" ]
                                          : @[ @"public.item" ];
-        picker = [[UIDocumentPickerViewController alloc]
-            initWithDocumentTypes:types
-                            inMode:UIDocumentPickerModeOpen];
+        picker =
+            [[UIDocumentPickerViewController alloc] initWithDocumentTypes:types
+                                                                   inMode:UIDocumentPickerModeOpen];
     }
     if (!picker)
         return ios_fail(NK_ERROR_UNKNOWN, "could not create the iOS document picker");
@@ -2618,7 +2603,8 @@ nk_result start_resource_dialog(nk_handle parent_handle, const nk_file_dialog_op
         kind == NK_DIALOG_OPEN_RESOURCE && (options->flags & NK_DIALOG_ALLOW_MULTIPLE) != 0;
     auto delegate = [NKIOSDocumentPickerDelegate new];
     if (!delegate)
-        return ios_fail(NK_ERROR_OUT_OF_MEMORY, "could not create the iOS document picker delegate");
+        return ios_fail(NK_ERROR_OUT_OF_MEMORY,
+                        "could not create the iOS document picker delegate");
     delegate.request = context->request;
     context->picker = picker;
     context->picker_delegate = delegate;
@@ -2633,16 +2619,14 @@ nk_result start_resource_dialog(nk_handle parent_handle, const nk_file_dialog_op
     return NK_OK;
 }
 
-nk_result start_message_dialog(nk_handle parent_handle,
-                               const nk_message_dialog_options *options,
+nk_result start_message_dialog(nk_handle parent_handle, const nk_message_dialog_options *options,
                                nk_request_id *out_request) {
     nk::core::clear_error();
     if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
         return thread;
     constexpr nk_message_buttons supported_buttons = NK_MESSAGE_BUTTON_OK |
-                                                      NK_MESSAGE_BUTTON_CANCEL |
-                                                      NK_MESSAGE_BUTTON_YES |
-                                                      NK_MESSAGE_BUTTON_NO;
+                                                     NK_MESSAGE_BUTTON_CANCEL |
+                                                     NK_MESSAGE_BUTTON_YES | NK_MESSAGE_BUTTON_NO;
     if (!options || options->struct_size < sizeof(*options) || !options->message || !out_request ||
         options->kind > NK_MESSAGE_QUESTION || (options->buttons & ~supported_buttons) != 0 ||
         !valid_utf8(options->title) || !valid_utf8(options->message))
@@ -2662,10 +2646,10 @@ nk_result start_message_dialog(nk_handle parent_handle,
     context->generation = nk::core::runtime_generation();
     const auto request = context->request;
     UIAlertControllerStyle style = UIAlertControllerStyleAlert;
-    UIAlertController *alert = [UIAlertController
-        alertControllerWithTitle:native_string(options->title) ?: @""
-                         message:native_string(options->message)
-                  preferredStyle:style];
+    UIAlertController *alert =
+        [UIAlertController alertControllerWithTitle:native_string(options->title) ?: @""
+                                            message:native_string(options->message)
+                                     preferredStyle:style];
     if (!alert)
         return ios_fail(NK_ERROR_OUT_OF_MEMORY, "could not create the iOS message dialog");
     auto add_action = [&](uint32_t flag, NSString *title, nk_message_result result) {
@@ -2674,10 +2658,10 @@ nk_result start_message_dialog(nk_handle parent_handle,
         UIAlertActionStyle action_style =
             flag == NK_MESSAGE_BUTTON_CANCEL ? UIAlertActionStyleCancel : UIAlertActionStyleDefault;
         [alert addAction:[UIAlertAction actionWithTitle:title
-                                                 style:action_style
-                                                 handler:^(UIAlertAction *) {
-                                                   finish_message_dialog(request, result);
-                                                 }]];
+                                                  style:action_style
+                                                handler:^(UIAlertAction *) {
+                                                  finish_message_dialog(request, result);
+                                                }]];
     };
     add_action(NK_MESSAGE_BUTTON_OK, @"OK", NK_MESSAGE_RESULT_OK);
     add_action(NK_MESSAGE_BUTTON_YES, @"Yes", NK_MESSAGE_RESULT_YES);
@@ -2737,8 +2721,7 @@ nk_result start_message_dialog(nk_handle parent_handle,
     (void)center;
     const auto request = notification_request(notification.request.identifier);
     IOSNotification value;
-    if (!get_notification(request, value) ||
-        !nk::core::is_runtime_generation(value.generation)) {
+    if (!get_notification(request, value) || !nk::core::is_runtime_generation(value.generation)) {
         completionHandler(UNNotificationPresentationOptionNone);
         return;
     }
@@ -2886,7 +2869,7 @@ nk_result mobile_host_destroy(nk_handle handle) {
             const auto result = nk_surface_destroy(*iter);
             if (result != NK_OK)
                 return result;
-    }
+        }
     stop_observing(found->second);
     if (found->second->drop_interaction)
         [found->second->view removeInteraction:found->second->drop_interaction];
@@ -2910,8 +2893,8 @@ nk_result mobile_host_set_lifecycle(nk_handle handle, nk_mobile_lifecycle_state 
         nk::core::set_error("invalid mobile lifecycle state");
         return NK_ERROR_INVALID_ARGUMENT;
     }
-    const bool becoming_unavailable = resource->lifecycle == NK_MOBILE_LIFECYCLE_ACTIVE &&
-                                      state != NK_MOBILE_LIFECYCLE_ACTIVE;
+    const bool becoming_unavailable =
+        resource->lifecycle == NK_MOBILE_LIFECYCLE_ACTIVE && state != NK_MOBILE_LIFECYCLE_ACTIVE;
     resource->lifecycle = state;
     if (becoming_unavailable)
         for (const nk_handle child_handle : resource->surfaces)
@@ -3055,9 +3038,10 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             }
             if (resource->framebuffer_width > 0 && resource->framebuffer_height > 0 &&
                 !ensure_surface_depth_target(*resource, resource->framebuffer_width,
-                                              resource->framebuffer_height))
+                                             resource->framebuffer_height))
                 return NK_ERROR_UNSUPPORTED;
-            resource->handle = nk::core::handles().insert(nk::core::ResourceType::surface, resource);
+            resource->handle =
+                nk::core::handles().insert(nk::core::ResourceType::surface, resource);
             if (!resource->handle) {
                 nk::core::set_error("iOS graphics surface handle registry is full");
                 return NK_ERROR_OUT_OF_MEMORY;
@@ -3163,10 +3147,9 @@ nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, 
     resource->y = y;
     resource->width = width;
     resource->height = height;
-    return set_surface_native_bounds(*resource) ? NK_OK
-                                                 : (nk::core::set_error(
-                                                       "could not resize the iOS Metal layer"),
-                                                    NK_ERROR_UNKNOWN);
+    return set_surface_native_bounds(*resource)
+               ? NK_OK
+               : (nk::core::set_error("could not resize the iOS Metal layer"), NK_ERROR_UNKNOWN);
 }
 
 nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
@@ -3297,9 +3280,8 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
     const bool prepared = resource->frame_prepared;
     target.width = prepared ? resource->framebuffer_width : 0;
     target.height = prepared ? resource->framebuffer_height : 0;
-    target.native_target = prepared && resource->drawable
-                               ? metal_object_token(resource->drawable.texture)
-                               : 0;
+    target.native_target =
+        prepared && resource->drawable ? metal_object_token(resource->drawable.texture) : 0;
     target.device.id = resource->device_handle;
     target.native_device = metal_object_token(resource->device);
     target.native_context = metal_object_token(resource->queue);
@@ -3334,9 +3316,8 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
             nk::core::clear_error();
             if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
                 return thread;
-            constexpr nk_webview_flags supported_flags = NK_WEBVIEW_DEVTOOLS |
-                                                         NK_WEBVIEW_HIDDEN |
-                                                         NK_WEBVIEW_NAVIGATION_POLICY;
+            constexpr nk_webview_flags supported_flags =
+                NK_WEBVIEW_DEVTOOLS | NK_WEBVIEW_HIDDEN | NK_WEBVIEW_NAVIGATION_POLICY;
             if (!options || options->struct_size < sizeof(*options) || !out_webview ||
                 options->width <= 0 || options->height <= 0 ||
                 (options->flags & ~supported_flags) != 0) {
@@ -3365,8 +3346,7 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
             parent->webviews.reserve(parent->webviews.size() + 1);
             auto resource = std::make_shared<IOSWebView>();
             resource->parent = parent_handle;
-            resource->navigation_policy =
-                (options->flags & NK_WEBVIEW_NAVIGATION_POLICY) != 0;
+            resource->navigation_policy = (options->flags & NK_WEBVIEW_NAVIGATION_POLICY) != 0;
             resource->generation = nk::core::runtime_generation();
             resource->content_controller = [WKUserContentController new];
             resource->delegate = [NKIOSWebViewDelegate new];
@@ -3375,7 +3355,7 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
                 return NK_ERROR_OUT_OF_MEMORY;
             }
             [resource->content_controller addScriptMessageHandler:resource->delegate
-                                                              name:@"nativekit"];
+                                                             name:@"nativekit"];
             WKWebViewConfiguration *configuration = [WKWebViewConfiguration new];
             configuration.userContentController = resource->content_controller;
             resource->view = [[WKWebView alloc]
@@ -3389,7 +3369,8 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
             resource->view.hidden = (options->flags & NK_WEBVIEW_HIDDEN) != 0;
             if (@available(iOS 16.4, *))
                 resource->view.inspectable = (options->flags & NK_WEBVIEW_DEVTOOLS) != 0;
-            resource->handle = nk::core::handles().insert(nk::core::ResourceType::webview, resource);
+            resource->handle =
+                nk::core::handles().insert(nk::core::ResourceType::webview, resource);
             if (!resource->handle) {
                 nk::core::set_error("iOS WebView handle registry is full");
                 return NK_ERROR_OUT_OF_MEMORY;
@@ -3801,8 +3782,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
                                                  state->composition_end)
                     : NSMakeRange(NSNotFound, 0);
             if (resource->text_composing)
-                resource->marked_text = utf8_string([native_text
-                    substringWithRange:resource->marked_native_range]);
+                resource->marked_text =
+                    utf8_string([native_text substringWithRange:resource->marked_native_range]);
             else
                 resource->marked_text.clear();
             set_input_traits(*resource);
@@ -3887,8 +3868,8 @@ nk_result NK_CALL nk_surface_accessibility_remove_node(nk_handle handle,
             auto resource = surface(handle);
             if (!resource)
                 return ios_fail(NK_ERROR_INVALID_HANDLE, "invalid or stale iOS surface handle");
-            if (!node || resource->accessibility_nodes.find(node) ==
-                              resource->accessibility_nodes.end())
+            if (!node ||
+                resource->accessibility_nodes.find(node) == resource->accessibility_nodes.end())
                 return ios_fail(NK_ERROR_INVALID_ARGUMENT,
                                 "invalid or unknown iOS accessibility node");
             remove_accessibility_descendants(resource->accessibility_nodes, node);
@@ -3917,7 +3898,7 @@ nk_result NK_CALL nk_surface_accessibility_clear(nk_handle handle) {
 }
 
 nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle handle,
-                                                    nk_accessibility_node_id node) {
+                                                     nk_accessibility_node_id node) {
     return nk::core::result_boundary(
         "unexpected error while focusing an iOS accessibility node", [&]() -> nk_result {
             nk::core::clear_error();
@@ -3926,8 +3907,8 @@ nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle handle,
             auto resource = surface(handle);
             if (!resource)
                 return ios_fail(NK_ERROR_INVALID_HANDLE, "invalid or stale iOS surface handle");
-            if (node != NK_ACCESSIBILITY_ROOT && resource->accessibility_nodes.find(node) ==
-                                                    resource->accessibility_nodes.end())
+            if (node != NK_ACCESSIBILITY_ROOT &&
+                resource->accessibility_nodes.find(node) == resource->accessibility_nodes.end())
                 return ios_fail(NK_ERROR_INVALID_ARGUMENT,
                                 "cannot focus an unknown iOS accessibility node");
             resource->accessibility_focus = node;
@@ -3936,8 +3917,8 @@ nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle handle,
                 UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification,
                                                 resource->accessibility_container);
             } else if (resource->accessibility_container) {
-                for (NKIOSAccessibilityElement *element in
-                     resource->accessibility_container.elements)
+                for (NKIOSAccessibilityElement *element in resource->accessibility_container
+                         .elements)
                     if (element.node == node) {
                         UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification,
                                                         element);
@@ -3982,9 +3963,8 @@ nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
                     copy.text_ranges = old->second.text_ranges;
                 nodes[node.id] = std::move(copy);
             }
-            if ((update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS) && update->focus !=
-                                                                  NK_ACCESSIBILITY_ROOT &&
-                nodes.find(update->focus) == nodes.end())
+            if ((update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS) &&
+                update->focus != NK_ACCESSIBILITY_ROOT && nodes.find(update->focus) == nodes.end())
                 return ios_fail(NK_ERROR_INVALID_ARGUMENT,
                                 "iOS accessibility update focuses an unknown node");
             resource->accessibility_nodes = std::move(nodes);
@@ -4011,22 +3991,20 @@ nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
             if (!resource)
                 return ios_fail(NK_ERROR_INVALID_HANDLE, "invalid or stale iOS surface handle");
             const auto found = resource->accessibility_nodes.find(node);
-            if (!node || found == resource->accessibility_nodes.end() ||
-                (range_count && !ranges))
+            if (!node || found == resource->accessibility_nodes.end() || (range_count && !ranges))
                 return ios_fail(NK_ERROR_INVALID_ARGUMENT, "invalid iOS accessibility text ranges");
             std::vector<IOSAccessibilityTextRange> copy;
             copy.reserve(range_count);
             nk_accessibility_text_position previous = 0;
             for (uint32_t index = 0; index < range_count; ++index) {
                 const auto &range = ranges[index];
-                if (range.start >= range.end || range.start < previous ||
-                    !std::isfinite(range.x) || !std::isfinite(range.y) ||
-                    !std::isfinite(range.width) || !std::isfinite(range.height) ||
-                    range.width < 0 || range.height < 0)
+                if (range.start >= range.end || range.start < previous || !std::isfinite(range.x) ||
+                    !std::isfinite(range.y) || !std::isfinite(range.width) ||
+                    !std::isfinite(range.height) || range.width < 0 || range.height < 0)
                     return ios_fail(NK_ERROR_INVALID_ARGUMENT,
                                     "invalid or unordered iOS accessibility text ranges");
-                copy.push_back({range.start, range.end, range.x, range.y, range.width,
-                                range.height});
+                copy.push_back(
+                    {range.start, range.end, range.x, range.y, range.width, range.height});
                 previous = range.end;
             }
             found->second.text_ranges = std::move(copy);
@@ -4121,11 +4099,9 @@ nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
                 }
             }
         }
-        appearance->color_scheme = style == UIUserInterfaceStyleDark
-                                        ? NK_COLOR_SCHEME_DARK
-                                        : style == UIUserInterfaceStyleLight
-                                              ? NK_COLOR_SCHEME_LIGHT
-                                              : NK_COLOR_SCHEME_UNKNOWN;
+        appearance->color_scheme = style == UIUserInterfaceStyleDark    ? NK_COLOR_SCHEME_DARK
+                                   : style == UIUserInterfaceStyleLight ? NK_COLOR_SCHEME_LIGHT
+                                                                        : NK_COLOR_SCHEME_UNKNOWN;
     }
     appearance->high_contrast = UIAccessibilityIsDarkerSystemColorsEnabled() ? 1u : 0u;
     return NK_OK;
@@ -4151,16 +4127,14 @@ nk_result NK_CALL nk_share(const nk_share_options *options) {
             if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
                 return thread;
             if (!options || options->struct_size < sizeof(*options) || options->flags != 0 ||
-                (!options->text && options->resource_count == 0) ||
-                !valid_utf8(options->title) || !valid_utf8(options->text))
+                (!options->text && options->resource_count == 0) || !valid_utf8(options->title) ||
+                !valid_utf8(options->text))
                 return ios_fail(NK_ERROR_INVALID_ARGUMENT, "invalid or empty iOS share options");
             if (const auto result = nk::platform::validate_resources(options->resources,
-                                                                      options->resource_count,
-                                                                      true);
+                                                                     options->resource_count, true);
                 result != NK_OK)
                 return result;
-            NSMutableArray *items =
-                [NSMutableArray arrayWithCapacity:options->resource_count + 1];
+            NSMutableArray *items = [NSMutableArray arrayWithCapacity:options->resource_count + 1];
             if (options->text)
                 [items addObject:native_string(options->text) ?: @""];
             for (uint32_t index = 0; index < options->resource_count; ++index) {
@@ -4178,7 +4152,7 @@ nk_result NK_CALL nk_share(const nk_share_options *options) {
                                 "iOS sharing requires an attached host view controller");
             UIActivityViewController *controller =
                 [[UIActivityViewController alloc] initWithActivityItems:items
-                                                   applicationActivities:nil];
+                                                  applicationActivities:nil];
             if (!controller)
                 return ios_fail(NK_ERROR_OUT_OF_MEMORY, "could not create the iOS share sheet");
             if (controller.popoverPresentationController) {
@@ -4197,8 +4171,8 @@ nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources,
             nk::core::clear_error();
             if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
                 return thread;
-            if (const auto result = nk::platform::validate_resources(resources, resource_count,
-                                                                      false);
+            if (const auto result =
+                    nk::platform::validate_resources(resources, resource_count, false);
                 result != NK_OK)
                 return result;
             NSMutableArray<NSURL *> *urls = [NSMutableArray arrayWithCapacity:resource_count];
@@ -4338,11 +4312,10 @@ nk_result NK_CALL nk_dialog_save_resource(nk_handle parent, const nk_file_dialog
 }
 
 nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle parent,
-                                                       const nk_file_dialog_options *options,
-                                                       nk_request_id *out_request) {
+                                                      const nk_file_dialog_options *options,
+                                                      nk_request_id *out_request) {
     return nk::core::result_boundary(
-        "unexpected error while opening an iOS resource directory dialog",
-        [&]() -> nk_result {
+        "unexpected error while opening an iOS resource directory dialog", [&]() -> nk_result {
             return start_resource_dialog(parent, options, out_request,
                                          NK_DIALOG_SELECT_RESOURCE_DIRECTORY);
         });
@@ -4351,9 +4324,8 @@ nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle parent,
 nk_result NK_CALL nk_dialog_message(nk_handle parent, const nk_message_dialog_options *options,
                                     nk_request_id *out_request) {
     return nk::core::result_boundary(
-        "unexpected error while opening an iOS message dialog", [&]() -> nk_result {
-            return start_message_dialog(parent, options, out_request);
-        });
+        "unexpected error while opening an iOS message dialog",
+        [&]() -> nk_result { return start_message_dialog(parent, options, out_request); });
 }
 
 nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
@@ -4372,9 +4344,8 @@ nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
                 return thread;
             if (!options || options->struct_size < sizeof(*options) || !out_request ||
                 !options->title || !*options->title ||
-                (options->flags & ~NK_NOTIFICATION_SILENT) != 0 ||
-                !valid_utf8(options->title) || !valid_utf8(options->body) ||
-                !valid_utf8(options->icon))
+                (options->flags & ~NK_NOTIFICATION_SILENT) != 0 || !valid_utf8(options->title) ||
+                !valid_utf8(options->body) || !valid_utf8(options->icon))
                 return ios_fail(NK_ERROR_INVALID_ARGUMENT, "invalid iOS notification options");
             *out_request = NK_INVALID_REQUEST_ID;
             NSString *title = native_string(options->title);
@@ -4408,8 +4379,7 @@ nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
             }
             UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
             if (!center)
-                return ios_fail(NK_ERROR_UNSUPPORTED,
-                                "iOS notification services are unavailable");
+                return ios_fail(NK_ERROR_UNSUPPORTED, "iOS notification services are unavailable");
             const auto request = nk::core::next_request_id();
             const auto generation = nk::core::runtime_generation();
             {
@@ -4427,8 +4397,8 @@ nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
             center.delegate = notification_delegate;
             UNNotificationRequest *native_request =
                 [UNNotificationRequest requestWithIdentifier:notification_identifier(request)
-                                                       content:content
-                                                       trigger:nil];
+                                                     content:content
+                                                     trigger:nil];
             if (!native_request) {
                 take_notification(request);
                 return ios_fail(NK_ERROR_OUT_OF_MEMORY,
@@ -4437,54 +4407,54 @@ nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
             const UNAuthorizationOptions authorization_options =
                 silent ? UNAuthorizationOptionAlert
                        : (UNAuthorizationOptionAlert | UNAuthorizationOptionSound);
-            [center requestAuthorizationWithOptions:authorization_options
-                                  completionHandler:^(BOOL granted, NSError *error) {
-                                    if (!has_notification(request, generation) ||
-                                        !nk::core::is_runtime_generation(generation))
-                                        return;
-                                    if (!granted) {
-                                        take_notification(request);
-                                        emit_notification(
-                                            NK_EVENT_NOTIFICATION_FAILED, request,
-                                            NK_ERROR_UNSUPPORTED,
-                                            error.localizedDescription
-                                                ?: @"iOS notification permission was denied");
-                                        return;
-                                    }
-                                    [center getNotificationCategoriesWithCompletionHandler:^(
-                                                NSSet<UNNotificationCategory *> *categories) {
-                                      if (!has_notification(request, generation) ||
-                                          !nk::core::is_runtime_generation(generation))
-                                          return;
-                                      NSMutableSet<UNNotificationCategory *> *updated =
-                                          [categories mutableCopy];
-                                      [updated
-                                          addObject:
-                                              [UNNotificationCategory
-                                                  categoryWithIdentifier:@"nativekit.default"
-                                                                 actions:@[]
-                                                       intentIdentifiers:@[]
-                                                                 options:
-                                                                     UNNotificationCategoryOptionCustomDismissAction]];
-                                      [center setNotificationCategories:updated];
-                                      [center addNotificationRequest:native_request
-                                               withCompletionHandler:^(NSError *delivery_error) {
-                                                 if (!has_notification(request, generation) ||
-                                                     !nk::core::is_runtime_generation(generation))
-                                                     return;
-                                                 if (delivery_error) {
-                                                     take_notification(request);
-                                                     emit_notification(
-                                                         NK_EVENT_NOTIFICATION_FAILED, request,
-                                                         NK_ERROR_UNKNOWN,
-                                                         delivery_error.localizedDescription);
-                                                 } else {
-                                                     emit_notification(
-                                                         NK_EVENT_NOTIFICATION_DELIVERED, request);
-                                                 }
-                                               }];
-                                    }];
-                                  }];
+            [center
+                requestAuthorizationWithOptions:authorization_options
+                              completionHandler:^(BOOL granted, NSError *error) {
+                                if (!has_notification(request, generation) ||
+                                    !nk::core::is_runtime_generation(generation))
+                                    return;
+                                if (!granted) {
+                                    take_notification(request);
+                                    emit_notification(
+                                        NK_EVENT_NOTIFICATION_FAILED, request, NK_ERROR_UNSUPPORTED,
+                                        error.localizedDescription
+                                            ?: @"iOS notification permission was denied");
+                                    return;
+                                }
+                                [center getNotificationCategoriesWithCompletionHandler:^(
+                                            NSSet<UNNotificationCategory *> *categories) {
+                                  if (!has_notification(request, generation) ||
+                                      !nk::core::is_runtime_generation(generation))
+                                      return;
+                                  NSMutableSet<UNNotificationCategory *> *updated =
+                                      [categories mutableCopy];
+                                  [updated
+                                      addObject:
+                                          [UNNotificationCategory
+                                              categoryWithIdentifier:@"nativekit.default"
+                                                             actions:@[]
+                                                   intentIdentifiers:@[]
+                                                             options:
+                                                                 UNNotificationCategoryOptionCustomDismissAction]];
+                                  [center setNotificationCategories:updated];
+                                  [center
+                                      addNotificationRequest:native_request
+                                       withCompletionHandler:^(NSError *delivery_error) {
+                                         if (!has_notification(request, generation) ||
+                                             !nk::core::is_runtime_generation(generation))
+                                             return;
+                                         if (delivery_error) {
+                                             take_notification(request);
+                                             emit_notification(NK_EVENT_NOTIFICATION_FAILED,
+                                                               request, NK_ERROR_UNKNOWN,
+                                                               delivery_error.localizedDescription);
+                                         } else {
+                                             emit_notification(NK_EVENT_NOTIFICATION_DELIVERED,
+                                                               request);
+                                         }
+                                       }];
+                                }];
+                              }];
             *out_request = request;
             return NK_OK;
         });
@@ -4495,8 +4465,7 @@ nk_result NK_CALL nk_notification_close(nk_request_id request) {
     if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
         return thread;
     if (!request || !take_notification(request))
-        return ios_fail(NK_ERROR_INVALID_REQUEST,
-                        "invalid or completed iOS notification request");
+        return ios_fail(NK_ERROR_INVALID_REQUEST, "invalid or completed iOS notification request");
     NSArray<NSString *> *identifiers = @[ notification_identifier(request) ];
     UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
     [center removePendingNotificationRequestsWithIdentifiers:identifiers];
@@ -4507,8 +4476,8 @@ nk_result NK_CALL nk_notification_close(nk_request_id request) {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_METAL_SURFACE | NK_CAP_INPUT |
-           NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_SHELL |
-           NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION | NK_CAP_ACCESSIBILITY |
-           NK_CAP_DRAG_DROP | NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK;
+           NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
+           NK_CAP_NOTIFICATION | NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP | NK_CAP_RESOURCE_SHARING |
+           NK_CAP_JOYSTICK;
 }
 }
