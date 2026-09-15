@@ -436,6 +436,13 @@ The EGL context remains owned by the NativeKit surface while its window surface
 is temporarily absent. Rendering calls return `NK_ERROR_INVALID_REQUEST` until
 a new ready event arrives.
 
+On iOS, a Metal surface attaches a `CAMetalLayer` to the caller-owned `UIView`.
+Its frame target exposes borrowed Metal device, command-queue, drawable, and
+optional depth/stencil tokens through `nk_surface_get_frame_target()`. Host
+geometry and content-scale changes resize the layer and invalidate the current
+frame. Leaving the active mobile lifecycle emits `NK_EVENT_SURFACE_LOST`; the
+next successfully acquired drawable emits `NK_EVENT_SURFACE_READY`.
+
 ## Vulkan surfaces
 
 Include `nativekit_vulkan.h` for Vulkan presentation. NativeKit loads
