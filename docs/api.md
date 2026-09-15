@@ -92,8 +92,9 @@ iOS hosts pass a caller-owned `UIView*` as `native_view` with
 The iOS backend retains the view, emits an initial geometry event, and tracks
 bounds, safe-area, and display-scale changes. The view controller remains
 responsible for forwarding lifecycle transitions. Metal surfaces, touch and
-pointer events, hardware-key events, UIKit text editing, and WKWebView are
-available on iOS; the remaining system services are still being added.
+pointer events, hardware-key events, UIKit text editing, WKWebView, and UIKit
+dialogs are available on iOS; path-based dialogs and the remaining system
+services are still being added.
 
 Container size, display scale, system-bar safe insets, and software-keyboard
 inset changes produce `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED`. Geometry and
@@ -604,6 +605,12 @@ Its path-based dialog entry points are unsupported because document-provider
 results are not filesystem paths. Use the resource dialog variants, which complete
 with `NK_EVENT_DIALOG_RESOURCES_COMPLETE` and return the original `content:` URI
 and access flags through `nk_resource_event_item()`.
+
+ iOS uses `UIDocumentPickerViewController` for resource open, save, and directory
+dialogs, retaining security-scoped access for returned file URLs while the
+NativeKit runtime is alive. Its path-based dialog entry points are unsupported;
+use the resource variants to preserve provider URI identity. Message dialogs use
+`UIAlertController` and return `NK_MESSAGE_RESULT_NONE` when cancelled.
 
 ## HTTP networking
 

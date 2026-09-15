@@ -144,10 +144,12 @@ nk_result NK_CALL nk_dialog_select_directory(nk_handle, const nk_file_dialog_opt
     return unsupported();
 }
 #endif
+#if !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_dialog_message(nk_handle, const nk_message_dialog_options *, nk_request_id *) {
     return unsupported();
 }
-#if !defined(NK_STUB_ANDROID)
+#endif
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_dialog_cancel(nk_request_id) {
     return unsupported();
 }
@@ -180,6 +182,8 @@ nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *, uint32_t) {
 nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *) {
     return unsupported();
 }
+#endif
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_dialog_open_resource(nk_handle, const nk_file_dialog_options *,
                                           nk_request_id *) {
     return unsupported();
