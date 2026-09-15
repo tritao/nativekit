@@ -134,26 +134,6 @@ static int wait_for_edit(nk_window window, nk_text_edit_action action, nk_event 
     return 0;
 }
 
-static int wait_for_text(nk_window window, uint32_t codepoint) {
-    for (int attempt = 0; attempt < 200; ++attempt) {
-        nk_event event = {0};
-        event.struct_size = sizeof(event);
-        assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == NK_EVENT_TEXT_INPUT && event.source == window) {
-            nk_text_input_event input = {0};
-            assert(event.data_size >= sizeof(input));
-            memcpy(&input, event.data, sizeof(input));
-            if (input.codepoint == codepoint) {
-                nk_event_release(&event);
-                return 1;
-            }
-        }
-        nk_event_release(&event);
-        Sleep(5);
-    }
-    return 0;
-}
-
 static int send_virtual_key(WORD key) {
     INPUT inputs[2] = {0};
     inputs[0].type = INPUT_KEYBOARD;
@@ -213,6 +193,19 @@ static int verify_native_finish(const nk_event *event) {
            edit.composition_end == NK_TEXT_POSITION_NONE &&
            nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK &&
            event_length == 0;
+}
+
+static int verify_direct_character(const nk_event *event) {
+    nk_text_edit_event edit = {0};
+    memcpy(&edit, event->data, sizeof(edit));
+    const char *event_text = NULL;
+    uint32_t event_length = 0;
+    return edit.action == NK_TEXT_EDIT_COMMIT &&
+           edit.selection_start == edit.selection_end &&
+           edit.composition_start == NK_TEXT_POSITION_NONE &&
+           edit.composition_end == NK_TEXT_POSITION_NONE &&
+           nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK &&
+           event_length == 1 && event_text[0] == 'Z';
 }
 
 int main(void) {
@@ -369,9 +362,17 @@ int main(void) {
     }
 
     ImmReleaseContext(hwnd, context);
-    if (SendMessageW(hwnd, WM_IME_CHAR, (WPARAM)L'Z', 0) != 0 ||
-        !wait_for_text(window, 'Z'))
+    if (SendMessageW(hwnd, WM_CHAR, (WPARAM)L'Z', 0) != 0)
         return skip_test(window, hwnd, NULL);
+    nk_event direct_character = {0};
+    direct_character.struct_size = sizeof(direct_character);
+    if (!wait_for_edit(window, NK_TEXT_EDIT_COMMIT, &direct_character))
+        return skip_test(window, hwnd, NULL);
+    if (!verify_direct_character(&direct_character)) {
+        nk_event_release(&direct_character);
+        return 2;
+    }
+    nk_event_release(&direct_character);
 
     assert(nk_surface_set_text_input_active(window, 0) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);
