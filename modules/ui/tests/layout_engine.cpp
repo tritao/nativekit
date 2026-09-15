@@ -409,8 +409,8 @@ int main(int argc, char **argv) {
     wrapped_row_root.style.height = {LayoutSizing::Fit, 0.0f};
     wrapped_row_root.style.direction = LayoutDirection::LeftToRight;
     wrapped_row_root.style.wrap_mode = LayoutWrapMode::Wrap;
-    wrapped_row_root.style.row_gap = 8;
-    wrapped_row_root.style.column_gap = 5;
+    wrapped_row_root.style.row_gap = 8.5f;
+    wrapped_row_root.style.column_gap = 5.25f;
     LayoutNode wrapped_row_first = box(731, 0);
     wrapped_row_first.style.width = {LayoutSizing::Fixed, 60.0f};
     wrapped_row_first.style.height = {LayoutSizing::Fixed, 20.0f};
@@ -429,11 +429,11 @@ int main(int argc, char **argv) {
     const auto *wrapped_row_second_item = snapshot.find(732);
     const auto *wrapped_row_third_item = snapshot.find(733);
     if (!wrapped_row_root_item || !wrapped_row_first_item || !wrapped_row_second_item ||
-        !wrapped_row_third_item || std::abs(wrapped_row_root_item->bounds.height - 40.0f) > 0.01f ||
+        !wrapped_row_third_item || std::abs(wrapped_row_root_item->bounds.height - 40.5f) > 0.01f ||
         std::abs(wrapped_row_first_item->bounds.x) > 0.01f ||
-        std::abs(wrapped_row_second_item->bounds.x - 65.0f) > 0.01f ||
+        std::abs(wrapped_row_second_item->bounds.x - 65.25f) > 0.01f ||
         std::abs(wrapped_row_third_item->bounds.x) > 0.01f ||
-        std::abs(wrapped_row_third_item->bounds.y - 28.0f) > 0.01f)
+        std::abs(wrapped_row_third_item->bounds.y - 28.5f) > 0.01f)
         return 42;
 
     LayoutNode wrapped_grow_root = box(735, -1);
@@ -441,8 +441,8 @@ int main(int argc, char **argv) {
     wrapped_grow_root.style.height = {LayoutSizing::Fit, 0.0f};
     wrapped_grow_root.style.direction = LayoutDirection::LeftToRight;
     wrapped_grow_root.style.wrap_mode = LayoutWrapMode::Wrap;
-    wrapped_grow_root.style.row_gap = 5;
-    wrapped_grow_root.style.column_gap = 5;
+    wrapped_grow_root.style.row_gap = 5.5f;
+    wrapped_grow_root.style.column_gap = 5.25f;
     LayoutNode wrapped_grow_fixed = box(736, 0);
     wrapped_grow_fixed.style.width = {LayoutSizing::Fixed, 70.0f};
     wrapped_grow_fixed.style.height = {LayoutSizing::Fixed, 10.0f};
@@ -459,9 +459,9 @@ int main(int argc, char **argv) {
     const auto *wrapped_grow_root_item = snapshot.find(735);
     const auto *wrapped_grow_child_item = snapshot.find(738);
     if (!wrapped_grow_root_item || !wrapped_grow_child_item ||
-        std::abs(wrapped_grow_root_item->bounds.height - 25.0f) > 0.01f ||
+        std::abs(wrapped_grow_root_item->bounds.height - 25.5f) > 0.01f ||
         std::abs(wrapped_grow_child_item->bounds.x) > 0.01f ||
-        std::abs(wrapped_grow_child_item->bounds.y - 15.0f) > 0.01f ||
+        std::abs(wrapped_grow_child_item->bounds.y - 15.5f) > 0.01f ||
         std::abs(wrapped_grow_child_item->bounds.width - 120.0f) > 0.01f)
     {
         return 46;
@@ -472,8 +472,8 @@ int main(int argc, char **argv) {
     wrapped_column_root.style.height = {LayoutSizing::Fixed, 60.0f};
     wrapped_column_root.style.direction = LayoutDirection::TopToBottom;
     wrapped_column_root.style.wrap_mode = LayoutWrapMode::Wrap;
-    wrapped_column_root.style.row_gap = 4;
-    wrapped_column_root.style.column_gap = 7;
+    wrapped_column_root.style.row_gap = 4.5f;
+    wrapped_column_root.style.column_gap = 7.25f;
     LayoutNode wrapped_column_first = box(741, 0);
     wrapped_column_first.style.width = {LayoutSizing::Fixed, 10.0f};
     wrapped_column_first.style.height = {LayoutSizing::Fixed, 35.0f};
@@ -493,9 +493,9 @@ int main(int argc, char **argv) {
     const auto *wrapped_column_third_item = snapshot.find(743);
     if (!wrapped_column_root_item || !wrapped_column_first_item ||
         !wrapped_column_second_item || !wrapped_column_third_item ||
-        std::abs(wrapped_column_root_item->bounds.width - 57.0f) > 0.01f ||
-        std::abs(wrapped_column_second_item->bounds.y - 39.0f) > 0.01f ||
-        std::abs(wrapped_column_third_item->bounds.x - 27.0f) > 0.01f ||
+        std::abs(wrapped_column_root_item->bounds.width - 57.25f) > 0.01f ||
+        std::abs(wrapped_column_second_item->bounds.y - 39.5f) > 0.01f ||
+        std::abs(wrapped_column_third_item->bounds.x - 27.25f) > 0.01f ||
         std::abs(wrapped_column_third_item->bounds.y) > 0.01f)
         return 44;
 

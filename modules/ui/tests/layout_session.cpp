@@ -354,8 +354,8 @@ int main() {
               NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT);
     write_u32(wrapped, panel_record + NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET,
               NKUI_LAYOUT_WRAP_WRAP);
-    write_u32(wrapped, panel_record + NKUI_LAYOUT_NODE_ROW_GAP_OFFSET, 6);
-    write_u32(wrapped, panel_record + NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET, 4);
+    write_float(wrapped, panel_record + NKUI_LAYOUT_NODE_ROW_GAP_OFFSET, 6.5f);
+    write_float(wrapped, panel_record + NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET, 4.25f);
     write_u32(wrapped, panel_record + NKUI_LAYOUT_NODE_ALIGN_SELF_OFFSET,
               NKUI_LAYOUT_SELF_ALIGNMENT_CENTER);
     if (nkui_layout_session_submit(session, wrapped.data(), wrapped.size(), &frame) != NKUI_OK)

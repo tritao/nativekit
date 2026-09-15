@@ -323,13 +323,6 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                read_node_float(record, field + 2 * sizeof(float), out.blue) &&
                read_node_float(record, field + 3 * sizeof(float), out.alpha);
     };
-    const auto read_u16 = [&](size_t record, size_t field, uint16_t &out) {
-        uint32_t value = 0;
-        if (!read_node_u32(record, field, value) || value > UINT16_MAX)
-            return false;
-        out = static_cast<uint16_t>(value);
-        return true;
-    };
     try {
         nodes.clear();
         nodes.reserve(node_count);
@@ -363,8 +356,6 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             float aspect_ratio = 0.0f;
             float width_grow_weight = 1.0f;
             float height_grow_weight = 1.0f;
-            uint16_t row_gap = 0;
-            uint16_t column_gap = 0;
             uint32_t wrap_mode = 0;
             uint32_t align_self = 0;
             if (!read_node_u32(record, NKUI_LAYOUT_NODE_ID_OFFSET, id) ||
@@ -379,15 +370,20 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                                  node.style.height.value) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_DIRECTION_OFFSET, direction) ||
                 direction > NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM ||
-                !read_u16(record, NKUI_LAYOUT_NODE_PADDING_LEFT_OFFSET, node.style.padding_left) ||
-                !read_u16(record, NKUI_LAYOUT_NODE_PADDING_RIGHT_OFFSET,
-                          node.style.padding_right) ||
-                !read_u16(record, NKUI_LAYOUT_NODE_PADDING_TOP_OFFSET, node.style.padding_top) ||
-                !read_u16(record, NKUI_LAYOUT_NODE_PADDING_BOTTOM_OFFSET,
-                          node.style.padding_bottom) ||
-                !read_u16(record, NKUI_LAYOUT_NODE_CHILD_GAP_OFFSET, node.style.child_gap) ||
-                !read_u16(record, NKUI_LAYOUT_NODE_ROW_GAP_OFFSET, row_gap) ||
-                !read_u16(record, NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET, column_gap) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_PADDING_LEFT_OFFSET,
+                                 node.style.padding_left) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_PADDING_RIGHT_OFFSET,
+                                 node.style.padding_right) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_PADDING_TOP_OFFSET,
+                                 node.style.padding_top) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_PADDING_BOTTOM_OFFSET,
+                                 node.style.padding_bottom) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_CHILD_GAP_OFFSET,
+                                 node.style.child_gap) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_ROW_GAP_OFFSET,
+                                 node.style.row_gap) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET,
+                                 node.style.column_gap) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET, wrap_mode) ||
                 !read_node_color(record, NKUI_LAYOUT_NODE_BACKGROUND_OFFSET,
                                  node.style.background) ||
@@ -456,6 +452,16 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 z_index > std::numeric_limits<int16_t>::max() || !std::isfinite(position_x) ||
                 !std::isfinite(position_y) || width_sizing > NKUI_LAYOUT_SIZING_PERCENT)
                 return false;
+            const auto valid_spacing = [](float value) {
+                return std::isfinite(value) && value >= 0.0f;
+            };
+            if (!valid_spacing(node.style.padding_left) ||
+                !valid_spacing(node.style.padding_right) ||
+                !valid_spacing(node.style.padding_top) ||
+                !valid_spacing(node.style.padding_bottom) ||
+                !valid_spacing(node.style.child_gap) || !valid_spacing(node.style.row_gap) ||
+                !valid_spacing(node.style.column_gap))
+                return false;
             const float determinant = transform[0] * transform[3] - transform[1] * transform[2];
             if (std::any_of(transform.begin(), transform.end(),
                             [](float value) { return !std::isfinite(value); }) ||
@@ -482,8 +488,6 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 static_cast<nkui::LayoutAlignmentY>(child_align_y);
             node.style.child_distribution =
                 static_cast<nkui::LayoutDistribution>(child_distribution);
-            node.style.row_gap = row_gap;
-            node.style.column_gap = column_gap;
             node.style.wrap_mode = static_cast<nkui::LayoutWrapMode>(wrap_mode);
             node.style.align_self = static_cast<nkui::LayoutSelfAlignment>(align_self);
             node.style.positioning =

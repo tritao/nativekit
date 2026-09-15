@@ -73,6 +73,10 @@ class LayoutTransaction {
 				wrapMode < LayoutWrapMode.NoWrap || wrapMode > LayoutWrapMode.Wrap ||
 				alignSelf < LayoutSelfAlignment.Inherit || alignSelf > LayoutSelfAlignment.Baseline ||
 				(positioning != LayoutPositioning.Flow && positioning != LayoutPositioning.Absolute) ||
+				!validSpacing(style.padding.left) || !validSpacing(style.padding.right) ||
+				!validSpacing(style.padding.top) || !validSpacing(style.padding.bottom) ||
+				!validSpacing(style.childGap) || !validSpacing(style.rowGap) ||
+				!validSpacing(style.columnGap) ||
 				!finite(style.positionX) || !finite(style.positionY) ||
 				style.zIndex < -32768 || style.zIndex > 32767)
 				throw "Layout alignment or positioning is invalid";
@@ -94,11 +98,11 @@ class LayoutTransaction {
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_HEIGHT_GROW_WEIGHT_OFFSET,
 				style.height.growWeight);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_DIRECTION_OFFSET, cast style.direction);
-			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PADDING_LEFT_OFFSET, roundedInt(style.padding.left));
-			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PADDING_RIGHT_OFFSET, roundedInt(style.padding.right));
-			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PADDING_TOP_OFFSET, roundedInt(style.padding.top));
-			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PADDING_BOTTOM_OFFSET, roundedInt(style.padding.bottom));
-			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_CHILD_GAP_OFFSET, roundedInt(style.childGap));
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PADDING_LEFT_OFFSET, style.padding.left);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PADDING_RIGHT_OFFSET, style.padding.right);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PADDING_TOP_OFFSET, style.padding.top);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PADDING_BOTTOM_OFFSET, style.padding.bottom);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_CHILD_GAP_OFFSET, style.childGap);
 			writeColor(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_BACKGROUND_OFFSET, style.background);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET, style.radiusTopLeft);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET, style.radiusTopRight);
@@ -141,10 +145,10 @@ class LayoutTransaction {
 				childAlignX | (childAlignY << 8));
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_CHILD_DISTRIBUTION_OFFSET,
 				childDistribution);
-			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_ROW_GAP_OFFSET,
-				roundedInt(style.rowGap));
-			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET,
-				roundedInt(style.columnGap));
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_ROW_GAP_OFFSET,
+				style.rowGap);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET,
+				style.columnGap);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET,
 				wrapMode);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_ALIGN_SELF_OFFSET,
@@ -213,14 +217,12 @@ class LayoutTransaction {
 		return false;
 	}
 
-	static function roundedInt(value:Float):Int {
-		if (Math.isNaN(value) || value < 0.0 || value > 65535.0)
-			throw "Layout integer value is out of range";
-		return Std.int(value + 0.5);
-	}
-
 	static function finite(value:Float):Bool {
 		return value == value && value - value == 0.0;
+	}
+
+	static function validSpacing(value:Float):Bool {
+		return finite(value) && value >= 0.0;
 	}
 
 	static function finitePositive(value:Float):Bool
