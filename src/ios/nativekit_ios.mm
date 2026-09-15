@@ -17,6 +17,8 @@
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
+#include "ios/joystick.hpp"
+#include "platform/resource_events.hpp"
 
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -24,6 +26,7 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <UserNotifications/UserNotifications.h>
 #import <WebKit/WebKit.h>
+#import <dispatch/dispatch.h>
 
 #include <algorithm>
 #include <array>
@@ -79,6 +82,10 @@
 @property(nonatomic, assign) nk_request_id request;
 @end
 
+@interface NKIOSDropDelegate : NSObject <UIDropInteractionDelegate>
+@property(nonatomic, assign) nk_handle host;
+@end
+
 namespace {
 
 template <typename T> std::vector<std::byte> bytes_of(const T &value) {
@@ -112,11 +119,21 @@ struct IOSHost final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
     __strong UIView *view = nil;
     __strong NKIOSHostObserver *observer = nil;
+    __strong NKIOSDropDelegate *drop_delegate = nil;
+    __strong UIDropInteraction *drop_interaction = nil;
     nk_mobile_lifecycle_state lifecycle = NK_MOBILE_LIFECYCLE_ACTIVE;
     bool orientation_observing = false;
     nk_orientation last_display_orientation = NK_ORIENTATION_UNKNOWN;
+    bool drops_enabled = false;
     std::vector<nk_handle> surfaces;
     std::vector<nk_handle> webviews;
+
+    ~IOSHost() override {
+        if (view && drop_interaction)
+            [view removeInteraction:drop_interaction];
+        drop_interaction = nil;
+        drop_delegate = nil;
+    }
 };
 
 struct IOSAccessibilityTextRange {
@@ -2346,6 +2363,112 @@ IOSResourceValue resource_value_from_url(NSURL *url, uint32_t kind) {
     return result;
 }
 
+@implementation NKIOSDropDelegate
+- (BOOL)dropInteraction:(UIDropInteraction *)interaction
+    canHandleSession:(id<UIDropSession>)session {
+    (void)interaction;
+    return [session hasItemsConformingToTypeIdentifiers:@[ @"public.file-url", @"public.url",
+                                                            @"public.plain-text" ]];
+}
+
+- (UIDropProposal *)dropInteraction:(UIDropInteraction *)interaction
+                     sessionDidUpdate:(id<UIDropSession>)session {
+    (void)interaction;
+    (void)session;
+    return [[UIDropProposal alloc] initWithDropOperation:UIDropOperationCopy];
+}
+
+- (void)dropInteraction:(UIDropInteraction *)interaction
+             performDrop:(id<UIDropSession>)session {
+    (void)interaction;
+    const auto host_handle = self.host;
+    const auto generation = nk::core::runtime_generation();
+    auto resource = host(host_handle);
+    if (!resource || !resource->view)
+        return;
+    const CGPoint location = [session locationInView:resource->view];
+    dispatch_group_t group = dispatch_group_create();
+    NSMutableArray<NSURL *> *urls = [NSMutableArray array];
+    NSMutableArray<NSString *> *texts = [NSMutableArray array];
+    for (id<UIDropItem> item in session.items) {
+        NSItemProvider *provider = item.itemProvider;
+        NSString *type = nil;
+        if ([provider hasItemConformingToTypeIdentifier:@"public.file-url"])
+            type = @"public.file-url";
+        else if ([provider hasItemConformingToTypeIdentifier:@"public.url"])
+            type = @"public.url";
+        else if ([provider hasItemConformingToTypeIdentifier:@"public.plain-text"])
+            type = @"public.plain-text";
+        if (!type)
+            continue;
+
+        dispatch_group_enter(group);
+        if ([type isEqualToString:@"public.file-url"] ||
+            [type isEqualToString:@"public.url"]) {
+            [provider loadObjectOfClass:[NSURL class]
+                     completionHandler:^(id<NSItemProviderReading> object, NSError *error) {
+                       (void)error;
+                       if ([object isKindOfClass:[NSURL class]]) {
+                           @synchronized(urls) {
+                               [urls addObject:(NSURL *)object];
+                           }
+                       }
+                       dispatch_group_leave(group);
+                     }];
+        } else {
+            [provider loadObjectOfClass:[NSString class]
+                     completionHandler:^(id<NSItemProviderReading> object, NSError *error) {
+                       (void)error;
+                       if ([object isKindOfClass:[NSString class]]) {
+                           @synchronized(texts) {
+                               [texts addObject:(NSString *)object];
+                           }
+                       }
+                       dispatch_group_leave(group);
+                     }];
+        }
+    }
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+      nk::core::callback_boundary([&] {
+          if (!nk::core::is_runtime_generation(generation))
+              return;
+          auto target = host(host_handle);
+          if (!target || !target->view)
+              return;
+          std::vector<nk::platform::ResourceValue> resources;
+          @synchronized(urls) {
+              resources.reserve(urls.count);
+              for (NSURL *url in urls) {
+                  auto value = resource_value_from_url(url, NK_DIALOG_OPEN_RESOURCE);
+                  if (!value.uri.empty())
+                      resources.push_back(nk::platform::resource_from_uri(
+                          std::move(value.uri), value.flags, std::move(value.mime_type),
+                          std::move(value.display_name)));
+              }
+          }
+          std::string text;
+          @synchronized(texts) {
+              for (NSString *value in texts) {
+                  if (!text.empty())
+                      text.push_back('\n');
+                  text += utf8_string(value);
+              }
+          }
+          if (resources.empty() && text.empty())
+              return;
+          nk::core::QueuedEvent event;
+          event.kind = NK_EVENT_RESOURCE_DROP;
+          event.source = host_handle;
+          event.data_count = static_cast<uint32_t>(resources.size());
+          event.data = nk::platform::resource_drop_payload(static_cast<float>(location.x),
+                                                           static_cast<float>(location.y), text,
+                                                           resources);
+          nk::core::push_event(std::move(event));
+      });
+    });
+}
+@end
+
 void finish_document_dialog(nk_request_id request, bool accepted,
                             NSArray<NSURL *> *urls) noexcept {
     nk::core::callback_boundary([&] {
@@ -2708,9 +2831,12 @@ nk_result start_message_dialog(nk_handle parent_handle,
 
 namespace nk::backend {
 
-void pump_events() noexcept {}
+void pump_events() noexcept {
+    nk::ios_joystick::pump();
+}
 
 void shutdown() noexcept {
+    nk::ios_joystick::shutdown();
     NSMutableArray<NSString *> *notification_identifiers = [NSMutableArray array];
     {
         std::lock_guard lock(notifications_mutex);
@@ -2840,8 +2966,12 @@ nk_result mobile_host_destroy(nk_handle handle) {
             const auto result = nk_surface_destroy(*iter);
             if (result != NK_OK)
                 return result;
-        }
+    }
     stop_observing(found->second);
+    if (found->second->drop_interaction)
+        [found->second->view removeInteraction:found->second->drop_interaction];
+    found->second->drop_interaction = nil;
+    found->second->drop_delegate = nil;
     found->second->view = nil;
     hosts.erase(found);
     if (nk::core::system_keep_awake_held())
@@ -2882,17 +3012,40 @@ nk_result mobile_host_dispatch_event(nk_handle handle, const nk_mobile_host_even
         nk::core::set_error("invalid iOS mobile host handle");
         return NK_ERROR_INVALID_HANDLE;
     }
-    nk::core::set_error("iOS host events are not implemented yet");
+    nk::core::set_error("iOS host event forwarding uses native UIKit adapters");
     return NK_ERROR_UNSUPPORTED;
 }
 
-nk_result mobile_host_set_drop_enabled(nk_handle handle, bool) {
-    if (!host(handle)) {
+nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled) {
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    auto resource = host(handle);
+    if (!resource) {
         nk::core::set_error("invalid iOS mobile host handle");
         return NK_ERROR_INVALID_HANDLE;
     }
-    nk::core::set_error("iOS host drops are not implemented yet");
-    return NK_ERROR_UNSUPPORTED;
+    if (resource->drops_enabled == enabled)
+        return NK_OK;
+    if (!enabled) {
+        if (resource->drop_interaction)
+            [resource->view removeInteraction:resource->drop_interaction];
+        resource->drop_interaction = nil;
+        resource->drop_delegate = nil;
+        resource->drops_enabled = false;
+        return NK_OK;
+    }
+    auto delegate = [NKIOSDropDelegate new];
+    UIDropInteraction *interaction = [[UIDropInteraction alloc] initWithDelegate:delegate];
+    if (!delegate || !interaction) {
+        nk::core::set_error("could not create iOS drop interaction");
+        return NK_ERROR_OUT_OF_MEMORY;
+    }
+    delegate.host = handle;
+    resource->drop_delegate = delegate;
+    resource->drop_interaction = interaction;
+    resource->drops_enabled = true;
+    [resource->view addInteraction:interaction];
+    return NK_OK;
 }
 
 } // namespace nk::backend
@@ -4245,6 +4398,105 @@ nk_result NK_CALL nk_clipboard_set_text(const char *text) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_share(const nk_share_options *options) {
+    return nk::core::result_boundary(
+        "unexpected error while sharing iOS resources", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            if (!options || options->struct_size < sizeof(*options) || options->flags != 0 ||
+                (!options->text && options->resource_count == 0) ||
+                !valid_utf8(options->title) || !valid_utf8(options->text))
+                return ios_fail(NK_ERROR_INVALID_ARGUMENT, "invalid or empty iOS share options");
+            if (const auto result = nk::platform::validate_resources(options->resources,
+                                                                      options->resource_count,
+                                                                      true);
+                result != NK_OK)
+                return result;
+            NSMutableArray *items =
+                [NSMutableArray arrayWithCapacity:options->resource_count + 1];
+            if (options->text)
+                [items addObject:native_string(options->text) ?: @""];
+            for (uint32_t index = 0; index < options->resource_count; ++index) {
+                NSURL *url = [NSURL URLWithString:native_string(options->resources[index].uri)];
+                if (!url || !url.scheme.length)
+                    return ios_fail(NK_ERROR_INVALID_ARGUMENT, "resource URI is not a valid URL");
+                retain_security_scope(url);
+                [items addObject:url];
+            }
+            nk_handle ignored_parent = NK_INVALID_HANDLE;
+            UIViewController *presenter = dialog_presenter(NK_INVALID_HANDLE, ignored_parent);
+            (void)ignored_parent;
+            if (!presenter)
+                return ios_fail(NK_ERROR_UNSUPPORTED,
+                                "iOS sharing requires an attached host view controller");
+            UIActivityViewController *controller =
+                [[UIActivityViewController alloc] initWithActivityItems:items
+                                                   applicationActivities:nil];
+            if (!controller)
+                return ios_fail(NK_ERROR_OUT_OF_MEMORY, "could not create the iOS share sheet");
+            if (controller.popoverPresentationController) {
+                controller.popoverPresentationController.sourceView = presenter.view;
+                controller.popoverPresentationController.sourceRect = presenter.view.bounds;
+            }
+            [presenter presentViewController:controller animated:YES completion:nil];
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources,
+                                             uint32_t resource_count) {
+    return nk::core::result_boundary(
+        "unexpected error while writing iOS resource clipboard", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            if (const auto result = nk::platform::validate_resources(resources, resource_count,
+                                                                      false);
+                result != NK_OK)
+                return result;
+            NSMutableArray<NSURL *> *urls = [NSMutableArray arrayWithCapacity:resource_count];
+            for (uint32_t index = 0; index < resource_count; ++index) {
+                NSURL *url = [NSURL URLWithString:native_string(resources[index].uri)];
+                if (!url || !url.scheme.length)
+                    return ios_fail(NK_ERROR_INVALID_ARGUMENT, "resource URI is not a valid URL");
+                retain_security_scope(url);
+                [urls addObject:url];
+            }
+            UIPasteboard.generalPasteboard.URLs = urls;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while reading iOS resource clipboard", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            if (!out_request)
+                return ios_fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+            *out_request = NK_INVALID_REQUEST_ID;
+            std::vector<IOSResourceValue> resources;
+            for (NSURL *url in UIPasteboard.generalPasteboard.URLs ?: @[]) {
+                auto resource = resource_value_from_url(url, NK_DIALOG_OPEN_RESOURCE);
+                if (!resource.uri.empty())
+                    resources.push_back(std::move(resource));
+            }
+            const auto request = nk::core::next_request_id();
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE;
+            event.request_id = request;
+            event.data_count = static_cast<uint32_t>(resources.size());
+            event.data = resource_payload(false, resources);
+            const auto result = nk::core::push_event(std::move(event));
+            if (result != NK_OK)
+                return ios_fail(result, "could not queue iOS resource clipboard result");
+            *out_request = request;
+            return NK_OK;
+        });
+}
+
 nk_result NK_CALL nk_clipboard_set_files(const char *const *paths, uint32_t path_count) {
     return nk::core::result_boundary(
         "unexpected error while writing iOS clipboard files", [&]() -> nk_result {
@@ -4513,6 +4765,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_KEEP_AWAKE | NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_INPUT |
            NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
            NK_CAP_NOTIFICATION | NK_CAP_FILE_DIALOG | NK_CAP_ACCESSIBILITY |
+           NK_CAP_DRAG_DROP | NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK |
            nk::core::optional_capabilities();
 }
 }

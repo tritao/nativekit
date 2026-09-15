@@ -48,16 +48,16 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | Windows and lifecycle | ✅ | ✅ | ✅ | Host view | Host view | Partial |
 | WebView | ✅ | ✅ | ✅ | ✅ | ✅ | Native DOM |
-| Dialogs and system services | ✅ | ✅ | ✅ | ✅ | Partial | Partial |
-| Clipboard and drag/drop | ✅ | ✅ | ✅ | ✅ | Partial | Partial |
+| Dialogs and system services | ✅ | ✅ | ✅ | ✅ | ✅ | Partial |
+| Clipboard and drag/drop | ✅ | ✅ | ✅ | ✅ | ✅ | Partial |
 | Notifications | ✅ | ✅ | ✅ | ✅ | ✅ | Partial |
 | Input, cursors, and capture | ✅ | ✅ | ✅ | Partial | Partial | Partial |
 | Monitors and fullscreen modes | ✅ | ✅ | ✅ | — | — | — |
-| Joysticks and gamepads | ✅ | ✅ | ✅ | ✅ | 🚧 | Partial |
+| Joysticks and gamepads | ✅ | ✅ | ✅ | ✅ | ✅ | Partial |
 | OpenGL / OpenGL ES | ✅ | — | — | GLES | — | Partial |
 | Metal | — | — | ✅ | — | ✅ | — |
 | Vulkan | ✅ | — | — | ✅ | 🚧 | 🚧 |
-| URI resources and sharing | ✅ | ✅ | ✅ | ✅ | 🚧 | Partial |
+| URI resources and sharing | ✅ | ✅ | ✅ | ✅ | ✅ | Partial |
 | Custom-surface accessibility | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Native interoperability | Export + wrap | Export + wrap | Export + wrap | Host view | Host view | — |
 
@@ -65,12 +65,11 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 — not currently advertised
 
 - iOS has device compile/link coverage and simulator runtime CI for the core
-  library. The initial UIKit host attachment, geometry lifecycle, Metal
-  presentation surface, touch/pointer input, hardware-key events, UIKit text
-  editing, WKWebView, resource dialogs, message dialogs, clipboard, URI opening,
-  sandbox directory queries, locale, appearance, and notifications are available;
-  path-based dialogs, drops, resource sharing, and joystick support remain
-  deferred. Custom-surface accessibility is
+  library. UIKit host attachment, geometry lifecycle, Metal presentation surface,
+  touch/pointer input, hardware-key events, UIKit text editing, WKWebView, resource
+  dialogs, message dialogs, clipboard and URI resources, URI opening, sandbox
+  directory queries, locale, appearance, notifications, host drag/drop, the iOS
+  share sheet, and GameController joystick/gamepad input are available. Custom-surface accessibility is
   projected into UIKit and Cocoa accessibility elements and VoiceOver/Voice Control actions.
 - Web custom-surface accessibility mirrors the NativeKit semantic tree into an
   accessible DOM overlay. Focus, activation, keyboard adjustments, text value,

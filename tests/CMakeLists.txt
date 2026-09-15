@@ -200,7 +200,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_link_libraries(nativekit_ios_runtime_tests PRIVATE NativeKit::nativekit
         "-framework Foundation" "-framework UIKit" "-framework CoreGraphics"
         "-framework Metal" "-framework QuartzCore" "-framework UniformTypeIdentifiers"
-        "-framework UserNotifications" "-framework WebKit")
+        "-framework UserNotifications" "-framework WebKit" "-framework GameController")
     set_target_properties(nativekit_ios_runtime_tests PROPERTIES
         LINKER_LANGUAGE OBJCXX
         MACOSX_BUNDLE_INFO_PLIST

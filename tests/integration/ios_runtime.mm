@@ -2,7 +2,9 @@
 #include "nativekit_accessibility.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
+#include "nativekit_joystick.h"
 #include "nativekit_mobile.h"
+#include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 
@@ -12,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 namespace {
 
@@ -26,7 +29,8 @@ bool check_capabilities(nk_capabilities capabilities) {
     const nk_capabilities required = NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_FILE_DIALOG |
                                      NK_CAP_METAL_SURFACE | NK_CAP_INPUT | NK_CAP_RESOURCE_IO |
                                      NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-                                     NK_CAP_NOTIFICATION | NK_CAP_ACCESSIBILITY;
+                                     NK_CAP_NOTIFICATION | NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP |
+                                     NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK;
     if ((capabilities & required) == required)
         return true;
     std::fprintf(stderr, "iOS runtime is missing capabilities: expected 0x%llx, got 0x%llx\n",
@@ -93,6 +97,31 @@ bool wait_for_navigation(nk_webview webview) {
     return false;
 }
 
+bool wait_for_resource_clipboard(nk_request_id request, const char *expected_uri) {
+    for (int attempt = 0; attempt < 250; ++attempt) {
+        nk_event event = {};
+        event.struct_size = sizeof(event);
+        if (!check_result("nk_poll_event", nk_poll_event(&event)))
+            return false;
+        if (event.kind == NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE && event.request_id == request) {
+            nk_resource_view resource = {};
+            resource.struct_size = sizeof(resource);
+            const bool valid = event.data_count == 1 &&
+                               nk_resource_event_item(&event, 0, &resource) == NK_OK &&
+                               resource.uri && std::strcmp(resource.uri, expected_uri) == 0 &&
+                               (resource.flags & NK_RESOURCE_READABLE) != 0;
+            if (!valid)
+                std::fprintf(stderr, "iOS resource clipboard returned an unexpected result\n");
+            nk_event_release(&event);
+            return valid;
+        }
+        nk_event_release(&event);
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+    }
+    std::fprintf(stderr, "timed out waiting for iOS resource clipboard\n");
+    return false;
+}
+
 bool run_nativekit_tests(UIView *host_view) {
     nk_init_options init = {};
     init.struct_size = sizeof(init);
@@ -115,6 +144,13 @@ bool run_nativekit_tests(UIView *host_view) {
         host_options.kind = NK_MOBILE_HOST_UIKIT_VIEW;
         host_options.native_view = reinterpret_cast<uintptr_t>((__bridge void *)host_view);
         if (!check_result("nk_mobile_host_attach", nk_mobile_host_attach(&host_options, &host))) {
+            success = false;
+            break;
+        }
+        if (!check_result("nk_mobile_host_set_drop_enabled(true)",
+                          nk_mobile_host_set_drop_enabled(host, 1)) ||
+            !check_result("nk_mobile_host_set_drop_enabled(false)",
+                          nk_mobile_host_set_drop_enabled(host, 0))) {
             success = false;
             break;
         }
@@ -237,6 +273,52 @@ bool run_nativekit_tests(UIView *host_view) {
             !check_result("nk_clipboard_set_text", nk_clipboard_set_text("iOS runtime"))) {
             success = false;
             break;
+        }
+
+        nk_resource clipboard_resource = {};
+        clipboard_resource.struct_size = sizeof(clipboard_resource);
+        clipboard_resource.flags = NK_RESOURCE_READABLE;
+        clipboard_resource.uri = "https://example.com/nativekit-ios-resource";
+        clipboard_resource.mime_type = "text/plain";
+        clipboard_resource.display_name = "NativeKit iOS resource";
+        nk_request_id clipboard_request = NK_INVALID_REQUEST_ID;
+        if (!check_result("nk_clipboard_set_resources",
+                          nk_clipboard_set_resources(&clipboard_resource, 1)) ||
+            !check_result("nk_clipboard_read_resources",
+                          nk_clipboard_read_resources(&clipboard_request)) ||
+            !wait_for_resource_clipboard(clipboard_request, clipboard_resource.uri)) {
+            success = false;
+            break;
+        }
+
+        nk_share_options share = {};
+        share.struct_size = sizeof(share);
+        share.text = "NativeKit iOS share";
+        if (!check_result("nk_share", nk_share(&share))) {
+            success = false;
+            break;
+        }
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+        [host_view.window.rootViewController.presentedViewController
+            dismissViewControllerAnimated:NO
+                               completion:nil];
+
+        uint32_t joystick_count = 0;
+        const nk_result joystick_query = nk_joystick_list(nullptr, &joystick_count);
+        if (joystick_query != NK_OK && joystick_query != NK_ERROR_BUFFER_TOO_SMALL) {
+            std::fprintf(stderr, "nk_joystick_list returned %d: %s\n", joystick_query,
+                         nk_last_error());
+            success = false;
+            break;
+        }
+        if (joystick_count != 0) {
+            std::vector<nk_joystick> joysticks(joystick_count);
+            uint32_t capacity = joystick_count;
+            if (!check_result("nk_joystick_list(values)",
+                              nk_joystick_list(joysticks.data(), &capacity))) {
+                success = false;
+                break;
+            }
         }
     } while (false);
 

@@ -121,12 +121,12 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 | Windows | Windows, WebView when WebView2 is available, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick, native export, Win32 native wrapping, platform identity, application paths, fonts, keep-awake, display orientation | Device orientation |
 | macOS | Windows, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping, platform identity, application paths, fonts, keep-awake, display orientation | Device orientation |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility, platform identity, application storage, keep-awake, device/display orientation | Application install path, system fonts |
-| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, shell, appearance, notifications, accessibility, resource I/O, platform identity, application paths, application storage, keep-awake, device/display orientation | Drag/drop, resource sharing, joystick, system fonts |
+| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, accessibility, platform identity, application paths, application storage, keep-awake, device/display orientation | System fonts |
 | Web | Window, geometry, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility, platform identity, locale, keep-awake, display orientation where browser APIs are available | Styling, dialogs, application paths, application storage, system fonts, device orientation |
 
 The current Windows joystick adapter uses XInput's standard gamepad model,
-including hotplug and normalized canonical state. The current macOS adapter
-uses GameController's extended and micro gamepad models. Generic HID joystick
+including hotplug and normalized canonical state. The macOS and iOS adapters use
+GameController's extended and micro gamepad models. Generic HID joystick
 enumeration remains a separate follow-up from these platform-native gamepad
 equivalents and must not be silently treated as complete parity.
 

@@ -236,6 +236,7 @@ elseif(WIN32)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_sources(nativekit PRIVATE
         src/ios/nativekit_ios.mm
+        src/ios/nativekit_ios_joystick.mm
         src/platform/nativekit_stub.cpp)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_IOS=1)
     set_target_properties(nativekit PROPERTIES
@@ -248,7 +249,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_link_libraries(nativekit PRIVATE
         "-framework Foundation" "-framework UIKit" "-framework CoreGraphics"
         "-framework Metal" "-framework QuartzCore" "-framework UniformTypeIdentifiers"
-        "-framework UserNotifications" "-framework WebKit")
+        "-framework UserNotifications" "-framework WebKit" "-framework GameController")
 elseif(APPLE)
     target_sources(nativekit PRIVATE
         src/macos/nativekit_osx.mm
