@@ -307,6 +307,89 @@ static int probe_clipboard_and_resources(nk_capabilities capabilities, const cha
     return 1;
 }
 
+static int probe_resource_dialog(nk_window window, nk_dialog_operation operation) {
+    nk_file_dialog_options options = {0};
+    options.struct_size = sizeof(options);
+    options.flags = operation == NK_DIALOG_OPEN_RESOURCE
+                        ? NK_DIALOG_ALLOW_MULTIPLE
+                        : operation == NK_DIALOG_SAVE_RESOURCE
+                              ? NK_DIALOG_CONFIRM_OVERWRITE
+                              : NK_DIALOG_SHOW_HIDDEN;
+    options.title = "NativeKit resource dialog conformance";
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    nk_result result = NK_ERROR_UNKNOWN;
+    const char *operation_name = "nk_dialog_open_resource";
+    if (operation == NK_DIALOG_OPEN_RESOURCE) {
+        result = nk_dialog_open_resource(window, &options, &request);
+    } else if (operation == NK_DIALOG_SAVE_RESOURCE) {
+        operation_name = "nk_dialog_save_resource";
+        result = nk_dialog_save_resource(window, &options, &request);
+    } else {
+        operation_name = "nk_dialog_select_resource_directory";
+        result = nk_dialog_select_resource_directory(window, &options, &request);
+    }
+    if (!require_ok(operation_name, result) || !request ||
+        !require_ok("nk_dialog_cancel(resource)", nk_dialog_cancel(request)) ||
+        !require_result("nk_dialog_cancel(resource, stale)", nk_dialog_cancel(request),
+                        NK_ERROR_INVALID_REQUEST))
+        return 0;
+
+    nk_event event = {0};
+    if (!wait_for_request(request, &event))
+        return 0;
+    int valid = event.kind == NK_EVENT_DIALOG_RESOURCES_COMPLETE &&
+                event.result == NK_OK && event.flags == operation &&
+                event.data_size >= sizeof(nk_resource_list);
+    if (valid) {
+        const nk_resource_list *resources = (const nk_resource_list *)event.data;
+        valid = resources->accepted == 0 && resources->item_count == 0 && event.data_count == 0;
+    }
+    if (!valid)
+        fprintf(stderr, "%s returned an invalid cancellation payload\n", operation_name);
+    nk_event_release(&event);
+    return valid;
+}
+
+static int probe_dialogs(nk_window window) {
+    const nk_dialog_operation resource_operations[] = {
+        NK_DIALOG_OPEN_RESOURCE,
+        NK_DIALOG_SAVE_RESOURCE,
+        NK_DIALOG_SELECT_RESOURCE_DIRECTORY,
+    };
+    for (size_t index = 0; index < sizeof(resource_operations) / sizeof(resource_operations[0]);
+         ++index) {
+        if (!probe_resource_dialog(window, resource_operations[index]))
+            return 0;
+    }
+
+    nk_message_dialog_options options = {0};
+    options.struct_size = sizeof(options);
+    options.kind = NK_MESSAGE_QUESTION;
+    options.buttons = NK_MESSAGE_BUTTON_YES | NK_MESSAGE_BUTTON_NO | NK_MESSAGE_BUTTON_CANCEL;
+    options.title = "NativeKit message dialog conformance";
+    options.message = "This dialog should be canceled automatically.";
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    if (!require_ok("nk_dialog_message", nk_dialog_message(window, &options, &request)) ||
+        !request || !require_ok("nk_dialog_cancel(message)", nk_dialog_cancel(request)) ||
+        !require_result("nk_dialog_cancel(message, stale)", nk_dialog_cancel(request),
+                        NK_ERROR_INVALID_REQUEST))
+        return 0;
+    nk_event event = {0};
+    if (!wait_for_request(request, &event))
+        return 0;
+    const nk_dialog_message_result *message =
+        event.data_size == sizeof(nk_dialog_message_result)
+            ? (const nk_dialog_message_result *)event.data
+            : NULL;
+    const int valid = event.kind == NK_EVENT_DIALOG_MESSAGE_COMPLETE &&
+                      event.result == NK_OK && event.flags == NK_DIALOG_MESSAGE && message &&
+                      message->button == NK_MESSAGE_RESULT_CANCEL;
+    if (!valid)
+        fprintf(stderr, "nk_dialog_message returned an invalid cancellation payload\n");
+    nk_event_release(&event);
+    return valid;
+}
+
 static int probe_resource_io(const char *path, const char *uri) {
     nk_resource resource = {0};
     resource.struct_size = sizeof(resource);
@@ -726,6 +809,7 @@ int main(void) {
     int success =
         make_resource_uri(path, sizeof(path), uri, sizeof(uri)) &&
         probe_window(capabilities, &window, &native) &&
+        probe_dialogs(window) &&
         probe_input_and_cursor(capabilities, window) && probe_monitors(capabilities, window) &&
         probe_system_and_validation(capabilities) &&
         (!(capabilities & NK_CAP_DRAG_DROP) ||

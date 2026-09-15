@@ -26,15 +26,15 @@ bool check_result(const char *operation, nk_result result) {
 }
 
 bool check_capabilities(nk_capabilities capabilities) {
-    const nk_capabilities required = NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW |
+    const nk_capabilities expected = NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW |
                                      NK_CAP_METAL_SURFACE | NK_CAP_INPUT | NK_CAP_RESOURCE_IO |
                                      NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
                                      NK_CAP_NOTIFICATION | NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP |
                                      NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK;
-    if ((capabilities & required) == required)
+    if (capabilities == expected)
         return true;
-    std::fprintf(stderr, "iOS runtime is missing capabilities: expected 0x%llx, got 0x%llx\n",
-                 static_cast<unsigned long long>(required),
+    std::fprintf(stderr, "iOS runtime capability mask changed: expected 0x%llx, got 0x%llx\n",
+                 static_cast<unsigned long long>(expected),
                  static_cast<unsigned long long>(capabilities));
     return false;
 }

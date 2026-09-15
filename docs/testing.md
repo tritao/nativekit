@@ -27,6 +27,9 @@ objects.
 compares the running backend's advertised mask with its own row. The Linux CI
 contract job also runs the shared capability conformance suite, while the
 Windows and macOS jobs run that suite through their native CTest matrices.
+The Web workflow builds the same snapshot checker as a browser-hosted artifact
+and runs it through the Chrome DevTools test harness alongside the Web
+accessibility and system-equivalent tests.
 
 On Linux, `linux_notification_failure` runs in an isolated D-Bus session with
 no notification daemon. It verifies that an accepted asynchronous request
@@ -82,7 +85,8 @@ declared by the Gradle modules.
 Instrumentation runs on API 23 (the supported minimum) and API 36. The sample
 tests exercise host and WebView integration; the consumer tests additionally
 cover URI providers, clipboard and sharing, lifecycle recovery, graphics
-surfaces, and input delivery. Run the same checks locally with:
+surfaces, input delivery, and an exact symbolic Android capability-mask check.
+Run the same checks locally with:
 
 ```sh
 cd android

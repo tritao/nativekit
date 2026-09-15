@@ -39,6 +39,8 @@ public final class ConsumerTest {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(launch)) {
             scenario.onActivity(activity -> {
                 assertEquals(2, activity.apiVersion());
+                assertEquals("Android capability contract", 0,
+                             activity.capabilityContractProbe());
                 assertNotEquals(0, activity.webViewHandle());
                 assertEquals(0, activity.webViewHistoryProbe());
                 assertEquals(0, activity.incomingShareProbe());

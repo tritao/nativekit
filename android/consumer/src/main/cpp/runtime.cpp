@@ -54,6 +54,16 @@ void release_vulkan_probe() {
 }
 } // namespace
 
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeCapabilityContractProbe(JNIEnv *, jclass) {
+    const nk_capabilities expected =
+        NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP |
+        NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION | NK_CAP_INPUT |
+        NK_CAP_OPENGL_ES_SURFACE | NK_CAP_VULKAN_SURFACE | NK_CAP_RESOURCE_SHARING |
+        NK_CAP_RESOURCE_IO | NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY;
+    return nk_get_capabilities() == expected ? 0 : 1;
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_io_nativekit_consumer_MainActivity_nativeProbe(JNIEnv *, jclass, jlong host) {
     nk_webview_options options{};

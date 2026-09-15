@@ -13,6 +13,10 @@
 #include <utility>
 #include <vector>
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
+#endif
+
 #ifndef NK_CAPABILITY_SNAPSHOT_FILE
 #define NK_CAPABILITY_SNAPSHOT_FILE "capability-snapshots.txt"
 #endif
@@ -236,10 +240,22 @@ bool check_disjoint(const backend_contract &contract) {
 
 } // namespace
 
+#if defined(__EMSCRIPTEN__)
+static void mark_browser_result(bool passed) {
+    EM_ASM({
+        document.documentElement.dataset.nativekitPlatformParity = $0 ? "passed" : "failed";
+    }, passed ? 1 : 0);
+}
+#endif
+
 int main() {
     backend_contract contract{current_backend_name(), 0, 0, 0, 0};
-    if (!load_contract(contract) || !check_disjoint(contract))
+    if (!load_contract(contract) || !check_disjoint(contract)) {
+#if defined(__EMSCRIPTEN__)
+        mark_browser_result(false);
+#endif
         return 1;
+    }
 
     nk_init_options options = {};
     options.struct_size = sizeof(options);
@@ -247,6 +263,9 @@ int main() {
     if (nk_init(&options) != NK_OK) {
         std::fprintf(stderr, "could not initialize NativeKit for %s parity test: %s\n", contract.name,
                      nk_last_error());
+#if defined(__EMSCRIPTEN__)
+        mark_browser_result(false);
+#endif
         return 1;
     }
 
@@ -277,5 +296,8 @@ int main() {
     }
 
     nk_shutdown();
+#if defined(__EMSCRIPTEN__)
+    mark_browser_result(valid);
+#endif
     return valid ? 0 : 1;
 }
