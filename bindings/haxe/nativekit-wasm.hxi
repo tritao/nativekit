@@ -1662,7 +1662,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 */
 		NK_MOBILE_HOST_ANDROID_VIEW_GROUP = 1;
 		/**
-		 * iOS UIView container; reserved for the UIKit backend.
+		 * iOS UIView container; requires a caller-owned UIView*.
 		 */
 		NK_MOBILE_HOST_UIKIT_VIEW = 2;
 	}
@@ -2447,7 +2447,9 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 *
 	 * On Android, platform_context is a JNIEnv* and native_view is a local or
 	 * global jobject referring to an android.view.ViewGroup. Both values are used
-	 * only during this call; NativeKit retains its own global reference.
+	 * only during this call; NativeKit retains its own global reference. On iOS,
+	 * native_view is a borrowed UIView* and platform_context must be zero; NativeKit
+	 * retains the view until nk_mobile_host_destroy().
 	 */
 	extern fn nk_mobile_host_attach(options: ptr<const<nk_mobile_host_options>>, out_host: ptr<nk_mobile_host> @out @owned) -> nk_result;
 	/**
@@ -2797,7 +2799,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	extern fn nk_webview_can_go_forward(webview: nk_webview, out_can_go_forward: ptr<nk_bool> @out) -> nk_result;
 	/**
 	 * Creates a native child WebView inside `parent`. Desktop backends accept an
-	 * nk_window parent and Android accepts an nk_mobile_host; zero is accepted
+	 * nk_window parent and mobile hosts accept an nk_mobile_host; zero is accepted
 	 * where the backend supports an unparented WebView. Bounds are logical pixels;
 	 * width and height must be positive. `initial_url` is nullable UTF-8. Creation
 	 * may finish asynchronously; NK_EVENT_WEBVIEW_READY reports when the native
