@@ -106,8 +106,25 @@ int main() {
     }
     assert(started_event && stopped_event);
 
+    nk_audio_bus parent_bus = NK_INVALID_HANDLE;
+    nk_audio_bus_options bus_options{};
+    bus_options.struct_size = sizeof(bus_options);
+    bus_options.parent = NK_INVALID_HANDLE;
+    assert(nk_audio_bus_create(&bus_options, &parent_bus) == NK_OK);
     nk_audio_bus bus = NK_INVALID_HANDLE;
-    assert(nk_audio_bus_create(&bus) == NK_OK);
+    bus_options.parent = parent_bus;
+    assert(nk_audio_bus_create(&bus_options, &bus) == NK_OK);
+    nk_audio_bus queried_parent = NK_INVALID_HANDLE;
+    assert(nk_audio_bus_get_parent(bus, &queried_parent) == NK_OK && queried_parent == parent_bus);
+    assert(nk_audio_bus_set_parent(bus, bus) == NK_ERROR_INVALID_REQUEST);
+    assert(nk_audio_bus_set_parent(bus, NK_INVALID_HANDLE) == NK_OK);
+    assert(nk_audio_bus_get_parent(bus, &queried_parent) == NK_OK &&
+           queried_parent == NK_INVALID_HANDLE);
+    assert(nk_audio_bus_set_parent(bus, parent_bus) == NK_OK);
+    nk_audio_bus grandchild_bus = NK_INVALID_HANDLE;
+    bus_options.parent = bus;
+    assert(nk_audio_bus_create(&bus_options, &grandchild_bus) == NK_OK);
+    assert(nk_audio_bus_set_parent(parent_bus, grandchild_bus) == NK_ERROR_INVALID_REQUEST);
     assert(nk_audio_bus_set_volume(bus, 0.5f) == NK_OK);
     float value = 0;
     assert(nk_audio_bus_get_volume(bus, &value) == NK_OK && value == 0.5f);
@@ -458,7 +475,9 @@ int main() {
 
     assert(nk_audio_set_master_volume(0.75f) == NK_OK);
     assert(nk_audio_get_master_volume(&value) == NK_OK && value == 0.75f);
+    assert(nk_audio_bus_destroy(grandchild_bus) == NK_OK);
     assert(nk_audio_bus_destroy(bus) == NK_OK);
+    assert(nk_audio_bus_destroy(parent_bus) == NK_OK);
     assert(nk_audio_bus_effect_get_type(low_pass, &effect_type) == NK_ERROR_INVALID_HANDLE);
     assert(nk_audio_bus_effect_destroy(low_pass) == NK_ERROR_INVALID_HANDLE);
 

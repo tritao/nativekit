@@ -84,11 +84,13 @@ struct AudioClipResource final : nk::core::Resource {
 
 struct AudioBusResource final : nk::core::Resource {
     std::shared_ptr<AudioEngineResource> engine;
+    std::shared_ptr<AudioBusResource> parent;
     ma_sound_group group{};
     bool initialized = false;
     float volume = 1.0f;
     bool muted = false;
     std::vector<std::shared_ptr<AudioEffectResource>> effects;
+    std::atomic<nk_audio_bus> handle{NK_INVALID_HANDLE};
 
     ~AudioBusResource() override;
 };
@@ -417,7 +419,9 @@ nk_result rebuild_audio_bus_effect_chain(AudioBusResource &bus, const char *mess
             return map_miniaudio_result(result, message);
         source = node;
     }
-    result = ma_node_attach_output_bus(source, 0, ma_engine_get_endpoint(&bus.engine->engine), 0);
+    auto *destination = bus.parent ? static_cast<ma_node *>(&bus.parent->group)
+                                   : ma_engine_get_endpoint(&bus.engine->engine);
+    result = ma_node_attach_output_bus(source, 0, destination, 0);
     return result == MA_SUCCESS ? NK_OK : map_miniaudio_result(result, message);
 }
 
@@ -661,6 +665,16 @@ nk_result voice_options(const nk_audio_voice_options *options, uint32_t &flags,
         return invalid_argument("audio voice options contain unsupported flags");
     flags = options->flags;
     bus = options->bus;
+    return NK_OK;
+}
+
+nk_result bus_options(const nk_audio_bus_options *options, nk_audio_bus &parent) {
+    parent = NK_INVALID_HANDLE;
+    if (!options)
+        return NK_OK;
+    if (options->struct_size < sizeof(nk_audio_bus_options))
+        return invalid_argument("audio bus options are missing or too small");
+    parent = options->parent;
     return NK_OK;
 }
 
@@ -947,6 +961,7 @@ nk_result insert_bus(std::shared_ptr<AudioBusResource> bus, nk_audio_bus *out_bu
         nk::core::set_error("could not allocate an audio bus handle");
         return NK_ERROR_OUT_OF_MEMORY;
     }
+    bus->handle.store(handle, std::memory_order_release);
     *out_bus = handle;
     return NK_OK;
 }
@@ -1414,7 +1429,8 @@ nk_result NK_CALL nk_audio_device_get_state(nk_audio_device_state *out_state) {
         });
 }
 
-nk_result NK_CALL nk_audio_bus_create(nk_audio_bus *out_bus) {
+nk_result NK_CALL nk_audio_bus_create(const nk_audio_bus_options *options,
+                                      nk_audio_bus *out_bus) {
     return nk::core::result_boundary(
         "unexpected error while creating an audio bus", [&]() -> nk_result {
             if (const auto result = enter_audio_ui(); result != NK_OK)
@@ -1422,18 +1438,89 @@ nk_result NK_CALL nk_audio_bus_create(nk_audio_bus *out_bus) {
             if (!out_bus)
                 return invalid_argument("audio bus output is missing");
             *out_bus = NK_INVALID_HANDLE;
+            nk_audio_bus parent_handle = NK_INVALID_HANDLE;
+            if (const auto result = bus_options(options, parent_handle); result != NK_OK)
+                return result;
+            std::shared_ptr<AudioBusResource> parent;
+            if (parent_handle != NK_INVALID_HANDLE) {
+                parent = get_bus(parent_handle);
+                if (!parent)
+                    return NK_ERROR_INVALID_HANDLE;
+            }
             nk_result engine_result = NK_OK;
             auto engine = ensure_engine(engine_result);
             if (!engine)
                 return engine_result;
+            if (parent && parent->engine.get() != engine.get())
+                return invalid_request("audio bus parent belongs to another audio engine");
             auto bus = std::make_shared<AudioBusResource>();
             bus->engine = std::move(engine);
-            const auto result = ma_sound_group_init(&bus->engine->engine, 0, nullptr,
-                                                    &bus->group);
+            bus->parent = std::move(parent);
+            const auto result = ma_sound_group_init(
+                &bus->engine->engine, 0, bus->parent ? &bus->parent->group : nullptr, &bus->group);
             if (result != MA_SUCCESS)
                 return map_miniaudio_result(result, "could not create audio mixer bus");
             bus->initialized = true;
+            if (const auto chain_result = rebuild_audio_bus_effect_chain(
+                    *bus, "could not route audio mixer bus");
+                chain_result != NK_OK)
+                return chain_result;
             return insert_bus(std::move(bus), out_bus);
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_set_parent(nk_audio_bus bus_handle, nk_audio_bus parent_handle) {
+    return nk::core::result_boundary(
+        "unexpected error while reparenting an audio bus", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            auto bus = get_bus(bus_handle);
+            if (!bus)
+                return NK_ERROR_INVALID_HANDLE;
+
+            std::shared_ptr<AudioBusResource> parent;
+            if (parent_handle != NK_INVALID_HANDLE) {
+                if (parent_handle == bus_handle)
+                    return invalid_request("an audio bus cannot be its own parent");
+                parent = get_bus(parent_handle);
+                if (!parent)
+                    return NK_ERROR_INVALID_HANDLE;
+                if (parent->engine.get() != bus->engine.get())
+                    return invalid_request("audio bus parent belongs to another audio engine");
+                for (auto ancestor = parent; ancestor; ancestor = ancestor->parent) {
+                    if (ancestor.get() == bus.get())
+                        return invalid_request("audio bus parent would create a routing cycle");
+                }
+            }
+            if (bus->parent.get() == parent.get())
+                return NK_OK;
+
+            auto previous = std::move(bus->parent);
+            bus->parent = std::move(parent);
+            const auto result = rebuild_audio_bus_effect_chain(
+                *bus, "could not route reparented audio bus");
+            if (result == NK_OK)
+                return NK_OK;
+            bus->parent = std::move(previous);
+            rebuild_audio_bus_effect_chain(*bus, "could not restore audio bus routing");
+            return result;
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_get_parent(nk_audio_bus bus_handle, nk_audio_bus *out_parent) {
+    return nk::core::result_boundary(
+        "unexpected error while getting an audio bus parent", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_parent)
+                return invalid_argument("audio bus parent output is missing");
+            auto bus = get_bus(bus_handle);
+            if (!bus)
+                return NK_ERROR_INVALID_HANDLE;
+            *out_parent = bus->parent
+                              ? bus->parent->handle.load(std::memory_order_acquire)
+                              : NK_INVALID_HANDLE;
+            return NK_OK;
         });
 }
 
@@ -1453,6 +1540,7 @@ nk_result NK_CALL nk_audio_bus_destroy(nk_audio_bus bus) {
         value->effects.clear();
         if (!nk::core::handles().erase(bus, nk::core::ResourceType::audio_bus))
             return invalid_handle("invalid audio bus handle");
+        value->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
         return NK_OK;
     });
 }

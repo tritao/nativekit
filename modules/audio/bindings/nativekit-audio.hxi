@@ -329,9 +329,9 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_bus_clear_schedule(bus: nk_audio_bus) -> nk_result;
 	/**
-	 * Creates an active mixer bus. Voices retain their bus until destroyed.
+	 * Creates an active mixer bus, optionally routed through a parent bus.
 	 */
-	extern fn nk_audio_bus_create(out_bus: ptr<nk_audio_bus> @out @owned) -> nk_result;
+	extern fn nk_audio_bus_create(options: ptr<const<nk_audio_bus_options>>, out_bus: ptr<nk_audio_bus> @out @owned) -> nk_result;
 	/**
 	 * Stops and destroys a mixer bus and its effects, invalidating their handles.
 	 */
@@ -424,6 +424,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_bus_fade_at(bus: nk_audio_bus, volume_begin: f32, volume_end: f32, duration_pcm_frames: u64, absolute_start_time_pcm_frames: u64) -> nk_result;
 	/**
+	 * Returns the live parent bus handle, or NK_INVALID_HANDLE for the master endpoint.
+	 */
+	extern fn nk_audio_bus_get_parent(bus: nk_audio_bus, out_parent: ptr<nk_audio_bus> @out) -> nk_result;
+	/**
 	 * Returns the bus's configured linear gain.
 	 */
 	extern fn nk_audio_bus_get_volume(bus: nk_audio_bus, out_volume: ptr<f32> @out) -> nk_result;
@@ -450,6 +454,11 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Enables or disables the bus mute state without changing its configured gain.
 	 */
 	extern fn nk_audio_bus_set_muted(bus: nk_audio_bus, muted: nk_bool) -> nk_result;
+	/**
+	 * Reparents a mixer bus. NK_INVALID_HANDLE routes it to the master endpoint;
+	 * cycles and buses belonging to another audio engine are rejected.
+	 */
+	extern fn nk_audio_bus_set_parent(bus: nk_audio_bus, parent: nk_audio_bus) -> nk_result;
 	/**
 	 * Sets the bus's linear gain; zero mutes the bus.
 	 */
@@ -916,6 +925,27 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * URI inputs are copied before return. These functions are UI-thread-only.
 	 */
 	extern fn nk_shell_open_resource(resource: ptr<const<nk_resource>>) -> nk_result;
+	/**
+	 * Optional creation settings for one audio mixer bus.
+	 */
+	struct nk_audio_bus_options @layout(32, 8) {
+		/**
+		 * Set to sizeof(nk_audio_bus_options) before passing the structure.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Optional parent bus; NK_INVALID_HANDLE routes the bus to the master endpoint.
+		 */
+		parent: nk_audio_bus @offset(4);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(8);
+		/**
+		 * Reserved for compatible extensions; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(16);
+	}
 	/**
 	 * Configuration applied when NativeKit lazily creates its audio device.
 	 */

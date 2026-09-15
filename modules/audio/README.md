@@ -54,13 +54,20 @@ every notification type, so applications should treat restart as an explicit
 recovery hook rather than assuming every physical device loss is observable.
 
 Sounds and voices are generation-checked NativeKit resources and can be routed
-through generation-checked mixer buses. Each bus supports volume, mute, start,
-and stop controls. The mixer exposes a process-wide PCM-frame clock and sample
-rate. Voices can be scheduled against that clock, and can apply immediate or
-scheduled linear fades. Scheduling a start still requires an explicit
-`nk_audio_voice_start()` call; `nk_audio_voice_clear_schedule()` removes pending
-start, stop, and fade transitions. Audio calls are UI-thread-only; miniaudio
-owns the device and audio callback thread.
+through generation-checked mixer buses. Buses form a directed tree: each bus
+can route through another bus or directly to the master endpoint. A bus's
+volume, mute state, and effects therefore apply to all descendant voices.
+Reparenting rejects cycles and cross-engine buses. Destroying a parent handle
+does not invalidate descendant audio; the shared native parent remains alive
+while descendants still reference it.
+
+Each bus supports volume, mute, start, and stop controls. The mixer exposes a
+process-wide PCM-frame clock and sample rate. Voices can be scheduled against
+that clock, and can apply immediate or scheduled linear fades. Scheduling a
+start still requires an explicit `nk_audio_voice_start()` call;
+`nk_audio_voice_clear_schedule()` removes pending start, stop, and fade
+transitions. Audio calls are UI-thread-only; miniaudio owns the device and
+audio callback thread.
 
 Buses support the same schedule and fade operations for all routed voices. This
 allows music transitions and voice/SFX ducking to be coordinated at the mixer

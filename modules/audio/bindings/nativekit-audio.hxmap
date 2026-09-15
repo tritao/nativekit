@@ -17,6 +17,7 @@
     "nk_audio_bus": "BusHandle",
     "nk_audio_bus_effect": "BusEffectHandle",
     "nk_audio_voice": "VoiceHandle",
+    "nk_audio_bus_options": "NativeBusOptions",
     "nk_audio_device_options": "NativeDeviceOptions",
     "nk_audio_voice_options": "NativeVoiceOptions",
     "nk_audio_vec3": "AudioVector3Value"

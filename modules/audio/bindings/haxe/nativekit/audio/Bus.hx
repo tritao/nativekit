@@ -19,8 +19,14 @@ class Bus {
 		this.value = owned.borrow();
 	}
 
-	public static function create():Bus {
-		var made = NativeKitAudio.nk_audio_bus_create();
+	public static function create(?parent:Bus):Bus {
+		var options = new NativeKitAudio.NativeBusOptions();
+		options.set_struct_size(NativeKitAudio.NativeBusOptions.size());
+		var parentHandle = NativeKitAudio.BusHandle.invalid();
+		if (parent != null)
+			parentHandle = parent.nativeHandle();
+		options.set_parent(parentHandle);
+		var made = NativeKitAudio.nk_audio_bus_create(options);
 		AudioResult.check(made.status, "audio.bus.create");
 		return new Bus(made.out_bus);
 	}
@@ -38,6 +44,24 @@ class Bus {
 	public function stop():Void {
 		ensureLive();
 		AudioResult.check(NativeKitAudio.nk_audio_bus_stop(value), "audio.bus.stop");
+	}
+
+	/** Routes this bus through a parent bus, or directly to the master endpoint. */
+	public function setParent(parent:Null<Bus>):Void {
+		ensureLive();
+		var parentHandle = NativeKitAudio.BusHandle.invalid();
+		if (parent != null)
+			parentHandle = parent.nativeHandle();
+		AudioResult.check(NativeKitAudio.nk_audio_bus_set_parent(value, parentHandle),
+			"audio.bus.setParent");
+	}
+
+	/** Returns whether this bus is routed through a live parent bus handle. */
+	public function hasParent():Bool {
+		ensureLive();
+		var result = NativeKitAudio.nk_audio_bus_get_parent(value);
+		AudioResult.check(result.status, "audio.bus.hasParent");
+		return result.out_parent.rawValue() != 0;
 	}
 
 	/** Schedules the bus to start at an absolute process-wide audio time in PCM frames. */

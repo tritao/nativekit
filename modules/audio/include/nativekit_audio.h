@@ -110,6 +110,18 @@ enum NK_ENUM(nk_audio_positioning) {
 /** Opaque handle for one audio mixer bus. */
 typedef uint32_t nk_audio_bus NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_destroy);
 
+/** Optional creation settings for one audio mixer bus. */
+typedef struct nk_audio_bus_options {
+    /** Set to sizeof(nk_audio_bus_options) before passing the structure. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Optional parent bus; NK_INVALID_HANDLE routes the bus to the master endpoint. */
+    nk_audio_bus parent;
+    /** Reserved; set to zero. */
+    uint32_t reserved;
+    /** Reserved for compatible extensions; set all elements to zero. */
+    uint64_t reserved2[2];
+} nk_audio_bus_options;
+
 /** Opaque handle for one effect inserted into an audio mixer bus. */
 typedef uint32_t nk_audio_bus_effect NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_effect_destroy);
 
@@ -223,10 +235,19 @@ NKAUDIO_API nk_result NK_CALL nk_audio_device_restart(void);
 NKAUDIO_API nk_result NK_CALL nk_audio_device_get_state(
     nk_audio_device_state *out_state NK_OUT);
 
-/** Creates an active mixer bus. Voices retain their bus until destroyed. */
-NKAUDIO_API nk_result NK_CALL nk_audio_bus_create(nk_audio_bus *out_bus NK_OUT NK_OWNED);
+/** Creates an active mixer bus, optionally routed through a parent bus. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_create(
+    const nk_audio_bus_options *options, nk_audio_bus *out_bus NK_OUT NK_OWNED);
 /** Stops and destroys a mixer bus and its effects, invalidating their handles. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_destroy(nk_audio_bus bus);
+/**
+ * Reparents a mixer bus. NK_INVALID_HANDLE routes it to the master endpoint;
+ * cycles and buses belonging to another audio engine are rejected.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_set_parent(nk_audio_bus bus, nk_audio_bus parent);
+/** Returns the live parent bus handle, or NK_INVALID_HANDLE for the master endpoint. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_get_parent(
+    nk_audio_bus bus, nk_audio_bus *out_parent NK_OUT);
 /** Starts all voices routed through the bus. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_start(nk_audio_bus bus);
 /** Stops all voices routed through the bus without destroying them. */

@@ -55,6 +55,7 @@ class AudioSmoke {
 		var lowPass:BusEffect = null;
 		var highPass:BusEffect = null;
 		var delay:BusEffect = null;
+		var parentBus:Bus = null;
 		var clip:Clip = null;
 		var first:Voice = null;
 		var second:Voice = null;
@@ -126,7 +127,16 @@ class AudioSmoke {
 			if (sampleRate <= 0)
 				throw "Haxe audio sample rate was invalid";
 			var nowFrames = Mixer.timeFrames();
-			bus = Bus.create();
+			parentBus = Bus.create();
+			bus = Bus.create(parentBus);
+			if (!bus.hasParent())
+				throw "Haxe audio bus did not retain its parent";
+			bus.setParent(null);
+			if (bus.hasParent())
+				throw "Haxe audio bus did not detach from its parent";
+			bus.setParent(parentBus);
+			if (!bus.hasParent())
+				throw "Haxe audio bus did not reattach to its parent";
 			bus.setVolume(0.5);
 			if (bus.volume() != 0.5)
 				throw "Haxe audio bus volume did not round-trip";
@@ -281,6 +291,8 @@ class AudioSmoke {
 			completion = null;
 			bus.dispose();
 			bus = null;
+			parentBus.dispose();
+			parentBus = null;
 			if (!lowPass.isDisposed())
 				throw "Haxe audio bus did not release its child effect";
 			lowPass = null;
@@ -303,6 +315,8 @@ class AudioSmoke {
 				clip.dispose();
 			if (bus != null)
 				bus.dispose();
+			if (parentBus != null)
+				parentBus.dispose();
 			runtime.dispose();
 			throw error;
 		}
