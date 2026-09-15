@@ -107,6 +107,7 @@ cases=(
     "ui-gestures|1200x800|uiVisual=11||"
     "ui-lists-light|1200x800|uiVisual=12||"
     "ui-textarea-selection|1200x800|uiVisual=13||"
+    "ui-text-composition|1200x800|uiVisual=23||"
     "ui-menu-light|1200x800|uiVisual=14||"
     "ui-graphics|1200x800|uiVisual=15||"
     "ui-overview-compact|700x800|uiVisual=16||"
