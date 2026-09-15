@@ -111,13 +111,21 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 | macOS | Windows, WebView, path and resource dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export | Native wrapping |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility | — |
 | iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, shell, appearance, notifications, resource I/O, accessibility | Drag/drop, resource sharing, joystick |
-| Web | Window, geometry, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, resource sharing via Web Share API, resource I/O, accessibility | Styling, dialogs, shell, appearance, notifications, joystick |
+| Web | Window, geometry, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility | Styling, path-based dialogs |
 
 The current Windows joystick adapter uses XInput's standard gamepad model,
 including hotplug and normalized canonical state. The current macOS adapter
 uses GameController's extended and micro gamepad models. Generic HID joystick
 enumeration remains a separate follow-up from these platform-native gamepad
 equivalents and must not be silently treated as complete parity.
+
+The Web equivalents are browser-mediated: `window.open` handles URI shell
+opening, `matchMedia` supplies appearance, the Notifications API supplies
+notifications, the File System Access API or `<input type=file>` supplies
+resource selection, and the Gamepad API supplies controller state. These APIs
+can require a user activation, a permission grant, or a secure context. Web
+path-based dialogs remain deferred because a browser cannot safely expose a
+process-local filesystem path through this URI-first API.
 
 The baseline is guarded by `platform_parity` in CTest. It checks that:
 

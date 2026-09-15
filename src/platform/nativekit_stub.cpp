@@ -149,12 +149,12 @@ nk_result NK_CALL nk_dialog_message(nk_handle, const nk_message_dialog_options *
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS) && !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_dialog_cancel(nk_request_id) {
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS) && !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_shell_open_url(const char *) {
     return unsupported();
 }
@@ -167,7 +167,7 @@ nk_result NK_CALL nk_shell_reveal_file(const char *) {
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS) && !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_shell_open_resource(const nk_resource *) {
     return unsupported();
 }
@@ -183,7 +183,7 @@ nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *) {
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS) && !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_dialog_open_resource(nk_handle, const nk_file_dialog_options *,
                                           nk_request_id *) {
     return unsupported();
@@ -204,6 +204,8 @@ nk_result NK_CALL nk_system_directory(nk_system_directory_kind, char *, uint32_t
 nk_result NK_CALL nk_system_locale(char *, uint32_t *) {
     return unsupported();
 }
+#endif
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS) && !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *) {
     return unsupported();
 }
@@ -233,7 +235,7 @@ nk_result NK_CALL nk_window_set_drop_enabled(nk_handle, uint32_t) {
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS) && !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_notification_show(const nk_notification_options *, nk_request_id *) {
     return unsupported();
 }
