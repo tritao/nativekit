@@ -123,11 +123,11 @@ class InspectionOverlay {
 			return;
 		var edge = Math.min(2.0, Math.min((right - left) * 0.5, (bottom - top) * 0.5));
 		var outline = UiExplorer.color(0.29, 0.92, 0.72, 0.95);
-		canvas.fillRect(new Rect(left, top, right - left, edge), outline);
-		canvas.fillRect(new Rect(left, bottom - edge, right - left, edge), outline);
-		canvas.fillRect(new Rect(left, top + edge, edge,
+		canvas.fillRectIfPositive(new Rect(left, top, right - left, edge), outline);
+		canvas.fillRectIfPositive(new Rect(left, bottom - edge, right - left, edge), outline);
+		canvas.fillRectIfPositive(new Rect(left, top + edge, edge,
 			Math.max(0.0, bottom - top - 2.0 * edge)), outline);
-		canvas.fillRect(new Rect(right - edge, top + edge, edge,
+		canvas.fillRectIfPositive(new Rect(right - edge, top + edge, edge,
 			Math.max(0.0, bottom - top - 2.0 * edge)), outline);
 	}
 

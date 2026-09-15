@@ -47,12 +47,11 @@ class ProgressBar implements View {
 			node.semantics = semantics;
 			node.onPaint(function(canvas, geometry) {
 				var fraction = (value - minimum) / (maximum - minimum);
-				canvas.fillRect(new Rect(0.0, 0.0, geometry.width, geometry.height),
+				canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, geometry.height),
 					Color.rgba(0.19, 0.21, 0.25, 1.0));
 				var fillWidth = geometry.width * fraction;
-				if (fillWidth > 0.0)
-					canvas.fillRect(new Rect(0.0, 0.0, fillWidth, geometry.height),
-						Color.rgba(0.22, 0.52, 0.84, 1.0));
+				canvas.fillRectIfPositive(new Rect(0.0, 0.0, fillWidth, geometry.height),
+					Color.rgba(0.22, 0.52, 0.84, 1.0));
 			});
 			return node;
 		});

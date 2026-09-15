@@ -417,7 +417,7 @@ class TextField implements View {
 		if (editor.selectionStart != editor.selectionEnd) {
 			canvas.translate(0.0, -editor.scrollOffsetY);
 			for (rect in editor.layout.selectionRects(editor.anchorPosition(), editor.focusPosition()))
-				canvas.fillRect(rect, Color.rgba(0.2, 0.43, 0.82, 0.55));
+				canvas.fillRectIfPositive(rect, Color.rgba(0.2, 0.43, 0.82, 0.55));
 		}
 	}
 
@@ -426,7 +426,7 @@ class TextField implements View {
 			canvas.translate(0.0, -editor.scrollOffsetY);
 		if (editor.compositionStart >= 0 && editor.compositionStart != editor.compositionEnd) {
 			for (rect in editor.compositionRects())
-				canvas.fillRect(new Rect(rect.x, rect.y + rect.height - 1.0, rect.width, 1.0),
+				canvas.fillRectIfPositive(new Rect(rect.x, rect.y + rect.height - 1.0, rect.width, 1.0),
 					Color.rgba(0.95, 0.75, 0.24, 1.0));
 		}
 		if (editor.focused && editor.selectionStart == editor.selectionEnd) {
@@ -438,7 +438,7 @@ class TextField implements View {
 			var x = Math.min(topX, bottomX);
 			var y = Math.min(topY, bottomY);
 			var height = Math.max(1.0, absolute(bottomY - topY));
-			canvas.fillRect(new Rect(x, y, Math.max(1.0, absolute(bottomX - topX)), height),
+			canvas.fillRectIfPositive(new Rect(x, y, Math.max(1.0, absolute(bottomX - topX)), height),
 				Color.rgba(0.96, 0.97, 0.99, 1.0));
 		}
 	}

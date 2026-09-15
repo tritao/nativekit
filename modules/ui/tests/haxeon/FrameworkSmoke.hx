@@ -1196,6 +1196,18 @@ class FrameworkSmoke {
 		if (accessibilityResult != 0)
 			return 120 + accessibilityResult;
 
+		var degenerateCanvas = new Canvas();
+		var degenerateList = DisplayList.create();
+		if (degenerateCanvas.fillRectIfPositive(new Rect(0.0, 0.0, 0.0, 4.0),
+			Color.rgba(0.2, 0.4, 0.8, 0.5)) ||
+			degenerateCanvas.fillRectIfPositive(new Rect(0.0, 0.0, 4.0, -1.0),
+			Color.rgba(0.2, 0.4, 0.8, 0.5)))
+			return 107;
+		degenerateCanvas.update(degenerateList);
+		if (degenerateList.info().commandCount != 0)
+			return 108;
+		degenerateList.dispose();
+
 		var overlayCanvas = new Canvas();
 		var overlayList = DisplayList.create();
 		overlayCanvas.fillRect(new Rect(2.0, 3.0, 12.0, 8.0), Color.rgba(0.2, 0.4, 0.8, 0.5));

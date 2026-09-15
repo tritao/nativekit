@@ -123,9 +123,10 @@ class TextPage {
 		var composition = diagnostics.compositionStart < 0
 			? "none"
 			: '${diagnostics.compositionStart}..${diagnostics.compositionEnd}';
-		var caretRect = diagnostics.caretRect == null ? "unresolved" :
-			'${Std.int(diagnostics.caretRect.x)}, ${Std.int(diagnostics.caretRect.y)} '
-			+ '${Std.int(diagnostics.caretRect.width)} × ${Std.int(diagnostics.caretRect.height)}';
+		var caret = diagnostics.caretRect;
+		var caretRect = caret == null ? "unresolved" :
+			'${Std.int(caret.x)}, ${Std.int(caret.y)} '
+			+ '${Std.int(caret.width)} × ${Std.int(caret.height)}';
 		return 'Focused editor: ${diagnostics.label}\n'
 			+ 'Selection: ${diagnostics.selectionStart}..${diagnostics.selectionEnd}\n'
 			+ 'Caret offset: ${diagnostics.caretOffset}\n'

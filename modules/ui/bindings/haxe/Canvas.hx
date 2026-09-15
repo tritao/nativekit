@@ -162,6 +162,14 @@ class Canvas {
 		}
 	}
 
+	/** Adds a filled rectangle when its bounds and color are valid. */
+	public function fillRectIfPositive(rect:Rect, color:Color):Bool {
+		if (rect == null || color == null || rect.width <= 0.0 || rect.height <= 0.0)
+			return false;
+		fillRect(rect, color);
+		return true;
+	}
+
 	public function drawImage(image:Image, rect:Rect):Void
 		commands.drawImage(image, rect.x, rect.y, rect.width, rect.height);
 

@@ -168,6 +168,7 @@ class UiContext {
 		diagnosticStage = 22;
 		root.walk(function(node) {
 			if (!node.hasPaintHandler() || node.resolved == null ||
+				node.resolved.width <= 0.0 || node.resolved.height <= 0.0 ||
 				node.resolved.clipBounds.width <= 0.0 || node.resolved.clipBounds.height <= 0.0)
 				return;
 			var nodeId = node.id.value;
