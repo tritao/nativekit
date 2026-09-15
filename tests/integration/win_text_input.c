@@ -303,7 +303,12 @@ int main(void) {
         return skip_test(window, hwnd, context);
     const BOOL conversion_set = ImmSetConversionStatus(
         context, IME_CMODE_NATIVE | IME_CMODE_ROMAN, IME_SMODE_NONE);
-    fprintf(stderr, "win_text_input: conversion_set=%d\n", conversion_set ? 1 : 0);
+    DWORD conversion = 0;
+    DWORD sentence = 0;
+    const BOOL conversion_read = ImmGetConversionStatus(context, &conversion, &sentence);
+    fprintf(stderr, "win_text_input: conversion_set=%d open=%d read=%d mode=0x%08lx sentence=0x%08lx\n",
+            conversion_set ? 1 : 0, ImmGetOpenStatus(context) ? 1 : 0,
+            conversion_read ? 1 : 0, (unsigned long)conversion, (unsigned long)sentence);
     int composition_supported = 0;
     if (ime_profile && conversion_set && send_ime_roman("KANJI")) {
         nk_event compose = {0};
