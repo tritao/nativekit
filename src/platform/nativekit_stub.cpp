@@ -152,21 +152,25 @@ nk_result NK_CALL nk_dialog_cancel(nk_request_id) {
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_shell_open_url(const char *) {
     return unsupported();
 }
 #endif
+#if !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_shell_open_file(const char *) {
     return unsupported();
 }
 nk_result NK_CALL nk_shell_reveal_file(const char *) {
     return unsupported();
 }
-#if !defined(NK_STUB_ANDROID)
+#endif
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_shell_open_resource(const nk_resource *) {
     return unsupported();
 }
+#endif
+#if !defined(NK_STUB_ANDROID)
 nk_result NK_CALL nk_share(const nk_share_options *) {
     return unsupported();
 }
@@ -200,22 +204,26 @@ nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *) {
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_WEB)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_WEB) && !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_clipboard_set_text(const char *) {
     return unsupported();
 }
 #endif
+#if !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_clipboard_set_files(const char *const *, uint32_t) {
     return unsupported();
 }
-#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_WEB)
+#endif
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_WEB) && !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_clipboard_read_text(nk_request_id *) {
     return unsupported();
 }
 #endif
+#if !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_clipboard_read_files(nk_request_id *) {
     return unsupported();
 }
+#endif
 nk_result NK_CALL nk_window_set_drop_enabled(nk_handle, uint32_t) {
     return unsupported();
 }

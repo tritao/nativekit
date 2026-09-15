@@ -507,6 +507,15 @@ directory; documents and downloads use their app-specific external directories.
 Desktop is unsupported. Locale and appearance follow the attached host's current
 configuration, including per-app locale and day/night changes.
 
+iOS directory queries use the application sandbox: home, documents, cache,
+configuration, data, and temporary storage are available, while desktop and
+downloads have no meaningful iOS equivalent. URI and file shell requests are
+submitted through `UIApplication`; revealing a file uses the installed document
+handler because iOS has no user-visible containing-folder browser. Clipboard
+reads still complete through the asynchronous NativeKit event model even though
+`UIPasteboard` provides the value synchronously. Appearance uses the attached
+host view's trait collection and iOS's darker-system-colors accessibility setting.
+
 Incoming Android resources retain their `content://` URI identity. Decode
 individual resources in either incoming event with `nk_resource_event_item()`;
 do not treat the URI as a filesystem path. A share may contain zero or more
@@ -555,6 +564,11 @@ Shell operations submit work to the desktop on the UI thread. Reveal first uses
 the freedesktop file-manager interface and falls back to opening the containing
 directory when that interface is unavailable.
 
+On iOS, shell operations submit URL and file requests to `UIApplication` on the
+UI thread. A file reveal is the platform-specific equivalent of opening the
+file with its registered document handler; iOS does not expose a Finder-like
+filesystem browser.
+
 Standard directories and locale queries are initialization-independent and may
 be called from any thread. They use a two-call buffer convention: query the size
 including NUL, allocate, then call again. A short buffer is never partially filled.
@@ -569,6 +583,10 @@ decoded with `nk_clipboard_event_file()`.
 Windows opt into drops explicitly. Drop event data starts with `nk_drop_data`,
 including logical window coordinates, followed by strings decoded through
 `nk_drop_event_item()`. Only local file URIs are emitted as file drops.
+
+iOS clipboard text and local file URLs use `UIPasteboard`. Clipboard file reads
+return local paths through the same `nk_clipboard_files` payload; drag/drop is a
+separate deferred capability because host view drop routing is not yet exposed.
 
 ## Dialog results
 

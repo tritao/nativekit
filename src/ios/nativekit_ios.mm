@@ -1,6 +1,9 @@
+#include "nativekit_clipboard.h"
 #include "nativekit_mobile.h"
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
+#include "nativekit_resource.h"
+#include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
 
@@ -277,6 +280,79 @@ bool valid_utf8(const char *value) {
 std::vector<std::byte> text_bytes(const std::string &value) {
     const auto *begin = reinterpret_cast<const std::byte *>(value.data());
     return {begin, begin + value.size()};
+}
+
+template <typename Header>
+std::vector<std::byte> string_list_payload(Header header, const std::vector<std::string> &strings,
+                                           uint32_t Header::*offset_member) {
+    header.*offset_member = sizeof(Header);
+    std::size_t total = sizeof(Header);
+    for (const auto &value : strings)
+        total += value.size() + 1;
+    std::vector<std::byte> result(total);
+    std::memcpy(result.data(), &header, sizeof(header));
+    std::size_t cursor = sizeof(Header);
+    for (const auto &value : strings) {
+        std::memcpy(result.data() + cursor, value.c_str(), value.size() + 1);
+        cursor += value.size() + 1;
+    }
+    return result;
+}
+
+nk_result ios_fail(nk_result result, const char *message) {
+    nk::core::set_error(message);
+    return result;
+}
+
+nk_result copy_output(NSString *value, char *buffer, uint32_t *inout_size) {
+    if (!value || !inout_size)
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "invalid string output arguments");
+    const auto result = utf8_string(value);
+    if (result.size() >= std::numeric_limits<uint32_t>::max())
+        return ios_fail(NK_ERROR_UNKNOWN, "system string is too large");
+    const auto required = static_cast<uint32_t>(result.size() + 1);
+    const auto capacity = *inout_size;
+    *inout_size = required;
+    if (!buffer || capacity < required)
+        return ios_fail(NK_ERROR_BUFFER_TOO_SMALL, "output buffer is too small");
+    std::memcpy(buffer, result.c_str(), required);
+    return NK_OK;
+}
+
+NSString *ios_system_directory_path(nk_system_directory_kind kind) {
+    switch (kind) {
+    case NK_DIRECTORY_HOME:
+        return NSHomeDirectory();
+    case NK_DIRECTORY_TEMP:
+        return NSTemporaryDirectory();
+    case NK_DIRECTORY_DOCUMENTS:
+        return [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)
+            firstObject];
+    case NK_DIRECTORY_CACHE:
+        return [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES)
+            firstObject];
+    case NK_DIRECTORY_CONFIG:
+        return [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES)
+            firstObject];
+    case NK_DIRECTORY_DATA:
+        return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,
+                                                     NSUserDomainMask, YES)
+            firstObject];
+    case NK_DIRECTORY_DESKTOP:
+    case NK_DIRECTORY_DOWNLOADS:
+    default:
+        return nil;
+    }
+}
+
+nk_result open_ios_url(NSURL *url) {
+    if (!url || !url.scheme.length)
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "URL must contain a valid URI scheme");
+    UIApplication *application = UIApplication.sharedApplication;
+    if (!application)
+        return ios_fail(NK_ERROR_UNSUPPORTED, "iOS application services are unavailable");
+    [application openURL:url options:@{} completionHandler:nil];
+    return NK_OK;
 }
 
 NSString *javascript_json_wrapper(NSString *source) {
@@ -2777,11 +2853,198 @@ nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t ac
         });
 }
 
+nk_result NK_CALL nk_shell_open_url(const char *url) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (!valid_utf8(url))
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "URL is not valid UTF-8");
+    NSString *value = native_string(url);
+    NSURL *native = value ? [NSURL URLWithString:value] : nil;
+    return open_ios_url(native);
+}
+
+nk_result NK_CALL nk_shell_open_file(const char *path) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (!valid_utf8(path))
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "file path is not valid UTF-8");
+    NSString *value = native_string(path);
+    if (!value.length)
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "file path must not be empty");
+    if (![value isAbsolutePath])
+        value = [NSFileManager.defaultManager.currentDirectoryPath
+            stringByAppendingPathComponent:value];
+    return open_ios_url([NSURL fileURLWithPath:value.stringByStandardizingPath]);
+}
+
+nk_result NK_CALL nk_shell_reveal_file(const char *path) {
+    // iOS has no user-visible filesystem browser. Opening the file through the
+    // installed document handler is the closest platform-level equivalent.
+    return nk_shell_open_file(path);
+}
+
+nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (!resource || resource->struct_size < sizeof(*resource) || !resource->uri ||
+        !*resource->uri || !valid_utf8(resource->uri) || !valid_utf8(resource->mime_type) ||
+        !valid_utf8(resource->display_name))
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "resource descriptor is invalid");
+    return nk_shell_open_url(resource->uri);
+}
+
+nk_result NK_CALL nk_system_directory(nk_system_directory_kind kind, char *buffer,
+                                      uint32_t *inout_size) {
+    nk::core::clear_error();
+    NSString *path = ios_system_directory_path(kind);
+    if (!path)
+        return ios_fail(NK_ERROR_UNSUPPORTED, "system directory is unavailable on iOS");
+    return copy_output(path, buffer, inout_size);
+}
+
+nk_result NK_CALL nk_system_locale(char *buffer, uint32_t *inout_size) {
+    nk::core::clear_error();
+    return copy_output(NSLocale.currentLocale.localeIdentifier, buffer, inout_size);
+}
+
+nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (!appearance || appearance->struct_size < sizeof(*appearance))
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "appearance output is missing or too small");
+    const uint32_t size = appearance->struct_size;
+    *appearance = {};
+    appearance->struct_size = size;
+    if (@available(iOS 12.0, *)) {
+        UIUserInterfaceStyle style = UIUserInterfaceStyleUnspecified;
+        for (const auto &[handle, resource] : hosts) {
+            (void)handle;
+            if (resource->view) {
+                style = resource->view.traitCollection.userInterfaceStyle;
+                break;
+            }
+        }
+        if (style == UIUserInterfaceStyleUnspecified) {
+            if (@available(iOS 13.0, *)) {
+                for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+                    if ([scene isKindOfClass:[UIWindowScene class]]) {
+                        style = ((UIWindowScene *)scene).traitCollection.userInterfaceStyle;
+                        if (style != UIUserInterfaceStyleUnspecified)
+                            break;
+                    }
+                }
+            }
+        }
+        appearance->color_scheme = style == UIUserInterfaceStyleDark
+                                        ? NK_COLOR_SCHEME_DARK
+                                        : style == UIUserInterfaceStyleLight
+                                              ? NK_COLOR_SCHEME_LIGHT
+                                              : NK_COLOR_SCHEME_UNKNOWN;
+    }
+    appearance->high_contrast = UIAccessibilityIsDarkerSystemColorsEnabled() ? 1u : 0u;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_clipboard_set_text(const char *text) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (!text)
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "clipboard text must not be null");
+    NSString *value = native_string(text);
+    if (!value)
+        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "clipboard text is not valid UTF-8");
+    UIPasteboard.generalPasteboard.string = value;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_clipboard_set_files(const char *const *paths, uint32_t path_count) {
+    return nk::core::result_boundary(
+        "unexpected error while writing iOS clipboard files", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            if (!paths || !path_count)
+                return ios_fail(NK_ERROR_INVALID_ARGUMENT, "clipboard file list must not be empty");
+            NSMutableArray<NSURL *> *urls = [NSMutableArray arrayWithCapacity:path_count];
+            for (uint32_t index = 0; index < path_count; ++index) {
+                if (!valid_utf8(paths[index]))
+                    return ios_fail(NK_ERROR_INVALID_ARGUMENT,
+                                    "clipboard file path is not valid UTF-8");
+                NSString *path = native_string(paths[index]);
+                if (!path.length)
+                    return ios_fail(NK_ERROR_INVALID_ARGUMENT, "clipboard file path is empty");
+                if (![path isAbsolutePath])
+                    path = [NSFileManager.defaultManager.currentDirectoryPath
+                        stringByAppendingPathComponent:path];
+                [urls addObject:[NSURL fileURLWithPath:path.stringByStandardizingPath]];
+            }
+            UIPasteboard.generalPasteboard.URLs = urls;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while reading iOS clipboard text", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            if (!out_request)
+                return ios_fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+            *out_request = NK_INVALID_REQUEST_ID;
+            const auto request = nk::core::next_request_id();
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_CLIPBOARD_TEXT_COMPLETE;
+            event.request_id = request;
+            event.data = text_bytes(utf8_string(UIPasteboard.generalPasteboard.string));
+            const auto result = nk::core::push_event(std::move(event));
+            if (result != NK_OK)
+                return ios_fail(result, "could not queue iOS clipboard text result");
+            *out_request = request;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while reading iOS clipboard files", [&]() -> nk_result {
+            nk::core::clear_error();
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            if (!out_request)
+                return ios_fail(NK_ERROR_INVALID_ARGUMENT, "clipboard request output is null");
+            *out_request = NK_INVALID_REQUEST_ID;
+            std::vector<std::string> paths;
+            for (NSURL *url in UIPasteboard.generalPasteboard.URLs ?: @[]) {
+                if (!url.isFileURL || !url.path.length)
+                    continue;
+                paths.push_back(utf8_string(url.path));
+            }
+            const auto request = nk::core::next_request_id();
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_CLIPBOARD_FILES_COMPLETE;
+            event.request_id = request;
+            event.data_count = static_cast<uint32_t>(paths.size());
+            nk_clipboard_files header{static_cast<uint32_t>(paths.size()), 0};
+            event.data = string_list_payload(header, paths, &nk_clipboard_files::strings_offset);
+            const auto result = nk::core::push_event(std::move(event));
+            if (result != NK_OK)
+                return ios_fail(result, "could not queue iOS clipboard file result");
+            *out_request = request;
+            return NK_OK;
+        });
+}
+
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_SYSTEM_INFO |
            NK_CAP_METAL_SURFACE | NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
            NK_CAP_KEEP_AWAKE | NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_INPUT |
-           NK_CAP_WEBVIEW |
+           NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
            nk::core::optional_capabilities();
 }
 }
