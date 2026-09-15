@@ -25,6 +25,7 @@ needs explicitly.
 | `budouxc` | East Asian word boundaries |
 | `nanovg` | UI path construction and tessellation |
 | `haxeon` | Optional Haxe compiler and WebAssembly toolchain |
+| `miniaudio` | Cross-platform audio device and playback implementation |
 
 Initialize Haxeon when working on its bindings or browser integration:
 

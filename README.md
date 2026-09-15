@@ -109,8 +109,8 @@ git clone https://github.com/tritao/nativekit.git
 cd nativekit
 ```
 
-The optional GPU and UI modules use pinned Git submodules. Initialize them
-only when building those modules:
+The optional GPU, UI, and audio modules use pinned Git submodules. Initialize
+them only when building those modules:
 
 ```sh
 git submodule update --init
@@ -139,7 +139,8 @@ links to the stripped libraries. The current native UI loadable-size budget is
 Experimental higher-level modules live in the same repository but remain
 optional so the core platform library stays compact. Enable the low-level GPU
 module with `-DNK_BUILD_GPU=ON`, or the retained UI module with
-`-DNK_BUILD_UI=ON` (which also builds its GPU dependency). HTTP networking is
+`-DNK_BUILD_UI=ON` (which also builds its GPU dependency), or the miniaudio
+playback module with `-DNK_BUILD_AUDIO=ON`. HTTP networking is
 part of the main NativeKit library and is available as a runtime capability.
 On Linux, opt into the system libcurl backend with
 `-DNK_USE_SYSTEM_CURL=ON`; when curl is unavailable, the API remains present
@@ -154,6 +155,9 @@ caches for static or mostly static trees. See the [UI module guide](modules/ui/R
 for the layout/style contract, cache invalidation rules, and framework test
 commands. The [UI Explorer guide](modules/ui/examples/ui_showcase/README.md)
 covers the interactive showcase and visual checks.
+
+The audio module's architecture and build notes live in
+[`modules/audio/README.md`](modules/audio/README.md).
 
 ### Web / WASM preview
 

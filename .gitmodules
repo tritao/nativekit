@@ -28,3 +28,6 @@
 	url = https://github.com/tritao/haxeon.git
 	update = none
 	shallow = true
+[submodule "vendor/miniaudio"]
+	path = vendor/miniaudio
+	url = https://github.com/mackron/miniaudio.git

@@ -28,7 +28,9 @@ enum class ResourceType : std::uint8_t {
     http_stream,
     plugin,
     menu,
-    menu_item
+    menu_item,
+    audio_engine,
+    audio_sound
 };
 
 struct Resource {
