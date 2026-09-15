@@ -75,7 +75,7 @@ int main(void) {
     id<NSTextInputClient> input_view =
         (__bridge id<NSTextInputClient>)(void *)native.view;
 
-    const char initial_text[] = "A\xF0\x9F\x98\x80\xE6\x97\xA5\xE6\x9C\AC";
+    const char initial_text[] = "A\xF0\x9F\x98\x80\xE6\x97\xA5\xE6\x9C\xAC";
     nk_text_input_state state = {0};
     state.struct_size = sizeof(state);
     state.text = initial_text;
@@ -98,7 +98,7 @@ int main(void) {
     verify_edit(&compose, NK_TEXT_EDIT_COMPOSE, 1, 2, 3, 3, 1, 3, "かな");
     nk_event_release(&compose);
 
-    const char composed_text[] = "A\xE3\x81\x8B\xE3\x81\AA\xE6\x97\A5\xE6\x9C\AC";
+    const char composed_text[] = "A\xE3\x81\x8B\xE3\x81\xAA\xE6\x97\xA5\xE6\x9C\xAC";
     state.text = composed_text;
     state.document_length = 5;
     state.selection_start = 3;
@@ -110,25 +110,44 @@ int main(void) {
     assert(NSEqualRanges([input_view markedRange], NSMakeRange(1, 2)));
     assert(NSEqualRanges([input_view selectedRange], NSMakeRange(3, 0)));
 
+    [input_view setMarkedText:@"かなじ"
+                 selectedRange:NSMakeRange(3, 0)
+              replacementRange:NSMakeRange(1, 2)];
+    nk_event compose_update = wait_for_edit(window, NK_TEXT_EDIT_COMPOSE);
+    verify_edit(&compose_update, NK_TEXT_EDIT_COMPOSE, 1, 3, 4, 4, 1, 4, "かなじ");
+    nk_event_release(&compose_update);
+
+    const char updated_text[] = "A\xE3\x81\x8B\xE3\x81\xAA\xE3\x81\x98\xE6\x97\xA5\xE6\x9C\xAC";
+    state.text = updated_text;
+    state.document_length = 6;
+    state.selection_start = 4;
+    state.selection_end = 4;
+    state.composition_start = 1;
+    state.composition_end = 4;
+    assert(nk_surface_set_text_input_state(window, &state) == NK_OK);
+    assert([input_view hasMarkedText]);
+    assert(NSEqualRanges([input_view markedRange], NSMakeRange(1, 3)));
+    assert(NSEqualRanges([input_view selectedRange], NSMakeRange(4, 0)));
+
     NSRange actual_range = NSMakeRange(NSNotFound, 0);
     NSRect caret_rect =
-        [input_view firstRectForCharacterRange:NSMakeRange(3, 0) actualRange:&actual_range];
-    assert(actual_range.location == 3 && actual_range.length == 0);
+        [input_view firstRectForCharacterRange:NSMakeRange(4, 0) actualRange:&actual_range];
+    assert(actual_range.location == 4 && actual_range.length == 0);
     assert(caret_rect.size.width > 0.0 && caret_rect.size.height > 0.0);
 
     [input_view unmarkText];
     nk_event cancel = wait_for_edit(window, NK_TEXT_EDIT_FINISH_COMPOSITION);
     verify_edit(&cancel, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
-                NK_TEXT_POSITION_NONE, 3, 3, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, "");
+                NK_TEXT_POSITION_NONE, 4, 4, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, "");
     nk_event_release(&cancel);
     assert(![input_view hasMarkedText]);
 
     state.composition_start = NK_TEXT_POSITION_NONE;
     state.composition_end = NK_TEXT_POSITION_NONE;
     assert(nk_surface_set_text_input_state(window, &state) == NK_OK);
-    [input_view insertText:@"終" replacementRange:NSMakeRange(5, 0)];
+    [input_view insertText:@"終" replacementRange:NSMakeRange(6, 0)];
     nk_event commit = wait_for_edit(window, NK_TEXT_EDIT_COMMIT);
-    verify_edit(&commit, NK_TEXT_EDIT_COMMIT, 5, 5, 6, 6, NK_TEXT_POSITION_NONE,
+    verify_edit(&commit, NK_TEXT_EDIT_COMMIT, 6, 6, 7, 7, NK_TEXT_POSITION_NONE,
                 NK_TEXT_POSITION_NONE, "終");
     nk_event_release(&commit);
 
