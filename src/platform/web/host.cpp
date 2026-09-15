@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <utility>
 
 #ifndef NK_WEB_CANVAS_SELECTOR
@@ -31,6 +32,10 @@ void *frame_user_data = nullptr;
 bool frame_loop_active = false;
 int32_t requested_width = 300;
 int32_t requested_height = 150;
+
+constexpr int k_appearance_supported = 1;
+constexpr int k_appearance_dark = 1 << 1;
+constexpr int k_appearance_high_contrast = 1 << 2;
 
 uint32_t modifiers(const EmscriptenKeyboardEvent &event) {
     uint32_t result = 0;
@@ -415,6 +420,204 @@ EM_JS(void, nk_web_fetch_resource, (const char *uri, double request), {
     }
 });
 
+EM_JS(int, nk_web_display_orientation_supported, (), {
+    return typeof screen !== "undefined" && !!screen.orientation &&
+                   typeof screen.orientation.addEventListener === "function"
+               ? 1
+               : 0;
+});
+
+EM_JS(int, nk_web_get_display_orientation,
+      (int unknown, int portrait, int portrait_upside_down, int landscape_left,
+       int landscape_right), {
+          if (typeof screen === "undefined" || !screen.orientation)
+              return unknown;
+          const orientation = screen.orientation;
+          const type = typeof orientation.type === "string" ? orientation.type : "";
+          if (type === "portrait-primary")
+              return portrait;
+          if (type === "portrait-secondary")
+              return portrait_upside_down;
+          if (type === "landscape-primary")
+              return landscape_left;
+          if (type === "landscape-secondary")
+              return landscape_right;
+
+          const angle = Number(orientation.angle);
+          if (!Number.isFinite(angle))
+              return unknown;
+          const normalized = ((angle % 360) + 360) % 360;
+          if (normalized === 0)
+              return portrait;
+          if (normalized === 90)
+              return landscape_left;
+          if (normalized === 180)
+              return portrait_upside_down;
+          if (normalized === 270)
+              return landscape_right;
+          return unknown;
+      });
+
+EM_JS(int, nk_web_install_display_orientation_callback,
+      (int unknown, int portrait, int portrait_upside_down, int landscape_left,
+       int landscape_right), {
+          if (typeof screen === "undefined" || !screen.orientation ||
+              typeof screen.orientation.addEventListener !== "function" || !Module.ccall)
+              return 0;
+          const old = globalThis.__nativekitOrientation;
+          if (old && old.target && old.listener)
+              old.target.removeEventListener("change", old.listener);
+
+          const target = screen.orientation;
+          const orientationCode = () => {
+              const type = typeof target.type === "string" ? target.type : "";
+              if (type === "portrait-primary")
+                  return portrait;
+              if (type === "portrait-secondary")
+                  return portrait_upside_down;
+              if (type === "landscape-primary")
+                  return landscape_left;
+              if (type === "landscape-secondary")
+                  return landscape_right;
+              const angle = Number(target.angle);
+              if (!Number.isFinite(angle))
+                  return unknown;
+              const normalized = ((angle % 360) + 360) % 360;
+              if (normalized === 0)
+                  return portrait;
+              if (normalized === 90)
+                  return landscape_left;
+              if (normalized === 180)
+                  return portrait_upside_down;
+              if (normalized === 270)
+                  return landscape_right;
+              return unknown;
+          };
+          const listener = () => {
+              if (Module.ccall)
+                  Module.ccall("nk_web_host_display_orientation_changed", null, ["number"],
+                               [orientationCode()]);
+          };
+          target.addEventListener("change", listener);
+          globalThis.__nativekitOrientation = {target, listener};
+          return 1;
+      });
+
+EM_JS(void, nk_web_remove_display_orientation_callback, (), {
+    const state = globalThis.__nativekitOrientation;
+    if (state && state.target && state.listener)
+        state.target.removeEventListener("change", state.listener);
+    delete globalThis.__nativekitOrientation;
+});
+
+EM_JS(int, nk_web_copy_locale, (char *buffer, int capacity), {
+    let value = "";
+    if (typeof navigator !== "undefined") {
+        if (typeof navigator.language === "string" && navigator.language)
+            value = navigator.language;
+        else if (Array.isArray(navigator.languages) && navigator.languages.length &&
+                 typeof navigator.languages[0] === "string")
+            value = navigator.languages[0];
+    }
+    if (!value)
+        return 0;
+    const required = lengthBytesUTF8(value) + 1;
+    if (!buffer || capacity < required)
+        return required;
+    stringToUTF8(value, buffer, required);
+    return required;
+});
+
+EM_JS(int, nk_web_get_appearance_flags, (int supported, int dark, int high_contrast), {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+        return 0;
+    const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const forcedColorsQuery = window.matchMedia("(forced-colors: active)");
+    const contrastQuery = window.matchMedia("(prefers-contrast: more)");
+    let result = supported;
+    if (darkQuery.matches)
+        result |= dark;
+    if (forcedColorsQuery.matches || contrastQuery.matches)
+        result |= high_contrast;
+    return result;
+});
+
+EM_JS(int, nk_web_keep_awake_supported, (), {
+    return typeof navigator !== "undefined" && !!navigator.wakeLock &&
+                   typeof navigator.wakeLock.request === "function"
+               ? 1
+               : 0;
+});
+
+EM_JS(int, nk_web_keep_awake_apply, (int enabled), {
+    const key = "__nativekitKeepAwake";
+    const state = globalThis[key] || (globalThis[key] = {
+        requested: false,
+        pending: false,
+        sentinel: null,
+        visibilityListener: null,
+        request: null
+    });
+
+    if (!enabled) {
+        state.requested = false;
+        if (state.visibilityListener) {
+            document.removeEventListener("visibilitychange", state.visibilityListener);
+            state.visibilityListener = null;
+        }
+        const sentinel = state.sentinel;
+        state.sentinel = null;
+        if (sentinel && typeof sentinel.release === "function")
+            Promise.resolve(sentinel.release()).catch(() => {});
+        return 1;
+    }
+
+    if (typeof navigator === "undefined" || !navigator.wakeLock ||
+        typeof navigator.wakeLock.request !== "function")
+        return 0;
+
+    state.requested = true;
+    if (!state.request) {
+        state.request = () => {
+            if (!state.requested || document.visibilityState !== "visible" ||
+                state.pending || state.sentinel)
+                return;
+            state.pending = true;
+            let promise;
+            try {
+                promise = navigator.wakeLock.request("screen");
+            } catch (error) {
+                state.pending = false;
+                return;
+            }
+            Promise.resolve(promise).then(sentinel => {
+                state.pending = false;
+                if (!state.requested) {
+                    if (sentinel && typeof sentinel.release === "function")
+                        Promise.resolve(sentinel.release()).catch(() => {});
+                    return;
+                }
+                state.sentinel = sentinel;
+                if (sentinel && typeof sentinel.addEventListener === "function")
+                    sentinel.addEventListener("release", () => {
+                        if (state.sentinel === sentinel)
+                            state.sentinel = null;
+                        if (state.requested)
+                            state.request();
+                    });
+            }).catch(() => {
+                state.pending = false;
+            });
+        };
+    }
+    if (!state.visibilityListener) {
+        state.visibilityListener = () => state.request();
+        document.addEventListener("visibilitychange", state.visibilityListener);
+    }
+    state.request();
+    return 1;
+});
+
 // clang-format on
 
 extern "C" EMSCRIPTEN_KEEPALIVE void
@@ -427,6 +630,13 @@ nk_web_host_text_input_event(int type, const char *text, int selection_start, in
     event.selection_start = selection_start < 0 ? 0u : static_cast<uint32_t>(selection_start);
     event.selection_end = selection_end < 0 ? 0u : static_cast<uint32_t>(selection_end);
     host_state.callbacks.text_input(event, host_state.user_data);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void
+nk_web_host_display_orientation_changed(int orientation) {
+    if (host_state.callbacks.display_orientation)
+        host_state.callbacks.display_orientation(static_cast<nk_orientation>(orientation),
+                                                 host_state.user_data);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void
@@ -598,6 +808,54 @@ bool exit_pointer_lock() noexcept {
     return emscripten_exit_pointerlock() == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
+bool display_orientation_supported() noexcept {
+    return nk_web_display_orientation_supported() != 0;
+}
+
+nk_orientation display_orientation() noexcept {
+    return static_cast<nk_orientation>(nk_web_get_display_orientation(
+        NK_ORIENTATION_UNKNOWN, NK_ORIENTATION_PORTRAIT, NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN,
+        NK_ORIENTATION_LANDSCAPE_LEFT, NK_ORIENTATION_LANDSCAPE_RIGHT));
+}
+
+nk_result copy_locale(char *buffer, uint32_t *inout_size) noexcept {
+    if (!inout_size)
+        return NK_ERROR_INVALID_ARGUMENT;
+    const auto capacity = *inout_size;
+    const auto js_capacity = std::min<uint32_t>(capacity, std::numeric_limits<int>::max());
+    const auto result = nk_web_copy_locale(buffer, static_cast<int>(js_capacity));
+    if (result <= 0)
+        return NK_ERROR_UNSUPPORTED;
+    *inout_size = static_cast<uint32_t>(result);
+    return buffer && capacity >= *inout_size ? NK_OK : NK_ERROR_BUFFER_TOO_SMALL;
+}
+
+bool appearance_supported() noexcept {
+    return nk_web_get_appearance_flags(k_appearance_supported, k_appearance_dark,
+                                       k_appearance_high_contrast) != 0;
+}
+
+bool get_appearance(nk_system_appearance *out_appearance) noexcept {
+    if (!out_appearance)
+        return false;
+    const auto flags = nk_web_get_appearance_flags(k_appearance_supported, k_appearance_dark,
+                                                   k_appearance_high_contrast);
+    if (!flags)
+        return false;
+    out_appearance->color_scheme = (flags & k_appearance_dark) ? NK_COLOR_SCHEME_DARK
+                                                                : NK_COLOR_SCHEME_LIGHT;
+    out_appearance->high_contrast = (flags & k_appearance_high_contrast) ? 1u : 0u;
+    return true;
+}
+
+bool keep_awake_supported() noexcept {
+    return nk_web_keep_awake_supported() != 0;
+}
+
+bool keep_awake_apply(bool enabled) noexcept {
+    return nk_web_keep_awake_apply(enabled ? 1 : 0) != 0;
+}
+
 bool install_callbacks(const HostCallbacks &callbacks, void *user_data) noexcept {
     remove_callbacks();
     host_state.callbacks = callbacks;
@@ -631,6 +889,11 @@ bool install_callbacks(const HostCallbacks &callbacks, void *user_data) noexcept
                                                  context_callback);
     emscripten_set_pointerlockchange_callback(canvas_selector(), &host_state, EM_TRUE,
                                               pointer_lock_callback);
+    if (host_state.callbacks.display_orientation)
+        nk_web_install_display_orientation_callback(
+            NK_ORIENTATION_UNKNOWN, NK_ORIENTATION_PORTRAIT,
+            NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN, NK_ORIENTATION_LANDSCAPE_LEFT,
+            NK_ORIENTATION_LANDSCAPE_RIGHT);
     return true;
 }
 
@@ -656,6 +919,7 @@ void remove_callbacks() noexcept {
     emscripten_set_webglcontextlost_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
     emscripten_set_webglcontextrestored_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
     emscripten_set_pointerlockchange_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
+    nk_web_remove_display_orientation_callback();
     host_state = {};
 }
 

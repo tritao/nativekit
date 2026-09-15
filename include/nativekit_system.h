@@ -227,7 +227,7 @@ NK_API nk_result NK_CALL nk_system_keep_awake_release(nk_keep_awake lock);
 NK_API nk_result NK_CALL nk_system_get_orientation(
     nk_system_orientation *out_orientation NK_OUT);
 
-/** Returns the current desktop appearance. UI thread only. */
+/** Returns the current platform appearance. UI thread only. */
 NK_API nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance);
 
 #ifdef __cplusplus

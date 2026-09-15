@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativekit_input.h"
+#include "nativekit_system.h"
 
 #include <cstdint>
 
@@ -95,6 +96,7 @@ struct HostCallbacks {
     void (*focus)(bool focused, void *) = nullptr;
     void (*context)(bool restored, void *) = nullptr;
     void (*pointer_lock)(bool active, void *) = nullptr;
+    void (*display_orientation)(nk_orientation orientation, void *) = nullptr;
 };
 
 struct WebGLContextOptions {
@@ -125,6 +127,14 @@ bool request_fullscreen() noexcept;
 bool exit_fullscreen() noexcept;
 bool request_pointer_lock() noexcept;
 bool exit_pointer_lock() noexcept;
+
+bool display_orientation_supported() noexcept;
+nk_orientation display_orientation() noexcept;
+nk_result copy_locale(char *buffer, uint32_t *inout_size) noexcept;
+bool appearance_supported() noexcept;
+bool get_appearance(nk_system_appearance *out_appearance) noexcept;
+bool keep_awake_supported() noexcept;
+bool keep_awake_apply(bool enabled) noexcept;
 
 bool install_callbacks(const HostCallbacks &callbacks, void *user_data) noexcept;
 void remove_callbacks() noexcept;

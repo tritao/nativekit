@@ -2883,7 +2883,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	extern fn nk_system_directory(kind: nk_system_directory_kind, buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
 	/**
-	 * Returns the current desktop appearance. UI thread only.
+	 * Returns the current platform appearance. UI thread only.
 	 */
 	extern fn nk_system_get_appearance(appearance: ptr<nk_system_appearance>) -> nk_result;
 	/**

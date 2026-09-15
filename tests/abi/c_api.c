@@ -366,8 +366,22 @@ int main(void) {
     uint32_t locale_size = 0;
     nk_result locale_result = nk_system_locale(NULL, &locale_size);
     assert(locale_result == NK_ERROR_BUFFER_TOO_SMALL || locale_result == NK_ERROR_UNSUPPORTED);
-    if (locale_result == NK_ERROR_BUFFER_TOO_SMALL)
+    if (locale_result == NK_ERROR_BUFFER_TOO_SMALL) {
         assert(locale_size > 1);
+        char locale[128] = {0};
+        uint32_t locale_capacity = sizeof(locale);
+        assert(nk_system_locale(locale, &locale_capacity) == NK_OK);
+        assert(locale[0] != '\0');
+    }
+    nk_system_appearance appearance = {0};
+    appearance.struct_size = sizeof(appearance);
+    const nk_result appearance_result = nk_system_get_appearance(&appearance);
+    assert(appearance_result == NK_OK || appearance_result == NK_ERROR_UNSUPPORTED);
+    if (appearance_result == NK_OK) {
+        assert(appearance.color_scheme == NK_COLOR_SCHEME_LIGHT ||
+               appearance.color_scheme == NK_COLOR_SCHEME_DARK);
+        assert(appearance.high_contrast <= 1);
+    }
     struct {
         nk_clipboard_files header;
         char path[10];

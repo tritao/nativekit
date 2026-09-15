@@ -59,6 +59,7 @@ struct WebWindowResource final : nk::core::Resource {
     bool hovered = false;
     bool resizable = true;
     bool fullscreen = false;
+    nk_orientation last_display_orientation = NK_ORIENTATION_UNKNOWN;
     nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
     std::shared_ptr<WebCursorResource> cursor;
     nk_handle text_input_surface = NK_INVALID_HANDLE;
@@ -763,6 +764,23 @@ void on_pointer_lock(bool active, void *user_data) {
     });
 }
 
+void on_display_orientation(nk_orientation orientation, void *user_data) {
+    nk::core::callback_boundary([&] {
+        auto *window = static_cast<WebWindowResource *>(user_data);
+        if (!window || !nk::core::is_runtime_generation(window->generation) ||
+            orientation == NK_ORIENTATION_UNKNOWN ||
+            orientation == window->last_display_orientation)
+            return;
+        window->last_display_orientation = orientation;
+        const nk_orientation_event payload{sizeof(payload), orientation, 0, {0, 0}};
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_DISPLAY_ORIENTATION_CHANGED;
+        event.source = window->handle;
+        event.data = bytes_of(payload);
+        nk::core::push_event(std::move(event));
+    });
+}
+
 EM_BOOL frame_loop(double, void *user_data) {
     auto *surface = static_cast<WebSurfaceResource *>(user_data);
     if (!surface || !nk::core::is_runtime_generation(surface->generation) ||
@@ -813,24 +831,75 @@ void shutdown() noexcept {
 
 } // namespace nk::backend
 
+namespace nk::core::system_backend {
+
+nk_result keep_awake_apply(bool enabled) noexcept {
+    if (!nk::web::keep_awake_apply(enabled)) {
+        nk::core::set_error("browser Screen Wake Lock is unavailable");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    return NK_OK;
+}
+
+nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
+    const auto size = out_orientation.struct_size;
+    out_orientation = {};
+    out_orientation.struct_size = size;
+    if (!nk::web::display_orientation_supported()) {
+        nk::core::set_error("browser Screen Orientation API is unavailable");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    out_orientation.display = nk::web::display_orientation();
+    return NK_OK;
+}
+
+} // namespace nk::core::system_backend
+
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_WINDOW | NK_CAP_INPUT | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
-           NK_CAP_POINTER_CAPTURE | NK_CAP_CLIPBOARD | NK_CAP_WINDOW_GEOMETRY | NK_CAP_RESOURCE_IO |
-           NK_CAP_SYSTEM_INFO | nk::core::optional_capabilities();
+    auto capabilities = NK_CAP_WINDOW | NK_CAP_INPUT | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
+                        NK_CAP_POINTER_CAPTURE | NK_CAP_CLIPBOARD | NK_CAP_WINDOW_GEOMETRY |
+                        NK_CAP_RESOURCE_IO | NK_CAP_SYSTEM_INFO | nk::core::optional_capabilities();
+    if (nk::web::appearance_supported())
+        capabilities |= NK_CAP_SYSTEM_APPEARANCE;
+    if (nk::web::keep_awake_supported())
+        capabilities |= NK_CAP_KEEP_AWAKE;
+    if (nk::web::display_orientation_supported())
+        capabilities |= NK_CAP_DISPLAY_ORIENTATION;
+    return capabilities;
 }
 
 nk_result NK_CALL nk_system_directory(nk_system_directory_kind, char *, uint32_t *) {
     return unsupported("browser filesystem paths are unavailable");
 }
 
-nk_result NK_CALL nk_system_locale(char *, uint32_t *) {
-    return unsupported("browser locale queries are not implemented");
+nk_result NK_CALL nk_system_locale(char *buffer, uint32_t *inout_size) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    nk::core::clear_error();
+    const auto result = nk::web::copy_locale(buffer, inout_size);
+    if (result == NK_ERROR_INVALID_ARGUMENT)
+        nk::core::set_error("browser locale size output is null");
+    else if (result == NK_ERROR_BUFFER_TOO_SMALL)
+        nk::core::set_error("browser locale output buffer is too small");
+    else if (result == NK_ERROR_UNSUPPORTED)
+        nk::core::set_error("browser locale is unavailable");
+    return result;
 }
 
-nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *) {
-    return unsupported("browser appearance queries are not implemented");
+nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    nk::core::clear_error();
+    if (!appearance || appearance->struct_size < sizeof(*appearance))
+        return invalid_argument("invalid browser appearance output");
+    const auto size = appearance->struct_size;
+    *appearance = {};
+    appearance->struct_size = size;
+    if (!nk::web::get_appearance(appearance))
+        return unsupported("browser appearance queries are unavailable");
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_clipboard_set_text(const char *text) {
@@ -888,6 +957,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             window->title = options->title ? options->title : "";
             window->visible = (options->flags & NK_WINDOW_HIDDEN) == 0;
             window->resizable = (options->flags & NK_WINDOW_RESIZABLE) != 0;
+            window->last_display_orientation = nk::web::display_orientation();
             const auto handle = nk::core::handles().insert(nk::core::ResourceType::window, window);
             if (handle == NK_INVALID_HANDLE)
                 return NK_ERROR_OUT_OF_MEMORY;
@@ -907,6 +977,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             callbacks.focus = on_focus;
             callbacks.context = on_context;
             callbacks.pointer_lock = on_pointer_lock;
+            callbacks.display_orientation = on_display_orientation;
             nk::web::install_callbacks(callbacks, window.get());
             nk::web::set_canvas_visible(window->visible);
             if (!window->title.empty())

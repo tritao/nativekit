@@ -181,6 +181,8 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE` | window | none | `nk_window_framebuffer_resize_event` |
 | `NK_EVENT_MONITOR_CONNECTED` | monitor | none | empty |
 | `NK_EVENT_MONITOR_DISCONNECTED` | invalidated monitor | none | empty |
+| `NK_EVENT_DEVICE_ORIENTATION_CHANGED` | global or mobile host | none | `nk_orientation_event` |
+| `NK_EVENT_DISPLAY_ORIENTATION_CHANGED` | monitor, window, or mobile host | none | `nk_orientation_event` |
 | `NK_EVENT_JOYSTICK_CONNECTED` | joystick | none | empty |
 | `NK_EVENT_JOYSTICK_DISCONNECTED` | invalidated joystick | none | empty |
 | `NK_EVENT_JOYSTICK_AXIS` | joystick | none | `nk_joystick_axis_event` |
@@ -328,6 +330,25 @@ only while their host is active and visible.
 presentation orientation. Device and display orientation events use the same
 `nk_orientation_event` payload and suppress unchanged values; orientation
 locking is intentionally a separate future API.
+
+On Web, display orientation uses the browser Screen Orientation API and is
+reported only when `screen.orientation` is available. The Web backend does not
+claim a physical device orientation. Display-orientation changes are observed
+from the active NativeKit canvas and are delivered through the normal
+coalesced event queue.
+
+On Web, `nk_system_locale()` uses `navigator.language` (falling back to the
+first `navigator.languages` value). `nk_system_get_appearance()` uses
+`prefers-color-scheme` and reports forced-colors mode as high contrast. It also
+recognizes `prefers-contrast: more` as high contrast. These queries
+return `NK_ERROR_UNSUPPORTED` when the browser API is unavailable.
+
+Web keep-awake leases use Screen Wake Lock. Acquiring a lease starts the
+browser's asynchronous request and returns once that request has been
+submitted; the request is retried when the document becomes visible. Browser
+policy may reject or revoke the lock, so callers must treat the capability as
+best-effort and still handle device or browser locking normally. Releasing the
+last lease releases the current wake-lock sentinel.
 
 ## Linux joysticks
 
