@@ -6,13 +6,15 @@
     "nk_audio_voice_load_state": "VoiceLoadState",
     "nk_audio_clip_load_state": "ClipLoadState",
     "nk_audio_attenuation_model": "AttenuationModel",
-    "nk_audio_positioning": "Positioning"
+    "nk_audio_positioning": "Positioning",
+    "nk_audio_effect_type": "EffectType"
   },
   "enumValuePrefixes": ["NK_AUDIO_VOICE_"],
   "typeNames": {
     "nk_resource": "NativeKit.ResourceValue",
     "nk_audio_clip": "ClipHandle",
     "nk_audio_bus": "BusHandle",
+    "nk_audio_bus_effect": "BusEffectHandle",
     "nk_audio_voice": "VoiceHandle",
     "nk_audio_voice_options": "NativeVoiceOptions",
     "nk_audio_vec3": "AudioVector3Value"

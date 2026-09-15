@@ -8,6 +8,7 @@
 
 #include "miniaudio.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstddef>
@@ -35,6 +36,11 @@ struct AudioEngineResource final : nk::core::Resource {
     }
 };
 
+struct AudioBusResource;
+struct AudioEffectResource;
+
+void audio_effect_uninitialize(AudioEffectResource &effect) noexcept;
+
 struct AudioClipResource final : nk::core::Resource {
     std::shared_ptr<AudioEngineResource> engine;
     std::string path;
@@ -59,10 +65,28 @@ struct AudioBusResource final : nk::core::Resource {
     bool initialized = false;
     float volume = 1.0f;
     bool muted = false;
+    std::vector<std::shared_ptr<AudioEffectResource>> effects;
 
-    ~AudioBusResource() override {
-        if (initialized)
-            ma_sound_group_uninit(&group);
+    ~AudioBusResource() override;
+};
+
+struct AudioEffectResource final : nk::core::Resource {
+    std::shared_ptr<AudioEngineResource> engine;
+    std::weak_ptr<AudioBusResource> bus;
+    nk_audio_bus_effect handle = NK_INVALID_HANDLE;
+    nk_audio_effect_type type = NK_AUDIO_EFFECT_LOW_PASS;
+    bool initialized = false;
+    bool enabled = true;
+    std::unique_ptr<ma_lpf_node> low_pass;
+    std::unique_ptr<ma_hpf_node> high_pass;
+    std::unique_ptr<ma_delay_node> delay;
+    float cutoff_frequency_hz = 0.0f;
+    uint32_t order = 0;
+    uint32_t delay_pcm_frames = 0;
+    float decay = 0.0f;
+
+    ~AudioEffectResource() override {
+        audio_effect_uninitialize(*this);
     }
 };
 
@@ -220,6 +244,158 @@ nk_result map_miniaudio_result(ma_result result, const char *message) {
     return mapped;
 }
 
+bool valid_audio_filter(float cutoff_frequency_hz, uint32_t order,
+                        const AudioEngineResource &engine);
+
+void audio_effect_uninitialize(AudioEffectResource &effect) noexcept {
+    if (!effect.initialized)
+        return;
+    if (effect.low_pass)
+        ma_lpf_node_uninit(effect.low_pass.get(), &effect.engine->engine.allocationCallbacks);
+    if (effect.high_pass)
+        ma_hpf_node_uninit(effect.high_pass.get(), &effect.engine->engine.allocationCallbacks);
+    if (effect.delay)
+        ma_delay_node_uninit(effect.delay.get(), &effect.engine->engine.allocationCallbacks);
+    effect.low_pass.reset();
+    effect.high_pass.reset();
+    effect.delay.reset();
+    effect.initialized = false;
+}
+
+AudioBusResource::~AudioBusResource() {
+    for (auto &effect : effects) {
+        effect->bus.reset();
+        audio_effect_uninitialize(*effect);
+    }
+    effects.clear();
+    if (initialized)
+        ma_sound_group_uninit(&group);
+}
+
+ma_node *audio_effect_node(AudioEffectResource &effect) {
+    switch (effect.type) {
+    case NK_AUDIO_EFFECT_LOW_PASS:
+        return effect.low_pass.get();
+    case NK_AUDIO_EFFECT_HIGH_PASS:
+        return effect.high_pass.get();
+    case NK_AUDIO_EFFECT_DELAY:
+        return effect.delay.get();
+    default:
+        return nullptr;
+    }
+}
+
+nk_result rebuild_audio_bus_effect_chain(AudioBusResource &bus, const char *message) {
+    auto result = ma_node_detach_all_output_buses(&bus.group);
+    if (result != MA_SUCCESS)
+        return map_miniaudio_result(result, message);
+    for (const auto &effect : bus.effects) {
+        result = ma_node_detach_all_output_buses(audio_effect_node(*effect));
+        if (result != MA_SUCCESS)
+            return map_miniaudio_result(result, message);
+    }
+
+    ma_node *source = &bus.group;
+    for (const auto &effect : bus.effects) {
+        if (!effect->enabled)
+            continue;
+        auto *node = audio_effect_node(*effect);
+        result = ma_node_attach_output_bus(source, 0, node, 0);
+        if (result != MA_SUCCESS)
+            return map_miniaudio_result(result, message);
+        source = node;
+    }
+    result = ma_node_attach_output_bus(source, 0, ma_engine_get_endpoint(&bus.engine->engine), 0);
+    return result == MA_SUCCESS ? NK_OK : map_miniaudio_result(result, message);
+}
+
+nk_result reconfigure_audio_filter(AudioEffectResource &effect, AudioBusResource &bus,
+                                   float cutoff_frequency_hz, uint32_t order) {
+    if (!valid_audio_filter(cutoff_frequency_hz, order, *bus.engine))
+        return invalid_argument(
+            "audio bus filter cutoff must be below Nyquist and order must be in the range [1, 8]");
+
+    auto *allocation_callbacks = &bus.engine->engine.allocationCallbacks;
+    const auto channels = ma_engine_get_channels(&bus.engine->engine);
+    const auto sample_rate = ma_engine_get_sample_rate(&bus.engine->engine);
+    if (effect.type == NK_AUDIO_EFFECT_LOW_PASS) {
+        const auto config = ma_lpf_node_config_init(channels, sample_rate, cutoff_frequency_hz,
+                                                    order);
+        if (effect.order == order) {
+            const auto result = ma_lpf_node_reinit(&config.lpf, effect.low_pass.get());
+            if (result != MA_SUCCESS)
+                return map_miniaudio_result(result, "could not configure audio bus low-pass effect");
+            effect.cutoff_frequency_hz = cutoff_frequency_hz;
+            return NK_OK;
+        }
+
+        auto replacement = std::make_unique<ma_lpf_node>();
+        auto result = ma_lpf_node_init(ma_engine_get_node_graph(&bus.engine->engine), &config,
+                                       allocation_callbacks, replacement.get());
+        if (result != MA_SUCCESS) {
+            ma_lpf_uninit(&replacement->lpf, allocation_callbacks);
+            return map_miniaudio_result(result, "could not configure audio bus low-pass effect");
+        }
+        auto previous = std::move(effect.low_pass);
+        result = ma_node_detach_all_output_buses(previous.get());
+        if (result != MA_SUCCESS) {
+            ma_lpf_node_uninit(replacement.get(), allocation_callbacks);
+            effect.low_pass = std::move(previous);
+            return map_miniaudio_result(result, "could not reconfigure audio bus low-pass effect");
+        }
+        effect.low_pass = std::move(replacement);
+        const auto chain_result = rebuild_audio_bus_effect_chain(
+            bus, "could not reconfigure audio bus low-pass effect");
+        if (chain_result != NK_OK) {
+            auto failed = std::move(effect.low_pass);
+            effect.low_pass = std::move(previous);
+            rebuild_audio_bus_effect_chain(bus, "could not restore audio bus low-pass effect");
+            ma_lpf_node_uninit(failed.get(), allocation_callbacks);
+            return chain_result;
+        }
+        ma_lpf_node_uninit(previous.get(), allocation_callbacks);
+    } else {
+        const auto config = ma_hpf_node_config_init(channels, sample_rate, cutoff_frequency_hz,
+                                                    order);
+        if (effect.order == order) {
+            const auto result = ma_hpf_node_reinit(&config.hpf, effect.high_pass.get());
+            if (result != MA_SUCCESS)
+                return map_miniaudio_result(result, "could not configure audio bus high-pass effect");
+            effect.cutoff_frequency_hz = cutoff_frequency_hz;
+            return NK_OK;
+        }
+
+        auto replacement = std::make_unique<ma_hpf_node>();
+        auto result = ma_hpf_node_init(ma_engine_get_node_graph(&bus.engine->engine), &config,
+                                       allocation_callbacks, replacement.get());
+        if (result != MA_SUCCESS) {
+            ma_hpf_uninit(&replacement->hpf, allocation_callbacks);
+            return map_miniaudio_result(result, "could not configure audio bus high-pass effect");
+        }
+        auto previous = std::move(effect.high_pass);
+        result = ma_node_detach_all_output_buses(previous.get());
+        if (result != MA_SUCCESS) {
+            ma_hpf_node_uninit(replacement.get(), allocation_callbacks);
+            effect.high_pass = std::move(previous);
+            return map_miniaudio_result(result, "could not reconfigure audio bus high-pass effect");
+        }
+        effect.high_pass = std::move(replacement);
+        const auto chain_result = rebuild_audio_bus_effect_chain(
+            bus, "could not reconfigure audio bus high-pass effect");
+        if (chain_result != NK_OK) {
+            auto failed = std::move(effect.high_pass);
+            effect.high_pass = std::move(previous);
+            rebuild_audio_bus_effect_chain(bus, "could not restore audio bus high-pass effect");
+            ma_hpf_node_uninit(failed.get(), allocation_callbacks);
+            return chain_result;
+        }
+        ma_hpf_node_uninit(previous.get(), allocation_callbacks);
+    }
+    effect.cutoff_frequency_hz = cutoff_frequency_hz;
+    effect.order = order;
+    return NK_OK;
+}
+
 constexpr float audio_full_angle_radians = 6.28318530717958647692f;
 
 bool valid_audio_vec3(const nk_audio_vec3 &value) {
@@ -254,6 +430,22 @@ bool valid_audio_attenuation_model(nk_audio_attenuation_model model) {
 
 bool valid_audio_positioning(nk_audio_positioning positioning) {
     return positioning <= NK_AUDIO_POSITIONING_RELATIVE;
+}
+
+bool valid_audio_filter(float cutoff_frequency_hz, uint32_t order,
+                        const AudioEngineResource &engine) {
+    const auto sample_rate = ma_engine_get_sample_rate(&engine.engine);
+    return std::isfinite(cutoff_frequency_hz) && cutoff_frequency_hz > 0.0f && order > 0 &&
+           order <= MA_MAX_FILTER_ORDER && sample_rate > 0 &&
+           static_cast<double>(cutoff_frequency_hz) < static_cast<double>(sample_rate) * 0.5;
+}
+
+bool valid_audio_delay(uint32_t delay_pcm_frames, float decay) {
+    return delay_pcm_frames > 0 && std::isfinite(decay) && decay >= 0.0f && decay <= 1.0f;
+}
+
+bool valid_audio_delay_gain(float gain) {
+    return std::isfinite(gain) && gain >= 0.0f && gain <= 1.0f;
 }
 
 nk_audio_vec3 audio_vec3(ma_vec3f value) {
@@ -591,6 +783,19 @@ std::shared_ptr<AudioBusResource> get_bus(nk_audio_bus handle) {
     return bus;
 }
 
+std::shared_ptr<AudioEffectResource> get_effect(nk_audio_bus_effect handle) {
+    auto resource =
+        nk::core::handles().get(handle, nk::core::ResourceType::audio_bus_effect);
+    if (!resource) {
+        nk::core::set_error("invalid audio bus effect handle");
+        return {};
+    }
+    auto effect = std::dynamic_pointer_cast<AudioEffectResource>(std::move(resource));
+    if (!effect)
+        nk::core::set_error("invalid audio bus effect resource");
+    return effect;
+}
+
 std::shared_ptr<AudioVoiceResource> get_voice(nk_audio_voice handle) {
     auto resource = nk::core::handles().get(handle, nk::core::ResourceType::audio_voice);
     if (!resource) {
@@ -611,6 +816,16 @@ nk_result insert_bus(std::shared_ptr<AudioBusResource> bus, nk_audio_bus *out_bu
     }
     *out_bus = handle;
     return NK_OK;
+}
+
+std::size_t audio_effect_position(const AudioBusResource &bus,
+                                  const AudioEffectResource &effect) {
+    const auto it = std::find_if(bus.effects.begin(), bus.effects.end(),
+                                 [&](const auto &candidate) {
+                                     return candidate.get() == &effect;
+                                 });
+    return it == bus.effects.end() ? bus.effects.size()
+                                   : static_cast<std::size_t>(it - bus.effects.begin());
 }
 
 uint32_t miniaudio_voice_flags(uint32_t flags) {
@@ -771,6 +986,110 @@ nk_result with_bus(nk_audio_bus handle, const char *message, Function &&function
     return function(*bus, message);
 }
 
+template <typename Function>
+nk_result with_effect(nk_audio_bus_effect handle, const char *message, Function &&function) {
+    auto effect = get_effect(handle);
+    if (!effect)
+        return NK_ERROR_INVALID_HANDLE;
+    auto bus = effect->bus.lock();
+    if (!bus || !effect->initialized) {
+        nk::core::set_error("audio bus effect is no longer attached");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    return function(*effect, *bus, message);
+}
+
+nk_result insert_audio_effect(std::shared_ptr<AudioBusResource> bus,
+                              std::shared_ptr<AudioEffectResource> effect,
+                              nk_audio_bus_effect *out_effect) {
+    bus->effects.push_back(effect);
+    const auto handle =
+        nk::core::handles().insert(nk::core::ResourceType::audio_bus_effect, effect);
+    if (handle == NK_INVALID_HANDLE) {
+        bus->effects.pop_back();
+        nk::core::set_error("could not allocate an audio bus effect handle");
+        return NK_ERROR_OUT_OF_MEMORY;
+    }
+    effect->handle = handle;
+    const auto chain_result = rebuild_audio_bus_effect_chain(
+        *bus, "could not attach audio bus effect chain");
+    if (chain_result != NK_OK) {
+        bus->effects.pop_back();
+        nk::core::handles().erase(handle, nk::core::ResourceType::audio_bus_effect);
+        effect->bus.reset();
+        audio_effect_uninitialize(*effect);
+        return chain_result;
+    }
+    *out_effect = handle;
+    return NK_OK;
+}
+
+nk_result create_audio_filter_effect(std::shared_ptr<AudioBusResource> bus,
+                                     nk_audio_effect_type type, float cutoff_frequency_hz,
+                                     uint32_t order, nk_audio_bus_effect *out_effect) {
+    if (!valid_audio_filter(cutoff_frequency_hz, order, *bus->engine))
+        return invalid_argument(
+            "audio bus filter cutoff must be below Nyquist and order must be in the range [1, 8]");
+
+    auto effect = std::make_shared<AudioEffectResource>();
+    effect->engine = bus->engine;
+    effect->bus = bus;
+    effect->type = type;
+    effect->cutoff_frequency_hz = cutoff_frequency_hz;
+    effect->order = order;
+    const auto channels = ma_engine_get_channels(&bus->engine->engine);
+    const auto sample_rate = ma_engine_get_sample_rate(&bus->engine->engine);
+    auto *allocation_callbacks = &bus->engine->engine.allocationCallbacks;
+    ma_result result = MA_SUCCESS;
+    if (type == NK_AUDIO_EFFECT_LOW_PASS) {
+        effect->low_pass = std::make_unique<ma_lpf_node>();
+        const auto config = ma_lpf_node_config_init(channels, sample_rate, cutoff_frequency_hz,
+                                                    order);
+        result = ma_lpf_node_init(ma_engine_get_node_graph(&bus->engine->engine), &config,
+                                  allocation_callbacks, effect->low_pass.get());
+        if (result != MA_SUCCESS)
+            ma_lpf_uninit(&effect->low_pass->lpf, allocation_callbacks);
+    } else {
+        effect->high_pass = std::make_unique<ma_hpf_node>();
+        const auto config = ma_hpf_node_config_init(channels, sample_rate, cutoff_frequency_hz,
+                                                    order);
+        result = ma_hpf_node_init(ma_engine_get_node_graph(&bus->engine->engine), &config,
+                                  allocation_callbacks, effect->high_pass.get());
+        if (result != MA_SUCCESS)
+            ma_hpf_uninit(&effect->high_pass->hpf, allocation_callbacks);
+    }
+    if (result != MA_SUCCESS)
+        return map_miniaudio_result(result, "could not create audio bus filter effect");
+    effect->initialized = true;
+    return insert_audio_effect(std::move(bus), std::move(effect), out_effect);
+}
+
+nk_result create_audio_delay_effect(std::shared_ptr<AudioBusResource> bus,
+                                    uint32_t delay_pcm_frames, float decay,
+                                    nk_audio_bus_effect *out_effect) {
+    if (!valid_audio_delay(delay_pcm_frames, decay))
+        return invalid_argument(
+            "audio bus delay frames must be positive and decay must be in the range [0, 1]");
+
+    auto effect = std::make_shared<AudioEffectResource>();
+    effect->engine = bus->engine;
+    effect->bus = bus;
+    effect->type = NK_AUDIO_EFFECT_DELAY;
+    effect->delay_pcm_frames = delay_pcm_frames;
+    effect->decay = decay;
+    effect->delay = std::make_unique<ma_delay_node>();
+    const auto config = ma_delay_node_config_init(
+        ma_engine_get_channels(&bus->engine->engine), ma_engine_get_sample_rate(&bus->engine->engine),
+        delay_pcm_frames, decay);
+    const auto result = ma_delay_node_init(ma_engine_get_node_graph(&bus->engine->engine), &config,
+                                           &bus->engine->engine.allocationCallbacks,
+                                           effect->delay.get());
+    if (result != MA_SUCCESS)
+        return map_miniaudio_result(result, "could not create audio bus delay effect");
+    effect->initialized = true;
+    return insert_audio_effect(std::move(bus), std::move(effect), out_effect);
+}
+
 } // namespace
 
 extern "C" {
@@ -803,6 +1122,15 @@ nk_result NK_CALL nk_audio_bus_destroy(nk_audio_bus bus) {
                                      [&]() -> nk_result {
         if (const auto result = enter_audio_ui(); result != NK_OK)
             return result;
+        auto value = get_bus(bus);
+        if (!value)
+            return NK_ERROR_INVALID_HANDLE;
+        for (const auto &effect : value->effects) {
+            effect->bus.reset();
+            audio_effect_uninitialize(*effect);
+            nk::core::handles().erase(effect->handle, nk::core::ResourceType::audio_bus_effect);
+        }
+        value->effects.clear();
         if (!nk::core::handles().erase(bus, nk::core::ResourceType::audio_bus))
             return invalid_handle("invalid audio bus handle");
         return NK_OK;
@@ -986,6 +1314,406 @@ nk_result NK_CALL nk_audio_bus_is_muted(nk_audio_bus bus, nk_bool *out_muted) {
                 *out_muted = value.muted ? 1u : 0u;
                 return NK_OK;
             });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_create_low_pass(nk_audio_bus bus, float cutoff_frequency_hz,
+                                                      uint32_t order,
+                                                      nk_audio_bus_effect *out_effect) {
+    return nk::core::result_boundary(
+        "unexpected error while creating an audio bus low-pass effect", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_effect)
+                return invalid_argument("audio bus effect output is missing");
+            *out_effect = NK_INVALID_HANDLE;
+            auto value = get_bus(bus);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            return create_audio_filter_effect(std::move(value), NK_AUDIO_EFFECT_LOW_PASS,
+                                              cutoff_frequency_hz, order, out_effect);
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_create_high_pass(nk_audio_bus bus,
+                                                       float cutoff_frequency_hz, uint32_t order,
+                                                       nk_audio_bus_effect *out_effect) {
+    return nk::core::result_boundary(
+        "unexpected error while creating an audio bus high-pass effect", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_effect)
+                return invalid_argument("audio bus effect output is missing");
+            *out_effect = NK_INVALID_HANDLE;
+            auto value = get_bus(bus);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            return create_audio_filter_effect(std::move(value), NK_AUDIO_EFFECT_HIGH_PASS,
+                                              cutoff_frequency_hz, order, out_effect);
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_create_delay(nk_audio_bus bus, uint32_t delay_pcm_frames,
+                                                   float decay, nk_audio_bus_effect *out_effect) {
+    return nk::core::result_boundary(
+        "unexpected error while creating an audio bus delay effect", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_effect)
+                return invalid_argument("audio bus effect output is missing");
+            *out_effect = NK_INVALID_HANDLE;
+            auto value = get_bus(bus);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            return create_audio_delay_effect(std::move(value), delay_pcm_frames, decay,
+                                             out_effect);
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_destroy(nk_audio_bus_effect effect_handle) {
+    return nk::core::result_boundary(
+        "unexpected error while destroying an audio bus effect", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            auto effect = get_effect(effect_handle);
+            if (!effect)
+                return NK_ERROR_INVALID_HANDLE;
+            auto bus = effect->bus.lock();
+            if (!bus) {
+                if (!nk::core::handles().erase(effect_handle,
+                                               nk::core::ResourceType::audio_bus_effect))
+                    return invalid_handle("invalid audio bus effect handle");
+                return NK_OK;
+            }
+            const auto position = audio_effect_position(*bus, *effect);
+            if (position == bus->effects.size())
+                return invalid_handle("audio bus effect is not attached to its bus");
+            bus->effects.erase(bus->effects.begin() + static_cast<std::ptrdiff_t>(position));
+            effect->bus.reset();
+            const auto chain_result = rebuild_audio_bus_effect_chain(
+                *bus, "could not detach audio bus effect chain");
+            if (chain_result != NK_OK) {
+                bus->effects.insert(bus->effects.begin() + static_cast<std::ptrdiff_t>(position),
+                                    effect);
+                effect->bus = bus;
+                rebuild_audio_bus_effect_chain(*bus, "could not restore audio bus effect chain");
+                return chain_result;
+            }
+            audio_effect_uninitialize(*effect);
+            if (!nk::core::handles().erase(effect_handle,
+                                           nk::core::ResourceType::audio_bus_effect))
+                return invalid_handle("invalid audio bus effect handle");
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_get_type(nk_audio_bus_effect effect_handle,
+                                               nk_audio_effect_type *out_type) {
+    return nk::core::result_boundary(
+        "unexpected error while getting an audio bus effect type", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_type)
+                return invalid_argument("audio bus effect type output is missing");
+            return with_effect(effect_handle, "could not get audio bus effect type",
+                               [&](AudioEffectResource &effect, AudioBusResource &,
+                                   const char *) -> nk_result {
+                                   *out_type = effect.type;
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_set_enabled(nk_audio_bus_effect effect_handle,
+                                                  nk_bool enabled) {
+    return nk::core::result_boundary(
+        "unexpected error while setting an audio bus effect state", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (enabled > 1)
+                return invalid_argument("audio bus effect enabled state must be zero or one");
+            return with_effect(effect_handle, "could not set audio bus effect state",
+                               [&](AudioEffectResource &effect, AudioBusResource &bus,
+                                   const char *) -> nk_result {
+                                   const auto previous = effect.enabled;
+                                   effect.enabled = enabled != 0;
+                                   const auto result = rebuild_audio_bus_effect_chain(
+                                       bus, "could not update audio bus effect chain");
+                                   if (result != NK_OK)
+                                       effect.enabled = previous;
+                                   return result;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_is_enabled(nk_audio_bus_effect effect_handle,
+                                                 nk_bool *out_enabled) {
+    return nk::core::result_boundary(
+        "unexpected error while querying an audio bus effect state", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_enabled)
+                return invalid_argument("audio bus effect state output is missing");
+            return with_effect(effect_handle, "could not query audio bus effect state",
+                               [&](AudioEffectResource &effect, AudioBusResource &,
+                                   const char *) -> nk_result {
+                                   *out_enabled = effect.enabled ? 1u : 0u;
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_set_position(nk_audio_bus_effect effect_handle,
+                                                   uint32_t position) {
+    return nk::core::result_boundary(
+        "unexpected error while moving an audio bus effect", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return with_effect(effect_handle, "could not move audio bus effect",
+                               [&](AudioEffectResource &effect, AudioBusResource &bus,
+                                   const char *) -> nk_result {
+                                   const auto old_position = audio_effect_position(bus, effect);
+                                   if (old_position == bus.effects.size())
+                                       return invalid_handle(
+                                           "audio bus effect is not attached to its bus");
+                                   if (position >= bus.effects.size())
+                                       return invalid_argument(
+                                           "audio bus effect position is outside the chain");
+                                   if (old_position == position)
+                                       return NK_OK;
+                                   auto moved = bus.effects[old_position];
+                                   bus.effects.erase(bus.effects.begin() +
+                                                     static_cast<std::ptrdiff_t>(old_position));
+                                   bus.effects.insert(bus.effects.begin() +
+                                                          static_cast<std::ptrdiff_t>(position),
+                                                      std::move(moved));
+                                   const auto result = rebuild_audio_bus_effect_chain(
+                                       bus, "could not reorder audio bus effect chain");
+                                   if (result != NK_OK) {
+                                       auto restored = bus.effects[position];
+                                       bus.effects.erase(bus.effects.begin() +
+                                                         static_cast<std::ptrdiff_t>(position));
+                                       bus.effects.insert(
+                                           bus.effects.begin() +
+                                               static_cast<std::ptrdiff_t>(old_position),
+                                           std::move(restored));
+                                   }
+                                   return result;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_get_position(nk_audio_bus_effect effect_handle,
+                                                   uint32_t *out_position) {
+    return nk::core::result_boundary(
+        "unexpected error while getting an audio bus effect position", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_position)
+                return invalid_argument("audio bus effect position output is missing");
+            return with_effect(effect_handle, "could not get audio bus effect position",
+                               [&](AudioEffectResource &effect, AudioBusResource &bus,
+                                   const char *) -> nk_result {
+                                   const auto position = audio_effect_position(bus, effect);
+                                   if (position == bus.effects.size())
+                                       return invalid_handle(
+                                           "audio bus effect is not attached to its bus");
+                                   *out_position = static_cast<uint32_t>(position);
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_set_low_pass(nk_audio_bus_effect effect_handle,
+                                                   float cutoff_frequency_hz, uint32_t order) {
+    return nk::core::result_boundary(
+        "unexpected error while configuring an audio bus low-pass effect", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return with_effect(effect_handle, "could not configure audio bus low-pass effect",
+                               [&](AudioEffectResource &effect, AudioBusResource &bus,
+                                   const char *) -> nk_result {
+                                   if (effect.type != NK_AUDIO_EFFECT_LOW_PASS)
+                                       return invalid_argument(
+                                           "audio bus effect is not a low-pass filter");
+                                   return reconfigure_audio_filter(effect, bus,
+                                                                   cutoff_frequency_hz, order);
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_get_low_pass(nk_audio_bus_effect effect_handle,
+                                                   float *out_cutoff_frequency_hz,
+                                                   uint32_t *out_order) {
+    return nk::core::result_boundary(
+        "unexpected error while getting an audio bus low-pass effect", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_cutoff_frequency_hz || !out_order)
+                return invalid_argument("audio bus low-pass effect output is missing");
+            return with_effect(effect_handle, "could not get audio bus low-pass effect",
+                               [&](AudioEffectResource &effect, AudioBusResource &,
+                                   const char *) -> nk_result {
+                                   if (effect.type != NK_AUDIO_EFFECT_LOW_PASS)
+                                       return invalid_argument(
+                                           "audio bus effect is not a low-pass filter");
+                                   *out_cutoff_frequency_hz = effect.cutoff_frequency_hz;
+                                   *out_order = effect.order;
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_set_high_pass(nk_audio_bus_effect effect_handle,
+                                                    float cutoff_frequency_hz, uint32_t order) {
+    return nk::core::result_boundary(
+        "unexpected error while configuring an audio bus high-pass effect", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return with_effect(effect_handle, "could not configure audio bus high-pass effect",
+                               [&](AudioEffectResource &effect, AudioBusResource &bus,
+                                   const char *) -> nk_result {
+                                   if (effect.type != NK_AUDIO_EFFECT_HIGH_PASS)
+                                       return invalid_argument(
+                                           "audio bus effect is not a high-pass filter");
+                                   return reconfigure_audio_filter(effect, bus,
+                                                                   cutoff_frequency_hz, order);
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_get_high_pass(nk_audio_bus_effect effect_handle,
+                                                    float *out_cutoff_frequency_hz,
+                                                    uint32_t *out_order) {
+    return nk::core::result_boundary(
+        "unexpected error while getting an audio bus high-pass effect", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_cutoff_frequency_hz || !out_order)
+                return invalid_argument("audio bus high-pass effect output is missing");
+            return with_effect(effect_handle, "could not get audio bus high-pass effect",
+                               [&](AudioEffectResource &effect, AudioBusResource &,
+                                   const char *) -> nk_result {
+                                   if (effect.type != NK_AUDIO_EFFECT_HIGH_PASS)
+                                       return invalid_argument(
+                                           "audio bus effect is not a high-pass filter");
+                                   *out_cutoff_frequency_hz = effect.cutoff_frequency_hz;
+                                   *out_order = effect.order;
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_set_delay_wet(nk_audio_bus_effect effect_handle, float wet) {
+    return nk::core::result_boundary(
+        "unexpected error while setting an audio bus delay wet gain", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_delay_gain(wet))
+                return invalid_argument("audio bus delay wet gain must be in the range [0, 1]");
+            return with_effect(effect_handle, "could not set audio bus delay wet gain",
+                               [&](AudioEffectResource &effect, AudioBusResource &,
+                                   const char *) -> nk_result {
+                                   if (effect.type != NK_AUDIO_EFFECT_DELAY)
+                                       return invalid_argument("audio bus effect is not a delay");
+                                   ma_delay_node_set_wet(effect.delay.get(), wet);
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_get_delay_wet(nk_audio_bus_effect effect_handle,
+                                                   float *out_wet) {
+    return nk::core::result_boundary(
+        "unexpected error while getting an audio bus delay wet gain", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_wet)
+                return invalid_argument("audio bus delay wet gain output is missing");
+            return with_effect(effect_handle, "could not get audio bus delay wet gain",
+                               [&](AudioEffectResource &effect, AudioBusResource &,
+                                   const char *) -> nk_result {
+                                   if (effect.type != NK_AUDIO_EFFECT_DELAY)
+                                       return invalid_argument("audio bus effect is not a delay");
+                                   *out_wet = ma_delay_node_get_wet(effect.delay.get());
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_set_delay_dry(nk_audio_bus_effect effect_handle, float dry) {
+    return nk::core::result_boundary(
+        "unexpected error while setting an audio bus delay dry gain", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!valid_audio_delay_gain(dry))
+                return invalid_argument("audio bus delay dry gain must be in the range [0, 1]");
+            return with_effect(effect_handle, "could not set audio bus delay dry gain",
+                               [&](AudioEffectResource &effect, AudioBusResource &,
+                                   const char *) -> nk_result {
+                                   if (effect.type != NK_AUDIO_EFFECT_DELAY)
+                                       return invalid_argument("audio bus effect is not a delay");
+                                   ma_delay_node_set_dry(effect.delay.get(), dry);
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_get_delay_dry(nk_audio_bus_effect effect_handle,
+                                                   float *out_dry) {
+    return nk::core::result_boundary(
+        "unexpected error while getting an audio bus delay dry gain", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_dry)
+                return invalid_argument("audio bus delay dry gain output is missing");
+            return with_effect(effect_handle, "could not get audio bus delay dry gain",
+                               [&](AudioEffectResource &effect, AudioBusResource &,
+                                   const char *) -> nk_result {
+                                   if (effect.type != NK_AUDIO_EFFECT_DELAY)
+                                       return invalid_argument("audio bus effect is not a delay");
+                                   *out_dry = ma_delay_node_get_dry(effect.delay.get());
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_set_delay_decay(nk_audio_bus_effect effect_handle,
+                                                      float decay) {
+    return nk::core::result_boundary(
+        "unexpected error while setting an audio bus delay decay", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!std::isfinite(decay) || decay < 0.0f || decay > 1.0f)
+                return invalid_argument("audio bus delay decay must be in the range [0, 1]");
+            return with_effect(effect_handle, "could not set audio bus delay decay",
+                               [&](AudioEffectResource &effect, AudioBusResource &,
+                                   const char *) -> nk_result {
+                                   if (effect.type != NK_AUDIO_EFFECT_DELAY)
+                                       return invalid_argument("audio bus effect is not a delay");
+                                   ma_delay_node_set_decay(effect.delay.get(), decay);
+                                   effect.decay = decay;
+                                   return NK_OK;
+                               });
+        });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_get_delay_decay(nk_audio_bus_effect effect_handle,
+                                                      float *out_decay) {
+    return nk::core::result_boundary(
+        "unexpected error while getting an audio bus delay decay", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_decay)
+                return invalid_argument("audio bus delay decay output is missing");
+            return with_effect(effect_handle, "could not get audio bus delay decay",
+                               [&](AudioEffectResource &effect, AudioBusResource &,
+                                   const char *) -> nk_result {
+                                   if (effect.type != NK_AUDIO_EFFECT_DELAY)
+                                       return invalid_argument("audio bus effect is not a delay");
+                                   *out_decay = ma_delay_node_get_decay(effect.delay.get());
+                                   return NK_OK;
+                               });
         });
 }
 

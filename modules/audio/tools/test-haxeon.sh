@@ -42,10 +42,12 @@ fi
     "$module_dir/tests/haxeon/AudioSmoke.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/AudioResult.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Bus.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/BusEffect.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Clip.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Cone.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/DistanceLimits.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Enums.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/FilterSettings.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/GainLimits.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Mixer.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Voice.hx" \

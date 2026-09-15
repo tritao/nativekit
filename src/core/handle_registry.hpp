@@ -31,6 +31,7 @@ enum class ResourceType : std::uint8_t {
     menu_item,
     audio_engine,
     audio_bus,
+    audio_bus_effect,
     audio_clip,
     audio_voice
 };

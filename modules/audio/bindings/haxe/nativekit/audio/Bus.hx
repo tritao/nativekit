@@ -11,6 +11,7 @@ class Bus {
 
 	final value:NativeKitAudio.BusHandle;
 	final owned:NativeKitAudio.OwnedBusHandle;
+	final effects:Array<BusEffect> = [];
 	var disposed:Bool = false;
 
 	private function new(owned:NativeKitAudio.OwnedBusHandle) {
@@ -113,10 +114,47 @@ class Bus {
 		return result.out_muted;
 	}
 
+	/** Appends a low-pass filter to this bus's effect chain. */
+	public function addLowPass(cutoffFrequencyHz:Float, ?order:Int):BusEffect {
+		ensureLive();
+		var actualOrder = order == null ? 2 : order;
+		var made = NativeKitAudio.nk_audio_bus_effect_create_low_pass(value, cutoffFrequencyHz,
+			actualOrder);
+		AudioResult.check(made.status, "audio.bus.addLowPass");
+		var effect = new BusEffect(made.out_effect);
+		effects.push(effect);
+		return effect;
+	}
+
+	/** Appends a high-pass filter to this bus's effect chain. */
+	public function addHighPass(cutoffFrequencyHz:Float, ?order:Int):BusEffect {
+		ensureLive();
+		var actualOrder = order == null ? 2 : order;
+		var made = NativeKitAudio.nk_audio_bus_effect_create_high_pass(value, cutoffFrequencyHz,
+			actualOrder);
+		AudioResult.check(made.status, "audio.bus.addHighPass");
+		var effect = new BusEffect(made.out_effect);
+		effects.push(effect);
+		return effect;
+	}
+
+	/** Appends a feedback delay to this bus's effect chain. */
+	public function addDelay(delayFrames:Int, decay:Float):BusEffect {
+		ensureLive();
+		var made = NativeKitAudio.nk_audio_bus_effect_create_delay(value, delayFrames, decay);
+		AudioResult.check(made.status, "audio.bus.addDelay");
+		var effect = new BusEffect(made.out_effect);
+		effects.push(effect);
+		return effect;
+	}
+
 	/** Releases the bus; sounds already routed through it retain native ownership. */
 	public function dispose():Void {
 		if (disposed)
 			return;
+		for (effect in effects)
+			effect.dispose();
+		effects.resize(0);
 		var status = owned.close();
 		disposed = true;
 		if (status != null && status != NativeKit.Result.Ok)

@@ -53,6 +53,58 @@ int main() {
     assert(nk_audio_bus_set_muted(bus, 0) == NK_OK);
     assert(nk_audio_bus_is_muted(bus, &state) == NK_OK && state == 0);
 
+    nk_audio_bus_effect low_pass = NK_INVALID_HANDLE;
+    nk_audio_bus_effect high_pass = NK_INVALID_HANDLE;
+    nk_audio_bus_effect delay = NK_INVALID_HANDLE;
+    assert(nk_audio_bus_effect_create_low_pass(bus, 2000.0f, 2, &low_pass) == NK_OK);
+    assert(nk_audio_bus_effect_create_high_pass(bus, 100.0f, 1, &high_pass) == NK_OK);
+    assert(nk_audio_bus_effect_create_delay(bus, 64, 0.5f, &delay) == NK_OK);
+    nk_audio_effect_type effect_type = NK_AUDIO_EFFECT_DELAY;
+    assert(nk_audio_bus_effect_get_type(low_pass, &effect_type) == NK_OK &&
+           effect_type == NK_AUDIO_EFFECT_LOW_PASS);
+    assert(nk_audio_bus_effect_get_type(high_pass, &effect_type) == NK_OK &&
+           effect_type == NK_AUDIO_EFFECT_HIGH_PASS);
+    assert(nk_audio_bus_effect_get_type(delay, &effect_type) == NK_OK &&
+           effect_type == NK_AUDIO_EFFECT_DELAY);
+    uint32_t effect_position = 99;
+    assert(nk_audio_bus_effect_get_position(low_pass, &effect_position) == NK_OK &&
+           effect_position == 0);
+    assert(nk_audio_bus_effect_set_position(high_pass, 0) == NK_OK);
+    assert(nk_audio_bus_effect_get_position(high_pass, &effect_position) == NK_OK &&
+           effect_position == 0);
+    assert(nk_audio_bus_effect_set_position(delay, 1) == NK_OK);
+    assert(nk_audio_bus_effect_get_position(delay, &effect_position) == NK_OK &&
+           effect_position == 1);
+    assert(nk_audio_bus_effect_set_enabled(delay, 0) == NK_OK);
+    assert(nk_audio_bus_effect_is_enabled(delay, &state) == NK_OK && state == 0);
+    assert(nk_audio_bus_effect_set_enabled(delay, 1) == NK_OK);
+    assert(nk_audio_bus_effect_set_low_pass(low_pass, 4000.0f, 4) == NK_OK);
+    float cutoff_frequency = 0;
+    uint32_t filter_order = 0;
+    assert(nk_audio_bus_effect_get_low_pass(low_pass, &cutoff_frequency, &filter_order) == NK_OK);
+    assert(cutoff_frequency == 4000.0f && filter_order == 4);
+    assert(nk_audio_bus_effect_set_high_pass(high_pass, 250.0f, 2) == NK_OK);
+    assert(nk_audio_bus_effect_get_high_pass(high_pass, &cutoff_frequency, &filter_order) == NK_OK);
+    assert(cutoff_frequency == 250.0f && filter_order == 2);
+    assert(nk_audio_bus_effect_set_low_pass(high_pass, 250.0f, 2) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_bus_effect_set_delay_wet(delay, 0.25f) == NK_OK);
+    assert(nk_audio_bus_effect_get_delay_wet(delay, &value) == NK_OK && value == 0.25f);
+    assert(nk_audio_bus_effect_set_delay_dry(delay, 0.75f) == NK_OK);
+    assert(nk_audio_bus_effect_get_delay_dry(delay, &value) == NK_OK && value == 0.75f);
+    assert(nk_audio_bus_effect_set_delay_decay(delay, 0.5f) == NK_OK);
+    assert(nk_audio_bus_effect_get_delay_decay(delay, &value) == NK_OK && value == 0.5f);
+    assert(nk_audio_bus_effect_set_delay_wet(low_pass, 0.5f) == NK_ERROR_INVALID_ARGUMENT);
+    nk_audio_bus_effect invalid_effect = NK_INVALID_HANDLE;
+    assert(nk_audio_bus_effect_create_low_pass(bus, 0.0f, 2, &invalid_effect) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_bus_effect_create_low_pass(bus, 2000.0f, 0, &invalid_effect) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_bus_effect_create_delay(bus, 0, 0.5f, &invalid_effect) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_bus_effect_set_delay_decay(delay, 1.5f) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_bus_effect_destroy(high_pass) == NK_OK);
+    assert(nk_audio_bus_effect_destroy(delay) == NK_OK);
+
     nk_audio_vec3 listener_position{4.0f, 2.0f, -3.0f};
     nk_audio_vec3 listener_direction{0.0f, 0.0f, -1.0f};
     nk_audio_vec3 listener_velocity{1.0f, 0.0f, 0.0f};
@@ -343,6 +395,8 @@ int main() {
     assert(nk_audio_set_master_volume(0.75f) == NK_OK);
     assert(nk_audio_get_master_volume(&value) == NK_OK && value == 0.75f);
     assert(nk_audio_bus_destroy(bus) == NK_OK);
+    assert(nk_audio_bus_effect_get_type(low_pass, &effect_type) == NK_ERROR_INVALID_HANDLE);
+    assert(nk_audio_bus_effect_destroy(low_pass) == NK_ERROR_INVALID_HANDLE);
 
     nk_audio_clip shutdown_clip = NK_INVALID_HANDLE;
     nk_audio_voice shutdown_voice = NK_INVALID_HANDLE;

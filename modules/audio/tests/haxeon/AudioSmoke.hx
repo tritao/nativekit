@@ -5,6 +5,7 @@ import haxe.io.Bytes;
 import NativeKitEventValue;
 import NativeKitEvents.NativeKitEventSubscription;
 import nativekit.audio.Bus;
+import nativekit.audio.BusEffect;
 import nativekit.audio.Clip;
 import nativekit.audio.Cone;
 import nativekit.audio.DistanceLimits;
@@ -50,6 +51,9 @@ class AudioSmoke {
 		init.set_api_version(NativeKit.nk_api_version());
 		var runtime = NativeKitRuntime.start(init);
 		var bus:Bus = null;
+		var lowPass:BusEffect = null;
+		var highPass:BusEffect = null;
+		var delay:BusEffect = null;
 		var clip:Clip = null;
 		var first:Voice = null;
 		var second:Voice = null;
@@ -101,6 +105,44 @@ class AudioSmoke {
 			bus.setVolume(0.5);
 			if (bus.volume() != 0.5)
 				throw "Haxe audio bus volume did not round-trip";
+			lowPass = bus.addLowPass(2000.0, 2);
+			highPass = bus.addHighPass(100.0, 1);
+			delay = bus.addDelay(64, 0.5);
+			if (lowPass.type() != NativeKitAudio.EffectType.LowPass ||
+				highPass.type() != NativeKitAudio.EffectType.HighPass ||
+				delay.type() != NativeKitAudio.EffectType.Delay)
+				throw "Haxe audio bus effect types did not round-trip";
+			if (lowPass.position() != 0 || highPass.position() != 1 || delay.position() != 2)
+				throw "Haxe audio bus effect positions did not round-trip";
+			highPass.setPosition(0);
+			delay.setPosition(1);
+			if (highPass.position() != 0 || delay.position() != 1 || lowPass.position() != 2)
+				throw "Haxe audio bus effect reorder did not round-trip";
+			delay.setEnabled(false);
+			if (delay.isEnabled())
+				throw "Haxe audio bus effect bypass did not round-trip";
+			delay.setEnabled(true);
+			lowPass.setLowPass(4000.0, 4);
+			var lowPassSettings = lowPass.lowPass();
+			if (lowPassSettings.cutoffFrequencyHz != 4000.0 || lowPassSettings.order != 4)
+				throw "Haxe audio low-pass settings did not round-trip";
+			highPass.setHighPass(250.0, 2);
+			var highPassSettings = highPass.highPass();
+			if (highPassSettings.cutoffFrequencyHz != 250.0 || highPassSettings.order != 2)
+				throw "Haxe audio high-pass settings did not round-trip";
+			delay.setDelayWet(0.25);
+			if (delay.delayWet() != 0.25)
+				throw "Haxe audio delay wet gain did not round-trip";
+			delay.setDelayDry(0.75);
+			if (delay.delayDry() != 0.75)
+				throw "Haxe audio delay dry gain did not round-trip";
+			delay.setDelayDecay(0.5);
+			if (delay.delayDecay() != 0.5)
+				throw "Haxe audio delay decay did not round-trip";
+			highPass.dispose();
+			highPass = null;
+			delay.dispose();
+			delay = null;
 			bus.fade(Bus.CURRENT_VOLUME, 0.75, haxe.Int64.ofInt(1));
 			bus.fadeAt(0.75, 0.5, haxe.Int64.ofInt(1),
 				haxe.Int64.add(nowFrames, haxe.Int64.ofInt(sampleRate)));
@@ -214,6 +256,9 @@ class AudioSmoke {
 			completion = null;
 			bus.dispose();
 			bus = null;
+			if (!lowPass.isDisposed())
+				throw "Haxe audio bus did not release its child effect";
+			lowPass = null;
 		} catch (error:Dynamic) {
 			if (completionSubscription != null)
 				completionSubscription.dispose();
@@ -223,6 +268,12 @@ class AudioSmoke {
 				second.dispose();
 			if (completion != null)
 				completion.dispose();
+			if (lowPass != null)
+				lowPass.dispose();
+			if (highPass != null)
+				highPass.dispose();
+			if (delay != null)
+				delay.dispose();
 			if (clip != null)
 				clip.dispose();
 			if (bus != null)

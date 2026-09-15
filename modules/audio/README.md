@@ -45,12 +45,18 @@ Buses support the same schedule and fade operations for all routed voices. This
 allows music transitions and voice/SFX ducking to be coordinated at the mixer
 boundary instead of issuing one operation per voice.
 
+Buses can also own ordered effect chains. `Bus.addLowPass()`,
+`Bus.addHighPass()`, and `Bus.addDelay()` append effects that can be bypassed,
+reordered, and reconfigured through `BusEffect`. Filter cutoffs must be below
+Nyquist with orders from 1 through 8; delay frames must be positive, and delay
+wet, dry, and decay gains are in the [0, 1] range.
+
 Spatialized voices use a right-handed OpenGL-style coordinate system: +X is
 right, +Y is up, and -Z is forward. `Mixer` exposes the single process-wide
 listener's position, orientation, velocity, cone, and speed of sound. Voices
 expose their own position, direction, velocity, absolute/relative positioning,
 distance attenuation model, rolloff, gain and distance limits, Doppler factor,
-  and directional cone. Spatialization is enabled by default per voice and can
+and directional cone. Spatialization is enabled by default per voice and can
   be toggled at runtime; configure the listener and source transforms before
   playback. Vector directions must be finite and non-zero, cone angles are
   radians, and gains are linear [0, 1].

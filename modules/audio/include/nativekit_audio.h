@@ -110,6 +110,20 @@ enum NK_ENUM(nk_audio_positioning) {
 /** Opaque handle for one audio mixer bus. */
 typedef uint32_t nk_audio_bus NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_destroy);
 
+/** Opaque handle for one effect inserted into an audio mixer bus. */
+typedef uint32_t nk_audio_bus_effect NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_effect_destroy);
+
+/** Built-in processing effect types available on mixer buses. */
+typedef uint32_t nk_audio_effect_type;
+enum NK_ENUM(nk_audio_effect_type) {
+    /** A Butterworth low-pass filter. */
+    NK_AUDIO_EFFECT_LOW_PASS = 0,
+    /** A Butterworth high-pass filter. */
+    NK_AUDIO_EFFECT_HIGH_PASS = 1,
+    /** A feedback delay with configurable wet/dry mix. */
+    NK_AUDIO_EFFECT_DELAY = 2
+};
+
 /** Optional creation and routing settings for a voice. */
 typedef struct nk_audio_voice_options {
     /** Set to sizeof(nk_audio_voice_options) before passing the structure. */
@@ -133,7 +147,7 @@ typedef struct nk_audio_voice_options {
 
 /** Creates an active mixer bus. Voices retain their bus until destroyed. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_create(nk_audio_bus *out_bus NK_OUT NK_OWNED);
-/** Stops and destroys a mixer bus, invalidating its handle. */
+/** Stops and destroys a mixer bus and its effects, invalidating their handles. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_destroy(nk_audio_bus bus);
 /** Starts all voices routed through the bus. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_start(nk_audio_bus bus);
@@ -177,6 +191,78 @@ NKAUDIO_API nk_result NK_CALL nk_audio_bus_set_muted(nk_audio_bus bus, nk_bool m
 /** Returns whether the bus is muted. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_is_muted(nk_audio_bus bus,
                                                     nk_bool *out_muted NK_OUT);
+
+/* ------------------------------------------------------------------------- */
+/* Bus effects                                                               */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Appends a low-pass filter to the bus effect chain. Cutoff is in Hz and
+ * order must be in the range [1, 8].
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_low_pass(
+    nk_audio_bus bus, float cutoff_frequency_hz, uint32_t order,
+    nk_audio_bus_effect *out_effect NK_OUT NK_OWNED);
+/** Appends a high-pass filter to the bus effect chain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_high_pass(
+    nk_audio_bus bus, float cutoff_frequency_hz, uint32_t order,
+    nk_audio_bus_effect *out_effect NK_OUT NK_OWNED);
+/**
+ * Appends a delay to the bus effect chain. Delay frames must be positive and
+ * decay is in the range [0, 1].
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_delay(
+    nk_audio_bus bus, uint32_t delay_pcm_frames, float decay,
+    nk_audio_bus_effect *out_effect NK_OUT NK_OWNED);
+/** Removes an effect from its bus and invalidates its handle. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_destroy(nk_audio_bus_effect effect);
+/** Returns the effect type. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_type(
+    nk_audio_bus_effect effect, nk_audio_effect_type *out_type NK_OUT);
+/** Enables or bypasses an effect without removing it from the chain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_enabled(
+    nk_audio_bus_effect effect, nk_bool enabled);
+/** Returns whether an effect is active in its bus chain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_is_enabled(
+    nk_audio_bus_effect effect, nk_bool *out_enabled NK_OUT);
+/** Moves an effect to a zero-based position in its bus chain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_position(
+    nk_audio_bus_effect effect, uint32_t position);
+/** Returns an effect's zero-based position in its bus chain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_position(
+    nk_audio_bus_effect effect, uint32_t *out_position NK_OUT);
+/** Updates a low-pass filter's cutoff and order. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_low_pass(
+    nk_audio_bus_effect effect, float cutoff_frequency_hz, uint32_t order);
+/** Returns a low-pass filter's cutoff and order. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_low_pass(
+    nk_audio_bus_effect effect, float *out_cutoff_frequency_hz NK_OUT,
+    uint32_t *out_order NK_OUT);
+/** Updates a high-pass filter's cutoff and order. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_high_pass(
+    nk_audio_bus_effect effect, float cutoff_frequency_hz, uint32_t order);
+/** Returns a high-pass filter's cutoff and order. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_high_pass(
+    nk_audio_bus_effect effect, float *out_cutoff_frequency_hz NK_OUT,
+    uint32_t *out_order NK_OUT);
+/** Sets a delay's wet gain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_delay_wet(
+    nk_audio_bus_effect effect, float wet);
+/** Returns a delay's wet gain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_delay_wet(
+    nk_audio_bus_effect effect, float *out_wet NK_OUT);
+/** Sets a delay's dry gain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_delay_dry(
+    nk_audio_bus_effect effect, float dry);
+/** Returns a delay's dry gain. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_delay_dry(
+    nk_audio_bus_effect effect, float *out_dry NK_OUT);
+/** Sets a delay's feedback decay. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_delay_decay(
+    nk_audio_bus_effect effect, float decay);
+/** Returns a delay's feedback decay. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_delay_decay(
+    nk_audio_bus_effect effect, float *out_decay NK_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Clip and voice lifetime and transport                                     */

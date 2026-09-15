@@ -39,6 +39,23 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		NK_AUDIO_CLIP_LOAD_FAILED = 2;
 	}
 	/**
+	 * Built-in processing effect types available on mixer buses.
+	 */
+	enum nk_audio_effect_type : u32 {
+		/**
+		 * A Butterworth low-pass filter.
+		 */
+		NK_AUDIO_EFFECT_LOW_PASS = 0;
+		/**
+		 * A Butterworth high-pass filter.
+		 */
+		NK_AUDIO_EFFECT_HIGH_PASS = 1;
+		/**
+		 * A feedback delay with configurable wet/dry mix.
+		 */
+		NK_AUDIO_EFFECT_DELAY = 2;
+	}
+	/**
 	 * Coordinate space used by a voice's spatial position.
 	 */
 	enum nk_audio_positioning : u32 {
@@ -287,9 +304,87 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_bus_create(out_bus: ptr<nk_audio_bus> @out @owned) -> nk_result;
 	/**
-	 * Stops and destroys a mixer bus, invalidating its handle.
+	 * Stops and destroys a mixer bus and its effects, invalidating their handles.
 	 */
 	extern fn nk_audio_bus_destroy(bus: nk_audio_bus) -> nk_result;
+	/**
+	 * Appends a delay to the bus effect chain. Delay frames must be positive and
+	 * decay is in the range [0, 1].
+	 */
+	extern fn nk_audio_bus_effect_create_delay(bus: nk_audio_bus, delay_pcm_frames: u32, decay: f32, out_effect: ptr<nk_audio_bus_effect> @out @owned) -> nk_result;
+	/**
+	 * Appends a high-pass filter to the bus effect chain.
+	 */
+	extern fn nk_audio_bus_effect_create_high_pass(bus: nk_audio_bus, cutoff_frequency_hz: f32, order: u32, out_effect: ptr<nk_audio_bus_effect> @out @owned) -> nk_result;
+	/**
+	 * Appends a low-pass filter to the bus effect chain. Cutoff is in Hz and
+	 * order must be in the range [1, 8].
+	 */
+	extern fn nk_audio_bus_effect_create_low_pass(bus: nk_audio_bus, cutoff_frequency_hz: f32, order: u32, out_effect: ptr<nk_audio_bus_effect> @out @owned) -> nk_result;
+	/**
+	 * Removes an effect from its bus and invalidates its handle.
+	 */
+	extern fn nk_audio_bus_effect_destroy(effect: nk_audio_bus_effect) -> nk_result;
+	/**
+	 * Returns a delay's feedback decay.
+	 */
+	extern fn nk_audio_bus_effect_get_delay_decay(effect: nk_audio_bus_effect, out_decay: ptr<f32> @out) -> nk_result;
+	/**
+	 * Returns a delay's dry gain.
+	 */
+	extern fn nk_audio_bus_effect_get_delay_dry(effect: nk_audio_bus_effect, out_dry: ptr<f32> @out) -> nk_result;
+	/**
+	 * Returns a delay's wet gain.
+	 */
+	extern fn nk_audio_bus_effect_get_delay_wet(effect: nk_audio_bus_effect, out_wet: ptr<f32> @out) -> nk_result;
+	/**
+	 * Returns a high-pass filter's cutoff and order.
+	 */
+	extern fn nk_audio_bus_effect_get_high_pass(effect: nk_audio_bus_effect, out_cutoff_frequency_hz: ptr<f32> @out, out_order: ptr<u32> @out) -> nk_result;
+	/**
+	 * Returns a low-pass filter's cutoff and order.
+	 */
+	extern fn nk_audio_bus_effect_get_low_pass(effect: nk_audio_bus_effect, out_cutoff_frequency_hz: ptr<f32> @out, out_order: ptr<u32> @out) -> nk_result;
+	/**
+	 * Returns an effect's zero-based position in its bus chain.
+	 */
+	extern fn nk_audio_bus_effect_get_position(effect: nk_audio_bus_effect, out_position: ptr<u32> @out) -> nk_result;
+	/**
+	 * Returns the effect type.
+	 */
+	extern fn nk_audio_bus_effect_get_type(effect: nk_audio_bus_effect, out_type: ptr<nk_audio_effect_type> @out) -> nk_result;
+	/**
+	 * Returns whether an effect is active in its bus chain.
+	 */
+	extern fn nk_audio_bus_effect_is_enabled(effect: nk_audio_bus_effect, out_enabled: ptr<nk_bool> @out) -> nk_result;
+	/**
+	 * Sets a delay's feedback decay.
+	 */
+	extern fn nk_audio_bus_effect_set_delay_decay(effect: nk_audio_bus_effect, decay: f32) -> nk_result;
+	/**
+	 * Sets a delay's dry gain.
+	 */
+	extern fn nk_audio_bus_effect_set_delay_dry(effect: nk_audio_bus_effect, dry: f32) -> nk_result;
+	/**
+	 * Sets a delay's wet gain.
+	 */
+	extern fn nk_audio_bus_effect_set_delay_wet(effect: nk_audio_bus_effect, wet: f32) -> nk_result;
+	/**
+	 * Enables or bypasses an effect without removing it from the chain.
+	 */
+	extern fn nk_audio_bus_effect_set_enabled(effect: nk_audio_bus_effect, enabled: nk_bool) -> nk_result;
+	/**
+	 * Updates a high-pass filter's cutoff and order.
+	 */
+	extern fn nk_audio_bus_effect_set_high_pass(effect: nk_audio_bus_effect, cutoff_frequency_hz: f32, order: u32) -> nk_result;
+	/**
+	 * Updates a low-pass filter's cutoff and order.
+	 */
+	extern fn nk_audio_bus_effect_set_low_pass(effect: nk_audio_bus_effect, cutoff_frequency_hz: f32, order: u32) -> nk_result;
+	/**
+	 * Moves an effect to a zero-based position in its bus chain.
+	 */
+	extern fn nk_audio_bus_effect_set_position(effect: nk_audio_bus_effect, position: u32) -> nk_result;
 	/**
 	 * Fades the bus between linear gains over a duration in PCM frames. The
 	 * starting volume may be NK_AUDIO_VOLUME_CURRENT.
@@ -1129,6 +1224,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Opaque handle for one audio mixer bus.
 	 */
 	handle nk_audio_bus : u32 @destroy("nk_audio_bus_destroy");
+	/**
+	 * Opaque handle for one effect inserted into an audio mixer bus.
+	 */
+	handle nk_audio_bus_effect : u32 @destroy("nk_audio_bus_effect_destroy");
 	/**
 	 * Opaque handle for one reusable audio clip source.
 	 */
