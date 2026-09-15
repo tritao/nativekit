@@ -126,9 +126,9 @@ class ShowcaseKit {
 		return style;
 	}
 
-	static function colorTile(label:String, background:Color):View {
+	static function colorTile(label:String, background:Color, growWeight:Float = 1.0):View {
 		var style = new LayoutStyle();
-		style.width = LayoutAxis.grow();
+		style.width = LayoutAxis.grow(0.0, 0.0, growWeight);
 		style.height = LayoutAxis.fixed(50.0);
 		style.padding = new Insets(10.0, 10.0, 10.0, 10.0);
 		style.background = background;

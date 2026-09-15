@@ -313,8 +313,8 @@ class UiExplorer {
 	function fixedBoxStyle(width:Float, height:Float):LayoutStyle
 		return ShowcaseKit.fixedBoxStyle(this, width, height);
 
-	function colorTile(label:String, background:Color):View
-		return ShowcaseKit.colorTile(label, background);
+	function colorTile(label:String, background:Color, growWeight:Float = 1.0):View
+		return ShowcaseKit.colorTile(label, background, growWeight);
 
 	function stackDemo():View
 		return ShowcaseKit.stackDemo(this);
