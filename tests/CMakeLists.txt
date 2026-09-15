@@ -10,6 +10,7 @@ add_executable(nativekit_core_tests
     ${PROJECT_SOURCE_DIR}/src/core/event_queue.cpp
     ${PROJECT_SOURCE_DIR}/src/core/gamepad_mapping.cpp
     ${PROJECT_SOURCE_DIR}/src/core/handle_registry.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/worker_pool.cpp
 )
 target_compile_features(nativekit_core_tests PRIVATE cxx_std_17)
 target_include_directories(nativekit_core_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)

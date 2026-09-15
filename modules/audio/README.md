@@ -23,9 +23,9 @@ For music and other large resources, use `nk_audio_clip_create_from_stream()`
 (or Haxe `Clip.fromStream()`). This validates the resource synchronously but
 does not retain its complete encoded contents. Each voice opens an independent
 provider stream and decoder, so the same streaming clip can be played by
-multiple voices without sharing stream position. Provider reads happen on a
-decoder worker and the audio callback only consumes
-the decoded PCM ring. `NK_AUDIO_VOICE_ASYNC` reports readiness when the first
+multiple voices without sharing stream position. Provider reads happen through
+NativeKit's bounded core worker pool and the audio callback only consumes the
+decoded PCM ring. `NK_AUDIO_VOICE_ASYNC` reports readiness when the first
 decoded page is available; provider read and seek failures emit
 `NK_EVENT_AUDIO_VOICE_STREAM_FAILED` with the provider's `nk_result`.
 

@@ -6,6 +6,7 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/handle_registry.hpp"
 #include "core/vulkan_internal.hpp"
+#include "core/worker_pool.hpp"
 #include "nativekit_accessibility.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_file_watch.h"
@@ -15,13 +16,17 @@
 #include "nativekit_task.h"
 #include "nativekit_window.h"
 
-#include <cstddef>
+#include <atomic>
 #include <cassert>
+#include <chrono>
+#include <condition_variable>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <new>
+#include <mutex>
 #include <stdexcept>
 
 #define NK_CHECK(expression)                                                                       \
@@ -633,5 +638,47 @@ int main() {
         NK_CHECK(event.kind == NK_EVENT_HTTP_DATA_AVAILABLE && event.source == source);
         nk_event_release(&event);
     }
+    std::atomic<int> worker_runs{0};
+    std::atomic<int> worker_cleanups{0};
+    std::mutex worker_mutex;
+    std::condition_variable worker_condition;
+    assert(nk::core::submit_worker_task(
+               [&] { worker_runs.fetch_add(1, std::memory_order_relaxed); },
+               [&] {
+                   std::lock_guard lock(worker_mutex);
+                   worker_cleanups.fetch_add(1, std::memory_order_release);
+                   worker_condition.notify_one();
+               }) == NK_OK);
+    std::unique_lock worker_lock(worker_mutex);
+    assert(worker_condition.wait_for(worker_lock, std::chrono::seconds(2), [&] {
+        return worker_cleanups.load(std::memory_order_acquire) == 1;
+    }));
+    assert(worker_runs.load(std::memory_order_acquire) == 1);
+    worker_lock.unlock();
+
+    nk::core::WorkerTaskState reusable_worker;
+    std::atomic<int> reusable_runs{0};
+    std::atomic<int> reusable_cleanups{0};
+    std::mutex reusable_mutex;
+    std::condition_variable reusable_condition;
+    assert(nk::core::initialize_worker_task(
+               reusable_worker,
+               [&] {
+                   if (reusable_runs.fetch_add(1, std::memory_order_acq_rel) == 0)
+                       assert(nk::core::schedule_worker_task(reusable_worker) == NK_OK);
+               },
+               [&] {
+                   std::lock_guard lock(reusable_mutex);
+                   reusable_cleanups.fetch_add(1, std::memory_order_release);
+                   reusable_condition.notify_one();
+               }) == NK_OK);
+    assert(nk::core::schedule_worker_task(reusable_worker) == NK_OK);
+    std::unique_lock reusable_lock(reusable_mutex);
+    assert(reusable_condition.wait_for(reusable_lock, std::chrono::seconds(2), [&] {
+        return reusable_cleanups.load(std::memory_order_acquire) == 2;
+    }));
+    assert(reusable_runs.load(std::memory_order_acquire) == 2);
+    reusable_lock.unlock();
+    nk::core::shutdown_worker_pool();
     return 0;
 }

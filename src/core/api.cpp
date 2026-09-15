@@ -6,6 +6,7 @@
 #include "core/plugin.hpp"
 #include "core/request.hpp"
 #include "core/runtime.hpp"
+#include "core/worker_pool.hpp"
 #include "core/system_internal.hpp"
 #include "core/task.hpp"
 #include "net/net_backend.hpp"
@@ -164,6 +165,9 @@ void NK_CALL nk_shutdown(void) {
      * callbacks. The task runtime joins native workers and drops queued
      * cooperative work for this generation. */
     nk::core::task_runtime_shutdown();
+    /* Audio streaming jobs use the reusable signal pool and must be joined
+     * before backend resources and their owning handles are released. */
+    nk::core::shutdown_worker_pool();
     nk::net::shutdown();
     /* Plugins observe a complete teardown before their runtime disappears. */
     nk::core::plugins_shutdown();

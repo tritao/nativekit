@@ -15,7 +15,8 @@ entry and any completed bytes.
 
 Asset state and result queries, URI queries, and byte copies are safe from
 worker threads. This allows a module such as audio to decode retained bytes on
-its own worker without adding a module-specific resource ownership system.
+NativeKit's shared worker pool without adding a module-specific resource
+ownership system.
 Asset destruction and cache mutation remain UI-thread operations. An
 asynchronously failed entry is retained until explicitly removed, making
 retries intentional and preventing accidental duplicate provider requests.

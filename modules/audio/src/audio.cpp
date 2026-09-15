@@ -6,6 +6,7 @@
 #include "core/handle_registry.hpp"
 #include "core/resource_cache.hpp"
 #include "core/runtime.hpp"
+#include "core/worker_pool.hpp"
 
 #include "miniaudio.h"
 
@@ -21,7 +22,6 @@
 #include <mutex>
 #include <new>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace {
@@ -201,9 +201,11 @@ struct AudioStreamingSource final {
     std::atomic<ma_result> load_result{MA_BUSY};
     std::atomic<ma_result> read_result{MA_SUCCESS};
     std::atomic<uint64_t> cursor{0};
+    std::atomic<uint32_t> pending_jobs{0};
+    std::atomic<bool> job_scheduled{false};
+    nk::core::WorkerTaskState decode_task;
     std::mutex worker_mutex;
     std::condition_variable worker_condition;
-    std::thread worker;
 
     ~AudioStreamingSource();
 
@@ -213,7 +215,10 @@ struct AudioStreamingSource final {
                          bool source_length_known);
     ma_result start();
     void stop() noexcept;
-    void worker_main() noexcept;
+    ma_result schedule_decode() noexcept;
+    void decode_job() noexcept;
+    void job_finished() noexcept;
+    void fail(ma_result result) noexcept;
 };
 
 ma_result streaming_source_read(ma_data_source *data_source, void *frames_out,
@@ -334,11 +339,16 @@ ma_result streaming_source_read(ma_data_source *data_source, void *frames_out,
     if (frames_read)
         *frames_read = total_read;
     if (total_read != 0) {
-        source->worker_condition.notify_one();
+        const auto schedule_result = source->schedule_decode();
+        if (schedule_result != MA_SUCCESS && schedule_result != MA_INVALID_OPERATION)
+            source->fail(schedule_result);
         return MA_SUCCESS;
     }
     if (source->ended.load(std::memory_order_acquire))
         return MA_AT_END;
+    const auto schedule_result = source->schedule_decode();
+    if (schedule_result != MA_SUCCESS)
+        return schedule_result;
     return MA_BUSY;
 }
 
@@ -348,8 +358,14 @@ ma_result streaming_source_seek(ma_data_source *data_source, ma_uint64 frame_ind
         return MA_INVALID_OPERATION;
     source->seek_pending.store(true, std::memory_order_release);
     source->requested_seek.store(frame_index, std::memory_order_release);
-    source->worker_condition.notify_one();
-    return MA_SUCCESS;
+    const auto result = source->schedule_decode();
+    if (result != MA_SUCCESS) {
+        source->seek_pending.store(false, std::memory_order_release);
+        source->requested_seek.store(no_stream_seek, std::memory_order_release);
+        if (result != MA_INVALID_OPERATION)
+            source->fail(result);
+    }
+    return result;
 }
 
 ma_result streaming_source_get_data_format(ma_data_source *data_source, ma_format *format,
@@ -412,111 +428,149 @@ ma_result AudioStreamingSource::initialize(ma_decoder *source_decoder,
                                        nullptr, nullptr, &pcm);
     if (result != MA_SUCCESS)
         return result;
+    const auto worker_result = nk::core::initialize_worker_task(
+        decode_task, [this] { decode_job(); }, [this] { job_finished(); });
+    if (worker_result != NK_OK) {
+        ma_pcm_rb_uninit(&pcm);
+        return resource_result(worker_result);
+    }
     pcm.ds.vtable = &streaming_source_vtable;
     initialized = true;
     return MA_SUCCESS;
 }
 
 ma_result AudioStreamingSource::start() {
-    if (!initialized || !decoder || worker.joinable())
+    if (!initialized || !decoder || job_scheduled.load(std::memory_order_acquire))
         return MA_INVALID_OPERATION;
     stop_requested.store(false, std::memory_order_release);
-    try {
-        worker = std::thread([this] { worker_main(); });
-    } catch (...) {
-        return MA_OUT_OF_MEMORY;
-    }
-    return MA_SUCCESS;
+    return schedule_decode();
 }
 
 void AudioStreamingSource::stop() noexcept {
     stop_requested.store(true, std::memory_order_release);
-    worker_condition.notify_one();
-    if (worker.joinable())
-        worker.join();
+    worker_condition.notify_all();
+    std::unique_lock lock(worker_mutex);
+    worker_condition.wait(lock, [this] {
+        return pending_jobs.load(std::memory_order_acquire) == 0;
+    });
 }
 
-void AudioStreamingSource::worker_main() noexcept {
-    while (!stop_requested.load(std::memory_order_acquire)) {
-        if (seek_pending.load(std::memory_order_acquire) ||
-            requested_seek.load(std::memory_order_acquire) != no_stream_seek) {
-            const auto target = requested_seek.exchange(no_stream_seek, std::memory_order_acq_rel);
-            if (target == no_stream_seek) {
-                seek_pending.store(false, std::memory_order_release);
-                continue;
-            }
-            ma_pcm_rb_reset(&pcm);
-            ended.store(false, std::memory_order_release);
-            read_result.store(MA_SUCCESS, std::memory_order_release);
-            const auto result = ma_decoder_seek_to_pcm_frame(decoder, target);
-            if (result != MA_SUCCESS) {
-                read_result.store(result, std::memory_order_release);
-                ended.store(true, std::memory_order_release);
-                if (!ready.exchange(true, std::memory_order_acq_rel))
-                    load_result.store(result, std::memory_order_release);
-                if (result != MA_AT_END)
-                    audio_voice_report_stream_error(*voice, miniaudio_result_code(result));
-                audio_voice_update_load_state(*voice);
-            } else {
-                cursor.store(target, std::memory_order_release);
-                seek_pending.store(false, std::memory_order_release);
-            }
-            if (requested_seek.load(std::memory_order_acquire) == no_stream_seek)
-                seek_pending.store(false, std::memory_order_release);
-            continue;
+ma_result AudioStreamingSource::schedule_decode() noexcept {
+    if (stop_requested.load(std::memory_order_acquire))
+        return MA_INVALID_OPERATION;
+
+    bool expected = false;
+    if (!job_scheduled.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+        return MA_SUCCESS;
+
+    pending_jobs.fetch_add(1, std::memory_order_acq_rel);
+    const auto submit_result = nk::core::schedule_worker_task(decode_task);
+    if (submit_result == NK_OK)
+        return MA_SUCCESS;
+
+    job_scheduled.store(false, std::memory_order_release);
+    pending_jobs.fetch_sub(1, std::memory_order_acq_rel);
+    worker_condition.notify_all();
+    return resource_result(submit_result);
+}
+
+void AudioStreamingSource::fail(ma_result result) noexcept {
+    if (result == MA_SUCCESS)
+        return;
+    read_result.store(result, std::memory_order_release);
+    ended.store(true, std::memory_order_release);
+    if (!ready.load(std::memory_order_acquire))
+        load_result.store(result, std::memory_order_release);
+    if (result != MA_AT_END)
+        audio_voice_report_stream_error(*voice, miniaudio_result_code(result));
+    audio_voice_update_load_state(*voice);
+}
+
+void AudioStreamingSource::decode_job() noexcept {
+    if (stop_requested.load(std::memory_order_acquire))
+        return;
+
+    if (seek_pending.load(std::memory_order_acquire) ||
+        requested_seek.load(std::memory_order_acquire) != no_stream_seek) {
+        const auto target = requested_seek.exchange(no_stream_seek, std::memory_order_acq_rel);
+        if (target == no_stream_seek) {
+            seek_pending.store(false, std::memory_order_release);
+            return;
         }
-
-        if (ended.load(std::memory_order_acquire)) {
-            std::unique_lock lock(worker_mutex);
-            worker_condition.wait(lock, [this] {
-                return stop_requested.load(std::memory_order_acquire) ||
-                       seek_pending.load(std::memory_order_acquire) ||
-                       requested_seek.load(std::memory_order_acquire) != no_stream_seek;
-            });
-            continue;
+        ma_pcm_rb_reset(&pcm);
+        ended.store(false, std::memory_order_release);
+        read_result.store(MA_SUCCESS, std::memory_order_release);
+        const auto result = ma_decoder_seek_to_pcm_frame(decoder, target);
+        if (result != MA_SUCCESS) {
+            fail(result);
+        } else {
+            cursor.store(target, std::memory_order_release);
+            seek_pending.store(false, std::memory_order_release);
         }
+        if (requested_seek.load(std::memory_order_acquire) == no_stream_seek)
+            seek_pending.store(false, std::memory_order_release);
+        return;
+    }
 
-        auto writable = ma_pcm_rb_available_write(&pcm);
-        if (writable == 0) {
-            std::unique_lock lock(worker_mutex);
-            worker_condition.wait(lock, [this] {
-                return stop_requested.load(std::memory_order_acquire) ||
-                       seek_pending.load(std::memory_order_acquire) ||
-                       requested_seek.load(std::memory_order_acquire) != no_stream_seek ||
-                       ma_pcm_rb_available_write(&pcm) != 0;
-            });
-            continue;
+    if (ended.load(std::memory_order_acquire))
+        return;
+
+    auto writable = ma_pcm_rb_available_write(&pcm);
+    if (writable == 0)
+        return;
+
+    void *mapped = nullptr;
+    const auto acquire_result = ma_pcm_rb_acquire_write(&pcm, &writable, &mapped);
+    if (acquire_result != MA_SUCCESS) {
+        fail(acquire_result);
+        return;
+    }
+    ma_uint64 decoded = 0;
+    const auto result = ma_decoder_read_pcm_frames(decoder, mapped, writable, &decoded);
+    if (decoded != 0) {
+        const auto commit_result = ma_pcm_rb_commit_write(&pcm, static_cast<ma_uint32>(decoded));
+        if (commit_result != MA_SUCCESS) {
+            fail(commit_result);
+            return;
         }
+    }
 
-        void *mapped = nullptr;
-        const auto acquire_result = ma_pcm_rb_acquire_write(&pcm, &writable, &mapped);
-        if (acquire_result != MA_SUCCESS)
-            continue;
-        ma_uint64 decoded = 0;
-        const auto result = ma_decoder_read_pcm_frames(decoder, mapped, writable, &decoded);
-        if (decoded != 0)
-            ma_pcm_rb_commit_write(&pcm, static_cast<ma_uint32>(decoded));
+    if (decoded != 0 && !ready.exchange(true, std::memory_order_acq_rel)) {
+        load_result.store(MA_SUCCESS, std::memory_order_release);
+        audio_voice_update_load_state(*voice);
+    }
 
-        if (decoded != 0 && !ready.exchange(true, std::memory_order_acq_rel)) {
-            load_result.store(MA_SUCCESS, std::memory_order_release);
-            audio_voice_update_load_state(*voice);
-        }
+    if (result == MA_SUCCESS && decoded != 0)
+        return;
 
-        if (result == MA_SUCCESS && decoded != 0)
-            continue;
-
-        if (result != MA_SUCCESS && result != MA_AT_END) {
-            read_result.store(result, std::memory_order_release);
-            audio_voice_report_stream_error(*voice, miniaudio_result_code(result));
-            if (!ready.load(std::memory_order_acquire))
-                load_result.store(result, std::memory_order_release);
-        } else if (decoded == 0) {
-            if (!ready.load(std::memory_order_acquire))
-                load_result.store(MA_AT_END, std::memory_order_release);
-        }
+    if (result != MA_SUCCESS && result != MA_AT_END) {
+        fail(result);
+    } else if (decoded == 0) {
+        if (!ready.load(std::memory_order_acquire))
+            load_result.store(MA_AT_END, std::memory_order_release);
+        ended.store(true, std::memory_order_release);
+        audio_voice_update_load_state(*voice);
+    } else {
         ended.store(true, std::memory_order_release);
         audio_voice_update_load_state(*voice);
     }
+}
+
+void AudioStreamingSource::job_finished() noexcept {
+    job_scheduled.store(false, std::memory_order_release);
+    pending_jobs.fetch_sub(1, std::memory_order_acq_rel);
+    worker_condition.notify_all();
+    if (stop_requested.load(std::memory_order_acquire) ||
+        ended.load(std::memory_order_acquire))
+        return;
+
+    const bool seek_requested = seek_pending.load(std::memory_order_acquire) ||
+                                requested_seek.load(std::memory_order_acquire) != no_stream_seek;
+    if (!seek_requested && ma_pcm_rb_available_write(&pcm) == 0)
+        return;
+    const auto result = schedule_decode();
+    if (result != MA_SUCCESS && result != MA_INVALID_OPERATION)
+        fail(result);
 }
 
 AudioStreamingSource::~AudioStreamingSource() {
@@ -1456,6 +1510,12 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
                                               "could not initialize streaming audio buffer");
             return {};
         }
+        const auto stream_result = voice->streaming_source->start();
+        if (stream_result != MA_SUCCESS) {
+            out_result = map_miniaudio_result(stream_result,
+                                              "could not start streaming audio decoder");
+            return {};
+        }
         const uint32_t sound_flags =
             (flags & NK_AUDIO_VOICE_LOOPING) ? MA_SOUND_FLAG_LOOPING : 0;
         result = ma_sound_init_from_data_source(
@@ -1494,14 +1554,6 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
         out_result = map_miniaudio_result(callback_result,
                                           "could not configure audio voice completion");
         return {};
-    }
-    if (voice->streaming_source) {
-        const auto stream_result = voice->streaming_source->start();
-        if (stream_result != MA_SUCCESS) {
-            out_result = map_miniaudio_result(stream_result,
-                                              "could not start streaming audio decoder");
-            return {};
-        }
     }
     if (asynchronous)
         audio_voice_update_load_state(*voice);
