@@ -104,10 +104,11 @@ constexpr backend_contract current_contract() {
     return {"Web",
             cap(NK_CAP_WINDOW) | cap(NK_CAP_INPUT) | cap(NK_CAP_OPENGL_ES_SURFACE) |
                 cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) | cap(NK_CAP_CLIPBOARD) |
-                cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_RESOURCE_IO),
+                cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_RESOURCE_IO) |
+                cap(NK_CAP_ACCESSIBILITY),
             cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_FILE_DIALOG) | cap(NK_CAP_DRAG_DROP) |
                 cap(NK_CAP_SHELL) | cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_NOTIFICATION) |
-                cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_JOYSTICK) | cap(NK_CAP_ACCESSIBILITY),
+                cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_JOYSTICK),
             cap(NK_CAP_WEBVIEW) | cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) |
                 cap(NK_CAP_WRAP_NATIVE_WINDOW) | cap(NK_CAP_MONITOR) |
                 cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_OPENGL_SURFACE) |

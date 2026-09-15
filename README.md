@@ -58,7 +58,7 @@ maintained in the [platform parity contract](docs/platform-parity.md).
 | Metal | — | — | ✅ | — | ✅ | — |
 | Vulkan | ✅ | — | — | ✅ | 🚧 | 🚧 |
 | URI resources and sharing | Partial | Partial | Partial | ✅ | 🚧 | 🚧 |
-| Custom-surface accessibility | ✅ | ✅ | ✅ | ✅ | ✅ | 🚧 |
+| Custom-surface accessibility | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Native interoperability | Export | Export | Export | Host view | Host view | — |
 
 **Legend:** ✅ supported · **Partial** a subset is supported · 🚧 coming soon ·
@@ -72,6 +72,9 @@ maintained in the [platform parity contract](docs/platform-parity.md).
   path-based dialogs, drops, resource sharing, joystick support, and simulator
   runtime integration are still being added. Custom-surface accessibility is
   projected into UIKit and Cocoa accessibility elements and VoiceOver/Voice Control actions.
+- Web custom-surface accessibility mirrors the NativeKit semantic tree into an
+  accessible DOM overlay. Focus, activation, keyboard adjustments, text value,
+  and selection actions return through the shared accessibility event contract.
 - Linux desktop support requires GTK 3 and WebKitGTK 4.1. Without them, the
   library builds with a stub backend and reports the services as unsupported.
 - Windows WebViews require the Microsoft Edge WebView2 Evergreen Runtime.

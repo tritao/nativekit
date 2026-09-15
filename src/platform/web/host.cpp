@@ -352,6 +352,374 @@ EM_JS(void, nk_web_configure_text_input,
           }
       });
 
+EM_JS(void, nk_web_set_accessibility_tree,
+      (const char *selector, double surface, int width, int height, int visible, double focus,
+       const char *json), {
+          const canvas = document.querySelector(UTF8ToString(selector));
+          if (!canvas)
+              return;
+
+          const id = "__nativekit_accessibility_" + String(surface);
+          let tree = null;
+          try {
+              tree = JSON.parse(UTF8ToString(json));
+          } catch (error) {
+              return;
+          }
+          if (!tree || !Array.isArray(tree.nodes) || tree.nodes.length === 0) {
+              const old = document.getElementById(id);
+              if (old) {
+                  if (old._nkLayout) {
+                      window.removeEventListener("resize", old._nkLayout);
+                      window.removeEventListener("scroll", old._nkLayout, true);
+                  }
+                  if (old._nkResizeObserver)
+                      old._nkResizeObserver.disconnect();
+                  if (old._nkFocusedElement) {
+                      old._nkFocusedElement._nkSuppressFocus = true;
+                      old._nkFocusedElement.blur();
+                      old._nkFocusedElement._nkSuppressFocus = false;
+                  }
+                  old.remove();
+              }
+              return;
+          }
+
+          let container = document.getElementById(id);
+          if (!container) {
+              container = document.createElement("div");
+              container.id = id;
+              container.setAttribute("role", "group");
+              container.setAttribute("aria-label", "NativeKit custom surface");
+              container.tabIndex = -1;
+              container.style.position = "fixed";
+              container.style.zIndex = "2147483646";
+              container.style.pointerEvents = "none";
+              container.style.opacity = "0";
+              container.style.margin = "0";
+              container.style.padding = "0";
+              container.style.border = "0";
+              container.style.outline = "none";
+              document.body.appendChild(container);
+          }
+
+          const actionIds = tree.actions || {};
+          const roleNames = {
+              group: "group",
+              button: "button",
+              checkbox: "checkbox",
+              radio: "radio",
+              text_field: "textbox",
+              link: "link",
+              image: "img",
+              heading: "heading",
+              list: "list",
+              list_item: "listitem",
+              slider: "slider",
+              scroll_area: "region",
+              dialog: "dialog",
+              menu: "menu",
+              menu_bar: "menubar",
+              menu_item: "menuitem",
+              tab_list: "tablist",
+              tab: "tab",
+              tab_panel: "tabpanel",
+              switch: "switch",
+              progress_bar: "progressbar",
+              combo_box: "combobox",
+              collection: "group",
+              collection_item: "listitem",
+              grid: "grid",
+              row: "row",
+              cell: "gridcell",
+              column_header: "columnheader",
+              row_header: "rowheader",
+              tree: "tree",
+              tree_item: "treeitem",
+              separator: "separator",
+              toolbar: "toolbar",
+              status: "status",
+              alert: "alert"
+          };
+          const setBoolean = (element, name, value) => {
+              if (value)
+                  element.setAttribute(name, "true");
+              else
+                  element.removeAttribute(name);
+          };
+          const emit = (node, name, value, start, end, granularity) => {
+              const action = actionIds[name];
+              if (action === undefined || !Module.ccall ||
+                  (node.disabled && name !== "focus" && name !== "clear_focus"))
+                  return;
+              Module.ccall("nk_web_host_accessibility_action", null,
+                           ["number", "number", "number", "string", "number", "number", "number"],
+                           [surface, node.id, action, value || "", start, end, granularity || 0]);
+          };
+          const codePointOffset = (value, utf16Offset) =>
+              Array.from(value.slice(0, utf16Offset)).length;
+          const utf16Offset = (value, codepoints) => {
+              let offset = 0;
+              let count = 0;
+              for (const character of value) {
+                  if (count >= codepoints)
+                      break;
+                  offset += character.length;
+                  count++;
+              }
+              return offset;
+          };
+          const can = (node, name) => node.actions && node.actions.indexOf(name) >= 0;
+
+          container._nkSurfaceWidth = width;
+          container._nkSurfaceHeight = height;
+          container._nkActionIds = actionIds;
+          container._nkFocus = focus;
+          container.replaceChildren();
+          const elements = new Map();
+          for (const node of tree.nodes) {
+              const element = document.createElement(node.role === "text_field"
+                                                          ? (node.multiline ? "textarea" : "input")
+                                                    : node.role === "button" ? "button" : "div");
+              const role = roleNames[node.role];
+              if (role)
+                  element.setAttribute("role", role);
+              element.dataset.nativekitAccessibilityNode = String(node.id);
+              element.dataset.nativekitAccessibilityParent = String(node.parent);
+              element._nkNode = node;
+              element.style.position = "absolute";
+              element.style.boxSizing = "border-box";
+              element.style.pointerEvents = "none";
+              element.style.margin = "0";
+              element.style.padding = "0";
+              element.style.border = "0";
+              element.style.background = "transparent";
+              element.style.color = "transparent";
+              element.style.outline = "none";
+              element.tabIndex = node.focusable || node.canFocus ? 0 : -1;
+              if (node.label)
+                  element.setAttribute("aria-label", node.label);
+              if (node.role === "text_field") {
+                  if (element.tagName === "INPUT")
+                      element.type = node.password ? "password" : "text";
+                  element.value = node.value || "";
+                  element.readOnly = !!node.readOnly;
+                  if (node.selectionStart !== null && node.selectionEnd !== null) {
+                      const start = Math.max(0, node.selectionStart - node.textStart);
+                      const end = Math.max(start, node.selectionEnd - node.textStart);
+                      element.setSelectionRange(utf16Offset(element.value, start),
+                                                utf16Offset(element.value, end));
+                  }
+              } else if (node.value) {
+                  element.textContent = node.value;
+              }
+              if (node.value && node.role !== "text_field")
+                  element.setAttribute("aria-valuetext", node.value);
+              if (node.role === "slider" || node.role === "progress_bar") {
+                  element.setAttribute("aria-valuenow", String(node.numericValue));
+                  element.setAttribute("aria-valuemin", String(node.numericMinimum));
+                  element.setAttribute("aria-valuemax", String(node.numericMaximum));
+              }
+              if (node.role === "checkbox" || node.role === "radio" || node.role === "switch")
+                  element.setAttribute("aria-checked", node.checked ? "true" : "false");
+              setBoolean(element, "aria-selected", node.selected);
+              setBoolean(element, "aria-disabled", node.disabled);
+              setBoolean(element, "aria-readonly", node.readOnly);
+              setBoolean(element, "aria-multiline", node.multiline);
+              setBoolean(element, "aria-expanded", node.expanded);
+              setBoolean(element, "aria-modal", node.modal);
+              setBoolean(element, "aria-required", node.required);
+              setBoolean(element, "aria-invalid", node.invalid);
+              setBoolean(element, "aria-busy", node.busy);
+              if (node.hasPopup)
+                  element.setAttribute("aria-haspopup", "true");
+              if (node.orientation)
+                  element.setAttribute("aria-orientation", node.orientation);
+              if (node.hierarchyLevel)
+                  element.setAttribute("aria-level", String(node.hierarchyLevel));
+              if (node.positionInSet)
+                  element.setAttribute("aria-posinset", String(node.positionInSet));
+              if (node.setSize)
+                  element.setAttribute("aria-setsize", String(node.setSize));
+              if (node.rowCount)
+                  element.setAttribute("aria-rowcount", String(node.rowCount));
+              if (node.columnCount)
+                  element.setAttribute("aria-colcount", String(node.columnCount));
+              if (node.rowIndex !== null)
+                  element.setAttribute("aria-rowindex", String(node.rowIndex + 1));
+              if (node.columnIndex !== null)
+                  element.setAttribute("aria-colindex", String(node.columnIndex + 1));
+              if (node.rowSpan)
+                  element.setAttribute("aria-rowspan", String(node.rowSpan));
+              if (node.columnSpan)
+                  element.setAttribute("aria-colspan", String(node.columnSpan));
+              if (node.role === "status")
+                  element.setAttribute("aria-live", "polite");
+              else if (node.role === "alert")
+                  element.setAttribute("aria-live", "assertive");
+              if (node.textRanges && node.textRanges.length)
+                  element.dataset.nativekitAccessibilityTextRanges = JSON.stringify(node.textRanges);
+
+              element.addEventListener("focus", () => {
+                  if (!element._nkSuppressFocus && can(node, "focus"))
+                      emit(node, "focus", "", -1, -1, 0);
+              });
+              element.addEventListener("click", event => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  let action = "activate";
+                  if ((node.role === "checkbox" || node.role === "switch") && can(node, "toggle"))
+                      action = "toggle";
+                  else if ((node.role === "radio" || node.role === "tab" ||
+                            node.role === "list_item" || node.role === "collection_item") &&
+                           can(node, "select"))
+                      action = "select";
+                  else if (node.role === "tree_item" && node.expanded && can(node, "collapse"))
+                      action = "collapse";
+                  else if (node.role === "tree_item" && !node.expanded && can(node, "expand"))
+                      action = "expand";
+                  if (can(node, action))
+                      emit(node, action, "", -1, -1, 0);
+              });
+              element.addEventListener("contextmenu", event => {
+                  if (!can(node, "show_context_menu"))
+                      return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  emit(node, "show_context_menu", "", -1, -1, 0);
+              });
+              element.addEventListener("keydown", event => {
+                  if (element.tagName === "BUTTON" || element.tagName === "A")
+                      return;
+                  if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      let action = "activate";
+                      if ((node.role === "checkbox" || node.role === "switch") && can(node, "toggle"))
+                          action = "toggle";
+                      else if (node.role === "tree_item" && !node.expanded && can(node, "expand"))
+                          action = "expand";
+                      if (can(node, action))
+                          emit(node, action, "", -1, -1, 0);
+                  } else if (event.key === "ArrowUp" || event.key === "ArrowRight") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const action = can(node, "increment") ? "increment"
+                                    : can(node, "scroll_backward") ? "scroll_backward" : null;
+                      if (action)
+                          emit(node, action, "", -1, -1, 0);
+                  } else if (event.key === "ArrowDown" || event.key === "ArrowLeft") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const action = can(node, "decrement") ? "decrement"
+                                    : can(node, "scroll_forward") ? "scroll_forward" : null;
+                      if (action)
+                          emit(node, action, "", -1, -1, 0);
+                  } else if (event.key === "PageDown") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (can(node, "scroll_forward"))
+                          emit(node, "scroll_forward", "", -1, -1, 0);
+                  } else if (event.key === "PageUp") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (can(node, "scroll_backward"))
+                          emit(node, "scroll_backward", "", -1, -1, 0);
+                  }
+              });
+              if (node.role === "text_field") {
+                  element.addEventListener("input", () =>
+                      can(node, "set_value") && emit(node, "set_value", element.value, -1, -1, 0));
+                  const emitSelection = () => {
+                      const start = node.textStart + codePointOffset(element.value, element.selectionStart);
+                      const end = node.textStart + codePointOffset(element.value, element.selectionEnd);
+                      if (can(node, "set_selection"))
+                          emit(node, "set_selection", "", start, end, 0);
+                  };
+                  element.addEventListener("select", emitSelection);
+                  element.addEventListener("keyup", emitSelection);
+              }
+              elements.set(String(node.id), element);
+          }
+          for (const node of tree.nodes) {
+              const element = elements.get(String(node.id));
+              const parent = node.parent === 0 ? container : elements.get(String(node.parent));
+              (parent || container).appendChild(element);
+          }
+
+          const layout = () => {
+              const rect = canvas.getBoundingClientRect();
+              container.style.left = rect.left + "px";
+              container.style.top = rect.top + "px";
+              container.style.width = rect.width + "px";
+              container.style.height = rect.height + "px";
+              const scaleX = width > 0 ? rect.width / width : 1;
+              const scaleY = height > 0 ? rect.height / height : 1;
+              for (const node of tree.nodes) {
+                  const element = elements.get(String(node.id));
+                  if (!element)
+                      continue;
+                  element.style.left = node.x * scaleX + "px";
+                  element.style.top = node.y * scaleY + "px";
+                  element.style.width = Math.max(0, node.width * scaleX) + "px";
+                  element.style.height = Math.max(0, node.height * scaleY) + "px";
+              }
+          };
+          if (container._nkLayout) {
+              window.removeEventListener("resize", container._nkLayout);
+              window.removeEventListener("scroll", container._nkLayout, true);
+          }
+          if (container._nkResizeObserver)
+              container._nkResizeObserver.disconnect();
+          container._nkLayout = layout;
+          window.addEventListener("resize", layout);
+          window.addEventListener("scroll", layout, true);
+          if (typeof ResizeObserver !== "undefined") {
+              container._nkResizeObserver = new ResizeObserver(layout);
+              container._nkResizeObserver.observe(canvas);
+          }
+          container.style.display = visible ? "" : "none";
+          layout();
+          const focusElement = elements.get(String(focus));
+          const previousFocus = container._nkFocusedElement;
+          if (previousFocus && previousFocus !== focusElement) {
+              previousFocus._nkSuppressFocus = true;
+              previousFocus.blur();
+              previousFocus._nkSuppressFocus = false;
+          }
+          if (focusElement && document.activeElement !== focusElement) {
+              focusElement._nkSuppressFocus = true;
+              focusElement.focus({preventScroll: true});
+              focusElement._nkSuppressFocus = false;
+          }
+          container._nkFocusedElement = focusElement || null;
+      });
+
+EM_JS(void, nk_web_clear_accessibility_tree, (double surface), {
+    const id = "__nativekit_accessibility_" + String(surface);
+    const container = document.getElementById(id);
+    if (!container)
+        return;
+    if (container._nkLayout) {
+        window.removeEventListener("resize", container._nkLayout);
+        window.removeEventListener("scroll", container._nkLayout, true);
+    }
+    if (container._nkResizeObserver)
+        container._nkResizeObserver.disconnect();
+    if (container._nkFocusedElement) {
+        container._nkFocusedElement._nkSuppressFocus = true;
+        container._nkFocusedElement.blur();
+        container._nkFocusedElement._nkSuppressFocus = false;
+    }
+    container.remove();
+});
+
+EM_JS(void, nk_web_set_accessibility_visible, (double surface, int visible), {
+    const container = document.getElementById("__nativekit_accessibility_" + String(surface));
+    if (container)
+        container.style.display = visible ? "" : "none";
+});
+
 EM_JS(int, nk_web_set_clipboard_text, (const char *text), {
     const value = UTF8ToString(text);
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -427,6 +795,27 @@ nk_web_host_text_input_event(int type, const char *text, int selection_start, in
     event.selection_start = selection_start < 0 ? 0u : static_cast<uint32_t>(selection_start);
     event.selection_end = selection_end < 0 ? 0u : static_cast<uint32_t>(selection_end);
     host_state.callbacks.text_input(event, host_state.user_data);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_accessibility_action(
+    uint32_t surface, uint32_t node, uint32_t action, const char *value, int selection_start,
+    int selection_end, int granularity) {
+    if (!host_state.callbacks.accessibility_action)
+        return;
+    nk::web::AccessibilityActionEvent event{};
+    event.surface = static_cast<nk_handle>(surface);
+    event.node = static_cast<nk_accessibility_node_id>(node);
+    event.action = static_cast<nk_accessibility_action>(action);
+    event.value = value;
+    event.selection_start = selection_start < 0
+                                ? NK_ACCESSIBILITY_TEXT_POSITION_NONE
+                                : static_cast<nk_accessibility_text_position>(selection_start);
+    event.selection_end = selection_end < 0
+                              ? NK_ACCESSIBILITY_TEXT_POSITION_NONE
+                              : static_cast<nk_accessibility_text_position>(selection_end);
+    event.granularity = static_cast<nk_accessibility_text_granularity>(
+        granularity < 0 ? 0 : granularity);
+    host_state.callbacks.accessibility_action(event, host_state.user_data);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void
@@ -530,6 +919,21 @@ void configure_text_input(const TextInputConfig &config) noexcept {
         config.composition_end == NK_TEXT_POSITION_NONE ? -1
                                                         : static_cast<int>(config.composition_end),
         config.cursor_x, config.cursor_y, config.cursor_width, config.cursor_height);
+}
+
+void set_accessibility_tree(nk_handle surface, int32_t width, int32_t height, bool visible,
+                            nk_accessibility_node_id focus, const char *json) noexcept {
+    if (json)
+        nk_web_set_accessibility_tree(canvas_selector(), static_cast<double>(surface), width,
+                                      height, visible ? 1 : 0, static_cast<double>(focus), json);
+}
+
+void clear_accessibility_tree(nk_handle surface) noexcept {
+    nk_web_clear_accessibility_tree(static_cast<double>(surface));
+}
+
+void set_accessibility_visible(nk_handle surface, bool visible) noexcept {
+    nk_web_set_accessibility_visible(static_cast<double>(surface), visible ? 1 : 0);
 }
 
 bool set_clipboard_text(const char *text) noexcept {

@@ -1,4 +1,5 @@
 #include "nativekit_graphics.h"
+#include "nativekit_accessibility.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_input.h"
 #include "nativekit_resource.h"
@@ -20,6 +21,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -30,6 +32,48 @@ struct WebSurfaceResource;
 struct WebCursorResource final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
     nk_cursor_shape shape = NK_CURSOR_ARROW;
+};
+
+struct WebAccessibilityTextRange {
+    nk_accessibility_text_position start = 0;
+    nk_accessibility_text_position end = 0;
+    float x = 0;
+    float y = 0;
+    float width = 0;
+    float height = 0;
+};
+
+struct WebAccessibilityNode {
+    nk_accessibility_node_id id = NK_ACCESSIBILITY_ROOT;
+    nk_accessibility_node_id parent = NK_ACCESSIBILITY_ROOT;
+    uint32_t child_index = 0;
+    nk_accessibility_role role = NK_ACCESSIBILITY_GROUP;
+    nk_accessibility_states states = 0;
+    nk_accessibility_actions actions = 0;
+    float x = 0;
+    float y = 0;
+    float width = 0;
+    float height = 0;
+    std::string label;
+    std::string value;
+    double numeric_value = 0;
+    double numeric_minimum = 0;
+    double numeric_maximum = 0;
+    nk_accessibility_text_position text_start = 0;
+    nk_accessibility_text_position document_length = 0;
+    nk_accessibility_text_position selection_start = NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    nk_accessibility_text_position selection_end = NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    uint32_t set_size = 0;
+    uint32_t position_in_set = 0;
+    uint32_t row_count = 0;
+    uint32_t column_count = 0;
+    uint32_t row_index = NK_ACCESSIBILITY_INDEX_NONE;
+    uint32_t column_index = NK_ACCESSIBILITY_INDEX_NONE;
+    uint32_t row_span = 0;
+    uint32_t column_span = 0;
+    uint32_t hierarchy_level = 0;
+    nk_accessibility_orientation orientation = NK_ACCESSIBILITY_ORIENTATION_UNSPECIFIED;
+    std::vector<WebAccessibilityTextRange> text_ranges;
 };
 
 template <typename T> std::vector<std::byte> bytes_of(const T &value) {
@@ -80,6 +124,8 @@ struct WebSurfaceResource final : nk::core::Resource {
     bool text_input_state_set = false;
     nk_text_input_state text_input_state{};
     std::string text_input_text;
+    std::unordered_map<nk_accessibility_node_id, WebAccessibilityNode> accessibility_nodes;
+    nk_accessibility_node_id accessibility_focus = NK_ACCESSIBILITY_ROOT;
 
     ~WebSurfaceResource() override {
         if (context)
@@ -148,6 +194,518 @@ std::size_t utf8_byte_offset(const std::string &text, uint32_t codepoint) {
         ++offset;
     }
     return offset;
+}
+
+bool decode_utf8(const char *value, uint32_t *out_count) {
+    if (!value)
+        value = "";
+    const auto *bytes = reinterpret_cast<const unsigned char *>(value);
+    uint64_t count = 0;
+    for (std::size_t offset = 0; bytes[offset];) {
+        const unsigned char first = bytes[offset];
+        uint32_t codepoint = 0;
+        std::size_t length = 0;
+        if (first <= 0x7fu) {
+            codepoint = first;
+            length = 1;
+        } else if (first >= 0xc2u && first <= 0xdfu) {
+            codepoint = first & 0x1fu;
+            length = 2;
+        } else if (first >= 0xe0u && first <= 0xefu) {
+            codepoint = first & 0x0fu;
+            length = 3;
+        } else if (first >= 0xf0u && first <= 0xf4u) {
+            codepoint = first & 0x07u;
+            length = 4;
+        } else {
+            return false;
+        }
+        for (std::size_t index = 1; index < length; ++index) {
+            const unsigned char next = bytes[offset + index];
+            if ((next & 0xc0u) != 0x80u)
+                return false;
+            codepoint = (codepoint << 6) | (next & 0x3fu);
+        }
+        if ((length == 2 && codepoint < 0x80u) || (length == 3 && codepoint < 0x800u) ||
+            (length == 4 && codepoint < 0x10000u) || codepoint > 0x10ffffu ||
+            (codepoint >= 0xd800u && codepoint <= 0xdfffu))
+            return false;
+        ++count;
+        if (count > std::numeric_limits<uint32_t>::max())
+            return false;
+        offset += length;
+    }
+    if (out_count)
+        *out_count = static_cast<uint32_t>(count);
+    return true;
+}
+
+constexpr nk_accessibility_states web_accessibility_states =
+    NK_ACCESSIBILITY_FOCUSABLE | NK_ACCESSIBILITY_FOCUSED | NK_ACCESSIBILITY_SELECTED |
+    NK_ACCESSIBILITY_CHECKED | NK_ACCESSIBILITY_DISABLED | NK_ACCESSIBILITY_READ_ONLY |
+    NK_ACCESSIBILITY_MULTILINE | NK_ACCESSIBILITY_PASSWORD | NK_ACCESSIBILITY_EXPANDED |
+    NK_ACCESSIBILITY_MODAL | NK_ACCESSIBILITY_REQUIRED | NK_ACCESSIBILITY_INVALID |
+    NK_ACCESSIBILITY_BUSY | NK_ACCESSIBILITY_HAS_POPUP;
+
+constexpr nk_accessibility_actions web_accessibility_actions =
+    NK_ACCESSIBILITY_CAN_ACTIVATE | NK_ACCESSIBILITY_CAN_FOCUS |
+    NK_ACCESSIBILITY_CAN_SET_VALUE | NK_ACCESSIBILITY_CAN_SET_SELECTION |
+    NK_ACCESSIBILITY_CAN_INCREMENT | NK_ACCESSIBILITY_CAN_DECREMENT |
+    NK_ACCESSIBILITY_CAN_SCROLL_FORWARD | NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD |
+    NK_ACCESSIBILITY_CAN_MOVE_NEXT | NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS |
+    NK_ACCESSIBILITY_CAN_TOGGLE | NK_ACCESSIBILITY_CAN_SELECT |
+    NK_ACCESSIBILITY_CAN_DESELECT | NK_ACCESSIBILITY_CAN_EXPAND |
+    NK_ACCESSIBILITY_CAN_COLLAPSE | NK_ACCESSIBILITY_CAN_DISMISS |
+    NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU | NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW;
+
+bool copy_web_accessibility_node(
+    const nk_accessibility_node &node,
+    const std::unordered_map<nk_accessibility_node_id, WebAccessibilityNode> &nodes,
+    WebAccessibilityNode &copy) {
+    uint32_t value_codepoints = 0;
+    if (!decode_utf8(node.value, &value_codepoints) || !decode_utf8(node.label, nullptr) ||
+        node.struct_size < sizeof(node) || node.id == NK_ACCESSIBILITY_ROOT ||
+        node.role > NK_ACCESSIBILITY_ALERT ||
+        node.orientation > NK_ACCESSIBILITY_ORIENTATION_VERTICAL ||
+        (node.states & ~web_accessibility_states) || (node.actions & ~web_accessibility_actions) ||
+        !std::isfinite(node.x) || !std::isfinite(node.y) || !std::isfinite(node.width) ||
+        !std::isfinite(node.height) || node.width < 0 || node.height < 0 ||
+        !std::isfinite(node.numeric_value) || !std::isfinite(node.numeric_minimum) ||
+        !std::isfinite(node.numeric_maximum) ||
+        (node.role == NK_ACCESSIBILITY_SLIDER &&
+         (node.numeric_minimum > node.numeric_maximum ||
+          node.numeric_value < node.numeric_minimum ||
+          node.numeric_value > node.numeric_maximum)))
+        return false;
+
+    const uint64_t text_end = static_cast<uint64_t>(node.text_start) + value_codepoints;
+    const bool no_selection = node.selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                              node.selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE;
+    const bool valid_selection = node.selection_start != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                                 node.selection_end != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                                 node.selection_start <= node.selection_end &&
+                                 node.selection_start >= node.text_start &&
+                                 node.selection_end <= text_end;
+    if (text_end > node.document_length || (!no_selection && !valid_selection) ||
+        (node.parent_id != NK_ACCESSIBILITY_ROOT && nodes.find(node.parent_id) == nodes.end()))
+        return false;
+
+    auto ancestor = node.parent_id;
+    for (std::size_t depth = 0; ancestor != NK_ACCESSIBILITY_ROOT; ++depth) {
+        if (ancestor == node.id || depth > nodes.size())
+            return false;
+        const auto parent = nodes.find(ancestor);
+        if (parent == nodes.end())
+            return false;
+        ancestor = parent->second.parent;
+    }
+
+    copy.id = node.id;
+    copy.parent = node.parent_id;
+    copy.child_index = node.child_index;
+    copy.role = node.role;
+    copy.states = node.states;
+    copy.actions = node.actions;
+    copy.x = node.x;
+    copy.y = node.y;
+    copy.width = node.width;
+    copy.height = node.height;
+    copy.label = node.label ? node.label : "";
+    copy.value = node.value ? node.value : "";
+    copy.numeric_value = node.numeric_value;
+    copy.numeric_minimum = node.numeric_minimum;
+    copy.numeric_maximum = node.numeric_maximum;
+    copy.text_start = node.text_start;
+    copy.document_length = node.document_length;
+    copy.selection_start = node.selection_start;
+    copy.selection_end = node.selection_end;
+    copy.set_size = node.set_size;
+    copy.position_in_set = node.position_in_set;
+    copy.row_count = node.row_count;
+    copy.column_count = node.column_count;
+    copy.row_index = node.row_index;
+    copy.column_index = node.column_index;
+    copy.row_span = node.row_span;
+    copy.column_span = node.column_span;
+    copy.hierarchy_level = node.hierarchy_level;
+    copy.orientation = node.orientation;
+    return true;
+}
+
+void remove_web_accessibility_descendants(
+    std::unordered_map<nk_accessibility_node_id, WebAccessibilityNode> &nodes,
+    nk_accessibility_node_id node) {
+    std::vector<nk_accessibility_node_id> pending{node};
+    for (std::size_t index = 0; index < pending.size(); ++index) {
+        for (const auto &[candidate, value] : nodes)
+            if (value.parent == pending[index])
+                pending.push_back(candidate);
+    }
+    for (const auto id : pending)
+        nodes.erase(id);
+}
+
+struct WebAccessibilityActionSpec {
+    nk_accessibility_action action;
+    nk_accessibility_actions bit;
+    const char *name;
+};
+
+constexpr WebAccessibilityActionSpec web_accessibility_action_specs[] = {
+    {NK_ACCESSIBILITY_ACTION_ACTIVATE, NK_ACCESSIBILITY_CAN_ACTIVATE, "activate"},
+    {NK_ACCESSIBILITY_ACTION_FOCUS, NK_ACCESSIBILITY_CAN_FOCUS, "focus"},
+    {NK_ACCESSIBILITY_ACTION_CLEAR_FOCUS, NK_ACCESSIBILITY_CAN_FOCUS, "clear_focus"},
+    {NK_ACCESSIBILITY_ACTION_SET_VALUE, NK_ACCESSIBILITY_CAN_SET_VALUE, "set_value"},
+    {NK_ACCESSIBILITY_ACTION_SET_SELECTION, NK_ACCESSIBILITY_CAN_SET_SELECTION, "set_selection"},
+    {NK_ACCESSIBILITY_ACTION_INCREMENT, NK_ACCESSIBILITY_CAN_INCREMENT, "increment"},
+    {NK_ACCESSIBILITY_ACTION_DECREMENT, NK_ACCESSIBILITY_CAN_DECREMENT, "decrement"},
+    {NK_ACCESSIBILITY_ACTION_SCROLL_FORWARD, NK_ACCESSIBILITY_CAN_SCROLL_FORWARD,
+     "scroll_forward"},
+    {NK_ACCESSIBILITY_ACTION_SCROLL_BACKWARD, NK_ACCESSIBILITY_CAN_SCROLL_BACKWARD,
+     "scroll_backward"},
+    {NK_ACCESSIBILITY_ACTION_MOVE_NEXT, NK_ACCESSIBILITY_CAN_MOVE_NEXT, "move_next"},
+    {NK_ACCESSIBILITY_ACTION_MOVE_PREVIOUS, NK_ACCESSIBILITY_CAN_MOVE_PREVIOUS, "move_previous"},
+    {NK_ACCESSIBILITY_ACTION_TOGGLE, NK_ACCESSIBILITY_CAN_TOGGLE, "toggle"},
+    {NK_ACCESSIBILITY_ACTION_SELECT, NK_ACCESSIBILITY_CAN_SELECT, "select"},
+    {NK_ACCESSIBILITY_ACTION_DESELECT, NK_ACCESSIBILITY_CAN_DESELECT, "deselect"},
+    {NK_ACCESSIBILITY_ACTION_EXPAND, NK_ACCESSIBILITY_CAN_EXPAND, "expand"},
+    {NK_ACCESSIBILITY_ACTION_COLLAPSE, NK_ACCESSIBILITY_CAN_COLLAPSE, "collapse"},
+    {NK_ACCESSIBILITY_ACTION_DISMISS, NK_ACCESSIBILITY_CAN_DISMISS, "dismiss"},
+    {NK_ACCESSIBILITY_ACTION_SHOW_CONTEXT_MENU, NK_ACCESSIBILITY_CAN_SHOW_CONTEXT_MENU,
+     "show_context_menu"},
+    {NK_ACCESSIBILITY_ACTION_SCROLL_INTO_VIEW, NK_ACCESSIBILITY_CAN_SCROLL_INTO_VIEW,
+     "scroll_into_view"},
+};
+
+nk_accessibility_actions web_accessibility_action_bit(nk_accessibility_action action) {
+    for (const auto &spec : web_accessibility_action_specs)
+        if (spec.action == action)
+            return spec.bit;
+    return 0;
+}
+
+const char *web_accessibility_role_name(nk_accessibility_role role) {
+    switch (role) {
+    case NK_ACCESSIBILITY_GROUP:
+        return "group";
+    case NK_ACCESSIBILITY_BUTTON:
+        return "button";
+    case NK_ACCESSIBILITY_CHECKBOX:
+        return "checkbox";
+    case NK_ACCESSIBILITY_RADIO:
+        return "radio";
+    case NK_ACCESSIBILITY_TEXT:
+        return "text";
+    case NK_ACCESSIBILITY_TEXT_FIELD:
+        return "text_field";
+    case NK_ACCESSIBILITY_LINK:
+        return "link";
+    case NK_ACCESSIBILITY_IMAGE:
+        return "image";
+    case NK_ACCESSIBILITY_HEADING:
+        return "heading";
+    case NK_ACCESSIBILITY_LIST:
+        return "list";
+    case NK_ACCESSIBILITY_LIST_ITEM:
+        return "list_item";
+    case NK_ACCESSIBILITY_SLIDER:
+        return "slider";
+    case NK_ACCESSIBILITY_SCROLL_AREA:
+        return "scroll_area";
+    case NK_ACCESSIBILITY_DIALOG:
+        return "dialog";
+    case NK_ACCESSIBILITY_MENU:
+        return "menu";
+    case NK_ACCESSIBILITY_MENU_BAR:
+        return "menu_bar";
+    case NK_ACCESSIBILITY_MENU_ITEM:
+        return "menu_item";
+    case NK_ACCESSIBILITY_TAB_LIST:
+        return "tab_list";
+    case NK_ACCESSIBILITY_TAB:
+        return "tab";
+    case NK_ACCESSIBILITY_TAB_PANEL:
+        return "tab_panel";
+    case NK_ACCESSIBILITY_SWITCH:
+        return "switch";
+    case NK_ACCESSIBILITY_PROGRESS_BAR:
+        return "progress_bar";
+    case NK_ACCESSIBILITY_COMBO_BOX:
+        return "combo_box";
+    case NK_ACCESSIBILITY_COLLECTION:
+        return "collection";
+    case NK_ACCESSIBILITY_COLLECTION_ITEM:
+        return "collection_item";
+    case NK_ACCESSIBILITY_GRID:
+        return "grid";
+    case NK_ACCESSIBILITY_ROW:
+        return "row";
+    case NK_ACCESSIBILITY_CELL:
+        return "cell";
+    case NK_ACCESSIBILITY_COLUMN_HEADER:
+        return "column_header";
+    case NK_ACCESSIBILITY_ROW_HEADER:
+        return "row_header";
+    case NK_ACCESSIBILITY_TREE:
+        return "tree";
+    case NK_ACCESSIBILITY_TREE_ITEM:
+        return "tree_item";
+    case NK_ACCESSIBILITY_SEPARATOR:
+        return "separator";
+    case NK_ACCESSIBILITY_TOOLBAR:
+        return "toolbar";
+    case NK_ACCESSIBILITY_STATUS:
+        return "status";
+    case NK_ACCESSIBILITY_ALERT:
+        return "alert";
+    default:
+        return "group";
+    }
+}
+
+const char *web_accessibility_orientation_name(nk_accessibility_orientation orientation) {
+    switch (orientation) {
+    case NK_ACCESSIBILITY_ORIENTATION_HORIZONTAL:
+        return "horizontal";
+    case NK_ACCESSIBILITY_ORIENTATION_VERTICAL:
+        return "vertical";
+    default:
+        return nullptr;
+    }
+}
+
+void append_json_string(std::string &json, const std::string &value) {
+    static constexpr char hex[] = "0123456789abcdef";
+    json.push_back('"');
+    for (const unsigned char character : value) {
+        switch (character) {
+        case '"':
+            json += "\\\"";
+            break;
+        case '\\':
+            json += "\\\\";
+            break;
+        case '\b':
+            json += "\\b";
+            break;
+        case '\f':
+            json += "\\f";
+            break;
+        case '\n':
+            json += "\\n";
+            break;
+        case '\r':
+            json += "\\r";
+            break;
+        case '\t':
+            json += "\\t";
+            break;
+        default:
+            if (character < 0x20u) {
+                json += "\\u00";
+                json.push_back(hex[character >> 4]);
+                json.push_back(hex[character & 0x0fu]);
+            } else {
+                json.push_back(static_cast<char>(character));
+            }
+            break;
+        }
+    }
+    json.push_back('"');
+}
+
+void append_json_number(std::string &json, double value) {
+    json += std::to_string(value);
+}
+
+void append_json_position(std::string &json, nk_accessibility_text_position value) {
+    if (value == NK_ACCESSIBILITY_TEXT_POSITION_NONE)
+        json += "null";
+    else
+        json += std::to_string(value);
+}
+
+void append_json_node(std::string &json, const WebAccessibilityNode &node,
+                      nk_accessibility_node_id focus) {
+    const auto add_bool = [&](const char *name, bool value) {
+        json += ",\"";
+        json += name;
+        json += value ? "\":true" : "\":false";
+    };
+    json += "{\"id\":" + std::to_string(node.id);
+    json += ",\"parent\":" + std::to_string(node.parent);
+    json += ",\"index\":" + std::to_string(node.child_index);
+    json += ",\"role\":";
+    append_json_string(json, web_accessibility_role_name(node.role));
+    add_bool("focusable", (node.states & NK_ACCESSIBILITY_FOCUSABLE) != 0);
+    add_bool("focused", node.id == focus || (node.states & NK_ACCESSIBILITY_FOCUSED) != 0);
+    add_bool("selected", (node.states & NK_ACCESSIBILITY_SELECTED) != 0);
+    add_bool("checked", (node.states & NK_ACCESSIBILITY_CHECKED) != 0);
+    add_bool("disabled", (node.states & NK_ACCESSIBILITY_DISABLED) != 0);
+    add_bool("readOnly", (node.states & NK_ACCESSIBILITY_READ_ONLY) != 0);
+    add_bool("multiline", (node.states & NK_ACCESSIBILITY_MULTILINE) != 0);
+    add_bool("password", (node.states & NK_ACCESSIBILITY_PASSWORD) != 0);
+    add_bool("expanded", (node.states & NK_ACCESSIBILITY_EXPANDED) != 0);
+    add_bool("modal", (node.states & NK_ACCESSIBILITY_MODAL) != 0);
+    add_bool("required", (node.states & NK_ACCESSIBILITY_REQUIRED) != 0);
+    add_bool("invalid", (node.states & NK_ACCESSIBILITY_INVALID) != 0);
+    add_bool("busy", (node.states & NK_ACCESSIBILITY_BUSY) != 0);
+    add_bool("hasPopup", (node.states & NK_ACCESSIBILITY_HAS_POPUP) != 0);
+    json += ",\"canFocus\":";
+    json += (node.actions & NK_ACCESSIBILITY_CAN_FOCUS) ? "true" : "false";
+    json += ",\"x\":";
+    append_json_number(json, node.x);
+    json += ",\"y\":";
+    append_json_number(json, node.y);
+    json += ",\"width\":";
+    append_json_number(json, node.width);
+    json += ",\"height\":";
+    append_json_number(json, node.height);
+    json += ",\"label\":";
+    append_json_string(json, node.label);
+    json += ",\"value\":";
+    append_json_string(json, node.value);
+    json += ",\"numericValue\":";
+    append_json_number(json, node.numeric_value);
+    json += ",\"numericMinimum\":";
+    append_json_number(json, node.numeric_minimum);
+    json += ",\"numericMaximum\":";
+    append_json_number(json, node.numeric_maximum);
+    json += ",\"textStart\":";
+    json += std::to_string(node.text_start);
+    json += ",\"documentLength\":";
+    json += std::to_string(node.document_length);
+    json += ",\"selectionStart\":";
+    append_json_position(json, node.selection_start);
+    json += ",\"selectionEnd\":";
+    append_json_position(json, node.selection_end);
+    json += ",\"setSize\":" + std::to_string(node.set_size);
+    json += ",\"positionInSet\":" + std::to_string(node.position_in_set);
+    json += ",\"rowCount\":" + std::to_string(node.row_count);
+    json += ",\"columnCount\":" + std::to_string(node.column_count);
+    json += ",\"rowIndex\":";
+    if (node.row_index == NK_ACCESSIBILITY_INDEX_NONE)
+        json += "null";
+    else
+        json += std::to_string(node.row_index);
+    json += ",\"columnIndex\":";
+    if (node.column_index == NK_ACCESSIBILITY_INDEX_NONE)
+        json += "null";
+    else
+        json += std::to_string(node.column_index);
+    json += ",\"rowSpan\":" + std::to_string(node.row_span);
+    json += ",\"columnSpan\":" + std::to_string(node.column_span);
+    json += ",\"hierarchyLevel\":" + std::to_string(node.hierarchy_level);
+    json += ",\"orientation\":";
+    if (const auto *orientation = web_accessibility_orientation_name(node.orientation))
+        append_json_string(json, orientation);
+    else
+        json += "null";
+    json += ",\"actions\":[";
+    bool first_action = true;
+    for (const auto &spec : web_accessibility_action_specs) {
+        if (!(node.actions & spec.bit))
+            continue;
+        if (!first_action)
+            json.push_back(',');
+        first_action = false;
+        append_json_string(json, spec.name);
+    }
+    json += "]";
+    json += ",\"textRanges\":[";
+    for (std::size_t index = 0; index < node.text_ranges.size(); ++index) {
+        if (index)
+            json.push_back(',');
+        const auto &range = node.text_ranges[index];
+        json += "{\"start\":" + std::to_string(range.start);
+        json += ",\"end\":" + std::to_string(range.end);
+        json += ",\"x\":";
+        append_json_number(json, range.x);
+        json += ",\"y\":";
+        append_json_number(json, range.y);
+        json += ",\"width\":";
+        append_json_number(json, range.width);
+        json += ",\"height\":";
+        append_json_number(json, range.height);
+        json.push_back('}');
+    }
+    json += "]}";
+}
+
+void refresh_web_accessibility(WebSurfaceResource &surface);
+
+void refresh_web_accessibility(WebSurfaceResource &surface) {
+    std::vector<const WebAccessibilityNode *> nodes;
+    nodes.reserve(surface.accessibility_nodes.size());
+    for (const auto &[id, node] : surface.accessibility_nodes)
+        nodes.push_back(&node);
+    std::sort(nodes.begin(), nodes.end(), [](const auto *left, const auto *right) {
+        return left->id < right->id;
+    });
+
+    std::string json = "{\"actions\":{";
+    for (std::size_t index = 0;
+         index < sizeof(web_accessibility_action_specs) / sizeof(web_accessibility_action_specs[0]);
+         ++index) {
+        if (index)
+            json.push_back(',');
+        json.push_back('"');
+        json += web_accessibility_action_specs[index].name;
+        json += "\":";
+        json += std::to_string(web_accessibility_action_specs[index].action);
+    }
+    json += "},\"nodes\":[";
+    for (std::size_t index = 0; index < nodes.size(); ++index) {
+        if (index)
+            json.push_back(',');
+        append_json_node(json, *nodes[index], surface.accessibility_focus);
+    }
+    json += "]}";
+    auto window = get_window(surface.parent);
+    const bool visible = surface.visible && window && window->visible;
+    nk::web::set_accessibility_tree(surface.handle, surface.width, surface.height, visible,
+                                    surface.accessibility_focus, json.c_str());
+}
+
+nk_result emit_web_accessibility_action(
+    WebSurfaceResource &surface, nk_accessibility_node_id node, nk_accessibility_action action,
+    const std::string &value = {},
+    nk_accessibility_text_position selection_start = NK_ACCESSIBILITY_TEXT_POSITION_NONE,
+    nk_accessibility_text_position selection_end = NK_ACCESSIBILITY_TEXT_POSITION_NONE,
+    nk_accessibility_text_granularity granularity = 0) noexcept {
+    return nk::core::callback_boundary_or<nk_result>(NK_ERROR_UNKNOWN, [&]() -> nk_result {
+        const auto found = surface.accessibility_nodes.find(node);
+        const auto required = web_accessibility_action_bit(action);
+        if (found == surface.accessibility_nodes.end() || !required ||
+            !(found->second.actions & required))
+            return NK_ERROR_UNSUPPORTED;
+        if (action == NK_ACCESSIBILITY_ACTION_FOCUS)
+            surface.accessibility_focus = node;
+        else if (action == NK_ACCESSIBILITY_ACTION_CLEAR_FOCUS &&
+                 surface.accessibility_focus == node)
+            surface.accessibility_focus = NK_ACCESSIBILITY_ROOT;
+        nk_accessibility_action_event payload{};
+        payload.node_id = node;
+        payload.action = action;
+        payload.value_offset = value.empty() ? 0u : sizeof(payload);
+        payload.value_length = static_cast<uint32_t>(value.size());
+        payload.selection_start = selection_start;
+        payload.selection_end = selection_end;
+        payload.granularity = granularity;
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_ACCESSIBILITY_ACTION;
+        event.source = surface.handle;
+        event.data.resize(sizeof(payload) + value.size() + (value.empty() ? 0u : 1u));
+        std::memcpy(event.data.data(), &payload, sizeof(payload));
+        if (!value.empty())
+            std::memcpy(event.data.data() + sizeof(payload), value.c_str(), value.size() + 1);
+        const auto result = nk::core::push_event(std::move(event));
+        if (result == NK_OK &&
+            (action == NK_ACCESSIBILITY_ACTION_FOCUS ||
+             action == NK_ACCESSIBILITY_ACTION_CLEAR_FOCUS))
+            refresh_web_accessibility(surface);
+        return result;
+    });
 }
 
 void configure_text_input(WebSurfaceResource &surface) {
@@ -341,6 +899,7 @@ void apply_canvas_size(WebWindowResource &window, const nk::web::CanvasSize &siz
             surface->framebuffer_height = window.framebuffer_height;
             queue_surface_resize(*surface);
         }
+        refresh_web_accessibility(*surface);
     }
 }
 
@@ -762,6 +1321,21 @@ void on_pointer_lock(bool active, void *user_data) {
     });
 }
 
+void on_accessibility_action(const nk::web::AccessibilityActionEvent &event, void *user_data) {
+    nk::core::callback_boundary([&] {
+        auto *window = static_cast<WebWindowResource *>(user_data);
+        if (!window || !nk::core::is_runtime_generation(window->generation))
+            return;
+        auto surface = get_surface(event.surface);
+        if (!surface || surface->parent != window->handle)
+            return;
+        const std::string value = event.value ? event.value : "";
+        emit_web_accessibility_action(*surface, event.node, event.action, value,
+                                      event.selection_start, event.selection_end,
+                                      event.granularity);
+    });
+}
+
 EM_BOOL frame_loop(double, void *user_data) {
     auto *surface = static_cast<WebSurfaceResource *>(user_data);
     if (!surface || !nk::core::is_runtime_generation(surface->generation) ||
@@ -816,7 +1390,8 @@ extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_WINDOW | NK_CAP_INPUT | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
-           NK_CAP_POINTER_CAPTURE | NK_CAP_CLIPBOARD | NK_CAP_WINDOW_GEOMETRY | NK_CAP_RESOURCE_IO;
+           NK_CAP_POINTER_CAPTURE | NK_CAP_CLIPBOARD | NK_CAP_WINDOW_GEOMETRY |
+           NK_CAP_RESOURCE_IO | NK_CAP_ACCESSIBILITY;
 }
 
 nk_result NK_CALL nk_clipboard_set_text(const char *text) {
@@ -893,6 +1468,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             callbacks.focus = on_focus;
             callbacks.context = on_context;
             callbacks.pointer_lock = on_pointer_lock;
+            callbacks.accessibility_action = on_accessibility_action;
             nk::web::install_callbacks(callbacks, window.get());
             nk::web::set_canvas_visible(window->visible);
             if (!window->title.empty())
@@ -933,6 +1509,11 @@ nk_result NK_CALL nk_window_show(nk_handle handle, nk_bool visible) {
         return invalid_handle("invalid web window handle");
     window->visible = visible != 0;
     nk::web::set_canvas_visible(window->visible);
+    for (const auto surface_handle : window->surfaces) {
+        if (auto surface = get_surface(surface_handle))
+            nk::web::set_accessibility_visible(surface->handle,
+                                                window->visible && surface->visible);
+    }
     queue_window_state(*window);
     return NK_OK;
 }
@@ -1112,6 +1693,9 @@ nk_result NK_CALL nk_surface_create(nk_handle window_handle, const nk_surface_op
             surface->height = window->height;
             surface->framebuffer_width = window->framebuffer_width;
             surface->framebuffer_height = window->framebuffer_height;
+            surface->visible = (options->flags & NK_SURFACE_HIDDEN) == 0;
+            nk::web::set_canvas_visible(surface->visible && window->visible);
+            refresh_web_accessibility(*surface);
             nk::core::QueuedEvent event;
             event.kind = NK_EVENT_SURFACE_READY;
             event.source = handle;
@@ -1142,6 +1726,7 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
         nk::web::stop_frame_loop();
     surface->frame_callback = nullptr;
     surface->frame_user_data = nullptr;
+    nk::web::clear_accessibility_tree(surface->handle);
     remove_surface_from_window(*surface);
     return nk::core::handles().erase(handle, nk::core::ResourceType::surface)
                ? NK_OK
@@ -1156,8 +1741,10 @@ nk_result NK_CALL nk_surface_show(nk_handle handle, nk_bool visible) {
         return invalid_handle("invalid web surface handle");
     surface->visible = visible != 0;
     auto window = get_window(surface->parent);
-    if (window)
+    if (window) {
         nk::web::set_canvas_visible(surface->visible && window->visible);
+        nk::web::set_accessibility_visible(surface->handle, surface->visible && window->visible);
+    }
     return NK_OK;
 }
 
@@ -1177,6 +1764,163 @@ nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, 
         return NK_ERROR_UNKNOWN;
     sync_canvas_size(*window);
     return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_accessibility_set_node(nk_handle handle,
+                                                    const nk_accessibility_node *node) {
+    return nk::core::result_boundary(
+        "unexpected error while setting a Web accessibility node", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            auto surface = get_surface(handle);
+            if (!surface)
+                return invalid_handle("invalid web accessibility surface handle");
+            if (!node)
+                return invalid_argument("Web accessibility node is missing");
+            WebAccessibilityNode copy;
+            if (!copy_web_accessibility_node(*node, surface->accessibility_nodes, copy))
+                return invalid_argument("invalid Web accessibility node");
+            if (const auto old = surface->accessibility_nodes.find(node->id);
+                old != surface->accessibility_nodes.end())
+                copy.text_ranges = old->second.text_ranges;
+            surface->accessibility_nodes[node->id] = std::move(copy);
+            refresh_web_accessibility(*surface);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_remove_node(nk_handle handle,
+                                                       nk_accessibility_node_id node) {
+    return nk::core::result_boundary(
+        "unexpected error while removing a Web accessibility node", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            auto surface = get_surface(handle);
+            if (!surface)
+                return invalid_handle("invalid web accessibility surface handle");
+            if (!node || surface->accessibility_nodes.find(node) ==
+                              surface->accessibility_nodes.end())
+                return invalid_argument("invalid or unknown Web accessibility node");
+            remove_web_accessibility_descendants(surface->accessibility_nodes, node);
+            if (surface->accessibility_nodes.find(surface->accessibility_focus) ==
+                surface->accessibility_nodes.end())
+                surface->accessibility_focus = NK_ACCESSIBILITY_ROOT;
+            refresh_web_accessibility(*surface);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_clear(nk_handle handle) {
+    return nk::core::result_boundary(
+        "unexpected error while clearing Web accessibility nodes", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            auto surface = get_surface(handle);
+            if (!surface)
+                return invalid_handle("invalid web accessibility surface handle");
+            surface->accessibility_nodes.clear();
+            surface->accessibility_focus = NK_ACCESSIBILITY_ROOT;
+            refresh_web_accessibility(*surface);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_set_focus(nk_handle handle,
+                                                    nk_accessibility_node_id node) {
+    return nk::core::result_boundary(
+        "unexpected error while focusing a Web accessibility node", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            auto surface = get_surface(handle);
+            if (!surface)
+                return invalid_handle("invalid web accessibility surface handle");
+            if (node != NK_ACCESSIBILITY_ROOT && surface->accessibility_nodes.find(node) ==
+                                                    surface->accessibility_nodes.end())
+                return invalid_argument("cannot focus an unknown Web accessibility node");
+            surface->accessibility_focus = node;
+            refresh_web_accessibility(*surface);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
+                                                  const nk_accessibility_update *update) {
+    return nk::core::result_boundary(
+        "unexpected error while updating Web accessibility nodes", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            auto surface = get_surface(handle);
+            if (!surface)
+                return invalid_handle("invalid web accessibility surface handle");
+            if (!update || update->struct_size < sizeof(*update) ||
+                (update->flags & ~NK_ACCESSIBILITY_UPDATE_FOCUS) ||
+                (update->node_count && !update->nodes) ||
+                (update->removed_node_count && !update->removed_nodes))
+                return invalid_argument("invalid Web accessibility update");
+            auto nodes = surface->accessibility_nodes;
+            for (uint32_t index = 0; index < update->removed_node_count; ++index) {
+                const auto removed = update->removed_nodes[index];
+                if (!removed || nodes.find(removed) == nodes.end())
+                    return invalid_argument("Web accessibility update removes an unknown node");
+                remove_web_accessibility_descendants(nodes, removed);
+            }
+            for (uint32_t index = 0; index < update->node_count; ++index) {
+                const auto &node = update->nodes[index];
+                WebAccessibilityNode copy;
+                if (!copy_web_accessibility_node(node, nodes, copy))
+                    return invalid_argument("invalid node in Web accessibility update");
+                if (const auto old = nodes.find(node.id); old != nodes.end())
+                    copy.text_ranges = old->second.text_ranges;
+                nodes[node.id] = std::move(copy);
+            }
+            if ((update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS) && update->focus !=
+                                                                  NK_ACCESSIBILITY_ROOT &&
+                nodes.find(update->focus) == nodes.end())
+                return invalid_argument("Web accessibility update focuses an unknown node");
+            surface->accessibility_nodes = std::move(nodes);
+            if (update->flags & NK_ACCESSIBILITY_UPDATE_FOCUS)
+                surface->accessibility_focus = update->focus;
+            else if (surface->accessibility_focus != NK_ACCESSIBILITY_ROOT &&
+                     surface->accessibility_nodes.find(surface->accessibility_focus) ==
+                         surface->accessibility_nodes.end())
+                surface->accessibility_focus = NK_ACCESSIBILITY_ROOT;
+            refresh_web_accessibility(*surface);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
+    nk_handle handle, nk_accessibility_node_id node, const nk_accessibility_text_range *ranges,
+    uint32_t range_count) {
+    return nk::core::result_boundary(
+        "unexpected error while setting Web accessibility text ranges", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            auto surface = get_surface(handle);
+            if (!surface)
+                return invalid_handle("invalid web accessibility surface handle");
+            const auto found = surface->accessibility_nodes.find(node);
+            if (!node || found == surface->accessibility_nodes.end() ||
+                (range_count && !ranges))
+                return invalid_argument("invalid Web accessibility text ranges");
+            std::vector<WebAccessibilityTextRange> copy;
+            copy.reserve(range_count);
+            nk_accessibility_text_position previous = 0;
+            for (uint32_t index = 0; index < range_count; ++index) {
+                const auto &range = ranges[index];
+                if (range.start >= range.end || range.start < previous ||
+                    range.end > found->second.document_length || !std::isfinite(range.x) ||
+                    !std::isfinite(range.y) || !std::isfinite(range.width) ||
+                    !std::isfinite(range.height) || range.width < 0 || range.height < 0)
+                    return invalid_argument("invalid or unordered Web accessibility text ranges");
+                copy.push_back({range.start, range.end, range.x, range.y, range.width,
+                                range.height});
+                previous = range.end;
+            }
+            found->second.text_ranges = std::move(copy);
+            refresh_web_accessibility(*surface);
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
