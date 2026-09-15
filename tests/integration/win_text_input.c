@@ -175,13 +175,14 @@ static int send_ime_roman(const char *letters) {
     return 1;
 }
 
-static int verify_native_composition(const nk_event *event) {
+static int verify_native_composition(const nk_event *event, nk_text_position start) {
     nk_text_edit_event edit = {0};
     memcpy(&edit, event->data, sizeof(edit));
     const char *event_text = NULL;
     uint32_t event_length = 0;
-    return edit.action == NK_TEXT_EDIT_COMPOSE && edit.replace_start == 2 &&
-           edit.replace_end == 2 && edit.composition_start == 2 && edit.composition_end > 2 &&
+    return edit.action == NK_TEXT_EDIT_COMPOSE && edit.replace_start == start &&
+           edit.replace_end == start && edit.composition_start == start &&
+           edit.composition_end > start &&
            edit.selection_start == edit.selection_end &&
            nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK &&
            event_length != 0;
@@ -320,7 +321,7 @@ int main(void) {
         compose.struct_size = sizeof(compose);
         if (!wait_for_edit(window, NK_TEXT_EDIT_COMPOSE, &compose))
             return skip_test(window, hwnd, context);
-        if (!verify_native_composition(&compose)) {
+        if (!verify_native_composition(&compose, 2)) {
             nk_event_release(&compose);
             return 2;
         }
@@ -336,6 +337,9 @@ int main(void) {
             nk_event_release(&commit);
             return 2;
         }
+        nk_text_edit_event committed_edit = {0};
+        memcpy(&committed_edit, commit.data, sizeof(committed_edit));
+        const nk_text_position next_start = committed_edit.selection_end;
         nk_event_release(&commit);
 
         if (!send_ime_roman("KANJI"))
@@ -344,7 +348,7 @@ int main(void) {
         cancelled_compose.struct_size = sizeof(cancelled_compose);
         if (!wait_for_edit(window, NK_TEXT_EDIT_COMPOSE, &cancelled_compose))
             return skip_test(window, hwnd, context);
-        if (!verify_native_composition(&cancelled_compose)) {
+        if (!verify_native_composition(&cancelled_compose, next_start)) {
             nk_event_release(&cancelled_compose);
             return 2;
         }
