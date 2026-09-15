@@ -484,7 +484,7 @@ bool emit_drop(MacWindowResource &resource, id<NSDraggingInfo> information) noex
                 items.push_back(utf8(text));
             }
         }
-        NSView *content_view = window_content_view(*resource);
+        NSView *content_view = window_content_view(resource);
         const NSPoint point = [content_view convertPoint:information.draggingLocation fromView:nil];
         if (!items.empty()) {
             nk::core::QueuedEvent event;
@@ -976,7 +976,7 @@ nk_result emit_mac_accessibility_action(
     nk_accessibility_text_position selection_start = NK_ACCESSIBILITY_TEXT_POSITION_NONE,
     nk_accessibility_text_position selection_end = NK_ACCESSIBILITY_TEXT_POSITION_NONE,
     nk_accessibility_text_granularity granularity = 0) noexcept {
-    return nk::core::callback_boundary_or<NK_ERROR_UNKNOWN>(NK_ERROR_UNKNOWN, [&]() -> nk_result {
+    return nk::core::callback_boundary_or<nk_result>(NK_ERROR_UNKNOWN, [&]() -> nk_result {
         auto resource = surface(surface_handle);
         if (!resource || resource->destroying)
             return NK_ERROR_INVALID_HANDLE;

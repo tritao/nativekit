@@ -108,7 +108,7 @@ std::uint8_t hat_value(GCControllerDirectionPad *pad) {
 
 std::array<float, NK_GAMEPAD_AXIS_COUNT> axes_from(GCController *controller) {
     std::array<float, NK_GAMEPAD_AXIS_COUNT> result{};
-    if (GCControllerExtendedGamepad *pad = controller.extendedGamepad) {
+    if (GCExtendedGamepad *pad = controller.extendedGamepad) {
         result[NK_GAMEPAD_AXIS_LEFT_X] = pad.leftThumbstick.xAxis.value;
         result[NK_GAMEPAD_AXIS_LEFT_Y] = pad.leftThumbstick.yAxis.value;
         result[NK_GAMEPAD_AXIS_RIGHT_X] = pad.rightThumbstick.xAxis.value;
@@ -121,7 +121,7 @@ std::array<float, NK_GAMEPAD_AXIS_COUNT> axes_from(GCController *controller) {
 
 std::array<std::uint8_t, NK_GAMEPAD_BUTTON_COUNT> buttons_from(GCController *controller) {
     std::array<std::uint8_t, NK_GAMEPAD_BUTTON_COUNT> result{};
-    if (GCControllerExtendedGamepad *pad = controller.extendedGamepad) {
+    if (GCExtendedGamepad *pad = controller.extendedGamepad) {
         result[NK_GAMEPAD_BUTTON_A] = pad.buttonA.pressed;
         result[NK_GAMEPAD_BUTTON_B] = pad.buttonB.pressed;
         result[NK_GAMEPAD_BUTTON_X] = pad.buttonX.pressed;

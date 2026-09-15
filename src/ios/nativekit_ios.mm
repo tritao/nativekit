@@ -11,6 +11,7 @@
 #include "nativekit_window.h"
 
 #include "core/event_queue.hpp"
+#include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
@@ -780,7 +781,7 @@ nk_result emit_accessibility_action(nk_handle surface_handle, nk_accessibility_n
                                     nk_accessibility_text_position selection_end =
                                         NK_ACCESSIBILITY_TEXT_POSITION_NONE,
                                     nk_accessibility_text_granularity granularity = 0) noexcept {
-    return nk::core::callback_boundary_or<NK_ERROR_UNKNOWN>(NK_ERROR_UNKNOWN, [&]() -> nk_result {
+    return nk::core::callback_boundary_or<nk_result>(NK_ERROR_UNKNOWN, [&]() -> nk_result {
         auto resource = surface(surface_handle);
         if (!resource || resource->destroying)
             return NK_ERROR_INVALID_HANDLE;
@@ -859,7 +860,7 @@ void refresh_accessibility_elements(IOSSurface &resource) noexcept {
 
 nk_result begin_accessibility_value_edit(nk_handle surface_handle,
                                          nk_accessibility_node_id node) noexcept {
-    return nk::core::callback_boundary_or<NK_ERROR_UNKNOWN>(NK_ERROR_UNKNOWN, [&]() -> nk_result {
+    return nk::core::callback_boundary_or<nk_result>(NK_ERROR_UNKNOWN, [&]() -> nk_result {
         auto resource = surface(surface_handle);
         if (!resource || resource->destroying)
             return NK_ERROR_INVALID_HANDLE;
