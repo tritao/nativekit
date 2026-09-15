@@ -76,7 +76,12 @@ enum class LayoutSizing : uint8_t {
 
 struct LayoutAxis {
     LayoutSizing sizing = LayoutSizing::Fit;
+    // Used by FIXED and PERCENT.
     float value = 0.0f;
+    // FIT/GROW constraints are passed directly to Clay. A zero max means
+    // unbounded, matching Clay's CLAY_SIZING_FIT/GROW convention.
+    float min = 0.0f;
+    float max = 0.0f;
 };
 
 struct LayoutColor {
@@ -98,6 +103,7 @@ struct LayoutTransform {
 struct LayoutStyle {
     LayoutAxis width{};
     LayoutAxis height{};
+    float aspect_ratio = 0.0f;
     LayoutDirection direction = LayoutDirection::TopToBottom;
     uint16_t padding_left = 0;
     uint16_t padding_right = 0;

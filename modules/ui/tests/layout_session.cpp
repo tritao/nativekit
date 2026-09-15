@@ -6,7 +6,7 @@
 #include <vector>
 
 static_assert(NKUI_LAYOUT_NODE_RECORD_BYTES ==
-                  NKUI_LAYOUT_NODE_Z_INDEX_OFFSET + sizeof(int32_t),
+                  NKUI_LAYOUT_NODE_ASPECT_RATIO_OFFSET + sizeof(float),
               "layout node record size must include every defined field");
 
 namespace {
@@ -153,6 +153,60 @@ int main() {
         std::cerr << "initial submit failed: " << initial_status << "\n";
         return 4;
     }
+
+    auto constraints = transaction_with_nodes(2);
+    const std::size_t constraints_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
+                                           NKUI_LAYOUT_NODE_RECORD_BYTES;
+    write_u32(constraints, constraints_record + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET,
+              NKUI_LAYOUT_SIZING_FIT);
+    write_float(constraints, constraints_record + NKUI_LAYOUT_NODE_WIDTH_MIN_OFFSET, 40.0f);
+    write_float(constraints, constraints_record + NKUI_LAYOUT_NODE_WIDTH_MAX_OFFSET, 80.0f);
+    write_u32(constraints, constraints_record + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET,
+              NKUI_LAYOUT_SIZING_FIXED);
+    write_float(constraints, constraints_record + NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET, 30.0f);
+    if (nkui_layout_session_submit(session, constraints.data(), constraints.size(), &frame) !=
+        NKUI_OK ||
+        nkui_layout_session_get_resolved_items(session, nullptr, &resolved_bytes) != NKUI_OK)
+        return 27;
+    std::vector<uint8_t> constraints_resolved(resolved_bytes);
+    if (nkui_layout_session_get_resolved_items(session, constraints_resolved.data(),
+                                                &resolved_bytes) != NKUI_OK)
+        return 28;
+    nkui_layout_item constrained_item{};
+    std::memcpy(&constrained_item, constraints_resolved.data() + sizeof(nkui_layout_item),
+                sizeof(constrained_item));
+    if (constrained_item.width < 40.0f || constrained_item.width > 80.0f ||
+        constrained_item.height != 30.0f)
+        return 29;
+
+    write_u32(constraints, constraints_record + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET,
+              NKUI_LAYOUT_SIZING_FIXED);
+    write_float(constraints, constraints_record + NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET, 80.0f);
+    write_float(constraints, constraints_record + NKUI_LAYOUT_NODE_WIDTH_MIN_OFFSET, 0.0f);
+    write_float(constraints, constraints_record + NKUI_LAYOUT_NODE_WIDTH_MAX_OFFSET, 0.0f);
+    write_u32(constraints, constraints_record + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET,
+              NKUI_LAYOUT_SIZING_FIT);
+    write_float(constraints, constraints_record + NKUI_LAYOUT_NODE_ASPECT_RATIO_OFFSET, 2.0f);
+    if (nkui_layout_session_submit(session, constraints.data(), constraints.size(), &frame) !=
+            NKUI_OK ||
+        nkui_layout_session_get_resolved_items(session, constraints_resolved.data(),
+                                               &resolved_bytes) != NKUI_OK)
+        return 30;
+    std::memcpy(&constrained_item, constraints_resolved.data() + sizeof(nkui_layout_item),
+                sizeof(constrained_item));
+    if (std::abs(constrained_item.width - 80.0f) > 0.01f ||
+        std::abs(constrained_item.height - 40.0f) > 0.01f)
+        return 31;
+
+    auto invalid_constraints = constraints;
+    write_float(invalid_constraints,
+                constraints_record + NKUI_LAYOUT_NODE_WIDTH_MAX_OFFSET, 79.0f);
+    write_float(invalid_constraints,
+                constraints_record + NKUI_LAYOUT_NODE_WIDTH_MIN_OFFSET, 80.0f);
+    if (nkui_layout_session_submit(session, invalid_constraints.data(),
+                                   invalid_constraints.size(), &frame) !=
+        NKUI_ERROR_INVALID_TRANSACTION)
+        return 32;
 
     // Custom-paint lists are retained by their layout session, and only
     // custom-visual nodes in the latest submission may own one.

@@ -17,10 +17,10 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 7,
-    NKUI_LAYOUT_TRANSACTION_VERSION = 6,
+    NKUI_LAYOUT_API_VERSION = 8,
+    NKUI_LAYOUT_TRANSACTION_VERSION = 7,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
-    NKUI_LAYOUT_NODE_RECORD_BYTES = 188,
+    NKUI_LAYOUT_NODE_RECORD_BYTES = 208,
     NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16 * 1024 * 1024,
     NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96
 };
@@ -126,7 +126,17 @@ enum {
     /** Parent-relative y offset for absolute-positioned nodes. */
     NKUI_LAYOUT_NODE_POSITION_Y_OFFSET = 180,
     /** Stacking order for absolute-positioned nodes, encoded as signed int32. */
-    NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184
+    NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184,
+    /** Minimum width for FIT/GROW sizing; zero means no minimum. */
+    NKUI_LAYOUT_NODE_WIDTH_MIN_OFFSET = 188,
+    /** Maximum width for FIT/GROW sizing; zero means unbounded. */
+    NKUI_LAYOUT_NODE_WIDTH_MAX_OFFSET = 192,
+    /** Minimum height for FIT/GROW sizing; zero means no minimum. */
+    NKUI_LAYOUT_NODE_HEIGHT_MIN_OFFSET = 196,
+    /** Maximum height for FIT/GROW sizing; zero means unbounded. */
+    NKUI_LAYOUT_NODE_HEIGHT_MAX_OFFSET = 200,
+    /** Width divided by height; zero disables aspect-ratio sizing. */
+    NKUI_LAYOUT_NODE_ASPECT_RATIO_OFFSET = 204
 };
 
 /** Opaque retained layout session used by a Haxe-owned component tree. */

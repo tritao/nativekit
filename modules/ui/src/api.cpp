@@ -355,6 +355,11 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             std::array<float, 6> transform{};
             float position_x = 0.0f;
             float position_y = 0.0f;
+            float width_min = 0.0f;
+            float width_max = 0.0f;
+            float height_min = 0.0f;
+            float height_max = 0.0f;
+            float aspect_ratio = 0.0f;
             if (!read_node_u32(record, NKUI_LAYOUT_NODE_ID_OFFSET, id) ||
                 !read_node_i32(record, NKUI_LAYOUT_NODE_PARENT_OFFSET, node.parent) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET, visual_kind) ||
@@ -410,7 +415,12 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_node_u32(record, NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET, child_alignment) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_POSITION_X_OFFSET, position_x) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_POSITION_Y_OFFSET, position_y) ||
-                !read_node_i32(record, NKUI_LAYOUT_NODE_Z_INDEX_OFFSET, z_index))
+                !read_node_i32(record, NKUI_LAYOUT_NODE_Z_INDEX_OFFSET, z_index) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_WIDTH_MIN_OFFSET, width_min) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_WIDTH_MAX_OFFSET, width_max) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_HEIGHT_MIN_OFFSET, height_min) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_HEIGHT_MAX_OFFSET, height_max) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_ASPECT_RATIO_OFFSET, aspect_ratio))
                 return false;
             const uint32_t child_align_x = child_alignment & 0xffu;
             const uint32_t child_align_y = (child_alignment >> 8u) & 0xffu;
@@ -438,6 +448,11 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                                     transform[3], transform[4], transform[5]};
             node.style.width.sizing = static_cast<nkui::LayoutSizing>(width_sizing);
             node.style.height.sizing = static_cast<nkui::LayoutSizing>(height_sizing);
+            node.style.width.min = width_min;
+            node.style.width.max = width_max;
+            node.style.height.min = height_min;
+            node.style.height.max = height_max;
+            node.style.aspect_ratio = aspect_ratio;
             node.style.direction = static_cast<nkui::LayoutDirection>(direction);
             node.style.child_align_x = static_cast<uint8_t>(child_align_x);
             node.style.child_align_y = static_cast<uint8_t>(child_align_y);
@@ -454,8 +469,15 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             node.style.clip_horizontal = (clip & NKUI_LAYOUT_CLIP_HORIZONTAL) != 0;
             node.style.clip_vertical = (clip & NKUI_LAYOUT_CLIP_VERTICAL) != 0;
             const auto valid_axis = [](const nkui::LayoutAxis &axis) {
-                return std::isfinite(axis.value) && axis.value >= 0.0f &&
-                       (axis.sizing != nkui::LayoutSizing::Percent || axis.value <= 1.0f);
+                if (!std::isfinite(axis.value) || axis.value < 0.0f ||
+                    !std::isfinite(axis.min) || axis.min < 0.0f ||
+                    !std::isfinite(axis.max) || axis.max < 0.0f)
+                    return false;
+                if (axis.sizing == nkui::LayoutSizing::Percent)
+                    return axis.value <= 1.0f && axis.min == 0.0f && axis.max == 0.0f;
+                if (axis.sizing == nkui::LayoutSizing::Fixed)
+                    return axis.min == 0.0f && axis.max == 0.0f;
+                return axis.max == 0.0f || axis.max >= axis.min;
             };
             const auto valid_color = [](const nkui::LayoutColor &color) {
                 const auto valid = [](float value) {
@@ -472,6 +494,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !std::isfinite(node.style.radius_bottom_right) ||
                 node.style.radius_top_left < 0.0f || node.style.radius_top_right < 0.0f ||
                 node.style.radius_bottom_left < 0.0f || node.style.radius_bottom_right < 0.0f)
+                return false;
+            if (!std::isfinite(node.style.aspect_ratio) || node.style.aspect_ratio < 0.0f)
                 return false;
             if (font_family > static_cast<uint32_t>(nkui::FontFamily::Emoji) ||
                 !std::isfinite(node.text_style.font_size) || node.text_style.font_size <= 0.0f ||

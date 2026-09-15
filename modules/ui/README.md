@@ -13,14 +13,18 @@ custom render command carries the custom node identity and participates in its
 normal ordering. Haxe paint callbacks record one retained display list per
 custom node; the layout compiler inserts those commands at the matching marker
 so custom drawing shares the same transforms, clipping, and sibling order as
-boxes, text, and images. The vendored Clay source is unchanged.
+boxes, text, and images. Clay remains pinned as a private dependency; this
+branch carries only small layout-kernel fixes intended to be upstreamable.
 
 The C layout bridge uses a versioned transaction with fixed node records of
 `NKUI_LAYOUT_NODE_RECORD_BYTES` bytes and a 16 MiB transaction bound. Node
 capacity grows with submitted data rather than imposing a small framework node
 limit. Resolved geometry is returned as one dynamically sized snapshot. The
 bridge validates record sizes, transaction bounds, text ranges, IDs, and
-geometry before replacing the submitted snapshot.
+geometry before replacing the submitted snapshot. FIT/GROW axes carry Clay's
+existing minimum and maximum constraints, and nodes can opt into Clay's
+existing aspect-ratio sizing with `aspectRatio`; NativeKit does not reimplement
+either rule.
 
 The layout facade keeps Clay types private and uses its external paragraph
 layout callback: Skribidi provides shaping, bidirectional text, line breaks,
@@ -48,6 +52,10 @@ cmake -S . -B build-ui -GNinja -DNK_BUILD_UI=ON
 cmake --build build-ui
 ctest --test-dir build-ui --output-on-failure
 ```
+
+The `nativekit_ui_layout_invariants` test runs 2,000 deterministic randomized
+trees by default. Increase coverage for sanitizer jobs with, for example,
+`NKUI_LAYOUT_FUZZ_CASES=100000 build-ui/modules/ui/nativekit_ui_layout_invariants_test`.
 
 With examples enabled, run the C API showcase with:
 

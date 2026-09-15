@@ -55,6 +55,9 @@ class LayoutTransaction {
 			if (!finitePositive(node.textStyle.fontSize) || !finite(node.textStyle.letterSpacing) ||
 				!finite(lineHeight) || lineHeight < 0.0)
 				throw "Layout text style values are invalid";
+			if (!validAxis(style.width) || !validAxis(style.height) || !finite(style.aspectRatio) ||
+				style.aspectRatio < 0.0)
+				throw "Layout sizing values are invalid";
 			var determinant = style.transform.a * style.transform.d -
 				style.transform.b * style.transform.c;
 			var childAlignX:Int = cast style.childAlignX;
@@ -74,6 +77,11 @@ class LayoutTransaction {
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET, style.width.value);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET, cast style.height.sizing);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET, style.height.value);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_WIDTH_MIN_OFFSET, style.width.min);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_WIDTH_MAX_OFFSET, style.width.max);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_HEIGHT_MIN_OFFSET, style.height.min);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_HEIGHT_MAX_OFFSET, style.height.max);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_ASPECT_RATIO_OFFSET, style.aspectRatio);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_DIRECTION_OFFSET, cast style.direction);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PADDING_LEFT_OFFSET, roundedInt(style.padding.left));
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_PADDING_RIGHT_OFFSET, roundedInt(style.padding.right));
@@ -196,6 +204,19 @@ class LayoutTransaction {
 
 	static function finitePositive(value:Float):Bool
 		return finite(value) && value > 0.0;
+
+	static function validAxis(axis:LayoutAxis):Bool {
+		var sizing:Int = axis == null ? -1 : cast axis.sizing;
+		if (axis == null || sizing < cast LayoutSizing.Fit || sizing > cast LayoutSizing.Percent ||
+			!finite(axis.value) || axis.value < 0.0 || !finite(axis.min) ||
+			axis.min < 0.0 || !finite(axis.max) || axis.max < 0.0)
+			return false;
+		if (axis.sizing == LayoutSizing.Percent)
+			return axis.value <= 1.0 && axis.min == 0.0 && axis.max == 0.0;
+		if (axis.sizing == LayoutSizing.Fixed)
+			return axis.min == 0.0 && axis.max == 0.0;
+		return axis.max == 0.0 || axis.max >= axis.min;
+	}
 
 	static function writeColor(output:Bytes, record:Int, offset:Int, color:Color):Void {
 		writeFloat(output, record, offset, color.red);

@@ -25,14 +25,14 @@ Clay_Color clay_color(LayoutColor color) {
 Clay_SizingAxis clay_axis(LayoutAxis axis) {
     switch (axis.sizing) {
     case LayoutSizing::Grow:
-        return CLAY_SIZING_GROW(axis.value);
+        return CLAY_SIZING_GROW(axis.min, axis.max);
     case LayoutSizing::Fixed:
         return CLAY_SIZING_FIXED(axis.value);
     case LayoutSizing::Percent:
         return CLAY_SIZING_PERCENT(axis.value);
     case LayoutSizing::Fit:
     default:
-        return CLAY_SIZING_FIT(axis.value);
+        return CLAY_SIZING_FIT(axis.min, axis.max);
     }
 }
 
@@ -309,6 +309,7 @@ Clay_ElementDeclaration declaration_for(const LayoutNode &node) {
     declaration.layout.childAlignment = {
         static_cast<Clay_LayoutAlignmentX>(node.style.child_align_x),
         static_cast<Clay_LayoutAlignmentY>(node.style.child_align_y)};
+    declaration.aspectRatio.aspectRatio = node.style.aspect_ratio;
     if (node.style.positioning == LayoutPositioning::Absolute) {
         declaration.floating.offset = {node.style.position_x, node.style.position_y};
         declaration.floating.zIndex = static_cast<int16_t>(node.style.z_index);

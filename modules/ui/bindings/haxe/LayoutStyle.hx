@@ -2,6 +2,8 @@
 class LayoutStyle {
 	public var width:LayoutAxis;
 	public var height:LayoutAxis;
+	/** Width divided by height; zero disables aspect-ratio sizing. */
+	public var aspectRatio:Float;
 	public var direction:LayoutDirection;
 	public var childAlignX:LayoutAlignment;
 	public var childAlignY:LayoutAlignment;
@@ -25,6 +27,7 @@ class LayoutStyle {
 	public function new() {
 		width = LayoutAxis.fit();
 		height = LayoutAxis.fit();
+		aspectRatio = 0.0;
 		direction = LayoutDirection.TopToBottom;
 		childAlignX = LayoutAlignment.Start;
 		childAlignY = LayoutAlignment.Start;
@@ -51,6 +54,7 @@ class LayoutStyle {
 		var result = new LayoutStyle();
 		result.width = width;
 		result.height = height;
+		result.aspectRatio = aspectRatio;
 		result.direction = direction;
 		result.childAlignX = childAlignX;
 		result.childAlignY = childAlignY;

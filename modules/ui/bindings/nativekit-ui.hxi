@@ -6,8 +6,12 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_API_VERSION = 6;
 	const NKUI_COMMAND_VERSION = 1;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
-	const NKUI_LAYOUT_API_VERSION = 7;
+	const NKUI_LAYOUT_API_VERSION = 8;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
+	/**
+	 * Width divided by height; zero disables aspect-ratio sizing.
+	 */
+	const NKUI_LAYOUT_NODE_ASPECT_RATIO_OFFSET = 204;
 	const NKUI_LAYOUT_NODE_BACKGROUND_OFFSET = 52;
 	/**
 	 * Packed child alignment: x in bits 0..7, y in bits 8..15.
@@ -19,6 +23,14 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_FLAGS_OFFSET = 168;
 	const NKUI_LAYOUT_NODE_FONT_FAMILY_OFFSET = 112;
 	const NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET = 116;
+	/**
+	 * Maximum height for FIT/GROW sizing; zero means unbounded.
+	 */
+	const NKUI_LAYOUT_NODE_HEIGHT_MAX_OFFSET = 200;
+	/**
+	 * Minimum height for FIT/GROW sizing; zero means no minimum.
+	 */
+	const NKUI_LAYOUT_NODE_HEIGHT_MIN_OFFSET = 196;
 	const NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET = 20;
 	const NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET = 24;
 	const NKUI_LAYOUT_NODE_ID_OFFSET = 0;
@@ -41,7 +53,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_RADIUS_BOTTOM_RIGHT_OFFSET = 80;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET = 68;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET = 72;
-	const NKUI_LAYOUT_NODE_RECORD_BYTES = 188;
+	const NKUI_LAYOUT_NODE_RECORD_BYTES = 208;
 	const NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET = 132;
 	const NKUI_LAYOUT_NODE_TEXT_COLOR_OFFSET = 96;
 	const NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET = 136;
@@ -56,6 +68,14 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET = 160;
 	const NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET = 164;
 	const NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET = 8;
+	/**
+	 * Maximum width for FIT/GROW sizing; zero means unbounded.
+	 */
+	const NKUI_LAYOUT_NODE_WIDTH_MAX_OFFSET = 192;
+	/**
+	 * Minimum width for FIT/GROW sizing; zero means no minimum.
+	 */
+	const NKUI_LAYOUT_NODE_WIDTH_MIN_OFFSET = 188;
 	const NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET = 12;
 	const NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET = 16;
 	/**
@@ -64,7 +84,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184;
 	const NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96;
 	const NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16;
-	const NKUI_LAYOUT_TRANSACTION_VERSION = 6;
+	const NKUI_LAYOUT_TRANSACTION_VERSION = 7;
 	/**
 	 * 16-bit opcode identifying one display-list command record.
 	 */

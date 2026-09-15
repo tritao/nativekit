@@ -1,18 +1,26 @@
 /** One Haxe-owned axis policy encoded into a layout transaction. */
 class LayoutAxis {
 	public var sizing:LayoutSizing;
+	/** Exact value for FIXED, or the parent fraction for PERCENT. */
 	public var value:Float;
+	/** Minimum size for FIT/GROW. */
+	public var min:Float;
+	/** Maximum size for FIT/GROW; zero means unbounded. */
+	public var max:Float;
 
-	public function new(sizing:LayoutSizing = LayoutSizing.Fit, value:Float = 0.0) {
+	public function new(sizing:LayoutSizing = LayoutSizing.Fit, value:Float = 0.0,
+			min:Float = 0.0, max:Float = 0.0) {
 		this.sizing = sizing;
 		this.value = value;
+		this.min = min;
+		this.max = max;
 	}
 
-	public static function fit(value:Float = 0.0):LayoutAxis
-		return new LayoutAxis(LayoutSizing.Fit, value);
+	public static function fit(min:Float = 0.0, max:Float = 0.0):LayoutAxis
+		return new LayoutAxis(LayoutSizing.Fit, 0.0, min, max);
 
-	public static function grow(value:Float = 0.0):LayoutAxis
-		return new LayoutAxis(LayoutSizing.Grow, value);
+	public static function grow(min:Float = 0.0, max:Float = 0.0):LayoutAxis
+		return new LayoutAxis(LayoutSizing.Grow, 0.0, min, max);
 
 	public static function fixed(value:Float):LayoutAxis
 		return new LayoutAxis(LayoutSizing.Fixed, value);

@@ -257,6 +257,29 @@ int main(int argc, char **argv) {
             return 18;
     }
 
+    LayoutNode constraint_root = box(500, -1);
+    constraint_root.style.width = {LayoutSizing::Fixed, 220.0f};
+    constraint_root.style.height = {LayoutSizing::Fixed, 100.0f};
+    LayoutNode bounded = box(501, 0);
+    bounded.style.width = {LayoutSizing::Fit, 0.0f};
+    bounded.style.width.min = 48.0f;
+    bounded.style.width.max = 90.0f;
+    bounded.style.height = {LayoutSizing::Fixed, 20.0f};
+    LayoutNode aspect = box(502, 0);
+    aspect.style.width = {LayoutSizing::Fixed, 80.0f};
+    aspect.style.height = {LayoutSizing::Fit, 0.0f};
+    aspect.style.aspect_ratio = 2.0f;
+    std::vector<LayoutNode> constraint_nodes{constraint_root, bounded, aspect};
+    if (!engine.layout(constraint_nodes, 220.0f, 100.0f, 1.0f / 60.0f, snapshot, &error))
+        return 29;
+    const auto *bounded_item = snapshot.find(501);
+    const auto *aspect_item = snapshot.find(502);
+    if (!bounded_item || bounded_item->bounds.width < 48.0f ||
+        bounded_item->bounds.width > 90.0f || !aspect_item ||
+        std::abs(aspect_item->bounds.width - 80.0f) > 0.01f ||
+        std::abs(aspect_item->bounds.height - 40.0f) > 0.01f)
+        return 30;
+
     std::cout << "PASS: Clay layout boxes, text, transforms, and geometry\n";
     return 0;
 #endif

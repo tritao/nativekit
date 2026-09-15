@@ -54,6 +54,11 @@ target_compile_definitions(nativekit_ui PRIVATE NKUI_BUILDING_LIBRARY)
 if(NOT NKUI_ENABLE_CLAY_DEBUG)
     target_compile_definitions(nativekit_ui PRIVATE CLAY_DISABLE_DEBUG)
 endif()
+if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(nativekit_ui PRIVATE
+        -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(nativekit_ui PRIVATE -fsanitize=address,undefined)
+endif()
 set_target_properties(nativekit_ui PROPERTIES
     EXPORT_NAME ui
     CXX_VISIBILITY_PRESET hidden
@@ -172,6 +177,17 @@ if(NK_BUILD_TESTS)
         NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
     target_link_libraries(nativekit_ui_layout_engine_test PRIVATE nkui_skribidi)
     add_test(NAME nativekit_ui_layout_engine COMMAND nativekit_ui_layout_engine_test)
+    add_executable(nativekit_ui_layout_invariants_test
+        tests/layout_invariants.cpp
+        src/layout/clay_layout_backend.cpp
+        src/prepare/skribidi_adapter.cpp
+        src/prepare/system_fonts.cpp)
+    target_include_directories(nativekit_ui_layout_invariants_test PRIVATE
+        src "${NK_VENDOR_DIR}/clay")
+    target_compile_definitions(nativekit_ui_layout_invariants_test PRIVATE
+        NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+    target_link_libraries(nativekit_ui_layout_invariants_test PRIVATE nkui_skribidi)
+    add_test(NAME nativekit_ui_layout_invariants COMMAND nativekit_ui_layout_invariants_test)
     add_executable(nativekit_ui_layout_render_compiler_test
         tests/layout_render_compiler.cpp
         src/layout/clay_layout_backend.cpp
@@ -238,6 +254,7 @@ if(NK_BUILD_TESTS)
         nativekit_ui_compositor_test
         nativekit_ui_frame_resources_test
         nativekit_ui_layout_engine_test
+        nativekit_ui_layout_invariants_test
         nativekit_ui_layout_render_compiler_test
         nativekit_ui_layout_session_test
         nativekit_ui_public_renderer_smoke_test)
@@ -245,6 +262,18 @@ if(NK_BUILD_TESTS)
             target_compile_features(${target} PRIVATE cxx_std_20)
         endif()
     endforeach()
+    if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+        foreach(target IN ITEMS
+            nativekit_ui_layout_engine_test
+            nativekit_ui_layout_invariants_test
+            nativekit_ui_layout_session_test)
+            if(TARGET ${target})
+                target_compile_options(${target} PRIVATE
+                    -fsanitize=address,undefined -fno-omit-frame-pointer)
+                target_link_options(${target} PRIVATE -fsanitize=address,undefined)
+            endif()
+        endforeach()
+    endif()
 endif()
 
 if(NK_BUILD_EXAMPLES)
