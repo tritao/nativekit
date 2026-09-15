@@ -17,10 +17,10 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 9,
-    NKUI_LAYOUT_TRANSACTION_VERSION = 8,
+    NKUI_LAYOUT_API_VERSION = 10,
+    NKUI_LAYOUT_TRANSACTION_VERSION = 9,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
-    NKUI_LAYOUT_NODE_RECORD_BYTES = 216,
+    NKUI_LAYOUT_NODE_RECORD_BYTES = 220,
     NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16 * 1024 * 1024,
     NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96
 };
@@ -72,12 +72,23 @@ enum NK_ENUM(nkui_layout_direction) {
     NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM = 1
 };
 
-/** Child alignment values shared by the horizontal and vertical axes. */
+/** Cross-axis child alignment values shared by the horizontal and vertical axes. */
 typedef uint32_t nkui_layout_alignment;
 enum NK_ENUM(nkui_layout_alignment) {
     NKUI_LAYOUT_ALIGNMENT_START = 0,
     NKUI_LAYOUT_ALIGNMENT_END = 1,
     NKUI_LAYOUT_ALIGNMENT_CENTER = 2
+};
+
+/** Main-axis free-space distribution policies. */
+typedef uint32_t nkui_layout_distribution;
+enum NK_ENUM(nkui_layout_distribution) {
+    NKUI_LAYOUT_DISTRIBUTION_START = 0,
+    NKUI_LAYOUT_DISTRIBUTION_CENTER = 1,
+    NKUI_LAYOUT_DISTRIBUTION_END = 2,
+    NKUI_LAYOUT_DISTRIBUTION_SPACE_BETWEEN = 3,
+    NKUI_LAYOUT_DISTRIBUTION_SPACE_AROUND = 4,
+    NKUI_LAYOUT_DISTRIBUTION_SPACE_EVENLY = 5
 };
 
 /** Byte offsets within each fixed-size node record. */
@@ -140,7 +151,9 @@ enum {
     /** Relative share of extra width for GROW sizing; must be positive and finite. */
     NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET = 208,
     /** Relative share of extra height for GROW sizing; must be positive and finite. */
-    NKUI_LAYOUT_NODE_HEIGHT_GROW_WEIGHT_OFFSET = 212
+    NKUI_LAYOUT_NODE_HEIGHT_GROW_WEIGHT_OFFSET = 212,
+    /** Main-axis free-space distribution policy. */
+    NKUI_LAYOUT_NODE_CHILD_DISTRIBUTION_OFFSET = 216
 };
 
 /** Opaque retained layout session used by a Haxe-owned component tree. */

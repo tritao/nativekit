@@ -30,6 +30,10 @@ GROW axes also accept a positive `growWeight`. Equal weights preserve the
 normal equal-share behavior; for example, `LayoutAxis.grow(0.0, 0.0, 4.0)`
 receives four times the unconstrained space of a sibling with weight `1.0`.
 Clay redistributes space when a weighted child reaches its maximum.
+Main-axis free space is controlled with `LayoutStyle.childDistribution`, which
+supports start, center, end, space-between, space-around, and space-evenly.
+`childAlignX` and `childAlignY` now describe cross-axis alignment; distribution
+owns the axis selected by `direction`.
 
 The layout facade keeps Clay types private and uses its external paragraph
 layout callback: Skribidi provides shaping, bidirectional text, line breaks,

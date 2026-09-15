@@ -320,6 +320,66 @@ int main(int argc, char **argv) {
         std::abs(capped_second_item->bounds.width - 300.0f) > 0.01f)
         return 34;
 
+    const float expected_distribution_positions[][3] = {
+        {0.0f, 30.0f, 60.0f},    // start
+        {60.0f, 90.0f, 120.0f},  // center
+        {120.0f, 150.0f, 180.0f}, // end
+        {0.0f, 90.0f, 180.0f},    // space-between
+        {20.0f, 90.0f, 160.0f},   // space-around
+        {30.0f, 90.0f, 150.0f},   // space-evenly
+    };
+    for (int distribution = 0; distribution <= 5; ++distribution) {
+        LayoutNode distribution_root = box(700, -1);
+        distribution_root.style.width = {LayoutSizing::Fixed, 200.0f};
+        distribution_root.style.height = {LayoutSizing::Fixed, 40.0f};
+        distribution_root.style.direction = LayoutDirection::LeftToRight;
+        distribution_root.style.child_gap = 10;
+        distribution_root.style.child_distribution =
+            static_cast<LayoutDistribution>(distribution);
+        std::vector<LayoutNode> distribution_nodes{distribution_root};
+        for (int child = 0; child < 3; ++child) {
+            LayoutNode item = box(701 + child, 0);
+            item.style.width = {LayoutSizing::Fixed, 20.0f};
+            item.style.height = {LayoutSizing::Fixed, 20.0f};
+            distribution_nodes.push_back(item);
+        }
+        if (!engine.layout(distribution_nodes, 200.0f, 40.0f, 1.0f / 60.0f, snapshot, &error))
+            return 35;
+        for (int child = 0; child < 3; ++child) {
+            const auto *item = snapshot.find(701 + child);
+            if (!item || std::abs(item->bounds.x - expected_distribution_positions[distribution][child]) >
+                             0.01f || std::abs(item->bounds.y) > 0.01f) {
+                std::cerr << "distribution " << distribution << " child " << child;
+                if (item)
+                    std::cerr << " got " << item->bounds.x << "," << item->bounds.y;
+                std::cerr << " expected " << expected_distribution_positions[distribution][child]
+                          << "\n";
+                return 36;
+            }
+        }
+    }
+
+    LayoutNode vertical_distribution_root = box(710, -1);
+    vertical_distribution_root.style.width = {LayoutSizing::Fixed, 40.0f};
+    vertical_distribution_root.style.height = {LayoutSizing::Fixed, 200.0f};
+    vertical_distribution_root.style.child_gap = 10;
+    vertical_distribution_root.style.child_distribution = LayoutDistribution::SpaceEvenly;
+    std::vector<LayoutNode> vertical_distribution_nodes{vertical_distribution_root};
+    for (int child = 0; child < 3; ++child) {
+        LayoutNode item = box(711 + child, 0);
+        item.style.width = {LayoutSizing::Fixed, 20.0f};
+        item.style.height = {LayoutSizing::Fixed, 20.0f};
+        vertical_distribution_nodes.push_back(item);
+    }
+    if (!engine.layout(vertical_distribution_nodes, 40.0f, 200.0f, 1.0f / 60.0f, snapshot, &error))
+        return 37;
+    for (int child = 0; child < 3; ++child) {
+        const auto *item = snapshot.find(711 + child);
+        if (!item || std::abs(item->bounds.x) > 0.01f ||
+            std::abs(item->bounds.y - (30.0f + child * 60.0f)) > 0.01f)
+            return 38;
+    }
+
     std::cout << "PASS: Clay layout boxes, text, transforms, and geometry\n";
     return 0;
 #endif

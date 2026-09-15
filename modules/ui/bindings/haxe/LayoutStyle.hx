@@ -7,6 +7,8 @@ class LayoutStyle {
 	public var direction:LayoutDirection;
 	public var childAlignX:LayoutAlignment;
 	public var childAlignY:LayoutAlignment;
+	/** Main-axis free-space distribution policy. */
+	public var childDistribution:LayoutDistribution;
 	public var positioning:LayoutPositioning;
 	public var positionX:Float;
 	public var positionY:Float;
@@ -31,6 +33,7 @@ class LayoutStyle {
 		direction = LayoutDirection.TopToBottom;
 		childAlignX = LayoutAlignment.Start;
 		childAlignY = LayoutAlignment.Start;
+		childDistribution = LayoutDistribution.Start;
 		positioning = LayoutPositioning.Flow;
 		positionX = 0.0;
 		positionY = 0.0;
@@ -58,6 +61,7 @@ class LayoutStyle {
 		result.direction = direction;
 		result.childAlignX = childAlignX;
 		result.childAlignY = childAlignY;
+		result.childDistribution = childDistribution;
 		result.positioning = positioning;
 		result.positionX = positionX;
 		result.positionY = positionY;

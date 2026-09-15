@@ -62,9 +62,12 @@ class LayoutTransaction {
 				style.transform.b * style.transform.c;
 			var childAlignX:Int = cast style.childAlignX;
 			var childAlignY:Int = cast style.childAlignY;
+			var childDistribution:Int = cast style.childDistribution;
 			var positioning:Int = cast style.positioning;
 			if (childAlignX < LayoutAlignment.Start || childAlignX > LayoutAlignment.Center ||
 				childAlignY < LayoutAlignment.Start || childAlignY > LayoutAlignment.Center ||
+				childDistribution < LayoutDistribution.Start ||
+				childDistribution > LayoutDistribution.SpaceEvenly ||
 				(positioning != LayoutPositioning.Flow && positioning != LayoutPositioning.Absolute) ||
 				!finite(style.positionX) || !finite(style.positionY) ||
 				style.zIndex < -32768 || style.zIndex > 32767)
@@ -132,6 +135,8 @@ class LayoutTransaction {
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_FLAGS_OFFSET, nodeFlags);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET,
 				childAlignX | (childAlignY << 8));
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_CHILD_DISTRIBUTION_OFFSET,
+				childDistribution);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_X_OFFSET,
 				style.positionX);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_Y_OFFSET,

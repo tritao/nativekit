@@ -312,6 +312,8 @@ Clay_ElementDeclaration declaration_for(const LayoutNode &node) {
     declaration.layout.childAlignment = {
         static_cast<Clay_LayoutAlignmentX>(node.style.child_align_x),
         static_cast<Clay_LayoutAlignmentY>(node.style.child_align_y)};
+    declaration.layout.childDistribution =
+        static_cast<Clay_ChildDistribution>(node.style.child_distribution);
     declaration.aspectRatio.aspectRatio = node.style.aspect_ratio;
     if (node.style.positioning == LayoutPositioning::Absolute) {
         declaration.floating.offset = {node.style.position_x, node.style.position_y};

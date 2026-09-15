@@ -6,7 +6,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_API_VERSION = 6;
 	const NKUI_COMMAND_VERSION = 1;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
-	const NKUI_LAYOUT_API_VERSION = 9;
+	const NKUI_LAYOUT_API_VERSION = 10;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	/**
 	 * Width divided by height; zero disables aspect-ratio sizing.
@@ -17,6 +17,10 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * Packed child alignment: x in bits 0..7, y in bits 8..15.
 	 */
 	const NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET = 172;
+	/**
+	 * Main-axis free-space distribution policy.
+	 */
+	const NKUI_LAYOUT_NODE_CHILD_DISTRIBUTION_OFFSET = 216;
 	const NKUI_LAYOUT_NODE_CHILD_GAP_OFFSET = 48;
 	const NKUI_LAYOUT_NODE_CLIP_FLAGS_OFFSET = 84;
 	const NKUI_LAYOUT_NODE_DIRECTION_OFFSET = 28;
@@ -57,7 +61,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_RADIUS_BOTTOM_RIGHT_OFFSET = 80;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET = 68;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET = 72;
-	const NKUI_LAYOUT_NODE_RECORD_BYTES = 216;
+	const NKUI_LAYOUT_NODE_RECORD_BYTES = 220;
 	const NKUI_LAYOUT_NODE_TEXT_ALIGNMENT_OFFSET = 132;
 	const NKUI_LAYOUT_NODE_TEXT_COLOR_OFFSET = 96;
 	const NKUI_LAYOUT_NODE_TEXT_DIRECTION_OFFSET = 136;
@@ -92,7 +96,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184;
 	const NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96;
 	const NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16;
-	const NKUI_LAYOUT_TRANSACTION_VERSION = 8;
+	const NKUI_LAYOUT_TRANSACTION_VERSION = 9;
 	/**
 	 * 16-bit opcode identifying one display-list command record.
 	 */
@@ -194,7 +198,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		NKUI_IMAGE_RGBA8 = 2;
 	}
 	/**
-	 * Child alignment values shared by the horizontal and vertical axes.
+	 * Cross-axis child alignment values shared by the horizontal and vertical axes.
 	 */
 	enum nkui_layout_alignment : u32 {
 		NKUI_LAYOUT_ALIGNMENT_START = 0;
@@ -214,6 +218,17 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	enum nkui_layout_direction : u32 {
 		NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT = 0;
 		NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM = 1;
+	}
+	/**
+	 * Main-axis free-space distribution policies.
+	 */
+	enum nkui_layout_distribution : u32 {
+		NKUI_LAYOUT_DISTRIBUTION_START = 0;
+		NKUI_LAYOUT_DISTRIBUTION_CENTER = 1;
+		NKUI_LAYOUT_DISTRIBUTION_END = 2;
+		NKUI_LAYOUT_DISTRIBUTION_SPACE_BETWEEN = 3;
+		NKUI_LAYOUT_DISTRIBUTION_SPACE_AROUND = 4;
+		NKUI_LAYOUT_DISTRIBUTION_SPACE_EVENLY = 5;
 	}
 	/**
 	 * Node flags stored at NKUI_LAYOUT_NODE_FLAGS_OFFSET.

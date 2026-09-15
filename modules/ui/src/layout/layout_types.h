@@ -62,6 +62,15 @@ enum class LayoutDirection : uint8_t {
     TopToBottom,
 };
 
+enum class LayoutDistribution : uint8_t {
+    Start = 0,
+    Center,
+    End,
+    SpaceBetween,
+    SpaceAround,
+    SpaceEvenly,
+};
+
 enum class LayoutPositioning : uint8_t {
     Flow = 0,
     Absolute,
@@ -115,6 +124,7 @@ struct LayoutStyle {
     uint16_t child_gap = 0;
     uint8_t child_align_x = 0;
     uint8_t child_align_y = 0;
+    LayoutDistribution child_distribution = LayoutDistribution::Start;
     LayoutPositioning positioning = LayoutPositioning::Flow;
     float position_x = 0.0f;
     float position_y = 0.0f;
