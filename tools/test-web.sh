@@ -78,12 +78,22 @@ if ! python3 "$repo_dir/tools/web_smoke.py" --debug-port "$debug_port" --page-ur
     exit 1
 fi
 
-if [[ -f "$build_dir/tests/nativekit_web_accessibility.html" &&
-      -f "$build_dir/tests/nativekit_web_system_equivalents.html" ]]; then
-    python3 "$repo_dir/tools/web_dataset_smoke.py" \
-        --debug-port "$debug_port" --page-url "$page_url" \
-        --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_accessibility.html" \
-        --dataset-key nativekitAccessibilityResult \
-        --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_system_equivalents.html" \
-        --dataset-key nativekitSystemResult
+for test_artifact in \
+    "$build_dir/tests/nativekit_platform_parity.html" \
+    "$build_dir/tests/nativekit_web_accessibility.html" \
+    "$build_dir/tests/nativekit_web_system_equivalents.html"; do
+    if [[ ! -f "$test_artifact" ]]; then
+        echo "Web integration artifact is missing: $test_artifact" >&2
+        exit 1
+    fi
+done
+
+python3 "$repo_dir/tools/web_dataset_smoke.py" \
+    --debug-port "$debug_port" --page-url "$page_url" \
+    --test-page "http://127.0.0.1:${http_port}/tests/nativekit_platform_parity.html" \
+    --dataset-key nativekitPlatformParity \
+    --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_accessibility.html" \
+    --dataset-key nativekitAccessibilityResult \
+    --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_system_equivalents.html" \
+    --dataset-key nativekitSystemResult
 fi

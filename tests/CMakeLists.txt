@@ -29,8 +29,17 @@ target_compile_features(nativekit_platform_parity PRIVATE cxx_std_17)
 target_link_libraries(nativekit_platform_parity PRIVATE NativeKit::nativekit)
 configure_file(${PROJECT_SOURCE_DIR}/tests/capability-snapshots.txt
     ${CMAKE_CURRENT_BINARY_DIR}/capability-snapshots.txt COPYONLY)
-target_compile_definitions(nativekit_platform_parity PRIVATE
-    NK_CAPABILITY_SNAPSHOT_FILE="${CMAKE_CURRENT_BINARY_DIR}/capability-snapshots.txt")
+if(EMSCRIPTEN)
+    target_compile_definitions(nativekit_platform_parity PRIVATE
+        NK_CAPABILITY_SNAPSHOT_FILE="capability-snapshots.txt")
+    target_link_options(nativekit_platform_parity PRIVATE
+        "--preload-file=${CMAKE_CURRENT_BINARY_DIR}/capability-snapshots.txt@capability-snapshots.txt")
+    set_target_properties(nativekit_platform_parity PROPERTIES SUFFIX ".html"
+        LINKER_LANGUAGE CXX)
+else()
+    target_compile_definitions(nativekit_platform_parity PRIVATE
+        NK_CAPABILITY_SNAPSHOT_FILE="${CMAKE_CURRENT_BINARY_DIR}/capability-snapshots.txt")
+endif()
 if(ANDROID)
     target_compile_definitions(nativekit_platform_parity PRIVATE NK_PARITY_BACKEND_ANDROID=1)
 elseif(WIN32)

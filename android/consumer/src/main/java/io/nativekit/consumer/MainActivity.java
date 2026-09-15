@@ -43,6 +43,8 @@ public final class MainActivity extends Activity {
 
     public long webViewHandle() { return probe & 0xffffffffL; }
 
+    public int capabilityContractProbe() { return nativeCapabilityContractProbe(); }
+
     public int resourceClipboardProbe() { return nativeResourceClipboardProbe(); }
 
     public int resourceStreamProbe() { return nativeResourceStreamProbe(); }
@@ -331,6 +333,7 @@ public final class MainActivity extends Activity {
         super.onDestroy();
     }
 
+    private static native int nativeCapabilityContractProbe();
     private static native long nativeProbe(long host);
     private static native long nativeCreateSurfaceProbe(long host);
     private static native int nativeGraphicsSurfaceProbe(long surface);

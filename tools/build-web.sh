@@ -31,13 +31,14 @@ emcmake cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
     -DNKUI_HAXEON_SUBSET_FONTS="$subset_fonts" \
     -DNK_SOKOL_BACKEND=gles3
 cmake --build "$build_dir" --target nativekit_ui_c_api nativekit_ui_haxeon \
-    nativekit_web_accessibility nativekit_web_system_equivalents
+    nativekit_platform_parity nativekit_web_accessibility nativekit_web_system_equivalents
 
 artifact_dir="$build_dir/modules/ui"
 echo
 echo "Web build complete:"
 echo "  $artifact_dir/nativekit_ui_c_api.html"
 echo "  $artifact_dir/nativekit_ui_haxeon.html"
+echo "  $build_dir/tests/nativekit_platform_parity.html"
 echo "  $build_dir/tests/nativekit_web_accessibility.html"
 echo "  $build_dir/tests/nativekit_web_system_equivalents.html"
 echo
