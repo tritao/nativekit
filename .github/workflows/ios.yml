@@ -33,4 +33,4 @@ jobs:
         if: matrix.sdk == 'iphonesimulator'
         run: >-
           cmake --build "build-${{ matrix.sdk }}" --config Debug
-          --target nativekit_c_abi nativekit_core_tests nativekit_time_tests
+          --target nativekit_c_abi nativekit_core_tests nativekit_time_tests nativekit_platform_parity
