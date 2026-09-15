@@ -144,14 +144,19 @@ nk_event_release(&event);
 /* The File System Access write and close are promise-based. */
 // clang-format off
 EM_ASM({
-    if (typeof setTimeout == "function")
-        setTimeout(() =>
-                        {
-                            if (document.documentElement.dataset.nativekitResourceWrite !=
-                                "verified")
-                                throw new Error("NativeKit Web resource write was not flushed");
-                        },
-                   0);
+    if (typeof setTimeout == "function") {
+        let attempts = 0;
+        const check = () => {
+            if (document.documentElement.dataset.nativekitResourceWrite == "verified")
+                return;
+            if (++attempts >= 100) {
+                document.documentElement.dataset.nativekitSystemResult = "failed";
+                throw new Error("NativeKit Web resource write was not flushed");
+            }
+            setTimeout(check, 10);
+        };
+        setTimeout(check, 0);
+    }
 });
 // clang-format on
 }
