@@ -101,6 +101,8 @@ class ScrollView implements View {
 					event.stopPropagation();
 			});
 			var handleKey = function(event:UiEvent) {
+				if (event.defaultPrevented)
+					return;
 				var amount = 0.0;
 				if (event.key == UiKey.Down)
 					amount = 40.0;

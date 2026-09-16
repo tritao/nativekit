@@ -992,7 +992,7 @@ class FrameworkSmoke {
 		longContentStyle.width = LayoutAxis.fixed(256.0);
 		longContentStyle.height = LayoutAxis.fixed(400.0);
 		var scrollView = new ScrollView("demo-scroll", new Column("long-content", [
-			new KeyedView("message", new Text("Scrollable content"))
+			new KeyedView("message", new Button("Scrollable content"))
 		], longContentStyle), viewportStyle, ScrollAxis.Vertical);
 		var scrollFrame = new LayoutFrame(256.0, 80.0);
 		var scrollRoot = context.submit(scrollView, scrollFrame);
@@ -1007,6 +1007,16 @@ class FrameworkSmoke {
 		contentGeometry = cast scrollRoot.children[0].resolved;
 		if (contentGeometry.transform.ty != -50.0)
 			return 27;
+		var nestedScrollControl = scrollRoot.children[0].children[0].children[0];
+		nestedScrollControl.on(UiEventKind.KeyDown, function(event) {
+			if (event.key == UiKey.Down)
+				event.preventDefault();
+		});
+		if (!context.focusWidget(nestedScrollControl.id))
+			return 229;
+		context.key(UiEventKind.KeyDown, UiKey.Down);
+		if (scrollView.controller.offsetY != 50.0)
+			return 230;
 		scrollView.controller.jumpTo(0.0, 500.0);
 		if (scrollView.controller.offsetY != 320.0 || !context.isDirty())
 			return 28;
