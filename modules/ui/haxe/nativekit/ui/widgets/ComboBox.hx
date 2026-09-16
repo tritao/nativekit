@@ -216,6 +216,7 @@ class ComboBox<T> implements View {
 					submitActive();
 			};
 			inputNode = context.withScope(new Key("input"), function() return input.build(context));
+			SelectionIndicator.fieldFrame(context, inputNode, "input-frame");
 			SelectionIndicator.chevron(context, inputNode, "input-indicator",
 				enabled ? context.theme.text : context.theme.disabledText, isOpen);
 			var inputSemantics:Semantics = cast inputNode.semantics;
@@ -405,10 +406,6 @@ class ComboBox<T> implements View {
 		var result = new LayoutStyle();
 		result.width = LayoutAxis.fixed(240.0);
 		result.height = LayoutAxis.fixed(40.0);
-		result.padding = new Insets(10.0, 8.0, 10.0, 8.0);
-		result.background = Color.rgba(0.11, 0.13, 0.17, 1.0);
-		result.radiusTopLeft = result.radiusTopRight = 5.0;
-		result.radiusBottomLeft = result.radiusBottomRight = 5.0;
 		result.clipHorizontal = true;
 		return result;
 	}

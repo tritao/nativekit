@@ -182,6 +182,7 @@ class Select<T> implements View {
 			trigger.semanticActions = AccessibilityAction.Activate | AccessibilityAction.SetValue |
 				(isOpen ? AccessibilityAction.Collapse : AccessibilityAction.Expand);
 			triggerNode = context.withScope(new Key("trigger"), function() return trigger.build(context));
+			SelectionIndicator.fieldFrame(context, triggerNode, "trigger-frame");
 			SelectionIndicator.chevron(context, triggerNode, "trigger-indicator",
 				enabled ? context.theme.text : context.theme.disabledText, isOpen);
 			var triggerSemantics:Semantics = cast triggerNode.semantics;
@@ -327,12 +328,8 @@ class Select<T> implements View {
 
 	static function defaultStyle():LayoutStyle {
 		var result = new LayoutStyle();
-		result.width = LayoutAxis.fixed(220.0);
-		result.height = LayoutAxis.fixed(36.0);
-		result.padding = new Insets(12.0, 9.0, 12.0, 9.0);
-		result.background = Color.rgba(0.16, 0.4, 0.78, 1.0);
-		result.radiusTopLeft = result.radiusTopRight = 5.0;
-		result.radiusBottomLeft = result.radiusBottomRight = 5.0;
+		result.width = LayoutAxis.fixed(240.0);
+		result.height = LayoutAxis.fixed(40.0);
 		return result;
 	}
 

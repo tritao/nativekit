@@ -8,11 +8,32 @@ import LayoutVisualKind;
 import LineCap;
 import LineJoin;
 import PathBuilder;
+import Rect;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.RenderNode;
+import nativekit.ui.style.StyleProperty;
 
 /** Small font-independent affordances shared by selection controls. */
 class SelectionIndicator {
+	public static function fieldFrame(context:BuildContext, node:RenderNode, key:String):Void {
+		if (node.computedStyle == null)
+			return;
+		var color = node.computedStyle.get(StyleProperty.BorderColor);
+		var width = node.computedStyle.get(StyleProperty.BorderWidth);
+		if (color.alpha <= 0.0 || width <= 0.0)
+			return;
+		var indicator = overlay(context, key);
+		indicator.onPaint(function(canvas, geometry) {
+			var edge = Math.min(width, Math.min(geometry.width, geometry.height) * 0.5);
+			canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, edge), color);
+			canvas.fillRectIfPositive(new Rect(0.0, geometry.height - edge, geometry.width, edge), color);
+			canvas.fillRectIfPositive(new Rect(0.0, edge, edge, geometry.height - edge * 2.0), color);
+			canvas.fillRectIfPositive(new Rect(geometry.width - edge, edge, edge,
+				geometry.height - edge * 2.0), color);
+		}, "selection-field-frame");
+		node.add(indicator);
+	}
+
 	public static function chevron(context:BuildContext, node:RenderNode, key:String,
 			color:Color, open:Bool):Void {
 		var indicator = overlay(context, key);
