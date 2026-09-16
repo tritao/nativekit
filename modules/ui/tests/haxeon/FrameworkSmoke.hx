@@ -88,6 +88,7 @@ import nativekit.ui.core.TextStyleOverride;
 import nativekit.ui.widgets.TextEditorState;
 import nativekit.ui.widgets.TextEditorDiagnostics;
 import nativekit.ui.widgets.EditTransaction;
+import nativekit.ui.widgets.TextCompositionSpan;
 import nativekit.ui.widgets.TextArea;
 import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.TextRange;
@@ -242,18 +243,26 @@ class FrameworkSmoke {
 			transactionEditor.selectionEnd != 1 || !transactionEditor.deleteForward() ||
 			transactionEditor.text != "a")
 			return 232;
-		if (!transactionEditor.applyTransaction(new EditTransaction(1, 1, "か", 2, 2, true, 1, 2)))
+		if (!transactionEditor.applyTransaction(new EditTransaction(1, 1, "か", 2, 2, true, 1, 2,
+			0, [new TextCompositionSpan(1, 2, false, true)])))
 			return 233;
 		var compositionRange:Null<TextRange> = transactionEditor.queryComposition();
 		if (compositionRange == null || compositionRange.start != 1 || compositionRange.end != 2 ||
-			transactionEditor.text != "aか")
+			transactionEditor.text != "aか" || transactionEditor.compositionAttributes.length != 1 ||
+			!transactionEditor.compositionAttributes[0].target)
 			return 234;
-		if (!transactionEditor.applyTransaction(new EditTransaction(1, 2, "かな", 3, 3, true, 1, 3)) ||
-			transactionEditor.text != "aかな" || transactionEditor.compositionEnd != 3)
+		if (!transactionEditor.applyTransaction(new EditTransaction(1, 2, "かな", 3, 3, true, 1, 3,
+			0, [new TextCompositionSpan(1, 2), new TextCompositionSpan(2, 3, true, false)])) ||
+			transactionEditor.text != "aかな" || transactionEditor.compositionEnd != 3 ||
+			transactionEditor.compositionAttributes.length != 2 ||
+			!transactionEditor.compositionAttributes[1].selected ||
+			transactionEditor.compositionRects().length < 2 ||
+			transactionEditor.compositionRectsFor(transactionEditor.compositionAttributes[1]).length == 0)
 			return 235;
 		var cancelled = transactionEditor.cancelComposition();
 		if (!cancelled || transactionEditor.text != "a" || transactionEditor.selectionStart != 1 ||
-			transactionEditor.selectionEnd != 1 || transactionEditor.queryComposition() != null) {
+			transactionEditor.selectionEnd != 1 || transactionEditor.queryComposition() != null ||
+			transactionEditor.compositionAttributes.length != 0) {
 			Sys.println("cancel mismatch: changed=" + cancelled + " text=" + transactionEditor.text +
 				" selection=" + transactionEditor.selectionStart + ".." + transactionEditor.selectionEnd +
 				" composition=" + transactionEditor.compositionStart + ".." + transactionEditor.compositionEnd);
@@ -374,6 +383,25 @@ class FrameworkSmoke {
 			!fieldEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.FinishComposition,
 				null, 0, 0, 2, 2, -1, -1)) || fieldEditor.compositionStart != -1)
 			return 210;
+		if (!fieldEditor.setComposition(1, 2))
+			return 240;
+		context.key(UiEventKind.KeyDown, UiKey.Right);
+		if (fieldEditor.queryComposition() != null)
+			return 241;
+		if (!fieldEditor.setComposition(0, 1))
+			return 242;
+		fieldRoot = context.submit(field, new LayoutFrame(256.0, 192.0));
+		var lifecycleTextGeometry:ResolvedLayoutItem = cast fieldRoot.children[0].children[1].resolved;
+		var lifecycleY = lifecycleTextGeometry.y + lifecycleTextGeometry.height * 0.5;
+		context.pointerDown(lifecycleTextGeometry.x + 1.0, lifecycleY, 0);
+		context.pointerUp(lifecycleTextGeometry.x + 1.0, lifecycleY, 0);
+		if (fieldEditor.queryComposition() != null)
+			return 243;
+		if (!fieldEditor.setComposition(0, 1) || !fieldEditor.focused)
+			return 244;
+		context.windowFocusLost();
+		if (fieldEditor.focused || fieldEditor.queryComposition() != null)
+			return 245;
 		if (!context.accessibilityAction(fieldRoot.id.value, AccessibilityRequest.SetSelection,
 			null, 0, 1, 2) || fieldEditor.selectionStart != 0 || fieldEditor.selectionEnd != 1)
 			return 46;

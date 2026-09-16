@@ -23,6 +23,9 @@ class Theme {
 	public var textSelection:Color;
 	public var textSelectionInactive:Color;
 	public var textCaret:Color;
+	public var textComposition:Color;
+	public var textCompositionSelected:Color;
+	public var textCompositionTarget:Color;
 	public var body:TextRoleStyle;
 	public var heading:TextRoleStyle;
 	public var label:TextRoleStyle;
@@ -53,6 +56,9 @@ class Theme {
 		textSelection = Color.rgba(0.2, 0.43, 0.82, 0.55);
 		textSelectionInactive = Color.rgba(0.2, 0.43, 0.82, 0.30);
 		textCaret = Color.rgba(0.96, 0.97, 0.99, 1.0);
+		textComposition = Color.rgba(0.95, 0.75, 0.24, 1.0);
+		textCompositionSelected = Color.rgba(1.0, 0.88, 0.36, 1.0);
+		textCompositionTarget = Color.rgba(0.35, 0.72, 1.0, 1.0);
 		body = new TextRoleStyle(new TextStyle(), new ParagraphStyle(), this.tokens.text);
 		heading = new TextRoleStyle(new TextStyle(24.0), new ParagraphStyle(), this.tokens.text);
 		label = new TextRoleStyle(new TextStyle(14.0),

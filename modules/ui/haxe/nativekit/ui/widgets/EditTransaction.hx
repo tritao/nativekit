@@ -18,12 +18,15 @@ class EditTransaction {
 	public final compositionEnd:CodepointOffset;
 	/** Caret affinity for the resulting selection focus. */
 	public final selectionAffinity:Int;
+	/** Optional generic clause metadata for the resulting composition. */
+	public final compositionAttributes:Null<Array<TextCompositionSpan>>;
 
 	public function new(replacementStart:CodepointOffset, replacementEnd:CodepointOffset,
 			replacementText:Null<String>, selectionStart:CodepointOffset,
 			selectionEnd:CodepointOffset, ?hasComposition:Bool = false,
 			?compositionStart:CodepointOffset = -1, ?compositionEnd:CodepointOffset = -1,
-			?selectionAffinity:Int = 0) {
+			?selectionAffinity:Int = 0,
+			?compositionAttributes:Array<TextCompositionSpan> = null) {
 		this.replacementStart = replacementStart;
 		this.replacementEnd = replacementEnd;
 		this.replacementText = replacementText;
@@ -33,5 +36,6 @@ class EditTransaction {
 		this.compositionStart = compositionStart;
 		this.compositionEnd = compositionEnd;
 		this.selectionAffinity = selectionAffinity;
+		this.compositionAttributes = compositionAttributes;
 	}
 }

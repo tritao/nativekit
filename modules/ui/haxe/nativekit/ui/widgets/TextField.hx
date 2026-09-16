@@ -289,8 +289,13 @@ class TextField implements View {
 					publishDiagnostics(null);
 			});
 			var blur = function(event:UiEvent) {
+				if (editor.isDisposed())
+					return;
 				if (!editor.focused && !editor.draggingSelection)
 					return;
+				// A platform may deliver focus loss before its final IME commit. Keep
+				// the preedit in the document and drop only composition metadata.
+				editor.commitComposition();
 				editor.focused = false;
 				editor.draggingSelection = false;
 				editor.cancelPointerClick();
@@ -305,6 +310,10 @@ class TextField implements View {
 			node.on(UiEventKind.PointerDown, function(event) {
 				if (!enabled || event.button != 0 || textNode.resolved == null)
 					return;
+				if (editor.queryComposition() != null) {
+					editor.commitComposition();
+					updateState();
+				}
 				event.capturePointer();
 				var geometry:ResolvedLayoutItem = cast textNode.resolved;
 				var point = geometry.viewportToLayout(event.x, event.y);
@@ -365,6 +374,16 @@ class TextField implements View {
 				#end
 				var handled = true;
 				var changed = false;
+				var finishesComposition = event.key == UiKey.Left || event.key == UiKey.Right ||
+					event.key == UiKey.Up || event.key == UiKey.Down || event.key == UiKey.Home ||
+					event.key == UiKey.End || event.key == UiKey.Backspace ||
+					event.key == UiKey.Delete || event.key == UiKey.Enter ||
+					(command && (event.key == UiKey.A || event.key == UiKey.C ||
+						event.key == UiKey.X || event.key == UiKey.V));
+				if (finishesComposition && editor.queryComposition() != null) {
+					editor.commitComposition();
+					updateState();
+				}
 				var previousText = editor.layoutText();
 				if (command && event.key == UiKey.A)
 					changed = editor.selectAll();
@@ -503,9 +522,13 @@ class TextField implements View {
 		if (editor.scrollOffsetY != 0.0)
 			canvas.translate(0.0, -editor.scrollOffsetY);
 		if (active && editor.compositionStart >= 0 && editor.compositionStart != editor.compositionEnd) {
-			for (rect in editor.compositionRects())
-				canvas.fillRectIfPositive(new Rect(rect.x, rect.y + rect.height - 1.0, rect.width, 1.0),
-					Color.rgba(0.95, 0.75, 0.24, 1.0));
+			for (attribute in editor.compositionAttributes) {
+				var color = attribute.selected ? theme.textCompositionSelected :
+					attribute.target ? theme.textCompositionTarget : theme.textComposition;
+				for (rect in editor.compositionRectsFor(attribute))
+					canvas.fillRectIfPositive(new Rect(rect.x, rect.y + rect.height - 1.0,
+						rect.width, 1.0), color);
+			}
 		}
 		if (active && editor.selectionStart == editor.selectionEnd &&
 				editor.isCaretVisible(timeSeconds)) {

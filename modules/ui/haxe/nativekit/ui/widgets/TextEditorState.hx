@@ -17,6 +17,8 @@ class TextEditorState {
 	public var selectionEnd(default, null):CodepointOffset;
 	public var compositionStart(default, null):CodepointOffset;
 	public var compositionEnd(default, null):CodepointOffset;
+	/** Generic composition clause metadata in document code-point coordinates. */
+	public var compositionAttributes(default, null):Array<TextCompositionSpan>;
 	public var selectionAnchor(default, null):CodepointOffset;
 	public var selectionFocus(default, null):CodepointOffset;
 	public var selectionAnchorLayoutOffset(default, null):CodepointOffset;
@@ -80,6 +82,7 @@ class TextEditorState {
 		scrollOffsetY = 0.0;
 		compositionStart = -1;
 		compositionEnd = -1;
+		compositionAttributes = [];
 		focused = false;
 		draggingSelection = false;
 		layout = TextLayout.create(fonts, layoutText(), 1.0, this.textStyle, this.paragraphStyle);
@@ -298,6 +301,11 @@ class TextEditorState {
 		return new TextRange(compositionStart, compositionEnd);
 	}
 
+	/** Returns a defensive copy of the active composition clause metadata. */
+	public function queryCompositionAttributes():Array<TextCompositionSpan> {
+		return compositionAttributes == null ? [] : compositionAttributes.copy();
+	}
+
 	/**
 	 * Applies replacement, selection, and composition metadata as one state
 	 * transition. The layout is updated only after the document mutation has
@@ -335,6 +343,12 @@ class TextEditorState {
 		var nextCompositionStart = nextHasComposition ? transaction.compositionStart : -1;
 		var nextCompositionEnd = nextHasComposition ? transaction.compositionEnd : -1;
 		var hadComposition = compositionStart >= 0 && compositionEnd >= compositionStart;
+		var nextCompositionAttributes = nextHasComposition
+			? resolveCompositionAttributes(transaction.compositionAttributes,
+				nextCompositionStart, nextCompositionEnd,
+				hadComposition && compositionStart == nextCompositionStart &&
+				compositionEnd == nextCompositionEnd)
+			: [];
 
 		if (nextHasComposition && !hadComposition && captureCompositionBaseline) {
 			compositionRestoreText = documentOffsetMap.sliceCodepoints(first, last);
@@ -357,7 +371,9 @@ class TextEditorState {
 			selectionFocusAffinity != transaction.selectionAffinity;
 		var compositionChanged = compositionStart != nextCompositionStart ||
 			compositionEnd != nextCompositionEnd;
-		if (!textChanged && !selectionChanged && !compositionChanged)
+		var compositionAttributesChanged = !sameCompositionAttributes(compositionAttributes,
+			nextCompositionAttributes);
+		if (!textChanged && !selectionChanged && !compositionChanged && !compositionAttributesChanged)
 			return false;
 
 		if (textChanged) {
@@ -379,6 +395,7 @@ class TextEditorState {
 		selectionFocusAffinity = transaction.selectionAffinity;
 		compositionStart = nextCompositionStart;
 		compositionEnd = nextCompositionEnd;
+		compositionAttributes = nextCompositionAttributes;
 		if (textChanged || selectionChanged)
 			resetVerticalNavigation();
 		return true;
@@ -669,8 +686,22 @@ class TextEditorState {
 	public function compositionRects():Array<Rect> {
 		if (compositionStart < 0 || compositionEnd <= compositionStart)
 			return [];
-		return layout.selectionRects(new TextPosition(compositionStart, 0),
-			new TextPosition(compositionEnd, 0));
+		var result:Array<Rect> = [];
+		for (span in compositionAttributes)
+			for (rect in compositionRectsFor(span))
+				result.push(rect);
+		return result;
+	}
+
+	/** Returns shaped rectangles for one composition clause, including wrapped lines. */
+	public function compositionRectsFor(span:TextCompositionSpan):Array<Rect> {
+		if (span == null || compositionStart < 0 || compositionEnd <= compositionStart)
+			return [];
+		var start:CodepointOffset = span.start < compositionStart ? compositionStart : span.start;
+		var end:CodepointOffset = span.end > compositionEnd ? compositionEnd : span.end;
+		if (end <= start)
+			return [];
+		return layout.selectionRects(new TextPosition(start, 0), new TextPosition(end, 0));
 	}
 
 	/** Selects the word under a pointer position using the shaped text engine's boundaries. */
@@ -774,6 +805,50 @@ class TextEditorState {
 		compositionRestoreSelectionStart = -1;
 		compositionRestoreSelectionEnd = -1;
 		hasCompositionRestoreState = false;
+	}
+
+	function resolveCompositionAttributes(attributes:Null<Array<TextCompositionSpan>>,
+			start:CodepointOffset, end:CodepointOffset, preserveCurrent:Bool):Array<TextCompositionSpan> {
+		if (end <= start)
+			return [];
+		if (attributes == null && preserveCurrent)
+			return compositionAttributes == null ? [] : compositionAttributes.copy();
+		var result:Array<TextCompositionSpan> = [];
+		if (attributes != null) {
+			for (attribute in attributes) {
+				if (attribute == null)
+					continue;
+				var clippedStart:CodepointOffset = attribute.start < start ? start : attribute.start;
+				var clippedEnd:CodepointOffset = attribute.end > end ? end : attribute.end;
+				if (clippedEnd > clippedStart)
+					result.push(new TextCompositionSpan(clippedStart, clippedEnd,
+						attribute.selected, attribute.target));
+			}
+		}
+		if (result.length == 0)
+			result.push(new TextCompositionSpan(start, end));
+		return result;
+	}
+
+	static function sameCompositionAttributes(first:Array<TextCompositionSpan>,
+			second:Array<TextCompositionSpan>):Bool {
+		if (first == null || second == null)
+			return first == second;
+		if (first.length != second.length)
+			return false;
+		for (index in 0...first.length) {
+			var a = first[index];
+			var b = second[index];
+			if (a == null || b == null) {
+				if (a != b)
+					return false;
+				continue;
+			}
+			if (a.start != b.start || a.end != b.end || a.selected != b.selected ||
+				a.target != b.target)
+				return false;
+		}
+		return true;
 	}
 
 	function trimLineBreak(offset:Int, lineStart:Int):Int {
