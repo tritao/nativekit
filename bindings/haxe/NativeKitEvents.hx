@@ -31,6 +31,12 @@ class NativeKitEvents {
 		return hasEvent;
 	}
 
+	/** Pumps native events and waits until input or the timeout expires. */
+	public function wait(timeoutSeconds:Float):Void {
+		ensureLive();
+		NativeKit.nk_wait_events_timeout_checked(timeoutSeconds);
+	}
+
 	/** Adds an observer which receives decoded, fully managed events. */
 	public function listen(listener:NativeKitEventValue->Void):NativeKitEventSubscription {
 		ensureLive();

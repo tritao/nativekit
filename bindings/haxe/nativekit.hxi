@@ -583,6 +583,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * The optional networking module can stream HTTP response bodies.
 		 */
 		NK_CAP_HTTP_STREAMING = 34359738368;
+		/**
+		 * The backend can schedule callbacks while a graphics surface is ready to draw.
+		 */
+		NK_CAP_SURFACE_FRAME_CALLBACK = 68719476736;
 	}
 	/**
 	 * System color-scheme values returned in nk_system_appearance.
@@ -2805,6 +2809,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Presents drawing performed since the last make-current call.
 	 *
+	 * Call this after manual rendering when no frame callback is installed. For a
+	 * callback-driven surface, the backend presents automatically after the
+	 * callback returns.
+	 *
 	 * The backend presents the surface's prepared frame. Explicit APIs submit to
 	 * their native presentation target; GTK schedules composition of the
 	 * GtkGLArea framebuffer instead of swapping a caller-owned native surface.
@@ -2818,11 +2826,12 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_surface_set_bounds(surface: nk_surface, x: i32, y: i32, width: i32, height: i32) -> nk_result;
 	/**
-	 * Installs or removes the surface's frame callback.
-	 *
-	 * The callback runs on the UI thread while the framebuffer is current. Do not
-	 * call nk_surface_present() recursively from it. Pass NULL to detach it; the
-	 * `user_data` value is not retained after the callback is removed.
+	 * Installs or removes the surface's frame callback. When installed, the
+	 * backend schedules callbacks for continuous rendering and presents the frame
+	 * after each callback returns. The callback runs on the UI thread while
+	 * the framebuffer is current. Do not call nk_surface_present() recursively
+	 * from it. Pass NULL to detach it; the `user_data` value is not retained after
+	 * the callback is removed.
 	 */
 	extern fn nk_surface_set_frame_callback(surface: nk_surface, callback: nk_nullable_surface_frame_callback @retained, user_data: nullable<ptr<void>>) -> nk_result;
 	/**
@@ -5014,10 +5023,11 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Callback invoked while a surface framebuffer is current and ready to draw.
 	 *
-	 * The callback runs on the UI thread. `user_data` is the value supplied to
+	 * The callback runs on the UI thread. The backend presents the frame after the
+	 * callback returns. `user_data` is the nullable value supplied to
 	 * nk_surface_set_frame_callback().
 	 */
-	callback nk_surface_frame_callback = fn(arg0: nk_surface, arg1: i32, arg2: i32, arg3: ptr<void>) -> void;
+	callback nk_surface_frame_callback = fn(arg0: nk_surface, arg1: i32, arg2: i32, arg3: nullable<ptr<void>>) -> void;
 	/**
 	 * Absolute Unicode code-point position used by the text-input API.
 	 */

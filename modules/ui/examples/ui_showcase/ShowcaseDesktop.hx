@@ -20,6 +20,22 @@ import NativeKitEvents.NativeKitEventSubscription;
 import NativeKitSurface;
 import nativekit.ui.core.NativeInputAdapter;
 
+private class ShowcaseFrameState {
+    public var running:Bool = true;
+    public var ready:Bool = false;
+    public var logicalWidth:Float = 0.0;
+    public var logicalHeight:Float = 0.0;
+    public var framebufferWidth:Int = 0;
+    public var framebufferHeight:Int = 0;
+    public var scale:Float = 1.0;
+    public var rendered:Int = 0;
+    public var callbackFailed:Bool = false;
+    public var callbackError:Null<Dynamic> = null;
+    public var graphicsMode:Bool = false;
+    public var graphics:Null<Showcase> = null;
+    public var explorer:Null<UiExplorer> = null;
+}
+
 /** Desktop frame-loop host for the NativeKit UI Explorer. */
 class ShowcaseDesktop {
     static function platformName():String {
@@ -67,6 +83,8 @@ class ShowcaseDesktop {
         var graphics:Null<Showcase> = null;
         var explorer:Null<UiExplorer> = null;
         var explorerInput:Null<NativeInputAdapter> = null;
+        var nativeSurface:Null<NativeKitSurface> = null;
+        var frameSubscription:Null<NativeKitSurfaceFrameSubscription> = null;
         var result = 0;
         try {
             var init = new InitOptions();
@@ -109,18 +127,16 @@ class ShowcaseDesktop {
                 return 12;
             }
             surface = createdSurface.out_surface.borrow();
+            var frameSurface = NativeKitSurface.borrowNativeHandle(surface);
+            nativeSurface = frameSurface;
             var running = true;
-            var ready = false;
-            var logicalWidth:Float = initialWidth;
-            var logicalHeight:Float = initialHeight;
-            var framebufferWidth = 0;
-            var framebufferHeight = 0;
-            var scale = 1.0;
-            var rendered = 0;
             var started = Date.now().getTime();
-            var nextFrameAt:Float = started;
             var activePump = new NativeKitEvents();
             eventPump = activePump;
+            var frameState = new ShowcaseFrameState();
+            frameState.graphicsMode = graphicsMode;
+            frameState.logicalWidth = initialWidth;
+            frameState.logicalHeight = initialHeight;
 
             if (graphicsMode) {
                 var fonts = FontCollection.create();
@@ -131,16 +147,16 @@ class ShowcaseDesktop {
                     fonts.dispose();
                     throw error;
                 }
-                graphics.setViewport(logicalWidth, logicalHeight);
+                graphics.setViewport(frameState.logicalWidth, frameState.logicalHeight);
             } else {
                 var fonts = FontCollection.create();
                 try {
                     fonts.addSystemFallbacks();
                     explorer = new UiExplorer(fonts,
                         '${platformName()} · ${graphicsApiName(graphicsApi)}', function() {
-                        if (graphicsMode)
+                        if (frameState.graphicsMode)
                             return;
-                        graphicsMode = true;
+                        frameState.graphicsMode = true;
                         if (explorerInput != null)
                             explorerInput.detach();
                         var graphicsFonts = FontCollection.create();
@@ -151,7 +167,8 @@ class ShowcaseDesktop {
                             graphicsFonts.dispose();
                             throw error;
                         }
-                        graphics.setViewport(logicalWidth, logicalHeight);
+                        graphics.setViewport(frameState.logicalWidth, frameState.logicalHeight);
+                        frameState.graphics = graphics;
                     });
                 } catch (error:Dynamic) {
                     fonts.dispose();
@@ -159,120 +176,133 @@ class ShowcaseDesktop {
                 }
                 explorer.attachSurface(NativeKitSurface.borrowNativeHandle(surface));
                 explorerInput = explorer.attachInput(activePump, new Handle(window.rawValue()));
-                explorer.setViewport(logicalWidth, logicalHeight, initialWidth, initialHeight, 1.0);
+                explorer.setViewport(frameState.logicalWidth, frameState.logicalHeight, initialWidth,
+                    initialHeight, 1.0);
             }
+            frameState.graphics = graphics;
+            frameState.explorer = explorer;
+            var renderFrame = function(framebufferWidth:Int, framebufferHeight:Int) {
+                if (!frameState.ready || !frameState.running || framebufferWidth <= 0 ||
+                        framebufferHeight <= 0)
+                    return;
+                frameState.framebufferWidth = framebufferWidth;
+                frameState.framebufferHeight = framebufferHeight;
+                var elapsed = (Date.now().getTime() - started) / 1000.0;
+                if (staticFrame)
+                    elapsed = 0.0;
+                if (frameState.graphicsMode && frameState.graphics != null) {
+                    var activeGraphics = frameState.graphics;
+                    activeGraphics.encodeFrame(elapsed, frameState.logicalWidth, frameState.logicalHeight,
+                        framebufferWidth, framebufferHeight, frameState.scale, staticFrame);
+                    activeGraphics.render(surface, frameState.logicalWidth, frameState.logicalHeight,
+                        framebufferWidth, framebufferHeight, frameState.scale);
+                } else if (frameState.explorer != null) {
+                    if (uiSmoke)
+                        frameState.explorer.setSmokeFrame(frameState.rendered);
+                    frameState.explorer.setViewport(frameState.logicalWidth, frameState.logicalHeight,
+                        framebufferWidth, framebufferHeight, frameState.scale);
+                    frameState.explorer.render(surface, elapsed);
+                }
+                frameState.rendered++;
+                if (staticFrame || ((smoke || uiSmoke) && frameState.rendered >= 30))
+                    frameState.running = false;
+            };
 
             eventSubscription = activePump.listen(function(value) {
                 switch (value) {
                     case WindowClose(source) if (source.rawValue() == window.rawValue()):
                         running = false;
+                        frameState.running = false;
                     case WindowResize(source, width, height) if (source.rawValue() == window.rawValue()):
                         if (NativeKit.nk_surface_set_bounds(surface, 0, 0, width, height) !=
                             Result.Ok)
                             throw "surface resize failed";
-                        logicalWidth = width;
-                        logicalHeight = height;
+                        frameState.logicalWidth = width;
+                        frameState.logicalHeight = height;
+                    case WindowScaleChanged(source, newScale) if (source.rawValue() == window.rawValue()):
+                        frameState.scale = newScale;
                     case SurfaceReady(source) if (source.rawValue() == surface.rawValue()):
-                        ready = true;
+                        frameState.ready = true;
                         var size = NativeKit.nk_surface_get_framebuffer_size(surface);
                         if (size.status != Result.Ok)
                             throw "framebuffer size query failed";
-                        framebufferWidth = size.out_width;
-                        framebufferHeight = size.out_height;
+                        frameState.framebufferWidth = size.out_width;
+                        frameState.framebufferHeight = size.out_height;
                         var windowScale = NativeKit.nk_window_get_scale(window);
                         if (windowScale.status != Result.Ok)
                             throw "window scale query failed";
-                        scale = windowScale.out_scale;
-                        if (graphicsMode && graphics != null)
-                            graphics.setViewport(logicalWidth, logicalHeight);
-                        if (!graphicsMode && explorer != null)
-                            explorer.setViewport(logicalWidth, logicalHeight, framebufferWidth,
-                                framebufferHeight, scale);
+                        frameState.scale = windowScale.out_scale;
+                        if (frameState.graphicsMode && graphics != null)
+                            graphics.setViewport(frameState.logicalWidth, frameState.logicalHeight);
+                        if (!frameState.graphicsMode && explorer != null)
+                            explorer.setViewport(frameState.logicalWidth, frameState.logicalHeight,
+                                frameState.framebufferWidth, frameState.framebufferHeight,
+                                frameState.scale);
+                        if (frameSubscription == null)
+                            frameSubscription = frameSurface.onFrame(function(width, height) {
+                                try {
+                                    renderFrame(width, height);
+                                } catch (error:Dynamic) {
+                                    frameState.callbackFailed = true;
+                                    frameState.callbackError = error;
+                                    frameState.running = false;
+                                }
+                            });
                     case SurfaceResize(source, width, height, newFramebufferWidth, newFramebufferHeight)
                         if (source.rawValue() == surface.rawValue()):
-                        logicalWidth = width;
-                        logicalHeight = height;
-                        framebufferWidth = newFramebufferWidth;
-                        framebufferHeight = newFramebufferHeight;
-                        if (graphicsMode && graphics != null)
-                            graphics.setViewport(logicalWidth, logicalHeight);
-                        if (!graphicsMode && explorer != null)
-                            explorer.setViewport(logicalWidth, logicalHeight, framebufferWidth,
-                                framebufferHeight, scale);
+                        frameState.logicalWidth = width;
+                        frameState.logicalHeight = height;
+                        frameState.framebufferWidth = newFramebufferWidth;
+                        frameState.framebufferHeight = newFramebufferHeight;
+                        if (frameState.graphicsMode && graphics != null)
+                            graphics.setViewport(frameState.logicalWidth, frameState.logicalHeight);
+                        if (!frameState.graphicsMode && explorer != null)
+                            explorer.setViewport(frameState.logicalWidth, frameState.logicalHeight,
+                                frameState.framebufferWidth, frameState.framebufferHeight,
+                                frameState.scale);
                     case SurfaceLost(source) if (source.rawValue() == surface.rawValue()):
-                        ready = false;
+                        frameState.ready = false;
                     case PointerMove(source, x, y) if (source.rawValue() == window.rawValue()):
-                        if (graphicsMode && graphics != null)
+                        if (frameState.graphicsMode && graphics != null)
                             graphics.updatePointer(x, y);
                     case PointerButton(source, _, action, _, x, y) if (source.rawValue() == window.rawValue()):
-                        if (graphicsMode && graphics != null)
+                        if (frameState.graphicsMode && graphics != null)
                             graphics.pointerButton(x, y, action == InputAction.Press);
                     case Key(source, key, _, action, _) if (source.rawValue() == window.rawValue() &&
                             action == InputAction.Press && key == Key.Escape):
-                        if (graphicsMode && explorer != null) {
-                            graphicsMode = false;
+                        if (frameState.graphicsMode && explorer != null) {
+                            frameState.graphicsMode = false;
                             if (graphics != null) {
                                 graphics.dispose();
                                 graphics = null;
                             }
+                            frameState.graphics = null;
                             if (explorerInput != null)
                                 explorerInput.attach(activePump);
-                        } else
+                        } else {
                             running = false;
+                            frameState.running = false;
+                        }
                     case _:
                 }
             });
 
             while (running) {
                 var hadEvent = activePump.poll();
-
-                if (ready) {
-                    var currentFramebuffer = NativeKit.nk_surface_get_framebuffer_size(surface);
-                    if (currentFramebuffer.status != Result.Ok)
-                        throw "framebuffer size query failed";
-                    framebufferWidth = currentFramebuffer.out_width;
-                    framebufferHeight = currentFramebuffer.out_height;
+                if (frameState.callbackFailed) {
+                    var callbackError = frameState.callbackError;
+                    throw callbackError == null ? "surface frame callback failed" : callbackError;
                 }
-
-                if (ready && running && framebufferWidth > 0 && framebufferHeight > 0) {
-                    if (!staticFrame && !smoke && !uiSmoke) {
-                        var beforeFrame = Date.now().getTime();
-                        if (nextFrameAt > beforeFrame)
-                            Sys.sleep((nextFrameAt - beforeFrame) / 1000.0);
-                    }
-                    var elapsed = (Date.now().getTime() - started) / 1000.0;
-                    if (staticFrame)
-                        elapsed = 0.0;
-                    if (graphicsMode && graphics != null) {
-                        graphics.encodeFrame(elapsed, logicalWidth, logicalHeight, framebufferWidth,
-                            framebufferHeight, scale, staticFrame);
-                        graphics.render(surface, logicalWidth, logicalHeight, framebufferWidth,
-                            framebufferHeight, scale);
-                    } else if (explorer != null) {
-                        if (uiSmoke)
-                            explorer.setSmokeFrame(rendered);
-                        explorer.render(surface, elapsed);
-                    }
-                    if (NativeKit.nk_surface_present(surface) != Result.Ok)
-                        throw "surface present failed";
-                    rendered++;
-                    if (staticFrame || ((smoke || uiSmoke) && rendered >= 30))
-                        running = false;
-                    else if (!smoke && !uiSmoke) {
-                        nextFrameAt += 1000.0 / Showcase.TARGET_FPS;
-                        var afterFrame = Date.now().getTime();
-                        if (nextFrameAt < afterFrame)
-                            nextFrameAt = afterFrame;
-                    }
-                } else if (!hadEvent) {
-                    Sys.sleep(0.002);
-                }
+                if (!frameState.running)
+                    running = false;
+                else if (!hadEvent)
+                    activePump.wait(1.0 / Showcase.TARGET_FPS);
             }
             if ((printStats || smoke || staticFrame) && graphics != null)
                 graphics.printStats();
             if (uiSmoke)
-                Sys.println('nativekit_ui_showcase explorer_frames=$rendered');
-            result = rendered > 0 ? 0 : 17;
+                Sys.println('nativekit_ui_showcase explorer_frames=${frameState.rendered}');
+            result = frameState.rendered > 0 ? 0 : 17;
         } catch (error:Dynamic) {
             if (Std.isOfType(error, UiError)) {
                 var uiError:UiError = cast error;
@@ -285,6 +315,10 @@ class ShowcaseDesktop {
             graphics.dispose();
         if (explorerInput != null)
             explorerInput.detach();
+        if (frameSubscription != null)
+            frameSubscription.dispose();
+        if (nativeSurface != null)
+            nativeSurface.releaseBorrowed();
         if (explorer != null)
             explorer.dispose();
         if (eventSubscription != null)

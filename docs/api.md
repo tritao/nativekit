@@ -469,12 +469,18 @@ mobile hosts. The GTK backend implements OpenGL and OpenGL ES surfaces with
 `GtkGLArea`. Android implements OpenGL ES 2.0 and 3.0 with a child `SurfaceView`
 and EGL window surface. Its logical bounds are converted to device pixels and
 reported alongside framebuffer dimensions in `NK_EVENT_SURFACE_RESIZE`.
-Applications call `nk_surface_make_current()`, render, and then call
-`nk_surface_present()`. GTK owns the final framebuffer composition, so
-presentation schedules a `GtkGLArea` render instead of directly swapping a
-caller-owned native surface. Contexts can reuse another surface's GTK context;
-the shared source must outlive its dependents. Procedure lookup resolves both
-core and extension entry points for the current GL implementation.
+For manual rendering, applications call `nk_surface_make_current()`, render, and
+then call `nk_surface_present()`. Applications that install
+`nk_surface_set_frame_callback()` receive UI-thread callbacks at the backend's
+continuous-rendering cadence while the framebuffer is current; NativeKit
+presents the frame after each callback returns, so the callback must not call
+`nk_surface_present()` recursively. The callback's dimensions are the framebuffer
+that is ready for that draw, which keeps rendering synchronized with live resize.
+GTK owns the final framebuffer composition, so manual presentation schedules a
+`GtkGLArea` render instead of directly swapping a caller-owned native surface.
+Contexts can reuse another surface's GTK context; the shared source must outlive
+its dependents. Procedure lookup resolves both core and extension entry points
+for the current GL implementation.
 
 On Android, `NK_EVENT_SURFACE_LOST` is emitted when a platform surface becomes
 unavailable and `NK_EVENT_SURFACE_READY` is emitted when it is created again.

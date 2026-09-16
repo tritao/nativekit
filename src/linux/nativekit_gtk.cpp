@@ -222,11 +222,14 @@ struct GtkSurfaceResource final : nk::core::Resource {
     uint32_t share_dependents = 0;
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
+    guint frame_tick = 0;
     std::shared_ptr<GtkSurfaceResource> shared_surface;
     std::unordered_map<nk_accessibility_node_id, GtkAccessibilityNode> accessibility_nodes;
     nk_accessibility_node_id accessibility_focus = NK_ACCESSIBILITY_ROOT;
 
     ~GtkSurfaceResource() override {
+        if (widget && frame_tick)
+            gtk_widget_remove_tick_callback(widget, frame_tick);
         if (widget) {
             g_object_set_data(G_OBJECT(widget), k_accessibility_resource_data, nullptr);
             gtk_widget_destroy(widget);
@@ -1829,15 +1832,33 @@ gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer d
     return FALSE;
 }
 
+gboolean on_surface_tick(GtkWidget *widget, GdkFrameClock *, gpointer data) {
+    auto *resource = static_cast<GtkSurfaceResource *>(data);
+    if (!resource || !nk::core::is_runtime_generation(resource->generation) ||
+        !resource->frame_callback) {
+        if (resource)
+            resource->frame_tick = 0;
+        return G_SOURCE_REMOVE;
+    }
+    gtk_gl_area_queue_render(GTK_GL_AREA(widget));
+    return G_SOURCE_CONTINUE;
+}
+
 gboolean on_surface_render(GtkGLArea *area, GdkGLContext *, gpointer data) {
     auto *resource = static_cast<GtkSurfaceResource *>(data);
     if (!resource || !nk::core::is_runtime_generation(resource->generation) ||
         !resource->frame_callback)
         return TRUE;
     const int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
-    resource->frame_callback(
-        resource->handle, gtk_widget_get_allocated_width(GTK_WIDGET(area)) * scale,
-        gtk_widget_get_allocated_height(GTK_WIDGET(area)) * scale, resource->frame_user_data);
+    nk::core::callback_boundary([&] {
+        const auto callback = resource->frame_callback;
+        void *user_data = resource->frame_user_data;
+        if (!callback || !nk::core::is_runtime_generation(resource->generation))
+            return;
+        callback(resource->handle, gtk_widget_get_allocated_width(GTK_WIDGET(area)) * scale,
+                 gtk_widget_get_allocated_height(GTK_WIDGET(area)) * scale,
+                 user_data);
+    });
     return TRUE;
 }
 
@@ -3158,7 +3179,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE | NK_CAP_SYSTEM_INFO |
            NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS |
            NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_ACCESSIBILITY |
-           NK_CAP_WRAP_NATIVE_WINDOW | nk::core::optional_capabilities();
+           NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK |
+           nk::core::optional_capabilities();
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -4595,6 +4617,16 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
         return invalid_handle("graphics surface");
     resource->frame_callback = callback;
     resource->frame_user_data = callback ? user_data : nullptr;
+    if (resource->frame_tick) {
+        gtk_widget_remove_tick_callback(resource->widget, resource->frame_tick);
+        resource->frame_tick = 0;
+    }
+    gtk_gl_area_set_auto_render(GTK_GL_AREA(resource->widget), FALSE);
+    if (callback) {
+        resource->frame_tick = gtk_widget_add_tick_callback(
+            resource->widget, on_surface_tick, resource.get(), nullptr);
+        gtk_gl_area_queue_render(GTK_GL_AREA(resource->widget));
+    }
     return NK_OK;
 }
 

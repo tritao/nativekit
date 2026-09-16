@@ -59,6 +59,7 @@ Two public capability families are orthogonal to the table above:
 |---|---|---|---|---|---|---|
 | Mobile host attachment | Not applicable | Not applicable | Not applicable | Required | Required | Not applicable |
 | Cursor + pointer capture | Required | Required | Required | Platform-specific equivalent | Platform-specific equivalent | Platform-specific equivalent |
+| Surface frame callbacks | Required | Required | Required | Deferred | Deferred | Required |
 
 The mobile-host row explains why Android and iOS do not advertise
 `NK_CAP_WINDOW`: they attach a caller-owned native view instead of creating a
@@ -89,6 +90,7 @@ needed; graphics API bits are alternatives within the GPU family.
 | Input + IME | `NK_CAP_INPUT` |
 | Cursor + pointer capture | `NK_CAP_CURSOR`, `NK_CAP_POINTER_CAPTURE` |
 | GPU surface | `NK_CAP_OPENGL_SURFACE`, `NK_CAP_OPENGL_ES_SURFACE`, `NK_CAP_VULKAN_SURFACE`, `NK_CAP_D3D11_SURFACE`, `NK_CAP_METAL_SURFACE` |
+| Surface frame callbacks | `NK_CAP_SURFACE_FRAME_CALLBACK` |
 | Resource sharing | `NK_CAP_RESOURCE_SHARING` |
 | Resource I/O | `NK_CAP_RESOURCE_IO` |
 | Accessibility | `NK_CAP_ACCESSIBILITY` |
@@ -120,12 +122,12 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 
 | Backend | Required or equivalent today | Deferred today |
 |---|---|---|
-| Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick, native export, X11 native wrapping, accessibility | Wayland native wrapping |
-| Windows | Windows, WebView when WebView2 is available, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick, native export, Win32 native wrapping | — |
-| macOS | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping | — |
+| Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick, native export, X11 native wrapping, accessibility, surface frame callbacks | Wayland native wrapping |
+| Windows | Windows, WebView when WebView2 is available, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick, native export, Win32 native wrapping, surface frame callbacks | — |
+| macOS | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping, surface frame callbacks | — |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility | — |
 | iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, accessibility | — |
-| Web | Window, geometry and CSS-backed styling, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility | — |
+| Web | Window, geometry and CSS-backed styling, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility, surface frame callbacks | — |
 
 The current Windows joystick adapter uses XInput's standard gamepad model,
 including hotplug and normalized canonical state. The macOS and iOS adapters use

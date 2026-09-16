@@ -92,7 +92,9 @@ enum NK_FLAGS(nk_capabilities) {
     /** The optional networking module can perform HTTP requests. */
     NK_CAP_HTTP_CLIENT = UINT64_C(1) << 34,
     /** The optional networking module can stream HTTP response bodies. */
-    NK_CAP_HTTP_STREAMING = UINT64_C(1) << 35
+    NK_CAP_HTTP_STREAMING = UINT64_C(1) << 35,
+    /** The backend can schedule callbacks while a graphics surface is ready to draw. */
+    NK_CAP_SURFACE_FRAME_CALLBACK = UINT64_C(1) << 36
 };
 
 /** Discriminator identifying the platform representation in nk_native_window. */

@@ -118,11 +118,13 @@ typedef void(NK_CALL *nk_graphics_proc)(void);
 /**
  * Callback invoked while a surface framebuffer is current and ready to draw.
  *
- * The callback runs on the UI thread. `user_data` is the value supplied to
+ * The callback runs on the UI thread. The backend presents the frame after the
+ * callback returns. `user_data` is the nullable value supplied to
  * nk_surface_set_frame_callback().
  */
 typedef void(NK_CALL *nk_surface_frame_callback)(nk_surface surface, int32_t framebuffer_width,
-                                                 int32_t framebuffer_height, void *user_data);
+                                                 int32_t framebuffer_height,
+                                                 void *NK_NULLABLE user_data);
 typedef nk_surface_frame_callback NK_NULLABLE nk_nullable_surface_frame_callback;
 
 /** Payload of NK_EVENT_SURFACE_RESIZE. */
@@ -216,6 +218,10 @@ NK_API nk_result NK_CALL nk_surface_make_current(nk_surface surface);
 /**
  * Presents drawing performed since the last make-current call.
  *
+ * Call this after manual rendering when no frame callback is installed. For a
+ * callback-driven surface, the backend presents automatically after the
+ * callback returns.
+ *
  * The backend presents the surface's prepared frame. Explicit APIs submit to
  * their native presentation target; GTK schedules composition of the
  * GtkGLArea framebuffer instead of swapping a caller-owned native surface.
@@ -223,11 +229,12 @@ NK_API nk_result NK_CALL nk_surface_make_current(nk_surface surface);
 NK_API nk_result NK_CALL nk_surface_present(nk_surface surface);
 
 /**
- * Installs or removes the surface's frame callback.
- *
- * The callback runs on the UI thread while the framebuffer is current. Do not
- * call nk_surface_present() recursively from it. Pass NULL to detach it; the
- * `user_data` value is not retained after the callback is removed.
+ * Installs or removes the surface's frame callback. When installed, the
+ * backend schedules callbacks for continuous rendering and presents the frame
+ * after each callback returns. The callback runs on the UI thread while
+ * the framebuffer is current. Do not call nk_surface_present() recursively
+ * from it. Pass NULL to detach it; the `user_data` value is not retained after
+ * the callback is removed.
  */
 NK_API nk_result NK_CALL nk_surface_set_frame_callback(
     nk_surface surface, nk_nullable_surface_frame_callback callback NK_RETAINED,

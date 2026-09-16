@@ -1967,7 +1967,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
                         NK_CAP_POINTER_CAPTURE | NK_CAP_CLIPBOARD | NK_CAP_WINDOW_GEOMETRY |
                         NK_CAP_WINDOW_STYLING | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
                         NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_SYSTEM_INFO |
-                        NK_CAP_ACCESSIBILITY | nk::core::optional_capabilities();
+                        NK_CAP_ACCESSIBILITY | NK_CAP_SURFACE_FRAME_CALLBACK |
+                        nk::core::optional_capabilities();
     if (nk::web::appearance_supported())
         capabilities |= NK_CAP_SYSTEM_APPEARANCE;
     if (nk::web::keep_awake_supported())

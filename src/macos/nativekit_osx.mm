@@ -3577,7 +3577,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_SYSTEM_INFO |
            NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS |
            NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_ACCESSIBILITY |
-           NK_CAP_RESOURCE_SHARING | NK_CAP_WRAP_NATIVE_WINDOW | nk::core::optional_capabilities();
+           NK_CAP_RESOURCE_SHARING | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK |
+           nk::core::optional_capabilities();
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {

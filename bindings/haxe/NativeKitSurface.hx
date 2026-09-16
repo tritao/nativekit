@@ -148,6 +148,7 @@ private class NativeKitSurfaceFrameHandler {
 	public function new(handler:Int->Int->Void)
 		this.handler = handler;
 
-	public function invoke(_surface:SurfaceHandle, width:Int, height:Int, _userData:hl.Abstract<"native_pointer">):Void
+	public function invoke(_surface:SurfaceHandle, width:Int, height:Int,
+		_userData:Null<hl.Abstract<"native_pointer">>):Void
 		handler(width, height);
 }

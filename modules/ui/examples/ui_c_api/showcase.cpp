@@ -4,6 +4,7 @@
 #include "nativekit_input.h"
 #include "nativekit_gpu.h"
 #include "nativekit_system.h"
+#include "nativekit_time.h"
 #include "nativekit_ui.h"
 #include "nativekit_window.h"
 
@@ -12,9 +13,7 @@
 #endif
 
 #include <algorithm>
-#include <chrono>
 #include <cstring>
-#include <thread>
 #include <vector>
 
 #ifndef NKUI_TEST_FONT_PATH
@@ -577,7 +576,6 @@ int main(int argc, char **argv) {
     bool ready = false;
     int framebuffer_width = 0;
     int framebuffer_height = 0;
-    int frames = 0;
     int result = 0;
     while (running && !result) {
         nk_event event{};
@@ -619,14 +617,10 @@ int main(int argc, char **argv) {
         nk_event_release(&event);
         if (showcase.frame_failed)
             result = 5;
-        if (ready && running) {
-            if (nk_surface_present(surface) != NK_OK)
-                result = 5;
-            if (smoke && ++frames == 30)
-                running = false;
-        } else if (idle) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
-        }
+        if (smoke && showcase.rendered_frames >= 30)
+            running = false;
+        if (running && !result && idle && nk_wait_events_timeout(1.0 / 60.0) != NK_OK)
+            result = 3;
     }
 
     nk_surface_set_frame_callback(surface, nullptr, nullptr);
