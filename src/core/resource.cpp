@@ -178,7 +178,7 @@ nk_result start_resource_load(const struct nk_resource *resource, nk_request_id 
 
 } // namespace nk::core
 
-#if !defined(NK_BACKEND_WEB)
+#if defined(NK_BACKEND_ANDROID)
 namespace nk::backend {
 
 nk_result load_resource_async(const struct nk_resource *, nk_request_id) noexcept {

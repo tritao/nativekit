@@ -1,6 +1,7 @@
 #include "nativekit_resource.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -37,6 +38,65 @@ int main() {
     resource.uri = test_uri;
     resource.mime_type = "application/octet-stream";
     resource.display_name = "cache-data";
+
+    nk_request_id async_request = NK_INVALID_REQUEST_ID;
+    assert(nk_resource_load_async(&resource, &async_request) == NK_OK);
+    assert(async_request != NK_INVALID_REQUEST_ID);
+    bool async_loaded = false;
+    for (int attempt = 0; attempt < 200 && !async_loaded; ++attempt) {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE &&
+            event.request_id == async_request) {
+            assert(event.result == NK_OK);
+            assert(event.data_size == sizeof(test_data) - 1);
+            assert(std::string(static_cast<const char *>(event.data), event.data_size) ==
+                   test_data);
+            async_loaded = true;
+        }
+        nk_event_release(&event);
+        if (!async_loaded)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    assert(async_loaded);
+
+    nk_request_id canceled_request = NK_INVALID_REQUEST_ID;
+    assert(nk_resource_load_async(&resource, &canceled_request) == NK_OK);
+    assert(canceled_request != NK_INVALID_REQUEST_ID);
+    assert(nk_resource_load_cancel(canceled_request) == NK_OK);
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        assert(event.kind != NK_EVENT_RESOURCE_DATA_COMPLETE ||
+               event.request_id != canceled_request);
+        nk_event_release(&event);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    nk_resource_asset async_asset = NK_INVALID_HANDLE;
+    nk_request_id cache_request = NK_INVALID_REQUEST_ID;
+    assert(nk_resource_cache_load_async(cache, &resource, &async_asset, &cache_request) == NK_OK);
+    assert(async_asset != NK_INVALID_HANDLE);
+    assert(cache_request != NK_INVALID_REQUEST_ID);
+    bool cache_async_loaded = false;
+    for (int attempt = 0; attempt < 200 && !cache_async_loaded; ++attempt) {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_RESOURCE_CACHE_READY && event.request_id == cache_request)
+            cache_async_loaded = true;
+        nk_event_release(&event);
+        if (!cache_async_loaded)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    assert(cache_async_loaded);
+    nk_resource_asset_load_state async_state = NK_RESOURCE_ASSET_LOADING;
+    assert(nk_resource_asset_get_load_state(async_asset, &async_state) == NK_OK &&
+           async_state == NK_RESOURCE_ASSET_READY);
+    assert(nk_resource_cache_remove(cache, test_uri) == NK_OK);
+    assert(nk_resource_asset_destroy(async_asset) == NK_OK);
 
     nk_resource_asset first = NK_INVALID_HANDLE;
     assert(nk_resource_cache_load(cache, &resource, &first) == NK_OK);

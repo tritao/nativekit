@@ -4,6 +4,8 @@ import NativeKitEventDecoderTests;
 import haxe.io.Bytes;
 import NativeKitEventValue;
 import NativeKitEvents.NativeKitEventSubscription;
+import nativekit.audio.AudioBank;
+import nativekit.audio.AudioBankEntry;
 import nativekit.audio.AudioCue;
 import nativekit.audio.AudioCueOptions;
 import nativekit.audio.AudioEmitter;
@@ -27,6 +29,7 @@ import nativekit.audio.VoiceOptions;
 import nativekit.audio.Vector3;
 import nativekit.audio.Enums.VoiceStealPolicy;
 import nativekit.resource.Resource;
+import nativekit.resource.ResourceCache;
 
 class AudioSmoke {
 	static function tinyWav():Bytes {
@@ -82,6 +85,9 @@ class AudioSmoke {
 		var completion:Voice = null;
 		var transitionSubscription:NativeKitEventSubscription = null;
 		var completionSubscription:NativeKitEventSubscription = null;
+		var resourceCache:ResourceCache = null;
+		var audioBank:AudioBank = null;
+		var bankEntry:AudioBankEntry = null;
 		var stolenTransition = false;
 		var virtualizedTransition = false;
 		var resumedTransition = false;
@@ -96,6 +102,37 @@ class AudioSmoke {
 				nativeResource.get_mime_type() != resource.mimeType ||
 				nativeResource.get_display_name() != resource.displayName)
 				throw "Haxe resource descriptor did not build its ABI value";
+			resourceCache = ResourceCache.create();
+			audioBank = new AudioBank(resourceCache, runtime.events);
+			var bankFailed = false;
+			var bankFailure = NativeKit.Result.Ok;
+			audioBank.onFailed = function(entry, result) {
+				if (entry.name == "missing-audio") {
+					bankFailed = true;
+					bankFailure = result;
+				}
+			};
+			bankEntry = audioBank.loadAsync("missing-audio",
+				new Resource("file:///nativekit-audio-bank-missing.wav", "audio/wav", "missing.wav"));
+			if (!bankEntry.isLoading() && !bankEntry.isFailed())
+				throw "Haxe audio bank returned an invalid load state";
+			for (attempt in 0...20) {
+				if (bankFailed)
+					break;
+				NativeKit.nk_wait_events_timeout_checked(0.05);
+				while (runtime.events.poll()) {}
+			}
+			if (!bankFailed || !bankEntry.isFailed() || bankFailure == NativeKit.Result.Ok ||
+				bankEntry.loadResult() != bankFailure)
+				throw "Haxe audio bank did not deliver its async failure lifecycle";
+			if (audioBank.find("missing-audio") != bankEntry || !audioBank.unload("missing-audio") ||
+				audioBank.find("missing-audio") != null || audioBank.count() != 0)
+				throw "Haxe audio bank did not unload its failed entry";
+			bankEntry = null;
+			audioBank.dispose();
+			audioBank = null;
+			resourceCache.dispose();
+			resourceCache = null;
 			var deviceCount = Mixer.deviceCount();
 			if (deviceCount <= 0)
 				throw "Haxe audio device enumeration returned no playback devices";
@@ -590,6 +627,10 @@ class AudioSmoke {
 				emitter.dispose();
 			if (trackPlayer != null)
 				trackPlayer.dispose();
+			if (audioBank != null)
+				audioBank.dispose();
+			if (resourceCache != null)
+				resourceCache.dispose();
 			if (cue != null)
 				cue.dispose();
 			if (lowPass != null)

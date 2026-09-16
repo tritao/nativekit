@@ -27,6 +27,16 @@ released after clip creation. Resource cache ready and failure events are the
 single loading lifecycle for URI-backed audio; attempting to create a clip
 before the asset is ready returns `NK_ERROR_INVALID_REQUEST`.
 
+`AudioBank` provides a named Haxe catalog over a borrowed `ResourceCache` and
+event pump. `load()` and `loadAsync()` register `AudioBankEntry` values, which
+report loading, ready, and failure state and expose one-shot `onReady` and
+`onFailed` callbacks. `AudioBankEntry.createClip()` returns an explicitly
+caller-owned `Clip`; unloading the bank entry releases only its cache asset
+view, so the clip can be composed into an `AudioCue` or `AudioTrack` and
+managed independently. On native desktop backends, asynchronous local-file
+URI loads run on NativeKit's bounded worker pool and complete through the same
+resource cache events as web fetches.
+
 For music and other large resources, use `nk_audio_clip_create_from_stream()`
 (or Haxe `Clip.fromStream()`). This validates the resource synchronously but
 does not retain its complete encoded contents. Each voice opens an independent
@@ -147,8 +157,8 @@ The module also provides a generated Haxeon ABI interface in
 `bindings/nativekit-audio.hxi` and a small typed Haxe facade under
 `bindings/haxe/nativekit/audio`. The public facade consists of `Clip`, `Voice`, `VoiceOptions`,
 `AudioCue`, `AudioCueOptions`, `AudioPlayOptions`, `AudioEmitter`, `Bus`, `BusConcurrencyOptions`,
-`AudioTrack`, `AudioTrackOptions`, `AudioTrackPlayer`, `AudioTransitionOptions`, `MixSnapshot`,
-`DeviceOptions`, and `Mixer`. `Mixer` exposes device enumeration and lifecycle controls, while
+`AudioTrack`, `AudioTrackOptions`, `AudioTrackPlayer`, `AudioTransitionOptions`, `AudioBank`,
+`AudioBankEntry`, `MixSnapshot`, `DeviceOptions`, and `Mixer`. `Mixer` exposes device enumeration and lifecycle controls, while
 `Clip.fromAsset()` consumes a ready
 `nativekit.resource.ResourceAsset` from the core cache and `Clip.fromStream()`
 creates an incremental source for large resources.

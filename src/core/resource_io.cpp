@@ -3,8 +3,10 @@
 #include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/runtime.hpp"
+#include "core/worker_pool.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstdint>
 #include <filesystem>
@@ -13,6 +15,9 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace {
 struct FileResourceStream final : nk::core::Resource {
@@ -75,6 +80,82 @@ bool file_uri_path(const char *uri, std::string &path) {
 std::shared_ptr<FileResourceStream> stream(nk_handle handle) {
     return std::dynamic_pointer_cast<FileResourceStream>(
         nk::core::handles().get(handle, nk::core::ResourceType::resource_stream));
+}
+
+struct AsyncFileLoad final {
+    std::string path;
+    std::atomic<bool> canceled{false};
+};
+
+std::mutex async_loads_mutex;
+std::unordered_map<nk_request_id, std::shared_ptr<AsyncFileLoad>> async_loads;
+
+nk_result read_file(const AsyncFileLoad &load, std::vector<std::byte> &output) {
+    if (load.canceled.load(std::memory_order_acquire))
+        return NK_ERROR_INVALID_REQUEST;
+
+    std::ifstream file(std::filesystem::u8path(load.path), std::ios::binary | std::ios::ate);
+    if (!file)
+        return NK_ERROR_UNKNOWN;
+    const auto end = file.tellg();
+    if (end < 0)
+        return NK_ERROR_UNKNOWN;
+    const auto size = static_cast<std::uintmax_t>(end);
+    if (size > static_cast<std::uintmax_t>(std::numeric_limits<std::size_t>::max()))
+        return NK_ERROR_OUT_OF_MEMORY;
+
+    output.resize(static_cast<std::size_t>(size));
+    file.seekg(0, std::ios::beg);
+    if (!file && size != 0)
+        return NK_ERROR_UNKNOWN;
+
+    std::size_t offset = 0;
+    while (offset < output.size()) {
+        if (load.canceled.load(std::memory_order_acquire))
+            return NK_ERROR_INVALID_REQUEST;
+        const auto remaining = output.size() - offset;
+        const auto count = std::min<std::size_t>(remaining, 64u * 1024u);
+        file.read(reinterpret_cast<char *>(output.data() + offset),
+                  static_cast<std::streamsize>(count));
+        const auto read = file.gcount();
+        if (read <= 0 || file.bad())
+            return NK_ERROR_UNKNOWN;
+        offset += static_cast<std::size_t>(read);
+        if (static_cast<std::size_t>(read) != count)
+            return NK_ERROR_UNKNOWN;
+    }
+    return NK_OK;
+}
+
+void complete_async_file_load(nk_request_id request,
+                              const std::shared_ptr<AsyncFileLoad> &load) noexcept {
+    std::vector<std::byte> data;
+    nk_result result = NK_ERROR_UNKNOWN;
+    try {
+        result = read_file(*load, data);
+    } catch (const std::bad_alloc &) {
+        result = NK_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        result = NK_ERROR_UNKNOWN;
+    }
+
+    std::lock_guard lock(async_loads_mutex);
+    const auto found = async_loads.find(request);
+    if (found == async_loads.end() || found->second != load)
+        return;
+    if (load->canceled.load(std::memory_order_acquire)) {
+        async_loads.erase(found);
+        return;
+    }
+
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_RESOURCE_DATA_COMPLETE;
+    event.request_id = request;
+    event.result = result;
+    if (result == NK_OK)
+        event.data = std::move(data);
+    (void)nk::core::push_event(std::move(event));
+    async_loads.erase(found);
 }
 } // namespace
 
@@ -261,3 +342,49 @@ nk_result NK_CALL nk_resource_close(nk_handle handle) {
     return NK_OK;
 }
 }
+
+namespace nk::backend {
+
+nk_result load_resource_async(const struct nk_resource *resource, nk_request_id request) noexcept {
+    try {
+        std::string path;
+        if (!resource || !file_uri_path(resource->uri, path)) {
+            nk::core::set_error("desktop asynchronous resource loads require a local file URI");
+            return NK_ERROR_UNSUPPORTED;
+        }
+        auto load = std::make_shared<AsyncFileLoad>();
+        load->path = std::move(path);
+        {
+            std::lock_guard lock(async_loads_mutex);
+            if (!async_loads.emplace(request, load).second) {
+                nk::core::set_error("resource load request is already active");
+                return NK_ERROR_ALREADY_INITIALIZED;
+            }
+        }
+        const auto submitted = nk::core::submit_worker_task(
+            [request, load] { complete_async_file_load(request, load); });
+        if (submitted != NK_OK) {
+            std::lock_guard lock(async_loads_mutex);
+            async_loads.erase(request);
+            return submitted;
+        }
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        nk::core::set_error("could not allocate asynchronous resource load");
+        return NK_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        nk::core::set_error("could not start asynchronous resource load");
+        return NK_ERROR_UNKNOWN;
+    }
+}
+
+nk_result cancel_resource_load(nk_request_id request) noexcept {
+    std::lock_guard lock(async_loads_mutex);
+    const auto found = async_loads.find(request);
+    if (found == async_loads.end())
+        return NK_OK;
+    found->second->canceled.store(true, std::memory_order_release);
+    return NK_OK;
+}
+
+} // namespace nk::backend
