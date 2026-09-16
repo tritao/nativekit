@@ -52,7 +52,8 @@ std::shared_ptr<CurlClientState> client_state(const nk::net::RequestPtr &request
         return std::static_pointer_cast<CurlClientState>(request->client->backend_state);
     auto state = std::make_shared<CurlClientState>();
     state->share = curl_share_init();
-    if (!state->share || curl_share_setopt(state->share, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE) != CURLSHE_OK ||
+    if (!state->share ||
+        curl_share_setopt(state->share, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE) != CURLSHE_OK ||
         curl_share_setopt(state->share, CURLSHOPT_LOCKFUNC, curl_share_lock) != CURLSHE_OK ||
         curl_share_setopt(state->share, CURLSHOPT_UNLOCKFUNC, curl_share_unlock) != CURLSHE_OK) {
         return {};
@@ -169,7 +170,8 @@ std::size_t header_callback_impl(char *data, std::size_t size, std::size_t count
     return length;
 }
 
-std::size_t header_callback(char *data, std::size_t size, std::size_t count, void *user_data) noexcept {
+std::size_t header_callback(char *data, std::size_t size, std::size_t count,
+                            void *user_data) noexcept {
     try {
         return header_callback_impl(data, size, count, user_data);
     } catch (...) {
@@ -229,7 +231,8 @@ std::size_t write_callback_impl(char *data, std::size_t size, std::size_t count,
     return length;
 }
 
-std::size_t write_callback(char *data, std::size_t size, std::size_t count, void *user_data) noexcept {
+std::size_t write_callback(char *data, std::size_t size, std::size_t count,
+                           void *user_data) noexcept {
     try {
         return write_callback_impl(data, size, count, user_data);
     } catch (...) {
@@ -255,7 +258,8 @@ std::size_t read_callback_impl(char *data, std::size_t size, std::size_t count, 
     return static_cast<std::size_t>(amount);
 }
 
-std::size_t read_callback(char *data, std::size_t size, std::size_t count, void *user_data) noexcept {
+std::size_t read_callback(char *data, std::size_t size, std::size_t count,
+                          void *user_data) noexcept {
     try {
         return read_callback_impl(data, size, count, user_data);
     } catch (...) {
@@ -284,7 +288,8 @@ int progress_callback_impl(void *user_data, curl_off_t downloaded, curl_off_t do
 int progress_callback(void *user_data, curl_off_t downloaded, curl_off_t download_total,
                       curl_off_t uploaded, curl_off_t upload_total) noexcept {
     try {
-        return progress_callback_impl(user_data, downloaded, download_total, uploaded, upload_total);
+        return progress_callback_impl(user_data, downloaded, download_total, uploaded,
+                                      upload_total);
     } catch (...) {
         return 1;
     }
@@ -363,14 +368,17 @@ nk_result perform_impl(nk::net::RequestPtr request) {
             };
             bool options_ok =
                 set_option(CURLOPT_URL, request->request.url.c_str()) &&
-                set_option(CURLOPT_CUSTOMREQUEST, method) && set_option(CURLOPT_FOLLOWLOCATION, 1L) &&
+                set_option(CURLOPT_CUSTOMREQUEST, method) &&
+                set_option(CURLOPT_FOLLOWLOCATION, 1L) &&
                 set_option(CURLOPT_MAXREDIRS, static_cast<long>(request->request.redirect_limit)) &&
                 set_option(CURLOPT_TIMEOUT_MS, static_cast<long>(request->request.timeout_ms)) &&
-                set_option(CURLOPT_CONNECTTIMEOUT_MS, static_cast<long>(request->request.timeout_ms)) &&
+                set_option(CURLOPT_CONNECTTIMEOUT_MS,
+                           static_cast<long>(request->request.timeout_ms)) &&
                 set_option(CURLOPT_NOSIGNAL, 1L) && set_option(CURLOPT_FAILONERROR, 0L) &&
                 set_option(CURLOPT_PROTOCOLS_STR,
-                           (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTP) ? "http,https"
-                                                                                           : "https") &&
+                           (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTP)
+                               ? "http,https"
+                               : "https") &&
                 set_option(CURLOPT_REDIR_PROTOCOLS_STR,
                            (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP)
                                ? "http,https"
@@ -386,12 +394,14 @@ nk_result perform_impl(nk::net::RequestPtr request) {
             options_ok = set_option(CURLOPT_NOPROGRESS, 0L) && options_ok;
 
             const auto &tls = request->client->config.tls;
-            options_ok = set_option(CURLOPT_SSL_VERIFYPEER,
-                                    (tls.flags & NK_HTTP_TLS_DISABLE_PEER_VERIFICATION) ? 0L : 1L) &&
-                         options_ok;
-            options_ok = set_option(CURLOPT_SSL_VERIFYHOST,
-                                    (tls.flags & NK_HTTP_TLS_DISABLE_HOSTNAME_VERIFICATION) ? 0L : 2L) &&
-                         options_ok;
+            options_ok =
+                set_option(CURLOPT_SSL_VERIFYPEER,
+                           (tls.flags & NK_HTTP_TLS_DISABLE_PEER_VERIFICATION) ? 0L : 1L) &&
+                options_ok;
+            options_ok =
+                set_option(CURLOPT_SSL_VERIFYHOST,
+                           (tls.flags & NK_HTTP_TLS_DISABLE_HOSTNAME_VERIFICATION) ? 0L : 2L) &&
+                options_ok;
             if (!tls.ca_bundle_path.empty())
                 options_ok = set_option(CURLOPT_CAINFO, tls.ca_bundle_path.c_str()) && options_ok;
 #ifdef CURLOPT_SSLVERSION
@@ -406,16 +416,18 @@ nk_result perform_impl(nk::net::RequestPtr request) {
             const auto &proxy = request->client->config.proxy;
             if (proxy.kind != NK_HTTP_PROXY_NONE) {
                 options_ok = set_option(CURLOPT_PROXY, proxy.url.c_str()) && options_ok;
-                options_ok = set_option(CURLOPT_PROXYTYPE,
-                                        proxy.kind == NK_HTTP_PROXY_HTTP
-                                            ? CURLPROXY_HTTP
-                                            : proxy.kind == NK_HTTP_PROXY_HTTPS ? CURLPROXY_HTTPS
-                                                                                 : CURLPROXY_SOCKS5_HOSTNAME) &&
-                             options_ok;
+                options_ok =
+                    set_option(CURLOPT_PROXYTYPE, proxy.kind == NK_HTTP_PROXY_HTTP ? CURLPROXY_HTTP
+                                                  : proxy.kind == NK_HTTP_PROXY_HTTPS
+                                                      ? CURLPROXY_HTTPS
+                                                      : CURLPROXY_SOCKS5_HOSTNAME) &&
+                    options_ok;
                 if (!proxy.username.empty())
-                    options_ok = set_option(CURLOPT_PROXYUSERNAME, proxy.username.c_str()) && options_ok;
+                    options_ok =
+                        set_option(CURLOPT_PROXYUSERNAME, proxy.username.c_str()) && options_ok;
                 if (!proxy.password.empty())
-                    options_ok = set_option(CURLOPT_PROXYPASSWORD, proxy.password.c_str()) && options_ok;
+                    options_ok =
+                        set_option(CURLOPT_PROXYPASSWORD, proxy.password.c_str()) && options_ok;
             }
             if (request->client->config.cookie_policy == NK_HTTP_COOKIES_SESSION) {
                 state = client_state(request);
@@ -426,7 +438,8 @@ nk_result perform_impl(nk::net::RequestPtr request) {
             if (request->request.method == NK_HTTP_METHOD_HEAD)
                 options_ok = set_option(CURLOPT_NOBODY, 1L) && options_ok;
             if (!request->request.body.empty()) {
-                options_ok = set_option(CURLOPT_POSTFIELDS, request->request.body.data()) && options_ok;
+                options_ok =
+                    set_option(CURLOPT_POSTFIELDS, request->request.body.data()) && options_ok;
                 options_ok = set_option(CURLOPT_POSTFIELDSIZE_LARGE,
                                         static_cast<curl_off_t>(request->request.body.size())) &&
                              options_ok;
@@ -436,34 +449,36 @@ nk_result perform_impl(nk::net::RequestPtr request) {
                 options_ok = set_option(CURLOPT_READFUNCTION, read_callback) && options_ok;
                 options_ok = set_option(CURLOPT_READDATA, request.get()) && options_ok;
                 if (request->request.upload_size != 0)
-                    options_ok = set_option(CURLOPT_INFILESIZE_LARGE,
-                                            static_cast<curl_off_t>(request->request.upload_size)) &&
-                                 options_ok;
+                    options_ok =
+                        set_option(CURLOPT_INFILESIZE_LARGE,
+                                   static_cast<curl_off_t>(request->request.upload_size)) &&
+                        options_ok;
             }
 
             if (!options_ok) {
                 result = static_cast<nk_result>(NK_HTTP_ERROR_PROTOCOL);
             } else {
                 const auto curl_result = curl_easy_perform(curl);
-            long response_code = 0;
-            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
-            long redirect_count = 0;
-            curl_easy_getinfo(curl, CURLINFO_REDIRECT_COUNT, &redirect_count);
-            curl_off_t content_length = -1;
-            curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &content_length);
-            {
-                std::lock_guard lock(request->mutex);
-                if (response_code >= 100 && response_code <= 599)
-                    request->status_code = static_cast<uint32_t>(response_code);
-                if (content_length >= 0 && request->content_length == NK_HTTP_CONTENT_LENGTH_UNKNOWN)
-                    request->content_length = static_cast<uint64_t>(content_length);
-                if (redirect_count > 0)
-                    request->response_flags |= NK_HTTP_RESPONSE_REDIRECTED;
-                request->total = request->content_length;
-            }
-            result = map_curl_error(curl_result, *request);
-            if (result == NK_OK && (response_code < 100 || response_code > 599))
-                result = NK_HTTP_ERROR_PROTOCOL;
+                long response_code = 0;
+                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+                long redirect_count = 0;
+                curl_easy_getinfo(curl, CURLINFO_REDIRECT_COUNT, &redirect_count);
+                curl_off_t content_length = -1;
+                curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &content_length);
+                {
+                    std::lock_guard lock(request->mutex);
+                    if (response_code >= 100 && response_code <= 599)
+                        request->status_code = static_cast<uint32_t>(response_code);
+                    if (content_length >= 0 &&
+                        request->content_length == NK_HTTP_CONTENT_LENGTH_UNKNOWN)
+                        request->content_length = static_cast<uint64_t>(content_length);
+                    if (redirect_count > 0)
+                        request->response_flags |= NK_HTTP_RESPONSE_REDIRECTED;
+                    request->total = request->content_length;
+                }
+                result = map_curl_error(curl_result, *request);
+                if (result == NK_OK && (response_code < 100 || response_code > 599))
+                    result = NK_HTTP_ERROR_PROTOCOL;
             }
         }
     }

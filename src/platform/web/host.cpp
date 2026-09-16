@@ -1607,8 +1607,7 @@ nk_web_host_gamepad_state(int32_t index, int connected, const char *id, int stan
     host_state.callbacks.gamepad(event, host_state.user_data);
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void
-nk_web_host_display_orientation_changed(int orientation) {
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_display_orientation_changed(int orientation) {
     if (host_state.callbacks.display_orientation)
         host_state.callbacks.display_orientation(static_cast<nk_orientation>(orientation),
                                                  host_state.user_data);
@@ -1932,8 +1931,8 @@ bool get_appearance(nk_system_appearance *out_appearance) noexcept {
                                                    k_appearance_high_contrast);
     if (!flags)
         return false;
-    out_appearance->color_scheme = (flags & k_appearance_dark) ? NK_COLOR_SCHEME_DARK
-                                                                : NK_COLOR_SCHEME_LIGHT;
+    out_appearance->color_scheme =
+        (flags & k_appearance_dark) ? NK_COLOR_SCHEME_DARK : NK_COLOR_SCHEME_LIGHT;
     out_appearance->high_contrast = (flags & k_appearance_high_contrast) ? 1u : 0u;
     return true;
 }
@@ -1981,9 +1980,8 @@ bool install_callbacks(const HostCallbacks &callbacks, void *user_data) noexcept
                                               pointer_lock_callback);
     if (host_state.callbacks.display_orientation)
         nk_web_install_display_orientation_callback(
-            NK_ORIENTATION_UNKNOWN, NK_ORIENTATION_PORTRAIT,
-            NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN, NK_ORIENTATION_LANDSCAPE_LEFT,
-            NK_ORIENTATION_LANDSCAPE_RIGHT);
+            NK_ORIENTATION_UNKNOWN, NK_ORIENTATION_PORTRAIT, NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN,
+            NK_ORIENTATION_LANDSCAPE_LEFT, NK_ORIENTATION_LANDSCAPE_RIGHT);
     nk_web_install_drop_handlers(canvas_selector());
     return true;
 }

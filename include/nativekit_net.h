@@ -148,11 +148,11 @@ typedef struct nk_http_client_options {
     const nk_http_header *default_headers NK_IN_ARRAY(default_header_count);
     uint32_t default_header_count;
     /** Optional proxy configuration copied before return. */
-    const nk_http_proxy_options * NK_NULLABLE proxy;
+    const nk_http_proxy_options *NK_NULLABLE proxy;
     nk_http_cookie_policy cookie_policy;
     nk_http_cache_policy cache_policy;
     /** Optional TLS configuration copied before return. */
-    const nk_http_tls_options * NK_NULLABLE tls;
+    const nk_http_tls_options *NK_NULLABLE tls;
     uint64_t reserved[2];
 } nk_http_client_options;
 

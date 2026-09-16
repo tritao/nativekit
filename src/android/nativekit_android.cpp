@@ -750,11 +750,11 @@ nk_result keep_awake_apply(bool enabled) noexcept {
     }
     if (!env || !bridge)
         return NK_ERROR_UNSUPPORTED;
-    const auto method = env->GetStaticMethodID(bridge, "setKeepAwake",
-                                               "(Landroid/view/ViewGroup;Z)Z");
-    const auto applied = method && env->CallStaticBooleanMethod(
-                                    bridge, method, resource->view_group,
-                                    enabled ? JNI_TRUE : JNI_FALSE);
+    const auto method =
+        env->GetStaticMethodID(bridge, "setKeepAwake", "(Landroid/view/ViewGroup;Z)Z");
+    const auto applied =
+        method && env->CallStaticBooleanMethod(bridge, method, resource->view_group,
+                                               enabled ? JNI_TRUE : JNI_FALSE);
     env->DeleteLocalRef(bridge);
     if (!method || clear_java_exception(env, "Android keep-awake bridge is unavailable"))
         return NK_ERROR_UNKNOWN;
@@ -772,8 +772,8 @@ nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
     auto *bridge = env ? bridge_class(env) : nullptr;
     if (!resource || !env || !bridge)
         return NK_ERROR_UNSUPPORTED;
-    const auto method = env->GetStaticMethodID(bridge, "systemOrientation",
-                                               "(Landroid/view/ViewGroup;)I");
+    const auto method =
+        env->GetStaticMethodID(bridge, "systemOrientation", "(Landroid/view/ViewGroup;)I");
     const auto packed = method ? env->CallStaticIntMethod(bridge, method, resource->view_group) : 0;
     env->DeleteLocalRef(bridge);
     if (!method || clear_java_exception(env, "Android orientation bridge is unavailable"))
@@ -798,9 +798,8 @@ nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
         env->DeleteLocalRef(bridge);
         return NK_ERROR_UNKNOWN;
     }
-    auto value = static_cast<jstring>(env->CallStaticObjectMethod(bridge, method,
-                                                                    resource->view_group,
-                                                                    static_cast<jint>(kind)));
+    auto value = static_cast<jstring>(
+        env->CallStaticObjectMethod(bridge, method, resource->view_group, static_cast<jint>(kind)));
     env->DeleteLocalRef(bridge);
     if (clear_java_exception(env, "Android system string query failed"))
         return NK_ERROR_UNKNOWN;
@@ -1066,13 +1065,12 @@ nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled) {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD |
-           NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
-           NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE |
-           NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT | NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY |
-           NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_STORAGE | NK_CAP_KEEP_AWAKE |
-           NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION |
-           nk::core::optional_capabilities();
+    return NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP |
+           NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_SHARING |
+           NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT |
+           NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY | NK_CAP_SYSTEM_INFO |
+           NK_CAP_APPLICATION_STORAGE | NK_CAP_KEEP_AWAKE | NK_CAP_DEVICE_ORIENTATION |
+           NK_CAP_DISPLAY_ORIENTATION | nk::core::optional_capabilities();
 }
 
 nk_result NK_CALL nk_shell_open_url(const char *url) {
@@ -3803,18 +3801,18 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGeometry(
     });
 }
 
-JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnOrientation(
-    JNIEnv *, jclass, jlong handle, jint device, jint display) {
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnOrientation(JNIEnv *, jclass,
+                                                                             jlong handle,
+                                                                             jint device,
+                                                                             jint display) {
     nk::core::callback_boundary([&] {
         if (!host(static_cast<nk_handle>(handle)))
             return;
         if (device != static_cast<jint>(NK_ORIENTATION_UNKNOWN) &&
             static_cast<nk_orientation>(device) != last_device_orientation) {
             last_device_orientation = static_cast<nk_orientation>(device);
-            const nk_orientation_event payload{sizeof(nk_orientation_event),
-                                               static_cast<nk_orientation>(device),
-                                               0,
-                                               {0, 0}};
+            const nk_orientation_event payload{
+                sizeof(nk_orientation_event), static_cast<nk_orientation>(device), 0, {0, 0}};
             nk::core::QueuedEvent event;
             event.kind = NK_EVENT_DEVICE_ORIENTATION_CHANGED;
             event.source = NK_INVALID_HANDLE;
@@ -3826,10 +3824,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnOrientation(
             display_state != display_orientations.end() &&
             static_cast<nk_orientation>(display) != display_state->second) {
             display_state->second = static_cast<nk_orientation>(display);
-            const nk_orientation_event payload{sizeof(nk_orientation_event),
-                                               static_cast<nk_orientation>(display),
-                                               0,
-                                               {0, 0}};
+            const nk_orientation_event payload{
+                sizeof(nk_orientation_event), static_cast<nk_orientation>(display), 0, {0, 0}};
             nk::core::QueuedEvent event;
             event.kind = NK_EVENT_DISPLAY_ORIENTATION_CHANGED;
             event.source = static_cast<nk_handle>(handle);

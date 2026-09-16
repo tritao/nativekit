@@ -2891,7 +2891,8 @@ std::string system_directory_path(nk_system_directory_kind kind) {
         const auto *const *system_data = g_get_system_data_dirs();
         if (system_data) {
             for (std::size_t index = 0; system_data[index]; ++index) {
-                const auto candidate = std::string(system_data[index]) + G_DIR_SEPARATOR_S + "fonts";
+                const auto candidate =
+                    std::string(system_data[index]) + G_DIR_SEPARATOR_S + "fonts";
                 if (g_file_test(candidate.c_str(), G_FILE_TEST_IS_DIR))
                     return candidate;
             }
@@ -3037,10 +3038,10 @@ namespace nk::core::system_backend {
 nk_result keep_awake_apply(bool enabled) noexcept {
     if (!enabled) {
         if (keep_awake_handle && keep_awake_bus) {
-            g_dbus_connection_call_sync(
-                keep_awake_bus, "org.freedesktop.portal.Desktop", keep_awake_handle,
-                "org.freedesktop.portal.Request", "Close", nullptr, nullptr,
-                G_DBUS_CALL_FLAGS_NONE, 1000, nullptr, nullptr);
+            g_dbus_connection_call_sync(keep_awake_bus, "org.freedesktop.portal.Desktop",
+                                        keep_awake_handle, "org.freedesktop.portal.Request",
+                                        "Close", nullptr, nullptr, G_DBUS_CALL_FLAGS_NONE, 1000,
+                                        nullptr, nullptr);
         }
         g_clear_pointer(&keep_awake_handle, g_free);
         g_clear_object(&keep_awake_bus);
@@ -3059,8 +3060,7 @@ nk_result keep_awake_apply(bool enabled) noexcept {
     g_variant_builder_init(&options, G_VARIANT_TYPE_VARDICT);
     GVariant *reply = g_dbus_connection_call_sync(
         keep_awake_bus, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
-        "org.freedesktop.portal.Inhibit", "Inhibit", g_variant_new("(sua{sv})", "", 8u,
-                                                                       &options),
+        "org.freedesktop.portal.Inhibit", "Inhibit", g_variant_new("(sua{sv})", "", 8u, &options),
         nullptr, G_DBUS_CALL_FLAGS_NONE, 1000, nullptr, &error);
     if (!reply) {
         if (error)
@@ -3147,11 +3147,11 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
            NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
            NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
-           NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK |
-           NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE |
-           NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
-           NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION |
-           NK_CAP_ACCESSIBILITY | NK_CAP_WRAP_NATIVE_WINDOW | nk::core::optional_capabilities();
+           NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_SHARING |
+           NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE | NK_CAP_SYSTEM_INFO |
+           NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS |
+           NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_ACCESSIBILITY |
+           NK_CAP_WRAP_NATIVE_WINDOW | nk::core::optional_capabilities();
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {

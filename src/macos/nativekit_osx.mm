@@ -608,9 +608,9 @@ nk_orientation monitor_orientation(CGDirectDisplayID display) {
         return NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN;
     const auto width = CGDisplayPixelsWide(display);
     const auto height = CGDisplayPixelsHigh(display);
-    return width == height ? NK_ORIENTATION_UNKNOWN
-                           : width > height ? NK_ORIENTATION_LANDSCAPE_RIGHT
-                                            : NK_ORIENTATION_PORTRAIT;
+    return width == height  ? NK_ORIENTATION_UNKNOWN
+           : width > height ? NK_ORIENTATION_LANDSCAPE_RIGHT
+                            : NK_ORIENTATION_PORTRAIT;
 }
 
 void poll_monitor_orientations() {
@@ -2228,10 +2228,10 @@ NSURL *directory_url(nk_system_directory_kind kind) {
         return NSBundle.mainBundle.bundleURL;
     if (kind == NK_DIRECTORY_APPLICATION_STORAGE) {
         NSURL *base = [manager URLForDirectory:NSApplicationSupportDirectory
-                                       inDomain:NSUserDomainMask
-                              appropriateForURL:nil
-                                         create:NO
-                                          error:nil];
+                                      inDomain:NSUserDomainMask
+                             appropriateForURL:nil
+                                        create:NO
+                                         error:nil];
         const auto id = nk::core::system_application_id();
         NSString *component = id.empty() ? NSBundle.mainBundle.bundleIdentifier
                                          : [NSString stringWithUTF8String:id.c_str()];
@@ -3455,8 +3455,9 @@ nk_result keep_awake_apply(bool enabled) noexcept {
     @autoreleasepool {
         NSProcessInfo *process = NSProcessInfo.processInfo;
         if (enabled && !keep_awake_activity) {
-            keep_awake_activity = [process beginActivityWithOptions:NSActivityIdleDisplaySleepDisabled
-                                                               reason:@"NativeKit keep-awake"];
+            keep_awake_activity =
+                [process beginActivityWithOptions:NSActivityIdleDisplaySleepDisabled
+                                           reason:@"NativeKit keep-awake"];
             return keep_awake_activity ? NK_OK : NK_ERROR_UNSUPPORTED;
         }
         if (!enabled && keep_awake_activity) {
@@ -3482,10 +3483,9 @@ nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
     else {
         const auto width = CGDisplayPixelsWide(display);
         const auto height = CGDisplayPixelsHigh(display);
-        out_orientation.display = width == height
-                                       ? NK_ORIENTATION_UNKNOWN
-                                       : width > height ? NK_ORIENTATION_LANDSCAPE_RIGHT
-                                                        : NK_ORIENTATION_PORTRAIT;
+        out_orientation.display = width == height  ? NK_ORIENTATION_UNKNOWN
+                                  : width > height ? NK_ORIENTATION_LANDSCAPE_RIGHT
+                                                   : NK_ORIENTATION_PORTRAIT;
     }
     return NK_OK;
 }
@@ -3570,15 +3570,14 @@ void shutdown() noexcept {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_WINDOW | NK_CAP_CLIPBOARD | NK_CAP_WEBVIEW |
-           NK_CAP_DRAG_DROP | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-           NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION | NK_CAP_RESOURCE_IO | NK_CAP_INPUT |
-           NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
-           NK_CAP_METAL_SURFACE | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK |
-           NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
-           NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION |
-           NK_CAP_ACCESSIBILITY | NK_CAP_RESOURCE_SHARING | NK_CAP_WRAP_NATIVE_WINDOW |
-           nk::core::optional_capabilities();
+    return NK_CAP_WINDOW | NK_CAP_CLIPBOARD | NK_CAP_WEBVIEW | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
+           NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
+           NK_CAP_RESOURCE_IO | NK_CAP_INPUT | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE |
+           NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING | NK_CAP_METAL_SURFACE | NK_CAP_MONITOR |
+           NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_SYSTEM_INFO |
+           NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS |
+           NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_ACCESSIBILITY |
+           NK_CAP_RESOURCE_SHARING | NK_CAP_WRAP_NATIVE_WINDOW | nk::core::optional_capabilities();
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -4430,10 +4429,9 @@ nk_result NK_CALL nk_monitor_get_orientation(nk_handle handle, nk_orientation *o
     else {
         const auto width = CGDisplayPixelsWide(resource->display);
         const auto height = CGDisplayPixelsHigh(resource->display);
-        *out_orientation = width == height
-                               ? NK_ORIENTATION_UNKNOWN
-                               : width > height ? NK_ORIENTATION_LANDSCAPE_RIGHT
-                                                : NK_ORIENTATION_PORTRAIT;
+        *out_orientation = width == height  ? NK_ORIENTATION_UNKNOWN
+                           : width > height ? NK_ORIENTATION_LANDSCAPE_RIGHT
+                                            : NK_ORIENTATION_PORTRAIT;
     }
     return NK_OK;
 }

@@ -128,7 +128,8 @@ bool parse_url(std::string_view value, ParsedUrl &out) {
     URL_COMPONENTS components{};
     components.dwStructSize = sizeof(components);
     if (!WinHttpCrackUrl(out.full.c_str(), 0, 0, &components) || !components.lpszHostName ||
-        components.dwHostNameLength == 0 || !components.lpszScheme || components.dwSchemeLength == 0)
+        components.dwHostNameLength == 0 || !components.lpszScheme ||
+        components.dwSchemeLength == 0)
         return false;
     bool host_valid = false;
     const auto host = utf8(components.lpszHostName, components.dwHostNameLength, host_valid);
@@ -160,7 +161,8 @@ std::string origin(std::string_view url) {
     if (scheme_end == std::string_view::npos)
         return {};
     const auto authority_end = url.find_first_of("/?#", scheme_end + 3);
-    return std::string(url.substr(0, authority_end == std::string_view::npos ? url.size() : authority_end));
+    return std::string(
+        url.substr(0, authority_end == std::string_view::npos ? url.size() : authority_end));
 }
 
 std::string resolve_redirect(std::string_view base, std::string_view location) {
@@ -176,7 +178,8 @@ std::string resolve_redirect(std::string_view base, std::string_view location) {
     if (location.front() == '/')
         return base_origin + std::string(location);
     const auto query = base.find_first_of("?#");
-    const auto path_end = base.find_last_of('/', query == std::string_view::npos ? base.size() : query);
+    const auto path_end =
+        base.find_last_of('/', query == std::string_view::npos ? base.size() : query);
     const auto prefix_end = path_end == std::string_view::npos ? base_origin.size() : path_end + 1;
     return std::string(base.substr(0, prefix_end)) + std::string(location);
 }
@@ -292,10 +295,10 @@ std::shared_ptr<WinClientState> client_state(const nk::net::RequestPtr &request,
         return {};
     }
     const auto access = proxy.kind == NK_HTTP_PROXY_NONE ? WINHTTP_ACCESS_TYPE_DEFAULT_PROXY
-                                                          : WINHTTP_ACCESS_TYPE_NAMED_PROXY;
-    auto *session = WinHttpOpen(L"NativeKit/1", access,
-                                proxy.kind == NK_HTTP_PROXY_NONE ? nullptr : proxy_text.c_str(),
-                                nullptr, 0);
+                                                         : WINHTTP_ACCESS_TYPE_NAMED_PROXY;
+    auto *session =
+        WinHttpOpen(L"NativeKit/1", access,
+                    proxy.kind == NK_HTTP_PROXY_NONE ? nullptr : proxy_text.c_str(), nullptr, 0);
     if (!session) {
         result = map_error(GetLastError(), *request);
         return {};
@@ -306,8 +309,8 @@ std::shared_ptr<WinClientState> client_state(const nk::net::RequestPtr &request,
         const auto user = wide(proxy.username, user_valid);
         const auto password = wide(proxy.password, password_valid);
         if (!user_valid || !password_valid ||
-            !WinHttpSetOption(session, WINHTTP_OPTION_PROXY_USERNAME,
-                              user.data(), static_cast<DWORD>((user.size() + 1) * sizeof(wchar_t))) ||
+            !WinHttpSetOption(session, WINHTTP_OPTION_PROXY_USERNAME, user.data(),
+                              static_cast<DWORD>((user.size() + 1) * sizeof(wchar_t))) ||
             !WinHttpSetOption(session, WINHTTP_OPTION_PROXY_PASSWORD, password.data(),
                               static_cast<DWORD>((password.size() + 1) * sizeof(wchar_t)))) {
             WinHttpCloseHandle(session);
@@ -317,7 +320,8 @@ std::shared_ptr<WinClientState> client_state(const nk::net::RequestPtr &request,
     }
     if (request->client->config.cookie_policy == NK_HTTP_COOKIES_DISABLED) {
         DWORD features = WINHTTP_DISABLE_COOKIES;
-        if (!WinHttpSetOption(session, WINHTTP_OPTION_DISABLE_FEATURE, &features, sizeof(features))) {
+        if (!WinHttpSetOption(session, WINHTTP_OPTION_DISABLE_FEATURE, &features,
+                              sizeof(features))) {
             WinHttpCloseHandle(session);
             result = NK_ERROR_UNSUPPORTED;
             return {};
@@ -382,20 +386,20 @@ bool configure_security(HINTERNET request, const nk::net::RequestPtr &context) {
 bool query_headers(HINTERNET request, const nk::net::RequestPtr &context, ResponseHeaders &out) {
     DWORD characters = 0;
     SetLastError(ERROR_SUCCESS);
-    if (WinHttpQueryHeaders(request, WINHTTP_QUERY_RAW_HEADERS_CRLF,
-                            WINHTTP_HEADER_NAME_BY_INDEX, nullptr, &characters, nullptr))
+    if (WinHttpQueryHeaders(request, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX,
+                            nullptr, &characters, nullptr))
         return false;
     if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || characters == 0)
         return false;
-    const auto maximum = context->client->config.max_header_size >
-                                 (std::numeric_limits<DWORD>::max() - 2u) / 2u
-                             ? std::numeric_limits<DWORD>::max()
-                             : static_cast<DWORD>(context->client->config.max_header_size * 2u + 2u);
+    const auto maximum =
+        context->client->config.max_header_size > (std::numeric_limits<DWORD>::max() - 2u) / 2u
+            ? std::numeric_limits<DWORD>::max()
+            : static_cast<DWORD>(context->client->config.max_header_size * 2u + 2u);
     if (characters > maximum)
         return false;
     std::vector<wchar_t> raw(characters);
-    if (!WinHttpQueryHeaders(request, WINHTTP_QUERY_RAW_HEADERS_CRLF,
-                             WINHTTP_HEADER_NAME_BY_INDEX, raw.data(), &characters, nullptr))
+    if (!WinHttpQueryHeaders(request, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX,
+                             raw.data(), &characters, nullptr))
         return false;
     raw.resize(characters);
     return parse_headers(raw, out);
@@ -408,16 +412,36 @@ bool set_timeout(HINTERNET request, uint32_t timeout_ms) {
 
 std::wstring method_name(nk_http_method method, bool &valid) {
     switch (method) {
-    case NK_HTTP_METHOD_GET: valid = true; return L"GET";
-    case NK_HTTP_METHOD_POST: valid = true; return L"POST";
-    case NK_HTTP_METHOD_PUT: valid = true; return L"PUT";
-    case NK_HTTP_METHOD_PATCH: valid = true; return L"PATCH";
-    case NK_HTTP_METHOD_DELETE: valid = true; return L"DELETE";
-    case NK_HTTP_METHOD_HEAD: valid = true; return L"HEAD";
-    case NK_HTTP_METHOD_OPTIONS: valid = true; return L"OPTIONS";
-    case NK_HTTP_METHOD_TRACE: valid = true; return L"TRACE";
-    case NK_HTTP_METHOD_CONNECT: valid = true; return L"CONNECT";
-    default: valid = false; return {};
+    case NK_HTTP_METHOD_GET:
+        valid = true;
+        return L"GET";
+    case NK_HTTP_METHOD_POST:
+        valid = true;
+        return L"POST";
+    case NK_HTTP_METHOD_PUT:
+        valid = true;
+        return L"PUT";
+    case NK_HTTP_METHOD_PATCH:
+        valid = true;
+        return L"PATCH";
+    case NK_HTTP_METHOD_DELETE:
+        valid = true;
+        return L"DELETE";
+    case NK_HTTP_METHOD_HEAD:
+        valid = true;
+        return L"HEAD";
+    case NK_HTTP_METHOD_OPTIONS:
+        valid = true;
+        return L"OPTIONS";
+    case NK_HTTP_METHOD_TRACE:
+        valid = true;
+        return L"TRACE";
+    case NK_HTTP_METHOD_CONNECT:
+        valid = true;
+        return L"CONNECT";
+    default:
+        valid = false;
+        return {};
     }
 }
 
@@ -468,7 +492,8 @@ nk_result perform_impl(nk::net::RequestPtr request) {
             close_active(active);
             WinHttpCloseHandle(connect);
         };
-        if (!set_timeout(win_request, request->request.timeout_ms) || !configure_security(win_request, request)) {
+        if (!set_timeout(win_request, request->request.timeout_ms) ||
+            !configure_security(win_request, request)) {
             close_request();
             return NK_HTTP_ERROR_TLS;
         }
@@ -490,9 +515,9 @@ nk_result perform_impl(nk::net::RequestPtr request) {
                                : WINHTTP_IGNORE_REQUEST_TOTAL_LENGTH;
         }
         const auto header_length = headers.empty() ? 0 : static_cast<DWORD>(-1L);
-        if (!WinHttpSendRequest(win_request,
-                                headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers.c_str(),
-                                header_length, const_cast<void *>(body), body_size, total_length, 0)) {
+        if (!WinHttpSendRequest(
+                win_request, headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers.c_str(),
+                header_length, const_cast<void *>(body), body_size, total_length, 0)) {
             const auto error = GetLastError();
             close_request();
             return map_error(error, *request);
@@ -505,8 +530,8 @@ nk_result perform_impl(nk::net::RequestPtr request) {
                     return NK_HTTP_ERROR_CANCELED;
                 }
                 uint64_t read = 0;
-                const auto read_result = nk_resource_read(request->request.upload_stream, buffer.data(),
-                                                          buffer.size(), &read);
+                const auto read_result = nk_resource_read(request->request.upload_stream,
+                                                          buffer.data(), buffer.size(), &read);
                 if (read_result != NK_OK) {
                     close_request();
                     return NK_HTTP_ERROR_PROTOCOL;
@@ -514,7 +539,8 @@ nk_result perform_impl(nk::net::RequestPtr request) {
                 if (read == 0)
                     break;
                 DWORD written = 0;
-                if (!WinHttpWriteData(win_request, buffer.data(), static_cast<DWORD>(read), &written) ||
+                if (!WinHttpWriteData(win_request, buffer.data(), static_cast<DWORD>(read),
+                                      &written) ||
                     written != read) {
                     const auto error = GetLastError();
                     close_request();
@@ -522,8 +548,9 @@ nk_result perform_impl(nk::net::RequestPtr request) {
                 }
                 request->upload_position += written;
                 nk::net::emit_progress(request, 0, request->total, request->upload_position,
-                                       request->request.upload_size == 0 ? NK_HTTP_CONTENT_LENGTH_UNKNOWN
-                                                                        : request->request.upload_size);
+                                       request->request.upload_size == 0
+                                           ? NK_HTTP_CONTENT_LENGTH_UNKNOWN
+                                           : request->request.upload_size);
             }
         }
         if (!WinHttpReceiveResponse(win_request, nullptr)) {
@@ -536,7 +563,7 @@ nk_result perform_impl(nk::net::RequestPtr request) {
             const auto error = GetLastError();
             close_request();
             return error == ERROR_WINHTTP_HEADER_SIZE_OVERFLOW ? NK_HTTP_ERROR_RESPONSE_LIMIT
-                                                                : NK_HTTP_ERROR_PROTOCOL;
+                                                               : NK_HTTP_ERROR_PROTOCOL;
         }
         DWORD status = 0;
         DWORD status_size = sizeof(status);
@@ -551,14 +578,16 @@ nk_result perform_impl(nk::net::RequestPtr request) {
             const bool valid_next = scheme_is(next_url, "http") || scheme_is(next_url, "https");
             const bool downgrade = scheme_is(current_url, "https") && scheme_is(next_url, "http");
             if (next_url.empty() || !valid_next ||
-                (downgrade && !(request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP)) ||
+                (downgrade &&
+                 !(request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP)) ||
                 redirects >= request->request.redirect_limit) {
                 close_request();
                 return NK_HTTP_ERROR_REDIRECT;
             }
             if (request->request.upload_stream != NK_INVALID_HANDLE) {
                 uint64_t position = 0;
-                if (nk_resource_seek(request->request.upload_stream, 0, NK_SEEK_START, &position) != NK_OK) {
+                if (nk_resource_seek(request->request.upload_stream, 0, NK_SEEK_START, &position) !=
+                    NK_OK) {
                     close_request();
                     return NK_HTTP_ERROR_REDIRECT;
                 }

@@ -66,12 +66,11 @@ int main(void) {
         assert(storage_size > 1);
         char storage[4096] = {0};
         uint32_t storage_capacity = sizeof(storage);
-        assert(nk_system_directory(NK_DIRECTORY_APPLICATION_STORAGE, storage,
-                                   &storage_capacity) == NK_OK);
+        assert(nk_system_directory(NK_DIRECTORY_APPLICATION_STORAGE, storage, &storage_capacity) ==
+               NK_OK);
         assert(strstr(storage, "com.example_nativekit") != NULL);
         uint32_t font_size = 0;
-        const nk_result font_result =
-            nk_system_directory(NK_DIRECTORY_FONTS, NULL, &font_size);
+        const nk_result font_result = nk_system_directory(NK_DIRECTORY_FONTS, NULL, &font_size);
         if (system_capabilities & NK_CAP_SYSTEM_FONTS)
             assert(font_result == NK_ERROR_BUFFER_TOO_SMALL);
         else

@@ -1681,8 +1681,8 @@ void set_orientation_observing(const std::shared_ptr<IOSHost> &resource, bool en
                                                  object:device];
     } else {
         [NSNotificationCenter.defaultCenter removeObserver:resource->observer
-                                                       name:UIDeviceOrientationDidChangeNotification
-                                                     object:device];
+                                                      name:UIDeviceOrientationDidChangeNotification
+                                                    object:device];
         [device endGeneratingDeviceOrientationNotifications];
     }
     resource->orientation_observing = enabled;
@@ -1697,7 +1697,7 @@ void observe_view(const std::shared_ptr<IOSHost> &resource, nk_handle handle) {
     [resource->view addObserver:observer forKeyPath:@"safeAreaInsets" options:0 context:nullptr];
     [resource->view addObserver:observer
                      forKeyPath:@"contentScaleFactor"
-                     options:0
+                        options:0
                         context:nullptr];
     set_orientation_observing(resource, true);
 }
@@ -3055,8 +3055,9 @@ nk_result copy_output(NSString *value, char *buffer, uint32_t *inout_size) {
 }
 
 NSString *application_storage_path() {
-    NSArray<NSURL *> *urls = [NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory
-                                                                      inDomains:NSUserDomainMask];
+    NSArray<NSURL *> *urls =
+        [NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory
+                                             inDomains:NSUserDomainMask];
     if (!urls.count)
         return nil;
     const auto id = nk::core::system_application_id();
@@ -3115,7 +3116,8 @@ nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
     out_orientation = {};
     out_orientation.struct_size = size;
     out_orientation.device = ios_orientation(UIDevice.currentDevice.orientation);
-    out_orientation.display = interface_orientation(UIApplication.sharedApplication.statusBarOrientation);
+    out_orientation.display =
+        interface_orientation(UIApplication.sharedApplication.statusBarOrientation);
     return NK_OK;
 }
 
@@ -3159,9 +3161,10 @@ nk_result NK_CALL nk_system_directory(nk_system_directory_kind kind, char *buffe
         break;
     case NK_DIRECTORY_CONFIG:
     case NK_DIRECTORY_DATA: {
-        NSArray<NSURL *> *urls = [NSFileManager.defaultManager URLsForDirectory:
-            kind == NK_DIRECTORY_CONFIG ? NSLibraryDirectory : NSApplicationSupportDirectory
-                                      inDomains:NSUserDomainMask];
+        NSArray<NSURL *> *urls = [NSFileManager.defaultManager
+            URLsForDirectory:kind == NK_DIRECTORY_CONFIG ? NSLibraryDirectory
+                                                         : NSApplicationSupportDirectory
+                   inDomains:NSUserDomainMask];
         path = urls.count ? urls[0].path : nil;
         break;
     }
@@ -3191,10 +3194,10 @@ nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
     const auto size = appearance->struct_size;
     *appearance = {};
     appearance->struct_size = size;
-    appearance->color_scheme = UITraitCollection.currentTraitCollection.userInterfaceStyle ==
-                                       UIUserInterfaceStyleDark
-                                   ? NK_COLOR_SCHEME_DARK
-                                   : NK_COLOR_SCHEME_LIGHT;
+    appearance->color_scheme =
+        UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyleDark
+            ? NK_COLOR_SCHEME_DARK
+            : NK_COLOR_SCHEME_LIGHT;
     appearance->high_contrast = UIAccessibilityIsDarkerSystemColorsEnabled();
     return NK_OK;
 }
@@ -4728,12 +4731,11 @@ nk_result NK_CALL nk_notification_close(nk_request_id request) {
 }
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_SYSTEM_INFO |
-           NK_CAP_METAL_SURFACE | NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
-           NK_CAP_KEEP_AWAKE | NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_INPUT |
-           NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-           NK_CAP_NOTIFICATION | NK_CAP_ACCESSIBILITY |
-           NK_CAP_DRAG_DROP | NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK |
+    return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_SYSTEM_INFO | NK_CAP_METAL_SURFACE |
+           NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_KEEP_AWAKE |
+           NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_INPUT | NK_CAP_WEBVIEW |
+           NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
+           NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP | NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK |
            nk::core::optional_capabilities();
 }
 }

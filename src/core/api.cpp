@@ -126,8 +126,7 @@ uint32_t NK_CALL nk_api_version(void) {
 nk_result NK_CALL nk_init(const nk_init_options *options) {
     try {
         nk::core::clear_error();
-        constexpr auto init_prefix_size =
-            offsetof(nk_init_options, application_id);
+        constexpr auto init_prefix_size = offsetof(nk_init_options, application_id);
         if (!options || options->struct_size < init_prefix_size) {
             nk::core::set_error("nk_init_options is missing or too small");
             return NK_ERROR_INVALID_ARGUMENT;

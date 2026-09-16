@@ -107,12 +107,14 @@ struct JniMethods {
         proxy = env->FindClass("java/net/Proxy");
         proxy_type = env->FindClass("java/net/Proxy$Type");
         list = env->FindClass("java/util/List");
-        if (env->ExceptionCheck() || !url || !connection || !input_stream || !output_stream || !map || !set ||
-            !iterator || !entry || !uri || !inet_socket_address || !proxy || !proxy_type || !list)
+        if (env->ExceptionCheck() || !url || !connection || !input_stream || !output_stream ||
+            !map || !set || !iterator || !entry || !uri || !inet_socket_address || !proxy ||
+            !proxy_type || !list)
             return false;
 
         url_constructor = env->GetMethodID(url, "<init>", "(Ljava/lang/String;)V");
-        url_relative_constructor = env->GetMethodID(url, "<init>", "(Ljava/net/URL;Ljava/lang/String;)V");
+        url_relative_constructor =
+            env->GetMethodID(url, "<init>", "(Ljava/net/URL;Ljava/lang/String;)V");
         url_open_connection = env->GetMethodID(url, "openConnection", "()Ljava/net/URLConnection;");
         url_open_connection_proxy =
             env->GetMethodID(url, "openConnection", "(Ljava/net/Proxy;)Ljava/net/URLConnection;");
@@ -123,15 +125,19 @@ struct JniMethods {
         set_connect_timeout = env->GetMethodID(connection, "setConnectTimeout", "(I)V");
         set_read_timeout = env->GetMethodID(connection, "setReadTimeout", "(I)V");
         set_use_caches = env->GetMethodID(connection, "setUseCaches", "(Z)V");
-        set_request_method = env->GetMethodID(connection, "setRequestMethod", "(Ljava/lang/String;)V");
-        set_request_property =
-            env->GetMethodID(connection, "setRequestProperty", "(Ljava/lang/String;Ljava/lang/String;)V");
+        set_request_method =
+            env->GetMethodID(connection, "setRequestMethod", "(Ljava/lang/String;)V");
+        set_request_property = env->GetMethodID(connection, "setRequestProperty",
+                                                "(Ljava/lang/String;Ljava/lang/String;)V");
         set_do_output = env->GetMethodID(connection, "setDoOutput", "(Z)V");
-        get_output_stream = env->GetMethodID(connection, "getOutputStream", "()Ljava/io/OutputStream;");
+        get_output_stream =
+            env->GetMethodID(connection, "getOutputStream", "()Ljava/io/OutputStream;");
         get_response_code = env->GetMethodID(connection, "getResponseCode", "()I");
         get_header_fields = env->GetMethodID(connection, "getHeaderFields", "()Ljava/util/Map;");
-        get_input_stream = env->GetMethodID(connection, "getInputStream", "()Ljava/io/InputStream;");
-        get_error_stream = env->GetMethodID(connection, "getErrorStream", "()Ljava/io/InputStream;");
+        get_input_stream =
+            env->GetMethodID(connection, "getInputStream", "()Ljava/io/InputStream;");
+        get_error_stream =
+            env->GetMethodID(connection, "getErrorStream", "()Ljava/io/InputStream;");
         disconnect = env->GetMethodID(connection, "disconnect", "()V");
         output_write = env->GetMethodID(output_stream, "write", "([BII)V");
         output_close = env->GetMethodID(output_stream, "close", "()V");
@@ -148,19 +154,22 @@ struct JniMethods {
         uri_constructor = env->GetMethodID(uri, "<init>", "(Ljava/lang/String;)V");
         uri_host = env->GetMethodID(uri, "getHost", "()Ljava/lang/String;");
         uri_port = env->GetMethodID(uri, "getPort", "()I");
-        inet_create_unresolved = env->GetStaticMethodID(
-            inet_socket_address, "createUnresolved", "(Ljava/lang/String;I)Ljava/net/InetSocketAddress;");
+        inet_create_unresolved =
+            env->GetStaticMethodID(inet_socket_address, "createUnresolved",
+                                   "(Ljava/lang/String;I)Ljava/net/InetSocketAddress;");
         proxy_constructor =
             env->GetMethodID(proxy, "<init>", "(Ljava/net/Proxy$Type;Ljava/net/SocketAddress;)V");
         proxy_http = env->GetStaticFieldID(proxy_type, "HTTP", "Ljava/net/Proxy$Type;");
         proxy_type_socks = env->GetStaticFieldID(proxy_type, "SOCKS", "Ljava/net/Proxy$Type;");
-        return !env->ExceptionCheck() && url_constructor && url_relative_constructor && url_open_connection &&
-               url_open_connection_proxy && url_to_string && url_host && url_path && set_follow_redirects &&
-               set_read_timeout && set_use_caches && set_request_method && set_request_property && set_do_output && get_output_stream &&
-               get_response_code && get_header_fields && get_input_stream && get_error_stream && disconnect &&
-               output_write && output_close && input_read && input_close && map_entry_set && set_iterator &&
-               iterator_has_next && iterator_next && entry_get_key && entry_get_value && list_size && list_get &&
-               uri_constructor && uri_host && uri_port && inet_create_unresolved && proxy_constructor && proxy_http &&
+        return !env->ExceptionCheck() && url_constructor && url_relative_constructor &&
+               url_open_connection && url_open_connection_proxy && url_to_string && url_host &&
+               url_path && set_follow_redirects && set_read_timeout && set_use_caches &&
+               set_request_method && set_request_property && set_do_output && get_output_stream &&
+               get_response_code && get_header_fields && get_input_stream && get_error_stream &&
+               disconnect && output_write && output_close && input_read && input_close &&
+               map_entry_set && set_iterator && iterator_has_next && iterator_next &&
+               entry_get_key && entry_get_value && list_size && list_get && uri_constructor &&
+               uri_host && uri_port && inet_create_unresolved && proxy_constructor && proxy_http &&
                proxy_type_socks;
     }
 };
@@ -200,9 +209,7 @@ struct ActiveConnection final {
     JNIEnv *env;
     nk_request_id request;
 
-    ~ActiveConnection() {
-        unregister_connection(env, request);
-    }
+    ~ActiveConnection() { unregister_connection(env, request); }
 };
 
 bool append_utf8(std::string &output, uint32_t codepoint) {
@@ -255,8 +262,9 @@ bool utf8_to_utf16(std::string_view input, std::vector<jchar> &output) {
                 return false;
             codepoint = (codepoint << 6) | (byte & 0x3f);
         }
-        if ((continuation == 2 && codepoint < 0x800) || (continuation == 3 && codepoint < 0x10000) ||
-            codepoint > 0x10ffff || (codepoint >= 0xd800 && codepoint <= 0xdfff))
+        if ((continuation == 2 && codepoint < 0x800) ||
+            (continuation == 3 && codepoint < 0x10000) || codepoint > 0x10ffff ||
+            (codepoint >= 0xd800 && codepoint <= 0xdfff))
             return false;
         if (codepoint <= 0xffff) {
             output.push_back(static_cast<jchar>(codepoint));
@@ -313,9 +321,12 @@ nk_result java_exception(JNIEnv *env) {
     if (throwable) {
         auto *throwable_class = env->GetObjectClass(throwable);
         auto *class_class = env->FindClass("java/lang/Class");
-        auto get_name = class_class ? env->GetMethodID(class_class, "getName", "()Ljava/lang/String;") : nullptr;
+        auto get_name = class_class
+                            ? env->GetMethodID(class_class, "getName", "()Ljava/lang/String;")
+                            : nullptr;
         if (get_name && !env->ExceptionCheck()) {
-            auto *class_name = static_cast<jstring>(env->CallObjectMethod(throwable_class, get_name));
+            auto *class_name =
+                static_cast<jstring>(env->CallObjectMethod(throwable_class, get_name));
             if (!env->ExceptionCheck())
                 name = native_string(env, class_name);
             if (class_name)
@@ -396,14 +407,12 @@ std::shared_ptr<AndroidClientState> client_state(const nk::net::RequestPtr &requ
 }
 
 bool has_header(const std::vector<nk::net::OwnedHeader> &headers, std::string_view name) {
-    return std::any_of(headers.begin(), headers.end(), [&](const auto &header) {
-        return lower_equal(header.name, name);
-    });
+    return std::any_of(headers.begin(), headers.end(),
+                       [&](const auto &header) { return lower_equal(header.name, name); });
 }
 
 std::string base64(std::string_view value) {
-    constexpr char alphabet[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::string result;
     result.reserve((value.size() + 2) / 3 * 4);
     for (std::size_t index = 0; index < value.size();) {
@@ -429,8 +438,9 @@ std::string trim(std::string value) {
 }
 
 bool domain_matches(std::string_view host, std::string_view domain) {
-    return host == domain || (host.size() > domain.size() && host.substr(host.size() - domain.size()) == domain &&
-                              host[host.size() - domain.size() - 1] == '.');
+    return host == domain ||
+           (host.size() > domain.size() && host.substr(host.size() - domain.size()) == domain &&
+            host[host.size() - domain.size() - 1] == '.');
 }
 
 bool path_matches(std::string_view path, std::string_view cookie_path) {
@@ -438,7 +448,8 @@ bool path_matches(std::string_view path, std::string_view cookie_path) {
         return true;
     if (path.size() < cookie_path.size() || path.substr(0, cookie_path.size()) != cookie_path)
         return false;
-    return path.size() == cookie_path.size() || cookie_path.back() == '/' || path[cookie_path.size()] == '/';
+    return path.size() == cookie_path.size() || cookie_path.back() == '/' ||
+           path[cookie_path.size()] == '/';
 }
 
 std::string cookie_header(const std::shared_ptr<AndroidClientState> &state, std::string_view host,
@@ -448,7 +459,8 @@ std::string cookie_header(const std::shared_ptr<AndroidClientState> &state, std:
     std::lock_guard lock(state->mutex);
     std::string result;
     for (const auto &cookie : state->cookies) {
-        if (!domain_matches(host, cookie.domain) || !path_matches(path, cookie.path) || (cookie.secure && !secure))
+        if (!domain_matches(host, cookie.domain) || !path_matches(path, cookie.path) ||
+            (cookie.secure && !secure))
             continue;
         if (!result.empty())
             result += "; ";
@@ -479,13 +491,17 @@ void store_cookies(const std::shared_ptr<AndroidClientState> &state,
         std::string domain(host);
         std::string cookie_path = path.empty() ? "/" : std::string(path);
         const auto last_slash = cookie_path.find_last_of('/');
-        cookie_path = last_slash == std::string::npos || last_slash == 0 ? "/" : cookie_path.substr(0, last_slash);
+        cookie_path = last_slash == std::string::npos || last_slash == 0
+                          ? "/"
+                          : cookie_path.substr(0, last_slash);
         bool cookie_secure = false;
         bool delete_cookie = value.empty();
-        std::size_t attribute_start = separator == std::string::npos ? header.value.size() : separator + 1;
+        std::size_t attribute_start =
+            separator == std::string::npos ? header.value.size() : separator + 1;
         while (attribute_start < header.value.size()) {
             const auto attribute_end = header.value.find(';', attribute_start);
-            const auto attribute = trim(header.value.substr(attribute_start, attribute_end - attribute_start));
+            const auto attribute =
+                trim(header.value.substr(attribute_start, attribute_end - attribute_start));
             const auto attribute_equals = attribute.find('=');
             const auto attribute_name = trim(attribute.substr(0, attribute_equals));
             const auto attribute_value = attribute_equals == std::string::npos
@@ -495,9 +511,10 @@ void store_cookies(const std::shared_ptr<AndroidClientState> &state,
                 domain = attribute_value;
                 if (!domain.empty() && domain.front() == '.')
                     domain.erase(domain.begin());
-                std::transform(domain.begin(), domain.end(), domain.begin(), [](unsigned char character) {
-                    return static_cast<char>(std::tolower(character));
-                });
+                std::transform(domain.begin(), domain.end(), domain.begin(),
+                               [](unsigned char character) {
+                                   return static_cast<char>(std::tolower(character));
+                               });
                 if (!domain_matches(host, domain))
                     domain.clear();
             } else if (lower_equal(attribute_name, "path") && !attribute_value.empty() &&
@@ -514,9 +531,10 @@ void store_cookies(const std::shared_ptr<AndroidClientState> &state,
         }
         if (domain.empty() || (cookie_secure && !secure))
             continue;
-        const auto existing = std::find_if(state->cookies.begin(), state->cookies.end(), [&](const auto &cookie) {
-            return cookie.name == name && cookie.domain == domain && cookie.path == cookie_path;
-        });
+        const auto existing =
+            std::find_if(state->cookies.begin(), state->cookies.end(), [&](const auto &cookie) {
+                return cookie.name == name && cookie.domain == domain && cookie.path == cookie_path;
+            });
         if (delete_cookie) {
             if (existing != state->cookies.end())
                 state->cookies.erase(existing);
@@ -524,8 +542,8 @@ void store_cookies(const std::shared_ptr<AndroidClientState> &state,
             existing->value = std::move(value);
             existing->secure = cookie_secure;
         } else {
-            state->cookies.push_back({std::move(name), std::move(value), std::move(domain), std::move(cookie_path),
-                                      cookie_secure});
+            state->cookies.push_back({std::move(name), std::move(value), std::move(domain),
+                                      std::move(cookie_path), cookie_secure});
         }
     }
 }
@@ -628,7 +646,8 @@ nk_result response_headers(JNIEnv *env, const JniMethods &methods, jobject conne
                 return error;
             }
             for (jint index = 0; index < count; ++index) {
-                auto *value = static_cast<jstring>(env->CallObjectMethod(values, methods.list_get, index));
+                auto *value =
+                    static_cast<jstring>(env->CallObjectMethod(values, methods.list_get, index));
                 if (const auto error = java_exception(env); error != NK_OK) {
                     env->DeleteLocalRef(key);
                     env->DeleteLocalRef(values);
@@ -700,10 +719,12 @@ jobject create_proxy(JNIEnv *env, const JniMethods &methods, const nk::net::Prox
     }
     auto *address = env->CallStaticObjectMethod(methods.inet_socket_address,
                                                 methods.inet_create_unresolved, host, port);
-    auto *type = env->GetStaticObjectField(methods.proxy_type,
-                                           config.kind == NK_HTTP_PROXY_SOCKS5 ? methods.proxy_type_socks
-                                                                                 : methods.proxy_http);
-    auto *result = address && type ? env->NewObject(methods.proxy, methods.proxy_constructor, type, address) : nullptr;
+    auto *type = env->GetStaticObjectField(methods.proxy_type, config.kind == NK_HTTP_PROXY_SOCKS5
+                                                                   ? methods.proxy_type_socks
+                                                                   : methods.proxy_http);
+    auto *result = address && type
+                       ? env->NewObject(methods.proxy, methods.proxy_constructor, type, address)
+                       : nullptr;
     error = java_exception(env);
     if (!result && error == NK_OK)
         error = NK_HTTP_ERROR_PROXY;
@@ -718,8 +739,8 @@ jobject create_proxy(JNIEnv *env, const JniMethods &methods, const nk::net::Prox
 
 nk_result set_request_headers(JNIEnv *env, const JniMethods &methods, jobject connection,
                               const nk::net::RequestPtr &request,
-                              const std::shared_ptr<AndroidClientState> &state, std::string_view host,
-                              std::string_view path, bool secure) {
+                              const std::shared_ptr<AndroidClientState> &state,
+                              std::string_view host, std::string_view path, bool secure) {
     std::vector<nk::net::OwnedHeader> headers = request->client->config.default_headers;
     headers.insert(headers.end(), request->request.headers.begin(), request->request.headers.end());
     const auto cookies = cookie_header(state, host, path, secure);
@@ -728,8 +749,8 @@ nk_result set_request_headers(JNIEnv *env, const JniMethods &methods, jobject co
     if (request->client->config.proxy.kind != NK_HTTP_PROXY_SOCKS5 &&
         !request->client->config.proxy.username.empty() &&
         !has_header(headers, "proxy-authorization")) {
-        const auto credentials = request->client->config.proxy.username + ":" +
-                                 request->client->config.proxy.password;
+        const auto credentials =
+            request->client->config.proxy.username + ":" + request->client->config.proxy.password;
         headers.push_back({"Proxy-Authorization", "Basic " + base64(credentials)});
     }
     for (const auto &header : headers) {
@@ -767,7 +788,8 @@ nk_result upload_body(JNIEnv *env, const JniMethods &methods, jobject connection
     auto write = [&](const std::byte *data, std::size_t size) -> nk_result {
         if (size > static_cast<std::size_t>(std::numeric_limits<jsize>::max()))
             return NK_ERROR_INVALID_ARGUMENT;
-        env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(size), reinterpret_cast<const jbyte *>(data));
+        env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(size),
+                                reinterpret_cast<const jbyte *>(data));
         if (const auto error = java_exception(env); error != NK_OK)
             return error;
         env->CallVoidMethod(output, methods.output_write, bytes, 0, static_cast<jint>(size));
@@ -782,11 +804,13 @@ nk_result upload_body(JNIEnv *env, const JniMethods &methods, jobject connection
     } else if (request->request.upload_stream != NK_INVALID_HANDLE) {
         uint64_t uploaded = 0;
         while (request->request.upload_size == 0 || uploaded < request->request.upload_size) {
-            const auto capacity = request->request.upload_size == 0
-                                      ? buffer.size()
-                                      : std::min<uint64_t>(buffer.size(), request->request.upload_size - uploaded);
+            const auto capacity =
+                request->request.upload_size == 0
+                    ? buffer.size()
+                    : std::min<uint64_t>(buffer.size(), request->request.upload_size - uploaded);
             uint64_t read = 0;
-            result = nk_resource_read(request->request.upload_stream, buffer.data(), capacity, &read);
+            result =
+                nk_resource_read(request->request.upload_stream, buffer.data(), capacity, &read);
             if (result != NK_OK)
                 break;
             if (read == 0) {
@@ -798,7 +822,8 @@ nk_result upload_body(JNIEnv *env, const JniMethods &methods, jobject connection
             if (result != NK_OK)
                 break;
             uploaded += read;
-            nk::net::emit_progress(request, 0, request->total, uploaded, request->request.upload_size);
+            nk::net::emit_progress(request, 0, request->total, uploaded,
+                                   request->request.upload_size);
         }
     }
     env->CallVoidMethod(output, methods.output_close);
@@ -812,7 +837,8 @@ nk_result upload_body(JNIEnv *env, const JniMethods &methods, jobject connection
 }
 
 nk_result perform(const nk::net::RequestPtr &request) {
-    if (request->client->config.tls.flags != 0 || request->client->config.tls.minimum_version != NK_HTTP_TLS_DEFAULT ||
+    if (request->client->config.tls.flags != 0 ||
+        request->client->config.tls.minimum_version != NK_HTTP_TLS_DEFAULT ||
         !request->client->config.tls.ca_bundle_path.empty())
         return NK_ERROR_UNSUPPORTED;
     if (request->request.timeout_ms > static_cast<uint64_t>(std::numeric_limits<jint>::max()))
@@ -856,9 +882,9 @@ nk_result perform(const nk::net::RequestPtr &request) {
                 break;
             }
         }
-        auto *connection = proxy
-                               ? env->CallObjectMethod(url, methods.url_open_connection_proxy, proxy)
-                               : env->CallObjectMethod(url, methods.url_open_connection);
+        auto *connection =
+            proxy ? env->CallObjectMethod(url, methods.url_open_connection_proxy, proxy)
+                  : env->CallObjectMethod(url, methods.url_open_connection);
         if (proxy)
             env->DeleteLocalRef(proxy);
         if ((result = java_exception(env)) != NK_OK || !connection) {
@@ -931,12 +957,14 @@ nk_result perform(const nk::net::RequestPtr &request) {
             break;
         }
         store_cookies(state, headers, host, path, https_url(current_url));
-        const auto status_code = status >= 100 && status <= 599 ? static_cast<uint32_t>(status) : 0u;
+        const auto status_code =
+            status >= 100 && status <= 599 ? static_cast<uint32_t>(status) : 0u;
         const bool redirect = status >= 300 && status <= 399 && !location.empty();
         if (redirect && redirects < request->request.redirect_limit) {
             auto *location_text = java_string(env, location);
             auto *next_url = location_text
-                                 ? env->NewObject(methods.url, methods.url_relative_constructor, url, location_text)
+                                 ? env->NewObject(methods.url, methods.url_relative_constructor,
+                                                  url, location_text)
                                  : nullptr;
             if (location_text)
                 env->DeleteLocalRef(location_text);
@@ -948,7 +976,8 @@ nk_result perform(const nk::net::RequestPtr &request) {
                     result = NK_HTTP_ERROR_REDIRECT;
                 break;
             }
-            auto *next_text = static_cast<jstring>(env->CallObjectMethod(next_url, methods.url_to_string));
+            auto *next_text =
+                static_cast<jstring>(env->CallObjectMethod(next_url, methods.url_to_string));
             if ((result = java_exception(env)) != NK_OK || !next_text) {
                 env->DeleteLocalRef(next_url);
                 env->DeleteLocalRef(connection);
@@ -957,11 +986,13 @@ nk_result perform(const nk::net::RequestPtr &request) {
                 break;
             }
             const auto next_url_text = native_string(env, next_text);
-            const bool insecure_redirect = https_url(current_url) && http_url(next_url_text) &&
-                                           !(request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP);
+            const bool insecure_redirect =
+                https_url(current_url) && http_url(next_url_text) &&
+                !(request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP);
             env->DeleteLocalRef(next_text);
             if (insecure_redirect || (!https_url(next_url_text) && !http_url(next_url_text))) {
-                result = nk::net::receive_response_headers(request, status_code, std::move(headers), content_length);
+                result = nk::net::receive_response_headers(request, status_code, std::move(headers),
+                                                           content_length);
                 if (result == NK_OK)
                     result = NK_HTTP_ERROR_REDIRECT;
                 env->DeleteLocalRef(next_url);
@@ -978,7 +1009,8 @@ nk_result perform(const nk::net::RequestPtr &request) {
             continue;
         }
         if (redirect) {
-            result = nk::net::receive_response_headers(request, status_code, std::move(headers), content_length);
+            result = nk::net::receive_response_headers(request, status_code, std::move(headers),
+                                                       content_length);
             if (result == NK_OK)
                 result = NK_HTTP_ERROR_REDIRECT;
             env->DeleteLocalRef(connection);
@@ -988,12 +1020,14 @@ nk_result perform(const nk::net::RequestPtr &request) {
             std::lock_guard lock(request->mutex);
             request->response_flags |= NK_HTTP_RESPONSE_REDIRECTED;
         }
-        result = nk::net::receive_response_headers(request, status_code, std::move(headers), content_length);
+        result = nk::net::receive_response_headers(request, status_code, std::move(headers),
+                                                   content_length);
         if (result != NK_OK) {
             env->DeleteLocalRef(connection);
             break;
         }
-        auto *input = status >= 400 ? env->CallObjectMethod(connection, methods.get_error_stream) : nullptr;
+        auto *input =
+            status >= 400 ? env->CallObjectMethod(connection, methods.get_error_stream) : nullptr;
         if ((result = java_exception(env)) != NK_OK) {
             env->DeleteLocalRef(connection);
             break;
@@ -1031,7 +1065,8 @@ nk_result perform(const nk::net::RequestPtr &request) {
                 env->GetByteArrayRegion(bytes, 0, read, reinterpret_cast<jbyte *>(buffer.data()));
                 if ((result = java_exception(env)) != NK_OK)
                     break;
-                result = nk::net::receive_response_data(request, buffer.data(), static_cast<std::size_t>(read));
+                result = nk::net::receive_response_data(request, buffer.data(),
+                                                        static_cast<std::size_t>(read));
                 if (result != NK_OK)
                     break;
                 downloaded += static_cast<uint64_t>(read);
@@ -1109,7 +1144,8 @@ void backend_cancel(const RequestPtr &request) noexcept {
     if (!env)
         return;
     auto *connection_class = env->GetObjectClass(found->second);
-    auto disconnect = connection_class ? env->GetMethodID(connection_class, "disconnect", "()V") : nullptr;
+    auto disconnect =
+        connection_class ? env->GetMethodID(connection_class, "disconnect", "()V") : nullptr;
     if (disconnect)
         env->CallVoidMethod(found->second, disconnect);
     env->ExceptionClear();

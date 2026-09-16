@@ -96,10 +96,10 @@ nk_system_platform platform() {
 }
 
 nk_system_endianness endianness() {
-#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) &&                                 \
     __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     return NK_SYSTEM_ENDIAN_LITTLE;
-#elif defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+#elif defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) &&                                  \
     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     return NK_SYSTEM_ENDIAN_BIG;
 #else
@@ -121,7 +121,7 @@ std::string platform_version() {
         if (!value.empty())
             return value;
     }
-    struct utsname native{};
+    struct utsname native {};
     if (uname(&native) == 0)
         return native.release;
 #endif
@@ -238,14 +238,15 @@ namespace system_backend {
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((weak))
 #endif
-nk_result keep_awake_apply(bool enabled) noexcept {
+nk_result
+keep_awake_apply(bool enabled) noexcept {
 #if defined(NK_BACKEND_LINUX) || defined(NK_BACKEND_GTK)
     /* The GTK backend owns the desktop session; portal integration can refine this hook. */
     (void)enabled;
     return NK_OK;
 #elif defined(NK_BACKEND_WINDOWS)
-    const auto state = SetThreadExecutionState(
-        enabled ? ES_CONTINUOUS | ES_DISPLAY_REQUIRED : ES_CONTINUOUS);
+    const auto state =
+        SetThreadExecutionState(enabled ? ES_CONTINUOUS | ES_DISPLAY_REQUIRED : ES_CONTINUOUS);
     if (!state) {
         nk::core::set_error("Windows could not update display execution state");
         return NK_ERROR_UNKNOWN;
@@ -259,7 +260,8 @@ nk_result keep_awake_apply(bool enabled) noexcept {
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((weak))
 #endif
-nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
+nk_result
+get_orientation(nk_system_orientation &out_orientation) noexcept {
     const auto size = out_orientation.struct_size;
     out_orientation = {};
     out_orientation.struct_size = size;
@@ -287,7 +289,7 @@ nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
         }
     }
     return NK_OK;
-#elif defined(NK_BACKEND_GTK) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_ANDROID) || \
+#elif defined(NK_BACKEND_GTK) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_ANDROID) ||       \
     defined(NK_BACKEND_IOS)
     return NK_OK;
 #else
@@ -298,7 +300,8 @@ nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((weak))
 #endif
-nk_result get_string(nk_system_string_kind, std::string &out_value) {
+nk_result
+get_string(nk_system_string_kind, std::string &out_value) {
     out_value.clear();
     return NK_ERROR_UNSUPPORTED;
 }
@@ -310,117 +313,117 @@ nk_result get_string(nk_system_string_kind, std::string &out_value) {
 extern "C" {
 
 nk_result NK_CALL nk_system_get_info(nk_system_info *out_info) {
-    return nk::core::result_boundary("unexpected error while querying system information",
-                                     [&]() -> nk_result {
-        if (const auto result = require_system_ui(); result != NK_OK)
-            return result;
-        if (!out_info || out_info->struct_size < sizeof(*out_info)) {
-            nk::core::set_error("system information output is missing or too small");
-            return NK_ERROR_INVALID_ARGUMENT;
-        }
-        const auto size = out_info->struct_size;
-        *out_info = {};
-        out_info->struct_size = size;
-        out_info->platform = platform();
-        out_info->endianness = endianness();
-        out_info->mobile = out_info->platform == NK_SYSTEM_PLATFORM_ANDROID ||
-                           out_info->platform == NK_SYSTEM_PLATFORM_IOS;
-        return NK_OK;
-                                     });
+    return nk::core::result_boundary(
+        "unexpected error while querying system information", [&]() -> nk_result {
+            if (const auto result = require_system_ui(); result != NK_OK)
+                return result;
+            if (!out_info || out_info->struct_size < sizeof(*out_info)) {
+                nk::core::set_error("system information output is missing or too small");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            const auto size = out_info->struct_size;
+            *out_info = {};
+            out_info->struct_size = size;
+            out_info->platform = platform();
+            out_info->endianness = endianness();
+            out_info->mobile = out_info->platform == NK_SYSTEM_PLATFORM_ANDROID ||
+                               out_info->platform == NK_SYSTEM_PLATFORM_IOS;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_system_get_string(nk_system_string_kind kind, char *buffer,
                                        uint32_t *inout_size) {
-    return nk::core::result_boundary("unexpected error while querying a system string",
-                                     [&]() -> nk_result {
-        if (const auto result = require_system_ui(); result != NK_OK)
-            return result;
-        if (!valid_system_string_kind(kind)) {
-            nk::core::set_error("unknown system string kind");
-            return NK_ERROR_UNSUPPORTED;
-        }
-        std::string value;
-        const auto result = system_string(kind, value);
-        if (result != NK_OK) {
-            nk::core::set_error("system string is unavailable");
-            return result;
-        }
-        return copy_string(value, buffer, inout_size);
-                                     });
+    return nk::core::result_boundary(
+        "unexpected error while querying a system string", [&]() -> nk_result {
+            if (const auto result = require_system_ui(); result != NK_OK)
+                return result;
+            if (!valid_system_string_kind(kind)) {
+                nk::core::set_error("unknown system string kind");
+                return NK_ERROR_UNSUPPORTED;
+            }
+            std::string value;
+            const auto result = system_string(kind, value);
+            if (result != NK_OK) {
+                nk::core::set_error("system string is unavailable");
+                return result;
+            }
+            return copy_string(value, buffer, inout_size);
+        });
 }
 
 nk_result NK_CALL nk_system_keep_awake_acquire(const nk_keep_awake_options *options,
                                                nk_keep_awake *out_lock) {
-    return nk::core::result_boundary("unexpected error while acquiring keep-awake lease",
-                                     [&]() -> nk_result {
-        if (const auto result = require_system_ui(); result != NK_OK)
-            return result;
-        if (!options || options->struct_size < sizeof(*options) || !out_lock) {
-            nk::core::set_error("keep-awake options or output is missing or too small");
-            return NK_ERROR_INVALID_ARGUMENT;
-        }
-        if (!options->flags || (options->flags & ~NK_KEEP_AWAKE_DISPLAY)) {
-            nk::core::set_error("unsupported keep-awake flags");
-            return NK_ERROR_UNSUPPORTED;
-        }
-        *out_lock = 0;
-        std::lock_guard lock(system_mutex);
-        if (!system_active) {
-            nk::core::set_error("NativeKit system state is not initialized");
-            return NK_ERROR_NOT_INITIALIZED;
-        }
-        nk_keep_awake token = next_keep_awake++;
-        if (!token)
-            token = next_keep_awake++;
-        const bool first = keep_awake_leases.empty();
-        if (first) {
-            const auto result = nk::core::system_backend::keep_awake_apply(true);
-            if (result != NK_OK)
+    return nk::core::result_boundary(
+        "unexpected error while acquiring keep-awake lease", [&]() -> nk_result {
+            if (const auto result = require_system_ui(); result != NK_OK)
                 return result;
-        }
-        keep_awake_leases.insert(token);
-        *out_lock = token;
-        return NK_OK;
-                                     });
+            if (!options || options->struct_size < sizeof(*options) || !out_lock) {
+                nk::core::set_error("keep-awake options or output is missing or too small");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            if (!options->flags || (options->flags & ~NK_KEEP_AWAKE_DISPLAY)) {
+                nk::core::set_error("unsupported keep-awake flags");
+                return NK_ERROR_UNSUPPORTED;
+            }
+            *out_lock = 0;
+            std::lock_guard lock(system_mutex);
+            if (!system_active) {
+                nk::core::set_error("NativeKit system state is not initialized");
+                return NK_ERROR_NOT_INITIALIZED;
+            }
+            nk_keep_awake token = next_keep_awake++;
+            if (!token)
+                token = next_keep_awake++;
+            const bool first = keep_awake_leases.empty();
+            if (first) {
+                const auto result = nk::core::system_backend::keep_awake_apply(true);
+                if (result != NK_OK)
+                    return result;
+            }
+            keep_awake_leases.insert(token);
+            *out_lock = token;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_system_keep_awake_release(nk_keep_awake lock) {
-    return nk::core::result_boundary("unexpected error while releasing keep-awake lease",
-                                     [&]() -> nk_result {
-        if (const auto result = require_system_ui(); result != NK_OK)
-            return result;
-        if (!lock) {
-            nk::core::set_error("keep-awake lease is invalid");
-            return NK_ERROR_INVALID_ARGUMENT;
-        }
-        std::lock_guard guard(system_mutex);
-        const auto found = keep_awake_leases.find(lock);
-        if (found == keep_awake_leases.end()) {
-            nk::core::set_error("keep-awake lease is stale or already released");
-            return NK_ERROR_INVALID_HANDLE;
-        }
-        const bool last = keep_awake_leases.size() == 1;
-        if (last) {
-            const auto result = nk::core::system_backend::keep_awake_apply(false);
-            if (result != NK_OK)
+    return nk::core::result_boundary(
+        "unexpected error while releasing keep-awake lease", [&]() -> nk_result {
+            if (const auto result = require_system_ui(); result != NK_OK)
                 return result;
-        }
-        keep_awake_leases.erase(found);
-        return NK_OK;
-                                     });
+            if (!lock) {
+                nk::core::set_error("keep-awake lease is invalid");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            std::lock_guard guard(system_mutex);
+            const auto found = keep_awake_leases.find(lock);
+            if (found == keep_awake_leases.end()) {
+                nk::core::set_error("keep-awake lease is stale or already released");
+                return NK_ERROR_INVALID_HANDLE;
+            }
+            const bool last = keep_awake_leases.size() == 1;
+            if (last) {
+                const auto result = nk::core::system_backend::keep_awake_apply(false);
+                if (result != NK_OK)
+                    return result;
+            }
+            keep_awake_leases.erase(found);
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_system_get_orientation(nk_system_orientation *out_orientation) {
-    return nk::core::result_boundary("unexpected error while querying orientation",
-                                     [&]() -> nk_result {
-        if (const auto result = require_system_ui(); result != NK_OK)
-            return result;
-        if (!out_orientation || out_orientation->struct_size < sizeof(*out_orientation)) {
-            nk::core::set_error("system orientation output is missing or too small");
-            return NK_ERROR_INVALID_ARGUMENT;
-        }
-        return nk::core::system_backend::get_orientation(*out_orientation);
-                                     });
+    return nk::core::result_boundary(
+        "unexpected error while querying orientation", [&]() -> nk_result {
+            if (const auto result = require_system_ui(); result != NK_OK)
+                return result;
+            if (!out_orientation || out_orientation->struct_size < sizeof(*out_orientation)) {
+                nk::core::set_error("system orientation output is missing or too small");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            return nk::core::system_backend::get_orientation(*out_orientation);
+        });
 }
 
 } // extern "C"

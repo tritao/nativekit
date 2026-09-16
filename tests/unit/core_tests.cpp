@@ -218,12 +218,10 @@ int main() {
     nk_event_release(&event);
 
     nk::core::EventQueue orientation_queue(1);
-    const nk_orientation_event portrait{sizeof(nk_orientation_event), NK_ORIENTATION_PORTRAIT, 0,
-                                        {0, 0}};
-    const nk_orientation_event landscape{sizeof(nk_orientation_event),
-                                         NK_ORIENTATION_LANDSCAPE_RIGHT,
-                                         0,
-                                         {0, 0}};
+    const nk_orientation_event portrait{
+        sizeof(nk_orientation_event), NK_ORIENTATION_PORTRAIT, 0, {0, 0}};
+    const nk_orientation_event landscape{
+        sizeof(nk_orientation_event), NK_ORIENTATION_LANDSCAPE_RIGHT, 0, {0, 0}};
     auto queue_orientation = [&](const nk_orientation_event &payload) {
         nk::core::QueuedEvent item;
         item.kind = NK_EVENT_DISPLAY_ORIENTATION_CHANGED;

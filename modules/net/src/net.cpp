@@ -39,9 +39,10 @@ constexpr uint64_t default_max_header_size = 64u * 1024u;
 constexpr uint64_t default_stream_buffer_size = 256u * 1024u;
 constexpr uint32_t default_redirect_limit = 10;
 constexpr uint32_t default_timeout_ms = 30000;
-constexpr uint32_t known_client_flags = NK_HTTP_CLIENT_ALLOW_HTTP | NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP;
-constexpr uint32_t known_tls_flags = NK_HTTP_TLS_DISABLE_PEER_VERIFICATION |
-                                      NK_HTTP_TLS_DISABLE_HOSTNAME_VERIFICATION;
+constexpr uint32_t known_client_flags =
+    NK_HTTP_CLIENT_ALLOW_HTTP | NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP;
+constexpr uint32_t known_tls_flags =
+    NK_HTTP_TLS_DISABLE_PEER_VERIFICATION | NK_HTTP_TLS_DISABLE_HOSTNAME_VERIFICATION;
 
 std::mutex request_mutex;
 std::condition_variable worker_condition;
@@ -93,7 +94,8 @@ bool valid_nested_struct(uint32_t actual, std::size_t expected) {
     return actual == 0 || actual >= expected;
 }
 
-bool bounded_c_string(const char *value, std::size_t limit, std::string &out, bool nullable = false) {
+bool bounded_c_string(const char *value, std::size_t limit, std::string &out,
+                      bool nullable = false) {
     if (!value) {
         if (nullable) {
             out.clear();
@@ -178,7 +180,8 @@ bool copy_proxy(const nk_http_proxy_options &input, nk::net::ProxyConfig &output
 }
 
 bool copy_tls(const nk_http_tls_options &input, nk::net::TlsConfig &output) {
-    if (!valid_nested_struct(input.struct_size, sizeof(input)) || input.minimum_version > NK_HTTP_TLS_1_3)
+    if (!valid_nested_struct(input.struct_size, sizeof(input)) ||
+        input.minimum_version > NK_HTTP_TLS_1_3)
         return false;
     output = {};
     output.flags = input.flags;
@@ -188,7 +191,8 @@ bool copy_tls(const nk_http_tls_options &input, nk::net::TlsConfig &output) {
 
 bool copy_client_options(const nk_http_client_options &input, nk::net::ClientConfig &output,
                          nk_result &error) {
-    if (!valid_struct(input.struct_size, sizeof(input)) || (input.flags & ~known_client_flags) != 0 ||
+    if (!valid_struct(input.struct_size, sizeof(input)) ||
+        (input.flags & ~known_client_flags) != 0 ||
         (input.proxy && !valid_struct(input.proxy->struct_size, sizeof(*input.proxy))) ||
         (input.tls && !valid_struct(input.tls->struct_size, sizeof(*input.tls)))) {
         error = NK_ERROR_INVALID_ARGUMENT;
@@ -211,11 +215,13 @@ bool copy_client_options(const nk_http_client_options &input, nk::net::ClientCon
         return false;
     }
     output.flags = input.flags;
-    output.redirect_limit = input.redirect_limit == 0 ? default_redirect_limit : input.redirect_limit;
+    output.redirect_limit =
+        input.redirect_limit == 0 ? default_redirect_limit : input.redirect_limit;
     output.timeout_ms = input.timeout_ms == 0 ? default_timeout_ms : input.timeout_ms;
     output.max_response_size =
         input.max_response_size == 0 ? default_max_response_size : input.max_response_size;
-    output.max_header_size = input.max_header_size == 0 ? default_max_header_size : input.max_header_size;
+    output.max_header_size =
+        input.max_header_size == 0 ? default_max_header_size : input.max_header_size;
     output.stream_buffer_size =
         input.stream_buffer_size == 0 ? default_stream_buffer_size : input.stream_buffer_size;
     output.cookie_policy = input.cookie_policy;
@@ -233,8 +239,8 @@ bool copy_client_options(const nk_http_client_options &input, nk::net::ClientCon
 
 bool copy_request_options(const nk_http_request_options &input, const HttpClientResource &client,
                           RequestConfig &output, nk_result &error) {
-    if (!valid_struct(input.struct_size, sizeof(input)) || !valid_method(input.method) || !input.url ||
-        input.mode > NK_HTTP_REQUEST_STREAMING ||
+    if (!valid_struct(input.struct_size, sizeof(input)) || !valid_method(input.method) ||
+        !input.url || input.mode > NK_HTTP_REQUEST_STREAMING ||
         (input.upload_size != 0 && input.upload_stream == NK_INVALID_HANDLE) ||
         (input.body_size != 0 && !input.body) ||
         (input.body && input.body_size > std::numeric_limits<std::size_t>::max()) ||
@@ -253,7 +259,8 @@ bool copy_request_options(const nk_http_request_options &input, const HttpClient
         return false;
     }
     bool https = false;
-    if (!url_scheme(output.url, https) || (!https && !(client.config.flags & NK_HTTP_CLIENT_ALLOW_HTTP))) {
+    if (!url_scheme(output.url, https) ||
+        (!https && !(client.config.flags & NK_HTTP_CLIENT_ALLOW_HTTP))) {
         error = NK_ERROR_INVALID_ARGUMENT;
         return false;
     }
@@ -265,7 +272,8 @@ bool copy_request_options(const nk_http_request_options &input, const HttpClient
         const auto *begin = static_cast<const std::byte *>(input.body);
         output.body.assign(begin, begin + static_cast<std::size_t>(input.body_size));
     }
-    output.redirect_limit = input.redirect_limit == 0 ? client.config.redirect_limit : input.redirect_limit;
+    output.redirect_limit =
+        input.redirect_limit == 0 ? client.config.redirect_limit : input.redirect_limit;
     output.timeout_ms = input.timeout_ms == 0 ? client.config.timeout_ms : input.timeout_ms;
     output.max_response_size =
         input.max_response_size == 0 ? client.config.max_response_size : input.max_response_size;
@@ -324,12 +332,14 @@ bool checked_range(uint64_t offset, uint64_t size, uint64_t total) {
 
 std::vector<std::byte> response_payload(const RequestPtr &request, bool include_body) {
     std::lock_guard lock(request->mutex);
-    const auto header_bytes = static_cast<uint64_t>(request->response_headers.size()) * sizeof(WireHeader);
+    const auto header_bytes =
+        static_cast<uint64_t>(request->response_headers.size()) * sizeof(WireHeader);
     uint64_t string_bytes = 0;
     for (const auto &header : request->response_headers) {
         if (header.name.size() > UINT32_MAX || header.value.size() > UINT32_MAX)
             throw std::bad_alloc{};
-        if (string_bytes > std::numeric_limits<uint64_t>::max() - header.name.size() - header.value.size())
+        if (string_bytes >
+            std::numeric_limits<uint64_t>::max() - header.name.size() - header.value.size())
             throw std::bad_alloc{};
         string_bytes += header.name.size() + header.value.size();
     }
@@ -461,7 +471,8 @@ void emit_progress(const RequestPtr &request, uint64_t downloaded, uint64_t down
 }
 
 nk_result receive_response_headers(const RequestPtr &request, uint32_t status,
-                                   std::vector<OwnedHeader> headers, uint64_t content_length) noexcept {
+                                   std::vector<OwnedHeader> headers,
+                                   uint64_t content_length) noexcept {
     try {
         if (status < 100 || status > 599)
             return NK_HTTP_ERROR_PROTOCOL;
@@ -470,7 +481,8 @@ nk_result receive_response_headers(const RequestPtr &request, uint32_t status,
             return NK_HTTP_ERROR_RESPONSE_LIMIT;
         for (const auto &header : headers) {
             if (!valid_header_text(header.name, true) || !valid_header_text(header.value, false) ||
-                header_bytes > std::numeric_limits<uint64_t>::max() - header.name.size() - header.value.size())
+                header_bytes >
+                    std::numeric_limits<uint64_t>::max() - header.name.size() - header.value.size())
                 return NK_HTTP_ERROR_RESPONSE_LIMIT;
             header_bytes += header.name.size() + header.value.size();
         }
@@ -524,14 +536,16 @@ nk_result receive_response_data(const RequestPtr &request, const std::byte *data
         std::size_t offset = 0;
         while (offset < size) {
             request->condition.wait(lock, [&] {
-                return request->canceled.load(std::memory_order_acquire) || request->stream_closed ||
+                return request->canceled.load(std::memory_order_acquire) ||
+                       request->stream_closed ||
                        request->available < request->request.stream_buffer_size;
             });
             if (request->canceled.load(std::memory_order_acquire))
                 return NK_HTTP_ERROR_CANCELED;
             if (request->stream_closed)
                 return NK_HTTP_ERROR_CANCELED;
-            const auto remaining_capacity = request->request.stream_buffer_size - request->available;
+            const auto remaining_capacity =
+                request->request.stream_buffer_size - request->available;
             const auto amount = std::min<std::size_t>(size - offset, remaining_capacity);
             if (request->received > request->request.max_response_size ||
                 amount > request->request.max_response_size - request->received) {
@@ -619,122 +633,127 @@ extern "C" {
 
 nk_result NK_CALL nk_http_client_create(const nk_http_client_options *options,
                                         nk_http_client *out_client) {
-    return nk::core::result_boundary("unexpected error while creating HTTP client", [&]() -> nk_result {
-        if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
-            return thread;
-        if (!options || !out_client) {
-            return fail(NK_ERROR_INVALID_ARGUMENT, "HTTP client options or output is null");
-        }
-        *out_client = NK_INVALID_HANDLE;
-        nk::net::ClientConfig config;
-        nk_result error = NK_OK;
-        if (!copy_client_options(*options, config, error))
-            return fail(error, "HTTP client options are invalid or unsupported");
-        if (!(nk::net::capabilities() & NK_CAP_HTTP_CLIENT))
-            return fail(NK_ERROR_UNSUPPORTED, "HTTP networking is unavailable on this backend");
-        auto client = std::make_shared<HttpClientResource>();
-        client->config = std::move(config);
-        const auto handle = nk::core::handles().insert(nk::core::ResourceType::http_client, client);
-        if (!handle)
-            return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate HTTP client handle");
-        *out_client = handle;
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while creating HTTP client", [&]() -> nk_result {
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            if (!options || !out_client) {
+                return fail(NK_ERROR_INVALID_ARGUMENT, "HTTP client options or output is null");
+            }
+            *out_client = NK_INVALID_HANDLE;
+            nk::net::ClientConfig config;
+            nk_result error = NK_OK;
+            if (!copy_client_options(*options, config, error))
+                return fail(error, "HTTP client options are invalid or unsupported");
+            if (!(nk::net::capabilities() & NK_CAP_HTTP_CLIENT))
+                return fail(NK_ERROR_UNSUPPORTED, "HTTP networking is unavailable on this backend");
+            auto client = std::make_shared<HttpClientResource>();
+            client->config = std::move(config);
+            const auto handle =
+                nk::core::handles().insert(nk::core::ResourceType::http_client, client);
+            if (!handle)
+                return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate HTTP client handle");
+            *out_client = handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_http_client_destroy(nk_http_client handle) {
-    return nk::core::result_boundary("unexpected error while destroying HTTP client", [&]() -> nk_result {
-        if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
-            return thread;
-        auto client = client_resource(handle);
-        if (!client)
-            return fail(NK_ERROR_INVALID_HANDLE, "invalid HTTP client handle");
-        std::vector<nk_request_id> ids;
-        {
-            std::lock_guard lock(client->requests_mutex);
-            ids.assign(client->requests.begin(), client->requests.end());
-        }
-        for (const auto id : ids)
-            cancel_request(request_resource(id));
-        if (!nk::core::handles().erase(handle, nk::core::ResourceType::http_client))
-            return fail(NK_ERROR_INVALID_HANDLE, "invalid HTTP client handle");
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while destroying HTTP client", [&]() -> nk_result {
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            auto client = client_resource(handle);
+            if (!client)
+                return fail(NK_ERROR_INVALID_HANDLE, "invalid HTTP client handle");
+            std::vector<nk_request_id> ids;
+            {
+                std::lock_guard lock(client->requests_mutex);
+                ids.assign(client->requests.begin(), client->requests.end());
+            }
+            for (const auto id : ids)
+                cancel_request(request_resource(id));
+            if (!nk::core::handles().erase(handle, nk::core::ResourceType::http_client))
+                return fail(NK_ERROR_INVALID_HANDLE, "invalid HTTP client handle");
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_http_request(nk_http_client client_handle,
                                   const nk_http_request_options *options,
                                   nk_request_id *out_request, nk_http_stream *out_stream) {
-    return nk::core::result_boundary("unexpected error while starting HTTP request", [&]() -> nk_result {
-        if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
-            return thread;
-        if (!options || !out_request)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "HTTP request options or output is null");
-        *out_request = NK_INVALID_REQUEST_ID;
-        if (out_stream)
-            *out_stream = NK_INVALID_HANDLE;
-        auto client = client_resource(client_handle);
-        if (!client)
-            return fail(NK_ERROR_INVALID_HANDLE, "invalid HTTP client handle");
-        if (!(nk::net::capabilities() & NK_CAP_HTTP_CLIENT))
-            return fail(NK_ERROR_UNSUPPORTED, "HTTP networking is unavailable on this backend");
+    return nk::core::result_boundary(
+        "unexpected error while starting HTTP request", [&]() -> nk_result {
+            if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+                return thread;
+            if (!options || !out_request)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "HTTP request options or output is null");
+            *out_request = NK_INVALID_REQUEST_ID;
+            if (out_stream)
+                *out_stream = NK_INVALID_HANDLE;
+            auto client = client_resource(client_handle);
+            if (!client)
+                return fail(NK_ERROR_INVALID_HANDLE, "invalid HTTP client handle");
+            if (!(nk::net::capabilities() & NK_CAP_HTTP_CLIENT))
+                return fail(NK_ERROR_UNSUPPORTED, "HTTP networking is unavailable on this backend");
 
-        auto request = std::make_shared<RequestContext>();
-        request->client = client;
-        nk_result error = NK_OK;
-        if (!copy_request_options(*options, *client, request->request, error))
-            return fail(error, "HTTP request options are invalid");
-        if (request->request.mode == NK_HTTP_REQUEST_STREAMING &&
-            !(nk::net::capabilities() & NK_CAP_HTTP_STREAMING))
-            return fail(NK_ERROR_UNSUPPORTED, "streaming HTTP is unavailable on this backend");
+            auto request = std::make_shared<RequestContext>();
+            request->client = client;
+            nk_result error = NK_OK;
+            if (!copy_request_options(*options, *client, request->request, error))
+                return fail(error, "HTTP request options are invalid");
+            if (request->request.mode == NK_HTTP_REQUEST_STREAMING &&
+                !(nk::net::capabilities() & NK_CAP_HTTP_STREAMING))
+                return fail(NK_ERROR_UNSUPPORTED, "streaming HTTP is unavailable on this backend");
 
-        request->id = nk::core::next_request_id();
-        request->generation = nk::core::runtime_generation();
-        if (request->id == NK_INVALID_REQUEST_ID || request->generation == 0)
-            return fail(NK_ERROR_INVALID_REQUEST, "could not allocate an HTTP request ID");
+            request->id = nk::core::next_request_id();
+            request->generation = nk::core::runtime_generation();
+            if (request->id == NK_INVALID_REQUEST_ID || request->generation == 0)
+                return fail(NK_ERROR_INVALID_REQUEST, "could not allocate an HTTP request ID");
 
-        if (request->request.mode == NK_HTTP_REQUEST_STREAMING) {
-            auto stream = std::make_shared<HttpStreamResource>();
-            stream->request = request;
-            const auto stream_handle =
-                nk::core::handles().insert(nk::core::ResourceType::http_stream, stream);
-            if (!stream_handle)
-                return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate HTTP stream handle");
-            request->stream = stream_handle;
-        }
+            if (request->request.mode == NK_HTTP_REQUEST_STREAMING) {
+                auto stream = std::make_shared<HttpStreamResource>();
+                stream->request = request;
+                const auto stream_handle =
+                    nk::core::handles().insert(nk::core::ResourceType::http_stream, stream);
+                if (!stream_handle)
+                    return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate HTTP stream handle");
+                request->stream = stream_handle;
+            }
 
-        {
-            std::lock_guard lock(request_mutex);
-            if (shutting_down) {
+            {
+                std::lock_guard lock(request_mutex);
+                if (shutting_down) {
+                    if (request->stream)
+                        nk::core::handles().erase(request->stream,
+                                                  nk::core::ResourceType::http_stream);
+                    return fail(NK_ERROR_INVALID_REQUEST, "NativeKit is shutting down");
+                }
+                requests.emplace(request->id, request);
+                ++active_workers;
+            }
+            {
+                std::lock_guard lock(client->requests_mutex);
+                client->requests.insert(request->id);
+            }
+            const auto start_result = nk::net::backend_start(request);
+            if (start_result != NK_OK) {
+                std::lock_guard lock(request_mutex);
+                requests.erase(request->id);
+                if (active_workers != 0)
+                    --active_workers;
+                worker_condition.notify_all();
+                std::lock_guard client_lock(client->requests_mutex);
+                client->requests.erase(request->id);
                 if (request->stream)
                     nk::core::handles().erase(request->stream, nk::core::ResourceType::http_stream);
-                return fail(NK_ERROR_INVALID_REQUEST, "NativeKit is shutting down");
+                return fail(start_result, "could not start HTTP request");
             }
-            requests.emplace(request->id, request);
-            ++active_workers;
-        }
-        {
-            std::lock_guard lock(client->requests_mutex);
-            client->requests.insert(request->id);
-        }
-        const auto start_result = nk::net::backend_start(request);
-        if (start_result != NK_OK) {
-            std::lock_guard lock(request_mutex);
-            requests.erase(request->id);
-            if (active_workers != 0)
-                --active_workers;
-            worker_condition.notify_all();
-            std::lock_guard client_lock(client->requests_mutex);
-            client->requests.erase(request->id);
-            if (request->stream)
-                nk::core::handles().erase(request->stream, nk::core::ResourceType::http_stream);
-            return fail(start_result, "could not start HTTP request");
-        }
-        *out_request = request->id;
-        if (out_stream)
-            *out_stream = request->stream;
-        return NK_OK;
-    });
+            *out_request = request->id;
+            if (out_stream)
+                *out_stream = request->stream;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_http_cancel(nk_request_id request_id) {
@@ -837,7 +856,8 @@ nk_result NK_CALL nk_http_stream_close(nk_http_stream handle) {
 }
 
 nk_result NK_CALL nk_http_event_response(const nk_event *event, nk_http_response *out_response) {
-    if (!event || !out_response || !valid_struct(out_response->struct_size, sizeof(*out_response)) ||
+    if (!event || !out_response ||
+        !valid_struct(out_response->struct_size, sizeof(*out_response)) ||
         (event->kind != NK_EVENT_HTTP_HEADERS && event->kind != NK_EVENT_HTTP_COMPLETE) ||
         !event->data || event->data_size < sizeof(WireResponse))
         return fail(NK_ERROR_INVALID_ARGUMENT, "HTTP response event is invalid");
@@ -868,7 +888,8 @@ nk_result NK_CALL nk_http_event_response(const nk_event *event, nk_http_response
 }
 
 nk_result NK_CALL nk_http_event_progress(const nk_event *event, nk_http_progress *out_progress) {
-    if (!event || !out_progress || !valid_struct(out_progress->struct_size, sizeof(*out_progress)) ||
+    if (!event || !out_progress ||
+        !valid_struct(out_progress->struct_size, sizeof(*out_progress)) ||
         event->kind != NK_EVENT_HTTP_PROGRESS || event->data_size != sizeof(nk_http_progress) ||
         !event->data)
         return fail(NK_ERROR_INVALID_ARGUMENT, "HTTP progress event is invalid");
@@ -887,7 +908,8 @@ nk_result NK_CALL nk_http_response_header(const nk_http_response *response, uint
         return fail(NK_ERROR_INVALID_ARGUMENT, "HTTP response header arguments are invalid");
     WireHeader wire{};
     const auto *headers = static_cast<const std::byte *>(response->headers);
-    std::memcpy(&wire, headers + static_cast<std::size_t>(index) * sizeof(WireHeader), sizeof(wire));
+    std::memcpy(&wire, headers + static_cast<std::size_t>(index) * sizeof(WireHeader),
+                sizeof(wire));
     if (!checked_range(wire.name_offset, wire.name_size, response->headers_size) ||
         !checked_range(wire.value_offset, wire.value_size, response->headers_size) ||
         wire.name_offset < static_cast<uint64_t>(response->header_count) * sizeof(WireHeader) ||

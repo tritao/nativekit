@@ -224,8 +224,7 @@ NK_API nk_result NK_CALL nk_system_keep_awake_acquire(const nk_keep_awake_option
 /** Releases a previously acquired keep-awake lease. */
 NK_API nk_result NK_CALL nk_system_keep_awake_release(nk_keep_awake lock);
 /** Returns physical device and application display orientation. */
-NK_API nk_result NK_CALL nk_system_get_orientation(
-    nk_system_orientation *out_orientation NK_OUT);
+NK_API nk_result NK_CALL nk_system_get_orientation(nk_system_orientation *out_orientation NK_OUT);
 
 /** Returns the current platform appearance. UI thread only. */
 NK_API nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance);
