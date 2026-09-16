@@ -6,6 +6,7 @@ import nativekit.ui.theme.Theme;
 import nativekit.ui.theme.TextRole;
 import nativekit.ui.style.StyleSheet;
 import nativekit.ui.style.StyleResolver;
+import nativekit.ui.style.StyleEnvironment;
 import nativekit.ui.gestures.GestureArena;
 import nativekit.ui.animation.AnimationScheduler;
 
@@ -20,6 +21,7 @@ class BuildContext {
 	public final animations:AnimationScheduler;
 	public final interactionStates:InteractionStateStore;
 	public final styleResolver:StyleResolver;
+	public final environment:StyleEnvironment;
 	public var theme(default, null):Theme;
 	public var styleSheet(default, null):StyleSheet;
 	/** Logical viewport dimensions for frame-local placement decisions. */
@@ -45,6 +47,7 @@ class BuildContext {
 		this.animations = animations == null ? new AnimationScheduler() : animations;
 		this.interactionStates = interactionStates == null ? new InteractionStateStore() : interactionStates;
 		this.styleResolver = new StyleResolver(this.animations);
+		this.environment = new StyleEnvironment();
 		this.theme = theme == null ? new Theme() : theme;
 		this.theme.refreshStyles();
 		this.styleSheet = styleSheet == null ? new StyleSheet("Application") : styleSheet;
@@ -72,6 +75,10 @@ class BuildContext {
 			throw "Build context requires a stylesheet";
 		this.styleSheet = styleSheet;
 	}
+
+	/** Updates viewport-derived environment values for conditional style rules. */
+	public function setEnvironmentViewport(width:Float, height:Float):Void
+		environment.setViewport(width, height);
 
 	/** Installs the UiContext focus route used by composite keyboard widgets. */
 	public function setFocusRequester(requester:WidgetId->Bool):Void {

@@ -63,7 +63,7 @@ class BinaryControl implements View {
 			var target = new StyleTarget(toggle ? "toggle" : "checkbox", key, key,
 				null, [toggle ? "toggle" : "checkbox"], flags);
 			var computed = context.styleResolver.resolve(target, null, context.theme.styles,
-				context.styleSheet, style);
+				context.styleSheet, style, context.environment);
 			var node = new RenderNode(nodeId,
 				LayoutVisualKind.Box, computed.toLayoutStyle());
 			node.setStyleIdentity(toggle ? "toggle" : "checkbox", key, key,
@@ -96,7 +96,7 @@ class BinaryControl implements View {
 			var indicatorTarget = new StyleTarget(toggle ? "toggle-indicator" : "checkbox-indicator",
 				key + ":indicator", null, null, null, flags);
 			var indicatorComputed = context.styleResolver.resolve(indicatorTarget, null,
-				context.theme.styles, context.styleSheet, indicatorStyle);
+				context.theme.styles, context.styleSheet, indicatorStyle, context.environment);
 			var indicator = new RenderNode(context.id("indicator"),
 				toggle ? LayoutVisualKind.Box : LayoutVisualKind.Custom,
 				indicatorComputed.toLayoutStyle());
@@ -112,7 +112,7 @@ class BinaryControl implements View {
 				thumbStyle.radiusBottomLeft = thumbStyle.radiusBottomRight = 7.5;
 				var thumbComputed = context.styleResolver.resolve(
 					new StyleTarget("toggle-thumb", key + ":thumb", null, null, ["toggle"], flags),
-					null, context.theme.styles, context.styleSheet, thumbStyle);
+					null, context.theme.styles, context.styleSheet, thumbStyle, context.environment);
 				var thumb = new RenderNode(context.id("thumb"), LayoutVisualKind.Box,
 					thumbComputed.toLayoutStyle());
 				thumb.setStyleIdentity("toggle-thumb", key + ":thumb", null, null, ["toggle"]);

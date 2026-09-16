@@ -100,6 +100,9 @@ import nativekit.ui.style.StyleState;
 import nativekit.ui.style.StyleStateUtil;
 import nativekit.ui.style.StyleTarget;
 import nativekit.ui.style.StyleValue;
+import nativekit.ui.style.Environment;
+import nativekit.ui.style.EnvironmentColorScheme;
+import nativekit.ui.style.StyleEnvironment;
 import nativekit.ui.gestures.GestureEvent;
 import nativekit.ui.gestures.TapRecognizer;
 import nativekit.ui.gestures.DoubleTapRecognizer;
@@ -1237,6 +1240,26 @@ class FrameworkSmoke {
 		if (animatedComputed.get(StyleProperty.Background).red != 1.0 ||
 			transitionScheduler.activeCount != 0 || normalComputed.get(StyleProperty.Background).red != 0.0)
 			return 218;
+		var responsiveSheet = new StyleSheet("ResponsiveSheet");
+		responsiveSheet.rule(StyleSelector.widget("button"),
+			[StyleValue.paddingSymmetric(12.0, 8.0)]);
+		responsiveSheet.when(Environment.widthLessThan(600.0), StyleSelector.widget("button"),
+			[StyleValue.paddingSymmetric(6.0, 4.0)]);
+		responsiveSheet.when(Environment.colorScheme(EnvironmentColorScheme.Dark),
+			StyleSelector.widget("button"),
+			[StyleValue.background(Color.rgba(0.05, 0.05, 0.05, 1.0))]);
+		var responsiveEnvironment = new StyleEnvironment(500.0, 800.0);
+		var responsive = new StyleResolver().resolve(transitionTarget, null, null,
+			responsiveSheet, null, responsiveEnvironment);
+		if (responsive.get(StyleProperty.Padding).left != 6.0)
+			return 219;
+		responsiveEnvironment.setViewport(800.0, 500.0);
+		responsiveEnvironment.colorScheme = EnvironmentColorScheme.Dark;
+		responsive = new StyleResolver().resolve(transitionTarget, null, null,
+			responsiveSheet, null, responsiveEnvironment);
+		if (responsive.get(StyleProperty.Padding).left != 12.0 ||
+			responsive.get(StyleProperty.Background).red != 0.05)
+			return 220;
 		var lightNeutral = Color.rgba(0.87, 0.90, 0.95, 1.0);
 		var accentButton = Color.rgba(0.18, 0.39, 0.70, 1.0);
 		if (theme.buttonLabelColor(true, lightNeutral) != theme.body.color ||

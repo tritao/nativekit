@@ -57,7 +57,7 @@ class Radio implements View {
 			flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
 			var computed = context.styleResolver.resolve(
 				new StyleTarget("radio", key.value, key.value, null, ["radio"], flags),
-				null, context.theme.styles, context.styleSheet, style);
+				null, context.theme.styles, context.styleSheet, style, context.environment);
 			var node = new RenderNode(nodeId, LayoutVisualKind.Box, computed.toLayoutStyle());
 			node.setStyleIdentity("radio", key.value, key.value, null, ["radio"]);
 			node.states = flags;
@@ -81,7 +81,7 @@ class Radio implements View {
 			var indicatorComputed = context.styleResolver.resolve(
 				new StyleTarget("radio-indicator", key.value + ":indicator", null,
 					null, ["radio"], flags), null, context.theme.styles, context.styleSheet,
-				indicatorStyle);
+				indicatorStyle, context.environment);
 			var indicator = new RenderNode(context.id("indicator"), LayoutVisualKind.Box,
 				indicatorComputed.toLayoutStyle());
 			indicator.setStyleIdentity("radio-indicator", key.value + ":indicator", null,
@@ -95,7 +95,7 @@ class Radio implements View {
 			dotStyle.radiusBottomLeft = dotStyle.radiusBottomRight = 4.0;
 			var dotComputed = context.styleResolver.resolve(
 				new StyleTarget("radio-dot", key.value + ":dot", null, null, ["radio"], flags),
-				null, context.theme.styles, context.styleSheet, dotStyle);
+				null, context.theme.styles, context.styleSheet, dotStyle, context.environment);
 			var dot = new RenderNode(context.id("dot"), LayoutVisualKind.Box,
 				dotComputed.toLayoutStyle());
 			dot.setStyleIdentity("radio-dot", key.value + ":dot", null, null, ["radio"]);

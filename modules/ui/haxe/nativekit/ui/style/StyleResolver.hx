@@ -22,7 +22,8 @@ class StyleResolver {
 	}
 
 	public function resolve(target:StyleTarget, ?parent:ComputedStyle,
-			?theme:StyleSheet, ?application:StyleSheet, ?local:LayoutStyle):ComputedStyle {
+			?theme:StyleSheet, ?application:StyleSheet, ?local:LayoutStyle,
+			?environment:StyleEnvironment):ComputedStyle {
 		if (target == null)
 			throw "Style resolution requires a target";
 		var result = new ComputedStyle();
@@ -34,22 +35,22 @@ class StyleResolver {
 				if (property.inherited && parent.has(property))
 					result.set(property, parent.get(property), parent.source(property));
 
-		applySheet(result, target, theme, false, "theme");
-		applySheet(result, target, application, false, "application");
-		applySheet(result, target, theme, true, "theme-state");
-		applySheet(result, target, application, true, "application-state");
+		applySheet(result, target, theme, false, "theme", environment);
+		applySheet(result, target, application, false, "application", environment);
+		applySheet(result, target, theme, true, "theme-state", environment);
+		applySheet(result, target, application, true, "application-state", environment);
 		applyLocal(result, local);
 		applyTransitions(result, target, theme, application);
 		return result;
 	}
 
 	function applySheet(result:ComputedStyle, target:StyleTarget, sheet:Null<StyleSheet>,
-			stateRules:Bool, layer:String):Void {
+			stateRules:Bool, layer:String, environment:Null<StyleEnvironment>):Void {
 		if (sheet == null || sheet.isEmpty())
 			return;
 		var matches:Array<StyleRule> = [];
 		for (rule in sheet.rules)
-			if (rule.selector.hasState() == stateRules && rule.matches(target))
+			if (rule.selector.hasState() == stateRules && rule.matches(target, environment))
 				matches.push(rule);
 		matches.sort(function(left, right) {
 			var specificity = left.selector.specificity() - right.selector.specificity();

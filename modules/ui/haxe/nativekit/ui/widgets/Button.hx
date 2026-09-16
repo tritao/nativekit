@@ -59,7 +59,7 @@ class Button implements View {
 		flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
 		var target = new StyleTarget("button", key, key, null, ["button"], flags);
 		var computed = context.styleResolver.resolve(target, null, context.theme.styles,
-			context.styleSheet, style);
+			context.styleSheet, style, context.environment);
 		var resolvedStyle = computed.toLayoutStyle();
 		var node = new RenderNode(id, LayoutVisualKind.Box, resolvedStyle);
 		node.setStyleIdentity("button", key, key, null, ["button"]);

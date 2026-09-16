@@ -121,6 +121,7 @@ class UiContext {
 		diagnosticStage = 3;
 		animations.advance(frame.deltaSeconds);
 		buildContext.setViewport(frame.width, frame.height);
+		buildContext.setEnvironmentViewport(frame.width, frame.height);
 		buildContext.beginFrame();
 		diagnosticStage = 4;
 		var next = buildContext.withScope(new Key("root"), function() return view.build(buildContext));

@@ -20,6 +20,15 @@ class StyleSheet {
 		return result;
 	}
 
+	public function when(condition:EnvironmentCondition, selector:StyleSelector,
+			declarations:Array<StyleValue>):StyleRule {
+		if (condition == null)
+			throw "Conditional style rules require an environment condition";
+		var result = new StyleRule(name, selector, declarations, rules.length, condition);
+		rules.push(result);
+		return result;
+	}
+
 	public function clear():Void
 		{
 			rules.resize(0);

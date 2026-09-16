@@ -96,7 +96,7 @@ class TextField implements View {
 			flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
 			var computed = context.styleResolver.resolve(
 				new StyleTarget("text-field", key, key, null, ["text-field"], flags),
-				null, context.theme.styles, context.styleSheet, style);
+				null, context.theme.styles, context.styleSheet, style, context.environment);
 			var node = new RenderNode(id, LayoutVisualKind.Box, computed.toLayoutStyle());
 			node.setStyleIdentity("text-field", key, key, null, ["text-field"]);
 			node.states = flags;
