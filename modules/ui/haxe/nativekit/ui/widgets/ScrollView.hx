@@ -95,8 +95,8 @@ class ScrollView implements View {
 					onScroll(event);
 				if (event.defaultPrevented)
 					return;
-				var dx = axis == ScrollAxis.Horizontal || axis == ScrollAxis.Both ? -event.deltaX : 0.0;
-				var dy = axis == ScrollAxis.Vertical || axis == ScrollAxis.Both ? -event.deltaY : 0.0;
+				var dx = axis == ScrollAxis.Horizontal || axis == ScrollAxis.Both ? event.deltaX : 0.0;
+				var dy = axis == ScrollAxis.Vertical || axis == ScrollAxis.Both ? event.deltaY : 0.0;
 				if (controller.scrollBy(dx, dy))
 					event.stopPropagation();
 			});

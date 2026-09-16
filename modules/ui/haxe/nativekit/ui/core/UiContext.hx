@@ -424,9 +424,9 @@ class UiContext {
 		var deltaX = 0.0;
 		var deltaY = 0.0;
 		if (action == AccessibilityRequest.ScrollForward)
-			deltaY = -geometry.height;
-		else if (action == AccessibilityRequest.ScrollBackward)
 			deltaY = geometry.height;
+		else if (action == AccessibilityRequest.ScrollBackward)
+			deltaY = -geometry.height;
 		if (action == AccessibilityRequest.ScrollForward ||
 			action == AccessibilityRequest.ScrollBackward)
 			return events.targetEvent(UiEventKind.Scroll, widgetId, null, deltaX,

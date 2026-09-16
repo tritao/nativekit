@@ -483,7 +483,7 @@ class AccessibilityContract {
 			viewportGeometry.height >= 144.0 || contentGeometry.transform.ty != 0.0)
 			return false;
 		var beforeWheel = contentGeometry.transform.ty;
-		context.scroll(viewportGeometry.x + 3.0, viewportGeometry.y + 3.0, 0.0, -64.0);
+		context.scroll(viewportGeometry.x + 3.0, viewportGeometry.y + 3.0, 0.0, 64.0);
 		root = context.submit(stack, frame);
 		content = root.children[0].children[1].children[0].children[0];
 		var afterWheel:ResolvedLayoutItem = cast content.resolved;

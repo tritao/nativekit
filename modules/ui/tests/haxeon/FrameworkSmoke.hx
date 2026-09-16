@@ -987,7 +987,7 @@ class FrameworkSmoke {
 		if (scrollView.controller.maxScrollY != 320.0 || contentGeometry == null ||
 			contentGeometry.clipBounds.height != 80.0)
 			return 25;
-		context.scroll(4.0, 4.0, 0.0, -50.0);
+		context.scroll(4.0, 4.0, 0.0, 50.0);
 		if (scrollView.controller.offsetY != 50.0 || !context.isDirty())
 			return 26;
 		scrollRoot = context.submit(scrollView, scrollFrame);
@@ -1110,10 +1110,10 @@ class FrameworkSmoke {
 			customParent.children[0].layout.visualKind != LayoutVisualKind.Text ||
 			customParent.children[2].layout.visualKind != LayoutVisualKind.Text)
 			return 101;
-		context.scroll(innerGeometry.x + 4.0, innerGeometry.y + 4.0, 0.0, -60.0);
+		context.scroll(innerGeometry.x + 4.0, innerGeometry.y + 4.0, 0.0, 60.0);
 		if (innerController.offsetY != 60.0 || outerController.offsetY != 0.0)
 			return 102;
-		context.scroll(4.0, 180.0, 0.0, -50.0);
+		context.scroll(4.0, 180.0, 0.0, 50.0);
 		if (outerController.offsetY != 50.0)
 			return 103;
 

@@ -160,7 +160,7 @@ class SelectionPopup {
 					geometry.contentBounds.width, geometry.contentBounds.height);
 			});
 			dropdown.on(UiEventKind.Scroll, function(event) {
-				if (!event.defaultPrevented && scrollController.scrollBy(0.0, -event.deltaY))
+				if (!event.defaultPrevented && scrollController.scrollBy(0.0, event.deltaY))
 					event.stopPropagation();
 			});
 			visibility.ensure = function(index:Int) {
