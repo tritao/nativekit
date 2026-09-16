@@ -36,6 +36,25 @@ _Static_assert(sizeof(nk_system_info) == 40, "system info ABI layout is stable")
 _Static_assert(sizeof(nk_system_orientation) == 32, "system orientation ABI layout is stable");
 _Static_assert(sizeof(nk_orientation_event) == 32, "orientation event ABI layout is stable");
 
+static void verify_system_string(nk_system_string_kind kind, int required) {
+    uint32_t size = 0;
+    const nk_result query = nk_system_get_string(kind, NULL, &size);
+    if (query == NK_ERROR_UNSUPPORTED) {
+        assert(!required);
+        return;
+    }
+    assert(query == NK_ERROR_BUFFER_TOO_SMALL);
+    if (size == 1) {
+        assert(!required);
+        return;
+    }
+    assert(size <= 4096);
+    char value[4096] = {0};
+    uint32_t capacity = sizeof(value);
+    assert(nk_system_get_string(kind, value, &capacity) == NK_OK);
+    assert(value[0] != '\0');
+}
+
 int main(void) {
     assert(nk_time_now_ns() > 0);
     assert(nk_time_seconds() > 0.0);
@@ -51,6 +70,12 @@ int main(void) {
     assert(nk_system_get_info(&system_info) == NK_OK);
     assert(system_info.endianness == NK_SYSTEM_ENDIAN_LITTLE ||
            system_info.endianness == NK_SYSTEM_ENDIAN_BIG);
+    verify_system_string(NK_SYSTEM_STRING_PLATFORM_NAME, 0);
+    verify_system_string(NK_SYSTEM_STRING_PLATFORM_VERSION, 0);
+    verify_system_string(NK_SYSTEM_STRING_PLATFORM_LABEL, 0);
+    verify_system_string(NK_SYSTEM_STRING_DEVICE_VENDOR, 0);
+    verify_system_string(NK_SYSTEM_STRING_DEVICE_MODEL, 0);
+    verify_system_string(NK_SYSTEM_STRING_APPLICATION_NAME, 1);
     uint32_t application_id_size = 0;
     assert(nk_system_get_string(NK_SYSTEM_STRING_APPLICATION_ID, NULL, &application_id_size) ==
            NK_ERROR_BUFFER_TOO_SMALL);
@@ -70,12 +95,16 @@ int main(void) {
         assert(nk_system_directory(NK_DIRECTORY_APPLICATION_STORAGE, storage, &storage_capacity) ==
                NK_OK);
         assert(strstr(storage, "com.example_nativekit") != NULL);
+    }
+    if (system_capabilities & NK_CAP_SYSTEM_FONTS) {
         uint32_t font_size = 0;
-        const nk_result font_result = nk_system_directory(NK_DIRECTORY_FONTS, NULL, &font_size);
-        if (system_capabilities & NK_CAP_SYSTEM_FONTS)
-            assert(font_result == NK_ERROR_BUFFER_TOO_SMALL);
-        else
-            assert(font_result == NK_ERROR_UNSUPPORTED);
+        assert(nk_system_directory(NK_DIRECTORY_FONTS, NULL, &font_size) ==
+               NK_ERROR_BUFFER_TOO_SMALL);
+        assert(font_size > 1);
+        char fonts[4096] = {0};
+        uint32_t fonts_capacity = sizeof(fonts);
+        assert(nk_system_directory(NK_DIRECTORY_FONTS, fonts, &fonts_capacity) == NK_OK);
+        assert(fonts[0] != '\0');
     }
     if (system_capabilities & NK_CAP_APPLICATION_PATH) {
         uint32_t application_size = 0;

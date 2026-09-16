@@ -3063,6 +3063,31 @@ void on_notification_shown(GObject *object, GAsyncResult *result, gpointer data)
 
 namespace nk::core::system_backend {
 
+bool keep_awake_supported() noexcept {
+    GError *error = nullptr;
+    auto *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
+    if (!bus) {
+        if (error)
+            g_error_free(error);
+        return false;
+    }
+    auto *reply = g_dbus_connection_call_sync(
+        bus, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+        "org.freedesktop.DBus.Introspectable", "Introspect", nullptr, G_VARIANT_TYPE("(s)"),
+        G_DBUS_CALL_FLAGS_NONE, 1000, nullptr, &error);
+    bool supported = false;
+    if (reply) {
+        const char *xml = nullptr;
+        g_variant_get(reply, "(&s)", &xml);
+        supported = xml && std::strstr(xml, "org.freedesktop.portal.Inhibit") != nullptr;
+        g_variant_unref(reply);
+    }
+    if (error)
+        g_error_free(error);
+    g_object_unref(bus);
+    return supported;
+}
+
 nk_result keep_awake_apply(bool enabled) noexcept {
     if (!enabled) {
         if (keep_awake_handle && keep_awake_bus) {
@@ -3171,16 +3196,20 @@ void shutdown() noexcept {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    return NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
-           NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
-           NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
-           NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING |
-           NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_SHARING |
-           NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE | NK_CAP_SYSTEM_INFO |
-           NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS |
-           NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_ACCESSIBILITY |
-           NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK |
-           nk::core::optional_capabilities();
+    auto capabilities = NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP |
+                        NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW |
+                        NK_CAP_NOTIFICATION | NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE |
+                        NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE |
+                        NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING | NK_CAP_MONITOR |
+                        NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_SHARING |
+                        NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE | NK_CAP_SYSTEM_INFO |
+                        NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
+                        NK_CAP_SYSTEM_FONTS | NK_CAP_DISPLAY_ORIENTATION |
+                        NK_CAP_ACCESSIBILITY |
+                        NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK;
+    if (nk::core::system_backend::keep_awake_supported())
+        capabilities |= NK_CAP_KEEP_AWAKE;
+    return capabilities | nk::core::optional_capabilities();
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {

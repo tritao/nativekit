@@ -355,9 +355,9 @@ sanitized for use as a path component. The legacy `DATA`, `CONFIG`, and
 `CACHE` directory values retain their existing meanings; the new
 `APPLICATION_STORAGE` value is application-specific and requires a configured
 ID. `APPLICATION` is returned only when the installation or bundle is backed
-by a real directory. `FONTS` is supported only where a meaningful desktop
-system font directory exists; mobile and Web applications should bundle their
-own fonts or use a future font-matching API.
+by a real directory. `FONTS` is supported where a meaningful path-backed system
+font directory exists, including Android's `/system/fonts`; iOS and Web
+applications should bundle their own fonts or use a future font-matching API.
 
 `nk_system_keep_awake_acquire()` returns an independent lease. The display is
 kept awake while at least one lease remains, and releasing one lease never

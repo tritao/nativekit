@@ -1,4 +1,5 @@
 #include "nativekit.h"
+#include "nativekit_system.h"
 #include "nativekit_window.h"
 
 #include <algorithm>
@@ -68,10 +69,12 @@ constexpr mask k_new_system_capabilities =
     cap(NK_CAP_DISPLAY_ORIENTATION);
 
 constexpr mask k_linux_system_capabilities =
-    k_new_system_capabilities & ~cap(NK_CAP_DEVICE_ORIENTATION);
+    k_new_system_capabilities & ~(cap(NK_CAP_DEVICE_ORIENTATION) | cap(NK_CAP_KEEP_AWAKE));
 constexpr mask k_mobile_system_capabilities =
     cap(NK_CAP_SYSTEM_INFO) | cap(NK_CAP_APPLICATION_STORAGE) | cap(NK_CAP_KEEP_AWAKE) |
     cap(NK_CAP_DEVICE_ORIENTATION) | cap(NK_CAP_DISPLAY_ORIENTATION);
+constexpr mask k_android_system_capabilities =
+    k_mobile_system_capabilities | cap(NK_CAP_APPLICATION_PATH) | cap(NK_CAP_SYSTEM_FONTS);
 constexpr mask k_ios_system_capabilities =
     k_mobile_system_capabilities | cap(NK_CAP_APPLICATION_PATH);
 
@@ -92,7 +95,7 @@ constexpr backend_contract platform_contract() {
                 k_linux_system_capabilities,
             cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_MOBILE_HOST) |
                 cap(NK_CAP_DEVICE_ORIENTATION),
-            0, 0};
+            0, cap(NK_CAP_KEEP_AWAKE)};
 #elif defined(NK_PARITY_BACKEND_WINDOWS)
     return {"Windows",
             k_desktop_common | cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) |
@@ -120,8 +123,8 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_NOTIFICATION) | cap(NK_CAP_INPUT) | cap(NK_CAP_OPENGL_ES_SURFACE) |
                 cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_RESOURCE_SHARING) |
                 cap(NK_CAP_RESOURCE_IO) | cap(NK_CAP_JOYSTICK) | cap(NK_CAP_ACCESSIBILITY) |
-                k_mobile_system_capabilities,
-            cap(NK_CAP_APPLICATION_PATH) | cap(NK_CAP_SYSTEM_FONTS),
+                k_android_system_capabilities,
+            0,
             cap(NK_CAP_WINDOW) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) | cap(NK_CAP_WRAP_NATIVE_WINDOW) |
                 cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
                 cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) |
@@ -199,7 +202,7 @@ struct capability_name {
     nk_capabilities value;
 };
 
-constexpr std::array<capability_name, 35> k_capability_names = {{
+constexpr std::array<capability_name, 36> k_capability_names = {{
     {"WINDOW", NK_CAP_WINDOW},
     {"WEBVIEW", NK_CAP_WEBVIEW},
     {"CLIPBOARD", NK_CAP_CLIPBOARD},
@@ -235,6 +238,7 @@ constexpr std::array<capability_name, 35> k_capability_names = {{
     {"DISPLAY_ORIENTATION", NK_CAP_DISPLAY_ORIENTATION},
     {"HTTP_CLIENT", NK_CAP_HTTP_CLIENT},
     {"HTTP_STREAMING", NK_CAP_HTTP_STREAMING},
+    {"SURFACE_FRAME_CALLBACK", NK_CAP_SURFACE_FRAME_CALLBACK},
 }};
 
 std::string_view trim(std::string_view value) {
@@ -372,6 +376,60 @@ bool check_disjoint(const backend_contract &contract) {
                                 contract.not_applicable, contract.optional);
 }
 
+nk_result read_system_string(nk_system_string_kind kind, std::string &value) {
+    uint32_t size = 0;
+    const auto query = nk_system_get_string(kind, nullptr, &size);
+    if (query != NK_ERROR_BUFFER_TOO_SMALL || !size)
+        return query;
+    std::vector<char> buffer(size, '\0');
+    auto capacity = size;
+    const auto result = nk_system_get_string(kind, buffer.data(), &capacity);
+    if (result == NK_OK)
+        value.assign(buffer.data());
+    return result;
+}
+
+bool probe_system_identity() {
+    nk_system_info info{};
+    info.struct_size = sizeof(info);
+    if (nk_system_get_info(&info) != NK_OK ||
+        (info.endianness != NK_SYSTEM_ENDIAN_LITTLE && info.endianness != NK_SYSTEM_ENDIAN_BIG)) {
+        std::fprintf(stderr, "system info did not report a stable platform identity\n");
+        return false;
+    }
+    if (info.platform == NK_SYSTEM_PLATFORM_UNKNOWN)
+        return true;
+
+    constexpr std::array required = {
+        NK_SYSTEM_STRING_PLATFORM_NAME, NK_SYSTEM_STRING_PLATFORM_VERSION,
+        NK_SYSTEM_STRING_PLATFORM_LABEL, NK_SYSTEM_STRING_APPLICATION_ID,
+        NK_SYSTEM_STRING_APPLICATION_NAME};
+    for (const auto kind : required) {
+        std::string value;
+        if (read_system_string(kind, value) != NK_OK || value.empty()) {
+            std::fprintf(stderr, "required system string %u is unavailable\n",
+                         static_cast<unsigned>(kind));
+            return false;
+        }
+    }
+
+    for (const auto kind : {NK_SYSTEM_STRING_DEVICE_VENDOR, NK_SYSTEM_STRING_DEVICE_MODEL}) {
+        std::string value;
+        const auto result = read_system_string(kind, value);
+        if (result != NK_OK && result != NK_ERROR_UNSUPPORTED) {
+            std::fprintf(stderr, "device system string %u returned %d\n",
+                         static_cast<unsigned>(kind), result);
+            return false;
+        }
+        if (result == NK_OK && value.empty()) {
+            std::fprintf(stderr, "device system string %u was reported empty\n",
+                         static_cast<unsigned>(kind));
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 #if defined(__EMSCRIPTEN__)
@@ -394,6 +452,8 @@ int main() {
     nk_init_options options = {};
     options.struct_size = sizeof(options);
     options.api_version = NK_API_VERSION;
+    options.application_id = "org.nativekit.platform-parity";
+    options.application_name = "NativeKit platform parity";
     if (nk_init(&options) != NK_OK) {
         std::fprintf(stderr, "could not initialize NativeKit for %s parity test: %s\n",
                      contract.name, nk_last_error());
@@ -431,6 +491,7 @@ int main() {
         valid = false;
     }
 
+    valid = probe_system_identity() && valid;
     nk_shutdown();
 #if defined(__EMSCRIPTEN__)
     mark_browser_result(valid);

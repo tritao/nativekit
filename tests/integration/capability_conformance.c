@@ -522,11 +522,99 @@ static int probe_monitors(nk_capabilities capabilities, nk_window window) {
     return geometry.width > 0 && geometry.height > 0 && mode.width > 0 && mode.height > 0;
 }
 
+static int probe_system_string(nk_system_string_kind kind, const char *name, int required) {
+    uint32_t size = 0;
+    const nk_result query = nk_system_get_string(kind, NULL, &size);
+    if (!required && query == NK_ERROR_UNSUPPORTED)
+        return 1;
+    if (query != NK_ERROR_BUFFER_TOO_SMALL || size <= 1) {
+        fprintf(stderr, "%s size query returned %d with size %u: %s\n", name, query, size,
+                nk_last_error());
+        return 0;
+    }
+    char *value = malloc(size);
+    if (!value || !require_ok(name, nk_system_get_string(kind, value, &size))) {
+        free(value);
+        return 0;
+    }
+    const int valid = value[0] != '\0';
+    if (!valid)
+        fprintf(stderr, "%s returned an empty value\n", name);
+    free(value);
+    return valid;
+}
+
+static int probe_system_directory(nk_system_directory_kind kind, const char *name) {
+    uint32_t size = 0;
+    if (!require_result(name, nk_system_directory(kind, NULL, &size), NK_ERROR_BUFFER_TOO_SMALL) ||
+        size <= 1)
+        return 0;
+    char *path = malloc(size);
+    if (!path || !require_ok(name, nk_system_directory(kind, path, &size))) {
+        free(path);
+        return 0;
+    }
+    const int valid = path[0] != '\0';
+    if (!valid)
+        fprintf(stderr, "%s returned an empty path\n", name);
+    free(path);
+    return valid;
+}
+
 static int probe_system_and_validation(nk_capabilities capabilities) {
+    nk_system_info info = {0};
+    info.struct_size = sizeof(info);
+    if (!require_ok("nk_system_get_info", nk_system_get_info(&info)) ||
+        info.platform == NK_SYSTEM_PLATFORM_UNKNOWN ||
+        (info.endianness != NK_SYSTEM_ENDIAN_LITTLE && info.endianness != NK_SYSTEM_ENDIAN_BIG))
+        return 0;
+    if (!probe_system_string(NK_SYSTEM_STRING_PLATFORM_NAME, "platform name", 1) ||
+        !probe_system_string(NK_SYSTEM_STRING_PLATFORM_VERSION, "platform version", 1) ||
+        !probe_system_string(NK_SYSTEM_STRING_PLATFORM_LABEL, "platform label", 1) ||
+        !probe_system_string(NK_SYSTEM_STRING_APPLICATION_ID, "application ID", 1) ||
+        !probe_system_string(NK_SYSTEM_STRING_APPLICATION_NAME, "application name", 1))
+        return 0;
+#if defined(_WIN32) || defined(__APPLE__)
+    if (!probe_system_string(NK_SYSTEM_STRING_DEVICE_VENDOR, "device vendor", 1) ||
+        !probe_system_string(NK_SYSTEM_STRING_DEVICE_MODEL, "device model", 1))
+        return 0;
+#else
+    if (!probe_system_string(NK_SYSTEM_STRING_DEVICE_VENDOR, "device vendor", 0) ||
+        !probe_system_string(NK_SYSTEM_STRING_DEVICE_MODEL, "device model", 0))
+        return 0;
+#endif
+    if (capabilities & NK_CAP_APPLICATION_PATH &&
+        !probe_system_directory(NK_DIRECTORY_APPLICATION, "application directory"))
+        return 0;
+    if (capabilities & NK_CAP_APPLICATION_STORAGE &&
+        !probe_system_directory(NK_DIRECTORY_APPLICATION_STORAGE, "application storage"))
+        return 0;
+    if (capabilities & NK_CAP_SYSTEM_FONTS &&
+        !probe_system_directory(NK_DIRECTORY_FONTS, "system fonts directory"))
+        return 0;
+    if (capabilities & (NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION)) {
+        nk_system_orientation orientation = {0};
+        orientation.struct_size = sizeof(orientation);
+        if (!require_ok("nk_system_get_orientation", nk_system_get_orientation(&orientation)) ||
+            orientation.device > NK_ORIENTATION_FACE_DOWN ||
+            orientation.display > NK_ORIENTATION_FACE_DOWN)
+            return 0;
+    }
     if (capabilities & NK_CAP_SYSTEM_APPEARANCE) {
         nk_system_appearance appearance = {0};
         appearance.struct_size = sizeof(appearance);
-        if (!require_ok("nk_system_get_appearance", nk_system_get_appearance(&appearance)))
+        if (!require_ok("nk_system_get_appearance", nk_system_get_appearance(&appearance)) ||
+            appearance.color_scheme > NK_COLOR_SCHEME_DARK || appearance.high_contrast > 1)
+            return 0;
+    }
+    if (capabilities & NK_CAP_KEEP_AWAKE) {
+        nk_keep_awake_options options = {0};
+        options.struct_size = sizeof(options);
+        options.flags = NK_KEEP_AWAKE_DISPLAY;
+        nk_keep_awake lease = 0;
+        if (!require_ok("nk_system_keep_awake_acquire",
+                        nk_system_keep_awake_acquire(&options, &lease)) ||
+            !require_ok("nk_system_keep_awake_release", nk_system_keep_awake_release(lease)))
             return 0;
     }
     uint32_t size = 0;
@@ -820,6 +908,8 @@ int main(void) {
     nk_init_options init = {0};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
+    init.application_id = "org.nativekit.capability-conformance";
+    init.application_name = "NativeKit capability conformance";
     if (!require_ok("nk_init", nk_init(&init)))
         return 1;
     const nk_capabilities capabilities = nk_get_capabilities();

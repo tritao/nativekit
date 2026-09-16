@@ -1750,8 +1750,20 @@ final class NativeKitBridge {
             case NK_DIRECTORY_CACHE:
             case NK_DIRECTORY_TEMP:
                 return context.getCacheDir().getAbsolutePath();
+            case NK_DIRECTORY_APPLICATION: {
+                String sourcePath = context.getApplicationInfo().sourceDir;
+                if (sourcePath == null)
+                    return null;
+                java.io.File source = new java.io.File(sourcePath);
+                java.io.File installDirectory = source.getParentFile();
+                return installDirectory == null ? null : installDirectory.getAbsolutePath();
+            }
             case NK_DIRECTORY_APPLICATION_STORAGE:
                 return context.getFilesDir().getAbsolutePath();
+            case NK_DIRECTORY_FONTS: {
+                java.io.File fonts = new java.io.File(Environment.getRootDirectory(), "fonts");
+                return fonts.isDirectory() ? fonts.getAbsolutePath() : null;
+            }
             default:
                 return null;
         }

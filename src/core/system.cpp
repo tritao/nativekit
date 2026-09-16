@@ -6,6 +6,7 @@
 #include "core/system_internal.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -129,6 +130,22 @@ std::string platform_version() {
     return {};
 }
 
+#if defined(NK_BACKEND_LINUX) || defined(NK_BACKEND_GTK)
+std::string linux_device_string(const char *path) {
+    std::ifstream input(path);
+    std::string value;
+    if (!std::getline(input, value))
+        return {};
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())))
+        value.pop_back();
+    const auto first = std::find_if_not(value.begin(), value.end(), [](char character) {
+        return std::isspace(static_cast<unsigned char>(character));
+    });
+    value.erase(value.begin(), first);
+    return value;
+}
+#endif
+
 nk_result copy_string(const std::string &value, char *buffer, uint32_t *inout_size) {
     if (!inout_size) {
         nk::core::set_error("system string size output must not be null");
@@ -239,6 +256,18 @@ namespace system_backend {
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((weak))
 #endif
+bool keep_awake_supported() noexcept {
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_ANDROID) || \
+    defined(NK_BACKEND_IOS)
+    return true;
+#else
+    return false;
+#endif
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((weak))
+#endif
 nk_result
 keep_awake_apply(bool enabled) noexcept {
 #if defined(NK_BACKEND_LINUX) || defined(NK_BACKEND_GTK)
@@ -298,8 +327,23 @@ get_orientation(nk_system_orientation &out_orientation) noexcept {
 #endif
 }
 
-#if !defined(NK_BACKEND_WINDOWS) && !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_IOS)
-#if !defined(NK_BACKEND_MACOS)
+#if defined(NK_BACKEND_LINUX) || defined(NK_BACKEND_GTK)
+nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
+    const char *path = nullptr;
+    switch (kind) {
+    case NK_SYSTEM_STRING_DEVICE_VENDOR:
+        path = "/sys/class/dmi/id/sys_vendor";
+        break;
+    case NK_SYSTEM_STRING_DEVICE_MODEL:
+        path = "/sys/class/dmi/id/product_name";
+        break;
+    default:
+        return NK_ERROR_UNSUPPORTED;
+    }
+    out_value = linux_device_string(path);
+    return out_value.empty() ? NK_ERROR_UNSUPPORTED : NK_OK;
+}
+#else
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((weak))
 #endif
@@ -308,7 +352,6 @@ get_string(nk_system_string_kind, std::string &out_value) {
     out_value.clear();
     return NK_ERROR_UNSUPPORTED;
 }
-#endif
 #endif
 
 } // namespace system_backend

@@ -1489,6 +1489,19 @@ EM_JS(int, nk_web_copy_locale, (char *buffer, int capacity), {
     return required;
 });
 
+EM_JS(int, nk_web_copy_user_agent, (char *buffer, int capacity), {
+    const value = typeof navigator !== "undefined" && typeof navigator.userAgent === "string"
+        ? navigator.userAgent
+        : "";
+    if (!value)
+        return 0;
+    const required = lengthBytesUTF8(value) + 1;
+    if (!buffer || capacity < required)
+        return required;
+    stringToUTF8(value, buffer, required);
+    return required;
+});
+
 EM_JS(int, nk_web_get_appearance_flags, (int supported, int dark, int high_contrast), {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function")
         return 0;
@@ -2041,6 +2054,18 @@ nk_result copy_locale(char *buffer, uint32_t *inout_size) noexcept {
     const auto capacity = *inout_size;
     const auto js_capacity = std::min<uint32_t>(capacity, std::numeric_limits<int>::max());
     const auto result = nk_web_copy_locale(buffer, static_cast<int>(js_capacity));
+    if (result <= 0)
+        return NK_ERROR_UNSUPPORTED;
+    *inout_size = static_cast<uint32_t>(result);
+    return buffer && capacity >= *inout_size ? NK_OK : NK_ERROR_BUFFER_TOO_SMALL;
+}
+
+nk_result copy_user_agent(char *buffer, uint32_t *inout_size) noexcept {
+    if (!inout_size)
+        return NK_ERROR_INVALID_ARGUMENT;
+    const auto capacity = *inout_size;
+    const auto js_capacity = std::min<uint32_t>(capacity, std::numeric_limits<int>::max());
+    const auto result = nk_web_copy_user_agent(buffer, static_cast<int>(js_capacity));
     if (result <= 0)
         return NK_ERROR_UNSUPPORTED;
     *inout_size = static_cast<uint32_t>(result);

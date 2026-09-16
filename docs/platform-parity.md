@@ -132,9 +132,22 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 | Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick, native export, X11 native wrapping, accessibility, surface frame callbacks | Wayland native wrapping |
 | Windows | Windows, WebView when WebView2 is available, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick, native export, Win32 native wrapping, surface frame callbacks | — |
 | macOS | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping, surface frame callbacks | — |
-| Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility | — |
-| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, accessibility | — |
-| Web | Window, geometry and CSS-backed styling, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility, surface frame callbacks | — |
+| Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility, APK installation path, system fonts | — |
+| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, accessibility | System font directory, surface frame callbacks |
+| Web | Window, geometry and CSS-backed styling, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility, surface frame callbacks | Browser filesystem paths, system fonts, physical device orientation |
+
+The system-information family has platform-specific details that are also part
+of the executable contract. Linux reads privacy-safe vendor and product values
+from DMI when the kernel exposes them. Windows reads the BIOS manufacturer and
+product values and obtains the OS version through `RtlGetVersion`, avoiding
+compatibility-manifest-dependent `GetVersionEx` results. macOS reports the
+hardware model from `hw.model`. Android reports the APK installation directory
+and `/system/fonts` when that directory exists. iOS does not expose a supported
+font-directory path, and browser filesystem paths remain unavailable by design.
+
+Linux advertises `NK_CAP_KEEP_AWAKE` only when the session's XDG desktop portal
+exposes the `Inhibit` interface; applications must continue to treat that bit
+as runtime-dependent.
 
 The current Windows joystick adapter uses XInput's standard gamepad model,
 including hotplug and normalized canonical state. The macOS and iOS adapters use

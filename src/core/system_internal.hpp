@@ -18,6 +18,7 @@ bool system_keep_awake_held();
 
 /** Platform hooks used by the shared lease and orientation implementation. */
 namespace system_backend {
+bool keep_awake_supported() noexcept;
 nk_result keep_awake_apply(bool enabled) noexcept;
 nk_result get_orientation(nk_system_orientation &out_orientation) noexcept;
 nk_result get_string(nk_system_string_kind kind, std::string &out_value);

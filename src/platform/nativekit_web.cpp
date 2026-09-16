@@ -1953,6 +1953,21 @@ nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
     return NK_OK;
 }
 
+nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
+    if (kind != NK_SYSTEM_STRING_PLATFORM_VERSION)
+        return NK_ERROR_UNSUPPORTED;
+    uint32_t size = 0;
+    if (nk::web::copy_user_agent(nullptr, &size) != NK_ERROR_BUFFER_TOO_SMALL || !size)
+        return NK_ERROR_UNSUPPORTED;
+    std::string value(size, '\0');
+    auto capacity = size;
+    if (nk::web::copy_user_agent(value.data(), &capacity) != NK_OK)
+        return NK_ERROR_UNSUPPORTED;
+    value.resize(std::strlen(value.c_str()));
+    out_value = std::move(value);
+    return out_value.empty() ? NK_ERROR_UNSUPPORTED : NK_OK;
+}
+
 } // namespace nk::core::system_backend
 
 std::shared_ptr<WebGamepadResource> web_gamepad_handle(nk_handle handle) {

@@ -333,6 +333,18 @@ bool has_active_host() {
     return false;
 }
 
+UIInterfaceOrientation current_display_orientation() {
+    for (const auto &[handle, resource] : hosts) {
+        (void)handle;
+        if (!resource->view || resource->lifecycle == NK_MOBILE_LIFECYCLE_BACKGROUND)
+            continue;
+        UIWindow *window = resource->view.window;
+        if (window.windowScene)
+            return window.windowScene.interfaceOrientation;
+    }
+    return UIInterfaceOrientationUnknown;
+}
+
 std::shared_ptr<IOSSurface> surface(nk_handle handle) {
     const auto found = surfaces.find(handle);
     return found == surfaces.end() ? nullptr : found->second;
@@ -1653,10 +1665,8 @@ void queue_orientation(const std::shared_ptr<IOSHost> &resource) {
     }
     UIInterfaceOrientation display = UIInterfaceOrientationUnknown;
     UIWindow *window = resource->view.window;
-    if (@available(iOS 13.0, *))
+    if (window.windowScene)
         display = window.windowScene.interfaceOrientation;
-    else
-        display = UIApplication.sharedApplication.statusBarOrientation;
     const auto orientation = interface_orientation(display);
     if (orientation == NK_ORIENTATION_UNKNOWN || orientation == resource->last_display_orientation)
         return;
@@ -3096,8 +3106,7 @@ nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
     out_orientation = {};
     out_orientation.struct_size = size;
     out_orientation.device = ios_orientation(UIDevice.currentDevice.orientation);
-    out_orientation.display =
-        interface_orientation(UIApplication.sharedApplication.statusBarOrientation);
+    out_orientation.display = interface_orientation(current_display_orientation());
     return NK_OK;
 }
 

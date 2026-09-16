@@ -45,7 +45,7 @@ enum NK_ENUM(nk_system_directory_kind) {
     NK_DIRECTORY_APPLICATION = 9,
     /** Private, persistent, application-specific writable storage. */
     NK_DIRECTORY_APPLICATION_STORAGE = 10,
-    /** Best-known system font directory on desktop platforms. */
+    /** Best-known path-backed system font directory, when available. */
     NK_DIRECTORY_FONTS = 11
 };
 

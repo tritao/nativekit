@@ -169,7 +169,7 @@ public final class NativeKitHostTest {
             assertEquals(notificationRequest[0], dismissed.requestId);
 
             scenario.onActivity(activity -> {
-                int[] directories = {1, 3, 4, 5, 6, 7, 8, 10};
+                int[] directories = {1, 3, 4, 5, 6, 7, 8, 9, 10, 11};
                 for (int kind : directories) {
                     String path = activity.host.systemDirectory(kind);
                     assertNotNull(path);
@@ -177,8 +177,8 @@ public final class NativeKitHostTest {
                 }
                 assertTrue(new File(activity.host.systemDirectory(10)).canWrite());
                 assertEquals(null, activity.host.systemDirectory(2));
-                assertEquals(null, activity.host.systemDirectory(9));
-                assertEquals(null, activity.host.systemDirectory(11));
+                assertTrue(new File(activity.host.systemDirectory(9)).isDirectory());
+                assertTrue(new File(activity.host.systemDirectory(11)).isDirectory());
                 assertTrue(!activity.host.systemLocale().isEmpty());
                 int scheme = activity.host.systemAppearance() & 0xff;
                 assertTrue(scheme >= 0 && scheme <= 2);

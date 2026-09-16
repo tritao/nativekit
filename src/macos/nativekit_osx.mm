@@ -6,6 +6,8 @@
 #import <UserNotifications/UserNotifications.h>
 #import <WebKit/WebKit.h>
 
+#include <sys/sysctl.h>
+
 #include "nativekit_clipboard.h"
 #include "nativekit_accessibility.h"
 #include "nativekit_dialog.h"
@@ -85,6 +87,18 @@ NSString *const NKMacAccessibilityFrameAttribute = @"AXFrame";
 NSString *const NKMacAccessibilityScrollToVisibleAction = @"AXScrollToVisible";
 
 namespace {
+
+std::string mac_sysctl_string(const char *name) {
+    std::size_t size = 0;
+    if (sysctlbyname(name, nullptr, &size, nullptr, 0) != 0 || size == 0)
+        return {};
+    std::vector<char> value(size);
+    if (sysctlbyname(name, value.data(), &size, nullptr, 0) != 0)
+        return {};
+    while (size && value[size - 1] == '\0')
+        --size;
+    return std::string(value.data(), size);
+}
 
 struct MacCursorResource;
 struct MacSurfaceResource;
@@ -3502,9 +3516,13 @@ nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
     case NK_SYSTEM_STRING_DEVICE_VENDOR:
         out_value = "Apple";
         return NK_OK;
+    case NK_SYSTEM_STRING_DEVICE_MODEL:
+        out_value = mac_sysctl_string("hw.model");
+        break;
     default:
         return NK_ERROR_UNSUPPORTED;
     }
+    return out_value.empty() ? NK_ERROR_UNSUPPORTED : NK_OK;
 }
 
 } // namespace nk::core::system_backend

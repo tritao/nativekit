@@ -348,6 +348,41 @@ std::string utf8(const wchar_t *text) {
     return result;
 }
 
+std::string windows_bios_string(const wchar_t *value_name) {
+    constexpr wchar_t key[] = L"HARDWARE\\DESCRIPTION\\System\\BIOS";
+    DWORD type = 0;
+    DWORD bytes = 0;
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, key, value_name, RRF_RT_REG_SZ, &type, nullptr,
+                     &bytes) != ERROR_SUCCESS || type != REG_SZ || bytes < sizeof(wchar_t))
+        return {};
+    std::wstring value(static_cast<std::size_t>(bytes / sizeof(wchar_t)) + 1, L'\0');
+    DWORD capacity = static_cast<DWORD>(value.size() * sizeof(wchar_t));
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, key, value_name, RRF_RT_REG_SZ, nullptr, value.data(),
+                     &capacity) != ERROR_SUCCESS)
+        return {};
+    value.resize(capacity / sizeof(wchar_t));
+    while (!value.empty() && value.back() == L'\0')
+        value.pop_back();
+    return utf8(value.c_str());
+}
+
+std::string windows_version_string() {
+    using RtlGetVersion = LONG(WINAPI *)(OSVERSIONINFOW *);
+    const auto module = GetModuleHandleW(L"ntdll.dll");
+    if (!module)
+        return {};
+    const auto get_version =
+        reinterpret_cast<RtlGetVersion>(GetProcAddress(module, "RtlGetVersion"));
+    if (!get_version)
+        return {};
+    OSVERSIONINFOEXW version{};
+    version.dwOSVersionInfoSize = sizeof(version);
+    if (get_version(reinterpret_cast<OSVERSIONINFOW *>(&version)) != 0)
+        return {};
+    return std::to_string(version.dwMajorVersion) + "." + std::to_string(version.dwMinorVersion) +
+           "." + std::to_string(version.dwBuildNumber);
+}
+
 #if defined(NK_HAS_WEBVIEW2)
 std::wstring html_attribute(const std::wstring &value) {
     std::wstring result;
@@ -2773,16 +2808,20 @@ nk_result get_system_directory(nk_system_directory_kind kind, std::string &outpu
 namespace nk::core::system_backend {
 
 nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
-    if (kind != NK_SYSTEM_STRING_PLATFORM_VERSION)
+    switch (kind) {
+    case NK_SYSTEM_STRING_PLATFORM_VERSION:
+        out_value = windows_version_string();
+        break;
+    case NK_SYSTEM_STRING_DEVICE_VENDOR:
+        out_value = windows_bios_string(L"SystemManufacturer");
+        break;
+    case NK_SYSTEM_STRING_DEVICE_MODEL:
+        out_value = windows_bios_string(L"SystemProductName");
+        break;
+    default:
         return NK_ERROR_UNSUPPORTED;
-    OSVERSIONINFOEXW version{};
-    version.dwOSVersionInfoSize = sizeof(version);
-    if (!GetVersionExW(reinterpret_cast<OSVERSIONINFOW *>(&version)))
-        return NK_ERROR_UNSUPPORTED;
-    out_value = std::to_string(version.dwMajorVersion) + "." +
-                std::to_string(version.dwMinorVersion) + "." +
-                std::to_string(version.dwBuildNumber);
-    return NK_OK;
+    }
+    return out_value.empty() ? NK_ERROR_UNSUPPORTED : NK_OK;
 }
 
 } // namespace nk::core::system_backend
