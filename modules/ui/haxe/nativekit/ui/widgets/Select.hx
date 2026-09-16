@@ -104,6 +104,7 @@ class Select<T> implements View {
 					openState.update(false);
 				isOpen = false;
 			}
+			root.layout.style.zIndex = isOpen ? 10 : 0;
 
 			var initialActive = selectedIndex >= 0 ? selectedIndex : firstEnabled;
 			var activeState:State<Int> = context.state(context.id("active"), initialActive);

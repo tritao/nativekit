@@ -38,6 +38,9 @@ class InspectionOverlay {
 		if (explorer.context.root == null)
 			return;
 		var root = explorer.context.root;
+		var hovered = explorer.context.events.hoveredId();
+		explorer.state.inspector.hoveredNodeId = hovered == null
+			? 0 : inspectionTargetId(explorer, hovered);
 		root.on(UiEventKind.PointerMove, function(event) {
 			updateHoveredAt(explorer, event.x, event.y);
 		});

@@ -1,7 +1,5 @@
 package nativekit.ui.core;
 
-import LayoutPositioning;
-
 /** Hit testing and target paths derived from the resolved Haxe render tree. */
 class HitTest {
 	public static function path(root:Null<RenderNode>, x:Float, y:Float):Array<RenderNode> {
@@ -32,8 +30,7 @@ class HitTest {
 		path.push(node);
 		var ordered:Array<RenderNode> = [];
 		for (child in node.children) {
-			var zIndex = child.layout.style.positioning == LayoutPositioning.Absolute
-				? child.layout.style.zIndex : 0;
+			var zIndex = child.layout.style.zIndex;
 			var index = ordered.length;
 			while (index > 0 && zIndex < childZIndex(ordered[index - 1]))
 				index--;
@@ -55,6 +52,5 @@ class HitTest {
 		return x >= rect.x && y >= rect.y && x <= rect.x + rect.width && y <= rect.y + rect.height;
 
 	static inline function childZIndex(node:RenderNode):Int
-		return node.layout.style.positioning == LayoutPositioning.Absolute
-			? node.layout.style.zIndex : 0;
+		return node.layout.style.zIndex;
 }

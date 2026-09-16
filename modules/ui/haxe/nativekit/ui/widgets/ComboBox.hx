@@ -32,6 +32,7 @@ class ComboBox<T> implements View {
 	public var onQueryChange:String->Void;
 	public var hasChangeHandler(default, null):Bool;
 	public var hasQueryChangeHandler(default, null):Bool;
+	final usesDefaultStyle:Bool;
 
 	public function new(key:String, options:Array<SelectOption<T>>, value:T,
 			?onChange:T->Void, ?style:LayoutStyle, ?placeholder:String,
@@ -49,7 +50,8 @@ class ComboBox<T> implements View {
 		this.value = value;
 		hasChangeHandler = onChange != null;
 		this.onChange = onChange == null ? function(_:T) {} : onChange;
-		this.style = style == null ? defaultStyle() : style.copy();
+		usesDefaultStyle = style == null;
+		this.style = usesDefaultStyle ? defaultStyle() : style.copy();
 		if (this.style.height.sizing == LayoutSizing.Fit)
 			this.style.height = LayoutAxis.fixed(40.0);
 		this.placeholder = placeholder == null || placeholder.length == 0 ? "Search" : placeholder;
@@ -128,6 +130,7 @@ class ComboBox<T> implements View {
 					openState.update(false);
 				isOpen = false;
 			}
+			root.layout.style.zIndex = isOpen ? 10 : 0;
 			var initialActive = filteredIndices.length == 0 ? -1 : filteredIndices[0];
 			if (selectedIndex >= 0 && contains(filteredIndices, selectedIndex))
 				initialActive = selectedIndex;
@@ -191,6 +194,8 @@ class ComboBox<T> implements View {
 			};
 
 			var inputStyle = style.copy();
+			if (usesDefaultStyle)
+				inputStyle.background = context.theme.panelBackground;
 			inputStyle.width = LayoutAxis.grow();
 			var input = new TextField("input", query, function(next) {
 				query = next == null ? "" : next;

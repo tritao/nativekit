@@ -25,7 +25,9 @@ import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.ComboBox;
+import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.Dialog;
+import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Menu;
 import nativekit.ui.widgets.MenuItem;
 import nativekit.ui.widgets.ProgressBar;
@@ -215,6 +217,10 @@ class AccessibilityContract {
 			return 29;
 		if (!checkSelectOverlay(context))
 			return 30;
+		if (!checkSelectOverlap(context))
+			return 46;
+		if (!checkMovingHover(context))
+			return 47;
 		if (!checkSelectScroll(context))
 			return 31;
 		if (!checkComboBox(context))
@@ -391,6 +397,57 @@ class AccessibilityContract {
 		root = context.submit(stack, frame);
 		return root.children[0].children.length == 1 && context.focus.focusedId != null &&
 			context.focus.focusedId.equals(root.children[0].children[0].id);
+	}
+
+	static function checkSelectOverlap(context:UiContext):Bool {
+		var selected = "compact";
+		var underlyingClicks = 0;
+		var select = new Select("overlap-select", [
+			new SelectOption("comfortable", "Comfortable", "comfortable"),
+			new SelectOption("compact", "Compact", "compact")
+		], selected, function(value) { selected = value; });
+		var column = new Column("overlap-column", [
+			new KeyedView("select", select),
+			new KeyedView("underlying",
+				new Button("Underlying", null, function() { underlyingClicks++; }))
+		]);
+		var frame = new LayoutFrame(256.0, 192.0);
+		var root = context.submit(column, frame);
+		var trigger = root.children[0].children[0];
+		if (!context.focusWidget(trigger.id))
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.Enter);
+		root = context.submit(column, frame);
+		var selectRoot = root.children[0];
+		if (selectRoot.children.length != 2 || selectRoot.layout.style.zIndex <= 0)
+			return false;
+		var option:ResolvedLayoutItem = cast selectRoot.children[1].children[0].resolved;
+		var x = option.x + 3.0;
+		var y = option.y + option.height * 0.5;
+		context.pointerDown(x, y, 0);
+		context.pointerUp(x, y, 0);
+		return selected == "comfortable" && underlyingClicks == 0;
+	}
+
+	static function checkMovingHover(context:UiContext):Bool {
+		var frame = new LayoutFrame(256.0, 192.0);
+		var initial = new Stack("moving-hover-stack", [
+			new StackChild("target", new Button("Moving target"), 8.0, 8.0, 1,
+				LayoutAxis.fixed(100.0), LayoutAxis.fixed(36.0))
+		]);
+		var root = context.submit(initial, frame);
+		var targetId = root.children[0].id;
+		context.pointerMove(12.0, 12.0);
+		if (context.events.hoveredId() == null ||
+			!context.events.hoveredId().equals(targetId))
+			return false;
+		var moved = new Stack("moving-hover-stack", [
+			new StackChild("target", new Button("Moving target"), 140.0, 8.0, 1,
+				LayoutAxis.fixed(100.0), LayoutAxis.fixed(36.0))
+		]);
+		context.submit(moved, frame);
+		return context.events.hoveredId() == null ||
+			!context.events.hoveredId().equals(targetId);
 	}
 
 	static function checkSelectScroll(context:UiContext):Bool {

@@ -8,6 +8,7 @@ class EventDispatcher {
 	var root:Null<RenderNode>;
 	final focus:FocusManager;
 	var hoverPaths:Map<Int, Array<RenderNode>>;
+	final pointerLocations:Map<Int, PointerLocation>;
 	final pressedIds:Map<Int, WidgetId>;
 	final capturedIds:Map<Int, WidgetId>;
 
@@ -15,6 +16,7 @@ class EventDispatcher {
 		this.focus = focus;
 		root = null;
 		hoverPaths = new Map();
+		pointerLocations = new Map();
 		pressedIds = new Map();
 		capturedIds = new Map();
 	}
@@ -37,20 +39,22 @@ class EventDispatcher {
 		}
 		for (pointerId in stale)
 			pressedIds.remove(pointerId);
-		var reboundHover = new Map<Int, Array<RenderNode>>();
-		for (pointerId in hoverPaths.keys()) {
-			var path = hoverPaths.get(pointerId);
-			if (path == null || path.length == 0)
+		for (pointerId in pointerLocations.keys()) {
+			var location = pointerLocations.get(pointerId);
+			if (location == null)
 				continue;
-			var current = root == null ? null : root.find(path[path.length - 1].id);
-			if (current != null)
-				reboundHover.set(pointerId, HitTest.pathTo(current));
+			var x = location.x;
+			var y = location.y;
+			var path = capturedPath(pointerId);
+			if (path.length == 0)
+				path = HitTest.path(root, x, y);
+			updateHover(pointerId, path, x, y);
 		}
-		hoverPaths = reboundHover;
 	}
 
 	public function pointerMove(x:Float, y:Float, modifiers:Int = 0,
 			pointerId:Int = 0, data:Dynamic = null):Void {
+		rememberPointer(pointerId, x, y);
 		var path = HitTest.path(root, x, y);
 		var targetPath = capturedPath(pointerId);
 		if (targetPath.length == 0)
@@ -69,6 +73,7 @@ class EventDispatcher {
 
 	public function pointerDown(x:Float, y:Float, button:Int, modifiers:Int = 0,
 			pointerId:Int = 0, data:Dynamic = null, timestamp:Float = -1.0):Void {
+		rememberPointer(pointerId, x, y);
 		var path = HitTest.path(root, x, y);
 		if (root != null)
 			dispatchOutsidePointerDown(path, x, y, button, modifiers, pointerId, data, timestamp);
@@ -113,6 +118,7 @@ class EventDispatcher {
 
 	public function pointerUp(x:Float, y:Float, button:Int, modifiers:Int = 0,
 			pointerId:Int = 0, data:Dynamic = null):Void {
+		rememberPointer(pointerId, x, y);
 		var releasePath = HitTest.path(root, x, y);
 		var path = capturedPath(pointerId);
 		var pressed = pressedIds.get(pointerId);
@@ -145,6 +151,7 @@ class EventDispatcher {
 				path[path.length - 1].id, x, y, 0.0, 0.0, 0, 0, modifiers,
 				null, data, 0, pointerId));
 		updateHover(pointerId, [], x, y);
+		pointerLocations.remove(pointerId);
 	}
 
 	public function scroll(x:Float, y:Float, deltaX:Float, deltaY:Float,
@@ -202,6 +209,7 @@ class EventDispatcher {
 		updateHover(pointerId, [], 0.0, 0.0);
 		capturedIds.remove(pointerId);
 		pressedIds.remove(pointerId);
+		pointerLocations.remove(pointerId);
 	}
 
 	public function cancelPointers():Void {
@@ -297,6 +305,10 @@ class EventDispatcher {
 			capturedIds.set(pointerId, event.pointerCaptureTarget);
 	}
 
+	function rememberPointer(pointerId:Int, x:Float, y:Float):Void {
+		pointerLocations.set(pointerId, new PointerLocation(x, y));
+	}
+
 	function changeFocus(id:WidgetId):Bool {
 		var previous = focus.focusedId;
 		if (previous != null && previous.equals(id))
@@ -359,5 +371,15 @@ class EventDispatcher {
 				return;
 			index--;
 		}
+	}
+}
+
+private class PointerLocation {
+	public final x:Float;
+	public final y:Float;
+
+	public function new(x:Float, y:Float) {
+		this.x = x;
+		this.y = y;
 	}
 }
