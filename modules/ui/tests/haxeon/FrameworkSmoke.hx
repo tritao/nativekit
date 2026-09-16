@@ -27,6 +27,11 @@ import TextDirection;
 import TextStyle;
 import TextWrap;
 import NativeKit.InputAction;
+import NativeKit.InitOptions;
+import NativeKit.WindowDecorationRegionKind;
+import NativeKit.WindowFlags;
+import NativeKit.WindowKind;
+import NativeKit.WindowOptions;
 import NativeKit.TouchAction;
 import NativeKit.TouchTool;
 import NativeKit.TextEditAction;
@@ -98,6 +103,7 @@ import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualList;
+import nativekit.ui.widgets.WindowChrome;
 import nativekit.ui.theme.Theme;
 import nativekit.ui.theme.ThemeTokens;
 import nativekit.ui.theme.TextRole;
@@ -2404,6 +2410,8 @@ class FrameworkSmoke {
 		if (cachedBuilds != 1 || jitteredRoot != cachedRoot || cachedMetrics == null ||
 			!cachedMetrics.reusedSubmission)
 			return 110;
+		if (!checkWindowChrome(context))
+			return 231;
 
 		var cleaned = 0;
 		context.stateStore.onDispose(initialId, function() {
@@ -2415,6 +2423,47 @@ class FrameworkSmoke {
 		fonts.dispose();
 		Sys.println("PASS: Haxe framework, 4,000-node layout pressure, and NativeKit input routing");
 		return 0;
+	}
+
+	static function checkWindowChrome(context:UiContext):Bool {
+		var runtime:Null<NativeKitRuntime> = null;
+		var attached = false;
+		var result = false;
+		try {
+			var initOptions = new InitOptions();
+			initOptions.set_api_version(NativeKit.nk_api_version());
+			runtime = NativeKitRuntime.start(initOptions);
+			var windowOptions = new WindowOptions();
+			windowOptions.set_width(320);
+			windowOptions.set_height(192);
+			windowOptions.set_title("NativeKit UI chrome smoke");
+			windowOptions.set_flags(WindowFlags.Hidden | WindowFlags.Borderless);
+			windowOptions.set_owner(NativeKit.WindowHandle.invalid());
+			windowOptions.set_kind(WindowKind.Normal);
+			var window = runtime.createWindow(windowOptions);
+			context.attachPlatformWindow(window.nativeHandle());
+			attached = true;
+			var root = context.submit(new WindowChrome("chrome", WindowDecorationRegionKind.Drag,
+				new Row("chrome-row", [new KeyedView("client", new WindowChrome(
+					"client", WindowDecorationRegionKind.Client, new Text("Client")))])),
+				new LayoutFrame(320.0, 192.0));
+			result = root.windowDecoration == WindowDecorationRegionKind.Drag &&
+				root.children.length == 1 &&
+				root.children[0].windowDecoration == WindowDecorationRegionKind.Client &&
+				root.resolved != null && root.resolved.width > 0.0 && root.resolved.height > 0.0;
+		} catch (_:Dynamic) {
+		}
+		if (attached) {
+			try {
+				context.detachPlatformWindow();
+			} catch (_:Dynamic) {}
+		}
+		if (runtime != null) {
+			try {
+				runtime.dispose();
+			} catch (_:Dynamic) {}
+		}
+		return result;
 	}
 
 	static function checkSplitKeyboard(context:UiContext):Bool {

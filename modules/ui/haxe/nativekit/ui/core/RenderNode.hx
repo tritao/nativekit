@@ -6,6 +6,7 @@ import LayoutVisualKind;
 import Canvas;
 import CompositeMode;
 import ResolvedLayoutItem;
+import NativeKit.WindowDecorationRegionKind;
 import nativekit.ui.style.ComputedStyle;
 import nativekit.ui.style.Decoration;
 import nativekit.ui.style.StyleProperty;
@@ -33,6 +34,8 @@ class RenderNode {
 	public var tabIndex:Int;
 	/** Cursor intent used while this node is hovered or holds pointer capture. */
 	public var cursor:Null<CursorShape>;
+	/** Native hit-test behavior assigned to this node's resolved bounds. */
+	public var windowDecoration:Null<WindowDecorationRegionKind>;
 	public var semantics:Null<Semantics>;
 	final handlers:Map<String, Array<UiEvent->Void>>;
 	final outsidePointerDownHandlers:Array<UiEvent->Void>;
@@ -63,6 +66,7 @@ class RenderNode {
 		computedStyle = null;
 		tabIndex = 0;
 		cursor = null;
+		windowDecoration = null;
 		semantics = null;
 		handlers = new Map();
 		outsidePointerDownHandlers = [];
@@ -139,6 +143,14 @@ class RenderNode {
 		if (handler == null)
 			throw "Resolved geometry handlers cannot be null";
 		resolvedHandlers.push(handler);
+		return this;
+	}
+
+	/** Assigns this node's bounds to the native window-chrome hit-test map. */
+	public function setWindowDecoration(kind:WindowDecorationRegionKind):RenderNode {
+		if (kind == null)
+			throw "Window decoration regions require a kind";
+		windowDecoration = kind;
 		return this;
 	}
 

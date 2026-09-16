@@ -100,7 +100,7 @@ class ShowcaseDesktop {
             windowOptions.set_width(initialWidth);
             windowOptions.set_height(initialHeight);
             windowOptions.set_title("Haxeon UI Explorer");
-            windowOptions.set_flags(WindowFlags.Resizable);
+            windowOptions.set_flags(WindowFlags.Resizable | WindowFlags.Borderless);
             windowOptions.set_owner(WindowHandle.invalid());
             windowOptions.set_kind(WindowKind.Normal);
             var createdWindow = NativeKit.nk_window_create(windowOptions);
@@ -177,6 +177,7 @@ class ShowcaseDesktop {
                     throw error;
                 }
                 explorer.attachSurface(NativeKitSurface.borrowNativeHandle(surface));
+                explorer.attachWindow(window);
                 explorerInput = explorer.attachInput(activePump, new Handle(window.rawValue()));
                 explorer.setViewport(frameState.logicalWidth, frameState.logicalHeight, initialWidth,
                     initialHeight, 1.0);

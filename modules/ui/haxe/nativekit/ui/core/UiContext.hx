@@ -10,6 +10,11 @@ import FrameInfo;
 import ResolvedLayoutItem;
 import FontCollection;
 import NativeKitSurface;
+import NativeKit;
+import NativeKit.Capabilities;
+import NativeKit.WindowDecorationRegion;
+import NativeKit.WindowDecorationRegionKind;
+import NativeKit.WindowHandle;
 import nativekit.ui.semantics.AccessibilityBridge;
 import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRequest;
@@ -59,6 +64,9 @@ class UiContext {
 	var customListHasCommands:Map<Int, Bool>;
 	var accessibilityBridge:Null<AccessibilityBridge>;
 	var accessibilitySurface:Null<NativeKitSurface>;
+	var decorationWindow:Null<WindowHandle>;
+	var decorationCapabilityChecked:Bool;
+	var decorationAvailable:Bool;
 	var cursorHandler:Null<CursorShape->Void>;
 	var currentCursor:CursorShape;
 	var lastFrameMetrics:Null<UiFrameMetrics>;
@@ -101,6 +109,9 @@ class UiContext {
 		customListHasCommands = new Map();
 		accessibilityBridge = null;
 		accessibilitySurface = null;
+		decorationWindow = null;
+		decorationCapabilityChecked = false;
+		decorationAvailable = false;
 		cursorHandler = null;
 		currentCursor = CursorShape.Arrow;
 		animations.onFrameRequested = function() {
@@ -139,6 +150,28 @@ class UiContext {
 		if (surface == null || surface.isDisposed())
 			throw "UI context requires a live NativeKit surface";
 		buildContext.setPlatformSurface(surface);
+	}
+
+	/** Attaches the NativeKit-owned window that receives declarative chrome regions. */
+	public function attachPlatformWindow(window:WindowHandle):Void {
+		ensureLive();
+		if (window == null || !window.isValid())
+			throw "UI context requires a live NativeKit window";
+		if (decorationWindow != null)
+			clearWindowDecorations();
+		decorationWindow = window;
+		decorationCapabilityChecked = false;
+		decorationAvailable = false;
+		if (root != null)
+			syncWindowDecorations(root);
+	}
+
+	/** Detaches the window and clears any regions previously projected by this context. */
+	public function detachPlatformWindow():Void {
+		ensureLive();
+		if (decorationWindow != null)
+			clearWindowDecorations();
+		decorationWindow = null;
 	}
 
 	/** Builds a fresh view tree, resolves native layout, and reconnects geometry by stable ID. */
@@ -185,7 +218,7 @@ class UiContext {
 		buildContext.beginFrame();
 		diagnosticStage = 4;
 		var view = build();
-		var next = buildContext.withScope(new Key("root"), function() return view == null ? null : view.build(buildContext));
+		var next = buildContext.withScope(new nativekit.ui.core.Key("root"), function() return view == null ? null : view.build(buildContext));
 		if (next == null || next.parent != null)
 			throw "A view must produce one unparented render tree root";
 		diagnosticStage = 5;
@@ -210,6 +243,7 @@ class UiContext {
 			diagnosticStage = 8;
 			throw "Native layout did not return geometry for every render node";
 		}
+		syncWindowDecorations(next);
 		stateStore.endFrame();
 		diagnosticStage = 9;
 		var previousFocus = focus.focusedId;
@@ -623,6 +657,9 @@ class UiContext {
 		animations.cancelAll();
 		if (accessibilityBridge != null)
 			accessibilityBridge.dispose();
+		if (decorationWindow != null)
+			clearWindowDecorations();
+		decorationWindow = null;
 		stateStore.dispose();
 		interactionStates.dispose();
 		disposed = true;
@@ -638,6 +675,76 @@ class UiContext {
 		currentCursor = next;
 		if (cursorHandler != null)
 			cursorHandler(next);
+	}
+
+	function syncWindowDecorations(tree:RenderNode):Void {
+		if (decorationWindow == null || !supportsWindowDecorations())
+			return;
+		var regions:Array<WindowDecorationRegion> = [];
+		tree.walk(function(node) {
+			if (node.windowDecoration == null || node.resolved == null ||
+				!node.resolved.visible)
+				return;
+			var bounds = visibleWindowBounds(node.resolved);
+			var left = Math.max(0.0, bounds.x);
+			var top = Math.max(0.0, bounds.y);
+			var right = Math.min(buildContext.viewportWidth, bounds.x + bounds.width);
+			var bottom = Math.min(buildContext.viewportHeight, bounds.y + bounds.height);
+			if (right <= left || bottom <= top)
+				return;
+			var region = new WindowDecorationRegion();
+			region.set_x(left);
+			region.set_y(top);
+			region.set_width(right - left);
+			region.set_height(bottom - top);
+			var kind:WindowDecorationRegionKind = cast node.windowDecoration;
+			region.set_kind(kind);
+			region.set_reserved(0);
+			regions.push(region);
+		});
+		var window:WindowHandle = cast decorationWindow;
+		NativeKit.nk_window_set_decoration_regions_checked(window, regions);
+	}
+
+	function clearWindowDecorations():Void {
+		if (decorationWindow == null || !supportsWindowDecorations())
+			return;
+		try {
+			var window:WindowHandle = cast decorationWindow;
+			NativeKit.nk_window_set_decoration_regions_checked(window, []);
+		} catch (_:Dynamic) {
+			// Context disposal must remain best-effort if the host already destroyed the window.
+		}
+	}
+
+	function supportsWindowDecorations():Bool {
+		if (decorationCapabilityChecked)
+			return decorationAvailable;
+		decorationCapabilityChecked = true;
+		var capabilities = NativeKit.nk_get_capabilities();
+		decorationAvailable = haxe.Int64.compare(
+			haxe.Int64.and(capabilities, Capabilities.windowCustomDecorations()),
+			haxe.Int64.ofInt(0)) != 0;
+		return decorationAvailable;
+	}
+
+	static function visibleWindowBounds(item:ResolvedLayoutItem):Rect {
+		var transform = item.transform;
+		var x0 = transform.a * item.x + transform.c * item.y + transform.tx;
+		var y0 = transform.b * item.x + transform.d * item.y + transform.ty;
+		var x1 = transform.a * (item.x + item.width) + transform.c * item.y + transform.tx;
+		var y1 = transform.b * (item.x + item.width) + transform.d * item.y + transform.ty;
+		var x2 = transform.a * item.x + transform.c * (item.y + item.height) + transform.tx;
+		var y2 = transform.b * item.x + transform.d * (item.y + item.height) + transform.ty;
+		var x3 = transform.a * (item.x + item.width) + transform.c * (item.y + item.height) + transform.tx;
+		var y3 = transform.b * (item.x + item.width) + transform.d * (item.y + item.height) + transform.ty;
+		var left = Math.max(item.clipBounds.x, Math.min(Math.min(x0, x1), Math.min(x2, x3)));
+		var top = Math.max(item.clipBounds.y, Math.min(Math.min(y0, y1), Math.min(y2, y3)));
+		var right = Math.min(item.clipBounds.x + item.clipBounds.width,
+			Math.max(Math.max(x0, x1), Math.max(x2, x3)));
+		var bottom = Math.min(item.clipBounds.y + item.clipBounds.height,
+			Math.max(Math.max(y0, y1), Math.max(y2, y3)));
+		return new Rect(left, top, Math.max(0.0, right - left), Math.max(0.0, bottom - top));
 	}
 
 	function dispatchFocusChange(previous:Null<WidgetId>, next:Null<WidgetId>):Void {

@@ -9,7 +9,9 @@ import LayoutAxis;
 import LayoutFrame;
 import LayoutStyle;
 import NativeKit.Handle;
+import NativeKit.WindowHandle;
 import NativeKit.Capabilities;
+import NativeKit.WindowDecorationRegionKind;
 import NativeKit.SurfaceHandle;
 import NativeKit.WebviewOptions;
 import NativeKitEvents;
@@ -46,6 +48,7 @@ import nativekit.ui.widgets.TextField;
 import nativekit.ui.core.TextStyleOverride;
 import TextWrap;
 import nativekit.ui.widgets.VirtualList;
+import nativekit.ui.widgets.WindowChrome;
 import ExplorerCatalog;
 import pages.EffectsPage;
 import shell.ExplorerShell;
@@ -85,6 +88,7 @@ class UiExplorer {
 	public static inline var TARGET_FPS:Float = 60.0;
 	public static inline var INITIAL_WIDTH:Int = 1320;
 	public static inline var INITIAL_HEIGHT:Int = 900;
+	static inline var WINDOW_RESIZE_EDGE:Float = 6.0;
 	static inline var LIST_COUNT:Int = 10000;
 	static inline var LIST_ROW_HEIGHT:Float = 32.0;
 
@@ -165,6 +169,10 @@ class UiExplorer {
 		if (supportsNativeAccessibility())
 			context.updateAccessibility(surface);
 	}
+
+	/** Installs the desktop window that receives the shell's custom chrome regions. */
+	public function attachWindow(window:WindowHandle):Void
+		context.attachPlatformWindow(window);
 
 	/** Routes platform input through the framework's standard NativeKit adapter. */
 	public function attachInput(events:NativeKitEvents, window:Handle):NativeInputAdapter {
@@ -516,11 +524,61 @@ class UiExplorer {
 		var rootStyle = new LayoutStyle();
 		rootStyle.width = LayoutAxis.grow();
 		rootStyle.height = LayoutAxis.grow();
-		var layers:Array<StackChild> = [new StackChild("explorer-shell", buildShell())];
+		var layers:Array<StackChild> = [new StackChild("explorer-shell", buildShell()),
+			new StackChild("window-resize-zones", buildWindowResizeZones(), 0.0, 0.0, -1)];
 		OverlayHost.appendLayers(this, layers);
 		InspectionOverlay.addHighlight(this, layers);
 		return new Stack("showcase-root", layers, rootStyle);
 	}
+
+	function buildWindowResizeZones():Column {
+		var edge = WINDOW_RESIZE_EDGE;
+		var rowStyle = new LayoutStyle();
+		rowStyle.width = LayoutAxis.grow();
+		rowStyle.height = LayoutAxis.fixed(edge);
+		rowStyle.direction = LayoutDirection.LeftToRight;
+		var middleStyle = new LayoutStyle();
+		middleStyle.width = LayoutAxis.grow();
+		middleStyle.height = LayoutAxis.grow();
+		middleStyle.direction = LayoutDirection.LeftToRight;
+		var columnStyle = new LayoutStyle();
+		columnStyle.width = LayoutAxis.grow();
+		columnStyle.height = LayoutAxis.grow();
+
+		var north = new Row("window-chrome-north", [
+			new KeyedView("northwest", resizeZone("northwest", WindowDecorationRegionKind.ResizeNorthwest,
+				LayoutAxis.fixed(edge), LayoutAxis.fixed(edge))),
+			new KeyedView("north", resizeZone("north", WindowDecorationRegionKind.ResizeNorth,
+				LayoutAxis.grow(), LayoutAxis.fixed(edge))),
+			new KeyedView("northeast", resizeZone("northeast", WindowDecorationRegionKind.ResizeNortheast,
+				LayoutAxis.fixed(edge), LayoutAxis.fixed(edge)))
+		], rowStyle);
+		var middle = new Row("window-chrome-middle", [
+			new KeyedView("west", resizeZone("west", WindowDecorationRegionKind.ResizeWest,
+				LayoutAxis.fixed(edge), LayoutAxis.grow())),
+			new KeyedView("center", new SizedBox("window-chrome-center", new Text(""),
+				LayoutAxis.grow(), LayoutAxis.grow())),
+			new KeyedView("east", resizeZone("east", WindowDecorationRegionKind.ResizeEast,
+				LayoutAxis.fixed(edge), LayoutAxis.grow()))
+		], middleStyle);
+		var south = new Row("window-chrome-south", [
+			new KeyedView("southwest", resizeZone("southwest", WindowDecorationRegionKind.ResizeSouthwest,
+				LayoutAxis.fixed(edge), LayoutAxis.fixed(edge))),
+			new KeyedView("south", resizeZone("south", WindowDecorationRegionKind.ResizeSouth,
+				LayoutAxis.grow(), LayoutAxis.fixed(edge))),
+			new KeyedView("southeast", resizeZone("southeast", WindowDecorationRegionKind.ResizeSoutheast,
+				LayoutAxis.fixed(edge), LayoutAxis.fixed(edge)))
+		], rowStyle);
+		return new Column("window-chrome-zones", [
+			new KeyedView("north", north),
+			new KeyedView("middle", middle),
+			new KeyedView("south", south)
+		], columnStyle);
+	}
+
+	function resizeZone(key:String, kind:WindowDecorationRegionKind,
+			width:LayoutAxis, height:LayoutAxis):View
+		return new WindowChrome(key, kind, new SizedBox(key + "-box", new Text(""), width, height));
 
 	function buildShell():View {
 		return ExplorerShell.build(this);

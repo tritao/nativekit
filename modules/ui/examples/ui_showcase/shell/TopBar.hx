@@ -9,12 +9,15 @@ import Insets;
 import UiExplorer;
 import nativekit.ui.icons.IconName;
 import nativekit.ui.widgets.Button;
+import nativekit.ui.core.View;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Row;
+import nativekit.ui.widgets.WindowChrome;
+import NativeKit.WindowDecorationRegionKind;
 
 /** Top-level branding and global Explorer actions. */
 class TopBar {
-	public static function build(explorer:UiExplorer):Row {
+	public static function build(explorer:UiExplorer):View {
 		var style = new LayoutStyle();
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.fixed(66.0);
@@ -34,13 +37,15 @@ class TopBar {
 				explorer.context.setTheme(UiExplorer.makeTheme(explorer.state.lightTheme));
 			});
 		themeButton.leadingIcon = explorer.state.lightTheme ? IconName.Moon : IconName.Sun;
-		var actions:Array<KeyedView> = [explorer.keyed("theme", themeButton)];
+		var actions:Array<KeyedView> = [explorer.keyed("theme", new WindowChrome("theme-client",
+			WindowDecorationRegionKind.Client, themeButton))];
 		if (explorer.width >= 880.0)
-			actions.push(explorer.keyed("inspect", inspectButton(explorer)));
-		return new Row("top-bar", [
+			actions.push(explorer.keyed("inspect", new WindowChrome("inspect-client",
+				WindowDecorationRegionKind.Client, inspectButton(explorer))));
+		return new WindowChrome("top-bar-drag", WindowDecorationRegionKind.Drag, new Row("top-bar", [
 			explorer.keyed("brand-cluster", brand),
 			explorer.keyed("action-cluster", new Row("top-actions", actions, clusterStyle(8.0)))
-		], style);
+		], style));
 	}
 
 	static function inspectButton(explorer:UiExplorer):Button {

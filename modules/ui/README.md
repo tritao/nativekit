@@ -112,6 +112,29 @@ revisions; `frame.deltaSeconds` is still advanced by the animation and gesture
 systems, but ordinary frame-time jitter does not invalidate an otherwise static
 submission. The cache key must identify the caller's build inputs.
 
+## Custom native window chrome
+
+Desktop Haxe UI trees can provide their own borderless-window hit testing. Attach
+the NativeKit window to the context once, then wrap any view in
+`WindowChrome`:
+
+```haxe
+context.attachPlatformWindow(window.nativeHandle());
+
+var titleBar = new WindowChrome("title-bar", WindowDecorationRegionKind.Drag,
+    new Row("title-bar-content", [
+        new KeyedView("close", new WindowChrome("close-client",
+            WindowDecorationRegionKind.Client, closeButton))
+    ]));
+```
+
+After each layout submission, `UiContext` projects the visible, clipped node
+bounds into `nk_window_set_decoration_regions`. Child declarations are emitted
+after their parents, so a `Client` node can carve an interactive hole out of a
+larger `Drag` or resize region. The projection is cleared when the window is
+detached or the context is disposed. On platforms without
+`NK_CAP_WINDOW_CUSTOM_DECORATIONS`, the annotations are harmless no-ops.
+
 ## Web / WASM
 
 The browser backend uses Emscripten and WebGL2 through NativeKit core and GPU.
