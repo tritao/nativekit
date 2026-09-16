@@ -8,6 +8,10 @@ import nativekit.audio.AudioCue;
 import nativekit.audio.AudioCueOptions;
 import nativekit.audio.AudioEmitter;
 import nativekit.audio.AudioPlayOptions;
+import nativekit.audio.AudioTrack;
+import nativekit.audio.AudioTrackOptions;
+import nativekit.audio.AudioTrackPlayer;
+import nativekit.audio.AudioTransitionOptions;
 import nativekit.audio.Bus;
 import nativekit.audio.BusConcurrencyOptions;
 import nativekit.audio.BusEffect;
@@ -72,6 +76,7 @@ class AudioSmoke {
 		var polyVoice:Voice = null;
 		var emitter:AudioEmitter = null;
 		var emitterVoice:Voice = null;
+		var trackPlayer:AudioTrackPlayer = null;
 		var first:Voice = null;
 		var second:Voice = null;
 		var completion:Voice = null;
@@ -370,6 +375,99 @@ class AudioSmoke {
 			emitter.dispose();
 			emitter = null;
 			emitterVoice = null;
+			var trackOptions = new AudioTrackOptions();
+			trackOptions.voiceOptions.looping = true;
+			trackOptions.volume = 0.8;
+			var firstTrack = new AudioTrack(clip, trackOptions);
+			trackOptions.volume = 0.6;
+			var secondTrack = new AudioTrack(clip, trackOptions);
+			trackOptions.voiceOptions.looping = false;
+			var finiteTrack = new AudioTrack(clip, trackOptions);
+			trackPlayer = new AudioTrackPlayer(runtime.events, bus);
+			var trackStarted = 0;
+			var trackEnded = 0;
+			var transitionStarted = false;
+			var transitionCompleted = false;
+			var queuedTrackStarted = false;
+			var firstTrackStarts = 0;
+			var secondTrackStarts = 0;
+			var finiteTrackStarts = 0;
+			trackPlayer.onTrackEnded = function(_) {
+				trackEnded++;
+			};
+			trackPlayer.onTransitionStarted = function(from, to) {
+				if (from == firstTrack && to == secondTrack)
+					transitionStarted = true;
+			};
+			trackPlayer.onTransitionCompleted = function(track) {
+				if (track == secondTrack)
+					transitionCompleted = true;
+			};
+			trackPlayer.onTrackStarted = function(track) {
+				trackStarted++;
+				if (track == firstTrack) {
+					firstTrackStarts++;
+					queuedTrackStarted = true;
+				} else if (track == secondTrack)
+					secondTrackStarts++;
+				else if (track == finiteTrack)
+					finiteTrackStarts++;
+			};
+			var firstTrackVoice = trackPlayer.play(firstTrack);
+			if (firstTrackVoice == null || trackPlayer.currentTrack() != firstTrack || trackStarted != 1)
+				throw "Haxe audio track player did not start its current track";
+			var transitionOptions = new AudioTransitionOptions();
+			transitionOptions.fadeInSeconds = 0.01;
+			transitionOptions.fadeOutSeconds = 0.01;
+			var secondTrackVoice = trackPlayer.transitionTo(secondTrack, transitionOptions);
+			if (secondTrackVoice == null || trackPlayer.currentTrack() != secondTrack ||
+				!trackPlayer.isTransitioning() || !transitionStarted)
+				throw "Haxe audio track player did not schedule its crossfade";
+			for (attempt in 0...20) {
+				if (!trackPlayer.isTransitioning())
+					break;
+				NativeKit.nk_wait_events_timeout_checked(0.01);
+				while (runtime.events.poll()) {}
+				trackPlayer.update();
+			}
+			if (trackPlayer.isTransitioning() || trackPlayer.currentVoice() != secondTrackVoice ||
+				!transitionCompleted || trackEnded != 1)
+				throw "Haxe audio track player did not complete its shared-clock crossfade";
+			queuedTrackStarted = false;
+			trackPlayer.play(finiteTrack);
+			trackPlayer.queue(firstTrack);
+			if (trackPlayer.queuedTrack() != firstTrack)
+				throw "Haxe audio track player did not retain its queued track";
+			for (attempt in 0...20) {
+				if (trackPlayer.currentTrack() == firstTrack)
+					break;
+				NativeKit.nk_wait_events_timeout_checked(0.01);
+				while (runtime.events.poll()) {}
+				trackPlayer.update();
+			}
+			if (trackPlayer.currentTrack() != firstTrack)
+				throw "Haxe audio track player current track did not advance after natural completion";
+			if (trackPlayer.queuedTrack() != null)
+				throw "Haxe audio track player did not clear its queued track after natural completion";
+			if (trackStarted != 4)
+				throw "Haxe audio track player started an unexpected number of tracks: " + trackStarted +
+					" first=" + firstTrackStarts + " second=" + secondTrackStarts + " finite=" + finiteTrackStarts;
+			if (!queuedTrackStarted)
+				throw "Haxe audio track player did not start its queued track after natural completion";
+			trackPlayer.stop(0.01);
+			if (!trackPlayer.isStopping())
+				throw "Haxe audio track player did not schedule its fade-out";
+			for (attempt in 0...20) {
+				if (trackPlayer.currentTrack() == null)
+					break;
+				NativeKit.nk_wait_events_timeout_checked(0.01);
+				while (runtime.events.poll()) {}
+				trackPlayer.update();
+			}
+			if (trackPlayer.currentTrack() != null || trackPlayer.isStopping() || trackEnded != 4)
+				throw "Haxe audio track player did not complete its fade-out";
+			trackPlayer.dispose();
+			trackPlayer = null;
 			cue.dispose();
 			cue = null;
 			cueVoice = null;
@@ -490,6 +588,8 @@ class AudioSmoke {
 				polyCue.dispose();
 			if (emitter != null)
 				emitter.dispose();
+			if (trackPlayer != null)
+				trackPlayer.dispose();
 			if (cue != null)
 				cue.dispose();
 			if (lowPass != null)

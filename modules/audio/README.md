@@ -147,8 +147,9 @@ The module also provides a generated Haxeon ABI interface in
 `bindings/nativekit-audio.hxi` and a small typed Haxe facade under
 `bindings/haxe/nativekit/audio`. The public facade consists of `Clip`, `Voice`, `VoiceOptions`,
 `AudioCue`, `AudioCueOptions`, `AudioPlayOptions`, `AudioEmitter`, `Bus`, `BusConcurrencyOptions`,
-`MixSnapshot`, `DeviceOptions`, and `Mixer`. `Mixer` exposes device enumeration and lifecycle
-controls, while `Clip.fromAsset()` consumes a ready
+`AudioTrack`, `AudioTrackOptions`, `AudioTrackPlayer`, `AudioTransitionOptions`, `MixSnapshot`,
+`DeviceOptions`, and `Mixer`. `Mixer` exposes device enumeration and lifecycle controls, while
+`Clip.fromAsset()` consumes a ready
 `nativekit.resource.ResourceAsset` from the core cache and `Clip.fromStream()`
 creates an incremental source for large resources.
 
@@ -163,6 +164,15 @@ emitter's active voices. Cues and emitters return completed or stolen voices to
 their pools when the caller polls `NativeKitRuntime.events`; load and stream
 failures discard the affected pooled voice. These gameplay objects borrow their
 clips, bus, and event pump rather than owning them.
+
+`AudioTrack` is a borrowed long-running source descriptor. `AudioTrackPlayer`
+coordinates one current track and one queued track, and uses the shared PCM
+clock to schedule independent fade-in and fade-out operations. It supports
+immediate replacement, crossfades, delayed starts, natural-end queueing, and
+fade-out stops. Call `update()` once per frame after polling events so scheduled
+voices can be retired; lifecycle callbacks report starts, ends, failures, and
+transition completion or cancellation. It contains no game-state or playlist
+policy, leaving those decisions to an engine-level audio director.
 
 With Haxeon available, run the native and managed smoke test with:
 
