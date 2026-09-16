@@ -21,6 +21,109 @@
 #define NK_TEST_ASSERT(condition) assert(condition)
 #endif
 
+static int device_orientation_smoke_enabled(void) {
+    return EM_ASM_INT({
+        return globalThis.location && globalThis.location.search.indexOf("orientation-smoke") >= 0
+                   ? 1
+                   : 0;
+    });
+}
+
+static void install_device_orientation_smoke_api(void) {
+    // clang-format off
+    EM_ASM({
+        globalThis.__nativekitHadDeviceOrientationEvent =
+            Object.prototype.hasOwnProperty.call(globalThis, "DeviceOrientationEvent");
+        globalThis.__nativekitOriginalDeviceOrientationEvent = globalThis.DeviceOrientationEvent;
+        globalThis.DeviceOrientationEvent = function NativeKitDeviceOrientationEvent() {};
+    });
+    // clang-format on
+}
+
+static void restore_device_orientation_smoke_api(void) {
+    // clang-format off
+    EM_ASM({
+        if (globalThis.__nativekitHadDeviceOrientationEvent)
+            globalThis.DeviceOrientationEvent = globalThis.__nativekitOriginalDeviceOrientationEvent;
+        else
+            delete globalThis.DeviceOrientationEvent;
+        delete globalThis.__nativekitHadDeviceOrientationEvent;
+        delete globalThis.__nativekitOriginalDeviceOrientationEvent;
+    });
+    // clang-format on
+}
+
+static void test_device_orientation(void) {
+    nk_window_options window_options = {0};
+    window_options.struct_size = sizeof(window_options);
+    window_options.flags = NK_WINDOW_HIDDEN | NK_WINDOW_RESIZABLE;
+    window_options.width = 320;
+    window_options.height = 240;
+    nk_handle window = NK_INVALID_HANDLE;
+    NK_TEST_ASSERT(nk_window_create(&window_options, &window) == NK_OK);
+
+    nk_capabilities capabilities = nk_get_capabilities();
+    NK_TEST_ASSERT((capabilities & NK_CAP_DEVICE_ORIENTATION) != 0);
+
+    nk_system_orientation orientation = {0};
+    orientation.struct_size = sizeof(orientation);
+    NK_TEST_ASSERT(nk_system_get_orientation(&orientation) == NK_OK);
+    NK_TEST_ASSERT(orientation.device == NK_ORIENTATION_UNKNOWN);
+
+    nk_request_id request = NK_INVALID_REQUEST_ID;
+    NK_TEST_ASSERT(nk_system_request_device_orientation(&request) == NK_OK);
+    NK_TEST_ASSERT(request != NK_INVALID_REQUEST_ID);
+
+    nk_event event = {0};
+    event.struct_size = sizeof(event);
+    int permission_seen = 0;
+    for (int attempt = 0; attempt < 8 && !permission_seen; ++attempt) {
+        NK_TEST_ASSERT(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_DEVICE_ORIENTATION_PERMISSION_COMPLETE) {
+            NK_TEST_ASSERT(event.request_id == request);
+            NK_TEST_ASSERT(event.result == NK_OK);
+            permission_seen = 1;
+        }
+        nk_event_release(&event);
+        event.struct_size = sizeof(event);
+    }
+    NK_TEST_ASSERT(permission_seen);
+
+    // clang-format off
+    EM_ASM({
+        const sensorEvent = new Event("deviceorientation");
+        Object.defineProperties(sensorEvent, {
+            beta: {value: 90},
+            gamma: {value: 60}
+        });
+        const listener = globalThis.__nativekitDeviceOrientation?.listener;
+        if (listener)
+            listener(sensorEvent);
+    });
+    // clang-format on
+
+    int orientation_seen = 0;
+    for (int attempt = 0; attempt < 8 && !orientation_seen; ++attempt) {
+        NK_TEST_ASSERT(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_DEVICE_ORIENTATION_CHANGED) {
+            NK_TEST_ASSERT(event.data_size >= sizeof(nk_orientation_event));
+            const nk_orientation_event *payload = (const nk_orientation_event *)event.data;
+            NK_TEST_ASSERT(payload->orientation == NK_ORIENTATION_LANDSCAPE_RIGHT);
+            orientation_seen = 1;
+        }
+        nk_event_release(&event);
+        event.struct_size = sizeof(event);
+    }
+    NK_TEST_ASSERT(orientation_seen);
+
+    orientation = (nk_system_orientation){0};
+    orientation.struct_size = sizeof(orientation);
+    NK_TEST_ASSERT(nk_system_get_orientation(&orientation) == NK_OK);
+    NK_TEST_ASSERT(orientation.device == NK_ORIENTATION_LANDSCAPE_RIGHT);
+
+    NK_TEST_ASSERT(nk_window_destroy(window) == NK_OK);
+}
+
 static void test_window_styling(void) {
     nk_window_options options = {0};
     options.struct_size = sizeof(options);
@@ -192,6 +295,12 @@ EM_ASM({
 #endif
 
 int main(void) {
+#ifdef __EMSCRIPTEN__
+    const int orientation_smoke = device_orientation_smoke_enabled();
+    if (orientation_smoke)
+        install_device_orientation_smoke_api();
+#endif
+
     nk_init_options init = {0};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
@@ -236,6 +345,10 @@ int main(void) {
 #ifdef __EMSCRIPTEN__
     test_window_styling();
     test_writable_resource_stream();
+    if (orientation_smoke) {
+        test_device_orientation();
+        restore_device_orientation_smoke_api();
+    }
 #endif
     nk_shutdown();
     return 0;

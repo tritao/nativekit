@@ -95,4 +95,6 @@ python3 "$repo_dir/tools/web_dataset_smoke.py" \
     --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_accessibility.html" \
     --dataset-key nativekitAccessibilityResult \
     --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_system_equivalents.html" \
+    --dataset-key nativekitSystemResult \
+    --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_system_equivalents.html?orientation-smoke" \
     --dataset-key nativekitSystemResult
