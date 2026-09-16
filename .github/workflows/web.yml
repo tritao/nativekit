@@ -41,7 +41,7 @@ jobs:
         working-directory: vendor/haxeon
         run: ./scripts/bootstrap-tools.sh
 
-      - name: Check native Haxe bindings and ABI drift
+      - name: Run native Haxe binding and integration tests
         run: ./tools/test-haxe-bindings.sh
 
       - name: Install web toolchain
