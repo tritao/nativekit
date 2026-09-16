@@ -4,6 +4,7 @@ import Canvas;
 import LayoutAxis;
 import LayoutStyle;
 import Rect;
+import ResolvedLayoutItem;
 import UiExplorer;
 import nativekit.ui.core.HitTest;
 import nativekit.ui.core.RenderNode;
@@ -24,12 +25,10 @@ class InspectionOverlay {
 		var style = new LayoutStyle();
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.grow();
-		// Snapshot the previously resolved tree while building the next frame. Calling
-		// inspect() from the paint callback recursively traverses the same tree that
-		// UiContext is already walking to build custom display lists.
-		var highlighted = findSnapshot(explorer.context.inspect(), highlightId);
 		var highlight = new CanvasView("inspector-highlight", function(canvas, _) {
-			drawHighlight(canvas, highlighted);
+			var root = explorer.context.root;
+			var node = root == null ? null : root.find(new WidgetId(highlightId));
+			drawHighlight(canvas, node == null ? null : node.resolved);
 		}, style, null, false);
 		layers.push(new StackChild("inspector-highlight-layer", highlight, 0.0, 0.0, 32767));
 	}
@@ -114,15 +113,15 @@ class InspectionOverlay {
 		return isPreviewPoint(explorer, centerX, centerY);
 	}
 
-	static function drawHighlight(canvas:Canvas, record:Null<UiNodeSnapshot>):Void {
-		if (record == null || record.bounds.width <= 0.0 || record.bounds.height <= 0.0)
+	static function drawHighlight(canvas:Canvas, geometry:Null<ResolvedLayoutItem>):Void {
+		if (geometry == null || geometry.width <= 0.0 || geometry.height <= 0.0)
 			return;
-		var left = Math.max(record.bounds.x, record.clipBounds.x);
-		var top = Math.max(record.bounds.y, record.clipBounds.y);
-		var right = Math.min(record.bounds.x + record.bounds.width,
-			record.clipBounds.x + record.clipBounds.width);
-		var bottom = Math.min(record.bounds.y + record.bounds.height,
-			record.clipBounds.y + record.clipBounds.height);
+		var left = Math.max(geometry.x, geometry.clipBounds.x);
+		var top = Math.max(geometry.y, geometry.clipBounds.y);
+		var right = Math.min(geometry.x + geometry.width,
+			geometry.clipBounds.x + geometry.clipBounds.width);
+		var bottom = Math.min(geometry.y + geometry.height,
+			geometry.clipBounds.y + geometry.clipBounds.height);
 		if (right <= left || bottom <= top)
 			return;
 		var edge = Math.min(2.0, Math.min((right - left) * 0.5, (bottom - top) * 0.5));
