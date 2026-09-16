@@ -223,6 +223,10 @@ class ComboBox<T> implements View {
 			inputSemantics.states |= AccessibilityState.HasPopup;
 			if (isOpen)
 				inputSemantics.states |= AccessibilityState.Expanded;
+			inputNode.on(UiEventKind.PointerDown, function(event) {
+				if (enabled && event.button == 0)
+					open();
+			});
 			inputNode.on(UiEventKind.Click, function(_) { open(); });
 			inputNode.on(UiEventKind.Activate, function(event) {
 				if (!enabled)

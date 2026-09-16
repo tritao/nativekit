@@ -172,9 +172,13 @@ class Theme {
 		styles.rule(StyleSelector.widget("radio-indicator").state(StyleState.Disabled),
 			[StyleValue.background(controlDisabled)]);
 		styles.rule(StyleSelector.widget("radio-dot"),
+			[StyleValue.background(panelBackground)]);
+		styles.rule(StyleSelector.widget("radio-mark"),
 			[StyleValue.background(Color.rgba(0.0, 0.0, 0.0, 0.0))]);
-		styles.rule(StyleSelector.widget("radio-dot").state(StyleState.Selected),
+		styles.rule(StyleSelector.widget("radio-mark").state(StyleState.Selected),
 			[StyleValue.background(controlSelected)]);
+		styles.rule(StyleSelector.widget("radio-mark").state(StyleState.Selected).state(StyleState.Disabled),
+			[StyleValue.background(controlDisabled)]);
 
 		styles.rule(StyleSelector.widget("slider"), [
 			StyleValue.sliderTrackColor(controlUnselected),

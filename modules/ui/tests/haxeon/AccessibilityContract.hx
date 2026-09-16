@@ -540,6 +540,18 @@ class AccessibilityContract {
 			(semantics.actions & AccessibilityAction.Expand) == 0 ||
 			!context.focusWidget(input.id))
 			return false;
+		var inputGeometry:ResolvedLayoutItem = cast input.resolved;
+		context.pointerDown(inputGeometry.x + 12.0, inputGeometry.y + inputGeometry.height * 0.5, 0);
+		context.pointerUp(inputGeometry.x + 12.0, inputGeometry.y + inputGeometry.height * 0.5, 0);
+		root = context.submit(combo, frame);
+		if (root.children.length != 2)
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.Escape);
+		root = context.submit(combo, frame);
+		if (root.children.length != 1)
+			return false;
+		input = root.children[0];
+		context.focusWidget(input.id);
 		context.key(UiEventKind.KeyDown, UiKey.Space);
 		root = context.submit(combo, frame);
 		if (root.children.length != 2)

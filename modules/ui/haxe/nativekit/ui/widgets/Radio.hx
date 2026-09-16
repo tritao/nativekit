@@ -90,10 +90,13 @@ class Radio implements View {
 			indicator.states = flags;
 			indicator.computedStyle = indicatorComputed;
 			var dotStyle = new LayoutStyle();
-			dotStyle.width = LayoutAxis.fixed(8.0);
-			dotStyle.height = LayoutAxis.fixed(8.0);
-			dotStyle.radiusTopLeft = dotStyle.radiusTopRight = 4.0;
-			dotStyle.radiusBottomLeft = dotStyle.radiusBottomRight = 4.0;
+			dotStyle.width = LayoutAxis.fixed(12.0);
+			dotStyle.height = LayoutAxis.fixed(12.0);
+			dotStyle.radiusTopLeft = dotStyle.radiusTopRight = 6.0;
+			dotStyle.radiusBottomLeft = dotStyle.radiusBottomRight = 6.0;
+			dotStyle.childAlignX = LayoutAlignmentX.Center;
+			dotStyle.childAlignY = LayoutAlignmentY.Center;
+			dotStyle.childDistribution = LayoutDistribution.Center;
 			var dotComputed = context.styleResolver.resolve(
 				new StyleTarget("radio-dot", key.value + ":dot", null, null, ["radio"], flags),
 				null, context.theme.styles, context.styleSheet, dotStyle, context.environment);
@@ -102,6 +105,20 @@ class Radio implements View {
 			dot.setStyleIdentity("radio-dot", key.value + ":dot", null, null, ["radio"]);
 			dot.states = flags;
 			dot.computedStyle = dotComputed;
+			var markStyle = new LayoutStyle();
+			markStyle.width = LayoutAxis.fixed(6.0);
+			markStyle.height = LayoutAxis.fixed(6.0);
+			markStyle.radiusTopLeft = markStyle.radiusTopRight = 3.0;
+			markStyle.radiusBottomLeft = markStyle.radiusBottomRight = 3.0;
+			var markComputed = context.styleResolver.resolve(
+				new StyleTarget("radio-mark", key.value + ":mark", null, null, ["radio"], flags),
+				null, context.theme.styles, context.styleSheet, markStyle, context.environment);
+			var mark = new RenderNode(context.id("mark"), LayoutVisualKind.Box,
+				markComputed.toLayoutStyle());
+			mark.setStyleIdentity("radio-mark", key.value + ":mark", null, null, ["radio"]);
+			mark.states = flags;
+			mark.computedStyle = markComputed;
+			dot.add(mark);
 			indicator.add(dot);
 			node.add(indicator);
 
