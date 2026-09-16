@@ -38,6 +38,12 @@ if(NK_NET_BACKEND_CURL)
     endif()
 endif()
 
+add_executable(nativekit_text_input_contract_tests unit/text_input_contract.cpp)
+target_compile_features(nativekit_text_input_contract_tests PRIVATE cxx_std_17)
+target_include_directories(nativekit_text_input_contract_tests PRIVATE ${PROJECT_SOURCE_DIR}/src
+    ${PROJECT_SOURCE_DIR}/include)
+add_test(NAME text_input_contract COMMAND nativekit_text_input_contract_tests)
+
 add_executable(nativekit_platform_parity unit/platform_parity.cpp)
 target_compile_features(nativekit_platform_parity PRIVATE cxx_std_17)
 target_link_libraries(nativekit_platform_parity PRIVATE NativeKit::nativekit)

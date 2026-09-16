@@ -16,6 +16,8 @@
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
+#include "core/text_edit_transaction.hpp"
+#include "core/text_offsets.hpp"
 #include "windows/joystick.hpp"
 
 #define UNICODE
@@ -833,37 +835,27 @@ uint32_t codepoint_count(std::string_view text) {
     return decode_utf8(text, &values) ? static_cast<uint32_t>(values.size()) : 0u;
 }
 
-uint32_t codepoint_count(std::wstring_view text) {
-    uint32_t count = 0;
-    for (std::size_t index = 0; index < text.size(); ++count, ++index) {
-        if (text[index] >= 0xd800 && text[index] <= 0xdbff && index + 1 < text.size() &&
-            text[index + 1] >= 0xdc00 && text[index + 1] <= 0xdfff)
-            ++index;
-    }
-    return count;
-}
+void emit_text_transaction(WinWindowResource &resource,
+                           const nk::core::TextEditTransaction &transaction) {
+    if (!transaction.valid())
+        return;
 
-void apply_text_edit_state(WinWindowResource &resource, nk_text_edit_action action,
-                           nk_text_position replace_start, nk_text_position replace_end,
-                           std::string_view text, nk_text_position selection_start,
-                           nk_text_position selection_end, nk_text_position composition_start,
-                           nk_text_position composition_end) {
-    resource.text_input_state.selection_start = selection_start;
-    resource.text_input_state.selection_end = selection_end;
-    resource.text_input_state.composition_start = composition_start;
-    resource.text_input_state.composition_end = composition_end;
-    resource.text_composing = composition_start != NK_TEXT_POSITION_NONE;
-    resource.text_composition_start = composition_start;
-    resource.text_composition_end = composition_end;
+    resource.text_input_state.selection_start = transaction.selection_start;
+    resource.text_input_state.selection_end = transaction.selection_end;
+    resource.text_input_state.composition_start = transaction.composition_start;
+    resource.text_input_state.composition_end = transaction.composition_end;
+    resource.text_composing = transaction.composition_start != NK_TEXT_POSITION_NONE;
+    resource.text_composition_start = transaction.composition_start;
+    resource.text_composition_end = transaction.composition_end;
     nk_text_edit_event payload{};
-    payload.action = action;
-    payload.replace_start = replace_start;
-    payload.replace_end = replace_end;
-    payload.selection_start = selection_start;
-    payload.selection_end = selection_end;
-    payload.composition_start = composition_start;
-    payload.composition_end = composition_end;
-    emit_text_edit(resource, payload, std::string(text));
+    payload.action = transaction.action;
+    payload.replace_start = transaction.replacement_start;
+    payload.replace_end = transaction.replacement_end;
+    payload.selection_start = transaction.selection_start;
+    payload.selection_end = transaction.selection_end;
+    payload.composition_start = transaction.composition_start;
+    payload.composition_end = transaction.composition_end;
+    emit_text_edit(resource, payload, transaction.replacement_text);
 }
 
 void emit_text_deletion(WinWindowResource &resource, bool backward) {
@@ -879,8 +871,9 @@ void emit_text_deletion(WinWindowResource &resource, bool backward) {
     }
     if (start == end)
         return;
-    apply_text_edit_state(resource, NK_TEXT_EDIT_DELETE, start, end, {}, start, start,
-                          NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+    emit_text_transaction(resource,
+                          {NK_TEXT_EDIT_DELETE, start, end, {}, start, start,
+                           NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE});
 }
 
 nk_text_position text_replacement_start(const WinWindowResource &resource) {
@@ -905,8 +898,9 @@ void emit_committed_utf8(WinWindowResource &resource, const std::string &text) {
     const auto start = text_replacement_start(resource);
     const auto end = text_replacement_end(resource);
     const auto cursor = static_cast<nk_text_position>(start + codepoints.size());
-    apply_text_edit_state(resource, NK_TEXT_EDIT_COMMIT, start, end, text, cursor, cursor,
-                          NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+    emit_text_transaction(resource,
+                          {NK_TEXT_EDIT_COMMIT, start, end, text, cursor, cursor,
+                           NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE});
 }
 
 void finish_text_composition(WinWindowResource &resource) {
@@ -916,9 +910,10 @@ void finish_text_composition(WinWindowResource &resource) {
     auto selection_end = resource.text_input_state.selection_end;
     if (selection_start == NK_TEXT_POSITION_NONE)
         selection_start = selection_end = resource.text_composition_end;
-    apply_text_edit_state(resource, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
-                          NK_TEXT_POSITION_NONE, {}, selection_start, selection_end,
-                          NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+    emit_text_transaction(resource,
+                          {NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
+                           NK_TEXT_POSITION_NONE, {}, selection_start, selection_end,
+                           NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE});
 }
 
 bool get_ime_string(HIMC context, DWORD index, std::wstring &value) {
@@ -1114,19 +1109,29 @@ void handle_ime_composition(WinWindowResource &resource, LPARAM flags) {
     if (flags & GCS_RESULTSTR) {
         std::wstring result;
         if (get_ime_string(context, GCS_RESULTSTR, result)) {
-            resource.skip_ime_characters += static_cast<uint32_t>(result.size());
             const auto committed = utf8(result.c_str());
+            if (!result.empty() && committed.empty()) {
+                ImmReleaseContext(resource.window, context);
+                return;
+            }
+            resource.skip_ime_characters += static_cast<uint32_t>(result.size());
             emit_committed_utf8(resource, committed);
-            resource.text_composing = false;
-            resource.text_composition_start = NK_TEXT_POSITION_NONE;
-            resource.text_composition_end = NK_TEXT_POSITION_NONE;
-            resource.text_input_state.composition_start = NK_TEXT_POSITION_NONE;
-            resource.text_input_state.composition_end = NK_TEXT_POSITION_NONE;
+            if (!resource.text_input_active) {
+                resource.text_composing = false;
+                resource.text_composition_start = NK_TEXT_POSITION_NONE;
+                resource.text_composition_end = NK_TEXT_POSITION_NONE;
+                resource.text_input_state.composition_start = NK_TEXT_POSITION_NONE;
+                resource.text_input_state.composition_end = NK_TEXT_POSITION_NONE;
+            }
         }
     } else if ((flags & GCS_COMPSTR) && resource.text_input_active) {
         std::wstring composing;
         if (get_ime_string(context, GCS_COMPSTR, composing)) {
             const auto value = utf8(composing.c_str());
+            if (!composing.empty() && value.empty()) {
+                ImmReleaseContext(resource.window, context);
+                return;
+            }
             const auto start = text_replacement_start(resource);
             const auto end = text_replacement_end(resource);
             LONG cursor_units = static_cast<LONG>(composing.size());
@@ -1137,11 +1142,21 @@ void handle_ime_composition(WinWindowResource &resource, LPARAM flags) {
             }
             cursor_units = std::max<LONG>(
                 0, std::min<LONG>(cursor_units, static_cast<LONG>(composing.size())));
-            const auto cursor = static_cast<nk_text_position>(
-                start + codepoint_count(std::wstring_view(composing).substr(0, cursor_units)));
-            const auto finish = static_cast<nk_text_position>(start + codepoint_count(composing));
-            apply_text_edit_state(resource, NK_TEXT_EDIT_COMPOSE, start, end, value, cursor, cursor,
-                                  start, finish);
+            uint32_t cursor_offset = 0;
+            uint32_t composition_length = 0;
+            if (!nk::core::utf16_to_codepoint_offset(
+                    std::wstring_view(composing), static_cast<std::size_t>(cursor_units),
+                    &cursor_offset) ||
+                !nk::core::utf16_to_codepoint_offset(std::wstring_view(composing), composing.size(),
+                                                     &composition_length)) {
+                ImmReleaseContext(resource.window, context);
+                return;
+            }
+            const auto cursor = static_cast<nk_text_position>(start + cursor_offset);
+            const auto finish = static_cast<nk_text_position>(start + composition_length);
+            emit_text_transaction(resource,
+                                  {NK_TEXT_EDIT_COMPOSE, start, end, value, cursor, cursor, start,
+                                   finish});
         }
     }
     ImmReleaseContext(resource.window, context);
@@ -1383,6 +1398,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         }
         if (message == WM_IME_STARTCOMPOSITION) {
             resource->text_composing = false;
+            resource->text_composition_start = NK_TEXT_POSITION_NONE;
+            resource->text_composition_end = NK_TEXT_POSITION_NONE;
+            resource->text_input_state.composition_start = NK_TEXT_POSITION_NONE;
+            resource->text_input_state.composition_end = NK_TEXT_POSITION_NONE;
             resource->skip_ime_characters = 0;
         }
         if (message == WM_IME_COMPOSITION) {
