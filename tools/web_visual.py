@@ -7,9 +7,27 @@ import json
 import pathlib
 import struct
 import time
+import urllib.request
 import zlib
 
 from web_smoke import WebSocket, wait_for_page
+
+
+def wait_for_browser_page(debug_port, timeout):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{debug_port}/json/list", timeout=2
+            ) as response:
+                pages = json.load(response)
+            page = next((item for item in pages if item.get("type") == "page"), None)
+            if page:
+                return page
+        except OSError:
+            pass
+        time.sleep(0.1)
+    raise RuntimeError("Chrome page did not become available")
 
 
 def read_png(data, source):
@@ -92,6 +110,8 @@ def compare(reference, width, height, actual, tolerance, allowed_ratio):
         raise RuntimeError(
             f"image size changed: expected {expected_width}x{expected_height}, got {width}x{height}"
         )
+    if actual == expected:
+        return 0, 0.0, 0, expected
     mismatched = 0
     largest_delta = 0
     for y in range(height):
@@ -120,18 +140,33 @@ def main():
     parser.add_argument("--expect-affinity", type=int)
     parser.add_argument("--expect-direction", type=int)
     parser.add_argument("--update", action="store_true")
+    parser.add_argument("--reuse-page", action="store_true")
     parser.add_argument("--tolerance", type=int, default=12)
     parser.add_argument("--allowed-ratio", type=float, default=0.005)
     parser.add_argument("--timeout", type=float, default=30.0)
     args = parser.parse_args()
 
     deadline = time.monotonic() + args.timeout
-    page = wait_for_page(args.debug_port, args.page_url, args.timeout)
     expected_width = int(args.width * args.scale + 0.5)
     expected_height = int(args.height * args.scale + 0.5)
+    page = (wait_for_browser_page(args.debug_port, args.timeout) if args.reuse_page
+            else wait_for_page(args.debug_port, args.page_url, args.timeout))
     websocket = WebSocket(page["webSocketDebuggerUrl"])
     websocket.socket.settimeout(args.timeout)
     try:
+        if args.reuse_page:
+            websocket.evaluate(
+                "(()=>{try{if(typeof guest!=='undefined'&&guest)"
+                "guest['ShowcaseWeb.shutdown']();}catch(_){}})()",
+                19,
+            )
+            websocket.command("Emulation.setDeviceMetricsOverride", {
+                "width": args.width,
+                "height": args.height,
+                "deviceScaleFactor": args.scale,
+                "mobile": False,
+            }, 20)
+            websocket.command("Page.navigate", {"url": args.page_url}, 21)
         state = None
         while time.monotonic() < deadline:
             try:
@@ -217,7 +252,9 @@ def main():
             2,
         )
         png = base64.b64decode(screenshot["data"])
-        width, height, pixels = read_png(png, "Chrome screenshot")
+        if png[:8] != b"\x89PNG\r\n\x1a\n" or len(png) < 24:
+            raise RuntimeError("Chrome returned an invalid PNG screenshot")
+        width, height = struct.unpack(">II", png[16:24])
         width_matches = width == expected_width or (
             args.scale > 1.0 and width == expected_width - 1
         )
@@ -226,11 +263,19 @@ def main():
                 f"screenshot size changed: expected {expected_width}x{expected_height}, "
                 f"got {width}x{height}"
             )
+        exact_match = (not args.update and args.reference.exists() and
+                       png == args.reference.read_bytes())
         if args.update or not args.reference.exists():
             args.reference.parent.mkdir(parents=True, exist_ok=True)
             args.reference.write_bytes(png)
             print(f"updated visual baseline: {args.reference}")
+        elif exact_match:
+            print(
+                f"visual match: {args.reference.name}: 0 pixels (0.000%), "
+                f"largest delta 0; caret {caret}"
+            )
         else:
+            _, _, pixels = read_png(png, "Chrome screenshot")
             mismatched, ratio, largest, expected = compare(
                 args.reference, width, height, pixels,
                 args.tolerance, args.allowed_ratio,
