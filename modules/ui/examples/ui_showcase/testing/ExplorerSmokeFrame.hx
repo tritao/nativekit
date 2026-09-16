@@ -14,4 +14,5 @@ enum abstract ExplorerSmokeFrame(Int) from Int to Int {
 	var Menu = 9;
 	var Graphics = 10;
 	var Gestures = 11;
+	var Select = 12;
 }

@@ -16,6 +16,8 @@ class ExplorerState {
 	public var selectedPage:String = "overview";
 	public var searchText:String = "";
 	public var smokeFocusTextField:Bool = false;
+	public var smokeSelectManaged:Bool = false;
+	public var smokeOpenSelect:Bool = false;
 	public var visualFocusLabel:Null<String> = null;
 	public var visualTextAreaSelection:Bool = false;
 	public var visualTextComposition:Bool = false;

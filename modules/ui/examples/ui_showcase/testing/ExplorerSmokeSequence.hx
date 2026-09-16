@@ -5,7 +5,7 @@ import testing.ExplorerSmokeFrame;
 
 /** Deterministic page/overlay setup for native smoke-test frames. */
 class ExplorerSmokeSequence {
-	public static inline var FRAME_COUNT:Int = 12;
+	public static inline var FRAME_COUNT:Int = 13;
 
 	public static function apply(state:ExplorerState, frame:Int):Void {
 		state.overlays.dialogOpen = false;
@@ -13,6 +13,8 @@ class ExplorerSmokeSequence {
 		state.overlays.menuOpen = false;
 		state.inspector.open = true;
 		state.smokeFocusTextField = false;
+		state.smokeSelectManaged = true;
+		state.smokeOpenSelect = false;
 		switch frame % FRAME_COUNT {
 			case ExplorerSmokeFrame.Overview: state.selectedPage = "overview";
 			case ExplorerSmokeFrame.Controls: state.selectedPage = "controls";
@@ -34,6 +36,9 @@ class ExplorerSmokeSequence {
 				state.overlays.menuOpen = true;
 			case ExplorerSmokeFrame.Graphics: state.selectedPage = "graphics";
 			case ExplorerSmokeFrame.Gestures: state.selectedPage = "gestures";
+			case ExplorerSmokeFrame.Select:
+				state.selectedPage = "controls";
+				state.smokeOpenSelect = true;
 			default: state.selectedPage = "overview";
 		}
 	}

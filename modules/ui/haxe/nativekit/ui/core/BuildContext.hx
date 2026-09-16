@@ -17,6 +17,9 @@ class BuildContext {
 	public final gestures:GestureArena;
 	public final animations:AnimationScheduler;
 	public var theme(default, null):Theme;
+	/** Logical viewport dimensions for frame-local placement decisions. */
+	public var viewportWidth(default, null):Float;
+	public var viewportHeight(default, null):Float;
 	var focusRequester:WidgetId->Bool;
 	final claimed:Map<Int, String>;
 	var scope:KeyScope;
@@ -35,6 +38,8 @@ class BuildContext {
 		this.gestures = gestures == null ? new GestureArena() : gestures;
 		this.animations = animations == null ? new AnimationScheduler() : animations;
 		this.theme = theme == null ? new Theme() : theme;
+		viewportWidth = 0.0;
+		viewportHeight = 0.0;
 		focusRequester = function(_) { return false; };
 		claimed = new Map();
 		scope = new KeyScope();
@@ -73,6 +78,14 @@ class BuildContext {
 			throw "Build context requires a live NativeKit surface";
 		platformSurface = surface;
 		textInput.attach(surface);
+	}
+
+	/** Installs the logical viewport used while building the current frame. */
+	public function setViewport(width:Float, height:Float):Void {
+		if (width <= 0.0 || height <= 0.0 || !finite(width) || !finite(height))
+			throw "Build viewport dimensions must be positive and finite";
+		viewportWidth = width;
+		viewportHeight = height;
 	}
 
 	public function beginFrame():Void {
@@ -168,4 +181,7 @@ class BuildContext {
 		var result:State<Dynamic> = new State<Dynamic>(stateStore, id);
 		return cast result;
 	}
+
+	static inline function finite(value:Float):Bool
+		return value == value && value - value == 0.0;
 }

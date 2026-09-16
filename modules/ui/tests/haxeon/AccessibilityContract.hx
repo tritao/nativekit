@@ -29,6 +29,8 @@ import nativekit.ui.widgets.MenuItem;
 import nativekit.ui.widgets.ProgressBar;
 import nativekit.ui.widgets.Select;
 import nativekit.ui.widgets.SelectOption;
+import nativekit.ui.widgets.Stack;
+import nativekit.ui.widgets.StackChild;
 import nativekit.ui.widgets.TabItem;
 import nativekit.ui.widgets.Tabs;
 import nativekit.ui.widgets.Text;
@@ -207,6 +209,8 @@ class AccessibilityContract {
 			"two", -1, -1, 1) || select.value != "two" || selectedSelectValue != "two" ||
 			selectChanges != 3)
 			return 29;
+		if (!checkSelectOverlay(context))
+			return 30;
 
 		var toggles = 0;
 		var toggle = new Toggle("accessibility-switch", "Enabled", false,
@@ -340,6 +344,45 @@ class AccessibilityContract {
 
 		context.dispose();
 		return 0;
+	}
+
+	static function checkSelectOverlay(context:UiContext):Bool {
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.fixed(96.0);
+		style.height = LayoutAxis.fixed(36.0);
+		var positioned = new Select("positioned-select", [
+			new SelectOption("one", "One", "one"),
+			new SelectOption("two", "Two", "two"),
+			new SelectOption("three", "Three", "three")
+		], "one", null, style);
+		var stack = new Stack("positioned-select-stack", [
+			new StackChild("select", positioned, 220.0, 150.0, 1,
+				LayoutAxis.fixed(96.0), LayoutAxis.fixed(36.0), false)
+		]);
+		var frame = new LayoutFrame(256.0, 192.0);
+		var root = context.submit(stack, frame);
+		var selectRoot = root.children[0];
+		var trigger = selectRoot.children[0];
+		if (!context.focusWidget(trigger.id))
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.Enter);
+		root = context.submit(stack, frame);
+		selectRoot = root.children[0];
+		if (selectRoot.children.length != 2)
+			return false;
+		var triggerGeometry:ResolvedLayoutItem = cast selectRoot.children[0].resolved;
+		var dropdownGeometry:ResolvedLayoutItem = cast selectRoot.children[1].resolved;
+		if (dropdownGeometry.x < 8.0 ||
+			dropdownGeometry.x + dropdownGeometry.width > 248.0 ||
+			dropdownGeometry.y < 0.0 ||
+			dropdownGeometry.y + dropdownGeometry.height > 192.0 ||
+			dropdownGeometry.y + dropdownGeometry.height > triggerGeometry.y - 3.5)
+			return false;
+		context.pointerDown(4.0, 4.0, 0);
+		context.pointerUp(4.0, 4.0, 0);
+		root = context.submit(stack, frame);
+		return root.children[0].children.length == 1 && context.focus.focusedId != null &&
+			context.focus.focusedId.equals(root.children[0].children[0].id);
 	}
 
 	static function findSnapshot(snapshot:Array<AccessibilitySnapshotNode>,

@@ -64,6 +64,26 @@ class Select<T> implements View {
 			rootStyle.clipToParent = false;
 			var root = new RenderNode(context.id("select"), LayoutVisualKind.Box, rootStyle);
 			root.hitTestSelf = false;
+			var rootXState:State<Float> = context.state(context.id("root-x"), 0.0);
+			var rootYState:State<Float> = context.state(context.id("root-y"), 0.0);
+			var triggerXState:State<Float> = context.state(context.id("trigger-x"), 0.0);
+			var triggerYState:State<Float> = context.state(context.id("trigger-y"), 0.0);
+			var triggerWidthState:State<Float> = context.state(context.id("trigger-width"),
+				triggerHeightFallback());
+			var triggerHeightState:State<Float> = context.state(context.id("trigger-height"),
+				triggerHeightFallback());
+			var anchorKnownState:State<Bool> = context.state(context.id("anchor-known"), false);
+			var rememberFloat = function(state:State<Float>, value:Float) {
+				var current:Float = cast state.value;
+				if (!finite(current) || Math.abs(current - value) > 0.001)
+					state.update(value);
+			};
+			root.onResolved(function(geometry) {
+				if (finite(geometry.x) && finite(geometry.y)) {
+					rememberFloat(rootXState, geometry.x);
+					rememberFloat(rootYState, geometry.y);
+				}
+			});
 
 			var selectedState:State<Dynamic> = context.state(context.id("value"), value);
 			var storedValue:Dynamic = selectedState.value;
@@ -202,17 +222,64 @@ class Select<T> implements View {
 					}
 			});
 			root.add(triggerNode);
+			triggerNode.onResolved(function(geometry) {
+				if (finite(geometry.x) && finite(geometry.y) && finite(geometry.width) &&
+					finite(geometry.height) && geometry.width >= 0.0 && geometry.height >= 0.0) {
+					rememberFloat(triggerXState, geometry.x);
+					rememberFloat(triggerYState, geometry.y);
+					rememberFloat(triggerWidthState, geometry.width);
+					rememberFloat(triggerHeightState, geometry.height);
+					if (anchorKnownState.value != true)
+						anchorKnownState.update(true);
+				}
+			});
 
 			root.focusTrap = isOpen;
 			if (isOpen) {
+				var anchorKnown:Bool = cast anchorKnownState.value;
+				var rootX:Float = cast rootXState.value;
+				var rootY:Float = cast rootYState.value;
+				var triggerX:Float = cast triggerXState.value;
+				var triggerY:Float = cast triggerYState.value;
+				var triggerWidth:Float = cast triggerWidthState.value;
+				var triggerHeight:Float = cast triggerHeightState.value;
+				if (!anchorKnown) {
+					rootX = 0.0;
+					rootY = 0.0;
+					triggerX = 0.0;
+					triggerY = 0.0;
+					triggerWidth = fallbackWidth();
+					triggerHeight = triggerHeightFallback();
+				}
+				var edge = Math.min(8.0, context.viewportWidth * 0.5);
+				var availableWidth = Math.max(1.0, context.viewportWidth - edge * 2.0);
+				var popupWidth = Math.min(Math.max(1.0, triggerWidth), availableWidth);
+				var popupX = clamp(triggerX, edge, Math.max(edge,
+					context.viewportWidth - edge - popupWidth));
+				var rowHeight = 32.0;
+				var popupPadding = 8.0;
+				var popupGap = options.length > 0 ? (options.length - 1) * 2.0 : 0.0;
+				var naturalHeight = popupPadding + options.length * rowHeight + popupGap;
+				var placementGap = 4.0;
+				var below = Math.max(0.0, context.viewportHeight - (triggerY + triggerHeight) -
+					placementGap);
+				var above = Math.max(0.0, triggerY - placementGap);
+				var opensBelow = below >= naturalHeight || below >= above;
+				var availableHeight = opensBelow ? below : above;
+				var popupHeight = Math.min(Math.max(1.0, naturalHeight),
+					Math.max(1.0, availableHeight));
+				var popupGlobalY = opensBelow ? triggerY + triggerHeight + placementGap :
+					triggerY - popupHeight - placementGap;
 				var dropdownStyle = new LayoutStyle();
-				dropdownStyle.width = LayoutAxis.grow();
-				dropdownStyle.height = LayoutAxis.fit();
+				dropdownStyle.width = LayoutAxis.fixed(popupWidth);
+				dropdownStyle.height = LayoutAxis.fixed(popupHeight);
 				dropdownStyle.direction = LayoutDirection.TopToBottom;
 				dropdownStyle.positioning = LayoutPositioning.Absolute;
-				dropdownStyle.positionY = triggerHeight();
+				dropdownStyle.positionX = popupX - rootX;
+				dropdownStyle.positionY = popupGlobalY - rootY;
 				dropdownStyle.zIndex = 10;
 				dropdownStyle.clipToParent = false;
+				dropdownStyle.clipVertical = popupHeight < naturalHeight;
 				dropdownStyle.padding = new Insets(4.0, 4.0, 4.0, 4.0);
 				dropdownStyle.childGap = 2.0;
 				dropdownStyle.background = context.theme.panelBackground;
@@ -269,6 +336,10 @@ class Select<T> implements View {
 					});
 				}
 				root.add(dropdown);
+				root.onPointerDownOutside(function(event) {
+					if (event.button == 0)
+						close();
+				});
 			}
 			root.on(UiEventKind.KeyDown, function(event) {
 				if (event.key == UiKey.Escape && openState.value == true) {
@@ -307,9 +378,19 @@ class Select<T> implements View {
 	function isEnabledIndex(index:Int):Bool
 		return index >= 0 && index < options.length && options[index].enabled;
 
-	function triggerHeight():Float
+	function triggerHeightFallback():Float
 		return style.height.sizing == LayoutSizing.Fixed && style.height.value > 0.0
 			? style.height.value : 36.0;
+
+	function fallbackWidth():Float
+		return style.width.sizing == LayoutSizing.Fixed && style.width.value > 0.0
+			? style.width.value : 220.0;
+
+	static inline function clamp(value:Float, minimum:Float, maximum:Float):Float
+		return Math.max(minimum, Math.min(maximum, value));
+
+	static inline function finite(value:Float):Bool
+		return value == value && value - value == 0.0;
 
 	static function defaultStyle():LayoutStyle {
 		var result = new LayoutStyle();

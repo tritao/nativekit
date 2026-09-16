@@ -17,6 +17,9 @@ import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
 import nativekit.ui.core.UiModifier;
 import nativekit.ui.core.WidgetId;
+import nativekit.ui.semantics.AccessibilityRole;
+import nativekit.ui.semantics.AccessibilityState;
+import nativekit.ui.semantics.Semantics;
 import nativekit.ui.core.View;
 import nativekit.ui.animation.AnimationController;
 import nativekit.ui.animation.SpringController;
@@ -180,6 +183,7 @@ class UiExplorer {
 			throw error;
 		}
 		ExplorerFocusSequence.applyAfterSubmit(this);
+		applySmokeSelectState();
 		diagnosticStage = 5;
 		try {
 			context.render(renderer, Surface.fromNativeHandle(surface), frameInfo);
@@ -203,6 +207,57 @@ class UiExplorer {
 
 	public function getDiagnosticStage():Int
 		return diagnosticStage;
+
+	function applySmokeSelectState():Void {
+		if (!state.smokeSelectManaged)
+			return;
+		if (state.smokeOpenSelect) {
+			if (findExpandedCombo() == null) {
+				var combo = findCombo();
+				if (combo == null || !context.focusWidget(combo))
+					throw "UI smoke test could not focus the Select control";
+				context.key(UiEventKind.KeyDown, UiKey.Enter);
+				var opened = buildRoot();
+				context.submit(opened, frame);
+				attachInspectorEvents();
+			}
+			if (findExpandedCombo() == null)
+				throw "UI smoke test could not open the Select control";
+		} else if (findExpandedCombo() != null) {
+			context.key(UiEventKind.KeyDown, UiKey.Escape);
+			var closed = buildRoot();
+			context.submit(closed, frame);
+			attachInspectorEvents();
+		}
+		state.smokeSelectManaged = false;
+	}
+
+	function findCombo():Null<WidgetId> {
+		var result:Null<WidgetId> = null;
+		if (context.root != null)
+			context.root.walk(function(node) {
+				var semantics:Semantics = cast node.semantics;
+				if (result != null || semantics == null ||
+					semantics.role != AccessibilityRole.ComboBox)
+					return;
+				result = node.id;
+			});
+		return result;
+	}
+
+	function findExpandedCombo():Null<WidgetId> {
+		var result:Null<WidgetId> = null;
+		if (context.root != null)
+			context.root.walk(function(node) {
+				if (result != null || node.semantics == null)
+					return;
+				var semantics:Semantics = cast node.semantics;
+				if (semantics.role == AccessibilityRole.ComboBox &&
+					(semantics.states & AccessibilityState.Expanded) != 0)
+					result = node.id;
+			});
+		return result;
+	}
 
 	function buildRoot():Stack {
 		var rootStyle = new LayoutStyle();

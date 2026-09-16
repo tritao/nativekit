@@ -23,6 +23,7 @@ class RenderNode {
 	public var cursor:Null<CursorShape>;
 	public var semantics:Null<Semantics>;
 	final handlers:Map<String, Array<UiEvent->Void>>;
+	final outsidePointerDownHandlers:Array<UiEvent->Void>;
 	final resolvedHandlers:Array<ResolvedLayoutItem->Void>;
 	final paintHandlers:Array<Canvas->ResolvedLayoutItem->Void>;
 
@@ -42,6 +43,7 @@ class RenderNode {
 		cursor = null;
 		semantics = null;
 		handlers = new Map();
+		outsidePointerDownHandlers = [];
 		resolvedHandlers = [];
 		paintHandlers = [];
 	}
@@ -84,6 +86,14 @@ class RenderNode {
 			handlers.set(key, values);
 		}
 		values.push(handler);
+		return this;
+	}
+
+	/** Runs when a pointer press targets a node outside this node's subtree. */
+	public function onPointerDownOutside(handler:UiEvent->Void):RenderNode {
+		if (handler == null)
+			throw "Outside pointer handlers require a callback";
+		outsidePointerDownHandlers.push(handler);
 		return this;
 	}
 
@@ -130,6 +140,17 @@ class RenderNode {
 				invokePhase(event, "bubble");
 		} else
 			invokePhase(event, event.phase);
+	}
+
+	@:allow(nativekit.ui.core.EventDispatcher)
+	function invokePointerDownOutside(event:UiEvent):Void {
+		for (handler in outsidePointerDownHandlers) {
+			event.currentTarget = id;
+			event.phase = "outside";
+			handler(event);
+			if (event.propagationStopped)
+				return;
+		}
 	}
 
 	function invokePhase(event:UiEvent, phase:String):Void {

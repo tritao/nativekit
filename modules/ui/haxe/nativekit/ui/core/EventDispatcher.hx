@@ -55,6 +55,8 @@ class EventDispatcher {
 	public function pointerDown(x:Float, y:Float, button:Int, modifiers:Int = 0,
 			pointerId:Int = 0, data:Dynamic = null, timestamp:Float = -1.0):Void {
 		var path = HitTest.path(root, x, y);
+		if (root != null)
+			dispatchOutsidePointerDown(path, x, y, button, modifiers, pointerId, data, timestamp);
 		if (path.length == 0)
 			return;
 		var target = path[path.length - 1];
@@ -68,6 +70,28 @@ class EventDispatcher {
 		dispatchPath(path, new UiEvent(UiEventKind.PointerDown, target.id, x, y,
 			0.0, 0.0, button, 0, modifiers, null, data, 0, pointerId,
 			timestamp < 0.0 ? NativeKit.nk_time_seconds() : timestamp));
+	}
+
+	function dispatchOutsidePointerDown(path:Array<RenderNode>, x:Float, y:Float,
+			button:Int, modifiers:Int, pointerId:Int, data:Dynamic, timestamp:Float):Void {
+		var target = path.length == 0 ? root : path[path.length - 1];
+		if (target == null)
+			return;
+		var event = new UiEvent(UiEventKind.PointerDown, target.id, x, y, 0.0, 0.0,
+			button, 0, modifiers, null, data, 0, pointerId,
+			timestamp < 0.0 ? NativeKit.nk_time_seconds() : timestamp);
+		root.walk(function(node) {
+			if (event.propagationStopped || contains(path, node))
+				return;
+			node.invokePointerDownOutside(event);
+		});
+	}
+
+	static function contains(path:Array<RenderNode>, node:RenderNode):Bool {
+		for (entry in path)
+			if (entry == node)
+				return true;
+		return false;
 	}
 
 	public function pointerUp(x:Float, y:Float, button:Int, modifiers:Int = 0,
