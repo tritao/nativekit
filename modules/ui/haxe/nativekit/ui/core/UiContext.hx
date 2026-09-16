@@ -20,6 +20,7 @@ import nativekit.ui.gestures.GestureArena;
 import nativekit.ui.animation.AnimationScheduler;
 import nativekit.ui.debug.AccessibilityAudit;
 import nativekit.ui.debug.AccessibilityIssue;
+import nativekit.ui.debug.UiFrameMetrics;
 import nativekit.ui.debug.UiInspector;
 import nativekit.ui.debug.UiNodeSnapshot;
 
@@ -47,6 +48,8 @@ class UiContext {
 	var accessibilitySurface:Null<NativeKitSurface>;
 	var cursorHandler:Null<CursorShape->Void>;
 	var currentCursor:CursorShape;
+	var lastFrameMetrics:Null<UiFrameMetrics>;
+	var frameNumber:Int;
 	var diagnosticStage:Int = 0;
 	public final textInput:TextInputBridge;
 
@@ -81,6 +84,8 @@ class UiContext {
 			if (!disposed && onAnimationFrameRequested != null)
 				onAnimationFrameRequested();
 		};
+		lastFrameMetrics = null;
+		frameNumber = 0;
 	}
 
 	/** Sets fonts for text-aware widgets and the native layout session. */
@@ -114,10 +119,14 @@ class UiContext {
 
 	/** Builds a fresh view tree, resolves native layout, and reconnects geometry by stable ID. */
 	public function submit(view:View, frame:LayoutFrame):RenderNode {
+		var submitStartedAt = Sys.time();
 		diagnosticStage = 1;
 		ensureLive();
 		if (view == null || frame == null)
 			throw "A UI frame requires a view and layout frame";
+		var styleResolutionsBefore = buildContext.styleResolver.resolutions;
+		var styleCacheHitsBefore = buildContext.styleResolver.cacheHits;
+		var styleCacheMissesBefore = buildContext.styleResolver.cacheMisses;
 		diagnosticStage = 2;
 		gestures.advance(frame.deltaSeconds);
 		diagnosticStage = 3;
@@ -137,8 +146,10 @@ class UiContext {
 			byId.set(item.id, item);
 		var resolvedStateRevision = stateStore.revision;
 		var missing = false;
+		var nodeCount = 0;
 		diagnosticStage = 7;
 		next.walk(function(node) {
+			nodeCount++;
 			// Geometry is keyed by the exact LayoutNode ID serialized to NativeUI.
 			node.setResolved(byId.get(node.layout.id));
 			if (node.resolved == null)
@@ -166,6 +177,12 @@ class UiContext {
 		submittedStyleRevision = buildContext.styleRevision;
 		if (accessibilityBridge != null)
 			accessibilityBridge.update(next, focus.focusedId);
+		frameNumber++;
+		lastFrameMetrics = new UiFrameMetrics(frameNumber, nodeCount,
+			buildContext.styleResolver.resolutions - styleResolutionsBefore,
+			buildContext.styleResolver.cacheHits - styleCacheHitsBefore,
+			buildContext.styleResolver.cacheMisses - styleCacheMissesBefore,
+			buildContext.styleResolver.cachedStyleCount, Sys.time() - submitStartedAt);
 		diagnosticStage = 0;
 		return next;
 	}
@@ -188,6 +205,7 @@ class UiContext {
 	}
 
 	public function render(renderer:Renderer, surface:Surface, frame:FrameInfo):Void {
+		var renderStartedAt = Sys.time();
 		diagnosticStage = 20;
 		ensureLive();
 		if (root == null)
@@ -243,6 +261,8 @@ class UiContext {
 		}
 		diagnosticStage = 24;
 		session.render(renderer, surface, frame);
+		if (lastFrameMetrics != null)
+			lastFrameMetrics.completeRender(Sys.time() - renderStartedAt);
 		diagnosticStage = 0;
 	}
 
@@ -434,6 +454,11 @@ class UiContext {
 		ensureLive();
 		return UiInspector.snapshot(root, focus.focusedId, events.hoveredId(), events.pressedId());
 	}
+
+	/** Timing and style-cache counters captured during the latest submit/render. */
+	public var frameMetrics(get, never):Null<UiFrameMetrics>;
+	function get_frameMetrics():Null<UiFrameMetrics>
+		return lastFrameMetrics;
 
 	/** Formats the current render and semantic tree for logs or developer tools. */
 	public function dumpTree():String {

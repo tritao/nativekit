@@ -152,6 +152,20 @@ class InspectorPanel {
 				children.push(PropertyRow.build("style-summary",
 					'${record.styleEntries.length} properties · ${record.matchingStyleRules.length} matching rules',
 					explorer.paletteMuted()));
+				var metrics = explorer.latestFrameMetrics();
+				children.push(explorer.keyed("style-metrics-heading",
+					explorer.text("FRAME METRICS", explorer.paletteText())));
+				children.push(PropertyRow.build("style-metrics", metrics == null
+					? "No completed frame metrics."
+					: 'frame ${metrics.frameNumber} · ${metrics.nodeCount} nodes\n' +
+						'style resolutions: ${metrics.styleResolutions}\n' +
+						'cache: ${metrics.styleCacheHits} hits · ${metrics.styleCacheMisses} misses · ' +
+						'${percent(metrics.cacheHitRate())} hit rate\n' +
+						'entries: ${metrics.cachedStyleCount}\n' +
+						'submit: ${milliseconds(metrics.submitSeconds)} ms · ' +
+						'render: ${milliseconds(metrics.renderSeconds)} ms · ' +
+						'total: ${milliseconds(metrics.totalSeconds)} ms',
+					explorer.paletteMuted()));
 				var shownProperties = 0;
 				for (entry in record.styleEntries) {
 					if (shownProperties >= 14)
@@ -243,4 +257,10 @@ class InspectorPanel {
 		var label = record.label == null || record.label.length == 0 ? "" : ' · ${record.label}';
 		return '#${record.id} ${WidgetDocsRegistry.visualName(record.visualKind)}${label} · ${WidgetDocsRegistry.roleName(record.role)} · z=${record.zIndex}';
 	}
+
+	static function percent(value:Float):String
+		return Std.string(Std.int(value * 1000.0) / 10.0) + "%";
+
+	static function milliseconds(seconds:Float):String
+		return Std.string(Std.int(seconds * 1000.0 * 100.0) / 100.0);
 }

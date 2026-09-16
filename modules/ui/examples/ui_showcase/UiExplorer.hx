@@ -20,6 +20,7 @@ import nativekit.ui.core.WidgetId;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.debug.UiFrameMetrics;
 import nativekit.ui.core.View;
 import nativekit.ui.animation.AnimationController;
 import nativekit.ui.animation.SpringController;
@@ -258,6 +259,29 @@ class UiExplorer {
 			});
 		return result;
 	}
+
+	/** Returns the most recent submit/render metrics for the inspector and smoke runs. */
+	public function latestFrameMetrics():Null<UiFrameMetrics>
+		return context.frameMetrics;
+
+	/** Prints a compact real-workload style/cache sample for profiling smoke runs. */
+	public function printStats():Void {
+		var metrics = latestFrameMetrics();
+		if (metrics == null)
+			return;
+		Sys.println('nativekit_ui_showcase style_frame=${metrics.frameNumber}' +
+			' nodes=${metrics.nodeCount}' +
+			' style_resolutions=${metrics.styleResolutions}' +
+			' cache_hits=${metrics.styleCacheHits}' +
+			' cache_misses=${metrics.styleCacheMisses}' +
+			' cache_entries=${metrics.cachedStyleCount}' +
+			' submit_ms=${milliseconds(metrics.submitSeconds)}' +
+			' render_ms=${milliseconds(metrics.renderSeconds)}' +
+			' total_ms=${milliseconds(metrics.totalSeconds)}');
+	}
+
+	static function milliseconds(seconds:Float):String
+		return Std.string(Std.int(seconds * 1000.0 * 100.0) / 100.0);
 
 	function buildRoot():Stack {
 		var rootStyle = new LayoutStyle();

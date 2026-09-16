@@ -21,6 +21,7 @@ class StyleResolver {
 	var cacheEntryCount:Int;
 	var cacheHitCount:Int;
 	var cacheMissCount:Int;
+	var resolutionCount:Int;
 	var localFingerprintCount:Int;
 	var nextLocalFingerprint:Int;
 
@@ -28,6 +29,8 @@ class StyleResolver {
 	public var cacheHits(get, never):Int;
 	/** Number of cacheable resolutions that required a fresh cascade. */
 	public var cacheMisses(get, never):Int;
+	/** Total number of style resolution calls made by this resolver. */
+	public var resolutions(get, never):Int;
 	/** Number of entries currently held by this resolver's bounded cache. */
 	public var cachedStyleCount(get, never):Int;
 
@@ -42,6 +45,7 @@ class StyleResolver {
 		cacheEntryCount = 0;
 		cacheHitCount = 0;
 		cacheMissCount = 0;
+		resolutionCount = 0;
 		localFingerprintCount = 0;
 		nextLocalFingerprint = 0;
 	}
@@ -51,6 +55,9 @@ class StyleResolver {
 
 	function get_cacheMisses():Int
 		return cacheMissCount;
+
+	function get_resolutions():Int
+		return resolutionCount;
 
 	function get_cachedStyleCount():Int
 		return cacheEntryCount;
@@ -68,6 +75,7 @@ class StyleResolver {
 			?environment:StyleEnvironment):ComputedStyle {
 		if (target == null)
 			throw "Style resolution requires a target";
+		resolutionCount++;
 
 		// Transition values depend on scheduler time and must be resolved live. A
 		// sheet containing transitions conservatively disables caching for the

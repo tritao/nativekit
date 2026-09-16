@@ -120,6 +120,7 @@ import nativekit.ui.animation.SpringController;
 import nativekit.ui.animation.LoopAnimation;
 import nativekit.ui.animation.Easing;
 import nativekit.ui.debug.UiInspector;
+import nativekit.ui.debug.UiFrameMetrics;
 import nativekit.ui.debug.AccessibilityAudit;
 import AccessibilityContract;
 
@@ -1656,11 +1657,16 @@ class FrameworkSmoke {
 		var themedButton = new Button("Themed", null, function() { themedClicks++; }, "theme-key");
 		var themedFrame = new LayoutFrame(256.0, 192.0);
 		var themedRoot = context.submit(themedButton, themedFrame);
+		if (!frameMetricsValid(context, false))
+			return 236;
 		if (!context.focusWidget(themedRoot.id))
 			return 80;
 		themedRoot = context.submit(themedButton, themedFrame);
 		if (themedRoot.layout.style.background.red != 0.4)
 			return 81;
+		themedRoot = context.submit(themedButton, themedFrame);
+		if (!frameMetricsValid(context, true))
+			return 237;
 		var themedLabelGeometry:ResolvedLayoutItem = cast themedRoot.children[0].resolved;
 		var themedX = themedLabelGeometry.x + themedLabelGeometry.width * 0.5;
 		var themedY = themedLabelGeometry.y + themedLabelGeometry.height * 0.5;
@@ -2046,5 +2052,13 @@ class FrameworkSmoke {
 			AccessibilityRequest.Decrement, null, -1, -1, 2) || leadingSplit.extent != 76.0)
 			return false;
 		return true;
+	}
+
+	static function frameMetricsValid(context:UiContext, requireCacheHit:Bool):Bool {
+		var metrics:Null<UiFrameMetrics> = context.frameMetrics;
+		if (metrics == null || metrics.frameNumber <= 0 || metrics.nodeCount != 2 ||
+			metrics.styleResolutions <= 0 || metrics.submitSeconds < 0.0 || metrics.totalSeconds < 0.0)
+			return false;
+		return !requireCacheHit || (metrics.styleCacheHits > 0 && metrics.styleCacheMisses == 0);
 	}
 }

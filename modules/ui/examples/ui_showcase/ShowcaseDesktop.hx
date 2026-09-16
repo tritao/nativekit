@@ -301,6 +301,8 @@ class ShowcaseDesktop {
             }
             if ((printStats || smoke || staticFrame) && graphics != null)
                 graphics.printStats();
+            if ((printStats || uiSmoke) && explorer != null)
+                explorer.printStats();
             if (uiSmoke)
                 Sys.println('nativekit_ui_showcase explorer_frames=${frameState.rendered}');
             result = frameState.rendered > 0 ? 0 : 17;
