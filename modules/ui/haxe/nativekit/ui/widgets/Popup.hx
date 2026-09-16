@@ -14,6 +14,8 @@ import nativekit.ui.core.UiKey;
 import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.style.StyleProperty;
+import nativekit.ui.style.StyleSource;
 import nativekit.ui.style.StyleTarget;
 
 /** Parent-sized popup layer with optional modal focus and outside-click dismissal. */
@@ -80,6 +82,10 @@ class Popup implements View {
 			var backdropComputed = context.resolveStyle(
 				new StyleTarget("popup-backdrop", "backdrop", "backdrop", null, ["popup"],
 					context.interactionStates.get(backdropId)), backdropStyle);
+			if (!modal || !dimBackdrop)
+				backdropComputed.set(StyleProperty.Background,
+					Color.rgba(0.0, 0.0, 0.0, 0.0),
+					new StyleSource("local", "popup-backdrop", -1, "local"));
 			var backdrop = new RenderNode(backdropId, LayoutVisualKind.Box,
 				backdropComputed.toLayoutStyle());
 			backdrop.setStyleIdentity("popup-backdrop", "backdrop", "backdrop", null, ["popup"]);
