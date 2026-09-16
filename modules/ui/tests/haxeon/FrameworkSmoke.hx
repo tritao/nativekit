@@ -183,11 +183,13 @@ class FrameworkSmoke {
 		var search = new SearchField("search", "query", function(next) searchChange = next,
 			null, "Search components…");
 		var searchRoot = context.submit(search, new LayoutFrame(256.0, 38.0));
+		var searchIcon = searchRoot.children[0].children[0];
 		var searchInputSemantics:Semantics = cast searchRoot.children[1].semantics;
 		var searchClearSemantics:Semantics = cast searchRoot.children[2].semantics;
 		if (searchRoot.children.length != 3 ||
-			searchRoot.children[0].layout.visualKind != LayoutVisualKind.Custom ||
-			searchRoot.children[0].hitTestSelf ||
+			searchRoot.children[0].layout.style.width.value != 18.0 ||
+			searchIcon.layout.visualKind != LayoutVisualKind.Custom ||
+			searchIcon.hitTestSelf ||
 			searchInputSemantics.role != AccessibilityRole.TextField ||
 			searchInputSemantics.label != "Search components…" ||
 			searchClearSemantics.label != "Clear search")

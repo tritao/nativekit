@@ -30,13 +30,17 @@ class CatalogSidebar {
 		var searchStyle = new LayoutStyle();
 		searchStyle.width = LayoutAxis.grow();
 		searchStyle.height = LayoutAxis.fixed(38.0);
-		searchStyle.padding = new Insets(9.0, 7.0, 9.0, 7.0);
+		searchStyle.padding = new Insets(10.0, 7.0, 10.0, 7.0);
+		searchStyle.childGap = 8.0;
+		searchStyle.radiusTopLeft = searchStyle.radiusTopRight = 6.0;
+		searchStyle.radiusBottomLeft = searchStyle.radiusBottomRight = 6.0;
 		searchStyle.background = explorer.state.lightTheme
 			? UiExplorer.color(0.91, 0.93, 0.97)
 			: UiExplorer.color(0.09, 0.12, 0.18);
 		var search = new SearchField("catalog-search", explorer.state.searchText, function(value) {
 			explorer.state.searchText = value;
-		}, searchStyle, "Search components…");
+		}, searchStyle, "Search…");
+		search.label = "Search components";
 		children.push(explorer.keyed("search", search));
 		var navItems:Array<KeyedView> = [];
 		var lastGroup:Null<String> = null;

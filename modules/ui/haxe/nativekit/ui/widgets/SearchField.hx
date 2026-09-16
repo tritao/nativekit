@@ -2,6 +2,7 @@ package nativekit.ui.widgets;
 
 import Color;
 import Insets;
+import LayoutAlignmentX;
 import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutStyle;
@@ -38,8 +39,13 @@ class SearchField implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
-			var icon = new Icon("search-icon", IconName.Search, 16.0,
+			var icon = new Icon("search-icon", IconName.Search, 15.0,
 				context.theme.mutedText);
+			var leadingStyle = new LayoutStyle();
+			leadingStyle.width = LayoutAxis.fixed(18.0);
+			leadingStyle.height = LayoutAxis.grow();
+			var leading = new Align("leading", icon, LayoutAlignmentX.Center,
+				LayoutAlignmentY.Center, leadingStyle);
 
 			var inputStyle = new LayoutStyle();
 			inputStyle.width = LayoutAxis.grow();
@@ -55,7 +61,7 @@ class SearchField implements View {
 			input.enabled = enabled;
 
 			var children:Array<KeyedView> = [
-				new KeyedView("icon", icon),
+				new KeyedView("icon", leading),
 				new KeyedView("input", input)
 			];
 			if (value.length > 0) {
@@ -80,8 +86,8 @@ class SearchField implements View {
 		var result = new LayoutStyle();
 		result.width = LayoutAxis.grow();
 		result.height = LayoutAxis.fixed(38.0);
-		result.padding = new Insets(9.0, 7.0, 9.0, 7.0);
-		result.childGap = 6.0;
+		result.padding = new Insets(10.0, 7.0, 10.0, 7.0);
+		result.childGap = 8.0;
 		result.childAlignY = LayoutAlignmentY.Center;
 		return result;
 	}
