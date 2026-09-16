@@ -1979,14 +1979,11 @@ bool install_callbacks(const HostCallbacks &callbacks, void *user_data) noexcept
                                                  context_callback);
     emscripten_set_pointerlockchange_callback(canvas_selector(), &host_state, EM_TRUE,
                                               pointer_lock_callback);
-<<<<<<< HEAD
     if (host_state.callbacks.display_orientation)
         nk_web_install_display_orientation_callback(
             NK_ORIENTATION_UNKNOWN, NK_ORIENTATION_PORTRAIT,
             NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN, NK_ORIENTATION_LANDSCAPE_LEFT,
             NK_ORIENTATION_LANDSCAPE_RIGHT);
-=======
->>>>>>> 12a63b8 (style: normalize checked source formatting)
     nk_web_install_drop_handlers(canvas_selector());
     return true;
 }
