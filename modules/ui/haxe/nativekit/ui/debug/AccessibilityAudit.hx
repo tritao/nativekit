@@ -5,6 +5,7 @@ import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.widgets.Utf8Text;
 
 /** Small deterministic audit for common accessibility mistakes in resolved trees. */
 class AccessibilityAudit {
@@ -31,6 +32,18 @@ class AccessibilityAudit {
 			issues.push(new AccessibilityIssue(node.id.value, "missing-semantics",
 				"Interactive nodes need an accessibility role and state"));
 		if (semantics != null) {
+			var valueEnd = semantics.textStart + Utf8Text.length(semantics.value);
+			if (semantics.textStart < 0 || semantics.documentLength < 0 ||
+				valueEnd > semantics.documentLength)
+				issues.push(new AccessibilityIssue(node.id.value, "text-range-out-of-bounds",
+					'Text range ${semantics.textStart}...${valueEnd} must fit within document length ${semantics.documentLength}'));
+			var noSelection = semantics.selectionStart == -1 && semantics.selectionEnd == -1;
+			var validSelection = semantics.selectionStart >= semantics.textStart &&
+				semantics.selectionStart <= semantics.selectionEnd &&
+				semantics.selectionEnd <= valueEnd;
+			if (!noSelection && !validSelection)
+				issues.push(new AccessibilityIssue(node.id.value, "selection-out-of-bounds",
+					'Selection ${semantics.selectionStart}...${semantics.selectionEnd} must be unset or fit within text range ${semantics.textStart}...${valueEnd}'));
 			if ((semantics.role == AccessibilityRole.Dialog ||
 				semantics.role == AccessibilityRole.MenuItem) &&
 				(semantics.label == null || isBlank(semantics.label))) {

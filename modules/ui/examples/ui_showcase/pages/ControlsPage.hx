@@ -73,8 +73,8 @@ class ControlsPage {
 				}))
 			])));
 		items.push(explorer.keyed("controls-spinners", explorer.panel("spinners-card", [
-			explorer.keyed("heading", explorer.text("Indeterminate spinners", explorer.paletteText())),
-			explorer.keyed("description", explorer.text("Procedural indicators share retained paint resources and the frame scheduler.", explorer.paletteMuted())),
+			explorer.keyed("heading", explorer.heading("Indeterminate spinners")),
+			explorer.keyed("description", explorer.caption("Procedural indicators share retained paint resources and the frame scheduler.")),
 			explorer.keyed("variants", new Row("spinner-variants", [
 				explorer.keyed("ring", spinnerSample(explorer, "ring", "Ring", SpinnerKind.Ring)),
 				explorer.keyed("dots", spinnerSample(explorer, "dots", "Dots", SpinnerKind.Dots)),
@@ -82,9 +82,8 @@ class ControlsPage {
 				explorer.keyed("pulse", spinnerSample(explorer, "pulse", "Pulse", SpinnerKind.Pulse))
 		], explorer.rowStyle(10.0))),
 			explorer.keyed("spinner-controls", new Row("spinner-controls", [
-				explorer.keyed("status", explorer.text(
-					explorer.state.controls.spinnerRunning ? "Animating" : "Paused",
-					explorer.paletteMuted())),
+				explorer.keyed("status", explorer.caption(
+					explorer.state.controls.spinnerRunning ? "Animating" : "Paused")),
 				explorer.keyed("toggle", explorer.button(
 					explorer.state.controls.spinnerRunning ? "Pause spinners" : "Resume spinners",
 					"toggle-spinners", function() {
@@ -105,10 +104,12 @@ class ControlsPage {
 			? UiExplorer.color(0.91, 0.94, 0.98) : UiExplorer.color(0.07, 0.10, 0.16);
 		style.radiusTopLeft = style.radiusTopRight = 5.0;
 		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
+		var spinner = new Spinner(key + "-spinner", label, null, kind, null, 1.0);
+		spinner.running = explorer.state.controls.spinnerRunning;
 		return new Column(key + "-sample", [
 			explorer.keyed("indicator", new Align(key + "-align",
-				new Spinner(key + "-spinner", label, null, kind, null, 1.0))),
-			explorer.keyed("label", explorer.text(label, explorer.paletteMuted()))
+				spinner)),
+			explorer.keyed("label", explorer.caption(label))
 		], style);
 	}
 }

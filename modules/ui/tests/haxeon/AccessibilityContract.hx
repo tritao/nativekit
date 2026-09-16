@@ -37,6 +37,7 @@ import nativekit.ui.widgets.TabItem;
 import nativekit.ui.widgets.Tabs;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.Toggle;
+import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualList;
 
 /** Headless deterministic contract checks for the Haxe accessibility layer. */
@@ -138,7 +139,7 @@ class AccessibilityContract {
 		var selectChanges = 0;
 		var selectedSelectValue = "";
 		var select = new Select("accessibility-select", [
-			new SelectOption("one", "One", "one"),
+			new SelectOption("one", "Öne", "one"),
 			new SelectOption("blocked", "Blocked", "blocked", false),
 			new SelectOption("two", "Two", "two")
 		], "blocked", function(next) {
@@ -149,7 +150,8 @@ class AccessibilityContract {
 		var selectTrigger = selectRoot.children[0];
 		var selectSemantics:Semantics = cast selectTrigger.semantics;
 		if (selectRoot.children.length != 1 || selectSemantics.role != AccessibilityRole.ComboBox ||
-			selectSemantics.value != "One" ||
+			selectSemantics.value != "Öne" ||
+			selectSemantics.documentLength != Utf8Text.length("Öne") ||
 			(selectSemantics.states & AccessibilityState.HasPopup) == 0 ||
 			(selectSemantics.actions & AccessibilityAction.SetValue) == 0 ||
 			(selectSemantics.actions & AccessibilityAction.Expand) == 0 ||
@@ -330,7 +332,7 @@ class AccessibilityContract {
 		for (code in ["dialog-missing-name", "menu-item-missing-name", "tab-list-no-selected-tab",
 			"tab-no-select", "switch-no-toggle", "expandable-missing-actions", "range-out-of-bounds",
 			"collection-position-out-of-range", "grid-cell-out-of-bounds", "focusable-disabled",
-			"modal-without-focus-trap"])
+			"modal-without-focus-trap", "text-range-out-of-bounds", "selection-out-of-bounds"])
 			if (!containsIssue(issues, code))
 				return 16;
 
@@ -608,6 +610,13 @@ class AccessibilityContract {
 		disabledFocus.semantics = new Semantics(AccessibilityRole.Button, "Unavailable");
 		disabledParent.add(disabledFocus);
 		root.add(disabledParent);
+		var invalidText = new RenderNode(new WidgetId(900014));
+		var invalidTextSemantics = new Semantics(AccessibilityRole.TextField, "Invalid text", "value");
+		invalidTextSemantics.documentLength = 0;
+		invalidTextSemantics.selectionStart = 3;
+		invalidTextSemantics.selectionEnd = 2;
+		invalidText.semantics = invalidTextSemantics;
+		root.add(invalidText);
 		return root;
 	}
 }

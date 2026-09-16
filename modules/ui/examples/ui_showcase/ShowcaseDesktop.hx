@@ -18,6 +18,7 @@ import NativeKitEventValue;
 import NativeKitEvents;
 import NativeKitEvents.NativeKitEventSubscription;
 import NativeKitSurface;
+import NativeKitError;
 import nativekit.ui.core.NativeInputAdapter;
 
 private class ShowcaseFrameState {
@@ -304,7 +305,12 @@ class ShowcaseDesktop {
                 Sys.println('nativekit_ui_showcase explorer_frames=${frameState.rendered}');
             result = frameState.rendered > 0 ? 0 : 17;
         } catch (error:Dynamic) {
-            if (Std.isOfType(error, UiError)) {
+            if (Std.isOfType(error, NativeKitError)) {
+                var nativeError:NativeKitError = cast error;
+                Sys.println('nativekit_ui_showcase: ${nativeError.operation} failed with result ${nativeError.result}'
+                    + (nativeError.diagnostic == null || nativeError.diagnostic.length == 0
+                        ? "" : ': ${nativeError.diagnostic}'));
+            } else if (Std.isOfType(error, UiError)) {
                 var uiError:UiError = cast error;
                 Sys.println('nativekit_ui_showcase: ${uiError.operation} failed with status ${uiError.status}');
             } else

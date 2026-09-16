@@ -4526,9 +4526,36 @@ nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
             for (uint32_t index = 0; index < update->node_count; ++index) {
                 const auto &node = update->nodes[index];
                 GtkAccessibilityNode copy;
-                if (!copy_gtk_accessibility_node(node, nodes, copy))
+                if (!copy_gtk_accessibility_node(node, nodes, copy)) {
+                    const char *value = node.value ? node.value : "";
+                    const bool valid_value = g_utf8_validate(value, -1, nullptr);
+                    const uint64_t text_end = valid_value
+                                                  ? static_cast<uint64_t>(node.text_start) +
+                                                        static_cast<uint64_t>(g_utf8_strlen(value, -1))
+                                                  : 0;
+                    std::string reason = "invalid fields";
+                    if (!valid_value)
+                        reason = "value is not valid UTF-8";
+                    else if (node.label && !g_utf8_validate(node.label, -1, nullptr))
+                        reason = "label is not valid UTF-8";
+                    else if (text_end > node.document_length)
+                        reason = "text end " + std::to_string(text_end) +
+                                 " exceeds document length " +
+                                 std::to_string(node.document_length);
+                    else if ((node.selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE) !=
+                             (node.selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE) ||
+                             (node.selection_start != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
+                              (node.selection_start > node.selection_end ||
+                               node.selection_start < node.text_start ||
+                               node.selection_end > text_end)))
+                        reason = "selection is outside the text range";
+                    else if (node.parent_id != NK_ACCESSIBILITY_ROOT &&
+                             nodes.find(node.parent_id) == nodes.end())
+                        reason = "parent " + std::to_string(node.parent_id) + " is unknown";
                     return fail(NK_ERROR_INVALID_ARGUMENT,
-                                "invalid node in Linux accessibility update");
+                                "invalid Linux accessibility node " + std::to_string(node.id) +
+                                    " at update index " + std::to_string(index) + ": " + reason);
+                }
                 if (const auto old = nodes.find(node.id); old != nodes.end())
                     copy.text_ranges = old->second.text_ranges;
                 nodes[node.id] = std::move(copy);

@@ -6,7 +6,8 @@ import nativekit.ui.widgets.Utf8Text;
 class Semantics {
 	public final role:AccessibilityRole;
 	public var label:Null<String>;
-	public var value:Null<String>;
+	public var value(get, set):Null<String>;
+	var storedValue:Null<String>;
 	public var states:Int;
 	public var actions:Int;
 	public var numericValue:Float;
@@ -54,4 +55,13 @@ class Semantics {
 		hierarchyLevel = 0;
 		orientation = AccessibilityOrientation.Unspecified;
 	}
+
+	function set_value(next:Null<String>):Null<String> {
+		storedValue = next;
+		documentLength = Utf8Text.length(next);
+		return next;
+	}
+
+	function get_value():Null<String>
+		return storedValue;
 }

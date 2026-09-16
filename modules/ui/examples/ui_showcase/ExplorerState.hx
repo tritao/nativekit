@@ -12,7 +12,7 @@ class ExplorerState {
 	public final gestures:GestureDemoState;
 	public final overlays:OverlayState;
 	public final listController:ScrollController;
-	public var lightTheme:Bool = false;
+	public var lightTheme:Bool = true;
 	public var selectedPage:String = "overview";
 	public var searchText:String = "";
 	/** User override; a non-positive value selects the responsive default. */

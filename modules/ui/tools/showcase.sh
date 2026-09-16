@@ -26,9 +26,9 @@ fi
 cmake --build "$build_dir" --target nativekit_ui
 "$module_dir/tools/check-hxi.sh"
 if [[ -x "$haxeon_dir/scripts/build-runtime.sh" ]]; then
-    "$haxeon_dir/scripts/build-runtime.sh"
-elif [[ ! -x "$haxeon_dir/.tools/hashlink/hl" && -x "$haxeon_dir/scripts/build-native.sh" ]]; then
-    "$haxeon_dir/scripts/build-native.sh"
+    (cd "$haxeon_dir" && scripts/build-runtime.sh)
+elif [[ -x "$haxeon_dir/scripts/build-native.sh" ]]; then
+    (cd "$haxeon_dir" && scripts/build-native.sh)
 fi
 
 (cd "$haxeon_dir" && .tools/haxe/haxe -cp src --run compiler.tools.HaxeonCompiler \
