@@ -1,6 +1,5 @@
 package nativekit.ui.widgets;
 
-import Insets;
 import LayoutAxis;
 import LayoutPositioning;
 import LayoutStyle;
@@ -11,6 +10,7 @@ import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.View;
+import nativekit.ui.style.StyleTarget;
 
 /** Hover-triggered tooltip layered above its anchor with persistent Haxe state. */
 class Tooltip implements View {
@@ -34,26 +34,30 @@ class Tooltip implements View {
 		return context.withScope(key, function() {
 			var state:State<Bool> = context.state(context.id("visible"), false);
 			var tooltipStyle = new LayoutStyle();
-			tooltipStyle.padding = new Insets(6.0, 6.0, 4.0, 4.0);
-			tooltipStyle.background = context.theme.tooltipBackground;
+			tooltipStyle.positioning = LayoutPositioning.Absolute;
+			tooltipStyle.positionX = x;
+			tooltipStyle.positionY = y;
+			tooltipStyle.zIndex = 10;
+			tooltipStyle.clipToParent = false;
+			tooltipStyle.visible = cast state.value;
 			var tooltip = new AnonymousTooltipContent(content, tooltipStyle);
 			var rootStyle = new LayoutStyle();
 			rootStyle.width = LayoutAxis.fit();
 			rootStyle.height = LayoutAxis.fit();
 			rootStyle.clipToParent = false;
 			var root = context.withScope(new Key("layers"), function() {
-				var result = new RenderNode(context.id("stack"), LayoutVisualKind.Box, rootStyle);
-				var anchorNode = context.withScope(new Key("anchor"), function() {
-					return anchor.build(context);
-				});
-				var tooltipNode = context.withScope(new Key("tooltip"), function() {
-					return tooltip.build(context);
-				});
-				tooltipNode.layout.style.positioning = LayoutPositioning.Absolute;
-				tooltipNode.layout.style.positionX = x;
-				tooltipNode.layout.style.positionY = y;
-				tooltipNode.layout.style.zIndex = 10;
-				tooltipNode.layout.style.clipToParent = false;
+				var rootId = context.id("stack");
+				var rootComputed = context.resolveStyle(
+					new StyleTarget("tooltip-layer", key.value, key.value, null, ["tooltip-layer"],
+						context.interactionStates.get(rootId)), rootStyle);
+				var result = new RenderNode(rootId, LayoutVisualKind.Box, rootComputed.toLayoutStyle());
+				result.setStyleIdentity("tooltip-layer", key.value, key.value, null, ["tooltip-layer"]);
+				result.states = context.interactionStates.get(rootId);
+				result.computedStyle = rootComputed;
+				var anchorNode = context.withStyleParent(rootComputed, function() return
+					context.withScope(new Key("anchor"), function() return anchor.build(context)));
+				var tooltipNode = context.withStyleParent(rootComputed, function() return
+					context.withScope(new Key("tooltip"), function() return tooltip.build(context)));
 				result.add(anchorNode);
 				result.add(tooltipNode);
 				return result;
@@ -81,8 +85,16 @@ private class AnonymousTooltipContent implements View {
 	}
 
 	public function build(context:BuildContext):RenderNode {
-		var node = new RenderNode(context.id("tooltip"), LayoutVisualKind.Box, style);
-		var child = context.withScope(new Key("content"), function() return content.build(context));
+		var nodeId = context.id("tooltip");
+		var computed = context.resolveStyle(
+			new StyleTarget("tooltip", "tooltip", "tooltip", null, ["tooltip"],
+				context.interactionStates.get(nodeId)), style);
+		var node = new RenderNode(nodeId, LayoutVisualKind.Box, computed.toLayoutStyle());
+		node.setStyleIdentity("tooltip", "tooltip", "tooltip", null, ["tooltip"]);
+		node.states = context.interactionStates.get(nodeId);
+		node.computedStyle = computed;
+		var child = context.withStyleParent(computed, function() return
+			context.withScope(new Key("content"), function() return content.build(context)));
 		node.add(child);
 		return node;
 	}

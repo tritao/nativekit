@@ -27,6 +27,8 @@ class Button implements View {
 	public final key:String;
 	public final label:String;
 	public final style:LayoutStyle;
+	/** Typed selector classes used by composite controls and application styles. */
+	public var classes:Array<String>;
 	public var enabled:Bool;
 	public var selected:Bool;
 	/** Semantic role override used by composite controls such as tabs and menus. */
@@ -41,6 +43,7 @@ class Button implements View {
 			? (this.label.length == 0 ? "button" : this.label)
 			: key;
 		this.style = style == null ? defaultStyle() : style.copy();
+		classes = [];
 		this.onClick = onClick;
 		enabled = true;
 		selected = false;
@@ -57,12 +60,12 @@ class Button implements View {
 		var flags:Int = context.interactionStates.get(id);
 		flags = StyleStateUtil.withState(flags, StyleState.Selected, selected);
 		flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
-		var target = new StyleTarget("button", key, key, null, ["button"], flags);
+		var target = new StyleTarget("button", key, key, classes, ["button"], flags);
 		var computed = context.styleResolver.resolve(target, context.inheritedStyle, context.theme.styles,
 			context.styleSheet, style, context.environment);
 		var resolvedStyle = computed.toLayoutStyle();
 		var node = new RenderNode(id, LayoutVisualKind.Box, resolvedStyle);
-		node.setStyleIdentity("button", key, key, null, ["button"]);
+		node.setStyleIdentity("button", key, key, classes, ["button"]);
 		node.states = flags;
 		node.computedStyle = computed;
 		node.focusable = enabled;

@@ -1,7 +1,6 @@
 package nativekit.ui.widgets;
 
 import Canvas;
-import Color;
 import LayoutAxis;
 import LayoutStyle;
 import LayoutVisualKind;
@@ -15,6 +14,10 @@ import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
 import nativekit.ui.core.View;
+import nativekit.ui.style.StyleProperty;
+import nativekit.ui.style.StyleState;
+import nativekit.ui.style.StyleStateUtil;
+import nativekit.ui.style.StyleTarget;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRole;
@@ -51,7 +54,16 @@ class Slider implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
-			var node = new RenderNode(context.id("slider"), LayoutVisualKind.Custom, style);
+			var nodeId = context.id("slider");
+			var flags = context.interactionStates.get(nodeId);
+			flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
+			var computed = context.styleResolver.resolve(
+				new StyleTarget("slider", key, key, null, ["slider"], flags),
+				context.inheritedStyle, context.theme.styles, context.styleSheet, style, context.environment);
+			var node = new RenderNode(nodeId, LayoutVisualKind.Custom, computed.toLayoutStyle());
+			node.setStyleIdentity("slider", key, key, null, ["slider"]);
+			node.states = flags;
+			node.computedStyle = computed;
 			node.focusable = enabled;
 			node.enabled = enabled;
 			var semantics = new Semantics(AccessibilityRole.Slider, label, Std.string(value));
@@ -60,6 +72,8 @@ class Slider implements View {
 			semantics.numericValue = value;
 			semantics.numericMinimum = minimum;
 			semantics.numericMaximum = maximum;
+			if (!enabled)
+				semantics.states |= nativekit.ui.semantics.AccessibilityState.Disabled;
 			node.semantics = semantics;
 
 			var invalidation:State<Float> = context.state(node.id, value);
@@ -90,9 +104,9 @@ class Slider implements View {
 				return setValue(minimum + fraction * (maximum - minimum));
 			};
 			node.onPaint(function(canvas, geometry) {
-				var accent = enabled ? context.theme.accent : context.theme.controlDisabled;
-				var muted = context.theme.controlColor(false, enabled);
-				var foreground = context.theme.textColor(enabled);
+				var accent = computed.get(StyleProperty.SliderFillColor);
+				var muted = computed.get(StyleProperty.SliderTrackColor);
+				var foreground = computed.get(StyleProperty.SliderThumbColor);
 				var y = geometry.height * 0.5;
 				var start = 10.0;
 				var end = Math.max(start + 1.0, geometry.width - 10.0);

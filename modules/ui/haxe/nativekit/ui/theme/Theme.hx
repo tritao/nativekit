@@ -1,10 +1,13 @@
 package nativekit.ui.theme;
 
 import Color;
+import Insets;
 import LayoutStyle;
 import ParagraphStyle;
 import TextStyle;
 import LayoutAlignment;
+import LayoutAxis;
+import LayoutAxis;
 import nativekit.ui.style.StyleSheet;
 import nativekit.ui.style.StyleSelector;
 import nativekit.ui.style.StyleProperty;
@@ -81,6 +84,13 @@ class Theme {
 			[StyleValue.background(buttonPressed)]);
 		styles.rule(StyleSelector.widget("button").state(StyleState.Disabled),
 			[StyleValue.background(buttonDisabled)]);
+		styles.rule(StyleSelector.widget("button").className("menu-item"), [
+			StyleValue.width(LayoutAxis.grow()),
+			StyleValue.padding(new Insets(10.0, 10.0, 6.0, 6.0)),
+			StyleValue.background(Color.rgba(0.12, 0.13, 0.16, 0.0))
+		]);
+		styles.rule(StyleSelector.widget("button").className("menu-item").state(StyleState.Disabled),
+			[StyleValue.background(Color.rgba(0.12, 0.13, 0.16, 0.45))]);
 		styles.rule(StyleSelector.widget("text-field"), [StyleValue.textColor(text)]);
 		styles.rule(StyleSelector.widget("text-field").state(StyleState.Disabled),
 			[StyleValue.textColor(disabledText)]);
@@ -119,6 +129,52 @@ class Theme {
 			[StyleValue.background(Color.rgba(0.0, 0.0, 0.0, 0.0))]);
 		styles.rule(StyleSelector.widget("radio-dot").state(StyleState.Selected),
 			[StyleValue.background(controlSelected)]);
+
+		styles.rule(StyleSelector.widget("slider"), [
+			StyleValue.sliderTrackColor(controlUnselected),
+			StyleValue.sliderFillColor(accent),
+			StyleValue.sliderThumbColor(text)
+		]);
+		styles.rule(StyleSelector.widget("slider").state(StyleState.Disabled), [
+			StyleValue.sliderTrackColor(controlDisabled),
+			StyleValue.sliderFillColor(controlDisabled),
+			StyleValue.sliderThumbColor(disabledText)
+		]);
+		styles.rule(StyleSelector.widget("progress-bar"), [
+			StyleValue.progressTrackColor(Color.rgba(0.19, 0.21, 0.25, 1.0)),
+			StyleValue.progressFillColor(accent)
+		]);
+		styles.rule(StyleSelector.widget("popup-content"), [
+			StyleValue.padding(new Insets(8.0, 8.0, 8.0, 8.0)),
+			StyleValue.background(panelBackground),
+			StyleValue.radius(StyleProperty.RadiusTopLeft, 5.0),
+			StyleValue.radius(StyleProperty.RadiusTopRight, 5.0),
+			StyleValue.radius(StyleProperty.RadiusBottomRight, 5.0),
+			StyleValue.radius(StyleProperty.RadiusBottomLeft, 5.0)
+		]);
+		styles.rule(StyleSelector.widget("popup-backdrop"),
+			[StyleValue.background(overlayBackdrop)]);
+		styles.rule(StyleSelector.widget("dialog-backdrop"),
+			[StyleValue.background(overlayBackdrop)]);
+		styles.rule(StyleSelector.widget("dialog-panel"), [
+			StyleValue.padding(new Insets(24.0, 24.0, 24.0, 24.0)),
+			StyleValue.background(panelBackground),
+			StyleValue.radius(StyleProperty.RadiusTopLeft, 8.0),
+			StyleValue.radius(StyleProperty.RadiusTopRight, 8.0),
+			StyleValue.radius(StyleProperty.RadiusBottomRight, 8.0),
+			StyleValue.radius(StyleProperty.RadiusBottomLeft, 8.0),
+			StyleValue.of(StyleProperty.ChildGap, 16.0)
+		]);
+		styles.rule(StyleSelector.widget("dialog-heading"),
+			[StyleValue.textColor(text)]);
+		styles.rule(StyleSelector.widget("tooltip"), [
+			StyleValue.padding(new Insets(6.0, 6.0, 4.0, 4.0)),
+			StyleValue.background(tooltipBackground),
+			StyleValue.radius(StyleProperty.RadiusTopLeft, tokens.radiusSmall),
+			StyleValue.radius(StyleProperty.RadiusTopRight, tokens.radiusSmall),
+			StyleValue.radius(StyleProperty.RadiusBottomRight, tokens.radiusSmall),
+			StyleValue.radius(StyleProperty.RadiusBottomLeft, tokens.radiusSmall)
+		]);
 	}
 
 	public function textColor(enabled:Bool):Color

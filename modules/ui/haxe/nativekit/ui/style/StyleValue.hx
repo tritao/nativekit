@@ -89,4 +89,19 @@ class StyleValue {
 	public static function opacity(value:Float):StyleValue
 		return of(StyleProperty.Opacity, value);
 
+	public static function progressTrackColor(value:Color):StyleValue
+		return of(StyleProperty.ProgressTrackColor, value);
+
+	public static function progressFillColor(value:Color):StyleValue
+		return of(StyleProperty.ProgressFillColor, value);
+
+	public static function sliderTrackColor(value:Color):StyleValue
+		return of(StyleProperty.SliderTrackColor, value);
+
+	public static function sliderFillColor(value:Color):StyleValue
+		return of(StyleProperty.SliderFillColor, value);
+
+	public static function sliderThumbColor(value:Color):StyleValue
+		return of(StyleProperty.SliderThumbColor, value);
+
 }

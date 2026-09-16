@@ -1,7 +1,6 @@
 package nativekit.ui.widgets;
 
 import Color;
-import Insets;
 import LayoutAxis;
 import LayoutPositioning;
 import LayoutStyle;
@@ -15,6 +14,7 @@ import nativekit.ui.core.UiKey;
 import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.style.StyleTarget;
 
 /** Parent-sized popup layer with optional modal focus and outside-click dismissal. */
 class Popup implements View {
@@ -31,8 +31,6 @@ class Popup implements View {
 	public var backdropColor:Null<Color>;
 	public var onDismiss:Void->Void;
 	public var hasDismissHandler(default, null):Bool;
-	final customStyle:Bool;
-
 	public function new(key:String, child:View, x:Float = 0.0, y:Float = 0.0,
 			?style:LayoutStyle, ?onDismiss:Void->Void) {
 		if (child == null || !finite(x) || !finite(y))
@@ -41,8 +39,7 @@ class Popup implements View {
 		this.child = child;
 		this.x = x;
 		this.y = y;
-		customStyle = style != null;
-		this.style = style == null ? defaultPanelStyle() : style.copy();
+		this.style = style == null ? new LayoutStyle() : style.copy();
 		label = null;
 		modal = true;
 		dimBackdrop = true;
@@ -58,7 +55,14 @@ class Popup implements View {
 			var rootStyle = new LayoutStyle();
 			rootStyle.width = LayoutAxis.grow();
 			rootStyle.height = LayoutAxis.grow();
-			var root = new RenderNode(context.id("popup-layer"), LayoutVisualKind.Box, rootStyle);
+			var rootId = context.id("popup-layer");
+			var rootComputed = context.resolveStyle(
+				new StyleTarget("popup", key.value, key.value, null, ["popup"],
+					context.interactionStates.get(rootId)), rootStyle);
+			var root = new RenderNode(rootId, LayoutVisualKind.Box, rootComputed.toLayoutStyle());
+			root.setStyleIdentity("popup", key.value, key.value, null, ["popup"]);
+			root.states = context.interactionStates.get(rootId);
+			root.computedStyle = rootComputed;
 			root.hitTestSelf = false;
 			root.focusTrap = modal;
 			if (label != null)
@@ -72,8 +76,15 @@ class Popup implements View {
 			var color = backdropColor == null ? context.theme.overlayBackdrop : cast backdropColor;
 			backdropStyle.background = modal && dimBackdrop
 				? color : Color.rgba(0.0, 0.0, 0.0, 0.0);
-			var backdrop = new RenderNode(context.id("backdrop"), LayoutVisualKind.Box,
-				backdropStyle);
+			var backdropId = context.id("backdrop");
+			var backdropComputed = context.resolveStyle(
+				new StyleTarget("popup-backdrop", "backdrop", "backdrop", null, ["popup"],
+					context.interactionStates.get(backdropId)), backdropStyle);
+			var backdrop = new RenderNode(backdropId, LayoutVisualKind.Box,
+				backdropComputed.toLayoutStyle());
+			backdrop.setStyleIdentity("popup-backdrop", "backdrop", "backdrop", null, ["popup"]);
+			backdrop.states = context.interactionStates.get(backdropId);
+			backdrop.computedStyle = backdropComputed;
 			if (dismissOnOutside && hasDismissHandler)
 				backdrop.on(UiEventKind.Click, function(event) {
 				onDismiss();
@@ -82,15 +93,21 @@ class Popup implements View {
 			root.add(backdrop);
 
 			var panelStyle = style.copy();
-			if (!customStyle)
-				panelStyle.background = context.theme.panelBackground;
 			panelStyle.positioning = LayoutPositioning.Absolute;
 			panelStyle.positionX = x;
 			panelStyle.positionY = y;
 			panelStyle.zIndex = 1;
-			var panel = new RenderNode(context.id("popup-content"), LayoutVisualKind.Box,
-				panelStyle);
-			var content = context.withScope(new Key("content"), function() return child.build(context));
+			var panelId = context.id("popup-content");
+			var panelComputed = context.resolveStyle(
+				new StyleTarget("popup-content", key.value, key.value, null, ["popup"],
+					context.interactionStates.get(panelId)), panelStyle);
+			var panel = new RenderNode(panelId, LayoutVisualKind.Box,
+				panelComputed.toLayoutStyle());
+			panel.setStyleIdentity("popup-content", key.value, key.value, null, ["popup"]);
+			panel.states = context.interactionStates.get(panelId);
+			panel.computedStyle = panelComputed;
+			var content = context.withStyleParent(panelComputed, function() return
+				context.withScope(new Key("content"), function() return child.build(context)));
 			panel.add(content);
 			root.add(panel);
 			root.on(UiEventKind.KeyDown, function(event) {
@@ -101,15 +118,6 @@ class Popup implements View {
 			});
 			return root;
 		});
-	}
-
-	static function defaultPanelStyle():LayoutStyle {
-		var result = new LayoutStyle();
-		result.padding = new Insets(8.0, 8.0, 8.0, 8.0);
-		result.background = Color.rgba(0.12, 0.13, 0.16, 1.0);
-		result.radiusTopLeft = result.radiusTopRight = 5.0;
-		result.radiusBottomLeft = result.radiusBottomRight = 5.0;
-		return result;
 	}
 
 	static inline function finite(value:Float):Bool

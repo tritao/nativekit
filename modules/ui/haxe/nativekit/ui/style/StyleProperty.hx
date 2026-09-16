@@ -164,6 +164,23 @@ class StyleProperty<T> {
 		"shadowBlur", 0.0, false, StyleImpact.Paint, floatInterpolate);
 	public static final Opacity:StyleProperty<Float> = new StyleProperty(
 		"opacity", 1.0, false, StyleImpact.Composite, floatInterpolate);
+	/** Paint inputs used by the retained custom progress renderer. */
+	public static final ProgressTrackColor:StyleProperty<Color> = new StyleProperty(
+		"progressTrackColor", Color.rgba(0.19, 0.21, 0.25, 1.0), false,
+		StyleImpact.Paint, colorInterpolate, null, null, colorEqual);
+	public static final ProgressFillColor:StyleProperty<Color> = new StyleProperty(
+		"progressFillColor", Color.rgba(0.22, 0.52, 0.84, 1.0), false,
+		StyleImpact.Paint, colorInterpolate, null, null, colorEqual);
+	/** Paint inputs used by the retained custom slider renderer. */
+	public static final SliderTrackColor:StyleProperty<Color> = new StyleProperty(
+		"sliderTrackColor", Color.rgba(0.16, 0.18, 0.22, 1.0), false,
+		StyleImpact.Paint, colorInterpolate, null, null, colorEqual);
+	public static final SliderFillColor:StyleProperty<Color> = new StyleProperty(
+		"sliderFillColor", Color.rgba(0.22, 0.48, 0.86, 1.0), false,
+		StyleImpact.Paint, colorInterpolate, null, null, colorEqual);
+	public static final SliderThumbColor:StyleProperty<Color> = new StyleProperty(
+		"sliderThumbColor", Color.rgba(0.96, 0.97, 0.99, 1.0), false,
+		StyleImpact.Paint, colorInterpolate, null, null, colorEqual);
 
 	/** Inherited typography/paint inputs are computed here and applied by text widgets. */
 	public static final TextColor:StyleProperty<Color> = new StyleProperty(
@@ -193,7 +210,9 @@ class StyleProperty<T> {
 				dynamicProperty(LetterSpacing), dynamicProperty(BorderColor), dynamicProperty(BorderWidth),
 				dynamicProperty(OutlineColor), dynamicProperty(OutlineWidth), dynamicProperty(ShadowColor),
 				dynamicProperty(ShadowOffsetX), dynamicProperty(ShadowOffsetY), dynamicProperty(ShadowBlur),
-				dynamicProperty(Opacity)
+				dynamicProperty(Opacity), dynamicProperty(ProgressTrackColor), dynamicProperty(ProgressFillColor),
+				dynamicProperty(SliderTrackColor), dynamicProperty(SliderFillColor),
+				dynamicProperty(SliderThumbColor)
 			];
 		return definitions;
 	}

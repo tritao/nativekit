@@ -1,7 +1,6 @@
 package nativekit.ui.widgets;
 
 import Canvas;
-import Color;
 import LayoutAxis;
 import LayoutStyle;
 import LayoutVisualKind;
@@ -13,6 +12,8 @@ import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.style.StyleProperty;
+import nativekit.ui.style.StyleTarget;
 
 /** Read-only progress indicator painted from a normalized numeric range. */
 class ProgressBar implements View {
@@ -38,7 +39,15 @@ class ProgressBar implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
-			var node = new RenderNode(context.id("progress"), LayoutVisualKind.Custom, style);
+			var nodeId = context.id("progress");
+			var computed = context.styleResolver.resolve(
+				new StyleTarget("progress-bar", key, key, null, ["progress-bar"],
+					context.interactionStates.get(nodeId)),
+				context.inheritedStyle, context.theme.styles, context.styleSheet, style, context.environment);
+			var node = new RenderNode(nodeId, LayoutVisualKind.Custom, computed.toLayoutStyle());
+			node.setStyleIdentity("progress-bar", key, key, null, ["progress-bar"]);
+			node.states = context.interactionStates.get(nodeId);
+			node.computedStyle = computed;
 			var semantics = new Semantics(AccessibilityRole.ProgressBar, label, Std.string(value));
 			semantics.states = AccessibilityState.ReadOnly;
 			semantics.numericValue = value;
@@ -48,10 +57,10 @@ class ProgressBar implements View {
 			node.onPaint(function(canvas, geometry) {
 				var fraction = (value - minimum) / (maximum - minimum);
 				canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, geometry.height),
-					Color.rgba(0.19, 0.21, 0.25, 1.0));
+					computed.get(StyleProperty.ProgressTrackColor));
 				var fillWidth = geometry.width * fraction;
 				canvas.fillRectIfPositive(new Rect(0.0, 0.0, fillWidth, geometry.height),
-					Color.rgba(0.22, 0.52, 0.84, 1.0));
+					computed.get(StyleProperty.ProgressFillColor));
 			});
 			return node;
 		});

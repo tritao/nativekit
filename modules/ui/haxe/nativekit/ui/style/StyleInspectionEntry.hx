@@ -19,7 +19,9 @@ class StyleInspectionEntry {
 	/** Formats common typed values for headless logs and the interactive inspector. */
 	public function describe():String {
 		return switch name {
-			case "background" | "borderColor" | "outlineColor" | "shadowColor" | "textColor":
+			case "background" | "borderColor" | "outlineColor" | "shadowColor" | "textColor" |
+				"progressTrackColor" | "progressFillColor" | "sliderTrackColor" |
+				"sliderFillColor" | "sliderThumbColor":
 				var color:Color = cast value;
 				color == null ? "null" : 'rgba(${color.red}, ${color.green}, ${color.blue}, ${color.alpha})';
 			case "padding":

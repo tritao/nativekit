@@ -1,7 +1,5 @@
 package nativekit.ui.widgets;
 
-import Color;
-import Insets;
 import LayoutAxis;
 import LayoutStyle;
 import nativekit.ui.core.BuildContext;
@@ -35,18 +33,13 @@ class Menu implements View {
 	public function build(context:BuildContext):nativekit.ui.core.RenderNode {
 		var children:Array<KeyedView> = [];
 		for (item in items) {
-			var buttonStyle = new LayoutStyle();
-			buttonStyle.width = LayoutAxis.grow();
-			buttonStyle.padding = new Insets(10.0, 10.0, 6.0, 6.0);
-			buttonStyle.background = item.enabled
-				? Color.rgba(0.12, 0.13, 0.16, 0.0)
-				: Color.rgba(0.12, 0.13, 0.16, 0.45);
-			var button = new Button(item.label, buttonStyle, function() {
+			var button = new Button(item.label, null, function() {
 				if (item.hasSelectHandler)
 					item.onSelect();
 				if (hasDismissHandler)
 					onDismiss();
 			}, item.key);
+			button.classes = ["menu-item"];
 			button.enabled = item.enabled;
 			button.semanticRole = AccessibilityRole.MenuItem;
 			button.semanticActions = AccessibilityAction.Select;

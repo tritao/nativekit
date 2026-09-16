@@ -2,8 +2,7 @@ package nativekit.ui.widgets;
 
 import Color;
 import Insets;
-import LayoutAlignmentX;
-import LayoutAlignmentY;
+import LayoutAlignment;
 import LayoutAxis;
 import LayoutDistribution;
 import LayoutPositioning;
@@ -15,6 +14,7 @@ import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
 import nativekit.ui.core.View;
+import nativekit.ui.style.StyleTarget;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityState;
@@ -51,7 +51,14 @@ class Dialog implements View {
 			var rootStyle = new LayoutStyle();
 			rootStyle.width = LayoutAxis.grow();
 			rootStyle.height = LayoutAxis.grow();
-			var root = new RenderNode(context.id("dialog"), LayoutVisualKind.Box, rootStyle);
+			var rootId = context.id("dialog");
+			var rootComputed = context.resolveStyle(
+				new StyleTarget("dialog", key.value, key.value, null, ["dialog"],
+					context.interactionStates.get(rootId)), rootStyle);
+			var root = new RenderNode(rootId, LayoutVisualKind.Box, rootComputed.toLayoutStyle());
+			root.setStyleIdentity("dialog", key.value, key.value, null, ["dialog"]);
+			root.states = context.interactionStates.get(rootId);
+			root.computedStyle = rootComputed;
 			root.focusTrap = true;
 			root.hitTestSelf = false;
 			var semantics = new Semantics(AccessibilityRole.Dialog, title);
@@ -64,9 +71,15 @@ class Dialog implements View {
 			backdropStyle.width = LayoutAxis.grow();
 			backdropStyle.height = LayoutAxis.grow();
 			backdropStyle.positioning = LayoutPositioning.Absolute;
-			backdropStyle.background = context.theme.overlayBackdrop;
-			var backdrop = new RenderNode(context.id("backdrop"), LayoutVisualKind.Box,
-				backdropStyle);
+			var backdropId = context.id("backdrop");
+			var backdropComputed = context.resolveStyle(
+				new StyleTarget("dialog-backdrop", "backdrop", "backdrop", null, ["dialog"],
+					context.interactionStates.get(backdropId)), backdropStyle);
+			var backdrop = new RenderNode(backdropId, LayoutVisualKind.Box,
+				backdropComputed.toLayoutStyle());
+			backdrop.setStyleIdentity("dialog-backdrop", "backdrop", "backdrop", null, ["dialog"]);
+			backdrop.states = context.interactionStates.get(backdropId);
+			backdrop.computedStyle = backdropComputed;
 			if (dismissOnOutside && hasDismissHandler)
 				backdrop.on(UiEventKind.Click, function(event) {
 				onDismiss();
@@ -82,28 +95,49 @@ class Dialog implements View {
 			centerStyle.childAlignX = LayoutAlignmentX.Center;
 			centerStyle.childAlignY = LayoutAlignmentY.Center;
 			centerStyle.childDistribution = LayoutDistribution.Center;
-			var center = new RenderNode(context.id("dialog-center"), LayoutVisualKind.Box,
-				centerStyle);
+			var centerId = context.id("dialog-center");
+			var centerComputed = context.resolveStyle(
+				new StyleTarget("dialog-center", "center", "center", null, ["dialog"],
+					context.interactionStates.get(centerId)), centerStyle);
+			var center = new RenderNode(centerId, LayoutVisualKind.Box,
+				centerComputed.toLayoutStyle());
+			center.setStyleIdentity("dialog-center", "center", "center", null, ["dialog"]);
+			center.states = context.interactionStates.get(centerId);
+			center.computedStyle = centerComputed;
 			var panelStyle = new LayoutStyle();
 			panelStyle.width = LayoutAxis.fixed(width);
-			panelStyle.padding = new Insets(24.0, 24.0, 24.0, 24.0);
-			panelStyle.childGap = 16.0;
-			panelStyle.background = context.theme.panelBackground;
-			panelStyle.radiusTopLeft = panelStyle.radiusTopRight = 8.0;
-			panelStyle.radiusBottomLeft = panelStyle.radiusBottomRight = 8.0;
-			var panel = new RenderNode(context.id("dialog-panel"), LayoutVisualKind.Box,
-				panelStyle);
+			var panelId = context.id("dialog-panel");
+			var panelComputed = context.resolveStyle(
+				new StyleTarget("dialog-panel", "panel", "panel", null, ["dialog"],
+					context.interactionStates.get(panelId)), panelStyle);
+			var panel = new RenderNode(panelId, LayoutVisualKind.Box,
+				panelComputed.toLayoutStyle());
+			panel.setStyleIdentity("dialog-panel", "panel", "panel", null, ["dialog"]);
+			panel.states = context.interactionStates.get(panelId);
+			panel.computedStyle = panelComputed;
 			if (title.length > 0) {
-				var heading = context.withScope(new Key("title"), function() {
-					var node = new RenderNode(context.id("heading"), LayoutVisualKind.Text);
+				var heading = context.withStyleParent(panelComputed, function() return
+					context.withScope(new Key("title"), function() {
+					var headingId = context.id("heading");
+					var headingComputed = context.resolveStyle(
+						new StyleTarget("dialog-heading", "title", "title", null, ["dialog-heading"],
+							context.interactionStates.get(headingId)), new LayoutStyle());
+					var node = new RenderNode(headingId, LayoutVisualKind.Text,
+						headingComputed.toLayoutStyle());
+					node.setStyleIdentity("dialog-heading", "title", "title", null, ["dialog-heading"]);
+					node.states = context.interactionStates.get(headingId);
+					node.computedStyle = headingComputed;
 					node.layout.text = title;
-					node.applyTextStyle(context.resolveTextRole(TextRole.Heading));
+					node.layout.textColor = headingComputed.get(nativekit.ui.style.StyleProperty.TextColor);
+					node.layout.textStyle.fontSize = headingComputed.get(nativekit.ui.style.StyleProperty.FontSize);
+					node.layout.textStyle.letterSpacing = headingComputed.get(nativekit.ui.style.StyleProperty.LetterSpacing);
 					node.semantics = new Semantics(AccessibilityRole.Heading, title);
 					return node;
-				});
+				}));
 				panel.add(heading);
 			}
-			var child = context.withScope(new Key("content"), function() return content.build(context));
+			var child = context.withStyleParent(panelComputed, function() return
+				context.withScope(new Key("content"), function() return content.build(context)));
 			panel.add(child);
 			center.add(panel);
 			root.add(center);

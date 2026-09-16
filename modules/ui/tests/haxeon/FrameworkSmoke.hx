@@ -1651,6 +1651,64 @@ class FrameworkSmoke {
 		if (AccessibilityAudit.isValid(themedRoot))
 			return 100;
 
+		// Remaining widgets resolve through the same application cascade, including
+		// paint-only properties consumed by their retained custom painters.
+		var migratedStyles = new StyleSheet("MigratedWidgets");
+		migratedStyles.rule(StyleSelector.widget("slider"), [
+			StyleValue.sliderTrackColor(Color.rgba(0.11, 0.12, 0.14, 1.0)),
+			StyleValue.sliderFillColor(Color.rgba(0.91, 0.31, 0.18, 1.0)),
+			StyleValue.sliderThumbColor(Color.rgba(0.98, 0.98, 0.98, 1.0))
+		]);
+		migratedStyles.rule(StyleSelector.widget("progress-bar"), [
+			StyleValue.progressTrackColor(Color.rgba(0.12, 0.13, 0.15, 1.0)),
+			StyleValue.progressFillColor(Color.rgba(0.20, 0.78, 0.42, 1.0))
+		]);
+		migratedStyles.rule(StyleSelector.widget("popup-content"), [
+			StyleValue.background(Color.rgba(0.18, 0.12, 0.22, 1.0))
+		]);
+		migratedStyles.rule(StyleSelector.widget("tooltip"), [
+			StyleValue.background(Color.rgba(0.92, 0.72, 0.12, 1.0))
+		]);
+		context.setStyleSheet(migratedStyles);
+		var migratedSlider = new Slider("migrated-slider", "Level", 0.5);
+		var migratedSliderRoot = context.submit(migratedSlider, new LayoutFrame(256.0, 192.0));
+		var sliderFillSource:Null<StyleSource> = migratedSliderRoot.computedStyle == null ? null :
+			migratedSliderRoot.computedStyle.source(StyleProperty.SliderFillColor);
+		if (migratedSliderRoot.computedStyle == null ||
+			migratedSliderRoot.computedStyle.get(StyleProperty.SliderFillColor).red != 0.91 ||
+			sliderFillSource == null || sliderFillSource.stylesheet != "MigratedWidgets" ||
+			migratedSliderRoot.styleType != "slider")
+			return 226;
+		var migratedProgressRoot = context.submit(new ProgressBar("migrated-progress", 0.5),
+			new LayoutFrame(256.0, 192.0));
+		var progressFillSource:Null<StyleSource> = migratedProgressRoot.computedStyle == null ? null :
+			migratedProgressRoot.computedStyle.source(StyleProperty.ProgressFillColor);
+		if (migratedProgressRoot.computedStyle == null ||
+			migratedProgressRoot.computedStyle.get(StyleProperty.ProgressFillColor).green != 0.78 ||
+			progressFillSource == null || progressFillSource.stylesheet != "MigratedWidgets")
+			return 227;
+		var migratedPopupRoot = context.submit(new Popup("migrated-popup", new Text("Popup")),
+			new LayoutFrame(256.0, 192.0));
+		var migratedPopupPanel = migratedPopupRoot.children[1];
+		var popupBackgroundSource:Null<StyleSource> = migratedPopupPanel.computedStyle == null ? null :
+			migratedPopupPanel.computedStyle.source(StyleProperty.Background);
+		if (migratedPopupPanel.computedStyle == null ||
+			migratedPopupPanel.computedStyle.get(StyleProperty.Background).red != 0.18 ||
+			popupBackgroundSource == null || popupBackgroundSource.stylesheet != "MigratedWidgets" ||
+			migratedPopupPanel.styleType != "popup-content")
+			return 228;
+		var migratedTooltipRoot = context.submit(
+			new Tooltip("migrated-tooltip", new Text("Anchor"), new Text("Hint")),
+			new LayoutFrame(256.0, 192.0));
+		var migratedTooltipNode = migratedTooltipRoot.children[1];
+		var tooltipBackgroundSource:Null<StyleSource> = migratedTooltipNode.computedStyle == null ? null :
+			migratedTooltipNode.computedStyle.source(StyleProperty.Background);
+		if (migratedTooltipNode.computedStyle == null ||
+			migratedTooltipNode.computedStyle.get(StyleProperty.Background).red != 0.92 ||
+			tooltipBackgroundSource == null || tooltipBackgroundSource.stylesheet != "MigratedWidgets")
+			return 229;
+		context.setStyleSheet(new StyleSheet("Application"));
+
 		var taps = 0;
 		var doubleTaps = 0;
 		var longPresses = 0;

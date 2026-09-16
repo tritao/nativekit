@@ -13,6 +13,7 @@ import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.style.StyleTarget;
 
 /** Accessible image view that records its draw in the node's custom display list. */
 class ImageView implements View {
@@ -37,7 +38,15 @@ class ImageView implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
-			var node = new RenderNode(context.id("image"), LayoutVisualKind.Custom, style);
+			var nodeId = context.id("image");
+			var computed = context.styleResolver.resolve(
+				new StyleTarget("image", key, key, null, ["image"],
+					context.interactionStates.get(nodeId)),
+				context.inheritedStyle, context.theme.styles, context.styleSheet, style, context.environment);
+			var node = new RenderNode(nodeId, LayoutVisualKind.Custom, computed.toLayoutStyle());
+			node.setStyleIdentity("image", key, key, null, ["image"]);
+			node.states = context.interactionStates.get(nodeId);
+			node.computedStyle = computed;
 			if (label != null)
 				node.semantics = new Semantics(AccessibilityRole.Image, label);
 			node.onPaint(function(canvas:Canvas, geometry:ResolvedLayoutItem) {
