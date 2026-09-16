@@ -10,6 +10,7 @@ import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.ComboBox;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.ProgressBar;
+import nativekit.ui.widgets.ProgressMode;
 import nativekit.ui.widgets.RadioGroup;
 import nativekit.ui.widgets.RadioOption;
 import nativekit.ui.widgets.Row;
@@ -70,6 +71,8 @@ class ControlsPage {
 			explorer.keyed("progress-label", explorer.label('Progress  ·  ${Std.int(explorer.state.controls.progress * 100)}%')),
 			explorer.keyed("progress", new ProgressBar("showcase-progress", explorer.state.controls.progress,
 				0.0, 1.0, "Task progress")),
+			explorer.keyed("indeterminate-label", explorer.label("Indeterminate · waiting for a measurable result")),
+			explorer.keyed("indeterminate", indeterminateProgress()),
 			explorer.keyed("advance", explorer.button("Advance progress", "advance-progress", function() {
 				explorer.state.controls.progress = explorer.state.controls.progress >= 1.0 ? 0.0 : Math.min(1.0, explorer.state.controls.progress + 0.1);
 				}))
@@ -93,6 +96,13 @@ class ControlsPage {
 					}))
 		], explorer.rowStyle(10.0)))
 		])));
+	}
+
+	static function indeterminateProgress():ProgressBar {
+		var progress = new ProgressBar("showcase-indeterminate", 0.0, 0.0, 1.0,
+			"Waiting for a measurable result");
+		progress.mode = ProgressMode.Indeterminate;
+		return progress;
 	}
 
 	static function spinnerSample(explorer:UiExplorer, key:String, label:String,

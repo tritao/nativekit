@@ -656,6 +656,17 @@ class FrameworkSmoke {
 			(progressSemantics.states & AccessibilityState.ReadOnly) == 0 ||
 			progressSemantics.numericValue != 0.75)
 			return 61;
+		var indeterminateProgress = new ProgressBar("indeterminate-progress-smoke", 0.0,
+			0.0, 1.0, "Loading");
+		indeterminateProgress.mode = nativekit.ui.widgets.ProgressMode.Indeterminate;
+		var indeterminateRoot = context.submit(indeterminateProgress,
+			new LayoutFrame(256.0, 192.0));
+		var indeterminateSemantics:Semantics = cast indeterminateRoot.semantics;
+		if (indeterminateSemantics == null ||
+			(indeterminateSemantics.states & AccessibilityState.Busy) == 0 ||
+			(indeterminateSemantics.states & AccessibilityState.ReadOnly) != 0 ||
+			context.animations.activeCount == 0)
+			return 232;
 		var imageBytes = haxe.io.Bytes.alloc(16);
 		for (index in 0...16)
 			imageBytes.set(index, 255);

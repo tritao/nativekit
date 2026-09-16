@@ -1,19 +1,19 @@
 package nativekit.ui.widgets;
 
-import Canvas;
 import LayoutAxis;
 import LayoutStyle;
 import LayoutVisualKind;
-import Rect;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
+import nativekit.ui.core.State;
 import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.style.StyleProperty;
 import nativekit.ui.style.StyleTarget;
+import nativekit.ui.widgets.ProgressPainter;
 
 /** Read-only progress indicator painted from a normalized numeric range. */
 class ProgressBar implements View {
@@ -23,6 +23,9 @@ class ProgressBar implements View {
 	public final minimum:Float;
 	public final maximum:Float;
 	public final style:LayoutStyle;
+	public var mode:ProgressMode;
+	/** Seconds used when a determinate value changes; zero disables interpolation. */
+	public var animationDuration:Float;
 
 	public function new(key:String, value:Float, minimum:Float = 0.0,
 			maximum:Float = 1.0, ?label:String, ?style:LayoutStyle) {
@@ -35,6 +38,8 @@ class ProgressBar implements View {
 		this.minimum = minimum;
 		this.maximum = maximum;
 		this.style = style == null ? defaultStyle() : style.copy();
+		mode = ProgressMode.Determinate;
+		animationDuration = 0.22;
 	}
 
 	public function build(context:BuildContext):RenderNode {
@@ -48,20 +53,25 @@ class ProgressBar implements View {
 			node.setStyleIdentity("progress-bar", key, key, null, ["progress-bar"]);
 			node.states = context.interactionStates.get(nodeId);
 			node.computedStyle = computed;
-			var semantics = new Semantics(AccessibilityRole.ProgressBar, label, Std.string(value));
-			semantics.states = AccessibilityState.ReadOnly;
-			semantics.numericValue = value;
-			semantics.numericMinimum = minimum;
-			semantics.numericMaximum = maximum;
+			var indeterminate = mode == ProgressMode.Indeterminate;
+			var semantics = new Semantics(AccessibilityRole.ProgressBar, label,
+				indeterminate ? "Indeterminate" : Std.string(value));
+			semantics.states = indeterminate ? AccessibilityState.Busy : AccessibilityState.ReadOnly;
+			if (!indeterminate) {
+				semantics.numericValue = value;
+				semantics.numericMinimum = minimum;
+				semantics.numericMaximum = maximum;
+			}
 			node.semantics = semantics;
-			node.onPaint(function(canvas, geometry) {
-				var fraction = (value - minimum) / (maximum - minimum);
-				canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, geometry.height),
-					computed.get(StyleProperty.ProgressTrackColor));
-				var fillWidth = geometry.width * fraction;
-				canvas.fillRectIfPositive(new Rect(0.0, 0.0, fillWidth, geometry.height),
-					computed.get(StyleProperty.ProgressFillColor));
-			}, "value:" + value + ":" + minimum + ":" + maximum);
+			var fraction = (value - minimum) / (maximum - minimum);
+			var stored:State<ProgressPainter> = context.resourceState(node.id,
+				function() return new ProgressPainter(context.animations, fraction),
+				function(painter:ProgressPainter) painter.dispose());
+			var painter:ProgressPainter = cast stored.value;
+			painter.configure(mode, fraction, animationDuration, context.environment.reducedMotion);
+			node.onPaint(function(canvas, geometry) painter.paint(canvas, geometry,
+				computed.get(StyleProperty.ProgressTrackColor),
+				computed.get(StyleProperty.ProgressFillColor)));
 			return node;
 		});
 	}

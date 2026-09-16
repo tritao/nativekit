@@ -70,9 +70,9 @@ class WidgetDocsRegistry {
 				code: 'new ComboBox("density", options, selected, onChange)'
 			};
 			case AccessibilityRole.ProgressBar: {
-				description: "A non-interactive indicator of progress toward a bounded value.",
-				behavior: "The current value and accessible label are exposed to platform accessibility clients.",
-				code: 'new ProgressBar("upload", progress, 0, 1, "Upload progress")'
+				description: "A non-interactive determinate or indeterminate indicator driven by the shared animation scheduler.",
+				behavior: "Determinate values animate visually while accessibility receives the current value immediately. Indeterminate mode reports busy state and respects reduced motion.",
+				code: 'var progress = new ProgressBar("upload", value, 0, 1, "Upload progress");\nprogress.mode = ProgressMode.Indeterminate;'
 			};
 			case AccessibilityRole.Dialog: {
 				description: "A modal surface for a focused task, composed above the application tree.",
