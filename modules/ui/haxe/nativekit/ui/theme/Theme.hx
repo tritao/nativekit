@@ -103,9 +103,43 @@ class Theme {
 		]);
 		styles.rule(StyleSelector.widget("button").className("menu-item").state(StyleState.Disabled),
 			[StyleValue.background(Color.rgba(0.12, 0.13, 0.16, 0.45))]);
+		styles.rule(StyleSelector.widget("button").className("select-trigger"), [
+			StyleValue.background(tokens.selectionField),
+			StyleValue.padding(new Insets(12.0, 8.0, 34.0, 8.0)),
+			StyleValue.borderColor(tokens.selectionBorder), StyleValue.borderWidth(1.0)
+		]);
+		styles.rule(StyleSelector.widget("button").className("select-trigger").state(StyleState.Hovered),
+			[StyleValue.background(tokens.selectionHover)]);
+		styles.rule(StyleSelector.widget("button").className("select-trigger").state(StyleState.Pressed),
+			[StyleValue.background(tokens.selectionPressed)]);
+		styles.rule(StyleSelector.widget("button").className("select-trigger").state(StyleState.Focused), [
+			StyleValue.background(tokens.selectionField), StyleValue.borderColor(accent),
+			StyleValue.borderWidth(2.0)
+		]);
+		styles.rule(StyleSelector.widget("button").className("selection-option"), [
+			StyleValue.background(Color.rgba(0.0, 0.0, 0.0, 0.0)),
+			StyleValue.padding(new Insets(28.0, 5.0, 10.0, 5.0))
+		]);
+		styles.rule(StyleSelector.widget("button").className("selection-option").state(StyleState.Hovered),
+			[StyleValue.background(tokens.selectionHover)]);
+		styles.rule(StyleSelector.widget("button").className("selection-option").state(StyleState.Focused),
+			[StyleValue.background(tokens.selectionHover)]);
+		styles.rule(StyleSelector.widget("button").className("selection-option").state(StyleState.Selected),
+			[StyleValue.background(tokens.selectionHighlight)]);
 		styles.rule(StyleSelector.widget("text-field"), [StyleValue.textColor(text)]);
 		styles.rule(StyleSelector.widget("text-field").state(StyleState.Disabled),
 			[StyleValue.textColor(disabledText)]);
+		styles.rule(StyleSelector.widget("text-field").className("combo-trigger"), [
+			StyleValue.background(tokens.selectionField),
+			StyleValue.padding(new Insets(12.0, 8.0, 34.0, 8.0)),
+			StyleValue.borderColor(tokens.selectionBorder), StyleValue.borderWidth(1.0)
+		]);
+		styles.rule(StyleSelector.widget("text-field").className("combo-trigger").state(StyleState.Hovered),
+			[StyleValue.background(tokens.selectionHover)]);
+		styles.rule(StyleSelector.widget("text-field").className("combo-trigger").state(StyleState.Focused), [
+			StyleValue.background(tokens.selectionField), StyleValue.borderColor(accent),
+			StyleValue.borderWidth(2.0)
+		]);
 		styles.rule(StyleSelector.widget("checkbox"), [StyleValue.textColor(text)]);
 		styles.rule(StyleSelector.widget("checkbox").state(StyleState.Disabled),
 			[StyleValue.textColor(disabledText)]);
@@ -163,6 +197,15 @@ class Theme {
 			StyleValue.radius(StyleProperty.RadiusTopRight, 5.0),
 			StyleValue.radius(StyleProperty.RadiusBottomRight, 5.0),
 			StyleValue.radius(StyleProperty.RadiusBottomLeft, 5.0)
+		]);
+		styles.rule(StyleSelector.widget("selection-popup"), [
+			StyleValue.background(panelBackground), StyleValue.borderColor(tokens.selectionBorder),
+			StyleValue.borderWidth(1.0), StyleValue.shadowColor(tokens.selectionPopupShadow),
+			StyleValue.of(StyleProperty.ShadowOffsetY, 3.0), StyleValue.shadowBlur(8.0),
+			StyleValue.radius(StyleProperty.RadiusTopLeft, tokens.radiusMedium),
+			StyleValue.radius(StyleProperty.RadiusTopRight, tokens.radiusMedium),
+			StyleValue.radius(StyleProperty.RadiusBottomRight, tokens.radiusMedium),
+			StyleValue.radius(StyleProperty.RadiusBottomLeft, tokens.radiusMedium)
 		]);
 		styles.rule(StyleSelector.widget("popup-backdrop"),
 			[StyleValue.background(overlayBackdrop)]);

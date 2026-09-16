@@ -204,6 +204,7 @@ class ComboBox<T> implements View {
 					onQueryChange(query);
 				open();
 			}, inputStyle, placeholder);
+			input.classes = ["combo-trigger"];
 			input.enabled = enabled;
 			input.semanticRole = AccessibilityRole.ComboBox;
 			input.semanticActions = AccessibilityAction.SetValue | AccessibilityAction.SetSelection |
@@ -215,6 +216,8 @@ class ComboBox<T> implements View {
 					submitActive();
 			};
 			inputNode = context.withScope(new Key("input"), function() return input.build(context));
+			SelectionIndicator.chevron(inputNode, enabled ? context.theme.text : context.theme.disabledText,
+				isOpen);
 			var inputSemantics:Semantics = cast inputNode.semantics;
 			inputSemantics.states |= AccessibilityState.HasPopup;
 			if (isOpen)

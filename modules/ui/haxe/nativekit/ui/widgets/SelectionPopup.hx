@@ -16,6 +16,9 @@ import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityOrientation;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.style.BorderDecoration;
+import nativekit.ui.style.ShadowDecoration;
+import nativekit.ui.style.StyleTarget;
 
 /** Mutable bridge for active-option visibility across rebuilt render trees. */
 class SelectionPopupVisibility {
@@ -122,10 +125,17 @@ class SelectionPopup {
 		dropdownStyle.clipToParent = false;
 		dropdownStyle.padding = new Insets(4.0, 4.0, 4.0, 4.0);
 		dropdownStyle.childGap = 2.0;
-		dropdownStyle.background = context.theme.panelBackground;
 		dropdownStyle.radiusTopLeft = dropdownStyle.radiusTopRight = 5.0;
 		dropdownStyle.radiusBottomLeft = dropdownStyle.radiusBottomRight = 5.0;
-		var dropdown = new RenderNode(context.id("options"), LayoutVisualKind.Box, dropdownStyle);
+		var dropdownId = context.id("options");
+		var dropdownComputed = context.resolveStyle(new StyleTarget("selection-popup", "options",
+			"options", null, ["selection-popup"], context.interactionStates.get(dropdownId)), dropdownStyle);
+		var dropdown = new RenderNode(dropdownId, LayoutVisualKind.Box, dropdownComputed.toLayoutStyle());
+		dropdown.setStyleIdentity("selection-popup", "options", "options", null, ["selection-popup"]);
+		dropdown.states = context.interactionStates.get(dropdownId);
+		dropdown.computedStyle = dropdownComputed;
+		dropdown.addDecoration(new ShadowDecoration(), "selection-popup-shadow");
+		dropdown.addDecoration(new BorderDecoration(), "selection-popup-border");
 		var listSemantics = new Semantics(AccessibilityRole.List, "Options");
 		listSemantics.orientation = AccessibilityOrientation.Vertical;
 		if (needsScroll)
@@ -190,6 +200,7 @@ class SelectionPopup {
 			optionStyle.padding = new Insets(9.0, 5.0, 9.0, 5.0);
 			var optionButton = new Button(option.label, optionStyle,
 				function() { onSelect(originalIndex); }, option.key);
+			optionButton.classes = ["selection-option"];
 			optionButton.enabled = isEnabled(originalIndex);
 			optionButton.selected = sameValue(option.value, selectedValue);
 			optionButton.semanticRole = AccessibilityRole.ListItem;
@@ -197,6 +208,8 @@ class SelectionPopup {
 			var optionNode = context.withScope(new nativekit.ui.core.Key("option-" + option.key),
 				function() return optionButton.build(context));
 			var optionSemantics:Semantics = cast optionNode.semantics;
+			if (optionButton.selected)
+				SelectionIndicator.check(optionNode, context.theme.text);
 			optionSemantics.setSize = visibleIndices.length;
 			optionSemantics.positionInSet = position + 1;
 			optionNodes.push(optionNode);

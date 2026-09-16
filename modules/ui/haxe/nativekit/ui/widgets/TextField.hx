@@ -48,6 +48,8 @@ class TextField implements View {
 	public final style:LayoutStyle;
 	public final textStyle:Null<TextStyle>;
 	public final textColor:Null<Color>;
+	/** Typed selector classes used by composite fields such as ComboBox. */
+	public var classes:Array<String>;
 	public var enabled:Bool;
 	public var onChange:Null<String->Void>;
 	public var onSubmit:Null<String->Void>;
@@ -73,6 +75,7 @@ class TextField implements View {
 		this.textStyle = textStyle == null ? null :
 			new TextStyle(textStyle.fontSize, textStyle.font, textStyle.letterSpacing);
 		this.textColor = textColor;
+		classes = [];
 		enabled = true;
 		onDiagnostics = null;
 		semanticRole = AccessibilityRole.TextField;
@@ -100,13 +103,13 @@ class TextField implements View {
 			var flags = context.interactionStates.get(id);
 			flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
 			var computed = context.styleResolver.resolve(
-				new StyleTarget("text-field", key, key, null, ["text-field"], flags),
+				new StyleTarget("text-field", key, key, classes, ["text-field"], flags),
 				context.inheritedStyle, context.theme.styles, context.styleSheet, style, context.environment);
 			if (textColor != null)
 				computed.set(StyleProperty.TextColor, textColor,
 					new StyleSource("local", "text-field", -1, "local"));
 			var node = new RenderNode(id, LayoutVisualKind.Box, computed.toLayoutStyle());
-			node.setStyleIdentity("text-field", key, key, null, ["text-field"]);
+			node.setStyleIdentity("text-field", key, key, classes, ["text-field"]);
 			node.states = flags;
 			node.computedStyle = computed;
 			node.focusable = enabled;

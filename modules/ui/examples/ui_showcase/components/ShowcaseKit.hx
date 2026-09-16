@@ -196,6 +196,12 @@ class ShowcaseKit {
 		tokens.controlDisabled = light ? color(0.82, 0.84, 0.88) : color(0.20, 0.21, 0.24);
 		tokens.progressTrack = light ? color(0.78, 0.84, 0.92) : color(0.20, 0.25, 0.33);
 		tokens.progressFill = tokens.accent;
+		tokens.selectionField = light ? color(0.98, 0.99, 1.0) : color(0.12, 0.15, 0.20);
+		tokens.selectionHover = light ? color(0.91, 0.94, 0.98) : color(0.18, 0.23, 0.31);
+		tokens.selectionPressed = light ? color(0.85, 0.90, 0.97) : color(0.15, 0.20, 0.28);
+		tokens.selectionHighlight = light ? color(0.82, 0.89, 0.98) : color(0.16, 0.29, 0.50);
+		tokens.selectionBorder = light ? color(0.67, 0.72, 0.80) : color(0.32, 0.38, 0.48);
+		tokens.selectionPopupShadow = color(0.0, 0.0, 0.0, light ? 0.20 : 0.42);
 		tokens.panelBackground = light ? color(0.98, 0.98, 1.0) : color(0.14, 0.16, 0.20);
 		tokens.overlayBackdrop = color(0.0, 0.0, 0.0, 0.54);
 		tokens.tooltipBackground = light ? color(0.13, 0.17, 0.23) : color(0.08, 0.09, 0.11);
