@@ -71,38 +71,23 @@ class CanvasCommandBuffer {
 		drawRect(NativeKitUI.CommandOpcode.DrawTextLayout, layout, x, y, 0.0, 0.0);
 
 	public function beginLayer(opacity:Float, mode:CompositeMode = CompositeMode.SourceOver,
-			?bounds:Rect, ?effects:EffectChain, ?mask:Mask):Void {
+			?bounds:Rect, ?effects:EffectChain, ?mask:Mask, ?backdropEffects:EffectChain):Void {
 		var effectValue = effects == null ? EffectChain.empty() : effects;
 		var hasEffects = effects != null && effectValue.effects.length > 0;
 		var hasMask = mask != null;
+		var backdropValue = backdropEffects == null ? EffectChain.empty() : backdropEffects;
+		var hasBackdrop = backdropEffects != null && backdropValue.effects.length > 0;
 		var blurOnly = hasEffects && effectValue.effects.length == 1 &&
 			effectValue.effects[0].kind == EffectKind.Blur;
 		var dropShadowOnly = hasEffects && effectValue.effects.length == 1 &&
 			effectValue.effects[0].kind == EffectKind.DropShadow;
-		var matrix:Array<Float> = null;
-		if (hasEffects) {
-			if (blurOnly) {
-				matrix = [];
-				for (index in 0...20)
-					matrix.push(0.0);
-				var blur:BlurEffect = cast effectValue.effects[0];
-				matrix[0] = blur.sigma;
-			} else if (dropShadowOnly) {
-				matrix = [];
-				for (index in 0...20)
-					matrix.push(0.0);
-				var shadow:DropShadowEffect = cast effectValue.effects[0];
-				matrix[0] = shadow.sigma;
-				matrix[2] = shadow.offsetX;
-				matrix[3] = shadow.offsetY;
-				matrix[4] = shadow.color.red;
-				matrix[5] = shadow.color.green;
-				matrix[6] = shadow.color.blue;
-				matrix[7] = shadow.color.alpha;
-			} else
-				matrix = effectValue.colorMatrix();
-		}
-		if (!hasEffects && !hasMask) {
+		var matrix:Array<Float> = hasEffects ? encodeEffect(effectValue) : null;
+		var backdropMatrix:Array<Float> = hasBackdrop ? encodeEffect(backdropValue) : null;
+		var backdropBlurOnly = hasBackdrop && backdropValue.effects.length == 1 &&
+			backdropValue.effects[0].kind == EffectKind.Blur;
+		var backdropDropShadowOnly = hasBackdrop && backdropValue.effects.length == 1 &&
+			backdropValue.effects[0].kind == EffectKind.DropShadow;
+		if (!hasEffects && !hasMask && !hasBackdrop) {
 			if (bounds == null) {
 				header(NativeKitUI.CommandOpcode.BeginLayer, 16);
 				float(opacity);
@@ -118,6 +103,31 @@ class CanvasCommandBuffer {
 			float(bounds.height);
 			// NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS.
 			word(3);
+			return;
+		}
+		if (hasBackdrop) {
+			var maskValue:Mask = cast mask;
+			header(NativeKitUI.CommandOpcode.BeginLayer, 244);
+			float(opacity);
+			word(cast mode);
+			if (bounds == null) {
+				float(0.0); float(0.0); float(0.0); float(0.0);
+				word(1);
+			} else {
+				float(bounds.x); float(bounds.y); float(bounds.width); float(bounds.height);
+				word(3);
+			}
+			word(hasEffects ? (dropShadowOnly ? 3 : blurOnly ? 2 : 1) : 0);
+			if (hasEffects)
+				for (value in matrix)
+					float(value);
+			else
+				for (index in 0...20)
+					float(0.0);
+			writeMask(maskValue);
+			word(backdropDropShadowOnly ? 3 : backdropBlurOnly ? 2 : 1);
+			for (value in backdropMatrix)
+				float(value);
 			return;
 		}
 		if (hasMask) {
@@ -139,27 +149,7 @@ class CanvasCommandBuffer {
 			else
 				for (index in 0...20)
 					float(0.0);
-			word(cast(maskValue.kind, Int));
-			word(maskValue.image == null ? 0 : maskValue.image.nativeHandle().rawValue());
-			for (index in 0...8) {
-				var value = 0.0;
-				switch maskValue.kind {
-					case MaskKind.RoundedRect | MaskKind.Circle:
-						if (index == 0) value = maskValue.radius;
-					case MaskKind.LinearGradient:
-						value = switch index {
-							case 0: maskValue.x0;
-							case 1: maskValue.y0;
-							case 2: maskValue.x1;
-							case 3: maskValue.y1;
-							case 4: maskValue.alpha0;
-							case 5: maskValue.alpha1;
-							default: 0.0;
-						};
-					default:
-				}
-				float(value);
-			}
+			writeMask(maskValue);
 			return;
 		}
 		header(NativeKitUI.CommandOpcode.BeginLayer, 120);
@@ -181,6 +171,61 @@ class CanvasCommandBuffer {
 		word(dropShadowOnly ? 3 : blurOnly ? 2 : 1);
 		for (value in matrix)
 			float(value);
+	}
+
+	function encodeEffect(value:EffectChain):Array<Float> {
+		var result:Array<Float> = [];
+		for (index in 0...20)
+			result.push(0.0);
+		var blurOnly = value.effects.length == 1 && value.effects[0].kind == EffectKind.Blur;
+		var dropShadowOnly = value.effects.length == 1 &&
+			value.effects[0].kind == EffectKind.DropShadow;
+		if (blurOnly) {
+			var blur:BlurEffect = cast value.effects[0];
+			result[0] = blur.sigma;
+		} else if (dropShadowOnly) {
+			var shadow:DropShadowEffect = cast value.effects[0];
+			result[0] = shadow.sigma;
+			result[2] = shadow.offsetX;
+			result[3] = shadow.offsetY;
+			result[4] = shadow.color.red;
+			result[5] = shadow.color.green;
+			result[6] = shadow.color.blue;
+			result[7] = shadow.color.alpha;
+		} else
+			result = value.colorMatrix();
+		return result;
+	}
+
+	function writeMask(value:Mask):Void {
+		if (value == null) {
+			word(0);
+			word(0);
+			for (index in 0...8)
+				float(0.0);
+			return;
+		}
+		word(cast(value.kind, Int));
+		word(value.image == null ? 0 : value.image.nativeHandle().rawValue());
+		for (index in 0...8) {
+			var parameter = 0.0;
+			switch value.kind {
+				case MaskKind.RoundedRect | MaskKind.Circle:
+					if (index == 0) parameter = value.radius;
+				case MaskKind.LinearGradient:
+					parameter = switch index {
+						case 0: value.x0;
+						case 1: value.y0;
+						case 2: value.x1;
+						case 3: value.y1;
+						case 4: value.alpha0;
+						case 5: value.alpha1;
+						default: 0.0;
+					};
+				default:
+			}
+			float(parameter);
+		}
 	}
 
 	public function endLayer():Void

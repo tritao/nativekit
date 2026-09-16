@@ -1666,6 +1666,16 @@ class FrameworkSmoke {
 			return 254;
 		maskList.dispose();
 		effectCanvas.reset();
+		var backdropList = DisplayList.create();
+		effectCanvas.withLayer(1.0, function(canvas) {
+			canvas.fillRect(new Rect(4.0, 6.0, 24.0, 18.0), Color.rgba(0.2, 0.4, 0.8, 1.0));
+		}, CompositeMode.SourceOver, new Rect(4.0, 6.0, 24.0, 18.0), null, null,
+			EffectChain.of([new BrightnessEffect(1.1)]));
+		effectCanvas.update(backdropList);
+		if (backdropList.info().commandCount != 4)
+			return 255;
+		backdropList.dispose();
+		effectCanvas.reset();
 		var responsiveSheet = new StyleSheet("ResponsiveSheet");
 		responsiveSheet.rule(StyleSelector.widget("button"),
 			[StyleValue.paddingSymmetric(12.0, 8.0)]);

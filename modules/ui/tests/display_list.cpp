@@ -97,6 +97,19 @@ static bool rejects_bad_streams() {
         return false;
 
     list.reset();
+    EffectDescriptor backdrop_effect{};
+    backdrop_effect.kind = EffectKind::ColorMatrix;
+    backdrop_effect.color_matrix[0] = 1.0f;
+    backdrop_effect.color_matrix[6] = 1.0f;
+    backdrop_effect.color_matrix[12] = 1.0f;
+    backdrop_effect.color_matrix[18] = 1.0f;
+    if (!list.begin_layer(1.0f, LayerBounds{4.0f, 8.0f, 32.0f, 24.0f}, EffectDescriptor{},
+                          MaskDescriptor{}, backdrop_effect) ||
+        !list.end_layer() || !validate_display_list(list.data(), list.size(), &error) ||
+        !list.has_backdrop_effects())
+        return false;
+
+    list.reset();
     mask.kind = MaskKind::LinearGradient;
     mask.values[0] = 0.0f;
     mask.values[1] = 0.0f;

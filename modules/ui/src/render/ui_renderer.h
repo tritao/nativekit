@@ -123,6 +123,15 @@ class UiRenderer {
                                 float height, const float transform[6], float opacity) = 0;
     /** Applies one backend-neutral effect to the currently active target. */
     virtual bool applyEffect(ResourceId source, const EffectDescriptor &effect) = 0;
+    /** Applies an effect while sampling a bounded source rectangle, used by backdrop capture. */
+    virtual bool applyEffectRegion(ResourceId source, const EffectDescriptor &effect, float x,
+                                   float y, float width, float height) {
+        (void)x;
+        (void)y;
+        (void)width;
+        (void)height;
+        return applyEffect(source, effect);
+    }
     /** Applies a separate source-alpha mask to the currently active target. */
     virtual bool applyMask(ResourceId source, const MaskDescriptor &mask,
                            const PreparedTexture *image) = 0;

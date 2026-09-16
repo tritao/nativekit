@@ -136,7 +136,12 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
                                                      pass.load_existing)))
             return fail(error, pass_index, 0, renderer.lastError());
         if (pass.kind == RenderPassKind::Effect) {
-            if (!renderer.applyEffect(pass.input_target, pass.effect)) {
+            const bool applied = pass.has_input_rect
+                                     ? renderer.applyEffectRegion(
+                                           pass.input_target, pass.effect, pass.input_rect[0],
+                                           pass.input_rect[1], pass.input_rect[2], pass.input_rect[3])
+                                     : renderer.applyEffect(pass.input_target, pass.effect);
+            if (!applied) {
                 renderer.endPass();
                 return fail(error, pass_index, 0, renderer.lastError());
             }

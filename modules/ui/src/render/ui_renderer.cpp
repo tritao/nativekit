@@ -50,6 +50,8 @@ class UiRendererImpl final : public UiRenderer {
     bool compositeImage(nk_graphics_image image, float x, float y, float width, float height,
                         const float transform[6], float opacity) override;
     bool applyEffect(ResourceId source, const EffectDescriptor &effect) override;
+    bool applyEffectRegion(ResourceId source, const EffectDescriptor &effect, float x, float y,
+                           float width, float height) override;
     bool applyMask(ResourceId source, const MaskDescriptor &mask,
                    const PreparedTexture *image) override;
     bool endPass() override;
@@ -1555,6 +1557,11 @@ bool draw_composite(UiRendererImpl::State &state, float x, float y, float width,
 } // namespace
 
 bool UiRendererImpl::applyEffect(ResourceId source, const EffectDescriptor &effect) {
+    return applyEffectRegion(source, effect, 0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+bool UiRendererImpl::applyEffectRegion(ResourceId source, const EffectDescriptor &effect, float x,
+                                       float y, float region_width, float region_height) {
     if (!state_->in_pass ||
         (effect.kind != EffectKind::ColorMatrix && effect.kind != EffectKind::Blur &&
          effect.kind != EffectKind::DropShadow))
@@ -1573,21 +1580,32 @@ bool UiRendererImpl::applyEffect(ResourceId source, const EffectDescriptor &effe
     const auto found = state_->targets.find(source.value);
     if (found == state_->targets.end() || !found->second.image.id)
         return fail(*state_, "effect input target was not rendered");
+    const bool has_region = region_width > 0.0f || region_height > 0.0f;
+    if (has_region && (region_width <= 0.0f || region_height <= 0.0f || x < 0.0f || y < 0.0f ||
+                       x + region_width > static_cast<float>(found->second.width) + 0.01f ||
+                       y + region_height > static_cast<float>(found->second.height) + 0.01f))
+        return fail(*state_, "backdrop source rectangle is outside its target");
     if (!setScissor(false, 0.0f, 0.0f, 0.0f, 0.0f))
         return false;
 
     const float width = static_cast<float>(state_->width);
     const float height = static_cast<float>(state_->height);
+    const float source_width = static_cast<float>(found->second.width);
+    const float source_height = static_cast<float>(found->second.height);
+    const float u0 = has_region ? x / source_width : 0.0f;
+    const float u1 = has_region ? (x + region_width) / source_width : 1.0f;
+    const float v1 = has_region ? 1.0f - y / source_height : 1.0f;
+    const float v0 = has_region ? 1.0f - (y + region_height) / source_height : 0.0f;
     const std::vector<TextureVertex> vertices = {
-        {0.0f, 0.0f, 0.0f, 1.0f},
-        {width, 0.0f, 1.0f, 1.0f},
-        {width, height, 1.0f, 0.0f},
-        {0.0f, height, 0.0f, 0.0f},
+        {0.0f, 0.0f, u0, v1},
+        {width, 0.0f, u1, v1},
+        {width, height, u1, v0},
+        {0.0f, height, u0, v0},
     };
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     if (effect.kind == EffectKind::Blur) {
         const BlurUniforms uniforms{{effect.color_matrix[0], effect.color_matrix[1],
-                                     1.0f / width, 1.0f / height}};
+                                     1.0f / source_width, 1.0f / source_height}};
         return draw_mesh(*state_, state_->blur_pipeline, vertices, indices, &uniforms,
                          sizeof(uniforms), {}, state_->surface_sampler,
                          state_->composite_vertices, found->second.image);
@@ -1597,7 +1615,8 @@ bool UiRendererImpl::applyEffect(ResourceId source, const EffectDescriptor &effe
                                            effect.color_matrix[2], effect.color_matrix[3],
                                            effect.color_matrix[4], effect.color_matrix[5],
                                            effect.color_matrix[6], effect.color_matrix[7],
-                                           1.0f / width, 1.0f / height, 0.0f, 0.0f}};
+                                           1.0f / source_width, 1.0f / source_height, 0.0f,
+                                           0.0f}};
         return draw_mesh(*state_, state_->drop_shadow_pipeline, vertices, indices, &uniforms,
                          sizeof(uniforms), {}, state_->surface_sampler,
                          state_->composite_vertices, found->second.image);

@@ -158,6 +158,18 @@ bool scale_mask_for_device(MaskDescriptor &mask, float pixel_scale) {
     return true;
 }
 
+bool scale_input_rect_for_device(RenderPass &pass, float pixel_scale) {
+    if (!pass.has_input_rect)
+        return true;
+    for (float &value : pass.input_rect) {
+        const double scaled = static_cast<double>(value) * pixel_scale;
+        if (!std::isfinite(scaled) || scaled > std::numeric_limits<float>::max())
+            return false;
+        value = static_cast<float>(scaled);
+    }
+    return true;
+}
+
 LayoutRect transform_bounds(LayoutRect rect, const LayoutTransform &transform) {
     const auto x = [&](float px, float py) {
         return transform.a * px + transform.c * py + transform.tx;
@@ -252,7 +264,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
 
         std::vector<LayoutRect> clips;
         uint32_t transient_slot = 1;
-        uint32_t transient_target_slot = 0x8000;
+        uint32_t transient_target_slot =
+            (static_cast<uint16_t>(main_target.value) == 0x8000u) ? 0x8001 : 0x8000;
         auto &commands = out.plan_.passes.front().commands;
         const auto append_custom_plan = [&](const RenderPlan &custom_plan,
                                             std::size_t primitive_index) -> bool {
@@ -326,6 +339,10 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 if (pass.kind == RenderPassKind::Effect &&
                     !scale_effect_for_device(pass.effect, pixel_scale))
                     return fail(error, primitive_index, "custom effect parameters are too large");
+                if (pass.kind == RenderPassKind::Effect &&
+                    !scale_input_rect_for_device(pass, pixel_scale))
+                    return fail(error, primitive_index,
+                                "custom backdrop source rectangle is too large");
                 if (pass.kind == RenderPassKind::Mask &&
                     !scale_mask_for_device(pass.mask, pixel_scale))
                     return fail(error, primitive_index, "custom mask parameters are too large");

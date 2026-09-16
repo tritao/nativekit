@@ -922,6 +922,24 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		color: nkui_color @offset(4);
 	}
 	/**
+	 * Extended payload for NKUI_COMMAND_BEGIN_LAYER with effects, a mask, and a backdrop effect.
+	 */
+	struct nkui_layer_backdrop_command @layout(244, 4) {
+		header: nkui_command_header @offset(0);
+		opacity: f32 @offset(8);
+		composite_mode: nkui_composite_mode @offset(12);
+		x: f32 @offset(16);
+		y: f32 @offset(20);
+		width: f32 @offset(24);
+		height: f32 @offset(28);
+		flags: nkui_layer_flags @offset(32);
+		effect_kind: nkui_effect_kind @offset(36);
+		effect_matrix: array<f32, 20> @offset(40);
+		mask: nkui_mask_descriptor @offset(120);
+		backdrop_effect_kind: nkui_effect_kind @offset(160);
+		backdrop_effect_matrix: array<f32, 20> @offset(164);
+	}
+	/**
 	 * Payload for NKUI_COMMAND_BEGIN_LAYER.
 	 */
 	struct nkui_layer_command @layout(36, 4) {

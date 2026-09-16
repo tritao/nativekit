@@ -225,10 +225,12 @@ class RenderNode {
 		var opacity = style.get(StyleProperty.Opacity);
 		var effects = style.get(StyleProperty.Effects);
 		var hasEffects = effects != null && effects.effects.length > 0;
+		var backdropEffects = style.get(StyleProperty.BackdropEffects);
+		var hasBackdropEffects = backdropEffects != null && backdropEffects.effects.length > 0;
 		var mask = style.get(StyleProperty.Mask);
-		if (opacity < 1.0 || hasEffects || mask != null)
+		if (opacity < 1.0 || hasEffects || hasBackdropEffects || mask != null)
 			canvas.withLayer(opacity, paintContent, CompositeMode.SourceOver, resolved.bounds(),
-				hasEffects ? effects : null, mask);
+				hasEffects ? effects : null, mask, hasBackdropEffects ? backdropEffects : null);
 		else
 			paintContent(canvas);
 		return true;

@@ -80,6 +80,9 @@ struct RenderPass {
     RenderPassKind kind = RenderPassKind::Draw;
     ResourceId input_target{};
     EffectDescriptor effect{};
+    /** Optional source rectangle used by backdrop capture; frame compilers scale it to pixels. */
+    bool has_input_rect = false;
+    std::array<float, 4> input_rect{};
     MaskDescriptor mask{};
 };
 

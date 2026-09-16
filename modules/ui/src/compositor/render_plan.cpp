@@ -64,6 +64,16 @@ bool valid_mask_descriptor(const MaskDescriptor &mask) {
     return true;
 }
 
+bool valid_input_rect(const RenderPass &pass) {
+    if (!pass.has_input_rect)
+        return true;
+    for (const float value : pass.input_rect)
+        if (!std::isfinite(value))
+            return false;
+    return pass.input_rect[0] >= 0.0f && pass.input_rect[1] >= 0.0f &&
+           pass.input_rect[2] > 0.0f && pass.input_rect[3] > 0.0f;
+}
+
 void add_edge(std::vector<std::vector<uint32_t>> &edges, std::vector<uint32_t> &indegree,
               uint32_t from, uint32_t to) {
     if (from == to || std::find(edges[from].begin(), edges[from].end(), to) != edges[from].end())
@@ -90,6 +100,7 @@ bool schedule_render_plan(const RenderPlan &plan, std::vector<uint32_t> &order,
             ((pass.kind == RenderPassKind::Effect || pass.kind == RenderPassKind::Mask) &&
              (!is_resource_id(pass.input_target, ResourceKind::RenderTarget) ||
               pass.input_target.value == pass.target.value || !pass.commands.empty() ||
+              !valid_input_rect(pass) ||
               (pass.kind == RenderPassKind::Effect ? !valid_effect_descriptor(pass.effect)
                                                    : !valid_mask_descriptor(pass.mask))))) {
             if (error)

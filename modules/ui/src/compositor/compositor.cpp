@@ -23,6 +23,8 @@ struct Layer {
     bool has_effect = false;
     MaskDescriptor mask{};
     bool has_mask = false;
+    EffectDescriptor backdrop_effect{};
+    bool has_backdrop = false;
     bool isolated = false;
 };
 
@@ -36,6 +38,8 @@ struct LayerCommandValues {
     bool has_effect = false;
     MaskDescriptor mask{};
     bool has_mask = false;
+    EffectDescriptor backdrop_effect{};
+    bool has_backdrop = false;
 };
 
 struct CanvasState {
@@ -102,6 +106,21 @@ void apply_state(RenderCommand &command, const CanvasState &state, float target_
 }
 
 bool read_layer(const uint8_t *record, uint32_t size, LayerCommandValues &result) {
+    if (size == sizeof(BeginLayerBackdropCommand)) {
+        const auto value = read<BeginLayerBackdropCommand>(record);
+        result.opacity = value.opacity;
+        result.mode = value.mode;
+        result.bounds = {value.x, value.y, value.width, value.height};
+        result.flags = value.flags;
+        result.has_bounds = (value.flags & LayerHasBounds) != 0;
+        result.effect = value.effect;
+        result.has_effect = value.effect.kind != EffectKind::None;
+        result.mask = value.mask;
+        result.has_mask = value.mask.kind != MaskKind::None;
+        result.backdrop_effect = value.backdrop_effect;
+        result.has_backdrop = value.backdrop_effect.kind != EffectKind::None;
+        return true;
+    }
     if (size == sizeof(BeginLayerMaskCommand)) {
         const auto value = read<BeginLayerMaskCommand>(record);
         result.opacity = value.opacity;
@@ -193,7 +212,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
     plan = {};
     // Transient IDs are frame-local structural slots. Reusing them across compilations lets the
     // backend pool matching GPU targets instead of growing one target per transaction.
-    next_target_slot_ = 0x8000;
+    next_target_slot_ = (static_cast<uint16_t>(main_target.value) == 0x8000u) ? 0x8001 : 0x8000;
     std::vector<Layer> layers;
     CanvasState state;
     std::vector<CanvasState> states;
@@ -278,6 +297,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             LayerCommandValues value{};
             if (!read_layer(record, header.size, value))
                 return fail(error, index, "invalid layer begin");
+            const LayerBounds backdrop_bounds = value.bounds;
             if (value.has_bounds && value.has_effect &&
                 (value.effect.kind == EffectKind::Blur ||
                  value.effect.kind == EffectKind::DropShadow)) {
@@ -306,12 +326,63 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 value.bounds.height += top + bottom;
             }
             const bool isolated = value.opacity < 1.0f || (value.flags & LayerIsolated) != 0 ||
-                                  value.has_effect;
+                                  value.has_effect || value.has_mask || value.has_backdrop;
             const ResourceId parent_target = current_target;
             ResourceId layer_target = current_target;
             const float parent_origin_x = current_origin_x;
             const float parent_origin_y = current_origin_y;
             RenderTargetDescriptor layer_descriptor{};
+            if (value.has_backdrop) {
+                RenderTargetDescriptor backdrop_descriptor{};
+                if (value.has_bounds) {
+                    backdrop_descriptor.logical_width = backdrop_bounds.width;
+                    backdrop_descriptor.logical_height = backdrop_bounds.height;
+                    backdrop_descriptor.origin_x = backdrop_bounds.x;
+                    backdrop_descriptor.origin_y = backdrop_bounds.y;
+                }
+                const auto append_backdrop_effect = [&](ResourceId target, ResourceId input,
+                                                        EffectDescriptor effect,
+                                                        bool source_region) {
+                    RenderPass effect_pass;
+                    effect_pass.target = target;
+                    effect_pass.target_descriptor = backdrop_descriptor;
+                    effect_pass.kind = RenderPassKind::Effect;
+                    effect_pass.input_target = input;
+                    effect_pass.effect = effect;
+                    if (source_region) {
+                        effect_pass.has_input_rect = true;
+                        effect_pass.input_rect = {backdrop_bounds.x - parent_origin_x,
+                                                  backdrop_bounds.y - parent_origin_y,
+                                                  backdrop_bounds.width, backdrop_bounds.height};
+                    }
+                    plan.passes.push_back(std::move(effect_pass));
+                };
+                ResourceId backdrop_target = allocate_transient_target();
+                if (value.backdrop_effect.kind == EffectKind::Blur ||
+                    value.backdrop_effect.kind == EffectKind::DropShadow) {
+                    const ResourceId horizontal_target = allocate_transient_target();
+                    const ResourceId vertical_target = allocate_transient_target();
+                    EffectDescriptor horizontal = value.backdrop_effect;
+                    horizontal.color_matrix[1] = 0.0f;
+                    append_backdrop_effect(horizontal_target, parent_target, horizontal,
+                                           value.has_bounds);
+                    EffectDescriptor vertical = value.backdrop_effect;
+                    vertical.color_matrix[1] = 1.0f;
+                    append_backdrop_effect(vertical_target, horizontal_target, vertical, false);
+                    backdrop_target = vertical_target;
+                } else {
+                    append_backdrop_effect(backdrop_target, parent_target, value.backdrop_effect,
+                                           value.has_bounds);
+                }
+                pass = &continue_pass(plan, parent_target);
+                pass->commands.push_back(
+                    {RenderCommandKind::CompositeTarget, backdrop_target,
+                     value.has_bounds ? backdrop_bounds.x - parent_origin_x : 0.0f,
+                     value.has_bounds ? backdrop_bounds.y - parent_origin_y : 0.0f,
+                     value.has_bounds ? backdrop_bounds.width : 0.0f,
+                     value.has_bounds ? backdrop_bounds.height : 0.0f});
+                add_dependency(plan, backdrop_target, parent_target);
+            }
             if (isolated) {
                 layer_target = allocate_transient_target();
                 current_target = layer_target;
@@ -331,7 +402,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             layers.push_back({parent_target, layer_target, value.opacity, value.mode,
                               value.bounds, value.has_bounds, parent_origin_x, parent_origin_y,
                               layer_descriptor, value.effect, value.has_effect, value.mask,
-                              value.has_mask, isolated});
+                              value.has_mask, value.backdrop_effect, value.has_backdrop, isolated});
             break;
         }
         case CommandOpcode::EndLayer: {

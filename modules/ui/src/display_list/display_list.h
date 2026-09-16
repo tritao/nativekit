@@ -187,6 +187,21 @@ struct BeginLayerMaskCommand {
     MaskDescriptor mask;
 };
 
+/** Extended layer record carrying an effect, mask, and backdrop effect. */
+struct BeginLayerBackdropCommand {
+    CommandHeader header;
+    float opacity;
+    CompositeMode mode;
+    float x;
+    float y;
+    float width;
+    float height;
+    uint32_t flags;
+    EffectDescriptor effect;
+    MaskDescriptor mask;
+    EffectDescriptor backdrop_effect;
+};
+
 /** Legacy 16-byte layer record accepted for display-list compatibility. */
 struct LegacyBeginLayerCommand {
     CommandHeader header;
@@ -244,8 +259,16 @@ class DisplayList {
                      CompositeMode mode = CompositeMode::SourceOver);
     bool begin_layer(float opacity, const LayerBounds &bounds, const EffectDescriptor &effect,
                      const MaskDescriptor &mask, CompositeMode mode = CompositeMode::SourceOver);
+    bool begin_layer(float opacity, const LayerBounds &bounds, const EffectDescriptor &effect,
+                     const MaskDescriptor &mask, const EffectDescriptor &backdrop_effect,
+                     CompositeMode mode = CompositeMode::SourceOver);
+    bool begin_layer(float opacity, const EffectDescriptor &effect, const MaskDescriptor &mask,
+                     const EffectDescriptor &backdrop_effect,
+                     CompositeMode mode = CompositeMode::SourceOver);
     bool end_layer();
     bool draw_render_target(ResourceId target, float x, float y, float width, float height);
+    /** Returns whether the validated command stream contains a backdrop layer. */
+    bool has_backdrop_effects() const;
 
   private:
     template <class T> bool append(const T &command);

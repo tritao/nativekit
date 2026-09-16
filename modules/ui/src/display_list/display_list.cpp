@@ -152,6 +152,21 @@ uint32_t DisplayList::command_count() const {
     return command_count_;
 }
 
+bool DisplayList::has_backdrop_effects() const {
+    size_t offset = 0;
+    while (offset < size_) {
+        CommandHeader header{};
+        std::memcpy(&header, bytes_.data() + offset, sizeof(header));
+        if (header.opcode == CommandOpcode::BeginLayer &&
+            header.size == sizeof(BeginLayerBackdropCommand))
+            return true;
+        if (header.size < sizeof(CommandHeader) || header.size > size_ - offset)
+            return false;
+        offset += header.size;
+    }
+    return false;
+}
+
 bool DisplayList::assign_validated(const uint8_t *data, size_t size) {
     if (!validate_display_list(data, size))
         return false;
@@ -366,6 +381,36 @@ bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
     return append(value);
 }
 
+bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
+                              const EffectDescriptor &effect, const MaskDescriptor &mask,
+                              const EffectDescriptor &backdrop_effect, CompositeMode mode) {
+    auto value = command<BeginLayerBackdropCommand>(CommandOpcode::BeginLayer);
+    value.opacity = opacity;
+    value.mode = mode;
+    value.x = bounds.x;
+    value.y = bounds.y;
+    value.width = bounds.width;
+    value.height = bounds.height;
+    value.flags = LayerIsolated | LayerHasBounds;
+    value.effect = effect;
+    value.mask = mask;
+    value.backdrop_effect = backdrop_effect;
+    return append(value);
+}
+
+bool DisplayList::begin_layer(float opacity, const EffectDescriptor &effect,
+                              const MaskDescriptor &mask,
+                              const EffectDescriptor &backdrop_effect, CompositeMode mode) {
+    auto value = command<BeginLayerBackdropCommand>(CommandOpcode::BeginLayer);
+    value.opacity = opacity;
+    value.mode = mode;
+    value.flags = LayerIsolated;
+    value.effect = effect;
+    value.mask = mask;
+    value.backdrop_effect = backdrop_effect;
+    return append(value);
+}
+
 bool DisplayList::end_layer() {
     return append(command<ScopeCommand>(CommandOpcode::EndLayer));
 }
@@ -473,6 +518,8 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
             break;
         }
         case CommandOpcode::BeginLayer: {
+            const auto *backdrop_value =
+                read_command<BeginLayerBackdropCommand>(record, header.size);
             const auto *mask_value = read_command<BeginLayerMaskCommand>(record, header.size);
             const auto *effect_value = read_command<BeginLayerEffectCommand>(record, header.size);
             const auto *legacy = read_command<LegacyBeginLayerCommand>(record, header.size);
@@ -501,6 +548,20 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
                 valid_effect(mask_value->effect) && valid_mask(mask_value->mask) &&
                 mask_value->mask.kind != MaskKind::None &&
                 (mask_value->flags & LayerIsolated);
+            const bool valid_backdrop_record =
+                backdrop_value && finite(backdrop_value->opacity) &&
+                backdrop_value->opacity >= 0.0f && backdrop_value->opacity <= 1.0f &&
+                valid_composite(backdrop_value->mode) &&
+                !(backdrop_value->flags & ~(LayerIsolated | LayerHasBounds)) &&
+                (!(backdrop_value->flags & LayerHasBounds) ||
+                 ((backdrop_value->flags & LayerIsolated) &&
+                  valid_rect(backdrop_value->x, backdrop_value->y, backdrop_value->width,
+                             backdrop_value->height) &&
+                  backdrop_value->width > 0.0f && backdrop_value->height > 0.0f)) &&
+                valid_effect(backdrop_value->effect) && valid_mask(backdrop_value->mask) &&
+                valid_effect(backdrop_value->backdrop_effect) &&
+                backdrop_value->backdrop_effect.kind != EffectKind::None &&
+                (backdrop_value->flags & LayerIsolated);
             const bool valid_legacy = legacy && finite(legacy->opacity) && legacy->opacity >= 0.0f &&
                                       legacy->opacity <= 1.0f && valid_composite(legacy->mode);
             const bool valid_extended = value && finite(value->opacity) && value->opacity >= 0.0f &&
@@ -510,7 +571,8 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
                                          ((value->flags & LayerIsolated) &&
                                           valid_rect(value->x, value->y, value->width, value->height) &&
                                           value->width > 0.0f && value->height > 0.0f));
-            if ((!valid_mask_record && !valid_effect_record && !valid_legacy && !valid_extended) ||
+            if ((!valid_backdrop_record && !valid_mask_record && !valid_effect_record &&
+                 !valid_legacy && !valid_extended) ||
                 layer_depth == max_scope_depth)
                 return fail(error, offset, index, "invalid layer begin");
             ++layer_depth;

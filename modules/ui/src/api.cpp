@@ -53,6 +53,7 @@ static_assert(sizeof(nkui_draw_rect_command) == sizeof(nkui::DrawRectResourceCom
 static_assert(sizeof(nkui_layer_command) == sizeof(nkui::BeginLayerCommand));
 static_assert(sizeof(nkui_layer_effect_command) == sizeof(nkui::BeginLayerEffectCommand));
 static_assert(sizeof(nkui_layer_mask_command) == sizeof(nkui::BeginLayerMaskCommand));
+static_assert(sizeof(nkui_layer_backdrop_command) == sizeof(nkui::BeginLayerBackdropCommand));
 static_assert(sizeof(nkui_stroke_path_command) == sizeof(nkui::StrokePathCommand));
 static_assert(sizeof(nkui_layout_item) == NKUI_LAYOUT_RESOLVED_ITEM_BYTES);
 
@@ -788,6 +789,39 @@ bool scale_mask_for_device(nkui::MaskDescriptor &mask, float pixel_scale) {
         return false;
     mask.values[0] = static_cast<float>(radius);
     return true;
+}
+
+bool scale_input_rect_for_device(nkui::RenderPass &pass, float pixel_scale) {
+    if (!pass.has_input_rect)
+        return true;
+    for (float &value : pass.input_rect) {
+        const double scaled = static_cast<double>(value) * pixel_scale;
+        if (!std::isfinite(scaled) || scaled > std::numeric_limits<float>::max())
+            return false;
+        value = static_cast<float>(scaled);
+    }
+    return true;
+}
+
+// Reserve the first transient slot for the offscreen frame root. Compositor and
+// layout compilation start their per-frame allocations after it when this root
+// is active, so backdrop frames do not grow the target pool by one permanent ID.
+constexpr uint16_t kBackdropRootTargetSlot = 0x8000;
+
+nkui::ResourceId backdrop_root_target() {
+    return nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1,
+                                  kBackdropRootTargetSlot);
+}
+
+void append_backdrop_window_composite(nkui::RenderPlan &plan, nkui::ResourceId root_target,
+                                      nkui::ResourceId window_target, bool load_existing) {
+    nkui::RenderPass window_pass;
+    window_pass.target = window_target;
+    window_pass.load_existing = load_existing;
+    window_pass.commands.push_back(
+        {nkui::RenderCommandKind::CompositeTarget, root_target});
+    plan.passes.push_back(std::move(window_pass));
+    plan.dependencies.push_back({root_target, window_target});
 }
 
 std::array<float, 6> tessellation_transform(const std::array<float, 6> &transform) {
@@ -2144,9 +2178,13 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     }
     const nkui::ResourceId main_target =
         nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);
+    const bool has_backdrop = list_slot->list->has_backdrop_effects();
+    const nkui::ResourceId compile_target = has_backdrop ? backdrop_root_target() : main_target;
     nkui::RenderPlan plan;
-    if (!renderer_slot->compositor.compile(*list_slot->list, main_target, plan))
+    if (!renderer_slot->compositor.compile(*list_slot->list, compile_target, plan))
         return NKUI_ERROR_INVALID_TRANSACTION;
+    if (has_backdrop)
+        append_backdrop_window_composite(plan, compile_target, main_target, load_existing);
     // Compositor geometry is expressed in logical pixels. Resolve bounded
     // transient targets to physical dimensions only at the frame boundary,
     // where the device pixel ratio is known.
@@ -2164,6 +2202,9 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         }
         if (pass.kind == nkui::RenderPassKind::Effect &&
             !scale_effect_for_device(pass.effect, frame_info->pixel_scale))
+            return NKUI_ERROR_INVALID_ARGUMENT;
+        if (pass.kind == nkui::RenderPassKind::Effect &&
+            !scale_input_rect_for_device(pass, frame_info->pixel_scale))
             return NKUI_ERROR_INVALID_ARGUMENT;
         if (pass.kind == nkui::RenderPassKind::Mask &&
             !scale_mask_for_device(pass.mask, frame_info->pixel_scale))
@@ -2366,7 +2407,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                 break;
             } else if (command.kind == nkui::RenderCommandKind::CompositeTarget) {
                 const uint16_t target_slot = static_cast<uint16_t>(command.resource.value);
-                if (target_slot < 0x8000u) {
+                if (target_slot < 0x8000u && command.resource.value != compile_target.value) {
                     auto *surface_slot = resolve_retained(nkui_resource{command.resource.value},
                                                           nkui::ResourceKind::RenderTarget);
                     if (!surface_slot) {
@@ -2466,6 +2507,14 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     }
     const nkui::ResourceId main_target =
         nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);
+    bool has_backdrop = false;
+    for (const auto &[node_id, list_handle] : session_state->custom_paints) {
+        (void)node_id;
+        auto *list_slot = resolve(list_handle);
+        if (list_slot && list_slot->list)
+            has_backdrop = has_backdrop || list_slot->list->has_backdrop_effects();
+    }
+    const nkui::ResourceId compile_target = has_backdrop ? backdrop_root_target() : main_target;
     std::vector<std::pair<uint32_t, nkui::RenderPlan>> custom_plan_storage;
     nkui::LayoutRenderCompiler::CustomPaintPlans custom_plans;
     try {
@@ -2478,7 +2527,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
             nkui::RenderPlan custom_plan;
             nkui::Compositor custom_compositor;
             nkui::CompositorError compositor_error{};
-            if (!custom_compositor.compile(*list_slot->list, main_target, custom_plan,
+            if (!custom_compositor.compile(*list_slot->list, compile_target, custom_plan,
                                            &compositor_error))
                 return NKUI_ERROR_INVALID_TRANSACTION;
             custom_plan_storage.emplace_back(node_id, std::move(custom_plan));
@@ -2490,11 +2539,15 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         return NKUI_ERROR_OUT_OF_MEMORY;
     }
     nkui::LayoutRenderCompileError compile_error{};
-    if (!session_state->compiler.compile(session_state->snapshot, main_target,
+    if (!session_state->compiler.compile(session_state->snapshot, compile_target,
                                          frame_info->pixel_scale, session_state->frame,
                                          &compile_error, load_existing != 0,
                                          session_state->engine->text_adapter(), &custom_plans))
         return NKUI_ERROR_INVALID_TRANSACTION;
+
+    if (has_backdrop)
+        append_backdrop_window_composite(session_state->frame.plan(), compile_target, main_target,
+                                         load_existing != 0);
 
     auto &plan = session_state->frame.plan();
     for (const auto &[node_id, custom_plan] : custom_plan_storage) {
@@ -2679,7 +2732,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                     break;
                 }
                 const uint16_t target_slot = static_cast<uint16_t>(command.resource.value);
-                if (target_slot < 0x8000u) {
+                if (target_slot < 0x8000u && command.resource.value != compile_target.value) {
                     auto *surface_slot = resolve_retained(nkui_resource{command.resource.value},
                                                           nkui::ResourceKind::RenderTarget);
                     if (!surface_slot) {

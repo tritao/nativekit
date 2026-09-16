@@ -108,6 +108,7 @@ int main(int argc, char **argv) {
     nkui_display_list drop_shadow_list{};
     nkui_display_list mask_list{};
     nkui_display_list image_mask_list{};
+    nkui_display_list backdrop_list{};
     nkui_renderer renderer{};
     if (nkui_path_create(path_elements, 5, &path) != NKUI_OK ||
         nkui_paint_create_solid({0.08f, 0.45f, 0.16f, 1.0f}, &paint) != NKUI_OK ||
@@ -121,7 +122,9 @@ int main(int argc, char **argv) {
         nkui_font_collection_add(fonts, NKUI_TEST_FONT_PATH, NKUI_FONT_FAMILY_DEFAULT) != NKUI_OK ||
         nkui_text_layout_create(fonts, "NativeKit direct text", 220.0f, 24.0f, &text) != NKUI_OK ||
         nkui_text_layout_create(fonts, "Scale", 100.0f, 18.0f, &scale_text) != NKUI_OK ||
-        nkui_display_list_create(&list) != NKUI_OK || nkui_renderer_create(&renderer) != NKUI_OK)
+        nkui_display_list_create(&list) != NKUI_OK ||
+        nkui_display_list_create(&backdrop_list) != NKUI_OK ||
+        nkui_renderer_create(&renderer) != NKUI_OK)
         return 4;
     if (nkui_text_layout_set_text(text, "NativeKit updated text") != NKUI_OK)
         return 4;
@@ -291,6 +294,46 @@ int main(int argc, char **argv) {
     if (nkui_display_list_submit(image_mask_list, image_mask_commands.data(),
                                  image_mask_commands.size()) != NKUI_OK)
         return 5;
+    std::vector<uint8_t> backdrop_commands;
+    append(backdrop_commands,
+           nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
+                                   sizeof(nkui_draw_rect_command)},
+                                  image,
+                                  72.0f,
+                                  82.0f,
+                                  112.0f,
+                                  70.0f});
+    nkui_layer_backdrop_command backdrop_layer{};
+    backdrop_layer.header = {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION,
+                             sizeof(nkui_layer_backdrop_command)};
+    backdrop_layer.opacity = 1.0f;
+    backdrop_layer.composite_mode = NKUI_COMPOSITE_SOURCE_OVER;
+    backdrop_layer.x = 72.0f;
+    backdrop_layer.y = 82.0f;
+    backdrop_layer.width = 112.0f;
+    backdrop_layer.height = 70.0f;
+    backdrop_layer.flags = NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS;
+    backdrop_layer.backdrop_effect_kind = NKUI_EFFECT_COLOR_MATRIX;
+    backdrop_layer.backdrop_effect_matrix[0] = 1.0f;
+    backdrop_layer.backdrop_effect_matrix[6] = 1.0f;
+    backdrop_layer.backdrop_effect_matrix[12] = 1.0f;
+    backdrop_layer.backdrop_effect_matrix[18] = 1.0f;
+    backdrop_layer.backdrop_effect_matrix[4] = 0.1f;
+    append(backdrop_commands, backdrop_layer);
+    append(backdrop_commands,
+           nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
+                                   sizeof(nkui_draw_rect_command)},
+                                  image,
+                                  72.0f,
+                                  82.0f,
+                                  112.0f,
+                                  70.0f});
+    append(backdrop_commands,
+           nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
+                               sizeof(nkui_command_header)});
+    if (nkui_display_list_submit(backdrop_list, backdrop_commands.data(),
+                                 backdrop_commands.size()) != NKUI_OK)
+        return 5;
     if (nkui_display_list_create(&scale_list) != NKUI_OK)
         return 5;
     std::vector<uint8_t> scale_commands;
@@ -366,6 +409,9 @@ int main(int argc, char **argv) {
         if (!result && render_result == NKUI_OK && frames == 0)
             render_result =
                 nkui_renderer_render_frame(renderer, image_mask_list, surface, &frame_info);
+        if (!result && render_result == NKUI_OK && frames == 0)
+            render_result =
+                nkui_renderer_render_frame(renderer, backdrop_list, surface, &frame_info);
         if (!result && render_result == NKUI_OK && frames == 0)
             render_result =
                 nkui_renderer_render_frame(renderer, drop_shadow_list, surface, &frame_info);
@@ -600,6 +646,7 @@ int main(int argc, char **argv) {
     nkui_display_list_destroy(drop_shadow_list);
     nkui_display_list_destroy(mask_list);
     nkui_display_list_destroy(image_mask_list);
+    nkui_display_list_destroy(backdrop_list);
     nkui_display_list_destroy(list);
     nkui_resource_destroy(text);
     nkui_resource_destroy(scale_text);

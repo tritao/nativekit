@@ -232,8 +232,8 @@ class Canvas {
 		commands.drawText(layout, x, y);
 
 	public function withLayer(opacity:Float, action:Canvas->Void, mode:CompositeMode = CompositeMode.SourceOver,
-			?bounds:Rect, ?effects:EffectChain, ?mask:Mask):Void {
-		beginLayer(opacity, mode, bounds, effects, mask);
+			?bounds:Rect, ?effects:EffectChain, ?mask:Mask, ?backdropEffects:EffectChain):Void {
+		beginLayer(opacity, mode, bounds, effects, mask, backdropEffects);
 		try {
 			action(this);
 		} catch (error:Dynamic) {
@@ -244,14 +244,14 @@ class Canvas {
 	}
 
 	public function beginLayer(opacity:Float, mode:CompositeMode = CompositeMode.SourceOver,
-			?bounds:Rect, ?effects:EffectChain, ?mask:Mask):Void {
+			?bounds:Rect, ?effects:EffectChain, ?mask:Mask, ?backdropEffects:EffectChain):Void {
 		if (opacity < 0.0 || opacity > 1.0)
 			throw "Canvas layer opacity must be in the range 0..1";
 		if (bounds != null && (!Math.isFinite(bounds.x) || !Math.isFinite(bounds.y) ||
 			!Math.isFinite(bounds.width) || !Math.isFinite(bounds.height) ||
 			bounds.width <= 0.0 || bounds.height <= 0.0))
 			throw "Canvas layer bounds must be finite and positive";
-		commands.beginLayer(opacity, mode, bounds, effects, mask);
+		commands.beginLayer(opacity, mode, bounds, effects, mask, backdropEffects);
 		openLayers++;
 	}
 

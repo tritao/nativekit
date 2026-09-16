@@ -471,6 +471,23 @@ typedef struct nkui_layer_mask_command {
     nkui_mask_descriptor mask;
 } nkui_layer_mask_command;
 
+/** Extended payload for NKUI_COMMAND_BEGIN_LAYER with effects, a mask, and a backdrop effect. */
+typedef struct nkui_layer_backdrop_command {
+    nkui_command_header header;
+    float opacity;
+    nkui_composite_mode composite_mode;
+    float x;
+    float y;
+    float width;
+    float height;
+    nkui_layer_flags flags;
+    nkui_effect_kind effect_kind;
+    float effect_matrix[20];
+    nkui_mask_descriptor mask;
+    nkui_effect_kind backdrop_effect_kind;
+    float backdrop_effect_matrix[20];
+} nkui_layer_backdrop_command;
+
 /* ------------------------------------------------------------------------- */
 /* Text and layout types                                                      */
 /* ------------------------------------------------------------------------- */
