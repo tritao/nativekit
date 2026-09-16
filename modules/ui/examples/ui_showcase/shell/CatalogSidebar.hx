@@ -72,9 +72,6 @@ class CatalogSidebar {
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.fixed(36.0);
 		style.padding = new Insets(10.0, 8.0, 10.0, 8.0);
-		style.background = explorer.state.lightTheme
-			? UiExplorer.color(0.87, 0.90, 0.95)
-			: UiExplorer.color(0.075, 0.10, 0.16);
 		var navigationTitle = explorer.width < 760.0 ? page.compactTitle : page.title;
 		var item = new Button(navigationTitle, style, function() {
 			explorer.state.selectedPage = page.id;
@@ -82,6 +79,7 @@ class CatalogSidebar {
 			explorer.state.inspector.hoveredNodeId = 0;
 			explorer.state.inspector.tab = "preview";
 		}, "nav-" + page.id);
+		item.classes = ["catalog-nav"];
 		item.selected = explorer.state.selectedPage == page.id;
 		children.push(explorer.keyed("nav-" + page.id, item));
 	}

@@ -9,6 +9,9 @@ import UiExplorer;
 import nativekit.ui.core.View;
 import nativekit.ui.theme.Theme;
 import nativekit.ui.theme.TextRole;
+import nativekit.ui.style.StyleSelector;
+import nativekit.ui.style.StyleState;
+import nativekit.ui.style.StyleValue;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
@@ -194,6 +197,19 @@ class ShowcaseKit {
 		theme.panelBackground = light ? color(0.98, 0.98, 1.0) : color(0.14, 0.16, 0.20);
 		theme.overlayBackdrop = color(0.0, 0.0, 0.0, 0.54);
 		theme.tooltipBackground = light ? color(0.13, 0.17, 0.23) : color(0.08, 0.09, 0.11);
+		theme.refreshStyles();
+		var catalogNormal = light ? color(0.87, 0.90, 0.95) : color(0.075, 0.10, 0.16);
+		var catalogHover = light ? color(0.79, 0.85, 0.94) : color(0.12, 0.18, 0.28);
+		var catalogPressed = light ? color(0.72, 0.81, 0.92) : color(0.15, 0.23, 0.36);
+		var catalogSelected = light ? color(0.74, 0.83, 0.95) : color(0.16, 0.29, 0.50);
+		theme.styles.rule(StyleSelector.widget("button").className("catalog-nav"),
+			[StyleValue.background(catalogNormal)]);
+		theme.styles.rule(StyleSelector.widget("button").className("catalog-nav")
+			.state(StyleState.Hovered), [StyleValue.background(catalogHover)]);
+		theme.styles.rule(StyleSelector.widget("button").className("catalog-nav")
+			.state(StyleState.Pressed), [StyleValue.background(catalogPressed)]);
+		theme.styles.rule(StyleSelector.widget("button").className("catalog-nav")
+			.state(StyleState.Selected), [StyleValue.background(catalogSelected)]);
 		return theme;
 	}
 
