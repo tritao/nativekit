@@ -171,7 +171,7 @@ class ShowcaseDesktop {
                         }
                         graphics.setViewport(frameState.logicalWidth, frameState.logicalHeight);
                         frameState.graphics = graphics;
-                    });
+                    }, uiStaticFrame);
                 } catch (error:Dynamic) {
                     fonts.dispose();
                     throw error;

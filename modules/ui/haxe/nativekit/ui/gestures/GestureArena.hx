@@ -53,11 +53,13 @@ class GestureArena {
 	final active:Map<Int, GestureSequence>;
 	final lastTaps:Map<Int, LastTap>;
 	var elapsedSeconds:Float;
+	public var revision(default, null):Int;
 
 	public function new() {
 		active = new Map();
 		lastTaps = new Map();
 		elapsedSeconds = 0.0;
+		revision = 0;
 	}
 
 	/** Monotonic UI time accumulated from submitted frame deltas. */
@@ -69,6 +71,7 @@ class GestureArena {
 		if (target == null || event == null || recognizers == null)
 			return;
 		active.set(event.pointerId, new GestureSequence(target, event, recognizers));
+		revision++;
 	}
 
 	/** Drops in-flight recognizers whose keyed detector left the rebuilt tree. */
@@ -79,14 +82,17 @@ class GestureArena {
 			if (root == null || sequence == null || root.find(sequence.target) == null)
 				stale.push(pointerId);
 		}
-		for (pointerId in stale)
+		for (pointerId in stale) {
 			active.remove(pointerId);
+			revision++;
+		}
 	}
 
 	public function pointerMove(event:UiEvent):Void {
 		var sequence = active.get(event.pointerId);
 		if (sequence == null)
 			return;
+		revision++;
 		sequence.x = event.x;
 		sequence.y = event.y;
 		var dx = event.x - sequence.startX;
@@ -152,12 +158,18 @@ class GestureArena {
 	}
 
 	public function pointerCancel(pointerId:Int):Void
-		active.remove(pointerId);
+		if (active.remove(pointerId))
+			revision++;
 
 	/** Advances gesture timers by the current frame's non-negative delta time. */
 	public function advance(deltaSeconds:Float):Void {
 		if (!finite(deltaSeconds) || deltaSeconds < 0.0)
 			throw "Gesture time must be finite and non-negative";
+		var hadActive = false;
+		for (_ in active.keys()) {
+			hadActive = true;
+			break;
+		}
 		elapsedSeconds += deltaSeconds;
 		for (sequence in active) {
 			sequence.elapsed += deltaSeconds;
@@ -169,13 +181,28 @@ class GestureArena {
 					sequence.longPressed = true;
 					if (recognizer.hasHandler)
 						recognizer.onRecognized(makeEvent(GestureKind.LongPress, sequence, 0.0, 0.0));
-				}
+			}
 		}
+		if (hadActive)
+			revision++;
 	}
 
 	public function cancelAll():Void {
-		active.clear();
-		lastTaps.clear();
+		var hasState = false;
+		for (_ in active.keys()) {
+			hasState = true;
+			break;
+		}
+		if (!hasState)
+			for (_ in lastTaps.keys()) {
+				hasState = true;
+				break;
+			}
+		if (hasState) {
+			active.clear();
+			lastTaps.clear();
+			revision++;
+		}
 	}
 
 	function makeEvent(kind:Int, sequence:GestureSequence, deltaX:Float,

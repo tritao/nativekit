@@ -19,6 +19,7 @@ class UiFrameMetrics {
 	public final submitSeconds:Float;
 	public var paintedNodes(default, null):Int;
 	public var paintSkippedNodes(default, null):Int;
+	public var reusedSubmission(default, null):Bool;
 	public var renderSeconds(default, null):Float;
 	public var totalSeconds(default, null):Float;
 
@@ -46,6 +47,7 @@ class UiFrameMetrics {
 		this.submitSeconds = submitSeconds;
 		paintedNodes = 0;
 		paintSkippedNodes = 0;
+		reusedSubmission = false;
 		renderSeconds = 0.0;
 		totalSeconds = submitSeconds;
 	}
@@ -57,6 +59,10 @@ class UiFrameMetrics {
 		renderSeconds = seconds < 0.0 ? 0.0 : seconds;
 		totalSeconds = submitSeconds + renderSeconds;
 	}
+
+	/** Marks a frame whose previously submitted tree and native layout were reused. */
+	public function markReusedSubmission():Void
+		reusedSubmission = true;
 
 	public function cacheHitRate():Float {
 		var lookups = styleCacheHits + styleCacheMisses;

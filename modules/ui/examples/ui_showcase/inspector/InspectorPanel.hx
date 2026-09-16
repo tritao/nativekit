@@ -167,6 +167,7 @@ class InspectorPanel {
 						'cache: ${metrics.styleCacheHits} hits · ${metrics.styleCacheMisses} misses · ' +
 						'${percent(metrics.cacheHitRate())} hit rate\n' +
 						'entries: ${metrics.cachedStyleCount}\n' +
+						'submit mode: ${metrics.reusedSubmission ? "reused tree/layout" : "full tree/layout"}\n' +
 						'submit: ${milliseconds(metrics.submitSeconds)} ms · ' +
 						'render: ${milliseconds(metrics.renderSeconds)} ms · ' +
 						'total: ${milliseconds(metrics.totalSeconds)} ms',

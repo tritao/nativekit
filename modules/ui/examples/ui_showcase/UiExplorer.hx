@@ -87,6 +87,7 @@ class UiExplorer {
 	final virtualList:VirtualList;
 	final tweenController:AnimationController;
 	final springController:SpringController;
+	final staticSubmitReuse:Bool;
 	var nativeSurface:Null<NativeKitSurface>;
 	var width:Float;
 	var height:Float;
@@ -98,14 +99,15 @@ class UiExplorer {
 	var diagnosticStage:Int = 0;
 
 	public function new(fonts:FontCollection, platformLabel:String,
-			onOpenGraphics:Void->Void) {
+			onOpenGraphics:Void->Void, ?staticSubmitReuse:Bool) {
 		if (fonts == null || fonts.isDisposed())
 			throw "UI Explorer requires a live font collection";
 		this.fonts = fonts;
 		state = new ExplorerState();
 		this.platformLabel = platformLabel == null ? "NativeKit runtime" : platformLabel;
 		this.onOpenGraphics = onOpenGraphics == null ? function() {} : onOpenGraphics;
-		context = new UiContext(null, fonts, makeTheme(true));
+		this.staticSubmitReuse = staticSubmitReuse == true;
+		context = new UiContext(null, fonts, makeTheme(false));
 		renderer = Renderer.create();
 		width = 900.0;
 		height = 650.0;
@@ -174,11 +176,15 @@ class UiExplorer {
 		previousTime = timeSeconds;
 		frameInfo.set(width, height, framebufferWidth, framebufferHeight, pixelScale);
 		diagnosticStage = 2;
-		var root = buildRoot();
 		diagnosticStage = 3;
 		try {
-			context.submit(root, frame);
-			attachInspectorEvents();
+			if (staticSubmitReuse)
+				context.submitCached(function() return buildRoot(), frame, "showcase-static-controls");
+			else
+				context.submit(buildRoot(), frame);
+			var metrics = context.frameMetrics;
+			if (metrics == null || !metrics.reusedSubmission)
+				attachInspectorEvents();
 		} catch (error:Dynamic) {
 			diagnosticStage = 10 + context.getDiagnosticStage();
 			throw error;
@@ -281,6 +287,7 @@ class UiExplorer {
 			' cache_hits=${metrics.styleCacheHits}' +
 			' cache_misses=${metrics.styleCacheMisses}' +
 			' cache_entries=${metrics.cachedStyleCount}' +
+			' submit_mode=${metrics.reusedSubmission ? "reused" : "full"}' +
 			' submit_ms=${milliseconds(metrics.submitSeconds)}' +
 			' render_ms=${milliseconds(metrics.renderSeconds)}' +
 			' total_ms=${milliseconds(metrics.totalSeconds)}');

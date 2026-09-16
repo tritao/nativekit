@@ -1954,6 +1954,29 @@ class FrameworkSmoke {
 		overlayList.clear();
 		overlayList.dispose();
 
+		var cachedBuilds = 0;
+		var cachedFrame = new LayoutFrame(256.0, 192.0);
+		var cachedRoot = context.submitCached(function() {
+			cachedBuilds++;
+			return new Text("Cached");
+		}, cachedFrame, "framework-cache");
+		var reusedRoot = context.submitCached(function() {
+			cachedBuilds++;
+			return new Text("Should not build");
+		}, cachedFrame, "framework-cache");
+		var cachedMetrics:Null<UiFrameMetrics> = context.frameMetrics;
+		if (cachedBuilds != 1 || reusedRoot != cachedRoot || cachedMetrics == null ||
+			!cachedMetrics.reusedSubmission || cachedMetrics.styleResolutions != 0)
+			return 109;
+		cachedFrame.deltaSeconds = 0.1;
+		context.submitCached(function() {
+			cachedBuilds++;
+			return new Text("Delta changed");
+		}, cachedFrame, "framework-cache");
+		cachedMetrics = context.frameMetrics;
+		if (cachedBuilds != 2 || cachedMetrics == null || cachedMetrics.reusedSubmission)
+			return 110;
+
 		var cleaned = 0;
 		context.stateStore.onDispose(initialId, function() {
 			cleaned++;

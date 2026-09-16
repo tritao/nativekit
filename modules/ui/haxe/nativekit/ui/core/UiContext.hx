@@ -44,6 +44,13 @@ class UiContext {
 	var submittedStateRevision:Int;
 	var submittedInteractionRevision:Int;
 	var submittedStyleRevision:Int;
+	var submittedAnimationRevision:Int;
+	var submittedGestureRevision:Int;
+	var submittedFrameDeltaSeconds:Float;
+	var submittedNodeCount:Int;
+	var submittedBuildKey:Null<String>;
+	var submittedTheme:Null<Theme>;
+	var submittedStyleSheet:Null<StyleSheet>;
 	var disposed:Bool;
 	var customCanvases:Map<Int, Canvas>;
 	var customLists:Map<Int, DisplayList>;
@@ -79,6 +86,13 @@ class UiContext {
 		submittedStateRevision = -1;
 		submittedInteractionRevision = -1;
 		submittedStyleRevision = -1;
+		submittedAnimationRevision = -1;
+		submittedGestureRevision = -1;
+		submittedFrameDeltaSeconds = -1.0;
+		submittedNodeCount = 0;
+		submittedBuildKey = null;
+		submittedTheme = null;
+		submittedStyleSheet = null;
 		disposed = false;
 		buildContext.setFocusRequester(function(id) { return focusWidget(id); });
 		customCanvases = new Map();
@@ -106,6 +120,7 @@ class UiContext {
 			throw "UI context requires a live font collection";
 		session.setFonts(fonts);
 		buildContext.setFonts(fonts);
+		submittedStyleRevision = -1;
 	}
 
 	/** Sets the palette used by subsequent view builds. */
@@ -129,11 +144,27 @@ class UiContext {
 	}
 
 	/** Builds a fresh view tree, resolves native layout, and reconnects geometry by stable ID. */
-	public function submit(view:View, frame:LayoutFrame):RenderNode {
+	public function submit(view:View, frame:LayoutFrame):RenderNode
+		return submitInternal(frame, null, function() return view);
+
+	/**
+	 * Submits a lazily built view and reuses the prior tree when the complete
+	 * caller-provided build key and all framework revisions are unchanged.
+	 */
+	public function submitCached(build:Void->View, frame:LayoutFrame,
+			cacheKey:String):RenderNode {
+		if (build == null)
+			throw "Cached UI submissions require a build callback";
+		if (cacheKey == null || cacheKey.length == 0)
+			throw "Cached UI submissions require a non-empty cache key";
+		return submitInternal(frame, cacheKey, build);
+	}
+
+	function submitInternal(frame:LayoutFrame, cacheKey:Null<String>, build:Void->View):RenderNode {
 		var submitStartedAt = Sys.time();
 		diagnosticStage = 1;
 		ensureLive();
-		if (view == null || frame == null)
+		if (frame == null || build == null)
 			throw "A UI frame requires a view and layout frame";
 		var styleResolutionsBefore = buildContext.styleResolver.resolutions;
 		var styleCacheHitsBefore = buildContext.styleResolver.cacheHits;
@@ -144,9 +175,19 @@ class UiContext {
 		animations.advance(frame.deltaSeconds);
 		buildContext.setViewport(frame.width, frame.height);
 		buildContext.setEnvironmentViewport(frame.width, frame.height);
+		if (cacheKey != null && canReuseSubmittedFrame(cacheKey, frame)) {
+			frameNumber++;
+			lastFrameMetrics = new UiFrameMetrics(frameNumber, submittedNodeCount, 0, 0, 0,
+				buildContext.styleResolver.cachedStyleCount, 0, submittedNodeCount, UiDirtyFlag.None,
+				0, 0, 0, 0, 0, Sys.time() - submitStartedAt);
+			lastFrameMetrics.markReusedSubmission();
+			diagnosticStage = 0;
+			return cast root;
+		}
 		buildContext.beginFrame();
 		diagnosticStage = 4;
-		var next = buildContext.withScope(new Key("root"), function() return view.build(buildContext));
+		var view = build();
+		var next = buildContext.withScope(new Key("root"), function() return view == null ? null : view.build(buildContext));
 		if (next == null || next.parent != null)
 			throw "A view must produce one unparented render tree root";
 		diagnosticStage = 5;
@@ -187,6 +228,13 @@ class UiContext {
 		submittedStateRevision = resolvedStateRevision;
 		submittedInteractionRevision = interactionStates.revision;
 		submittedStyleRevision = buildContext.styleRevision;
+		submittedAnimationRevision = animations.revision;
+		submittedGestureRevision = gestures.revision;
+		submittedFrameDeltaSeconds = frame.deltaSeconds;
+		submittedNodeCount = nodeCount;
+		submittedBuildKey = cacheKey;
+		submittedTheme = buildContext.theme;
+		submittedStyleSheet = buildContext.styleSheet;
 		if (accessibilityBridge != null)
 			accessibilityBridge.update(next, focus.focusedId);
 		frameNumber++;
@@ -458,6 +506,13 @@ class UiContext {
 	public function text(kind:String, value:Null<String>, data:Dynamic = null):Void {
 		ensureLive();
 		events.text(kind, value, data);
+	}
+
+	function canReuseSubmittedFrame(cacheKey:String, frame:LayoutFrame):Bool {
+		return root != null && submittedBuildKey == cacheKey && dirtyFlags == UiDirtyFlag.None &&
+			animations.revision == submittedAnimationRevision && gestures.revision == submittedGestureRevision &&
+			frame.deltaSeconds == submittedFrameDeltaSeconds && buildContext.theme == submittedTheme &&
+			buildContext.styleSheet == submittedStyleSheet;
 	}
 
 	function canReuseCustomPaint(node:RenderNode):Bool {
