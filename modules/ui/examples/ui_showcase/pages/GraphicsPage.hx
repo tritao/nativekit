@@ -191,18 +191,21 @@ class GraphicsPage {
 							Math.min(size, bounds.height - row * size)),
 							(row + column) % 2 == 0 ? UiExplorer.color(0.82, 0.85, 0.90) :
 							UiExplorer.color(0.96, 0.97, 0.99));
-				canvas.fillLinearGradientRect(bounds, 0.0, 0.0, 1.0, 0.0, [
+				canvas.fillLinearGradientRect(bounds, bounds.x, bounds.y,
+					bounds.x + bounds.width, bounds.y, [
 					new GradientStop(0.0, Color.rgba(0.18, 0.48, 0.82, 1.0)),
 					new GradientStop(1.0, Color.rgba(0.18, 0.48, 0.82, 0.0))
 				]);
 			} else if (kind == 1) {
-				canvas.fillLinearGradientRect(bounds, 0.0, 0.0, 1.0, 1.0, [
+				canvas.fillLinearGradientRect(bounds, bounds.x, bounds.y,
+					bounds.x + bounds.width, bounds.y + bounds.height, [
 					new GradientStop(0.0, Color.rgba(0.16, 0.66, 0.48, 1.0)),
 					new GradientStop(0.5, Color.rgba(0.50, 0.30, 0.76, 1.0)),
 					new GradientStop(1.0, Color.rgba(0.94, 0.40, 0.55, 1.0))
 				]);
 			} else
-				canvas.fillLinearGradientRect(bounds, 0.0, 0.0, 1.0, 0.0, [
+				canvas.fillLinearGradientRect(bounds, bounds.x, bounds.y,
+					bounds.x + bounds.width, bounds.y, [
 					new GradientStop(0.0, Color.rgba(0.18, 0.48, 0.82, 1.0)),
 					new GradientStop(1.0, Color.rgba(0.16, 0.70, 0.46, 1.0))
 				]);

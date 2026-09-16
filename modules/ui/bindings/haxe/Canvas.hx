@@ -192,7 +192,10 @@ class Canvas {
 		return true;
 	}
 
-	/** Adds one gradient-filled rectangle and retains its temporary resources through update. */
+	/**
+	 * Adds one gradient-filled rectangle and retains its temporary resources through update.
+	 * Gradient endpoints use the same user coordinate space as `rect`.
+	 */
 	public function fillLinearGradientRect(rect:Rect, startX:Float, startY:Float,
 			endX:Float, endY:Float, stops:Array<GradientStop>):Void {
 		if (rect == null || rect.width <= 0.0 || rect.height <= 0.0)

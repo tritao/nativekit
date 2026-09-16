@@ -2088,7 +2088,7 @@ class FrameworkSmoke {
 		var gradientCanvas = new Canvas();
 		var gradientList = DisplayList.create();
 		gradientCanvas.fillLinearGradientRect(new Rect(0.0, 0.0, 32.0, 16.0),
-			0.0, 0.0, 1.0, 0.0, [
+			0.0, 0.0, 32.0, 0.0, [
 				new GradientStop(0.0, Color.rgba(0.2, 0.4, 0.8, 1.0)),
 				new GradientStop(1.0, Color.rgba(0.2, 0.8, 0.4, 1.0))
 			]);
