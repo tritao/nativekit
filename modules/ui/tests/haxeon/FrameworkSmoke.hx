@@ -688,6 +688,17 @@ class FrameworkSmoke {
 		context.pointerDown(canvasGeometry.x + 10.0, canvasGeometry.y + 10.0, 0);
 		if (canvasEvents != 1 || canvasSemantics.role != AccessibilityRole.Group)
 			return 66;
+		var responsiveCanvasStyle = new LayoutStyle();
+		responsiveCanvasStyle.width = LayoutAxis.percent(1.0);
+		responsiveCanvasStyle.height = LayoutAxis.fixed(48.0);
+		var responsiveCanvas = new CanvasView("responsive-canvas", function(canvas, geometry) {
+			canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, geometry.height),
+				Color.rgba(0.2, 0.4, 0.8, 1.0));
+		}, responsiveCanvasStyle, "Responsive drawing");
+		var responsiveCanvasRoot = context.submit(responsiveCanvas, new LayoutFrame(256.0, 80.0));
+		var responsiveCanvasGeometry:ResolvedLayoutItem = cast responsiveCanvasRoot.resolved;
+		if (responsiveCanvasGeometry.width != 256.0 || responsiveCanvasGeometry.height != 48.0)
+			return 231;
 		if (!NativeKitEventDecoderTests.run())
 			return 27;
 		var frame = new LayoutFrame(256.0, 192.0);
