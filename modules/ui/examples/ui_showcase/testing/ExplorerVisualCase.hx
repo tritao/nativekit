@@ -29,4 +29,8 @@ enum abstract ExplorerVisualCase(Int) from Int to Int {
 	var Text = 24;
 	var Lists = 25;
 	var Overlays = 26;
+	var GraphicsPaths = 27;
+	var GraphicsText = 28;
+	var GraphicsImages = 29;
+	var GraphicsRendering = 30;
 }

@@ -97,6 +97,10 @@ class ExplorerVisualCases {
 			case ExplorerVisualCase.OverlaysCompact: state.selectedPage = "overlays";
 			case ExplorerVisualCase.Graphics, ExplorerVisualCase.GraphicsCompact:
 				state.selectedPage = "graphics";
+			case ExplorerVisualCase.GraphicsPaths: state.selectedPage = "graphics-paths";
+			case ExplorerVisualCase.GraphicsText: state.selectedPage = "graphics-text";
+			case ExplorerVisualCase.GraphicsImages: state.selectedPage = "graphics-images";
+			case ExplorerVisualCase.GraphicsRendering: state.selectedPage = "graphics-rendering";
 			default: return false;
 		}
 		return true;
