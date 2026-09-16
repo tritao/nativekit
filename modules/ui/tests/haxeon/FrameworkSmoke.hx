@@ -697,6 +697,15 @@ class FrameworkSmoke {
 		cycleChild.children.push(cycleRoot);
 		if (cycleRoot.find(new WidgetId(0x7fffff02)) != null)
 			return 105;
+		var rejectedBoxPaint = false;
+		try {
+			new RenderNode(new WidgetId(0x7fffff03), LayoutVisualKind.Box)
+				.onPaint(function(_, _) {});
+		} catch (_:Dynamic) {
+			rejectedBoxPaint = true;
+		}
+		if (!rejectedBoxPaint)
+			return 228;
 		var clicks = 0;
 		var suppressNextClick = false;
 		var bubbled = 0;

@@ -148,6 +148,8 @@ class RenderNode {
 	 */
 	public function onPaint(handler:Canvas->ResolvedLayoutItem->Void,
 			?cacheKey:String):RenderNode {
+		if (layout.visualKind != LayoutVisualKind.Custom)
+			throw "Custom paint handlers require a Custom render node";
 		if (handler == null)
 			throw "Render paint handlers cannot be null";
 		if (cacheKey != null && cacheKey.length == 0)
@@ -163,6 +165,8 @@ class RenderNode {
 	 * decoration that are not represented by computed style or geometry.
 	 */
 	public function addDecoration(decoration:Decoration, ?cacheKey:String):RenderNode {
+		if (layout.visualKind != LayoutVisualKind.Custom)
+			throw "Render decorations require a Custom render node";
 		if (decoration == null)
 			throw "Render decorations cannot be null";
 		if (cacheKey != null && cacheKey.length == 0)
