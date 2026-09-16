@@ -41,6 +41,10 @@ fi
     --ffi-projection="$module_dir/bindings/nativekit-audio.hxmap" \
     "$module_dir/tests/haxeon/AudioSmoke.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/AudioResult.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/AudioCue.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/AudioCueOptions.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/AudioEmitter.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/AudioPlayOptions.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Bus.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/BusConcurrencyOptions.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/BusEffect.hx" \

@@ -146,10 +146,23 @@ completion event.
 The module also provides a generated Haxeon ABI interface in
 `bindings/nativekit-audio.hxi` and a small typed Haxe facade under
 `bindings/haxe/nativekit/audio`. The public facade consists of `Clip`, `Voice`, `VoiceOptions`,
-`Bus`, `BusConcurrencyOptions`, `MixSnapshot`, `DeviceOptions`, and `Mixer`. `Mixer` exposes device
-enumeration and lifecycle controls, while `Clip.fromAsset()` consumes a ready
+`AudioCue`, `AudioCueOptions`, `AudioPlayOptions`, `AudioEmitter`, `Bus`, `BusConcurrencyOptions`,
+`MixSnapshot`, `DeviceOptions`, and `Mixer`. `Mixer` exposes device enumeration and lifecycle
+controls, while `Clip.fromAsset()` consumes a ready
 `nativekit.resource.ResourceAsset` from the core cache and `Clip.fromStream()`
 creates an incremental source for large resources.
+
+`AudioCue` is the first gameplay-oriented layer above the primitive and graph
+facades. `AudioCue.fromClip()` handles a single source, while
+`AudioCue.fromClips()` adds random or round-robin variant selection, per-play
+volume and pitch ranges, and a bounded local pool with drop or oldest-voice
+stealing behavior. `AudioPlayOptions` can override volume, pitch, priority, and
+source transforms for an individual playback. `AudioEmitter` combines a cue
+with a position, direction, and velocity, propagating transform changes to the
+emitter's active voices. Cues and emitters return completed or stolen voices to
+their pools when the caller polls `NativeKitRuntime.events`; load and stream
+failures discard the affected pooled voice. These gameplay objects borrow their
+clips, bus, and event pump rather than owning them.
 
 With Haxeon available, run the native and managed smoke test with:
 

@@ -4,6 +4,10 @@ import NativeKitEventDecoderTests;
 import haxe.io.Bytes;
 import NativeKitEventValue;
 import NativeKitEvents.NativeKitEventSubscription;
+import nativekit.audio.AudioCue;
+import nativekit.audio.AudioCueOptions;
+import nativekit.audio.AudioEmitter;
+import nativekit.audio.AudioPlayOptions;
 import nativekit.audio.Bus;
 import nativekit.audio.BusConcurrencyOptions;
 import nativekit.audio.BusEffect;
@@ -62,6 +66,12 @@ class AudioSmoke {
 		var baseSnapshot:MixSnapshot = null;
 		var duckSnapshot:MixSnapshot = null;
 		var clip:Clip = null;
+		var cue:AudioCue = null;
+		var cueVoice:Voice = null;
+		var polyCue:AudioCue = null;
+		var polyVoice:Voice = null;
+		var emitter:AudioEmitter = null;
+		var emitterVoice:Voice = null;
 		var first:Voice = null;
 		var second:Voice = null;
 		var completion:Voice = null;
@@ -289,6 +299,80 @@ class AudioSmoke {
 			concurrency.virtualize = false;
 			bus.setConcurrency(concurrency);
 			second.stop();
+			var cueOptions = new AudioCueOptions();
+			cueOptions.maxVoices = 2;
+			cueOptions.selection = nativekit.audio.Enums.AudioCueSelection.RoundRobin;
+			cueOptions.volumeMin = 0.5;
+			cueOptions.volumeMax = 0.5;
+			cueOptions.pitchMin = 1.25;
+			cueOptions.pitchMax = 1.25;
+			cueOptions.priority = 1;
+			cue = AudioCue.fromClips([clip, clip], runtime.events, bus, cueOptions);
+			if (cue.variantCount() != 2 || cue.variant(0) != clip || cue.variant(1) != clip)
+				throw "Haxe audio cue did not retain its clip variants";
+			var playOverrides = new AudioPlayOptions();
+			playOverrides.volume = 0.25;
+			playOverrides.pitch = 1.5;
+			playOverrides.priority = 3;
+			playOverrides.position = new Vector3(1.0, 2.0, -3.0);
+			cueVoice = cue.play(playOverrides);
+			if (cueVoice == null || cue.activeVoiceCount() != 1 || cue.voiceCount() != 1 ||
+				cue.variantIndex(cueVoice) != 0 || cueVoice.volume() != 0.25 || cueVoice.pitch() != 1.5 ||
+				cueVoice.priority() != 3)
+				throw "Haxe audio cue did not apply per-play overrides";
+			var cuePosition = cueVoice.position();
+			if (cuePosition.x != 1.0 || cuePosition.y != 2.0 || cuePosition.z != -3.0)
+				throw "Haxe audio cue did not apply its per-play position";
+			for (attempt in 0...20) {
+				if (cue.activeVoiceCount() == 0)
+					break;
+				NativeKit.nk_wait_events_timeout_checked(0.05);
+				while (runtime.events.poll()) {}
+			}
+			if (cue.activeVoiceCount() != 0)
+				throw "Haxe audio cue did not retire its completed voice";
+			var reusedCueVoice = cue.play();
+			if (reusedCueVoice == null || cue.variantIndex(reusedCueVoice) != 1 || cue.voiceCount() != 2 ||
+				reusedCueVoice.volume() != 0.5 || reusedCueVoice.pitch() != 1.25 ||
+				reusedCueVoice.priority() != 1)
+				throw "Haxe audio cue did not select its next variant or range values";
+			var nextCueVoice = cue.play();
+			if (nextCueVoice != cueVoice || cue.variantIndex(nextCueVoice) != 0 || cue.voiceCount() != 2)
+				throw "Haxe audio cue did not round-robin and reuse the matching variant pool";
+			cue.stopAll();
+			var polyOptions = new AudioCueOptions();
+			polyOptions.maxVoices = 1;
+			polyOptions.voiceOptions.looping = true;
+			polyCue = AudioCue.fromClips([clip], runtime.events, bus, polyOptions);
+			polyVoice = polyCue.play();
+			if (polyVoice == null || polyCue.play() != null)
+				throw "Haxe audio cue drop overflow policy did not cap polyphony";
+			polyCue.overflow = nativekit.audio.Enums.AudioCueOverflow.StealOldest;
+			var stolenCueVoice = polyCue.play();
+			if (stolenCueVoice != polyVoice || polyCue.activeVoiceCount() != 1)
+				throw "Haxe audio cue steal overflow policy did not recycle the oldest voice";
+			polyCue.stopAll();
+			polyCue.dispose();
+			polyCue = null;
+			polyVoice = null;
+			emitter = new AudioEmitter(cue, runtime.events);
+			emitter.setPosition(new Vector3(3.0, 4.0, -5.0));
+			emitter.setDirection(new Vector3(0.0, 0.0, 1.0));
+			emitter.setVelocity(new Vector3(0.5, 0.0, -0.25));
+			emitterVoice = emitter.play();
+			if (emitterVoice == null || emitter.activeVoiceCount() != 1)
+				throw "Haxe audio emitter did not start a cue voice";
+			var emitterPosition = emitterVoice.position();
+			if (emitterPosition.x != 3.0 || emitterPosition.y != 4.0 || emitterPosition.z != -5.0)
+				throw "Haxe audio emitter did not apply its position";
+			if (!emitter.stop(emitterVoice) || emitter.activeVoiceCount() != 0)
+				throw "Haxe audio emitter did not stop its voice";
+			emitter.dispose();
+			emitter = null;
+			emitterVoice = null;
+			cue.dispose();
+			cue = null;
+			cueVoice = null;
 			clip.dispose();
 			clip = null;
 			if (!first.isLooping())
@@ -402,6 +486,12 @@ class AudioSmoke {
 				second.dispose();
 			if (completion != null)
 				completion.dispose();
+			if (polyCue != null)
+				polyCue.dispose();
+			if (emitter != null)
+				emitter.dispose();
+			if (cue != null)
+				cue.dispose();
 			if (lowPass != null)
 				lowPass.dispose();
 			if (highPass != null)
