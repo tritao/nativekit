@@ -3,13 +3,22 @@ package nativekit.ui.style;
 import Color;
 import LayoutStyle;
 import Transform2D;
+import nativekit.ui.animation.AnimationScheduler;
 
 /** Deterministic framework/inheritance/theme/application/state/local cascade. */
 class StyleResolver {
 	final frameworkSource:StyleSource;
+	final scheduler:Null<AnimationScheduler>;
+	final animatedValues:Map<String, Dynamic>;
+	final targets:Map<String, Dynamic>;
+	final activeAnimations:Map<String, StyleTransitionAnimation>;
 
-	public function new() {
+	public function new(?scheduler:AnimationScheduler) {
 		frameworkSource = new StyleSource("framework", "default", -1, "framework");
+		this.scheduler = scheduler;
+		animatedValues = new Map();
+		targets = new Map();
+		activeAnimations = new Map();
 	}
 
 	public function resolve(target:StyleTarget, ?parent:ComputedStyle,
@@ -30,6 +39,7 @@ class StyleResolver {
 		applySheet(result, target, theme, true, "theme-state");
 		applySheet(result, target, application, true, "application-state");
 		applyLocal(result, local);
+		applyTransitions(result, target, theme, application);
 		return result;
 	}
 
@@ -111,4 +121,71 @@ class StyleResolver {
 		return left == right || (left != null && right != null && left.a == right.a &&
 			left.b == right.b && left.c == right.c && left.d == right.d &&
 			left.tx == right.tx && left.ty == right.ty);
+
+	function applyTransitions(result:ComputedStyle, target:StyleTarget,
+			theme:Null<StyleSheet>, application:Null<StyleSheet>):Void {
+		if (scheduler == null)
+			return;
+		for (property in StyleProperty.all()) {
+			var transition = transitionFor(property, theme, application);
+			if (transition == null || property.interpolate == null || !result.has(property))
+				continue;
+			var key = animationKey(target, property);
+			var next = result.get(property);
+			var previousTarget = targets.get(key);
+			if (!targets.exists(key)) {
+				targets.set(key, next);
+				animatedValues.set(key, next);
+			} else if (!sameValue(property, previousTarget, next)) {
+				targets.set(key, next);
+				var current = animatedValues.get(key);
+				stop(key);
+				var animation = new StyleTransitionAnimation(current, next, transition.duration,
+					transition.easing, property.name,
+					function(value) { animatedValues.set(key, value); },
+					function() { animatedValues.set(key, next); activeAnimations.remove(key); });
+				activeAnimations.set(key, animation);
+				scheduler.track(animation);
+			}
+			if (animatedValues.exists(key))
+				result.set(property, animatedValues.get(key), result.source(property));
+		}
+	}
+
+	function transitionFor(property:StyleProperty<Dynamic>, theme:Null<StyleSheet>,
+			application:Null<StyleSheet>):Null<StyleTransition> {
+		var result = application == null ? null : application.transitionFor(property);
+		return result == null && theme != null ? theme.transitionFor(property) : result;
+	}
+
+	function stop(key:String):Void {
+		var active = activeAnimations.get(key);
+		if (active != null && scheduler != null)
+			scheduler.remove(active);
+		activeAnimations.remove(key);
+	}
+
+	static function animationKey(target:StyleTarget, property:StyleProperty<Dynamic>):String {
+		var identity = target.id != null ? target.id : target.key != null ? target.key : target.widgetType;
+		return identity + "|" + property.name;
+	}
+
+	static function sameValue(property:StyleProperty<Dynamic>, left:Dynamic, right:Dynamic):Bool {
+		if (left == right)
+			return true;
+		return switch property.name {
+			case "background" | "borderColor" | "outlineColor" | "shadowColor":
+				var leftColor:Color = cast left;
+				var rightColor:Color = cast right;
+				sameColor(leftColor, rightColor);
+			case "width" | "height" | "radiusTopLeft" | "radiusTopRight" |
+				"radiusBottomRight" | "radiusBottomLeft" | "opacity" | "shadowOffsetX" |
+				"shadowOffsetY" | "shadowBlur" | "fontSize" | "letterSpacing":
+				var leftFloat:Float = cast left;
+				var rightFloat:Float = cast right;
+				leftFloat == rightFloat;
+			default:
+				false;
+		}
+	}
 }

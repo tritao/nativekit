@@ -44,7 +44,7 @@ class BuildContext {
 		this.gestures = gestures == null ? new GestureArena() : gestures;
 		this.animations = animations == null ? new AnimationScheduler() : animations;
 		this.interactionStates = interactionStates == null ? new InteractionStateStore() : interactionStates;
-		this.styleResolver = new StyleResolver();
+		this.styleResolver = new StyleResolver(this.animations);
 		this.theme = theme == null ? new Theme() : theme;
 		this.theme.refreshStyles();
 		this.styleSheet = styleSheet == null ? new StyleSheet("Application") : styleSheet;

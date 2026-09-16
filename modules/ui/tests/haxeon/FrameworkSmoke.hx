@@ -111,6 +111,7 @@ import nativekit.ui.widgets.RadioOption;
 import nativekit.ui.widgets.Tabs;
 import nativekit.ui.widgets.TabItem;
 import nativekit.ui.animation.AnimationController;
+import nativekit.ui.animation.AnimationScheduler;
 import nativekit.ui.animation.SpringController;
 import nativekit.ui.animation.LoopAnimation;
 import nativekit.ui.animation.Easing;
@@ -1209,6 +1210,33 @@ class FrameworkSmoke {
 		var inheritedChild = new StyleResolver().resolve(new StyleTarget("label"), inherited);
 		if (inheritedChild.get(StyleProperty.TextColor).red != 0.7)
 			return 215;
+		var transitionSheet = new StyleSheet("TransitionSheet");
+		transitionSheet.rule(StyleSelector.widget("button"),
+			[StyleValue.background(Color.rgba(0.0, 0.0, 0.0, 1.0))]);
+		transitionSheet.rule(StyleSelector.widget("button").state(StyleState.Hovered),
+			[StyleValue.background(Color.rgba(1.0, 1.0, 1.0, 1.0))]);
+		transitionSheet.transition(StyleProperty.Background, 0.1, Easing.Linear);
+		var transitionScheduler = new AnimationScheduler();
+		var transitionResolver = new StyleResolver(transitionScheduler);
+		var transitionTarget = new StyleTarget("button", "transition-key", "transition-id",
+			null, null, 0);
+		var normalComputed = transitionResolver.resolve(transitionTarget, null, transitionSheet);
+		transitionTarget = new StyleTarget("button", "transition-key", "transition-id",
+			null, null, StyleState.Hovered);
+		var animatedComputed = transitionResolver.resolve(transitionTarget, null, transitionSheet);
+		if (animatedComputed.get(StyleProperty.Background).red != 0.0 ||
+			transitionScheduler.activeCount != 1)
+			return 216;
+		transitionScheduler.advance(0.05);
+		animatedComputed = transitionResolver.resolve(transitionTarget, null, transitionSheet);
+		if (animatedComputed.get(StyleProperty.Background).red <= 0.0 ||
+			animatedComputed.get(StyleProperty.Background).red >= 1.0)
+			return 217;
+		transitionScheduler.advance(0.05);
+		animatedComputed = transitionResolver.resolve(transitionTarget, null, transitionSheet);
+		if (animatedComputed.get(StyleProperty.Background).red != 1.0 ||
+			transitionScheduler.activeCount != 0 || normalComputed.get(StyleProperty.Background).red != 0.0)
+			return 218;
 		var lightNeutral = Color.rgba(0.87, 0.90, 0.95, 1.0);
 		var accentButton = Color.rgba(0.18, 0.39, 0.70, 1.0);
 		if (theme.buttonLabelColor(true, lightNeutral) != theme.body.color ||
