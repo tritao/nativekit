@@ -54,6 +54,8 @@ static_assert(sizeof(nkui_layer_command) == sizeof(nkui::BeginLayerCommand));
 static_assert(sizeof(nkui_layer_effect_command) == sizeof(nkui::BeginLayerEffectCommand));
 static_assert(sizeof(nkui_layer_mask_command) == sizeof(nkui::BeginLayerMaskCommand));
 static_assert(sizeof(nkui_layer_backdrop_command) == sizeof(nkui::BeginLayerBackdropCommand));
+static_assert(sizeof(nkui_custom_effect_descriptor) == sizeof(nkui::CustomEffectDescriptor));
+static_assert(sizeof(nkui_layer_custom_effect_command) == sizeof(nkui::BeginLayerCustomEffectCommand));
 static_assert(sizeof(nkui_stroke_path_command) == sizeof(nkui::StrokePathCommand));
 static_assert(sizeof(nkui_layout_item) == NKUI_LAYOUT_RESOLVED_ITEM_BYTES);
 
@@ -136,6 +138,28 @@ struct PreparedPathCacheEntry {
     std::shared_ptr<const nkui::PreparedGeometry> geometry;
 };
 
+struct CustomEffectRegistrationStorage {
+    uint32_t registration_id = 0;
+    std::string name;
+    std::string glsl410_fragment;
+    std::string glsl300es_fragment;
+    std::string hlsl5_fragment;
+    std::string metal_macos_fragment;
+    uint32_t parameter_components = 0;
+    uint32_t pass_count = 1;
+    uint32_t sampling_inputs = 1;
+    std::array<float, 4> ink_overflow{};
+
+    nkui::CustomEffectRegistration native() const {
+        return {registration_id, name.c_str(),
+                glsl410_fragment.empty() ? nullptr : glsl410_fragment.c_str(),
+                glsl300es_fragment.empty() ? nullptr : glsl300es_fragment.c_str(),
+                hlsl5_fragment.empty() ? nullptr : hlsl5_fragment.c_str(),
+                metal_macos_fragment.empty() ? nullptr : metal_macos_fragment.c_str(),
+                parameter_components, pass_count, sampling_inputs, ink_overflow};
+    }
+};
+
 struct RendererSlot {
     std::unique_ptr<nkui::UiRenderer> renderer;
     nk_graphics_api backend_api = 0;
@@ -144,6 +168,7 @@ struct RendererSlot {
     bool active = false;
     nkui::Compositor compositor;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
+    std::vector<CustomEffectRegistrationStorage> custom_effects;
     nkui::UiGpuStats retired_gpu{};
     nkui_renderer_stats stats{};
     uint16_t generation = 1;
@@ -228,6 +253,17 @@ void discard_stale_renderer(RendererSlot &slot, const nk_surface_frame_target &t
     slot.stats.atlas_scale_generation =
         std::max<uint64_t>(slot.stats.atlas_scale_generation, old_stats.atlas_scale_generation);
     slot.renderer.reset();
+}
+
+bool register_custom_effects(RendererSlot &slot) {
+    for (const auto &stored : slot.custom_effects) {
+        const auto registration = stored.native();
+        if (!slot.renderer->registerCustomEffect(registration)) {
+            slot.renderer.reset();
+            return false;
+        }
+    }
+    return true;
 }
 
 std::mutex lists_mutex;
@@ -2060,6 +2096,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
                 slot.backend_api = 0;
                 slot.backend_device = {};
                 slot.backend_surface = 0;
+                slot.custom_effects.clear();
                 slot.active = true;
                 slot.retired_gpu = {};
                 slot.stats = {};
@@ -2072,6 +2109,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
         renderers.emplace_back();
         auto &slot = renderers.back();
         slot.active = true;
+        slot.custom_effects.clear();
         slot.retired_gpu = {};
         slot.stats = {};
         out_renderer->id = make_handle(1, static_cast<uint16_t>(renderers.size()));
@@ -2091,12 +2129,61 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     slot->backend_device = {};
     slot->backend_surface = 0;
     slot->active = false;
+    slot->custom_effects.clear();
     clear_path_cache(*slot);
     slot->retired_gpu = {};
     slot->stats = {};
     slot->generation = static_cast<uint16_t>(slot->generation + 1);
     if (!slot->generation)
         slot->generation = 1;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_renderer_register_custom_effect(
+    nkui_renderer renderer, const nkui_custom_effect_registration *registration) {
+    if (!registration || registration->struct_size < sizeof(*registration) ||
+        !registration->registration_id || !registration->name || !registration->name[0] ||
+        registration->parameter_components > NKUI_CUSTOM_EFFECT_PARAMETER_COMPONENTS ||
+        registration->pass_count != 1 || registration->sampling_inputs != 1 ||
+        (!registration->glsl410_fragment && !registration->glsl300es_fragment &&
+         !registration->hlsl5_fragment && !registration->metal_macos_fragment))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    for (const float value : registration->ink_overflow)
+        if (!std::isfinite(value) || value < 0.0f)
+            return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(renderers_mutex);
+    auto *slot = resolve(renderer);
+    if (!slot)
+        return NKUI_ERROR_INVALID_HANDLE;
+    for (const auto &existing : slot->custom_effects)
+        if (existing.registration_id == registration->registration_id)
+            return NKUI_ERROR_INVALID_ARGUMENT;
+    try {
+        CustomEffectRegistrationStorage stored{};
+        stored.registration_id = registration->registration_id;
+        stored.name = registration->name;
+        if (registration->glsl410_fragment)
+            stored.glsl410_fragment = registration->glsl410_fragment;
+        if (registration->glsl300es_fragment)
+            stored.glsl300es_fragment = registration->glsl300es_fragment;
+        if (registration->hlsl5_fragment)
+            stored.hlsl5_fragment = registration->hlsl5_fragment;
+        if (registration->metal_macos_fragment)
+            stored.metal_macos_fragment = registration->metal_macos_fragment;
+        stored.parameter_components = registration->parameter_components;
+        stored.pass_count = registration->pass_count;
+        stored.sampling_inputs = registration->sampling_inputs;
+        std::copy(std::begin(registration->ink_overflow), std::end(registration->ink_overflow),
+                  stored.ink_overflow.begin());
+        slot->custom_effects.push_back(std::move(stored));
+        if (slot->renderer &&
+            !slot->renderer->registerCustomEffect(slot->custom_effects.back().native())) {
+            slot->custom_effects.pop_back();
+            return NKUI_ERROR_RENDERING;
+        }
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
     return NKUI_OK;
 }
 
@@ -2467,6 +2554,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     const bool new_backend = !renderer_slot->renderer->valid();
     if (new_backend && !renderer_slot->renderer->initialize())
         return NKUI_ERROR_RENDERING;
+    if (new_backend && !register_custom_effects(*renderer_slot))
+        return NKUI_ERROR_RENDERING;
     for (auto *adapter : text_adapters)
         if (!renderer_slot->renderer->uploadAtlases(*adapter, new_backend))
             return NKUI_ERROR_RENDERING;
@@ -2780,6 +2869,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
             return NKUI_ERROR_RENDERING;
     const bool new_backend = !renderer_slot->renderer->valid();
     if (new_backend && !renderer_slot->renderer->initialize())
+        return NKUI_ERROR_RENDERING;
+    if (new_backend && !register_custom_effects(*renderer_slot))
         return NKUI_ERROR_RENDERING;
     if (auto *adapter = session_state->frame.text_adapter())
         if (!renderer_slot->renderer->uploadAtlases(*adapter, new_backend))

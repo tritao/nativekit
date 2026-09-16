@@ -122,6 +122,10 @@ import nativekit.ui.style.SaturateEffect;
 import nativekit.ui.style.HueRotateEffect;
 import nativekit.ui.style.ColorMatrixEffect;
 import nativekit.ui.style.DropShadowEffect;
+import nativekit.ui.style.CustomEffect;
+import nativekit.ui.style.CustomEffectDefinition;
+import nativekit.ui.style.EffectParameter;
+import nativekit.ui.style.EffectParameterType;
 import nativekit.ui.style.InkOverflow;
 import nativekit.ui.style.Mask;
 import nativekit.ui.style.Environment;
@@ -1526,6 +1530,26 @@ class FrameworkSmoke {
 			effectOverflow.top != 36.0 || effectOverflow.right != 36.0 ||
 			effectOverflow.bottom != 36.0 || !effectChain.isEqual(effectChain.copy()))
 			return 240;
+		var customDefinition = new CustomEffectDefinition(7, "wave", [
+			EffectParameterType.Float, EffectParameterType.Color
+		], new InkOverflow(2.0, 3.0, 4.0, 5.0), 2);
+		var custom = new CustomEffect(customDefinition, [
+			EffectParameter.scalar(0.25),
+			EffectParameter.color(Color.rgba(0.1, 0.2, 0.3, 0.4))
+		]);
+		var customCopy:CustomEffect = cast custom.copy();
+		var customMid:CustomEffect = cast custom.interpolate(new CustomEffect(customDefinition, [
+			EffectParameter.scalar(0.75),
+			EffectParameter.color(Color.rgba(0.5, 0.6, 0.7, 0.8))
+		]), 0.5);
+		if (custom.components.length != 5 || custom.components[0] != 0.25 ||
+			custom.components[4] != 0.4 || !custom.isEqual(customCopy) ||
+			custom.inkOverflow().right != 4.0 || Math.abs(customMid.components[0] - 0.5) > 0.00001 ||
+			Math.abs(customMid.components[1] - 0.3) > 0.00001 || customDefinition.passCount != 2)
+			return 250;
+		var customRuntime = new CustomEffect(new CustomEffectDefinition(8, "multiply", [
+			EffectParameterType.Float
+		], new InkOverflow(1.0, 1.0, 1.0, 1.0)), [EffectParameter.scalar(0.75)]);
 		var interpolatedEffects = EffectChain.interpolate(
 			EffectChain.of([BlurEffect.withSigma(4.0), new BrightnessEffect(1.0)]),
 			EffectChain.of([BlurEffect.withSigma(12.0), new BrightnessEffect(2.0)]), 0.5);
@@ -1610,6 +1634,16 @@ class FrameworkSmoke {
 		if (effectList.info().commandCount != 4)
 			return 248;
 		effectList.dispose();
+		effectCanvas.reset();
+		var customList = DisplayList.create();
+		effectCanvas.withLayer(1.0, function(canvas) {
+			canvas.fillRect(new Rect(4.0, 6.0, 24.0, 18.0), Color.rgba(0.2, 0.4, 0.8, 1.0));
+		}, CompositeMode.SourceOver, new Rect(4.0, 6.0, 24.0, 18.0),
+			EffectChain.of([customRuntime]));
+		effectCanvas.update(customList);
+		if (customList.info().commandCount != 4)
+			return 251;
+		customList.dispose();
 		effectCanvas.reset();
 		var blurList = DisplayList.create();
 		effectCanvas.withLayer(1.0, function(canvas) {

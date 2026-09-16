@@ -9,6 +9,7 @@ import nativekit.ui.style.StyleSource;
 import nativekit.ui.style.StyleInspectionEntry;
 import nativekit.ui.style.EffectChain;
 import nativekit.ui.style.EffectKind;
+import nativekit.ui.style.CustomEffect;
 import nativekit.ui.style.InkOverflow;
 import nativekit.ui.style.Mask;
 import nativekit.ui.style.StyleProperty;
@@ -135,6 +136,13 @@ class UiInspector {
 						colorPending = false;
 					}
 					result += 2;
+				case EffectKind.Custom:
+					if (colorPending) {
+						result++;
+						colorPending = false;
+					}
+					var custom:CustomEffect = cast effect;
+					result += custom.definition.passCount;
 				default:
 			}
 		}

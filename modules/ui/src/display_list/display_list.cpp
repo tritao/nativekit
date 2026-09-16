@@ -40,6 +40,20 @@ bool valid_effect_kind(EffectKind kind) {
            kind == EffectKind::Blur || kind == EffectKind::DropShadow;
 }
 
+bool valid_custom_effect_descriptor_impl(const CustomEffectDescriptor &effect) {
+    if (!effect.registration_id ||
+        effect.parameter_count > kCustomEffectParameterComponents || !effect.pass_count ||
+        effect.sampling_inputs == 0 || (effect.sampling_inputs & ~3u) != 0)
+        return false;
+    for (const float value : effect.ink_overflow)
+        if (!finite(value) || value < 0.0f)
+            return false;
+    for (const float value : effect.parameters)
+        if (!finite(value))
+            return false;
+    return true;
+}
+
 bool valid_effect(const EffectDescriptor &effect) {
     if (!valid_effect_kind(effect.kind))
         return false;
@@ -110,6 +124,10 @@ template <class T> const T *read_command(const uint8_t *record, size_t record_si
 }
 
 } // namespace
+
+bool valid_custom_effect_descriptor(const CustomEffectDescriptor &effect) {
+    return valid_custom_effect_descriptor_impl(effect);
+}
 
 ResourceId make_resource_id(ResourceKind kind, uint16_t generation, uint16_t slot) {
     if (!slot || !generation || generation > generation_mask)
@@ -411,6 +429,30 @@ bool DisplayList::begin_layer(float opacity, const EffectDescriptor &effect,
     return append(value);
 }
 
+bool DisplayList::begin_layer(float opacity, const CustomEffectDescriptor &effect,
+                              CompositeMode mode) {
+    auto value = command<BeginLayerCustomEffectCommand>(CommandOpcode::BeginLayer);
+    value.opacity = opacity;
+    value.mode = mode;
+    value.flags = LayerIsolated;
+    value.effect = effect;
+    return append(value);
+}
+
+bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
+                              const CustomEffectDescriptor &effect, CompositeMode mode) {
+    auto value = command<BeginLayerCustomEffectCommand>(CommandOpcode::BeginLayer);
+    value.opacity = opacity;
+    value.mode = mode;
+    value.x = bounds.x;
+    value.y = bounds.y;
+    value.width = bounds.width;
+    value.height = bounds.height;
+    value.flags = LayerIsolated | LayerHasBounds;
+    value.effect = effect;
+    return append(value);
+}
+
 bool DisplayList::end_layer() {
     return append(command<ScopeCommand>(CommandOpcode::EndLayer));
 }
@@ -520,6 +562,8 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
         case CommandOpcode::BeginLayer: {
             const auto *backdrop_value =
                 read_command<BeginLayerBackdropCommand>(record, header.size);
+            const auto *custom_value =
+                read_command<BeginLayerCustomEffectCommand>(record, header.size);
             const auto *mask_value = read_command<BeginLayerMaskCommand>(record, header.size);
             const auto *effect_value = read_command<BeginLayerEffectCommand>(record, header.size);
             const auto *legacy = read_command<LegacyBeginLayerCommand>(record, header.size);
@@ -562,6 +606,17 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
                 valid_effect(backdrop_value->backdrop_effect) &&
                 backdrop_value->backdrop_effect.kind != EffectKind::None &&
                 (backdrop_value->flags & LayerIsolated);
+            const bool valid_custom_record =
+                custom_value && finite(custom_value->opacity) && custom_value->opacity >= 0.0f &&
+                custom_value->opacity <= 1.0f && valid_composite(custom_value->mode) &&
+                !(custom_value->flags & ~(LayerIsolated | LayerHasBounds)) &&
+                (!(custom_value->flags & LayerHasBounds) ||
+                 ((custom_value->flags & LayerIsolated) &&
+                  valid_rect(custom_value->x, custom_value->y, custom_value->width,
+                             custom_value->height) &&
+                  custom_value->width > 0.0f && custom_value->height > 0.0f)) &&
+                (custom_value->flags & LayerIsolated) &&
+                valid_custom_effect_descriptor_impl(custom_value->effect);
             const bool valid_legacy = legacy && finite(legacy->opacity) && legacy->opacity >= 0.0f &&
                                       legacy->opacity <= 1.0f && valid_composite(legacy->mode);
             const bool valid_extended = value && finite(value->opacity) && value->opacity >= 0.0f &&
@@ -571,7 +626,7 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
                                          ((value->flags & LayerIsolated) &&
                                           valid_rect(value->x, value->y, value->width, value->height) &&
                                           value->width > 0.0f && value->height > 0.0f));
-            if ((!valid_backdrop_record && !valid_mask_record && !valid_effect_record &&
+            if ((!valid_backdrop_record && !valid_custom_record && !valid_mask_record && !valid_effect_record &&
                  !valid_legacy && !valid_extended) ||
                 layer_depth == max_scope_depth)
                 return fail(error, offset, index, "invalid layer begin");

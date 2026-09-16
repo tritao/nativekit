@@ -5,6 +5,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	const NKUI_API_VERSION = 7;
 	const NKUI_COMMAND_VERSION = 1;
+	const NKUI_CUSTOM_EFFECT_PARAMETER_COMPONENTS = 20;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
 	const NKUI_LAYOUT_API_VERSION = 17;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
@@ -207,6 +208,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Apply a subtree alpha drop shadow; values 0..7 store sigma, axis, offset X/Y, and RGBA.
 		 */
 		NKUI_EFFECT_DROP_SHADOW = 3;
+		/**
+		 * Apply a renderer-registered custom effect.
+		 */
+		NKUI_EFFECT_CUSTOM = 4;
 	}
 	/**
 	 * Font role used when adding a font file to a collection.
@@ -684,6 +689,16 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_renderer_get_stats(renderer: nkui_renderer, out_stats: ptr<nkui_renderer_stats> @out) -> nkui_result;
 	/**
+	 * Registers one native-owned custom effect implementation.
+	 *
+	 * The supplied fragment source must use the standard NativeKit effect
+	 * interface: effect_fs_params at fragment uniform block 1, tex_smp at image
+	 * slot 0, and frag_color as the output. The renderer supplies the matching
+	 * fullscreen vertex shader and backend pipeline. Input strings are copied by
+	 * the renderer; registrations are recreated after device loss.
+	 */
+	extern fn nkui_renderer_register_custom_effect(renderer: nkui_renderer, registration: ptr<const<nkui_custom_effect_registration>>) -> nkui_result;
+	/**
 	 * Renders a display list using the surface's current framebuffer size.
 	 *
 	 * This convenience form uses a one-to-one logical-to-physical pixel scale.
@@ -851,6 +866,84 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		mode: nkui_composite_mode @offset(8);
 	}
 	/**
+	 * Backend-neutral descriptor for a renderer-owned custom effect.
+	 */
+	struct nkui_custom_effect_descriptor @layout(112, 4) {
+		/**
+		 * Positive ID of the native effect registration.
+		 */
+		registration_id: u32 @offset(0);
+		/**
+		 * Number of meaningful entries in parameters.
+		 */
+		parameter_count: u32 @offset(4);
+		/**
+		 * Number of native effect passes required by this registration.
+		 */
+		pass_count: u32 @offset(8);
+		/**
+		 * Bitmask of declared sampled inputs: source=1, backdrop=2.
+		 */
+		sampling_inputs: u32 @offset(12);
+		/**
+		 * Logical ink expansion: left, top, right, bottom.
+		 */
+		ink_overflow: array<f32, 4> @offset(16);
+		/**
+		 * Typed parameters flattened according to the native registration schema.
+		 */
+		parameters: array<f32, 20> @offset(32);
+	}
+	/**
+	 * Native shader implementation registered for a custom effect ID.
+	 */
+	struct nkui_custom_effect_registration @layout(56, 4) {
+		/**
+		 * Set to sizeof(nkui_custom_effect_registration).
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Positive application-defined ID carried by nkui_custom_effect_descriptor.
+		 */
+		registration_id: u32 @offset(4);
+		/**
+		 * Diagnostic name; copied by the renderer registration.
+		 */
+		name: utf8 @offset(8);
+		/**
+		 * GLSL 4.10 fragment source, or NULL when the backend does not use it.
+		 */
+		glsl410_fragment: nullable<utf8> @offset(12);
+		/**
+		 * GLSL ES 3.00 fragment source, or NULL when the backend does not use it.
+		 */
+		glsl300es_fragment: nullable<utf8> @offset(16);
+		/**
+		 * HLSL shader-model-5 fragment source, or NULL when the backend does not use it.
+		 */
+		hlsl5_fragment: nullable<utf8> @offset(20);
+		/**
+		 * Metal fragment source, or NULL when the backend does not use it.
+		 */
+		metal_macos_fragment: nullable<utf8> @offset(24);
+		/**
+		 * Number of meaningful float components in the custom descriptor.
+		 */
+		parameter_components: u32 @offset(28);
+		/**
+		 * Number of passes; the current runtime supports one registered pass.
+		 */
+		pass_count: u32 @offset(32);
+		/**
+		 * Declared sampled inputs: source=1, backdrop=2.
+		 */
+		sampling_inputs: u32 @offset(36);
+		/**
+		 * Logical ink expansion: left, top, right, bottom.
+		 */
+		ink_overflow: array<f32, 4> @offset(40);
+	}
+	/**
 	 * Payload for image, text-layout, and render-target draw commands.
 	 */
 	struct nkui_draw_rect_command @layout(28, 4) {
@@ -975,6 +1068,20 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Combination of nkui_layer_flags.
 		 */
 		flags: nkui_layer_flags @offset(32);
+	}
+	/**
+	 * Versioned payload for NKUI_COMMAND_BEGIN_LAYER with one custom effect.
+	 */
+	struct nkui_layer_custom_effect_command @layout(148, 4) {
+		header: nkui_command_header @offset(0);
+		opacity: f32 @offset(8);
+		composite_mode: nkui_composite_mode @offset(12);
+		x: f32 @offset(16);
+		y: f32 @offset(20);
+		width: f32 @offset(24);
+		height: f32 @offset(28);
+		flags: nkui_layer_flags @offset(32);
+		effect: nkui_custom_effect_descriptor @offset(36);
 	}
 	/**
 	 * Extended payload for NKUI_COMMAND_BEGIN_LAYER with one sampled effect.

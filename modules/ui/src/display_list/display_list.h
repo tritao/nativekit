@@ -57,6 +57,7 @@ enum class EffectKind : uint32_t {
     ColorMatrix = 1,
     Blur = 2,
     DropShadow = 3,
+    Custom = 4,
 };
 
 constexpr size_t kColorMatrixComponents = 20;
@@ -69,6 +70,20 @@ struct EffectDescriptor {
     // uses values 0..7 for sigma, axis, offset X/Y, and RGBA color.
     std::array<float, kColorMatrixComponents> color_matrix{};
 };
+
+constexpr size_t kCustomEffectParameterComponents = 20;
+
+/** Backend-neutral contract for one renderer-owned custom effect registration. */
+struct CustomEffectDescriptor {
+    uint32_t registration_id = 0;
+    uint32_t parameter_count = 0;
+    uint32_t pass_count = 1;
+    uint32_t sampling_inputs = 1;
+    std::array<float, 4> ink_overflow{};
+    std::array<float, kCustomEffectParameterComponents> parameters{};
+};
+
+bool valid_custom_effect_descriptor(const CustomEffectDescriptor &effect);
 
 /** Separate source-alpha input used to mask an isolated layer. */
 enum class MaskKind : uint32_t {
@@ -202,6 +217,19 @@ struct BeginLayerBackdropCommand {
     EffectDescriptor backdrop_effect;
 };
 
+/** Versioned layer record carrying one renderer-owned custom effect. */
+struct BeginLayerCustomEffectCommand {
+    CommandHeader header;
+    float opacity;
+    CompositeMode mode;
+    float x;
+    float y;
+    float width;
+    float height;
+    uint32_t flags;
+    CustomEffectDescriptor effect;
+};
+
 /** Legacy 16-byte layer record accepted for display-list compatibility. */
 struct LegacyBeginLayerCommand {
     CommandHeader header;
@@ -264,6 +292,11 @@ class DisplayList {
                      CompositeMode mode = CompositeMode::SourceOver);
     bool begin_layer(float opacity, const EffectDescriptor &effect, const MaskDescriptor &mask,
                      const EffectDescriptor &backdrop_effect,
+                     CompositeMode mode = CompositeMode::SourceOver);
+    bool begin_layer(float opacity, const CustomEffectDescriptor &effect,
+                     CompositeMode mode = CompositeMode::SourceOver);
+    bool begin_layer(float opacity, const LayerBounds &bounds,
+                     const CustomEffectDescriptor &effect,
                      CompositeMode mode = CompositeMode::SourceOver);
     bool end_layer();
     bool draw_render_target(ResourceId target, float x, float y, float width, float height);

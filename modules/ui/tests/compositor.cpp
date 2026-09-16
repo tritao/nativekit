@@ -107,6 +107,36 @@ int main() {
         pass_order[0] != 0 || pass_order[1] != 1 || pass_order[2] != 2 || pass_order[3] != 3)
         return 22;
 
+    DisplayList custom_effect;
+    CustomEffectDescriptor custom{};
+    custom.registration_id = 42;
+    custom.parameter_count = 2;
+    custom.pass_count = 1;
+    custom.sampling_inputs = 1;
+    custom.ink_overflow = {3.0f, 5.0f, 7.0f, 9.0f};
+    custom.parameters[0] = 0.25f;
+    custom.parameters[1] = 0.75f;
+    if (!custom_effect.begin_layer(1.0f, bounds, custom) || !custom_effect.draw_path(path) ||
+        !custom_effect.end_layer() ||
+        !compositor.compile(custom_effect, main_target, plan, &error) ||
+        plan.passes.size() != 4 || plan.dependencies.size() != 1)
+        return 35;
+    if (plan.passes[1].target_descriptor.logical_width != 90.0f ||
+        plan.passes[1].target_descriptor.logical_height != 54.0f ||
+        plan.passes[1].target_descriptor.origin_x != 7.0f ||
+        plan.passes[1].target_descriptor.origin_y != 15.0f ||
+        plan.passes[2].kind != RenderPassKind::Effect ||
+        plan.passes[2].effect.kind != EffectKind::Custom ||
+        plan.passes[2].custom_effect.registration_id != 42 ||
+        plan.passes[2].custom_effect.parameter_count != 2 ||
+        plan.passes[2].custom_effect.parameters[1] != 0.75f ||
+        plan.passes[3].commands.size() != 1 ||
+        plan.passes[3].commands[0].x != 7.0f || plan.passes[3].commands[0].y != 15.0f ||
+        plan.passes[3].commands[0].width != 90.0f ||
+        plan.passes[3].commands[0].height != 54.0f ||
+        !schedule_render_plan(plan, pass_order, &schedule_error) || pass_order.size() != 4)
+        return 36;
+
     DisplayList blur_effect;
     EffectDescriptor blur{};
     blur.kind = EffectKind::Blur;

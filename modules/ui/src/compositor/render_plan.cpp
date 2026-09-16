@@ -101,7 +101,10 @@ bool schedule_render_plan(const RenderPlan &plan, std::vector<uint32_t> &order,
              (!is_resource_id(pass.input_target, ResourceKind::RenderTarget) ||
               pass.input_target.value == pass.target.value || !pass.commands.empty() ||
               !valid_input_rect(pass) ||
-              (pass.kind == RenderPassKind::Effect ? !valid_effect_descriptor(pass.effect)
+              (pass.kind == RenderPassKind::Effect
+                   ? (pass.effect.kind == EffectKind::Custom
+                          ? !valid_custom_effect_descriptor(pass.custom_effect)
+                          : !valid_effect_descriptor(pass.effect))
                                                    : !valid_mask_descriptor(pass.mask))))) {
             if (error)
                 *error = {index, "invalid render-target descriptor"};

@@ -20,6 +20,7 @@ struct Layer {
     float parent_origin_y = 0.0f;
     RenderTargetDescriptor target_descriptor{};
     EffectDescriptor effect{};
+    CustomEffectDescriptor custom_effect{};
     bool has_effect = false;
     MaskDescriptor mask{};
     bool has_mask = false;
@@ -35,6 +36,7 @@ struct LayerCommandValues {
     uint32_t flags = 0;
     bool has_bounds = false;
     EffectDescriptor effect{};
+    CustomEffectDescriptor custom_effect{};
     bool has_effect = false;
     MaskDescriptor mask{};
     bool has_mask = false;
@@ -106,6 +108,18 @@ void apply_state(RenderCommand &command, const CanvasState &state, float target_
 }
 
 bool read_layer(const uint8_t *record, uint32_t size, LayerCommandValues &result) {
+    if (size == sizeof(BeginLayerCustomEffectCommand)) {
+        const auto value = read<BeginLayerCustomEffectCommand>(record);
+        result.opacity = value.opacity;
+        result.mode = value.mode;
+        result.bounds = {value.x, value.y, value.width, value.height};
+        result.flags = value.flags;
+        result.has_bounds = (value.flags & LayerHasBounds) != 0;
+        result.effect.kind = EffectKind::Custom;
+        result.custom_effect = value.effect;
+        result.has_effect = true;
+        return true;
+    }
     if (size == sizeof(BeginLayerBackdropCommand)) {
         const auto value = read<BeginLayerBackdropCommand>(record);
         result.opacity = value.opacity;
@@ -298,6 +312,18 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             if (!read_layer(record, header.size, value))
                 return fail(error, index, "invalid layer begin");
             const LayerBounds backdrop_bounds = value.bounds;
+            if (value.has_bounds && value.has_effect && value.effect.kind == EffectKind::Custom) {
+                const auto &overflow = value.custom_effect.ink_overflow;
+                if (!std::isfinite(value.bounds.x - overflow[0]) ||
+                    !std::isfinite(value.bounds.y - overflow[1]) ||
+                    !std::isfinite(value.bounds.width + overflow[0] + overflow[2]) ||
+                    !std::isfinite(value.bounds.height + overflow[1] + overflow[3]))
+                    return fail(error, index, "custom effect bounds overflow");
+                value.bounds.x -= overflow[0];
+                value.bounds.y -= overflow[1];
+                value.bounds.width += overflow[0] + overflow[2];
+                value.bounds.height += overflow[1] + overflow[3];
+            }
             if (value.has_bounds && value.has_effect &&
                 (value.effect.kind == EffectKind::Blur ||
                  value.effect.kind == EffectKind::DropShadow)) {
@@ -406,8 +432,9 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             }
             layers.push_back({parent_target, layer_target, value.opacity, value.mode,
                               value.bounds, value.has_bounds, parent_origin_x, parent_origin_y,
-                              layer_descriptor, value.effect, value.has_effect, value.mask,
-                              value.has_mask, value.backdrop_effect, value.has_backdrop, isolated});
+                              layer_descriptor, value.effect, value.custom_effect,
+                              value.has_effect, value.mask, value.has_mask,
+                              value.backdrop_effect, value.has_backdrop, isolated});
             break;
         }
         case CommandOpcode::EndLayer: {
@@ -427,6 +454,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                         effect_pass.kind = RenderPassKind::Effect;
                         effect_pass.input_target = input;
                         effect_pass.effect = effect;
+                        effect_pass.custom_effect = layer.custom_effect;
                         plan.passes.push_back(std::move(effect_pass));
                     };
                     if (layer.effect.kind == EffectKind::Blur ||

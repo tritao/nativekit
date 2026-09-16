@@ -89,6 +89,25 @@ static bool rejects_bad_streams() {
         return false;
 
     list.reset();
+    CustomEffectDescriptor custom{};
+    custom.registration_id = 42;
+    custom.parameter_count = 3;
+    custom.pass_count = 1;
+    custom.sampling_inputs = 1;
+    custom.ink_overflow = {2.0f, 4.0f, 6.0f, 8.0f};
+    custom.parameters[0] = 0.25f;
+    custom.parameters[1] = 0.5f;
+    custom.parameters[2] = 0.75f;
+    if (!list.begin_layer(1.0f, LayerBounds{4.0f, 8.0f, 32.0f, 24.0f}, custom) ||
+        !list.end_layer() || !validate_display_list(list.data(), list.size(), &error))
+        return false;
+
+    list.reset();
+    custom.registration_id = 0;
+    if (!list.begin_layer(1.0f, custom) || validate_display_list(list.data(), list.size(), &error))
+        return false;
+
+    list.reset();
     MaskDescriptor mask{};
     mask.kind = MaskKind::RoundedRect;
     mask.values[0] = 6.0f;

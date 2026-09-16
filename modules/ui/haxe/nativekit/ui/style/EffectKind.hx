@@ -9,4 +9,6 @@ enum abstract EffectKind(String) from String to String {
 	var HueRotate = "hue-rotate";
 	var ColorMatrix = "color-matrix";
 	var DropShadow = "drop-shadow";
+	/** A renderer-owned shader/effect registration. */
+	var Custom = "custom";
 }

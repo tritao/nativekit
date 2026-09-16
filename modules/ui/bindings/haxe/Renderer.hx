@@ -34,6 +34,15 @@ class Renderer {
 			surface.nativeHandle(), frame.nativeValue()), "renderer.renderFrameOverlay");
 	}
 
+	/** Registers a native-owned shader implementation for a custom effect. */
+	public function registerCustomEffect(registration:CustomEffectRegistration):Void {
+		ensureLive();
+		if (registration == null)
+			throw "Custom effect registration is required";
+		UiResult.check(NativeKitUI.nkui_renderer_register_custom_effect(value,
+			registration.nativeValue()), "renderer.registerCustomEffect");
+	}
+
 	public function stats():RendererStats {
 		ensureLive();
 		var result = NativeKitUI.nkui_renderer_get_stats(value);

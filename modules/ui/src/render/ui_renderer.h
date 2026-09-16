@@ -15,6 +15,20 @@ namespace nkui {
 
 struct SurfaceDescriptor;
 
+/** Native-owned shader sources and execution contract for one custom effect. */
+struct CustomEffectRegistration {
+    uint32_t registration_id = 0;
+    const char *name = nullptr;
+    const char *glsl410_fragment = nullptr;
+    const char *glsl300es_fragment = nullptr;
+    const char *hlsl5_fragment = nullptr;
+    const char *metal_macos_fragment = nullptr;
+    uint32_t parameter_components = 0;
+    uint32_t pass_count = 1;
+    uint32_t sampling_inputs = 1;
+    std::array<float, 4> ink_overflow{};
+};
+
 struct UiGpuStats {
     uint64_t frames = 0;
     uint64_t passes = 0;
@@ -131,6 +145,28 @@ class UiRenderer {
         (void)width;
         (void)height;
         return applyEffect(source, effect);
+    }
+    /** Applies a registered custom effect; shader and pipeline ownership stays native. */
+    virtual bool applyCustomEffect(ResourceId source,
+                                   const CustomEffectDescriptor &effect) {
+        (void)source;
+        (void)effect;
+        return false;
+    }
+    /** Region variant used by bounded capture passes. */
+    virtual bool applyCustomEffectRegion(ResourceId source,
+                                         const CustomEffectDescriptor &effect, float x, float y,
+                                         float width, float height) {
+        (void)x;
+        (void)y;
+        (void)width;
+        (void)height;
+        return applyCustomEffect(source, effect);
+    }
+    /** Registers a backend-specific shader implementation for a custom effect. */
+    virtual bool registerCustomEffect(const CustomEffectRegistration &registration) {
+        (void)registration;
+        return false;
     }
     /** Applies a separate source-alpha mask to the currently active target. */
     virtual bool applyMask(ResourceId source, const MaskDescriptor &mask,

@@ -4,6 +4,7 @@ import CompositeMode;
 import LineCap;
 import LineJoin;
 import nativekit.ui.style.BlurEffect;
+import nativekit.ui.style.CustomEffect;
 import nativekit.ui.style.DropShadowEffect;
 import nativekit.ui.style.EffectChain;
 import nativekit.ui.style.EffectKind;
@@ -77,6 +78,15 @@ class CanvasCommandBuffer {
 		var hasMask = mask != null;
 		var backdropValue = backdropEffects == null ? EffectChain.empty() : backdropEffects;
 		var hasBackdrop = backdropEffects != null && backdropValue.effects.length > 0;
+		var customOnly = hasEffects && effectValue.effects.length == 1 &&
+			effectValue.effects[0].kind == EffectKind.Custom;
+		if (customOnly) {
+			if (hasMask || hasBackdrop)
+				throw "Custom effects cannot currently be combined with masks or backdrop effects";
+			var custom:CustomEffect = cast effectValue.effects[0];
+			writeCustomLayer(opacity, mode, bounds, custom);
+			return;
+		}
 		var blurOnly = hasEffects && effectValue.effects.length == 1 &&
 			effectValue.effects[0].kind == EffectKind.Blur;
 		var dropShadowOnly = hasEffects && effectValue.effects.length == 1 &&
@@ -171,6 +181,32 @@ class CanvasCommandBuffer {
 		word(dropShadowOnly ? 3 : blurOnly ? 2 : 1);
 		for (value in matrix)
 			float(value);
+	}
+
+	function writeCustomLayer(opacity:Float, mode:CompositeMode, bounds:Null<Rect>,
+		value:CustomEffect):Void {
+		if (value.definition.passCount != 1 || value.definition.samplingInputs != 1)
+			throw "The current custom effect runtime supports one source-sampling pass";
+		header(NativeKitUI.CommandOpcode.BeginLayer, 148);
+		float(opacity);
+		word(cast mode);
+		if (bounds == null) {
+			float(0.0); float(0.0); float(0.0); float(0.0);
+			word(1); // NKUI_LAYER_ISOLATED.
+		} else {
+			float(bounds.x); float(bounds.y); float(bounds.width); float(bounds.height);
+			word(3); // NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS.
+		}
+		word(value.definition.id);
+		word(value.components.length);
+		word(value.definition.passCount);
+		word(value.definition.samplingInputs);
+		float(value.definition.overflow.left);
+		float(value.definition.overflow.top);
+		float(value.definition.overflow.right);
+		float(value.definition.overflow.bottom);
+		for (index in 0...NativeKitUIConstants.NKUI_CUSTOM_EFFECT_PARAMETER_COMPONENTS)
+			float(index < value.components.length ? value.components[index] : 0.0);
 	}
 
 	function encodeEffect(value:EffectChain):Array<Float> {

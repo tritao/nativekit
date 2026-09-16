@@ -276,8 +276,55 @@ enum NK_ENUM(nkui_effect_kind) {
     /** Apply a separable Gaussian blur; effect_matrix[0] stores sigma. */
     NKUI_EFFECT_BLUR = 2,
     /** Apply a subtree alpha drop shadow; values 0..7 store sigma, axis, offset X/Y, and RGBA. */
-    NKUI_EFFECT_DROP_SHADOW = 3
+    NKUI_EFFECT_DROP_SHADOW = 3,
+    /** Apply a renderer-registered custom effect. */
+    NKUI_EFFECT_CUSTOM = 4
 };
+
+/** Maximum number of float components carried by one custom effect. */
+enum { NKUI_CUSTOM_EFFECT_PARAMETER_COMPONENTS = 20 };
+
+/** Backend-neutral descriptor for a renderer-owned custom effect. */
+typedef struct nkui_custom_effect_descriptor {
+    /** Positive ID of the native effect registration. */
+    uint32_t registration_id;
+    /** Number of meaningful entries in parameters. */
+    uint32_t parameter_count;
+    /** Number of native effect passes required by this registration. */
+    uint32_t pass_count;
+    /** Bitmask of declared sampled inputs: source=1, backdrop=2. */
+    uint32_t sampling_inputs;
+    /** Logical ink expansion: left, top, right, bottom. */
+    float ink_overflow[4];
+    /** Typed parameters flattened according to the native registration schema. */
+    float parameters[NKUI_CUSTOM_EFFECT_PARAMETER_COMPONENTS];
+} nkui_custom_effect_descriptor;
+
+/** Native shader implementation registered for a custom effect ID. */
+typedef struct nkui_custom_effect_registration {
+    /** Set to sizeof(nkui_custom_effect_registration). */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Positive application-defined ID carried by nkui_custom_effect_descriptor. */
+    uint32_t registration_id;
+    /** Diagnostic name; copied by the renderer registration. */
+    const char *name NKUI_UTF8;
+    /** GLSL 4.10 fragment source, or NULL when the backend does not use it. */
+    const char *glsl410_fragment NKUI_NULLABLE_UTF8;
+    /** GLSL ES 3.00 fragment source, or NULL when the backend does not use it. */
+    const char *glsl300es_fragment NKUI_NULLABLE_UTF8;
+    /** HLSL shader-model-5 fragment source, or NULL when the backend does not use it. */
+    const char *hlsl5_fragment NKUI_NULLABLE_UTF8;
+    /** Metal fragment source, or NULL when the backend does not use it. */
+    const char *metal_macos_fragment NKUI_NULLABLE_UTF8;
+    /** Number of meaningful float components in the custom descriptor. */
+    uint32_t parameter_components;
+    /** Number of passes; the current runtime supports one registered pass. */
+    uint32_t pass_count;
+    /** Declared sampled inputs: source=1, backdrop=2. */
+    uint32_t sampling_inputs;
+    /** Logical ink expansion: left, top, right, bottom. */
+    float ink_overflow[4];
+} nkui_custom_effect_registration;
 
 /** Source-alpha masks are separate composition inputs, not sequential effects. */
 typedef uint32_t nkui_mask_kind;
@@ -497,6 +544,19 @@ typedef struct nkui_layer_backdrop_command {
     nkui_effect_kind backdrop_effect_kind;
     float backdrop_effect_matrix[20];
 } nkui_layer_backdrop_command;
+
+/** Versioned payload for NKUI_COMMAND_BEGIN_LAYER with one custom effect. */
+typedef struct nkui_layer_custom_effect_command {
+    nkui_command_header header;
+    float opacity;
+    nkui_composite_mode composite_mode;
+    float x;
+    float y;
+    float width;
+    float height;
+    nkui_layer_flags flags;
+    nkui_custom_effect_descriptor effect;
+} nkui_layer_custom_effect_command;
 
 /* ------------------------------------------------------------------------- */
 /* Text and layout types                                                      */
@@ -946,6 +1006,18 @@ NKUI_API nkui_result nkui_graphics_surface_create(nk_graphics_image image,
 
 /** Creates a renderer and writes its handle to `out_renderer`. */
 NKUI_API nkui_result nkui_renderer_create(nkui_renderer *out_renderer NKUI_OUT);
+
+/**
+ * Registers one native-owned custom effect implementation.
+ *
+ * The supplied fragment source must use the standard NativeKit effect
+ * interface: effect_fs_params at fragment uniform block 1, tex_smp at image
+ * slot 0, and frag_color as the output. The renderer supplies the matching
+ * fullscreen vertex shader and backend pipeline. Input strings are copied by
+ * the renderer; registrations are recreated after device loss.
+ */
+NKUI_API nkui_result nkui_renderer_register_custom_effect(
+    nkui_renderer renderer, const nkui_custom_effect_registration *registration);
 
 /** Destroys a renderer and releases its backend caches. */
 NKUI_API nkui_result nkui_renderer_destroy(nkui_renderer renderer);

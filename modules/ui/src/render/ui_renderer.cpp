@@ -52,6 +52,11 @@ class UiRendererImpl final : public UiRenderer {
     bool applyEffect(ResourceId source, const EffectDescriptor &effect) override;
     bool applyEffectRegion(ResourceId source, const EffectDescriptor &effect, float x, float y,
                            float width, float height) override;
+    bool applyCustomEffect(ResourceId source,
+                           const CustomEffectDescriptor &effect) override;
+    bool applyCustomEffectRegion(ResourceId source, const CustomEffectDescriptor &effect,
+                                 float x, float y, float width, float height) override;
+    bool registerCustomEffect(const CustomEffectRegistration &registration) override;
     bool applyMask(ResourceId source, const MaskDescriptor &mask,
                    const PreparedTexture *image) override;
     bool endPass() override;
@@ -101,6 +106,16 @@ struct UiRendererImpl::State {
         PreparedImageFlags flags = PreparedImageFlags::None;
     };
 
+    struct CustomEffect {
+        uint32_t registration_id = 0;
+        uint32_t parameter_components = 0;
+        uint32_t pass_count = 1;
+        uint32_t sampling_inputs = 1;
+        std::array<float, 4> ink_overflow{};
+        nkgpu_shader shader{};
+        nkgpu_pipeline pipeline{};
+    };
+
     nkgpu_renderer renderer{};
     nkgpu_shader solid_shader{};
     nkgpu_shader path_shader{};
@@ -145,6 +160,7 @@ struct UiRendererImpl::State {
     std::unordered_map<const PreparedPathData *, std::unordered_map<PreparedImageToken, PaintImage>>
         paint_images;
     std::unordered_map<uint32_t, PaintImage> images;
+    std::unordered_map<uint32_t, CustomEffect> custom_effects;
     std::unordered_map<const SkribidiAdapter *, SkribidiAdapterStats> text_stats;
     UiRendererStats stats{};
     std::string error;
@@ -957,6 +973,55 @@ nkgpu_blend_state premultiplied_blend() {
             NKGPU_BLENDOP_ADD};
 }
 
+const char *custom_fragment_source(nkgpu_backend backend,
+                                   const CustomEffectRegistration &registration) {
+    if (backend == NKGPU_BACKEND_D3D11)
+        return registration.hlsl5_fragment;
+    if (backend == NKGPU_BACKEND_METAL)
+        return registration.metal_macos_fragment;
+    return backend == NKGPU_BACKEND_GLES3 ? registration.glsl300es_fragment
+                                          : registration.glsl410_fragment;
+}
+
+bool create_custom_effect(UiRendererImpl::State &state,
+                          const CustomEffectRegistration &registration,
+                          nkgpu_shader &out_shader, nkgpu_pipeline &out_pipeline) {
+    if (!registration.registration_id || !registration.name || !registration.name[0] ||
+        registration.parameter_components > kCustomEffectParameterComponents ||
+        registration.pass_count != 1 || registration.sampling_inputs != 1)
+        return fail(state, "invalid custom effect registration");
+    for (const float value : registration.ink_overflow)
+        if (!std::isfinite(value) || value < 0.0f)
+            return fail(state, "invalid custom effect ink overflow");
+    const nkgpu_backend backend = nkgpu_query_backend(state.renderer);
+    const ShaderSources standard = shader_sources(backend, UiShaderKind::Effect);
+    const char *fragment = custom_fragment_source(backend, registration);
+    if (!standard.vertex || !fragment)
+        return fail(state, "custom effect shader source is unavailable for this backend");
+    nkgpu_shader_builder builder{};
+    if (!gpu_result(state, nkgpu_shader_begin(state.renderer, standard.language, standard.vertex,
+                                              fragment, &builder)) ||
+        !gpu_result(state, nkgpu_shader_attribute(builder, 0, "position", "TEXCOORD", 0)) ||
+        !gpu_result(state, nkgpu_shader_attribute(builder, 1, "uv0", "TEXCOORD", 1)) ||
+        !gpu_result(state, nkgpu_shader_uniform_block(builder, 0, NKGPU_SHADERSTAGE_VERTEX, 16)) ||
+        !add_uniform(state, builder, 0, 0, "effect_vs_params", NKGPU_UNIFORMTYPE_FLOAT4) ||
+        !gpu_result(state, nkgpu_shader_uniform_block(
+            builder, 1, NKGPU_SHADERSTAGE_FRAGMENT,
+            static_cast<uint32_t>(sizeof(float) * kColorMatrixComponents))) ||
+        !add_uniform(state, builder, 1, 0, "effect_fs_params", NKGPU_UNIFORMTYPE_FLOAT4, 5) ||
+        !gpu_result(state, nkgpu_shader_texture(builder, 0, 0, NKGPU_SHADERSTAGE_FRAGMENT,
+                                                "tex_smp")) ||
+        !gpu_result(state, nkgpu_shader_end(builder, &out_shader)))
+        return false;
+    const auto blend = premultiplied_blend();
+    PipelineOptions options{};
+    options.blend = &blend;
+    return create_pipeline(state, out_shader, sizeof(TextureVertex),
+                           {{0, 0, NKGPU_VERTEXFORMAT_FLOAT2},
+                            {1, sizeof(float) * 2, NKGPU_VERTEXFORMAT_FLOAT2}},
+                           options, out_pipeline);
+}
+
 nkgpu_stencil_face_state stencil_face(nkgpu_compare_func compare, nkgpu_stencil_op fail_op,
                                       nkgpu_stencil_op depth_fail_op, nkgpu_stencil_op pass_op) {
     return {compare, fail_op, depth_fail_op, pass_op};
@@ -1630,6 +1695,82 @@ bool UiRendererImpl::applyEffectRegion(ResourceId source, const EffectDescriptor
     return draw_mesh(*state_, state_->effect_pipeline, vertices, indices, &uniforms,
                      sizeof(uniforms), {}, state_->sampler, state_->composite_vertices,
                      found->second.image);
+}
+
+bool UiRendererImpl::applyCustomEffect(ResourceId source,
+                                       const CustomEffectDescriptor &effect) {
+    return applyCustomEffectRegion(source, effect, 0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+bool UiRendererImpl::applyCustomEffectRegion(ResourceId source,
+                                             const CustomEffectDescriptor &effect, float x, float y,
+                                             float region_width, float region_height) {
+    if (!state_->in_pass || !effect.registration_id ||
+        effect.parameter_count > kCustomEffectParameterComponents || effect.pass_count != 1 ||
+        effect.sampling_inputs != 1)
+        return fail(*state_, "invalid custom UI effect");
+    for (const float value : effect.ink_overflow)
+        if (!std::isfinite(value) || value < 0.0f)
+            return fail(*state_, "custom UI effect overflow is invalid");
+    for (const float value : effect.parameters)
+        if (!std::isfinite(value))
+            return fail(*state_, "custom UI effect parameters are not finite");
+    const auto registered = state_->custom_effects.find(effect.registration_id);
+    if (registered == state_->custom_effects.end())
+        return fail(*state_, "custom UI effect registration is unavailable");
+    const auto &implementation = registered->second;
+    if (effect.parameter_count != implementation.parameter_components ||
+        effect.pass_count != implementation.pass_count ||
+        effect.sampling_inputs != implementation.sampling_inputs)
+        return fail(*state_, "custom UI effect descriptor does not match its registration");
+    for (size_t index = 0; index < implementation.ink_overflow.size(); ++index)
+        if (effect.ink_overflow[index] != implementation.ink_overflow[index])
+            return fail(*state_, "custom UI effect overflow does not match its registration");
+    const auto found = state_->targets.find(source.value);
+    if (found == state_->targets.end() || !found->second.image.id)
+        return fail(*state_, "custom effect input target was not rendered");
+    const bool has_region = region_width > 0.0f || region_height > 0.0f;
+    if (has_region && (region_width <= 0.0f || region_height <= 0.0f || x < 0.0f || y < 0.0f ||
+                       x + region_width > static_cast<float>(found->second.width) + 0.01f ||
+                       y + region_height > static_cast<float>(found->second.height) + 0.01f))
+        return fail(*state_, "custom effect source rectangle is outside its target");
+    if (!setScissor(false, 0.0f, 0.0f, 0.0f, 0.0f))
+        return false;
+    const float width = static_cast<float>(state_->width);
+    const float height = static_cast<float>(state_->height);
+    const float source_width = static_cast<float>(found->second.width);
+    const float source_height = static_cast<float>(found->second.height);
+    const float u0 = has_region ? x / source_width : 0.0f;
+    const float u1 = has_region ? (x + region_width) / source_width : 1.0f;
+    const float v1 = has_region ? 1.0f - y / source_height : 1.0f;
+    const float v0 = has_region ? 1.0f - (y + region_height) / source_height : 0.0f;
+    const std::vector<TextureVertex> vertices = {
+        {0.0f, 0.0f, u0, v1}, {width, 0.0f, u1, v1},
+        {width, height, u1, v0}, {0.0f, height, u0, v0}};
+    const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
+    return draw_mesh(*state_, implementation.pipeline, vertices, indices, effect.parameters.data(),
+                     sizeof(effect.parameters), {}, state_->surface_sampler,
+                     state_->composite_vertices, found->second.image);
+}
+
+bool UiRendererImpl::registerCustomEffect(const CustomEffectRegistration &registration) {
+    if (!state_->initialized)
+        return fail(*state_, "custom effects require an initialized UI renderer");
+    if (!registration.registration_id || !registration.name ||
+        state_->custom_effects.find(registration.registration_id) !=
+            state_->custom_effects.end())
+        return fail(*state_, "custom effect registration ID is invalid or already registered");
+    State::CustomEffect implementation{};
+    implementation.registration_id = registration.registration_id;
+    implementation.parameter_components = registration.parameter_components;
+    implementation.pass_count = registration.pass_count;
+    implementation.sampling_inputs = registration.sampling_inputs;
+    implementation.ink_overflow = registration.ink_overflow;
+    if (!create_custom_effect(*state_, registration, implementation.shader,
+                              implementation.pipeline))
+        return false;
+    state_->custom_effects.emplace(registration.registration_id, implementation);
+    return true;
 }
 
 bool UiRendererImpl::applyMask(ResourceId source, const MaskDescriptor &mask,
