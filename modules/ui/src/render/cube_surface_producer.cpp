@@ -2,7 +2,6 @@
 
 #include "ui_renderer.h"
 
-#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -95,12 +94,10 @@ bool CubeSurfaceProducer::describe(int requested_width, int requested_height,
                                    SurfaceDescriptor &description) const {
     if (requested_width <= 0 || requested_height <= 0)
         return false;
-    constexpr int maximum_extent = 768;
-    const float reduction =
-        std::min(1.0f, static_cast<float>(maximum_extent) /
-                           static_cast<float>(std::max(requested_width, requested_height)));
-    description.width = std::max(1, static_cast<int>(std::lround(requested_width * reduction)));
-    description.height = std::max(1, static_cast<int>(std::lround(requested_height * reduction)));
+    // The compositor supplies framebuffer-space dimensions, already bounded to the
+    // window target. Preserve them so high-DPI and fullscreen views are never upscaled.
+    description.width = requested_width;
+    description.height = requested_height;
     description.format = SurfacePixelFormat::Rgba8;
     description.alpha = SurfaceAlphaMode::Premultiplied;
     description.filter = SurfaceFilter::Linear;

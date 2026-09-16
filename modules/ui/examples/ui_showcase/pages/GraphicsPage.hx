@@ -86,7 +86,7 @@ class GraphicsPage {
 			explorer.keyed("heading", explorer.heading("Live perspective viewport")),
 			explorer.keyed("copy", explorer.caption("A retained native surface continuously rotates an indexed cube with depth-tested face occlusion.")),
 			explorer.keyed("preview", new CubeView("live-cube", 0.38,
-				"Live rotating perspective cube", cubeStyle(), true, 0.10)),
+				"Live rotating perspective cube", cubeStyle(explorer), true, 0.10)),
 			explorer.keyed("try", explorer.caption("Try this: inspect the viewport and resize the split pane while it rotates."))
 		])));
 		items.push(explorer.keyed("3d-pipeline", explorer.panel("3d-pipeline", [
@@ -95,10 +95,10 @@ class GraphicsPage {
 		])));
 	}
 
-	static function cubeStyle():LayoutStyle {
+	static function cubeStyle(explorer:UiExplorer):LayoutStyle {
 		var style = new LayoutStyle();
 		style.width = LayoutAxis.stretch();
-		style.height = LayoutAxis.fixed(340.0);
+		style.height = LayoutAxis.fixed(Math.max(340.0, Math.min(520.0, explorer.height * 0.42)));
 		style.background = Color.rgba(0.035, 0.055, 0.09, 1.0);
 		style.radiusTopLeft = style.radiusTopRight = 6.0;
 		style.radiusBottomLeft = style.radiusBottomRight = 6.0;
