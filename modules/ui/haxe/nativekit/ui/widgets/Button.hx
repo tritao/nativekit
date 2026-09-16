@@ -1,7 +1,6 @@
 package nativekit.ui.widgets;
 
 import Color;
-import Insets;
 import nativekit.ui.core.Key;
 import LayoutStyle;
 import LayoutVisualKind;
@@ -102,10 +101,6 @@ class Button implements View {
 	}
 
 	static function defaultStyle():LayoutStyle {
-		var style = new LayoutStyle();
-		style.padding = new Insets(12.0, 12.0, 8.0, 8.0);
-		style.radiusTopLeft = style.radiusTopRight = 6.0;
-		style.radiusBottomLeft = style.radiusBottomRight = 6.0;
-		return style;
+		return new LayoutStyle();
 	}
 }

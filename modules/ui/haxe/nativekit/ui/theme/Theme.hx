@@ -7,6 +7,7 @@ import TextStyle;
 import LayoutAlignment;
 import nativekit.ui.style.StyleSheet;
 import nativekit.ui.style.StyleSelector;
+import nativekit.ui.style.StyleProperty;
 import nativekit.ui.style.StyleState;
 import nativekit.ui.style.StyleValue;
 
@@ -62,7 +63,14 @@ class Theme {
 	/** Rebuilds built-in rules after callers change a compatibility token. */
 	public function refreshStyles():Void {
 		styles.clear();
-		styles.rule(StyleSelector.widget("button"), [StyleValue.background(buttonBackground)]);
+		styles.rule(StyleSelector.widget("button"), [
+			StyleValue.background(buttonBackground),
+			StyleValue.paddingSymmetric(tokens.spacingLarge, tokens.spacingMedium),
+			StyleValue.radius(StyleProperty.RadiusTopLeft, tokens.radiusMedium),
+			StyleValue.radius(StyleProperty.RadiusTopRight, tokens.radiusMedium),
+			StyleValue.radius(StyleProperty.RadiusBottomRight, tokens.radiusMedium),
+			StyleValue.radius(StyleProperty.RadiusBottomLeft, tokens.radiusMedium)
+		]);
 		styles.rule(StyleSelector.widget("button").state(StyleState.Selected),
 			[StyleValue.background(buttonSelected)]);
 		styles.rule(StyleSelector.widget("button").state(StyleState.Focused),

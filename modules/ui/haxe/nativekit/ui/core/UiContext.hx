@@ -422,7 +422,7 @@ class UiContext {
 		if (interactionStates.revision != submittedInteractionRevision)
 			result |= UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsSemantics;
 		if (buildContext.styleRevision != submittedStyleRevision)
-			result |= UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint |
+			result |= UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsTextLayout | UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint |
 				UiDirtyFlag.NeedsComposite | UiDirtyFlag.NeedsSemantics;
 		if (animations.activeCount > 0)
 			result |= UiDirtyFlag.NeedsComposite;
