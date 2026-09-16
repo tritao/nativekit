@@ -1330,7 +1330,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Preparation and geometry-cache counters for one renderer.
 	 */
-	struct nkui_renderer_stats @layout(368, 8) {
+	struct nkui_renderer_stats @layout(400, 8) {
 		/**
 		 * Set to sizeof(nkui_renderer_stats) when returned by the API.
 		 */
@@ -1515,6 +1515,22 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		 * Bounded layers compiled by the UI compositor.
 		 */
 		bounded_layers: u64 @offset(360);
+		/**
+		 * Transient render-target acquisitions served by the renderer pool.
+		 */
+		transient_target_pool_hits: u64 @offset(368);
+		/**
+		 * Transient render-target acquisitions that required allocation.
+		 */
+		transient_target_pool_misses: u64 @offset(376);
+		/**
+		 * Number of transient targets retained in the pool at the last query.
+		 */
+		transient_target_pool_count: u64 @offset(384);
+		/**
+		 * Estimated bytes retained by pooled transient render targets.
+		 */
+		transient_target_pool_bytes: u64 @offset(392);
 	}
 	/**
 	 * Payload for NKUI_COMMAND_SET_PAINT and resource-only draw commands.

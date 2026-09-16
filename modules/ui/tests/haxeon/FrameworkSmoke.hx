@@ -2092,6 +2092,11 @@ class FrameworkSmoke {
 			new LayoutFrame(256.0, 192.0));
 		var effectSnapshot = context.inspect()[0];
 		if (!effectSnapshot.causesIsolation || effectSnapshot.effectPasses != 3 ||
+			effectSnapshot.backdropEffectPasses != 1 || effectSnapshot.maskPasses != 1 ||
+			effectSnapshot.effectDescriptions.length != 1 ||
+			effectSnapshot.backdropEffectDescriptions.length != 1 ||
+			effectSnapshot.isolationReasons.join(",") != "effects,backdrop-effects,mask" ||
+			effectSnapshot.estimatedIntermediateTargets != 5 ||
 			effectSnapshot.inkOverflow.left != 12.0 ||
 			effectSnapshot.paintBounds.width <= effectSnapshot.bounds.width ||
 			effectSnapshot.estimatedRenderTargetBytes <= 0.0)

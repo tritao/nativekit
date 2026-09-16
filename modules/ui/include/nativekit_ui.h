@@ -210,6 +210,14 @@ typedef struct nkui_renderer_stats {
     uint64_t isolated_layers;
     /** Bounded layers compiled by the UI compositor. */
     uint64_t bounded_layers;
+    /** Transient render-target acquisitions served by the renderer pool. */
+    uint64_t transient_target_pool_hits;
+    /** Transient render-target acquisitions that required allocation. */
+    uint64_t transient_target_pool_misses;
+    /** Number of transient targets retained in the pool at the last query. */
+    uint64_t transient_target_pool_count;
+    /** Estimated bytes retained by pooled transient render targets. */
+    uint64_t transient_target_pool_bytes;
 } nkui_renderer_stats;
 
 /** 16-bit opcode identifying one display-list command record. */

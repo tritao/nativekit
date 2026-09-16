@@ -252,6 +252,8 @@ void discard_stale_renderer(RendererSlot &slot, const nk_surface_frame_target &t
     slot.stats.atlas_dirty_upload_bytes += old_stats.atlas_dirty_upload_bytes;
     slot.stats.atlas_scale_generation =
         std::max<uint64_t>(slot.stats.atlas_scale_generation, old_stats.atlas_scale_generation);
+    slot.stats.transient_target_pool_hits += old_stats.transient_target_pool_hits;
+    slot.stats.transient_target_pool_misses += old_stats.transient_target_pool_misses;
     slot.renderer.reset();
 }
 
@@ -2239,6 +2241,12 @@ extern "C" nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
             slot->stats.atlas_dirty_upload_bytes + ui_stats.atlas_dirty_upload_bytes;
         out_stats->atlas_scale_generation =
             std::max<uint64_t>(slot->stats.atlas_scale_generation, ui_stats.atlas_scale_generation);
+        out_stats->transient_target_pool_hits =
+            slot->stats.transient_target_pool_hits + ui_stats.transient_target_pool_hits;
+        out_stats->transient_target_pool_misses =
+            slot->stats.transient_target_pool_misses + ui_stats.transient_target_pool_misses;
+        out_stats->transient_target_pool_count = ui_stats.transient_target_pool_count;
+        out_stats->transient_target_pool_bytes = ui_stats.transient_target_pool_bytes;
         out_stats->text_layout_cache_hits = ui_stats.text_layout_cache_hits;
         out_stats->text_layout_cache_misses = ui_stats.text_layout_cache_misses;
     }

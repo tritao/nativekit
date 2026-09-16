@@ -82,6 +82,10 @@ struct UiRendererStats {
     uint64_t text_layout_cache_misses = 0;
     uint64_t custom_paint_nodes = 0;
     uint64_t custom_paint_bytes = 0;
+    uint64_t transient_target_pool_hits = 0;
+    uint64_t transient_target_pool_misses = 0;
+    uint64_t transient_target_pool_count = 0;
+    uint64_t transient_target_pool_bytes = 0;
     UiGpuStats gpu{};
 };
 

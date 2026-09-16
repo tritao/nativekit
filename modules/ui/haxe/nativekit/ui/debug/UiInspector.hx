@@ -49,8 +49,19 @@ class UiInspector {
 				line += " type=" + record.styleType;
 			if (record.causesIsolation)
 				line += " isolation";
+			if (record.isolationReasons.length > 0)
+				line += " isolation=" + record.isolationReasons.join(",");
 			if (record.effectPasses > 0)
 				line += " effectPasses=" + Std.string(record.effectPasses);
+			if (record.effectDescriptions.length > 0)
+				line += " effects=" + record.effectDescriptions.join(",");
+			if (record.backdropEffectDescriptions.length > 0)
+				line += " backdropEffects=" + record.backdropEffectDescriptions.join(",");
+			if (record.maskPasses > 0)
+				line += " maskPasses=" + Std.string(record.maskPasses);
+			if (record.estimatedIntermediateTargets > 0)
+				line += " rtTargets=" + Std.string(record.estimatedIntermediateTargets) +
+					" rtBytes=" + number(record.estimatedRenderTargetBytes);
 			if (record.interactionStates != 0)
 				line += " states=" + interactionStateNames(record.interactionStates);
 			if (record.focusable)
@@ -93,14 +104,30 @@ class UiInspector {
 		var paintBounds = new Rect(bounds.x - overflow.left, bounds.y - overflow.top,
 			bounds.width + overflow.left + overflow.right,
 			bounds.height + overflow.top + overflow.bottom);
-		var effectPasses = effectPassCount(effects) + effectPassCount(backdropEffects);
-		var isolated = opacity < 1.0 || mask != null || effectPasses > 0;
+		var foregroundEffectPasses = effectPassCount(effects);
+		var backdropEffectPasses = effectPassCount(backdropEffects);
+		var effectPasses = foregroundEffectPasses + backdropEffectPasses;
+		var maskPasses = mask == null ? 0 : 1;
+		var isolationReasons:Array<String> = [];
+		if (opacity < 1.0)
+			isolationReasons.push("opacity");
+		if (foregroundEffectPasses > 0)
+			isolationReasons.push("effects");
+		if (backdropEffectPasses > 0)
+			isolationReasons.push("backdrop-effects");
+		if (maskPasses > 0)
+			isolationReasons.push("mask");
+		var isolated = isolationReasons.length > 0;
 		var ownArea = paintBounds.width * paintBounds.height;
 		var backdropArea = bounds.width * bounds.height;
 		var estimatedBytes = (isolated ? ownArea : 0.0) * 4.0 +
-			ownArea * effectPassCount(effects) * 4.0 +
-			(mask == null ? 0.0 : ownArea * 4.0) +
-			backdropArea * effectPassCount(backdropEffects) * 4.0;
+			ownArea * foregroundEffectPasses * 4.0 +
+			maskPasses * ownArea * 4.0 +
+			backdropArea * backdropEffectPasses * 4.0;
+		var estimatedIntermediateTargets = (isolated ? 1 : 0) + foregroundEffectPasses +
+			maskPasses + backdropEffectPasses;
+		var effectDescriptions = describeEffects(effects);
+		var backdropEffectDescriptions = describeEffects(backdropEffects);
 		output.push(new UiNodeSnapshot(node.id.value, parentId, depth,
 			cast node.layout.visualKind, bounds, clip, content,
 			geometry != null && geometry.visible, node.enabled, node.focusable,
@@ -115,7 +142,9 @@ class UiInspector {
 			semantics == null ? 0 : semantics.actions,
 			node.states, node.styleType, node.computedStyle,
 			styleEntries, matchingStyleRules, isolated, overflow, paintBounds,
-			effectPasses, estimatedBytes));
+			effectPasses, estimatedBytes,
+			new UiNodeEffectInfo(effectDescriptions, backdropEffectDescriptions,
+				backdropEffectPasses, maskPasses, isolationReasons, estimatedIntermediateTargets)));
 		for (child in node.children)
 			append(child, node.id.value, depth + 1, focused, hovered, pressed, output);
 	}
@@ -147,6 +176,14 @@ class UiInspector {
 			}
 		}
 		return result + (colorPending ? 1 : 0);
+	}
+
+	static function describeEffects(chain:Null<EffectChain>):Array<String> {
+		var result:Array<String> = [];
+		if (chain != null)
+			for (effect in chain.effects)
+				result.push(effect.describe());
+		return result;
 	}
 
 	static function interactionOwner(root:RenderNode, id:Null<WidgetId>):Null<WidgetId> {

@@ -6,6 +6,29 @@ import nativekit.ui.style.StyleSource;
 import nativekit.ui.style.StyleInspectionEntry;
 import nativekit.ui.style.InkOverflow;
 
+/** Grouped effect diagnostics carried by a node inspection snapshot. */
+class UiNodeEffectInfo {
+	public final effectDescriptions:Array<String>;
+	public final backdropEffectDescriptions:Array<String>;
+	public final backdropEffectPasses:Int;
+	public final maskPasses:Int;
+	public final isolationReasons:Array<String>;
+	public final estimatedIntermediateTargets:Int;
+
+	public function new(effectDescriptions:Array<String> = null,
+			backdropEffectDescriptions:Array<String> = null, backdropEffectPasses:Int = 0,
+			maskPasses:Int = 0, isolationReasons:Array<String> = null,
+			estimatedIntermediateTargets:Int = 0) {
+		this.effectDescriptions = effectDescriptions == null ? [] : effectDescriptions.copy();
+		this.backdropEffectDescriptions = backdropEffectDescriptions == null
+			? [] : backdropEffectDescriptions.copy();
+		this.backdropEffectPasses = backdropEffectPasses;
+		this.maskPasses = maskPasses;
+		this.isolationReasons = isolationReasons == null ? [] : isolationReasons.copy();
+		this.estimatedIntermediateTargets = estimatedIntermediateTargets;
+	}
+}
+
 /** Stable headless inspection record for one resolved Haxe render node. */
 class UiNodeSnapshot {
 	public final id:Int;
@@ -34,6 +57,18 @@ class UiNodeSnapshot {
 	public final paintBounds:Rect;
 	/** Estimated sampled effect passes for this node and its backdrop. */
 	public final effectPasses:Int;
+	/** Descriptions of foreground effects in application order. */
+	public final effectDescriptions:Array<String>;
+	/** Descriptions of effects applied to the backdrop input. */
+	public final backdropEffectDescriptions:Array<String>;
+	/** Estimated effect passes applied to the backdrop input. */
+	public final backdropEffectPasses:Int;
+	/** Number of mask composition passes estimated for this node. */
+	public final maskPasses:Int;
+	/** Reasons this node requires an isolated layer. */
+	public final isolationReasons:Array<String>;
+	/** Estimated number of intermediate RGBA targets used by this node. */
+	public final estimatedIntermediateTargets:Int;
 	/** Logical RGBA bytes estimated for the node's intermediate targets. */
 	public final estimatedRenderTargetBytes:Float;
 	public final zIndex:Int;
@@ -51,7 +86,8 @@ class UiNodeSnapshot {
 			computedStyle:Null<ComputedStyle> = null,
 			?styleEntries:Array<StyleInspectionEntry>, ?matchingStyleRules:Array<StyleSource>,
 			causesIsolation:Bool = false, ?inkOverflow:InkOverflow, ?paintBounds:Rect,
-			effectPasses:Int = 0, estimatedRenderTargetBytes:Float = 0.0) {
+			effectPasses:Int = 0, estimatedRenderTargetBytes:Float = 0.0,
+			?effectInfo:UiNodeEffectInfo) {
 		this.id = id;
 		this.parentId = parentId;
 		this.depth = depth;
@@ -74,6 +110,12 @@ class UiNodeSnapshot {
 		this.inkOverflow = inkOverflow == null ? InkOverflow.zero() : inkOverflow;
 		this.paintBounds = paintBounds == null ? bounds : paintBounds;
 		this.effectPasses = effectPasses;
+		this.effectDescriptions = effectInfo == null ? [] : effectInfo.effectDescriptions;
+		this.backdropEffectDescriptions = effectInfo == null ? [] : effectInfo.backdropEffectDescriptions;
+		this.backdropEffectPasses = effectInfo == null ? 0 : effectInfo.backdropEffectPasses;
+		this.maskPasses = effectInfo == null ? 0 : effectInfo.maskPasses;
+		this.isolationReasons = effectInfo == null ? [] : effectInfo.isolationReasons;
+		this.estimatedIntermediateTargets = effectInfo == null ? 0 : effectInfo.estimatedIntermediateTargets;
 		this.estimatedRenderTargetBytes = estimatedRenderTargetBytes;
 		this.zIndex = zIndex;
 		this.role = role;

@@ -88,6 +88,23 @@ struct UiRendererImpl::State {
         int height = 0;
     };
 
+    struct TargetPoolKey {
+        int width = 0;
+        int height = 0;
+
+        bool operator==(const TargetPoolKey &other) const {
+            return width == other.width && height == other.height;
+        }
+    };
+
+    struct TargetPoolKeyHash {
+        size_t operator()(const TargetPoolKey &key) const {
+            const auto width = static_cast<size_t>(static_cast<uint32_t>(key.width));
+            const auto height = static_cast<size_t>(static_cast<uint32_t>(key.height));
+            return (width * size_t{0x9E3779B1u}) ^ (height + (width << 6) + (width >> 2));
+        }
+    };
+
     struct SurfaceState {
         uint32_t generation = 0;
         int width = 0;
@@ -156,6 +173,10 @@ struct UiRendererImpl::State {
     nkgpu_buffer indices{};
     std::unordered_map<uint64_t, AtlasImage> atlases;
     std::unordered_map<uint32_t, Target> targets;
+    std::unordered_map<TargetPoolKey, std::vector<Target>, TargetPoolKeyHash>
+        transient_target_pool;
+    uint64_t transient_target_pool_hits = 0;
+    uint64_t transient_target_pool_misses = 0;
     std::unordered_map<uint32_t, SurfaceState> surfaces;
     std::unordered_map<const PreparedPathData *, std::unordered_map<PreparedImageToken, PaintImage>>
         paint_images;
@@ -447,6 +468,75 @@ void destroy_target(UiRendererImpl::State &state, UiRendererImpl::State::Target 
     if (target.handle.id)
         nkgpu_render_target_destroy(state.renderer, target.handle);
     target = {};
+}
+
+bool is_transient_target(ResourceId target) {
+    return static_cast<uint16_t>(target.value) >= 0x8000u;
+}
+
+constexpr size_t kMaxPooledTransientTargets = 4;
+
+size_t pooled_transient_target_count(const UiRendererImpl::State &state) {
+    size_t result = 0;
+    for (const auto &[key, targets] : state.transient_target_pool) {
+        (void)key;
+        result += targets.size();
+    }
+    return result;
+}
+
+uint64_t pooled_transient_target_bytes(const UiRendererImpl::State &state) {
+    uint64_t result = 0;
+    for (const auto &[key, targets] : state.transient_target_pool) {
+        const uint64_t bytes = static_cast<uint64_t>(key.width) *
+                               static_cast<uint64_t>(key.height) * 4u;
+        result += bytes * targets.size();
+    }
+    return result;
+}
+
+void recycle_transient_target(UiRendererImpl::State &state,
+                              UiRendererImpl::State::Target target) {
+    if (!target.handle.id)
+        return;
+    if (pooled_transient_target_count(state) >= kMaxPooledTransientTargets) {
+        destroy_target(state, target);
+        if (state.stats.gpu_resources)
+            --state.stats.gpu_resources;
+        return;
+    }
+    const UiRendererImpl::State::TargetPoolKey key{target.width, target.height};
+    state.transient_target_pool[key].push_back(std::move(target));
+}
+
+void recycle_transient_targets(UiRendererImpl::State &state) {
+    for (auto iterator = state.targets.begin(); iterator != state.targets.end();) {
+        if (!is_transient_target(ResourceId{iterator->first})) {
+            ++iterator;
+            continue;
+        }
+        recycle_transient_target(state, std::move(iterator->second));
+        iterator = state.targets.erase(iterator);
+    }
+}
+
+bool create_target(UiRendererImpl::State &state, UiRendererImpl::State::Target &target, int width,
+                   int height);
+
+bool acquire_transient_target(UiRendererImpl::State &state,
+                              UiRendererImpl::State::Target &target, int width, int height) {
+    const UiRendererImpl::State::TargetPoolKey key{width, height};
+    auto found = state.transient_target_pool.find(key);
+    if (found != state.transient_target_pool.end() && !found->second.empty()) {
+        target = std::move(found->second.back());
+        found->second.pop_back();
+        if (found->second.empty())
+            state.transient_target_pool.erase(found);
+        ++state.transient_target_pool_hits;
+        return true;
+    }
+    ++state.transient_target_pool_misses;
+    return create_target(state, target, width, height);
 }
 
 bool create_target(UiRendererImpl::State &state, UiRendererImpl::State::Target &target, int width,
@@ -1238,6 +1328,7 @@ bool UiRendererImpl::lost() const {
 bool UiRendererImpl::beginFrame() {
     if (!valid() || state_->in_frame)
         return fail(*state_, "invalid UI frame state");
+    recycle_transient_targets(*state_);
     if (!gpu_result(*state_, nkgpu_frame_begin(state_->renderer)))
         return false;
     state_->in_frame = true;
@@ -1263,15 +1354,32 @@ bool UiRendererImpl::beginTargetPass(ResourceId target_id, int width, int height
     if (!valid() || !state_->in_frame || state_->in_pass ||
         !is_resource_id(target_id, ResourceKind::RenderTarget) || width <= 0 || height <= 0)
         return fail(*state_, "invalid UI render-target pass");
-    auto &target = state_->targets[target_id.value];
-    if (target.width != width || target.height != height || !target.handle.id) {
-        if (target.handle.id) {
-            destroy_target(*state_, target);
-            if (state_->stats.gpu_resources)
-                --state_->stats.gpu_resources;
+    const bool transient = is_transient_target(target_id);
+    auto found = state_->targets.find(target_id.value);
+    if (found != state_->targets.end() &&
+        (found->second.width != width || found->second.height != height)) {
+        if (transient) {
+            recycle_transient_target(*state_, std::move(found->second));
+            state_->targets.erase(found);
+        } else {
+            destroy_target(*state_, found->second);
         }
-        if (!create_target(*state_, target, width, height))
-            return false;
+    }
+    auto &target = state_->targets[target_id.value];
+    if (!target.handle.id &&
+        !(transient ? acquire_transient_target(*state_, target, width, height)
+                    : create_target(*state_, target, width, height)))
+        return false;
+    if (target.width != width || target.height != height) {
+        if (transient) {
+            recycle_transient_target(*state_, std::move(target));
+            state_->targets.erase(target_id.value);
+            auto &replacement = state_->targets[target_id.value];
+            if (!acquire_transient_target(*state_, replacement, width, height))
+                return false;
+        } else {
+            return fail(*state_, "render-target dimensions changed unexpectedly");
+        }
     }
     if (!gpu_result(*state_, nkgpu_begin_target_pass(state_->renderer, target.handle,
                                                      load_existing ? 0 : 1)))
@@ -1885,6 +1993,10 @@ UiRendererStats UiRendererImpl::stats() const {
         (void)key;
         stats.atlas_bytes += atlas.pixels.size();
     }
+    stats.transient_target_pool_hits = state_->transient_target_pool_hits;
+    stats.transient_target_pool_misses = state_->transient_target_pool_misses;
+    stats.transient_target_pool_count = pooled_transient_target_count(*state_);
+    stats.transient_target_pool_bytes = pooled_transient_target_bytes(*state_);
     if (state_->renderer.id) {
         nkgpu_renderer_stats gpu{};
         if (nkgpu_renderer_get_stats(state_->renderer, &gpu) == NKGPU_OK) {
