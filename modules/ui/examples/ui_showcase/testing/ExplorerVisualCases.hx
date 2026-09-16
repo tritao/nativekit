@@ -101,6 +101,7 @@ class ExplorerVisualCases {
 			case ExplorerVisualCase.GraphicsText: state.selectedPage = "graphics-text";
 			case ExplorerVisualCase.GraphicsImages: state.selectedPage = "graphics-images";
 			case ExplorerVisualCase.GraphicsRendering: state.selectedPage = "graphics-rendering";
+			case ExplorerVisualCase.GraphicsGradients: state.selectedPage = "graphics-gradients";
 			default: return false;
 		}
 		return true;

@@ -2,6 +2,7 @@ package pages;
 
 import UiExplorer;
 import Color;
+import GradientStop;
 import LayoutAxis;
 import LayoutStyle;
 import LineCap;
@@ -58,6 +59,23 @@ class GraphicsPage {
 			explorer.keyed("heading", explorer.heading("Caret and selection geometry")),
 			explorer.keyed("copy", explorer.caption("The Text & Input page exposes interactive caret movement, selection, clipboard, and IME composition. This entry isolates the shaping inputs used by those controls."))
 		])));
+	}
+
+	public static function buildGradients(explorer:UiExplorer, items:Array<KeyedView>):Void {
+		explorer.pageHeading(items, "Gradients",
+			"Compare direction, multi-stop interpolation, and alpha over a visible background.");
+		items.push(explorer.keyed("gradient-two-stop", demoPanel(explorer,
+			"Two-stop horizontal gradient",
+			"A linear gradient interpolates smoothly from the first stop at 0% to the second at 100%.",
+			gradientPreview(explorer, "two-stop", 0))));
+		items.push(explorer.keyed("gradient-multi-stop", demoPanel(explorer,
+			"Direction and multiple stops",
+			"Changing the gradient vector makes interpolation diagonal; a middle stop introduces a third color at 50%.",
+			gradientPreview(explorer, "multi-stop", 1))));
+		items.push(explorer.keyed("gradient-alpha", demoPanel(explorer,
+			"Transparent color stops",
+			"The checkerboard remains visible where the gradient fades, demonstrating interpolated alpha rather than a blend toward white.",
+			gradientPreview(explorer, "alpha", 2))));
 	}
 
 	public static function buildImages(explorer:UiExplorer, items:Array<KeyedView>):Void {
@@ -157,5 +175,37 @@ class GraphicsPage {
 		style.radiusBottomLeft = style.radiusBottomRight = 6.0;
 		style.clipToParent = true;
 		return style;
+	}
+
+	static function gradientPreview(explorer:UiExplorer, key:String, kind:Int):View {
+		return new CanvasView("gradient-" + key, function(canvas, geometry) {
+			var bounds = new Rect(14.0, 14.0, geometry.width - 28.0, geometry.height - 28.0);
+			if (kind == 2) {
+				var size = 12.0;
+				var columns = Std.int(Math.ceil(bounds.width / size));
+				var rows = Std.int(Math.ceil(bounds.height / size));
+				for (row in 0...rows)
+					for (column in 0...columns)
+						canvas.fillRectIfPositive(new Rect(bounds.x + column * size,
+							bounds.y + row * size, Math.min(size, bounds.width - column * size),
+							Math.min(size, bounds.height - row * size)),
+							(row + column) % 2 == 0 ? UiExplorer.color(0.82, 0.85, 0.90) :
+							UiExplorer.color(0.96, 0.97, 0.99));
+				canvas.fillLinearGradientRect(bounds, 0.0, 0.0, 1.0, 0.0, [
+					new GradientStop(0.0, Color.rgba(0.18, 0.48, 0.82, 1.0)),
+					new GradientStop(1.0, Color.rgba(0.18, 0.48, 0.82, 0.0))
+				]);
+			} else if (kind == 1) {
+				canvas.fillLinearGradientRect(bounds, 0.0, 0.0, 1.0, 1.0, [
+					new GradientStop(0.0, Color.rgba(0.16, 0.66, 0.48, 1.0)),
+					new GradientStop(0.5, Color.rgba(0.50, 0.30, 0.76, 1.0)),
+					new GradientStop(1.0, Color.rgba(0.94, 0.40, 0.55, 1.0))
+				]);
+			} else
+				canvas.fillLinearGradientRect(bounds, 0.0, 0.0, 1.0, 0.0, [
+					new GradientStop(0.0, Color.rgba(0.18, 0.48, 0.82, 1.0)),
+					new GradientStop(1.0, Color.rgba(0.16, 0.70, 0.46, 1.0))
+				]);
+		}, previewStyle(explorer), key + " linear gradient preview");
 	}
 }

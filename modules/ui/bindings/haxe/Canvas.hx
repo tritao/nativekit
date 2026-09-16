@@ -192,6 +192,30 @@ class Canvas {
 		return true;
 	}
 
+	/** Adds one gradient-filled rectangle and retains its temporary resources through update. */
+	public function fillLinearGradientRect(rect:Rect, startX:Float, startY:Float,
+			endX:Float, endY:Float, stops:Array<GradientStop>):Void {
+		if (rect == null || rect.width <= 0.0 || rect.height <= 0.0)
+			throw "Gradient rectangle requires positive bounds";
+		var path = new PathBuilder().moveTo(rect.x, rect.y).lineTo(rect.x + rect.width, rect.y)
+			.lineTo(rect.x + rect.width, rect.y + rect.height).lineTo(rect.x, rect.y + rect.height)
+			.close().build();
+		try {
+			var paint = LinearGradientPaint.create(startX, startY, endX, endY, stops);
+			try {
+				fill(path, paint);
+				transientResources.push(path);
+				transientResources.push(paint);
+			} catch (error:Dynamic) {
+				paint.dispose();
+				throw error;
+			}
+		} catch (error:Dynamic) {
+			path.dispose();
+			throw error;
+		}
+	}
+
 	public function drawImage(image:Image, rect:Rect):Void
 		commands.drawImage(image, rect.x, rect.y, rect.width, rect.height);
 

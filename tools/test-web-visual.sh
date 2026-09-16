@@ -144,6 +144,7 @@ if [[ -n "$gallery_dir" ]]; then
         "ui-graphics-text|1200x800|uiVisual=28||"
         "ui-graphics-images|1200x800|uiVisual=29||"
         "ui-graphics-rendering|1200x800|uiVisual=30||"
+        "ui-graphics-gradients|1200x800|uiVisual=31||"
     )
 fi
 
@@ -196,7 +197,7 @@ for visual_case in "${cases[@]}"; do
     fi
     if [[ -n "$gallery_dir" ]]; then
         case "$case_name" in
-			ui-overview|ui-controls|ui-text|ui-layout|ui-lists|ui-overlays|ui-gestures|ui-graphics|ui-graphics-paths|ui-graphics-text|ui-graphics-images|ui-graphics-rendering) ;;
+			ui-overview|ui-controls|ui-text|ui-layout|ui-lists|ui-overlays|ui-gestures|ui-graphics|ui-graphics-paths|ui-graphics-text|ui-graphics-images|ui-graphics-rendering|ui-graphics-gradients) ;;
             *) continue ;;
         esac
     fi

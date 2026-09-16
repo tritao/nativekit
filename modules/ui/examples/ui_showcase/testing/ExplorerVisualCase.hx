@@ -33,4 +33,5 @@ enum abstract ExplorerVisualCase(Int) from Int to Int {
 	var GraphicsText = 28;
 	var GraphicsImages = 29;
 	var GraphicsRendering = 30;
+	var GraphicsGradients = 31;
 }

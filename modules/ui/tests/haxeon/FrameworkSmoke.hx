@@ -2,6 +2,7 @@ import Color;
 import Canvas;
 import DisplayList;
 import FontCollection;
+import GradientStop;
 import Image;
 import ImageFormat;
 import Insets;
@@ -2083,6 +2084,19 @@ class FrameworkSmoke {
 			return 29;
 		overlayList.clear();
 		overlayList.dispose();
+
+		var gradientCanvas = new Canvas();
+		var gradientList = DisplayList.create();
+		gradientCanvas.fillLinearGradientRect(new Rect(0.0, 0.0, 32.0, 16.0),
+			0.0, 0.0, 1.0, 0.0, [
+				new GradientStop(0.0, Color.rgba(0.2, 0.4, 0.8, 1.0)),
+				new GradientStop(1.0, Color.rgba(0.2, 0.8, 0.4, 1.0))
+			]);
+		gradientCanvas.update(gradientList);
+		if (gradientList.info().commandCount != 2)
+			return 235;
+		gradientCanvas.reset();
+		gradientList.dispose();
 
 		var cachedBuilds = 0;
 		var cachedFrame = new LayoutFrame(256.0, 192.0);
