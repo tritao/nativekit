@@ -269,6 +269,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
         auto &commands = out.plan_.passes.front().commands;
         const auto append_custom_plan = [&](const RenderPlan &custom_plan,
                                             std::size_t primitive_index) -> bool {
+            out.plan_.isolated_layers += custom_plan.isolated_layers;
+            out.plan_.bounded_layers += custom_plan.bounded_layers;
             std::unordered_map<uint32_t, ResourceId> remapped_targets;
             for (const auto &pass : custom_plan.passes) {
                 if (pass.target.value == main_target.value ||

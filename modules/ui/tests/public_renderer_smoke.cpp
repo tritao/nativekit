@@ -596,7 +596,10 @@ int main(int argc, char **argv) {
                     stats.glyphs_rasterized == 0 || stats.atlas_rebuilds == 0 ||
                     stats.atlas_dirty_upload_bytes == 0 ||
                     stats.display_list_count < frames || stats.display_list_bytes == 0 ||
-                    stats.render_plan_commands == 0 || stats.text_layout_cache_misses == 0 ||
+                    stats.render_plan_commands == 0 || stats.effect_passes == 0 ||
+                    stats.mask_passes == 0 || stats.backdrop_passes == 0 ||
+                    stats.isolated_layers == 0 || stats.bounded_layers == 0 ||
+                    stats.text_layout_cache_misses == 0 ||
                     (stress_mode && (stats.gpu_frames < 120 || stats.buffers_live > 16 ||
                                      stats.images_live > 64 || stats.render_targets_live > 4 ||
                                      stats.buffer_bytes > 64u * 1024u * 1024u ||

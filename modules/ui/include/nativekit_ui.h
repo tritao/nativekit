@@ -200,6 +200,16 @@ typedef struct nkui_renderer_stats {
     uint64_t atlas_partial_updates;
     /** Bytes dirtied by glyph rasterization and submitted for atlas upload. */
     uint64_t atlas_dirty_upload_bytes;
+    /** Effect passes compiled by the UI compositor. */
+    uint64_t effect_passes;
+    /** Mask passes compiled by the UI compositor. */
+    uint64_t mask_passes;
+    /** Backdrop effect passes compiled by the UI compositor. */
+    uint64_t backdrop_passes;
+    /** Isolated layers compiled by the UI compositor. */
+    uint64_t isolated_layers;
+    /** Bounded layers compiled by the UI compositor. */
+    uint64_t bounded_layers;
 } nkui_renderer_stats;
 
 /** 16-bit opcode identifying one display-list command record. */

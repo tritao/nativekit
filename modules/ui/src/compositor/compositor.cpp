@@ -327,6 +327,10 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             }
             const bool isolated = value.opacity < 1.0f || (value.flags & LayerIsolated) != 0 ||
                                   value.has_effect || value.has_mask || value.has_backdrop;
+            if (isolated)
+                ++plan.isolated_layers;
+            if (value.has_bounds)
+                ++plan.bounded_layers;
             const ResourceId parent_target = current_target;
             ResourceId layer_target = current_target;
             const float parent_origin_x = current_origin_x;
@@ -349,6 +353,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                     effect_pass.kind = RenderPassKind::Effect;
                     effect_pass.input_target = input;
                     effect_pass.effect = effect;
+                    effect_pass.backdrop = true;
                     if (source_region) {
                         effect_pass.has_input_rect = true;
                         effect_pass.input_rect = {backdrop_bounds.x - parent_origin_x,

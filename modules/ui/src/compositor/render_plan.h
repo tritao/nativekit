@@ -83,6 +83,8 @@ struct RenderPass {
     /** Optional source rectangle used by backdrop capture; frame compilers scale it to pixels. */
     bool has_input_rect = false;
     std::array<float, 4> input_rect{};
+    /** True when this effect pass filters pixels already rendered below a node. */
+    bool backdrop = false;
     MaskDescriptor mask{};
 };
 
@@ -94,6 +96,8 @@ struct RenderDependency {
 struct RenderPlan {
     std::vector<RenderPass> passes;
     std::vector<RenderDependency> dependencies;
+    uint32_t isolated_layers = 0;
+    uint32_t bounded_layers = 0;
 };
 
 struct RenderPlanScheduleError {

@@ -1223,7 +1223,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	/**
 	 * Preparation and geometry-cache counters for one renderer.
 	 */
-	struct nkui_renderer_stats @layout(328, 8) {
+	struct nkui_renderer_stats @layout(368, 8) {
 		/**
 		 * Set to sizeof(nkui_renderer_stats) when returned by the API.
 		 */
@@ -1388,6 +1388,26 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Bytes dirtied by glyph rasterization and submitted for atlas upload.
 		 */
 		atlas_dirty_upload_bytes: u64 @offset(320);
+		/**
+		 * Effect passes compiled by the UI compositor.
+		 */
+		effect_passes: u64 @offset(328);
+		/**
+		 * Mask passes compiled by the UI compositor.
+		 */
+		mask_passes: u64 @offset(336);
+		/**
+		 * Backdrop effect passes compiled by the UI compositor.
+		 */
+		backdrop_passes: u64 @offset(344);
+		/**
+		 * Isolated layers compiled by the UI compositor.
+		 */
+		isolated_layers: u64 @offset(352);
+		/**
+		 * Bounded layers compiled by the UI compositor.
+		 */
+		bounded_layers: u64 @offset(360);
 	}
 	/**
 	 * Payload for NKUI_COMMAND_SET_PAINT and resource-only draw commands.

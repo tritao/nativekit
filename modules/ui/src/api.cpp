@@ -824,6 +824,20 @@ void append_backdrop_window_composite(nkui::RenderPlan &plan, nkui::ResourceId r
     plan.dependencies.push_back({root_target, window_target});
 }
 
+void accumulate_render_plan_stats(nkui_renderer_stats &stats, const nkui::RenderPlan &plan) {
+    stats.isolated_layers += plan.isolated_layers;
+    stats.bounded_layers += plan.bounded_layers;
+    for (const auto &pass : plan.passes) {
+        if (pass.kind == nkui::RenderPassKind::Effect) {
+            ++stats.effect_passes;
+            if (pass.backdrop)
+                ++stats.backdrop_passes;
+        } else if (pass.kind == nkui::RenderPassKind::Mask) {
+            ++stats.mask_passes;
+        }
+    }
+}
+
 std::array<float, 6> tessellation_transform(const std::array<float, 6> &transform) {
     return {transform[0], transform[1], transform[2], transform[3], 0.0f, 0.0f};
 }
@@ -2185,6 +2199,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         return NKUI_ERROR_INVALID_TRANSACTION;
     if (has_backdrop)
         append_backdrop_window_composite(plan, compile_target, main_target, load_existing);
+    accumulate_render_plan_stats(renderer_slot->stats, plan);
     // Compositor geometry is expressed in logical pixels. Resolve bounded
     // transient targets to physical dimensions only at the frame boundary,
     // where the device pixel ratio is known.
@@ -2550,6 +2565,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                                          load_existing != 0);
 
     auto &plan = session_state->frame.plan();
+    accumulate_render_plan_stats(renderer_slot->stats, plan);
     for (const auto &[node_id, custom_plan] : custom_plan_storage) {
         (void)custom_plan;
         ++renderer_slot->stats.custom_paint_nodes;
