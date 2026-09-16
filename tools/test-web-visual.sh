@@ -8,6 +8,7 @@ browser=${NK_WEB_BROWSER:-$(command -v google-chrome || command -v chromium || c
 update=false
 ui_only=false
 case_filter=""
+gallery_dir=""
 while (($#)); do
     case "$1" in
         --update) update=true ;;
@@ -20,8 +21,17 @@ while (($#)); do
             fi
             case_filter=$1
             ;;
+        --ui-gallery)
+            shift
+            if (($# == 0)); then
+                echo "usage: tools/test-web-visual.sh [--update] [--ui-only] [--case NAME] [--ui-gallery DIR]" >&2
+                exit 2
+            fi
+            gallery_dir=$1
+            ui_only=true
+            ;;
         *)
-            echo "usage: tools/test-web-visual.sh [--update] [--ui-only] [--case NAME]" >&2
+            echo "usage: tools/test-web-visual.sh [--update] [--ui-only] [--case NAME] [--ui-gallery DIR]" >&2
             exit 2
             ;;
     esac
@@ -94,22 +104,22 @@ cases=(
     "zoom-110|900x650|||16,1,2|1.1"
     "ui-overview|1200x800|uiVisual=0||"
     "ui-controls|1200x800|uiVisual=1||"
+    "ui-layout|1200x800|uiVisual=5||"
+    "ui-gestures|1200x800|uiVisual=11||"
+    "ui-graphics|1200x800|uiVisual=15||"
     "ui-controls-light|1200x800|uiVisual=2||"
     "ui-controls-focused|1200x800|uiVisual=3||"
     "ui-text-focused|1200x800|uiVisual=4||"
-    "ui-layout|1200x800|uiVisual=5||"
     "ui-lists-scrolled|1200x800|uiVisual=6||"
     "ui-dialog|1200x800|uiVisual=7||"
     "ui-popup|1200x800|uiVisual=8||"
     "ui-menu|1200x800|uiVisual=9||"
     "ui-controls-compact|700x800|uiVisual=10||"
     "ui-inspector-interactive|1200x800|uiVisual=1|650,218|"
-    "ui-gestures|1200x800|uiVisual=11||"
     "ui-lists-light|1200x800|uiVisual=12||"
     "ui-textarea-selection|1200x800|uiVisual=13||"
     "ui-text-composition|1200x800|uiVisual=23||"
     "ui-menu-light|1200x800|uiVisual=14||"
-    "ui-graphics|1200x800|uiVisual=15||"
     "ui-overview-compact|700x800|uiVisual=16||"
     "ui-text-compact|700x800|uiVisual=17||"
     "ui-layout-compact|700x800|uiVisual=18||"
@@ -119,6 +129,19 @@ cases=(
     "ui-graphics-compact|700x800|uiVisual=22||"
     "ui-overview-zoom-110|1200x800|uiVisual=0|||1.1"
 )
+
+if [[ -n "$gallery_dir" ]]; then
+    cases=(
+        "ui-overview|1200x800|uiVisual=0||"
+        "ui-controls|1200x800|uiVisual=1||"
+        "ui-text|1200x800|uiVisual=24||"
+        "ui-layout|1200x800|uiVisual=5||"
+        "ui-lists|1200x800|uiVisual=25||"
+        "ui-overlays|1200x800|uiVisual=26||"
+        "ui-gestures|1200x800|uiVisual=11||"
+        "ui-graphics|1200x800|uiVisual=15||"
+    )
+fi
 
 if [[ -n "$case_filter" ]]; then
     case_found=false
@@ -167,6 +190,12 @@ for visual_case in "${cases[@]}"; do
     if [[ "$ui_only" == true && "$case_name" != ui-* ]]; then
         continue
     fi
+    if [[ -n "$gallery_dir" ]]; then
+        case "$case_name" in
+            ui-overview|ui-controls|ui-text|ui-layout|ui-lists|ui-overlays|ui-gestures|ui-graphics) ;;
+            *) continue ;;
+        esac
+    fi
     device_scale=${device_scale:-1}
     width=${size%x*}
     height=${size#*x}
@@ -193,6 +222,9 @@ for visual_case in "${cases[@]}"; do
     fi
     if [[ "$case_name" == ui-* ]]; then
         arguments+=(--move 1,1)
+    fi
+    if [[ -n "$gallery_dir" ]]; then
+        arguments+=(--output "$gallery_dir/${case_name#ui-}.png")
     fi
     [[ -z "$click" ]] || arguments+=(--click "$click")
     if [[ -n "$caret" ]]; then

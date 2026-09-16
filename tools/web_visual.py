@@ -116,6 +116,7 @@ def main():
     parser.add_argument("--scale", type=float, default=1.0)
     parser.add_argument("--reference", type=pathlib.Path, required=True)
     parser.add_argument("--artifact-dir", type=pathlib.Path, required=True)
+    parser.add_argument("--output", type=pathlib.Path)
     parser.add_argument("--move")
     parser.add_argument("--click")
     parser.add_argument("--expect-offset", type=int)
@@ -240,6 +241,11 @@ def main():
                 f"screenshot size changed: expected {expected_width}x{expected_height}, "
                 f"got {width}x{height}"
             )
+        if args.output is not None:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_bytes(png)
+            print(f"captured visual: {args.output}")
+            return
         exact_match = (not args.update and args.reference.exists() and
                        png == args.reference.read_bytes())
         if args.update or not args.reference.exists():

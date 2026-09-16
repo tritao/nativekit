@@ -185,6 +185,17 @@ The default runner uses headless Chrome with software WebGL for repeatability;
 its frame cost is useful for regressions, while its estimated dropped-frame
 count should not be treated as production GPU pacing.
 
+Capture every neutral NativeKit UI Explorer catalog page headlessly with:
+
+```sh
+./tools/build-web.sh
+./tools/test-web-visual.sh --ui-gallery out/ui-gallery
+```
+
+The gallery command writes deterministic 1200×800 PNGs without reading or
+updating visual-test baselines. Focus, overlay, theme, zoom, and compact cases
+remain available through `tools/test-web-visual.sh` as regression states.
+
 The Android library, sample applications, and Gradle wrapper live under
 [`android/`](android/). See the [Android guide](android/README.md) for SDK/NDK,
 host lifecycle, and instrumentation-test instructions.

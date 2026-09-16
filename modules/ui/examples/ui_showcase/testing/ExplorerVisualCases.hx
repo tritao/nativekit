@@ -50,15 +50,20 @@ class ExplorerVisualCases {
 			case ExplorerVisualCase.ControlsFocused:
 				state.selectedPage = "controls";
 				state.visualFocusLabel = "Primary action";
+			case ExplorerVisualCase.Text:
+				state.selectedPage = "text";
 			case ExplorerVisualCase.TextFocused:
 				state.selectedPage = "text";
 				state.visualFocusLabel = "Display name";
 			case ExplorerVisualCase.Layout, ExplorerVisualCase.LayoutCompact:
 				state.selectedPage = "layout";
-			case ExplorerVisualCase.ListsScrolled, ExplorerVisualCase.ListsCompact:
+			case ExplorerVisualCase.Lists, ExplorerVisualCase.ListsScrolled,
+					ExplorerVisualCase.ListsCompact:
 				state.selectedPage = "lists";
 				if (caseId == ExplorerVisualCase.ListsScrolled)
 					state.listController.jumpTo(0.0, 414.0 * UiExplorer.LIST_ROW_HEIGHT);
+			case ExplorerVisualCase.Overlays:
+				state.selectedPage = "overlays";
 			case ExplorerVisualCase.Dialog:
 				state.selectedPage = "overlays";
 				state.overlays.dialogOpen = true;
