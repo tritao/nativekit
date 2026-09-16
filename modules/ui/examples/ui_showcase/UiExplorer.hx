@@ -73,8 +73,8 @@ import pages.ListsPage;
 @:allow(shell.OverlayHost)
 class UiExplorer {
 	public static inline var TARGET_FPS:Float = 60.0;
-	public static inline var INITIAL_WIDTH:Int = 1200;
-	public static inline var INITIAL_HEIGHT:Int = 820;
+	public static inline var INITIAL_WIDTH:Int = 1320;
+	public static inline var INITIAL_HEIGHT:Int = 900;
 	static inline var LIST_COUNT:Int = 10000;
 	static inline var LIST_ROW_HEIGHT:Float = 32.0;
 
