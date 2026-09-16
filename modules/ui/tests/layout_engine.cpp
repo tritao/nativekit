@@ -106,6 +106,32 @@ int main(int argc, char **argv) {
     if (!panel_item || snapshot.items.size() != nodes.size())
         return 13;
 
+    TextLayoutOptions intrinsic_options;
+    intrinsic_options.font_size = 18.0f;
+    intrinsic_options.wrap = TextWrapMode::Word;
+    TextIntrinsicMetrics intrinsic_metrics;
+    if (!engine.text_adapter()->measure_intrinsic_utf8("short supercalifragilistic",
+                                                       intrinsic_options, &intrinsic_metrics) ||
+        intrinsic_metrics.min_content_width <= 0.0f ||
+        intrinsic_metrics.max_content_width < intrinsic_metrics.min_content_width)
+        return 55;
+    LayoutNode intrinsic_root = box(290, -1);
+    intrinsic_root.style.width = {LayoutSizing::Fixed, 220.0f};
+    intrinsic_root.style.height = {LayoutSizing::Fixed, 80.0f};
+    intrinsic_root.style.direction = LayoutDirection::LeftToRight;
+    LayoutNode intrinsic_text = text(291, 0, "short supercalifragilistic");
+    intrinsic_text.paragraph_style.wrap = TextWrapMode::Word;
+    LayoutNode intrinsic_sibling = box(292, 0);
+    intrinsic_sibling.style.width = {LayoutSizing::Fixed, 180.0f};
+    intrinsic_sibling.style.height = {LayoutSizing::Fixed, 20.0f};
+    std::vector<LayoutNode> intrinsic_nodes{intrinsic_root, intrinsic_text, intrinsic_sibling};
+    if (!engine.layout(intrinsic_nodes, 220.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 56;
+    const LayoutItem *intrinsic_text_item = snapshot.find(291);
+    if (!intrinsic_text_item ||
+        intrinsic_text_item->bounds.width + 0.01f < intrinsic_metrics.min_content_width)
+        return 57;
+
     LayoutNode geometry_root = box(300, -1);
     geometry_root.style.width = {LayoutSizing::Fixed, 100.0f};
     geometry_root.style.height = {LayoutSizing::Fixed, 80.0f};

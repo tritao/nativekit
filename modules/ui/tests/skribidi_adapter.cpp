@@ -1,5 +1,6 @@
 #include "prepare/skribidi_adapter.h"
 
+#include <cmath>
 #include <vector>
 
 #ifndef NKUI_TEST_FONT_PATH
@@ -218,6 +219,26 @@ int main() {
     if (!adapter.layout_utf8("NativeKit text options", 500.0f, options) ||
         adapter.bounds().height < 39.0f)
         return 37;
+
+    TextLayoutOptions intrinsic_options;
+    intrinsic_options.font_size = 24.0f;
+    intrinsic_options.wrap = TextWrapMode::Word;
+    TextIntrinsicMetrics intrinsic_metrics;
+    if (!adapter.measure_intrinsic_utf8("short supercalifragilistic", intrinsic_options,
+                                        &intrinsic_metrics) ||
+        intrinsic_metrics.min_content_width <= 0.0f ||
+        intrinsic_metrics.max_content_width < intrinsic_metrics.min_content_width ||
+        intrinsic_metrics.natural_height <= 0.0f || !intrinsic_metrics.has_baseline ||
+        !std::isfinite(intrinsic_metrics.first_baseline))
+        return 53;
+    TextIntrinsicMetrics newline_metrics;
+    intrinsic_options.wrap = TextWrapMode::None;
+    if (!adapter.measure_intrinsic_utf8("short\nlonger line", intrinsic_options,
+                                        &newline_metrics) ||
+        newline_metrics.min_content_width <= 0.0f ||
+        newline_metrics.max_content_width < newline_metrics.min_content_width)
+        return 54;
+
     const uint32_t options_builds = adapter.layout_build_count();
     if (!adapter.layout_utf8("NativeKit text options", 500.0f, options) ||
         adapter.layout_build_count() != options_builds)

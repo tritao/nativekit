@@ -99,8 +99,10 @@ struct TextRect {
 };
 
 struct TextIntrinsicMetrics {
-    TextRect bounds{};
-    float baseline = 0.0f;
+    float min_content_width = 0.0f;
+    float max_content_width = 0.0f;
+    float natural_height = 0.0f;
+    float first_baseline = 0.0f;
     bool has_baseline = false;
 };
 

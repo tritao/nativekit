@@ -407,9 +407,14 @@ bool SkribidiAdapter::measure_intrinsic_utf8(const char *text, const TextLayoutO
                                        options.line_height),
         skb_attribute_make_paint_color(SKB_PAINT_TEXT, SKB_PAINT_STATE_DEFAULT,
                                        skb_rgba(255, 255, 255, 255))};
+    const skb_text_direction_t base_direction =
+        options.direction == TextDirection::Ltr   ? SKB_DIRECTION_LTR
+        : options.direction == TextDirection::Rtl ? SKB_DIRECTION_RTL
+                                                  : SKB_DIRECTION_AUTO;
     const skb_attribute_t layout_attributes[] = {
         skb_attribute_make_text_wrap(SKB_WRAP_NONE),
-        skb_attribute_make_horizontal_align(SKB_ALIGN_START)};
+        skb_attribute_make_horizontal_align(SKB_ALIGN_START),
+        skb_attribute_make_text_base_direction(base_direction)};
     const skb_layout_params_t params = {.font_collection = state_->font_collection->native_handle(),
                                         .layout_width = 1000000.0f,
                                         .layout_attributes =
@@ -424,9 +429,67 @@ bool SkribidiAdapter::measure_intrinsic_utf8(const char *text, const TextLayoutO
     const skb_layout_line_t *lines = skb_layout_get_lines(layout);
     const bool has_baseline = line_count > 0 && lines && std::isfinite(lines[0].baseline);
     const float baseline = has_baseline ? lines[0].baseline - bounds.y : 0.0f;
+
+    float min_content_width = 0.0f;
+    const int32_t text_count = skb_layout_get_text_count(layout);
+    const uint32_t *codepoints = skb_layout_get_text(layout);
+    const skb_text_property_t *properties = skb_layout_get_text_properties(layout);
+    if (text_count > 0 && codepoints && properties) {
+        auto measure_range_width = [&](int32_t start, int32_t end) {
+            if (start < 0 || end <= start || end > text_count)
+                return 0.0f;
+
+            skb_layout_t *range_layout = skb_layout_create(&params);
+            if (!range_layout)
+                return 0.0f;
+            skb_layout_set_utf32(range_layout, state_->temporary, &params, codepoints + start,
+                                 end - start, SKB_ATTRIBUTE_SET_FROM_STATIC_ARRAY(attributes));
+            const float width = skb_layout_get_bounds(range_layout).width;
+            skb_layout_destroy(range_layout);
+            return std::isfinite(width) && width > 0.0f ? width : 0.0f;
+        };
+
+        const auto should_break_after = [&](int32_t index) {
+            const uint8_t flags = properties[index].flags;
+            switch (options.wrap) {
+            case TextWrapMode::None:
+                return (flags & SKB_TEXT_PROP_MUST_LINE_BREAK) != 0;
+            case TextWrapMode::Word:
+                return (flags & SKB_TEXT_PROP_ALLOW_LINE_BREAK) != 0;
+            case TextWrapMode::WordCharacter:
+            default:
+                return (flags & SKB_TEXT_PROP_GRAPHEME_BREAK) != 0;
+            }
+        };
+
+        int32_t segment_start = 0;
+        for (int32_t index = 0; index < text_count; ++index) {
+            const uint8_t flags = properties[index].flags;
+            if (flags & SKB_TEXT_PROP_MUST_LINE_BREAK) {
+                min_content_width =
+                    std::max(min_content_width, measure_range_width(segment_start, index));
+                segment_start = index + 1;
+            } else if (should_break_after(index)) {
+                const int32_t segment_end = index + 1;
+                min_content_width =
+                    std::max(min_content_width, measure_range_width(segment_start, segment_end));
+                segment_start = segment_end;
+            }
+        }
+        min_content_width =
+            std::max(min_content_width, measure_range_width(segment_start, text_count));
+    }
+
     skb_layout_destroy(layout);
-    if (result)
-        *result = {{bounds.x, bounds.y, bounds.width, bounds.height}, baseline, has_baseline};
+    if (result) {
+        result->min_content_width = min_content_width;
+        result->max_content_width = std::isfinite(bounds.width) ? std::max(0.0f, bounds.width)
+                                                                 : 0.0f;
+        result->natural_height = std::isfinite(bounds.height) ? std::max(0.0f, bounds.height)
+                                                               : 0.0f;
+        result->first_baseline = baseline;
+        result->has_baseline = has_baseline;
+    }
     return true;
 }
 

@@ -240,19 +240,16 @@ LayoutEngine::Impl::measure_intrinsic_text(Clay_StringSlice text, Clay_TextEleme
 
     const std::string value(text.chars ? text.chars : "", static_cast<std::size_t>(text.length));
     const auto *node = static_cast<const LayoutNode *>(config->userData);
-    TextLayoutOptions options = text_options_for_node(node, config);
-    options.wrap = TextWrapMode::None;
+    const TextLayoutOptions options = text_options_for_node(node, config);
     TextIntrinsicMetrics metrics;
     if (!state.text.measure_intrinsic_utf8(value.c_str(), options, &metrics))
         return result;
-    result.unwrappedDimensions = {metrics.bounds.width, config->lineHeight > 0
-                                                            ? static_cast<float>(config->lineHeight)
-                                                            : metrics.bounds.height};
-    result.baseline = metrics.baseline;
-    result.hasBaseline = metrics.has_baseline && std::isfinite(metrics.baseline);
-    // External paragraph engines may break at character boundaries, so the
-    // safe lower bound is zero unless the engine exposes a stronger one.
-    result.minWidth = 0.0f;
+    result.unwrappedDimensions = {
+        metrics.max_content_width,
+        config->lineHeight > 0 ? static_cast<float>(config->lineHeight) : metrics.natural_height};
+    result.baseline = metrics.first_baseline;
+    result.hasBaseline = metrics.has_baseline && std::isfinite(metrics.first_baseline);
+    result.minWidth = metrics.min_content_width;
     return result;
 }
 
