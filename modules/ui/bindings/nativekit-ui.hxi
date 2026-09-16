@@ -3,8 +3,9 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Current UI ABI version.
 	 */
-	const NKUI_API_VERSION = 5;
+	const NKUI_API_VERSION = 6;
 	const NKUI_COMMAND_VERSION = 1;
+	const NKUI_GRADIENT_MAX_STOPS = 8;
 	const NKUI_LAYOUT_API_VERSION = 7;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	const NKUI_LAYOUT_NODE_BACKGROUND_OFFSET = 52;
@@ -487,6 +488,17 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_layout_session_submit(session: nkui_layout_session, transaction: ptr<const<u8>> @in_array("transaction_bytes"), transaction_bytes: u32, frame: ptr<const<nkui_layout_frame_input>>) -> nkui_result;
 	/**
+	 * Creates an immutable linear gradient paint.
+	 *
+	 * The gradient line runs from (`start_x`, `start_y`) to (`end_x`, `end_y`)
+	 * in the path's user coordinate space. `stops` must contain between two and
+	 * NKUI_GRADIENT_MAX_STOPS entries with finite, strictly increasing offsets in
+	 * the inclusive range 0..1. The endpoints must differ, and each color
+	 * component must be finite and in the inclusive range 0..1. The colors and
+	 * stop array are copied on success.
+	 */
+	extern fn nkui_paint_create_linear_gradient(start_x: f32, start_y: f32, end_x: f32, end_y: f32, stops: ptr<const<nkui_gradient_stop>> @in_array("stop_count"), stop_count: u32, out_paint: ptr<nkui_resource> @out) -> nkui_result;
+	/**
 	 * Creates a solid paint from four finite RGBA components.
 	 */
 	extern fn nkui_paint_create_solid(color: nkui_color, out_paint: ptr<nkui_resource> @out) -> nkui_result;
@@ -734,6 +746,19 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		 * Physical pixels per logical pixel; must be positive.
 		 */
 		pixel_scale: f32 @offset(20);
+	}
+	/**
+	 * One normalized color stop in a gradient paint.
+	 */
+	struct nkui_gradient_stop @layout(20, 4) {
+		/**
+		 * Position along the gradient line, in the inclusive range 0..1.
+		 */
+		offset: f32 @offset(0);
+		/**
+		 * Color at this stop.
+		 */
+		color: nkui_color @offset(4);
 	}
 	/**
 	 * Payload for NKUI_COMMAND_BEGIN_LAYER.

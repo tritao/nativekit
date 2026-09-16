@@ -13,6 +13,13 @@ enum class PreparedPathKind : uint8_t {
     Triangles,
 };
 
+enum class PreparedPaintKind : uint8_t {
+    Solid = 0,
+    LinearGradient = 1,
+};
+
+constexpr uint32_t kMaxPreparedGradientStops = 8;
+
 enum class PathFillRule : uint8_t {
     NonZero = 1,
     EvenOdd = 2,
@@ -68,6 +75,11 @@ struct PreparedColor {
     float a = 0.0f;
 };
 
+struct PreparedGradientStop {
+    float offset = 0.0f;
+    PreparedColor color{};
+};
+
 struct PreparedPaint {
     float transform[6]{};
     float extent[2]{};
@@ -76,6 +88,11 @@ struct PreparedPaint {
     PreparedColor inner_color{};
     PreparedColor outer_color{};
     PreparedImageToken image_token = 0;
+    PreparedPaintKind kind = PreparedPaintKind::Solid;
+    float gradient_start[2]{};
+    float gradient_end[2]{};
+    uint32_t gradient_stop_count = 0;
+    PreparedGradientStop gradient_stops[kMaxPreparedGradientStops]{};
 };
 
 struct PreparedVertex {

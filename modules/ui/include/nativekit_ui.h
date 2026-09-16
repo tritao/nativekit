@@ -67,7 +67,7 @@ extern "C" {
 /** Version of the stable NativeKit UI C ABI. */
 enum {
     /** Current UI ABI version. */
-    NKUI_API_VERSION = 5
+    NKUI_API_VERSION = 6
 };
 
 /** Result returned by a NativeKit UI operation. */
@@ -542,6 +542,19 @@ typedef struct nkui_color {
     float alpha;
 } nkui_color;
 
+/** Maximum number of stops accepted by a linear gradient paint. */
+enum {
+    NKUI_GRADIENT_MAX_STOPS = 8
+};
+
+/** One normalized color stop in a gradient paint. */
+typedef struct nkui_gradient_stop {
+    /** Position along the gradient line, in the inclusive range 0..1. */
+    float offset;
+    /** Color at this stop. */
+    nkui_color color;
+} nkui_gradient_stop;
+
 /** Pixel format accepted by nkui_image_create(). */
 typedef uint32_t nkui_image_format;
 enum NK_ENUM(nkui_image_format) {
@@ -762,6 +775,21 @@ NKUI_API nkui_result nkui_path_create(const nkui_path_element *elements NKUI_IN_
 
 /** Creates a solid paint from four finite RGBA components. */
 NKUI_API nkui_result nkui_paint_create_solid(nkui_color color, nkui_resource *out_paint NKUI_OUT);
+
+/**
+ * Creates an immutable linear gradient paint.
+ *
+ * The gradient line runs from (`start_x`, `start_y`) to (`end_x`, `end_y`)
+ * in the path's user coordinate space. `stops` must contain between two and
+ * NKUI_GRADIENT_MAX_STOPS entries with finite, strictly increasing offsets in
+ * the inclusive range 0..1. The endpoints must differ, and each color
+ * component must be finite and in the inclusive range 0..1. The colors and
+ * stop array are copied on success.
+ */
+NKUI_API nkui_result nkui_paint_create_linear_gradient(
+    float start_x, float start_y, float end_x, float end_y,
+    const nkui_gradient_stop *stops NKUI_IN_ARRAY(stop_count), uint32_t stop_count,
+    nkui_resource *out_paint NKUI_OUT);
 
 /**
  * Creates an image by copying a tightly packed pixel array.

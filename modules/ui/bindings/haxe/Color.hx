@@ -24,6 +24,7 @@ class Color {
 
 	@:allow(Paint)
 	@:allow(SolidPaint)
+	@:allow(GradientStop)
 	private function nativeValue():nkui_color {
 		var result = new nkui_color();
 		result.set_red(red);

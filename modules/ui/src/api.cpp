@@ -38,6 +38,8 @@ static_assert(sizeof(nkui_paragraph_style) == 5 * sizeof(uint32_t));
 static_assert(sizeof(nkui_layout_frame_input) == 4 * sizeof(uint32_t));
 static_assert(sizeof(nkui_path_element) == 7 * sizeof(uint32_t));
 static_assert(sizeof(nkui_color) == 4 * sizeof(uint32_t));
+static_assert(sizeof(nkui_gradient_stop) == 5 * sizeof(uint32_t));
+static_assert(nkui::kMaxPreparedGradientStops == NKUI_GRADIENT_MAX_STOPS);
 static_assert(sizeof(nkui_transform_command) == sizeof(nkui::SetTransformCommand));
 static_assert(sizeof(nkui_resource_command) == sizeof(nkui::DrawResourceCommand));
 static_assert(sizeof(nkui_scalar_command) == sizeof(nkui::SetGlobalAlphaCommand));
@@ -80,6 +82,10 @@ struct ResourceSlot {
     nkui::TextLayoutOptions text_options{};
     std::unique_ptr<nkui::NanoVGPath> path;
     nkui_color color{};
+    nkui::PreparedPaintKind paint_kind = nkui::PreparedPaintKind::Solid;
+    std::array<float, 2> gradient_start{};
+    std::array<float, 2> gradient_end{};
+    std::vector<nkui_gradient_stop> gradient_stops;
     uint32_t image_width = 0;
     uint32_t image_height = 0;
     nkui_image_format image_format = NKUI_IMAGE_FORMAT_INVALID;
@@ -672,7 +678,8 @@ std::array<float, 6> placement_transform(const std::array<float, 6> &transform) 
     return {1.0f, 0.0f, 0.0f, 1.0f, transform[4], transform[5]};
 }
 
-nkui::PreparedPaint paint_color(ResourceSlot *paint);
+nkui::PreparedPaint paint_color(ResourceSlot *paint,
+                                const std::array<float, 6> &tessellation);
 
 PreparedPathCacheEntry *prepare_cached_path(RendererSlot &renderer, nkui_resource path_handle,
                                             const ResourceSlot &path,
@@ -726,13 +733,37 @@ PreparedPathCacheEntry *prepare_cached_path(RendererSlot &renderer, nkui_resourc
     }
 }
 
-nkui::PreparedPaint paint_color(ResourceSlot *paint) {
+nkui::PreparedPaint paint_color(ResourceSlot *paint,
+                                const std::array<float, 6> &tessellation) {
     nkui::PreparedPaint result{};
     result.transform[0] = result.transform[3] = 1.0f;
     result.feather = 1.0f;
     const nkui_color color = paint ? paint->color : nkui_color{0.0f, 0.0f, 0.0f, 1.0f};
     result.inner_color = {color.red, color.green, color.blue, color.alpha};
     result.outer_color = result.inner_color;
+    if (!paint || paint->paint_kind != nkui::PreparedPaintKind::LinearGradient)
+        return result;
+
+    result.kind = nkui::PreparedPaintKind::LinearGradient;
+    const auto transform_point = [&tessellation](const std::array<float, 2> &point) {
+        return std::array<float, 2>{point[0] * tessellation[0] + point[1] * tessellation[2],
+                                    point[0] * tessellation[1] + point[1] * tessellation[3]};
+    };
+    const auto start = transform_point(paint->gradient_start);
+    const auto end = transform_point(paint->gradient_end);
+    result.gradient_start[0] = start[0];
+    result.gradient_start[1] = start[1];
+    result.gradient_end[0] = end[0];
+    result.gradient_end[1] = end[1];
+    result.gradient_stop_count = static_cast<uint32_t>(paint->gradient_stops.size());
+    for (uint32_t index = 0; index < result.gradient_stop_count; ++index) {
+        const auto &stop = paint->gradient_stops[index];
+        result.gradient_stops[index].offset = stop.offset;
+        result.gradient_stops[index].color = {stop.color.red, stop.color.green, stop.color.blue,
+                                              stop.color.alpha};
+    }
+    result.inner_color = result.gradient_stops[0].color;
+    result.outer_color = result.gradient_stops[result.gradient_stop_count - 1].color;
     return result;
 }
 
@@ -794,6 +825,10 @@ void release_resource_slot(ResourceSlot &slot) {
     slot.font_collection.reset();
     slot.system_fallbacks = false;
     slot.path.reset();
+    slot.paint_kind = nkui::PreparedPaintKind::Solid;
+    slot.gradient_start = {};
+    slot.gradient_end = {};
+    slot.gradient_stops.clear();
     slot.pixels.clear();
     slot.color = {};
     slot.image_width = 0;
@@ -1679,6 +1714,50 @@ extern "C" nkui_result nkui_paint_create_solid(nkui_color color, nkui_resource *
     return result;
 }
 
+extern "C" nkui_result nkui_paint_create_linear_gradient(
+    float start_x, float start_y, float end_x, float end_y, const nkui_gradient_stop *stops,
+    uint32_t stop_count, nkui_resource *out_paint) {
+    if (!out_paint || !stops || stop_count < 2 || stop_count > NKUI_GRADIENT_MAX_STOPS ||
+        !std::isfinite(start_x) || !std::isfinite(start_y) || !std::isfinite(end_x) ||
+        !std::isfinite(end_y))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    const float delta_x = end_x - start_x;
+    const float delta_y = end_y - start_y;
+    if (!std::isfinite(delta_x) || !std::isfinite(delta_y) ||
+        (delta_x == 0.0f && delta_y == 0.0f))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    float previous_offset = -1.0f;
+    for (uint32_t index = 0; index < stop_count; ++index) {
+        const auto &stop = stops[index];
+        if (!std::isfinite(stop.offset) || stop.offset < 0.0f || stop.offset > 1.0f ||
+            stop.offset <= previous_offset || !std::isfinite(stop.color.red) ||
+            !std::isfinite(stop.color.green) || !std::isfinite(stop.color.blue) ||
+            !std::isfinite(stop.color.alpha) || stop.color.red < 0.0f ||
+            stop.color.red > 1.0f || stop.color.green < 0.0f || stop.color.green > 1.0f ||
+            stop.color.blue < 0.0f || stop.color.blue > 1.0f || stop.color.alpha < 0.0f ||
+            stop.color.alpha > 1.0f)
+            return NKUI_ERROR_INVALID_ARGUMENT;
+        previous_offset = stop.offset;
+    }
+
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    ResourceSlot *slot = nullptr;
+    const auto result = allocate_resource(nkui::ResourceKind::Paint, out_paint, &slot);
+    if (result != NKUI_OK)
+        return result;
+    try {
+        slot->paint_kind = nkui::PreparedPaintKind::LinearGradient;
+        slot->gradient_start = {start_x, start_y};
+        slot->gradient_end = {end_x, end_y};
+        slot->gradient_stops.assign(stops, stops + stop_count);
+    } catch (...) {
+        release_resource_slot(*slot);
+        out_paint->id = 0;
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    return NKUI_OK;
+}
+
 extern "C" nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_image_format format,
                                          const uint8_t *pixels, uint32_t pixel_bytes,
                                          nkui_resource *out_image) {
@@ -1925,7 +2004,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                 const auto kind = command.kind == nkui::RenderCommandKind::StrokePath
                                       ? nkui::PreparedPathKind::Stroke
                                       : nkui::PreparedPathKind::Fill;
-                if (!prepared || !prepared->set_view(kind, cached->geometry, paint_color(paint))) {
+                if (!prepared || !prepared->set_view(kind, cached->geometry,
+                                                     paint_color(paint, tessellation))) {
                     valid = false;
                     break;
                 }
@@ -2216,7 +2296,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 const auto kind = command.kind == nkui::RenderCommandKind::StrokePath
                                       ? nkui::PreparedPathKind::Stroke
                                       : nkui::PreparedPathKind::Fill;
-                if (!prepared || !prepared->set_view(kind, cached->geometry, paint_color(paint))) {
+                if (!prepared || !prepared->set_view(kind, cached->geometry,
+                                                     paint_color(paint, tessellation))) {
                     valid = false;
                     break;
                 }

@@ -166,8 +166,11 @@ struct SolidMesh {
 
 enum class PathShaderMode : uint8_t {
     Solid = 0,
+    LinearGradient = 1,
     Image = 2,
 };
+
+constexpr uint32_t kPathShaderVec4Count = 7 + 1 + 2 * kMaxPreparedGradientStops;
 
 struct PathUniforms {
     std::array<float, 4> inner_color;
@@ -177,9 +180,12 @@ struct PathUniforms {
     std::array<float, 4> inverse_y;
     std::array<float, 4> mode;
     std::array<float, 4> coverage;
+    std::array<float, 4> gradient_line;
+    std::array<float, 4> gradient_colors[kMaxPreparedGradientStops];
+    std::array<float, 4> gradient_offsets[kMaxPreparedGradientStops];
 };
 
-static_assert(sizeof(PathUniforms) == sizeof(float) * 4 * 7);
+static_assert(sizeof(PathUniforms) == sizeof(float) * 4 * kPathShaderVec4Count);
 
 struct PathVertex {
     float x;
@@ -501,11 +507,31 @@ PathUniforms path_uniforms(const PreparedPathOperation &operation, const float t
     transform_inverse(inverse, paint_transform);
     uniforms.inverse_x = {inverse[0], inverse[2], inverse[4], 0.0f};
     uniforms.inverse_y = {inverse[1], inverse[3], inverse[5], 0.0f};
-    uniforms.mode = {operation.paint.image_token ? static_cast<float>(PathShaderMode::Image)
-                                                 : static_cast<float>(PathShaderMode::Solid),
-                     texture_type == PreparedTextureType::Alpha ? 1.0f : 0.0f,
+    const PathShaderMode mode = operation.paint.image_token
+                                    ? PathShaderMode::Image
+                                    : operation.paint.kind == PreparedPaintKind::LinearGradient
+                                          ? PathShaderMode::LinearGradient
+                                          : PathShaderMode::Solid;
+    uniforms.mode = {static_cast<float>(mode),
+                     mode == PathShaderMode::LinearGradient
+                         ? static_cast<float>(std::min(operation.paint.gradient_stop_count,
+                                                       kMaxPreparedGradientStops))
+                         : texture_type == PreparedTextureType::Alpha ? 1.0f : 0.0f,
                      has_flag(texture_flags, PreparedImageFlags::FlipY) ? 1.0f : 0.0f,
                      has_flag(texture_flags, PreparedImageFlags::Premultiplied) ? 1.0f : 0.0f};
+    if (mode == PathShaderMode::LinearGradient) {
+        uniforms.gradient_line = {operation.paint.gradient_start[0], operation.paint.gradient_start[1],
+                                   operation.paint.gradient_end[0], operation.paint.gradient_end[1]};
+        const uint32_t stop_count = std::min(operation.paint.gradient_stop_count,
+                                             kMaxPreparedGradientStops);
+        for (uint32_t index = 0; index < stop_count; ++index) {
+            const auto &stop = operation.paint.gradient_stops[index];
+            const float alpha = stop.color.a * opacity;
+            uniforms.gradient_colors[index] = {stop.color.r * alpha, stop.color.g * alpha,
+                                               stop.color.b * alpha, alpha};
+            uniforms.gradient_offsets[index] = {stop.offset, 0.0f, 0.0f, 0.0f};
+        }
+    }
     const float width =
         operation.kind == PreparedPathKind::Stroke ? operation.stroke_width : operation.fringe;
     uniforms.coverage = {operation.kind == PreparedPathKind::Triangles ? 0.0f : 1.0f,
@@ -743,7 +769,7 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
         (!gpu_result(state, nkgpu_shader_uniform_block(builder, 1, NKGPU_SHADERSTAGE_FRAGMENT,
                                                        fragment_size)) ||
          !add_uniform(state, builder, 1, 0, fragment_block, NKGPU_UNIFORMTYPE_FLOAT4,
-                      kind == UiShaderKind::Path ? 7 : 1)))
+                      kind == UiShaderKind::Path ? kPathShaderVec4Count : 1)))
         return false;
     if (textured && !gpu_result(state, nkgpu_shader_texture(builder, 0, 0,
                                                             NKGPU_SHADERSTAGE_FRAGMENT, "tex_smp")))

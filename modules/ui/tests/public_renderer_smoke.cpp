@@ -96,12 +96,21 @@ int main(int argc, char **argv) {
         {NKUI_PATH_CLOSE, {}},
     };
     const uint8_t image_pixels[] = {30, 90, 240, 255};
-    nkui_resource path{}, paint{}, stroke_paint{}, image{}, fonts{}, text{}, scale_text{};
+    const nkui_gradient_stop gradient_stops[] = {
+        {0.0f, {1.0f, 0.08f, 0.04f, 1.0f}},
+        {0.5f, {0.95f, 0.8f, 0.08f, 1.0f}},
+        {1.0f, {0.08f, 0.25f, 1.0f, 1.0f}},
+    };
+    nkui_resource path{}, paint{}, gradient_paint{}, stroke_paint{}, image{}, fonts{}, text{},
+        scale_text{};
     nkui_display_list list{};
     nkui_display_list scale_list{};
     nkui_renderer renderer{};
     if (nkui_path_create(path_elements, 5, &path) != NKUI_OK ||
         nkui_paint_create_solid({0.08f, 0.45f, 0.16f, 1.0f}, &paint) != NKUI_OK ||
+        nkui_paint_create_linear_gradient(12.0f, 0.0f, 244.0f, 0.0f, gradient_stops,
+                                          sizeof(gradient_stops) / sizeof(gradient_stops[0]),
+                                          &gradient_paint) != NKUI_OK ||
         nkui_paint_create_solid({0.85f, 0.12f, 0.08f, 1.0f}, &stroke_paint) != NKUI_OK ||
         nkui_image_create(1, 1, NKUI_IMAGE_RGBA8, image_pixels, sizeof(image_pixels), &image) !=
             NKUI_OK ||
@@ -124,6 +133,9 @@ int main(int argc, char **argv) {
     append(commands, nkui_transform_command{{NKUI_COMMAND_SET_TRANSFORM, NKUI_COMMAND_VERSION,
                                              sizeof(nkui_transform_command)},
                                             {1.0f, 0.0f, 0.0f, 1.0f, 4.0f, 4.0f}});
+    append(commands, nkui_resource_command{{NKUI_COMMAND_SET_PAINT, NKUI_COMMAND_VERSION,
+                                            sizeof(nkui_resource_command)},
+                                           gradient_paint});
     append(commands, nkui_resource_command{{NKUI_COMMAND_DRAW_PATH, NKUI_COMMAND_VERSION,
                                             sizeof(nkui_resource_command)},
                                            path});
@@ -187,7 +199,8 @@ int main(int argc, char **argv) {
         NKUI_OK)
         return 5;
     if (nkui_resource_destroy(image) != NKUI_OK || nkui_resource_destroy(stroke_paint) != NKUI_OK ||
-        nkui_resource_destroy(paint) != NKUI_OK || nkui_resource_destroy(path) != NKUI_OK)
+        nkui_resource_destroy(gradient_paint) != NKUI_OK || nkui_resource_destroy(paint) != NKUI_OK ||
+        nkui_resource_destroy(path) != NKUI_OK)
         return 5;
 
     nkui_text_metrics stable_metrics{};
@@ -249,11 +262,14 @@ int main(int argc, char **argv) {
             if (nkui_renderer_render_frame_overlay(renderer, list, surface, &frame_info) !=
                 NKUI_OK)
                 result = 18;
-            uint8_t background[4]{};
+            uint8_t gradient_left[4]{};
+            uint8_t gradient_right[4]{};
             uint8_t image_sample[4]{};
-            glReadPixels(24, height - 24, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, background);
+            glReadPixels(24, height - 24, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gradient_left);
+            glReadPixels(230, height - 24, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gradient_right);
             glReadPixels(120, height - 110, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, image_sample);
-            if (background[1] <= background[2] || image_sample[2] <= image_sample[1])
+            if (gradient_left[0] <= gradient_left[2] ||
+                gradient_right[2] <= gradient_right[0] || image_sample[2] <= image_sample[1])
                 result = 11;
         }
         if (!result) {

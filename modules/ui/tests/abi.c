@@ -20,11 +20,28 @@ int main(void) {
     };
     nkui_resource path = {0};
     nkui_resource paint = {0};
+    nkui_resource gradient = {0};
     nkui_resource image = {0};
     const uint8_t pixels[] = {255, 0, 0, 255};
+    const nkui_gradient_stop gradient_stops[] = {
+        {0.0f, {1.0f, 0.0f, 0.0f, 1.0f}},
+        {0.5f, {0.0f, 1.0f, 0.0f, 1.0f}},
+        {1.0f, {0.0f, 0.0f, 1.0f, 1.0f}},
+    };
     if (nkui_path_create(path_elements, 4, &path) != NKUI_OK ||
         nkui_paint_create_solid((nkui_color){1.0f, 0.0f, 0.0f, 1.0f}, &paint) != NKUI_OK ||
+        nkui_paint_create_linear_gradient(0.0f, 0.0f, 32.0f, 0.0f, gradient_stops,
+                                          sizeof(gradient_stops) / sizeof(gradient_stops[0]),
+                                          &gradient) != NKUI_OK ||
         nkui_image_create(1, 1, NKUI_IMAGE_RGBA8, pixels, sizeof(pixels), &image) != NKUI_OK)
+        return 2;
+    nkui_gradient_stop invalid_stops[] = {gradient_stops[1], gradient_stops[0]};
+    if (nkui_paint_create_linear_gradient(0.0f, 0.0f, 32.0f, 0.0f, invalid_stops, 2,
+                                          &image) != NKUI_ERROR_INVALID_ARGUMENT ||
+        nkui_paint_create_linear_gradient(0.0f, 0.0f, 32.0f, 0.0f, gradient_stops, 1,
+                                          &image) != NKUI_ERROR_INVALID_ARGUMENT ||
+        nkui_paint_create_linear_gradient(0.0f, 0.0f, 0.0f, 0.0f, gradient_stops, 3,
+                                          &image) != NKUI_ERROR_INVALID_ARGUMENT)
         return 2;
     nkui_resource_command draw = {{NKUI_COMMAND_DRAW_PATH, NKUI_COMMAND_VERSION, sizeof(draw)},
                                   path};
@@ -200,7 +217,8 @@ int main(void) {
         nkui_text_layout_measure(layout, &metrics) != NKUI_ERROR_INVALID_HANDLE ||
         nkui_resource_destroy(fonts) != NKUI_OK)
         return 9;
-    if (nkui_resource_destroy(image) != NKUI_OK || nkui_resource_destroy(paint) != NKUI_OK ||
+    if (nkui_resource_destroy(image) != NKUI_OK || nkui_resource_destroy(gradient) != NKUI_OK ||
+        nkui_resource_destroy(paint) != NKUI_OK ||
         nkui_resource_destroy(path) != NKUI_OK ||
         nkui_resource_destroy(path) != NKUI_ERROR_INVALID_HANDLE)
         return 10;

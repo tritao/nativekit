@@ -18,7 +18,7 @@ void main() {
 
 @fs path_fs
 layout(binding=1) uniform path_fs_params {
-    vec4 value[7];
+    vec4 value[24];
 };
 layout(binding=0) uniform texture2D tex;
 layout(binding=0) uniform sampler smp;
@@ -28,6 +28,23 @@ layout(location=0) out vec4 frag_color;
 float sdroundrect(vec2 p, vec2 ext, float rad) {
     vec2 q = abs(p) - (ext - vec2(rad));
     return (min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0)))) - rad;
+}
+vec4 gradient_color(float position) {
+    int stop_count = int(value[5].y + 0.5);
+    vec4 result = value[8];
+    for (int index = 1; index < 8; ++index) {
+        if (index >= stop_count) {
+            break;
+        }
+        float start = value[16 + index - 1].x;
+        float end = value[16 + index].x;
+        if (position <= end) {
+            float amount = clamp((position - start) / max(end - start, 0.000001), 0.0, 1.0);
+            return mix(value[8 + index - 1], value[8 + index], amount);
+        }
+        result = value[8 + index];
+    }
+    return result;
 }
 void main() {
     vec3 homogeneous_position = vec3(fpos, 1.0);
@@ -47,6 +64,13 @@ void main() {
         if (value[5].w < 0.5) {
             color.rgb *= color.a;
         }
+    } else if (value[5].x > 0.5) {
+        vec2 gradient_start = value[7].xy;
+        vec2 gradient_direction = value[7].zw - gradient_start;
+        float position = clamp(dot(paint_position - gradient_start, gradient_direction) /
+                                   max(dot(gradient_direction, gradient_direction), 0.000001),
+                               0.0, 1.0);
+        color = gradient_color(position);
     } else {
         float distance = sdroundrect(paint_position, value[2].xy, value[2].z);
         float coverage = clamp((distance + (value[2].w * 0.5)) /
