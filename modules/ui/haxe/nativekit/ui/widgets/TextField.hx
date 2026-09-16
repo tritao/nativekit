@@ -42,6 +42,8 @@ class TextField implements View {
 	public final key:String;
 	public var value:String;
 	public var label:Null<String>;
+	/** Muted visual hint shown only while the editor is empty. */
+	public var placeholder:Null<String>;
 	public final multiline:Bool;
 	public final style:LayoutStyle;
 	public final textStyle:Null<TextStyle>;
@@ -65,6 +67,7 @@ class TextField implements View {
 		this.onChange = onChange;
 		this.onSubmit = null;
 		this.label = label;
+		this.placeholder = null;
 		this.multiline = multiline;
 		this.style = style == null ? defaultStyle(multiline) : style.copy();
 		this.textStyle = textStyle == null ? null :
@@ -151,7 +154,9 @@ class TextField implements View {
 			});
 			editorContent.add(selectionNode);
 			var textNode = new RenderNode(context.id("text"), LayoutVisualKind.Text, textNodeStyle);
-			textNode.layout.text = editor.layoutText();
+			var showsPlaceholder = editor.layoutText().length == 0 && placeholder != null &&
+				placeholder.length > 0;
+			textNode.layout.text = showsPlaceholder ? placeholder : editor.layoutText();
 		var textNodeTextStyle = new TextStyle(editor.textStyle.fontSize,
 			editor.textStyle.font, editor.textStyle.letterSpacing);
 		var fontSource = computed.source(StyleProperty.FontSize);
@@ -161,8 +166,9 @@ class TextField implements View {
 		if (textStyle == null && letterSource != null && letterSource.layer != "framework")
 			textNodeTextStyle.letterSpacing = computed.get(StyleProperty.LetterSpacing);
 		var colorSource = computed.source(StyleProperty.TextColor);
-		var textNodeColor = colorSource != null && colorSource.layer != "framework"
-			? computed.get(StyleProperty.TextColor) : resolved.textColor;
+		var textNodeColor = showsPlaceholder ? context.theme.mutedText :
+			(colorSource != null && colorSource.layer != "framework"
+				? computed.get(StyleProperty.TextColor) : resolved.textColor);
 		textNode.applyTextStyle(new ResolvedTextStyle(textNodeTextStyle,
 			editor.paragraphStyle, textNodeColor));
 			editorContent.add(textNode);

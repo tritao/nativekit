@@ -67,6 +67,7 @@ import nativekit.ui.widgets.Row;
 import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollController;
 import nativekit.ui.widgets.ScrollView;
+import nativekit.ui.widgets.SearchField;
 import nativekit.ui.widgets.SizedBox;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.core.TextStyleOverride;
@@ -171,9 +172,30 @@ class FrameworkSmoke {
 		var submittedValue = "";
 		var emptyField = new TextField("empty-entry", "", function(_) {}, null,
 			"Empty message");
+		emptyField.placeholder = "Type a message…";
 		var emptyRoot = context.submit(emptyField, new LayoutFrame(256.0, 192.0));
-		if (emptyRoot.semantics == null || emptyRoot.semantics.value != "")
+		if (emptyRoot.semantics == null || emptyRoot.semantics.value != "" ||
+			emptyRoot.children[0].children[1].layout.text != "Type a message…")
 			return 39;
+		var searchChange = "unchanged";
+		var search = new SearchField("search", "query", function(next) searchChange = next,
+			null, "Search components…");
+		var searchRoot = context.submit(search, new LayoutFrame(256.0, 38.0));
+		var searchInputSemantics:Semantics = cast searchRoot.children[1].semantics;
+		var searchClearSemantics:Semantics = cast searchRoot.children[2].semantics;
+		if (searchRoot.children.length != 3 ||
+			searchInputSemantics.role != AccessibilityRole.TextField ||
+			searchInputSemantics.label != "Search components…" ||
+			searchClearSemantics.label != "×")
+			return 227;
+		if (!context.accessibilityAction(searchRoot.children[2].id.value,
+			AccessibilityAction.Activate, null, -1, -1, 1) || search.value != "" ||
+			searchChange != "")
+			return 228;
+		searchRoot = context.submit(search, new LayoutFrame(256.0, 38.0));
+		if (searchRoot.children.length != 2 ||
+			searchRoot.children[1].children[0].children[1].layout.text != "Search components…")
+			return 229;
 		var field = new TextField("entry", "hello", function(next) { editedValue = next; },
 			null, "Message");
 		field.onSubmit = function(next) { submittedValue = next; };

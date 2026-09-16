@@ -12,7 +12,7 @@ import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollView;
-import nativekit.ui.widgets.TextField;
+import nativekit.ui.widgets.SearchField;
 
 /** Search and navigation surface for the Explorer's page catalog. */
 class CatalogSidebar {
@@ -33,9 +33,9 @@ class CatalogSidebar {
 		searchStyle.background = explorer.state.lightTheme
 			? UiExplorer.color(0.91, 0.93, 0.97)
 			: UiExplorer.color(0.09, 0.12, 0.18);
-		var search = new TextField("catalog-search", explorer.state.searchText, function(value) {
+		var search = new SearchField("catalog-search", explorer.state.searchText, function(value) {
 			explorer.state.searchText = value;
-		}, searchStyle, "Search components");
+		}, searchStyle, "Search components…");
 		children.push(explorer.keyed("search", search));
 		var navItems:Array<KeyedView> = [];
 		var lastGroup:Null<String> = null;
