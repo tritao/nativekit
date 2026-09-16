@@ -904,7 +904,34 @@ std::vector<TextRect> SkribidiAdapter::selection_rects(TextPosition start, TextP
             {rect.x, rect.y, rect.width, rect.height});
     };
     skb_layout_iterate_text_range_bounds(layout->layout, range, collect, &rectangles);
-    return rectangles;
+
+    // Visual runs in mixed-direction text may produce touching or overlapping
+    // bounds on the same line. Returning those independently causes translucent
+    // selection colors to be composited more than once at run boundaries.
+    std::sort(rectangles.begin(), rectangles.end(), [](const TextRect &left, const TextRect &right) {
+        if (left.y != right.y)
+            return left.y < right.y;
+        return left.x < right.x;
+    });
+    std::vector<TextRect> normalized;
+    constexpr float epsilon = 0.01f;
+    for (const TextRect &rect : rectangles) {
+        if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.width) ||
+            !std::isfinite(rect.height) || rect.width <= 0.0f || rect.height <= 0.0f)
+            continue;
+        if (!normalized.empty()) {
+            TextRect &previous = normalized.back();
+            const bool same_line = std::abs(previous.y - rect.y) <= epsilon &&
+                                   std::abs(previous.height - rect.height) <= epsilon;
+            const float previous_right = previous.x + previous.width;
+            if (same_line && rect.x <= previous_right + epsilon) {
+                previous.width = std::max(previous_right, rect.x + rect.width) - previous.x;
+                continue;
+            }
+        }
+        normalized.push_back(rect);
+    }
+    return normalized;
 }
 
 uint64_t SkribidiAdapter::font_collection_generation() const {

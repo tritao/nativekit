@@ -192,6 +192,24 @@ int main() {
             return 36;
         ++sample_index;
     }
+    const char *mixed_selection = "こんにちは — שלום — NativeKit مرحبا";
+    if (!adapter.layout_utf8(mixed_selection, 500.0f, 24.0f))
+        return 51;
+    const auto mixed_rects = adapter.selection_rects({0, 0}, {32, 0});
+    if (mixed_rects.empty())
+        return 51;
+    for (std::size_t left = 0; left < mixed_rects.size(); ++left) {
+        for (std::size_t right = left + 1; right < mixed_rects.size(); ++right) {
+            const auto &a = mixed_rects[left];
+            const auto &b = mixed_rects[right];
+            const float overlap_width =
+                std::min(a.x + a.width, b.x + b.width) - std::max(a.x, b.x);
+            const float overlap_height =
+                std::min(a.y + a.height, b.y + b.height) - std::max(a.y, b.y);
+            if (overlap_width > 0.01f && overlap_height > 0.01f)
+                return 52;
+        }
+    }
     TextLayoutOptions options;
     options.font_size = 24.0f;
     options.letter_spacing = 1.0f;
