@@ -154,6 +154,14 @@ if(NK_BUILD_TESTS)
         NKUI_TEST_COLOR_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/NotoColorEmoji-Regular.ttf")
     target_link_libraries(nativekit_ui_skribidi_adapter_test PRIVATE nkui_skribidi)
     add_test(NAME nativekit_ui_skribidi_adapter COMMAND nativekit_ui_skribidi_adapter_test)
+    add_executable(nativekit_ui_text_editor_benchmark
+        tests/text_editor_benchmark.cpp
+        src/prepare/skribidi_adapter.cpp
+        src/prepare/system_fonts.cpp)
+    target_include_directories(nativekit_ui_text_editor_benchmark PRIVATE src)
+    target_compile_definitions(nativekit_ui_text_editor_benchmark PRIVATE
+        NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+    target_link_libraries(nativekit_ui_text_editor_benchmark PRIVATE nkui_skribidi)
     add_executable(nativekit_ui_compositor_test
         tests/compositor.cpp
         src/compositor/compositor.cpp
@@ -271,6 +279,7 @@ if(NK_BUILD_TESTS)
         nativekit_ui_nanovg_recorder_test
         nativekit_ui_nanovg_path_test
         nativekit_ui_skribidi_adapter_test
+        nativekit_ui_text_editor_benchmark
         nativekit_ui_compositor_test
         nativekit_ui_frame_resources_test
         nativekit_ui_layout_engine_test

@@ -151,6 +151,20 @@ after their parents, so a `Client` node can carve an interactive hole out of a
 larger `Drag` or resize region. The projection is cleared when the window is
 detached or the context is disposed. On platforms without
 `NK_CAP_WINDOW_CUSTOM_DECORATIONS`, the annotations are harmless no-ops.
+The text layout performance harness is kept separate from the default test
+suite because it includes a 10 MiB document. Build and run it with:
+
+```sh
+NATIVEKIT_BUILD_DIR=/path/to/build-ui \
+  modules/ui/tools/benchmark-text-editor.sh 5
+```
+
+It emits JSON lines for 1 KiB, 100 KiB, 1 MiB, and 10 MiB documents. The
+`full_document_edit_us` and `dirty_paragraph_edit_us` measurements show the
+cost difference between reshaping one retained document layout and reshaping
+only the changed paragraph. Retained paragraph IDs are checked after every
+sample; cache hit/miss counts, query timings, UTF-16 mapping timings, tracked
+ C++ allocations, and peak RSS are included for regression comparisons.
 
 ## Web / WASM
 

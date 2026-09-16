@@ -9,6 +9,7 @@
 #include "skribidi/skb_rasterizer.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -54,6 +55,10 @@ struct SkribidiAdapter::State {
     TextLayoutId active_layout_id = 0;
     uint64_t layout_use_sequence = 0;
     std::unordered_map<TextLayoutId, std::unique_ptr<RetainedLayout>> layouts;
+    // The retained-layout map is keyed by stable IDs because render commands
+    // keep those IDs alive. Keep a secondary content index so lookup remains
+    // bounded when an editor retains one layout per paragraph.
+    std::unordered_multimap<uint64_t, TextLayoutId> layout_cache_index;
     uint32_t layout_builds = 0;
     uint64_t prepared_batch_count = 0;
     uint64_t layout_cache_hits = 0;
@@ -82,6 +87,63 @@ SkribidiAdapter::State::RetainedLayout *active_layout(SkribidiAdapter::State &st
 
 const SkribidiAdapter::State::RetainedLayout *active_layout(const SkribidiAdapter::State &state) {
     return find_layout(state, state.active_layout_id);
+}
+
+uint64_t hash_bytes(uint64_t hash, const char *data, std::size_t length) {
+    constexpr uint64_t offset_basis = 14695981039346656037ull;
+    if (!hash)
+        hash = offset_basis;
+    for (std::size_t index = 0; index < length; ++index) {
+        hash ^= static_cast<uint8_t>(data[index]);
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+template <typename Value>
+uint64_t hash_value(uint64_t hash, Value value) {
+    const auto bits = static_cast<uint64_t>(value);
+    for (unsigned shift = 0; shift < sizeof(Value) * 8; shift += 8) {
+        const uint8_t byte = static_cast<uint8_t>((bits >> shift) & 0xffu);
+        hash ^= byte;
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+uint64_t layout_cache_hash(const char *text, float width, const TextLayoutOptions &options,
+                           uint64_t font_generation) {
+    uint64_t hash = hash_bytes(0, text, std::strlen(text));
+    hash = hash_value(hash, std::bit_cast<uint32_t>(width));
+    hash = hash_value(hash, std::bit_cast<uint32_t>(options.font_size));
+    hash = hash_value(hash, std::bit_cast<uint32_t>(options.letter_spacing));
+    hash = hash_value(hash, std::bit_cast<uint32_t>(options.line_height));
+    hash = hash_value(hash, static_cast<uint8_t>(options.family));
+    hash = hash_value(hash, static_cast<uint8_t>(options.wrap));
+    hash = hash_value(hash, static_cast<uint8_t>(options.alignment));
+    hash = hash_value(hash, static_cast<uint8_t>(options.direction));
+    return hash_value(hash, font_generation);
+}
+
+bool same_layout_request(const SkribidiAdapter::State::RetainedLayout &cached, const char *text,
+                         float width, const TextLayoutOptions &options,
+                         uint64_t font_generation) {
+    return cached.font_generation == font_generation && cached.text == text &&
+           cached.width == width && cached.options.font_size == options.font_size &&
+           cached.options.letter_spacing == options.letter_spacing &&
+           cached.options.line_height == options.line_height &&
+           cached.options.family == options.family && cached.options.wrap == options.wrap &&
+           cached.options.alignment == options.alignment &&
+           cached.options.direction == options.direction;
+}
+
+void erase_layout_cache_index(SkribidiAdapter::State &state, TextLayoutId id) {
+    for (auto entry = state.layout_cache_index.begin(); entry != state.layout_cache_index.end();) {
+        if (entry->second == id)
+            entry = state.layout_cache_index.erase(entry);
+        else
+            ++entry;
+    }
 }
 
 } // namespace
@@ -339,6 +401,7 @@ SkribidiAdapter::SkribidiAdapter(std::shared_ptr<SkribidiFontCollection> fonts)
 
 SkribidiAdapter::~SkribidiAdapter() {
     state_->layouts.clear();
+    state_->layout_cache_index.clear();
     if (state_->atlas)
         skb_image_atlas_destroy(state_->atlas);
     if (state_->rasterizer)
@@ -511,17 +574,16 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, const TextLayou
         options.line_height < 0.0f)
         return false;
     const uint64_t font_generation = state_->font_collection->generation();
-    for (auto &entry : state_->layouts) {
-        auto &cached = *entry.second;
-        if (cached.font_generation == font_generation && cached.text == text &&
-            cached.width == width && cached.options.font_size == options.font_size &&
-            cached.options.letter_spacing == options.letter_spacing &&
-            cached.options.line_height == options.line_height &&
-            cached.options.family == options.family && cached.options.wrap == options.wrap &&
-            cached.options.alignment == options.alignment &&
-            cached.options.direction == options.direction) {
+    const uint64_t request_hash = layout_cache_hash(text, width, options, font_generation);
+    const auto candidates = state_->layout_cache_index.equal_range(request_hash);
+    for (auto candidate = candidates.first; candidate != candidates.second; ++candidate) {
+        auto entry = state_->layouts.find(candidate->second);
+        if (entry == state_->layouts.end())
+            continue;
+        auto &cached = *entry->second;
+        if (same_layout_request(cached, text, width, options, font_generation)) {
             cached.last_used = ++state_->layout_use_sequence;
-            state_->active_layout_id = entry.first;
+            state_->active_layout_id = entry->first;
             if (result)
                 *result = cached.result;
             ++state_->layout_cache_hits;
@@ -600,6 +662,7 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, const TextLayou
     state_->active_layout_id = layout_id;
     if (result)
         *result = retained->result;
+    state_->layout_cache_index.emplace(request_hash, layout_id);
     state_->layouts.emplace(layout_id, std::move(retained));
     ++state_->layout_builds;
     return true;
@@ -612,9 +675,10 @@ void SkribidiAdapter::prune_layout_cache(const std::vector<TextLayoutId> &retain
 
     for (auto entry = state_->layouts.begin(); entry != state_->layouts.end();) {
         if (entry->second->font_generation != font_generation &&
-            retained.find(entry->first) == retained.end())
+            retained.find(entry->first) == retained.end()) {
+            erase_layout_cache_index(*state_, entry->first);
             entry = state_->layouts.erase(entry);
-        else
+        } else
             ++entry;
     }
 
@@ -629,6 +693,7 @@ void SkribidiAdapter::prune_layout_cache(const std::vector<TextLayoutId> &retain
         }
         if (oldest == state_->layouts.end())
             break;
+        erase_layout_cache_index(*state_, oldest->first);
         state_->layouts.erase(oldest);
     }
 }
