@@ -1188,6 +1188,10 @@ EM_JS(int, nk_web_show_notification,
           return 1;
       });
 
+EM_JS(int, nk_web_notification_supported, (), {
+    return typeof Notification !== "undefined" ? 1 : 0;
+});
+
 EM_JS(int, nk_web_close_notification, (double request), {
     const key = String(request);
     const notifications = Module._nkNativeKitNotifications || {};
@@ -1238,6 +1242,10 @@ EM_JS(int, nk_web_poll_gamepads, (), {
                       buttons[11], buttons[12], buttons[13], buttons[14], buttons[15], buttons[16]]);
     }
     return 1;
+});
+
+EM_JS(int, nk_web_gamepad_supported, (), {
+    return typeof navigator !== "undefined" && typeof navigator.getGamepads === "function" ? 1 : 0;
 });
 
 EM_JS(void, nk_web_fetch_resource, (const char *uri, double request), {
@@ -1919,6 +1927,14 @@ bool get_appearance(nk_system_appearance *out_appearance) noexcept {
         (flags & k_appearance_dark) ? NK_COLOR_SCHEME_DARK : NK_COLOR_SCHEME_LIGHT;
     out_appearance->high_contrast = (flags & k_appearance_high_contrast) ? 1u : 0u;
     return true;
+}
+
+bool notification_supported() noexcept {
+    return nk_web_notification_supported() != 0;
+}
+
+bool gamepad_supported() noexcept {
+    return nk_web_gamepad_supported() != 0;
 }
 
 bool keep_awake_supported() noexcept {

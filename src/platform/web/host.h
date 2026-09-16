@@ -204,6 +204,8 @@ nk_orientation display_orientation() noexcept;
 nk_result copy_locale(char *buffer, uint32_t *inout_size) noexcept;
 bool appearance_supported() noexcept;
 bool get_appearance(nk_system_appearance *out_appearance) noexcept;
+bool notification_supported() noexcept;
+bool gamepad_supported() noexcept;
 bool keep_awake_supported() noexcept;
 bool keep_awake_apply(bool enabled) noexcept;
 

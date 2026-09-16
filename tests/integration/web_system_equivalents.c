@@ -1,4 +1,5 @@
 #include "nativekit.h"
+#include "nativekit_input.h"
 #include "nativekit_joystick.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
@@ -41,14 +42,27 @@ static void test_window_styling(void) {
     NK_TEST_ASSERT(nk_window_set_opacity(window, 0.75f) == NK_OK);
     NK_TEST_ASSERT(nk_window_set_mouse_passthrough(window, 1) == NK_OK);
 
+    const unsigned char cursor_pixels[16] = {255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255};
+    nk_cursor_image cursor_image = {0};
+    cursor_image.struct_size = sizeof(cursor_image);
+    cursor_image.width = 2;
+    cursor_image.height = 2;
+    cursor_image.stride = 8;
+    cursor_image.hotspot_x = 1;
+    cursor_image.hotspot_y = 1;
+    cursor_image.rgba = cursor_pixels;
+    nk_cursor cursor = NK_INVALID_HANDLE;
+    NK_TEST_ASSERT(nk_cursor_create_custom(&cursor_image, &cursor) == NK_OK);
+    NK_TEST_ASSERT(nk_window_set_cursor(window, cursor) == NK_OK);
+
     // clang-format off
     NK_TEST_ASSERT(EM_ASM_INT({
                const canvas = document.querySelector("#canvas");
                return canvas && canvas.style.minWidth == "320px" && canvas.style.minHeight ==
                       "240px" && canvas.style.maxWidth == "1280px" && canvas.style.maxHeight ==
                       "960px" && canvas.style.aspectRatio == "4 / 3" && canvas.style.resize ==
-                      "none" && canvas.style.opacity == "0.75" && canvas.style.pointerEvents ==
-                      "none" ? 1 : 0;
+               "none" && canvas.style.opacity == "0.75" && canvas.style.pointerEvents ==
+                      "none" && canvas.style.cursor.indexOf("data:image/svg+xml;base64,") >= 0 ? 1 : 0;
            }) == 1);
     // clang-format on
 
@@ -93,6 +107,8 @@ static void test_window_styling(void) {
     });
     // clang-format on
     NK_TEST_ASSERT(nk_window_set_mouse_passthrough(window, 0) == NK_OK);
+    NK_TEST_ASSERT(nk_cursor_destroy(cursor) == NK_OK);
+    NK_TEST_ASSERT(nk_window_set_cursor(window, NK_INVALID_HANDLE) == NK_OK);
     NK_TEST_ASSERT(nk_window_set_resizable(window, 1) == NK_OK);
     NK_TEST_ASSERT(nk_window_set_aspect_ratio(window, 0, 0) == NK_OK);
     NK_TEST_ASSERT(nk_window_set_size_limits(

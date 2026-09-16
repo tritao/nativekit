@@ -44,6 +44,7 @@ struct WebSurfaceResource;
 struct WebCursorResource final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
     nk_cursor_shape shape = NK_CURSOR_ARROW;
+    std::string css;
 };
 
 struct WebAccessibilityTextRange {
@@ -972,12 +973,71 @@ const char *cursor_name(nk_cursor_shape shape) {
     }
 }
 
+std::string base64(std::string_view value) {
+    constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string result;
+    result.reserve((value.size() + 2) / 3 * 4);
+    for (std::size_t index = 0; index < value.size(); index += 3) {
+        const auto first = static_cast<unsigned char>(value[index]);
+        const auto second = index + 1 < value.size() ? static_cast<unsigned char>(value[index + 1])
+                                                     : static_cast<unsigned char>(0);
+        const auto third = index + 2 < value.size() ? static_cast<unsigned char>(value[index + 2])
+                                                    : static_cast<unsigned char>(0);
+        result.push_back(alphabet[first >> 2]);
+        result.push_back(alphabet[((first & 0x03) << 4) | (second >> 4)]);
+        result.push_back(index + 1 < value.size() ? alphabet[((second & 0x0f) << 2) | (third >> 6)]
+                                                  : '=');
+        result.push_back(index + 2 < value.size() ? alphabet[third & 0x3f] : '=');
+    }
+    return result;
+}
+
+std::string custom_cursor_css(const nk_cursor_image &image) {
+    std::string svg;
+    svg.reserve(static_cast<std::size_t>(image.width) * image.height * 32);
+    svg += "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"";
+    svg += std::to_string(image.width);
+    svg += "\" height=\"";
+    svg += std::to_string(image.height);
+    svg += "\" shape-rendering=\"crispEdges\"><g>";
+    const auto *pixels = static_cast<const unsigned char *>(image.rgba);
+    for (int32_t y = 0; y < image.height; ++y) {
+        const auto *row = pixels + static_cast<std::size_t>(y) * image.stride;
+        for (int32_t x = 0; x < image.width; ++x) {
+            const auto *pixel = row + static_cast<std::size_t>(x) * 4;
+            if (pixel[3] == 0)
+                continue;
+            char color[8]{};
+            std::snprintf(color, sizeof(color), "#%02x%02x%02x", pixel[0], pixel[1], pixel[2]);
+            svg += "<rect x=\"";
+            svg += std::to_string(x);
+            svg += "\" y=\"";
+            svg += std::to_string(y);
+            svg += "\" width=\"1\" height=\"1\" fill=\"";
+            svg += color;
+            svg += "\"";
+            if (pixel[3] != 255) {
+                svg += " fill-opacity=\"";
+                svg += std::to_string(static_cast<double>(pixel[3]) / 255.0);
+                svg += "\"";
+            }
+            svg += "/>";
+        }
+    }
+    svg += "</g></svg>";
+    return "url(data:image/svg+xml;base64," + base64(svg) + ") " + std::to_string(image.hotspot_x) +
+           " " + std::to_string(image.hotspot_y) + ", auto";
+}
+
 void apply_cursor(WebWindowResource &window) {
     if (window.cursor_mode != NK_CURSOR_MODE_NORMAL) {
         nk::web::set_cursor("none");
         return;
     }
-    nk::web::set_cursor(window.cursor ? cursor_name(window.cursor->shape) : "default");
+    if (window.cursor && !window.cursor->css.empty())
+        nk::web::set_cursor(window.cursor->css.c_str());
+    else
+        nk::web::set_cursor(window.cursor ? cursor_name(window.cursor->shape) : "default");
 }
 
 void queue_window_state(WebWindowResource &window) {
@@ -1861,15 +1921,19 @@ extern "C" {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     auto capabilities = NK_CAP_WINDOW | NK_CAP_INPUT | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
                         NK_CAP_POINTER_CAPTURE | NK_CAP_CLIPBOARD | NK_CAP_WINDOW_GEOMETRY |
-                        NK_CAP_DRAG_DROP | NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO |
-                        NK_CAP_SYSTEM_INFO | NK_CAP_ACCESSIBILITY |
-                        nk::core::optional_capabilities();
+                        NK_CAP_WINDOW_STYLING | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
+                        NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_SYSTEM_INFO |
+                        NK_CAP_ACCESSIBILITY | nk::core::optional_capabilities();
     if (nk::web::appearance_supported())
         capabilities |= NK_CAP_SYSTEM_APPEARANCE;
     if (nk::web::keep_awake_supported())
         capabilities |= NK_CAP_KEEP_AWAKE;
     if (nk::web::display_orientation_supported())
         capabilities |= NK_CAP_DISPLAY_ORIENTATION;
+    if (nk::web::notification_supported())
+        capabilities |= NK_CAP_NOTIFICATION;
+    if (nk::web::gamepad_supported())
+        capabilities |= NK_CAP_JOYSTICK;
     return capabilities;
 }
 
@@ -3106,8 +3170,25 @@ nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_handle *ou
     *out_cursor = cursor->handle;
     return NK_OK;
 }
-nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *, nk_handle *) {
-    return unsupported("custom browser cursors are not implemented yet");
+nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image, nk_handle *out_cursor) {
+    return nk::core::result_boundary(
+        "unexpected error while creating custom Web cursor", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            if (!image || image->struct_size < sizeof(*image) || !out_cursor || !image->rgba ||
+                image->width <= 0 || image->height <= 0 || image->width > INT32_MAX / 4 ||
+                image->stride < image->width * 4 || image->hotspot_x < 0 || image->hotspot_y < 0 ||
+                image->hotspot_x >= image->width || image->hotspot_y >= image->height)
+                return invalid_argument("invalid custom Web cursor image");
+            *out_cursor = NK_INVALID_HANDLE;
+            auto cursor = std::make_shared<WebCursorResource>();
+            cursor->css = custom_cursor_css(*image);
+            cursor->handle = nk::core::handles().insert(nk::core::ResourceType::cursor, cursor);
+            if (cursor->handle == NK_INVALID_HANDLE)
+                return resource_error(NK_ERROR_OUT_OF_MEMORY, "Web cursor handle registry is full");
+            *out_cursor = cursor->handle;
+            return NK_OK;
+        });
 }
 nk_result NK_CALL nk_cursor_destroy(nk_handle handle) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
