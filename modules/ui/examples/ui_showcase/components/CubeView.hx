@@ -6,6 +6,12 @@ import LayoutStyle;
 import LayoutVisualKind;
 import Rect;
 import ShowcaseCube;
+import Canvas;
+import ResolvedLayoutItem;
+import nativekit.ui.animation.Animation;
+import nativekit.ui.animation.AnimationHandle;
+import nativekit.ui.animation.AnimationScheduler;
+import nativekit.ui.animation.LoopAnimation;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
@@ -20,31 +26,33 @@ class CubeView implements View {
 	public final style:LayoutStyle;
 	public final rotation:Float;
 	public final label:String;
+	public final animated:Bool;
+	public final speed:Float;
 
-	public function new(key:String, rotation:Float, label:String, ?style:LayoutStyle) {
+	public function new(key:String, rotation:Float, label:String, ?style:LayoutStyle,
+			animated:Bool = false, speed:Float = 0.12) {
 		if (key == null || key.length == 0 || label == null || label.length == 0 ||
-			!Math.isFinite(rotation))
+			!Math.isFinite(rotation) || !Math.isFinite(speed) || speed <= 0.0)
 			throw "Cube views require a stable key, finite rotation, and accessible label";
 		this.key = key;
 		this.rotation = rotation;
 		this.label = label;
 		this.style = style == null ? defaultStyle() : style.copy();
+		this.animated = animated;
+		this.speed = speed;
 	}
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
 			var id = context.id("cube-view");
-			var surfaceState:State<GraphicsSurface> = context.resourceState(id,
-				function() return ShowcaseCube.create(),
-				function(value:GraphicsSurface) { value.dispose(); });
-			var surface = surfaceState.value;
-			ShowcaseCube.setRotation(surface, rotation);
+			var painterState:State<CubeViewPainter> = context.resourceState(id,
+				function() return new CubeViewPainter(context.animations, rotation, speed),
+				function(value:CubeViewPainter) { value.dispose(); });
+			var painter = painterState.value;
+			painter.configure(rotation, speed, animated);
 			var node = new RenderNode(id, LayoutVisualKind.Custom, style);
 			node.semantics = new Semantics(AccessibilityRole.Image, label);
-			node.onPaint(function(canvas, geometry) {
-				if (geometry.width > 0.0 && geometry.height > 0.0)
-					canvas.drawSurface(surface, new Rect(0.0, 0.0, geometry.width, geometry.height));
-			});
+			node.onPaint(function(canvas, geometry) painter.paint(canvas, geometry));
 			return node;
 		});
 	}
@@ -55,5 +63,50 @@ class CubeView implements View {
 		result.height = LayoutAxis.fixed(170.0);
 		result.clipToParent = true;
 		return result;
+	}
+}
+
+private class CubeViewPainter {
+	static inline var TwoPi:Float = 6.283185307179586;
+	final surface:GraphicsSurface;
+	final scheduler:AnimationScheduler;
+	final loop:LoopAnimation;
+	final animation:Animation;
+	var registration:Null<AnimationHandle>;
+	var baseRotation:Float;
+
+	public function new(scheduler:AnimationScheduler, rotation:Float, speed:Float) {
+		this.scheduler = scheduler;
+		baseRotation = rotation;
+		loop = new LoopAnimation(speed);
+		animation = loop;
+		registration = null;
+		surface = ShowcaseCube.create();
+	}
+
+	public function configure(rotation:Float, speed:Float, running:Bool):Void {
+		baseRotation = rotation;
+		loop.speed = speed;
+		if (running) {
+			if (registration == null || !registration.active)
+				registration = scheduler.track(animation);
+		} else if (registration != null) {
+			registration.cancel();
+			registration = null;
+		}
+	}
+
+	public function paint(canvas:Canvas, geometry:ResolvedLayoutItem):Void {
+		if (geometry.width <= 0.0 || geometry.height <= 0.0)
+			return;
+		ShowcaseCube.setRotation(surface, baseRotation + loop.phase * TwoPi);
+		canvas.drawSurface(surface, new Rect(0.0, 0.0, geometry.width, geometry.height));
+	}
+
+	public function dispose():Void {
+		if (registration != null)
+			registration.cancel();
+		registration = null;
+		surface.dispose();
 	}
 }

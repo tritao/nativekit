@@ -82,24 +82,30 @@ class GraphicsPage {
 	public static function build3d(explorer:UiExplorer, items:Array<KeyedView>):Void {
 		explorer.pageHeading(items, "3D Views",
 			"Native indexed meshes render with perspective and depth, then composite into ordinary UI layout.");
-		items.push(explorer.keyed("cube-views", explorer.panel("cube-views", [
-			explorer.keyed("heading", explorer.heading("One mesh, three camera angles")),
-			explorer.keyed("copy", explorer.caption("Each preview is a retained native surface. Resize the pane to exercise aspect-correct projection and surface reallocation.")),
-			explorer.keyed("previews", new Row("cube-preview-row", [
-				explorer.keyed("front", new CubeView("front-cube", 0.38,
-					"Perspective cube viewed near the front")),
-				explorer.keyed("corner", new CubeView("corner-cube", 0.82,
-					"Perspective cube viewed from a corner")),
-				explorer.keyed("reverse", new CubeView("reverse-cube", 2.12,
-					"Perspective cube viewed from the reverse side"))
-			], explorer.rowStyle(10.0))),
-			explorer.keyed("try", explorer.caption("Try this: inspect a viewport, resize the split pane, and compare face occlusion at each angle."))
+		items.push(explorer.keyed("cube-view", explorer.panel("cube-view", [
+			explorer.keyed("heading", explorer.heading("Live perspective viewport")),
+			explorer.keyed("copy", explorer.caption("A retained native surface continuously rotates an indexed cube with depth-tested face occlusion.")),
+			explorer.keyed("preview", new CubeView("live-cube", 0.38,
+				"Live rotating perspective cube", cubeStyle(), true, 0.10)),
+			explorer.keyed("try", explorer.caption("Try this: inspect the viewport and resize the split pane while it rotates."))
 		])));
 		items.push(explorer.keyed("3d-pipeline", explorer.panel("3d-pipeline", [
-			explorer.keyed("heading", explorer.heading("Mesh → depth pass → sampled surface → compositor")),
+			explorer.keyed("heading", explorer.heading("Mesh to depth pass to sampled surface to compositor")),
 			explorer.keyed("copy", explorer.caption("The producer submits 24 colored vertices and 36 indices with a model-view-projection matrix. NativeKit renders offscreen with depth testing and samples the result in the UI display list."))
 		])));
 	}
+
+	static function cubeStyle():LayoutStyle {
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.stretch();
+		style.height = LayoutAxis.fixed(260.0);
+		style.background = Color.rgba(0.035, 0.055, 0.09, 1.0);
+		style.radiusTopLeft = style.radiusTopRight = 6.0;
+		style.radiusBottomLeft = style.radiusBottomRight = 6.0;
+		style.clipToParent = true;
+		return style;
+	}
+
 
 	public static function buildImages(explorer:UiExplorer, items:Array<KeyedView>):Void {
 		explorer.pageHeading(items, "Images & Layers",

@@ -69,7 +69,8 @@ Matrix model_view_projection(float rotation, float aspect) {
 
     Matrix translation{};
     translation[0] = translation[5] = translation[10] = translation[15] = 1.0f;
-    translation[14] = -4.0f;
+    // Leave enough framing for the cube's widest rotated extent on short viewports.
+    translation[14] = -4.4f;
 
     const float cosine = std::cos(rotation);
     const float sine = std::sin(rotation);
