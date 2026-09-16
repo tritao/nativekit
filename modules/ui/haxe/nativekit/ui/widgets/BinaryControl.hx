@@ -17,6 +17,9 @@ import nativekit.ui.core.State;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.View;
+import nativekit.ui.style.StyleState;
+import nativekit.ui.style.StyleStateUtil;
+import nativekit.ui.style.StyleTarget;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
@@ -53,8 +56,20 @@ class BinaryControl implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
-			var node = new RenderNode(context.id(toggle ? "toggle" : "checkbox"),
-				LayoutVisualKind.Box, style);
+			var nodeId = context.id(toggle ? "toggle" : "checkbox");
+			var flags = context.interactionStates.get(nodeId);
+			flags = StyleStateUtil.withState(flags, StyleState.Checked, checked);
+			flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
+			var target = new StyleTarget(toggle ? "toggle" : "checkbox", key, key,
+				null, [toggle ? "toggle" : "checkbox"], flags);
+			var computed = context.styleResolver.resolve(target, null, context.theme.styles,
+				context.styleSheet, style);
+			var node = new RenderNode(nodeId,
+				LayoutVisualKind.Box, computed.toLayoutStyle());
+			node.setStyleIdentity(toggle ? "toggle" : "checkbox", key, key,
+				null, [toggle ? "toggle" : "checkbox"]);
+			node.states = flags;
+			node.computedStyle = computed;
 			node.focusable = enabled;
 			node.enabled = enabled;
 			var semantics = new Semantics(toggle ? AccessibilityRole.Switch : AccessibilityRole.Checkbox, label,
@@ -69,26 +84,41 @@ class BinaryControl implements View {
 			var indicatorStyle = new LayoutStyle();
 			indicatorStyle.width = LayoutAxis.fixed(toggle ? 34.0 : 19.0);
 			indicatorStyle.height = LayoutAxis.fixed(toggle ? 19.0 : 19.0);
-			var indicator = new RenderNode(context.id("indicator"),
-				toggle ? LayoutVisualKind.Box : LayoutVisualKind.Custom, indicatorStyle);
 			if (!toggle) {
-				indicatorStyle.background = context.theme.controlColor(checked, enabled);
 				indicatorStyle.radiusTopLeft = indicatorStyle.radiusTopRight = 4.0;
 				indicatorStyle.radiusBottomLeft = indicatorStyle.radiusBottomRight = 4.0;
 			} else {
-				indicatorStyle.background = context.theme.controlColor(checked, enabled);
 				indicatorStyle.radiusTopLeft = indicatorStyle.radiusTopRight = 10.0;
 				indicatorStyle.radiusBottomLeft = indicatorStyle.radiusBottomRight = 10.0;
 				indicatorStyle.padding = new Insets(2.0, 2.0, 2.0, 2.0);
-				indicatorStyle.childAlignX = checked ? LayoutAlignmentX.End : LayoutAlignmentX.Start;
 				indicatorStyle.childAlignY = LayoutAlignmentY.Center;
+			}
+			var indicatorTarget = new StyleTarget(toggle ? "toggle-indicator" : "checkbox-indicator",
+				key + ":indicator", null, null, null, flags);
+			var indicatorComputed = context.styleResolver.resolve(indicatorTarget, null,
+				context.theme.styles, context.styleSheet, indicatorStyle);
+			var indicator = new RenderNode(context.id("indicator"),
+				toggle ? LayoutVisualKind.Box : LayoutVisualKind.Custom,
+				indicatorComputed.toLayoutStyle());
+			indicator.setStyleIdentity(toggle ? "toggle-indicator" : "checkbox-indicator",
+				key + ":indicator", null, null, [toggle ? "toggle" : "checkbox"]);
+			indicator.states = flags;
+			indicator.computedStyle = indicatorComputed;
+			if (toggle) {
 				var thumbStyle = new LayoutStyle();
 				thumbStyle.width = LayoutAxis.fixed(15.0);
 				thumbStyle.height = LayoutAxis.fixed(15.0);
-				thumbStyle.background = Color.rgba(0.98, 0.98, 0.99, 1.0);
 				thumbStyle.radiusTopLeft = thumbStyle.radiusTopRight = 7.5;
 				thumbStyle.radiusBottomLeft = thumbStyle.radiusBottomRight = 7.5;
-				indicator.add(new RenderNode(context.id("thumb"), LayoutVisualKind.Box, thumbStyle));
+				var thumbComputed = context.styleResolver.resolve(
+					new StyleTarget("toggle-thumb", key + ":thumb", null, null, ["toggle"], flags),
+					null, context.theme.styles, context.styleSheet, thumbStyle);
+				var thumb = new RenderNode(context.id("thumb"), LayoutVisualKind.Box,
+					thumbComputed.toLayoutStyle());
+				thumb.setStyleIdentity("toggle-thumb", key + ":thumb", null, null, ["toggle"]);
+				thumb.states = flags;
+				thumb.computedStyle = thumbComputed;
+				indicator.add(thumb);
 			}
 			if (!toggle) {
 				indicator.onPaint(function(canvas, _) {

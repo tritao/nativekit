@@ -2,19 +2,23 @@ package nativekit.ui.core;
 
 import NativeKit;
 import nativekit.ui.core.CursorShape as UiCursorShape;
+import nativekit.ui.style.StyleState;
+import nativekit.ui.style.StyleStateUtil;
 
 /** Capture/target/bubble dispatch with per-pointer hover and pointer capture. */
 class EventDispatcher {
 	var root:Null<RenderNode>;
 	final focus:FocusManager;
+	final interactionStates:InteractionStateStore;
 	var hoverPaths:Map<Int, Array<RenderNode>>;
 	final pointerLocations:Map<Int, PointerLocation>;
 	final pressedIds:Map<Int, WidgetId>;
 	final capturedIds:Map<Int, WidgetId>;
 	final suppressedClicks:Map<Int, Bool>;
 
-	public function new(focus:FocusManager) {
+	public function new(focus:FocusManager, ?interactionStates:InteractionStateStore) {
 		this.focus = focus;
+		this.interactionStates = interactionStates == null ? new InteractionStateStore() : interactionStates;
 		root = null;
 		hoverPaths = new Map();
 		pointerLocations = new Map();
@@ -92,6 +96,7 @@ class EventDispatcher {
 		var event = new UiEvent(UiEventKind.PointerDown, target.id, x, y,
 			0.0, 0.0, button, 0, modifiers, null, data, 0, pointerId,
 			timestamp < 0.0 ? NativeKit.nk_time_seconds() : timestamp);
+		updatePathState(path, StyleState.Pressed, true);
 		dispatchPath(path, event);
 		if (event.defaultPrevented)
 			suppressedClicks.set(pointerId, true);
@@ -134,6 +139,7 @@ class EventDispatcher {
 		suppressedClicks.remove(pointerId);
 		if (path.length > 0) {
 			var target = path[path.length - 1];
+			updatePathState(path, StyleState.Pressed, false);
 			dispatchPath(path, new UiEvent(UiEventKind.PointerUp, target.id, x, y,
 				0.0, 0.0, button, 0, modifiers, null, data, 0, pointerId));
 		}
@@ -153,10 +159,12 @@ class EventDispatcher {
 		capturedIds.remove(pointerId);
 		pressedIds.remove(pointerId);
 		suppressedClicks.remove(pointerId);
-		if (path.length > 0)
+		if (path.length > 0) {
+			updatePathState(path, StyleState.Pressed, false);
 			dispatchPath(path, new UiEvent(UiEventKind.PointerCancel,
 				path[path.length - 1].id, x, y, 0.0, 0.0, 0, 0, modifiers,
 				null, data, 0, pointerId));
+		}
 		updateHover(pointerId, [], x, y);
 		pointerLocations.remove(pointerId);
 	}
@@ -237,7 +245,12 @@ class EventDispatcher {
 	}
 
 	public function focusEvent(id:WidgetId, kind:String):Void
-		dispatchDirect(id, kind);
+		{
+			var node = root == null ? null : root.find(id);
+			if (node != null)
+				updateDirectState(node, kind);
+			dispatchDirect(id, kind);
+		}
 
 	/** Returns the deepest node currently under a pointer, if any. */
 	public function hoveredId(pointerId:Int = 0):Null<WidgetId> {
@@ -280,15 +293,19 @@ class EventDispatcher {
 			common++;
 		var index = previous.length - 1;
 		while (index >= common) {
+			setState(previous[index], StyleState.Hovered, false);
 			dispatchPath(previous.slice(0, index + 1),
 				new UiEvent(UiEventKind.HoverLeave, previous[index].id, x, y,
 					0.0, 0.0, 0, 0, 0, null, null, 0, pointerId));
 			index--;
 		}
 		for (index in common...path.length)
+			{
+			setState(path[index], StyleState.Hovered, true);
 			dispatchPath(path.slice(0, index + 1),
 				new UiEvent(UiEventKind.HoverEnter, path[index].id, x, y,
 					0.0, 0.0, 0, 0, 0, null, null, 0, pointerId));
+			}
 		hoverPaths.set(pointerId, path);
 	}
 
@@ -352,6 +369,37 @@ class EventDispatcher {
 		event.currentTarget = id;
 		event.phase = "target";
 		node.invoke(event);
+	}
+
+	function updateDirectState(node:RenderNode, kind:String):Void {
+		if (kind == UiEventKind.Focus)
+			setState(node, StyleState.Focused, true);
+		else if (kind == UiEventKind.Blur || kind == UiEventKind.FocusLost)
+			setState(node, StyleState.Focused, false);
+	}
+
+	function updatePathState(path:Array<RenderNode>, state:StyleState, enabled:Bool):Void {
+		var node = interactionOwner(path);
+		if (node != null && (node.enabled || !enabled))
+			setState(node, state, enabled);
+	}
+
+	function setState(node:RenderNode, state:StyleState, enabled:Bool):Void {
+		var next = StyleStateUtil.withState(node.states, state, enabled);
+		if (next == node.states)
+			return;
+		node.states = next;
+		interactionStates.set(node.id, next);
+	}
+
+	static function interactionOwner(path:Array<RenderNode>):Null<RenderNode> {
+		var index = path.length - 1;
+		while (index >= 0) {
+			if (path[index].focusable || path[index].semantics != null)
+				return path[index];
+			index--;
+		}
+		return path.length == 0 ? null : path[path.length - 1];
 	}
 
 	function dispatchPath(path:Array<RenderNode>, event:UiEvent):Void {

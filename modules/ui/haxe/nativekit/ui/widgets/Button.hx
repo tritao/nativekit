@@ -11,7 +11,6 @@ import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.TextStyleOverride;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
-import nativekit.ui.core.State;
 import nativekit.ui.core.View;
 import nativekit.ui.theme.TextRole;
 import nativekit.ui.style.StyleResolver;
@@ -55,15 +54,17 @@ class Button implements View {
 
 	function buildScoped(context:BuildContext):RenderNode {
 		var id = context.id("button");
-		var interaction:State<Int> = context.state(id, 0);
-		var flags:Int = cast interaction.value;
+		var flags:Int = context.interactionStates.get(id);
 		flags = StyleStateUtil.withState(flags, StyleState.Selected, selected);
 		flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
 		var target = new StyleTarget("button", key, key, null, ["button"], flags);
-		var computed = new StyleResolver().resolve(target, null, context.theme.styles,
+		var computed = context.styleResolver.resolve(target, null, context.theme.styles,
 			context.styleSheet, style);
 		var resolvedStyle = computed.toLayoutStyle();
 		var node = new RenderNode(id, LayoutVisualKind.Box, resolvedStyle);
+		node.setStyleIdentity("button", key, key, null, ["button"]);
+		node.states = flags;
+		node.computedStyle = computed;
 		node.focusable = enabled;
 		node.enabled = enabled;
 		var semantics = new Semantics(semanticRole, label);
@@ -78,23 +79,6 @@ class Button implements View {
 			node.on(UiEventKind.Click, activate);
 			node.on(UiEventKind.Activate, activate);
 		}
-		var setState = function(flag:Int, value:Bool) {
-			var current:Int = cast interaction.value;
-			var next = StyleStateUtil.withState(current, cast flag, value);
-			if (next != current)
-			interaction.update(next);
-	};
-		node.on(UiEventKind.HoverEnter, function(_) { if (enabled) setState(StyleState.Hovered, true); });
-		node.on(UiEventKind.HoverLeave, function(_) { setState(StyleState.Hovered, false); });
-		node.on(UiEventKind.PointerDown, function(event) {
-			if (enabled && event.button == 0)
-				setState(StyleState.Pressed, true);
-		});
-		node.on(UiEventKind.PointerUp, function(_) { setState(StyleState.Pressed, false); });
-		node.on(UiEventKind.PointerCancel, function(_) { setState(StyleState.Pressed, false); });
-		node.on(UiEventKind.Focus, function(_) { setState(StyleState.Focused, true); });
-		node.on(UiEventKind.Blur, function(_) { setState(StyleState.Focused, false); });
-		node.on(UiEventKind.FocusLost, function(_) { setState(StyleState.Focused, false); });
 		var labelNode = context.withScope(new Key("label"), function() {
 			var text = new RenderNode(context.id("label"), LayoutVisualKind.Text);
 			text.layout.text = label;

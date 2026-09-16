@@ -15,6 +15,9 @@ import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.View;
+import nativekit.ui.style.StyleState;
+import nativekit.ui.style.StyleStateUtil;
+import nativekit.ui.style.StyleTarget;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
@@ -48,7 +51,17 @@ class Radio implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(key, function() {
-			var node = new RenderNode(context.id("radio"), LayoutVisualKind.Box, style.copy());
+			var nodeId = context.id("radio");
+			var flags = context.interactionStates.get(nodeId);
+			flags = StyleStateUtil.withState(flags, StyleState.Selected, selected);
+			flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
+			var computed = context.styleResolver.resolve(
+				new StyleTarget("radio", key.value, key.value, null, ["radio"], flags),
+				null, context.theme.styles, context.styleSheet, style);
+			var node = new RenderNode(nodeId, LayoutVisualKind.Box, computed.toLayoutStyle());
+			node.setStyleIdentity("radio", key.value, key.value, null, ["radio"]);
+			node.states = flags;
+			node.computedStyle = computed;
 			node.focusable = enabled;
 			node.enabled = enabled;
 			var semantics = new Semantics(AccessibilityRole.Radio, label, value);
@@ -60,22 +73,35 @@ class Radio implements View {
 			var indicatorStyle = new LayoutStyle();
 			indicatorStyle.width = LayoutAxis.fixed(18.0);
 			indicatorStyle.height = LayoutAxis.fixed(18.0);
-			indicatorStyle.background = context.theme.controlColor(false, enabled);
 			indicatorStyle.radiusTopLeft = indicatorStyle.radiusTopRight = 9.0;
 			indicatorStyle.radiusBottomLeft = indicatorStyle.radiusBottomRight = 9.0;
 			indicatorStyle.childAlignX = LayoutAlignmentX.Center;
 			indicatorStyle.childAlignY = LayoutAlignmentY.Center;
 			indicatorStyle.childDistribution = LayoutDistribution.Center;
-			var indicator = new RenderNode(context.id("indicator"), LayoutVisualKind.Box,
+			var indicatorComputed = context.styleResolver.resolve(
+				new StyleTarget("radio-indicator", key.value + ":indicator", null,
+					null, ["radio"], flags), null, context.theme.styles, context.styleSheet,
 				indicatorStyle);
+			var indicator = new RenderNode(context.id("indicator"), LayoutVisualKind.Box,
+				indicatorComputed.toLayoutStyle());
+			indicator.setStyleIdentity("radio-indicator", key.value + ":indicator", null,
+				null, ["radio"]);
+			indicator.states = flags;
+			indicator.computedStyle = indicatorComputed;
 			var dotStyle = new LayoutStyle();
 			dotStyle.width = LayoutAxis.fixed(8.0);
 			dotStyle.height = LayoutAxis.fixed(8.0);
-			dotStyle.background = selected ? context.theme.controlSelected :
-				Color.rgba(0.0, 0.0, 0.0, 0.0);
 			dotStyle.radiusTopLeft = dotStyle.radiusTopRight = 4.0;
 			dotStyle.radiusBottomLeft = dotStyle.radiusBottomRight = 4.0;
-			indicator.add(new RenderNode(context.id("dot"), LayoutVisualKind.Box, dotStyle));
+			var dotComputed = context.styleResolver.resolve(
+				new StyleTarget("radio-dot", key.value + ":dot", null, null, ["radio"], flags),
+				null, context.theme.styles, context.styleSheet, dotStyle);
+			var dot = new RenderNode(context.id("dot"), LayoutVisualKind.Box,
+				dotComputed.toLayoutStyle());
+			dot.setStyleIdentity("radio-dot", key.value + ":dot", null, null, ["radio"]);
+			dot.states = flags;
+			dot.computedStyle = dotComputed;
+			indicator.add(dot);
 			node.add(indicator);
 
 			var text = new RenderNode(context.id("label"), LayoutVisualKind.Text);

@@ -5,6 +5,7 @@ import LayoutStyle;
 import LayoutVisualKind;
 import Canvas;
 import ResolvedLayoutItem;
+import nativekit.ui.style.ComputedStyle;
 import nativekit.ui.semantics.Semantics;
 
 /** One Haxe-owned node joins visual layout, interaction, focus, and state identity. */
@@ -18,6 +19,14 @@ class RenderNode {
 	public var focusTrap:Bool;
 	public var hitTestSelf:Bool;
 	public var enabled:Bool;
+	/** Generic pseudo-state flags maintained by the routed interaction system. */
+	public var states:Int;
+	public var styleType:Null<String>;
+	public var styleKey:Null<String>;
+	public var styleId:Null<String>;
+	public var styleClasses:Array<String>;
+	public var styleTags:Array<String>;
+	public var computedStyle:Null<ComputedStyle>;
 	public var tabIndex:Int;
 	/** Cursor intent used while this node is hovered or holds pointer capture. */
 	public var cursor:Null<CursorShape>;
@@ -39,6 +48,13 @@ class RenderNode {
 		focusTrap = false;
 		hitTestSelf = true;
 		enabled = true;
+		states = 0;
+		styleType = null;
+		styleKey = null;
+		styleId = null;
+		styleClasses = [];
+		styleTags = [];
+		computedStyle = null;
 		tabIndex = 0;
 		cursor = null;
 		semantics = null;
@@ -46,6 +62,19 @@ class RenderNode {
 		outsidePointerDownHandlers = [];
 		resolvedHandlers = [];
 		paintHandlers = [];
+	}
+
+	/** Publishes the typed selector identity associated with this render node. */
+	public function setStyleIdentity(type:String, ?key:String, ?id:String,
+			?classes:Array<String>, ?tags:Array<String>):RenderNode {
+		if (type == null || type.length == 0)
+			throw "Styled render nodes require a type";
+		styleType = type;
+		styleKey = key;
+		styleId = id;
+		styleClasses = classes == null ? [] : classes.copy();
+		styleTags = tags == null ? [] : tags.copy();
+		return this;
 	}
 
 	public function add(child:RenderNode):RenderNode {

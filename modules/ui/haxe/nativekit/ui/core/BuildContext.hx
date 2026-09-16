@@ -5,6 +5,7 @@ import NativeKitSurface;
 import nativekit.ui.theme.Theme;
 import nativekit.ui.theme.TextRole;
 import nativekit.ui.style.StyleSheet;
+import nativekit.ui.style.StyleResolver;
 import nativekit.ui.gestures.GestureArena;
 import nativekit.ui.animation.AnimationScheduler;
 
@@ -17,6 +18,8 @@ class BuildContext {
 	public final clipboard:ClipboardService;
 	public final gestures:GestureArena;
 	public final animations:AnimationScheduler;
+	public final interactionStates:InteractionStateStore;
+	public final styleResolver:StyleResolver;
 	public var theme(default, null):Theme;
 	public var styleSheet(default, null):StyleSheet;
 	/** Logical viewport dimensions for frame-local placement decisions. */
@@ -29,7 +32,8 @@ class BuildContext {
 
 	public function new(stateStore:StateStore, ?fonts:FontCollection, ?textInput:TextInputBridge,
 			?clipboard:ClipboardService, ?theme:Theme, ?gestures:GestureArena,
-			?animations:AnimationScheduler, ?styleSheet:StyleSheet) {
+			?animations:AnimationScheduler, ?styleSheet:StyleSheet,
+			?interactionStates:InteractionStateStore) {
 		if (stateStore == null)
 			throw "Build context requires a state store";
 		this.stateStore = stateStore;
@@ -39,6 +43,8 @@ class BuildContext {
 		this.clipboard = clipboard == null ? new ClipboardService() : clipboard;
 		this.gestures = gestures == null ? new GestureArena() : gestures;
 		this.animations = animations == null ? new AnimationScheduler() : animations;
+		this.interactionStates = interactionStates == null ? new InteractionStateStore() : interactionStates;
+		this.styleResolver = new StyleResolver();
 		this.theme = theme == null ? new Theme() : theme;
 		this.theme.refreshStyles();
 		this.styleSheet = styleSheet == null ? new StyleSheet("Application") : styleSheet;

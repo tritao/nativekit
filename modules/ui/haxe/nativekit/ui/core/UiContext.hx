@@ -33,10 +33,12 @@ class UiContext {
 	public final events:EventDispatcher;
 	public final gestures:GestureArena;
 	public final animations:AnimationScheduler;
+	public final interactionStates:InteractionStateStore;
 	public var root(default, null):Null<RenderNode>;
 	/** Called when an active animation needs another host frame. */
 	public var onAnimationFrameRequested:Null<Void->Void>;
 	var submittedStateRevision:Int;
+	var submittedInteractionRevision:Int;
 	var disposed:Bool;
 	var customCanvases:Map<Int, Canvas>;
 	var customLists:Map<Int, DisplayList>;
@@ -54,15 +56,17 @@ class UiContext {
 		textInput = new TextInputBridge();
 		gestures = new GestureArena();
 		animations = new AnimationScheduler();
+		interactionStates = new InteractionStateStore();
 		buildContext = new BuildContext(stateStore, fonts, textInput, clipboard, theme,
-			gestures, animations);
+			gestures, animations, null, interactionStates);
 		if (fonts != null)
 			this.session.setFonts(fonts);
 		focus = new FocusManager();
-		events = new EventDispatcher(focus);
+		events = new EventDispatcher(focus, interactionStates);
 		root = null;
 		onAnimationFrameRequested = null;
 		submittedStateRevision = -1;
+		submittedInteractionRevision = -1;
 		disposed = false;
 		buildContext.setFocusRequester(function(id) { return focusWidget(id); });
 		customCanvases = new Map();
@@ -128,6 +132,7 @@ class UiContext {
 		var byId = new Map<Int, ResolvedLayoutItem>();
 		for (item in resolved)
 			byId.set(item.id, item);
+		var resolvedStateRevision = stateStore.revision;
 		var missing = false;
 		diagnosticStage = 7;
 		next.walk(function(node) {
@@ -153,7 +158,8 @@ class UiContext {
 		updateCursor();
 		if (nextFocus != null && (previousFocus == null || !previousFocus.equals(nextFocus)))
 			events.focusEvent(nextFocus, UiEventKind.Focus);
-		submittedStateRevision = stateStore.revision;
+		submittedStateRevision = resolvedStateRevision;
+		submittedInteractionRevision = interactionStates.revision;
 		if (accessibilityBridge != null)
 			accessibilityBridge.update(next, focus.focusedId);
 		diagnosticStage = 0;
@@ -395,7 +401,8 @@ class UiContext {
 	}
 
 	public function isDirty():Bool
-		return stateStore.revision != submittedStateRevision || animations.activeCount > 0;
+		return stateStore.revision != submittedStateRevision ||
+			interactionStates.revision != submittedInteractionRevision || animations.activeCount > 0;
 
 	public var needsAnimationFrame(get, never):Bool;
 	inline function get_needsAnimationFrame():Bool
@@ -447,6 +454,7 @@ class UiContext {
 		if (accessibilityBridge != null)
 			accessibilityBridge.dispose();
 		stateStore.dispose();
+		interactionStates.dispose();
 		disposed = true;
 		root = null;
 		accessibilityBridge = null;

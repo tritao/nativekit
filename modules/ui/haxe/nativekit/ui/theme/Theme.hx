@@ -4,6 +4,7 @@ import Color;
 import LayoutStyle;
 import ParagraphStyle;
 import TextStyle;
+import LayoutAlignment;
 import nativekit.ui.style.StyleSheet;
 import nativekit.ui.style.StyleSelector;
 import nativekit.ui.style.StyleState;
@@ -84,6 +85,32 @@ class Theme {
 			[StyleValue.background(buttonPressed)]);
 		styles.rule(StyleSelector.widget("button").state(StyleState.Disabled),
 			[StyleValue.background(buttonDisabled)]);
+
+		var checkboxIndicator = StyleSelector.widget("checkbox-indicator");
+		styles.rule(checkboxIndicator, [StyleValue.background(controlUnselected)]);
+		styles.rule(StyleSelector.widget("checkbox-indicator").state(StyleState.Checked),
+			[StyleValue.background(controlSelected)]);
+		styles.rule(StyleSelector.widget("checkbox-indicator").state(StyleState.Disabled),
+			[StyleValue.background(controlDisabled)]);
+
+		styles.rule(StyleSelector.widget("toggle-indicator"), [
+			StyleValue.background(controlUnselected), StyleValue.alignX(LayoutAlignment.Start)]);
+		styles.rule(StyleSelector.widget("toggle-indicator").state(StyleState.Checked), [
+			StyleValue.background(controlSelected), StyleValue.alignX(LayoutAlignment.End)]);
+		styles.rule(StyleSelector.widget("toggle-indicator").state(StyleState.Disabled),
+			[StyleValue.background(controlDisabled)]);
+		styles.rule(StyleSelector.widget("toggle-thumb"),
+			[StyleValue.background(Color.rgba(0.98, 0.98, 0.99, 1.0))]);
+
+		styles.rule(StyleSelector.widget("radio-indicator"), [StyleValue.background(controlUnselected)]);
+		styles.rule(StyleSelector.widget("radio-indicator").state(StyleState.Selected),
+			[StyleValue.background(controlSelected)]);
+		styles.rule(StyleSelector.widget("radio-indicator").state(StyleState.Disabled),
+			[StyleValue.background(controlDisabled)]);
+		styles.rule(StyleSelector.widget("radio-dot"),
+			[StyleValue.background(Color.rgba(0.0, 0.0, 0.0, 0.0))]);
+		styles.rule(StyleSelector.widget("radio-dot").state(StyleState.Selected),
+			[StyleValue.background(controlSelected)]);
 	}
 
 	public function textColor(enabled:Bool):Color

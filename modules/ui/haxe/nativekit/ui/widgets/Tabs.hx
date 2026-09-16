@@ -17,6 +17,7 @@ import nativekit.ui.semantics.AccessibilityOrientation;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.TabItem;
+import nativekit.ui.style.StyleTarget;
 
 /** Stateful tab strip and selected page composed from Haxe buttons and views. */
 class Tabs implements View {
@@ -61,7 +62,15 @@ class Tabs implements View {
 					onChange(next);
 			};
 
-			var root = new RenderNode(context.id("tabs"), LayoutVisualKind.Box, style.copy());
+			var rootId = context.id("tabs");
+			var rootFlags = context.interactionStates.get(rootId);
+			var rootComputed = context.styleResolver.resolve(
+				new StyleTarget("tabs", key.value, key.value, null, ["tabs"], rootFlags),
+				null, context.theme.styles, context.styleSheet, style);
+			var root = new RenderNode(rootId, LayoutVisualKind.Box, rootComputed.toLayoutStyle());
+			root.setStyleIdentity("tabs", key.value, key.value, null, ["tabs"]);
+			root.states = rootFlags;
+			root.computedStyle = rootComputed;
 			var tabsSemantics = new Semantics(AccessibilityRole.TabList, "Tabs");
 			tabsSemantics.orientation = AccessibilityOrientation.Horizontal;
 			root.semantics = tabsSemantics;

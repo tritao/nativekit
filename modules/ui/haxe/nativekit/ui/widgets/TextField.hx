@@ -25,6 +25,9 @@ import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
 import nativekit.ui.core.UiModifier;
 import nativekit.ui.core.View;
+import nativekit.ui.style.StyleState;
+import nativekit.ui.style.StyleStateUtil;
+import nativekit.ui.style.StyleTarget;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRole;
@@ -89,7 +92,15 @@ class TextField implements View {
 			if (editor.syncExternal(value))
 				editor.resetCaretBlink(context.gestures.timeSeconds());
 
-			var node = new RenderNode(id, LayoutVisualKind.Box, style);
+			var flags = context.interactionStates.get(id);
+			flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
+			var computed = context.styleResolver.resolve(
+				new StyleTarget("text-field", key, key, null, ["text-field"], flags),
+				null, context.theme.styles, context.styleSheet, style);
+			var node = new RenderNode(id, LayoutVisualKind.Box, computed.toLayoutStyle());
+			node.setStyleIdentity("text-field", key, key, null, ["text-field"]);
+			node.states = flags;
+			node.computedStyle = computed;
 			node.focusable = enabled;
 			node.enabled = enabled;
 			var semantics = new Semantics(semanticRole,
