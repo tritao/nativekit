@@ -4,6 +4,14 @@ The optional audio module provides NativeKit's C ABI for sound playback and
 mixing on top of the pinned miniaudio submodule. Enable it with
 `-DNK_BUILD_AUDIO=ON` after initializing `vendor/miniaudio`.
 
+The primitive API is exposed by `nativekit_audio.h` and the
+`NativeKit::audio` target. It owns device lifecycle, clips, voices, transport,
+basic voice controls, spatialization, and the engine clock. The higher-level
+mixer graph is exposed separately by `nativekit_audio_graph.h` and the
+`NativeKit::audio_graph` target, which depends on `NativeKit::audio` and adds
+buses, effects, snapshots, concurrency, virtualization, and global mix policy.
+Both targets currently link the same NativeKit runtime and miniaudio backend.
+
 The first API slice supports WAV, FLAC, and MP3 playback from native filesystem
 paths, cached URI assets, or caller-provided encoded memory.
 `nk_audio_clip` owns a reusable source, while each `nk_audio_voice` has
@@ -72,9 +80,11 @@ boundary instead of issuing one operation per voice.
 
 Voice concurrency is configured per bus subtree with
 `nk_audio_bus_set_concurrency()`. A non-zero `max_voices` counts all currently
-playing voices routed through that bus or any descendant. New voices carry a
-priority (larger values win); `OLDEST`, `QUIETEST`, and `LOWEST_PRIORITY`
-policies can reclaim an eligible equal- or lower-priority voice. With
+playing voices routed through that bus or any descendant. Route a stopped voice
+with `nk_audio_voice_set_bus()` and assign its priority with
+`nk_audio_voice_set_priority()` before starting it; larger values win.
+`OLDEST`, `QUIETEST`, and `LOWEST_PRIORITY` policies can reclaim an eligible
+equal- or lower-priority voice. With
 `STEAL_NONE`, a full bus returns `NK_ERROR_INVALID_REQUEST` unless
 `virtualize` is enabled. Virtualized voices remain logically playing, advance
 against the process-wide audio clock, and are promoted automatically when a

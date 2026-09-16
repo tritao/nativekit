@@ -18,21 +18,26 @@ target_include_directories(nativekit_audio
 target_link_libraries(nativekit_audio INTERFACE NativeKit::nativekit)
 set_target_properties(nativekit_audio PROPERTIES EXPORT_NAME audio)
 
+add_library(nativekit_audio_graph INTERFACE)
+add_library(NativeKit::audio_graph ALIAS nativekit_audio_graph)
+target_link_libraries(nativekit_audio_graph INTERFACE NativeKit::audio)
+set_target_properties(nativekit_audio_graph PROPERTIES EXPORT_NAME audio_graph)
+
 if(NK_BUILD_TESTS)
     add_executable(nativekit_audio_tests tests/audio.cpp)
     target_compile_features(nativekit_audio_tests PRIVATE cxx_std_17)
-    target_link_libraries(nativekit_audio_tests PRIVATE NativeKit::audio)
+    target_link_libraries(nativekit_audio_tests PRIVATE NativeKit::audio_graph)
     add_test(NAME audio COMMAND nativekit_audio_tests)
     set_tests_properties(audio PROPERTIES LABELS "audio" SKIP_RETURN_CODE 77)
 endif()
 
 if(NK_BUILD_EXAMPLES)
     add_executable(nativekit_audio_example examples/audio.c)
-    target_link_libraries(nativekit_audio_example PRIVATE NativeKit::audio)
+    target_link_libraries(nativekit_audio_example PRIVATE NativeKit::audio_graph)
     set_target_properties(nativekit_audio_example PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
-install(TARGETS nativekit_audio EXPORT NativeKitTargets
+install(TARGETS nativekit_audio nativekit_audio_graph EXPORT NativeKitTargets
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES "${NK_VENDOR_DIR}/miniaudio/LICENSE"

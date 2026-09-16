@@ -604,6 +604,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_voice_get_attenuation_model(voice: nk_audio_voice, out_model: ptr<nk_audio_attenuation_model> @out) -> nk_result;
 	/**
+	 * Returns the voice's live bus, or NK_INVALID_HANDLE for the master endpoint.
+	 */
+	extern fn nk_audio_voice_get_bus(voice: nk_audio_voice, out_bus: ptr<nk_audio_bus> @out) -> nk_result;
+	/**
 	 * Returns the voice's directional attenuation cone.
 	 */
 	extern fn nk_audio_voice_get_cone(voice: nk_audio_voice, out_inner_angle_radians: ptr<f32> @out, out_outer_angle_radians: ptr<f32> @out, out_outer_gain: ptr<f32> @out) -> nk_result;
@@ -705,6 +709,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Sets the voice's distance attenuation model.
 	 */
 	extern fn nk_audio_voice_set_attenuation_model(voice: nk_audio_voice, model: nk_audio_attenuation_model) -> nk_result;
+	/**
+	 * Routes a stopped voice to a bus, or to the master endpoint when invalid.
+	 */
+	extern fn nk_audio_voice_set_bus(voice: nk_audio_voice, bus: nk_audio_bus) -> nk_result;
 	/**
 	 * Sets the voice's directional attenuation cone in radians and linear gain.
 	 */
@@ -917,9 +925,9 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		z: f32 @offset(8);
 	}
 	/**
-	 * Optional creation and routing settings for a voice.
+	 * Optional creation settings for a voice.
 	 */
-	struct nk_audio_voice_options @layout(32, 8) {
+	struct nk_audio_voice_options @layout(24, 8) {
 		/**
 		 * Set to sizeof(nk_audio_voice_options) before passing the structure.
 		 */
@@ -929,17 +937,9 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 */
 		flags: nk_audio_voice_flags @offset(4);
 		/**
-		 * Optional mixer bus; NK_INVALID_HANDLE routes the voice to the master bus.
-		 */
-		bus: nk_audio_bus @offset(8);
-		/**
-		 * Priority used by bus concurrency policies; larger values win.
-		 */
-		priority: u32 @offset(12);
-		/**
 		 * Reserved for compatible extensions; set all elements to zero.
 		 */
-		reserved2: array<u64, 2> @offset(16);
+		reserved2: array<u64, 2> @offset(8);
 	}
 	/**
 	 * One user-visible name and glob pattern set for a file dialog.

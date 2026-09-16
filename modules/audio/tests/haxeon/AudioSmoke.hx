@@ -213,11 +213,14 @@ class AudioSmoke {
 			bus.scheduleStop(haxe.Int64.add(nowFrames, haxe.Int64.ofInt(sampleRate * 6)));
 			bus.clearSchedule();
 			clip = Clip.fromMemory(tinyWav());
-			var options = new VoiceOptions(bus);
+			var options = new VoiceOptions();
 			options.looping = true;
 			first = clip.createVoice(options);
 			second = clip.createVoice(options);
-			completion = clip.createVoice(new VoiceOptions(bus));
+			first.setBus(bus);
+			second.setBus(bus);
+			completion = clip.createVoice(new VoiceOptions());
+			completion.setBus(bus);
 			if (first.nativeHandle().rawValue() == second.nativeHandle().rawValue())
 				throw "Haxe audio voices did not receive independent handles";
 			if (!completion.isReady())

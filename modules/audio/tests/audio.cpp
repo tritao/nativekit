@@ -1,4 +1,4 @@
-#include "nativekit_audio.h"
+#include "nativekit_audio_graph.h"
 #include "nativekit_time.h"
 
 #include <cassert>
@@ -299,12 +299,15 @@ int main() {
     voice_options.flags = NK_AUDIO_VOICE_LOOPING;
     assert(nk_audio_voice_create(clip, &voice_options, &timed_voice) == NK_OK);
     voice_options.flags = NK_AUDIO_VOICE_LOOPING;
-    voice_options.bus = bus;
     nk_audio_voice first_voice = NK_INVALID_HANDLE;
     nk_audio_voice second_voice = NK_INVALID_HANDLE;
     assert(nk_audio_voice_create(clip, &voice_options, &first_voice) == NK_OK);
     assert(nk_audio_voice_create(clip, &voice_options, &second_voice) == NK_OK);
     assert(first_voice != second_voice);
+    assert(nk_audio_voice_set_bus(first_voice, bus) == NK_OK);
+    assert(nk_audio_voice_set_bus(second_voice, bus) == NK_OK);
+    nk_audio_bus voice_bus = NK_INVALID_HANDLE;
+    assert(nk_audio_voice_get_bus(first_voice, &voice_bus) == NK_OK && voice_bus == bus);
 
     nk_audio_bus_concurrency_options concurrency{};
     concurrency.struct_size = sizeof(concurrency);
@@ -502,7 +505,6 @@ int main() {
     assert(nk_audio_clip_create_from_asset(resource_asset, &resource_clip) == NK_OK);
     assert(nk_resource_asset_destroy(resource_asset) == NK_OK);
     assert(nk_resource_cache_destroy(resource_cache) == NK_OK);
-    voice_options.bus = NK_INVALID_HANDLE;
     voice_options.flags = 0;
     nk_audio_voice resource_voice = NK_INVALID_HANDLE;
     assert(nk_audio_voice_create(resource_clip, &voice_options, &resource_voice) == NK_OK);
@@ -544,7 +546,6 @@ int main() {
 
     nk_audio_clip async_clip = NK_INVALID_HANDLE;
     assert(nk_audio_clip_create_from_file(audio_path.c_str(), &async_clip) == NK_OK);
-    voice_options.bus = NK_INVALID_HANDLE;
     voice_options.flags = NK_AUDIO_VOICE_ASYNC;
     nk_audio_voice async_decode_voice = NK_INVALID_HANDLE;
     assert(nk_audio_voice_create(async_clip, &voice_options, &async_decode_voice) == NK_OK);
@@ -610,7 +611,6 @@ int main() {
     nk_audio_voice shutdown_voice = NK_INVALID_HANDLE;
     assert(nk_audio_clip_create_from_memory(tiny_wav, sizeof(tiny_wav), &shutdown_clip) == NK_OK);
     voice_options.flags = NK_AUDIO_VOICE_LOOPING;
-    voice_options.bus = NK_INVALID_HANDLE;
     assert(nk_audio_voice_create(shutdown_clip, &voice_options, &shutdown_voice) == NK_OK);
     assert(nk_audio_voice_start(shutdown_voice) == NK_OK);
     nk_shutdown();

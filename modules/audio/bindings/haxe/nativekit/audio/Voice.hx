@@ -116,6 +116,16 @@ class Voice {
 		return result.out_at_end;
 	}
 
+	/** Routes this stopped voice through a bus, or to the master endpoint. */
+	public function setBus(bus:Null<Bus>):Void {
+		ensureLive();
+		var busHandle = NativeKitAudio.BusHandle.invalid();
+		if (bus != null)
+			busHandle = bus.nativeHandle();
+		AudioResult.check(NativeKitAudio.nk_audio_voice_set_bus(value, busHandle),
+			"audio.voice.setBus");
+	}
+
 	/** Sets the voice's concurrency priority; larger values are more important. */
 	public function setPriority(priority:Int):Void {
 		ensureLive();

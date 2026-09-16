@@ -1,4 +1,4 @@
-#include "nativekit_audio.h"
+#include "nativekit_audio_graph.h"
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
@@ -1019,11 +1019,8 @@ bool valid_voice_steal_policy(nk_audio_voice_steal_policy policy) {
     return policy <= NK_AUDIO_VOICE_STEAL_LOWEST_PRIORITY;
 }
 
-nk_result voice_options(const nk_audio_voice_options *options, uint32_t &flags,
-                        nk_audio_bus &bus, uint32_t &priority) {
+nk_result voice_options(const nk_audio_voice_options *options, uint32_t &flags) {
     flags = 0;
-    bus = NK_INVALID_HANDLE;
-    priority = 0;
     if (!options)
         return NK_OK;
     if (options->struct_size < sizeof(nk_audio_voice_options))
@@ -1031,8 +1028,6 @@ nk_result voice_options(const nk_audio_voice_options *options, uint32_t &flags,
     if (options->flags & ~supported_voice_flags)
         return invalid_argument("audio voice options contain unsupported flags");
     flags = options->flags;
-    bus = options->bus;
-    priority = options->priority;
     return NK_OK;
 }
 
@@ -1422,20 +1417,9 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
     nk_result &out_result) {
     out_result = NK_OK;
     uint32_t flags = 0;
-    nk_audio_bus bus_handle = NK_INVALID_HANDLE;
-    uint32_t priority = 0;
-    if (const auto result = voice_options(options, flags, bus_handle, priority); result != NK_OK) {
+    if (const auto result = voice_options(options, flags); result != NK_OK) {
         out_result = result;
         return {};
-    }
-
-    std::shared_ptr<AudioBusResource> bus;
-    if (bus_handle != NK_INVALID_HANDLE) {
-        bus = get_bus(bus_handle);
-        if (!bus) {
-            out_result = NK_ERROR_INVALID_HANDLE;
-            return {};
-        }
     }
 
     if (clip->encoded_data && (flags & NK_AUDIO_VOICE_ASYNC)) {
@@ -1447,8 +1431,6 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
     auto voice = std::make_shared<AudioVoiceResource>();
     voice->engine = clip->engine;
     voice->clip = std::move(clip);
-    voice->bus = std::move(bus);
-    voice->priority = priority;
     const bool asynchronous = (flags & NK_AUDIO_VOICE_ASYNC) != 0;
     voice->asynchronous.store(asynchronous, std::memory_order_relaxed);
     if (asynchronous)
@@ -1468,7 +1450,7 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
             (flags & NK_AUDIO_VOICE_LOOPING) ? MA_SOUND_FLAG_LOOPING : 0;
         result = ma_sound_init_from_data_source(
             &voice->engine->engine, &voice->decoder, sound_flags,
-            voice->bus ? &voice->bus->group : nullptr, &voice->sound);
+            nullptr, &voice->sound);
     } else if (voice->clip->resource_stream) {
         nk_resource resource{};
         resource.struct_size = sizeof(resource);
@@ -1521,14 +1503,13 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
         result = ma_sound_init_from_data_source(
             &voice->engine->engine,
             reinterpret_cast<ma_data_source *>(&voice->streaming_source->pcm), sound_flags,
-            voice->bus ? &voice->bus->group : nullptr, &voice->sound);
+            nullptr, &voice->sound);
     } else if (asynchronous) {
         voice->load_notification.voice = voice.get();
         voice->load_notification.callbacks.onSignal = audio_voice_load_callback;
         auto config = ma_sound_config_init_2(&voice->engine->engine);
         config.pFilePath = voice->clip->path.c_str();
         config.flags = miniaudio_voice_flags(flags);
-        config.pInitialAttachment = voice->bus ? &voice->bus->group : nullptr;
         auto *notification = reinterpret_cast<ma_async_notification *>(
             &voice->load_notification.callbacks);
         if (flags & NK_AUDIO_VOICE_STREAM)
@@ -1539,7 +1520,7 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(
     } else {
         result = ma_sound_init_from_file(
             &voice->engine->engine, voice->clip->path.c_str(), miniaudio_voice_flags(flags),
-            voice->bus ? &voice->bus->group : nullptr, nullptr, &voice->sound);
+            nullptr, nullptr, &voice->sound);
     }
     if (result != MA_SUCCESS) {
         out_result = map_miniaudio_result(result, "could not create audio clip voice");
@@ -3449,6 +3430,58 @@ nk_result NK_CALL nk_audio_voice_at_end(nk_audio_voice sound, nk_bool *out_at_en
                                       *out_at_end = finish_virtual_voice_if_at_end(value) ? 1u : 0u;
                                   else
                                       *out_at_end = ma_sound_at_end(&value.sound) ? 1u : 0u;
+                                  return NK_OK;
+                              });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_set_bus(nk_audio_voice sound, nk_audio_bus bus) {
+    return nk::core::result_boundary(
+        "unexpected error while routing an audio voice", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return with_voice(sound, "could not route audio voice", [&](AudioVoiceResource &value,
+                                                                        const char *message)
+                                                                       -> nk_result {
+                if (value.logically_playing.load(std::memory_order_acquire) ||
+                    value.virtualized.load(std::memory_order_acquire))
+                    return invalid_request("audio voice bus can only be changed while stopped");
+
+                std::shared_ptr<AudioBusResource> destination;
+                if (bus != NK_INVALID_HANDLE) {
+                    destination = get_bus(bus);
+                    if (!destination)
+                        return NK_ERROR_INVALID_HANDLE;
+                    if (destination->engine.get() != value.engine.get())
+                        return invalid_request(
+                            "audio voice and bus belong to different audio engines");
+                }
+
+                auto *destination_node = destination
+                                             ? static_cast<ma_node *>(&destination->group)
+                                             : ma_engine_get_endpoint(&value.engine->engine);
+                const auto result = ma_node_attach_output_bus(
+                    reinterpret_cast<ma_node *>(&value.sound), 0, destination_node, 0);
+                if (result != MA_SUCCESS)
+                    return map_miniaudio_result(result, message);
+                value.bus = std::move(destination);
+                return NK_OK;
+            });
+        });
+}
+
+nk_result NK_CALL nk_audio_voice_get_bus(nk_audio_voice sound, nk_audio_bus *out_bus) {
+    return nk::core::result_boundary(
+        "unexpected error while querying an audio voice bus", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_bus)
+                return invalid_argument("audio voice bus output is missing");
+            return with_voice(sound, "could not query audio voice bus",
+                              [&](AudioVoiceResource &value, const char *) {
+                                  *out_bus = value.bus
+                                                   ? value.bus->handle.load(std::memory_order_acquire)
+                                                   : NK_INVALID_HANDLE;
                                   return NK_OK;
                               });
         });
