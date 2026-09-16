@@ -300,6 +300,8 @@ get_orientation(nk_system_orientation &out_orientation) noexcept {
 #endif
 }
 
+#if !defined(NK_BACKEND_WINDOWS) && !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_IOS)
+#if !defined(NK_BACKEND_MACOS)
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((weak))
 #endif
@@ -308,6 +310,8 @@ get_string(nk_system_string_kind, std::string &out_value) {
     out_value.clear();
     return NK_ERROR_UNSUPPORTED;
 }
+#endif
+#endif
 
 } // namespace system_backend
 

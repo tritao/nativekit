@@ -30,7 +30,8 @@ _Static_assert(offsetof(nk_surface_frame_target, native_present_target) == 64,
                "present target token has a stable ABI offset");
 _Static_assert(offsetof(nk_init_options, application_id) == 16,
                "application identity is appended after the original init prefix");
-_Static_assert(sizeof(nk_init_options) == 32, "init options ABI layout is stable");
+_Static_assert(sizeof(nk_init_options) == 16 + 2 * sizeof(const char *),
+               "init options ABI layout is stable");
 _Static_assert(sizeof(nk_system_info) == 40, "system info ABI layout is stable");
 _Static_assert(sizeof(nk_system_orientation) == 32, "system orientation ABI layout is stable");
 _Static_assert(sizeof(nk_orientation_event) == 32, "orientation event ABI layout is stable");
