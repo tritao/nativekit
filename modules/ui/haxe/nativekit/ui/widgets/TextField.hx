@@ -22,7 +22,6 @@ import nativekit.ui.core.State;
 import nativekit.ui.core.TextStyleOverride;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
-import nativekit.ui.core.UiKey;
 import nativekit.ui.core.UiModifier;
 import nativekit.ui.core.View;
 import nativekit.ui.style.StyleState;
@@ -36,6 +35,8 @@ import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.theme.TextRole;
+import nativekit.ui.widgets.TextEditorCommand;
+import nativekit.ui.widgets.TextEditorKeymap;
 
 /** Text editor composed from a Haxe box and NativeUI text primitive. */
 class TextField implements View {
@@ -360,39 +361,22 @@ class TextField implements View {
 				if (!enabled)
 					return;
 				var extend = (event.modifiers & UiModifier.Shift) != 0;
-				var command = (event.modifiers & (UiModifier.Control | UiModifier.Super)) != 0;
-				var macWordNavigation = #if (mac || ios)
-					(event.modifiers & UiModifier.Alt) != 0 &&
-					(event.modifiers & UiModifier.Control) == 0;
-				#else
-					false;
-				#end
-				var wordNavigation = #if (mac || ios)
-					macWordNavigation;
-				#else
-					(event.modifiers & UiModifier.Control) != 0;
-				#end
-				var handled = true;
+				var macStyle = #if (mac || ios) true #else false #end;
+				var command = TextEditorKeymap.commandForKey(event.key, event.modifiers,
+					multiline, macStyle);
+				var handled = command != null;
 				var changed = false;
-				var finishesComposition = event.key == UiKey.Left || event.key == UiKey.Right ||
-					event.key == UiKey.Up || event.key == UiKey.Down || event.key == UiKey.Home ||
-					event.key == UiKey.End || event.key == UiKey.Backspace ||
-					event.key == UiKey.Delete || event.key == UiKey.Enter ||
-					(command && (event.key == UiKey.A || event.key == UiKey.C ||
-						event.key == UiKey.X || event.key == UiKey.V));
-				if (finishesComposition && editor.queryComposition() != null) {
+				if (handled && editor.queryComposition() != null) {
 					editor.commitComposition();
 					updateState();
 				}
 				var previousText = editor.layoutText();
-				if (command && event.key == UiKey.A)
-					changed = editor.selectAll();
-				else if (command && event.key == UiKey.C)
+				if (command == TextEditorCommand.CopySelection)
 					copySelection(context.clipboard, editor);
-				else if (command && event.key == UiKey.X) {
+				else if (command == TextEditorCommand.CutSelection) {
 					copySelection(context.clipboard, editor);
-					changed = editor.replaceRange(editor.selectionStart, editor.selectionEnd, "");
-				} else if (command && event.key == UiKey.V) {
+					changed = editor.executeCommand(command, extend, macStyle);
+				} else if (command == TextEditorCommand.Paste) {
 					context.clipboard.readText(function(pasted) {
 						if (editor.isDisposed() || !editor.focused)
 							return;
@@ -402,45 +386,11 @@ class TextField implements View {
 							publishTextChange(beforePaste);
 						}
 					});
-				} else if (wordNavigation && event.key == UiKey.Left)
-					changed = editor.moveCaretByWord(-1, extend, macWordNavigation);
-				else if (wordNavigation && event.key == UiKey.Right)
-					changed = editor.moveCaretByWord(1, extend, macWordNavigation);
-				else if (wordNavigation && event.key == UiKey.Up)
-					changed = editor.moveCaretByParagraph(-1, extend, macWordNavigation);
-				else if (wordNavigation && event.key == UiKey.Down)
-					changed = editor.moveCaretByParagraph(1, extend, macWordNavigation);
-				else if (multiline && event.key == UiKey.Up)
-					changed = editor.moveCaretVertically(-1, extend);
-				else if (multiline && event.key == UiKey.Down)
-					changed = editor.moveCaretVertically(1, extend);
-				#if (mac || ios)
-				else if ((event.modifiers & UiModifier.Super) != 0 && event.key == UiKey.Up)
-					changed = editor.placeCaret(0, extend);
-				else if ((event.modifiers & UiModifier.Super) != 0 && event.key == UiKey.Down)
-					changed = editor.placeCaret(editor.documentLength(), extend);
-				#end
-				else if (event.key == UiKey.Left)
-					changed = editor.moveCaret(-1, extend);
-				else if (event.key == UiKey.Right)
-					changed = editor.moveCaret(1, extend);
-				else if (event.key == UiKey.Home)
-					changed = multiline && !command ? editor.moveCaretToLineBoundary(false, extend) :
-						editor.placeCaret(0, extend);
-				else if (event.key == UiKey.End)
-					changed = multiline && !command ? editor.moveCaretToLineBoundary(true, extend) :
-						editor.placeCaret(editor.documentLength(), extend);
-				else if (event.key == UiKey.Backspace)
-					changed = editor.deleteBackward();
-				else if (event.key == UiKey.Delete)
-					changed = editor.deleteForward();
-				else if (event.key == UiKey.Enter) {
-					if (multiline)
-						changed = editor.insert("\n");
-					else if (onSubmit != null)
+				} else if (command == TextEditorCommand.Submit) {
+					if (onSubmit != null)
 						onSubmit(editor.layoutText());
-				} else
-					handled = false;
+				} else if (command != null)
+					changed = editor.executeCommand(command, extend, macStyle);
 				if (changed)
 					publishTextChange(previousText);
 				if (handled) {

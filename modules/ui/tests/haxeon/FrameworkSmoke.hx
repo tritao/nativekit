@@ -89,6 +89,8 @@ import nativekit.ui.widgets.TextEditorState;
 import nativekit.ui.widgets.TextEditorDiagnostics;
 import nativekit.ui.widgets.EditTransaction;
 import nativekit.ui.widgets.TextCompositionSpan;
+import nativekit.ui.widgets.TextEditorCommand;
+import nativekit.ui.widgets.TextEditorKeymap;
 import nativekit.ui.widgets.TextArea;
 import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.TextRange;
@@ -292,6 +294,35 @@ class FrameworkSmoke {
 		if (blinkEditor.isCaretVisible(11.1))
 			return 226;
 		blinkEditor.dispose();
+		var commandMacStyle = #if (mac || ios) true #else false #end;
+		var wordShortcut = commandMacStyle ? UiModifier.Alt : UiModifier.Control;
+		if (TextEditorKeymap.commandForKey(UiKey.Left, wordShortcut, false, commandMacStyle) !=
+			TextEditorCommand.MoveWordBackward ||
+			TextEditorKeymap.commandForKey(UiKey.Backspace, wordShortcut, false, commandMacStyle) !=
+			TextEditorCommand.DeleteWordBackward ||
+			TextEditorKeymap.commandForKey(UiKey.Enter, 0, true, commandMacStyle) !=
+			TextEditorCommand.InsertNewline ||
+			TextEditorKeymap.commandForKey(UiKey.Enter, 0, false, commandMacStyle) !=
+			TextEditorCommand.Submit)
+			return 246;
+		if (commandMacStyle && TextEditorKeymap.commandForKey(UiKey.Left, UiModifier.Super,
+			false, true) != TextEditorCommand.MoveDocumentStart)
+			return 247;
+		var commandEditor = new TextEditorState(fonts, "one two");
+		commandEditor.placeCaret(commandEditor.documentLength(), false);
+		if (!commandEditor.executeCommand(TextEditorCommand.MoveWordBackward, false,
+			commandMacStyle) || commandEditor.selectionFocus != 4)
+			return 248;
+		commandEditor.placeCaret(commandEditor.documentLength(), false);
+		if (!commandEditor.executeCommand(TextEditorCommand.DeleteWordBackward, false,
+			commandMacStyle) || commandEditor.text != "one " || commandEditor.selectionFocus != 4)
+			return 249;
+		commandEditor.syncExternal("one two");
+		commandEditor.placeCaret(0, false);
+		if (!commandEditor.executeCommand(TextEditorCommand.MoveWordForward, true,
+			commandMacStyle) || commandEditor.selectionStart != 0 || commandEditor.selectionEnd != 4)
+			return 250;
+		commandEditor.dispose();
 		var editedValue = "";
 		var submittedValue = "";
 		var emptyField = new TextField("empty-entry", "", function(_) {}, null,

@@ -492,6 +492,50 @@ class TextEditorState {
 		return moveFocusTo(next, extend);
 	}
 
+	/** Deletes a word using the same shaped-text boundary policy as word movement. */
+	public function deleteWord(direction:Int, macStyle:Bool = false):Bool {
+		ensureLive();
+		if (direction == 0)
+			return false;
+		if (selectionStart != selectionEnd)
+			return replace(selectionStart, selectionEnd, "");
+		var next = layout.moveWord(selectionFocus, direction < 0 ? -1 : 1, macStyle);
+		var first = next < selectionFocus ? next : selectionFocus;
+		var last = next > selectionFocus ? next : selectionFocus;
+		return replace(first, last, "");
+	}
+
+	/** Executes a semantic editor command without knowing its originating key. */
+	public function executeCommand(command:TextEditorCommand, extend:Bool = false,
+			macStyle:Bool = false):Bool {
+		ensureLive();
+		if (command == null)
+			return false;
+		return switch (command) {
+			case TextEditorCommand.MoveGraphemeBackward: moveCaret(-1, extend);
+			case TextEditorCommand.MoveGraphemeForward: moveCaret(1, extend);
+			case TextEditorCommand.MoveWordBackward: moveCaretByWord(-1, extend, macStyle);
+			case TextEditorCommand.MoveWordForward: moveCaretByWord(1, extend, macStyle);
+			case TextEditorCommand.MoveParagraphBackward: moveCaretByParagraph(-1, extend, macStyle);
+			case TextEditorCommand.MoveParagraphForward: moveCaretByParagraph(1, extend, macStyle);
+			case TextEditorCommand.MoveVisualLineUp: moveCaretVertically(-1, extend);
+			case TextEditorCommand.MoveVisualLineDown: moveCaretVertically(1, extend);
+			case TextEditorCommand.MoveLineStart: moveCaretToLineBoundary(false, extend);
+			case TextEditorCommand.MoveLineEnd: moveCaretToLineBoundary(true, extend);
+			case TextEditorCommand.MoveDocumentStart: placeCaret(0, extend);
+			case TextEditorCommand.MoveDocumentEnd: placeCaret(documentLength(), extend);
+			case TextEditorCommand.DeleteGraphemeBackward: deleteBackward();
+			case TextEditorCommand.DeleteGraphemeForward: deleteForward();
+			case TextEditorCommand.DeleteWordBackward: deleteWord(-1, macStyle);
+			case TextEditorCommand.DeleteWordForward: deleteWord(1, macStyle);
+			case TextEditorCommand.SelectAll: selectAll();
+			case TextEditorCommand.CutSelection: replace(selectionStart, selectionEnd, "");
+			case TextEditorCommand.InsertNewline: insert("\n");
+			case TextEditorCommand.CopySelection | TextEditorCommand.Paste |
+				TextEditorCommand.Submit: false;
+		};
+	}
+
 	/** Moves to the nearest visual line while preserving the requested x column. */
 	public function moveCaretVertically(direction:Int, extend:Bool):Bool {
 		ensureLive();
