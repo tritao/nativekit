@@ -223,8 +223,18 @@ class StyleResolver {
 		return mix(result, floatFingerprint(value.alpha));
 	}
 
-	static inline function floatFingerprint(value:Float):Int
-		return Std.int(value * 1000003.0);
+	static function floatFingerprint(value:Float):Int {
+		if (Math.isNaN(value))
+			return 2143289344;
+		if (!Math.isFinite(value))
+			return value < 0.0 ? -2147483647 : 2147483647;
+		var scaled = value * 1000003.0;
+		if (scaled >= 2147483646.0)
+			return 2147483646;
+		if (scaled <= -2147483646.0)
+			return -2147483646;
+		return Std.int(scaled);
+	}
 
 	static inline function mix(seed:Int, value:Int):Int
 		return seed * 31 + value;
