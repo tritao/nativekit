@@ -61,7 +61,7 @@ class ProgressBar implements View {
 				var fillWidth = geometry.width * fraction;
 				canvas.fillRectIfPositive(new Rect(0.0, 0.0, fillWidth, geometry.height),
 					computed.get(StyleProperty.ProgressFillColor));
-			});
+			}, "value:" + value + ":" + minimum + ":" + maximum);
 			return node;
 		});
 	}

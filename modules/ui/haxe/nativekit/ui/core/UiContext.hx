@@ -15,6 +15,8 @@ import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRequest;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.theme.Theme;
+import nativekit.ui.style.ComputedStyle;
+import nativekit.ui.style.StyleDiff;
 import nativekit.ui.style.StyleSheet;
 import nativekit.ui.gestures.GestureArena;
 import nativekit.ui.animation.AnimationScheduler;
@@ -45,6 +47,10 @@ class UiContext {
 	var disposed:Bool;
 	var customCanvases:Map<Int, Canvas>;
 	var customLists:Map<Int, DisplayList>;
+	var customGeometries:Map<Int, ResolvedLayoutItem>;
+	var customStyles:Map<Int, Null<ComputedStyle>>;
+	var customPaintKeys:Map<Int, String>;
+	var customListHasCommands:Map<Int, Bool>;
 	var accessibilityBridge:Null<AccessibilityBridge>;
 	var accessibilitySurface:Null<NativeKitSurface>;
 	var cursorHandler:Null<CursorShape->Void>;
@@ -77,6 +83,10 @@ class UiContext {
 		buildContext.setFocusRequester(function(id) { return focusWidget(id); });
 		customCanvases = new Map();
 		customLists = new Map();
+		customGeometries = new Map();
+		customStyles = new Map();
+		customPaintKeys = new Map();
+		customListHasCommands = new Map();
 		accessibilityBridge = null;
 		accessibilitySurface = null;
 		cursorHandler = null;
@@ -220,6 +230,8 @@ class UiContext {
 		diagnosticStage = 21;
 		session.clearCustomPaints();
 		var painted = new Map<Int, Bool>();
+		var paintedNodes = 0;
+		var paintSkippedNodes = 0;
 		diagnosticStage = 22;
 		root.walk(function(node) {
 			if (!node.hasPaintHandler() || node.resolved == null ||
@@ -227,6 +239,14 @@ class UiContext {
 				node.resolved.clipBounds.width <= 0.0 || node.resolved.clipBounds.height <= 0.0)
 				return;
 			var nodeId = node.id.value;
+			var displayList = customLists.get(nodeId);
+			if (displayList != null && canReuseCustomPaint(node)) {
+				if (customListHasCommands.get(nodeId) == true)
+					session.setCustomPaint(nodeId, displayList);
+				paintSkippedNodes++;
+				painted.set(nodeId, true);
+				return;
+			}
 			var canvas = customCanvases.get(nodeId);
 			if (canvas == null) {
 				canvas = new Canvas();
@@ -241,14 +261,19 @@ class UiContext {
 				target.translate(geometry.x, geometry.y);
 				node.paint(target);
 			});
-			var displayList = customLists.get(nodeId);
 			if (displayList == null) {
 				displayList = DisplayList.create();
 				customLists.set(nodeId, displayList);
 			}
 			canvas.update(displayList);
-			if (displayList.info().commandCount > 0)
+			var hasCommands = displayList.info().commandCount > 0;
+			customListHasCommands.set(nodeId, hasCommands);
+			if (hasCommands)
 				session.setCustomPaint(nodeId, displayList);
+			customGeometries.set(nodeId, geometry);
+			customStyles.set(nodeId, node.computedStyle);
+			customPaintKeys.set(nodeId, node.retainedPaintKey());
+			paintedNodes++;
 			painted.set(nodeId, true);
 		});
 		diagnosticStage = 23;
@@ -265,11 +290,15 @@ class UiContext {
 				displayList.dispose();
 			customCanvases.remove(nodeId);
 			customLists.remove(nodeId);
+			customGeometries.remove(nodeId);
+			customStyles.remove(nodeId);
+			customPaintKeys.remove(nodeId);
+			customListHasCommands.remove(nodeId);
 		}
 		diagnosticStage = 24;
 		session.render(renderer, surface, frame);
 		if (lastFrameMetrics != null)
-			lastFrameMetrics.completeRender(Sys.time() - renderStartedAt);
+			lastFrameMetrics.completeRender(Sys.time() - renderStartedAt, paintedNodes, paintSkippedNodes);
 		diagnosticStage = 0;
 	}
 
@@ -431,6 +460,32 @@ class UiContext {
 		events.text(kind, value, data);
 	}
 
+	function canReuseCustomPaint(node:RenderNode):Bool {
+		var nodeId = node.id.value;
+		var key = node.retainedPaintKey();
+		if (key == null || !customPaintKeys.exists(nodeId) ||
+			!customListHasCommands.exists(nodeId) || customPaintKeys.get(nodeId) != key)
+			return false;
+		var previousGeometry = customGeometries.get(nodeId);
+		if (previousGeometry == null || node.resolved == null ||
+			!sameGeometry(previousGeometry, node.resolved))
+			return false;
+		return !StyleDiff.compare(customStyles.get(nodeId), node.computedStyle).changed;
+	}
+
+	static function sameGeometry(left:ResolvedLayoutItem, right:ResolvedLayoutItem):Bool {
+		return left.flags == right.flags && left.x == right.x && left.y == right.y &&
+			left.width == right.width && left.height == right.height && left.baseline == right.baseline &&
+			sameRect(left.clipBounds, right.clipBounds) && sameRect(left.contentBounds, right.contentBounds) &&
+			left.transform.a == right.transform.a && left.transform.b == right.transform.b &&
+			left.transform.c == right.transform.c && left.transform.d == right.transform.d &&
+			left.transform.tx == right.transform.tx && left.transform.ty == right.transform.ty;
+	}
+
+	static inline function sameRect(left:Rect, right:Rect):Bool
+		return left.x == right.x && left.y == right.y && left.width == right.width &&
+			left.height == right.height;
+
 	public function isDirty():Bool
 		return dirtyFlags != UiDirtyFlag.None;
 
@@ -495,6 +550,10 @@ class UiContext {
 		}
 		customCanvases = new Map();
 		customLists = new Map();
+		customGeometries = new Map();
+		customStyles = new Map();
+		customPaintKeys = new Map();
+		customListHasCommands = new Map();
 		session.dispose();
 		clipboard.dispose();
 		textInput.dispose();

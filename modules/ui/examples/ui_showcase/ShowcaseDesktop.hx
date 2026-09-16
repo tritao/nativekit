@@ -66,13 +66,14 @@ class ShowcaseDesktop {
         var args = Sys.args();
         var smoke = has(args, "--smoke-test");
         var uiSmoke = has(args, "--ui-smoke-test");
+        var uiStaticFrame = has(args, "--ui-static-frame");
         var staticFrame = has(args, "--static-frame");
         var printStats = has(args, "--stats");
         var graphicsMode = smoke || staticFrame;
         var initialWidth = graphicsMode ? 900 : 1100;
         var initialHeight = graphicsMode ? 650 : 760;
         for (arg in args)
-            if (arg != "--smoke-test" && arg != "--ui-smoke-test" &&
+            if (arg != "--smoke-test" && arg != "--ui-smoke-test" && arg != "--ui-static-frame" &&
                     arg != "--static-frame" && arg != "--stats")
                 return 2;
 
@@ -189,8 +190,8 @@ class ShowcaseDesktop {
                 frameState.framebufferWidth = framebufferWidth;
                 frameState.framebufferHeight = framebufferHeight;
                 var elapsed = (Date.now().getTime() - started) / 1000.0;
-                if (staticFrame)
-                    elapsed = 0.0;
+				if (staticFrame || uiStaticFrame)
+					elapsed = 0.0;
                 if (frameState.graphicsMode && frameState.graphics != null) {
                     var activeGraphics = frameState.graphics;
                     activeGraphics.encodeFrame(elapsed, frameState.logicalWidth, frameState.logicalHeight,
@@ -198,14 +199,16 @@ class ShowcaseDesktop {
                     activeGraphics.render(surface, frameState.logicalWidth, frameState.logicalHeight,
                         framebufferWidth, framebufferHeight, frameState.scale);
                 } else if (frameState.explorer != null) {
-                    if (uiSmoke)
-                        frameState.explorer.setSmokeFrame(frameState.rendered);
+					if (uiSmoke)
+						frameState.explorer.setSmokeFrame(frameState.rendered);
+					else if (uiStaticFrame)
+						frameState.explorer.setSmokeFrame(1);
                     frameState.explorer.setViewport(frameState.logicalWidth, frameState.logicalHeight,
                         framebufferWidth, framebufferHeight, frameState.scale);
                     frameState.explorer.render(surface, elapsed);
                 }
                 frameState.rendered++;
-                if (staticFrame || ((smoke || uiSmoke) && frameState.rendered >= 30))
+				if (staticFrame || ((smoke || uiSmoke || uiStaticFrame) && frameState.rendered >= 30))
                     frameState.running = false;
             };
 
@@ -288,24 +291,24 @@ class ShowcaseDesktop {
                 }
             });
 
-            while (running) {
-                var hadEvent = activePump.poll();
-                if (frameState.callbackFailed) {
-                    var callbackError = frameState.callbackError;
-                    throw callbackError == null ? "surface frame callback failed" : callbackError;
-                }
-                if (!frameState.running)
-                    running = false;
-                else if (!hadEvent)
-                    activePump.wait(1.0 / Showcase.TARGET_FPS);
-            }
+			while (running) {
+				var hadEvent = activePump.poll();
+				if (frameState.callbackFailed) {
+					var callbackError = frameState.callbackError;
+					throw callbackError == null ? "surface frame callback failed" : callbackError;
+				}
+				if (!frameState.running)
+					running = false;
+				else if (!hadEvent)
+					activePump.wait(1.0 / Showcase.TARGET_FPS);
+			}
             if ((printStats || smoke || staticFrame) && graphics != null)
                 graphics.printStats();
-            if ((printStats || uiSmoke) && explorer != null)
-                explorer.printStats();
-            if (uiSmoke)
-                Sys.println('nativekit_ui_showcase explorer_frames=${frameState.rendered}');
-            result = frameState.rendered > 0 ? 0 : 17;
+			if ((printStats || uiSmoke || uiStaticFrame) && explorer != null)
+				explorer.printStats();
+			if (uiSmoke || uiStaticFrame)
+				Sys.println('nativekit_ui_showcase explorer_frames=${frameState.rendered}');
+			result = frameState.rendered > 0 ? 0 : 17;
         } catch (error:Dynamic) {
             if (Std.isOfType(error, NativeKitError)) {
                 var nativeError:NativeKitError = cast error;

@@ -117,7 +117,7 @@ class Slider implements View {
 					accent);
 				canvas.fillRect(new Rect(knob - 6.0, y - 8.0, 12.0, 16.0),
 					foreground);
-			});
+			}, "value:" + value + ":" + minimum + ":" + maximum);
 			node.on(UiEventKind.PointerDown, function(event) {
 				if (enabled && event.button == 0) {
 					event.capturePointer();

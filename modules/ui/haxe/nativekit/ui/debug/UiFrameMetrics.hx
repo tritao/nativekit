@@ -17,6 +17,8 @@ class UiFrameMetrics {
 	public final compositeInvalidatedNodes:Int;
 	public final semanticsInvalidatedNodes:Int;
 	public final submitSeconds:Float;
+	public var paintedNodes(default, null):Int;
+	public var paintSkippedNodes(default, null):Int;
 	public var renderSeconds(default, null):Float;
 	public var totalSeconds(default, null):Float;
 
@@ -42,12 +44,16 @@ class UiFrameMetrics {
 		this.compositeInvalidatedNodes = compositeInvalidatedNodes;
 		this.semanticsInvalidatedNodes = semanticsInvalidatedNodes;
 		this.submitSeconds = submitSeconds;
+		paintedNodes = 0;
+		paintSkippedNodes = 0;
 		renderSeconds = 0.0;
 		totalSeconds = submitSeconds;
 	}
 
 	/** Completes the frame record once native paint submission has finished. */
-	public function completeRender(seconds:Float):Void {
+	public function completeRender(seconds:Float, paintedNodes:Int = 0, paintSkippedNodes:Int = 0):Void {
+		this.paintedNodes = paintedNodes < 0 ? 0 : paintedNodes;
+		this.paintSkippedNodes = paintSkippedNodes < 0 ? 0 : paintSkippedNodes;
 		renderSeconds = seconds < 0.0 ? 0.0 : seconds;
 		totalSeconds = submitSeconds + renderSeconds;
 	}

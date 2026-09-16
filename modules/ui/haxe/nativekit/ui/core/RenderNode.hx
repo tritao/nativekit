@@ -37,7 +37,9 @@ class RenderNode {
 	final outsidePointerDownHandlers:Array<UiEvent->Void>;
 	final resolvedHandlers:Array<ResolvedLayoutItem->Void>;
 	final paintHandlers:Array<Canvas->ResolvedLayoutItem->Void>;
+	final paintCacheKeys:Array<Null<String>>;
 	final decorations:Array<Decoration>;
+	final decorationCacheKeys:Array<Null<String>>;
 
 	public function new(id:WidgetId, kind:LayoutVisualKind = LayoutVisualKind.Box, ?style:LayoutStyle) {
 		if (id == null)
@@ -65,7 +67,9 @@ class RenderNode {
 		outsidePointerDownHandlers = [];
 		resolvedHandlers = [];
 		paintHandlers = [];
+		paintCacheKeys = [];
 		decorations = [];
+		decorationCacheKeys = [];
 	}
 
 	/** Publishes the typed selector identity associated with this render node. */
@@ -137,24 +141,61 @@ class RenderNode {
 		return this;
 	}
 
-	public function onPaint(handler:Canvas->ResolvedLayoutItem->Void):RenderNode {
+	/**
+	 * Adds a custom paint callback. A cache key opts the callback into retained
+	 * display-list reuse; it must change whenever the callback's output can
+	 * change for reasons other than geometry or computed style.
+	 */
+	public function onPaint(handler:Canvas->ResolvedLayoutItem->Void,
+			?cacheKey:String):RenderNode {
 		if (handler == null)
 			throw "Render paint handlers cannot be null";
+		if (cacheKey != null && cacheKey.length == 0)
+			throw "Render paint cache keys cannot be empty";
 		paintHandlers.push(handler);
+		paintCacheKeys.push(cacheKey);
 		return this;
 	}
 
-	/** Adds an opt-in reusable decoration to this node's retained custom paint. */
-	public function addDecoration(decoration:Decoration):RenderNode {
+	/**
+	 * Adds a decoration. Supplying a cache key opts it into retained display
+	 * list reuse; the key must include any external inputs read by the
+	 * decoration that are not represented by computed style or geometry.
+	 */
+	public function addDecoration(decoration:Decoration, ?cacheKey:String):RenderNode {
 		if (decoration == null)
 			throw "Render decorations cannot be null";
+		if (cacheKey != null && cacheKey.length == 0)
+			throw "Render decoration cache keys cannot be empty";
 		decorations.push(decoration);
+		decorationCacheKeys.push(cacheKey);
 		return this;
 	}
 
 	@:allow(nativekit.ui.core.UiContext)
 	function hasPaintHandler():Bool
 		return paintHandlers.length > 0 || decorations.length > 0;
+
+	/** Returns the complete opt-in fingerprint for safe retained paint reuse. */
+	@:allow(nativekit.ui.core.UiContext)
+	function retainedPaintKey():Null<String> {
+		if (!hasPaintHandler())
+			return null;
+		var result = "paint";
+		for (index in 0...paintHandlers.length) {
+			var key = paintCacheKeys[index];
+			if (key == null)
+				return null;
+			result += "|handler:" + key;
+		}
+		for (index in 0...decorations.length) {
+			var key = decorationCacheKeys[index];
+			if (key == null)
+				return null;
+			result += "|decoration:" + key;
+		}
+		return result;
+	}
 
 	@:allow(nativekit.ui.core.UiContext)
 	function setResolved(item:Null<ResolvedLayoutItem>):Void {

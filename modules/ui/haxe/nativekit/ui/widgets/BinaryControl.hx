@@ -136,7 +136,7 @@ class BinaryControl implements View {
 						target.rotate(-0.7853981634);
 						target.fillRect(new Rect(-5.5, -1.1, 11.0, 2.2), mark);
 					});
-				});
+				}, "checked:" + checked);
 			}
 			node.add(indicator);
 			var labelNode = new RenderNode(context.id("label"), LayoutVisualKind.Text);

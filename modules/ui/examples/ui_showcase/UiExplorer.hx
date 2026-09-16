@@ -277,6 +277,7 @@ class UiExplorer {
 			' invalidated=layout:${metrics.layoutInvalidatedNodes},text:${metrics.textLayoutInvalidatedNodes},' +
 			'paint:${metrics.paintInvalidatedNodes},composite:${metrics.compositeInvalidatedNodes},' +
 			'semantics:${metrics.semanticsInvalidatedNodes}' +
+			' paint_work=${metrics.paintedNodes} rebuilt,${metrics.paintSkippedNodes} skipped' +
 			' cache_hits=${metrics.styleCacheHits}' +
 			' cache_misses=${metrics.styleCacheMisses}' +
 			' cache_entries=${metrics.cachedStyleCount}' +
