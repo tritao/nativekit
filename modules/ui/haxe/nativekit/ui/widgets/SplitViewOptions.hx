@@ -2,10 +2,11 @@ package nativekit.ui.widgets;
 
 import LayoutStyle;
 
-/** Policies and controlled state for a SplitView's secondary pane. */
+/** Policies and controlled state for a SplitView's resizable pane. */
 class SplitViewOptions {
 	public var orientation:SplitOrientation;
-	public var secondaryExtent:Float;
+	public var resizableSide:SplitSide;
+	public var extent:Float;
 	public var minimumExtent:Float;
 	public var maximumExtent:Float;
 	public var collapsed:Bool;
@@ -17,7 +18,8 @@ class SplitViewOptions {
 
 	public function new() {
 		orientation = SplitOrientation.Horizontal;
-		secondaryExtent = 280.0;
+		resizableSide = SplitSide.Trailing;
+		extent = 280.0;
 		minimumExtent = 160.0;
 		maximumExtent = 480.0;
 		collapsed = false;

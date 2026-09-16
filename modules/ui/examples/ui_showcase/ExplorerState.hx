@@ -15,6 +15,8 @@ class ExplorerState {
 	public var lightTheme:Bool = false;
 	public var selectedPage:String = "overview";
 	public var searchText:String = "";
+	/** User override; a non-positive value selects the responsive default. */
+	public var catalogWidth:Float = -1.0;
 	public var smokeFocusTextField:Bool = false;
 	public var smokeSelectManaged:Bool = false;
 	public var smokeOpenSelect:Bool = false;

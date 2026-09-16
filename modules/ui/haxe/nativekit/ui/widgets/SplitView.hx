@@ -18,14 +18,15 @@ import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
 
 /**
-	Two-pane composition with a controlled, draggable secondary extent. The
-	caller owns persistence, routing, and responsive collapse policy.
+	Two-pane composition with a controlled, draggable leading or trailing
+	pane. The caller owns persistence, routing, and responsive collapse policy.
 */
 class SplitView implements View {
 	final key:Key;
-	final primary:View;
-	final secondary:View;
+	final leading:View;
+	final trailing:View;
 	public final orientation:SplitOrientation;
+	public final resizableSide:SplitSide;
 	public final minimumExtent:Float;
 	public final maximumExtent:Float;
 	public final dividerExtent:Float;
@@ -33,29 +34,32 @@ class SplitView implements View {
 	public final onCollapsedChanged:Null<Bool->Void>;
 	public final style:LayoutStyle;
 	public final dividerStyle:LayoutStyle;
-	public var secondaryExtent:Float;
+	public var extent:Float;
 	public var collapsed:Bool;
 
-	public function new(key:String, primary:View, secondary:View,
+	public function new(key:String, leading:View, trailing:View,
 			?options:SplitViewOptions) {
-		if (primary == null || secondary == null)
-			throw "SplitView requires primary and secondary views";
+		if (leading == null || trailing == null)
+			throw "SplitView requires leading and trailing views";
 		var resolved = options == null ? new SplitViewOptions() : options;
 		if ((resolved.orientation != SplitOrientation.Horizontal &&
 			resolved.orientation != SplitOrientation.Vertical) ||
-			!finite(resolved.secondaryExtent) || !finite(resolved.minimumExtent) ||
+			(resolved.resizableSide != SplitSide.Leading &&
+				resolved.resizableSide != SplitSide.Trailing) ||
+			!finite(resolved.extent) || !finite(resolved.minimumExtent) ||
 			!finite(resolved.maximumExtent) || !finite(resolved.dividerExtent) ||
 			resolved.minimumExtent < 0.0 || resolved.maximumExtent < resolved.minimumExtent ||
 			resolved.dividerExtent < 0.0)
 			throw "SplitView extent policy is invalid";
 		this.key = new Key(key);
-		this.primary = primary;
-		this.secondary = secondary;
+		this.leading = leading;
+		this.trailing = trailing;
 		this.orientation = resolved.orientation;
+		this.resizableSide = resolved.resizableSide;
 		this.minimumExtent = resolved.minimumExtent;
 		this.maximumExtent = resolved.maximumExtent;
 		this.dividerExtent = resolved.dividerExtent;
-		this.secondaryExtent = clamp(resolved.secondaryExtent, minimumExtent, maximumExtent);
+		this.extent = clamp(resolved.extent, minimumExtent, maximumExtent);
 		this.collapsed = resolved.collapsed;
 		this.onResize = resolved.onResize;
 		this.onCollapsedChanged = resolved.onCollapsedChanged;
@@ -73,33 +77,40 @@ class SplitView implements View {
 			rootStyle.childDistribution = LayoutDistribution.Start;
 			rootStyle.wrapMode = LayoutWrapMode.NoWrap;
 			var root = new RenderNode(context.id("split-view"), LayoutVisualKind.Box, rootStyle);
-			var extent = collapsed ? 0.0 : boundedExtent();
+			var paneExtent = collapsed ? 0.0 : boundedExtent();
 
-			var primaryPane = new RenderNode(context.id("primary-pane"),
-				LayoutVisualKind.Box, paneStyle(horizontal, true, 0.0));
-			var primaryNode = context.withScope(new Key("primary"), function() {
-				return primary.build(context);
+			var leadingPane = new RenderNode(context.id("leading-pane"), LayoutVisualKind.Box,
+				paneStyle(horizontal, resizableSide == SplitSide.Leading, paneExtent));
+			leadingPane.layout.style.visible = !collapsed || resizableSide != SplitSide.Leading;
+			var leadingNode = context.withScope(new Key("leading"), function() {
+				return leading.build(context);
 			});
-			primaryPane.add(primaryNode);
-			root.add(primaryPane);
+			leadingPane.add(leadingNode);
+			root.add(leadingPane);
 
 			if (dividerExtent > 0.0) {
 				var divider = new RenderNode(context.id("divider"), LayoutVisualKind.Box,
 					dividerLayoutStyle(horizontal));
 				divider.cursor = horizontal ? CursorShape.HorizontalResize : CursorShape.VerticalResize;
-				divider.semantics = new Semantics(AccessibilityRole.Separator);
+				var sideName = resizableSide == SplitSide.Leading ? "Leading" : "Trailing";
+				var dividerSemantics = new Semantics(AccessibilityRole.Separator,
+					'$sideName pane divider');
+				dividerSemantics.numericValue = boundedExtent();
+				dividerSemantics.numericMinimum = minimumExtent;
+				dividerSemantics.numericMaximum = maximumExtent;
+				divider.semantics = dividerSemantics;
 				installDividerHandlers(divider, horizontal);
 				root.add(divider);
 			}
 
-			var secondaryPane = new RenderNode(context.id("secondary-pane"),
-				LayoutVisualKind.Box, paneStyle(horizontal, false, extent));
-			secondaryPane.layout.style.visible = !collapsed;
-			var secondaryNode = context.withScope(new Key("secondary"), function() {
-				return secondary.build(context);
+			var trailingPane = new RenderNode(context.id("trailing-pane"), LayoutVisualKind.Box,
+				paneStyle(horizontal, resizableSide == SplitSide.Trailing, paneExtent));
+			trailingPane.layout.style.visible = !collapsed || resizableSide != SplitSide.Trailing;
+			var trailingNode = context.withScope(new Key("trailing"), function() {
+				return trailing.build(context);
 			});
-			secondaryPane.add(secondaryNode);
-			root.add(secondaryPane);
+			trailingPane.add(trailingNode);
+			root.add(trailingPane);
 			return root;
 		});
 	}
@@ -120,9 +131,10 @@ class SplitView implements View {
 			if (!dragging)
 				return;
 			var pointer = horizontal ? event.x : event.y;
-			var next = clamp(dragExtent - (pointer - startPointer), minimumExtent,
-				maximumExtent);
-			secondaryExtent = next;
+			var delta = pointer - startPointer;
+			var direction = resizableSide == SplitSide.Leading ? 1.0 : -1.0;
+			var next = clamp(dragExtent + delta * direction, minimumExtent, maximumExtent);
+			extent = next;
 			if (collapsed && next > 0.0) {
 				collapsed = false;
 				if (onCollapsedChanged != null)
@@ -136,28 +148,28 @@ class SplitView implements View {
 		divider.on(UiEventKind.PointerCancel, function(_) { dragging = false; });
 	}
 
-	function paneStyle(horizontal:Bool, primaryPane:Bool, extent:Float):LayoutStyle {
+	function paneStyle(horizontal:Bool, resizable:Bool, paneExtent:Float):LayoutStyle {
 		var result = new LayoutStyle();
 		if (horizontal) {
-			result.width = primaryPane ? LayoutAxis.grow() : secondaryAxis(extent);
+			result.width = resizable ? extentAxis(paneExtent) : LayoutAxis.grow();
 			result.height = LayoutAxis.grow();
 		} else {
 			result.width = LayoutAxis.grow();
-			result.height = primaryPane ? LayoutAxis.grow() : secondaryAxis(extent);
+			result.height = resizable ? extentAxis(paneExtent) : LayoutAxis.grow();
 		}
 		return result;
 	}
 
-	static function secondaryAxis(extent:Float):LayoutAxis {
+	static function extentAxis(paneExtent:Float):LayoutAxis {
 		// Clay's fixed-size representation treats zero as an open upper bound.
 		// Percent zero is the unambiguous collapsed extent.
-		return extent <= 0.0 ? LayoutAxis.percent(0.0) : LayoutAxis.fixed(extent);
+		return paneExtent <= 0.0 ? LayoutAxis.percent(0.0) : LayoutAxis.fixed(paneExtent);
 	}
 
 	function boundedExtent():Float {
-		if (!finite(secondaryExtent))
+		if (!finite(extent))
 			return minimumExtent;
-		return clamp(secondaryExtent, minimumExtent, maximumExtent);
+		return clamp(extent, minimumExtent, maximumExtent);
 	}
 
 	function dividerLayoutStyle(horizontal:Bool):LayoutStyle {

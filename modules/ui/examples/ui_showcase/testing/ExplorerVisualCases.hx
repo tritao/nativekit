@@ -11,6 +11,7 @@ class ExplorerVisualCases {
 		state.overlays.popupOpen = false;
 		state.overlays.menuOpen = false;
 		state.searchText = "";
+		state.catalogWidth = -1.0;
 		state.inspector.open = true;
 		state.inspector.tab = "preview";
 		state.inspector.selectedNodeId = 0;

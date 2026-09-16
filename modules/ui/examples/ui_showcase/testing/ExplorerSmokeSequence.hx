@@ -12,6 +12,7 @@ class ExplorerSmokeSequence {
 		state.overlays.popupOpen = false;
 		state.overlays.menuOpen = false;
 		state.inspector.open = true;
+		state.catalogWidth = -1.0;
 		state.smokeFocusTextField = false;
 		state.smokeSelectManaged = true;
 		state.smokeOpenSelect = false;

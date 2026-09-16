@@ -18,7 +18,7 @@ import nativekit.ui.widgets.TextField;
 class CatalogSidebar {
 	public static function build(explorer:UiExplorer):Column {
 		var style = new LayoutStyle();
-		style.width = LayoutAxis.fixed(explorer.width < 760.0 ? 176.0 : 212.0);
+		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.grow();
 		style.padding = new Insets(14.0, 18.0, 14.0, 18.0);
 		style.childGap = 8.0;

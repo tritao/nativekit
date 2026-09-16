@@ -10,6 +10,7 @@ import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutDirection;
 import LayoutFrame;
+import LayoutSizing;
 import LayoutStyle;
 import LayoutVisualKind;
 import TextAlignment;
@@ -79,6 +80,7 @@ import nativekit.ui.widgets.Spinner;
 import nativekit.ui.widgets.SpinnerPainter;
 import nativekit.ui.widgets.SpinnerKind;
 import nativekit.ui.widgets.SplitOrientation;
+import nativekit.ui.widgets.SplitSide;
 import nativekit.ui.widgets.SplitView;
 import nativekit.ui.widgets.SplitViewOptions;
 import nativekit.ui.widgets.Toggle;
@@ -1254,7 +1256,8 @@ class FrameworkSmoke {
 			return 229;
 		var resizedExtent = 0.0;
 		var splitOptions = new SplitViewOptions();
-		splitOptions.secondaryExtent = 96.0;
+		splitOptions.resizableSide = SplitSide.Trailing;
+		splitOptions.extent = 96.0;
 		splitOptions.minimumExtent = 64.0;
 		splitOptions.maximumExtent = 144.0;
 		splitOptions.onResize = function(value) { resizedExtent = value; };
@@ -1280,7 +1283,7 @@ class FrameworkSmoke {
 		if (context.events.cursorShape() != UiCursorShape.HorizontalResize)
 			return 237;
 		context.pointerUp(splitPointerX + 20.0, splitPointerY, 0);
-		if (resizedExtent != 76.0 || split.secondaryExtent != 76.0)
+		if (resizedExtent != 76.0 || split.extent != 76.0)
 			return 231;
 		context.pointerMove(splitPointerX, splitPointerY);
 		context.pointerDown(splitPointerX, splitPointerY, 0);
@@ -1300,7 +1303,8 @@ class FrameworkSmoke {
 			return 233;
 		var verticalOptions = new SplitViewOptions();
 		verticalOptions.orientation = SplitOrientation.Vertical;
-		verticalOptions.secondaryExtent = 72.0;
+		verticalOptions.resizableSide = SplitSide.Trailing;
+		verticalOptions.extent = 72.0;
 		verticalOptions.minimumExtent = 48.0;
 		verticalOptions.maximumExtent = 120.0;
 		verticalOptions.onResize = function(value) { resizedExtent = value; };
@@ -1321,8 +1325,61 @@ class FrameworkSmoke {
 		if (context.events.cursorShape() != UiCursorShape.VerticalResize)
 			return 240;
 		context.pointerUp(verticalPointerX, verticalPointerY + 20.0, 0);
-		if (resizedExtent != 52.0 || verticalSplit.secondaryExtent != 52.0)
+		if (resizedExtent != 52.0 || verticalSplit.extent != 52.0)
 			return 235;
+		var leadingResizes = 0;
+		var leadingExpansions = 0;
+		var leadingOptions = new SplitViewOptions();
+		leadingOptions.resizableSide = SplitSide.Leading;
+		leadingOptions.extent = 96.0;
+		leadingOptions.minimumExtent = 64.0;
+		leadingOptions.maximumExtent = 144.0;
+		leadingOptions.onResize = function(value) {
+			leadingResizes = Std.int(value);
+		};
+		leadingOptions.onCollapsedChanged = function(collapsed) {
+			if (!collapsed)
+				leadingExpansions++;
+		};
+		var leadingSplit = new SplitView("leading-split", new Text("Leading"),
+			new Text("Trailing"), leadingOptions);
+		var leadingRoot = context.submit(leadingSplit, new LayoutFrame(320.0, 192.0));
+		if (leadingRoot.children.length != 3 ||
+			leadingRoot.children[0].layout.style.width.sizing != LayoutSizing.Fixed ||
+			leadingRoot.children[2].layout.style.width.sizing != LayoutSizing.Grow)
+			return 241;
+		var leadingDividerSemantics:Semantics = cast leadingRoot.children[1].semantics;
+		if (leadingDividerSemantics == null ||
+			leadingDividerSemantics.label != "Leading pane divider" ||
+			leadingDividerSemantics.numericValue != 96.0 ||
+			leadingDividerSemantics.numericMinimum != 64.0 ||
+			leadingDividerSemantics.numericMaximum != 144.0)
+			return 242;
+		var leadingDividerGeometry:ResolvedLayoutItem = cast leadingRoot.children[1].resolved;
+		var leadingPointerX = leadingDividerGeometry.x + leadingDividerGeometry.width * 0.5;
+		var leadingPointerY = leadingDividerGeometry.y + leadingDividerGeometry.height * 0.5;
+		context.pointerMove(leadingPointerX, leadingPointerY);
+		if (context.events.cursorShape() != UiCursorShape.HorizontalResize)
+			return 243;
+		context.pointerDown(leadingPointerX, leadingPointerY, 0);
+		context.pointerMove(leadingPointerX + 20.0, leadingPointerY);
+		context.pointerUp(leadingPointerX + 20.0, leadingPointerY, 0);
+		if (leadingResizes != 116 || leadingSplit.extent != 116.0)
+			return 244;
+		leadingSplit.collapsed = true;
+		leadingRoot = context.submit(leadingSplit, new LayoutFrame(320.0, 192.0));
+		var collapsedLeadingGeometry:ResolvedLayoutItem = cast leadingRoot.children[0].resolved;
+		if (leadingRoot.children[0].layout.style.visible ||
+			collapsedLeadingGeometry.width != 0.0)
+			return 245;
+		var collapsedLeadingDivider:ResolvedLayoutItem = cast leadingRoot.children[1].resolved;
+		var collapsedLeadingX = collapsedLeadingDivider.x + collapsedLeadingDivider.width * 0.5;
+		var collapsedLeadingY = collapsedLeadingDivider.y + collapsedLeadingDivider.height * 0.5;
+		context.pointerDown(collapsedLeadingX, collapsedLeadingY, 0);
+		context.pointerMove(collapsedLeadingX + 20.0, collapsedLeadingY);
+		context.pointerUp(collapsedLeadingX + 20.0, collapsedLeadingY, 0);
+		if (leadingExpansions != 1 || leadingSplit.collapsed || leadingSplit.extent != 84.0)
+			return 246;
 		var inheritedColor = Color.rgba(0.24, 0.31, 0.42, 1.0);
 		var nestedColor = Color.rgba(0.76, 0.42, 0.18, 1.0);
 		var typography = new DefaultTextStyle(new Column("typography", [
