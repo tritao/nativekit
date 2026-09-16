@@ -1,7 +1,6 @@
 package pages;
 
 import Insets;
-import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutStyle;
 import UiExplorer;
@@ -36,7 +35,8 @@ class ControlsPage {
 				})),
 				explorer.keyed("secondary", explorer.button("Selected", "selected-action", function() {}, true)),
 				explorer.keyed("disabled", explorer.disabledButton("Disabled action")),
-				explorer.keyed("icon-button", iconButtonSample(explorer)),
+				explorer.keyed("icon-label", explorer.caption("Icon-only · accessible name: Search")),
+				explorer.keyed("icon-button", iconButtonSample()),
 				explorer.keyed("hint", explorer.caption("Tab to focus · Enter to activate"))
 			])),
 			explorer.keyed("selection", explorer.panel("selection-card", [
@@ -109,19 +109,12 @@ class ControlsPage {
 		return progress;
 	}
 
-	static function iconButtonSample(explorer:UiExplorer):Row {
+	static function iconButtonSample():IconButton {
 		var buttonStyle = new LayoutStyle();
 		buttonStyle.width = LayoutAxis.fixed(40.0);
 		buttonStyle.height = LayoutAxis.fixed(40.0);
 		buttonStyle.padding = new Insets(10.0, 10.0, 10.0, 10.0);
-		var rowStyle = new LayoutStyle();
-		rowStyle.childGap = 10.0;
-		rowStyle.childAlignY = LayoutAlignmentY.Center;
-		return new Row("icon-button-sample", [
-			explorer.keyed("button", new IconButton("search-action", IconName.Search,
-				"Search", function() {}, buttonStyle)),
-			explorer.keyed("description", explorer.caption("Icon button · Search"))
-		], rowStyle);
+		return new IconButton("search-action", IconName.Search, "Search", function() {}, buttonStyle);
 	}
 
 	static function spinnerSample(explorer:UiExplorer, key:String, label:String,
