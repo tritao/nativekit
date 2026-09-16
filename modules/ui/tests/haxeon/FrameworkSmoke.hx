@@ -997,6 +997,23 @@ class FrameworkSmoke {
 		scrollView.controller.jumpTo(0.0, 500.0);
 		if (scrollView.controller.offsetY != 320.0 || !context.isDirty())
 			return 28;
+		scrollRoot = context.submit(scrollView, scrollFrame);
+		if (scrollRoot.children.length != 2 || scrollRoot.children[1].children.length != 1)
+			return 242;
+		var scrollbarThumb = scrollRoot.children[1].children[0];
+		var scrollbarSemantics:Semantics = cast scrollbarThumb.semantics;
+		if (scrollbarSemantics.role != AccessibilityRole.Slider ||
+			scrollbarSemantics.numericValue != 320.0 ||
+			scrollbarSemantics.numericMaximum != 320.0 ||
+			!context.accessibilityAction(scrollbarThumb.id.value,
+				AccessibilityRequest.Decrement, null, -1, -1, 1) ||
+			scrollView.controller.offsetY >= 320.0)
+			return 243;
+		if (!context.focusWidget(scrollRoot.id))
+			return 244;
+		context.key(UiEventKind.KeyDown, UiKey.Home);
+		if (scrollView.controller.offsetY != 0.0)
+			return 245;
 		var builtRows:Array<Int> = [];
 		var listController = new ScrollController();
 		var virtualStyle = new LayoutStyle();

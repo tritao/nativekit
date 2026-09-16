@@ -1331,7 +1331,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 resource->pointer_x = position.x / scale;
                 resource->pointer_y = position.y / scale;
                 const double amount = static_cast<double>(GET_WHEEL_DELTA_WPARAM(wparam)) /
-                                      static_cast<double>(WHEEL_DELTA);
+                                      static_cast<double>(WHEEL_DELTA) * 40.0;
                 const nk_pointer_scroll_event payload = message == WM_MOUSEWHEEL
                                                             ? nk_pointer_scroll_event{0.0, -amount}
                                                             : nk_pointer_scroll_event{amount, 0.0};

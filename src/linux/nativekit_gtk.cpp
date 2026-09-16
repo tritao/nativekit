@@ -1798,6 +1798,7 @@ gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer d
 
 gboolean on_pointer_scroll(GtkWidget *, GdkEventScroll *scroll, gpointer data) {
     nk::core::callback_boundary([&] {
+        constexpr double logical_pixels_per_scroll_unit = 40.0;
         auto *resource = static_cast<GtkWindowResource *>(data);
         double x = 0.0;
         double y = 0.0;
@@ -1811,6 +1812,8 @@ gboolean on_pointer_scroll(GtkWidget *, GdkEventScroll *scroll, gpointer data) {
             x = -1.0;
         else if (scroll->direction == GDK_SCROLL_RIGHT)
             x = 1.0;
+        x *= logical_pixels_per_scroll_unit;
+        y *= logical_pixels_per_scroll_unit;
         const nk_pointer_scroll_event payload{x, y};
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_POINTER_SCROLL;

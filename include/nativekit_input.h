@@ -510,11 +510,11 @@ typedef struct nk_pointer_button_event {
     double y;
 } nk_pointer_button_event;
 
-/** Payload of NK_EVENT_POINTER_SCROLL containing scroll deltas. */
+/** Payload of NK_EVENT_POINTER_SCROLL containing logical-pixel scroll deltas. */
 typedef struct nk_pointer_scroll_event {
-    /** Horizontal scroll delta; smooth devices may report fractional values. */
+    /** Horizontal scroll delta in logical pixels; smooth devices may report fractional values. */
     double x;
-    /** Vertical scroll delta; smooth devices may report fractional values. */
+    /** Vertical scroll delta in logical pixels; smooth devices may report fractional values. */
     double y;
 } nk_pointer_scroll_event;
 

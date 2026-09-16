@@ -3101,7 +3101,9 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnPointerScroll(J
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (!resource)
         return;
-    const nk_pointer_scroll_event payload{x, y};
+    constexpr double logical_pixels_per_scroll_unit = 40.0;
+    const nk_pointer_scroll_event payload{x * logical_pixels_per_scroll_unit,
+                                          y * logical_pixels_per_scroll_unit};
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_POINTER_SCROLL;
     event.source = resource->handle;
