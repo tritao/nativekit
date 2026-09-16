@@ -99,15 +99,13 @@ nk_system_platform platform() {
 }
 
 nk_system_endianness endianness() {
-#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) &&                                 \
-    __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    return NK_SYSTEM_ENDIAN_LITTLE;
-#elif defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) &&                                  \
-    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    return NK_SYSTEM_ENDIAN_BIG;
-#else
+    const std::uint16_t value = 0x0102;
+    const auto *bytes = reinterpret_cast<const unsigned char *>(&value);
+    if (bytes[0] == 0x02 && bytes[1] == 0x01)
+        return NK_SYSTEM_ENDIAN_LITTLE;
+    if (bytes[0] == 0x01 && bytes[1] == 0x02)
+        return NK_SYSTEM_ENDIAN_BIG;
     return NK_SYSTEM_ENDIAN_UNKNOWN;
-#endif
 }
 
 std::string platform_version() {
