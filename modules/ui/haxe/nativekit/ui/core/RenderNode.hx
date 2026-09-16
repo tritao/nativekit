@@ -7,6 +7,7 @@ import Canvas;
 import ResolvedLayoutItem;
 import nativekit.ui.style.ComputedStyle;
 import nativekit.ui.style.Decoration;
+import nativekit.ui.style.StyleProperty;
 import nativekit.ui.semantics.Semantics;
 
 /** One Haxe-owned node joins visual layout, interaction, focus, and state identity. */
@@ -169,10 +170,17 @@ class RenderNode {
 			(paintHandlers.length == 0 && decorations.length == 0))
 			return false;
 		var style = computedStyle == null ? new ComputedStyle() : computedStyle;
-		for (decoration in decorations)
-			decoration.paint(canvas, resolved, style);
-		for (handler in paintHandlers)
-			handler(canvas, resolved);
+		var paintContent:Canvas->Void = function(target:Canvas) {
+			for (decoration in decorations)
+				decoration.paint(target, resolved, style);
+			for (handler in paintHandlers)
+				handler(target, resolved);
+		};
+		var opacity = style.get(StyleProperty.Opacity);
+		if (opacity < 1.0)
+			canvas.withLayer(opacity, paintContent);
+		else
+			paintContent(canvas);
 		return true;
 	}
 
