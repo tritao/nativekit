@@ -36,6 +36,7 @@ import nativekit.ui.core.CursorShape as UiCursorShape;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
 import nativekit.ui.core.UiContext;
+import nativekit.ui.core.UiDirtyFlag;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
 import nativekit.ui.core.UiModifier;
@@ -719,6 +720,8 @@ class FrameworkSmoke {
 		if (root.children.length != 3 || buttonNode.resolved == null ||
 			!buttonNode.focusable || !buttonNode.resolved.hitTest(4.0, 4.0) || context.isDirty())
 			return 3;
+		if (context.dirtyFlags != UiDirtyFlag.None)
+			return 221;
 		var semanticTree = AccessibilityBridge.project(root, buttonNode.id);
 		if (semanticTree.length != 3 || semanticTree[0].id != buttonNode.id.value ||
 			semanticTree[0].parentId != 0 || semanticTree[0].role != AccessibilityRole.Button ||
@@ -739,7 +742,8 @@ class FrameworkSmoke {
 		if (clicks != 1 || bubbled != 1 || captured != 1)
 			return 254;
 		state.update(7);
-		if (!context.isDirty())
+		if (!context.isDirty() || !UiDirtyFlag.contains(context.dirtyFlags, UiDirtyFlag.NeedsBuild) ||
+			!UiDirtyFlag.contains(context.dirtyFlags, UiDirtyFlag.NeedsLayout))
 			return 5;
 
 		root = context.submit(makeView(true), frame);
@@ -1279,6 +1283,9 @@ class FrameworkSmoke {
 		theme.caption.textStyle = new TextStyle(11.0);
 		theme.button.textStyle = new TextStyle(15.0);
 		context.setTheme(theme);
+		if (!UiDirtyFlag.contains(context.dirtyFlags, UiDirtyFlag.NeedsStyle) ||
+			!UiDirtyFlag.contains(context.dirtyFlags, UiDirtyFlag.NeedsPaint))
+			return 222;
 		var themedTextRoot = context.submit(new Text("Theme typography"),
 			new LayoutFrame(256.0, 192.0));
 		if (themedTextRoot.layout.textStyle.fontSize != 17.0 ||

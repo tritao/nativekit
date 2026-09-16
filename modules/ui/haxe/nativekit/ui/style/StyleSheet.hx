@@ -7,16 +7,19 @@ class StyleSheet {
 	public final name:String;
 	public final rules(default, null):Array<StyleRule>;
 	public final transitions(default, null):Array<StyleTransition>;
+	public var revision(default, null):Int;
 
 	public function new(?name:String) {
 		this.name = name == null || name.length == 0 ? "StyleSheet" : name;
 		rules = [];
 		transitions = [];
+		revision = 0;
 	}
 
 	public function rule(selector:StyleSelector, declarations:Array<StyleValue>):StyleRule {
 		var result = new StyleRule(name, selector, declarations, rules.length);
 		rules.push(result);
+		revision++;
 		return result;
 	}
 
@@ -26,6 +29,7 @@ class StyleSheet {
 			throw "Conditional style rules require an environment condition";
 		var result = new StyleRule(name, selector, declarations, rules.length, condition);
 		rules.push(result);
+		revision++;
 		return result;
 	}
 
@@ -33,6 +37,7 @@ class StyleSheet {
 		{
 			rules.resize(0);
 			transitions.resize(0);
+			revision++;
 		}
 
 	public function isEmpty():Bool
@@ -42,6 +47,7 @@ class StyleSheet {
 			easing:Int = Easing.EaseOut):StyleTransition {
 		var result = new StyleTransition(property, duration, easing);
 		transitions.push(result);
+		revision++;
 		return result;
 	}
 

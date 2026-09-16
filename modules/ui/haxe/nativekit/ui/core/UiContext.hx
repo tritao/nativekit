@@ -39,6 +39,7 @@ class UiContext {
 	public var onAnimationFrameRequested:Null<Void->Void>;
 	var submittedStateRevision:Int;
 	var submittedInteractionRevision:Int;
+	var submittedStyleRevision:Int;
 	var disposed:Bool;
 	var customCanvases:Map<Int, Canvas>;
 	var customLists:Map<Int, DisplayList>;
@@ -67,6 +68,7 @@ class UiContext {
 		onAnimationFrameRequested = null;
 		submittedStateRevision = -1;
 		submittedInteractionRevision = -1;
+		submittedStyleRevision = -1;
 		disposed = false;
 		buildContext.setFocusRequester(function(id) { return focusWidget(id); });
 		customCanvases = new Map();
@@ -161,6 +163,7 @@ class UiContext {
 			events.focusEvent(nextFocus, UiEventKind.Focus);
 		submittedStateRevision = resolvedStateRevision;
 		submittedInteractionRevision = interactionStates.revision;
+		submittedStyleRevision = buildContext.styleRevision;
 		if (accessibilityBridge != null)
 			accessibilityBridge.update(next, focus.focusedId);
 		diagnosticStage = 0;
@@ -402,12 +405,29 @@ class UiContext {
 	}
 
 	public function isDirty():Bool
-		return stateStore.revision != submittedStateRevision ||
-			interactionStates.revision != submittedInteractionRevision || animations.activeCount > 0;
+		return dirtyFlags != UiDirtyFlag.None;
 
 	public var needsAnimationFrame(get, never):Bool;
 	inline function get_needsAnimationFrame():Bool
 		return animations.activeCount > 0;
+
+	/** Reports pending work categories without changing the current full-submit behavior. */
+	public var dirtyFlags(get, never):Int;
+	function get_dirtyFlags():Int {
+		var result = 0;
+		if (stateStore.revision != submittedStateRevision)
+			result |= UiDirtyFlag.NeedsBuild | UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsTextLayout |
+				UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsComposite |
+				UiDirtyFlag.NeedsSemantics;
+		if (interactionStates.revision != submittedInteractionRevision)
+			result |= UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsSemantics;
+		if (buildContext.styleRevision != submittedStyleRevision)
+			result |= UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint |
+				UiDirtyFlag.NeedsComposite | UiDirtyFlag.NeedsSemantics;
+		if (animations.activeCount > 0)
+			result |= UiDirtyFlag.NeedsComposite;
+		return result;
+	}
 
 	/** Returns a deterministic headless snapshot of the most recently submitted tree. */
 	public function inspect():Array<UiNodeSnapshot> {

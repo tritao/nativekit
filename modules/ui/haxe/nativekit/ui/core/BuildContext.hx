@@ -80,6 +80,11 @@ class BuildContext {
 	public function setEnvironmentViewport(width:Float, height:Float):Void
 		environment.setViewport(width, height);
 
+	/** Revision fingerprint used to classify style work before the next submission. */
+	public var styleRevision(get, never):Int;
+	function get_styleRevision():Int
+		return theme.styles.revision * 1000003 + styleSheet.revision * 1009 + environment.revision;
+
 	/** Installs the UiContext focus route used by composite keyboard widgets. */
 	public function setFocusRequester(requester:WidgetId->Bool):Void {
 		if (requester == null)
