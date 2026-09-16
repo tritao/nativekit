@@ -247,6 +247,15 @@ enum NK_ENUM(nkui_composite_mode) {
     NKUI_COMPOSITE_SOURCE_OVER = 1
 };
 
+/** Flags describing why a layer needs an isolated render target. */
+typedef uint32_t nkui_layer_flags;
+enum NK_ENUM(nkui_layer_flags) {
+    /** Allocate a separate target even when opacity is 1. */
+    NKUI_LAYER_ISOLATED = 1u << 0,
+    /** The four bounds fields identify the logical target region. */
+    NKUI_LAYER_HAS_BOUNDS = 1u << 1
+};
+
 /** Fixed header present at the start of every display-list command record. */
 typedef struct nkui_command_header {
     /** One of the NKUI_COMMAND_* opcode values. */
@@ -377,6 +386,16 @@ typedef struct nkui_layer_command {
     float opacity;
     /** Compositing mode used when the layer is applied. */
     nkui_composite_mode composite_mode;
+    /** Left edge of the optional bounded target in logical coordinates. */
+    float x;
+    /** Top edge of the optional bounded target in logical coordinates. */
+    float y;
+    /** Width of the optional bounded target; must be positive when present. */
+    float width;
+    /** Height of the optional bounded target; must be positive when present. */
+    float height;
+    /** Combination of nkui_layer_flags. */
+    nkui_layer_flags flags;
 } nkui_layer_command;
 
 /* ------------------------------------------------------------------------- */

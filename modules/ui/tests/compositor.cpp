@@ -64,6 +64,26 @@ int main() {
         !plan.passes[3].load_existing || !plan.passes[4].load_existing)
         return 9;
 
+    DisplayList bounded;
+    const LayerBounds bounds{10.0f, 20.0f, 80.0f, 40.0f};
+    if (!bounded.begin_layer(1.0f, bounds) || !bounded.draw_path(path) ||
+        !bounded.end_layer() || !compositor.compile(bounded, main_target, plan, &error) ||
+        plan.passes.size() != 3 || plan.dependencies.size() != 1 ||
+        plan.passes[1].target_descriptor.logical_width != bounds.width ||
+        plan.passes[1].target_descriptor.logical_height != bounds.height ||
+        plan.passes[1].target_descriptor.origin_x != bounds.x ||
+        plan.passes[1].target_descriptor.origin_y != bounds.y ||
+        plan.passes[1].commands.size() != 1 ||
+        plan.passes[1].commands[0].transform[4] != -bounds.x ||
+        plan.passes[1].commands[0].transform[5] != -bounds.y)
+        return 18;
+    const auto &bounded_composite = plan.passes[2].commands[0];
+    if (bounded_composite.x != bounds.x || bounded_composite.y != bounds.y ||
+        bounded_composite.width != bounds.width || bounded_composite.height != bounds.height ||
+        bounded_composite.opacity != 1.0f ||
+        bounded_composite.composite != CompositeMode::SourceOver)
+        return 19;
+
     DisplayList duplicate_surface;
     const auto external = make_resource_id(ResourceKind::RenderTarget, 1, 12);
     if (!duplicate_surface.draw_render_target(external, 0.0f, 0.0f, 10.0f, 10.0f) ||

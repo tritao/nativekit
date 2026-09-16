@@ -71,6 +71,16 @@ static bool rejects_bad_streams() {
     if (!list.stroke_path(make_resource_id(ResourceKind::Path, 1, 1), 0.0f, 1, 4, 10.0f) ||
         validate_display_list(list.data(), list.size(), &error))
         return false;
+
+    list.reset();
+    if (!list.begin_layer(1.0f, LayerBounds{4.0f, 8.0f, 32.0f, 24.0f}) ||
+        !list.end_layer() || !validate_display_list(list.data(), list.size(), &error))
+        return false;
+
+    list.reset();
+    if (!list.begin_layer(1.0f, LayerBounds{4.0f, 8.0f, 0.0f, 24.0f}) ||
+        validate_display_list(list.data(), list.size(), &error))
+        return false;
     return true;
 }
 

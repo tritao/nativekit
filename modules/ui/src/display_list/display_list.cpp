@@ -230,9 +230,21 @@ bool DisplayList::draw_text_layout(ResourceId layout, float x, float y) {
 }
 
 bool DisplayList::begin_layer(float opacity, CompositeMode mode) {
+    auto value = command<LegacyBeginLayerCommand>(CommandOpcode::BeginLayer);
+    value.opacity = opacity;
+    value.mode = mode;
+    return append(value);
+}
+
+bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds, CompositeMode mode) {
     auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
     value.opacity = opacity;
     value.mode = mode;
+    value.x = bounds.x;
+    value.y = bounds.y;
+    value.width = bounds.width;
+    value.height = bounds.height;
+    value.flags = LayerIsolated | LayerHasBounds;
     return append(value);
 }
 
@@ -343,9 +355,18 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
             break;
         }
         case CommandOpcode::BeginLayer: {
+            const auto *legacy = read_command<LegacyBeginLayerCommand>(record, header.size);
             const auto *value = read_command<BeginLayerCommand>(record, header.size);
-            if (!value || layer_depth == max_scope_depth || !finite(value->opacity) ||
-                value->opacity < 0.0f || value->opacity > 1.0f || !valid_composite(value->mode))
+            const bool valid_legacy = legacy && finite(legacy->opacity) && legacy->opacity >= 0.0f &&
+                                      legacy->opacity <= 1.0f && valid_composite(legacy->mode);
+            const bool valid_extended = value && finite(value->opacity) && value->opacity >= 0.0f &&
+                                        value->opacity <= 1.0f && valid_composite(value->mode) &&
+                                        !(value->flags & ~(LayerIsolated | LayerHasBounds)) &&
+                                        (!(value->flags & LayerHasBounds) ||
+                                         ((value->flags & LayerIsolated) &&
+                                          valid_rect(value->x, value->y, value->width, value->height) &&
+                                          value->width > 0.0f && value->height > 0.0f));
+            if ((!valid_legacy && !valid_extended) || layer_depth == max_scope_depth)
                 return fail(error, offset, index, "invalid layer begin");
             ++layer_depth;
             break;

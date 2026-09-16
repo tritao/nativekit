@@ -49,7 +49,14 @@ int main(void) {
         {NKUI_COMMAND_STROKE_PATH, NKUI_COMMAND_VERSION, sizeof(stroke)}, path, 4.0f,
         NKUI_PATH_LINE_CAP_ROUND, NKUI_PATH_LINE_JOIN_MITER, 10.0f};
     nkui_layer_command begin = {
-        {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION, sizeof(begin)}, 0.5f, 1};
+        {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION, sizeof(begin)},
+        0.5f,
+        NKUI_COMPOSITE_SOURCE_OVER,
+        4.0f,
+        8.0f,
+        32.0f,
+        24.0f,
+        NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS};
     nkui_command_header end = {NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION, sizeof(end)};
     uint8_t commands[sizeof(draw) + sizeof(stroke) + sizeof(begin) + sizeof(end)];
     memcpy(commands, &draw, sizeof(draw));

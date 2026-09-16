@@ -11,17 +11,20 @@ class StyleTransitionAnimation implements Animation {
 	final duration:Float;
 	final easing:Int;
 	final propertyName:String;
+	final interpolate:Null<Dynamic->Dynamic->Float->Dynamic>;
 	final onUpdate:Dynamic->Void;
 	final onComplete:Void->Void;
 	var elapsed:Float;
 
 	public function new(from:Dynamic, to:Dynamic, duration:Float, easing:Int,
-			propertyName:String, onUpdate:Dynamic->Void, onComplete:Void->Void) {
+			propertyName:String, onUpdate:Dynamic->Void, onComplete:Void->Void,
+			?interpolate:Dynamic->Dynamic->Float->Dynamic) {
 		this.from = from;
 		this.to = to;
 		this.duration = duration;
 		this.easing = easing;
 		this.propertyName = propertyName;
+		this.interpolate = interpolate;
 		this.onUpdate = onUpdate;
 		this.onComplete = onComplete;
 		elapsed = 0.0;
@@ -31,7 +34,9 @@ class StyleTransitionAnimation implements Animation {
 		elapsed += deltaSeconds;
 		var complete = duration <= 0.0 || elapsed >= duration;
 		var amount = complete ? 1.0 : Easing.apply(elapsed / duration, easing);
-		onUpdate(complete ? to : StyleInterpolator.interpolate(propertyName, from, to, amount));
+		onUpdate(complete ? to : interpolate == null
+			? StyleInterpolator.interpolate(propertyName, from, to, amount)
+			: interpolate(from, to, amount));
 		if (complete) {
 			onComplete();
 			return false;

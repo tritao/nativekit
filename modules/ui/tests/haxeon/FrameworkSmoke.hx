@@ -104,6 +104,8 @@ import nativekit.ui.style.ComputedStyle;
 import nativekit.ui.style.StyleDiff;
 import nativekit.ui.style.StyleResolver;
 import nativekit.ui.style.StyleProperty;
+import nativekit.ui.style.StyleImpact;
+import nativekit.ui.style.StyleDiff;
 import nativekit.ui.style.StyleSelector;
 import nativekit.ui.style.StyleSheet;
 import nativekit.ui.style.StyleSource;
@@ -111,6 +113,15 @@ import nativekit.ui.style.StyleState;
 import nativekit.ui.style.StyleStateUtil;
 import nativekit.ui.style.StyleTarget;
 import nativekit.ui.style.StyleValue;
+import nativekit.ui.style.EffectChain;
+import nativekit.ui.style.BlurEffect;
+import nativekit.ui.style.BrightnessEffect;
+import nativekit.ui.style.ContrastEffect;
+import nativekit.ui.style.SaturateEffect;
+import nativekit.ui.style.HueRotateEffect;
+import nativekit.ui.style.ColorMatrixEffect;
+import nativekit.ui.style.DropShadowEffect;
+import nativekit.ui.style.InkOverflow;
 import nativekit.ui.style.Environment;
 import nativekit.ui.style.EnvironmentColorScheme;
 import nativekit.ui.style.StyleEnvironment;
@@ -1505,6 +1516,79 @@ class FrameworkSmoke {
 			transitionScheduler.activeCount != 0 || normalComputed.get(StyleProperty.Background).red != 0.0 ||
 			transitionResolver.cacheHits != 0 || transitionResolver.cacheMisses != 0)
 			return 218;
+		var effectChain = EffectChain.of([
+			BlurEffect.withSigma(12.0), new SaturateEffect(1.15)
+		]);
+		var effectOverflow = effectChain.inkOverflow();
+		if (effectChain.effects.length != 2 || effectOverflow.left != 36.0 ||
+			effectOverflow.top != 36.0 || effectOverflow.right != 36.0 ||
+			effectOverflow.bottom != 36.0 || !effectChain.isEqual(effectChain.copy()))
+			return 240;
+		var interpolatedEffects = EffectChain.interpolate(
+			EffectChain.of([BlurEffect.withSigma(4.0), new BrightnessEffect(1.0)]),
+			EffectChain.of([BlurEffect.withSigma(12.0), new BrightnessEffect(2.0)]), 0.5);
+		var interpolatedBlur:BlurEffect = cast interpolatedEffects.effects[0];
+		var interpolatedBrightness:BrightnessEffect = cast interpolatedEffects.effects[1];
+		if (interpolatedBlur == null || interpolatedBlur.sigma != 8.0 ||
+			interpolatedBrightness == null || interpolatedBrightness.factor != 1.5)
+			return 241;
+		var effectTransitionSheet = new StyleSheet("EffectTransitionSheet");
+		effectTransitionSheet.rule(StyleSelector.widget("panel"),
+			[StyleValue.effects(EffectChain.of([BlurEffect.withSigma(4.0)]))]);
+		effectTransitionSheet.rule(StyleSelector.widget("panel").state(StyleState.Hovered),
+			[StyleValue.effects(EffectChain.of([BlurEffect.withSigma(12.0)]))]);
+		effectTransitionSheet.transition(StyleProperty.Effects, 0.1, Easing.Linear);
+		var effectTransitionScheduler = new AnimationScheduler();
+		var effectTransitionResolver = new StyleResolver(effectTransitionScheduler);
+		var effectTransitionTarget = new StyleTarget("panel", "effect-transition-key", "effect-transition-id",
+			null, null, 0);
+		effectTransitionResolver.resolve(effectTransitionTarget, null, effectTransitionSheet);
+		effectTransitionTarget = new StyleTarget("panel", "effect-transition-key", "effect-transition-id",
+			null, null, StyleState.Hovered);
+		effectTransitionResolver.resolve(effectTransitionTarget, null, effectTransitionSheet);
+		if (effectTransitionScheduler.activeCount != 1)
+			return 245;
+		effectTransitionScheduler.advance(0.05);
+		var effectTransitionComputed = effectTransitionResolver.resolve(effectTransitionTarget, null,
+			effectTransitionSheet);
+		var effectTransitionBlur:BlurEffect = cast effectTransitionComputed.get(StyleProperty.Effects).effects[0];
+		if (effectTransitionBlur == null || effectTransitionBlur.sigma != 8.0)
+			return 246;
+		var dropShadow = new DropShadowEffect(0.0, 6.0, 12.0,
+			Color.rgba(0.0, 0.0, 0.0, 0.35));
+		var dropOverflow = dropShadow.inkOverflow();
+		if (dropOverflow.left != 36.0 || dropOverflow.top != 30.0 ||
+			dropOverflow.right != 36.0 || dropOverflow.bottom != 42.0)
+			return 242;
+		var effectSheet = new StyleSheet("EffectSheet");
+		effectSheet.rule(StyleSelector.widget("panel"), [
+			StyleValue.effects(effectChain),
+			StyleValue.backdropEffects(EffectChain.of([
+				BlurEffect.withSigma(8.0), new ContrastEffect(1.1), HueRotateEffect.withDegrees(12.0),
+				ColorMatrixEffect.identity(), dropShadow
+			]))
+		]);
+		var effectTarget = new StyleTarget("panel", "effect-key");
+		var effectComputed = new StyleResolver().resolve(effectTarget, null, null, effectSheet);
+		var effectsSource = effectComputed.source(StyleProperty.Effects);
+		var backdropSource = effectComputed.source(StyleProperty.BackdropEffects);
+		if (!effectComputed.get(StyleProperty.Effects).isEqual(effectChain) ||
+			effectsSource == null || effectsSource.stylesheet != "EffectSheet" ||
+			backdropSource == null || !effectComputed.has(StyleProperty.BackdropEffects))
+			return 243;
+		var emptyEffects = new ComputedStyle();
+		emptyEffects.set(StyleProperty.Effects, EffectChain.empty(), null);
+		var changedEffects = new ComputedStyle();
+		changedEffects.set(StyleProperty.Effects, effectChain, null);
+		var effectsDiff = StyleDiff.compare(emptyEffects, changedEffects);
+		var effectDescription = "";
+		for (entry in effectComputed.entries())
+			if (entry.name == "effects")
+				effectDescription = entry.describe();
+		if (!effectsDiff.changed || effectsDiff.impact != StyleImpact.Composite ||
+			effectComputed.entries().length < StyleProperty.all().length ||
+			effectDescription.indexOf("blur(12") != 0)
+			return 244;
 		var responsiveSheet = new StyleSheet("ResponsiveSheet");
 		responsiveSheet.rule(StyleSelector.widget("button"),
 			[StyleValue.paddingSymmetric(12.0, 8.0)]);

@@ -33,6 +33,9 @@ struct RenderTargetDescriptor {
     int height = 0;
     float logical_width = 0.0f;
     float logical_height = 0.0f;
+    /** Logical-space origin represented by a bounded transient target. */
+    float origin_x = 0.0f;
+    float origin_y = 0.0f;
     RenderTargetFormat format = RenderTargetFormat::Rgba8;
     uint32_t sample_count = 1;
     uint32_t usage = RenderTargetColorAttachment | RenderTargetSampled;

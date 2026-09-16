@@ -51,7 +51,8 @@ class ComputedStyle {
 		var value = values.get(property.name);
 		if (value == null && !values.exists(property.name))
 			return property.defaultValue;
-		return shared ? cast copyValue(cast property, value) : cast value;
+		return shared || property.name == "effects" || property.name == "backdropEffects"
+			? cast copyValue(cast property, value) : cast value;
 	}
 
 	public function property<T>(property:StyleProperty<T>):ComputedProperty<T>
@@ -179,6 +180,9 @@ class ComputedStyle {
 				var transform:Transform2D = cast value;
 				new Transform2D(transform.a, transform.b, transform.c, transform.d,
 					transform.tx, transform.ty);
+			case "effects" | "backdropEffects":
+				var effects:EffectChain = cast value;
+				effects == null ? null : effects.copy();
 			default:
 				value;
 		};

@@ -111,6 +111,12 @@ class StyleValue {
 	public static function opacity(value:Float):StyleValue
 		return of(StyleProperty.Opacity, value);
 
+	public static function effects(value:EffectChain):StyleValue
+		return of(StyleProperty.Effects, value);
+
+	public static function backdropEffects(value:EffectChain):StyleValue
+		return of(StyleProperty.BackdropEffects, value);
+
 	public static function progressTrackColor(value:Color):StyleValue
 		return of(StyleProperty.ProgressTrackColor, value);
 

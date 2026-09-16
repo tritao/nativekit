@@ -64,10 +64,23 @@ class CanvasCommandBuffer {
 	public function drawText(layout:TextLayout, x:Float, y:Float):Void
 		drawRect(NativeKitUI.CommandOpcode.DrawTextLayout, layout, x, y, 0.0, 0.0);
 
-	public function beginLayer(opacity:Float, mode:CompositeMode = CompositeMode.SourceOver):Void {
-		header(NativeKitUI.CommandOpcode.BeginLayer, 16);
+	public function beginLayer(opacity:Float, mode:CompositeMode = CompositeMode.SourceOver,
+			?bounds:Rect):Void {
+		if (bounds == null) {
+			header(NativeKitUI.CommandOpcode.BeginLayer, 16);
+			float(opacity);
+			word(cast mode);
+			return;
+		}
+		header(NativeKitUI.CommandOpcode.BeginLayer, 36);
 		float(opacity);
 		word(cast mode);
+		float(bounds.x);
+		float(bounds.y);
+		float(bounds.width);
+		float(bounds.height);
+		// NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS.
+		word(3);
 	}
 
 	public function endLayer():Void

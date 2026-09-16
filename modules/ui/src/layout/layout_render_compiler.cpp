@@ -270,6 +270,28 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 }
                 RenderPass pass = source_pass;
                 pass.target = remap(pass.target);
+                if (pass.target_descriptor.logical_width > 0.0f ||
+                    pass.target_descriptor.logical_height > 0.0f) {
+                    if (!std::isfinite(pass.target_descriptor.logical_width) ||
+                        !std::isfinite(pass.target_descriptor.logical_height) ||
+                        pass.target_descriptor.logical_width <= 0.0f ||
+                        pass.target_descriptor.logical_height <= 0.0f)
+                        return fail(error, primitive_index,
+                                    "custom render-target bounds are invalid");
+                    const double width = static_cast<double>(pass.target_descriptor.logical_width) *
+                                         pixel_scale;
+                    const double height =
+                        static_cast<double>(pass.target_descriptor.logical_height) * pixel_scale;
+                    if (!std::isfinite(width) || !std::isfinite(height) ||
+                        width > std::numeric_limits<int>::max() ||
+                        height > std::numeric_limits<int>::max())
+                        return fail(error, primitive_index,
+                                    "custom render-target bounds are too large");
+                    pass.target_descriptor.width =
+                        std::max(1, static_cast<int>(std::ceil(width)));
+                    pass.target_descriptor.height =
+                        std::max(1, static_cast<int>(std::ceil(height)));
+                }
                 for (auto &command : pass.commands) {
                     command.resource = remap(command.resource);
                     command.transform = device_transform(command.transform, pixel_scale);

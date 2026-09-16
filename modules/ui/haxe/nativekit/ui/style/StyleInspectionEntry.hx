@@ -31,6 +31,9 @@ class StyleInspectionEntry {
 			case "width" | "height":
 				var axis:LayoutAxis = cast value;
 				axis == null ? "null" : Std.string(axis.sizing) + "(" + Std.string(axis.value) + ")";
+			case "effects" | "backdropEffects":
+				var effects:EffectChain = cast value;
+				effects == null ? "null" : effects.toString();
 			default:
 				Std.string(value);
 		};

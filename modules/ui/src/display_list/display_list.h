@@ -44,6 +44,12 @@ enum class CompositeMode : uint32_t {
     SourceOver = 1,
 };
 
+/** Reasons a layer is isolated from its parent target. */
+enum LayerFlags : uint32_t {
+    LayerIsolated = 1u << 0,
+    LayerHasBounds = 1u << 1,
+};
+
 struct CommandHeader {
     CommandOpcode opcode{};
     uint16_t version = 1;
@@ -109,6 +115,25 @@ struct BeginLayerCommand {
     CommandHeader header;
     float opacity;
     CompositeMode mode;
+    float x;
+    float y;
+    float width;
+    float height;
+    uint32_t flags;
+};
+
+/** Legacy 16-byte layer record accepted for display-list compatibility. */
+struct LegacyBeginLayerCommand {
+    CommandHeader header;
+    float opacity;
+    CompositeMode mode;
+};
+
+struct LayerBounds {
+    float x;
+    float y;
+    float width;
+    float height;
 };
 
 struct ValidationError {
@@ -142,6 +167,8 @@ class DisplayList {
     bool draw_image(ResourceId image, float x, float y, float width, float height);
     bool draw_text_layout(ResourceId layout, float x, float y);
     bool begin_layer(float opacity, CompositeMode mode = CompositeMode::SourceOver);
+    bool begin_layer(float opacity, const LayerBounds &bounds,
+                     CompositeMode mode = CompositeMode::SourceOver);
     bool end_layer();
     bool draw_render_target(ResourceId target, float x, float y, float width, float height);
 

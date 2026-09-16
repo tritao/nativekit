@@ -2115,6 +2115,22 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     nkui::RenderPlan plan;
     if (!renderer_slot->compositor.compile(*list_slot->list, main_target, plan))
         return NKUI_ERROR_INVALID_TRANSACTION;
+    // Compositor geometry is expressed in logical pixels. Resolve bounded
+    // transient targets to physical dimensions only at the frame boundary,
+    // where the device pixel ratio is known.
+    for (auto &pass : plan.passes) {
+        if (pass.target_descriptor.logical_width > 0.0f) {
+            const double width = static_cast<double>(pass.target_descriptor.logical_width) *
+                                 frame_info->pixel_scale;
+            const double height = static_cast<double>(pass.target_descriptor.logical_height) *
+                                  frame_info->pixel_scale;
+            if (!std::isfinite(width) || !std::isfinite(height) || width > INT32_MAX ||
+                height > INT32_MAX)
+                return NKUI_ERROR_INVALID_ARGUMENT;
+            pass.target_descriptor.width = std::max(1, static_cast<int>(std::ceil(width)));
+            pass.target_descriptor.height = std::max(1, static_cast<int>(std::ceil(height)));
+        }
+    }
     ++renderer_slot->stats.display_list_count;
     renderer_slot->stats.display_list_bytes += list_slot->list->size();
     for (const auto &pass : plan.passes)

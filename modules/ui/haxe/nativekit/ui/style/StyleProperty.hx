@@ -77,6 +77,9 @@ class StyleProperty<T> {
 			left.a == right.a && left.b == right.b && left.c == right.c &&
 			left.d == right.d && left.tx == right.tx && left.ty == right.ty);
 
+	static function effectChainEqual(left:EffectChain, right:EffectChain):Bool
+		return left == right || (left != null && right != null && left.isEqual(right));
+
 	static function floatInterpolate(left:Float, right:Float, amount:Float):Float
 		return left + (right - left) * amount;
 
@@ -188,6 +191,14 @@ class StyleProperty<T> {
 		"shadowBlur", 0.0, false, StyleImpact.Paint, floatInterpolate);
 	public static final Opacity:StyleProperty<Float> = new StyleProperty(
 		"opacity", 1.0, false, StyleImpact.Composite, floatInterpolate);
+	/** Ordered post-layout filters applied to this node and its descendants. */
+	public static final Effects:StyleProperty<EffectChain> = new StyleProperty(
+		"effects", EffectChain.empty(), false, StyleImpact.Composite,
+		EffectChain.interpolate, null, null, effectChainEqual);
+	/** Ordered filters applied to the already-rendered backdrop behind this node. */
+	public static final BackdropEffects:StyleProperty<EffectChain> = new StyleProperty(
+		"backdropEffects", EffectChain.empty(), false, StyleImpact.Composite,
+		EffectChain.interpolate, null, null, effectChainEqual);
 	/** Paint inputs used by the retained custom progress renderer. */
 	public static final ProgressTrackColor:StyleProperty<Color> = new StyleProperty(
 		"progressTrackColor", Color.rgba(0.19, 0.21, 0.25, 1.0), false,
@@ -236,7 +247,8 @@ class StyleProperty<T> {
 				dynamicProperty(LetterSpacing), dynamicProperty(BorderColor), dynamicProperty(BorderWidth),
 				dynamicProperty(OutlineColor), dynamicProperty(OutlineWidth), dynamicProperty(ShadowColor),
 				dynamicProperty(ShadowOffsetX), dynamicProperty(ShadowOffsetY), dynamicProperty(ShadowBlur),
-				dynamicProperty(Opacity), dynamicProperty(ProgressTrackColor), dynamicProperty(ProgressFillColor),
+				dynamicProperty(Opacity), dynamicProperty(Effects), dynamicProperty(BackdropEffects),
+				dynamicProperty(ProgressTrackColor), dynamicProperty(ProgressFillColor),
 				dynamicProperty(SliderTrackColor), dynamicProperty(SliderFillColor),
 				dynamicProperty(SliderThumbColor)
 			];

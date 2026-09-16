@@ -288,6 +288,9 @@ class StyleResolver {
 				insetsKey(cast value);
 			case "transform":
 				transformKey(cast value);
+			case "effects" | "backdropEffects":
+				var effects:EffectChain = cast value;
+				effects == null ? "null" : effects.key();
 			default:
 				Std.string(value);
 		};
@@ -419,7 +422,8 @@ class StyleResolver {
 				var animation = new StyleTransitionAnimation(current, next, transition.duration,
 					transition.easing, property.name,
 					function(value) { animatedValues.set(key, value); },
-					function() { animatedValues.set(key, next); activeAnimations.remove(key); });
+					function() { animatedValues.set(key, next); activeAnimations.remove(key); },
+					property.interpolate == null ? null : cast property.interpolate);
 				activeAnimations.set(key, animation);
 				scheduler.track(animation);
 			}
@@ -449,20 +453,7 @@ class StyleResolver {
 	static function sameValue(property:StyleProperty<Dynamic>, left:Dynamic, right:Dynamic):Bool {
 		if (left == right)
 			return true;
-		return switch property.name {
-			case "background" | "borderColor" | "outlineColor" | "shadowColor":
-				var leftColor:Color = cast left;
-				var rightColor:Color = cast right;
-				sameColor(leftColor, rightColor);
-			case "width" | "height" | "radiusTopLeft" | "radiusTopRight" |
-				"radiusBottomRight" | "radiusBottomLeft" | "opacity" | "shadowOffsetX" |
-				"shadowOffsetY" | "shadowBlur" | "fontSize" | "letterSpacing":
-				var leftFloat:Float = cast left;
-				var rightFloat:Float = cast right;
-				leftFloat == rightFloat;
-			default:
-				false;
-		}
+		return property.isEqual(left, right);
 	}
 }
 

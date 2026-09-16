@@ -120,10 +120,16 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
     for (uint32_t scheduled_index = 0; scheduled_index < pass_order.size(); ++scheduled_index) {
         const uint32_t pass_index = pass_order[scheduled_index];
         const auto &pass = plan.passes[pass_index];
-        const int pass_width = pass.target_descriptor.width > 0 ? pass.target_descriptor.width
-                                                                : window.frame_target.width;
-        const int pass_height = pass.target_descriptor.height > 0 ? pass.target_descriptor.height
-                                                                  : window.frame_target.height;
+        int pass_width = pass.target_descriptor.width;
+        int pass_height = pass.target_descriptor.height;
+        if (pass_width <= 0)
+            pass_width = pass.target_descriptor.logical_width > 0.0f
+                             ? static_cast<int>(std::ceil(pass.target_descriptor.logical_width))
+                             : window.frame_target.width;
+        if (pass_height <= 0)
+            pass_height = pass.target_descriptor.logical_height > 0.0f
+                              ? static_cast<int>(std::ceil(pass.target_descriptor.logical_height))
+                              : window.frame_target.height;
         const bool window_pass = pass.target.value == window.id.value;
         if (!(window_pass ? renderer.beginWindowPass(pass_width, pass_height, !pass.load_existing)
                           : renderer.beginTargetPass(pass.target, pass_width, pass_height,

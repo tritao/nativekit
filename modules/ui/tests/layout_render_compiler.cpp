@@ -335,6 +335,31 @@ int main() {
         custom_position->scissor_width != 4.5f || custom_position->scissor_height != 6.0f)
         return 22;
 
+    RenderPlan bounded_custom_plan;
+    bounded_custom_plan.passes.push_back({main_target, {}, false, {}});
+    const ResourceId bounded_target = make_resource_id(ResourceKind::RenderTarget, 1, 445);
+    RenderTargetDescriptor bounded_descriptor;
+    bounded_descriptor.logical_width = 20.0f;
+    bounded_descriptor.logical_height = 10.0f;
+    bounded_descriptor.origin_x = 2.0f;
+    bounded_descriptor.origin_y = 3.0f;
+    bounded_custom_plan.passes.push_back({bounded_target, bounded_descriptor, false,
+                                          {{RenderCommandKind::Path, custom_path}}});
+    bounded_custom_plan.dependencies.push_back({bounded_target, main_target});
+    LayoutRenderCompiler::CustomPaintPlans bounded_paints{{2, &bounded_custom_plan}};
+    LayoutRenderFrame bounded_frame;
+    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, bounded_frame, &compile_error,
+                          false, engine.text_adapter(), &bounded_paints) ||
+        bounded_frame.plan().passes.size() != 2)
+        return 23;
+    const auto &bounded_pass = bounded_frame.plan().passes[1];
+    if (bounded_pass.target_descriptor.logical_width != 20.0f ||
+        bounded_pass.target_descriptor.logical_height != 10.0f ||
+        bounded_pass.target_descriptor.width != 30 || bounded_pass.target_descriptor.height != 15 ||
+        bounded_pass.target_descriptor.origin_x != 2.0f ||
+        bounded_pass.target_descriptor.origin_y != 3.0f)
+        return 24;
+
     RecordingRenderer backend;
     nk_surface_frame_target frame_target{};
     frame_target.struct_size = sizeof(frame_target);

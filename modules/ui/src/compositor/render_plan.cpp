@@ -16,7 +16,9 @@ bool valid_descriptor(const RenderTargetDescriptor &descriptor) {
     if (descriptor.width < 0 || descriptor.height < 0 ||
         ((descriptor.width == 0) != (descriptor.height == 0)) ||
         !std::isfinite(descriptor.logical_width) || !std::isfinite(descriptor.logical_height) ||
+        !std::isfinite(descriptor.origin_x) || !std::isfinite(descriptor.origin_y) ||
         descriptor.logical_width < 0.0f || descriptor.logical_height < 0.0f ||
+        ((descriptor.logical_width == 0.0f) != (descriptor.logical_height == 0.0f)) ||
         descriptor.sample_count != 1 || descriptor.format != RenderTargetFormat::Rgba8 ||
         (descriptor.usage & RenderTargetColorAttachment) == 0)
         return false;
