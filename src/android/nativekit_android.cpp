@@ -19,6 +19,7 @@
 #include "core/gamepad_events.hpp"
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
+#include "core/text_edit_transaction.hpp"
 #include "android/nativekit_android_internal.hpp"
 
 #include <jni.h>
@@ -209,6 +210,52 @@ std::string to_utf8(JNIEnv *env, jstring value) {
     }
     env->ReleaseStringChars(value, characters);
     return result;
+}
+
+bool to_utf8_checked(JNIEnv *env, jstring string_value, std::string *out) {
+    if (!out)
+        return false;
+    if (!string_value) {
+        out->clear();
+        return true;
+    }
+    const auto length = env->GetStringLength(string_value);
+    const auto *characters = env->GetStringChars(string_value, nullptr);
+    if (!characters)
+        return false;
+    out->clear();
+    out->reserve(static_cast<std::size_t>(length));
+    for (jsize index = 0; index < length; ++index) {
+        const std::uint32_t code_unit = characters[index];
+        if (code_unit >= 0xd800 && code_unit <= 0xdbff) {
+            if (index + 1 >= length || characters[index + 1] < 0xdc00 ||
+                characters[index + 1] > 0xdfff) {
+                env->ReleaseStringChars(string_value, characters);
+                return false;
+            }
+            const std::uint32_t low = characters[++index];
+            const std::uint32_t codepoint = UINT32_C(0x10000) +
+                ((code_unit - 0xd800) << 10) + (low - 0xdc00);
+            out->push_back(static_cast<char>(0xf0 | (codepoint >> 18)));
+            out->push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3f)));
+            out->push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
+            out->push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+        } else if (code_unit >= 0xdc00 && code_unit <= 0xdfff) {
+            env->ReleaseStringChars(string_value, characters);
+            return false;
+        } else if (code_unit <= 0x7f) {
+            out->push_back(static_cast<char>(code_unit));
+        } else if (code_unit <= 0x7ff) {
+            out->push_back(static_cast<char>(0xc0 | (code_unit >> 6)));
+            out->push_back(static_cast<char>(0x80 | (code_unit & 0x3f)));
+        } else {
+            out->push_back(static_cast<char>(0xe0 | (code_unit >> 12)));
+            out->push_back(static_cast<char>(0x80 | ((code_unit >> 6) & 0x3f)));
+            out->push_back(static_cast<char>(0x80 | (code_unit & 0x3f)));
+        }
+    }
+    env->ReleaseStringChars(string_value, characters);
+    return true;
 }
 
 jstring from_utf8(JNIEnv *env, const char *value) {
@@ -3214,27 +3261,52 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (!resource || action < NK_TEXT_EDIT_COMPOSE || action > NK_TEXT_EDIT_SET_COMPOSITION)
         return;
-    const auto value = to_utf8(env, text);
-    nk_text_edit_event payload{};
-    payload.action = static_cast<nk_text_edit_action>(action);
-    payload.text_offset = value.empty() ? 0u : sizeof(payload);
-    payload.text_length = static_cast<uint32_t>(value.size());
+    std::string value;
+    if (!to_utf8_checked(env, text, &value))
+        return;
     auto position = [](jint input) -> nk_text_position {
         return input < 0 ? NK_TEXT_POSITION_NONE : static_cast<nk_text_position>(input);
     };
-    payload.replace_start = position(replace_start);
-    payload.replace_end = position(replace_end);
-    payload.selection_start = position(selection_start);
-    payload.selection_end = position(selection_end);
-    payload.composition_start = position(composition_start);
-    payload.composition_end = position(composition_end);
+    auto normalized_action = static_cast<nk_text_edit_action>(action);
+    const auto normalized_composition_start = position(composition_start);
+    const auto normalized_composition_end = position(composition_end);
+    // Android uses an empty composing string to clear a composition. Once the
+    // local composing span is gone this is a committed empty replacement, not
+    // a malformed COMPOSE transaction.
+    if (normalized_action == NK_TEXT_EDIT_COMPOSE &&
+        normalized_composition_start == NK_TEXT_POSITION_NONE &&
+        normalized_composition_end == NK_TEXT_POSITION_NONE)
+        normalized_action = NK_TEXT_EDIT_COMMIT;
+    const nk::core::TextEditTransaction transaction{
+        normalized_action,
+        position(replace_start),
+        position(replace_end),
+        value,
+        position(selection_start),
+        position(selection_end),
+        normalized_composition_start,
+        normalized_composition_end};
+    if (!transaction.valid())
+        return;
+    nk_text_edit_event payload{};
+    payload.action = transaction.action;
+    payload.text_offset = transaction.replacement_text.empty() ? 0u : sizeof(payload);
+    payload.text_length = static_cast<uint32_t>(transaction.replacement_text.size());
+    payload.replace_start = transaction.replacement_start;
+    payload.replace_end = transaction.replacement_end;
+    payload.selection_start = transaction.selection_start;
+    payload.selection_end = transaction.selection_end;
+    payload.composition_start = transaction.composition_start;
+    payload.composition_end = transaction.composition_end;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_TEXT_EDIT;
     event.source = resource->handle;
-    event.data.resize(sizeof(payload) + value.size() + (value.empty() ? 0u : 1u));
+    event.data.resize(sizeof(payload) + transaction.replacement_text.size() +
+                      (transaction.replacement_text.empty() ? 0u : 1u));
     std::memcpy(event.data.data(), &payload, sizeof(payload));
-    if (!value.empty())
-        std::memcpy(event.data.data() + sizeof(payload), value.c_str(), value.size() + 1);
+    if (!transaction.replacement_text.empty())
+        std::memcpy(event.data.data() + sizeof(payload), transaction.replacement_text.c_str(),
+                    transaction.replacement_text.size() + 1);
     nk::core::push_event(std::move(event));
 }
 

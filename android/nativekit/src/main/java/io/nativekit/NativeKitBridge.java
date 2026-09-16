@@ -46,12 +46,15 @@ import android.view.OrientationEventListener;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.CursorAnchorInfo;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.ExtractedText;
+import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.Selection;
 import android.text.SpannableStringBuilder;
+import android.text.TextUtils;
 import android.view.DragAndDropPermissions;
 import android.view.DragEvent;
 import android.webkit.RenderProcessGoneDetail;
@@ -137,6 +140,8 @@ final class NativeKitBridge {
                     Choreographer.getInstance().postFrameCallback(this);
             }
         };
+        // This is an IME-facing mirror of the published editor window. NativeKit/Skribidi remain
+        // the document authority; mutations are reported as transactions below.
         private final SpannableStringBuilder editable = new SpannableStringBuilder();
         @Nullable private BaseInputConnection editorConnection;
         private boolean structuredTextInput;
@@ -774,80 +779,167 @@ final class NativeKitBridge {
                 public Editable getEditable() { return editable; }
 
                 @Override
+                public CharSequence getTextBeforeCursor(int length, int flags) {
+                    int cursor = Selection.getSelectionStart(editable);
+                    if (cursor < 0)
+                        return "";
+                    int start = Math.max(0, cursor - Math.max(0, length));
+                    start = NativeKitTextInputOffsets.previousBoundary(editable, start);
+                    return start < 0 ? "" : editable.subSequence(start, cursor);
+                }
+
+                @Override
+                public CharSequence getTextAfterCursor(int length, int flags) {
+                    int cursor = Selection.getSelectionEnd(editable);
+                    if (cursor < 0)
+                        return "";
+                    int requested = Math.max(0, length);
+                    int end = requested > editable.length() - cursor
+                        ? editable.length() : cursor + requested;
+                    end = NativeKitTextInputOffsets.nextBoundary(editable, end);
+                    return end < 0 ? "" : editable.subSequence(cursor, end);
+                }
+
+                @Override
+                public CharSequence getSelectedText(int flags) {
+                    int start = Selection.getSelectionStart(editable);
+                    int end = Selection.getSelectionEnd(editable);
+                    if (start < 0 || end < 0 || start == end)
+                        return null;
+                    return editable.subSequence(Math.min(start, end), Math.max(start, end));
+                }
+
+                @Override
+                public int getCursorCapsMode(int requestModes) {
+                    int cursor = Selection.getSelectionStart(editable);
+                    return cursor < 0 ? 0 : TextUtils.getCapsMode(editable, cursor, requestModes);
+                }
+
+                @Override
+                public ExtractedText getExtractedText(ExtractedTextRequest request, int flags) {
+                    int start = Selection.getSelectionStart(editable);
+                    int end = Selection.getSelectionEnd(editable);
+                    int localCodePointCount = NativeKitTextInputOffsets.codePointOffset(
+                        editable, editable.length());
+                    // ExtractedText.startOffset is a UTF-16 document offset. The public state
+                    // currently publishes the complete document; do not claim a partial code
+                    // point window is a complete Android extraction until its absolute UTF-16
+                    // origin is available.
+                    if (start < 0 || end < 0 || textStart != 0 ||
+                        localCodePointCount != documentLength)
+                        return null;
+                    ExtractedText result = new ExtractedText();
+                    result.text = (flags & GET_TEXT_WITH_STYLES) != 0
+                        ? new SpannableStringBuilder(editable) : editable.toString();
+                    result.startOffset = textStart;
+                    result.partialStartOffset = -1;
+                    result.partialEndOffset = -1;
+                    result.selectionStart = start;
+                    result.selectionEnd = end;
+                    if ((textInputFlags & TEXT_INPUT_MULTILINE) == 0)
+                        result.flags = ExtractedText.FLAG_SINGLE_LINE;
+                    return result;
+                }
+
+                @Override
                 public boolean commitText(CharSequence text, int cursor) {
                     int[] replacement = replacementRange();
-                    boolean result = super.commitText(text, cursor);
-                    emitTextEdit(TEXT_EDIT_COMMIT, text, replacement[0], replacement[1]);
+                    String value = text == null ? "" : text.toString();
+                    if (replacement == null || !validText(value))
+                        return false;
+                    boolean result = super.commitText(value, cursor);
+                    if (!result)
+                        return false;
+                    emitTextEdit(TEXT_EDIT_COMMIT, value, replacement[0], replacement[1]);
                     if (!structuredTextInput)
-                        text.codePoints().forEach(value -> nativeOnText(nativeHandle, value));
+                        value.codePoints().forEach(codepoint -> nativeOnText(nativeHandle, codepoint));
                     return result;
                 }
 
                 @Override
                 public boolean setComposingText(CharSequence text, int cursor) {
                     int[] replacement = replacementRange();
-                    boolean result = super.setComposingText(text, cursor);
-                    emitTextEdit(TEXT_EDIT_COMPOSE, text, replacement[0], replacement[1]);
+                    String value = text == null ? "" : text.toString();
+                    if (replacement == null || !validText(value))
+                        return false;
+                    boolean result = super.setComposingText(value, cursor);
+                    if (!result)
+                        return false;
+                    emitTextEdit(TEXT_EDIT_COMPOSE, value, replacement[0], replacement[1]);
                     return result;
                 }
 
                 @Override
                 public boolean finishComposingText() {
                     boolean result = super.finishComposingText();
-                    emitTextEdit(TEXT_EDIT_FINISH_COMPOSITION, "", -1, -1);
+                    if (result)
+                        emitTextEdit(TEXT_EDIT_FINISH_COMPOSITION, "", -1, -1);
                     return result;
                 }
 
                 @Override
                 public boolean setSelection(int start, int end) {
+                    if (!NativeKitTextInputOffsets.isExactBoundary(editable, start) ||
+                        !NativeKitTextInputOffsets.isExactBoundary(editable, end))
+                        return false;
+                    if (start > end) {
+                        int swap = start;
+                        start = end;
+                        end = swap;
+                    }
                     boolean result = super.setSelection(start, end);
-                    emitTextEdit(TEXT_EDIT_SET_SELECTION, "", -1, -1);
+                    if (result)
+                        emitTextEdit(TEXT_EDIT_SET_SELECTION, "", -1, -1);
                     return result;
                 }
 
                 @Override
                 public boolean setComposingRegion(int start, int end) {
+                    if (!NativeKitTextInputOffsets.isExactBoundary(editable, start) ||
+                        !NativeKitTextInputOffsets.isExactBoundary(editable, end))
+                        return false;
+                    if (start > end) {
+                        int swap = start;
+                        start = end;
+                        end = swap;
+                    }
                     boolean result = super.setComposingRegion(start, end);
-                    emitTextEdit(TEXT_EDIT_SET_COMPOSITION, "", -1, -1);
+                    if (result)
+                        emitTextEdit(TEXT_EDIT_SET_COMPOSITION, "", -1, -1);
                     return result;
                 }
 
                 @Override
                 public boolean deleteSurroundingText(int beforeLength, int afterLength) {
-                    int selectionStart = Math.max(0, Selection.getSelectionStart(editable));
-                    int selectionEnd = Math.max(0, Selection.getSelectionEnd(editable));
-                    int start = Math.max(0, Math.min(selectionStart, selectionEnd) -
-                                            Math.max(0, beforeLength));
-                    int end = Math.min(editable.length(),
-                                       Math.max(selectionStart, selectionEnd) +
-                                           Math.max(0, afterLength));
-                    int replaceStart = codePointIndex(start);
-                    int replaceEnd = codePointIndex(end);
-                    boolean result = super.deleteSurroundingText(beforeLength, afterLength);
-                    emitTextEdit(TEXT_EDIT_DELETE, "", replaceStart, replaceEnd);
+                    int selectionStart = Selection.getSelectionStart(editable);
+                    int selectionEnd = Selection.getSelectionEnd(editable);
+                    int[] range = NativeKitTextInputOffsets.deletionRange(editable, selectionStart,
+                        selectionEnd, beforeLength, afterLength);
+                    if (range == null)
+                        return false;
+                    int before = Math.min(selectionStart, selectionEnd) - range[0];
+                    int after = range[1] - Math.max(selectionStart, selectionEnd);
+                    boolean result = super.deleteSurroundingText(before, after);
+                    if (result && range[0] != range[1])
+                        emitTextEdit(TEXT_EDIT_DELETE, "", codePointIndex(range[0]),
+                                     codePointIndex(range[1]));
                     return result;
                 }
 
                 @Override
                 public boolean deleteSurroundingTextInCodePoints(int beforeLength,
                                                                  int afterLength) {
-                    int selectionStart = Math.max(0, Selection.getSelectionStart(editable));
-                    int selectionEnd = Math.max(0, Selection.getSelectionEnd(editable));
-                    int start = Character.offsetByCodePoints(
-                        editable, Math.min(selectionStart, selectionEnd),
-                        -Math.min(Math.max(0, beforeLength),
-                                  Character.codePointCount(editable, 0,
-                                      Math.min(selectionStart, selectionEnd))));
-                    int trailing = Character.codePointCount(
-                        editable, Math.max(selectionStart, selectionEnd), editable.length());
-                    int end = Character.offsetByCodePoints(
-                        editable, Math.max(selectionStart, selectionEnd),
-                        Math.min(Math.max(0, afterLength), trailing));
-                    int replaceStart = codePointIndex(start);
-                    int replaceEnd = codePointIndex(end);
+                    int selectionStart = Selection.getSelectionStart(editable);
+                    int selectionEnd = Selection.getSelectionEnd(editable);
+                    int[] range = NativeKitTextInputOffsets.deletionRangeInCodePoints(editable,
+                        selectionStart, selectionEnd, beforeLength, afterLength);
+                    if (range == null)
+                        return false;
                     boolean result = super.deleteSurroundingTextInCodePoints(beforeLength,
                                                                               afterLength);
-                    emitTextEdit(TEXT_EDIT_DELETE, "", replaceStart, replaceEnd);
+                    if (result && range[0] != range[1])
+                        emitTextEdit(TEXT_EDIT_DELETE, "", codePointIndex(range[0]),
+                                     codePointIndex(range[1]));
                     return result;
                 }
 
@@ -870,22 +962,28 @@ final class NativeKitBridge {
             int start = BaseInputConnection.getComposingSpanStart(editable);
             int end = BaseInputConnection.getComposingSpanEnd(editable);
             if (start < 0 || end < 0) {
-                start = Math.max(0, Selection.getSelectionStart(editable));
-                end = Math.max(0, Selection.getSelectionEnd(editable));
+                start = Selection.getSelectionStart(editable);
+                end = Selection.getSelectionEnd(editable);
             }
-            return new int[] {codePointIndex(Math.min(start, end)),
-                              codePointIndex(Math.max(start, end))};
+            if (start < 0 || end < 0)
+                return null;
+            int replaceStart = codePointIndex(Math.min(start, end));
+            int replaceEnd = codePointIndex(Math.max(start, end));
+            return replaceStart < 0 || replaceEnd < 0
+                ? null : new int[] {replaceStart, replaceEnd};
         }
 
         private int codePointIndex(int utf16Index) {
-            return textStart + Character.codePointCount(editable, 0,
-                Math.max(0, Math.min(utf16Index, editable.length())));
+            int local = NativeKitTextInputOffsets.codePointOffset(editable, utf16Index);
+            if (local < 0 || textStart > Integer.MAX_VALUE - local)
+                return NativeKitTextInputOffsets.INVALID;
+            return textStart + local;
         }
 
         private int codeUnitIndex(int codePointIndex) {
-            int count = Character.codePointCount(editable, 0, editable.length());
-            return Character.offsetByCodePoints(editable, 0,
-                Math.max(0, Math.min(codePointIndex - textStart, count)));
+            if (codePointIndex < textStart)
+                return NativeKitTextInputOffsets.INVALID;
+            return NativeKitTextInputOffsets.utf16Offset(editable, codePointIndex - textStart);
         }
 
         private int localCodeUnitIndex(int codePointIndex) { return codeUnitIndex(codePointIndex); }
@@ -908,10 +1006,26 @@ final class NativeKitBridge {
             int selectionEnd = Selection.getSelectionEnd(editable);
             int compositionStart = BaseInputConnection.getComposingSpanStart(editable);
             int compositionEnd = BaseInputConnection.getComposingSpanEnd(editable);
-            nativeOnTextEdit(nativeHandle, action, text.toString(), replaceStart, replaceEnd,
-                codePointIndex(selectionStart), codePointIndex(selectionEnd),
-                compositionStart < 0 ? -1 : codePointIndex(compositionStart),
-                compositionEnd < 0 ? -1 : codePointIndex(compositionEnd));
+            int selectionStartCodePoint = codePointIndex(Math.min(selectionStart, selectionEnd));
+            int selectionEndCodePoint = codePointIndex(Math.max(selectionStart, selectionEnd));
+            int compositionStartCodePoint = compositionStart < 0 ? -1 : codePointIndex(compositionStart);
+            int compositionEndCodePoint = compositionEnd < 0 ? -1 : codePointIndex(compositionEnd);
+            if (selectionStartCodePoint < 0 || selectionEndCodePoint < 0 ||
+                (compositionStart >= 0 && compositionStartCodePoint < 0) ||
+                (compositionEnd >= 0 && compositionEndCodePoint < 0))
+                return;
+            int normalizedAction = action == TEXT_EDIT_COMPOSE &&
+                                   compositionStartCodePoint < 0 &&
+                                   compositionEndCodePoint < 0
+                               ? TEXT_EDIT_COMMIT : action;
+            nativeOnTextEdit(nativeHandle, normalizedAction, text == null ? "" : text.toString(),
+                replaceStart, replaceEnd, selectionStartCodePoint, selectionEndCodePoint,
+                compositionStartCodePoint, compositionEndCodePoint);
+        }
+
+        private boolean validText(CharSequence text) {
+            return text != null &&
+                NativeKitTextInputOffsets.isExactBoundary(text, text.length());
         }
 
         void setTextInputState(String text, int newTextStart, int newDocumentLength,
@@ -920,6 +1034,29 @@ final class NativeKitBridge {
                                @TextInputFlags int inputFlags, @TextInputAction int action,
                                float newCursorX, float newCursorY, float newCursorWidth,
                                float newCursorHeight) {
+            if (text == null)
+                text = "";
+            int codePointCount = NativeKitTextInputOffsets.codePointOffset(text, text.length());
+            long textEnd = (long)newTextStart + Math.max(0, codePointCount);
+            boolean noComposition = compositionStart < 0 && compositionEnd < 0;
+            boolean validComposition = compositionStart >= newTextStart &&
+                compositionEnd >= compositionStart && compositionEnd <= textEnd;
+            if (codePointCount < 0 || newTextStart < 0 || newDocumentLength < 0 ||
+                textEnd > newDocumentLength || selectionStart < newTextStart ||
+                selectionEnd < selectionStart || selectionEnd > textEnd ||
+                (!noComposition && !validComposition))
+                return;
+            int localSelectionStart = NativeKitTextInputOffsets.utf16Offset(
+                text, selectionStart - newTextStart);
+            int localSelectionEnd = NativeKitTextInputOffsets.utf16Offset(
+                text, selectionEnd - newTextStart);
+            int localCompositionStart = noComposition ? -1 : NativeKitTextInputOffsets.utf16Offset(
+                text, compositionStart - newTextStart);
+            int localCompositionEnd = noComposition ? -1 : NativeKitTextInputOffsets.utf16Offset(
+                text, compositionEnd - newTextStart);
+            if (localSelectionStart < 0 || localSelectionEnd < 0 ||
+                (!noComposition && (localCompositionStart < 0 || localCompositionEnd < 0)))
+                return;
             structuredTextInput = true;
             textStart = newTextStart;
             documentLength = newDocumentLength;
@@ -933,13 +1070,11 @@ final class NativeKitBridge {
             pendingCompositionStart = compositionStart;
             pendingCompositionEnd = compositionEnd;
             editable.replace(0, editable.length(), text);
-            Selection.setSelection(editable, codeUnitIndex(selectionStart),
-                                   codeUnitIndex(selectionEnd));
+            Selection.setSelection(editable, localSelectionStart, localSelectionEnd);
             BaseInputConnection.removeComposingSpans(editable);
             if (compositionStart >= 0 && compositionEnd >= 0 && editorConnection != null) {
                 synchronizingTextInput = true;
-                editorConnection.setComposingRegion(codeUnitIndex(compositionStart),
-                                                    codeUnitIndex(compositionEnd));
+                editorConnection.setComposingRegion(localCompositionStart, localCompositionEnd);
                 synchronizingTextInput = false;
             }
             InputMethodManager manager = (InputMethodManager)getContext().getSystemService(
@@ -1031,6 +1166,10 @@ final class NativeKitBridge {
                 manager.hideSoftInputFromWindow(getWindowToken(), 0);
                 manager.restartInput(this);
                 structuredTextInput = false;
+                pendingCompositionStart = -1;
+                pendingCompositionEnd = -1;
+                editable.clear();
+                Selection.setSelection(editable, 0);
             }
         }
 

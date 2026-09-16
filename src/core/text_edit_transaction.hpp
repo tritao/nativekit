@@ -41,14 +41,15 @@ struct TextEditTransaction {
         case NK_TEXT_EDIT_COMPOSE:
             return has_replacement && has_composition;
         case NK_TEXT_EDIT_COMMIT:
-        case NK_TEXT_EDIT_DELETE:
             return has_replacement;
+        case NK_TEXT_EDIT_DELETE:
+            return has_replacement && replacement_text.empty();
         case NK_TEXT_EDIT_SET_SELECTION:
-            return true;
+            return !has_replacement && replacement_text.empty();
         case NK_TEXT_EDIT_FINISH_COMPOSITION:
-            return !has_replacement && !has_composition;
+            return !has_replacement && !has_composition && replacement_text.empty();
         case NK_TEXT_EDIT_SET_COMPOSITION:
-            return true;
+            return !has_replacement && replacement_text.empty();
         default:
             return false;
         }

@@ -48,5 +48,18 @@ int main() {
                                                   NK_TEXT_POSITION_NONE,
                                                   NK_TEXT_POSITION_NONE};
     assert(!missing_composition.valid());
+    const TextEditTransaction delete_with_text{NK_TEXT_EDIT_DELETE, 2, 3, "x", 2, 2,
+                                               NK_TEXT_POSITION_NONE,
+                                               NK_TEXT_POSITION_NONE};
+    assert(!delete_with_text.valid());
+    const TextEditTransaction selection_with_replacement{NK_TEXT_EDIT_SET_SELECTION,
+                                                          2,
+                                                          2,
+                                                          "x",
+                                                          2,
+                                                          2,
+                                                          NK_TEXT_POSITION_NONE,
+                                                          NK_TEXT_POSITION_NONE};
+    assert(!selection_with_replacement.valid());
     return 0;
 }
