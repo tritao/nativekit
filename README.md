@@ -139,6 +139,15 @@ HTTP module with `-DNK_BUILD_NET=ON`; Linux builds currently select the system
 libcurl backend with `-DNK_USE_SYSTEM_CURL=ON`. Their architecture and build
 notes live under [`modules/`](modules/).
 
+The retained UI module provides cross-platform layout and rendering plus an
+optional Haxe framework with widgets, state, gestures, accessibility, and
+animation. Its FIT/GROW layout axes support minimum and maximum constraints and
+weighted growth; the Haxe layer also provides computed-style and whole-submission
+caches for static or mostly static trees. See the [UI module guide](modules/ui/README.md)
+for the layout/style contract, cache invalidation rules, and framework test
+commands. The [UI Explorer guide](modules/ui/examples/ui_showcase/README.md)
+covers the interactive showcase and visual checks.
+
 ### Web / WASM preview
 
 The initial browser backend is Emscripten + WebGL2 behind NativeKit's regular

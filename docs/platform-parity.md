@@ -10,6 +10,13 @@ The target is that every public API family is either implemented wherever it
 makes semantic sense or explicitly classified as not applicable. A missing
 implementation is a `Deferred` item, not an implicit platform exception.
 
+This contract covers the core NativeKit platform ABI and its capability bits.
+The optional `NativeKit::gpu` and `NativeKit::ui` modules are not capability
+families in this table: their rendering, layout, style, and framework behavior
+are documented and tested by their respective module suites. The optional
+`NativeKit::net` capability bits are the exception and are included below when
+that module is enabled.
+
 ## Contract states
 
 | State | Meaning |

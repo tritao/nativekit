@@ -15,6 +15,13 @@ without deferred or not-applicable bits. An intentional capability change must
 update the snapshot, the normative
 [platform parity contract](platform-parity.md), and behavior coverage together.
 
+The parity suite covers the core platform ABI and the optional networking
+capability bits when that module is enabled. Optional GPU and retained UI
+behavior is validated by module-specific native, Haxeon, showcase, and visual
+tests rather than by the capability snapshot; see the [UI module guide](../modules/ui/README.md)
+for its layout, computed-style cache, whole-submission cache, and framework
+smoke-test coverage.
+
 Desktop backends also run `capability_conformance`, a shared operation-level
 suite for windows, extended geometry and styling, input/IME, cursors, monitors,
 resource I/O and sharing, graphics surfaces, accessibility, system services,
