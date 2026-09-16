@@ -6,6 +6,7 @@ import GradientStop;
 import Image;
 import ImageFormat;
 import Insets;
+import nativekit.ui.icons.IconName;
 import LayoutAlignmentX;
 import LayoutAlignmentY;
 import LayoutAxis;
@@ -605,6 +606,13 @@ class FrameworkSmoke {
 			new LayoutFrame(256.0, 192.0));
 		if (narrowButtonRoot.children[0].layout.paragraphStyle.wrap != TextWrap.None)
 			return 102;
+		var labeledIconButton = new Button("Search", null, null, "labeled-icon-smoke");
+		labeledIconButton.leadingIcon = IconName.Search;
+		var labeledIconRoot = context.submit(labeledIconButton, new LayoutFrame(256.0, 192.0));
+		var labeledIconSemantics:Semantics = cast labeledIconRoot.semantics;
+		if (labeledIconRoot.children.length != 2 || labeledIconSemantics == null ||
+			labeledIconSemantics.label != "Search")
+			return 236;
 		var toggleChanged = false;
 		var toggle = new Toggle("toggle-smoke", "Enabled", false,
 			function(next) { toggleChanged = next; });

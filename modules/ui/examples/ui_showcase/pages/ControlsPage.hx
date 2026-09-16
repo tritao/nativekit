@@ -37,6 +37,8 @@ class ControlsPage {
 				explorer.keyed("disabled", explorer.disabledButton("Disabled action")),
 				explorer.keyed("icon-label", explorer.caption("Icon-only · accessible name: Search")),
 				explorer.keyed("icon-button", iconButtonSample()),
+				explorer.keyed("labeled-icon-label", explorer.caption("Leading icon + visible label")),
+				explorer.keyed("labeled-icon-button", labeledIconButton(explorer)),
 				explorer.keyed("hint", explorer.caption("Tab to focus · Enter to activate"))
 			])),
 			explorer.keyed("selection", explorer.panel("selection-card", [
@@ -115,6 +117,12 @@ class ControlsPage {
 		buttonStyle.height = LayoutAxis.fixed(40.0);
 		buttonStyle.padding = new Insets(10.0, 10.0, 10.0, 10.0);
 		return new IconButton("search-action", IconName.Search, "Search", function() {}, buttonStyle);
+	}
+
+	static function labeledIconButton(explorer:UiExplorer):nativekit.ui.widgets.Button {
+		var button = explorer.button("Search", "labeled-search-action", function() {});
+		button.leadingIcon = IconName.Search;
+		return button;
 	}
 
 	static function spinnerSample(explorer:UiExplorer, key:String, label:String,

@@ -2,6 +2,8 @@ package nativekit.ui.widgets;
 
 import Color;
 import nativekit.ui.core.Key;
+import LayoutAlignmentY;
+import LayoutDirection;
 import LayoutStyle;
 import LayoutVisualKind;
 import TextWrap;
@@ -11,6 +13,7 @@ import nativekit.ui.core.TextStyleOverride;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.View;
+import nativekit.ui.icons.IconName;
 import nativekit.ui.theme.TextRole;
 import nativekit.ui.style.StyleResolver;
 import nativekit.ui.style.StyleState;
@@ -33,6 +36,10 @@ class Button implements View {
 	public var variant:ButtonVariant;
 	public var enabled:Bool;
 	public var selected:Bool;
+	/** Optional decorative icons rendered inside the button's single hit target. */
+	public var leadingIcon:Null<IconName>;
+	public var trailingIcon:Null<IconName>;
+	public var iconSize:Float;
 	/** Semantic role override used by composite controls such as tabs and menus. */
 	public var semanticRole:AccessibilityRole;
 	/** Action capabilities override used by composite controls. */
@@ -45,11 +52,18 @@ class Button implements View {
 			? (this.label.length == 0 ? "button" : this.label)
 			: key;
 		this.style = style == null ? defaultStyle() : style.copy();
+		this.style.direction = LayoutDirection.LeftToRight;
+		this.style.childAlignY = LayoutAlignmentY.Center;
+		if (this.style.childGap == 0.0)
+			this.style.childGap = 8.0;
 		classes = [];
 		variant = ButtonVariant.Primary;
 		this.onClick = onClick;
 		enabled = true;
 		selected = false;
+		leadingIcon = null;
+		trailingIcon = null;
+		iconSize = 16.0;
 		semanticRole = AccessibilityRole.Button;
 		semanticActions = AccessibilityAction.Activate;
 	}
@@ -88,6 +102,9 @@ class Button implements View {
 			node.on(UiEventKind.Click, activate);
 			node.on(UiEventKind.Activate, activate);
 		}
+		var foreground = context.theme.buttonLabelColor(enabled, resolvedStyle.background);
+		if (leadingIcon != null)
+			node.add(new Icon("leading-icon", leadingIcon, iconSize, foreground).build(context));
 		var labelNode = context.withScope(new Key("label"), function() {
 			var text = new RenderNode(context.id("label"), LayoutVisualKind.Text);
 			text.layout.text = label;
@@ -100,12 +117,13 @@ class Button implements View {
 					? computed.get(StyleProperty.FontSize) : null,
 				letterSource != null && letterSource.layer != "framework"
 					? computed.get(StyleProperty.LetterSpacing) : null));
-			labelStyle = labelStyle.withTextColor(
-				context.theme.buttonLabelColor(enabled, resolvedStyle.background));
+			labelStyle = labelStyle.withTextColor(foreground);
 			text.applyTextStyle(labelStyle);
 			return text;
 		});
 		node.add(labelNode);
+		if (trailingIcon != null)
+			node.add(new Icon("trailing-icon", trailingIcon, iconSize, foreground).build(context));
 		return node;
 	}
 
