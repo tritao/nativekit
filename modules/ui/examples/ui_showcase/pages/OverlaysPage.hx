@@ -30,6 +30,14 @@ class OverlaysPage {
 					explorer.state.overlays.dialogOpen = true;
 				})),
 				explorer.keyed("popup", explorer.button("Show popup", "show-popup", function() {
+					for (record in explorer.context.inspect())
+						if (record.focusable && record.label == "Show popup") {
+							explorer.state.overlays.popupAnchorX = record.bounds.x;
+							explorer.state.overlays.popupAnchorTop = record.bounds.y;
+							explorer.state.overlays.popupAnchorBottom =
+								record.bounds.y + record.bounds.height;
+							break;
+						}
 					explorer.state.overlays.popupOpen = true;
 				})),
 				explorer.keyed("menu", explorer.button("Show menu", "show-menu", function() {

@@ -32,6 +32,22 @@ class OverlayHost {
 				}, 390.0);
 			layers.push(new StackChild("dialog-layer", dialog, 0.0, 0.0, 30));
 		} else if (explorer.state.overlays.popupOpen) {
+			var popupWidth = 266.0;
+			var popupHeight = 164.0;
+			var edge = 8.0;
+			var anchorX = explorer.state.overlays.popupAnchorX;
+			var anchorTop = explorer.state.overlays.popupAnchorTop;
+			var anchorBottom = explorer.state.overlays.popupAnchorBottom;
+			if (anchorX < 0.0 || anchorTop < 0.0 || anchorBottom < anchorTop) {
+				anchorX = Math.max(270.0, explorer.width * 0.42);
+				anchorTop = 142.0;
+				anchorBottom = 142.0;
+			}
+			var popupX = clamp(anchorX, edge,
+				Math.max(edge, explorer.width - edge - popupWidth));
+			var belowY = anchorBottom + 6.0;
+			var popupY = belowY + popupHeight <= explorer.height - edge
+				? belowY : Math.max(edge, anchorTop - 6.0 - popupHeight);
 			var popupContent = new Column("popup-content", [
 				explorer.keyed("title", explorer.heading("Quick actions")),
 				explorer.keyed("copy", explorer.caption("This popup escapes the page clip.")),
@@ -40,7 +56,7 @@ class OverlayHost {
 				}))
 			], explorer.panelStyle(250.0));
 			var popup = new Popup("showcase-popup", popupContent,
-				Math.max(270.0, explorer.width * 0.42), 150.0, null, function() {
+				popupX, popupY, null, function() {
 					explorer.state.overlays.popupOpen = false;
 				});
 			popup.label = "Quick actions";
@@ -61,4 +77,7 @@ class OverlayHost {
 			layers.push(new StackChild("menu-layer", menu, 0.0, 0.0, 20));
 		}
 	}
+
+	static inline function clamp(value:Float, minimum:Float, maximum:Float):Float
+		return Math.max(minimum, Math.min(maximum, value));
 }
