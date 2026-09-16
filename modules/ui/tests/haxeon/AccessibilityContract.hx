@@ -211,6 +211,8 @@ class AccessibilityContract {
 			return 29;
 		if (!checkSelectOverlay(context))
 			return 30;
+		if (!checkSelectScroll(context))
+			return 31;
 
 		var toggles = 0;
 		var toggle = new Toggle("accessibility-switch", "Enabled", false,
@@ -383,6 +385,65 @@ class AccessibilityContract {
 		root = context.submit(stack, frame);
 		return root.children[0].children.length == 1 && context.focus.focusedId != null &&
 			context.focus.focusedId.equals(root.children[0].children[0].id);
+	}
+
+	static function checkSelectScroll(context:UiContext):Bool {
+		var options:Array<SelectOption<String>> = [];
+		for (index in 0...12)
+			options.push(new SelectOption("item-" + index, "Item " + index, "item-" + index));
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.fixed(120.0);
+		style.height = LayoutAxis.fixed(36.0);
+		var select = new Select("scrolling-select", options, "item-0", null, style);
+		var stack = new Stack("scrolling-select-stack", [
+			new StackChild("select", select, 8.0, 8.0, 1,
+				LayoutAxis.fixed(120.0), LayoutAxis.fixed(36.0), false)
+		]);
+		var frame = new LayoutFrame(256.0, 192.0);
+		var root = context.submit(stack, frame);
+		var selectRoot = root.children[0];
+		var trigger = selectRoot.children[0];
+		if (!context.focusWidget(trigger.id))
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.Enter);
+		root = context.submit(stack, frame);
+		selectRoot = root.children[0];
+		if (selectRoot.children.length != 2 || selectRoot.children[1].children.length != 1)
+			return false;
+		var dropdown = selectRoot.children[1];
+		var listSemantics:Semantics = cast dropdown.semantics;
+		var viewport = dropdown.children[0];
+		var content = viewport.children[0];
+		var viewportGeometry:ResolvedLayoutItem = cast viewport.resolved;
+		var contentGeometry:ResolvedLayoutItem = cast content.resolved;
+		if ((listSemantics.actions & AccessibilityAction.ScrollForward) == 0 ||
+			viewportGeometry.height >= 144.0 || contentGeometry.transform.ty != 0.0)
+			return false;
+		var beforeWheel = contentGeometry.transform.ty;
+		context.scroll(viewportGeometry.x + 3.0, viewportGeometry.y + 3.0, 0.0, -64.0);
+		root = context.submit(stack, frame);
+		content = root.children[0].children[1].children[0].children[0];
+		var afterWheel:ResolvedLayoutItem = cast content.resolved;
+		if (afterWheel.transform.ty >= beforeWheel - 0.1)
+			return false;
+		var dropdownId = root.children[0].children[1].id;
+		if (!context.accessibilityAction(dropdownId.value, AccessibilityRequest.ScrollForward,
+			null, -1, -1, 1))
+			return false;
+		root = context.submit(stack, frame);
+		content = root.children[0].children[1].children[0].children[0];
+		var afterAccessibility:ResolvedLayoutItem = cast content.resolved;
+		if (afterAccessibility.transform.ty >= afterWheel.transform.ty - 0.1)
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.End);
+		root = context.submit(stack, frame);
+		selectRoot = root.children[0];
+		viewport = selectRoot.children[1].children[0];
+		content = viewport.children[0];
+		var lastOption = content.children[options.length - 1];
+		var endContent:ResolvedLayoutItem = cast content.resolved;
+		return context.focus.focusedId != null && context.focus.focusedId.equals(lastOption.id) &&
+			endContent.transform.ty < afterAccessibility.transform.ty - 0.1;
 	}
 
 	static function findSnapshot(snapshot:Array<AccessibilitySnapshotNode>,

@@ -8,6 +8,7 @@ import LayoutPositioning;
 import LayoutSizing;
 import LayoutStyle;
 import LayoutVisualKind;
+import Transform2D;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
@@ -117,6 +118,8 @@ class Select<T> implements View {
 
 			var triggerNode:RenderNode = null;
 			var optionNodes:Array<RenderNode> = [];
+			var scrollController:ScrollController = null;
+			var ensureActiveVisible = function(_:Int) {};
 			var close = function() {
 				if (openState.value == true)
 					openState.update(false);
@@ -125,8 +128,11 @@ class Select<T> implements View {
 			};
 			var setActive = function(index:Int) {
 				var current:Int = cast activeState.value;
-				if (isEnabledIndex(index) && index != current)
-					activeState.update(index);
+				if (isEnabledIndex(index)) {
+					if (index != current)
+						activeState.update(index);
+					ensureActiveVisible(index);
+				}
 			};
 			var focusOption = function(index:Int) {
 				if (index >= 0 && index < optionNodes.length)
@@ -270,6 +276,8 @@ class Select<T> implements View {
 					Math.max(1.0, availableHeight));
 				var popupGlobalY = opensBelow ? triggerY + triggerHeight + placementGap :
 					triggerY - popupHeight - placementGap;
+				var needsScroll = popupHeight + 0.001 < naturalHeight;
+				var optionViewportHeight = Math.max(1.0, popupHeight - popupPadding);
 				var dropdownStyle = new LayoutStyle();
 				dropdownStyle.width = LayoutAxis.fixed(popupWidth);
 				dropdownStyle.height = LayoutAxis.fixed(popupHeight);
@@ -279,7 +287,7 @@ class Select<T> implements View {
 				dropdownStyle.positionY = popupGlobalY - rootY;
 				dropdownStyle.zIndex = 10;
 				dropdownStyle.clipToParent = false;
-				dropdownStyle.clipVertical = popupHeight < naturalHeight;
+				dropdownStyle.clipVertical = false;
 				dropdownStyle.padding = new Insets(4.0, 4.0, 4.0, 4.0);
 				dropdownStyle.childGap = 2.0;
 				dropdownStyle.background = context.theme.panelBackground;
@@ -288,7 +296,61 @@ class Select<T> implements View {
 				var dropdown = new RenderNode(context.id("options"), LayoutVisualKind.Box, dropdownStyle);
 				var listSemantics = new Semantics(AccessibilityRole.List, "Options");
 				listSemantics.orientation = AccessibilityOrientation.Vertical;
+				if (needsScroll)
+					listSemantics.actions = AccessibilityAction.ScrollForward |
+						AccessibilityAction.ScrollBackward;
 				dropdown.semantics = listSemantics;
+				var optionParent = dropdown;
+				var scrollViewport:RenderNode = null;
+				if (needsScroll) {
+					var viewportStyle = new LayoutStyle();
+					viewportStyle.width = LayoutAxis.grow();
+					viewportStyle.height = LayoutAxis.fixed(optionViewportHeight);
+					viewportStyle.clipVertical = true;
+					scrollViewport = new RenderNode(context.id("option-viewport"),
+						LayoutVisualKind.Box, viewportStyle);
+					var storedScroll:State<ScrollController> = context.state(scrollViewport.id,
+						new ScrollController());
+					scrollController = cast storedScroll.value;
+					scrollController.bind(function(value) { storedScroll.update(value); });
+					var contentStyle = new LayoutStyle();
+					contentStyle.width = LayoutAxis.grow();
+					contentStyle.height = LayoutAxis.fit();
+					contentStyle.direction = LayoutDirection.TopToBottom;
+					contentStyle.transform = Transform2D.identity().translated(0.0,
+						-scrollController.offsetY);
+					var optionContent = new RenderNode(context.id("option-content"),
+						LayoutVisualKind.Box, contentStyle);
+					scrollViewport.add(optionContent);
+					dropdown.add(scrollViewport);
+					optionParent = optionContent;
+					scrollViewport.onResolved(function(geometry) {
+						scrollController.updateMetrics(geometry.width, geometry.height,
+							geometry.contentBounds.width, geometry.contentBounds.height);
+					});
+				}
+				if (needsScroll)
+					dropdown.on(UiEventKind.Scroll, function(event) {
+						if (event.defaultPrevented)
+							return;
+						if (scrollController.scrollBy(0.0, -event.deltaY))
+							event.stopPropagation();
+					});
+				if (needsScroll)
+					ensureActiveVisible = function(index:Int) {
+						if (scrollController == null || scrollController.viewportHeight <= 0.0)
+							return;
+						var optionTop = index * (rowHeight + 2.0);
+						var optionBottom = optionTop + rowHeight;
+						var target = scrollController.offsetY;
+						if (optionTop < target)
+							target = optionTop;
+						else if (optionBottom > target + optionViewportHeight)
+							target = optionBottom - optionViewportHeight;
+						if (target != scrollController.offsetY)
+							scrollController.jumpTo(scrollController.offsetX, target);
+					};
+				ensureActiveVisible(initialActive);
 				for (index in 0...options.length) {
 					var optionIndex = index;
 					var option = options[index];
@@ -309,7 +371,7 @@ class Select<T> implements View {
 					optionSemantics.setSize = options.length;
 					optionSemantics.positionInSet = index + 1;
 					optionNodes.push(optionNode);
-					dropdown.add(optionNode);
+					optionParent.add(optionNode);
 				}
 				for (index in 0...optionNodes.length) {
 					var optionIndex = index;
