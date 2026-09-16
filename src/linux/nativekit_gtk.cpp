@@ -1859,8 +1859,7 @@ gboolean on_surface_render(GtkGLArea *area, GdkGLContext *, gpointer data) {
         if (!callback || !nk::core::is_runtime_generation(resource->generation))
             return;
         callback(resource->handle, gtk_widget_get_allocated_width(GTK_WIDGET(area)) * scale,
-                 gtk_widget_get_allocated_height(GTK_WIDGET(area)) * scale,
-                 user_data);
+                 gtk_widget_get_allocated_height(GTK_WIDGET(area)) * scale, user_data);
     });
     return TRUE;
 }
@@ -3199,17 +3198,15 @@ void shutdown() noexcept {
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
-    auto capabilities = NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP |
-                        NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW |
-                        NK_CAP_NOTIFICATION | NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE |
-                        NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR | NK_CAP_POINTER_CAPTURE |
-                        NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING | NK_CAP_MONITOR |
-                        NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_SHARING |
-                        NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE | NK_CAP_SYSTEM_INFO |
-                        NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
-                        NK_CAP_SYSTEM_FONTS | NK_CAP_DISPLAY_ORIENTATION |
-                        NK_CAP_ACCESSIBILITY |
-                        NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK;
+    auto capabilities =
+        NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
+        NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
+        NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
+        NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING | NK_CAP_MONITOR |
+        NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO |
+        NK_CAP_VULKAN_SURFACE | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
+        NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS | NK_CAP_DISPLAY_ORIENTATION |
+        NK_CAP_ACCESSIBILITY | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK;
     if (nk::core::system_backend::keep_awake_supported())
         capabilities |= NK_CAP_KEEP_AWAKE;
     return capabilities | nk::core::optional_capabilities();
@@ -4561,10 +4558,10 @@ nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
                 if (!copy_gtk_accessibility_node(node, nodes, copy)) {
                     const char *value = node.value ? node.value : "";
                     const bool valid_value = g_utf8_validate(value, -1, nullptr);
-                    const uint64_t text_end = valid_value
-                                                  ? static_cast<uint64_t>(node.text_start) +
-                                                        static_cast<uint64_t>(g_utf8_strlen(value, -1))
-                                                  : 0;
+                    const uint64_t text_end =
+                        valid_value ? static_cast<uint64_t>(node.text_start) +
+                                          static_cast<uint64_t>(g_utf8_strlen(value, -1))
+                                    : 0;
                     std::string reason = "invalid fields";
                     if (!valid_value)
                         reason = "value is not valid UTF-8";
@@ -4572,10 +4569,9 @@ nk_result NK_CALL nk_surface_accessibility_update(nk_handle handle,
                         reason = "label is not valid UTF-8";
                     else if (text_end > node.document_length)
                         reason = "text end " + std::to_string(text_end) +
-                                 " exceeds document length " +
-                                 std::to_string(node.document_length);
+                                 " exceeds document length " + std::to_string(node.document_length);
                     else if ((node.selection_start == NK_ACCESSIBILITY_TEXT_POSITION_NONE) !=
-                             (node.selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE) ||
+                                 (node.selection_end == NK_ACCESSIBILITY_TEXT_POSITION_NONE) ||
                              (node.selection_start != NK_ACCESSIBILITY_TEXT_POSITION_NONE &&
                               (node.selection_start > node.selection_end ||
                                node.selection_start < node.text_start ||
@@ -4682,8 +4678,8 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
     }
     gtk_gl_area_set_auto_render(GTK_GL_AREA(resource->widget), FALSE);
     if (callback) {
-        resource->frame_tick = gtk_widget_add_tick_callback(
-            resource->widget, on_surface_tick, resource.get(), nullptr);
+        resource->frame_tick = gtk_widget_add_tick_callback(resource->widget, on_surface_tick,
+                                                            resource.get(), nullptr);
         gtk_gl_area_queue_render(GTK_GL_AREA(resource->widget));
     }
     return NK_OK;

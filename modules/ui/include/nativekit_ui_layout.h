@@ -95,10 +95,7 @@ enum NK_ENUM(nkui_layout_distribution) {
 
 /** Whether children stay on one row/column or flow onto additional lines. */
 typedef uint32_t nkui_layout_wrap_mode;
-enum NK_ENUM(nkui_layout_wrap_mode) {
-    NKUI_LAYOUT_WRAP_NO_WRAP = 0,
-    NKUI_LAYOUT_WRAP_WRAP = 1
-};
+enum NK_ENUM(nkui_layout_wrap_mode) { NKUI_LAYOUT_WRAP_NO_WRAP = 0, NKUI_LAYOUT_WRAP_WRAP = 1 };
 
 /** Optional per-child cross-axis alignment override. */
 typedef uint32_t nkui_layout_self_alignment;
@@ -237,9 +234,7 @@ typedef struct nkui_layout_measure_constraints {
 
 /** Flags returned in nkui_layout_measure_result.flags. */
 typedef uint32_t nkui_layout_measure_flags;
-enum NK_FLAGS(nkui_layout_measure_flags) {
-    NKUI_LAYOUT_MEASURE_HAS_BASELINE = 1u << 0
-};
+enum NK_FLAGS(nkui_layout_measure_flags) { NKUI_LAYOUT_MEASURE_HAS_BASELINE = 1u << 0 };
 
 /** Optional metrics returned by an external intrinsic measurer. */
 typedef struct nkui_layout_measure_result {
@@ -291,12 +286,12 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_set_font_collection(nkui_layout
  * callback handle is closed.
  */
 NKUI_API nkui_result NK_CALL nkui_layout_session_set_measure_callback(
-        nkui_layout_session session, nkui_nullable_layout_measure_callback callback NK_RETAINED,
-        void *NK_NULLABLE user_data);
+    nkui_layout_session session, nkui_nullable_layout_measure_callback callback NK_RETAINED,
+    void *NK_NULLABLE user_data);
 
 /** Returns cumulative intrinsic-measure counters and current cache occupancy. */
 NKUI_API nkui_result NK_CALL nkui_layout_session_get_measure_stats(
-        nkui_layout_session session, nkui_layout_measure_stats *out_stats NKUI_OUT);
+    nkui_layout_session session, nkui_layout_measure_stats *out_stats NKUI_OUT);
 
 /** Clears all custom-paint display lists attached to the session. */
 NKUI_API nkui_result NK_CALL nkui_layout_session_clear_custom_paints(nkui_layout_session session);

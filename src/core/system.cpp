@@ -257,7 +257,7 @@ namespace system_backend {
 __attribute__((weak))
 #endif
 bool keep_awake_supported() noexcept {
-#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_ANDROID) || \
+#if defined(NK_BACKEND_WINDOWS) || defined(NK_BACKEND_MACOS) || defined(NK_BACKEND_ANDROID) ||     \
     defined(NK_BACKEND_IOS)
     return true;
 #else

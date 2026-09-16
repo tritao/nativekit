@@ -31,8 +31,7 @@ static void pump_until_frames(frame_state *state, int expected) {
 }
 
 static void pump_until_size(frame_state *state, int32_t min_width, int32_t min_height) {
-    for (int attempt = 0; attempt < 500 &&
-                            (state->width < min_width || state->height < min_height);
+    for (int attempt = 0; attempt < 500 && (state->width < min_width || state->height < min_height);
          ++attempt) {
         nk_event event = {0};
         event.struct_size = sizeof(event);

@@ -174,8 +174,7 @@ struct LayoutEngine::Impl {
     static Clay_TextIntrinsicDimensions
     measure_intrinsic_text(Clay_StringSlice text, Clay_TextElementConfig *config, void *user_data);
     static Clay_MeasureResult measure_element(Clay_ElementId id,
-                                              Clay_MeasureConstraints constraints,
-                                              void *user_data);
+                                              Clay_MeasureConstraints constraints, void *user_data);
     static Clay_TextLayoutResult layout_text(Clay_StringSlice text, Clay_TextElementConfig *config,
                                              float available_width, void *user_data);
 
@@ -212,8 +211,7 @@ struct LayoutEngine::Impl {
         uint32_t version = 0;
     };
     std::unordered_map<uint32_t, MeasureNodeInfo> measure_node_ids;
-    std::unordered_map<MeasureCacheKey, LayoutMeasureResult, MeasureCacheKeyHash>
-        measure_cache;
+    std::unordered_map<MeasureCacheKey, LayoutMeasureResult, MeasureCacheKeyHash> measure_cache;
     uint64_t measure_requests = 0;
     uint64_t measure_cache_hits = 0;
     uint64_t measure_cache_misses = 0;
@@ -248,8 +246,8 @@ LayoutEngine::Impl::measure_intrinsic_text(Clay_StringSlice text, Clay_TextEleme
     if (!state.text.measure_intrinsic_utf8(value.c_str(), options, &metrics))
         return result;
     result.unwrappedDimensions = {metrics.bounds.width, config->lineHeight > 0
-                                                    ? static_cast<float>(config->lineHeight)
-                                                    : metrics.bounds.height};
+                                                            ? static_cast<float>(config->lineHeight)
+                                                            : metrics.bounds.height};
     result.baseline = metrics.baseline;
     result.hasBaseline = metrics.has_baseline && std::isfinite(metrics.baseline);
     // External paragraph engines may break at character boundaries, so the
@@ -268,17 +266,15 @@ Clay_MeasureResult LayoutEngine::Impl::measure_element(Clay_ElementId id,
     ++state.measure_requests;
 
     const auto node = state.measure_node_ids.find(id.id);
-    const MeasureNodeInfo node_info = node == state.measure_node_ids.end()
-                                          ? MeasureNodeInfo{id.id, 0}
-                                          : node->second;
+    const MeasureNodeInfo node_info =
+        node == state.measure_node_ids.end() ? MeasureNodeInfo{id.id, 0} : node->second;
 
-    const MeasureCacheKey key{
-        node_info.node_id,
-        node_info.version,
-        {std::bit_cast<uint32_t>(constraints.minWidth),
-         std::bit_cast<uint32_t>(constraints.maxWidth),
-         std::bit_cast<uint32_t>(constraints.minHeight),
-         std::bit_cast<uint32_t>(constraints.maxHeight)}};
+    const MeasureCacheKey key{node_info.node_id,
+                              node_info.version,
+                              {std::bit_cast<uint32_t>(constraints.minWidth),
+                               std::bit_cast<uint32_t>(constraints.maxWidth),
+                               std::bit_cast<uint32_t>(constraints.minHeight),
+                               std::bit_cast<uint32_t>(constraints.maxHeight)}};
     const auto cached = state.measure_cache.find(key);
     LayoutMeasureResult measured;
     if (cached != state.measure_cache.end()) {
@@ -287,10 +283,9 @@ Clay_MeasureResult LayoutEngine::Impl::measure_element(Clay_ElementId id,
     } else {
         ++state.measure_cache_misses;
         ++state.measure_callback_calls;
-        measured = state.measure_callback(
-            node_info.node_id,
-            {constraints.minWidth, constraints.maxWidth, constraints.minHeight,
-             constraints.maxHeight});
+        measured = state.measure_callback(node_info.node_id,
+                                          {constraints.minWidth, constraints.maxWidth,
+                                           constraints.minHeight, constraints.maxHeight});
         if (std::isfinite(measured.width) && std::isfinite(measured.height) &&
             measured.width >= 0.0f && measured.height >= 0.0f) {
             if (state.measure_cache.size() >= kIntrinsicMeasureCacheEntries)
@@ -330,8 +325,8 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
         return result;
     if (available_width <= 0.0f) {
         result.success = true;
-        result.dimensions = {
-            0.0f, config->lineHeight > 0 ? static_cast<float>(config->lineHeight) : 0.0f};
+        result.dimensions = {0.0f, config->lineHeight > 0 ? static_cast<float>(config->lineHeight)
+                                                          : 0.0f};
         return result;
     }
 
@@ -936,12 +931,9 @@ void LayoutEngine::set_measure_callback(LayoutMeasureCallback callback) {
 LayoutMeasureStats LayoutEngine::measure_stats() const {
     if (!impl_)
         return {};
-    return {impl_->measure_requests,
-            impl_->measure_cache_hits,
-            impl_->measure_cache_misses,
-            impl_->measure_callback_calls,
-            impl_->measure_cache.size(),
-            kIntrinsicMeasureCacheEntries};
+    return {impl_->measure_requests,     impl_->measure_cache_hits,
+            impl_->measure_cache_misses, impl_->measure_callback_calls,
+            impl_->measure_cache.size(), kIntrinsicMeasureCacheEntries};
 }
 
 bool LayoutEngine::layout(const std::vector<LayoutNode> &nodes, float width, float height,

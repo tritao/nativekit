@@ -507,23 +507,24 @@ PathUniforms path_uniforms(const PreparedPathOperation &operation, const float t
     transform_inverse(inverse, paint_transform);
     uniforms.inverse_x = {inverse[0], inverse[2], inverse[4], 0.0f};
     uniforms.inverse_y = {inverse[1], inverse[3], inverse[5], 0.0f};
-    const PathShaderMode mode = operation.paint.image_token
-                                    ? PathShaderMode::Image
-                                    : operation.paint.kind == PreparedPaintKind::LinearGradient
-                                          ? PathShaderMode::LinearGradient
-                                          : PathShaderMode::Solid;
+    const PathShaderMode mode = operation.paint.image_token ? PathShaderMode::Image
+                                : operation.paint.kind == PreparedPaintKind::LinearGradient
+                                    ? PathShaderMode::LinearGradient
+                                    : PathShaderMode::Solid;
     uniforms.mode = {static_cast<float>(mode),
                      mode == PathShaderMode::LinearGradient
                          ? static_cast<float>(std::min(operation.paint.gradient_stop_count,
                                                        kMaxPreparedGradientStops))
-                         : texture_type == PreparedTextureType::Alpha ? 1.0f : 0.0f,
+                     : texture_type == PreparedTextureType::Alpha ? 1.0f
+                                                                  : 0.0f,
                      has_flag(texture_flags, PreparedImageFlags::FlipY) ? 1.0f : 0.0f,
                      has_flag(texture_flags, PreparedImageFlags::Premultiplied) ? 1.0f : 0.0f};
     if (mode == PathShaderMode::LinearGradient) {
-        uniforms.gradient_line = {operation.paint.gradient_start[0], operation.paint.gradient_start[1],
-                                   operation.paint.gradient_end[0], operation.paint.gradient_end[1]};
-        const uint32_t stop_count = std::min(operation.paint.gradient_stop_count,
-                                             kMaxPreparedGradientStops);
+        uniforms.gradient_line = {operation.paint.gradient_start[0],
+                                  operation.paint.gradient_start[1],
+                                  operation.paint.gradient_end[0], operation.paint.gradient_end[1]};
+        const uint32_t stop_count =
+            std::min(operation.paint.gradient_stop_count, kMaxPreparedGradientStops);
         for (uint32_t index = 0; index < stop_count; ++index) {
             const auto &stop = operation.paint.gradient_stops[index];
             const float alpha = stop.color.a * opacity;

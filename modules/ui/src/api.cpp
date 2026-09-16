@@ -163,8 +163,7 @@ void configure_layout_measure_callback(LayoutSessionState &state) {
         return;
     }
     state.engine->set_measure_callback(
-        [callback, user_data](uint32_t node_id,
-                              const nkui::LayoutMeasureConstraints &constraints) {
+        [callback, user_data](uint32_t node_id, const nkui::LayoutMeasureConstraints &constraints) {
             nkui_layout_measure_constraints native_constraints{};
             native_constraints.struct_size = sizeof(native_constraints);
             native_constraints.min_width = constraints.min_width;
@@ -173,11 +172,9 @@ void configure_layout_measure_callback(LayoutSessionState &state) {
             native_constraints.max_height = constraints.max_height;
             const nkui_layout_measure_result measured =
                 callback(node_id, native_constraints, user_data);
-            return nkui::LayoutMeasureResult{
-                measured.width,
-                measured.height,
-                measured.baseline,
-                (measured.flags & NKUI_LAYOUT_MEASURE_HAS_BASELINE) != 0};
+            return nkui::LayoutMeasureResult{measured.width, measured.height, measured.baseline,
+                                             (measured.flags & NKUI_LAYOUT_MEASURE_HAS_BASELINE) !=
+                                                 0};
         });
 }
 
@@ -408,10 +405,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                                  node.style.padding_top) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_PADDING_BOTTOM_OFFSET,
                                  node.style.padding_bottom) ||
-                !read_node_float(record, NKUI_LAYOUT_NODE_CHILD_GAP_OFFSET,
-                                 node.style.child_gap) ||
-                !read_node_float(record, NKUI_LAYOUT_NODE_ROW_GAP_OFFSET,
-                                 node.style.row_gap) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_CHILD_GAP_OFFSET, node.style.child_gap) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_ROW_GAP_OFFSET, node.style.row_gap) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET,
                                  node.style.column_gap) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET, wrap_mode) ||
@@ -490,9 +485,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             if (!valid_spacing(node.style.padding_left) ||
                 !valid_spacing(node.style.padding_right) ||
                 !valid_spacing(node.style.padding_top) ||
-                !valid_spacing(node.style.padding_bottom) ||
-                !valid_spacing(node.style.child_gap) || !valid_spacing(node.style.row_gap) ||
-                !valid_spacing(node.style.column_gap))
+                !valid_spacing(node.style.padding_bottom) || !valid_spacing(node.style.child_gap) ||
+                !valid_spacing(node.style.row_gap) || !valid_spacing(node.style.column_gap))
                 return false;
             const float determinant = transform[0] * transform[3] - transform[1] * transform[2];
             if (std::any_of(transform.begin(), transform.end(),
@@ -514,10 +508,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             node.style.height.grow_weight = height_grow_weight;
             node.style.aspect_ratio = aspect_ratio;
             node.style.direction = static_cast<nkui::LayoutDirection>(direction);
-            node.style.child_align_x =
-                static_cast<nkui::LayoutAlignmentX>(child_align_x);
-            node.style.child_align_y =
-                static_cast<nkui::LayoutAlignmentY>(child_align_y);
+            node.style.child_align_x = static_cast<nkui::LayoutAlignmentX>(child_align_x);
+            node.style.child_align_y = static_cast<nkui::LayoutAlignmentY>(child_align_y);
             node.style.child_distribution =
                 static_cast<nkui::LayoutDistribution>(child_distribution);
             node.style.wrap_mode = static_cast<nkui::LayoutWrapMode>(wrap_mode);
@@ -535,9 +527,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             node.style.clip_horizontal = (clip & NKUI_LAYOUT_CLIP_HORIZONTAL) != 0;
             node.style.clip_vertical = (clip & NKUI_LAYOUT_CLIP_VERTICAL) != 0;
             const auto valid_axis = [](const nkui::LayoutAxis &axis) {
-                if (!std::isfinite(axis.value) || axis.value < 0.0f ||
-                    !std::isfinite(axis.min) || axis.min < 0.0f ||
-                    !std::isfinite(axis.max) || axis.max < 0.0f ||
+                if (!std::isfinite(axis.value) || axis.value < 0.0f || !std::isfinite(axis.min) ||
+                    axis.min < 0.0f || !std::isfinite(axis.max) || axis.max < 0.0f ||
                     !std::isfinite(axis.grow_weight) || axis.grow_weight <= 0.0f)
                     return false;
                 if (axis.sizing == nkui::LayoutSizing::Percent)
@@ -772,8 +763,7 @@ std::array<float, 6> placement_transform(const std::array<float, 6> &transform) 
     return {1.0f, 0.0f, 0.0f, 1.0f, transform[4], transform[5]};
 }
 
-nkui::PreparedPaint paint_color(ResourceSlot *paint,
-                                const std::array<float, 6> &tessellation);
+nkui::PreparedPaint paint_color(ResourceSlot *paint, const std::array<float, 6> &tessellation);
 
 PreparedPathCacheEntry *prepare_cached_path(RendererSlot &renderer, nkui_resource path_handle,
                                             const ResourceSlot &path,
@@ -827,8 +817,7 @@ PreparedPathCacheEntry *prepare_cached_path(RendererSlot &renderer, nkui_resourc
     }
 }
 
-nkui::PreparedPaint paint_color(ResourceSlot *paint,
-                                const std::array<float, 6> &tessellation) {
+nkui::PreparedPaint paint_color(ResourceSlot *paint, const std::array<float, 6> &tessellation) {
     nkui::PreparedPaint result{};
     result.transform[0] = result.transform[3] = 1.0f;
     result.feather = 1.0f;
@@ -1304,8 +1293,7 @@ extern "C" nkui_result nkui_layout_session_set_font_collection(nkui_layout_sessi
 }
 
 extern "C" nkui_result nkui_layout_session_set_measure_callback(
-    nkui_layout_session session, nkui_nullable_layout_measure_callback callback,
-    void *user_data) {
+    nkui_layout_session session, nkui_nullable_layout_measure_callback callback, void *user_data) {
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);
     auto *state = resolve(session);
     if (!state)
@@ -1320,8 +1308,8 @@ extern "C" nkui_result nkui_layout_session_set_measure_callback(
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_layout_session_get_measure_stats(
-    nkui_layout_session session, nkui_layout_measure_stats *out_stats) {
+extern "C" nkui_result nkui_layout_session_get_measure_stats(nkui_layout_session session,
+                                                             nkui_layout_measure_stats *out_stats) {
     if (!out_stats)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);
@@ -1846,17 +1834,18 @@ extern "C" nkui_result nkui_paint_create_solid(nkui_color color, nkui_resource *
     return result;
 }
 
-extern "C" nkui_result nkui_paint_create_linear_gradient(
-    float start_x, float start_y, float end_x, float end_y, const nkui_gradient_stop *stops,
-    uint32_t stop_count, nkui_resource *out_paint) {
+extern "C" nkui_result nkui_paint_create_linear_gradient(float start_x, float start_y, float end_x,
+                                                         float end_y,
+                                                         const nkui_gradient_stop *stops,
+                                                         uint32_t stop_count,
+                                                         nkui_resource *out_paint) {
     if (!out_paint || !stops || stop_count < 2 || stop_count > NKUI_GRADIENT_MAX_STOPS ||
         !std::isfinite(start_x) || !std::isfinite(start_y) || !std::isfinite(end_x) ||
         !std::isfinite(end_y))
         return NKUI_ERROR_INVALID_ARGUMENT;
     const float delta_x = end_x - start_x;
     const float delta_y = end_y - start_y;
-    if (!std::isfinite(delta_x) || !std::isfinite(delta_y) ||
-        (delta_x == 0.0f && delta_y == 0.0f))
+    if (!std::isfinite(delta_x) || !std::isfinite(delta_y) || (delta_x == 0.0f && delta_y == 0.0f))
         return NKUI_ERROR_INVALID_ARGUMENT;
     float previous_offset = -1.0f;
     for (uint32_t index = 0; index < stop_count; ++index) {
@@ -1864,10 +1853,9 @@ extern "C" nkui_result nkui_paint_create_linear_gradient(
         if (!std::isfinite(stop.offset) || stop.offset < 0.0f || stop.offset > 1.0f ||
             stop.offset <= previous_offset || !std::isfinite(stop.color.red) ||
             !std::isfinite(stop.color.green) || !std::isfinite(stop.color.blue) ||
-            !std::isfinite(stop.color.alpha) || stop.color.red < 0.0f ||
-            stop.color.red > 1.0f || stop.color.green < 0.0f || stop.color.green > 1.0f ||
-            stop.color.blue < 0.0f || stop.color.blue > 1.0f || stop.color.alpha < 0.0f ||
-            stop.color.alpha > 1.0f)
+            !std::isfinite(stop.color.alpha) || stop.color.red < 0.0f || stop.color.red > 1.0f ||
+            stop.color.green < 0.0f || stop.color.green > 1.0f || stop.color.blue < 0.0f ||
+            stop.color.blue > 1.0f || stop.color.alpha < 0.0f || stop.color.alpha > 1.0f)
             return NKUI_ERROR_INVALID_ARGUMENT;
         previous_offset = stop.offset;
     }
@@ -2136,8 +2124,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                 const auto kind = command.kind == nkui::RenderCommandKind::StrokePath
                                       ? nkui::PreparedPathKind::Stroke
                                       : nkui::PreparedPathKind::Fill;
-                if (!prepared || !prepared->set_view(kind, cached->geometry,
-                                                     paint_color(paint, tessellation))) {
+                if (!prepared ||
+                    !prepared->set_view(kind, cached->geometry, paint_color(paint, tessellation))) {
                     valid = false;
                     break;
                 }
@@ -2428,8 +2416,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 const auto kind = command.kind == nkui::RenderCommandKind::StrokePath
                                       ? nkui::PreparedPathKind::Stroke
                                       : nkui::PreparedPathKind::Fill;
-                if (!prepared || !prepared->set_view(kind, cached->geometry,
-                                                     paint_color(paint, tessellation))) {
+                if (!prepared ||
+                    !prepared->set_view(kind, cached->geometry, paint_color(paint, tessellation))) {
                     valid = false;
                     break;
                 }

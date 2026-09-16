@@ -434,6 +434,12 @@ class UiExplorer {
 	function paletteSidebar():Color
 		return ShowcaseKit.paletteSidebar(this);
 
+	function paletteText():Color
+		return ShowcaseKit.paletteText(this);
+
+	function paletteMuted():Color
+		return ShowcaseKit.paletteMuted(this);
+
 	static function makeTheme(light:Bool):Theme
 		return ShowcaseKit.makeTheme(light);
 

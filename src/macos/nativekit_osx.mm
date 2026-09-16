@@ -2640,8 +2640,10 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         resource->pointer_x = point.x;
         resource->pointer_y = point.y;
         const double scale = event.hasPreciseScrollingDeltas ? 1.0 : 40.0;
-        const double x = (event.hasPreciseScrollingDeltas ? event.scrollingDeltaX : event.deltaX) * scale;
-        const double y = (event.hasPreciseScrollingDeltas ? -event.scrollingDeltaY : -event.deltaY) * scale;
+        const double x =
+            (event.hasPreciseScrollingDeltas ? event.scrollingDeltaX : event.deltaX) * scale;
+        const double y =
+            (event.hasPreciseScrollingDeltas ? -event.scrollingDeltaY : -event.deltaY) * scale;
         const nk_pointer_scroll_event payload{x, y};
         queue_input_event(NK_EVENT_POINTER_SCROLL, resource->handle, bytes_of(payload));
     });

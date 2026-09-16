@@ -2840,8 +2840,9 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	extern fn nk_surface_set_text_input_active(target: nk_handle, active: nk_bool) -> nk_result;
 	/**
 	 * Synchronizes a custom editor with the platform IME using absolute code-point positions.
-	 * Android and Web use a graphics-surface handle. Windows and macOS accept a window handle
-	 * because those backends do not yet expose graphics surfaces.
+	 * Linux, Android, and Web use a graphics-surface handle. Windows and macOS accept a window
+	 * handle because those backends do not yet expose graphics surfaces. Desktop backends may
+	 * also accept a window handle when the IME is associated directly with that window.
 	 */
 	extern fn nk_surface_set_text_input_state(target: nk_handle, state: ptr<const<nk_text_input_state>>) -> nk_result;
 	/**
@@ -4096,15 +4097,15 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		y: f64 @offset(8);
 	}
 	/**
-	 * Payload of NK_EVENT_POINTER_SCROLL containing scroll deltas.
+	 * Payload of NK_EVENT_POINTER_SCROLL containing logical-pixel scroll deltas.
 	 */
 	struct nk_pointer_scroll_event @layout(16, 8) {
 		/**
-		 * Horizontal scroll delta; smooth devices may report fractional values.
+		 * Horizontal scroll delta in logical pixels; smooth devices may report fractional values.
 		 */
 		x: f64 @offset(0);
 		/**
-		 * Vertical scroll delta; smooth devices may report fractional values.
+		 * Vertical scroll delta in logical pixels; smooth devices may report fractional values.
 		 */
 		y: f64 @offset(8);
 	}

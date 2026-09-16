@@ -908,11 +908,12 @@ std::vector<TextRect> SkribidiAdapter::selection_rects(TextPosition start, TextP
     // Visual runs in mixed-direction text may produce touching or overlapping
     // bounds on the same line. Returning those independently causes translucent
     // selection colors to be composited more than once at run boundaries.
-    std::sort(rectangles.begin(), rectangles.end(), [](const TextRect &left, const TextRect &right) {
-        if (left.y != right.y)
-            return left.y < right.y;
-        return left.x < right.x;
-    });
+    std::sort(rectangles.begin(), rectangles.end(),
+              [](const TextRect &left, const TextRect &right) {
+                  if (left.y != right.y)
+                      return left.y < right.y;
+                  return left.x < right.x;
+              });
     std::vector<TextRect> normalized;
     constexpr float epsilon = 0.01f;
     for (const TextRect &rect : rectangles) {

@@ -543,9 +543,7 @@ typedef struct nkui_color {
 } nkui_color;
 
 /** Maximum number of stops accepted by a linear gradient paint. */
-enum {
-    NKUI_GRADIENT_MAX_STOPS = 8
-};
+enum { NKUI_GRADIENT_MAX_STOPS = 8 };
 
 /** One normalized color stop in a gradient paint. */
 typedef struct nkui_gradient_stop {
@@ -786,10 +784,10 @@ NKUI_API nkui_result nkui_paint_create_solid(nkui_color color, nkui_resource *ou
  * component must be finite and in the inclusive range 0..1. The colors and
  * stop array are copied on success.
  */
-NKUI_API nkui_result nkui_paint_create_linear_gradient(
-    float start_x, float start_y, float end_x, float end_y,
-    const nkui_gradient_stop *stops NKUI_IN_ARRAY(stop_count), uint32_t stop_count,
-    nkui_resource *out_paint NKUI_OUT);
+NKUI_API nkui_result
+nkui_paint_create_linear_gradient(float start_x, float start_y, float end_x, float end_y,
+                                  const nkui_gradient_stop *stops NKUI_IN_ARRAY(stop_count),
+                                  uint32_t stop_count, nkui_resource *out_paint NKUI_OUT);
 
 /**
  * Creates an image by copying a tightly packed pixel array.

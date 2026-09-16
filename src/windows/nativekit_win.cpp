@@ -352,8 +352,9 @@ std::string windows_bios_string(const wchar_t *value_name) {
     constexpr wchar_t key[] = L"HARDWARE\\DESCRIPTION\\System\\BIOS";
     DWORD type = 0;
     DWORD bytes = 0;
-    if (RegGetValueW(HKEY_LOCAL_MACHINE, key, value_name, RRF_RT_REG_SZ, &type, nullptr,
-                     &bytes) != ERROR_SUCCESS || type != REG_SZ || bytes < sizeof(wchar_t))
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, key, value_name, RRF_RT_REG_SZ, &type, nullptr, &bytes) !=
+            ERROR_SUCCESS ||
+        type != REG_SZ || bytes < sizeof(wchar_t))
         return {};
     std::wstring value(static_cast<std::size_t>(bytes / sizeof(wchar_t)) + 1, L'\0');
     DWORD capacity = static_cast<DWORD>(value.size() * sizeof(wchar_t));
@@ -2904,8 +2905,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_D3D11_SURFACE | NK_CAP_ACCESSIBILITY | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN |
         NK_CAP_JOYSTICK | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
         NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE |
-        NK_CAP_DISPLAY_ORIENTATION | NK_CAP_WRAP_NATIVE_WINDOW |
-        NK_CAP_SURFACE_FRAME_CALLBACK;
+        NK_CAP_DISPLAY_ORIENTATION | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;

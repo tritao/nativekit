@@ -64,6 +64,7 @@
     let frameCount = 0;
     let finished = false;
     let activeHostApiFrame = null;
+    const haxeonCallbacks = new Map();
 
     function setResult(result, message) {
       if (finished)
@@ -455,6 +456,7 @@
     function nativekitImports() {
       return forward([
         "nk_api_version", "nk_clipboard_read_text", "nk_clipboard_set_text",
+        "nk_cursor_create_custom", "nk_cursor_create_standard", "nk_cursor_destroy",
         "nk_event_release", "nk_get_capabilities", "nk_init", "nk_last_error",
         "nk_poll_event", "nk_shutdown",
         "nk_surface_accessibility_clear", "nk_surface_accessibility_remove_node",
@@ -463,7 +465,8 @@
         "nk_surface_create", "nk_surface_destroy", "nk_surface_get_framebuffer_size",
         "nk_surface_make_current", "nk_surface_present", "nk_surface_set_bounds",
         "nk_surface_set_text_input_active", "nk_surface_set_text_input_state",
-        "nk_time_seconds", "nk_window_create", "nk_window_destroy", "nk_window_get_scale",
+        "nk_time_seconds", "nk_window_create", "nk_window_destroy", "nk_window_get_cursor_mode",
+        "nk_window_get_scale", "nk_window_set_cursor", "nk_window_set_cursor_mode",
         "nk_resource_load_async"
       ]);
     }
@@ -493,9 +496,141 @@
         "nkui_layout_session_create", "nkui_layout_session_destroy",
         "nkui_layout_session_get_resolved_items",
         "nkui_layout_session_render_frame", "nkui_layout_session_set_font_collection",
+        "nkui_layout_session_set_measure_callback",
         "nkui_layout_session_submit", "nkui_showcase_cube_create",
         "nkui_showcase_cube_set_rotation", "nkui_showcase_diagnostic_report"
       ]);
+    }
+
+    function haxeonBytes(pointer) {
+      if (!pointer || !hostMemory)
+        return new Uint8Array(0);
+      const view = new DataView(hostMemory.buffer);
+      const length = view.getInt32(pointer + 8, true);
+      return new Uint8Array(hostMemory.buffer, pointer + 16, Math.max(0, length));
+    }
+
+    function haxeonCallbackTokens(signature) {
+      const split = signature.indexOf(">");
+      const tokenize = text => {
+        const result = [];
+        let depth = 0, start = 0;
+        for (let index = 0; index < text.length; index++) {
+          if (text[index] === "{") depth++;
+          else if (text[index] === "}") depth--;
+          else if (text[index] === "," && depth === 0) {
+            result.push(text.slice(start, index));
+            start = index + 1;
+          }
+        }
+        if (start < text.length) result.push(text.slice(start));
+        return result.filter(token => token.length > 0);
+      };
+      const argumentText = signature.slice(signature.indexOf(",") + 1, split);
+      const resultText = signature.slice(split + 1);
+      return {arguments: tokenize(argumentText), result: resultText};
+    }
+
+    function haxeonCallbackCode(token) {
+      if (token[0] === "{") {
+        const match = /^\{(\d+);/.exec(token);
+        return {signature: "i", aggregateSize: match ? Number(match[1]) : 0};
+      }
+      switch (token.trim()) {
+        case "9": return {signature: "f"};
+        case "10": return {signature: "d"};
+        case "6": case "11": case "13": case "14": return {signature: "i"};
+        default: return {signature: "i"};
+      }
+    }
+
+    function haxeonInvokeClosure(closure, args) {
+      const value = closure | 0;
+      if (!value || !guest || !guest.table)
+        throw new Error("Haxeon callback has no callable closure");
+      const view = new DataView(hostMemory.buffer);
+      if (value & 1)
+        return guest.table.get(value >>> 1)(...args);
+      const functionSlot = view.getInt32(value + 8, true);
+      const receiver = view.getInt32(value + 12, true);
+      return guest.table.get(functionSlot)(receiver, ...args);
+    }
+
+    function haxeonRuntimeImports() {
+      return {
+        __math_is_finite: Number.isFinite,
+        __math_is_nan: Number.isNaN,
+        __math_cos: Math.cos,
+        __math_fmod: (left, right) => left % right,
+        __math_pow: Math.pow,
+        __math_round: Math.round,
+        __math_sin: Math.sin,
+        native_callback_create: (signaturePointer, _pointerSizes, _pointerNullable, closure) => {
+          const signature = new TextDecoder().decode(haxeonBytes(signaturePointer));
+          const tokens = haxeonCallbackTokens(signature);
+          const argumentCodes = tokens.arguments.map(haxeonCallbackCode);
+          const resultCode = haxeonCallbackCode(tokens.result);
+          const wasmSignature = (resultCode.aggregateSize ? "v" : resultCode.signature) +
+            (resultCode.aggregateSize ? "i" : "") + argumentCodes.map(code => code.signature).join("");
+          const state = {error: "", errorKind: 0, resultCode, argumentCodes};
+          const callback = (resultPointer, ...rawArguments) => {
+            try {
+              const guestArguments = [];
+              for (let index = 0; index < argumentCodes.length; index++) {
+                const code = argumentCodes[index], raw = rawArguments[index];
+                if (!code.aggregateSize) {
+                  guestArguments.push(raw);
+                  continue;
+                }
+                const bytes = guest["__haxeon_callback_alloc_bytes"](code.aggregateSize);
+                new Uint8Array(hostMemory.buffer, bytes + 16, code.aggregateSize)
+                  .set(new Uint8Array(hostMemory.buffer, raw, code.aggregateSize));
+                guestArguments.push(bytes);
+              }
+              const result = haxeonInvokeClosure(closure, guestArguments);
+              if (resultCode.aggregateSize) {
+                if (!result)
+                  throw new Error("Haxeon callback returned a null aggregate");
+                new Uint8Array(hostMemory.buffer, resultPointer, resultCode.aggregateSize)
+                  .set(new Uint8Array(hostMemory.buffer, result + 16, resultCode.aggregateSize));
+                return;
+              }
+              return result;
+            } catch (error) {
+              state.errorKind = 1;
+              state.error = error && (error.stack || error.message) || String(error);
+              if (resultCode.aggregateSize && resultPointer)
+                new Uint8Array(hostMemory.buffer, resultPointer, resultCode.aggregateSize).fill(0);
+              return resultCode.signature === "d" || resultCode.signature === "f" ? 0 : 0;
+            }
+          };
+          const functionPointer = Module.addFunction(callback, wasmSignature);
+          haxeonCallbacks.set(functionPointer, {functionPointer, state});
+          return functionPointer;
+        },
+        native_callback_close: pointer => {
+          const entry = haxeonCallbacks.get(pointer);
+          if (!entry) return 0;
+          haxeonCallbacks.delete(pointer);
+          Module.removeFunction(entry.functionPointer);
+          return 1;
+        },
+        native_callback_error_kind: pointer => {
+          const entry = haxeonCallbacks.get(pointer);
+          return entry ? entry.state.errorKind : 0;
+        },
+        native_callback_take_error: pointer => {
+          const entry = haxeonCallbacks.get(pointer);
+          if (!entry || !entry.state.errorKind)
+            return 0;
+          const encoded = new TextEncoder().encode(entry.state.error);
+          const bytes = guest["__haxeon_callback_alloc_bytes"](encoded.length);
+          new Uint8Array(hostMemory.buffer, bytes + 16, encoded.length).set(encoded);
+          entry.state.error = "";
+          entry.state.errorKind = 0;
+          return bytes;
+        }
+      };
     }
 
     function startGuest() {
@@ -503,16 +638,11 @@
         env: { memory: hostMemory },
         nativekit: nativekitImports(),
         nativekit_ui: nativekitUiImports(),
-        std: { sys_exit: code => {} },
-        haxeon_runtime: {
-          __math_is_finite: Number.isFinite,
-          __math_is_nan: Number.isNaN,
-          __math_cos: Math.cos,
-          __math_fmod: (left, right) => left % right,
-          __math_pow: Math.pow,
-          __math_round: Math.round,
-          __math_sin: Math.sin
-        }
+        std: {
+          sys_exit: code => {},
+          sys_time: () => performance.now() / 1000
+        },
+        haxeon_runtime: haxeonRuntimeImports()
       };
       const fetchStarted = performance.now();
       fetch("nativekit_ui_haxeon_guest.wasm")

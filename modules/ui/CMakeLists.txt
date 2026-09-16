@@ -522,6 +522,9 @@ if(NK_BUILD_EXAMPLES)
                 _nk_api_version
                 _nk_clipboard_read_text
                 _nk_clipboard_set_text
+                _nk_cursor_create_custom
+                _nk_cursor_create_standard
+                _nk_cursor_destroy
                 _nk_event_release
                 _nk_get_capabilities
                 _nk_init
@@ -546,6 +549,9 @@ if(NK_BUILD_EXAMPLES)
                 _nk_window_create
                 _nk_window_destroy
                 _nk_window_get_scale
+                _nk_window_get_cursor_mode
+                _nk_window_set_cursor
+                _nk_window_set_cursor_mode
                 _nkui_display_list_create
                 _nkui_display_list_destroy
                 _nkui_display_list_get_info
@@ -563,6 +569,7 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_layout_session_render_frame
                 _nkui_layout_session_set_custom_paint
                 _nkui_layout_session_set_font_collection
+                _nkui_layout_session_set_measure_callback
                 _nkui_layout_session_submit
                 _nkui_paint_create_linear_gradient
                 _nkui_paint_create_solid

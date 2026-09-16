@@ -81,8 +81,8 @@ constexpr mask k_ios_system_capabilities =
 constexpr mask k_desktop_common =
     cap(NK_CAP_WINDOW) | cap(NK_CAP_CLIPBOARD) | cap(NK_CAP_DRAG_DROP) | cap(NK_CAP_SHELL) |
     cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) | cap(NK_CAP_NOTIFICATION) |
-    cap(NK_CAP_INPUT) | cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) |
-    cap(NK_CAP_RESOURCE_IO) | cap(NK_CAP_SURFACE_FRAME_CALLBACK);
+    cap(NK_CAP_INPUT) | cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) | cap(NK_CAP_RESOURCE_IO) |
+    cap(NK_CAP_SURFACE_FRAME_CALLBACK);
 
 constexpr backend_contract platform_contract() {
 #if defined(NK_PARITY_BACKEND_LINUX)

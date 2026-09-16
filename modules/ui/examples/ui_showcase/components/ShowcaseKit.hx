@@ -172,6 +172,12 @@ class ShowcaseKit {
 		return explorer.state.lightTheme
 			? color(0.88, 0.91, 0.96) : color(0.08, 0.11, 0.17);
 
+	static function paletteText(explorer:UiExplorer):Color
+		return explorer.context.buildContext.theme.text;
+
+	static function paletteMuted(explorer:UiExplorer):Color
+		return explorer.context.buildContext.theme.mutedText;
+
 	static function makeTheme(light:Bool):Theme {
 		var tokens = new ThemeTokens();
 		tokens.accent = light ? color(0.12, 0.37, 0.72) : color(0.25, 0.61, 0.89);
