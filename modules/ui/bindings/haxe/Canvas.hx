@@ -139,6 +139,28 @@ class Canvas {
 		commands.strokePath(path, width, cap, join, miterLimit);
 	}
 
+	/** Strokes a transient path and transfers its lifetime to this canvas update. */
+	public function strokeTransient(path:Path, color:Color, width:Float,
+			cap:LineCap = LineCap.Round, join:LineJoin = LineJoin.Round,
+			miterLimit:Float = 4.0):Void {
+		if (path == null || path.isDisposed() || color == null || width <= 0.0)
+			throw "Transient stroke requires a live path, color, and positive width";
+		try {
+			var paint = SolidPaint.create(color);
+			try {
+				stroke(path, paint, width, cap, join, miterLimit);
+				transientResources.push(path);
+				transientResources.push(paint);
+			} catch (error:Dynamic) {
+				paint.dispose();
+				throw error;
+			}
+		} catch (error:Dynamic) {
+			path.dispose();
+			throw error;
+		}
+	}
+
 	/** Adds one filled rectangle using a transient path and solid paint resource. */
 	public function fillRect(rect:Rect, color:Color):Void {
 		if (rect == null || color == null || rect.width <= 0.0 || rect.height <= 0.0)

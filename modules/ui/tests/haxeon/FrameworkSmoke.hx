@@ -190,7 +190,7 @@ class FrameworkSmoke {
 			searchRoot.children[0].hitTestSelf ||
 			searchInputSemantics.role != AccessibilityRole.TextField ||
 			searchInputSemantics.label != "Search components…" ||
-			searchClearSemantics.label != "×")
+			searchClearSemantics.label != "Clear search")
 			return 227;
 		if (!context.accessibilityAction(searchRoot.children[2].id.value,
 			AccessibilityAction.Activate, null, -1, -1, 1) || search.value != "" ||
