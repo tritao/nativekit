@@ -58,6 +58,9 @@ import nativekit.ui.widgets.AppShell;
 import nativekit.ui.widgets.CanvasView;
 import nativekit.ui.widgets.Checkbox;
 import nativekit.ui.widgets.ImageView;
+import nativekit.ui.widgets.LayeredImageView;
+import nativekit.ui.widgets.LayeredImageView.ImageLayer;
+import nativekit.ui.widgets.NineSliceView;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Padding;
 import nativekit.ui.widgets.ProgressBar;
@@ -687,6 +690,20 @@ class FrameworkSmoke {
 		if (imageSemantics.role != AccessibilityRole.Image || imageSemantics.label != "Picture" ||
 			imageGeometry.width != 2.0 || imageGeometry.height != 2.0)
 			return 64;
+		var layeredRoot = context.submit(new LayeredImageView("layers-smoke", [
+			new ImageLayer(image, 0.0, 0.0, 1.0, 1.0),
+			new ImageLayer(image, 0.25, 0.25, 0.5, 0.5, 0.5)
+		], "Layered picture"), new LayoutFrame(256.0, 192.0));
+		var layeredSemantics:Semantics = cast layeredRoot.semantics;
+		if (layeredSemantics == null || layeredSemantics.role != AccessibilityRole.Image ||
+			layeredSemantics.label != "Layered picture")
+			return 237;
+		var nineSliceRoot = context.submit(new NineSliceView("nine-slice-smoke", image,
+			1.0, 1.0, 1.0, 1.0, "Scalable frame"), new LayoutFrame(256.0, 192.0));
+		var nineSliceSemantics:Semantics = cast nineSliceRoot.semantics;
+		if (nineSliceSemantics == null || nineSliceSemantics.role != AccessibilityRole.Image ||
+			nineSliceSemantics.label != "Scalable frame")
+			return 238;
 		var imageCanvas = new Canvas();
 		var imageList = DisplayList.create();
 		imageCanvas.drawImage(image, new Rect(1.0, 2.0, 20.0, 12.0));

@@ -1,5 +1,8 @@
 import Color;
 import FontCollection;
+import Image;
+import ImageFormat;
+import haxe.io.Bytes;
 import FrameInfo;
 import LayoutAxis;
 import LayoutFrame;
@@ -90,6 +93,9 @@ class UiExplorer {
 	final tweenController:AnimationController;
 	final springController:SpringController;
 	final staticSubmitReuse:Bool;
+	final demoImage:Image;
+	final demoOverlayImage:Image;
+	final demoNineSliceImage:Image;
 	var nativeSurface:Null<NativeKitSurface>;
 	var width:Float;
 	var height:Float;
@@ -124,6 +130,9 @@ class UiExplorer {
 		});
 		springController = new SpringController(state.gestures.springValue, 180.0, 24.0, 1.0, 0.001,
 			context.animations, function(value) { state.gestures.springValue = value; });
+		demoImage = createDemoImage(160, 96);
+		demoOverlayImage = createOverlayImage(64);
+		demoNineSliceImage = createNineSliceImage(48);
 	}
 
 	/** Installs the native surface used by text editing, IME state, and accessibility. */
@@ -207,11 +216,65 @@ class UiExplorer {
 	public function dispose():Void {
 		context.dispose();
 		renderer.dispose();
+		demoNineSliceImage.dispose();
+		demoOverlayImage.dispose();
+		demoImage.dispose();
 		if (nativeSurface != null) {
 			nativeSurface.releaseBorrowed();
 			nativeSurface = null;
 		}
 		fonts.dispose();
+	}
+
+	static function createDemoImage(width:Int, height:Int):Image {
+		var pixels = Bytes.alloc(width * height * 4);
+		for (y in 0...height)
+			for (x in 0...width) {
+				var horizon = y < Std.int(height * 0.58);
+				var stripe = ((x + y) % 24) < 12;
+				var red = horizon ? 45 + Std.int(50 * y / height) : (stripe ? 36 : 49);
+				var green = horizon ? 105 + Std.int(80 * y / height) : (stripe ? 122 : 145);
+				var blue = horizon ? 190 + Std.int(45 * y / height) : (stripe ? 82 : 96);
+				var sunX = x - Std.int(width * 0.72);
+				var sunY = y - Std.int(height * 0.28);
+				if (sunX * sunX + sunY * sunY < 13 * 13) {
+					red = 255; green = 190; blue = 72;
+				}
+				var offset = (y * width + x) * 4;
+				pixels.set(offset, red); pixels.set(offset + 1, green);
+				pixels.set(offset + 2, blue); pixels.set(offset + 3, 255);
+			}
+		return Image.create(width, height, ImageFormat.RGBA8, pixels);
+	}
+
+	static function createOverlayImage(size:Int):Image {
+		var pixels = Bytes.alloc(size * size * 4);
+		var center = (size - 1) * 0.5;
+		for (y in 0...size)
+			for (x in 0...size) {
+				var dx = x - center;
+				var dy = y - center;
+				var inside = dx * dx + dy * dy <= center * center;
+				var offset = (y * size + x) * 4;
+				pixels.set(offset, inside ? 132 : 0); pixels.set(offset + 1, inside ? 92 : 0);
+				pixels.set(offset + 2, inside ? 242 : 0); pixels.set(offset + 3, inside ? 255 : 0);
+			}
+		return Image.create(size, size, ImageFormat.RGBA8, pixels);
+	}
+
+	static function createNineSliceImage(size:Int):Image {
+		var pixels = Bytes.alloc(size * size * 4);
+		for (y in 0...size)
+			for (x in 0...size) {
+				var edge = x < 10 || y < 10 || x >= size - 10 || y >= size - 10;
+				var corner = (x < 10 || x >= size - 10) && (y < 10 || y >= size - 10);
+				var offset = (y * size + x) * 4;
+				pixels.set(offset, corner ? 39 : edge ? 54 : 225);
+				pixels.set(offset + 1, corner ? 104 : edge ? 132 : 234);
+				pixels.set(offset + 2, corner ? 205 : edge ? 224 : 248);
+				pixels.set(offset + 3, 255);
+			}
+		return Image.create(size, size, ImageFormat.RGBA8, pixels);
 	}
 
 	public function getDiagnosticStage():Int

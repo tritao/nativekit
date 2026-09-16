@@ -11,7 +11,13 @@ import PathBuilder;
 import Rect;
 import nativekit.ui.core.View;
 import nativekit.ui.widgets.CanvasView;
+import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
+import nativekit.ui.widgets.ImageFit;
+import nativekit.ui.widgets.ImageView;
+import nativekit.ui.widgets.LayeredImageView;
+import nativekit.ui.widgets.LayeredImageView.ImageLayer;
+import nativekit.ui.widgets.NineSliceView;
 import nativekit.ui.widgets.Row;
 import components.CubeView;
 
@@ -109,14 +115,66 @@ class GraphicsPage {
 
 	public static function buildImages(explorer:UiExplorer, items:Array<KeyedView>):Void {
 		explorer.pageHeading(items, "Images & Layers",
-			"Understand clipping and layer composition before introducing external image assets.");
-		items.push(explorer.keyed("clip-preview", demoPanel(explorer, "Clipped composition",
-			"The preview deliberately paints beyond its rounded visual region; the layout node owns clipping.",
-			preview(explorer, "image", ["Image source", "Clip bounds", "Composited layer"]))));
-		items.push(explorer.keyed("image-roadmap", explorer.panel("image-roadmap", [
-			explorer.keyed("heading", explorer.heading("Image resources and nine-slice")),
-			explorer.keyed("copy", explorer.caption("The renderer supports sampled images, clipped image layers, and nine-slice decoration. The next focused sample should expose asset loading, fit modes, sampling, and loading/error states as one reusable Image component."))
+			"Compare intrinsic aspect fitting, clipped composition, opacity, and scalable image frames.");
+		items.push(explorer.keyed("image-fit", explorer.panel("image-fit", [
+			explorer.keyed("heading", explorer.heading("Fit modes")),
+			explorer.keyed("copy", explorer.caption("Contain preserves the whole image, Cover fills and clips, and Stretch maps directly to the bounds.")),
+			explorer.keyed("previews", new Row("image-fit-row", [
+				explorer.keyed("contain", fitSample(explorer, "contain", ImageFit.Contain)),
+				explorer.keyed("cover", fitSample(explorer, "cover", ImageFit.Cover)),
+				explorer.keyed("stretch", fitSample(explorer, "stretch", ImageFit.Stretch))
+			], imageRowStyle(explorer)))
 		])));
+		items.push(explorer.keyed("image-layers", explorer.panel("image-layers", [
+			explorer.keyed("heading", explorer.heading("Layers and opacity")),
+			explorer.keyed("copy", explorer.caption("Independent sampled images retain their own bounds and opacity, then composite in source order.")),
+			explorer.keyed("preview", new LayeredImageView("layered-preview", [
+				new ImageLayer(explorer.demoImage, 0.0, 0.0, 1.0, 1.0),
+				new ImageLayer(explorer.demoOverlayImage, 0.76, 0.14, 0.14, 0.72, 0.72)
+			], "Landscape image with a translucent violet circular layer", wideImageStyle(explorer)))
+		])));
+		items.push(explorer.keyed("nine-slice", explorer.panel("nine-slice", [
+			explorer.keyed("heading", explorer.heading("Nine-slice scaling")),
+			explorer.keyed("copy", explorer.caption("Corners retain their source size while edges and the center stretch to fill a wide destination.")),
+			explorer.keyed("preview", new NineSliceView("nine-slice-preview", explorer.demoNineSliceImage,
+				10.0, 10.0, 10.0, 10.0, "Blue nine-slice frame", wideImageStyle(explorer)))
+		])));
+	}
+
+	static function fitSample(explorer:UiExplorer, key:String, fit:ImageFit):Column {
+		var image = new ImageView(key + "-image", explorer.demoImage,
+			key + " image fit preview", imageSampleStyle(explorer));
+		image.fit = fit;
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.percent(0.32);
+		style.childGap = 6.0;
+		return new Column(key + "-sample", [
+			explorer.keyed("label", explorer.caption(key.substr(0, 1).toUpperCase() + key.substr(1))),
+			explorer.keyed("image", image)
+		], style);
+	}
+
+	static function imageRowStyle(explorer:UiExplorer):LayoutStyle {
+		var style = explorer.rowStyle(10.0);
+		style.width = LayoutAxis.stretch();
+		return style;
+	}
+
+	static function imageSampleStyle(explorer:UiExplorer):LayoutStyle {
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.stretch();
+		style.height = LayoutAxis.fixed(150.0);
+		style.background = explorer.state.lightTheme
+			? UiExplorer.color(0.88, 0.91, 0.96) : UiExplorer.color(0.04, 0.06, 0.10);
+		style.clipToParent = true;
+		return style;
+	}
+
+	static function wideImageStyle(explorer:UiExplorer):LayoutStyle {
+		var style = imageSampleStyle(explorer);
+		style.width = LayoutAxis.stretch();
+		style.height = LayoutAxis.fixed(180.0);
+		return style;
 	}
 
 	public static function buildRendering(explorer:UiExplorer, items:Array<KeyedView>):Void {
