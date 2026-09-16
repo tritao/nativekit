@@ -425,6 +425,33 @@
       }
     }
 
+    function waitForCoreBenchmarkReady(time) {
+      if (finished || !guest)
+        return;
+      try {
+        const sample = invokeShowcaseFrame(time);
+        frameCount++;
+        document.documentElement.dataset.nativekitFrames = String(frameCount);
+        if (sample.result < 0) {
+          const diagnostic = guest["ShowcaseWeb.diagnostic"]();
+          setResult(-sample.result, guestFailureMessage("Haxeon Showcase frame failed",
+            sample.result, diagnostic));
+          return;
+        }
+        if (guest["ShowcaseWeb.status"]() !== 0) {
+          requestAnimationFrame(waitForCoreBenchmarkReady);
+          return;
+        }
+        benchmarkFirstFrameAt = performance.now();
+        runCoreBenchmark();
+      } catch (error) {
+        const allocator = readAllocatorStats();
+        setResult(21, "Haxeon core benchmark initialization failed: " +
+          (error.stack || error.message) +
+          (allocator ? " | allocator=" + JSON.stringify(allocator) : ""));
+      }
+    }
+
     function nativekitImports() {
       return forward([
         "nk_api_version", "nk_clipboard_read_text", "nk_clipboard_set_text",
@@ -554,7 +581,7 @@
               "NativeKit UI Explorer · WebGL2";
           canvas.focus();
           if (benchmark && benchmarkMode === "core")
-            runCoreBenchmark();
+            requestAnimationFrame(waitForCoreBenchmarkReady);
           else
             requestAnimationFrame(tick);
         })
