@@ -39,11 +39,11 @@ autocorrect, and future dictation adapters must use this boundary. A
 transaction changes the document at most once and updates its selection and
 composition metadata as one state transition.
 
-The Haxe editor currently exposes positions as Unicode code-point offsets,
-matching the NativeKit text-input ABI. This is an explicit temporary boundary:
-platform adapters must convert their native representation before constructing
-an editor transaction. The UTF-8 byte, UTF-16 code-unit, code-point, and
-grapheme mapping layer is tracked separately for Phase 2.
+The Haxe editor exposes positions as typed Unicode code-point offsets,
+matching the NativeKit text-input ABI. Platform adapters must convert their
+native representation before constructing an editor transaction. The editor
+retains a document offset map and a lazy active-paragraph map for UTF-8 byte,
+UTF-16 code-unit, code-point, and grapheme-boundary conversion.
 
 ## Composition lifecycle
 

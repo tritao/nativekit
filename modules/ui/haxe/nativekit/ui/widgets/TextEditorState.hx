@@ -13,14 +13,14 @@ class TextEditorState {
 	static inline var caretBlinkHalfPeriod:Float = 0.5;
 
 	public var text(default, null):String;
-	public var selectionStart(default, null):Int;
-	public var selectionEnd(default, null):Int;
-	public var compositionStart(default, null):Int;
-	public var compositionEnd(default, null):Int;
-	public var selectionAnchor(default, null):Int;
-	public var selectionFocus(default, null):Int;
-	public var selectionAnchorLayoutOffset(default, null):Int;
-	public var selectionFocusLayoutOffset(default, null):Int;
+	public var selectionStart(default, null):CodepointOffset;
+	public var selectionEnd(default, null):CodepointOffset;
+	public var compositionStart(default, null):CodepointOffset;
+	public var compositionEnd(default, null):CodepointOffset;
+	public var selectionAnchor(default, null):CodepointOffset;
+	public var selectionFocus(default, null):CodepointOffset;
+	public var selectionAnchorLayoutOffset(default, null):CodepointOffset;
+	public var selectionFocusLayoutOffset(default, null):CodepointOffset;
 	public var selectionAnchorAffinity(default, null):Int;
 	public var selectionFocusAffinity(default, null):Int;
 	/** Vertical scroll offset in the editor's content coordinate space. */
@@ -45,10 +45,16 @@ class TextEditorState {
 	var hasDesiredVerticalX:Bool;
 	var caretBlinkResetTime:Float;
 	var compositionRestoreText:Null<String>;
-	var compositionRestoreStart:Int;
-	var compositionRestoreEnd:Int;
-	var compositionRestoreSelectionStart:Int;
-	var compositionRestoreSelectionEnd:Int;
+	var compositionRestoreStart:CodepointOffset;
+	var compositionRestoreEnd:CodepointOffset;
+	var compositionRestoreSelectionStart:CodepointOffset;
+	var compositionRestoreSelectionEnd:CodepointOffset;
+	var hasCompositionRestoreState:Bool;
+	/** Full-document map reused by every transaction and platform conversion. */
+	var documentOffsetMap:TextOffsetMap;
+	var activeParagraphOffsetMap:TextOffsetMap;
+	var activeParagraphStart:Int;
+	var activeParagraphEnd:Int;
 	var disposed:Bool;
 
 	public function new(fonts:FontCollection, text:String, ?textStyle:TextStyle,
@@ -56,9 +62,13 @@ class TextEditorState {
 		if (fonts == null || fonts.isDisposed())
 			throw "Text editor requires a live font collection";
 		this.text = text == null ? "" : text;
+		documentOffsetMap = new TextOffsetMap(this.text);
+		activeParagraphOffsetMap = null;
+		activeParagraphStart = -1;
+		activeParagraphEnd = -1;
 		this.textStyle = copyTextStyle(textStyle == null ? new TextStyle() : textStyle);
 		this.paragraphStyle = copyParagraphStyle(paragraphStyle == null ? new ParagraphStyle() : paragraphStyle);
-		var end = Utf8Text.length(this.text);
+		var end = documentOffsetMap.codepointCount;
 		selectionStart = end;
 		selectionEnd = end;
 		selectionAnchor = end;
@@ -92,6 +102,7 @@ class TextEditorState {
 		compositionRestoreEnd = -1;
 		compositionRestoreSelectionStart = -1;
 		compositionRestoreSelectionEnd = -1;
+		hasCompositionRestoreState = false;
 		disposed = false;
 	}
 
@@ -101,8 +112,46 @@ class TextEditorState {
 		if (next == text)
 			return false;
 		cancelPointerClick();
-		return replaceRange(0, Utf8Text.length(text), next);
+		return replaceRange(0, documentLength(), next);
 	}
+
+	/** Returns the cached coordinate map for the complete document. */
+	public function documentOffsets():TextOffsetMap {
+		ensureLive();
+		return documentOffsetMap;
+	}
+
+	/**
+	 * Returns a cached map for the paragraph containing the active selection
+	 * focus. The returned map is paragraph-local; use activeParagraphRange() to
+	 * translate its code-point coordinates to document coordinates.
+	 */
+	public function activeParagraphOffsets():TextOffsetMap {
+		ensureLive();
+		var paragraph = documentOffsetMap.paragraphRangeAt(selectionFocus);
+		var start:Int = paragraph.start;
+		var end:Int = paragraph.end;
+		if (activeParagraphOffsetMap == null || activeParagraphStart != start ||
+			activeParagraphEnd != end) {
+			activeParagraphOffsetMap = new TextOffsetMap(
+				documentOffsetMap.sliceCodepoints(start, end));
+			activeParagraphStart = start;
+			activeParagraphEnd = end;
+		}
+		return activeParagraphOffsetMap;
+	}
+
+	/** Absolute document range represented by activeParagraphOffsets(). */
+	public function activeParagraphRange():TextRange {
+		ensureLive();
+		var paragraph = documentOffsetMap.paragraphRangeAt(selectionFocus);
+		activeParagraphOffsets();
+		return new TextRange(paragraph.start, paragraph.end);
+	}
+
+	/** Cached Unicode scalar count used by editor coordinate calculations. */
+	public function documentLength():Int
+		return documentOffsetMap.codepointCount;
 
 	public function updateLayout(width:Float):Void {
 		ensureLive();
@@ -157,7 +206,7 @@ class TextEditorState {
 	 */
 	public function replaceRange(start:Int, end:Int, value:Null<String>):Bool {
 		ensureLive();
-		var count = Utf8Text.length(text);
+		var count = documentLength();
 		var first = clamp(start, 0, count);
 		var last = clamp(end, 0, count);
 		if (last < first) {
@@ -166,7 +215,7 @@ class TextEditorState {
 			last = swap;
 		}
 		cancelPointerClick();
-		var caret = first + Utf8Text.length(value == null ? "" : value);
+		var caret = first + TextOffsetMap.countCodepoints(value == null ? "" : value);
 		return applyTransaction(new EditTransaction(first, last, value, caret, caret));
 	}
 
@@ -219,7 +268,7 @@ class TextEditorState {
 
 	/** Sets the active composition range without replacing document text. */
 	public function setComposition(start:Int, end:Int):Bool {
-		var valid = hasValidComposition(start, end) && end <= Utf8Text.length(text);
+		var valid = hasValidComposition(start, end) && end <= documentLength();
 		return applyTransactionInternal(new EditTransaction(selectionStart, selectionStart, "",
 			selectionStart, selectionEnd, valid, start, end), false);
 	}
@@ -235,7 +284,7 @@ class TextEditorState {
 		ensureLive();
 		if (compositionStart < 0 || compositionEnd < compositionStart)
 			return false;
-		if (compositionRestoreText == null)
+		if (!hasCompositionRestoreState)
 			return commitComposition();
 		return applyTransactionInternal(new EditTransaction(compositionStart, compositionEnd,
 			compositionRestoreText, compositionRestoreSelectionStart,
@@ -261,7 +310,7 @@ class TextEditorState {
 			return false;
 
 		var current = layoutText();
-		var count = Utf8Text.length(current);
+		var count = documentLength();
 		var first = clamp(transaction.replacementStart, 0, count);
 		var last = clamp(transaction.replacementEnd, 0, count);
 		if (last < first) {
@@ -270,8 +319,8 @@ class TextEditorState {
 			last = swap;
 		}
 		var replacement = transaction.replacementText == null ? "" : transaction.replacementText;
-		var next = Utf8Text.replace(current, first, last, replacement);
-		var nextCount = Utf8Text.length(next);
+		var next = documentOffsetMap.replaceCodepoints(first, last, replacement);
+		var nextCount = count - (last - first) + TextOffsetMap.countCodepoints(replacement);
 
 		var nextSelectionStart = clamp(transaction.selectionStart, 0, nextCount);
 		var nextSelectionEnd = clamp(transaction.selectionEnd, 0, nextCount);
@@ -288,11 +337,12 @@ class TextEditorState {
 		var hadComposition = compositionStart >= 0 && compositionEnd >= compositionStart;
 
 		if (nextHasComposition && !hadComposition && captureCompositionBaseline) {
-			compositionRestoreText = Utf8Text.slice(current, first, last);
+			compositionRestoreText = documentOffsetMap.sliceCodepoints(first, last);
 			compositionRestoreStart = first;
 			compositionRestoreEnd = last;
 			compositionRestoreSelectionStart = selectionStart;
 			compositionRestoreSelectionEnd = selectionEnd;
+			hasCompositionRestoreState = true;
 		} else if (!nextHasComposition) {
 			clearCompositionBaseline();
 		}
@@ -312,6 +362,10 @@ class TextEditorState {
 
 		if (textChanged) {
 			text = next;
+			documentOffsetMap = new TextOffsetMap(next);
+			activeParagraphOffsetMap = null;
+			activeParagraphStart = -1;
+			activeParagraphEnd = -1;
 			layout.setText(layoutText());
 			lastLayoutText = layoutText();
 		}
@@ -331,13 +385,13 @@ class TextEditorState {
 	}
 
 	public function selectAll():Bool {
-		var first = selectionStart != 0 || selectionEnd != Utf8Text.length(text) ||
-			selectionAnchor != 0 || selectionFocus != Utf8Text.length(text) ||
+		var first = selectionStart != 0 || selectionEnd != documentLength() ||
+			selectionAnchor != 0 || selectionFocus != documentLength() ||
 			selectionAnchorLayoutOffset != 0 ||
-			selectionFocusLayoutOffset != Utf8Text.length(text) ||
+			selectionFocusLayoutOffset != documentLength() ||
 			selectionAnchorAffinity != 0 || selectionFocusAffinity != 0;
 		selectionAnchor = 0;
-		selectionFocus = Utf8Text.length(text);
+		selectionFocus = documentLength();
 		selectionAnchorLayoutOffset = 0;
 		selectionFocusLayoutOffset = selectionFocus;
 		selectionStart = 0;
@@ -352,8 +406,8 @@ class TextEditorState {
 	public function placeCaret(offset:Int, extend:Bool, affinity:Int = 0):Bool {
 		ensureLive();
 		resetVerticalNavigation();
-		var next = clamp(layout.alignGrapheme(clamp(offset, 0, Utf8Text.length(text))),
-			0, Utf8Text.length(text));
+		var next = clamp(layout.alignGrapheme(clamp(offset, 0, documentLength())),
+			0, documentLength());
 		var previousFocusLayoutOffset = selectionFocusLayoutOffset;
 		var previousAnchorLayoutOffset = selectionAnchorLayoutOffset;
 		if (!extend) {
@@ -555,7 +609,7 @@ class TextEditorState {
 	}
 
 	public function deleteForward():Bool {
-		var length = Utf8Text.length(text);
+		var length = documentLength();
 		if (selectionStart != selectionEnd)
 			return replace(selectionStart, selectionEnd, "");
 		if (selectionEnd >= length)
@@ -622,7 +676,7 @@ class TextEditorState {
 	/** Selects the word under a pointer position using the shaped text engine's boundaries. */
 	public function selectWordAt(position:TextPosition):Bool {
 		ensureLive();
-		if (position == null || Utf8Text.length(text) == 0)
+		if (position == null || documentLength() == 0)
 			return false;
 		var range = layout.wordRange(position);
 		return setSelection(range[0], range[1]);
@@ -631,7 +685,7 @@ class TextEditorState {
 	/** Selects the visual line under a pointer position. */
 	public function selectLineAt(position:TextPosition):Bool {
 		ensureLive();
-		if (position == null || Utf8Text.length(text) == 0)
+		if (position == null || documentLength() == 0)
 			return false;
 		var range = layout.lineRangeAt(position.offset);
 		return setSelection(range.start, range.end);
@@ -705,6 +759,8 @@ class TextEditorState {
 		if (disposed)
 			return;
 		layout.dispose();
+		documentOffsetMap = null;
+		activeParagraphOffsetMap = null;
 		disposed = true;
 	}
 
@@ -717,12 +773,13 @@ class TextEditorState {
 		compositionRestoreEnd = -1;
 		compositionRestoreSelectionStart = -1;
 		compositionRestoreSelectionEnd = -1;
+		hasCompositionRestoreState = false;
 	}
 
 	function trimLineBreak(offset:Int, lineStart:Int):Int {
 		var result = offset;
 		while (result > lineStart) {
-			var value = Utf8Text.slice(text, result - 1, result);
+			var value = documentOffsetMap.sliceCodepoints(result - 1, result);
 			if (value != "\n" && value != "\r")
 				break;
 			result--;

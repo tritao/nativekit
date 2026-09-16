@@ -118,7 +118,7 @@ class TextField implements View {
 				label == null ? key : label, editor.text);
 			semantics.actions = semanticActions;
 			semantics.textStart = 0;
-			semantics.documentLength = Utf8Text.length(editor.text);
+			semantics.documentLength = editor.documentLength();
 			semantics.selectionStart = editor.selectionStart;
 			semantics.selectionEnd = editor.selectionEnd;
 			if (!enabled)
@@ -194,7 +194,7 @@ class TextField implements View {
 			var updateState = function() {
 				value = editor.layoutText();
 				semantics.value = value;
-				semantics.documentLength = Utf8Text.length(value);
+				semantics.documentLength = editor.documentLength();
 				semantics.selectionStart = editor.selectionStart;
 				semantics.selectionEnd = editor.selectionEnd;
 				stored.update(editor);
@@ -212,7 +212,8 @@ class TextField implements View {
 					return;
 				var compositionText = editor.compositionStart >= 0 &&
 					editor.compositionEnd >= editor.compositionStart
-					? Utf8Text.slice(editor.layoutText(), editor.compositionStart, editor.compositionEnd) : "";
+					? editor.documentOffsets().sliceCodepoints(editor.compositionStart,
+						editor.compositionEnd) : "";
 				onDiagnostics(new TextEditorDiagnostics(key, label == null ? key : label,
 					editor.focused, editor.selectionStart, editor.selectionEnd,
 					editor.selectionFocus, editor.compositionStart, editor.compositionEnd,
@@ -246,7 +247,7 @@ class TextField implements View {
 				if (!editor.focused || !context.textInput.isOwner(id) || context.platformSurface == null ||
 					context.platformSurface.isDisposed())
 					return;
-				context.textInput.update(editor.layoutText(), Utf8Text.length(editor.text),
+				context.textInput.update(editor.layoutText(), editor.documentLength(),
 					editor.selectionStart, editor.selectionEnd, editor.compositionStart,
 					editor.compositionEnd, 0,
 					multiline ? 1 : 0,
@@ -390,7 +391,7 @@ class TextField implements View {
 				else if ((event.modifiers & UiModifier.Super) != 0 && event.key == UiKey.Up)
 					changed = editor.placeCaret(0, extend);
 				else if ((event.modifiers & UiModifier.Super) != 0 && event.key == UiKey.Down)
-					changed = editor.placeCaret(Utf8Text.length(editor.text), extend);
+					changed = editor.placeCaret(editor.documentLength(), extend);
 				#end
 				else if (event.key == UiKey.Left)
 					changed = editor.moveCaret(-1, extend);
@@ -401,7 +402,7 @@ class TextField implements View {
 						editor.placeCaret(0, extend);
 				else if (event.key == UiKey.End)
 					changed = multiline && !command ? editor.moveCaretToLineBoundary(true, extend) :
-						editor.placeCaret(Utf8Text.length(editor.text), extend);
+						editor.placeCaret(editor.documentLength(), extend);
 				else if (event.key == UiKey.Backspace)
 					changed = editor.deleteBackward();
 				else if (event.key == UiKey.Delete)
@@ -442,7 +443,7 @@ class TextField implements View {
 			});
 			node.on(UiEventKind.AccessibilitySetValue, function(event) {
 				var previousText = editor.layoutText();
-				if (enabled && editor.replaceRange(0, Utf8Text.length(editor.text), event.text)) {
+				if (enabled && editor.replaceRange(0, editor.documentLength(), event.text)) {
 					editor.resetCaretBlink(context.gestures.timeSeconds());
 					publishTextChange(previousText);
 				}
@@ -476,7 +477,7 @@ class TextField implements View {
 	static function copySelection(clipboard:nativekit.ui.core.ClipboardService,
 			editor:TextEditorState):Void {
 		if (editor.selectionStart != editor.selectionEnd)
-			clipboard.writeText(Utf8Text.slice(editor.layoutText(), editor.selectionStart,
+			clipboard.writeText(editor.documentOffsets().sliceCodepoints(editor.selectionStart,
 				editor.selectionEnd));
 	}
 

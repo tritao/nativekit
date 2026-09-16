@@ -8,20 +8,21 @@ package nativekit.ui.widgets;
  * creating this value. A null replacement text is treated as an empty string.
  */
 class EditTransaction {
-	public final replacementStart:Int;
-	public final replacementEnd:Int;
+	public final replacementStart:CodepointOffset;
+	public final replacementEnd:CodepointOffset;
 	public final replacementText:Null<String>;
-	public final selectionStart:Int;
-	public final selectionEnd:Int;
+	public final selectionStart:CodepointOffset;
+	public final selectionEnd:CodepointOffset;
 	public final hasComposition:Bool;
-	public final compositionStart:Int;
-	public final compositionEnd:Int;
+	public final compositionStart:CodepointOffset;
+	public final compositionEnd:CodepointOffset;
 	/** Caret affinity for the resulting selection focus. */
 	public final selectionAffinity:Int;
 
-	public function new(replacementStart:Int, replacementEnd:Int, replacementText:Null<String>,
-			selectionStart:Int, selectionEnd:Int, ?hasComposition:Bool = false,
-			?compositionStart:Int = -1, ?compositionEnd:Int = -1,
+	public function new(replacementStart:CodepointOffset, replacementEnd:CodepointOffset,
+			replacementText:Null<String>, selectionStart:CodepointOffset,
+			selectionEnd:CodepointOffset, ?hasComposition:Bool = false,
+			?compositionStart:CodepointOffset = -1, ?compositionEnd:CodepointOffset = -1,
 			?selectionAffinity:Int = 0) {
 		this.replacementStart = replacementStart;
 		this.replacementEnd = replacementEnd;

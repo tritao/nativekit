@@ -59,6 +59,7 @@ import nativekit.ui.semantics.AccessibilityRequest;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.ButtonVariant;
+import nativekit.ui.widgets.CodepointOffset;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.Align;
 import nativekit.ui.widgets.AppShell;
@@ -90,6 +91,8 @@ import nativekit.ui.widgets.EditTransaction;
 import nativekit.ui.widgets.TextArea;
 import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.TextRange;
+import nativekit.ui.widgets.TextOffsetMap;
+import nativekit.ui.widgets.Utf16Offset;
 import nativekit.ui.widgets.Spacer;
 import nativekit.ui.widgets.Slider;
 import nativekit.ui.widgets.Stack;
@@ -178,6 +181,30 @@ class FrameworkSmoke {
 		var context = new UiContext(session, fonts);
 		if (context.buildContext.fonts != fonts)
 			return 30;
+		if (!offsetMapSmoke())
+			return 240;
+		var mappedEditor = new TextEditorState(fonts, "one\ntwo");
+		mappedEditor.setSelection(0, 0);
+		var firstParagraphMap = mappedEditor.activeParagraphOffsets();
+		if (firstParagraphMap != mappedEditor.activeParagraphOffsets())
+			return 241;
+		var firstParagraphRange = mappedEditor.activeParagraphRange();
+		if (firstParagraphRange.start != 0 || firstParagraphRange.end != 3 ||
+			firstParagraphMap.text != "one")
+			return 242;
+		mappedEditor.setSelection(4, 4);
+		var secondParagraphMap = mappedEditor.activeParagraphOffsets();
+		var secondParagraphRange = mappedEditor.activeParagraphRange();
+		if (secondParagraphMap == firstParagraphMap || secondParagraphRange.start != 4 ||
+			secondParagraphRange.end != 7 || secondParagraphMap.text != "two")
+			return 243;
+		if (!mappedEditor.replaceRange(4, 7, "🙂"))
+			return 244;
+		var editedParagraphMap = mappedEditor.activeParagraphOffsets();
+		if (editedParagraphMap == secondParagraphMap || editedParagraphMap.text != "🙂" ||
+			mappedEditor.documentLength() != 5)
+			return 245;
+		mappedEditor.dispose();
 		var emptyEditor = new TextEditorState(fonts, "");
 		if (Utf8Text.length(emptyEditor.text) != 0)
 			return 38;
@@ -224,10 +251,14 @@ class FrameworkSmoke {
 		if (!transactionEditor.applyTransaction(new EditTransaction(1, 2, "かな", 3, 3, true, 1, 3)) ||
 			transactionEditor.text != "aかな" || transactionEditor.compositionEnd != 3)
 			return 235;
-		if (!transactionEditor.cancelComposition() || transactionEditor.text != "a" ||
-			transactionEditor.selectionStart != 1 || transactionEditor.selectionEnd != 1 ||
-			transactionEditor.queryComposition() != null)
+		var cancelled = transactionEditor.cancelComposition();
+		if (!cancelled || transactionEditor.text != "a" || transactionEditor.selectionStart != 1 ||
+			transactionEditor.selectionEnd != 1 || transactionEditor.queryComposition() != null) {
+			Sys.println("cancel mismatch: changed=" + cancelled + " text=" + transactionEditor.text +
+				" selection=" + transactionEditor.selectionStart + ".." + transactionEditor.selectionEnd +
+				" composition=" + transactionEditor.compositionStart + ".." + transactionEditor.compositionEnd);
 			return 236;
+		}
 		if (!transactionEditor.setSelection(0, 1) ||
 			!transactionEditor.applyTransaction(new EditTransaction(0, 1, "あ", 1, 1, true, 0, 1)) ||
 			!transactionEditor.commitComposition() || transactionEditor.text != "あ" ||
@@ -2817,6 +2848,60 @@ class FrameworkSmoke {
 			metrics.styleResolutions <= 0 || metrics.submitSeconds < 0.0 || metrics.totalSeconds < 0.0)
 			return false;
 		return !requireCacheHit || (metrics.styleCacheHits > 0 && metrics.styleCacheMisses == 0);
+	}
+
+	static function offsetMapSmoke():Bool {
+		if (!checkOffsetMap(new TextOffsetMap("ASCII"), 5, 5, 5, 5) ||
+			!checkOffsetMap(new TextOffsetMap("é"), 1, 2, 1, 1) ||
+			!checkOffsetMap(new TextOffsetMap("é"), 2, 3, 2, 1) ||
+			!checkOffsetMap(new TextOffsetMap("👨‍👩‍👧‍👦"), 7, 25, 11, 1) ||
+			!checkOffsetMap(new TextOffsetMap("🇺🇳"), 2, 8, 4, 1) ||
+			!checkOffsetMap(new TextOffsetMap("👍🏽"), 2, 8, 4, 1) ||
+			!checkOffsetMap(new TextOffsetMap("مرحبا"), 5, 10, 5, 5) ||
+			!checkOffsetMap(new TextOffsetMap("שלום"), 4, 8, 4, 4) ||
+			!checkOffsetMap(new TextOffsetMap("नमस्ते"), 6, 18, 6, 3) ||
+			!checkOffsetMap(new TextOffsetMap("今日は"), 3, 9, 3, 3) ||
+			!checkOffsetMap(new TextOffsetMap("Aשלום🙂"), 6, 13, 7, 6))
+			return false;
+
+		var family = new TextOffsetMap("👨‍👩‍👧‍👦");
+		var rejectedSurrogateOffset = false;
+		try {
+			var invalidUtf16Offset:Utf16Offset = 1;
+			family.codepointOffsetForUtf16(invalidUtf16Offset);
+		} catch (_:Dynamic) {
+			rejectedSurrogateOffset = true;
+		}
+		if (!rejectedSurrogateOffset)
+			return false;
+		var customBoundaries = new TextOffsetMap("ab");
+		customBoundaries.setGraphemeBoundaries([0, 2]);
+		var codepointOne:CodepointOffset = 1;
+		var codepointZero:CodepointOffset = 0;
+		var nextBoundary:Int = customBoundaries.nextGraphemeBoundary(codepointZero);
+		return customBoundaries.graphemeCount() == 1 &&
+			!customBoundaries.isGraphemeBoundary(codepointOne) && nextBoundary == 2;
+	}
+
+	static function checkOffsetMap(map:TextOffsetMap, expectedCodepoints:Int,
+			expectedUtf8Bytes:Int, expectedUtf16Units:Int, expectedGraphemes:Int):Bool {
+		if (map.codepointCount != expectedCodepoints || map.utf8ByteLength != expectedUtf8Bytes ||
+			map.utf16Length != expectedUtf16Units || map.graphemeCount() != expectedGraphemes) {
+			return false;
+		}
+		for (codepointOffset in 0...expectedCodepoints + 1) {
+			var codepointPosition:CodepointOffset = codepointOffset;
+			var utf8Position = map.utf8OffsetForCodepoint(codepointPosition);
+			var utf16Position = map.utf16OffsetForCodepoint(codepointPosition);
+			var utf8RoundTrip:Int = map.codepointOffsetForUtf8(utf8Position);
+			var utf16RoundTrip:Int = map.codepointOffsetForUtf16(utf16Position);
+			if (utf8RoundTrip != codepointOffset || utf16RoundTrip != codepointOffset ||
+				!map.isGraphemeBoundary(codepointPosition) && codepointOffset == 0)
+				return false;
+		}
+		var documentEnd:CodepointOffset = expectedCodepoints;
+		return map.isGraphemeBoundary(documentEnd) &&
+			map.sliceCodepoints(0, expectedCodepoints) == map.text;
 	}
 
 	static function frameInvalidationValid(context:UiContext, requireChanged:Bool,
