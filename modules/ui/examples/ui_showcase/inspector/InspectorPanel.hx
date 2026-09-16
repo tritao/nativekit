@@ -158,7 +158,7 @@ class InspectorPanel {
 						break;
 					var source = entry.source == null ? "framework default" : entry.source.toString();
 					children.push(PropertyRow.build('style-property-$shownProperties',
-						'${entry.name}: ${Std.string(entry.value)}\n  source: $source',
+						'${entry.name}: ${entry.describe()}\n  source: $source',
 						explorer.paletteMuted()));
 					shownProperties++;
 				}
