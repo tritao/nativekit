@@ -4,14 +4,20 @@ import Color;
 import LayoutStyle;
 import ParagraphStyle;
 import TextStyle;
+import nativekit.ui.style.StyleSheet;
+import nativekit.ui.style.StyleSelector;
+import nativekit.ui.style.StyleState;
+import nativekit.ui.style.StyleValue;
 
 /** Haxe-owned semantic typography, color, and state palette. */
 class Theme {
 	static final darkButtonTextOnLight:Color = Color.rgba(0.08, 0.10, 0.14, 1.0);
+	public final styles:StyleSheet;
 
 	public var accent:Color;
 	public var disabledText:Color;
 	public var disabledButtonText:Color;
+	public var buttonBackground:Color;
 	public var buttonHover:Color;
 	public var buttonPressed:Color;
 	public var buttonFocused:Color;
@@ -33,11 +39,13 @@ class Theme {
 	public var button:TextRoleStyle;
 
 	public function new() {
+		styles = new StyleSheet("Theme");
 		accent = Color.rgba(0.22, 0.48, 0.86, 1.0);
 		var bodyColor = Color.rgba(0.96, 0.97, 0.99, 1.0);
 		var mutedColor = Color.rgba(0.69, 0.72, 0.77, 1.0);
 		disabledText = Color.rgba(0.53, 0.55, 0.59, 1.0);
 		disabledButtonText = disabledText;
+		buttonBackground = Color.rgba(0.16, 0.4, 0.78, 1.0);
 		buttonHover = Color.rgba(0.21, 0.46, 0.84, 1.0);
 		buttonPressed = Color.rgba(0.13, 0.34, 0.67, 1.0);
 		buttonFocused = Color.rgba(0.27, 0.52, 0.91, 1.0);
@@ -59,22 +67,23 @@ class Theme {
 		caption = new TextRoleStyle(new TextStyle(12.0), new ParagraphStyle(), mutedColor);
 		button = new TextRoleStyle(new TextStyle(),
 			new ParagraphStyle(TextWrap.None), bodyColor);
+		refreshStyles();
 	}
 
-	/** Applies state colors while preserving caller-provided normal layout styling. */
-	public function resolveButtonStyle(base:LayoutStyle, flags:Int, enabled:Bool):LayoutStyle {
-		var result = base.copy();
-		if (!enabled)
-			result.background = buttonDisabled;
-		else if (InteractionState.contains(flags, InteractionState.Pressed))
-			result.background = buttonPressed;
-		else if (InteractionState.contains(flags, InteractionState.Hovered))
-			result.background = buttonHover;
-		else if (InteractionState.contains(flags, InteractionState.Focused))
-			result.background = buttonFocused;
-		else if (InteractionState.contains(flags, InteractionState.Selected))
-			result.background = buttonSelected;
-		return result;
+	/** Rebuilds the built-in rules after callers change a compatibility token. */
+	public function refreshStyles():Void {
+		styles.clear();
+		styles.rule(StyleSelector.widget("button"), [StyleValue.background(buttonBackground)]);
+		styles.rule(StyleSelector.widget("button").state(StyleState.Selected),
+			[StyleValue.background(buttonSelected)]);
+		styles.rule(StyleSelector.widget("button").state(StyleState.Focused),
+			[StyleValue.background(buttonFocused)]);
+		styles.rule(StyleSelector.widget("button").state(StyleState.Hovered),
+			[StyleValue.background(buttonHover)]);
+		styles.rule(StyleSelector.widget("button").state(StyleState.Pressed),
+			[StyleValue.background(buttonPressed)]);
+		styles.rule(StyleSelector.widget("button").state(StyleState.Disabled),
+			[StyleValue.background(buttonDisabled)]);
 	}
 
 	public function textColor(enabled:Bool):Color

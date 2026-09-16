@@ -12,6 +12,7 @@ import LayoutDirection;
 import LayoutFrame;
 import LayoutSizing;
 import LayoutStyle;
+import LayoutSizing;
 import LayoutVisualKind;
 import TextAlignment;
 import Rect;
@@ -89,6 +90,16 @@ import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualList;
 import nativekit.ui.theme.Theme;
 import nativekit.ui.theme.TextRole;
+import nativekit.ui.style.ComputedStyle;
+import nativekit.ui.style.StyleResolver;
+import nativekit.ui.style.StyleProperty;
+import nativekit.ui.style.StyleSelector;
+import nativekit.ui.style.StyleSheet;
+import nativekit.ui.style.StyleSource;
+import nativekit.ui.style.StyleState;
+import nativekit.ui.style.StyleStateUtil;
+import nativekit.ui.style.StyleTarget;
+import nativekit.ui.style.StyleValue;
 import nativekit.ui.gestures.GestureEvent;
 import nativekit.ui.gestures.TapRecognizer;
 import nativekit.ui.gestures.DoubleTapRecognizer;
@@ -1168,6 +1179,34 @@ class FrameworkSmoke {
 		var theme = new Theme();
 		theme.body.color = Color.rgba(0.10, 0.14, 0.21, 1.0);
 		theme.button.color = Color.rgba(1.0, 1.0, 1.0, 1.0);
+		var styleTheme = new StyleSheet("StyleTheme");
+		styleTheme.rule(StyleSelector.widget("button"),
+			[StyleValue.background(Color.rgba(0.1, 0.1, 0.1, 1.0))]);
+		styleTheme.rule(StyleSelector.widget("button").state(StyleState.Hovered),
+			[StyleValue.background(Color.rgba(0.2, 0.2, 0.2, 1.0))]);
+		var styleApplication = new StyleSheet("StyleApplication");
+		styleApplication.rule(StyleSelector.widget("button"),
+			[StyleValue.background(Color.rgba(0.3, 0.3, 0.3, 1.0))]);
+		styleApplication.rule(StyleSelector.widget("button").state(StyleState.Hovered),
+			[StyleValue.background(Color.rgba(0.4, 0.4, 0.4, 1.0))]);
+		var localStyle = new LayoutStyle();
+		localStyle.width = LayoutAxis.fixed(88.0);
+		var computed = new StyleResolver().resolve(
+			new StyleTarget("button", "style-key", "style-id", ["primary"], ["button"],
+				StyleStateUtil.withState(0, StyleState.Hovered, true)),
+			null, styleTheme, styleApplication, localStyle);
+		var computedSource:Null<StyleSource> = computed.source(StyleProperty.Background);
+		if (computed.get(StyleProperty.Background).red != 0.4 ||
+			computed.get(StyleProperty.Width).sizing != LayoutSizing.Fixed ||
+			computed.get(StyleProperty.Width).value != 88.0 || computedSource == null ||
+			computedSource.stylesheet != "StyleApplication" ||
+			computedSource.selector != "button:hovered")
+			return 214;
+		var inherited = new ComputedStyle();
+		inherited.set(StyleProperty.TextColor, Color.rgba(0.7, 0.7, 0.7, 1.0), null);
+		var inheritedChild = new StyleResolver().resolve(new StyleTarget("label"), inherited);
+		if (inheritedChild.get(StyleProperty.TextColor).red != 0.7)
+			return 215;
 		var lightNeutral = Color.rgba(0.87, 0.90, 0.95, 1.0);
 		var accentButton = Color.rgba(0.18, 0.39, 0.70, 1.0);
 		if (theme.buttonLabelColor(true, lightNeutral) != theme.body.color ||

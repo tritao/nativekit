@@ -13,8 +13,11 @@ import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.State;
 import nativekit.ui.core.View;
-import nativekit.ui.theme.InteractionState;
 import nativekit.ui.theme.TextRole;
+import nativekit.ui.style.StyleResolver;
+import nativekit.ui.style.StyleState;
+import nativekit.ui.style.StyleStateUtil;
+import nativekit.ui.style.StyleTarget;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
@@ -53,9 +56,13 @@ class Button implements View {
 	function buildScoped(context:BuildContext):RenderNode {
 		var id = context.id("button");
 		var interaction:State<Int> = context.state(id, 0);
-		var flags:Int = interaction.value;
-		flags = InteractionState.with(flags, InteractionState.Selected, selected);
-		var resolvedStyle = context.theme.resolveButtonStyle(style, flags, enabled);
+		var flags:Int = cast interaction.value;
+		flags = StyleStateUtil.withState(flags, StyleState.Selected, selected);
+		flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
+		var target = new StyleTarget("button", key, key, null, ["button"], flags);
+		var computed = new StyleResolver().resolve(target, null, context.theme.styles,
+			context.styleSheet, style);
+		var resolvedStyle = computed.toLayoutStyle();
 		var node = new RenderNode(id, LayoutVisualKind.Box, resolvedStyle);
 		node.focusable = enabled;
 		node.enabled = enabled;
@@ -72,22 +79,22 @@ class Button implements View {
 			node.on(UiEventKind.Activate, activate);
 		}
 		var setState = function(flag:Int, value:Bool) {
-			var current:Int = interaction.value;
-			var next = InteractionState.with(current, flag, value);
+			var current:Int = cast interaction.value;
+			var next = StyleStateUtil.withState(current, cast flag, value);
 			if (next != current)
-				interaction.update(next);
-		};
-		node.on(UiEventKind.HoverEnter, function(_) { if (enabled) setState(InteractionState.Hovered, true); });
-		node.on(UiEventKind.HoverLeave, function(_) { setState(InteractionState.Hovered, false); });
+			interaction.update(next);
+	};
+		node.on(UiEventKind.HoverEnter, function(_) { if (enabled) setState(StyleState.Hovered, true); });
+		node.on(UiEventKind.HoverLeave, function(_) { setState(StyleState.Hovered, false); });
 		node.on(UiEventKind.PointerDown, function(event) {
 			if (enabled && event.button == 0)
-				setState(InteractionState.Pressed, true);
+				setState(StyleState.Pressed, true);
 		});
-		node.on(UiEventKind.PointerUp, function(_) { setState(InteractionState.Pressed, false); });
-		node.on(UiEventKind.PointerCancel, function(_) { setState(InteractionState.Pressed, false); });
-		node.on(UiEventKind.Focus, function(_) { setState(InteractionState.Focused, true); });
-		node.on(UiEventKind.Blur, function(_) { setState(InteractionState.Focused, false); });
-		node.on(UiEventKind.FocusLost, function(_) { setState(InteractionState.Focused, false); });
+		node.on(UiEventKind.PointerUp, function(_) { setState(StyleState.Pressed, false); });
+		node.on(UiEventKind.PointerCancel, function(_) { setState(StyleState.Pressed, false); });
+		node.on(UiEventKind.Focus, function(_) { setState(StyleState.Focused, true); });
+		node.on(UiEventKind.Blur, function(_) { setState(StyleState.Focused, false); });
+		node.on(UiEventKind.FocusLost, function(_) { setState(StyleState.Focused, false); });
 		var labelNode = context.withScope(new Key("label"), function() {
 			var text = new RenderNode(context.id("label"), LayoutVisualKind.Text);
 			text.layout.text = label;
@@ -105,7 +112,6 @@ class Button implements View {
 	static function defaultStyle():LayoutStyle {
 		var style = new LayoutStyle();
 		style.padding = new Insets(12.0, 12.0, 8.0, 8.0);
-		style.background = Color.rgba(0.16, 0.4, 0.78, 1.0);
 		style.radiusTopLeft = style.radiusTopRight = 6.0;
 		style.radiusBottomLeft = style.radiusBottomRight = 6.0;
 		return style;

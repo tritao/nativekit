@@ -4,6 +4,7 @@ import FontCollection;
 import NativeKitSurface;
 import nativekit.ui.theme.Theme;
 import nativekit.ui.theme.TextRole;
+import nativekit.ui.style.StyleSheet;
 import nativekit.ui.gestures.GestureArena;
 import nativekit.ui.animation.AnimationScheduler;
 
@@ -17,6 +18,7 @@ class BuildContext {
 	public final gestures:GestureArena;
 	public final animations:AnimationScheduler;
 	public var theme(default, null):Theme;
+	public var styleSheet(default, null):StyleSheet;
 	/** Logical viewport dimensions for frame-local placement decisions. */
 	public var viewportWidth(default, null):Float;
 	public var viewportHeight(default, null):Float;
@@ -27,7 +29,7 @@ class BuildContext {
 
 	public function new(stateStore:StateStore, ?fonts:FontCollection, ?textInput:TextInputBridge,
 			?clipboard:ClipboardService, ?theme:Theme, ?gestures:GestureArena,
-			?animations:AnimationScheduler) {
+			?animations:AnimationScheduler, ?styleSheet:StyleSheet) {
 		if (stateStore == null)
 			throw "Build context requires a state store";
 		this.stateStore = stateStore;
@@ -38,6 +40,8 @@ class BuildContext {
 		this.gestures = gestures == null ? new GestureArena() : gestures;
 		this.animations = animations == null ? new AnimationScheduler() : animations;
 		this.theme = theme == null ? new Theme() : theme;
+		this.theme.refreshStyles();
+		this.styleSheet = styleSheet == null ? new StyleSheet("Application") : styleSheet;
 		viewportWidth = 0.0;
 		viewportHeight = 0.0;
 		focusRequester = function(_) { return false; };
@@ -51,8 +55,16 @@ class BuildContext {
 		if (theme == null)
 			throw "Build context requires a theme";
 		this.theme = theme;
+		this.theme.refreshStyles();
 		if (textStyleStack.length <= 1)
 			textStyleStack = [ResolvedTextStyle.fromTheme(theme)];
+	}
+
+	/** Replaces the application stylesheet layered above the active theme. */
+	public function setStyleSheet(styleSheet:StyleSheet):Void {
+		if (styleSheet == null)
+			throw "Build context requires a stylesheet";
+		this.styleSheet = styleSheet;
 	}
 
 	/** Installs the UiContext focus route used by composite keyboard widgets. */

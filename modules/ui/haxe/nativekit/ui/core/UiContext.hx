@@ -15,6 +15,7 @@ import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRequest;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.theme.Theme;
+import nativekit.ui.style.StyleSheet;
 import nativekit.ui.gestures.GestureArena;
 import nativekit.ui.animation.AnimationScheduler;
 import nativekit.ui.debug.AccessibilityAudit;
@@ -89,6 +90,12 @@ class UiContext {
 	public function setTheme(theme:Theme):Void {
 		ensureLive();
 		buildContext.setTheme(theme);
+	}
+
+	/** Sets the application rules layered above the active theme stylesheet. */
+	public function setStyleSheet(styleSheet:StyleSheet):Void {
+		ensureLive();
+		buildContext.setStyleSheet(styleSheet);
 	}
 
 	/** Attaches the host surface used by platform text-input synchronization. */

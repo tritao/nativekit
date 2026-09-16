@@ -40,6 +40,7 @@ fi
 	--ffi-projection="$module_dir/bindings/nativekit-ui.hxmap" \
 	"$module_dir/tests/haxeon/FrameworkSmoke.hx" \
 	"$module_dir/haxe/nativekit/ui/core/"*.hx \
+	"$module_dir/haxe/nativekit/ui/style/"*.hx \
 	"$module_dir/haxe/nativekit/ui/widgets/"*.hx \
 	"$module_dir/bindings/haxe/"*.hx)
 
