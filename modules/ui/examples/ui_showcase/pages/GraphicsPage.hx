@@ -98,7 +98,7 @@ class GraphicsPage {
 	static function cubeStyle():LayoutStyle {
 		var style = new LayoutStyle();
 		style.width = LayoutAxis.stretch();
-		style.height = LayoutAxis.fixed(260.0);
+		style.height = LayoutAxis.fixed(340.0);
 		style.background = Color.rgba(0.035, 0.055, 0.09, 1.0);
 		style.radiusTopLeft = style.radiusTopRight = 6.0;
 		style.radiusBottomLeft = style.radiusBottomRight = 6.0;
