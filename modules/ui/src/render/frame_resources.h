@@ -77,17 +77,21 @@ struct PreparedImageRef {
 
 class FrameResources {
   public:
-    bool bind_path(ResourceId id, const PreparedPathData &path, uint32_t operation_index);
-    bool bind_path(ResourceId id, const PreparedPath &path, uint32_t operation_index);
-    bool bind_image(ResourceId id, const PreparedTexture &image);
-    bool bind_text(ResourceId id, const PreparedGlyphs &glyphs);
-    bool bind_surface(ResourceId id, SurfaceProducer &producer);
-    bool bind_graphics_image(ResourceId id, nk_graphics_image image);
+    bool bind_path(ResourceId id, const PreparedPathData &path, uint32_t operation_index,
+                   uint64_t content_generation = 0);
+    bool bind_path(ResourceId id, const PreparedPath &path, uint32_t operation_index,
+                   uint64_t content_generation = 0);
+    bool bind_image(ResourceId id, const PreparedTexture &image, uint64_t content_generation = 0);
+    bool bind_text(ResourceId id, const PreparedGlyphs &glyphs, uint64_t content_generation = 0);
+    bool bind_surface(ResourceId id, SurfaceProducer &producer, uint64_t content_generation = 0);
+    bool bind_graphics_image(ResourceId id, nk_graphics_image image,
+                             uint64_t content_generation = 0);
     const PreparedPathRef *path(ResourceId id) const;
     const PreparedImageRef *image(ResourceId id) const;
     const PreparedGlyphs *text(ResourceId id) const;
     SurfaceProducer *surface(ResourceId id) const;
     const nk_graphics_image *graphics_image(ResourceId id) const;
+    uint64_t content_generation(ResourceId id) const;
     void reset();
 
   private:
@@ -96,6 +100,7 @@ class FrameResources {
     std::unordered_map<uint32_t, const PreparedGlyphs *> texts_;
     std::unordered_map<uint32_t, SurfaceProducer *> surfaces_;
     std::unordered_map<uint32_t, nk_graphics_image> graphics_images_;
+    std::unordered_map<uint32_t, uint64_t> content_generations_;
 };
 
 } // namespace nkui

@@ -35,14 +35,15 @@ int main() {
     PreparedGlyphs glyphs;
     FrameResources resources;
     TestProducer producer;
-    if (!resources.bind_path(path, recorder.data(), 0) ||
+    if (!resources.bind_path(path, recorder.data(), 0, 42) ||
         resources.bind_path(text, recorder.data(), 0) ||
         resources.bind_path(path, recorder.data(), 1) || !resources.bind_text(text, glyphs) ||
         resources.bind_text(path, glyphs) || !resources.bind_surface(surface, producer) ||
         resources.bind_surface(path, producer))
         return 1;
     if (!resources.path(path) || resources.path(path)->operation_index != 0 ||
-        resources.text(text) != &glyphs || resources.surface(surface) != &producer)
+        resources.text(text) != &glyphs || resources.surface(surface) != &producer ||
+        resources.content_generation(path) != 42)
         return 2;
     resources.reset();
     return !resources.path(path) && !resources.text(text) && !resources.surface(surface) ? 0 : 3;

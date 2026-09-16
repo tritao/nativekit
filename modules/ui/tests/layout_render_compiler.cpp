@@ -37,6 +37,11 @@ class RecordingRenderer final : public UiRenderer {
         ++pass_count;
         return true;
     }
+    bool beginEffectPass(ResourceId, uint64_t, int, int, bool &cache_hit) override {
+        cache_hit = false;
+        ++pass_count;
+        return true;
+    }
     bool beginSurfacePass(ResourceId, const SurfaceDescriptor &, bool) override {
         ++pass_count;
         return true;

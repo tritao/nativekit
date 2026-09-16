@@ -70,6 +70,8 @@ struct RenderCommand {
     float miter_limit = 10.0f;
     /** Set while commands originate from Haxe custom-paint display lists. */
     bool custom_payload = false;
+    /** Optional source revision for layout-produced prepared resources. */
+    uint64_t content_generation = 0;
 };
 
 struct RenderPass {
@@ -87,6 +89,8 @@ struct RenderPass {
     /** True when this effect pass filters pixels already rendered below a node. */
     bool backdrop = false;
     MaskDescriptor mask{};
+    /** Opaque content/effect key used by the native renderer's result cache. */
+    uint64_t cache_key = 0;
 };
 
 struct RenderDependency {

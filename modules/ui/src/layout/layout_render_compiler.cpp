@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 
 namespace nkui {
@@ -114,6 +115,68 @@ void set_scissor(RenderCommand &command, const LayoutRect &clip, float pixel_sca
     command.scissor_y = clip.y * pixel_scale;
     command.scissor_width = clip.width * pixel_scale;
     command.scissor_height = clip.height * pixel_scale;
+}
+
+constexpr uint64_t kContentHashOffset = UINT64_C(1469598103934665603);
+constexpr uint64_t kContentHashPrime = UINT64_C(1099511628211);
+
+void hash_u32(uint64_t &hash, uint32_t value) {
+    for (uint32_t shift = 0; shift < 32; shift += 8) {
+        hash ^= static_cast<uint8_t>(value >> shift);
+        hash *= kContentHashPrime;
+    }
+}
+
+void hash_u64(uint64_t &hash, uint64_t value) {
+    hash_u32(hash, static_cast<uint32_t>(value));
+    hash_u32(hash, static_cast<uint32_t>(value >> 32));
+}
+
+void hash_float(uint64_t &hash, float value) {
+    uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    hash_u32(hash, bits);
+}
+
+void hash_string(uint64_t &hash, const std::string &value) {
+    hash_u64(hash, value.size());
+    for (const uint8_t byte : value) {
+        hash ^= byte;
+        hash *= kContentHashPrime;
+    }
+}
+
+uint64_t primitive_content_generation(const LayoutPrimitive &primitive,
+                                      const SkribidiAdapter *text = nullptr,
+                                      uint64_t glyph_generation = 0) {
+    uint64_t hash = kContentHashOffset;
+    hash_u32(hash, static_cast<uint32_t>(primitive.kind));
+    hash_u32(hash, primitive.node_id);
+    for (const float value : {primitive.bounds.x, primitive.bounds.y, primitive.bounds.width,
+                              primitive.bounds.height, primitive.transform.a,
+                              primitive.transform.b, primitive.transform.c, primitive.transform.d,
+                              primitive.transform.tx, primitive.transform.ty, primitive.color.red,
+                              primitive.color.green, primitive.color.blue, primitive.color.alpha,
+                              primitive.radius_top_left, primitive.radius_top_right,
+                              primitive.radius_bottom_left, primitive.radius_bottom_right})
+        hash_float(hash, value);
+    hash_u32(hash, primitive.visible ? 1u : 0u);
+    hash_string(hash, primitive.text);
+    hash_u32(hash, static_cast<uint32_t>(primitive.text_style.family));
+    hash_float(hash, primitive.text_style.font_size);
+    hash_float(hash, primitive.text_style.letter_spacing);
+    hash_u32(hash, static_cast<uint32_t>(primitive.paragraph_style.wrap));
+    hash_u32(hash, static_cast<uint32_t>(primitive.paragraph_style.alignment));
+    hash_float(hash, primitive.paragraph_style.line_height);
+    hash_u32(hash, static_cast<uint32_t>(primitive.paragraph_style.direction));
+    hash_u64(hash, primitive.text_layout_id);
+    hash_u32(hash, primitive.text_line_index);
+    if (text) {
+        hash_u64(hash, text->font_collection_generation());
+        hash_u64(hash, text->layout_generation());
+    }
+    hash_u64(hash, glyph_generation);
+    return hash ? hash : 1;
 }
 
 std::array<float, 6> device_transform(const LayoutTransform &transform, float pixel_scale) {
@@ -414,9 +477,11 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     return fail(error, index, "layout rectangle preparation failed");
                 const ResourceId id = make_resource_id(ResourceKind::Path, kTransientGeneration,
                                                        static_cast<uint16_t>(transient_slot++));
-                if (!out.resources_.bind_path(id, *prepared, 0))
+                if (!out.resources_.bind_path(id, *prepared, 0,
+                                              primitive_content_generation(primitive)))
                     return fail(error, index, "layout path resource binding failed");
                 RenderCommand command{RenderCommandKind::Path, id};
+                command.content_generation = primitive_content_generation(primitive);
                 if (!clips.empty())
                     set_scissor(command, clips.back(), pixel_scale);
                 commands.push_back(command);
@@ -469,7 +534,9 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 const ResourceId id =
                     make_resource_id(ResourceKind::TextLayout, kTransientGeneration,
                                      static_cast<uint16_t>(transient_slot++));
-                if (!out.resources_.bind_text(id, *glyphs))
+                const uint64_t content_generation =
+                    primitive_content_generation(primitive, text, glyphs->layout_generation);
+                if (!out.resources_.bind_text(id, *glyphs, content_generation))
                     return fail(error, index, "layout text resource binding failed");
                 RenderCommand command{RenderCommandKind::GlyphBatch,
                                       id,
@@ -477,6 +544,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                                       primitive.bounds.y,
                                       primitive.bounds.width,
                                       primitive.bounds.height};
+                command.content_generation = content_generation;
                 command.transform = device_transform(primitive.transform, pixel_scale);
                 if (!clips.empty())
                     set_scissor(command, clips.back(), pixel_scale);

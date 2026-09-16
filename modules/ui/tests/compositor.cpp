@@ -103,6 +103,18 @@ int main() {
         plan.passes[3].commands.size() != 1 ||
         plan.passes[3].commands[0].resource.value != plan.passes[2].target.value)
         return 21;
+    const uint64_t color_effect_cache_key = plan.passes[2].cache_key;
+    if (!color_effect_cache_key)
+        return 37;
+    if (!compositor.compile(color_effect, main_target, plan, &error) ||
+        plan.passes[2].cache_key != color_effect_cache_key)
+        return 38;
+    color_effect.reset();
+    effect.color_matrix[4] = 0.5f;
+    if (!color_effect.begin_layer(1.0f, bounds, effect) || !color_effect.draw_path(path) ||
+        !color_effect.end_layer() || !compositor.compile(color_effect, main_target, plan, &error) ||
+        plan.passes[2].cache_key == color_effect_cache_key)
+        return 39;
     if (!schedule_render_plan(plan, pass_order, &schedule_error) || pass_order.size() != 4 ||
         pass_order[0] != 0 || pass_order[1] != 1 || pass_order[2] != 2 || pass_order[3] != 3)
         return 22;

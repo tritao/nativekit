@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <unordered_map>
 #include <vector>
 
 namespace nkui {
@@ -105,6 +106,132 @@ void apply_state(RenderCommand &command, const CanvasState &state, float target_
     command.scissor_y = state.y - target_origin_y;
     command.scissor_width = state.width;
     command.scissor_height = state.height;
+}
+
+constexpr uint64_t kCacheHashOffset = UINT64_C(1469598103934665603);
+constexpr uint64_t kCacheHashPrime = UINT64_C(1099511628211);
+
+void hash_u32(uint64_t &hash, uint32_t value) {
+    for (uint32_t shift = 0; shift < 32; shift += 8) {
+        hash ^= static_cast<uint8_t>(value >> shift);
+        hash *= kCacheHashPrime;
+    }
+}
+
+void hash_u64(uint64_t &hash, uint64_t value) {
+    hash_u32(hash, static_cast<uint32_t>(value));
+    hash_u32(hash, static_cast<uint32_t>(value >> 32));
+}
+
+void hash_float(uint64_t &hash, float value) {
+    uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    hash_u32(hash, bits);
+}
+
+void hash_command(uint64_t &hash, const RenderCommand &command) {
+    hash_u32(hash, static_cast<uint32_t>(command.kind));
+    hash_u32(hash, command.resource.value);
+    hash_float(hash, command.x);
+    hash_float(hash, command.y);
+    hash_float(hash, command.width);
+    hash_float(hash, command.height);
+    hash_float(hash, command.opacity);
+    for (const float value : command.transform)
+        hash_float(hash, value);
+    hash_u32(hash, command.paint.value);
+    hash_u32(hash, static_cast<uint32_t>(command.composite));
+    hash_u32(hash, command.has_scissor ? 1u : 0u);
+    hash_float(hash, command.scissor_x);
+    hash_float(hash, command.scissor_y);
+    hash_float(hash, command.scissor_width);
+    hash_float(hash, command.scissor_height);
+    hash_float(hash, command.stroke_width);
+    hash_u32(hash, command.line_cap);
+    hash_u32(hash, command.line_join);
+    hash_float(hash, command.miter_limit);
+    hash_u32(hash, command.custom_payload ? 1u : 0u);
+    hash_u64(hash, command.content_generation);
+}
+
+void hash_descriptor(uint64_t &hash, const RenderTargetDescriptor &descriptor) {
+    hash_u32(hash, static_cast<uint32_t>(descriptor.width));
+    hash_u32(hash, static_cast<uint32_t>(descriptor.height));
+    hash_float(hash, descriptor.logical_width);
+    hash_float(hash, descriptor.logical_height);
+    hash_float(hash, descriptor.origin_x);
+    hash_float(hash, descriptor.origin_y);
+    hash_u32(hash, static_cast<uint32_t>(descriptor.format));
+    hash_u32(hash, descriptor.sample_count);
+    hash_u32(hash, descriptor.usage);
+}
+
+void hash_effect(uint64_t &hash, const RenderPass &pass) {
+    hash_u32(hash, static_cast<uint32_t>(pass.effect.kind));
+    for (const float value : pass.effect.color_matrix)
+        hash_float(hash, value);
+    hash_u32(hash, pass.custom_effect.registration_id);
+    hash_u32(hash, pass.custom_effect.parameter_count);
+    hash_u32(hash, pass.custom_effect.pass_count);
+    hash_u32(hash, pass.custom_effect.sampling_inputs);
+    for (const float value : pass.custom_effect.parameters)
+        hash_float(hash, value);
+    for (const float value : pass.custom_effect.ink_overflow)
+        hash_float(hash, value);
+    hash_u32(hash, pass.backdrop ? 1u : 0u);
+    hash_u32(hash, pass.has_input_rect ? 1u : 0u);
+    for (const float value : pass.input_rect)
+        hash_float(hash, value);
+}
+
+void hash_mask(uint64_t &hash, const MaskDescriptor &mask) {
+    hash_u32(hash, static_cast<uint32_t>(mask.kind));
+    hash_u32(hash, mask.image.value);
+    for (const float value : mask.values)
+        hash_float(hash, value);
+}
+
+uint64_t target_content_hash(const std::unordered_map<uint32_t, uint64_t> &targets,
+                             ResourceId target) {
+    const auto found = targets.find(target.value);
+    if (found != targets.end())
+        return found->second;
+    uint64_t hash = kCacheHashOffset;
+    hash_u32(hash, target.value);
+    return hash;
+}
+
+void assign_effect_cache_keys(RenderPlan &plan) {
+    std::unordered_map<uint32_t, uint64_t> target_hashes;
+    for (auto &pass : plan.passes) {
+        if (pass.kind == RenderPassKind::Draw) {
+            uint64_t hash = kCacheHashOffset;
+            hash_u32(hash, static_cast<uint32_t>(pass.kind));
+            hash_descriptor(hash, pass.target_descriptor);
+            for (const auto &command : pass.commands)
+                hash_command(hash, command);
+            const auto previous = target_hashes.find(pass.target.value);
+            if (previous != target_hashes.end())
+                hash_u64(hash, previous->second);
+            target_hashes[pass.target.value] = hash;
+            continue;
+        }
+        if (pass.kind == RenderPassKind::Effect) {
+            uint64_t hash = kCacheHashOffset;
+            hash_u32(hash, static_cast<uint32_t>(pass.kind));
+            hash_u64(hash, target_content_hash(target_hashes, pass.input_target));
+            hash_effect(hash, pass);
+            hash_descriptor(hash, pass.target_descriptor);
+            target_hashes[pass.target.value] = pass.cache_key = hash ? hash : 1;
+            continue;
+        }
+        uint64_t hash = kCacheHashOffset;
+        hash_u32(hash, static_cast<uint32_t>(pass.kind));
+        hash_u64(hash, target_content_hash(target_hashes, pass.input_target));
+        hash_mask(hash, pass.mask);
+        hash_descriptor(hash, pass.target_descriptor);
+        target_hashes[pass.target.value] = hash;
+    }
 }
 
 bool read_layer(const uint8_t *record, uint32_t size, LayerCommandValues &result) {
@@ -522,6 +649,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
         offset += header.size;
         ++index;
     }
+    assign_effect_cache_keys(plan);
     if (error)
         *error = {};
     return true;

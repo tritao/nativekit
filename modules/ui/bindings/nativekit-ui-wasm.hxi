@@ -1330,7 +1330,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	/**
 	 * Preparation and geometry-cache counters for one renderer.
 	 */
-	struct nkui_renderer_stats @layout(400, 8) {
+	struct nkui_renderer_stats @layout(432, 8) {
 		/**
 		 * Set to sizeof(nkui_renderer_stats) when returned by the API.
 		 */
@@ -1531,6 +1531,22 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Estimated bytes retained by pooled transient render targets.
 		 */
 		transient_target_pool_bytes: u64 @offset(392);
+		/**
+		 * Effect results served by the persistent renderer cache.
+		 */
+		effect_cache_hits: u64 @offset(400);
+		/**
+		 * Effect results that required a new render pass.
+		 */
+		effect_cache_misses: u64 @offset(408);
+		/**
+		 * Number of effect results retained by the renderer cache.
+		 */
+		effect_cache_entries: u64 @offset(416);
+		/**
+		 * Estimated bytes retained by cached effect results.
+		 */
+		effect_cache_bytes: u64 @offset(424);
 	}
 	/**
 	 * Payload for NKUI_COMMAND_SET_PAINT and resource-only draw commands.

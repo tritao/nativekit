@@ -254,6 +254,8 @@ void discard_stale_renderer(RendererSlot &slot, const nk_surface_frame_target &t
         std::max<uint64_t>(slot.stats.atlas_scale_generation, old_stats.atlas_scale_generation);
     slot.stats.transient_target_pool_hits += old_stats.transient_target_pool_hits;
     slot.stats.transient_target_pool_misses += old_stats.transient_target_pool_misses;
+    slot.stats.effect_cache_hits += old_stats.effect_cache_hits;
+    slot.stats.effect_cache_misses += old_stats.effect_cache_misses;
     slot.renderer.reset();
 }
 
@@ -750,6 +752,18 @@ uint32_t float_bits(float value) {
     uint32_t bits = 0;
     std::memcpy(&bits, &value, sizeof(bits));
     return bits;
+}
+
+void add_effect_cache_pixel_scale(nkui::RenderPlan &plan, float pixel_scale) {
+    const uint32_t scale = float_bits(pixel_scale);
+    for (auto &pass : plan.passes) {
+        if (pass.kind != nkui::RenderPassKind::Effect || !pass.cache_key)
+            continue;
+        pass.cache_key ^= static_cast<uint64_t>(scale) + UINT64_C(0x9E3779B97F4A7C15) +
+                          (pass.cache_key << 6) + (pass.cache_key >> 2);
+        if (!pass.cache_key)
+            pass.cache_key = 1;
+    }
 }
 
 PathCacheKey path_cache_key(nkui_resource path, const std::array<float, 6> &transform,
@@ -2247,6 +2261,11 @@ extern "C" nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
             slot->stats.transient_target_pool_misses + ui_stats.transient_target_pool_misses;
         out_stats->transient_target_pool_count = ui_stats.transient_target_pool_count;
         out_stats->transient_target_pool_bytes = ui_stats.transient_target_pool_bytes;
+        out_stats->effect_cache_hits = slot->stats.effect_cache_hits + ui_stats.effect_cache_hits;
+        out_stats->effect_cache_misses =
+            slot->stats.effect_cache_misses + ui_stats.effect_cache_misses;
+        out_stats->effect_cache_entries = ui_stats.effect_cache_entries;
+        out_stats->effect_cache_bytes = ui_stats.effect_cache_bytes;
         out_stats->text_layout_cache_hits = ui_stats.text_layout_cache_hits;
         out_stats->text_layout_cache_misses = ui_stats.text_layout_cache_misses;
     }
@@ -2320,6 +2339,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
             !scale_mask_for_device(pass.mask, frame_info->pixel_scale))
             return NKUI_ERROR_INVALID_ARGUMENT;
     }
+    add_effect_cache_pixel_scale(plan, frame_info->pixel_scale);
     ++renderer_slot->stats.display_list_count;
     renderer_slot->stats.display_list_bytes += list_slot->list->size();
     for (const auto &pass : plan.passes)
@@ -2371,7 +2391,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         }
         auto *prepared_image = prepared.get();
         prepared_images.push_back(std::move(prepared));
-        if (!frame_resources.bind_image(pass.mask.image, *prepared_image)) {
+        if (!frame_resources.bind_image(pass.mask.image, *prepared_image,
+                                        static_cast<uint64_t>(pass.mask.image.value))) {
             valid = false;
             break;
         }
@@ -2420,8 +2441,10 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                     nkui::make_resource_id(nkui::ResourceKind::Path, 0x0FFE, prepared_slot++);
                 command.resource = prepared_id;
                 command.transform = placement_transform(transform);
-                valid = frame_resources.bind_path(prepared_id, *prepared_path, 0);
+                valid = frame_resources.bind_path(prepared_id, *prepared_path, 0,
+                                                  static_cast<uint64_t>(path_handle.id));
             } else if (command.kind == nkui::RenderCommandKind::Image) {
+                const uint32_t source_resource = command.resource.value;
                 auto *image = resolve_retained(nkui_resource{command.resource.value},
                                                nkui::ResourceKind::Image);
                 if (!image || !prepared_slot) {
@@ -2451,8 +2474,10 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                     nkui::make_resource_id(nkui::ResourceKind::Image, 0x0FFE, prepared_slot++);
                 command.resource = prepared_id;
                 command.transform = device_transform(command.transform, frame_info->pixel_scale);
-                valid = frame_resources.bind_image(prepared_id, *prepared_image);
+                valid = frame_resources.bind_image(prepared_id, *prepared_image,
+                                                   static_cast<uint64_t>(source_resource));
             } else if (command.kind == nkui::RenderCommandKind::GlyphBatch) {
+                const uint32_t source_resource = command.resource.value;
                 auto *layout = resolve_retained(nkui_resource{command.resource.value},
                                                 nkui::ResourceKind::TextLayout);
                 if (!layout || !layout->text) {
@@ -2500,7 +2525,10 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                     prepared_texts.push_back({layout->text.get(), glyphs});
                 const nkui::ResourceId prepared_id =
                     nkui::make_resource_id(nkui::ResourceKind::TextLayout, 0x0FFE, prepared_slot++);
-                valid = frame_resources.bind_text(prepared_id, *glyphs);
+                valid = frame_resources.bind_text(
+                    prepared_id, *glyphs,
+                    (static_cast<uint64_t>(source_resource) << 32) ^
+                        layout->text->layout_generation() ^ layout->text->font_collection_generation());
                 command.resource = prepared_id;
                 // Skribidi's pixel scale changes atlas raster density while
                 // preserving layout geometry. Keep the draw origin in layout
@@ -2525,12 +2553,15 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                         break;
                     }
                     if (surface_slot->graphics_image.id) {
-                        valid = frame_resources.bind_graphics_image(command.resource,
-                                                                    surface_slot->graphics_image);
+                        valid = frame_resources.bind_graphics_image(
+                            command.resource, surface_slot->graphics_image,
+                            static_cast<uint64_t>(surface_slot->graphics_image.id));
                     } else {
                         valid =
                             surface_slot->surface &&
-                            frame_resources.bind_surface(command.resource, *surface_slot->surface);
+                            frame_resources.bind_surface(
+                                command.resource, *surface_slot->surface,
+                                static_cast<uint64_t>(surface_slot->surface->generation()));
                     }
                     if (!valid)
                         break;
@@ -2662,6 +2693,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                                          load_existing != 0);
 
     auto &plan = session_state->frame.plan();
+    add_effect_cache_pixel_scale(plan, frame_info->pixel_scale);
     accumulate_render_plan_stats(renderer_slot->stats, plan);
     for (const auto &[node_id, custom_plan] : custom_plan_storage) {
         (void)custom_plan;
@@ -2713,7 +2745,9 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
             }
             auto *prepared_image = prepared.get();
             custom_images.push_back(std::move(prepared));
-            if (!frame_resources.bind_image(pass.mask.image, *prepared_image)) {
+            if (!frame_resources.bind_image(
+                    pass.mask.image, *prepared_image,
+                    static_cast<uint64_t>(pass.mask.image.value))) {
                 valid = false;
                 break;
             }
@@ -2759,8 +2793,10 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                     nkui::ResourceKind::Path, 0x0FFD, static_cast<uint16_t>(prepared_slot++));
                 command.resource = prepared_id;
                 command.transform = placement_transform(transform);
-                valid = frame_resources.bind_path(prepared_id, *prepared_path, 0);
+                valid = frame_resources.bind_path(prepared_id, *prepared_path, 0,
+                                                  static_cast<uint64_t>(path_handle.id));
             } else if (command.kind == nkui::RenderCommandKind::Image) {
+                const uint32_t source_resource = command.resource.value;
                 auto *image = resolve_retained(nkui_resource{command.resource.value},
                                                nkui::ResourceKind::Image);
                 if (!image || prepared_slot > std::numeric_limits<uint16_t>::max()) {
@@ -2789,8 +2825,10 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 const auto prepared_id = nkui::make_resource_id(
                     nkui::ResourceKind::Image, 0x0FFD, static_cast<uint16_t>(prepared_slot++));
                 command.resource = prepared_id;
-                valid = frame_resources.bind_image(prepared_id, *prepared_image);
+                valid = frame_resources.bind_image(prepared_id, *prepared_image,
+                                                   static_cast<uint64_t>(source_resource));
             } else if (command.kind == nkui::RenderCommandKind::GlyphBatch) {
+                const uint32_t source_resource = command.resource.value;
                 auto *layout = resolve_retained(nkui_resource{command.resource.value},
                                                 nkui::ResourceKind::TextLayout);
                 if (!layout || !layout->text ||
@@ -2834,7 +2872,10 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 prepared_texts.push_back({layout->text.get(), glyphs});
                 const auto prepared_id = nkui::make_resource_id(
                     nkui::ResourceKind::TextLayout, 0x0FFD, static_cast<uint16_t>(prepared_slot++));
-                valid = frame_resources.bind_text(prepared_id, *glyphs);
+                valid = frame_resources.bind_text(
+                    prepared_id, *glyphs,
+                    (static_cast<uint64_t>(source_resource) << 32) ^
+                        layout->text->layout_generation() ^ layout->text->font_collection_generation());
                 command.resource = prepared_id;
                 if (std::find(text_adapters.begin(), text_adapters.end(), layout->text.get()) ==
                     text_adapters.end())

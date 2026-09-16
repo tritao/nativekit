@@ -27,6 +27,8 @@ class UiRendererImpl final : public UiRenderer {
     bool beginFrame() override;
     bool beginWindowPass(int width, int height, bool clear) override;
     bool beginTargetPass(ResourceId target, int width, int height, bool load_existing) override;
+    bool beginEffectPass(ResourceId target, uint64_t cache_key, int width, int height,
+                         bool &cache_hit) override;
     bool beginSurfacePass(ResourceId target, const SurfaceDescriptor &description,
                           bool load_existing) override;
     bool drawSurfaceMesh(const SurfaceMeshView &mesh) override;
@@ -105,6 +107,11 @@ struct UiRendererImpl::State {
         }
     };
 
+    struct EffectCacheEntry {
+        Target target;
+        uint64_t last_used_frame = 0;
+    };
+
     struct SurfaceState {
         uint32_t generation = 0;
         int width = 0;
@@ -177,6 +184,11 @@ struct UiRendererImpl::State {
         transient_target_pool;
     uint64_t transient_target_pool_hits = 0;
     uint64_t transient_target_pool_misses = 0;
+    std::unordered_map<uint64_t, EffectCacheEntry> effect_cache;
+    std::unordered_map<uint32_t, uint64_t> target_aliases;
+    uint64_t effect_cache_hits = 0;
+    uint64_t effect_cache_misses = 0;
+    uint64_t frame_serial = 0;
     std::unordered_map<uint32_t, SurfaceState> surfaces;
     std::unordered_map<const PreparedPathData *, std::unordered_map<PreparedImageToken, PaintImage>>
         paint_images;
@@ -550,6 +562,107 @@ bool create_target(UiRendererImpl::State &state, UiRendererImpl::State::Target &
     target.width = width;
     target.height = height;
     state.stats.gpu_resources += 1;
+    return true;
+}
+
+constexpr size_t kMaxCachedEffectTargets = 16;
+constexpr uint64_t kMaxCachedEffectBytes = 64u * 1024u * 1024u;
+
+uint64_t effect_target_bytes(const UiRendererImpl::State::Target &target) {
+    if (target.width <= 0 || target.height <= 0)
+        return 0;
+    const uint64_t width = static_cast<uint64_t>(target.width);
+    const uint64_t height = static_cast<uint64_t>(target.height);
+    if (width > std::numeric_limits<uint64_t>::max() / height / 4u)
+        return std::numeric_limits<uint64_t>::max();
+    return width * height * 4u;
+}
+
+uint64_t cached_effect_bytes(const UiRendererImpl::State &state) {
+    uint64_t result = 0;
+    for (const auto &[key, entry] : state.effect_cache) {
+        (void)key;
+        const uint64_t bytes = effect_target_bytes(entry.target);
+        if (result > std::numeric_limits<uint64_t>::max() - bytes)
+            return std::numeric_limits<uint64_t>::max();
+        result += bytes;
+    }
+    return result;
+}
+
+void destroy_cached_effect(UiRendererImpl::State &state,
+                           UiRendererImpl::State::EffectCacheEntry &entry) {
+    const bool alive = entry.target.handle.id != 0;
+    destroy_target(state, entry.target);
+    if (alive && state.stats.gpu_resources)
+        --state.stats.gpu_resources;
+}
+
+bool make_effect_cache_room(UiRendererImpl::State &state, int width, int height) {
+    if (width <= 0 || height <= 0)
+        return false;
+    const uint64_t width_value = static_cast<uint64_t>(width);
+    const uint64_t height_value = static_cast<uint64_t>(height);
+    if (width_value > std::numeric_limits<uint64_t>::max() / height_value / 4u)
+        return false;
+    const uint64_t bytes = width_value * height_value * 4u;
+    if (bytes > kMaxCachedEffectBytes)
+        return false;
+    while (state.effect_cache.size() >= kMaxCachedEffectTargets) {
+        auto victim = state.effect_cache.end();
+        for (auto iterator = state.effect_cache.begin(); iterator != state.effect_cache.end();
+             ++iterator) {
+            if (iterator->second.last_used_frame == state.frame_serial)
+                continue;
+            if (victim == state.effect_cache.end() ||
+                iterator->second.last_used_frame < victim->second.last_used_frame)
+                victim = iterator;
+        }
+        if (victim == state.effect_cache.end())
+            return false;
+        destroy_cached_effect(state, victim->second);
+        state.effect_cache.erase(victim);
+    }
+    while (cached_effect_bytes(state) > kMaxCachedEffectBytes - bytes) {
+        auto victim = state.effect_cache.end();
+        for (auto iterator = state.effect_cache.begin(); iterator != state.effect_cache.end();
+             ++iterator) {
+            if (iterator->second.last_used_frame == state.frame_serial)
+                continue;
+            if (victim == state.effect_cache.end() ||
+                iterator->second.last_used_frame < victim->second.last_used_frame)
+                victim = iterator;
+        }
+        if (victim == state.effect_cache.end())
+            return false;
+        destroy_cached_effect(state, victim->second);
+        state.effect_cache.erase(victim);
+    }
+    return true;
+}
+
+UiRendererImpl::State::Target *resolve_target(UiRendererImpl::State &state, ResourceId id) {
+    const auto alias = state.target_aliases.find(id.value);
+    if (alias != state.target_aliases.end()) {
+        const auto cached = state.effect_cache.find(alias->second);
+        if (cached != state.effect_cache.end())
+            return &cached->second.target;
+        state.target_aliases.erase(alias);
+    }
+    const auto found = state.targets.find(id.value);
+    return found == state.targets.end() ? nullptr : &found->second;
+}
+
+bool begin_target_pass(UiRendererImpl::State &state, UiRendererImpl::State::Target &target,
+                       bool load_existing) {
+    if (!target.handle.id ||
+        !gpu_result(state, nkgpu_begin_target_pass(state.renderer, target.handle,
+                                                   load_existing ? 0 : 1)))
+        return false;
+    state.width = target.width;
+    state.height = target.height;
+    state.in_pass = true;
+    ++state.stats.passes;
     return true;
 }
 
@@ -1329,6 +1442,10 @@ bool UiRendererImpl::beginFrame() {
     if (!valid() || state_->in_frame)
         return fail(*state_, "invalid UI frame state");
     recycle_transient_targets(*state_);
+    state_->target_aliases.clear();
+    ++state_->frame_serial;
+    if (!state_->frame_serial)
+        ++state_->frame_serial;
     if (!gpu_result(*state_, nkgpu_frame_begin(state_->renderer)))
         return false;
     state_->in_frame = true;
@@ -1381,13 +1498,64 @@ bool UiRendererImpl::beginTargetPass(ResourceId target_id, int width, int height
             return fail(*state_, "render-target dimensions changed unexpectedly");
         }
     }
-    if (!gpu_result(*state_, nkgpu_begin_target_pass(state_->renderer, target.handle,
-                                                     load_existing ? 0 : 1)))
-        return false;
-    state_->width = width;
-    state_->height = height;
-    state_->in_pass = true;
-    ++state_->stats.passes;
+    return begin_target_pass(*state_, target, load_existing);
+}
+
+bool UiRendererImpl::beginEffectPass(ResourceId target_id, uint64_t cache_key, int width,
+                                     int height, bool &cache_hit) {
+    cache_hit = false;
+    if (!valid() || !state_->in_frame || state_->in_pass ||
+        !is_resource_id(target_id, ResourceKind::RenderTarget) || width <= 0 || height <= 0)
+        return fail(*state_, "invalid UI effect pass");
+    if (!cache_key)
+        return beginTargetPass(target_id, width, height, false);
+
+    auto found = state_->effect_cache.find(cache_key);
+    if (found != state_->effect_cache.end() &&
+        (found->second.target.width != width || found->second.target.height != height ||
+         !found->second.target.handle.id || !found->second.target.image.id)) {
+        destroy_cached_effect(*state_, found->second);
+        state_->effect_cache.erase(found);
+        found = state_->effect_cache.end();
+    }
+    if (found != state_->effect_cache.end()) {
+        found->second.last_used_frame = state_->frame_serial;
+        state_->target_aliases[target_id.value] = cache_key;
+        ++state_->effect_cache_hits;
+        cache_hit = true;
+        return true;
+    }
+    ++state_->effect_cache_misses;
+
+    if (!make_effect_cache_room(*state_, width, height))
+        return beginTargetPass(target_id, width, height, false);
+
+    try {
+        const auto inserted = state_->effect_cache.try_emplace(cache_key);
+        if (!inserted.second)
+            return fail(*state_, "effect cache insertion failed");
+        auto &entry = inserted.first->second;
+        if (!create_target(*state_, entry.target, width, height)) {
+            state_->effect_cache.erase(inserted.first);
+            return false;
+        }
+        entry.last_used_frame = state_->frame_serial;
+        state_->target_aliases[target_id.value] = cache_key;
+        if (!begin_target_pass(*state_, entry.target, false)) {
+            destroy_cached_effect(*state_, entry);
+            state_->effect_cache.erase(inserted.first);
+            state_->target_aliases.erase(target_id.value);
+            return false;
+        }
+    } catch (...) {
+        const auto inserted = state_->effect_cache.find(cache_key);
+        if (inserted != state_->effect_cache.end()) {
+            destroy_cached_effect(*state_, inserted->second);
+            state_->effect_cache.erase(inserted);
+        }
+        state_->target_aliases.erase(target_id.value);
+        return fail(*state_, "effect cache insertion failed");
+    }
     return true;
 }
 
@@ -1750,21 +1918,21 @@ bool UiRendererImpl::applyEffectRegion(ResourceId source, const EffectDescriptor
         for (size_t index = 4; index < 8; ++index)
             if (effect.color_matrix[index] < 0.0f || effect.color_matrix[index] > 1.0f)
                 return fail(*state_, "invalid drop-shadow color");
-    const auto found = state_->targets.find(source.value);
-    if (found == state_->targets.end() || !found->second.image.id)
+    const auto *found = resolve_target(*state_, source);
+    if (!found || !found->image.id)
         return fail(*state_, "effect input target was not rendered");
     const bool has_region = region_width > 0.0f || region_height > 0.0f;
     if (has_region && (region_width <= 0.0f || region_height <= 0.0f || x < 0.0f || y < 0.0f ||
-                       x + region_width > static_cast<float>(found->second.width) + 0.01f ||
-                       y + region_height > static_cast<float>(found->second.height) + 0.01f))
+                       x + region_width > static_cast<float>(found->width) + 0.01f ||
+                       y + region_height > static_cast<float>(found->height) + 0.01f))
         return fail(*state_, "backdrop source rectangle is outside its target");
     if (!setScissor(false, 0.0f, 0.0f, 0.0f, 0.0f))
         return false;
 
     const float width = static_cast<float>(state_->width);
     const float height = static_cast<float>(state_->height);
-    const float source_width = static_cast<float>(found->second.width);
-    const float source_height = static_cast<float>(found->second.height);
+    const float source_width = static_cast<float>(found->width);
+    const float source_height = static_cast<float>(found->height);
     const float u0 = has_region ? x / source_width : 0.0f;
     const float u1 = has_region ? (x + region_width) / source_width : 1.0f;
     const float v1 = has_region ? 1.0f - y / source_height : 1.0f;
@@ -1781,7 +1949,7 @@ bool UiRendererImpl::applyEffectRegion(ResourceId source, const EffectDescriptor
                                      1.0f / source_width, 1.0f / source_height}};
         return draw_mesh(*state_, state_->blur_pipeline, vertices, indices, &uniforms,
                          sizeof(uniforms), {}, state_->surface_sampler,
-                         state_->composite_vertices, found->second.image);
+                         state_->composite_vertices, found->image);
     }
     if (effect.kind == EffectKind::DropShadow) {
         const DropShadowUniforms uniforms{{effect.color_matrix[0], effect.color_matrix[1],
@@ -1792,7 +1960,7 @@ bool UiRendererImpl::applyEffectRegion(ResourceId source, const EffectDescriptor
                                            0.0f}};
         return draw_mesh(*state_, state_->drop_shadow_pipeline, vertices, indices, &uniforms,
                          sizeof(uniforms), {}, state_->surface_sampler,
-                         state_->composite_vertices, found->second.image);
+                         state_->composite_vertices, found->image);
     }
     ColorMatrixUniforms uniforms{};
     for (uint32_t row = 0; row < 4; ++row) {
@@ -1802,7 +1970,7 @@ bool UiRendererImpl::applyEffectRegion(ResourceId source, const EffectDescriptor
     }
     return draw_mesh(*state_, state_->effect_pipeline, vertices, indices, &uniforms,
                      sizeof(uniforms), {}, state_->sampler, state_->composite_vertices,
-                     found->second.image);
+                     found->image);
 }
 
 bool UiRendererImpl::applyCustomEffect(ResourceId source,
@@ -1834,20 +2002,20 @@ bool UiRendererImpl::applyCustomEffectRegion(ResourceId source,
     for (size_t index = 0; index < implementation.ink_overflow.size(); ++index)
         if (effect.ink_overflow[index] != implementation.ink_overflow[index])
             return fail(*state_, "custom UI effect overflow does not match its registration");
-    const auto found = state_->targets.find(source.value);
-    if (found == state_->targets.end() || !found->second.image.id)
+    const auto *found = resolve_target(*state_, source);
+    if (!found || !found->image.id)
         return fail(*state_, "custom effect input target was not rendered");
     const bool has_region = region_width > 0.0f || region_height > 0.0f;
     if (has_region && (region_width <= 0.0f || region_height <= 0.0f || x < 0.0f || y < 0.0f ||
-                       x + region_width > static_cast<float>(found->second.width) + 0.01f ||
-                       y + region_height > static_cast<float>(found->second.height) + 0.01f))
+                       x + region_width > static_cast<float>(found->width) + 0.01f ||
+                       y + region_height > static_cast<float>(found->height) + 0.01f))
         return fail(*state_, "custom effect source rectangle is outside its target");
     if (!setScissor(false, 0.0f, 0.0f, 0.0f, 0.0f))
         return false;
     const float width = static_cast<float>(state_->width);
     const float height = static_cast<float>(state_->height);
-    const float source_width = static_cast<float>(found->second.width);
-    const float source_height = static_cast<float>(found->second.height);
+    const float source_width = static_cast<float>(found->width);
+    const float source_height = static_cast<float>(found->height);
     const float u0 = has_region ? x / source_width : 0.0f;
     const float u1 = has_region ? (x + region_width) / source_width : 1.0f;
     const float v1 = has_region ? 1.0f - y / source_height : 1.0f;
@@ -1858,7 +2026,7 @@ bool UiRendererImpl::applyCustomEffectRegion(ResourceId source,
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     return draw_mesh(*state_, implementation.pipeline, vertices, indices, effect.parameters.data(),
                      sizeof(effect.parameters), {}, state_->surface_sampler,
-                     state_->composite_vertices, found->second.image);
+                     state_->composite_vertices, found->image);
 }
 
 bool UiRendererImpl::registerCustomEffect(const CustomEffectRegistration &registration) {
@@ -1897,8 +2065,8 @@ bool UiRendererImpl::applyMask(ResourceId source, const MaskDescriptor &mask,
         return fail(*state_, "invalid UI mask gradient");
     if ((mask.kind == MaskKind::Image) != (image != nullptr))
         return fail(*state_, "UI mask image input is invalid");
-    const auto found = state_->targets.find(source.value);
-    if (found == state_->targets.end() || !found->second.image.id)
+    const auto *found = resolve_target(*state_, source);
+    if (!found || !found->image.id)
         return fail(*state_, "mask input target was not rendered");
     if (!setScissor(false, 0.0f, 0.0f, 0.0f, 0.0f))
         return false;
@@ -1929,20 +2097,20 @@ bool UiRendererImpl::applyMask(ResourceId source, const MaskDescriptor &mask,
     }
     return draw_mesh(*state_, state_->mask_pipeline, vertices, indices, &uniforms,
                      sizeof(uniforms), {}, state_->surface_sampler, state_->composite_vertices,
-                     found->second.image, nullptr, 0, mask_gpu_image, mask_gpu_sampler);
+                     found->image, nullptr, 0, mask_gpu_image, mask_gpu_sampler);
 }
 
 bool UiRendererImpl::compositeImage(ResourceId target_id, float x, float y, float width,
                                     float height, const float transform[6], float opacity) {
     if (!valid_composite(*state_, transform, opacity))
         return false;
-    const auto found = state_->targets.find(target_id.value);
-    if (found == state_->targets.end() || !found->second.image.id)
+    const auto *found = resolve_target(*state_, target_id);
+    if (!found || !found->image.id)
         return fail(*state_, "target was not rendered");
     if (width <= 0.0f)
-        width = static_cast<float>(found->second.width);
+        width = static_cast<float>(found->width);
     if (height <= 0.0f)
-        height = static_cast<float>(found->second.height);
+        height = static_cast<float>(found->height);
     nkgpu_sampler sampler = state_->sampler;
     const auto surface = state_->surfaces.find(target_id.value);
     if (surface != state_->surfaces.end()) {
@@ -1951,7 +2119,7 @@ bool UiRendererImpl::compositeImage(ResourceId target_id, float x, float y, floa
         else if (surface->second.filter != SurfaceFilter::Nearest)
             return fail(*state_, "surface filter is unsupported");
     }
-    return draw_composite(*state_, x, y, width, height, transform, opacity, {}, found->second.image,
+    return draw_composite(*state_, x, y, width, height, transform, opacity, {}, found->image,
                           sampler);
 }
 
@@ -1997,6 +2165,10 @@ UiRendererStats UiRendererImpl::stats() const {
     stats.transient_target_pool_misses = state_->transient_target_pool_misses;
     stats.transient_target_pool_count = pooled_transient_target_count(*state_);
     stats.transient_target_pool_bytes = pooled_transient_target_bytes(*state_);
+    stats.effect_cache_hits = state_->effect_cache_hits;
+    stats.effect_cache_misses = state_->effect_cache_misses;
+    stats.effect_cache_entries = state_->effect_cache.size();
+    stats.effect_cache_bytes = cached_effect_bytes(*state_);
     if (state_->renderer.id) {
         nkgpu_renderer_stats gpu{};
         if (nkgpu_renderer_get_stats(state_->renderer, &gpu) == NKGPU_OK) {

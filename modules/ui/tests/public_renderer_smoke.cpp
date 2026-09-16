@@ -679,11 +679,14 @@ int main(int argc, char **argv) {
                     stats.transient_target_pool_misses == 0 ||
                     stats.transient_target_pool_count > 4 ||
                     stats.transient_target_pool_bytes > 64u * 1024u * 1024u ||
+                    stats.effect_cache_hits == 0 || stats.effect_cache_misses == 0 ||
+                    stats.effect_cache_entries > 16 ||
+                    stats.effect_cache_bytes > 64u * 1024u * 1024u ||
                     (stress_mode && (stats.gpu_frames < 120 || stats.buffers_live > 16 ||
-                                     stats.images_live > 64 || stats.render_targets_live > 8 ||
+                                     stats.images_live > 64 || stats.render_targets_live > 24 ||
                                      stats.buffer_bytes > 64u * 1024u * 1024u ||
                                      resource_highwater[0] > 16 || resource_highwater[1] > 64 ||
-                                     resource_highwater[2] > 8 ||
+                                     resource_highwater[2] > 24 ||
                                      resource_highwater[3] > 64u * 1024u * 1024u ||
                                      resource_highwater[4] > 64u * 1024u * 1024u ||
                                      resource_highwater[5] > 64u * 1024u * 1024u))))
@@ -692,7 +695,8 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "stats: paths=%llu misses=%llu hits=%llu frames=%llu losses=%llu "
                              "atlas=%llu/%llu generation=%llu glyphs=%llu/%llu rebuilds=%llu "
                              "dirty=%llu lists=%llu bytes=%llu plans=%llu layouts=%llu "
-                             "buffers=%llu images=%llu targets=%llu pool=%llu/%llu/%llu\n",
+                             "buffers=%llu images=%llu targets=%llu pool=%llu/%llu/%llu "
+                             "effects=%llu/%llu/%llu/%llu\n",
                      static_cast<unsigned long long>(stats.path_preparations),
                      static_cast<unsigned long long>(stats.path_cache_misses),
                      static_cast<unsigned long long>(stats.path_cache_hits),
@@ -714,7 +718,11 @@ int main(int argc, char **argv) {
                      static_cast<unsigned long long>(stats.render_targets_live),
                      static_cast<unsigned long long>(stats.transient_target_pool_hits),
                      static_cast<unsigned long long>(stats.transient_target_pool_misses),
-                     static_cast<unsigned long long>(stats.transient_target_pool_count));
+                     static_cast<unsigned long long>(stats.transient_target_pool_count),
+                     static_cast<unsigned long long>(stats.effect_cache_hits),
+                     static_cast<unsigned long long>(stats.effect_cache_misses),
+                     static_cast<unsigned long long>(stats.effect_cache_entries),
+                     static_cast<unsigned long long>(stats.effect_cache_bytes));
     if (ready)
         nk_surface_make_current(surface);
     if (nkui_renderer_destroy(renderer) != NKUI_OK)

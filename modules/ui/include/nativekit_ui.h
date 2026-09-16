@@ -218,6 +218,14 @@ typedef struct nkui_renderer_stats {
     uint64_t transient_target_pool_count;
     /** Estimated bytes retained by pooled transient render targets. */
     uint64_t transient_target_pool_bytes;
+    /** Effect results served by the persistent renderer cache. */
+    uint64_t effect_cache_hits;
+    /** Effect results that required a new render pass. */
+    uint64_t effect_cache_misses;
+    /** Number of effect results retained by the renderer cache. */
+    uint64_t effect_cache_entries;
+    /** Estimated bytes retained by cached effect results. */
+    uint64_t effect_cache_bytes;
 } nkui_renderer_stats;
 
 /** 16-bit opcode identifying one display-list command record. */

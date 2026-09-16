@@ -8,6 +8,53 @@
 namespace nkui {
 namespace {
 
+constexpr uint64_t kExternalGenerationHashOffset = UINT64_C(1469598103934665603);
+constexpr uint64_t kExternalGenerationHashPrime = UINT64_C(1099511628211);
+
+void hash_generation_u32(uint64_t &hash, uint32_t value) {
+    for (uint32_t shift = 0; shift < 32; shift += 8) {
+        hash ^= static_cast<uint8_t>(value >> shift);
+        hash *= kExternalGenerationHashPrime;
+    }
+}
+
+void hash_generation_u64(uint64_t &hash, uint64_t value) {
+    hash_generation_u32(hash, static_cast<uint32_t>(value));
+    hash_generation_u32(hash, static_cast<uint32_t>(value >> 32));
+}
+
+uint64_t external_source_generation(const RenderPlan &plan, const FrameResources &resources) {
+    uint64_t hash = kExternalGenerationHashOffset;
+    for (const auto &dependency : plan.dependencies) {
+        hash_generation_u32(hash, dependency.producer.value);
+        if (const auto *surface = resources.surface(dependency.producer))
+            hash_generation_u32(hash, surface->generation());
+        else if (const auto *image = resources.graphics_image(dependency.producer))
+            hash_generation_u32(hash, image->id);
+    }
+    for (const auto &pass : plan.passes) {
+        for (const auto &command : pass.commands) {
+            hash_generation_u32(hash, command.resource.value);
+            hash_generation_u64(hash, resources.content_generation(command.resource));
+        }
+        if (pass.kind == RenderPassKind::Mask && pass.mask.kind == MaskKind::Image) {
+            hash_generation_u32(hash, pass.mask.image.value);
+            hash_generation_u64(hash, resources.content_generation(pass.mask.image));
+        }
+    }
+    return hash;
+}
+
+uint64_t frame_effect_cache_key(uint64_t key, uint64_t external_generation,
+                                const nk_surface_frame_target &window) {
+    if (!key)
+        return 0;
+    key ^= external_generation + UINT64_C(0x9E3779B97F4A7C15) + (key << 6) + (key >> 2);
+    hash_generation_u32(key, static_cast<uint32_t>(window.width));
+    hash_generation_u32(key, static_cast<uint32_t>(window.height));
+    return key ? key : 1;
+}
+
 bool fail(RenderExecutionError *error, uint32_t pass, uint32_t command, const char *message) {
     if (error)
         *error = {pass, command, message};
@@ -117,6 +164,7 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
         renderer.markSurfaceCurrent(dependency.producer, generation, description);
         rendered_producers.insert(dependency.producer.value);
     }
+    const uint64_t external_generation = external_source_generation(plan, resources);
     for (uint32_t scheduled_index = 0; scheduled_index < pass_order.size(); ++scheduled_index) {
         const uint32_t pass_index = pass_order[scheduled_index];
         const auto &pass = plan.passes[pass_index];
@@ -131,11 +179,22 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
                               ? static_cast<int>(std::ceil(pass.target_descriptor.logical_height))
                               : window.frame_target.height;
         const bool window_pass = pass.target.value == window.id.value;
-        if (!(window_pass ? renderer.beginWindowPass(pass_width, pass_height, !pass.load_existing)
-                          : renderer.beginTargetPass(pass.target, pass_width, pass_height,
-                                                     pass.load_existing)))
+        bool effect_cache_hit = false;
+        const bool began =
+            pass.kind == RenderPassKind::Effect
+                ? renderer.beginEffectPass(
+                      pass.target,
+                      frame_effect_cache_key(pass.cache_key, external_generation,
+                                             window.frame_target),
+                      pass_width, pass_height, effect_cache_hit)
+                : (window_pass ? renderer.beginWindowPass(pass_width, pass_height, !pass.load_existing)
+                               : renderer.beginTargetPass(pass.target, pass_width, pass_height,
+                                                          pass.load_existing));
+        if (!began)
             return fail(error, pass_index, 0, renderer.lastError());
         if (pass.kind == RenderPassKind::Effect) {
+            if (effect_cache_hit)
+                continue;
             const bool applied = pass.effect.kind == EffectKind::Custom
                                      ? (pass.has_input_rect
                                             ? renderer.applyCustomEffectRegion(
