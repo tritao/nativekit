@@ -107,7 +107,7 @@ class UiExplorer {
 		this.platformLabel = platformLabel == null ? "NativeKit runtime" : platformLabel;
 		this.onOpenGraphics = onOpenGraphics == null ? function() {} : onOpenGraphics;
 		this.staticSubmitReuse = staticSubmitReuse == true;
-		context = new UiContext(null, fonts, makeTheme(false));
+		context = new UiContext(null, fonts, makeTheme(state.lightTheme));
 		renderer = Renderer.create();
 		width = 900.0;
 		height = 650.0;
