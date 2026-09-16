@@ -11,6 +11,7 @@ import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.UiContext;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
+import nativekit.ui.core.UiModifier;
 import nativekit.ui.core.WidgetId;
 import nativekit.ui.debug.AccessibilityAudit;
 import nativekit.ui.debug.AccessibilityIssue;
@@ -438,15 +439,25 @@ class AccessibilityContract {
 		var afterAccessibility:ResolvedLayoutItem = cast content.resolved;
 		if (afterAccessibility.transform.ty >= afterWheel.transform.ty - 0.1)
 			return false;
+		if (!context.accessibilityAction(dropdownId.value, AccessibilityRequest.ScrollBackward,
+			null, -1, -1, 1))
+			return false;
+		root = context.submit(stack, frame);
+		content = root.children[0].children[1].children[0].children[0];
+		var beforeEnd:ResolvedLayoutItem = cast content.resolved;
 		context.key(UiEventKind.KeyDown, UiKey.End);
 		root = context.submit(stack, frame);
 		selectRoot = root.children[0];
 		viewport = selectRoot.children[1].children[0];
 		content = viewport.children[0];
+		if (content.children.length < options.length)
+			return false;
 		var lastOption = content.children[options.length - 1];
 		var endContent:ResolvedLayoutItem = cast content.resolved;
-		return context.focus.focusedId != null && context.focus.focusedId.equals(lastOption.id) &&
-			endContent.transform.ty < afterAccessibility.transform.ty - 0.1;
+		var focusedId = context.focus.focusedId;
+		if (focusedId == null || !focusedId.equals(lastOption.id))
+			return false;
+		return endContent.transform.ty < beforeEnd.transform.ty - 0.1;
 	}
 
 	static function checkComboBox(context:UiContext):Bool {
@@ -475,6 +486,25 @@ class AccessibilityContract {
 		if (root.children.length != 2)
 			return false;
 		context.key(UiEventKind.KeyDown, UiKey.Escape);
+		root = context.submit(combo, frame);
+		if (root.children.length != 1)
+			return false;
+		input = root.children[0];
+		context.key(UiEventKind.KeyDown, UiKey.A, UiModifier.Control);
+		context.text(UiEventKind.TextInput, "Tw");
+		root = context.submit(combo, frame);
+		if (root.children.length != 2 || root.children[1].children.length != 1 ||
+			(cast(root.children[1].children[0].semantics, Semantics)).label != "Two")
+			return false;
+		input = root.children[0];
+		context.key(UiEventKind.KeyDown, UiKey.A, UiModifier.Control);
+		context.text(UiEventKind.TextInput, "Zed");
+		root = context.submit(combo, frame);
+		if (root.children.length != 1)
+			return false;
+		if (!context.accessibilityAction(root.children[0].id.value, AccessibilityRequest.SetValue,
+			"one", -1, -1, 1))
+			return false;
 		root = context.submit(combo, frame);
 		if (root.children.length != 1)
 			return false;

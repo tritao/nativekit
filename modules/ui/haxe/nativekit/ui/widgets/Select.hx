@@ -4,24 +4,21 @@ import Color;
 import Insets;
 import LayoutAxis;
 import LayoutDirection;
-import LayoutPositioning;
 import LayoutSizing;
 import LayoutStyle;
 import LayoutVisualKind;
-import Transform2D;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
-import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
 import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityAction;
-import nativekit.ui.semantics.AccessibilityOrientation;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.widgets.SelectionPopup;
 
 /** Typed single-selection control with a positioned, keyboard-navigable option list. */
 class Select<T> implements View {
@@ -65,6 +62,7 @@ class Select<T> implements View {
 			rootStyle.clipToParent = false;
 			var root = new RenderNode(context.id("select"), LayoutVisualKind.Box, rootStyle);
 			root.hitTestSelf = false;
+
 			var rootXState:State<Float> = context.state(context.id("root-x"), 0.0);
 			var rootYState:State<Float> = context.state(context.id("root-y"), 0.0);
 			var triggerXState:State<Float> = context.state(context.id("trigger-x"), 0.0);
@@ -118,8 +116,7 @@ class Select<T> implements View {
 
 			var triggerNode:RenderNode = null;
 			var optionNodes:Array<RenderNode> = [];
-			var scrollController:ScrollController = null;
-			var ensureActiveVisible = function(_:Int) {};
+			var popupVisibility = new SelectionPopupVisibility();
 			var close = function() {
 				if (openState.value == true)
 					openState.update(false);
@@ -131,7 +128,7 @@ class Select<T> implements View {
 				if (isEnabledIndex(index)) {
 					if (index != current)
 						activeState.update(index);
-					ensureActiveVisible(index);
+					popupVisibility.ensure(index);
 				}
 			};
 			var focusOption = function(index:Int) {
@@ -210,7 +207,8 @@ class Select<T> implements View {
 				else if (event.key == UiKey.End)
 					next = lastEnabledIndex();
 				else if (wasOpen)
-					next = nextEnabled(cast activeState.value, event.key == UiKey.Down ? 1 : -1);
+					next = nextEnabled(cast activeState.value,
+						event.key == UiKey.Down ? 1 : -1);
 				setActive(next);
 				if (wasOpen)
 					focusOption(next);
@@ -243,165 +241,37 @@ class Select<T> implements View {
 			root.focusTrap = isOpen;
 			if (isOpen) {
 				var anchorKnown:Bool = cast anchorKnownState.value;
-				var rootX:Float = cast rootXState.value;
-				var rootY:Float = cast rootYState.value;
-				var triggerX:Float = cast triggerXState.value;
-				var triggerY:Float = cast triggerYState.value;
-				var triggerWidth:Float = cast triggerWidthState.value;
-				var triggerHeight:Float = cast triggerHeightState.value;
+				var popupRootX:Float = cast rootXState.value;
+				var popupRootY:Float = cast rootYState.value;
+				var popupTriggerX:Float = cast triggerXState.value;
+				var popupTriggerY:Float = cast triggerYState.value;
+				var popupTriggerWidth:Float = cast triggerWidthState.value;
+				var popupTriggerHeight:Float = cast triggerHeightState.value;
 				if (!anchorKnown) {
-					rootX = 0.0;
-					rootY = 0.0;
-					triggerX = 0.0;
-					triggerY = 0.0;
-					triggerWidth = fallbackWidth();
-					triggerHeight = triggerHeightFallback();
+					popupRootX = 0.0;
+					popupRootY = 0.0;
+					popupTriggerX = 0.0;
+					popupTriggerY = 0.0;
+					popupTriggerWidth = fallbackWidth();
+					popupTriggerHeight = triggerHeightFallback();
 				}
-				var edge = Math.min(8.0, context.viewportWidth * 0.5);
-				var availableWidth = Math.max(1.0, context.viewportWidth - edge * 2.0);
-				var popupWidth = Math.min(Math.max(1.0, triggerWidth), availableWidth);
-				var popupX = clamp(triggerX, edge, Math.max(edge,
-					context.viewportWidth - edge - popupWidth));
-				var rowHeight = 32.0;
-				var popupPadding = 8.0;
-				var popupGap = options.length > 0 ? (options.length - 1) * 2.0 : 0.0;
-				var naturalHeight = popupPadding + options.length * rowHeight + popupGap;
-				var placementGap = 4.0;
-				var below = Math.max(0.0, context.viewportHeight - (triggerY + triggerHeight) -
-					placementGap);
-				var above = Math.max(0.0, triggerY - placementGap);
-				var opensBelow = below >= naturalHeight || below >= above;
-				var availableHeight = opensBelow ? below : above;
-				var popupHeight = Math.min(Math.max(1.0, naturalHeight),
-					Math.max(1.0, availableHeight));
-				var popupGlobalY = opensBelow ? triggerY + triggerHeight + placementGap :
-					triggerY - popupHeight - placementGap;
-				var needsScroll = popupHeight + 0.001 < naturalHeight;
-				var optionViewportHeight = Math.max(1.0, popupHeight - popupPadding);
-				var dropdownStyle = new LayoutStyle();
-				dropdownStyle.width = LayoutAxis.fixed(popupWidth);
-				dropdownStyle.height = LayoutAxis.fixed(popupHeight);
-				dropdownStyle.direction = LayoutDirection.TopToBottom;
-				dropdownStyle.positioning = LayoutPositioning.Absolute;
-				dropdownStyle.positionX = popupX - rootX;
-				dropdownStyle.positionY = popupGlobalY - rootY;
-				dropdownStyle.zIndex = 10;
-				dropdownStyle.clipToParent = false;
-				dropdownStyle.clipVertical = false;
-				dropdownStyle.padding = new Insets(4.0, 4.0, 4.0, 4.0);
-				dropdownStyle.childGap = 2.0;
-				dropdownStyle.background = context.theme.panelBackground;
-				dropdownStyle.radiusTopLeft = dropdownStyle.radiusTopRight = 5.0;
-				dropdownStyle.radiusBottomLeft = dropdownStyle.radiusBottomRight = 5.0;
-				var dropdown = new RenderNode(context.id("options"), LayoutVisualKind.Box, dropdownStyle);
-				var listSemantics = new Semantics(AccessibilityRole.List, "Options");
-				listSemantics.orientation = AccessibilityOrientation.Vertical;
-				if (needsScroll)
-					listSemantics.actions = AccessibilityAction.ScrollForward |
-						AccessibilityAction.ScrollBackward;
-				dropdown.semantics = listSemantics;
-				var optionParent = dropdown;
-				var scrollViewport:RenderNode = null;
-				if (needsScroll) {
-					var viewportStyle = new LayoutStyle();
-					viewportStyle.width = LayoutAxis.grow();
-					viewportStyle.height = LayoutAxis.fixed(optionViewportHeight);
-					viewportStyle.clipVertical = true;
-					scrollViewport = new RenderNode(context.id("option-viewport"),
-						LayoutVisualKind.Box, viewportStyle);
-					var storedScroll:State<ScrollController> = context.state(scrollViewport.id,
-						new ScrollController());
-					scrollController = cast storedScroll.value;
-					scrollController.bind(function(value) { storedScroll.update(value); });
-					var contentStyle = new LayoutStyle();
-					contentStyle.width = LayoutAxis.grow();
-					contentStyle.height = LayoutAxis.fit();
-					contentStyle.direction = LayoutDirection.TopToBottom;
-					contentStyle.transform = Transform2D.identity().translated(0.0,
-						-scrollController.offsetY);
-					var optionContent = new RenderNode(context.id("option-content"),
-						LayoutVisualKind.Box, contentStyle);
-					scrollViewport.add(optionContent);
-					dropdown.add(scrollViewport);
-					optionParent = optionContent;
-					scrollViewport.onResolved(function(geometry) {
-						scrollController.updateMetrics(geometry.width, geometry.height,
-							geometry.contentBounds.width, geometry.contentBounds.height);
-					});
-				}
-				if (needsScroll)
-					dropdown.on(UiEventKind.Scroll, function(event) {
-						if (event.defaultPrevented)
-							return;
-						if (scrollController.scrollBy(0.0, -event.deltaY))
-							event.stopPropagation();
-					});
-				if (needsScroll)
-					ensureActiveVisible = function(index:Int) {
-						if (scrollController == null || scrollController.viewportHeight <= 0.0)
-							return;
-						var optionTop = index * (rowHeight + 2.0);
-						var optionBottom = optionTop + rowHeight;
-						var target = scrollController.offsetY;
-						if (optionTop < target)
-							target = optionTop;
-						else if (optionBottom > target + optionViewportHeight)
-							target = optionBottom - optionViewportHeight;
-						if (target != scrollController.offsetY)
-							scrollController.jumpTo(scrollController.offsetX, target);
-					};
-				ensureActiveVisible(initialActive);
-				for (index in 0...options.length) {
-					var optionIndex = index;
-					var option = options[index];
-					var optionStyle = new LayoutStyle();
-					optionStyle.width = LayoutAxis.grow();
-					optionStyle.height = LayoutAxis.fixed(32.0);
-					optionStyle.padding = new Insets(9.0, 5.0, 9.0, 5.0);
-					var optionButton = new Button(option.label, optionStyle,
-						function() { selectOption(optionIndex); }, option.key);
-					optionButton.enabled = enabled && option.enabled;
-					optionButton.selected = sameValue(option.value, value);
-					optionButton.semanticRole = AccessibilityRole.ListItem;
-					optionButton.semanticActions = option.enabled
-						? AccessibilityAction.Select : 0;
-					var optionNode = context.withScope(new Key("option-" + option.key),
-						function() return optionButton.build(context));
-					var optionSemantics:Semantics = cast optionNode.semantics;
-					optionSemantics.setSize = options.length;
-					optionSemantics.positionInSet = index + 1;
-					optionNodes.push(optionNode);
-					optionParent.add(optionNode);
-				}
-				for (index in 0...optionNodes.length) {
-					var optionIndex = index;
-					optionNodes[index].on(UiEventKind.KeyDown, function(event) {
-						if (event.key == UiKey.Escape) {
-							close();
-							event.preventDefault();
-							return;
-						}
-						var next:Int = -1;
-						if (event.key == UiKey.Home)
-							next = firstEnabledIndex();
-						else if (event.key == UiKey.End)
-							next = lastEnabledIndex();
-						else if (event.key == UiKey.Down || event.key == UiKey.Right)
-							next = nextEnabled(optionIndex, 1);
-						else if (event.key == UiKey.Up || event.key == UiKey.Left)
-							next = nextEnabled(optionIndex, -1);
-						if (next < 0)
-							return;
-						setActive(next);
-						focusOption(next);
-						event.preventDefault();
-					});
-				}
-				root.add(dropdown);
-				root.onPointerDownOutside(function(event) {
-					if (event.button == 0)
-						close();
-				});
+				var visibleIndices:Array<Int> = [];
+				for (index in 0...options.length)
+					visibleIndices.push(index);
+				var popupOptions:Array<SelectOption<Dynamic>> = [];
+				for (option in options)
+					popupOptions.push(cast option);
+				var popup = new SelectionPopup(popupOptions, visibleIndices, value, active,
+					popupRootX, popupRootY, popupTriggerX, popupTriggerY,
+					popupTriggerWidth, popupTriggerHeight, fallbackWidth(),
+					triggerHeightFallback(),
+					function(index:Int) { selectOption(index); }, close,
+					function(index:Int) { setActive(index); },
+					function(index:Int) return isEnabledIndex(index),
+					function(index:Int, direction:Int) return nextEnabled(index, direction));
+				var popupResult = popup.build(context, root);
+				optionNodes = popupResult.optionNodes;
+				popupVisibility.ensure = popupResult.ensureActiveVisible;
 			}
 			root.on(UiEventKind.KeyDown, function(event) {
 				if (event.key == UiKey.Escape && openState.value == true) {
@@ -448,9 +318,6 @@ class Select<T> implements View {
 		return style.width.sizing == LayoutSizing.Fixed && style.width.value > 0.0
 			? style.width.value : 220.0;
 
-	static inline function clamp(value:Float, minimum:Float, maximum:Float):Float
-		return Math.max(minimum, Math.min(maximum, value));
-
 	static inline function finite(value:Float):Bool
 		return value == value && value - value == 0.0;
 
@@ -465,6 +332,6 @@ class Select<T> implements View {
 		return result;
 	}
 
-	function sameValue(left:Dynamic, right:Dynamic):Bool
+	static function sameValue(left:Dynamic, right:Dynamic):Bool
 		return left == right;
 }
