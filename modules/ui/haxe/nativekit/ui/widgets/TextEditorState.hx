@@ -10,6 +10,8 @@ import TextStyle;
 
 /** Persistent editable text, selection and IME composition state for one widget ID. */
 class TextEditorState {
+	static inline var caretBlinkHalfPeriod:Float = 0.5;
+
 	public var text(default, null):String;
 	public var selectionStart(default, null):Int;
 	public var selectionEnd(default, null):Int;
@@ -41,6 +43,7 @@ class TextEditorState {
 	var viewportHeight:Float;
 	var desiredVerticalX:Float;
 	var hasDesiredVerticalX:Bool;
+	var caretBlinkResetTime:Float;
 	var disposed:Bool;
 
 	public function new(fonts:FontCollection, text:String, ?textStyle:TextStyle,
@@ -78,6 +81,7 @@ class TextEditorState {
 		viewportHeight = 0.0;
 		desiredVerticalX = 0.0;
 		hasDesiredVerticalX = false;
+		caretBlinkResetTime = 0.0;
 		disposed = false;
 	}
 
@@ -481,6 +485,20 @@ class TextEditorState {
 
 	public function anchorPosition():TextPosition
 		return new TextPosition(selectionAnchorLayoutOffset, selectionAnchorAffinity);
+
+	/** Restarts the caret blink after keyboard, pointer, or text-edit activity. */
+	public function resetCaretBlink(timeSeconds:Float):Void {
+		if (finite(timeSeconds))
+			caretBlinkResetTime = Math.max(0.0, timeSeconds);
+	}
+
+	/** Returns whether the focused caret should be painted at the given UI time. */
+	public function isCaretVisible(timeSeconds:Float):Bool {
+		if (!focused || !finite(timeSeconds))
+			return false;
+		var elapsed = Math.max(0.0, timeSeconds - caretBlinkResetTime);
+		return Std.int(elapsed / caretBlinkHalfPeriod) % 2 == 0;
+	}
 
 	/** Returns the shaped rectangles used to paint the active IME preedit underline. */
 	public function compositionRects():Array<Rect> {

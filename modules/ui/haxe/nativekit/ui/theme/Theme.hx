@@ -21,6 +21,9 @@ class Theme {
 	public var controlSelected:Color;
 	public var controlUnselected:Color;
 	public var controlDisabled:Color;
+	public var textSelection:Color;
+	public var textSelectionInactive:Color;
+	public var textCaret:Color;
 	public var panelBackground:Color;
 	public var overlayBackdrop:Color;
 	public var tooltipBackground:Color;
@@ -40,6 +43,9 @@ class Theme {
 		controlSelected = accent;
 		controlUnselected = Color.rgba(0.16, 0.18, 0.22, 1.0);
 		controlDisabled = Color.rgba(0.20, 0.21, 0.24, 1.0);
+		textSelection = Color.rgba(0.2, 0.43, 0.82, 0.55);
+		textSelectionInactive = Color.rgba(0.2, 0.43, 0.82, 0.30);
+		textCaret = Color.rgba(0.96, 0.97, 0.99, 1.0);
 		panelBackground = Color.rgba(0.13, 0.14, 0.17, 1.0);
 		overlayBackdrop = Color.rgba(0.0, 0.0, 0.0, 0.48);
 		tooltipBackground = Color.rgba(0.08, 0.09, 0.11, 0.96);

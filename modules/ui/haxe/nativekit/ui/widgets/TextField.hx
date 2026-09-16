@@ -67,7 +67,8 @@ class TextField implements View {
 			var id = context.id("field");
 			var stored:State<TextEditorState> = acquireState(context, id, value, textStyle, multiline);
 			var editor:TextEditorState = cast stored.value;
-			editor.syncExternal(value);
+			if (editor.syncExternal(value))
+				editor.resetCaretBlink(context.gestures.timeSeconds());
 
 			var node = new RenderNode(id, LayoutVisualKind.Box, style);
 			node.focusable = enabled;
@@ -111,7 +112,7 @@ class TextField implements View {
 			selectionNode.hitTestSelf = false;
 			selectionNode.onPaint(function(canvas, _) {
 				if (!editor.isDisposed())
-					paintSelection(canvas, editor);
+					paintSelection(canvas, editor, context.textInput.isOwner(id), context.theme);
 			});
 			editorContent.add(selectionNode);
 			var textNode = new RenderNode(context.id("text"), LayoutVisualKind.Text, textNodeStyle);
@@ -134,7 +135,8 @@ class TextField implements View {
 			paintNode.hitTestSelf = false;
 			paintNode.onPaint(function(canvas, _) {
 				if (!editor.isDisposed())
-					paintEditorDecorations(canvas, editor);
+					paintEditorDecorations(canvas, editor, context.textInput.isOwner(id),
+						context.theme, context.gestures.timeSeconds());
 			});
 			editorContent.add(paintNode);
 			node.add(editorContent);
@@ -191,7 +193,8 @@ class TextField implements View {
 					Math.max(1.0, absolute(screenBottomX - screenTopX)),
 					Math.max(1.0, absolute(screenBottomY - screenTopY)));
 				publishDiagnostics(caretRect);
-				if (!editor.focused || context.platformSurface == null || context.platformSurface.isDisposed())
+				if (!editor.focused || !context.textInput.isOwner(id) || context.platformSurface == null ||
+					context.platformSurface.isDisposed())
 					return;
 				context.textInput.update(editor.layoutText(), Utf8Text.length(editor.text),
 					editor.selectionStart, editor.selectionEnd, editor.compositionStart,
@@ -217,9 +220,10 @@ class TextField implements View {
 				if (!enabled)
 					return;
 				editor.focused = true;
+				editor.resetCaretBlink(context.gestures.timeSeconds());
 				semantics.states |= AccessibilityState.Focused;
 				stored.update(editor);
-				context.textInput.activate();
+				context.textInput.activate(id);
 				if (textNode.resolved != null)
 					syncCursor(cast textNode.resolved);
 				else
@@ -233,7 +237,7 @@ class TextField implements View {
 				editor.cancelPointerClick();
 				semantics.states &= ~AccessibilityState.Focused;
 				stored.update(editor);
-				context.textInput.deactivate();
+				context.textInput.deactivate(id);
 				publishDiagnostics(null);
 			};
 			node.on(UiEventKind.Blur, blur);
@@ -245,6 +249,7 @@ class TextField implements View {
 				var geometry:ResolvedLayoutItem = cast textNode.resolved;
 				var point = geometry.viewportToLayout(event.x, event.y);
 				var position = editor.hitTest(point.x - geometry.x, point.y - geometry.y);
+				editor.resetCaretBlink(context.gestures.timeSeconds());
 				var extend = (event.modifiers & UiModifier.Shift) != 0;
 				if (extend)
 					editor.cancelPointerClick();
@@ -268,6 +273,7 @@ class TextField implements View {
 				var point = geometry.viewportToLayout(event.x, event.y);
 				var position = editor.hitTest(point.x - geometry.x, point.y - geometry.y);
 				if (editor.placeCaretAt(position, true)) {
+					editor.resetCaretBlink(context.gestures.timeSeconds());
 					editor.cancelPointerClick();
 					updateState();
 				}
@@ -312,8 +318,10 @@ class TextField implements View {
 						if (editor.isDisposed() || !editor.focused)
 							return;
 						var beforePaste = editor.layoutText();
-						if (editor.insert(pasted))
+						if (editor.insert(pasted)) {
+							editor.resetCaretBlink(context.gestures.timeSeconds());
 							publishTextChange(beforePaste);
+						}
 					});
 				} else if (wordNavigation && event.key == UiKey.Left)
 					changed = editor.moveCaretByWord(-1, extend, macWordNavigation);
@@ -356,36 +364,46 @@ class TextField implements View {
 					handled = false;
 				if (changed)
 					publishTextChange(previousText);
-				if (handled)
+				if (handled) {
+					editor.resetCaretBlink(context.gestures.timeSeconds());
 					event.preventDefault();
+				}
 			};
 			node.on(UiEventKind.KeyDown, handleKey);
 			node.on(UiEventKind.KeyRepeat, handleKey);
 
 			node.on(UiEventKind.TextInput, function(event) {
 				var previousText = editor.layoutText();
-				if (enabled && editor.insert(event.text))
+				if (enabled && editor.insert(event.text)) {
+					editor.resetCaretBlink(context.gestures.timeSeconds());
 					publishTextChange(previousText);
+				}
 			});
 			node.on(UiEventKind.TextEdit, function(event) {
 				if (!enabled || event.data == null)
 					return;
 				var edit:NativeKitTextEdit = cast event.data;
 				var previousText = editor.layoutText();
-				if (editor.applyTextEdit(edit))
+				if (editor.applyTextEdit(edit)) {
+					editor.resetCaretBlink(context.gestures.timeSeconds());
 					publishTextChange(previousText);
+				}
 			});
 			node.on(UiEventKind.AccessibilitySetValue, function(event) {
 				var previousText = editor.layoutText();
-				if (enabled && editor.replace(0, Utf8Text.length(editor.text), event.text))
+				if (enabled && editor.replace(0, Utf8Text.length(editor.text), event.text)) {
+					editor.resetCaretBlink(context.gestures.timeSeconds());
 					publishTextChange(previousText);
+				}
 			});
 			node.on(UiEventKind.AccessibilitySetSelection, function(event) {
 				if (!enabled || event.data == null)
 					return;
 				var request:AccessibilityActionData = cast event.data;
-				if (editor.setSelection(request.selectionStart, request.selectionEnd))
+				if (editor.setSelection(request.selectionStart, request.selectionEnd)) {
+					editor.resetCaretBlink(context.gestures.timeSeconds());
 					updateState();
+				}
 			});
 			return node;
 		});
@@ -413,23 +431,26 @@ class TextField implements View {
 				editor.selectionEnd));
 	}
 
-	static function paintSelection(canvas:Canvas, editor:TextEditorState):Void {
+	static function paintSelection(canvas:Canvas, editor:TextEditorState,
+			active:Bool, theme:nativekit.ui.theme.Theme):Void {
 		if (editor.selectionStart != editor.selectionEnd) {
 			canvas.translate(0.0, -editor.scrollOffsetY);
 			for (rect in editor.layout.selectionRects(editor.anchorPosition(), editor.focusPosition()))
-				canvas.fillRectIfPositive(rect, Color.rgba(0.2, 0.43, 0.82, 0.55));
+				canvas.fillRectIfPositive(rect, active ? theme.textSelection : theme.textSelectionInactive);
 		}
 	}
 
-	static function paintEditorDecorations(canvas:Canvas, editor:TextEditorState):Void {
+	static function paintEditorDecorations(canvas:Canvas, editor:TextEditorState,
+			active:Bool, theme:nativekit.ui.theme.Theme, timeSeconds:Float):Void {
 		if (editor.scrollOffsetY != 0.0)
 			canvas.translate(0.0, -editor.scrollOffsetY);
-		if (editor.compositionStart >= 0 && editor.compositionStart != editor.compositionEnd) {
+		if (active && editor.compositionStart >= 0 && editor.compositionStart != editor.compositionEnd) {
 			for (rect in editor.compositionRects())
 				canvas.fillRectIfPositive(new Rect(rect.x, rect.y + rect.height - 1.0, rect.width, 1.0),
 					Color.rgba(0.95, 0.75, 0.24, 1.0));
 		}
-		if (editor.focused && editor.selectionStart == editor.selectionEnd) {
+		if (active && editor.selectionStart == editor.selectionEnd &&
+				editor.isCaretVisible(timeSeconds)) {
 			var caret = editor.layout.caret(editor.focusPosition());
 			var topX = caret.x + caret.ascender * caret.slope;
 			var topY = caret.y + caret.ascender;
@@ -439,7 +460,7 @@ class TextField implements View {
 			var y = Math.min(topY, bottomY);
 			var height = Math.max(1.0, absolute(bottomY - topY));
 			canvas.fillRectIfPositive(new Rect(x, y, Math.max(1.0, absolute(bottomX - topX)), height),
-				Color.rgba(0.96, 0.97, 0.99, 1.0));
+				theme.textCaret);
 		}
 	}
 

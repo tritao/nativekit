@@ -187,6 +187,7 @@ class ShowcaseKit {
 		theme.controlSelected = theme.accent;
 		theme.controlUnselected = light ? color(0.78, 0.81, 0.86) : color(0.16, 0.18, 0.22);
 		theme.controlDisabled = light ? color(0.82, 0.84, 0.88) : color(0.20, 0.21, 0.24);
+		theme.textCaret = light ? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
 		theme.panelBackground = light ? color(0.98, 0.98, 1.0) : color(0.14, 0.16, 0.20);
 		theme.overlayBackdrop = color(0.0, 0.0, 0.0, 0.54);
 		theme.tooltipBackground = light ? color(0.13, 0.17, 0.23) : color(0.08, 0.09, 0.11);

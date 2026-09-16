@@ -9,6 +9,7 @@ import Rect;
 class TextInputBridge {
 	var surface:Null<NativeKitSurface>;
 	var requestedActive:Bool;
+	var activeOwner:Null<WidgetId>;
 	public var platformActive(default, null):Bool;
 	public var platformSupported(default, null):Bool;
 	public var platformChecked(default, null):Bool;
@@ -17,6 +18,7 @@ class TextInputBridge {
 	public function new() {
 		surface = null;
 		requestedActive = false;
+		activeOwner = null;
 		platformActive = false;
 		platformSupported = false;
 		platformChecked = false;
@@ -37,17 +39,32 @@ class TextInputBridge {
 			activatePlatform();
 	}
 
-	public function activate():Void {
+	/** Activates the platform editor for one focused UI text control. */
+	public function activate(?owner:WidgetId):Void {
 		ensureLive();
+		if (owner != null && activeOwner != null && !activeOwner.equals(owner)) {
+			requestedActive = false;
+			deactivatePlatform();
+		}
+		if (owner != null)
+			activeOwner = owner;
 		requestedActive = true;
 		activatePlatform();
 	}
 
-	public function deactivate():Void {
+	/** Deactivates the platform editor, unless another control owns it now. */
+	public function deactivate(?owner:WidgetId):Void {
 		ensureLive();
+		if (owner != null && (activeOwner == null || !activeOwner.equals(owner)))
+			return;
 		requestedActive = false;
+		activeOwner = null;
 		deactivatePlatform();
 	}
+
+	/** Returns whether this control owns the current active text-editor session. */
+	public function isOwner(owner:WidgetId):Bool
+		return owner != null && activeOwner != null && activeOwner.equals(owner);
 
 	/** Publishes the active document, selection, composition and screen caret. */
 	public function update(text:String, documentLength:Int, selectionStart:Int,
@@ -68,6 +85,7 @@ class TextInputBridge {
 		if (disposed)
 			return;
 		requestedActive = false;
+		activeOwner = null;
 		deactivatePlatform();
 		surface = null;
 		disposed = true;

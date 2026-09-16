@@ -121,6 +121,16 @@ class FrameworkSmoke {
 			editor.selectionEnd != 4 || editor.compositionStart != 2 || editor.compositionEnd != 4)
 			return 33;
 		editor.dispose();
+		var blinkEditor = new TextEditorState(fonts, "caret");
+		blinkEditor.focused = true;
+		blinkEditor.resetCaretBlink(10.0);
+		if (!blinkEditor.isCaretVisible(10.49) || blinkEditor.isCaretVisible(10.5) ||
+			!blinkEditor.isCaretVisible(11.0))
+			return 225;
+		blinkEditor.focused = false;
+		if (blinkEditor.isCaretVisible(11.1))
+			return 226;
+		blinkEditor.dispose();
 		var editedValue = "";
 		var submittedValue = "";
 		var emptyField = new TextField("empty-entry", "", function(_) {}, null,
@@ -236,6 +246,44 @@ class FrameworkSmoke {
 		context.key(UiEventKind.KeyDown, UiKey.Enter);
 		if (submittedValue != "done")
 			return 50;
+
+		var arabicField = new TextField("multi-arabic", "مرحبا بالعالم", null, null, "Arabic");
+		var hebrewField = new TextField("multi-hebrew", "שלום עולם", null, null, "Hebrew");
+		var multiFields = new Column("multi-fields", [
+			new KeyedView("arabic", arabicField),
+			new KeyedView("hebrew", hebrewField)
+		]);
+		var multiRoot = context.submit(multiFields, new LayoutFrame(320.0, 240.0));
+		var arabicRoot = multiRoot.children[0];
+		var hebrewRoot = multiRoot.children[1];
+		var arabicState:State<TextEditorState> = context.buildContext.existingState(arabicRoot.id);
+		var hebrewState:State<TextEditorState> = context.buildContext.existingState(hebrewRoot.id);
+		var arabicEditor:TextEditorState = cast arabicState.value;
+		var hebrewEditor:TextEditorState = cast hebrewState.value;
+		var arabicLength = Utf8Text.length(arabicEditor.text);
+		var hebrewLength = Utf8Text.length(hebrewEditor.text);
+		arabicEditor.setSelection(0, arabicLength);
+		hebrewEditor.setSelection(0, hebrewLength);
+		if (arabicEditor.layout.selectionRects(new TextPosition(0, 0),
+			new TextPosition(arabicLength, 0)).length == 0 ||
+			hebrewEditor.layout.selectionRects(new TextPosition(0, 0),
+				new TextPosition(hebrewLength, 0)).length == 0)
+			return 220;
+		if (!context.focusWidget(arabicRoot.id) || !context.textInput.isOwner(arabicRoot.id) ||
+			!arabicEditor.focused || hebrewEditor.focused)
+			return 221;
+		if (!context.focusWidget(hebrewRoot.id) || !context.textInput.isOwner(hebrewRoot.id) ||
+			arabicEditor.focused || !hebrewEditor.focused ||
+			arabicEditor.selectionStart != 0 || arabicEditor.selectionEnd != arabicLength ||
+			hebrewEditor.selectionStart != 0 || hebrewEditor.selectionEnd != hebrewLength)
+			return 222;
+		context.textInput.deactivate(arabicRoot.id);
+		if (!context.textInput.isOwner(hebrewRoot.id))
+			return 223;
+		context.text(UiEventKind.TextInput, "x");
+		if (arabicEditor.text != "مرحبا بالعالم" || hebrewEditor.text != "x")
+			return 224;
+
 		var wordArea = new TextArea("word-navigation", "one two\nthree four");
 		var wordAreaRoot = context.submit(wordArea, new LayoutFrame(256.0, 192.0));
 		var wordAreaState:State<TextEditorState> = context.buildContext.existingState(wordAreaRoot.id);
