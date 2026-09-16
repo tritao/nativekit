@@ -121,6 +121,7 @@ struct GtkWindowResource final : nk::core::Resource {
     std::vector<nk_handle> children;
     std::vector<nk_handle> surfaces;
     std::vector<nk_handle> owned_windows;
+    std::vector<nk_window_decoration_region> decoration_regions;
     bool drops_enabled = false;
     bool wrapped = false;
     bool decorated = true;
@@ -165,6 +166,8 @@ struct GtkWindowResource final : nk::core::Resource {
             g_object_unref(im_context);
     }
 };
+
+bool begin_decoration_drag(GtkWindowResource &resource, GdkEventButton &event);
 
 struct GtkAccessibilityTextRange {
     nk_accessibility_text_position start = 0;
@@ -1776,6 +1779,8 @@ gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer d
 
     nk::core::callback_boundary([&] {
         auto *resource = static_cast<GtkWindowResource *>(data);
+        if (begin_decoration_drag(*resource, *button_event))
+            return;
         const auto button = button_from_gdk(button_event->button);
         if (button == UINT32_MAX)
             return;
@@ -2252,6 +2257,65 @@ void cancel_evaluations(nk_handle source) noexcept {
 std::shared_ptr<GtkWindowResource> window(nk_handle handle) {
     return std::dynamic_pointer_cast<GtkWindowResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::window));
+}
+
+nk_window_decoration_region_kind decoration_region_at(
+    const std::vector<nk_window_decoration_region> &regions, float x, float y) {
+    for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
+        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width &&
+            y < iter->y + iter->height)
+            return iter->kind;
+    }
+    return NK_WINDOW_DECORATION_CLIENT;
+}
+
+bool begin_decoration_drag(GtkWindowResource &resource, GdkEventButton &event) {
+    if (resource.decorated || resource.wrapped || event.type != GDK_BUTTON_PRESS ||
+        event.button != 1)
+        return false;
+    const auto kind = decoration_region_at(resource.decoration_regions,
+                                           static_cast<float>(event.x),
+                                           static_cast<float>(event.y));
+    if (kind == NK_WINDOW_DECORATION_DRAG) {
+        gtk_window_begin_move_drag(GTK_WINDOW(resource.window), event.button, event.x_root,
+                                   event.y_root, event.time);
+        return true;
+    }
+    GdkWindowEdge edge = GDK_WINDOW_EDGE_NORTH;
+    switch (kind) {
+    case NK_WINDOW_DECORATION_RESIZE_NORTH:
+        edge = GDK_WINDOW_EDGE_NORTH;
+        break;
+    case NK_WINDOW_DECORATION_RESIZE_SOUTH:
+        edge = GDK_WINDOW_EDGE_SOUTH;
+        break;
+    case NK_WINDOW_DECORATION_RESIZE_WEST:
+        edge = GDK_WINDOW_EDGE_WEST;
+        break;
+    case NK_WINDOW_DECORATION_RESIZE_EAST:
+        edge = GDK_WINDOW_EDGE_EAST;
+        break;
+    case NK_WINDOW_DECORATION_RESIZE_NORTHWEST:
+        edge = GDK_WINDOW_EDGE_NORTH_WEST;
+        break;
+    case NK_WINDOW_DECORATION_RESIZE_NORTHEAST:
+        edge = GDK_WINDOW_EDGE_NORTH_EAST;
+        break;
+    case NK_WINDOW_DECORATION_RESIZE_SOUTHWEST:
+        edge = GDK_WINDOW_EDGE_SOUTH_WEST;
+        break;
+    case NK_WINDOW_DECORATION_RESIZE_SOUTHEAST:
+        edge = GDK_WINDOW_EDGE_SOUTH_EAST;
+        break;
+    case NK_WINDOW_DECORATION_CLIENT:
+    default:
+        return false;
+    }
+    if (!resource.resizable)
+        return false;
+    gtk_window_begin_resize_drag(GTK_WINDOW(resource.window), edge, event.button, event.x_root,
+                                 event.y_root, event.time);
+    return true;
 }
 
 void apply_geometry_hints(const GtkWindowResource &resource) {
@@ -3206,7 +3270,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_MONITOR_FULLSCREEN | NK_CAP_JOYSTICK | NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO |
         NK_CAP_VULKAN_SURFACE | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
         NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS | NK_CAP_DISPLAY_ORIENTATION |
-        NK_CAP_ACCESSIBILITY | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK;
+        NK_CAP_ACCESSIBILITY | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK |
+        NK_CAP_WINDOW_CUSTOM_DECORATIONS;
     if (nk::core::system_backend::keep_awake_supported())
         capabilities |= NK_CAP_KEEP_AWAKE;
     return capabilities | nk::core::optional_capabilities();
@@ -3995,8 +4060,42 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
                                    enabled ? GDK_DECOR_ALL : static_cast<GdkWMDecoration>(0));
         return NK_OK;
     }
+    resource->decorated = enabled != 0;
     gtk_window_set_decorated(GTK_WINDOW(resource->window), enabled != 0);
     return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_decoration_regions(
+    nk_handle h, const nk_window_decoration_region *regions, uint32_t region_count) {
+    try {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (region_count && !regions)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "decoration regions are missing");
+        auto resource = window(h);
+        if (!resource)
+            return invalid_handle("window");
+        if (resource->wrapped)
+            return fail(NK_ERROR_UNSUPPORTED,
+                        "custom decoration regions require a NativeKit-owned window");
+        for (uint32_t index = 0; index < region_count; ++index) {
+            const auto &region = regions[index];
+            if (!std::isfinite(region.x) || !std::isfinite(region.y) ||
+                !std::isfinite(region.width) || !std::isfinite(region.height) || region.x < 0.0f ||
+                region.y < 0.0f || region.width <= 0.0f || region.height <= 0.0f ||
+                region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid decoration region");
+        }
+        if (region_count == 0)
+            resource->decoration_regions.clear();
+        else
+            resource->decoration_regions.assign(regions, regions + region_count);
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while setting decoration regions");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while setting decoration regions");
+    }
 }
 
 nk_result NK_CALL nk_window_set_floating(nk_handle h, uint32_t enabled) {

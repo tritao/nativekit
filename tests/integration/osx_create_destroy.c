@@ -62,6 +62,7 @@ int main(void) {
     assert((nk_get_capabilities() & NK_CAP_NOTIFICATION) != 0);
     assert((nk_get_capabilities() & NK_CAP_WINDOW_GEOMETRY) != 0);
     assert((nk_get_capabilities() & NK_CAP_WINDOW_STYLING) != 0);
+    assert((nk_get_capabilities() & NK_CAP_WINDOW_CUSTOM_DECORATIONS) != 0);
     assert((nk_get_capabilities() & NK_CAP_MONITOR) != 0);
     assert((nk_get_capabilities() & NK_CAP_MONITOR_FULLSCREEN) != 0);
     assert((nk_get_capabilities() & NK_CAP_JOYSTICK) != 0);
@@ -126,6 +127,12 @@ int main(void) {
     assert(nk_window_set_resizable(window, 0) == NK_OK);
     assert(nk_window_set_resizable(window, 1) == NK_OK);
     assert(nk_window_set_decorated(window, 0) == NK_OK);
+    nk_window_decoration_region decoration_regions[2] = {
+        {0.0f, 0.0f, 640.0f, 48.0f, NK_WINDOW_DECORATION_DRAG, 0},
+        {560.0f, 0.0f, 80.0f, 48.0f, NK_WINDOW_DECORATION_CLIENT, 0}};
+    assert(nk_window_set_decoration_regions(window, NULL, 1) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_window_set_decoration_regions(window, decoration_regions, 2) == NK_OK);
+    assert(nk_window_set_decoration_regions(window, NULL, 0) == NK_OK);
     assert(nk_window_set_decorated(window, 1) == NK_OK);
     assert(nk_window_set_floating(window, 1) == NK_OK);
     assert(nk_window_set_floating(window, 0) == NK_OK);

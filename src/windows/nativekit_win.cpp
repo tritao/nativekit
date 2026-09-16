@@ -77,6 +77,42 @@ HWND notification_window = nullptr;
 
 UINT query_window_dpi(HWND window);
 
+nk_window_decoration_region_kind decoration_region_at(
+    const std::vector<nk_window_decoration_region> &regions, float x, float y) {
+    for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
+        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width &&
+            y < iter->y + iter->height)
+            return iter->kind;
+    }
+    return NK_WINDOW_DECORATION_CLIENT;
+}
+
+int decoration_hit_test(nk_window_decoration_region_kind kind) {
+    switch (kind) {
+    case NK_WINDOW_DECORATION_DRAG:
+        return HTCAPTION;
+    case NK_WINDOW_DECORATION_RESIZE_NORTH:
+        return HTTOP;
+    case NK_WINDOW_DECORATION_RESIZE_SOUTH:
+        return HTBOTTOM;
+    case NK_WINDOW_DECORATION_RESIZE_WEST:
+        return HTLEFT;
+    case NK_WINDOW_DECORATION_RESIZE_EAST:
+        return HTRIGHT;
+    case NK_WINDOW_DECORATION_RESIZE_NORTHWEST:
+        return HTTOPLEFT;
+    case NK_WINDOW_DECORATION_RESIZE_NORTHEAST:
+        return HTTOPRIGHT;
+    case NK_WINDOW_DECORATION_RESIZE_SOUTHWEST:
+        return HTBOTTOMLEFT;
+    case NK_WINDOW_DECORATION_RESIZE_SOUTHEAST:
+        return HTBOTTOMRIGHT;
+    case NK_WINDOW_DECORATION_CLIENT:
+    default:
+        return HTCLIENT;
+    }
+}
+
 struct WinNotification {
     nk_request_id request = NK_INVALID_REQUEST_ID;
     UINT id = 0;
@@ -240,6 +276,7 @@ struct WinWindowResource final : nk::core::Resource {
     std::vector<nk_handle> children;
     std::vector<nk_handle> surfaces;
     std::vector<nk_handle> owned_windows;
+    std::vector<nk_window_decoration_region> decoration_regions;
     ~WinWindowResource() override {
         if (pointer_captured && GetCapture() == window)
             ReleaseCapture();
@@ -1343,6 +1380,18 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         if (message == WM_SETCURSOR && LOWORD(lparam) == HTCLIENT) {
             apply_cursor(*resource);
             return TRUE;
+        }
+        if (message == WM_NCCALCSIZE && !resource->decorated)
+            return 0;
+        if (message == WM_NCHITTEST && !resource->decorated && !resource->mouse_passthrough) {
+            POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+            ScreenToClient(window, &point);
+            const auto scale = dpi_scale(window);
+            const auto kind = decoration_region_at(
+                resource->decoration_regions, static_cast<float>(point.x / scale),
+                static_cast<float>(point.y / scale));
+            if (kind != NK_WINDOW_DECORATION_CLIENT)
+                return decoration_hit_test(kind);
         }
         if (message == WM_NCHITTEST && resource->mouse_passthrough)
             return HTTRANSPARENT;
@@ -2905,7 +2954,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_D3D11_SURFACE | NK_CAP_ACCESSIBILITY | NK_CAP_MONITOR | NK_CAP_MONITOR_FULLSCREEN |
         NK_CAP_JOYSTICK | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
         NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE |
-        NK_CAP_DISPLAY_ORIENTATION | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK;
+        NK_CAP_DISPLAY_ORIENTATION | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK |
+        NK_CAP_WINDOW_CUSTOM_DECORATIONS;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
@@ -2937,10 +2987,14 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         const auto title = wide(options->title);
         DWORD style = (options->flags & NK_WINDOW_BORDERLESS) ? WS_POPUP : WS_OVERLAPPEDWINDOW;
         DWORD extended_style = options->kind == NK_WINDOW_UTILITY ? WS_EX_TOOLWINDOW : 0;
+        if ((options->flags & NK_WINDOW_BORDERLESS) &&
+            (options->flags & NK_WINDOW_RESIZABLE))
+            style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
         if (!(options->flags & NK_WINDOW_RESIZABLE))
             style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
         RECT bounds{0, 0, options->width, options->height};
-        AdjustWindowRectEx(&bounds, style, FALSE, extended_style);
+        if (!(options->flags & NK_WINDOW_BORDERLESS))
+            AdjustWindowRectEx(&bounds, style, FALSE, extended_style);
         resource->window = CreateWindowExW(
             extended_style, window_class_name, title.c_str(), style, CW_USEDEFAULT, CW_USEDEFAULT,
             bounds.right - bounds.left, bounds.bottom - bounds.top, owner ? owner->window : nullptr,
@@ -3903,6 +3957,39 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
         return fail(NK_ERROR_UNKNOWN, "could not change window decoration state");
     w->decorated = enabled != 0;
     return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_decoration_regions(
+    nk_handle h, const nk_window_decoration_region *regions, uint32_t region_count) {
+    try {
+        if (const auto r = enter_ui(); r != NK_OK)
+            return r;
+        if (region_count && !regions)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "decoration regions are missing");
+        auto w = get_window(h);
+        if (!w)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+        if (!w->owns_window)
+            return fail(NK_ERROR_UNSUPPORTED,
+                        "custom decoration regions require a NativeKit-owned window");
+        for (uint32_t index = 0; index < region_count; ++index) {
+            const auto &region = regions[index];
+            if (!std::isfinite(region.x) || !std::isfinite(region.y) ||
+                !std::isfinite(region.width) || !std::isfinite(region.height) || region.x < 0.0f ||
+                region.y < 0.0f || region.width <= 0.0f || region.height <= 0.0f ||
+                region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid decoration region");
+        }
+        if (region_count == 0)
+            w->decoration_regions.clear();
+        else
+            w->decoration_regions.assign(regions, regions + region_count);
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while setting decoration regions");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while setting decoration regions");
+    }
 }
 
 nk_result NK_CALL nk_window_set_floating(nk_handle h, uint32_t enabled) {

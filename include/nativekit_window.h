@@ -94,7 +94,9 @@ enum NK_FLAGS(nk_capabilities) {
     /** The optional networking module can stream HTTP response bodies. */
     NK_CAP_HTTP_STREAMING = UINT64_C(1) << 35,
     /** The backend can schedule callbacks while a graphics surface is ready to draw. */
-    NK_CAP_SURFACE_FRAME_CALLBACK = UINT64_C(1) << 36
+    NK_CAP_SURFACE_FRAME_CALLBACK = UINT64_C(1) << 36,
+    /** The backend supports app-provided non-client hit-test regions. */
+    NK_CAP_WINDOW_CUSTOM_DECORATIONS = UINT64_C(1) << 37
 };
 
 /** Discriminator identifying the platform representation in nk_native_window. */
@@ -240,6 +242,48 @@ typedef struct nk_window_frame_extents {
     /** Reserved pointer-sized values; initialize to zero. */
     uint64_t reserved2[2];
 } nk_window_frame_extents;
+
+/** Native behavior assigned to one app-provided window decoration region. */
+typedef uint32_t nk_window_decoration_region_kind;
+
+enum NK_ENUM(nk_window_decoration_region_kind) {
+    /** Leave the region as ordinary client content. */
+    NK_WINDOW_DECORATION_CLIENT = 0,
+    /** Begin a native window move when the primary button is pressed. */
+    NK_WINDOW_DECORATION_DRAG = 1,
+    /** Begin a native resize from the top edge. */
+    NK_WINDOW_DECORATION_RESIZE_NORTH = 2,
+    /** Begin a native resize from the bottom edge. */
+    NK_WINDOW_DECORATION_RESIZE_SOUTH = 3,
+    /** Begin a native resize from the left edge. */
+    NK_WINDOW_DECORATION_RESIZE_WEST = 4,
+    /** Begin a native resize from the right edge. */
+    NK_WINDOW_DECORATION_RESIZE_EAST = 5,
+    /** Begin a native resize from the top-left corner. */
+    NK_WINDOW_DECORATION_RESIZE_NORTHWEST = 6,
+    /** Begin a native resize from the top-right corner. */
+    NK_WINDOW_DECORATION_RESIZE_NORTHEAST = 7,
+    /** Begin a native resize from the bottom-left corner. */
+    NK_WINDOW_DECORATION_RESIZE_SOUTHWEST = 8,
+    /** Begin a native resize from the bottom-right corner. */
+    NK_WINDOW_DECORATION_RESIZE_SOUTHEAST = 9
+};
+
+/** One logical-pixel rectangle participating in custom window chrome. */
+typedef struct nk_window_decoration_region {
+    /** Left edge in the window client area's logical coordinates. */
+    float x;
+    /** Top edge in the window client area's logical coordinates. */
+    float y;
+    /** Region width in logical pixels. */
+    float width;
+    /** Region height in logical pixels. */
+    float height;
+    /** Native behavior assigned to the region. */
+    nk_window_decoration_region_kind kind;
+    /** Reserved for compatible extensions; initialize to zero. */
+    uint32_t reserved;
+} nk_window_decoration_region;
 
 typedef uint32_t nk_window_state_flags;
 enum NK_FLAGS(nk_window_state_flags) {
@@ -390,6 +434,19 @@ NK_API nk_result NK_CALL nk_window_set_resizable(nk_window window, nk_bool enabl
 
 /** Enables or disables standard native window decorations. */
 NK_API nk_result NK_CALL nk_window_set_decorated(nk_window window, nk_bool enabled);
+
+/**
+ * Replaces the app-provided custom-decoration hit-test regions for a window.
+ * Coordinates are logical pixels relative to the client area's top-left corner.
+ * Regions are copied before the call returns. The last matching region wins,
+ * so a client region can carve an interactive hole out of a larger drag region.
+ * This operation applies to borderless NativeKit-owned desktop windows; pass
+ * NULL with a zero count to clear all regions.
+ */
+NK_API nk_result NK_CALL nk_window_set_decoration_regions(
+    nk_window window,
+    const nk_window_decoration_region *regions NK_IN_ARRAY(region_count),
+    uint32_t region_count);
 
 /** Enables or disables keeping the window above its peers. */
 NK_API nk_result NK_CALL nk_window_set_floating(nk_window window, nk_bool enabled);

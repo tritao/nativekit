@@ -4,6 +4,7 @@ import NativeKit.WindowHandle;
 import NativeKit.OwnedWindowHandle;
 import NativeKit.SurfaceOptions;
 import NativeKit.WebviewOptions;
+import NativeKit.WindowDecorationRegion;
 import NativeKit.Result;
 import NativeKitError;
 import NativeKitSurface;
@@ -27,6 +28,12 @@ class NativeKitWindow {
 	public function nativeHandle():WindowHandle {
 		ensureLive();
 		return value;
+	}
+
+	/** Replaces the logical hit-test regions used by custom native window chrome. */
+	public function setDecorationRegions(regions:Array<WindowDecorationRegion>):Void {
+		ensureLive();
+		NativeKit.nk_window_set_decoration_regions_checked(value, regions);
 	}
 
 	public function createSurface(options:SurfaceOptions):NativeKitSurface {

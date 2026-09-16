@@ -587,6 +587,10 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * The backend can schedule callbacks while a graphics surface is ready to draw.
 		 */
 		NK_CAP_SURFACE_FRAME_CALLBACK = 68719476736;
+		/**
+		 * The backend supports app-provided non-client hit-test regions.
+		 */
+		NK_CAP_WINDOW_CUSTOM_DECORATIONS = 137438953472;
 	}
 	/**
 	 * System color-scheme values returned in nk_system_appearance.
@@ -2269,6 +2273,51 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 */
 		NK_WEBVIEW_NAVIGATION_POLICY = 4;
 	}
+	/**
+	 * Native behavior assigned to one app-provided window decoration region.
+	 */
+	enum nk_window_decoration_region_kind : u32 {
+		/**
+		 * Leave the region as ordinary client content.
+		 */
+		NK_WINDOW_DECORATION_CLIENT = 0;
+		/**
+		 * Begin a native window move when the primary button is pressed.
+		 */
+		NK_WINDOW_DECORATION_DRAG = 1;
+		/**
+		 * Begin a native resize from the top edge.
+		 */
+		NK_WINDOW_DECORATION_RESIZE_NORTH = 2;
+		/**
+		 * Begin a native resize from the bottom edge.
+		 */
+		NK_WINDOW_DECORATION_RESIZE_SOUTH = 3;
+		/**
+		 * Begin a native resize from the left edge.
+		 */
+		NK_WINDOW_DECORATION_RESIZE_WEST = 4;
+		/**
+		 * Begin a native resize from the right edge.
+		 */
+		NK_WINDOW_DECORATION_RESIZE_EAST = 5;
+		/**
+		 * Begin a native resize from the top-left corner.
+		 */
+		NK_WINDOW_DECORATION_RESIZE_NORTHWEST = 6;
+		/**
+		 * Begin a native resize from the top-right corner.
+		 */
+		NK_WINDOW_DECORATION_RESIZE_NORTHEAST = 7;
+		/**
+		 * Begin a native resize from the bottom-left corner.
+		 */
+		NK_WINDOW_DECORATION_RESIZE_SOUTHWEST = 8;
+		/**
+		 * Begin a native resize from the bottom-right corner.
+		 */
+		NK_WINDOW_DECORATION_RESIZE_SOUTHEAST = 9;
+	}
 	flags nk_window_flags : u32 {
 		/**
 		 * The window can be resized by the user.
@@ -3090,6 +3139,15 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * Enables or disables standard native window decorations.
 	 */
 	extern fn nk_window_set_decorated(window: nk_window, enabled: nk_bool) -> nk_result;
+	/**
+	 * Replaces the app-provided custom-decoration hit-test regions for a window.
+	 * Coordinates are logical pixels relative to the client area's top-left corner.
+	 * Regions are copied before the call returns. The last matching region wins,
+	 * so a client region can carve an interactive hole out of a larger drag region.
+	 * This operation applies to borderless NativeKit-owned desktop windows; pass
+	 * NULL with a zero count to clear all regions.
+	 */
+	extern fn nk_window_set_decoration_regions(window: nk_window, regions: ptr<const<nk_window_decoration_region>> @in_array("region_count"), region_count: u32) -> nk_result;
 	/**
 	 * Enables or disables the text and/or local-file drop formats supported by the backend.
 	 */
@@ -4815,6 +4873,35 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * Reserved pointer-sized values; initialize to zero.
 		 */
 		reserved2: array<u64, 2> @offset(16);
+	}
+	/**
+	 * One logical-pixel rectangle participating in custom window chrome.
+	 */
+	struct nk_window_decoration_region @layout(24, 4) {
+		/**
+		 * Left edge in the window client area's logical coordinates.
+		 */
+		x: f32 @offset(0);
+		/**
+		 * Top edge in the window client area's logical coordinates.
+		 */
+		y: f32 @offset(4);
+		/**
+		 * Region width in logical pixels.
+		 */
+		width: f32 @offset(8);
+		/**
+		 * Region height in logical pixels.
+		 */
+		height: f32 @offset(12);
+		/**
+		 * Native behavior assigned to the region.
+		 */
+		kind: nk_window_decoration_region_kind @offset(16);
+		/**
+		 * Reserved for compatible extensions; initialize to zero.
+		 */
+		reserved: u32 @offset(20);
 	}
 	/**
 	 * Non-client frame extents returned in logical screen pixels.

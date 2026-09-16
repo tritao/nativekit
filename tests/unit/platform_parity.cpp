@@ -50,7 +50,8 @@ constexpr mask k_known_capabilities =
     cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_SYSTEM_INFO) | cap(NK_CAP_APPLICATION_PATH) |
     cap(NK_CAP_APPLICATION_STORAGE) | cap(NK_CAP_SYSTEM_FONTS) | cap(NK_CAP_KEEP_AWAKE) |
     cap(NK_CAP_DEVICE_ORIENTATION) | cap(NK_CAP_DISPLAY_ORIENTATION) | cap(NK_CAP_HTTP_CLIENT) |
-    cap(NK_CAP_HTTP_STREAMING) | cap(NK_CAP_SURFACE_FRAME_CALLBACK);
+    cap(NK_CAP_HTTP_STREAMING) | cap(NK_CAP_SURFACE_FRAME_CALLBACK) |
+    cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS);
 
 #if defined(NK_BUILD_NET) && defined(NK_NET_BACKEND_STREAMING)
 constexpr mask k_net_required = cap(NK_CAP_HTTP_CLIENT) | cap(NK_CAP_HTTP_STREAMING);
@@ -89,7 +90,8 @@ constexpr backend_contract platform_contract() {
     return {"Linux/GTK",
             k_desktop_common | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_OPENGL_SURFACE) |
                 cap(NK_CAP_OPENGL_ES_SURFACE) | cap(NK_CAP_WINDOW_GEOMETRY) |
-                cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) | cap(NK_CAP_MONITOR_FULLSCREEN) |
+                cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS) |
+                cap(NK_CAP_MONITOR) | cap(NK_CAP_MONITOR_FULLSCREEN) |
                 cap(NK_CAP_JOYSTICK) | cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_VULKAN_SURFACE) |
                 cap(NK_CAP_ACCESSIBILITY) | cap(NK_CAP_WRAP_NATIVE_WINDOW) |
                 k_linux_system_capabilities,
@@ -99,6 +101,7 @@ constexpr backend_contract platform_contract() {
 #elif defined(NK_PARITY_BACKEND_WINDOWS)
     return {"Windows",
             k_desktop_common | cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) |
+                cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS) |
                 cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_ACCESSIBILITY) | cap(NK_CAP_MONITOR) |
                 cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_JOYSTICK) |
                 cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_WRAP_NATIVE_WINDOW) |
@@ -109,7 +112,8 @@ constexpr backend_contract platform_contract() {
 #elif defined(NK_PARITY_BACKEND_MACOS)
     return {"macOS",
             k_desktop_common | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_WINDOW_GEOMETRY) |
-                cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_MONITOR) |
+                cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS) |
+                cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_MONITOR) |
                 cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_JOYSTICK) |
                 cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_ACCESSIBILITY) |
                 cap(NK_CAP_WRAP_NATIVE_WINDOW) | k_new_system_capabilities,
@@ -129,7 +133,7 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
                 cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) |
                 cap(NK_CAP_OPENGL_SURFACE) | cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_METAL_SURFACE) |
-                cap(NK_CAP_SURFACE_FRAME_CALLBACK),
+                cap(NK_CAP_SURFACE_FRAME_CALLBACK) | cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS),
             0};
 #elif defined(NK_PARITY_BACKEND_IOS)
     return {"iOS",
@@ -143,7 +147,8 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
                 cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) |
                 cap(NK_CAP_OPENGL_SURFACE) | cap(NK_CAP_OPENGL_ES_SURFACE) |
-                cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_D3D11_SURFACE),
+                cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_D3D11_SURFACE) |
+                cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS),
             0};
 #elif defined(NK_PARITY_BACKEND_WEB)
     return {"Web",
@@ -159,7 +164,8 @@ constexpr backend_contract platform_contract() {
             cap(NK_CAP_WEBVIEW) | cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) |
                 cap(NK_CAP_WRAP_NATIVE_WINDOW) | cap(NK_CAP_MONITOR) |
                 cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_OPENGL_SURFACE) |
-                cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_METAL_SURFACE),
+                cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_METAL_SURFACE) |
+                cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS),
             cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_KEEP_AWAKE) |
                 cap(NK_CAP_DISPLAY_ORIENTATION)};
 #else
@@ -202,7 +208,7 @@ struct capability_name {
     nk_capabilities value;
 };
 
-constexpr std::array<capability_name, 36> k_capability_names = {{
+constexpr std::array<capability_name, 37> k_capability_names = {{
     {"WINDOW", NK_CAP_WINDOW},
     {"WEBVIEW", NK_CAP_WEBVIEW},
     {"CLIPBOARD", NK_CAP_CLIPBOARD},
@@ -220,6 +226,7 @@ constexpr std::array<capability_name, 36> k_capability_names = {{
     {"POINTER_CAPTURE", NK_CAP_POINTER_CAPTURE},
     {"WINDOW_GEOMETRY", NK_CAP_WINDOW_GEOMETRY},
     {"WINDOW_STYLING", NK_CAP_WINDOW_STYLING},
+    {"WINDOW_CUSTOM_DECORATIONS", NK_CAP_WINDOW_CUSTOM_DECORATIONS},
     {"MONITOR", NK_CAP_MONITOR},
     {"MONITOR_FULLSCREEN", NK_CAP_MONITOR_FULLSCREEN},
     {"JOYSTICK", NK_CAP_JOYSTICK},

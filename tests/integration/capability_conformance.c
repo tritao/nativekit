@@ -153,9 +153,20 @@ static int probe_window(nk_capabilities capabilities, nk_window *out_window,
             !require_ok("nk_window_set_resizable", nk_window_set_resizable(*out_window, 0)) ||
             !require_ok("nk_window_restore_resizable", nk_window_set_resizable(*out_window, 1)) ||
             !require_ok("nk_window_set_decorated", nk_window_set_decorated(*out_window, 0)) ||
-            !require_ok("nk_window_restore_decorated", nk_window_set_decorated(*out_window, 1)) ||
             !require_ok("nk_window_set_floating", nk_window_set_floating(*out_window, 1)) ||
-            !require_ok("nk_window_clear_floating", nk_window_set_floating(*out_window, 0)) ||
+            !require_ok("nk_window_clear_floating", nk_window_set_floating(*out_window, 0)))
+            return 0;
+        if (capabilities & NK_CAP_WINDOW_CUSTOM_DECORATIONS) {
+            const nk_window_decoration_region regions[2] = {
+                {0.0f, 0.0f, 640.0f, 48.0f, NK_WINDOW_DECORATION_DRAG, 0},
+                {560.0f, 0.0f, 80.0f, 48.0f, NK_WINDOW_DECORATION_CLIENT, 0}};
+            if (!require_ok("nk_window_set_decoration_regions",
+                            nk_window_set_decoration_regions(*out_window, regions, 2)) ||
+                !require_ok("nk_window_clear_decoration_regions",
+                            nk_window_set_decoration_regions(*out_window, NULL, 0)))
+                return 0;
+        }
+        if (!require_ok("nk_window_restore_decorated", nk_window_set_decorated(*out_window, 1)) ||
             !require_ok("nk_window_set_opacity", nk_window_set_opacity(*out_window, 0.75f)) ||
             !require_ok("nk_window_restore_opacity", nk_window_set_opacity(*out_window, 1.0f)) ||
             !require_ok("nk_window_set_mouse_passthrough",

@@ -137,6 +137,7 @@ class Smoke {
 		try {
 			var window = runtime.createWindow(windowOptions);
 			windowOk = window.nativeHandle().isValid();
+			window.setDecorationRegions([]);
 			window.dispose();
 			windowOk = windowOk && window.isDisposed();
 		} catch (error:Dynamic) {

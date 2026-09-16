@@ -35,6 +35,10 @@ _Static_assert(sizeof(nk_init_options) == 16 + 2 * sizeof(const char *),
 _Static_assert(sizeof(nk_system_info) == 40, "system info ABI layout is stable");
 _Static_assert(sizeof(nk_system_orientation) == 32, "system orientation ABI layout is stable");
 _Static_assert(sizeof(nk_orientation_event) == 32, "orientation event ABI layout is stable");
+_Static_assert(sizeof(nk_window_decoration_region) == 24,
+               "window decoration region ABI layout is stable");
+_Static_assert(offsetof(nk_window_decoration_region, kind) == 16,
+               "window decoration region kind offset is stable");
 
 static void verify_system_string(nk_system_string_kind kind, int required) {
     uint32_t size = 0;

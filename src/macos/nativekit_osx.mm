@@ -187,6 +187,11 @@ struct MacWindowResource final : nk::core::Resource {
     std::vector<nk_handle> children;
     std::vector<nk_handle> surfaces;
     std::vector<nk_handle> owned_windows;
+    std::vector<nk_window_decoration_region> decoration_regions;
+    bool decoration_resizing = false;
+    nk_window_decoration_region_kind decoration_resize_kind = NK_WINDOW_DECORATION_CLIENT;
+    NSPoint decoration_resize_start = NSZeroPoint;
+    NSRect decoration_resize_frame = NSZeroRect;
     ~MacWindowResource() override {
         if (pointer_captured) {
             CGAssociateMouseAndMouseCursorPosition(true);
@@ -566,6 +571,21 @@ bool emit_drop(MacWindowResource &resource, id<NSDraggingInfo> information) noex
 std::shared_ptr<MacWindowResource> window(nk_handle handle) {
     return std::dynamic_pointer_cast<MacWindowResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::window));
+}
+
+nk_window_decoration_region_kind decoration_region_at(
+    const std::vector<nk_window_decoration_region> &regions, float x, float y) {
+    for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
+        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width &&
+            y < iter->y + iter->height)
+            return iter->kind;
+    }
+    return NK_WINDOW_DECORATION_CLIENT;
+}
+
+bool is_decoration_resize_kind(nk_window_decoration_region_kind kind) {
+    return kind >= NK_WINDOW_DECORATION_RESIZE_NORTH &&
+           kind <= NK_WINDOW_DECORATION_RESIZE_SOUTHEAST;
 }
 
 std::shared_ptr<MacSurfaceResource> surface(nk_handle handle) {
@@ -1754,6 +1774,65 @@ NSPoint local_pointer_position(NKContentView *view, NSEvent *event) {
     return [view convertPoint:event.locationInWindow fromView:nil];
 }
 
+void update_decoration_resize(MacWindowResource &resource) {
+    if (!resource.decoration_resizing || !resource.window)
+        return;
+    const NSPoint current = [NSEvent mouseLocation];
+    const CGFloat dx = current.x - resource.decoration_resize_start.x;
+    const CGFloat dy = current.y - resource.decoration_resize_start.y;
+    NSRect frame = resource.decoration_resize_frame;
+    const auto kind = resource.decoration_resize_kind;
+    const bool left = kind == NK_WINDOW_DECORATION_RESIZE_WEST ||
+                      kind == NK_WINDOW_DECORATION_RESIZE_NORTHWEST ||
+                      kind == NK_WINDOW_DECORATION_RESIZE_SOUTHWEST;
+    const bool right = kind == NK_WINDOW_DECORATION_RESIZE_EAST ||
+                       kind == NK_WINDOW_DECORATION_RESIZE_NORTHEAST ||
+                       kind == NK_WINDOW_DECORATION_RESIZE_SOUTHEAST;
+    const bool top = kind == NK_WINDOW_DECORATION_RESIZE_NORTH ||
+                     kind == NK_WINDOW_DECORATION_RESIZE_NORTHWEST ||
+                     kind == NK_WINDOW_DECORATION_RESIZE_NORTHEAST;
+    const bool bottom = kind == NK_WINDOW_DECORATION_RESIZE_SOUTH ||
+                        kind == NK_WINDOW_DECORATION_RESIZE_SOUTHWEST ||
+                        kind == NK_WINDOW_DECORATION_RESIZE_SOUTHEAST;
+    if (left) {
+        frame.origin.x += dx;
+        frame.size.width -= dx;
+    } else if (right) {
+        frame.size.width += dx;
+    }
+    if (bottom) {
+        frame.origin.y += dy;
+        frame.size.height -= dy;
+    } else if (top) {
+        frame.size.height += dy;
+    }
+
+    const NSRect content_frame = resource.window.contentView.frame;
+    const CGFloat frame_delta_width = resource.decoration_resize_frame.size.width -
+                                      content_frame.size.width;
+    const CGFloat frame_delta_height = resource.decoration_resize_frame.size.height -
+                                       content_frame.size.height;
+    const CGFloat min_width = std::max(1.0, resource.window.contentMinSize.width +
+                                                frame_delta_width);
+    const CGFloat min_height = std::max(1.0, resource.window.contentMinSize.height +
+                                                  frame_delta_height);
+    const CGFloat max_width = resource.window.contentMaxSize.width > 0.0
+                                  ? resource.window.contentMaxSize.width + frame_delta_width
+                                  : CGFLOAT_MAX;
+    const CGFloat max_height = resource.window.contentMaxSize.height > 0.0
+                                   ? resource.window.contentMaxSize.height + frame_delta_height
+                                   : CGFLOAT_MAX;
+    const CGFloat width = std::clamp(frame.size.width, min_width, max_width);
+    const CGFloat height = std::clamp(frame.size.height, min_height, max_height);
+    if (left)
+        frame.origin.x = NSMaxX(resource.decoration_resize_frame) - width;
+    frame.size.width = width;
+    if (bottom)
+        frame.origin.y = NSMaxY(resource.decoration_resize_frame) - height;
+    frame.size.height = height;
+    [resource.window setFrame:frame display:YES];
+}
+
 nk_pointer_button pointer_button_from_cocoa(NSEvent *event) {
     if (event.type == NSEventTypeLeftMouseDown || event.type == NSEventTypeLeftMouseUp ||
         event.type == NSEventTypeLeftMouseDragged)
@@ -2549,6 +2628,13 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     });
 }
 - (void)mouseDragged:(NSEvent *)event {
+    auto *resource = static_cast<MacWindowResource *>(_resource);
+    if (!resource)
+        return;
+    if (resource->decoration_resizing) {
+        nk::core::callback_boundary([&] { update_decoration_resize(*resource); });
+        return;
+    }
     [self mouseMoved:event];
 }
 - (void)rightMouseDragged:(NSEvent *)event {
@@ -2563,6 +2649,21 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         return;
     nk::core::callback_boundary([&] {
         const NSPoint point = local_pointer_position(self, event);
+        if (!(resource->window.styleMask & NSWindowStyleMaskTitled)) {
+            const auto kind = decoration_region_at(resource->decoration_regions, point.x, point.y);
+            if (kind == NK_WINDOW_DECORATION_DRAG) {
+                [resource->window performWindowDragWithEvent:event];
+                return;
+            }
+            if (is_decoration_resize_kind(kind) &&
+                (resource->window.styleMask & NSWindowStyleMaskResizable)) {
+                resource->decoration_resizing = true;
+                resource->decoration_resize_kind = kind;
+                resource->decoration_resize_start = [NSEvent mouseLocation];
+                resource->decoration_resize_frame = resource->window.frame;
+                return;
+            }
+        }
         resource->pointer_x = point.x;
         resource->pointer_y = point.y;
         emit_pointer_button(*resource, NK_POINTER_BUTTON_LEFT, NK_INPUT_PRESS,
@@ -2573,6 +2674,13 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     auto *resource = static_cast<MacWindowResource *>(_resource);
     if (!resource)
         return;
+    if (resource->decoration_resizing) {
+        resource->decoration_resizing = false;
+        resource->decoration_resize_kind = NK_WINDOW_DECORATION_CLIENT;
+        resource->decoration_resize_start = NSZeroPoint;
+        resource->decoration_resize_frame = NSZeroRect;
+        return;
+    }
     nk::core::callback_boundary([&] {
         const NSPoint point = local_pointer_position(self, event);
         resource->pointer_x = point.x;
@@ -3599,7 +3707,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS |
            NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_ACCESSIBILITY |
            NK_CAP_RESOURCE_SHARING | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK |
-           nk::core::optional_capabilities();
+           NK_CAP_WINDOW_CUSTOM_DECORATIONS | nk::core::optional_capabilities();
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
@@ -3640,6 +3748,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             return fail(NK_ERROR_UNKNOWN, "could not create Cocoa window");
         resource->window.title = string(options->title) ?: @"";
         resource->window.releasedWhenClosed = NO;
+        resource->window.movable = YES;
         resource->content =
             [[NKContentView alloc] initWithFrame:NSMakeRect(0, 0, options->width, options->height)];
         resource->content.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -4532,6 +4641,39 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
         style &= ~decorations;
     w->window.styleMask = style;
     return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_decoration_regions(
+    nk_handle h, const nk_window_decoration_region *regions, uint32_t region_count) {
+    try {
+        if (const auto r = enter_ui(); r != NK_OK)
+            return r;
+        if (region_count && !regions)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "decoration regions are missing");
+        auto w = window(h);
+        if (!w)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+        if (!w->owns_window)
+            return fail(NK_ERROR_UNSUPPORTED,
+                        "custom decoration regions require a NativeKit-owned window");
+        for (uint32_t index = 0; index < region_count; ++index) {
+            const auto &region = regions[index];
+            if (!std::isfinite(region.x) || !std::isfinite(region.y) ||
+                !std::isfinite(region.width) || !std::isfinite(region.height) || region.x < 0.0f ||
+                region.y < 0.0f || region.width <= 0.0f || region.height <= 0.0f ||
+                region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid decoration region");
+        }
+        if (region_count == 0)
+            w->decoration_regions.clear();
+        else
+            w->decoration_regions.assign(regions, regions + region_count);
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while setting decoration regions");
+    } catch (...) {
+        return fail(NK_ERROR_UNKNOWN, "unexpected error while setting decoration regions");
+    }
 }
 
 nk_result NK_CALL nk_window_set_floating(nk_handle h, uint32_t enabled) {
