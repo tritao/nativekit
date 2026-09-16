@@ -47,6 +47,7 @@ class StyleResolver {
 		});
 		for (rule in matches) {
 			var source = new StyleSource(sheet.name, rule.selector.describe(), rule.order, layer);
+			result.recordMatch(source);
 			for (declaration in rule.declarations)
 				result.set(declaration.property, declaration.value, source);
 		}
