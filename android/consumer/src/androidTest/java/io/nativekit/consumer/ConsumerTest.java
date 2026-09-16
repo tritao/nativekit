@@ -16,6 +16,7 @@ import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -73,6 +74,20 @@ public final class ConsumerTest {
                 activity.dispatchInputForTest();
                 assertEquals("graphics surface input probe", 0, activity.inputProbe());
             });
+            scenario.onActivity(activity ->
+                assertEquals("start graphics frame callback", 0,
+                             activity.startFrameCallbackProbe()));
+            waitForFrameCallback(scenario);
+            int[] countAtStop = new int[1];
+            scenario.onActivity(activity -> {
+                countAtStop[0] = activity.frameCallbackCountProbe();
+                assertEquals("stop graphics frame callback", 0,
+                             activity.stopFrameCallbackProbe());
+            });
+            Thread.sleep(100);
+            scenario.onActivity(activity ->
+                assertEquals("frame callback stopped", countAtStop[0],
+                             activity.frameCallbackCountProbe()));
             UiAutomation automation =
                 androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
                     .getUiAutomation();
@@ -144,11 +159,39 @@ public final class ConsumerTest {
                 assertEquals("graphics surface after activity recreation", 0,
                              activity.graphicsSurfaceProbe());
             });
+            scenario.onActivity(activity ->
+                assertEquals("start graphics frame callback before destroy", 0,
+                             activity.startFrameCallbackProbe()));
+            waitForFrameCallback(scenario);
+            int[] countAtDestroy = new int[1];
+            scenario.onActivity(activity -> {
+                countAtDestroy[0] = activity.frameCallbackCountProbe();
+                assertEquals("destroy graphics surface with frame callback", 0,
+                             activity.destroyGraphicsSurfaceProbe());
+            });
+            Thread.sleep(100);
+            scenario.onActivity(activity ->
+                assertEquals("frame callback stopped by destroy", countAtDestroy[0],
+                             activity.frameCallbackCountProbe()));
         }
     }
 
     private static void waitForIdle() {
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+    }
+
+    private static void waitForFrameCallback(ActivityScenario<MainActivity> scenario)
+        throws InterruptedException {
+        long deadline = SystemClock.uptimeMillis() + 5_000;
+        AtomicInteger result = new AtomicInteger(1);
+        while (SystemClock.uptimeMillis() < deadline) {
+            result.set(1);
+            scenario.onActivity(activity -> result.set(activity.frameCallbackProbe()));
+            if (result.get() == 0)
+                return;
+            Thread.sleep(50);
+        }
+        throw new AssertionError("Android graphics frame callback did not fire");
     }
 
     private static void waitForAccessibilityReady(ActivityScenario<MainActivity> scenario)

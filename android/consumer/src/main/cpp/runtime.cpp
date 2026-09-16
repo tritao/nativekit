@@ -41,6 +41,26 @@ void *vulkan_instance = nullptr;
 nk_vulkan_surface live_vulkan_surface = NK_INVALID_VULKAN_SURFACE;
 DestroyInstance destroy_vulkan_instance = nullptr;
 
+struct FrameCallbackProbe {
+    nk_surface surface = NK_INVALID_HANDLE;
+    int count = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+};
+
+FrameCallbackProbe frame_callback_probe;
+
+void NK_CALL on_frame_callback(nk_surface surface, int32_t width, int32_t height,
+                               void *user_data) {
+    auto *probe = static_cast<FrameCallbackProbe *>(user_data);
+    if (!probe)
+        return;
+    probe->surface = surface;
+    probe->width = width;
+    probe->height = height;
+    ++probe->count;
+}
+
 void release_vulkan_probe() {
     if (live_vulkan_surface && vulkan_instance)
         nk_vulkan_destroy_surface(vulkan_instance, live_vulkan_surface, nullptr);
@@ -63,7 +83,8 @@ Java_io_nativekit_consumer_MainActivity_nativeCapabilityContractProbe(JNIEnv *, 
         NK_CAP_OPENGL_ES_SURFACE | NK_CAP_VULKAN_SURFACE | NK_CAP_RESOURCE_SHARING |
         NK_CAP_RESOURCE_IO | NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY | NK_CAP_SYSTEM_INFO |
         NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS |
-        NK_CAP_KEEP_AWAKE | NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION;
+        NK_CAP_KEEP_AWAKE | NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION |
+        NK_CAP_SURFACE_FRAME_CALLBACK;
     return nk_get_capabilities() == expected ? 0 : 1;
 }
 
@@ -134,6 +155,47 @@ Java_io_nativekit_consumer_MainActivity_nativeGraphicsSurfaceProbe(JNIEnv *, jcl
     if (nk_surface_set_bounds(surface, 12, 12, 80, 60) != NK_OK)
         return 6;
     return 0;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeStartFrameCallbackProbe(JNIEnv *, jclass,
+                                                                        jlong surface_value) {
+    frame_callback_probe = {};
+    frame_callback_probe.surface = static_cast<nk_surface>(surface_value);
+    return nk_surface_set_frame_callback(frame_callback_probe.surface, on_frame_callback,
+                                         &frame_callback_probe) == NK_OK
+               ? 0
+               : 1;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeFrameCallbackProbe(JNIEnv *, jclass,
+                                                                  jlong surface_value) {
+    return frame_callback_probe.surface == static_cast<nk_surface>(surface_value) &&
+                   frame_callback_probe.count > 0 && frame_callback_probe.width > 0 &&
+                   frame_callback_probe.height > 0
+               ? 0
+               : 1;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeFrameCallbackCountProbe(JNIEnv *, jclass) {
+    return frame_callback_probe.count;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeStopFrameCallbackProbe(JNIEnv *, jclass,
+                                                                       jlong surface_value) {
+    return nk_surface_set_frame_callback(static_cast<nk_surface>(surface_value), nullptr, nullptr) ==
+                   NK_OK
+               ? 0
+               : 1;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_nativekit_consumer_MainActivity_nativeDestroySurfaceProbe(JNIEnv *, jclass,
+                                                                    jlong surface_value) {
+    return nk_surface_destroy(static_cast<nk_surface>(surface_value)) == NK_OK ? 0 : 1;
 }
 
 extern "C" JNIEXPORT jint JNICALL

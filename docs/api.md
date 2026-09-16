@@ -478,6 +478,9 @@ presents the frame after each callback returns, so the callback must not call
 that is ready for that draw, which keeps rendering synchronized with live resize.
 On iOS, the callback cadence is driven by `CADisplayLink` on the main run loop
 while the attached host is active and visible.
+On Android, the cadence is driven by `Choreographer` on the UI thread for
+OpenGL ES surfaces. Vulkan surfaces remain manual because NativeKit does not
+own their command submission or presentation path.
 GTK owns the final framebuffer composition, so manual presentation schedules a
 `GtkGLArea` render instead of directly swapping a caller-owned native surface.
 Contexts can reuse another surface's GTK context; the shared source must outlive

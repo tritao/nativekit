@@ -55,6 +55,25 @@ public final class MainActivity extends Activity {
 
     public int graphicsSurfaceProbe() { return nativeGraphicsSurfaceProbe(surfaceProbe); }
 
+    public int startFrameCallbackProbe() {
+        return nativeStartFrameCallbackProbe(surfaceProbe);
+    }
+
+    public int frameCallbackProbe() { return nativeFrameCallbackProbe(surfaceProbe); }
+
+    public int frameCallbackCountProbe() { return nativeFrameCallbackCountProbe(); }
+
+    public int stopFrameCallbackProbe() {
+        return nativeStopFrameCallbackProbe(surfaceProbe);
+    }
+
+    public int destroyGraphicsSurfaceProbe() {
+        int result = nativeDestroySurfaceProbe(surfaceProbe);
+        if (result == 0)
+            surfaceProbe = 0;
+        return result;
+    }
+
     public int inputProbe() { return nativeInputProbe(surfaceProbe); }
 
     public int accessibilityProbe() { return nativeAccessibilityProbe(surfaceProbe); }
@@ -340,6 +359,11 @@ public final class MainActivity extends Activity {
     private static native long nativeProbe(long host);
     private static native long nativeCreateSurfaceProbe(long host);
     private static native int nativeGraphicsSurfaceProbe(long surface);
+    private static native int nativeStartFrameCallbackProbe(long surface);
+    private static native int nativeFrameCallbackProbe(long surface);
+    private static native int nativeFrameCallbackCountProbe();
+    private static native int nativeStopFrameCallbackProbe(long surface);
+    private static native int nativeDestroySurfaceProbe(long surface);
     private static native int nativeInputProbe(long surface);
     private static native int nativeSetSurfaceVisible(long surface, boolean visible);
     private static native int nativeSurfaceLifecycleProbe(long surface, int eventKind);
