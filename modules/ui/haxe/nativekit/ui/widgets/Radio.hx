@@ -6,6 +6,7 @@ import LayoutAlignmentX;
 import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutDirection;
+import LayoutDistribution;
 import LayoutStyle;
 import LayoutVisualKind;
 import nativekit.ui.core.BuildContext;
@@ -64,6 +65,7 @@ class Radio implements View {
 			indicatorStyle.radiusBottomLeft = indicatorStyle.radiusBottomRight = 9.0;
 			indicatorStyle.childAlignX = LayoutAlignmentX.Center;
 			indicatorStyle.childAlignY = LayoutAlignmentY.Center;
+			indicatorStyle.childDistribution = LayoutDistribution.Center;
 			var indicator = new RenderNode(context.id("indicator"), LayoutVisualKind.Box,
 				indicatorStyle);
 			var dotStyle = new LayoutStyle();

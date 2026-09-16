@@ -1104,6 +1104,13 @@ class FrameworkSmoke {
 			(cast(radioRoot.children[0].semantics, Semantics).states & AccessibilityState.Selected) == 0 ||
 			!context.focusWidget(radioRoot.children[0].id))
 			return 92;
+		var radioIndicator:ResolvedLayoutItem = cast radioRoot.children[0].children[0].resolved;
+		var radioDot:ResolvedLayoutItem = cast radioRoot.children[0].children[0].children[0].resolved;
+		if (Math.abs((radioIndicator.x + radioIndicator.width * 0.5) -
+			(radioDot.x + radioDot.width * 0.5)) > 0.01 ||
+			Math.abs((radioIndicator.y + radioIndicator.height * 0.5) -
+			(radioDot.y + radioDot.height * 0.5)) > 0.01)
+			return 253;
 		context.key(UiEventKind.KeyDown, UiKey.Right);
 		if (radioGroup.value != "green" || radioValue != "green" || radioChanges != 1 ||
 			context.focus.focusedId == null ||
