@@ -8,4 +8,7 @@ class OverlayState {
 	public var popupAnchorTop:Float = -1.0;
 	public var popupAnchorBottom:Float = -1.0;
 	public var menuOpen:Bool = false;
+	public var menuAnchorX:Float = -1.0;
+	public var menuAnchorTop:Float = -1.0;
+	public var menuAnchorBottom:Float = -1.0;
 }

@@ -60,6 +60,7 @@ class Menu implements View {
 			hasDismissHandler ? onDismiss : null);
 		popup.label = "Menu";
 		popup.modal = true;
+		popup.dimBackdrop = false;
 		var root:RenderNode = popup.build(context);
 		var semantics = new Semantics(AccessibilityRole.Menu, "Menu");
 		semantics.states |= AccessibilityState.Modal;

@@ -41,6 +41,14 @@ class OverlaysPage {
 					explorer.state.overlays.popupOpen = true;
 				})),
 				explorer.keyed("menu", explorer.button("Show menu", "show-menu", function() {
+					for (record in explorer.context.inspect())
+						if (record.focusable && record.label == "Show menu") {
+							explorer.state.overlays.menuAnchorX = record.bounds.x;
+							explorer.state.overlays.menuAnchorTop = record.bounds.y;
+							explorer.state.overlays.menuAnchorBottom =
+								record.bounds.y + record.bounds.height;
+							break;
+						}
 					explorer.state.overlays.menuOpen = true;
 				}))
 			], explorer.rowStyle(10.0))),

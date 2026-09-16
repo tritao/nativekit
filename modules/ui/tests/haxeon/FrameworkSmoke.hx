@@ -1062,7 +1062,10 @@ class FrameworkSmoke {
 			new MenuItem("disabled", "Unavailable", null, false)
 		], 32.0, 24.0, function() { menuDismissals++; });
 		var menuRoot = context.submit(menu, dialogFrame);
-		if (context.focus.focusedId == null)
+		var menuGeometry:ResolvedLayoutItem = cast menuRoot.children[1].resolved;
+		if (context.focus.focusedId == null ||
+			menuRoot.children[0].layout.style.background.alpha != 0.0 ||
+			menuGeometry.x != 32.0 || menuGeometry.y != 24.0)
 			return 74;
 		context.key(UiEventKind.KeyDown, UiKey.Enter);
 		if (selectedMenuItem != "open" || menuDismissals != 1 ||

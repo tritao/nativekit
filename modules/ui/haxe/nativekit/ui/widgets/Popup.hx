@@ -25,6 +25,7 @@ class Popup implements View {
 	public final style:LayoutStyle;
 	public var label:Null<String>;
 	public var modal:Bool;
+	public var dimBackdrop:Bool;
 	public var dismissOnOutside:Bool;
 	public var dismissOnEscape:Bool;
 	public var backdropColor:Null<Color>;
@@ -44,6 +45,7 @@ class Popup implements View {
 		this.style = style == null ? defaultPanelStyle() : style.copy();
 		label = null;
 		modal = true;
+		dimBackdrop = true;
 		dismissOnOutside = true;
 		dismissOnEscape = true;
 		backdropColor = null;
@@ -68,7 +70,8 @@ class Popup implements View {
 			backdropStyle.positioning = LayoutPositioning.Absolute;
 			backdropStyle.visible = modal || dismissOnOutside;
 			var color = backdropColor == null ? context.theme.overlayBackdrop : cast backdropColor;
-			backdropStyle.background = modal ? color : Color.rgba(0.0, 0.0, 0.0, 0.0);
+			backdropStyle.background = modal && dimBackdrop
+				? color : Color.rgba(0.0, 0.0, 0.0, 0.0);
 			var backdrop = new RenderNode(context.id("backdrop"), LayoutVisualKind.Box,
 				backdropStyle);
 			if (dismissOnOutside && hasDismissHandler)

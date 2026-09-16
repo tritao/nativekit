@@ -63,6 +63,22 @@ class OverlayHost {
 			popup.modal = false;
 			layers.push(new StackChild("popup-layer", popup, 0.0, 0.0, 20));
 		} else if (explorer.state.overlays.menuOpen) {
+			var menuWidth = 236.0;
+			var menuHeight = 132.0;
+			var edge = 8.0;
+			var anchorX = explorer.state.overlays.menuAnchorX;
+			var anchorTop = explorer.state.overlays.menuAnchorTop;
+			var anchorBottom = explorer.state.overlays.menuAnchorBottom;
+			if (anchorX < 0.0 || anchorTop < 0.0 || anchorBottom < anchorTop) {
+				anchorX = 330.0;
+				anchorTop = 159.0;
+				anchorBottom = 159.0;
+			}
+			var menuX = clamp(anchorX, edge,
+				Math.max(edge, explorer.width - edge - menuWidth));
+			var belowY = anchorBottom + 6.0;
+			var menuY = belowY + menuHeight <= explorer.height - edge
+				? belowY : Math.max(edge, anchorTop - 6.0 - menuHeight);
 			var menu = new Menu("showcase-menu", [
 				new MenuItem("menu-new", "New document", function() {
 					explorer.state.controls.menuSelection = "New document";
@@ -71,7 +87,7 @@ class OverlayHost {
 					explorer.state.controls.menuSelection = "Copy selection";
 				}),
 				new MenuItem("menu-disabled", "Unavailable action", null, false)
-			], 330.0, 165.0, function() {
+			], menuX, menuY, function() {
 				explorer.state.overlays.menuOpen = false;
 			});
 			layers.push(new StackChild("menu-layer", menu, 0.0, 0.0, 20));
