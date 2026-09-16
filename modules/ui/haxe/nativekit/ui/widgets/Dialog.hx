@@ -2,7 +2,8 @@ package nativekit.ui.widgets;
 
 import Color;
 import Insets;
-import LayoutAlignment;
+import LayoutAlignmentX;
+import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutDistribution;
 import LayoutPositioning;

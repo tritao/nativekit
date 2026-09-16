@@ -2,11 +2,15 @@ package nativekit.ui.style;
 
 import Color;
 import Insets;
-import LayoutAlignment;
+import LayoutAlignmentX;
+import LayoutAlignmentY;
 import LayoutAxis;
+import LayoutDistribution;
 import LayoutDirection;
 import LayoutPositioning;
+import LayoutSelfAlignment;
 import LayoutStyle;
+import LayoutWrapMode;
 import Transform2D;
 
 /** Metadata and layout bridge for one typed style property. */
@@ -89,15 +93,33 @@ class StyleProperty<T> {
 	public static final Direction:StyleProperty<LayoutDirection> = new StyleProperty(
 		"direction", LayoutDirection.TopToBottom, false, StyleImpact.Layout, null,
 		function(style) return style.direction, function(style, value) style.direction = value);
-	public static final ChildAlignX:StyleProperty<LayoutAlignment> = new StyleProperty(
-		"childAlignX", LayoutAlignment.Start, false, StyleImpact.Layout, null,
+	public static final ChildAlignX:StyleProperty<LayoutAlignmentX> = new StyleProperty(
+		"childAlignX", LayoutAlignmentX.Start, false, StyleImpact.Layout, null,
 		function(style) return style.childAlignX, function(style, value) style.childAlignX = value);
-	public static final ChildAlignY:StyleProperty<LayoutAlignment> = new StyleProperty(
-		"childAlignY", LayoutAlignment.Start, false, StyleImpact.Layout, null,
+	public static final ChildAlignY:StyleProperty<LayoutAlignmentY> = new StyleProperty(
+		"childAlignY", LayoutAlignmentY.Start, false, StyleImpact.Layout, null,
 		function(style) return style.childAlignY, function(style, value) style.childAlignY = value);
+	public static final ChildDistribution:StyleProperty<LayoutDistribution> = new StyleProperty(
+		"childDistribution", LayoutDistribution.Start, false, StyleImpact.Layout, null,
+		function(style) return style.childDistribution, function(style, value) style.childDistribution = value);
 	public static final Positioning:StyleProperty<LayoutPositioning> = new StyleProperty(
 		"positioning", LayoutPositioning.Flow, false, StyleImpact.Layout, null,
 		function(style) return style.positioning, function(style, value) style.positioning = value);
+	public static final AspectRatio:StyleProperty<Float> = new StyleProperty(
+		"aspectRatio", 0.0, false, StyleImpact.Layout, null,
+		function(style) return style.aspectRatio, function(style, value) style.aspectRatio = value);
+	public static final WrapMode:StyleProperty<LayoutWrapMode> = new StyleProperty(
+		"wrapMode", LayoutWrapMode.NoWrap, false, StyleImpact.Layout, null,
+		function(style) return style.wrapMode, function(style, value) style.wrapMode = value);
+	public static final RowGap:StyleProperty<Float> = new StyleProperty(
+		"rowGap", 0.0, false, StyleImpact.Layout, null,
+		function(style) return style.rowGap, function(style, value) style.rowGap = value);
+	public static final ColumnGap:StyleProperty<Float> = new StyleProperty(
+		"columnGap", 0.0, false, StyleImpact.Layout, null,
+		function(style) return style.columnGap, function(style, value) style.columnGap = value);
+	public static final AlignSelf:StyleProperty<LayoutSelfAlignment> = new StyleProperty(
+		"alignSelf", LayoutSelfAlignment.Inherit, false, StyleImpact.Layout, null,
+		function(style) return style.alignSelf, function(style, value) style.alignSelf = value);
 	public static final PositionX:StyleProperty<Float> = new StyleProperty(
 		"positionX", 0.0, false, StyleImpact.Layout, null,
 		function(style) return style.positionX, function(style, value) style.positionX = value);
@@ -200,7 +222,9 @@ class StyleProperty<T> {
 		if (definitions == null)
 			definitions = [
 				dynamicProperty(Width), dynamicProperty(Height), dynamicProperty(Direction),
-				dynamicProperty(ChildAlignX), dynamicProperty(ChildAlignY), dynamicProperty(Positioning),
+				dynamicProperty(ChildAlignX), dynamicProperty(ChildAlignY), dynamicProperty(ChildDistribution),
+				dynamicProperty(Positioning), dynamicProperty(AspectRatio), dynamicProperty(WrapMode),
+				dynamicProperty(RowGap), dynamicProperty(ColumnGap), dynamicProperty(AlignSelf),
 				dynamicProperty(PositionX), dynamicProperty(PositionY), dynamicProperty(ZIndex),
 				dynamicProperty(ClipToParent), dynamicProperty(Padding), dynamicProperty(ChildGap),
 				dynamicProperty(Background), dynamicProperty(RadiusTopLeft), dynamicProperty(RadiusTopRight),

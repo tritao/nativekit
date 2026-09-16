@@ -95,7 +95,13 @@ class ComputedStyle {
 		if (values.exists(StyleProperty.Direction.name)) result.direction = cast values.get(StyleProperty.Direction.name);
 		if (values.exists(StyleProperty.ChildAlignX.name)) result.childAlignX = cast values.get(StyleProperty.ChildAlignX.name);
 		if (values.exists(StyleProperty.ChildAlignY.name)) result.childAlignY = cast values.get(StyleProperty.ChildAlignY.name);
+		if (values.exists(StyleProperty.ChildDistribution.name)) result.childDistribution = cast values.get(StyleProperty.ChildDistribution.name);
 		if (values.exists(StyleProperty.Positioning.name)) result.positioning = cast values.get(StyleProperty.Positioning.name);
+		if (values.exists(StyleProperty.AspectRatio.name)) result.aspectRatio = cast values.get(StyleProperty.AspectRatio.name);
+		if (values.exists(StyleProperty.WrapMode.name)) result.wrapMode = cast values.get(StyleProperty.WrapMode.name);
+		if (values.exists(StyleProperty.RowGap.name)) result.rowGap = cast values.get(StyleProperty.RowGap.name);
+		if (values.exists(StyleProperty.ColumnGap.name)) result.columnGap = cast values.get(StyleProperty.ColumnGap.name);
+		if (values.exists(StyleProperty.AlignSelf.name)) result.alignSelf = cast values.get(StyleProperty.AlignSelf.name);
 		if (values.exists(StyleProperty.PositionX.name)) result.positionX = cast values.get(StyleProperty.PositionX.name);
 		if (values.exists(StyleProperty.PositionY.name)) result.positionY = cast values.get(StyleProperty.PositionY.name);
 		if (values.exists(StyleProperty.ZIndex.name)) result.zIndex = cast values.get(StyleProperty.ZIndex.name);

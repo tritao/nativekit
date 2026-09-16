@@ -182,7 +182,13 @@ class StyleResolver {
 		result = mix(result, Std.int(local.direction));
 		result = mix(result, Std.int(local.childAlignX));
 		result = mix(result, Std.int(local.childAlignY));
+		result = mix(result, Std.int(local.childDistribution));
 		result = mix(result, Std.int(local.positioning));
+		result = mix(result, floatFingerprint(local.aspectRatio));
+		result = mix(result, Std.int(local.wrapMode));
+		result = mix(result, floatFingerprint(local.rowGap));
+		result = mix(result, floatFingerprint(local.columnGap));
+		result = mix(result, Std.int(local.alignSelf));
 		result = mix(result, floatFingerprint(local.positionX));
 		result = mix(result, floatFingerprint(local.positionY));
 		result = mix(result, local.zIndex);
@@ -227,7 +233,10 @@ class StyleResolver {
 		return left.width.sizing == right.width.sizing && left.width.value == right.width.value &&
 			left.height.sizing == right.height.sizing && left.height.value == right.height.value &&
 			left.direction == right.direction && left.childAlignX == right.childAlignX &&
-			left.childAlignY == right.childAlignY && left.positioning == right.positioning &&
+			left.childAlignY == right.childAlignY && left.childDistribution == right.childDistribution &&
+			left.positioning == right.positioning && left.aspectRatio == right.aspectRatio &&
+			left.wrapMode == right.wrapMode && left.rowGap == right.rowGap &&
+			left.columnGap == right.columnGap && left.alignSelf == right.alignSelf &&
 			left.positionX == right.positionX && left.positionY == right.positionY &&
 			left.zIndex == right.zIndex && left.clipToParent == right.clipToParent &&
 			left.padding.left == right.padding.left && left.padding.top == right.padding.top &&
@@ -309,8 +318,20 @@ class StyleResolver {
 			result.set(StyleProperty.ChildAlignX, local.childAlignX, source);
 		if (local.childAlignY != defaults.childAlignY)
 			result.set(StyleProperty.ChildAlignY, local.childAlignY, source);
+		if (local.childDistribution != defaults.childDistribution)
+			result.set(StyleProperty.ChildDistribution, local.childDistribution, source);
 		if (local.positioning != defaults.positioning)
 			result.set(StyleProperty.Positioning, local.positioning, source);
+		if (local.aspectRatio != defaults.aspectRatio)
+			result.set(StyleProperty.AspectRatio, local.aspectRatio, source);
+		if (local.wrapMode != defaults.wrapMode)
+			result.set(StyleProperty.WrapMode, local.wrapMode, source);
+		if (local.rowGap != defaults.rowGap)
+			result.set(StyleProperty.RowGap, local.rowGap, source);
+		if (local.columnGap != defaults.columnGap)
+			result.set(StyleProperty.ColumnGap, local.columnGap, source);
+		if (local.alignSelf != defaults.alignSelf)
+			result.set(StyleProperty.AlignSelf, local.alignSelf, source);
 		if (local.positionX != defaults.positionX)
 			result.set(StyleProperty.PositionX, local.positionX, source);
 		if (local.positionY != defaults.positionY)

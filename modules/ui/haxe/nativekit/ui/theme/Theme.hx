@@ -5,7 +5,7 @@ import Insets;
 import LayoutStyle;
 import ParagraphStyle;
 import TextStyle;
-import LayoutAlignment;
+import LayoutAlignmentX;
 import LayoutAxis;
 import LayoutAxis;
 import nativekit.ui.style.StyleSheet;
@@ -53,13 +53,13 @@ class Theme {
 		textSelection = Color.rgba(0.2, 0.43, 0.82, 0.55);
 		textSelectionInactive = Color.rgba(0.2, 0.43, 0.82, 0.30);
 		textCaret = Color.rgba(0.96, 0.97, 0.99, 1.0);
-		body = new TextRoleStyle(new TextStyle(), new ParagraphStyle(), tokens.text);
-		heading = new TextRoleStyle(new TextStyle(24.0), new ParagraphStyle(), tokens.text);
+		body = new TextRoleStyle(new TextStyle(), new ParagraphStyle(), this.tokens.text);
+		heading = new TextRoleStyle(new TextStyle(24.0), new ParagraphStyle(), this.tokens.text);
 		label = new TextRoleStyle(new TextStyle(14.0),
-			new ParagraphStyle(TextWrap.None), tokens.text);
-		caption = new TextRoleStyle(new TextStyle(12.0), new ParagraphStyle(), tokens.mutedText);
+			new ParagraphStyle(TextWrap.None), this.tokens.text);
+		caption = new TextRoleStyle(new TextStyle(12.0), new ParagraphStyle(), this.tokens.mutedText);
 		button = new TextRoleStyle(new TextStyle(),
-			new ParagraphStyle(TextWrap.None), tokens.text);
+			new ParagraphStyle(TextWrap.None), this.tokens.text);
 		refreshStyles();
 	}
 
@@ -112,9 +112,9 @@ class Theme {
 			[StyleValue.background(controlDisabled)]);
 
 		styles.rule(StyleSelector.widget("toggle-indicator"), [
-			StyleValue.background(controlUnselected), StyleValue.alignX(LayoutAlignment.Start)]);
+			StyleValue.background(controlUnselected), StyleValue.alignX(LayoutAlignmentX.Start)]);
 		styles.rule(StyleSelector.widget("toggle-indicator").state(StyleState.Checked), [
-			StyleValue.background(controlSelected), StyleValue.alignX(LayoutAlignment.End)]);
+			StyleValue.background(controlSelected), StyleValue.alignX(LayoutAlignmentX.End)]);
 		styles.rule(StyleSelector.widget("toggle-indicator").state(StyleState.Disabled),
 			[StyleValue.background(controlDisabled)]);
 		styles.rule(StyleSelector.widget("toggle-thumb"),

@@ -2,10 +2,14 @@ package nativekit.ui.style;
 
 import Color;
 import Insets;
-import LayoutAlignment;
+import LayoutAlignmentX;
+import LayoutAlignmentY;
 import LayoutAxis;
+import LayoutDistribution;
 import LayoutDirection;
 import LayoutPositioning;
+import LayoutSelfAlignment;
+import LayoutWrapMode;
 
 /** One typed declaration passed to a StyleRule. */
 class StyleValue {
@@ -31,14 +35,32 @@ class StyleValue {
 	public static function direction(value:LayoutDirection):StyleValue
 		return of(StyleProperty.Direction, value);
 
-	public static function alignX(value:LayoutAlignment):StyleValue
+	public static function alignX(value:LayoutAlignmentX):StyleValue
 		return of(StyleProperty.ChildAlignX, value);
 
-	public static function alignY(value:LayoutAlignment):StyleValue
+	public static function alignY(value:LayoutAlignmentY):StyleValue
 		return of(StyleProperty.ChildAlignY, value);
+
+	public static function distribution(value:LayoutDistribution):StyleValue
+		return of(StyleProperty.ChildDistribution, value);
 
 	public static function positioning(value:LayoutPositioning):StyleValue
 		return of(StyleProperty.Positioning, value);
+
+	public static function aspectRatio(value:Float):StyleValue
+		return of(StyleProperty.AspectRatio, value);
+
+	public static function wrapMode(value:LayoutWrapMode):StyleValue
+		return of(StyleProperty.WrapMode, value);
+
+	public static function rowGap(value:Float):StyleValue
+		return of(StyleProperty.RowGap, value);
+
+	public static function columnGap(value:Float):StyleValue
+		return of(StyleProperty.ColumnGap, value);
+
+	public static function alignSelf(value:LayoutSelfAlignment):StyleValue
+		return of(StyleProperty.AlignSelf, value);
 
 	public static function background(value:Color):StyleValue
 		return of(StyleProperty.Background, value);
