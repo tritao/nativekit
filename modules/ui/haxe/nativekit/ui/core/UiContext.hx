@@ -46,7 +46,6 @@ class UiContext {
 	var submittedStyleRevision:Int;
 	var submittedAnimationRevision:Int;
 	var submittedGestureRevision:Int;
-	var submittedFrameDeltaSeconds:Float;
 	var submittedNodeCount:Int;
 	var submittedBuildKey:Null<String>;
 	var submittedTheme:Null<Theme>;
@@ -88,7 +87,6 @@ class UiContext {
 		submittedStyleRevision = -1;
 		submittedAnimationRevision = -1;
 		submittedGestureRevision = -1;
-		submittedFrameDeltaSeconds = -1.0;
 		submittedNodeCount = 0;
 		submittedBuildKey = null;
 		submittedTheme = null;
@@ -175,7 +173,7 @@ class UiContext {
 		animations.advance(frame.deltaSeconds);
 		buildContext.setViewport(frame.width, frame.height);
 		buildContext.setEnvironmentViewport(frame.width, frame.height);
-		if (cacheKey != null && canReuseSubmittedFrame(cacheKey, frame)) {
+		if (cacheKey != null && canReuseSubmittedFrame(cacheKey)) {
 			frameNumber++;
 			lastFrameMetrics = new UiFrameMetrics(frameNumber, submittedNodeCount, 0, 0, 0,
 				buildContext.styleResolver.cachedStyleCount, 0, submittedNodeCount, UiDirtyFlag.None,
@@ -230,7 +228,6 @@ class UiContext {
 		submittedStyleRevision = buildContext.styleRevision;
 		submittedAnimationRevision = animations.revision;
 		submittedGestureRevision = gestures.revision;
-		submittedFrameDeltaSeconds = frame.deltaSeconds;
 		submittedNodeCount = nodeCount;
 		submittedBuildKey = cacheKey;
 		submittedTheme = buildContext.theme;
@@ -508,10 +505,10 @@ class UiContext {
 		events.text(kind, value, data);
 	}
 
-	function canReuseSubmittedFrame(cacheKey:String, frame:LayoutFrame):Bool {
+	function canReuseSubmittedFrame(cacheKey:String):Bool {
 		return root != null && submittedBuildKey == cacheKey && dirtyFlags == UiDirtyFlag.None &&
 			animations.revision == submittedAnimationRevision && gestures.revision == submittedGestureRevision &&
-			frame.deltaSeconds == submittedFrameDeltaSeconds && buildContext.theme == submittedTheme &&
+			buildContext.theme == submittedTheme &&
 			buildContext.styleSheet == submittedStyleSheet;
 	}
 

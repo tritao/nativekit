@@ -171,7 +171,7 @@ class ComputedStyle {
 		return switch property.name {
 			case "width" | "height":
 				var axis:LayoutAxis = cast value;
-				new LayoutAxis(axis.sizing, axis.value);
+				new LayoutAxis(axis.sizing, axis.value, axis.min, axis.max, axis.growWeight);
 			case "padding":
 				var insets:Insets = cast value;
 				new Insets(insets.left, insets.top, insets.right, insets.bottom);

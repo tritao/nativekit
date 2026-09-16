@@ -1255,7 +1255,8 @@ class FrameworkSmoke {
 			return 214;
 		var cacheSheet = new StyleSheet("CacheStyles");
 		cacheSheet.rule(StyleSelector.widget("button"),
-			[StyleValue.background(Color.rgba(0.3, 0.3, 0.3, 1.0))]);
+			[StyleValue.background(Color.rgba(0.3, 0.3, 0.3, 1.0)),
+				StyleValue.width(LayoutAxis.grow(100.0, 500.0, 3.0))]);
 		var cacheResolver = new StyleResolver();
 		var cacheTarget = new StyleTarget("button", "cache-key");
 		var cachedFirst = cacheResolver.resolve(cacheTarget, null, null, cacheSheet);
@@ -1263,6 +1264,10 @@ class FrameworkSmoke {
 		if (cacheResolver.cacheMisses != 1 || cacheResolver.cacheHits != 1 ||
 			cacheResolver.cachedStyleCount != 1 || cachedSecond.get(StyleProperty.Background).red != 0.3)
 			return 230;
+		var cachedAxisLayout = cachedSecond.copy().toLayoutStyle();
+		if (cachedAxisLayout.width.sizing != LayoutSizing.Grow || cachedAxisLayout.width.min != 100.0 ||
+			cachedAxisLayout.width.max != 500.0 || cachedAxisLayout.width.growWeight != 3.0)
+			return 236;
 		cachedSecond.get(StyleProperty.Width).value = 123.0;
 		cachedFirst.set(StyleProperty.Background, Color.rgba(1.0, 0.0, 0.0, 1.0), null);
 		var cachedThird = cacheResolver.resolve(cacheTarget, null, null, cacheSheet);
@@ -1969,12 +1974,13 @@ class FrameworkSmoke {
 			!cachedMetrics.reusedSubmission || cachedMetrics.styleResolutions != 0)
 			return 109;
 		cachedFrame.deltaSeconds = 0.1;
-		context.submitCached(function() {
+		var jitteredRoot = context.submitCached(function() {
 			cachedBuilds++;
-			return new Text("Delta changed");
+			return new Text("Should still reuse on timing jitter");
 		}, cachedFrame, "framework-cache");
 		cachedMetrics = context.frameMetrics;
-		if (cachedBuilds != 2 || cachedMetrics == null || cachedMetrics.reusedSubmission)
+		if (cachedBuilds != 1 || jitteredRoot != cachedRoot || cachedMetrics == null ||
+			!cachedMetrics.reusedSubmission)
 			return 110;
 
 		var cleaned = 0;
