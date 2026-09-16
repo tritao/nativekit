@@ -1812,9 +1812,11 @@ void frame_tick(nk_handle handle) noexcept {
         auto active = surface(handle);
         if (!active || !active->frame_callback)
             return;
-        active->frame_callback(handle, active->framebuffer_width, active->framebuffer_height,
-                               active->frame_user_data);
-        if (active->frame_prepared)
+        const auto callback = active->frame_callback;
+        void *user_data = active->frame_user_data;
+        callback(handle, active->framebuffer_width, active->framebuffer_height, user_data);
+        auto current = surface(handle);
+        if (current && current->frame_prepared)
             nk_surface_present(handle);
     });
 }
@@ -4692,6 +4694,6 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_INPUT | NK_CAP_WEBVIEW |
            NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
            NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP | NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK |
-           nk::core::optional_capabilities();
+           NK_CAP_SURFACE_FRAME_CALLBACK | nk::core::optional_capabilities();
 }
 }

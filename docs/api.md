@@ -476,6 +476,8 @@ continuous-rendering cadence while the framebuffer is current; NativeKit
 presents the frame after each callback returns, so the callback must not call
 `nk_surface_present()` recursively. The callback's dimensions are the framebuffer
 that is ready for that draw, which keeps rendering synchronized with live resize.
+On iOS, the callback cadence is driven by `CADisplayLink` on the main run loop
+while the attached host is active and visible.
 GTK owns the final framebuffer composition, so manual presentation schedules a
 `GtkGLArea` render instead of directly swapping a caller-owned native surface.
 Contexts can reuse another surface's GTK context; the shared source must outlive
