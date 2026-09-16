@@ -186,6 +186,8 @@ class FrameworkSmoke {
 		var searchInputSemantics:Semantics = cast searchRoot.children[1].semantics;
 		var searchClearSemantics:Semantics = cast searchRoot.children[2].semantics;
 		if (searchRoot.children.length != 3 ||
+			searchRoot.children[0].layout.visualKind != LayoutVisualKind.Custom ||
+			searchRoot.children[0].hitTestSelf ||
 			searchInputSemantics.role != AccessibilityRole.TextField ||
 			searchInputSemantics.label != "Search components…" ||
 			searchClearSemantics.label != "×")

@@ -5,6 +5,7 @@ import Insets;
 import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutStyle;
+import Rect;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
@@ -36,9 +37,18 @@ class SearchField implements View {
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
 			var iconStyle = new LayoutStyle();
-			iconStyle.width = LayoutAxis.fixed(18.0);
-			iconStyle.height = LayoutAxis.fit();
-			var icon = new Text("⌕", iconStyle, context.theme.mutedText);
+			iconStyle.width = LayoutAxis.fixed(16.0);
+			iconStyle.height = LayoutAxis.fixed(16.0);
+			var iconColor = context.theme.mutedText;
+			var icon = new CanvasView("search-icon", function(canvas, _) {
+				canvas.fillRect(new Rect(3.0, 2.0, 6.0, 1.5), iconColor);
+				canvas.fillRect(new Rect(2.0, 3.0, 1.5, 6.0), iconColor);
+				canvas.fillRect(new Rect(8.5, 3.0, 1.5, 6.0), iconColor);
+				canvas.fillRect(new Rect(3.0, 8.5, 6.0, 1.5), iconColor);
+				canvas.fillRect(new Rect(9.0, 9.0, 2.0, 2.0), iconColor);
+				canvas.fillRect(new Rect(10.5, 10.5, 2.0, 2.0), iconColor);
+				canvas.fillRect(new Rect(12.0, 12.0, 2.0, 2.0), iconColor);
+			}, iconStyle, null, false);
 
 			var inputStyle = new LayoutStyle();
 			inputStyle.width = LayoutAxis.grow();
