@@ -26,10 +26,11 @@ import android.os.Environment;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
+import android.view.Choreographer;
+import android.view.Display;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
-import android.view.Display;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityManager;
@@ -125,6 +126,17 @@ final class NativeKitBridge {
 
     private static final class NativeSurfaceView extends SurfaceView {
         private final long nativeHandle;
+        private boolean frameCallbackEnabled;
+        private final Choreographer.FrameCallback frameCallback = new Choreographer.FrameCallback() {
+            @Override
+            public void doFrame(long frameTimeNanos) {
+                if (!frameCallbackEnabled)
+                    return;
+                nativeOnSurfaceFrame(nativeHandle);
+                if (frameCallbackEnabled)
+                    Choreographer.getInstance().postFrameCallback(this);
+            }
+        };
         private final SpannableStringBuilder editable = new SpannableStringBuilder();
         @Nullable private BaseInputConnection editorConnection;
         private boolean structuredTextInput;
@@ -173,9 +185,21 @@ final class NativeKitBridge {
         NativeSurfaceView(Context context, long handle) {
             super(context);
             nativeHandle = handle;
+            frameCallbackEnabled = false;
             setFocusable(true);
             setFocusableInTouchMode(true);
             setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        }
+
+        void setFrameCallbackEnabled(boolean enabled) {
+            if (frameCallbackEnabled == enabled)
+                return;
+            frameCallbackEnabled = enabled;
+            Choreographer choreographer = Choreographer.getInstance();
+            if (enabled)
+                choreographer.postFrameCallback(frameCallback);
+            else
+                choreographer.removeFrameCallback(frameCallback);
         }
 
         @Override
@@ -1139,6 +1163,8 @@ final class NativeKitBridge {
     }
 
     static void destroySurface(SurfaceView view) {
+        if (view instanceof NativeSurfaceView)
+            ((NativeSurfaceView)view).setFrameCallbackEnabled(false);
         ViewGroup parent = (ViewGroup)view.getParent();
         if (parent != null)
             parent.removeView(view);
@@ -1150,6 +1176,10 @@ final class NativeKitBridge {
 
     static void setSurfaceBounds(SurfaceView view, int x, int y, int width, int height) {
         setBounds(view, x, y, width, height);
+    }
+
+    static void setSurfaceFrameCallback(SurfaceView view, boolean enabled) {
+        ((NativeSurfaceView)view).setFrameCallbackEnabled(enabled);
     }
 
     static void setSurfaceTextInputState(SurfaceView view, String text, int textStart,
@@ -2124,6 +2154,7 @@ final class NativeKitBridge {
                                                       int framebufferWidth,
                                                       int framebufferHeight);
     private static native void nativeOnSurfaceDestroyed(long handle);
+    private static native void nativeOnSurfaceFrame(long handle);
     private static native void nativeOnTouch(long handle, int pointerId, int action, int tool,
                                              float x, float y, float pressure, float tiltX,
                                              float tiltY, int modifiers);

@@ -79,6 +79,8 @@ struct AndroidSurface final : nk::core::Resource {
     std::shared_ptr<AndroidSurface> shared_surface;
     uint32_t share_dependents = 0;
     bool destroying = false;
+    nk_surface_frame_callback frame_callback = nullptr;
+    void *frame_user_data = nullptr;
     std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
     std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> pointer_buttons{};
     double pointer_x = 0;
@@ -697,6 +699,8 @@ nk_result destroy_surface(nk_handle handle) {
         return NK_ERROR_INVALID_REQUEST;
     }
     resource->destroying = true;
+    resource->frame_callback = nullptr;
+    resource->frame_user_data = nullptr;
     if (auto *env = environment(); env && resource->view) {
         jvalue arguments[1]{};
         arguments[0].l = resource->view;
@@ -1071,6 +1075,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
            NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE |
            NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION |
+           NK_CAP_SURFACE_FRAME_CALLBACK |
            nk::core::optional_capabilities();
 }
 
@@ -2635,6 +2640,41 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
+                                                nk_surface_frame_callback callback,
+                                                void *user_data) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (callback && resource->api != NK_GRAPHICS_OPENGL_ES) {
+        nk::core::set_error("Android frame callbacks require an OpenGL ES surface");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    if (!callback) {
+        resource->frame_callback = nullptr;
+        resource->frame_user_data = nullptr;
+        jvalue arguments[2]{};
+        arguments[0].l = resource->view;
+        arguments[1].z = JNI_FALSE;
+        return java_void_surface(resource, "setSurfaceFrameCallback",
+                                 "(Landroid/view/SurfaceView;Z)V", arguments);
+    }
+    resource->frame_callback = callback;
+    resource->frame_user_data = user_data;
+    jvalue arguments[2]{};
+    arguments[0].l = resource->view;
+    arguments[1].z = JNI_TRUE;
+    const auto result = java_void_surface(resource, "setSurfaceFrameCallback",
+                                          "(Landroid/view/SurfaceView;Z)V", arguments);
+    if (result != NK_OK) {
+        resource->frame_callback = nullptr;
+        resource->frame_user_data = nullptr;
+    }
+    return result;
+}
+
 nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out_width,
                                                   int32_t *out_height) {
     if (const auto thread = require_thread(); thread != NK_OK)
@@ -3018,6 +3058,30 @@ Java_io_nativekit_NativeKitBridge_nativeOnSurfaceDestroyed(JNIEnv *, jclass, jlo
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (resource)
         release_surface_window(*resource);
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceFrame(
+    JNIEnv *, jclass, jlong handle_value) {
+    nk::core::callback_boundary([&] {
+        const auto handle = static_cast<nk_handle>(handle_value);
+        auto resource = surface(handle);
+        if (!resource || resource->destroying || !resource->frame_callback ||
+            resource->api != NK_GRAPHICS_OPENGL_ES || resource->surface == EGL_NO_SURFACE ||
+            resource->framebuffer_width <= 0 || resource->framebuffer_height <= 0)
+            return;
+        if (nk_surface_make_current(handle) != NK_OK)
+            return;
+        resource = surface(handle);
+        if (!resource || resource->destroying || !resource->frame_callback ||
+            resource->surface == EGL_NO_SURFACE)
+            return;
+        const auto callback = resource->frame_callback;
+        void *user_data = resource->frame_user_data;
+        callback(handle, resource->framebuffer_width, resource->framebuffer_height, user_data);
+        resource = surface(handle);
+        if (resource && !resource->destroying && resource->surface != EGL_NO_SURFACE)
+            nk_surface_present(handle);
+    });
 }
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTouch(
