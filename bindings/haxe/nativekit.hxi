@@ -794,6 +794,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		NK_EVENT_DISPLAY_ORIENTATION_CHANGED = 23;
 		/**
+		 * A Web physical-device-orientation permission request completed.
+		 */
+		NK_EVENT_DEVICE_ORIENTATION_PERMISSION_COMPLETE = 24;
+		/**
 		 * A raw joystick became available.
 		 */
 		NK_EVENT_JOYSTICK_CONNECTED = 30;
@@ -2933,6 +2937,12 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Copies the current system locale identifier into a caller-owned UTF-8 buffer.
 	 */
 	extern fn nk_system_locale(buffer: ptr<c_char>, inout_size: ptr<u32>) -> nk_result;
+	/**
+	 * Requests permission to observe physical device orientation on browser
+	 * backends. Completion is reported by NK_EVENT_DEVICE_ORIENTATION_PERMISSION_COMPLETE,
+	 * with the result in nk_event.result. Other backends return NK_ERROR_UNSUPPORTED.
+	 */
+	extern fn nk_system_request_device_orientation(out_request: ptr<nk_request_id> @out) -> nk_result;
 	/**
 	 * Returns a borrowed UTF-8 view valid until nk_event_release().
 	 */

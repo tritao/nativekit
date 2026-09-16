@@ -24,6 +24,7 @@ that module is enabled.
 | `Required` | The public API family must be implemented and advertised for this platform. |
 | `Platform-specific equivalent` | The semantic operation is required, but its native representation or capability bit may differ. Examples include a mobile host instead of a top-level desktop window and browser permission/Web APIs instead of an OS service. |
 | `Not applicable` | The concept has no meaningful operation on this platform. The backend must not advertise the corresponding capability. |
+| `Optional` | The operation has a meaningful platform equivalent, but browser/runtime support or permission may be unavailable. The backend advertises it only when the underlying API exists. |
 | `Deferred` | A known implementation gap. It is tracked work and must not be described as unsupported due to platform semantics. |
 
 `Deferred` is a temporary state. Before a capability is advertised as
@@ -135,8 +136,12 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 | Windows | Windows, WebView when WebView2 is available, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick, native export, Win32 native wrapping, surface frame callbacks | — |
 | macOS | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping, surface frame callbacks | — |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility, surface frame callbacks, APK installation path, system fonts | — |
-| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, accessibility, surface frame callbacks | System font directory |
-| Web | Window, geometry and CSS-backed styling, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility, surface frame callbacks | Browser filesystem paths, system fonts, physical device orientation |
+| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, accessibility, surface frame callbacks | — |
+| Web | Window, geometry and CSS-backed styling, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility, surface frame callbacks, optional Device Orientation API | — |
+
+The path-shaped iOS system-font and Web application/storage/system-font
+capabilities are intentional `Not applicable` exceptions for APIs that return
+real filesystem paths; they are not deferred implementations.
 
 The system-information family has platform-specific details that are also part
 of the executable contract. Linux reads privacy-safe vendor and product values
@@ -146,6 +151,10 @@ compatibility-manifest-dependent `GetVersionEx` results. macOS reports the
 hardware model from `hw.model`. Android reports the APK installation directory
 and `/system/fonts` when that directory exists. iOS does not expose a supported
 font-directory path, and browser filesystem paths remain unavailable by design.
+Web physical orientation is a permission-gated optional equivalent backed by
+`DeviceOrientationEvent`; it is advertised only when that browser API exists.
+The browser can still deny access or provide no usable sensor reading, in which
+case the query remains unknown and no device-orientation events are emitted.
 
 Linux advertises `NK_CAP_KEEP_AWAKE` only when the session's XDG desktop portal
 exposes the `Inhibit` interface; applications must continue to treat that bit
@@ -171,8 +180,11 @@ single browser WebGL context; explicitly shared surfaces retain that context
 through a shared lifetime object. `window.open` handles URI shell
 opening, `matchMedia` supplies appearance, the Notifications API supplies
 notifications, the File System Access API or `<input type=file>` supplies
-resource selection, and the Gamepad API supplies controller state. Save and
-directory selections retain browser handles behind opaque NativeKit URIs, while
+resource selection, and the Gamepad API supplies controller state. Device
+orientation, when available, uses the Device Orientation API after an
+explicit permission request; its `beta`/`gamma` sensor values are reduced to
+the shared posture enum and remain best-effort. Save and directory selections
+retain browser handles behind opaque NativeKit URIs, while
 open-file contents use temporary `blob:` URIs and asynchronous fetch. Window
 size limits, aspect ratio, resizability, opacity, and mouse passthrough map to
 canvas CSS styles; decorations, stacking, and activation remain page-owned.

@@ -140,6 +140,7 @@ struct HostCallbacks {
     void (*focus)(bool focused, void *) = nullptr;
     void (*context)(bool restored, void *) = nullptr;
     void (*pointer_lock)(bool active, void *) = nullptr;
+    void (*device_orientation)(nk_orientation orientation, void *) = nullptr;
     void (*display_orientation)(nk_orientation orientation, void *) = nullptr;
     void (*drop)(const ResourceDropEvent &, void *) = nullptr;
     void (*resource_dialog)(const ResourceDialogEvent &, void *) = nullptr;
@@ -204,6 +205,9 @@ bool exit_fullscreen() noexcept;
 bool request_pointer_lock(const char *selector) noexcept;
 bool exit_pointer_lock() noexcept;
 
+bool device_orientation_supported() noexcept;
+nk_orientation device_orientation() noexcept;
+bool request_device_orientation(nk_request_id request) noexcept;
 bool display_orientation_supported() noexcept;
 nk_orientation display_orientation() noexcept;
 nk_result copy_locale(char *buffer, uint32_t *inout_size) noexcept;

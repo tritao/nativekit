@@ -32,4 +32,6 @@ one another.
 Orientation queries distinguish physical device posture from display
 presentation. Orientation events carry the shared payload, are deduplicated,
 and are coalesced by the event queue. Requests to lock orientation are outside
-this milestone.
+this milestone. Browser physical orientation is an optional, permission-gated
+equivalent: the Device Orientation API may be absent, denied, or report an
+unknown posture until its first sensor event.

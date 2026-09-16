@@ -202,8 +202,10 @@ struct PendingWebResourceDialog {
 
 std::unordered_map<nk_request_id, PendingWebResourceDialog> pending_resource_dialogs;
 std::unordered_set<nk_request_id> pending_notifications;
+std::unordered_set<nk_request_id> pending_device_orientation_requests;
 std::mutex pending_resource_writes_mutex;
 std::vector<PendingWebResourceWrite> pending_resource_writes;
+nk_orientation last_device_orientation = NK_ORIENTATION_UNKNOWN;
 
 nk_result invalid_argument(const char *message) {
     nk::core::clear_error();
@@ -1612,6 +1614,20 @@ void on_display_orientation(nk_orientation orientation, void *user_data) {
     });
 }
 
+void on_device_orientation(nk_orientation orientation, void *) {
+    nk::core::callback_boundary([&] {
+        if (orientation == NK_ORIENTATION_UNKNOWN || orientation == last_device_orientation)
+            return;
+        last_device_orientation = orientation;
+        const nk_orientation_event payload{sizeof(payload), orientation, 0, {0, 0}};
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_DEVICE_ORIENTATION_CHANGED;
+        event.source = NK_INVALID_HANDLE;
+        event.data = bytes_of(payload);
+        nk::core::push_event(std::move(event));
+    });
+}
+
 void on_accessibility_action(const nk::web::AccessibilityActionEvent &event, void *user_data) {
     nk::core::callback_boundary([&] {
         auto *window = static_cast<WebWindowResource *>(user_data);
@@ -1834,6 +1850,8 @@ void shutdown_web() noexcept {
     nk::web_gamepad::shutdown();
     pending_resource_dialogs.clear();
     pending_notifications.clear();
+    pending_device_orientation_requests.clear();
+    last_device_orientation = NK_ORIENTATION_UNKNOWN;
     web_windows.clear();
 }
 
@@ -1945,12 +1963,31 @@ nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
     const auto size = out_orientation.struct_size;
     out_orientation = {};
     out_orientation.struct_size = size;
-    if (!nk::web::display_orientation_supported()) {
-        nk::core::set_error("browser Screen Orientation API is unavailable");
+    const bool device_supported = nk::web::device_orientation_supported();
+    const bool display_supported = nk::web::display_orientation_supported();
+    if (!device_supported && !display_supported) {
+        nk::core::set_error("browser orientation APIs are unavailable");
         return NK_ERROR_UNSUPPORTED;
     }
-    out_orientation.display = nk::web::display_orientation();
+    if (device_supported)
+        out_orientation.device = nk::web::device_orientation();
+    if (display_supported)
+        out_orientation.display = nk::web::display_orientation();
     return NK_OK;
+}
+
+nk_result request_device_orientation(nk_request_id request) noexcept {
+    try {
+        pending_device_orientation_requests.insert(request);
+    } catch (...) {
+        nk::core::set_error("could not allocate browser orientation request state");
+        return NK_ERROR_OUT_OF_MEMORY;
+    }
+    if (nk::web::request_device_orientation(request))
+        return NK_OK;
+    pending_device_orientation_requests.erase(request);
+    nk::core::set_error("browser Device Orientation API is unavailable");
+    return NK_ERROR_UNSUPPORTED;
 }
 
 nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
@@ -1990,6 +2027,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         capabilities |= NK_CAP_KEEP_AWAKE;
     if (nk::web::display_orientation_supported())
         capabilities |= NK_CAP_DISPLAY_ORIENTATION;
+    if (nk::web::device_orientation_supported())
+        capabilities |= NK_CAP_DEVICE_ORIENTATION;
     if (nk::web::notification_supported())
         capabilities |= NK_CAP_NOTIFICATION;
     if (nk::web::gamepad_supported())
@@ -1999,6 +2038,18 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
 
 nk_result NK_CALL nk_system_directory(nk_system_directory_kind, char *, uint32_t *) {
     return unsupported("browser filesystem paths are unavailable");
+}
+
+EMSCRIPTEN_KEEPALIVE void nk_web_host_device_orientation_permission(uint32_t request,
+                                                                    nk_result result) {
+    if (pending_device_orientation_requests.erase(static_cast<nk_request_id>(request)) == 0)
+        return;
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_DEVICE_ORIENTATION_PERMISSION_COMPLETE;
+    event.source = NK_INVALID_HANDLE;
+    event.request_id = static_cast<nk_request_id>(request);
+    event.result = result;
+    nk::core::push_event(std::move(event));
 }
 
 nk_result NK_CALL nk_system_locale(char *buffer, uint32_t *inout_size) {
@@ -2543,6 +2594,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             callbacks.focus = on_focus;
             callbacks.context = on_context;
             callbacks.pointer_lock = on_pointer_lock;
+            callbacks.device_orientation = on_device_orientation;
             callbacks.display_orientation = on_display_orientation;
             callbacks.drop = on_drop;
             callbacks.resource_dialog = on_resource_dialog;

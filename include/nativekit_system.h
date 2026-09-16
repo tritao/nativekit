@@ -226,6 +226,13 @@ NK_API nk_result NK_CALL nk_system_keep_awake_release(nk_keep_awake lock);
 /** Returns physical device and application display orientation. */
 NK_API nk_result NK_CALL nk_system_get_orientation(nk_system_orientation *out_orientation NK_OUT);
 
+/**
+ * Requests permission to observe physical device orientation on browser
+ * backends. Completion is reported by NK_EVENT_DEVICE_ORIENTATION_PERMISSION_COMPLETE,
+ * with the result in nk_event.result. Other backends return NK_ERROR_UNSUPPORTED.
+ */
+NK_API nk_result NK_CALL nk_system_request_device_orientation(nk_request_id *out_request NK_OUT);
+
 /** Returns the current platform appearance. UI thread only. */
 NK_API nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance);
 

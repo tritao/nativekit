@@ -44,6 +44,7 @@ struct FrameRegistration {
 };
 std::vector<FrameRegistration> frame_registrations;
 bool frame_loop_active = false;
+bool device_orientation_callback_installed = false;
 bool orientation_callback_installed = false;
 bool resize_callback_installed = false;
 
@@ -1381,6 +1382,129 @@ EM_JS(void, nk_web_fetch_resource, (const char *uri, double request), {
     }
 });
 
+EM_JS(int, nk_web_device_orientation_supported, (), {
+    return typeof window !== "undefined" && typeof window.addEventListener === "function" &&
+                   typeof DeviceOrientationEvent !== "undefined"
+               ? 1
+               : 0;
+});
+
+EM_JS(int, nk_web_get_device_orientation,
+      (int unknown, int portrait, int portrait_upside_down, int landscape_left,
+       int landscape_right, int face_up, int face_down), {
+          const state = globalThis.__nativekitDeviceOrientation;
+          if (!state || !Number.isInteger(state.orientation))
+              return unknown;
+          switch (state.orientation) {
+          case portrait:
+          case portrait_upside_down:
+          case landscape_left:
+          case landscape_right:
+          case face_up:
+          case face_down:
+              return state.orientation;
+          default:
+              return unknown;
+          }
+      });
+
+EM_JS(int, nk_web_request_device_orientation,
+      (double request, int ok, int unsupported, int unknown, int portrait,
+       int portrait_upside_down, int landscape_left, int landscape_right, int face_up,
+       int face_down), {
+          if (typeof window === "undefined" || typeof window.addEventListener !== "function" ||
+              typeof DeviceOrientationEvent === "undefined" || !Module.ccall)
+              return 0;
+
+          const state = globalThis.__nativekitDeviceOrientation ||
+                        (globalThis.__nativekitDeviceOrientation = {
+                            orientation: unknown,
+                            permission: "unknown",
+                            listener: null,
+                            pending: null
+                        });
+          const complete = (requestId, result) => {
+              if (Module.ccall)
+                  Module.ccall("nk_web_host_device_orientation_permission", null,
+                               ["number", "number"], [requestId, result]);
+          };
+          const install = () => {
+              if (state.listener)
+                  return;
+              const orientationCode = event => {
+                  if (!event || !Number.isFinite(event.beta) || !Number.isFinite(event.gamma))
+                      return unknown;
+                  const beta = Math.abs(Number(event.beta));
+                  const gamma = Number(event.gamma);
+                  let result = portrait;
+                  if (beta < 45 && Math.abs(gamma) < 45)
+                      result = face_up;
+                  else if (beta > 135 && Math.abs(gamma) < 45)
+                      result = face_down;
+                  else if (Math.abs(gamma) >= 45)
+                      result = gamma >= 0 ? landscape_right : landscape_left;
+                  if (state.orientation !== result) {
+                      state.orientation = result;
+                      if (Module.ccall)
+                          Module.ccall("nk_web_host_device_orientation_changed", null,
+                                       ["number"], [result]);
+                  }
+                  return result;
+              };
+              state.listener = orientationCode;
+              window.addEventListener("deviceorientation", state.listener, true);
+          };
+          const finish = result => {
+              if (result === ok) {
+                  state.permission = "granted";
+                  install();
+              } else if (result === unsupported) {
+                  state.permission = "denied";
+              }
+              const pending = state.pending || [];
+              state.pending = null;
+              for (const requestId of pending)
+                  complete(requestId, result);
+          };
+
+          if (state.listener || state.permission === "granted") {
+              install();
+              complete(request, ok);
+              return 1;
+          }
+          if (state.permission === "denied") {
+              complete(request, unsupported);
+              return 1;
+          }
+          if (state.pending) {
+              state.pending.push(request);
+              return 1;
+          }
+          state.pending = [request];
+          if (typeof DeviceOrientationEvent.requestPermission !== "function") {
+              finish(ok);
+              return 1;
+          }
+          let permission;
+          try {
+              permission = DeviceOrientationEvent.requestPermission();
+          } catch (error) {
+              finish(unknown);
+              return 1;
+          }
+          Promise.resolve(permission).then(value => {
+              finish(value === "granted" ? ok : unsupported);
+          }).catch(() => finish(unknown));
+          return 1;
+      });
+
+EM_JS(void, nk_web_remove_device_orientation_callback, (), {
+    const state = globalThis.__nativekitDeviceOrientation;
+    if (state && state.listener)
+        window.removeEventListener("deviceorientation", state.listener, true);
+    delete globalThis.__nativekitDeviceOrientation;
+});
+
 EM_JS(int, nk_web_display_orientation_supported, (), {
     return typeof screen !== "undefined" && !!screen.orientation &&
                    typeof screen.orientation.addEventListener === "function"
@@ -1739,6 +1863,16 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_display_orientation_changed(int
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void
+nk_web_host_device_orientation_changed(int orientation) {
+    for (const auto &[route, state] : host_states) {
+        (void)route;
+        if (state->callbacks.device_orientation)
+            state->callbacks.device_orientation(static_cast<nk_orientation>(orientation),
+                                                state->user_data);
+    }
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void
 nk_web_host_clipboard_text_complete(uint32_t request, nk_result result, const char *text) {
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_CLIPBOARD_TEXT_COMPLETE;
@@ -2038,6 +2172,28 @@ bool exit_pointer_lock() noexcept {
     return emscripten_exit_pointerlock() == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
+bool device_orientation_supported() noexcept {
+    return nk_web_device_orientation_supported() != 0;
+}
+
+nk_orientation device_orientation() noexcept {
+    return static_cast<nk_orientation>(nk_web_get_device_orientation(
+        NK_ORIENTATION_UNKNOWN, NK_ORIENTATION_PORTRAIT, NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN,
+        NK_ORIENTATION_LANDSCAPE_LEFT, NK_ORIENTATION_LANDSCAPE_RIGHT, NK_ORIENTATION_FACE_UP,
+        NK_ORIENTATION_FACE_DOWN));
+}
+
+bool request_device_orientation(nk_request_id request) noexcept {
+    if (!nk_web_request_device_orientation(
+            static_cast<double>(request), NK_OK, NK_ERROR_UNSUPPORTED, NK_ERROR_UNKNOWN,
+            NK_ORIENTATION_PORTRAIT, NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN,
+            NK_ORIENTATION_LANDSCAPE_LEFT, NK_ORIENTATION_LANDSCAPE_RIGHT, NK_ORIENTATION_FACE_UP,
+            NK_ORIENTATION_FACE_DOWN))
+        return false;
+    device_orientation_callback_installed = true;
+    return true;
+}
+
 bool display_orientation_supported() noexcept {
     return nk_web_display_orientation_supported() != 0;
 }
@@ -2191,6 +2347,10 @@ void remove_callbacks(const char *selector, uint32_t route) noexcept {
         if (orientation_callback_installed) {
             nk_web_remove_display_orientation_callback();
             orientation_callback_installed = false;
+        }
+        if (device_orientation_callback_installed) {
+            nk_web_remove_device_orientation_callback();
+            device_orientation_callback_installed = false;
         }
     }
 }
