@@ -86,8 +86,10 @@ import nativekit.ui.widgets.Text;
 import nativekit.ui.core.TextStyleOverride;
 import nativekit.ui.widgets.TextEditorState;
 import nativekit.ui.widgets.TextEditorDiagnostics;
+import nativekit.ui.widgets.EditTransaction;
 import nativekit.ui.widgets.TextArea;
 import nativekit.ui.widgets.TextField;
+import nativekit.ui.widgets.TextRange;
 import nativekit.ui.widgets.Spacer;
 import nativekit.ui.widgets.Slider;
 import nativekit.ui.widgets.Stack;
@@ -198,6 +200,48 @@ class FrameworkSmoke {
 			editor.selectionEnd != 4 || editor.compositionStart != 2 || editor.compositionEnd != 4)
 			return 33;
 		editor.dispose();
+
+		var transactionEditor = new TextEditorState(fonts, "ab");
+		if (!transactionEditor.setSelection(1, 1) ||
+			!transactionEditor.applyTransaction(new EditTransaction(1, 1, "🙂", 2, 2)) ||
+			transactionEditor.text != "a🙂b" || transactionEditor.selectionStart != 2 ||
+			transactionEditor.selectionEnd != 2)
+			return 230;
+		if (!transactionEditor.setSelection(1, 2) ||
+			!transactionEditor.replaceRange(1, 2, "x") || transactionEditor.text != "axb" ||
+			transactionEditor.selectionStart != 2 || transactionEditor.selectionEnd != 2)
+			return 231;
+		if (!transactionEditor.deleteBackward() || transactionEditor.text != "ab" ||
+			transactionEditor.selectionEnd != 1 || !transactionEditor.deleteForward() ||
+			transactionEditor.text != "a")
+			return 232;
+		if (!transactionEditor.applyTransaction(new EditTransaction(1, 1, "か", 2, 2, true, 1, 2)))
+			return 233;
+		var compositionRange:Null<TextRange> = transactionEditor.queryComposition();
+		if (compositionRange == null || compositionRange.start != 1 || compositionRange.end != 2 ||
+			transactionEditor.text != "aか")
+			return 234;
+		if (!transactionEditor.applyTransaction(new EditTransaction(1, 2, "かな", 3, 3, true, 1, 3)) ||
+			transactionEditor.text != "aかな" || transactionEditor.compositionEnd != 3)
+			return 235;
+		if (!transactionEditor.cancelComposition() || transactionEditor.text != "a" ||
+			transactionEditor.selectionStart != 1 || transactionEditor.selectionEnd != 1 ||
+			transactionEditor.queryComposition() != null)
+			return 236;
+		if (!transactionEditor.setSelection(0, 1) ||
+			!transactionEditor.applyTransaction(new EditTransaction(0, 1, "あ", 1, 1, true, 0, 1)) ||
+			!transactionEditor.commitComposition() || transactionEditor.text != "あ" ||
+			transactionEditor.queryComposition() != null)
+			return 237;
+		if (!transactionEditor.setComposition(0, 1) || !transactionEditor.cancelComposition() ||
+			transactionEditor.text != "あ" || transactionEditor.queryComposition() != null)
+			return 238;
+		if (!transactionEditor.applyTransaction(new EditTransaction(1, 1, "!", 2, 2, true, 1, 2)) ||
+			!transactionEditor.replaceRange(1, 2, "?") || transactionEditor.text != "あ?" ||
+			transactionEditor.queryComposition() != null)
+			return 239;
+		transactionEditor.dispose();
+
 		var blinkEditor = new TextEditorState(fonts, "caret");
 		blinkEditor.focused = true;
 		blinkEditor.resetCaretBlink(10.0);

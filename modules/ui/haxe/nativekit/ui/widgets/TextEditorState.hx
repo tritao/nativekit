@@ -44,6 +44,11 @@ class TextEditorState {
 	var desiredVerticalX:Float;
 	var hasDesiredVerticalX:Bool;
 	var caretBlinkResetTime:Float;
+	var compositionRestoreText:Null<String>;
+	var compositionRestoreStart:Int;
+	var compositionRestoreEnd:Int;
+	var compositionRestoreSelectionStart:Int;
+	var compositionRestoreSelectionEnd:Int;
 	var disposed:Bool;
 
 	public function new(fonts:FontCollection, text:String, ?textStyle:TextStyle,
@@ -82,6 +87,11 @@ class TextEditorState {
 		desiredVerticalX = 0.0;
 		hasDesiredVerticalX = false;
 		caretBlinkResetTime = 0.0;
+		compositionRestoreText = null;
+		compositionRestoreStart = -1;
+		compositionRestoreEnd = -1;
+		compositionRestoreSelectionStart = -1;
+		compositionRestoreSelectionEnd = -1;
 		disposed = false;
 	}
 
@@ -91,21 +101,7 @@ class TextEditorState {
 		if (next == text)
 			return false;
 		cancelPointerClick();
-		text = next;
-		var caret = Utf8Text.length(text);
-		selectionStart = caret;
-		selectionEnd = caret;
-		selectionAnchor = caret;
-		selectionFocus = caret;
-		selectionAnchorLayoutOffset = caret;
-		selectionFocusLayoutOffset = caret;
-		selectionAnchorAffinity = 0;
-		selectionFocusAffinity = 0;
-		resetVerticalNavigation();
-		clearComposition();
-		layout.setText(layoutText());
-		lastLayoutText = layoutText();
-		return true;
+		return replaceRange(0, Utf8Text.length(text), next);
 	}
 
 	public function updateLayout(width:Float):Void {
@@ -151,11 +147,15 @@ class TextEditorState {
 	public function insert(value:String):Bool {
 		if (value == null || value.length == 0)
 			return false;
-		return replace(selectionStart, selectionEnd, value);
+		return replaceRange(selectionStart, selectionEnd, value);
 	}
 
-	/** Replaces a code-point range and places a collapsed caret after the insertion. */
-	public function replace(start:Int, end:Int, value:String):Bool {
+	/**
+	 * Replaces a Unicode code-point range and places a collapsed caret after the
+	 * inserted text. This is the convenience operation for a committed edit;
+	 * all document mutation still goes through applyTransaction().
+	 */
+	public function replaceRange(start:Int, end:Int, value:Null<String>):Bool {
 		ensureLive();
 		var count = Utf8Text.length(text);
 		var first = clamp(start, 0, count);
@@ -165,25 +165,18 @@ class TextEditorState {
 			first = last;
 			last = swap;
 		}
-		var next = Utf8Text.replace(text, first, last, value == null ? "" : value);
-		if (next == text && first == last)
-			return false;
 		cancelPointerClick();
-		text = next;
 		var caret = first + Utf8Text.length(value == null ? "" : value);
-		selectionStart = caret;
-		selectionEnd = caret;
-		selectionAnchor = caret;
-		selectionFocus = caret;
-		selectionAnchorLayoutOffset = caret;
-		selectionFocusLayoutOffset = caret;
-		selectionAnchorAffinity = 0;
-		selectionFocusAffinity = 0;
-		resetVerticalNavigation();
-		clearComposition();
-		layout.setText(layoutText());
-		lastLayoutText = layoutText();
-		return true;
+		return applyTransaction(new EditTransaction(first, last, value, caret, caret));
+	}
+
+	/** Compatibility alias for callers using the pre-transaction name. */
+	public function replace(start:Int, end:Int, value:Null<String>):Bool
+		return replaceRange(start, end, value);
+
+	/** Applies one atomic editor transaction. */
+	public function applyTransaction(transaction:EditTransaction):Bool {
+		return applyTransactionInternal(transaction, true);
 	}
 
 	/** Applies one transactional NativeKit composition/edit update. */
@@ -191,59 +184,150 @@ class TextEditorState {
 		ensureLive();
 		if (edit == null)
 			return false;
-		var changed = false;
-		var previousStart = selectionStart;
-		var previousEnd = selectionEnd;
-		var previousCompositionStart = compositionStart;
-		var previousCompositionEnd = compositionEnd;
 		switch (edit.action) {
-			case TextEditAction.Compose | TextEditAction.Commit | TextEditAction.Delete:
-				changed = replace(edit.replaceStart, edit.replaceEnd,
-					edit.action == TextEditAction.Delete || edit.text == null ? "" : edit.text);
-				setSelection(edit.selectionStart, edit.selectionEnd);
-				if (edit.action == TextEditAction.Compose)
-					setComposition(edit.compositionStart, edit.compositionEnd);
-				else
-					clearComposition();
+			case TextEditAction.Compose:
+				return applyTransaction(new EditTransaction(edit.replaceStart, edit.replaceEnd,
+					edit.text, edit.selectionStart, edit.selectionEnd, true,
+					edit.compositionStart, edit.compositionEnd));
+			case TextEditAction.Commit | TextEditAction.Delete:
+				return applyTransaction(new EditTransaction(edit.replaceStart, edit.replaceEnd,
+					edit.action == TextEditAction.Delete ? "" : edit.text,
+					edit.selectionStart, edit.selectionEnd));
 			case TextEditAction.SetSelection:
-				setSelection(edit.selectionStart, edit.selectionEnd);
-				setComposition(edit.compositionStart, edit.compositionEnd);
+				return applyTransactionInternal(new EditTransaction(selectionStart, selectionStart, "",
+					edit.selectionStart, edit.selectionEnd, hasValidComposition(edit.compositionStart,
+						edit.compositionEnd), edit.compositionStart, edit.compositionEnd), false);
 			case TextEditAction.SetComposition:
-				setComposition(edit.compositionStart, edit.compositionEnd);
+				return applyTransactionInternal(new EditTransaction(selectionStart, selectionStart, "",
+					selectionStart, selectionEnd, hasValidComposition(edit.compositionStart,
+						edit.compositionEnd), edit.compositionStart, edit.compositionEnd), false);
 			case TextEditAction.FinishComposition:
-				clearComposition();
-				setSelection(edit.selectionStart, edit.selectionEnd);
+				return applyTransactionInternal(new EditTransaction(selectionStart, selectionStart, "",
+					edit.selectionStart, edit.selectionEnd), false);
 			case _:
 				return false;
 		}
-		return changed || previousStart != selectionStart || previousEnd != selectionEnd ||
-			previousCompositionStart != compositionStart || previousCompositionEnd != compositionEnd;
+		return false;
 	}
 
 	public function setSelection(start:Int, end:Int):Bool {
 		ensureLive();
-		var count = Utf8Text.length(text);
-		var first = clamp(start, 0, count);
-		var last = clamp(end, 0, count);
-		if (first > last) {
+		return applyTransactionInternal(new EditTransaction(selectionStart, selectionStart, "",
+			start, end, compositionStart >= 0 && compositionEnd >= compositionStart,
+			compositionStart, compositionEnd), false);
+	}
+
+	/** Sets the active composition range without replacing document text. */
+	public function setComposition(start:Int, end:Int):Bool {
+		var valid = hasValidComposition(start, end) && end <= Utf8Text.length(text);
+		return applyTransactionInternal(new EditTransaction(selectionStart, selectionStart, "",
+			selectionStart, selectionEnd, valid, start, end), false);
+	}
+
+	/** Commits the current composition while keeping its document text. */
+	public function commitComposition():Bool {
+		return applyTransactionInternal(new EditTransaction(selectionStart, selectionStart, "",
+			selectionStart, selectionEnd), false);
+	}
+
+	/** Cancels the current composition and restores its pre-composition state when available. */
+	public function cancelComposition():Bool {
+		ensureLive();
+		if (compositionStart < 0 || compositionEnd < compositionStart)
+			return false;
+		if (compositionRestoreText == null)
+			return commitComposition();
+		return applyTransactionInternal(new EditTransaction(compositionStart, compositionEnd,
+			compositionRestoreText, compositionRestoreSelectionStart,
+			compositionRestoreSelectionEnd), false);
+	}
+
+	/** Returns the active composition range, or null when no composition is active. */
+	public function queryComposition():Null<TextRange> {
+		if (compositionStart < 0 || compositionEnd < compositionStart)
+			return null;
+		return new TextRange(compositionStart, compositionEnd);
+	}
+
+	/**
+	 * Applies replacement, selection, and composition metadata as one state
+	 * transition. The layout is updated only after the document mutation has
+	 * been computed, so one transaction cannot publish a half-applied state.
+	 */
+	function applyTransactionInternal(transaction:EditTransaction,
+			captureCompositionBaseline:Bool):Bool {
+		ensureLive();
+		if (transaction == null)
+			return false;
+
+		var current = layoutText();
+		var count = Utf8Text.length(current);
+		var first = clamp(transaction.replacementStart, 0, count);
+		var last = clamp(transaction.replacementEnd, 0, count);
+		if (last < first) {
 			var swap = first;
 			first = last;
 			last = swap;
 		}
-		var changed = first != selectionStart || last != selectionEnd ||
-			selectionAnchor != first || selectionFocus != last ||
-			selectionAnchorLayoutOffset != first || selectionFocusLayoutOffset != last ||
-			selectionAnchorAffinity != 0 || selectionFocusAffinity != 0;
-		selectionStart = first;
-		selectionEnd = last;
-		selectionAnchor = first;
-		selectionFocus = last;
-		selectionAnchorLayoutOffset = first;
-		selectionFocusLayoutOffset = last;
+		var replacement = transaction.replacementText == null ? "" : transaction.replacementText;
+		var next = Utf8Text.replace(current, first, last, replacement);
+		var nextCount = Utf8Text.length(next);
+
+		var nextSelectionStart = clamp(transaction.selectionStart, 0, nextCount);
+		var nextSelectionEnd = clamp(transaction.selectionEnd, 0, nextCount);
+		if (nextSelectionStart > nextSelectionEnd) {
+			var selectionSwap = nextSelectionStart;
+			nextSelectionStart = nextSelectionEnd;
+			nextSelectionEnd = selectionSwap;
+		}
+		var nextHasComposition = transaction.hasComposition &&
+			hasValidComposition(transaction.compositionStart, transaction.compositionEnd) &&
+			transaction.compositionEnd <= nextCount;
+		var nextCompositionStart = nextHasComposition ? transaction.compositionStart : -1;
+		var nextCompositionEnd = nextHasComposition ? transaction.compositionEnd : -1;
+		var hadComposition = compositionStart >= 0 && compositionEnd >= compositionStart;
+
+		if (nextHasComposition && !hadComposition && captureCompositionBaseline) {
+			compositionRestoreText = Utf8Text.slice(current, first, last);
+			compositionRestoreStart = first;
+			compositionRestoreEnd = last;
+			compositionRestoreSelectionStart = selectionStart;
+			compositionRestoreSelectionEnd = selectionEnd;
+		} else if (!nextHasComposition) {
+			clearCompositionBaseline();
+		}
+
+		var textChanged = next != current;
+		var selectionChanged = selectionStart != nextSelectionStart ||
+			selectionEnd != nextSelectionEnd || selectionAnchor != nextSelectionStart ||
+			selectionFocus != nextSelectionEnd ||
+			selectionAnchorLayoutOffset != nextSelectionStart ||
+			selectionFocusLayoutOffset != nextSelectionEnd ||
+			selectionAnchorAffinity != 0 ||
+			selectionFocusAffinity != transaction.selectionAffinity;
+		var compositionChanged = compositionStart != nextCompositionStart ||
+			compositionEnd != nextCompositionEnd;
+		if (!textChanged && !selectionChanged && !compositionChanged)
+			return false;
+
+		if (textChanged) {
+			text = next;
+			layout.setText(layoutText());
+			lastLayoutText = layoutText();
+		}
+		selectionStart = nextSelectionStart;
+		selectionEnd = nextSelectionEnd;
+		selectionAnchor = nextSelectionStart;
+		selectionFocus = nextSelectionEnd;
+		selectionAnchorLayoutOffset = nextSelectionStart;
+		selectionFocusLayoutOffset = nextSelectionEnd;
 		selectionAnchorAffinity = 0;
-		selectionFocusAffinity = 0;
-		resetVerticalNavigation();
-		return changed;
+		selectionFocusAffinity = transaction.selectionAffinity;
+		compositionStart = nextCompositionStart;
+		compositionEnd = nextCompositionEnd;
+		if (textChanged || selectionChanged)
+			resetVerticalNavigation();
+		return true;
 	}
 
 	public function selectAll():Bool {
@@ -627,24 +711,12 @@ class TextEditorState {
 	public function isDisposed():Bool
 		return disposed;
 
-	function setComposition(start:Int, end:Int):Bool {
-		var count = Utf8Text.length(text);
-		if (start < 0 || end < start || start > count || end > count) {
-			return clearComposition();
-		}
-		if (start == compositionStart && end == compositionEnd)
-			return false;
-		compositionStart = start;
-		compositionEnd = end;
-		return true;
-	}
-
-	function clearComposition():Bool {
-		if (compositionStart == -1 && compositionEnd == -1)
-			return false;
-		compositionStart = -1;
-		compositionEnd = -1;
-		return true;
+	function clearCompositionBaseline():Void {
+		compositionRestoreText = null;
+		compositionRestoreStart = -1;
+		compositionRestoreEnd = -1;
+		compositionRestoreSelectionStart = -1;
+		compositionRestoreSelectionEnd = -1;
 	}
 
 	function trimLineBreak(offset:Int, lineStart:Int):Int {
@@ -688,6 +760,9 @@ class TextEditorState {
 
 	static inline function clamp(value:Int, minimum:Int, maximum:Int):Int
 		return value < minimum ? minimum : value > maximum ? maximum : value;
+
+	static inline function hasValidComposition(start:Int, end:Int):Bool
+		return start >= 0 && end >= start;
 
 	static inline function absolute(value:Float):Float
 		return value < 0.0 ? -value : value;

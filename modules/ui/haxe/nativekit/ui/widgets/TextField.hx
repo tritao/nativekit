@@ -363,7 +363,7 @@ class TextField implements View {
 					copySelection(context.clipboard, editor);
 				else if (command && event.key == UiKey.X) {
 					copySelection(context.clipboard, editor);
-					changed = editor.replace(editor.selectionStart, editor.selectionEnd, "");
+					changed = editor.replaceRange(editor.selectionStart, editor.selectionEnd, "");
 				} else if (command && event.key == UiKey.V) {
 					context.clipboard.readText(function(pasted) {
 						if (editor.isDisposed() || !editor.focused)
@@ -442,7 +442,7 @@ class TextField implements View {
 			});
 			node.on(UiEventKind.AccessibilitySetValue, function(event) {
 				var previousText = editor.layoutText();
-				if (enabled && editor.replace(0, Utf8Text.length(editor.text), event.text)) {
+				if (enabled && editor.replaceRange(0, Utf8Text.length(editor.text), event.text)) {
 					editor.resetCaretBlink(context.gestures.timeSeconds());
 					publishTextChange(previousText);
 				}
