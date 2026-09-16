@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -213,6 +214,83 @@ int main() {
     if (path_commands < 2 || text_commands != expected_text_commands)
         return 11;
 
+    // RTL lines keep a non-zero horizontal line origin in Skribidi. Verify
+    // that the compiled glyphs retain it, so they remain aligned with the
+    // selection rectangles painted in the text item's coordinate space.
+    const char *rtl_values[] = {"مرحبا بالعالم", "שלום עולם"};
+    const int32_t rtl_lengths[] = {13, 9};
+    for (std::size_t rtl_index = 0; rtl_index < std::size(rtl_values); ++rtl_index) {
+        const char *value = rtl_values[rtl_index];
+        std::vector<LayoutNode> rtl_nodes;
+        LayoutNode rtl_root = box(10, -1);
+        rtl_root.style.width = {LayoutSizing::Fixed, 320.0f};
+        rtl_root.style.height = {LayoutSizing::Fixed, 80.0f};
+        rtl_root.style.padding_left = rtl_root.style.padding_right = 12;
+        rtl_root.style.padding_top = rtl_root.style.padding_bottom = 10;
+        rtl_nodes.push_back(rtl_root);
+
+        LayoutNode rtl_text = box(11, 0);
+        rtl_text.visual_kind = LayoutVisualKind::Text;
+        rtl_text.text = value;
+        rtl_text.text_style.font_size = 18.0f;
+        rtl_text.paragraph_style.wrap = TextWrapMode::None;
+        rtl_nodes.push_back(rtl_text);
+
+        LayoutSnapshot rtl_snapshot;
+        if (!engine.layout(rtl_nodes, 320.0f, 80.0f, 1.0f / 60.0f, rtl_snapshot,
+                           &layout_error))
+            return 14;
+        const auto rtl_primitive = std::find_if(
+            rtl_snapshot.primitives.begin(), rtl_snapshot.primitives.end(),
+            [](const LayoutPrimitive &primitive) {
+                return primitive.kind == LayoutPrimitiveKind::Text && primitive.node_id == 11;
+            });
+        const auto rtl_layout = std::find_if(
+            rtl_snapshot.text_layouts.begin(), rtl_snapshot.text_layouts.end(),
+            [](const LayoutTextLayout &layout) { return layout.node_id == 11; });
+        const LayoutItem *rtl_item = rtl_snapshot.find(11);
+        if (rtl_primitive == rtl_snapshot.primitives.end() ||
+            rtl_layout == rtl_snapshot.text_layouts.end() || rtl_layout->lines.size() != 1 ||
+            !rtl_item || std::abs(rtl_layout->width - rtl_item->bounds.width) > 0.01f ||
+            rtl_layout->lines.front().bounds.x <= 1.0f)
+            return 14;
+        const auto selection =
+            engine.text_adapter()->selection_rects({0, 0}, {rtl_lengths[rtl_index], 0});
+        if (selection.empty() ||
+            std::abs(selection.front().x - rtl_layout->lines.front().bounds.x) > 0.01f)
+            return 14;
+
+        LayoutRenderFrame rtl_frame;
+        if (!compiler.compile(rtl_snapshot, main_target, 1.0f, rtl_frame, &compile_error,
+                              false, engine.text_adapter()))
+            return 14;
+        const auto rtl_command = std::find_if(
+            rtl_frame.plan().passes.front().commands.begin(),
+            rtl_frame.plan().passes.front().commands.end(), [](const RenderCommand &command) {
+                return command.kind == RenderCommandKind::GlyphBatch;
+            });
+        if (rtl_command == rtl_frame.plan().passes.front().commands.end())
+            return 14;
+        const PreparedGlyphs *rtl_glyphs = rtl_frame.resources().text(rtl_command->resource);
+        if (!rtl_glyphs || rtl_glyphs->vertices.empty())
+            return 14;
+
+        float min_x = rtl_glyphs->vertices.front().x;
+        float max_x = min_x;
+        for (const auto &vertex : rtl_glyphs->vertices) {
+            min_x = std::min(min_x, vertex.x);
+            max_x = std::max(max_x, vertex.x);
+        }
+        const LayoutRect &line_bounds = rtl_layout->lines.front().bounds;
+        const float world_min_x = min_x + rtl_command->x;
+        const float world_max_x = max_x + rtl_command->x;
+        const float expected_min_x = rtl_item->bounds.x + line_bounds.x;
+        const float expected_max_x = expected_min_x + line_bounds.width;
+        if (world_min_x < expected_min_x - 2.0f || world_max_x > expected_max_x + 2.0f)
+            return 14;
+    }
+    const uint32_t layout_builds_after_rtl = engine.text_adapter()->layout_build_count();
+
     // Custom display-list commands join the ordered layout stream at the
     // node marker, before that node's descendants.
     LayoutSnapshot ordered_snapshot = snapshot;
@@ -277,7 +355,7 @@ int main() {
     }
     if (!compiler.compile(recolored, main_target, 2.0f, frame, &compile_error, false,
                           engine.text_adapter()) ||
-        engine.text_adapter()->layout_build_count() != layout_builds)
+        engine.text_adapter()->layout_build_count() != layout_builds_after_rtl)
         return 13;
 
     const auto *text_adapter = frame.text_adapter();
