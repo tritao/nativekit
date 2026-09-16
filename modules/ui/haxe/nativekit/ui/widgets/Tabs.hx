@@ -66,7 +66,7 @@ class Tabs implements View {
 			var rootFlags = context.interactionStates.get(rootId);
 			var rootComputed = context.styleResolver.resolve(
 				new StyleTarget("tabs", key.value, key.value, null, ["tabs"], rootFlags),
-				null, context.theme.styles, context.styleSheet, style, context.environment);
+				context.inheritedStyle, context.theme.styles, context.styleSheet, style, context.environment);
 			var root = new RenderNode(rootId, LayoutVisualKind.Box, rootComputed.toLayoutStyle());
 			root.setStyleIdentity("tabs", key.value, key.value, null, ["tabs"]);
 			root.states = rootFlags;

@@ -17,6 +17,7 @@ import nativekit.ui.style.StyleResolver;
 import nativekit.ui.style.StyleState;
 import nativekit.ui.style.StyleStateUtil;
 import nativekit.ui.style.StyleTarget;
+import nativekit.ui.style.StyleProperty;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
@@ -58,7 +59,7 @@ class Button implements View {
 		flags = StyleStateUtil.withState(flags, StyleState.Selected, selected);
 		flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
 		var target = new StyleTarget("button", key, key, null, ["button"], flags);
-		var computed = context.styleResolver.resolve(target, null, context.theme.styles,
+		var computed = context.styleResolver.resolve(target, context.inheritedStyle, context.theme.styles,
 			context.styleSheet, style, context.environment);
 		var resolvedStyle = computed.toLayoutStyle();
 		var node = new RenderNode(id, LayoutVisualKind.Box, resolvedStyle);
@@ -84,6 +85,13 @@ class Button implements View {
 			text.layout.text = label;
 			var labelStyle = context.resolveTextRole(TextRole.Button,
 				TextStyleOverride.paragraph(TextWrap.None));
+			var fontSource = computed.source(StyleProperty.FontSize);
+			var letterSource = computed.source(StyleProperty.LetterSpacing);
+			labelStyle = labelStyle.merge(new TextStyleOverride(null,
+				fontSource != null && fontSource.layer != "framework"
+					? computed.get(StyleProperty.FontSize) : null,
+				letterSource != null && letterSource.layer != "framework"
+					? computed.get(StyleProperty.LetterSpacing) : null));
 			labelStyle = labelStyle.withTextColor(
 				context.theme.buttonLabelColor(enabled, resolvedStyle.background));
 			text.applyTextStyle(labelStyle);

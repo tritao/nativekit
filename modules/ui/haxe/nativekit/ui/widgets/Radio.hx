@@ -18,6 +18,7 @@ import nativekit.ui.core.View;
 import nativekit.ui.style.StyleState;
 import nativekit.ui.style.StyleStateUtil;
 import nativekit.ui.style.StyleTarget;
+import nativekit.ui.style.StyleProperty;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
@@ -57,7 +58,7 @@ class Radio implements View {
 			flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
 			var computed = context.styleResolver.resolve(
 				new StyleTarget("radio", key.value, key.value, null, ["radio"], flags),
-				null, context.theme.styles, context.styleSheet, style, context.environment);
+				context.inheritedStyle, context.theme.styles, context.styleSheet, style, context.environment);
 			var node = new RenderNode(nodeId, LayoutVisualKind.Box, computed.toLayoutStyle());
 			node.setStyleIdentity("radio", key.value, key.value, null, ["radio"]);
 			node.states = flags;
@@ -108,6 +109,12 @@ class Radio implements View {
 			text.layout.text = label;
 			text.applyTextStyle(context.resolveTextRole(TextRole.Label).withTextColor(
 				context.theme.textRoleColor(TextRole.Label, enabled)));
+			var fontSource = computed.source(StyleProperty.FontSize);
+			var letterSource = computed.source(StyleProperty.LetterSpacing);
+			if (fontSource != null && fontSource.layer != "framework")
+				text.layout.textStyle.fontSize = computed.get(StyleProperty.FontSize);
+			if (letterSource != null && letterSource.layer != "framework")
+				text.layout.textStyle.letterSpacing = computed.get(StyleProperty.LetterSpacing);
 			node.add(text);
 			if (enabled && hasSelectHandler) {
 				var select = function(_:UiEvent) { onSelect(value); };

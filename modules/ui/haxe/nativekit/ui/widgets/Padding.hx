@@ -7,6 +7,7 @@ import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.View;
+import nativekit.ui.style.StyleTarget;
 
 /** Adds layout-engine padding around one child view. */
 class Padding implements View {
@@ -29,8 +30,16 @@ class Padding implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(key, function() {
-			var node = new RenderNode(context.id("padding"), LayoutVisualKind.Box, style);
-			var content = context.withScope(new Key("content"), function() return child.build(context));
+			var id = context.id("padding");
+			var computed = context.resolveStyle(new StyleTarget("padding", key.value, key.value,
+				null, ["padding"], context.interactionStates.get(id)), style);
+			var node = new RenderNode(id, LayoutVisualKind.Box, computed.toLayoutStyle());
+			node.setStyleIdentity("padding", key.value, key.value, null, ["padding"]);
+			node.states = context.interactionStates.get(id);
+			node.computedStyle = computed;
+			var content = context.withStyleParent(computed, function() {
+				return context.withScope(new Key("content"), function() return child.build(context));
+			});
 			node.add(content);
 			return node;
 		});

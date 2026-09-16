@@ -28,6 +28,8 @@ import nativekit.ui.core.View;
 import nativekit.ui.style.StyleState;
 import nativekit.ui.style.StyleStateUtil;
 import nativekit.ui.style.StyleTarget;
+import nativekit.ui.style.StyleProperty;
+import nativekit.ui.style.StyleSource;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRole;
@@ -96,7 +98,10 @@ class TextField implements View {
 			flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
 			var computed = context.styleResolver.resolve(
 				new StyleTarget("text-field", key, key, null, ["text-field"], flags),
-				null, context.theme.styles, context.styleSheet, style, context.environment);
+				context.inheritedStyle, context.theme.styles, context.styleSheet, style, context.environment);
+			if (textColor != null)
+				computed.set(StyleProperty.TextColor, textColor,
+					new StyleSource("local", "text-field", -1, "local"));
 			var node = new RenderNode(id, LayoutVisualKind.Box, computed.toLayoutStyle());
 			node.setStyleIdentity("text-field", key, key, null, ["text-field"]);
 			node.states = flags;
@@ -147,8 +152,19 @@ class TextField implements View {
 			editorContent.add(selectionNode);
 			var textNode = new RenderNode(context.id("text"), LayoutVisualKind.Text, textNodeStyle);
 			textNode.layout.text = editor.layoutText();
-			textNode.applyTextStyle(new ResolvedTextStyle(editor.textStyle,
-				editor.paragraphStyle, resolved.textColor));
+		var textNodeTextStyle = new TextStyle(editor.textStyle.fontSize,
+			editor.textStyle.font, editor.textStyle.letterSpacing);
+		var fontSource = computed.source(StyleProperty.FontSize);
+		var letterSource = computed.source(StyleProperty.LetterSpacing);
+		if (textStyle == null && fontSource != null && fontSource.layer != "framework")
+			textNodeTextStyle.fontSize = computed.get(StyleProperty.FontSize);
+		if (textStyle == null && letterSource != null && letterSource.layer != "framework")
+			textNodeTextStyle.letterSpacing = computed.get(StyleProperty.LetterSpacing);
+		var colorSource = computed.source(StyleProperty.TextColor);
+		var textNodeColor = colorSource != null && colorSource.layer != "framework"
+			? computed.get(StyleProperty.TextColor) : resolved.textColor;
+		textNode.applyTextStyle(new ResolvedTextStyle(textNodeTextStyle,
+			editor.paragraphStyle, textNodeColor));
 			editorContent.add(textNode);
 			var paintStyle = new LayoutStyle();
 			paintStyle.width = LayoutAxis.grow();

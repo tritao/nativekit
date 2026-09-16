@@ -20,6 +20,7 @@ import nativekit.ui.core.View;
 import nativekit.ui.style.StyleState;
 import nativekit.ui.style.StyleStateUtil;
 import nativekit.ui.style.StyleTarget;
+import nativekit.ui.style.StyleProperty;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
@@ -62,7 +63,7 @@ class BinaryControl implements View {
 			flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
 			var target = new StyleTarget(toggle ? "toggle" : "checkbox", key, key,
 				null, [toggle ? "toggle" : "checkbox"], flags);
-			var computed = context.styleResolver.resolve(target, null, context.theme.styles,
+			var computed = context.styleResolver.resolve(target, context.inheritedStyle, context.theme.styles,
 				context.styleSheet, style, context.environment);
 			var node = new RenderNode(nodeId,
 				LayoutVisualKind.Box, computed.toLayoutStyle());
@@ -142,6 +143,12 @@ class BinaryControl implements View {
 			labelNode.layout.text = label;
 			labelNode.applyTextStyle(context.resolveTextRole(TextRole.Label).withTextColor(
 				context.theme.textRoleColor(TextRole.Label, enabled)));
+			var fontSource = computed.source(StyleProperty.FontSize);
+			var letterSource = computed.source(StyleProperty.LetterSpacing);
+			if (fontSource != null && fontSource.layer != "framework")
+				labelNode.layout.textStyle.fontSize = computed.get(StyleProperty.FontSize);
+			if (letterSource != null && letterSource.layer != "framework")
+				labelNode.layout.textStyle.letterSpacing = computed.get(StyleProperty.LetterSpacing);
 			node.add(labelNode);
 
 			var invalidation:State<Bool> = context.state(node.id, checked);

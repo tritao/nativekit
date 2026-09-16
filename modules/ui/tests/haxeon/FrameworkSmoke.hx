@@ -1300,6 +1300,22 @@ class FrameworkSmoke {
 		if (responsive.get(StyleProperty.Padding).left != 12.0 ||
 			responsive.get(StyleProperty.Background).red != 0.05)
 			return 220;
+		var inheritanceSheet = new StyleSheet("InheritanceSheet");
+		inheritanceSheet.rule(StyleSelector.key("inherit-parent"), [
+			StyleValue.textColor(Color.rgba(0.75, 0.25, 0.15, 1.0)), StyleValue.fontSize(22.0)]);
+		context.setStyleSheet(inheritanceSheet);
+		var inheritanceRoot = context.submit(new Column("inherit-parent", [
+			new KeyedView("inherited-label", new Text("Inherited"))
+		]), new LayoutFrame(256.0, 192.0));
+		var inheritedTextNode = inheritanceRoot.children[0];
+		var inheritedTextSource:Null<StyleSource> = inheritedTextNode.computedStyle == null ? null :
+			inheritedTextNode.computedStyle.source(StyleProperty.TextColor);
+		if (inheritedTextNode.computedStyle == null ||
+			inheritedTextNode.computedStyle.get(StyleProperty.TextColor).red != 0.75 ||
+			inheritedTextNode.computedStyle.get(StyleProperty.FontSize) != 22.0 ||
+			inheritedTextSource == null || inheritedTextSource.stylesheet != "InheritanceSheet")
+			return 224;
+		context.setStyleSheet(new StyleSheet("Application"));
 		var lightNeutral = Color.rgba(0.87, 0.90, 0.95, 1.0);
 		var accentButton = Color.rgba(0.18, 0.39, 0.70, 1.0);
 		if (theme.buttonLabelColor(true, lightNeutral) != theme.body.color ||

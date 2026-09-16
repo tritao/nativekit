@@ -2,11 +2,14 @@ package nativekit.ui.core;
 
 import FontCollection;
 import NativeKitSurface;
+import LayoutStyle;
 import nativekit.ui.theme.Theme;
 import nativekit.ui.theme.TextRole;
 import nativekit.ui.style.StyleSheet;
 import nativekit.ui.style.StyleResolver;
 import nativekit.ui.style.StyleEnvironment;
+import nativekit.ui.style.ComputedStyle;
+import nativekit.ui.style.StyleTarget;
 import nativekit.ui.gestures.GestureArena;
 import nativekit.ui.animation.AnimationScheduler;
 
@@ -27,6 +30,7 @@ class BuildContext {
 	/** Logical viewport dimensions for frame-local placement decisions. */
 	public var viewportWidth(default, null):Float;
 	public var viewportHeight(default, null):Float;
+	var styleParent:Null<ComputedStyle>;
 	var focusRequester:WidgetId->Bool;
 	final claimed:Map<Int, String>;
 	var scope:KeyScope;
@@ -51,6 +55,7 @@ class BuildContext {
 		this.theme = theme == null ? new Theme() : theme;
 		this.theme.refreshStyles();
 		this.styleSheet = styleSheet == null ? new StyleSheet("Application") : styleSheet;
+		styleParent = null;
 		viewportWidth = 0.0;
 		viewportHeight = 0.0;
 		focusRequester = function(_) { return false; };
@@ -79,6 +84,31 @@ class BuildContext {
 	/** Updates viewport-derived environment values for conditional style rules. */
 	public function setEnvironmentViewport(width:Float, height:Float):Void
 		environment.setViewport(width, height);
+
+	/** Computed inherited style supplied by the nearest composing parent. */
+	public var inheritedStyle(get, never):Null<ComputedStyle>;
+	function get_inheritedStyle():Null<ComputedStyle>
+		return styleParent;
+
+	/** Builds descendants with the given computed style as their inheritance source. */
+	public function withStyleParent<T>(parent:ComputedStyle, build:Void->T):T {
+		if (parent == null || build == null)
+			throw "A style parent and build callback are required";
+		var previous = styleParent;
+		styleParent = parent;
+		try {
+			var result = build();
+			styleParent = previous;
+			return result;
+		} catch (error:Dynamic) {
+			styleParent = previous;
+			throw error;
+		}
+	}
+
+	/** Resolves one node against the active inherited style and current layers. */
+	public function resolveStyle(target:StyleTarget, local:Null<LayoutStyle>):ComputedStyle
+		return styleResolver.resolve(target, styleParent, theme.styles, styleSheet, local, environment);
 
 	/** Revision fingerprint used to classify style work before the next submission. */
 	public var styleRevision(get, never):Int;
