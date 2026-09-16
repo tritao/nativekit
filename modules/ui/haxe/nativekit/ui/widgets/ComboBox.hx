@@ -216,8 +216,8 @@ class ComboBox<T> implements View {
 					submitActive();
 			};
 			inputNode = context.withScope(new Key("input"), function() return input.build(context));
-			SelectionIndicator.chevron(inputNode, enabled ? context.theme.text : context.theme.disabledText,
-				isOpen);
+			SelectionIndicator.chevron(context, inputNode, "input-indicator",
+				enabled ? context.theme.text : context.theme.disabledText, isOpen);
 			var inputSemantics:Semantics = cast inputNode.semantics;
 			inputSemantics.states |= AccessibilityState.HasPopup;
 			if (isOpen)

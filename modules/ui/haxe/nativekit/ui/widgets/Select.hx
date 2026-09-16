@@ -182,8 +182,8 @@ class Select<T> implements View {
 			trigger.semanticActions = AccessibilityAction.Activate | AccessibilityAction.SetValue |
 				(isOpen ? AccessibilityAction.Collapse : AccessibilityAction.Expand);
 			triggerNode = context.withScope(new Key("trigger"), function() return trigger.build(context));
-			SelectionIndicator.chevron(triggerNode, enabled ? context.theme.text : context.theme.disabledText,
-				isOpen);
+			SelectionIndicator.chevron(context, triggerNode, "trigger-indicator",
+				enabled ? context.theme.text : context.theme.disabledText, isOpen);
 			var triggerSemantics:Semantics = cast triggerNode.semantics;
 			triggerSemantics.label = selectedLabel;
 			triggerSemantics.value = selectedLabel;

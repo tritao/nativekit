@@ -6,6 +6,7 @@ import LayoutDirection;
 import LayoutPositioning;
 import LayoutStyle;
 import LayoutVisualKind;
+import Rect;
 import Transform2D;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.RenderNode;
@@ -16,7 +17,6 @@ import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityOrientation;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
-import nativekit.ui.style.BorderDecoration;
 import nativekit.ui.style.ShadowDecoration;
 import nativekit.ui.style.StyleTarget;
 
@@ -130,12 +130,22 @@ class SelectionPopup {
 		var dropdownId = context.id("options");
 		var dropdownComputed = context.resolveStyle(new StyleTarget("selection-popup", "options",
 			"options", null, ["selection-popup"], context.interactionStates.get(dropdownId)), dropdownStyle);
-		var dropdown = new RenderNode(dropdownId, LayoutVisualKind.Box, dropdownComputed.toLayoutStyle());
+		var dropdown = new RenderNode(dropdownId, LayoutVisualKind.Custom,
+			dropdownComputed.toLayoutStyle());
 		dropdown.setStyleIdentity("selection-popup", "options", "options", null, ["selection-popup"]);
 		dropdown.states = context.interactionStates.get(dropdownId);
 		dropdown.computedStyle = dropdownComputed;
 		dropdown.addDecoration(new ShadowDecoration(), "selection-popup-shadow");
-		dropdown.addDecoration(new BorderDecoration(), "selection-popup-border");
+		dropdown.onPaint(function(canvas, geometry) {
+			canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, geometry.height),
+				context.theme.panelBackground);
+			var border = context.theme.tokens.selectionBorder;
+			canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, 1.0), border);
+			canvas.fillRectIfPositive(new Rect(0.0, geometry.height - 1.0, geometry.width, 1.0), border);
+			canvas.fillRectIfPositive(new Rect(0.0, 1.0, 1.0, geometry.height - 2.0), border);
+			canvas.fillRectIfPositive(new Rect(geometry.width - 1.0, 1.0, 1.0,
+				geometry.height - 2.0), border);
+		}, "selection-popup-surface");
 		var listSemantics = new Semantics(AccessibilityRole.List, "Options");
 		listSemantics.orientation = AccessibilityOrientation.Vertical;
 		if (needsScroll)
@@ -209,7 +219,8 @@ class SelectionPopup {
 				function() return optionButton.build(context));
 			var optionSemantics:Semantics = cast optionNode.semantics;
 			if (optionButton.selected)
-				SelectionIndicator.check(optionNode, context.theme.text);
+				SelectionIndicator.check(context, optionNode, "option-check-" + originalIndex,
+					context.theme.text);
 			optionSemantics.setSize = visibleIndices.length;
 			optionSemantics.positionInSet = position + 1;
 			optionNodes.push(optionNode);
