@@ -4,6 +4,7 @@ import Rect;
 import nativekit.ui.style.ComputedStyle;
 import nativekit.ui.style.StyleSource;
 import nativekit.ui.style.StyleInspectionEntry;
+import nativekit.ui.style.InkOverflow;
 
 /** Stable headless inspection record for one resolved Haxe render node. */
 class UiNodeSnapshot {
@@ -25,6 +26,16 @@ class UiNodeSnapshot {
 	public final computedStyle:Null<ComputedStyle>;
 	public final styleEntries:Array<StyleInspectionEntry>;
 	public final matchingStyleRules:Array<StyleSource>;
+	/** True when opacity, effects, backdrop effects, or a mask require isolation. */
+	public final causesIsolation:Bool;
+	/** Logical ink expansion requested by subtree effects. */
+	public final inkOverflow:InkOverflow;
+	/** Logical paint bounds after applying ink overflow. */
+	public final paintBounds:Rect;
+	/** Estimated sampled effect passes for this node and its backdrop. */
+	public final effectPasses:Int;
+	/** Logical RGBA bytes estimated for the node's intermediate targets. */
+	public final estimatedRenderTargetBytes:Float;
 	public final zIndex:Int;
 	public final role:Int;
 	public final semanticStates:Int;
@@ -38,7 +49,9 @@ class UiNodeSnapshot {
 			semanticStates:Int, label:Null<String>, value:Null<String>, actions:Int,
 			interactionStates:Int = 0, styleType:Null<String> = null,
 			computedStyle:Null<ComputedStyle> = null,
-			?styleEntries:Array<StyleInspectionEntry>, ?matchingStyleRules:Array<StyleSource>) {
+			?styleEntries:Array<StyleInspectionEntry>, ?matchingStyleRules:Array<StyleSource>,
+			causesIsolation:Bool = false, ?inkOverflow:InkOverflow, ?paintBounds:Rect,
+			effectPasses:Int = 0, estimatedRenderTargetBytes:Float = 0.0) {
 		this.id = id;
 		this.parentId = parentId;
 		this.depth = depth;
@@ -57,6 +70,11 @@ class UiNodeSnapshot {
 		this.computedStyle = computedStyle;
 		this.styleEntries = styleEntries == null ? [] : styleEntries;
 		this.matchingStyleRules = matchingStyleRules == null ? [] : matchingStyleRules;
+		this.causesIsolation = causesIsolation;
+		this.inkOverflow = inkOverflow == null ? InkOverflow.zero() : inkOverflow;
+		this.paintBounds = paintBounds == null ? bounds : paintBounds;
+		this.effectPasses = effectPasses;
+		this.estimatedRenderTargetBytes = estimatedRenderTargetBytes;
 		this.zIndex = zIndex;
 		this.role = role;
 		this.semanticStates = semanticStates;

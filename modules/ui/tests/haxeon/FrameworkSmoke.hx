@@ -2047,6 +2047,22 @@ class FrameworkSmoke {
 			inspectedBackgroundSource == null || inspectedBackgroundSource.selector != "button:disabled" ||
 			(inspected[0].interactionStates & StyleState.Disabled) == 0)
 			return 99;
+		var inspectorEffects = new StyleSheet("InspectorEffects");
+		inspectorEffects.rule(StyleSelector.widget("button"), [
+			StyleValue.effects(EffectChain.of([BlurEffect.withSigma(4.0)])),
+			StyleValue.backdropEffects(EffectChain.of([new BrightnessEffect(1.1)])),
+			StyleValue.mask(Mask.roundedRect(6.0))
+		]);
+		context.setStyleSheet(inspectorEffects);
+		context.submit(new Button("Inspector effects", null, function() {}, "inspector-effects"),
+			new LayoutFrame(256.0, 192.0));
+		var effectSnapshot = context.inspect()[0];
+		if (!effectSnapshot.causesIsolation || effectSnapshot.effectPasses != 3 ||
+			effectSnapshot.inkOverflow.left != 12.0 ||
+			effectSnapshot.paintBounds.width <= effectSnapshot.bounds.width ||
+			effectSnapshot.estimatedRenderTargetBytes <= 0.0)
+			return 101;
+		context.setStyleSheet(new StyleSheet("Application"));
 		var unnamedSemantics:Semantics = cast themedRoot.semantics;
 		unnamedSemantics.label = "";
 		if (AccessibilityAudit.isValid(themedRoot))

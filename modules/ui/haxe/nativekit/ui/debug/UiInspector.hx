@@ -7,6 +7,11 @@ import nativekit.ui.style.StyleState;
 import nativekit.ui.style.StyleStateUtil;
 import nativekit.ui.style.StyleSource;
 import nativekit.ui.style.StyleInspectionEntry;
+import nativekit.ui.style.EffectChain;
+import nativekit.ui.style.EffectKind;
+import nativekit.ui.style.InkOverflow;
+import nativekit.ui.style.Mask;
+import nativekit.ui.style.StyleProperty;
 
 /** Produces deterministic, headless snapshots and readable render-tree dumps. */
 class UiInspector {
@@ -41,6 +46,10 @@ class UiInspector {
 				line += " pressed";
 			if (record.styleType != null)
 				line += " type=" + record.styleType;
+			if (record.causesIsolation)
+				line += " isolation";
+			if (record.effectPasses > 0)
+				line += " effectPasses=" + Std.string(record.effectPasses);
 			if (record.interactionStates != 0)
 				line += " states=" + interactionStateNames(record.interactionStates);
 			if (record.focusable)
@@ -73,6 +82,24 @@ class UiInspector {
 			styleEntries = node.computedStyle.entries();
 			matchingStyleRules = node.computedStyle.matchingStyleRules();
 		}
+		var style = node.computedStyle;
+		var effects:Null<EffectChain> = style == null ? null : style.get(StyleProperty.Effects);
+		var backdropEffects:Null<EffectChain> =
+			style == null ? null : style.get(StyleProperty.BackdropEffects);
+		var mask:Null<Mask> = style == null ? null : style.get(StyleProperty.Mask);
+		var opacity:Float = style == null ? 1.0 : style.get(StyleProperty.Opacity);
+		var overflow:InkOverflow = effects == null ? InkOverflow.zero() : effects.inkOverflow();
+		var paintBounds = new Rect(bounds.x - overflow.left, bounds.y - overflow.top,
+			bounds.width + overflow.left + overflow.right,
+			bounds.height + overflow.top + overflow.bottom);
+		var effectPasses = effectPassCount(effects) + effectPassCount(backdropEffects);
+		var isolated = opacity < 1.0 || mask != null || effectPasses > 0;
+		var ownArea = paintBounds.width * paintBounds.height;
+		var backdropArea = bounds.width * bounds.height;
+		var estimatedBytes = (isolated ? ownArea : 0.0) * 4.0 +
+			ownArea * effectPassCount(effects) * 4.0 +
+			(mask == null ? 0.0 : ownArea * 4.0) +
+			backdropArea * effectPassCount(backdropEffects) * 4.0;
 		output.push(new UiNodeSnapshot(node.id.value, parentId, depth,
 			cast node.layout.visualKind, bounds, clip, content,
 			geometry != null && geometry.visible, node.enabled, node.focusable,
@@ -86,9 +113,32 @@ class UiInspector {
 			semantics == null ? null : semantics.value,
 			semantics == null ? 0 : semantics.actions,
 			node.states, node.styleType, node.computedStyle,
-			styleEntries, matchingStyleRules));
+			styleEntries, matchingStyleRules, isolated, overflow, paintBounds,
+			effectPasses, estimatedBytes));
 		for (child in node.children)
 			append(child, node.id.value, depth + 1, focused, hovered, pressed, output);
+	}
+
+	static function effectPassCount(chain:Null<EffectChain>):Int {
+		if (chain == null || chain.effects.length == 0)
+			return 0;
+		var result = 0;
+		var colorPending = false;
+		for (effect in chain.effects) {
+			switch effect.kind {
+				case EffectKind.Brightness | EffectKind.Contrast | EffectKind.Saturate |
+					EffectKind.HueRotate | EffectKind.ColorMatrix:
+					colorPending = true;
+				case EffectKind.Blur | EffectKind.DropShadow:
+					if (colorPending) {
+						result++;
+						colorPending = false;
+					}
+					result += 2;
+				default:
+			}
+		}
+		return result + (colorPending ? 1 : 0);
 	}
 
 	static function interactionOwner(root:RenderNode, id:Null<WidgetId>):Null<WidgetId> {
