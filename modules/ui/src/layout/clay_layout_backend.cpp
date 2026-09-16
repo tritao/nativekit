@@ -322,8 +322,14 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
         return result;
     }
 
-    if (!std::isfinite(available_width) || available_width <= 0.0f)
+    if (!std::isfinite(available_width))
         return result;
+    if (available_width <= 0.0f) {
+        result.success = true;
+        result.dimensions = {
+            0.0f, config->lineHeight > 0 ? static_cast<float>(config->lineHeight) : 0.0f};
+        return result;
+    }
 
     try {
         const std::string value(text.chars ? text.chars : "",

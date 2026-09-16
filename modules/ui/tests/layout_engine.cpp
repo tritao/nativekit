@@ -142,6 +142,24 @@ int main(int argc, char **argv) {
     if (hidden_primitive == snapshot.primitives.end() || hidden_primitive->visible)
         return 21;
 
+    LayoutNode collapsed_root = box(310, -1);
+    collapsed_root.style.width = {LayoutSizing::Fixed, 100.0f};
+    collapsed_root.style.height = {LayoutSizing::Fixed, 80.0f};
+    LayoutNode collapsed_pane = box(311, 0);
+    collapsed_pane.style.width = {LayoutSizing::Percent, 0.0f};
+    collapsed_pane.style.height = {LayoutSizing::Grow, 0.0f};
+    collapsed_pane.style.visible = false;
+    LayoutNode collapsed_text = text(312, 1, "Collapsed pane text");
+    std::vector<LayoutNode> collapsed_nodes{collapsed_root, collapsed_pane, collapsed_text};
+    if (!engine.layout(collapsed_nodes, 100.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 47;
+    const auto *collapsed_pane_item = snapshot.find(311);
+    const auto *collapsed_text_item = snapshot.find(312);
+    if (!collapsed_pane_item || !collapsed_text_item || collapsed_pane_item->visible ||
+        collapsed_text_item->visible || collapsed_pane_item->bounds.width != 0.0f ||
+        collapsed_text_item->bounds.width != 0.0f)
+        return 48;
+
     LayoutNode stack_root = box(400, -1);
     stack_root.style.width = {LayoutSizing::Fixed, 100.0f};
     stack_root.style.height = {LayoutSizing::Fixed, 80.0f};
