@@ -107,6 +107,38 @@ int main() {
         pass_order[0] != 0 || pass_order[1] != 1 || pass_order[2] != 2 || pass_order[3] != 3)
         return 22;
 
+    DisplayList blur_effect;
+    EffectDescriptor blur{};
+    blur.kind = EffectKind::Blur;
+    blur.color_matrix[0] = 2.0f;
+    if (!blur_effect.begin_layer(1.0f, bounds, blur) || !blur_effect.draw_path(path) ||
+        !blur_effect.end_layer() || !compositor.compile(blur_effect, main_target, plan, &error) ||
+        plan.passes.size() != 5 || plan.dependencies.size() != 1)
+        return 23;
+    const auto &blur_layer = plan.passes[1];
+    if (blur_layer.target_descriptor.logical_width != 92.0f ||
+        blur_layer.target_descriptor.logical_height != 52.0f ||
+        blur_layer.target_descriptor.origin_x != 4.0f ||
+        blur_layer.target_descriptor.origin_y != 14.0f ||
+        plan.passes[2].kind != RenderPassKind::Effect ||
+        plan.passes[2].input_target.value != blur_layer.target.value ||
+        plan.passes[2].effect.kind != EffectKind::Blur ||
+        plan.passes[2].effect.color_matrix[0] != 2.0f ||
+        plan.passes[2].effect.color_matrix[1] != 0.0f ||
+        plan.passes[3].kind != RenderPassKind::Effect ||
+        plan.passes[3].input_target.value != plan.passes[2].target.value ||
+        plan.passes[3].effect.color_matrix[1] != 1.0f ||
+        plan.passes[4].commands.size() != 1 ||
+        plan.passes[4].commands[0].resource.value != plan.passes[3].target.value ||
+        plan.passes[4].commands[0].x != 4.0f || plan.passes[4].commands[0].y != 14.0f ||
+        plan.passes[4].commands[0].width != 92.0f ||
+        plan.passes[4].commands[0].height != 52.0f)
+        return 24;
+    if (!schedule_render_plan(plan, pass_order, &schedule_error) || pass_order.size() != 5 ||
+        pass_order[0] != 0 || pass_order[1] != 1 || pass_order[2] != 2 || pass_order[3] != 3 ||
+        pass_order[4] != 4)
+        return 25;
+
     DisplayList duplicate_surface;
     const auto external = make_resource_id(ResourceKind::RenderTarget, 1, 12);
     if (!duplicate_surface.draw_render_target(external, 0.0f, 0.0f, 10.0f, 10.0f) ||

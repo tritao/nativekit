@@ -36,7 +36,8 @@ bool valid_composite(CompositeMode mode) {
 }
 
 bool valid_effect_kind(EffectKind kind) {
-    return kind == EffectKind::None || kind == EffectKind::ColorMatrix;
+    return kind == EffectKind::None || kind == EffectKind::ColorMatrix ||
+           kind == EffectKind::Blur;
 }
 
 bool valid_effect(const EffectDescriptor &effect) {
@@ -44,6 +45,12 @@ bool valid_effect(const EffectDescriptor &effect) {
         return false;
     if (effect.kind == EffectKind::None)
         return true;
+    if (effect.kind == EffectKind::Blur) {
+        for (float value : effect.color_matrix)
+            if (!finite(value))
+                return false;
+        return effect.color_matrix[0] >= 0.0f && effect.color_matrix[1] == 0.0f;
+    }
     for (float value : effect.color_matrix)
         if (!finite(value))
             return false;

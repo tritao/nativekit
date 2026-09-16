@@ -262,7 +262,9 @@ enum NK_ENUM(nkui_effect_kind) {
     /** The layer has no sampled effect. */
     NKUI_EFFECT_NONE = 0,
     /** Apply the supplied row-major 4x5 color matrix. */
-    NKUI_EFFECT_COLOR_MATRIX = 1
+    NKUI_EFFECT_COLOR_MATRIX = 1,
+    /** Apply a separable Gaussian blur; effect_matrix[0] stores sigma. */
+    NKUI_EFFECT_BLUR = 2
 };
 
 /** Fixed header present at the start of every display-list command record. */
@@ -407,7 +409,7 @@ typedef struct nkui_layer_command {
     nkui_layer_flags flags;
 } nkui_layer_command;
 
-/** Extended payload for NKUI_COMMAND_BEGIN_LAYER with one color-matrix effect. */
+/** Extended payload for NKUI_COMMAND_BEGIN_LAYER with one sampled effect. */
 typedef struct nkui_layer_effect_command {
     /** Command record header. */
     nkui_command_header header;
@@ -427,7 +429,7 @@ typedef struct nkui_layer_effect_command {
     nkui_layer_flags flags;
     /** Effect kind carried by this command. */
     nkui_effect_kind effect_kind;
-    /** Row-major 4x5 color matrix, used by NKUI_EFFECT_COLOR_MATRIX. */
+    /** Row-major 4x5 color matrix, or blur parameters for NKUI_EFFECT_BLUR. */
     float effect_matrix[20];
 } nkui_layer_effect_command;
 

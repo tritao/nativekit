@@ -128,6 +128,16 @@ std::array<float, 6> device_transform(const std::array<float, 6> &transform, flo
     return result;
 }
 
+bool scale_effect_for_device(EffectDescriptor &effect, float pixel_scale) {
+    if (effect.kind != EffectKind::Blur)
+        return true;
+    const double sigma = static_cast<double>(effect.color_matrix[0]) * pixel_scale;
+    if (!std::isfinite(sigma) || sigma > std::numeric_limits<float>::max())
+        return false;
+    effect.color_matrix[0] = static_cast<float>(sigma);
+    return true;
+}
+
 LayoutRect transform_bounds(LayoutRect rect, const LayoutTransform &transform) {
     const auto x = [&](float px, float py) {
         return transform.a * px + transform.c * py + transform.tx;
@@ -293,6 +303,9 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     pass.target_descriptor.height =
                         std::max(1, static_cast<int>(std::ceil(height)));
                 }
+                if (pass.kind == RenderPassKind::Effect &&
+                    !scale_effect_for_device(pass.effect, pixel_scale))
+                    return fail(error, primitive_index, "custom effect parameters are too large");
                 for (auto &command : pass.commands) {
                     command.resource = remap(command.resource);
                     command.transform = device_transform(command.transform, pixel_scale);

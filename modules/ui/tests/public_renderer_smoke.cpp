@@ -182,6 +182,28 @@ int main(int argc, char **argv) {
                                             70.0f});
     append(commands, nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
                                          sizeof(nkui_command_header)});
+    nkui_layer_effect_command blur_layer{};
+    blur_layer.header = {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION,
+                         sizeof(nkui_layer_effect_command)};
+    blur_layer.opacity = 1.0f;
+    blur_layer.composite_mode = NKUI_COMPOSITE_SOURCE_OVER;
+    blur_layer.x = 72.0f;
+    blur_layer.y = 82.0f;
+    blur_layer.width = 112.0f;
+    blur_layer.height = 70.0f;
+    blur_layer.flags = NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS;
+    blur_layer.effect_kind = NKUI_EFFECT_BLUR;
+    blur_layer.effect_matrix[0] = 2.0f;
+    append(commands, blur_layer);
+    append(commands, nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
+                                             sizeof(nkui_draw_rect_command)},
+                                            image,
+                                            72.0f,
+                                            82.0f,
+                                            112.0f,
+                                            70.0f});
+    append(commands, nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
+                                         sizeof(nkui_command_header)});
     if (nkui_display_list_submit(list, commands.data(), commands.size()) != NKUI_OK)
         return 5;
     if (nkui_display_list_create(&scale_list) != NKUI_OK)

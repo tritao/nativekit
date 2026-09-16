@@ -105,6 +105,7 @@ struct UiRendererImpl::State {
     nkgpu_shader color_glyph_shader{};
     nkgpu_shader composite_shader{};
     nkgpu_shader effect_shader{};
+    nkgpu_shader blur_shader{};
     nkgpu_shader surface_mesh_shader{};
     nkgpu_pipeline solid_pipeline{};
     nkgpu_pipeline fill_stencil_pipeline{};
@@ -118,6 +119,7 @@ struct UiRendererImpl::State {
     nkgpu_pipeline color_glyph_pipeline{};
     nkgpu_pipeline composite_pipeline{};
     nkgpu_pipeline effect_pipeline{};
+    nkgpu_pipeline blur_pipeline{};
     nkgpu_pipeline surface_mesh_pipeline{};
     nkgpu_sampler sampler{};
     nkgpu_sampler glyph_sampler{};
@@ -162,6 +164,12 @@ struct ColorMatrixUniforms {
 };
 
 static_assert(sizeof(ColorMatrixUniforms) == sizeof(float) * kColorMatrixComponents);
+
+struct BlurUniforms {
+    std::array<float, 4> value;
+};
+
+static_assert(sizeof(BlurUniforms) == sizeof(float) * 4);
 
 struct SolidVertex {
     float x;
@@ -616,6 +624,7 @@ enum class UiShaderKind {
     ColorGlyph,
     Composite,
     Effect,
+    Blur,
     SurfaceMesh
 };
 
@@ -699,6 +708,15 @@ ShaderSources shader_sources(nkgpu_backend backend, UiShaderKind kind) {
                     NKGPU_SHADERLANGUAGE_MSL};
         return gl(ui_shader_effect_glsl410_vertex, ui_shader_effect_glsl410_fragment,
                   ui_shader_effect_glsl300es_vertex, ui_shader_effect_glsl300es_fragment);
+    case UiShaderKind::Blur:
+        if (d3d11)
+            return {ui_shader_blur_hlsl5_vertex, ui_shader_blur_hlsl5_fragment,
+                    NKGPU_SHADERLANGUAGE_HLSL5};
+        if (metal)
+            return {ui_shader_blur_metal_macos_vertex, ui_shader_blur_metal_macos_fragment,
+                    NKGPU_SHADERLANGUAGE_MSL};
+        return gl(ui_shader_blur_glsl410_vertex, ui_shader_blur_glsl410_fragment,
+                  ui_shader_blur_glsl300es_vertex, ui_shader_blur_glsl300es_fragment);
     case UiShaderKind::SurfaceMesh:
         if (d3d11)
             return {ui_shader_surface_mesh_hlsl5_vertex, ui_shader_surface_mesh_hlsl5_fragment,
@@ -735,6 +753,7 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
     case UiShaderKind::Path:
     case UiShaderKind::Composite:
     case UiShaderKind::Effect:
+    case UiShaderKind::Blur:
         attributes[attribute_count++] = "position";
         attributes[attribute_count++] = "uv0";
         break;
@@ -788,6 +807,12 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
         vertex_block = "effect_vs_params";
         fragment_block = "effect_fs_params";
         fragment_size = sizeof(ColorMatrixUniforms);
+        textured = true;
+        break;
+    case UiShaderKind::Blur:
+        vertex_block = "blur_vs_params";
+        fragment_block = "blur_fs_params";
+        fragment_size = sizeof(BlurUniforms);
         textured = true;
         break;
     case UiShaderKind::SurfaceMesh:
@@ -905,6 +930,7 @@ bool UiRendererImpl::initialize() {
         !create_shader(*state_, UiShaderKind::ColorGlyph, state_->color_glyph_shader) ||
         !create_shader(*state_, UiShaderKind::Composite, state_->composite_shader) ||
         !create_shader(*state_, UiShaderKind::Effect, state_->effect_shader) ||
+        !create_shader(*state_, UiShaderKind::Blur, state_->blur_shader) ||
         !create_shader(*state_, UiShaderKind::SurfaceMesh, state_->surface_mesh_shader))
         return false;
 
@@ -1011,6 +1037,10 @@ bool UiRendererImpl::initialize() {
                          {{0, offsetof(TextureVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
                           {1, offsetof(TextureVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
                          color_options, state_->effect_pipeline) ||
+        !create_pipeline(*state_, state_->blur_shader, sizeof(TextureVertex),
+                         {{0, offsetof(TextureVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
+                          {1, offsetof(TextureVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
+                         color_options, state_->blur_pipeline) ||
         !create_pipeline(*state_, state_->surface_mesh_shader, sizeof(SurfaceMeshVertex),
                          {{0, offsetof(SurfaceMeshVertex, x), NKGPU_VERTEXFORMAT_FLOAT3},
                           {1, offsetof(SurfaceMeshVertex, red), NKGPU_VERTEXFORMAT_UBYTE4N}},
@@ -1045,7 +1075,7 @@ bool UiRendererImpl::initialize() {
         !create_stream(1024 * 1024, NKGPU_BUFFER_VERTEX, state_->surface_mesh_vertices) ||
         !create_stream(4 * 1024 * 1024, NKGPU_BUFFER_INDEX, state_->indices))
         return false;
-    state_->stats.gpu_resources = 32;
+    state_->stats.gpu_resources = 34;
     state_->initialized = true;
     return true;
 }
@@ -1449,11 +1479,16 @@ bool draw_composite(UiRendererImpl::State &state, float x, float y, float width,
 } // namespace
 
 bool UiRendererImpl::applyEffect(ResourceId source, const EffectDescriptor &effect) {
-    if (!state_->in_pass || effect.kind != EffectKind::ColorMatrix)
+    if (!state_->in_pass ||
+        (effect.kind != EffectKind::ColorMatrix && effect.kind != EffectKind::Blur))
         return fail(*state_, "unsupported UI effect");
     for (const float value : effect.color_matrix)
         if (!std::isfinite(value))
             return fail(*state_, "UI effect parameters are not finite");
+    if (effect.kind == EffectKind::Blur &&
+        (effect.color_matrix[0] < 0.0f ||
+         (effect.color_matrix[1] != 0.0f && effect.color_matrix[1] != 1.0f)))
+        return fail(*state_, "invalid blur effect parameters");
     const auto found = state_->targets.find(source.value);
     if (found == state_->targets.end() || !found->second.image.id)
         return fail(*state_, "effect input target was not rendered");
@@ -1469,6 +1504,13 @@ bool UiRendererImpl::applyEffect(ResourceId source, const EffectDescriptor &effe
         {0.0f, height, 0.0f, 0.0f},
     };
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
+    if (effect.kind == EffectKind::Blur) {
+        const BlurUniforms uniforms{{effect.color_matrix[0], effect.color_matrix[1],
+                                     1.0f / width, 1.0f / height}};
+        return draw_mesh(*state_, state_->blur_pipeline, vertices, indices, &uniforms,
+                         sizeof(uniforms), {}, state_->surface_sampler,
+                         state_->composite_vertices, found->second.image);
+    }
     ColorMatrixUniforms uniforms{};
     for (uint32_t row = 0; row < 4; ++row) {
         for (uint32_t column = 0; column < 4; ++column)

@@ -365,6 +365,38 @@ int main() {
         bounded_pass.target_descriptor.origin_y != 3.0f)
         return 24;
 
+    const ResourceId scaled_effect_input = make_resource_id(ResourceKind::RenderTarget, 1, 448);
+    const ResourceId scaled_effect_output = make_resource_id(ResourceKind::RenderTarget, 1, 449);
+    RenderPlan scaled_effect_plan;
+    scaled_effect_plan.passes.push_back({main_target, {}, false, {}});
+    RenderPass scaled_effect_input_pass;
+    scaled_effect_input_pass.target = scaled_effect_input;
+    scaled_effect_input_pass.target_descriptor.logical_width = 20.0f;
+    scaled_effect_input_pass.target_descriptor.logical_height = 10.0f;
+    scaled_effect_input_pass.commands.push_back({RenderCommandKind::Path, custom_path});
+    scaled_effect_plan.passes.push_back(std::move(scaled_effect_input_pass));
+    RenderPass scaled_effect_pass;
+    scaled_effect_pass.target = scaled_effect_output;
+    scaled_effect_pass.target_descriptor.logical_width = 20.0f;
+    scaled_effect_pass.target_descriptor.logical_height = 10.0f;
+    scaled_effect_pass.kind = RenderPassKind::Effect;
+    scaled_effect_pass.input_target = scaled_effect_input;
+    scaled_effect_pass.effect.kind = EffectKind::Blur;
+    scaled_effect_pass.effect.color_matrix[0] = 4.0f;
+    scaled_effect_plan.passes.push_back(std::move(scaled_effect_pass));
+    scaled_effect_plan.dependencies.push_back({scaled_effect_output, main_target});
+    LayoutRenderCompiler::CustomPaintPlans scaled_effect_paints{{2, &scaled_effect_plan}};
+    LayoutRenderFrame scaled_effect_frame;
+    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, scaled_effect_frame, &compile_error,
+                          false, engine.text_adapter(), &scaled_effect_paints) ||
+        scaled_effect_frame.plan().passes.size() != 3)
+        return 26;
+    const auto &scaled_effect = scaled_effect_frame.plan().passes[2];
+    if (scaled_effect.target_descriptor.width != 30 ||
+        scaled_effect.target_descriptor.height != 15 ||
+        scaled_effect.effect.color_matrix[0] != 6.0f)
+        return 27;
+
     RecordingRenderer backend;
     nk_surface_frame_target frame_target{};
     frame_target.struct_size = sizeof(frame_target);

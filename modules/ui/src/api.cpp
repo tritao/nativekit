@@ -759,6 +759,16 @@ std::array<float, 6> device_transform(const std::array<float, 6> &transform, flo
     return result;
 }
 
+bool scale_effect_for_device(nkui::EffectDescriptor &effect, float pixel_scale) {
+    if (effect.kind != nkui::EffectKind::Blur)
+        return true;
+    const double sigma = static_cast<double>(effect.color_matrix[0]) * pixel_scale;
+    if (!std::isfinite(sigma) || sigma > std::numeric_limits<float>::max())
+        return false;
+    effect.color_matrix[0] = static_cast<float>(sigma);
+    return true;
+}
+
 std::array<float, 6> tessellation_transform(const std::array<float, 6> &transform) {
     return {transform[0], transform[1], transform[2], transform[3], 0.0f, 0.0f};
 }
@@ -2131,6 +2141,9 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
             pass.target_descriptor.width = std::max(1, static_cast<int>(std::ceil(width)));
             pass.target_descriptor.height = std::max(1, static_cast<int>(std::ceil(height)));
         }
+        if (pass.kind == nkui::RenderPassKind::Effect &&
+            !scale_effect_for_device(pass.effect, frame_info->pixel_scale))
+            return NKUI_ERROR_INVALID_ARGUMENT;
     }
     ++renderer_slot->stats.display_list_count;
     renderer_slot->stats.display_list_bytes += list_slot->list->size();

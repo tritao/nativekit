@@ -3,7 +3,9 @@ import NativeKitUI;
 import CompositeMode;
 import LineCap;
 import LineJoin;
+import nativekit.ui.style.BlurEffect;
 import nativekit.ui.style.EffectChain;
+import nativekit.ui.style.EffectKind;
 
 @:noCompletion
 class CanvasCommandBuffer {
@@ -67,10 +69,21 @@ class CanvasCommandBuffer {
 
 	public function beginLayer(opacity:Float, mode:CompositeMode = CompositeMode.SourceOver,
 			?bounds:Rect, ?effects:EffectChain):Void {
-		var hasEffects = effects != null && effects.effects.length > 0;
+		var effectValue = effects == null ? EffectChain.empty() : effects;
+		var hasEffects = effects != null && effectValue.effects.length > 0;
+		var blurOnly = hasEffects && effectValue.effects.length == 1 &&
+			effectValue.effects[0].kind == EffectKind.Blur;
 		var matrix:Array<Float> = null;
-		if (hasEffects)
-			matrix = effects.colorMatrix();
+		if (hasEffects) {
+			if (blurOnly) {
+				matrix = [];
+				for (index in 0...20)
+					matrix.push(0.0);
+				var blur:BlurEffect = cast effectValue.effects[0];
+				matrix[0] = blur.sigma;
+			} else
+				matrix = effectValue.colorMatrix();
+		}
 		if (!hasEffects) {
 			if (bounds == null) {
 				header(NativeKitUI.CommandOpcode.BeginLayer, 16);
@@ -105,7 +118,7 @@ class CanvasCommandBuffer {
 			float(bounds.height);
 			word(3); // NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS.
 		}
-		word(1); // NKUI_EFFECT_COLOR_MATRIX.
+		word(blurOnly ? 2 : 1); // NKUI_EFFECT_BLUR or NKUI_EFFECT_COLOR_MATRIX.
 		for (value in matrix)
 			float(value);
 	}

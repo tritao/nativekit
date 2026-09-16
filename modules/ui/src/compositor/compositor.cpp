@@ -261,6 +261,18 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             LayerCommandValues value{};
             if (!read_layer(record, header.size, value))
                 return fail(error, index, "invalid layer begin");
+            if (value.has_bounds && value.has_effect && value.effect.kind == EffectKind::Blur) {
+                const float expansion = value.effect.color_matrix[0] * 3.0f;
+                if (!std::isfinite(expansion) || !std::isfinite(value.bounds.x - expansion) ||
+                    !std::isfinite(value.bounds.y - expansion) ||
+                    !std::isfinite(value.bounds.width + expansion * 2.0f) ||
+                    !std::isfinite(value.bounds.height + expansion * 2.0f))
+                    return fail(error, index, "blur bounds overflow");
+                value.bounds.x -= expansion;
+                value.bounds.y -= expansion;
+                value.bounds.width += expansion * 2.0f;
+                value.bounds.height += expansion * 2.0f;
+            }
             const bool isolated = value.opacity < 1.0f || (value.flags & LayerIsolated) != 0 ||
                                   value.has_effect;
             const ResourceId parent_target = current_target;
@@ -298,15 +310,31 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 current_origin_y = layer.parent_origin_y;
                 ResourceId composite_target = layer.layer_target;
                 if (layer.has_effect) {
-                    const ResourceId effect_target = allocate_transient_target();
-                    RenderPass effect_pass;
-                    effect_pass.target = effect_target;
-                    effect_pass.target_descriptor = layer.target_descriptor;
-                    effect_pass.kind = RenderPassKind::Effect;
-                    effect_pass.input_target = layer.layer_target;
-                    effect_pass.effect = layer.effect;
-                    plan.passes.push_back(std::move(effect_pass));
-                    composite_target = effect_target;
+                    const auto append_effect_pass = [&](ResourceId target, ResourceId input,
+                                                         EffectDescriptor effect) {
+                        RenderPass effect_pass;
+                        effect_pass.target = target;
+                        effect_pass.target_descriptor = layer.target_descriptor;
+                        effect_pass.kind = RenderPassKind::Effect;
+                        effect_pass.input_target = input;
+                        effect_pass.effect = effect;
+                        plan.passes.push_back(std::move(effect_pass));
+                    };
+                    if (layer.effect.kind == EffectKind::Blur) {
+                        const ResourceId horizontal_target = allocate_transient_target();
+                        const ResourceId vertical_target = allocate_transient_target();
+                        EffectDescriptor horizontal = layer.effect;
+                        horizontal.color_matrix[1] = 0.0f;
+                        append_effect_pass(horizontal_target, layer.layer_target, horizontal);
+                        EffectDescriptor vertical = layer.effect;
+                        vertical.color_matrix[1] = 1.0f;
+                        append_effect_pass(vertical_target, horizontal_target, vertical);
+                        composite_target = vertical_target;
+                    } else {
+                        const ResourceId effect_target = allocate_transient_target();
+                        append_effect_pass(effect_target, layer.layer_target, layer.effect);
+                        composite_target = effect_target;
+                    }
                 }
                 pass = &continue_pass(plan, current_target);
                 pass->commands.push_back({RenderCommandKind::CompositeTarget, composite_target,

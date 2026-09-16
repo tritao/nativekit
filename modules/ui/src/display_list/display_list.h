@@ -55,6 +55,7 @@ enum LayerFlags : uint32_t {
 enum class EffectKind : uint32_t {
     None = 0,
     ColorMatrix = 1,
+    Blur = 2,
 };
 
 constexpr size_t kColorMatrixComponents = 20;
@@ -62,6 +63,8 @@ constexpr size_t kColorMatrixComponents = 20;
 /** Backend-neutral effect data used by the render-plan compiler. */
 struct EffectDescriptor {
     EffectKind kind = EffectKind::None;
+    // ColorMatrix uses all 20 values as a row-major 4x5 matrix. Blur uses
+    // value 0 for sigma and value 1 internally for the pass axis.
     std::array<float, kColorMatrixComponents> color_matrix{};
 };
 
@@ -137,7 +140,7 @@ struct BeginLayerCommand {
     uint32_t flags;
 };
 
-/** Extended layer record carrying one color-matrix effect descriptor. */
+/** Extended layer record carrying one sampled effect descriptor. */
 struct BeginLayerEffectCommand {
     CommandHeader header;
     float opacity;

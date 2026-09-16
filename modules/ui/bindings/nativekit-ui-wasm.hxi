@@ -199,6 +199,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Apply the supplied row-major 4x5 color matrix.
 		 */
 		NKUI_EFFECT_COLOR_MATRIX = 1;
+		/**
+		 * Apply a separable Gaussian blur; effect_matrix[0] stores sigma.
+		 */
+		NKUI_EFFECT_BLUR = 2;
 	}
 	/**
 	 * Font role used when adding a font file to a collection.
@@ -940,7 +944,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		flags: nkui_layer_flags @offset(32);
 	}
 	/**
-	 * Extended payload for NKUI_COMMAND_BEGIN_LAYER with one color-matrix effect.
+	 * Extended payload for NKUI_COMMAND_BEGIN_LAYER with one sampled effect.
 	 */
 	struct nkui_layer_effect_command @layout(120, 4) {
 		/**
@@ -980,7 +984,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 */
 		effect_kind: nkui_effect_kind @offset(36);
 		/**
-		 * Row-major 4x5 color matrix, used by NKUI_EFFECT_COLOR_MATRIX.
+		 * Row-major 4x5 color matrix, or blur parameters for NKUI_EFFECT_BLUR.
 		 */
 		effect_matrix: array<f32, 20> @offset(40);
 	}
