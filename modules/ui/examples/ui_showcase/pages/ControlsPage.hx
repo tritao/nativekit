@@ -1,12 +1,19 @@
 package pages;
 
+import Insets;
+import LayoutAxis;
+import LayoutStyle;
 import UiExplorer;
+import nativekit.ui.widgets.Align;
 import nativekit.ui.widgets.Checkbox;
+import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.ProgressBar;
 import nativekit.ui.widgets.RadioGroup;
 import nativekit.ui.widgets.RadioOption;
 import nativekit.ui.widgets.Row;
+import nativekit.ui.widgets.Spinner;
+import nativekit.ui.widgets.SpinnerKind;
 import nativekit.ui.widgets.Toggle;
 
 /** Interactive primitive controls and their common input states. */
@@ -48,7 +55,45 @@ class ControlsPage {
 				0.0, 1.0, "Task progress")),
 			explorer.keyed("advance", explorer.button("Advance progress", "advance-progress", function() {
 				explorer.state.controls.progress = explorer.state.controls.progress >= 1.0 ? 0.0 : Math.min(1.0, explorer.state.controls.progress + 0.1);
-			}))
+				}))
+			])));
+		items.push(explorer.keyed("controls-spinners", explorer.panel("spinners-card", [
+			explorer.keyed("heading", explorer.text("Indeterminate spinners", explorer.paletteText())),
+			explorer.keyed("description", explorer.text("Procedural indicators share retained paint resources and the frame scheduler.", explorer.paletteMuted())),
+			explorer.keyed("variants", new Row("spinner-variants", [
+				explorer.keyed("ring", spinnerSample(explorer, "ring", "Ring", SpinnerKind.Ring)),
+				explorer.keyed("dots", spinnerSample(explorer, "dots", "Dots", SpinnerKind.Dots)),
+				explorer.keyed("bars", spinnerSample(explorer, "bars", "Bars", SpinnerKind.Bars)),
+				explorer.keyed("pulse", spinnerSample(explorer, "pulse", "Pulse", SpinnerKind.Pulse))
+		], explorer.rowStyle(10.0))),
+			explorer.keyed("spinner-controls", new Row("spinner-controls", [
+				explorer.keyed("status", explorer.text(
+					explorer.state.controls.spinnerRunning ? "Animating" : "Paused",
+					explorer.paletteMuted())),
+				explorer.keyed("toggle", explorer.button(
+					explorer.state.controls.spinnerRunning ? "Pause spinners" : "Resume spinners",
+					"toggle-spinners", function() {
+						explorer.state.controls.spinnerRunning = !explorer.state.controls.spinnerRunning;
+					}))
+		], explorer.rowStyle(10.0)))
 		])));
+	}
+
+	static function spinnerSample(explorer:UiExplorer, key:String, label:String,
+			kind:SpinnerKind):Column {
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.grow();
+		style.height = LayoutAxis.fixed(82.0);
+		style.padding = new Insets(8.0, 8.0, 8.0, 8.0);
+		style.childGap = 6.0;
+		style.background = explorer.state.lightTheme
+			? UiExplorer.color(0.91, 0.94, 0.98) : UiExplorer.color(0.07, 0.10, 0.16);
+		style.radiusTopLeft = style.radiusTopRight = 5.0;
+		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
+		return new Column(key + "-sample", [
+			explorer.keyed("indicator", new Align(key + "-align",
+				new Spinner(key + "-spinner", label, null, kind, null, 1.0))),
+			explorer.keyed("label", explorer.text(label, explorer.paletteMuted()))
+		], style);
 	}
 }

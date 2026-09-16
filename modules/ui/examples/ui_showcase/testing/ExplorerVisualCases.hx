@@ -21,6 +21,7 @@ class ExplorerVisualCases {
 		state.controls.enabled = true;
 		state.controls.volume = 0.68;
 		state.controls.progress = 0.72;
+		state.controls.spinnerRunning = true;
 		state.controls.radioValue = "comfortable";
 		state.controls.selectedTab = "preview";
 		state.controls.nameValue = "NativeKit UI";
