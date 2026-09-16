@@ -645,8 +645,9 @@ NK_API nk_result NK_CALL nk_pointer_get_position(nk_window window, double *out_x
 
 /**
  * Synchronizes a custom editor with the platform IME using absolute code-point positions.
- * Android and Web use a graphics-surface handle. Windows and macOS accept a window handle
- * because those backends do not yet expose graphics surfaces.
+ * Linux, Android, and Web use a graphics-surface handle. Windows and macOS accept a window
+ * handle because those backends do not yet expose graphics surfaces. Desktop backends may
+ * also accept a window handle when the IME is associated directly with that window.
  */
 NK_API nk_result NK_CALL nk_surface_set_text_input_state(nk_handle target,
                                                          const nk_text_input_state *state);

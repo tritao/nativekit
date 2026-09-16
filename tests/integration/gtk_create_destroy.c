@@ -378,6 +378,19 @@ int main(void) {
         assert(nk_surface_destroy(shared_surface) == NK_OK);
         assert(nk_surface_set_bounds(surface, 0, 0, 300, 200) == NK_OK);
         assert(nk_surface_present(surface) == NK_OK);
+        nk_text_input_state text_input = {0};
+        text_input.struct_size = sizeof(text_input);
+        text_input.text = "surface input";
+        text_input.document_length = 13;
+        text_input.selection_start = 13;
+        text_input.selection_end = 13;
+        text_input.composition_start = NK_TEXT_POSITION_NONE;
+        text_input.composition_end = NK_TEXT_POSITION_NONE;
+        text_input.cursor_width = 1.0f;
+        text_input.cursor_height = 18.0f;
+        assert(nk_surface_set_text_input_state(surface, &text_input) == NK_OK);
+        assert(nk_surface_set_text_input_active(surface, 1) == NK_OK);
+        assert(nk_surface_set_text_input_active(surface, 0) == NK_OK);
         assert(nk_surface_destroy(surface) == NK_OK);
         assert(nk_surface_destroy(surface) == NK_ERROR_INVALID_HANDLE);
     } else {

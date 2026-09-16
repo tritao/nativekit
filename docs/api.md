@@ -239,7 +239,7 @@ without exposing Android UTF-16 indices. Committed `NK_EVENT_TEXT_INPUT` remains
 the compatibility path for clients that do not publish structured editor state.
 On Windows and macOS, pass a NativeKit window handle to these two functions; the
 window's client view receives IME composition and committed-text transactions.
-Android, iOS, and Web use graphics-surface handles. On iOS, the surface's
+Linux, Android, iOS, and Web use graphics-surface handles. On iOS, the surface's
 UIKit responder translates touch, indirect-pointer, hardware-key, composition,
 selection, deletion, and committed-text callbacks into the same public events.
 

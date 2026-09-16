@@ -2265,6 +2265,13 @@ std::shared_ptr<GtkSurfaceResource> surface(nk_handle handle) {
         nk::core::handles().get(handle, nk::core::ResourceType::surface));
 }
 
+std::shared_ptr<GtkWindowResource> text_input_window(nk_handle target) {
+    if (auto resource = window(target))
+        return resource;
+    auto graphics_surface = surface(target);
+    return graphics_surface ? window(graphics_surface->parent) : nullptr;
+}
+
 std::shared_ptr<GtkCursorResource> cursor(nk_handle handle) {
     return std::dynamic_pointer_cast<GtkCursorResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::cursor));
@@ -3748,9 +3755,9 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
                 state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
                 return fail(NK_ERROR_INVALID_ARGUMENT,
                             "text input state ranges or hints are invalid");
-            auto resource = window(handle);
+            auto resource = text_input_window(handle);
             if (!resource)
-                return invalid_handle("window");
+                return invalid_handle("text input target");
             resource->text_input_text = text;
             resource->text_input_state = *state;
             resource->text_input_state.text = resource->text_input_text.c_str();
@@ -3774,9 +3781,9 @@ nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t ac
             if (active > 1)
                 return fail(NK_ERROR_INVALID_ARGUMENT,
                             "text input active state must be zero or one");
-            auto resource = window(handle);
+            auto resource = text_input_window(handle);
             if (!resource)
-                return invalid_handle("window");
+                return invalid_handle("text input target");
             resource->text_input_active = active != 0;
             if (!resource->im_context)
                 return NK_OK;

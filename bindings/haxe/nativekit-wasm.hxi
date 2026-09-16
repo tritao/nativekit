@@ -2831,8 +2831,9 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	extern fn nk_surface_set_text_input_active(target: nk_handle, active: nk_bool) -> nk_result;
 	/**
 	 * Synchronizes a custom editor with the platform IME using absolute code-point positions.
-	 * Android and Web use a graphics-surface handle. Windows and macOS accept a window handle
-	 * because those backends do not yet expose graphics surfaces.
+	 * Linux, Android, and Web use a graphics-surface handle. Windows and macOS accept a window
+	 * handle because those backends do not yet expose graphics surfaces. Desktop backends may
+	 * also accept a window handle when the IME is associated directly with that window.
 	 */
 	extern fn nk_surface_set_text_input_state(target: nk_handle, state: ptr<const<nk_text_input_state>>) -> nk_result;
 	/**
