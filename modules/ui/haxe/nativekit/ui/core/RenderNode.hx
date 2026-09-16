@@ -180,7 +180,7 @@ class RenderNode {
 	function invoke(event:UiEvent):Void {
 		if (event.phase == "target") {
 			invokePhase(event, "target");
-			if (!event.propagationStopped)
+			if (!event.immediatePropagationStopped)
 				invokePhase(event, "bubble");
 		} else
 			invokePhase(event, event.phase);
@@ -203,7 +203,7 @@ class RenderNode {
 			return;
 		for (handler in values) {
 			handler(event);
-			if (event.propagationStopped)
+			if (event.immediatePropagationStopped)
 				return;
 		}
 	}

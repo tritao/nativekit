@@ -20,6 +20,7 @@ class UiEvent {
 	public var phase:String;
 	public var defaultPrevented(default, null):Bool;
 	public var propagationStopped(default, null):Bool;
+	public var immediatePropagationStopped(default, null):Bool;
 	public var pointerCaptureTarget(default, null):Null<WidgetId>;
 	public var pointerReleaseRequested(default, null):Bool;
 
@@ -47,12 +48,19 @@ class UiEvent {
 		phase = "target";
 		defaultPrevented = false;
 		propagationStopped = false;
+		immediatePropagationStopped = false;
 		pointerCaptureTarget = null;
 		pointerReleaseRequested = false;
 	}
 
 	public function stopPropagation():Void
 		propagationStopped = true;
+
+	/** Stops remaining handlers on the current node and all later propagation. */
+	public function stopImmediatePropagation():Void {
+		immediatePropagationStopped = true;
+		propagationStopped = true;
+	}
 
 	public function preventDefault():Void
 		defaultPrevented = true;

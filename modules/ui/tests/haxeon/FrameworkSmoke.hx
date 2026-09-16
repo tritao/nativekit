@@ -893,6 +893,42 @@ class FrameworkSmoke {
 			!context.accessibilityAction(initialId.value, 3, null, -1, -1, 1) ||
 			context.focus.focusedId != null)
 			return 29;
+		var sameTargetHandlers = 0;
+		var immediateTargetHandlers = 0;
+		var parentHandlers = 0;
+		var eventStyle = new LayoutStyle();
+		eventStyle.width = LayoutAxis.fixed(256.0);
+		eventStyle.height = LayoutAxis.fixed(192.0);
+		var eventRootView = new Column("event-semantics", [
+			new KeyedView("stop", new Button("Stop propagation")),
+			new KeyedView("immediate", new Button("Stop immediate"))
+		], eventStyle);
+		var eventRoot = context.submit(eventRootView, frame);
+		var stopNode = eventRoot.children[0];
+		var immediateNode = eventRoot.children[1];
+		stopNode.on(UiEventKind.Click, function(event) {
+			event.stopPropagation();
+		}, "target");
+		stopNode.on(UiEventKind.Click, function(_) {
+			sameTargetHandlers++;
+		}, "target");
+		immediateNode.on(UiEventKind.Click, function(event) {
+			event.stopImmediatePropagation();
+		}, "target");
+		immediateNode.on(UiEventKind.Click, function(_) {
+			immediateTargetHandlers++;
+		}, "target");
+		eventRoot.on(UiEventKind.Click, function(_) {
+			parentHandlers++;
+		});
+		var stopGeometry:ResolvedLayoutItem = cast stopNode.resolved;
+		context.pointerDown(stopGeometry.x + 2.0, stopGeometry.y + 2.0, 0);
+		context.pointerUp(stopGeometry.x + 2.0, stopGeometry.y + 2.0, 0);
+		var immediateGeometry:ResolvedLayoutItem = cast immediateNode.resolved;
+		context.pointerDown(immediateGeometry.x + 2.0, immediateGeometry.y + 2.0, 0);
+		context.pointerUp(immediateGeometry.x + 2.0, immediateGeometry.y + 2.0, 0);
+		if (sameTargetHandlers != 1 || immediateTargetHandlers != 0 || parentHandlers != 0)
+			return 223;
 
 		var sharedStyle = new LayoutStyle();
 		new Row("style-copy", [], sharedStyle);
