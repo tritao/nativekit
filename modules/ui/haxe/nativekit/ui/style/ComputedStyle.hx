@@ -17,14 +17,29 @@ class ComputedProperty<T> {
 	}
 }
 
+/** Inspectable entry in the resolved property map. */
+class ComputedStyleEntry {
+	public final name:String;
+	public final value:Dynamic;
+	public final source:Null<StyleSource>;
+
+	public function new(name:String, value:Dynamic, source:Null<StyleSource>) {
+		this.name = name;
+		this.value = value;
+		this.source = source;
+	}
+}
+
 /** Authoritative Haxe-side result of style resolution. */
 class ComputedStyle {
 	final values:Map<String, Dynamic>;
 	final sources:Map<String, StyleSource>;
+	public final matchingRules:Array<StyleSource>;
 
 	public function new() {
 		values = new Map();
 		sources = new Map();
+		matchingRules = [];
 	}
 
 	public function set<T>(property:StyleProperty<T>, value:T, source:Null<StyleSource>):Void {
@@ -52,6 +67,21 @@ class ComputedStyle {
 
 	public function source<T>(property:StyleProperty<T>):Null<StyleSource>
 		return sources.get(property.name);
+
+	/** Records every matching rule, including rules whose declarations were overridden. */
+	public function recordMatch(source:StyleSource):Void {
+		if (source != null)
+			matchingRules.push(source);
+	}
+
+	public function entries():Array<ComputedStyleEntry> {
+		var result:Array<ComputedStyleEntry> = [];
+		for (property in StyleProperty.all())
+			if (values.exists(property.name))
+				result.push(new ComputedStyleEntry(property.name, values.get(property.name),
+					sources.get(property.name)));
+		return result;
+	}
 
 	/** Materializes the resolved layout subset without mutating any input style. */
 	public function toLayoutStyle(?base:LayoutStyle):LayoutStyle {
@@ -100,6 +130,8 @@ class ComputedStyle {
 		for (property in StyleProperty.all())
 			if (values.exists(property.name))
 				result.set(property, values.get(property.name), sources.get(property.name));
+		for (source in matchingRules)
+			result.recordMatch(source);
 		return result;
 	}
 }

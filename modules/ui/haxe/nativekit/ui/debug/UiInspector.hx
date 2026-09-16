@@ -3,6 +3,8 @@ package nativekit.ui.debug;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.WidgetId;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.style.StyleState;
+import nativekit.ui.style.StyleStateUtil;
 
 /** Produces deterministic, headless snapshots and readable render-tree dumps. */
 class UiInspector {
@@ -35,6 +37,10 @@ class UiInspector {
 				line += " hovered";
 			if (record.pressed)
 				line += " pressed";
+			if (record.styleType != null)
+				line += " type=" + record.styleType;
+			if (record.interactionStates != 0)
+				line += " states=" + interactionStateNames(record.interactionStates);
 			if (record.focusable)
 				line += " focusable";
 			if (record.zIndex != 0)
@@ -63,12 +69,15 @@ class UiInspector {
 			cast node.layout.visualKind, bounds, clip, content,
 			geometry != null && geometry.visible, node.enabled, node.focusable,
 			focused != null && focused.equals(node.id),
-			hovered != null && hovered.equals(node.id),
-			pressed != null && pressed.equals(node.id), node.layout.style.zIndex,
+			StyleStateUtil.contains(node.states, StyleState.Hovered) ||
+				hovered != null && hovered.equals(node.id),
+			StyleStateUtil.contains(node.states, StyleState.Pressed) ||
+				pressed != null && pressed.equals(node.id), node.layout.style.zIndex,
 			role, semantics == null ? 0 : semantics.states,
 			semantics == null ? null : semantics.label,
 			semantics == null ? null : semantics.value,
-			semantics == null ? 0 : semantics.actions));
+			semantics == null ? 0 : semantics.actions,
+			node.states, node.styleType, node.computedStyle));
 		for (child in node.children)
 			append(child, node.id.value, depth + 1, focused, hovered, pressed, output);
 	}
@@ -104,6 +113,17 @@ class UiInspector {
 
 	static function number(value:Float):String
 		return Std.string(Std.int(value * 100.0) / 100.0);
+
+	static function interactionStateNames(flags:Int):String {
+		var names:Array<String> = [];
+		if (StyleStateUtil.contains(flags, StyleState.Hovered)) names.push("hovered");
+		if (StyleStateUtil.contains(flags, StyleState.Pressed)) names.push("pressed");
+		if (StyleStateUtil.contains(flags, StyleState.Focused)) names.push("focused");
+		if (StyleStateUtil.contains(flags, StyleState.Disabled)) names.push("disabled");
+		if (StyleStateUtil.contains(flags, StyleState.Selected)) names.push("selected");
+		if (StyleStateUtil.contains(flags, StyleState.Checked)) names.push("checked");
+		return names.join(",");
+	}
 
 	static function escape(value:String):String {
 		var result = new StringBuf();
