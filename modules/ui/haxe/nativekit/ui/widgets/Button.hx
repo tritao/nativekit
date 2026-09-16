@@ -29,6 +29,8 @@ class Button implements View {
 	public final style:LayoutStyle;
 	/** Typed selector classes used by composite controls and application styles. */
 	public var classes:Array<String>;
+	/** Theme-backed visual treatment, including every interaction state. */
+	public var variant:ButtonVariant;
 	public var enabled:Bool;
 	public var selected:Bool;
 	/** Semantic role override used by composite controls such as tabs and menus. */
@@ -44,6 +46,7 @@ class Button implements View {
 			: key;
 		this.style = style == null ? defaultStyle() : style.copy();
 		classes = [];
+		variant = ButtonVariant.Primary;
 		this.onClick = onClick;
 		enabled = true;
 		selected = false;
@@ -60,12 +63,15 @@ class Button implements View {
 		var flags:Int = context.interactionStates.get(id);
 		flags = StyleStateUtil.withState(flags, StyleState.Selected, selected);
 		flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
-		var target = new StyleTarget("button", key, key, classes, ["button"], flags);
+		var resolvedClasses = classes.copy();
+		if (variant == ButtonVariant.Navigation)
+			resolvedClasses.push("navigation");
+		var target = new StyleTarget("button", key, key, resolvedClasses, ["button"], flags);
 		var computed = context.styleResolver.resolve(target, context.inheritedStyle, context.theme.styles,
 			context.styleSheet, style, context.environment);
 		var resolvedStyle = computed.toLayoutStyle();
 		var node = new RenderNode(id, LayoutVisualKind.Box, resolvedStyle);
-		node.setStyleIdentity("button", key, key, classes, ["button"]);
+		node.setStyleIdentity("button", key, key, resolvedClasses, ["button"]);
 		node.states = flags;
 		node.computedStyle = computed;
 		node.focusable = enabled;

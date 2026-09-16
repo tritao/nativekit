@@ -8,6 +8,7 @@ import ExplorerCatalog;
 import ExplorerPage;
 import components.SectionHeader;
 import nativekit.ui.widgets.Button;
+import nativekit.ui.widgets.ButtonVariant;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.ScrollAxis;
@@ -79,7 +80,7 @@ class CatalogSidebar {
 			explorer.state.inspector.hoveredNodeId = 0;
 			explorer.state.inspector.tab = "preview";
 		}, "nav-" + page.id);
-		item.classes = ["catalog-nav"];
+		item.variant = ButtonVariant.Navigation;
 		item.selected = explorer.state.selectedPage == page.id;
 		children.push(explorer.keyed("nav-" + page.id, item));
 	}

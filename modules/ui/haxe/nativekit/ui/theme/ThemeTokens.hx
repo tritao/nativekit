@@ -16,6 +16,12 @@ class ThemeTokens {
 	public var buttonFocused:Color;
 	public var buttonSelected:Color;
 	public var buttonDisabled:Color;
+	public var navigationBackground:Color;
+	public var navigationHover:Color;
+	public var navigationPressed:Color;
+	public var navigationFocused:Color;
+	public var navigationSelected:Color;
+	public var navigationDisabled:Color;
 	public var controlSelected:Color;
 	public var controlUnselected:Color;
 	public var controlDisabled:Color;
@@ -49,6 +55,12 @@ class ThemeTokens {
 		buttonFocused = Color.rgba(0.27, 0.52, 0.91, 1.0);
 		buttonSelected = Color.rgba(0.17, 0.37, 0.68, 1.0);
 		buttonDisabled = Color.rgba(0.22, 0.24, 0.28, 1.0);
+		navigationBackground = Color.rgba(0.075, 0.10, 0.16, 1.0);
+		navigationHover = Color.rgba(0.12, 0.18, 0.28, 1.0);
+		navigationPressed = Color.rgba(0.15, 0.23, 0.36, 1.0);
+		navigationFocused = Color.rgba(0.14, 0.25, 0.41, 1.0);
+		navigationSelected = Color.rgba(0.16, 0.29, 0.50, 1.0);
+		navigationDisabled = Color.rgba(0.10, 0.12, 0.16, 1.0);
 		controlSelected = accent;
 		controlUnselected = Color.rgba(0.16, 0.18, 0.22, 1.0);
 		controlDisabled = Color.rgba(0.20, 0.21, 0.24, 1.0);

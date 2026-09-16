@@ -8,10 +8,8 @@ import LayoutStyle;
 import UiExplorer;
 import nativekit.ui.core.View;
 import nativekit.ui.theme.Theme;
+import nativekit.ui.theme.ThemeTokens;
 import nativekit.ui.theme.TextRole;
-import nativekit.ui.style.StyleSelector;
-import nativekit.ui.style.StyleState;
-import nativekit.ui.style.StyleValue;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
@@ -177,39 +175,31 @@ class ShowcaseKit {
 			? color(0.88, 0.91, 0.96) : color(0.08, 0.11, 0.17);
 
 	static function makeTheme(light:Bool):Theme {
-		var theme = new Theme();
-		theme.accent = light ? color(0.12, 0.37, 0.72) : color(0.25, 0.61, 0.89);
-		theme.body.color = light ? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
-		theme.heading.color = theme.body.color;
-		theme.label.color = theme.body.color;
-		theme.caption.color = light ? color(0.32, 0.38, 0.47) : color(0.62, 0.68, 0.77);
-		theme.button.color = color(1.0, 1.0, 1.0);
-		theme.disabledButtonText = light ? color(0.38, 0.41, 0.46) : color(0.53, 0.55, 0.59);
-		theme.buttonHover = light ? color(0.16, 0.38, 0.69) : color(0.22, 0.48, 0.82);
-		theme.buttonPressed = light ? color(0.11, 0.29, 0.54) : color(0.13, 0.34, 0.67);
-		theme.buttonFocused = light ? color(0.22, 0.43, 0.73) : color(0.27, 0.52, 0.91);
-		theme.buttonSelected = light ? color(0.16, 0.36, 0.65) : color(0.17, 0.37, 0.68);
-		theme.buttonDisabled = light ? color(0.82, 0.84, 0.88) : color(0.22, 0.24, 0.28);
-		theme.controlSelected = theme.accent;
-		theme.controlUnselected = light ? color(0.78, 0.81, 0.86) : color(0.16, 0.18, 0.22);
-		theme.controlDisabled = light ? color(0.82, 0.84, 0.88) : color(0.20, 0.21, 0.24);
+		var tokens = new ThemeTokens();
+		tokens.accent = light ? color(0.12, 0.37, 0.72) : color(0.25, 0.61, 0.89);
+		tokens.text = light ? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
+		tokens.mutedText = light ? color(0.32, 0.38, 0.47) : color(0.62, 0.68, 0.77);
+		tokens.buttonText = color(1.0, 1.0, 1.0);
+		tokens.disabledButtonText = light ? color(0.38, 0.41, 0.46) : color(0.53, 0.55, 0.59);
+		tokens.buttonHover = light ? color(0.16, 0.38, 0.69) : color(0.22, 0.48, 0.82);
+		tokens.buttonPressed = light ? color(0.11, 0.29, 0.54) : color(0.13, 0.34, 0.67);
+		tokens.buttonFocused = light ? color(0.22, 0.43, 0.73) : color(0.27, 0.52, 0.91);
+		tokens.buttonSelected = light ? color(0.16, 0.36, 0.65) : color(0.17, 0.37, 0.68);
+		tokens.buttonDisabled = light ? color(0.82, 0.84, 0.88) : color(0.22, 0.24, 0.28);
+		tokens.controlSelected = tokens.accent;
+		tokens.controlUnselected = light ? color(0.78, 0.81, 0.86) : color(0.16, 0.18, 0.22);
+		tokens.controlDisabled = light ? color(0.82, 0.84, 0.88) : color(0.20, 0.21, 0.24);
+		tokens.panelBackground = light ? color(0.98, 0.98, 1.0) : color(0.14, 0.16, 0.20);
+		tokens.overlayBackdrop = color(0.0, 0.0, 0.0, 0.54);
+		tokens.tooltipBackground = light ? color(0.13, 0.17, 0.23) : color(0.08, 0.09, 0.11);
+		tokens.navigationBackground = light ? color(0.87, 0.90, 0.95) : color(0.075, 0.10, 0.16);
+		tokens.navigationHover = light ? color(0.79, 0.85, 0.94) : color(0.12, 0.18, 0.28);
+		tokens.navigationPressed = light ? color(0.72, 0.81, 0.92) : color(0.15, 0.23, 0.36);
+		tokens.navigationFocused = light ? color(0.76, 0.84, 0.94) : color(0.14, 0.25, 0.41);
+		tokens.navigationSelected = light ? color(0.74, 0.83, 0.95) : color(0.16, 0.29, 0.50);
+		tokens.navigationDisabled = light ? color(0.89, 0.90, 0.92) : color(0.10, 0.12, 0.16);
+		var theme = new Theme(tokens);
 		theme.textCaret = light ? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
-		theme.panelBackground = light ? color(0.98, 0.98, 1.0) : color(0.14, 0.16, 0.20);
-		theme.overlayBackdrop = color(0.0, 0.0, 0.0, 0.54);
-		theme.tooltipBackground = light ? color(0.13, 0.17, 0.23) : color(0.08, 0.09, 0.11);
-		theme.refreshStyles();
-		var catalogNormal = light ? color(0.87, 0.90, 0.95) : color(0.075, 0.10, 0.16);
-		var catalogHover = light ? color(0.79, 0.85, 0.94) : color(0.12, 0.18, 0.28);
-		var catalogPressed = light ? color(0.72, 0.81, 0.92) : color(0.15, 0.23, 0.36);
-		var catalogSelected = light ? color(0.74, 0.83, 0.95) : color(0.16, 0.29, 0.50);
-		theme.styles.rule(StyleSelector.widget("button").className("catalog-nav"),
-			[StyleValue.background(catalogNormal)]);
-		theme.styles.rule(StyleSelector.widget("button").className("catalog-nav")
-			.state(StyleState.Hovered), [StyleValue.background(catalogHover)]);
-		theme.styles.rule(StyleSelector.widget("button").className("catalog-nav")
-			.state(StyleState.Pressed), [StyleValue.background(catalogPressed)]);
-		theme.styles.rule(StyleSelector.widget("button").className("catalog-nav")
-			.state(StyleState.Selected), [StyleValue.background(catalogSelected)]);
 		return theme;
 	}
 

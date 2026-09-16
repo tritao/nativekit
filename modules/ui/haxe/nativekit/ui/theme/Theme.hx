@@ -59,7 +59,7 @@ class Theme {
 			new ParagraphStyle(TextWrap.None), this.tokens.text);
 		caption = new TextRoleStyle(new TextStyle(12.0), new ParagraphStyle(), this.tokens.mutedText);
 		button = new TextRoleStyle(new TextStyle(),
-			new ParagraphStyle(TextWrap.None), this.tokens.text);
+			new ParagraphStyle(TextWrap.None), this.tokens.buttonText);
 		refreshStyles();
 	}
 
@@ -84,6 +84,18 @@ class Theme {
 			[StyleValue.background(buttonPressed)]);
 		styles.rule(StyleSelector.widget("button").state(StyleState.Disabled),
 			[StyleValue.background(buttonDisabled)]);
+		styles.rule(StyleSelector.widget("button").className("navigation"),
+			[StyleValue.background(tokens.navigationBackground)]);
+		styles.rule(StyleSelector.widget("button").className("navigation").state(StyleState.Hovered),
+			[StyleValue.background(tokens.navigationHover)]);
+		styles.rule(StyleSelector.widget("button").className("navigation").state(StyleState.Pressed),
+			[StyleValue.background(tokens.navigationPressed)]);
+		styles.rule(StyleSelector.widget("button").className("navigation").state(StyleState.Focused),
+			[StyleValue.background(tokens.navigationFocused)]);
+		styles.rule(StyleSelector.widget("button").className("navigation").state(StyleState.Selected),
+			[StyleValue.background(tokens.navigationSelected)]);
+		styles.rule(StyleSelector.widget("button").className("navigation").state(StyleState.Disabled),
+			[StyleValue.background(tokens.navigationDisabled)]);
 		styles.rule(StyleSelector.widget("button").className("menu-item"), [
 			StyleValue.width(LayoutAxis.grow()),
 			StyleValue.padding(new Insets(10.0, 10.0, 6.0, 6.0)),

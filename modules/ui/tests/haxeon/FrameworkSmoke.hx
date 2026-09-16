@@ -49,6 +49,7 @@ import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.AccessibilityRequest;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.widgets.Button;
+import nativekit.ui.widgets.ButtonVariant;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.Align;
 import nativekit.ui.widgets.AppShell;
@@ -91,6 +92,7 @@ import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualList;
 import nativekit.ui.theme.Theme;
+import nativekit.ui.theme.ThemeTokens;
 import nativekit.ui.theme.TextRole;
 import nativekit.ui.style.ComputedStyle;
 import nativekit.ui.style.StyleResolver;
@@ -1750,6 +1752,21 @@ class FrameworkSmoke {
 		unnamedSemantics.label = "";
 		if (AccessibilityAudit.isValid(themedRoot))
 			return 100;
+		var navigationTokens = new ThemeTokens();
+		navigationTokens.navigationBackground = Color.rgba(0.11, 0.12, 0.13, 1.0);
+		navigationTokens.navigationHover = Color.rgba(0.31, 0.32, 0.33, 1.0);
+		context.setTheme(new Theme(navigationTokens));
+		var navigationButton = new Button("Navigation");
+		navigationButton.variant = ButtonVariant.Navigation;
+		var navigationRoot = context.submit(navigationButton, themedFrame);
+		if (navigationRoot.styleClasses.indexOf("navigation") < 0 ||
+			navigationRoot.layout.style.background.red != 0.11)
+			return 240;
+		var navigationGeometry:ResolvedLayoutItem = cast navigationRoot.resolved;
+		context.pointerMove(navigationGeometry.x + 2.0, navigationGeometry.y + 2.0);
+		navigationRoot = context.submit(navigationButton, themedFrame);
+		if (navigationRoot.layout.style.background.red != 0.31)
+			return 241;
 
 		// Remaining widgets resolve through the same application cascade, including
 		// paint-only properties consumed by their retained custom painters.
