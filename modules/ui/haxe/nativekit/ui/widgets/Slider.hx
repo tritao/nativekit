@@ -106,6 +106,7 @@ class Slider implements View {
 			});
 			node.on(UiEventKind.PointerDown, function(event) {
 				if (enabled && event.button == 0) {
+					event.capturePointer();
 					dragging.update(true);
 					valueAtPointer(event);
 					event.preventDefault();

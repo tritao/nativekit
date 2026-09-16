@@ -130,6 +130,7 @@ class SplitView implements View {
 			if (event.button != 0)
 				return;
 			var drag = dragState.value;
+			event.capturePointer();
 			drag.dragging = true;
 			drag.startPointer = horizontal ? event.x : event.y;
 			drag.startExtent = collapsed ? minimumExtent : boundedExtent();

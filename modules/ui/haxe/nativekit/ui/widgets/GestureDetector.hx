@@ -35,8 +35,10 @@ class GestureDetector implements View {
 			node.add(content);
 			var arena = context.gestures;
 			node.on(UiEventKind.PointerDown, function(event) {
-				if (event.button == 0)
+				if (event.button == 0) {
+					event.capturePointer();
 					arena.pointerDown(content.id, event, recognizers);
+				}
 			});
 			node.on(UiEventKind.PointerMove, function(event) { arena.pointerMove(event); });
 			node.on(UiEventKind.PointerUp, function(event) { arena.pointerUp(event); });

@@ -8,12 +8,14 @@ class EventDispatcher {
 	var root:Null<RenderNode>;
 	final focus:FocusManager;
 	var hoverPaths:Map<Int, Array<RenderNode>>;
+	final pressedIds:Map<Int, WidgetId>;
 	final capturedIds:Map<Int, WidgetId>;
 
 	public function new(focus:FocusManager) {
 		this.focus = focus;
 		root = null;
 		hoverPaths = new Map();
+		pressedIds = new Map();
 		capturedIds = new Map();
 	}
 
@@ -27,6 +29,14 @@ class EventDispatcher {
 		}
 		for (pointerId in stale)
 			capturedIds.remove(pointerId);
+		stale = [];
+		for (pointerId in pressedIds.keys()) {
+			var id = pressedIds.get(pointerId);
+			if (root == null || id == null || root.find(id) == null)
+				stale.push(pointerId);
+		}
+		for (pointerId in stale)
+			pressedIds.remove(pointerId);
 		var reboundHover = new Map<Int, Array<RenderNode>>();
 		for (pointerId in hoverPaths.keys()) {
 			var path = hoverPaths.get(pointerId);
@@ -42,14 +52,19 @@ class EventDispatcher {
 	public function pointerMove(x:Float, y:Float, modifiers:Int = 0,
 			pointerId:Int = 0, data:Dynamic = null):Void {
 		var path = HitTest.path(root, x, y);
-		updateHover(pointerId, path, x, y);
 		var targetPath = capturedPath(pointerId);
 		if (targetPath.length == 0)
 			targetPath = path;
-		if (targetPath.length > 0)
-			dispatchPath(targetPath, new UiEvent(UiEventKind.PointerMove,
+		updateHover(pointerId, targetPath, x, y);
+		if (targetPath.length > 0) {
+			var event = new UiEvent(UiEventKind.PointerMove,
 				targetPath[targetPath.length - 1].id, x, y, 0.0, 0.0, 0, 0,
-				modifiers, null, data, 0, pointerId));
+				modifiers, null, data, 0, pointerId);
+			dispatchPath(targetPath, event);
+			applyPointerCaptureRequest(pointerId, event);
+			if (event.pointerReleaseRequested)
+				updateHover(pointerId, path, x, y);
+		}
 	}
 
 	public function pointerDown(x:Float, y:Float, button:Int, modifiers:Int = 0,
@@ -60,16 +75,18 @@ class EventDispatcher {
 		if (path.length == 0)
 			return;
 		var target = path[path.length - 1];
-		capturedIds.set(pointerId, target.id);
+		pressedIds.set(pointerId, target.id);
 		var index = path.length - 1;
 		while (index >= 0) {
 			if (path[index].focusable && path[index].enabled && changeFocus(path[index].id))
 				break;
 			index--;
 		}
-		dispatchPath(path, new UiEvent(UiEventKind.PointerDown, target.id, x, y,
+		var event = new UiEvent(UiEventKind.PointerDown, target.id, x, y,
 			0.0, 0.0, button, 0, modifiers, null, data, 0, pointerId,
-			timestamp < 0.0 ? NativeKit.nk_time_seconds() : timestamp));
+			timestamp < 0.0 ? NativeKit.nk_time_seconds() : timestamp);
+		dispatchPath(path, event);
+		applyPointerCaptureRequest(pointerId, event);
 	}
 
 	function dispatchOutsidePointerDown(path:Array<RenderNode>, x:Float, y:Float,
@@ -96,28 +113,33 @@ class EventDispatcher {
 
 	public function pointerUp(x:Float, y:Float, button:Int, modifiers:Int = 0,
 			pointerId:Int = 0, data:Dynamic = null):Void {
-		var path = capturedPath(pointerId);
-		var pressed = capturedIds.get(pointerId);
-		capturedIds.remove(pointerId);
-		if (path.length == 0)
-			path = HitTest.path(root, x, y);
-		if (path.length == 0)
-			return;
-		var target = path[path.length - 1];
-		dispatchPath(path, new UiEvent(UiEventKind.PointerUp, target.id, x, y,
-			0.0, 0.0, button, 0, modifiers, null, data, 0, pointerId));
 		var releasePath = HitTest.path(root, x, y);
+		var path = capturedPath(pointerId);
+		var pressed = pressedIds.get(pointerId);
+		if (path.length == 0)
+			path = pressedPath(pointerId);
+		capturedIds.remove(pointerId);
+		pressedIds.remove(pointerId);
+		if (path.length > 0) {
+			var target = path[path.length - 1];
+			dispatchPath(path, new UiEvent(UiEventKind.PointerUp, target.id, x, y,
+				0.0, 0.0, button, 0, modifiers, null, data, 0, pointerId));
+		}
 		if (pressed != null && releasePath.length > 0 &&
 			releasePath[releasePath.length - 1].id.equals(pressed)) {
 			dispatchPath(releasePath, new UiEvent(UiEventKind.Click, pressed, x, y,
 				0.0, 0.0, button, 0, modifiers, null, data, 0, pointerId));
 		}
+		updateHover(pointerId, releasePath, x, y);
 	}
 
 	public function pointerCancel(pointerId:Int, x:Float, y:Float,
 			modifiers:Int = 0, data:Dynamic = null):Void {
 		var path = capturedPath(pointerId);
+		if (path.length == 0)
+			path = pressedPath(pointerId);
 		capturedIds.remove(pointerId);
+		pressedIds.remove(pointerId);
 		if (path.length > 0)
 			dispatchPath(path, new UiEvent(UiEventKind.PointerCancel,
 				path[path.length - 1].id, x, y, 0.0, 0.0, 0, 0, modifiers,
@@ -179,12 +201,16 @@ class EventDispatcher {
 	public function clearPointer(pointerId:Int = 0):Void {
 		updateHover(pointerId, [], 0.0, 0.0);
 		capturedIds.remove(pointerId);
+		pressedIds.remove(pointerId);
 	}
 
 	public function cancelPointers():Void {
 		var active:Array<Int> = [];
 		for (pointerId in capturedIds.keys())
 			active.push(pointerId);
+		for (pointerId in pressedIds.keys())
+			if (active.indexOf(pointerId) < 0)
+				active.push(pointerId);
 		for (pointerId in active)
 			pointerCancel(pointerId, 0.0, 0.0);
 		var hovering:Array<Int> = [];
@@ -203,9 +229,14 @@ class EventDispatcher {
 		return path == null || path.length == 0 ? null : path[path.length - 1].id;
 	}
 
-	/** Returns the node holding pointer capture after a press, if any. */
+	/** Returns the deepest node pressed by a pointer, if any. */
 	public function pressedId(pointerId:Int = 0):Null<WidgetId>
-		return capturedIds.get(pointerId);
+		return pressedIds.get(pointerId);
+
+	public function hasPointerCapture(id:WidgetId, pointerId:Int = 0):Bool {
+		var captured = capturedIds.get(pointerId);
+		return captured != null && id != null && captured.equals(id);
+	}
 
 	/** Returns the deepest cursor intent for the hovered or captured pointer path. */
 	public function cursorShape(pointerId:Int = 0):UiCursorShape {
@@ -250,6 +281,20 @@ class EventDispatcher {
 		if (id == null || root == null)
 			return [];
 		return HitTest.pathTo(root.find(id));
+	}
+
+	function pressedPath(pointerId:Int):Array<RenderNode> {
+		var id = pressedIds.get(pointerId);
+		if (id == null || root == null)
+			return [];
+		return HitTest.pathTo(root.find(id));
+	}
+
+	function applyPointerCaptureRequest(pointerId:Int, event:UiEvent):Void {
+		if (event.pointerReleaseRequested)
+			capturedIds.remove(pointerId);
+		else if (event.pointerCaptureTarget != null)
+			capturedIds.set(pointerId, event.pointerCaptureTarget);
 	}
 
 	function changeFocus(id:WidgetId):Bool {

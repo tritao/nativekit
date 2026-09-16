@@ -20,6 +20,8 @@ class UiEvent {
 	public var phase:String;
 	public var defaultPrevented(default, null):Bool;
 	public var propagationStopped(default, null):Bool;
+	public var pointerCaptureTarget(default, null):Null<WidgetId>;
+	public var pointerReleaseRequested(default, null):Bool;
 
 	public function new(kind:String, target:WidgetId, x:Float = 0.0, y:Float = 0.0,
 			deltaX:Float = 0.0, deltaY:Float = 0.0, button:Int = 0, key:Int = 0,
@@ -45,6 +47,8 @@ class UiEvent {
 		phase = "target";
 		defaultPrevented = false;
 		propagationStopped = false;
+		pointerCaptureTarget = null;
+		pointerReleaseRequested = false;
 	}
 
 	public function stopPropagation():Void
@@ -52,4 +56,16 @@ class UiEvent {
 
 	public function preventDefault():Void
 		defaultPrevented = true;
+
+	/** Routes this pointer sequence to the current handler until release or cancellation. */
+	public function capturePointer():Void {
+		pointerCaptureTarget = currentTarget == null ? target : currentTarget;
+		pointerReleaseRequested = false;
+	}
+
+	/** Releases explicit pointer capture after the current event finishes dispatching. */
+	public function releasePointer():Void {
+		pointerCaptureTarget = null;
+		pointerReleaseRequested = true;
+	}
 }

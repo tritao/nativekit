@@ -768,7 +768,8 @@ class FrameworkSmoke {
 		input.attach(eventPump);
 		input.attach(eventPump);
 		eventPump.dispatch(PointerMove(source, 4.0, 4.0));
-		if (pumpEvents != 1 || hoverEnters != 1)
+		if (pumpEvents != 1 || hoverEnters != 0 || context.events.hoveredId() == null ||
+			!context.events.hoveredId().equals(initialId))
 			return 101;
 		input.detach();
 		eventPump.dispatch(PointerEnter(source, false));
@@ -793,7 +794,7 @@ class FrameworkSmoke {
 			return 39;
 		if (input.consume(PointerMove(new NativeKit.Handle(18), 4.0, 4.0)))
 			return 12;
-		if (!input.consume(PointerMove(source, 4.0, 4.0)) || hoverEnters == 0 ||
+		if (!input.consume(PointerMove(source, 4.0, 4.0)) || hoverEnters != 0 ||
 			!input.consume(PointerScroll(source, 1.5, -24.0)) || scrollEvents != 1)
 			return 13;
 		if (!input.consume(PointerButton(source, 0, InputAction.Press, 0, 4.0, 4.0)) ||
@@ -1333,6 +1334,55 @@ class FrameworkSmoke {
 		context.pointerUp(verticalPointerX, verticalPointerY + 20.0, 0);
 		if (resizedExtent != 52.0 || verticalSplit.extent != 52.0)
 			return 235;
+		var captureClicks = 0;
+		var captureOptions = new SplitViewOptions();
+		captureOptions.resizableSide = SplitSide.Trailing;
+		captureOptions.extent = 120.0;
+		var captureSplit = new SplitView("pointer-capture-split", new Text("Leading"),
+			new Button("Drag target", null, function() { captureClicks++; }), captureOptions);
+		var captureRoot = context.submit(captureSplit, new LayoutFrame(320.0, 192.0));
+		var captureDivider = captureRoot.children[1];
+		var captureButton = captureRoot.children[2].children[0];
+		var captureHoverEnters = 0;
+		var capturePointerDowns = 0;
+		captureButton.on(UiEventKind.HoverEnter, function(_) { captureHoverEnters++; });
+		captureButton.on(UiEventKind.PointerDown, function(_) { capturePointerDowns++; });
+		var captureDividerGeometry:ResolvedLayoutItem = cast captureDivider.resolved;
+		var captureButtonGeometry:ResolvedLayoutItem = cast captureButton.resolved;
+		var captureDividerX = captureDividerGeometry.x + captureDividerGeometry.width * 0.5;
+		var captureDividerY = captureDividerGeometry.y + captureDividerGeometry.height * 0.5;
+		var captureButtonX = captureButtonGeometry.x + 2.0;
+		var captureButtonY = captureButtonGeometry.y + 2.0;
+		context.pointerMove(captureDividerX, captureDividerY);
+		context.pointerDown(captureDividerX, captureDividerY, 0);
+		if (!context.events.hasPointerCapture(captureDivider.id))
+			return 248;
+		context.pointerMove(captureButtonX, captureButtonY);
+		if (captureHoverEnters != 0 || capturePointerDowns != 0 || captureClicks != 0 ||
+			context.events.hoveredId() == null ||
+			!context.events.hoveredId().equals(captureDivider.id) ||
+			context.events.cursorShape() != UiCursorShape.HorizontalResize)
+			return 249;
+		context.pointerUp(captureButtonX, captureButtonY, 0);
+		if (captureHoverEnters != 1 || captureClicks != 0 ||
+			context.events.hasPointerCapture(captureDivider.id) ||
+			context.events.hoveredId() == null ||
+			!context.events.hoveredId().equals(captureButton.id) ||
+			context.events.cursorShape() != UiCursorShape.Arrow)
+			return 250;
+		context.pointerMove(captureDividerX, captureDividerY);
+		context.pointerDown(captureDividerX, captureDividerY, 0);
+		context.pointerMove(captureButtonX, captureButtonY);
+		context.pointerCancel(0, captureButtonX, captureButtonY);
+		if (context.events.hasPointerCapture(captureDivider.id) ||
+			context.events.hoveredId() != null ||
+			context.events.cursorShape() != UiCursorShape.Arrow)
+			return 251;
+		context.pointerMove(captureDividerX, captureDividerY);
+		context.pointerDown(captureDividerX, captureDividerY, 0);
+		context.submit(new Text("Unmounted capture owner"), new LayoutFrame(320.0, 192.0));
+		if (context.events.hasPointerCapture(captureDivider.id))
+			return 252;
 		if (!checkSplitKeyboard(context))
 			return 247;
 		var inheritedColor = Color.rgba(0.24, 0.31, 0.42, 1.0);

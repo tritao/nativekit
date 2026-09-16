@@ -260,6 +260,7 @@ class TextField implements View {
 			node.on(UiEventKind.PointerDown, function(event) {
 				if (!enabled || event.button != 0 || textNode.resolved == null)
 					return;
+				event.capturePointer();
 				var geometry:ResolvedLayoutItem = cast textNode.resolved;
 				var point = geometry.viewportToLayout(event.x, event.y);
 				var position = editor.hitTest(point.x - geometry.x, point.y - geometry.y);
