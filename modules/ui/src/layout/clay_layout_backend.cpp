@@ -136,6 +136,10 @@ struct LayoutEngine::Impl {
         Clay_SetMeasureTextIntrinsicFunction(measure_intrinsic_text, this);
         Clay_SetMeasureElementFunction(measure_element, this);
         Clay_SetLayoutTextFunction(layout_text, this);
+        // NativeKit applies node transforms after Clay has generated its command stream.
+        // Clay's viewport culling only sees the untransformed bounds, so it can discard
+        // content that a scroll transform subsequently moves into view.
+        Clay_SetCullingEnabled(false);
         return true;
     }
 

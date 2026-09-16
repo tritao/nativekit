@@ -994,6 +994,22 @@ class FrameworkSmoke {
 		if (builtRows.length >= 12 || builtRows.length == 0 || builtRows[0] < 24 ||
 			builtRows[0] > 25 || listController.offsetY != 500.0)
 			return 68;
+		var largeListController = new ScrollController();
+		var largeVirtualStyle = new LayoutStyle();
+		largeVirtualStyle.width = LayoutAxis.fixed(256.0);
+		largeVirtualStyle.height = LayoutAxis.fixed(350.0);
+		var largeBuiltRows:Array<Int> = [];
+		var largeVirtualList = new VirtualList("large-virtual-smoke", 10000, 32.0, function(index) {
+			largeBuiltRows.push(index);
+			return new Text('Row ${index + 1}');
+		}, largeVirtualStyle, null, largeListController, 350.0);
+		context.submit(largeVirtualList, new LayoutFrame(256.0, 350.0));
+		largeListController.jumpTo(0.0, 414.0 * 32.0);
+		largeBuiltRows.resize(0);
+		var largeVirtualRoot = context.submit(largeVirtualList, new LayoutFrame(256.0, 350.0));
+		if (largeBuiltRows.length == 0 || largeBuiltRows[0] != 413 ||
+			largeListController.offsetY != 13248.0)
+			return 103;
 
 		// Exercise the session capacity and the framework as one realistic,
 		// nested settings tree. The custom painter sits between ordinary text

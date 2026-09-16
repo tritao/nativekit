@@ -142,6 +142,34 @@ int main(int argc, char **argv) {
     if (hidden_primitive == snapshot.primitives.end() || hidden_primitive->visible)
         return 21;
 
+    LayoutNode scroll_root = box(320, -1);
+    scroll_root.style.width = {LayoutSizing::Fixed, 100.0f};
+    scroll_root.style.height = {LayoutSizing::Fixed, 80.0f};
+    scroll_root.style.clip_vertical = true;
+    LayoutNode scroll_content = box(321, 0);
+    scroll_content.style.width = {LayoutSizing::Grow, 0.0f};
+    scroll_content.style.height = {LayoutSizing::Fixed, 13280.0f};
+    scroll_content.style.transform.ty = -13248.0f;
+    LayoutNode scroll_spacer = box(322, 1);
+    scroll_spacer.style.width = {LayoutSizing::Grow, 0.0f};
+    scroll_spacer.style.height = {LayoutSizing::Fixed, 13248.0f};
+    LayoutNode scroll_row = box(323, 1);
+    scroll_row.style.width = {LayoutSizing::Grow, 0.0f};
+    scroll_row.style.height = {LayoutSizing::Fixed, 32.0f};
+    scroll_row.style.background = {0.2f, 0.55f, 0.9f, 1.0f};
+    std::vector<LayoutNode> scroll_nodes{scroll_root, scroll_content, scroll_spacer, scroll_row};
+    if (!engine.layout(scroll_nodes, 100.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 49;
+    const auto scrolled_row_primitive = std::find_if(
+        snapshot.primitives.begin(), snapshot.primitives.end(),
+        [](const LayoutPrimitive &primitive) {
+            return primitive.node_id == 323 &&
+                   primitive.kind == LayoutPrimitiveKind::Rectangle;
+        });
+    if (scrolled_row_primitive == snapshot.primitives.end() ||
+        scrolled_row_primitive->transform.ty != -13248.0f)
+        return 50;
+
     LayoutNode collapsed_root = box(310, -1);
     collapsed_root.style.width = {LayoutSizing::Fixed, 100.0f};
     collapsed_root.style.height = {LayoutSizing::Fixed, 80.0f};
