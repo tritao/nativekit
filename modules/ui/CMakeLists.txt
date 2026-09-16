@@ -517,6 +517,7 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_layout_session_set_custom_paint
                 _nkui_layout_session_set_font_collection
                 _nkui_layout_session_submit
+                _nkui_paint_create_linear_gradient
                 _nkui_paint_create_solid
                 _nkui_path_create
                 _nkui_renderer_create

@@ -17,10 +17,11 @@ Scrolling & Data demonstrates a fixed-row `VirtualList` with 10,000 items and
 reports the visible row range.
 
 The Graphics Lab page opens the existing typed-graphics scene. That scene keeps
-its vector paths, Bézier curves, stroke caps and joins, image clipping and
-opacity, multilingual shaping and caret hit testing, retained display lists,
-path-cache diagnostics, and depth-tested offscreen cube. It remains the
-deterministic graphics workload used by existing visual regressions.
+its vector paths, Bézier curves, stroke caps and joins, solid and linear
+gradient paints, image clipping and opacity, multilingual shaping and caret
+hit testing, retained display lists, path-cache diagnostics, and depth-tested
+offscreen cube. It remains the deterministic graphics workload used by
+existing visual regressions.
 
 Build and run the desktop explorer with:
 

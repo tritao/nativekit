@@ -9,6 +9,8 @@ import NativeKit.SurfaceHandle;
 import NativeKitEvent;
 import NativeKitEventValue;
 import haxe.io.Bytes;
+import GradientStop;
+import LinearGradientPaint;
 
 /**
  * NativeKit Graphics Lab.
@@ -65,6 +67,7 @@ class Showcase {
     final violet:Paint;
     final orange:Paint;
     final rose:Paint;
+    final gradient:LinearGradientPaint;
 
     final headerPath:Path;
     final vectorCardPath:Path;
@@ -235,6 +238,11 @@ class Showcase {
         violet = keep(SolidPaint.create(Color.fromBytes(143, 105, 245)));
         orange = keep(SolidPaint.create(Color.fromBytes(247, 171, 76)));
         rose = keep(SolidPaint.create(Color.fromBytes(242, 104, 143)));
+        gradient = keep(LinearGradientPaint.create(0.0, 0.0, 1.0, 0.0, [
+            new GradientStop(0.0, Color.fromBytes(50, 214, 143)),
+            new GradientStop(0.5, Color.fromBytes(143, 105, 245)),
+            new GradientStop(1.0, Color.fromBytes(242, 104, 143))
+        ]));
 
         headerPath = keep(roundRectPath(HEADER_X, HEADER_Y, HEADER_WIDTH, HEADER_HEIGHT, 14.0));
         vectorCardPath = keep(roundRectPath(244.0, 108.0, 306.0, 236.0, 14.0));
@@ -272,7 +280,7 @@ class Showcase {
         darkThemeLabel = styled("THEME  ·  DARK", 150.0, 11.0);
         lightThemeLabel = styled("THEME  ·  LIGHT", 150.0, 11.0);
         curveLegendLabel = styled("Bezier · concave · caps / joins", 270.0, 10.0);
-        paintCaption = styled("solid RGBA paints · filtered image · alpha layer", 270.0, 10.0);
+        paintCaption = styled("solid · linear gradient · image · alpha layer", 270.0, 10.0);
         caretInstruction = styled("click to query code-point offset, affinity, direction, and caret geometry",
             570.0, 10.0);
         offscreenLabel = styled("realtime indexed cube", 190.0, 10.0);
@@ -526,14 +534,16 @@ class Showcase {
         canvas.translate(60.0, 0.0);
         canvas.fill(circle22Path, orange);
         canvas.restore();
+        fillRect(canvas, new Rect(paintBounds.x + 30.0, paintBounds.y + 110.0,
+            paintBounds.width - 60.0, 14.0), gradient);
         canvas.save();
-        var imageClip = new Rect(paintBounds.x + 30.0, paintBounds.y + 116.0,
-            paintBounds.width - 60.0, 88.0);
+        var imageClip = new Rect(paintBounds.x + 30.0, paintBounds.y + 132.0,
+            paintBounds.width - 60.0, 72.0);
         canvas.clip(imageClip);
         canvas.beginLayer(layerOpacity);
-        canvas.drawImage(image, new Rect(imageClip.x + 6.0, imageClip.y + 6.0, 84.0, 84.0));
+        canvas.drawImage(image, new Rect(imageClip.x + 6.0, imageClip.y + 2.0, 68.0, 68.0));
         canvas.save();
-        canvas.translate(imageClip.x + imageClip.width - 56.0, imageClip.y + 46.0);
+        canvas.translate(imageClip.x + imageClip.width - 56.0, imageClip.y + imageClip.height * 0.5);
         canvas.fill(diamondPath, cyan);
         canvas.restore();
         canvas.endLayer();

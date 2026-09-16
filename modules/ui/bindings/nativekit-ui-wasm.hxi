@@ -493,7 +493,9 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 * The gradient line runs from (`start_x`, `start_y`) to (`end_x`, `end_y`)
 	 * in the path's user coordinate space. `stops` must contain between two and
 	 * NKUI_GRADIENT_MAX_STOPS entries with finite, strictly increasing offsets in
-	 * the inclusive range 0..1. The colors and stop array are copied on success.
+	 * the inclusive range 0..1. The endpoints must differ, and each color
+	 * component must be finite and in the inclusive range 0..1. The colors and
+	 * stop array are copied on success.
 	 */
 	extern fn nkui_paint_create_linear_gradient(start_x: f32, start_y: f32, end_x: f32, end_y: f32, stops: ptr<const<nkui_gradient_stop>> @in_array("stop_count"), stop_count: u32, out_paint: ptr<nkui_resource> @out) -> nkui_result;
 	/**
