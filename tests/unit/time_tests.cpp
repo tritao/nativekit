@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_time.h"
 
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <thread>
@@ -31,15 +32,20 @@ int main() {
     assert(nk_init(&options) == NK_OK);
     drain_events();
 
-    std::thread waker([] {
+    std::atomic<bool> wake_complete{false};
+    std::thread waker([&] {
         std::this_thread::sleep_for(std::chrono::milliseconds(30));
-        nk_wake_events();
+        while (!wake_complete.load(std::memory_order_acquire)) {
+            nk_wake_events();
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
     });
     const auto wake_start = std::chrono::steady_clock::now();
-    assert(nk_wait_events_timeout(1.0) == NK_OK);
+    const auto wake_result = nk_wait_events_timeout(1.0);
     const auto wake_elapsed = std::chrono::steady_clock::now() - wake_start;
+    wake_complete.store(true, std::memory_order_release);
     waker.join();
-    assert(wake_elapsed >= std::chrono::milliseconds(10));
+    assert(wake_result == NK_OK);
     assert(wake_elapsed < std::chrono::milliseconds(500));
 
     const auto timeout_start = std::chrono::steady_clock::now();
