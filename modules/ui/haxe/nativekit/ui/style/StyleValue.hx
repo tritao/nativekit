@@ -65,4 +65,28 @@ class StyleValue {
 	public static function letterSpacing(value:Float):StyleValue
 		return of(StyleProperty.LetterSpacing, value);
 
+	public static function borderColor(value:Color):StyleValue
+		return of(StyleProperty.BorderColor, value);
+
+	public static function borderWidth(value:Float):StyleValue
+		return of(StyleProperty.BorderWidth, value);
+
+	public static function outlineColor(value:Color):StyleValue
+		return of(StyleProperty.OutlineColor, value);
+
+	public static function outlineWidth(value:Float):StyleValue
+		return of(StyleProperty.OutlineWidth, value);
+
+	public static function shadowColor(value:Color):StyleValue
+		return of(StyleProperty.ShadowColor, value);
+
+	public static function shadowOffset(x:Float, y:Float):Array<StyleValue>
+		return [of(StyleProperty.ShadowOffsetX, x), of(StyleProperty.ShadowOffsetY, y)];
+
+	public static function shadowBlur(value:Float):StyleValue
+		return of(StyleProperty.ShadowBlur, value);
+
+	public static function opacity(value:Float):StyleValue
+		return of(StyleProperty.Opacity, value);
+
 }

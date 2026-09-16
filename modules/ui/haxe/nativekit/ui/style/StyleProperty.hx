@@ -71,6 +71,15 @@ class StyleProperty<T> {
 			left.a == right.a && left.b == right.b && left.c == right.c &&
 			left.d == right.d && left.tx == right.tx && left.ty == right.ty);
 
+	static function floatInterpolate(left:Float, right:Float, amount:Float):Float
+		return left + (right - left) * amount;
+
+	static function colorInterpolate(left:Color, right:Color, amount:Float):Color
+		return Color.rgba(left.red + (right.red - left.red) * amount,
+			left.green + (right.green - left.green) * amount,
+			left.blue + (right.blue - left.blue) * amount,
+			left.alpha + (right.alpha - left.alpha) * amount);
+
 	public static final Width:StyleProperty<LayoutAxis> = new StyleProperty(
 		"width", LayoutAxis.fit(), false, StyleImpact.Layout, null,
 		function(style) return style.width, function(style, value) style.width = value, axisEqual);
@@ -108,19 +117,19 @@ class StyleProperty<T> {
 		"childGap", 0.0, false, StyleImpact.Layout, null,
 		function(style) return style.childGap, function(style, value) style.childGap = value);
 	public static final Background:StyleProperty<Color> = new StyleProperty(
-		"background", Color.rgba(0.0, 0.0, 0.0, 0.0), false, StyleImpact.Paint, null,
+		"background", Color.rgba(0.0, 0.0, 0.0, 0.0), false, StyleImpact.Paint, colorInterpolate,
 		function(style) return style.background, function(style, value) style.background = value, colorEqual);
 	public static final RadiusTopLeft:StyleProperty<Float> = new StyleProperty(
-		"radiusTopLeft", 0.0, false, StyleImpact.Paint, null,
+		"radiusTopLeft", 0.0, false, StyleImpact.Paint, floatInterpolate,
 		function(style) return style.radiusTopLeft, function(style, value) style.radiusTopLeft = value);
 	public static final RadiusTopRight:StyleProperty<Float> = new StyleProperty(
-		"radiusTopRight", 0.0, false, StyleImpact.Paint, null,
+		"radiusTopRight", 0.0, false, StyleImpact.Paint, floatInterpolate,
 		function(style) return style.radiusTopRight, function(style, value) style.radiusTopRight = value);
 	public static final RadiusBottomRight:StyleProperty<Float> = new StyleProperty(
-		"radiusBottomRight", 0.0, false, StyleImpact.Paint, null,
+		"radiusBottomRight", 0.0, false, StyleImpact.Paint, floatInterpolate,
 		function(style) return style.radiusBottomRight, function(style, value) style.radiusBottomRight = value);
 	public static final RadiusBottomLeft:StyleProperty<Float> = new StyleProperty(
-		"radiusBottomLeft", 0.0, false, StyleImpact.Paint, null,
+		"radiusBottomLeft", 0.0, false, StyleImpact.Paint, floatInterpolate,
 		function(style) return style.radiusBottomLeft, function(style, value) style.radiusBottomLeft = value);
 	public static final ClipHorizontal:StyleProperty<Bool> = new StyleProperty(
 		"clipHorizontal", false, false, StyleImpact.Paint, null,
@@ -134,6 +143,27 @@ class StyleProperty<T> {
 	public static final Transform:StyleProperty<Transform2D> = new StyleProperty(
 		"transform", Transform2D.identity(), false, StyleImpact.Composite, null,
 		function(style) return style.transform, function(style, value) style.transform = value, transformEqual);
+	public static final BorderColor:StyleProperty<Color> = new StyleProperty(
+		"borderColor", Color.rgba(0.0, 0.0, 0.0, 0.0), false, StyleImpact.Paint, colorInterpolate,
+		null, null, colorEqual);
+	public static final BorderWidth:StyleProperty<Float> = new StyleProperty(
+		"borderWidth", 0.0, false, StyleImpact.Paint, floatInterpolate);
+	public static final OutlineColor:StyleProperty<Color> = new StyleProperty(
+		"outlineColor", Color.rgba(0.0, 0.0, 0.0, 0.0), false, StyleImpact.Paint, colorInterpolate,
+		null, null, colorEqual);
+	public static final OutlineWidth:StyleProperty<Float> = new StyleProperty(
+		"outlineWidth", 0.0, false, StyleImpact.Paint, floatInterpolate);
+	public static final ShadowColor:StyleProperty<Color> = new StyleProperty(
+		"shadowColor", Color.rgba(0.0, 0.0, 0.0, 0.0), false, StyleImpact.Paint, colorInterpolate,
+		null, null, colorEqual);
+	public static final ShadowOffsetX:StyleProperty<Float> = new StyleProperty(
+		"shadowOffsetX", 0.0, false, StyleImpact.Paint, floatInterpolate);
+	public static final ShadowOffsetY:StyleProperty<Float> = new StyleProperty(
+		"shadowOffsetY", 0.0, false, StyleImpact.Paint, floatInterpolate);
+	public static final ShadowBlur:StyleProperty<Float> = new StyleProperty(
+		"shadowBlur", 0.0, false, StyleImpact.Paint, floatInterpolate);
+	public static final Opacity:StyleProperty<Float> = new StyleProperty(
+		"opacity", 1.0, false, StyleImpact.Composite, floatInterpolate);
 
 	/** Inherited typography/paint inputs are computed here and applied by text widgets. */
 	public static final TextColor:StyleProperty<Color> = new StyleProperty(
@@ -160,7 +190,10 @@ class StyleProperty<T> {
 				dynamicProperty(RadiusBottomRight), dynamicProperty(RadiusBottomLeft),
 				dynamicProperty(ClipHorizontal), dynamicProperty(ClipVertical), dynamicProperty(Visible),
 				dynamicProperty(Transform), dynamicProperty(TextColor), dynamicProperty(FontSize),
-				dynamicProperty(LetterSpacing)
+				dynamicProperty(LetterSpacing), dynamicProperty(BorderColor), dynamicProperty(BorderWidth),
+				dynamicProperty(OutlineColor), dynamicProperty(OutlineWidth), dynamicProperty(ShadowColor),
+				dynamicProperty(ShadowOffsetX), dynamicProperty(ShadowOffsetY), dynamicProperty(ShadowBlur),
+				dynamicProperty(Opacity)
 			];
 		return definitions;
 	}

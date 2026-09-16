@@ -6,6 +6,7 @@ import LayoutVisualKind;
 import Canvas;
 import ResolvedLayoutItem;
 import nativekit.ui.style.ComputedStyle;
+import nativekit.ui.style.Decoration;
 import nativekit.ui.semantics.Semantics;
 
 /** One Haxe-owned node joins visual layout, interaction, focus, and state identity. */
@@ -35,6 +36,7 @@ class RenderNode {
 	final outsidePointerDownHandlers:Array<UiEvent->Void>;
 	final resolvedHandlers:Array<ResolvedLayoutItem->Void>;
 	final paintHandlers:Array<Canvas->ResolvedLayoutItem->Void>;
+	final decorations:Array<Decoration>;
 
 	public function new(id:WidgetId, kind:LayoutVisualKind = LayoutVisualKind.Box, ?style:LayoutStyle) {
 		if (id == null)
@@ -62,6 +64,7 @@ class RenderNode {
 		outsidePointerDownHandlers = [];
 		resolvedHandlers = [];
 		paintHandlers = [];
+		decorations = [];
 	}
 
 	/** Publishes the typed selector identity associated with this render node. */
@@ -140,9 +143,17 @@ class RenderNode {
 		return this;
 	}
 
+	/** Adds an opt-in reusable decoration to this node's retained custom paint. */
+	public function addDecoration(decoration:Decoration):RenderNode {
+		if (decoration == null)
+			throw "Render decorations cannot be null";
+		decorations.push(decoration);
+		return this;
+	}
+
 	@:allow(nativekit.ui.core.UiContext)
 	function hasPaintHandler():Bool
-		return paintHandlers.length > 0;
+		return paintHandlers.length > 0 || decorations.length > 0;
 
 	@:allow(nativekit.ui.core.UiContext)
 	function setResolved(item:Null<ResolvedLayoutItem>):Void {
@@ -154,8 +165,12 @@ class RenderNode {
 
 	@:allow(nativekit.ui.core.UiContext)
 	function paint(canvas:Canvas):Bool {
-		if (resolved == null || !resolved.visible || paintHandlers.length == 0)
+		if (resolved == null || !resolved.visible ||
+			(paintHandlers.length == 0 && decorations.length == 0))
 			return false;
+		var style = computedStyle == null ? new ComputedStyle() : computedStyle;
+		for (decoration in decorations)
+			decoration.paint(canvas, resolved, style);
 		for (handler in paintHandlers)
 			handler(canvas, resolved);
 		return true;

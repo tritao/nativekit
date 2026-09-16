@@ -1196,11 +1196,13 @@ class FrameworkSmoke {
 				StyleStateUtil.withState(0, StyleState.Hovered, true)),
 			null, styleTheme, styleApplication, localStyle);
 		var computedSource:Null<StyleSource> = computed.source(StyleProperty.Background);
+		var computedSourceStylesheet = computedSource == null ? "" : computedSource.stylesheet;
+		var computedSourceSelector = computedSource == null ? "" : computedSource.selector;
 		if (computed.get(StyleProperty.Background).red != 0.4 ||
 			computed.get(StyleProperty.Width).sizing != LayoutSizing.Fixed ||
 			computed.get(StyleProperty.Width).value != 88.0 || computedSource == null ||
-			computedSource.stylesheet != "StyleApplication" ||
-			computedSource.selector != "button:hovered")
+			computedSourceStylesheet != "StyleApplication" ||
+			computedSourceSelector != "button:hovered")
 			return 214;
 		var inherited = new ComputedStyle();
 		inherited.set(StyleProperty.TextColor, Color.rgba(0.7, 0.7, 0.7, 1.0), null);
@@ -1521,12 +1523,13 @@ class FrameworkSmoke {
 		if (themedRoot.layout.style.background.red != 0.2)
 			return 85;
 		var inspected = context.inspect();
+		var inspectedBackgroundSource:Null<StyleSource> = inspected[0].computedStyle == null
+			? null : inspected[0].computedStyle.source(StyleProperty.Background);
 		if (inspected.length != 2 || inspected[0].label != "Themed" ||
 			inspected[1].parentId != inspected[0].id || context.dumpTree().length == 0 ||
 			context.auditAccessibility().length != 0 || inspected[0].styleType != "button" ||
 			inspected[0].computedStyle == null ||
-			inspected[0].computedStyle.source(StyleProperty.Background) == null ||
-			inspected[0].computedStyle.source(StyleProperty.Background).selector != "button:disabled" ||
+			inspectedBackgroundSource == null || inspectedBackgroundSource.selector != "button:disabled" ||
 			(inspected[0].interactionStates & StyleState.Disabled) == 0)
 			return 99;
 		var unnamedSemantics:Semantics = cast themedRoot.semantics;
