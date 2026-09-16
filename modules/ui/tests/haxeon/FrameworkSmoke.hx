@@ -1270,7 +1270,10 @@ class FrameworkSmoke {
 			return 230;
 		var splitDividerSemantics:Semantics = cast splitRoot.children[1].semantics;
 		if (splitDividerSemantics == null ||
-			splitDividerSemantics.role != AccessibilityRole.Separator)
+			splitDividerSemantics.role != AccessibilityRole.Separator ||
+			!splitRoot.children[1].focusable ||
+			(splitDividerSemantics.actions & AccessibilityAction.Increment) == 0 ||
+			(splitDividerSemantics.actions & AccessibilityAction.Decrement) == 0)
 			return 230;
 		var splitDividerGeometry:ResolvedLayoutItem = cast splitRoot.children[1].resolved;
 		var splitPointerX = splitDividerGeometry.x + splitDividerGeometry.width * 0.5;
@@ -1327,59 +1330,8 @@ class FrameworkSmoke {
 		context.pointerUp(verticalPointerX, verticalPointerY + 20.0, 0);
 		if (resizedExtent != 52.0 || verticalSplit.extent != 52.0)
 			return 235;
-		var leadingResizes = 0;
-		var leadingExpansions = 0;
-		var leadingOptions = new SplitViewOptions();
-		leadingOptions.resizableSide = SplitSide.Leading;
-		leadingOptions.extent = 96.0;
-		leadingOptions.minimumExtent = 64.0;
-		leadingOptions.maximumExtent = 144.0;
-		leadingOptions.onResize = function(value) {
-			leadingResizes = Std.int(value);
-		};
-		leadingOptions.onCollapsedChanged = function(collapsed) {
-			if (!collapsed)
-				leadingExpansions++;
-		};
-		var leadingSplit = new SplitView("leading-split", new Text("Leading"),
-			new Text("Trailing"), leadingOptions);
-		var leadingRoot = context.submit(leadingSplit, new LayoutFrame(320.0, 192.0));
-		if (leadingRoot.children.length != 3 ||
-			leadingRoot.children[0].layout.style.width.sizing != LayoutSizing.Fixed ||
-			leadingRoot.children[2].layout.style.width.sizing != LayoutSizing.Grow)
-			return 241;
-		var leadingDividerSemantics:Semantics = cast leadingRoot.children[1].semantics;
-		if (leadingDividerSemantics == null ||
-			leadingDividerSemantics.label != "Leading pane divider" ||
-			leadingDividerSemantics.numericValue != 96.0 ||
-			leadingDividerSemantics.numericMinimum != 64.0 ||
-			leadingDividerSemantics.numericMaximum != 144.0)
-			return 242;
-		var leadingDividerGeometry:ResolvedLayoutItem = cast leadingRoot.children[1].resolved;
-		var leadingPointerX = leadingDividerGeometry.x + leadingDividerGeometry.width * 0.5;
-		var leadingPointerY = leadingDividerGeometry.y + leadingDividerGeometry.height * 0.5;
-		context.pointerMove(leadingPointerX, leadingPointerY);
-		if (context.events.cursorShape() != UiCursorShape.HorizontalResize)
-			return 243;
-		context.pointerDown(leadingPointerX, leadingPointerY, 0);
-		context.pointerMove(leadingPointerX + 20.0, leadingPointerY);
-		context.pointerUp(leadingPointerX + 20.0, leadingPointerY, 0);
-		if (leadingResizes != 116 || leadingSplit.extent != 116.0)
-			return 244;
-		leadingSplit.collapsed = true;
-		leadingRoot = context.submit(leadingSplit, new LayoutFrame(320.0, 192.0));
-		var collapsedLeadingGeometry:ResolvedLayoutItem = cast leadingRoot.children[0].resolved;
-		if (leadingRoot.children[0].layout.style.visible ||
-			collapsedLeadingGeometry.width != 0.0)
-			return 245;
-		var collapsedLeadingDivider:ResolvedLayoutItem = cast leadingRoot.children[1].resolved;
-		var collapsedLeadingX = collapsedLeadingDivider.x + collapsedLeadingDivider.width * 0.5;
-		var collapsedLeadingY = collapsedLeadingDivider.y + collapsedLeadingDivider.height * 0.5;
-		context.pointerDown(collapsedLeadingX, collapsedLeadingY, 0);
-		context.pointerMove(collapsedLeadingX + 20.0, collapsedLeadingY);
-		context.pointerUp(collapsedLeadingX + 20.0, collapsedLeadingY, 0);
-		if (leadingExpansions != 1 || leadingSplit.collapsed || leadingSplit.extent != 84.0)
-			return 246;
+		if (!checkSplitKeyboard(context))
+			return 247;
 		var inheritedColor = Color.rgba(0.24, 0.31, 0.42, 1.0);
 		var nestedColor = Color.rgba(0.76, 0.42, 0.18, 1.0);
 		var typography = new DefaultTextStyle(new Column("typography", [
@@ -1659,5 +1611,97 @@ class FrameworkSmoke {
 		fonts.dispose();
 		Sys.println("PASS: Haxe framework, 4,000-node layout pressure, and NativeKit input routing");
 		return 0;
+	}
+
+	static function checkSplitKeyboard(context:UiContext):Bool {
+		var frame = new LayoutFrame(320.0, 192.0);
+		var trailingOptions = new SplitViewOptions();
+		trailingOptions.resizableSide = SplitSide.Trailing;
+		trailingOptions.extent = 96.0;
+		trailingOptions.minimumExtent = 64.0;
+		trailingOptions.maximumExtent = 144.0;
+		var trailingSplit = new SplitView("keyboard-trailing-split", new Text("Leading"),
+			new Text("Trailing"), trailingOptions);
+		var trailingRoot = context.submit(trailingSplit, frame);
+		var trailingDivider = trailingRoot.children[1];
+		var trailingSemantics:Semantics = cast trailingDivider.semantics;
+		if (trailingSemantics == null || !trailingDivider.focusable ||
+			(trailingSemantics.actions & AccessibilityAction.Increment) == 0 ||
+			(trailingSemantics.actions & AccessibilityAction.Decrement) == 0 ||
+			trailingSemantics.numericValue != 96.0)
+			return false;
+		if (!context.focusWidget(trailingDivider.id))
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.Right);
+		if (trailingSplit.extent != 88.0)
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.Home);
+		if (trailingSplit.extent != 64.0)
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.End);
+		if (trailingSplit.extent != 144.0)
+			return false;
+		trailingRoot = context.submit(trailingSplit, frame);
+		if (!context.accessibilityAction(trailingRoot.children[1].id.value,
+			AccessibilityRequest.Decrement, null, -1, -1, 2) || trailingSplit.extent != 128.0)
+			return false;
+
+		var leadingResizes = 0;
+		var leadingExpansions = 0;
+		var leadingOptions = new SplitViewOptions();
+		leadingOptions.resizableSide = SplitSide.Leading;
+		leadingOptions.extent = 96.0;
+		leadingOptions.minimumExtent = 64.0;
+		leadingOptions.maximumExtent = 144.0;
+		leadingOptions.onResize = function(value) { leadingResizes = Std.int(value); };
+		leadingOptions.onCollapsedChanged = function(collapsed) {
+			if (!collapsed)
+				leadingExpansions++;
+		};
+		var leadingSplit = new SplitView("keyboard-leading-split", new Text("Leading"),
+			new Text("Trailing"), leadingOptions);
+		var leadingRoot = context.submit(leadingSplit, frame);
+		if (leadingRoot.children.length != 3 ||
+			leadingRoot.children[0].layout.style.width.sizing != LayoutSizing.Fixed ||
+			leadingRoot.children[2].layout.style.width.sizing != LayoutSizing.Grow)
+			return false;
+		var leadingDivider = leadingRoot.children[1];
+		var leadingSemantics:Semantics = cast leadingDivider.semantics;
+		if (leadingSemantics == null || leadingSemantics.label != "Leading pane divider" ||
+			leadingSemantics.numericValue != 96.0)
+			return false;
+		var leadingGeometry:ResolvedLayoutItem = cast leadingDivider.resolved;
+		var leadingX = leadingGeometry.x + leadingGeometry.width * 0.5;
+		var leadingY = leadingGeometry.y + leadingGeometry.height * 0.5;
+		context.pointerDown(leadingX, leadingY, 0);
+		context.pointerMove(leadingX + 20.0, leadingY);
+		context.pointerUp(leadingX + 20.0, leadingY, 0);
+		if (leadingResizes != 116 || leadingSplit.extent != 116.0)
+			return false;
+		leadingSplit.collapsed = true;
+		leadingRoot = context.submit(leadingSplit, frame);
+		var collapsedLeadingGeometry:ResolvedLayoutItem = cast leadingRoot.children[0].resolved;
+		if (leadingRoot.children[0].layout.style.visible ||
+			collapsedLeadingGeometry.width != 0.0)
+			return false;
+		var collapsedDividerGeometry:ResolvedLayoutItem = cast leadingRoot.children[1].resolved;
+		var collapsedX = collapsedDividerGeometry.x + collapsedDividerGeometry.width * 0.5;
+		var collapsedY = collapsedDividerGeometry.y + collapsedDividerGeometry.height * 0.5;
+		context.pointerDown(collapsedX, collapsedY, 0);
+		context.pointerMove(collapsedX + 20.0, collapsedY);
+		context.pointerUp(collapsedX + 20.0, collapsedY, 0);
+		if (leadingExpansions != 1 || leadingSplit.collapsed || leadingSplit.extent != 84.0)
+			return false;
+		leadingRoot = context.submit(leadingSplit, frame);
+		if (!context.focusWidget(leadingRoot.children[1].id))
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.Right);
+		if (leadingSplit.extent != 92.0)
+			return false;
+		leadingRoot = context.submit(leadingSplit, frame);
+		if (!context.accessibilityAction(leadingRoot.children[1].id.value,
+			AccessibilityRequest.Decrement, null, -1, -1, 2) || leadingSplit.extent != 76.0)
+			return false;
+		return true;
 	}
 }

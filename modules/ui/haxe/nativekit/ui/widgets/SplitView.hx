@@ -13,7 +13,10 @@ import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
+import nativekit.ui.core.UiKey;
 import nativekit.ui.core.View;
+import nativekit.ui.semantics.AccessibilityAction;
+import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
 
@@ -91,10 +94,13 @@ class SplitView implements View {
 			if (dividerExtent > 0.0) {
 				var divider = new RenderNode(context.id("divider"), LayoutVisualKind.Box,
 					dividerLayoutStyle(horizontal));
+				divider.focusable = true;
 				divider.cursor = horizontal ? CursorShape.HorizontalResize : CursorShape.VerticalResize;
 				var sideName = resizableSide == SplitSide.Leading ? "Leading" : "Trailing";
 				var dividerSemantics = new Semantics(AccessibilityRole.Separator,
 					'$sideName pane divider');
+				dividerSemantics.actions = AccessibilityAction.Increment |
+					AccessibilityAction.Decrement;
 				dividerSemantics.numericValue = boundedExtent();
 				dividerSemantics.numericMinimum = minimumExtent;
 				dividerSemantics.numericMaximum = maximumExtent;
@@ -133,19 +139,65 @@ class SplitView implements View {
 			var pointer = horizontal ? event.x : event.y;
 			var delta = pointer - startPointer;
 			var direction = resizableSide == SplitSide.Leading ? 1.0 : -1.0;
-			var next = clamp(dragExtent + delta * direction, minimumExtent, maximumExtent);
-			extent = next;
-			if (collapsed && next > 0.0) {
-				collapsed = false;
-				if (onCollapsedChanged != null)
-					onCollapsedChanged(false);
-			}
-			if (onResize != null)
-				onResize(next);
+			updateExtent(dragExtent + delta * direction, true);
 			event.preventDefault();
+		});
+		var handleKey = function(event:UiEvent) {
+			var delta = 0.0;
+			var positive = horizontal
+				? (resizableSide == SplitSide.Leading ? UiKey.Right : UiKey.Left)
+				: (resizableSide == SplitSide.Leading ? UiKey.Down : UiKey.Up);
+			var negative = horizontal
+				? (resizableSide == SplitSide.Leading ? UiKey.Left : UiKey.Right)
+				: (resizableSide == SplitSide.Leading ? UiKey.Up : UiKey.Down);
+			if (event.key == positive)
+				delta = keyboardStep();
+			else if (event.key == negative)
+				delta = -keyboardStep();
+			else if (event.key == UiKey.Home)
+				updateExtent(minimumExtent, true);
+			else if (event.key == UiKey.End)
+				updateExtent(maximumExtent, true);
+			else
+				return;
+			if (delta != 0.0)
+				updateExtent(extent + delta, true);
+			event.preventDefault();
+		};
+		divider.on(UiEventKind.KeyDown, handleKey);
+		divider.on(UiEventKind.KeyRepeat, handleKey);
+		divider.on(UiEventKind.AccessibilityIncrement, function(event) {
+			updateExtent(extent + keyboardStep() * actionGranularity(event), true);
+		});
+		divider.on(UiEventKind.AccessibilityDecrement, function(event) {
+			updateExtent(extent - keyboardStep() * actionGranularity(event), true);
 		});
 		divider.on(UiEventKind.PointerUp, function(_) { dragging = false; });
 		divider.on(UiEventKind.PointerCancel, function(_) { dragging = false; });
+	}
+
+	function updateExtent(next:Float, expandCollapsed:Bool):Bool {
+		if (!finite(next))
+			return false;
+		var bounded = clamp(next, minimumExtent, maximumExtent);
+		var changed = bounded != extent;
+		extent = bounded;
+		if (collapsed && expandCollapsed && bounded > 0.0) {
+			collapsed = false;
+			if (onCollapsedChanged != null)
+				onCollapsedChanged(false);
+		}
+		if (changed && onResize != null)
+			onResize(bounded);
+		return changed;
+	}
+
+	static inline function keyboardStep():Float
+		return 8.0;
+
+	static function actionGranularity(event:UiEvent):Int {
+		var action:AccessibilityActionData = cast event.data;
+		return action != null && action.granularity > 1 ? action.granularity : 1;
 	}
 
 	function paneStyle(horizontal:Bool, resizable:Bool, paneExtent:Float):LayoutStyle {
