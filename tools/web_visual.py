@@ -7,27 +7,9 @@ import json
 import pathlib
 import struct
 import time
-import urllib.request
 import zlib
 
 from web_smoke import WebSocket, wait_for_page
-
-
-def wait_for_browser_page(debug_port, timeout):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{debug_port}/json/list", timeout=2
-            ) as response:
-                pages = json.load(response)
-            page = next((item for item in pages if item.get("type") == "page"), None)
-            if page:
-                return page
-        except OSError:
-            pass
-        time.sleep(0.1)
-    raise RuntimeError("Chrome page did not become available")
 
 
 def read_png(data, source):
@@ -140,7 +122,7 @@ def main():
     parser.add_argument("--expect-affinity", type=int)
     parser.add_argument("--expect-direction", type=int)
     parser.add_argument("--update", action="store_true")
-    parser.add_argument("--reuse-page", action="store_true")
+    parser.add_argument("--apply-device-scale", action="store_true")
     parser.add_argument("--tolerance", type=int, default=12)
     parser.add_argument("--allowed-ratio", type=float, default=0.005)
     parser.add_argument("--timeout", type=float, default=30.0)
@@ -149,24 +131,17 @@ def main():
     deadline = time.monotonic() + args.timeout
     expected_width = int(args.width * args.scale + 0.5)
     expected_height = int(args.height * args.scale + 0.5)
-    page = (wait_for_browser_page(args.debug_port, args.timeout) if args.reuse_page
-            else wait_for_page(args.debug_port, args.page_url, args.timeout))
+    page = wait_for_page(args.debug_port, args.page_url, args.timeout)
     websocket = WebSocket(page["webSocketDebuggerUrl"])
     websocket.socket.settimeout(args.timeout)
     try:
-        if args.reuse_page:
-            websocket.evaluate(
-                "(()=>{try{if(typeof guest!=='undefined'&&guest)"
-                "guest['ShowcaseWeb.shutdown']();}catch(_){}})()",
-                19,
-            )
+        if args.apply_device_scale:
             websocket.command("Emulation.setDeviceMetricsOverride", {
                 "width": args.width,
                 "height": args.height,
                 "deviceScaleFactor": args.scale,
                 "mobile": False,
             }, 20)
-            websocket.command("Page.navigate", {"url": args.page_url}, 21)
         state = None
         while time.monotonic() < deadline:
             try:
@@ -174,6 +149,7 @@ def main():
                     "JSON.stringify({frames:Number(document.documentElement?.dataset.nativekitFrames||0),"
                     "result:document.documentElement?.dataset.nativekitResult||'',"
                     "message:document.getElementById('status')?.textContent||'',"
+                    "url:location.href,"
                     "width:document.getElementById('canvas')?.width||0,"
                     "height:document.getElementById('canvas')?.height||0})",
                     1,
@@ -190,7 +166,8 @@ def main():
             state = json.loads(value)
             if state["result"] and state["result"] != "0":
                 raise RuntimeError(f"showcase failed before capture: {state}")
-            if (state["frames"] >= 3 and state["width"] == expected_width and
+            if (state["url"] == args.page_url and state["frames"] >= 3 and
+                    state["width"] == expected_width and
                     state["height"] == expected_height):
                 break
             time.sleep(0.05)

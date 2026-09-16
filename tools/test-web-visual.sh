@@ -140,7 +140,6 @@ if [[ -n "$case_filter" ]]; then
 fi
 
 http_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
-debug_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
 temp_dir=$(mktemp -d)
 http_pid=""
 browser_pid=""
@@ -159,17 +158,6 @@ trap cleanup_suite EXIT
 python3 -m http.server "$http_port" --bind 127.0.0.1 --directory "$artifact_dir" \
     >"$temp_dir/http.log" 2>&1 &
 http_pid=$!
-"$browser" --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu \
-    --enable-unsafe-swiftshader --no-first-run --user-data-dir="$temp_dir/profile" \
-    --remote-debugging-port="$debug_port" --remote-allow-origins='*' \
-    about:blank >"$temp_dir/browser.log" 2>&1 &
-browser_pid=$!
-for _ in $(seq 1 100); do
-    if curl --silent --fail "http://127.0.0.1:${debug_port}/json/version" >/dev/null 2>&1; then
-        break
-    fi
-    sleep 0.1
-done
 
 for visual_case in "${cases[@]}"; do
     IFS='|' read -r case_name size extra_query click caret device_scale <<<"$visual_case"
@@ -182,12 +170,27 @@ for visual_case in "${cases[@]}"; do
     device_scale=${device_scale:-1}
     width=${size%x*}
     height=${size#*x}
-    page_url="http://127.0.0.1:${http_port}/nativekit_ui_haxeon.html?visual&width=${width}&height=${height}"
+    page_url="http://127.0.0.1:${http_port}/nativekit_ui_haxeon.html?visual&visualCase=${case_name}&width=${width}&height=${height}"
     [[ -z "$extra_query" ]] || page_url+="&$extra_query"
+    debug_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
+    "$browser" --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu \
+        --enable-unsafe-swiftshader --no-first-run --window-size="$width,$height" \
+        --user-data-dir="$temp_dir/profile-$case_name" --remote-debugging-port="$debug_port" \
+        --remote-allow-origins='*' "$page_url" >"$temp_dir/browser-$case_name.log" 2>&1 &
+    browser_pid=$!
+    for _ in $(seq 1 100); do
+        if curl --silent --fail "http://127.0.0.1:${debug_port}/json/version" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 0.1
+    done
     arguments=(--debug-port "$debug_port" --page-url "$page_url" --width "$width" --height "$height"
-        --scale "$device_scale" --reuse-page
+        --scale "$device_scale"
         --reference "$repo_dir/modules/ui/tests/golden/showcase-${case_name}.png"
         --artifact-dir "$repo_dir/build-web/visual-diffs")
+    if [[ "$device_scale" != 1 ]]; then
+        arguments+=(--apply-device-scale)
+    fi
     if [[ "$case_name" == ui-* ]]; then
         arguments+=(--move 1,1)
     fi
@@ -199,4 +202,7 @@ for visual_case in "${cases[@]}"; do
     fi
     [[ "$update" == false ]] || arguments+=(--update)
     python3 "$repo_dir/tools/web_visual.py" "${arguments[@]}"
+    kill "$browser_pid" 2>/dev/null || true
+    wait "$browser_pid" 2>/dev/null || true
+    browser_pid=""
 done
