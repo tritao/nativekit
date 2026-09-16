@@ -96,5 +96,6 @@ fi
 (cd "$haxeon_dir/out" && \
     NKUI_TEST_FONT_PATH="$font_path" \
     NKUI_COLOR_FONT_PATH="$emoji_path" \
+	NKUI_SHOWCASE_IMAGE_PATH="${NKUI_SHOWCASE_IMAGE_PATH:-$repo_dir/vendor/sokol/assets/logo_s_large.png}" \
     LD_LIBRARY_PATH="$runtime_library_path" \
     "$hashlink_runtime" "$artifact" "${program_args[@]}")

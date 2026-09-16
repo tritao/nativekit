@@ -14,6 +14,7 @@
     "nkui_text_navigation_behavior": "TextNavigationBehavior",
     "nkui_path_verb": "UiPathVerb",
     "nkui_image_format": "UiImageFormat",
+    "nkui_image_filter": "UiImageFilter",
     "nkui_layout_visual_kind": "UiLayoutVisualKind",
     "nkui_layout_sizing": "UiLayoutSizing",
     "nkui_layout_direction": "UiLayoutDirection",

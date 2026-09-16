@@ -67,7 +67,7 @@ extern "C" {
 /** Version of the stable NativeKit UI C ABI. */
 enum {
     /** Current UI ABI version. */
-    NKUI_API_VERSION = 6
+    NKUI_API_VERSION = 7
 };
 
 /** Result returned by a NativeKit UI operation. */
@@ -564,6 +564,13 @@ enum NK_ENUM(nkui_image_format) {
     NKUI_IMAGE_RGBA8 = 2
 };
 
+/** Sampling filter used when an image is scaled. */
+typedef uint32_t nkui_image_filter;
+enum NK_ENUM(nkui_image_filter) {
+    NKUI_IMAGE_FILTER_LINEAR = 1,
+    NKUI_IMAGE_FILTER_NEAREST = 2
+};
+
 /* ------------------------------------------------------------------------- */
 /* Display-list APIs                                                         */
 /* ------------------------------------------------------------------------- */
@@ -799,6 +806,18 @@ nkui_paint_create_linear_gradient(float start_x, float start_y, float end_x, flo
 NKUI_API nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_image_format format,
                                        const uint8_t *pixels NKUI_IN_ARRAY(pixel_bytes),
                                        uint32_t pixel_bytes, nkui_resource *out_image NKUI_OUT);
+
+/** Creates an image with an explicit scaling filter. */
+NKUI_API nkui_result nkui_image_create_filtered(
+    uint32_t width, uint32_t height, nkui_image_format format,
+    const uint8_t *pixels NKUI_IN_ARRAY(pixel_bytes), uint32_t pixel_bytes,
+    nkui_image_filter filter, nkui_resource *out_image NKUI_OUT);
+
+/** Decodes a PNG, JPEG, BMP, TGA, GIF, PSD, HDR, PIC, or PNM file as RGBA8. */
+NKUI_API nkui_result nkui_image_load_file(const char *path NKUI_UTF8, nkui_image_filter filter,
+                                          uint32_t *out_width NKUI_OUT,
+                                          uint32_t *out_height NKUI_OUT,
+                                          nkui_resource *out_image NKUI_OUT);
 
 /** Imports a sampled NativeKit graphics image as a compositable Canvas surface. */
 NKUI_API nkui_result nkui_graphics_surface_create(nk_graphics_image image,

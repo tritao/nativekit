@@ -5,6 +5,7 @@ import FontCollection;
 import GradientStop;
 import Image;
 import ImageFormat;
+import ImageFilter;
 import Insets;
 import nativekit.ui.icons.IconName;
 import LayoutAlignmentX;
@@ -683,6 +684,11 @@ class FrameworkSmoke {
 		for (index in 0...16)
 			imageBytes.set(index, 255);
 		var image = Image.create(2, 2, ImageFormat.RGBA8, imageBytes);
+		var loadedImage = Image.loadFile(Sys.getEnv("NKUI_TEST_IMAGE_PATH"), ImageFilter.Nearest);
+		if (loadedImage.width != 22 || loadedImage.height != 22 ||
+			loadedImage.filter != ImageFilter.Nearest)
+			return 239;
+		loadedImage.dispose();
 		var imageRoot = context.submit(new ImageView("image-smoke", image, "Picture"),
 			new LayoutFrame(256.0, 192.0));
 		var imageSemantics:Semantics = cast imageRoot.semantics;

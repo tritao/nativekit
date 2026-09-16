@@ -13,6 +13,7 @@ include(cmake/NanoVGSubmodules.cmake)
 
 add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/api.cpp
+    src/image_decode.cpp
     src/compositor/compositor.cpp
     src/compositor/render_plan.cpp
     src/display_list/display_list.cpp
@@ -33,6 +34,7 @@ target_include_directories(nativekit_ui
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE src)
 target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/clay")
+target_include_directories(nativekit_ui PRIVATE "${NK_VENDOR_DIR}/nanovg/src")
 target_include_directories(nativekit_ui PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_include_directories(nativekit_ui PRIVATE "${PROJECT_SOURCE_DIR}/modules/gpu/src")
 target_link_libraries(nativekit_ui PUBLIC NativeKit::gpu
@@ -562,6 +564,8 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_font_collection_add_system_fallbacks
                 _nkui_font_collection_create
                 _nkui_image_create
+                _nkui_image_create_filtered
+                _nkui_image_load_file
                 _nkui_layout_session_clear_custom_paints
                 _nkui_layout_session_create
                 _nkui_layout_session_destroy

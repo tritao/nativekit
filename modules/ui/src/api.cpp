@@ -2,6 +2,7 @@
 #include "nativekit_ui_layout.h"
 
 #include "nativekit_graphics.h"
+#include "image_decode.h"
 
 #include "display_list/display_list.h"
 #include "compositor/compositor.h"
@@ -91,6 +92,7 @@ struct ResourceSlot {
     uint32_t image_width = 0;
     uint32_t image_height = 0;
     nkui_image_format image_format = NKUI_IMAGE_FORMAT_INVALID;
+    nkui_image_filter image_filter = NKUI_IMAGE_FILTER_LINEAR;
     std::vector<uint8_t> pixels;
 };
 
@@ -917,6 +919,7 @@ void release_resource_slot(ResourceSlot &slot) {
     slot.image_width = 0;
     slot.image_height = 0;
     slot.image_format = NKUI_IMAGE_FORMAT_INVALID;
+    slot.image_filter = NKUI_IMAGE_FILTER_LINEAR;
     slot.externally_alive = false;
     slot.display_refs = 0;
     slot.kind = {};
@@ -1881,12 +1884,20 @@ extern "C" nkui_result nkui_paint_create_linear_gradient(float start_x, float st
 extern "C" nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_image_format format,
                                          const uint8_t *pixels, uint32_t pixel_bytes,
                                          nkui_resource *out_image) {
+    return nkui_image_create_filtered(width, height, format, pixels, pixel_bytes,
+                                      NKUI_IMAGE_FILTER_LINEAR, out_image);
+}
+
+extern "C" nkui_result nkui_image_create_filtered(
+    uint32_t width, uint32_t height, nkui_image_format format, const uint8_t *pixels,
+    uint32_t pixel_bytes, nkui_image_filter filter, nkui_resource *out_image) {
     const uint32_t bytes_per_pixel = format == NKUI_IMAGE_R8      ? 1
                                      : format == NKUI_IMAGE_RGBA8 ? 4
                                                                   : 0;
     const uint64_t required = static_cast<uint64_t>(width) * height * bytes_per_pixel;
     if (!out_image || !pixels || !width || !height || !bytes_per_pixel || required != pixel_bytes ||
-        required > UINT32_MAX)
+        required > UINT32_MAX ||
+        (filter != NKUI_IMAGE_FILTER_LINEAR && filter != NKUI_IMAGE_FILTER_NEAREST))
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
     ResourceSlot *slot = nullptr;
@@ -1903,7 +1914,41 @@ extern "C" nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_i
     slot->image_width = width;
     slot->image_height = height;
     slot->image_format = format;
+    slot->image_filter = filter;
     return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_image_load_file(const char *path, nkui_image_filter filter,
+                                             uint32_t *out_width, uint32_t *out_height,
+                                             nkui_resource *out_image) {
+    if (!path || !*path || !out_width || !out_height || !out_image ||
+        (filter != NKUI_IMAGE_FILTER_LINEAR && filter != NKUI_IMAGE_FILTER_NEAREST))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    *out_width = 0;
+    *out_height = 0;
+    out_image->id = 0;
+    int width = 0;
+    int height = 0;
+    uint8_t *pixels = nkui::decode_image_file(path, width, height);
+    if (!pixels || width <= 0 || height <= 0) {
+        if (pixels)
+            nkui::free_decoded_image(pixels);
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    }
+    const uint64_t byte_count = static_cast<uint64_t>(width) * height * 4u;
+    if (byte_count > UINT32_MAX) {
+        nkui::free_decoded_image(pixels);
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    const nkui_result result = nkui_image_create_filtered(
+        static_cast<uint32_t>(width), static_cast<uint32_t>(height), NKUI_IMAGE_RGBA8, pixels,
+        static_cast<uint32_t>(byte_count), filter, out_image);
+    nkui::free_decoded_image(pixels);
+    if (result == NKUI_OK) {
+        *out_width = static_cast<uint32_t>(width);
+        *out_height = static_cast<uint32_t>(height);
+    }
+    return result;
 }
 
 extern "C" nkui_result nkui_graphics_surface_create(nk_graphics_image image,
@@ -2154,6 +2199,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                 prepared->height = static_cast<int>(image->image_height);
                 prepared->generation = 1;
                 prepared->dirty = true;
+                if (image->image_filter == NKUI_IMAGE_FILTER_NEAREST)
+                    prepared->flags |= nkui::PreparedImageFlags::Nearest;
                 if (image->image_format == NKUI_IMAGE_R8) {
                     prepared->pixels.resize(image->pixels.size() * 4);
                     for (size_t index = 0; index < image->pixels.size(); ++index) {
@@ -2446,6 +2493,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 prepared->height = static_cast<int>(image->image_height);
                 prepared->generation = 1;
                 prepared->dirty = true;
+                if (image->image_filter == NKUI_IMAGE_FILTER_NEAREST)
+                    prepared->flags |= nkui::PreparedImageFlags::Nearest;
                 if (image->image_format == NKUI_IMAGE_R8) {
                     prepared->pixels.resize(image->pixels.size() * 4);
                     for (size_t index = 0; index < image->pixels.size(); ++index) {

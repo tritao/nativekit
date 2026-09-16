@@ -2,6 +2,7 @@ import Color;
 import FontCollection;
 import Image;
 import ImageFormat;
+import ImageFilter;
 import haxe.io.Bytes;
 import FrameInfo;
 import LayoutAxis;
@@ -96,6 +97,9 @@ class UiExplorer {
 	final demoImage:Image;
 	final demoOverlayImage:Image;
 	final demoNineSliceImage:Image;
+	final demoLoadedImage:Image;
+	final demoPixelLinear:Image;
+	final demoPixelNearest:Image;
 	var nativeSurface:Null<NativeKitSurface>;
 	var width:Float;
 	var height:Float;
@@ -133,6 +137,9 @@ class UiExplorer {
 		demoImage = createDemoImage(160, 96);
 		demoOverlayImage = createOverlayImage(64);
 		demoNineSliceImage = createNineSliceImage(48);
+		demoLoadedImage = loadDemoImage();
+		demoPixelLinear = createPixelImage(ImageFilter.Linear);
+		demoPixelNearest = createPixelImage(ImageFilter.Nearest);
 	}
 
 	/** Installs the native surface used by text editing, IME state, and accessibility. */
@@ -217,6 +224,9 @@ class UiExplorer {
 		context.dispose();
 		renderer.dispose();
 		demoNineSliceImage.dispose();
+		demoPixelNearest.dispose();
+		demoPixelLinear.dispose();
+		demoLoadedImage.dispose();
 		demoOverlayImage.dispose();
 		demoImage.dispose();
 		if (nativeSurface != null) {
@@ -275,6 +285,31 @@ class UiExplorer {
 				pixels.set(offset + 3, 255);
 			}
 		return Image.create(size, size, ImageFormat.RGBA8, pixels);
+	}
+
+	static function loadDemoImage():Image {
+		var path = Sys.getEnv("NKUI_SHOWCASE_IMAGE_PATH");
+		if (path != null && path.length > 0) {
+			try {
+				return Image.loadFile(path);
+			} catch (_:Dynamic) {}
+		}
+		return createDemoImage(160, 96);
+	}
+
+	static function createPixelImage(filter:ImageFilter):Image {
+		var size = 12;
+		var pixels = Bytes.alloc(size * size * 4);
+		for (y in 0...size)
+			for (x in 0...size) {
+				var bright = ((x >> 1) + (y >> 1)) % 2 == 0;
+				var offset = (y * size + x) * 4;
+				pixels.set(offset, bright ? 248 : 39);
+				pixels.set(offset + 1, bright ? 179 : 105);
+				pixels.set(offset + 2, bright ? 74 : 214);
+				pixels.set(offset + 3, 255);
+			}
+		return Image.create(size, size, ImageFormat.RGBA8, pixels, filter);
 	}
 
 	public function getDiagnosticStage():Int

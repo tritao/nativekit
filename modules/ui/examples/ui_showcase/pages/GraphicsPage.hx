@@ -3,6 +3,7 @@ package pages;
 import UiExplorer;
 import Color;
 import GradientStop;
+import Image;
 import LayoutAxis;
 import LayoutStyle;
 import LineCap;
@@ -133,6 +134,18 @@ class GraphicsPage {
 				new ImageLayer(explorer.demoOverlayImage, 0.76, 0.14, 0.14, 0.72, 0.72)
 			], "Landscape image with a translucent violet circular layer", wideImageStyle(explorer)))
 		])));
+		items.push(explorer.keyed("image-assets", explorer.panel("image-assets", [
+			explorer.keyed("heading", explorer.heading("Decoded assets and sampling")),
+			explorer.keyed("copy", explorer.caption("The left preview is decoded from a PNG file. Magnified textures compare linear interpolation with nearest-texel sampling.")),
+			explorer.keyed("previews", new Row("image-assets-row", [
+				explorer.keyed("decoded", imageSample(explorer, "Decoded PNG", explorer.demoLoadedImage,
+					ImageFit.Contain)),
+				explorer.keyed("linear", imageSample(explorer, "Linear", explorer.demoPixelLinear,
+					ImageFit.Stretch)),
+				explorer.keyed("nearest", imageSample(explorer, "Nearest", explorer.demoPixelNearest,
+					ImageFit.Stretch))
+			], imageRowStyle(explorer)))
+		])));
 		items.push(explorer.keyed("nine-slice", explorer.panel("nine-slice", [
 			explorer.keyed("heading", explorer.heading("Nine-slice scaling")),
 			explorer.keyed("copy", explorer.caption("Corners retain their source size while edges and the center stretch to fill a wide destination.")),
@@ -142,14 +155,21 @@ class GraphicsPage {
 	}
 
 	static function fitSample(explorer:UiExplorer, key:String, fit:ImageFit):Column {
-		var image = new ImageView(key + "-image", explorer.demoImage,
-			key + " image fit preview", imageSampleStyle(explorer));
+		return imageSample(explorer, key.substr(0, 1).toUpperCase() + key.substr(1),
+			explorer.demoImage, fit);
+	}
+
+	static function imageSample(explorer:UiExplorer, label:String, source:Image,
+			fit:ImageFit):Column {
+		var key = label.toLowerCase().split(" ").join("-");
+		var image = new ImageView(key + "-image", source,
+			label + " image preview", imageSampleStyle(explorer));
 		image.fit = fit;
 		var style = new LayoutStyle();
 		style.width = LayoutAxis.percent(0.32);
 		style.childGap = 6.0;
 		return new Column(key + "-sample", [
-			explorer.keyed("label", explorer.caption(key.substr(0, 1).toUpperCase() + key.substr(1))),
+			explorer.keyed("label", explorer.caption(label)),
 			explorer.keyed("image", image)
 		], style);
 	}
