@@ -65,8 +65,6 @@ class ShowcaseKit {
 		var style = new LayoutStyle();
 		style.height = LayoutAxis.fixed(38.0);
 		style.padding = new Insets(12.0, 9.0, 12.0, 9.0);
-		style.background = explorer.state.lightTheme
-			? color(0.18, 0.39, 0.70) : color(0.16, 0.38, 0.70);
 		style.radiusTopLeft = style.radiusTopRight = 5.0;
 		style.radiusBottomLeft = style.radiusBottomRight = 5.0;
 		var result = new Button(label, style, action, key);
@@ -180,7 +178,8 @@ class ShowcaseKit {
 		tokens.text = light ? color(0.10, 0.14, 0.21) : color(0.91, 0.94, 0.98);
 		tokens.mutedText = light ? color(0.32, 0.38, 0.47) : color(0.62, 0.68, 0.77);
 		tokens.buttonText = color(1.0, 1.0, 1.0);
-		tokens.disabledButtonText = light ? color(0.38, 0.41, 0.46) : color(0.53, 0.55, 0.59);
+		tokens.disabledButtonText = light ? color(0.28, 0.31, 0.36) : color(0.62, 0.65, 0.70);
+		tokens.buttonBackground = light ? color(0.18, 0.39, 0.70) : color(0.16, 0.38, 0.70);
 		tokens.buttonHover = light ? color(0.16, 0.38, 0.69) : color(0.22, 0.48, 0.82);
 		tokens.buttonPressed = light ? color(0.11, 0.29, 0.54) : color(0.13, 0.34, 0.67);
 		tokens.buttonFocused = light ? color(0.22, 0.43, 0.73) : color(0.27, 0.52, 0.91);
