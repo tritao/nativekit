@@ -16,9 +16,9 @@
 #include "core/graphics_image_registry.h"
 #include "core/gamepad_events.hpp"
 #include "core/runtime.hpp"
-#include "platform/resource_events.hpp"
-#include "platform/web/gamepad.hpp"
-#include "platform/web/host.h"
+#include "core/resource_events.hpp"
+#include "web/gamepad.hpp"
+#include "web/host.h"
 
 #include <algorithm>
 #include <array>

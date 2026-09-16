@@ -19,7 +19,7 @@
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "ios/joystick.hpp"
-#include "platform/resource_events.hpp"
+#include "core/resource_events.hpp"
 
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>

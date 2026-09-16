@@ -1,4 +1,4 @@
-#include "platform/wasm/host_allocator.h"
+#include "wasm/host_allocator.h"
 
 #include <cstdlib>
 #include <cstring>

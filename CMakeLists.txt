@@ -127,7 +127,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
 add_library(NativeKit::nativekit ALIAS nativekit)
 
 if(NOT ANDROID AND NOT EMSCRIPTEN)
-    target_sources(nativekit PRIVATE src/platform/nativekit_resource_io.cpp)
+    target_sources(nativekit PRIVATE src/core/resource_io.cpp)
 endif()
 
 target_compile_features(nativekit PRIVATE cxx_std_17)
@@ -145,7 +145,7 @@ endif()
 if(EMSCRIPTEN)
     set(NK_WEB_CANVAS_SELECTOR "#canvas" CACHE STRING
         "CSS selector for the canvas used by NativeKit's browser backend")
-    configure_file(src/platform/web/config.h.in
+    configure_file(src/web/config.h.in
         "${CMAKE_CURRENT_BINARY_DIR}/nativekit_web_config.h" @ONLY)
     target_include_directories(nativekit PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_WEB=1)
@@ -166,8 +166,8 @@ if(EMSCRIPTEN)
     # not to any one NativeKit module. Link it once from the final host module
     # when the application partitions linear memory between host and guest.
     add_library(nativekit_wasm_host_allocator STATIC
-        src/platform/wasm/host_allocator.cpp
-        src/platform/wasm/host_allocator_wasm.cpp)
+        src/wasm/host_allocator.cpp
+        src/wasm/host_allocator_wasm.cpp)
     add_library(NativeKit::wasm_host_allocator ALIAS nativekit_wasm_host_allocator)
     target_compile_features(nativekit_wasm_host_allocator PRIVATE cxx_std_17)
     target_include_directories(nativekit_wasm_host_allocator PRIVATE src)
@@ -186,13 +186,13 @@ endif()
 
 if(EMSCRIPTEN)
     target_sources(nativekit PRIVATE
-        src/platform/nativekit_web.cpp
-        src/platform/web/host.cpp
-        src/platform/nativekit_stub.cpp)
+        src/web/nativekit_web.cpp
+        src/web/host.cpp
+        src/core/stub.cpp)
 elseif(ANDROID)
     target_sources(nativekit PRIVATE
         src/android/nativekit_android.cpp
-        src/platform/nativekit_stub.cpp)
+        src/core/stub.cpp)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_ANDROID=1 NK_STUB_ANDROID=1)
     target_link_libraries(nativekit PRIVATE android EGL GLESv2 log)
 elseif(WIN32)
@@ -235,7 +235,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_sources(nativekit PRIVATE
         src/ios/nativekit_ios.mm
         src/ios/nativekit_ios_joystick.mm
-        src/platform/nativekit_stub.cpp)
+        src/core/stub.cpp)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_IOS=1)
     set_target_properties(nativekit PROPERTIES
         OBJCXX_STANDARD 17
@@ -272,7 +272,7 @@ elseif(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
         ${CMAKE_DL_LIBS})
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_GTK=1)
 else()
-    target_sources(nativekit PRIVATE src/platform/nativekit_stub.cpp)
+    target_sources(nativekit PRIVATE src/core/stub.cpp)
 endif()
 set_target_properties(nativekit PROPERTIES
     CXX_VISIBILITY_PRESET hidden

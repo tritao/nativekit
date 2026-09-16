@@ -1,8 +1,8 @@
-#include "platform/web/host.h"
+#include "web/host.h"
 
 #include "core/event_queue.hpp"
 #include "core/runtime.hpp"
-#include "platform/resource_events.hpp"
+#include "core/resource_events.hpp"
 #include "nativekit_web_config.h"
 #include "nativekit_system.h"
 

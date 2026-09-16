@@ -17,7 +17,7 @@
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
-#include "platform/resource_events.hpp"
+#include "core/resource_events.hpp"
 
 #include <gtk/gtk.h>
 #include <atk/atk.h>

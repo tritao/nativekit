@@ -16,7 +16,7 @@
 #elif defined(NK_BACKEND_IOS)
 #include "ios/joystick.hpp"
 #elif defined(NK_BACKEND_WEB)
-#include "platform/web/gamepad.hpp"
+#include "web/gamepad.hpp"
 #endif
 
 #include <algorithm>

@@ -486,7 +486,7 @@ if(NK_BUILD_EXAMPLES)
 
             add_executable(nativekit_ui_haxeon
                 examples/ui_haxeon/host.cpp
-                src/platform/wasm/haxeon_memory_contract.cpp)
+                src/wasm/haxeon_memory_contract.cpp)
             target_include_directories(nativekit_ui_haxeon PRIVATE
                 "${CMAKE_CURRENT_BINARY_DIR}")
             target_link_libraries(nativekit_ui_haxeon PRIVATE NativeKit::ui NativeKit::nativekit
