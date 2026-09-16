@@ -123,6 +123,9 @@ class UiRenderer {
                                 float height, const float transform[6], float opacity) = 0;
     /** Applies one backend-neutral effect to the currently active target. */
     virtual bool applyEffect(ResourceId source, const EffectDescriptor &effect) = 0;
+    /** Applies a separate source-alpha mask to the currently active target. */
+    virtual bool applyMask(ResourceId source, const MaskDescriptor &mask,
+                           const PreparedTexture *image) = 0;
     virtual bool endPass() = 0;
     virtual bool endFrame() = 0;
     virtual UiRendererStats stats() const = 0;

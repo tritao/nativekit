@@ -106,6 +106,8 @@ int main(int argc, char **argv) {
     nkui_display_list list{};
     nkui_display_list scale_list{};
     nkui_display_list drop_shadow_list{};
+    nkui_display_list mask_list{};
+    nkui_display_list image_mask_list{};
     nkui_renderer renderer{};
     if (nkui_path_create(path_elements, 5, &path) != NKUI_OK ||
         nkui_paint_create_solid({0.08f, 0.45f, 0.16f, 1.0f}, &paint) != NKUI_OK ||
@@ -239,6 +241,56 @@ int main(int argc, char **argv) {
     if (nkui_display_list_submit(drop_shadow_list, drop_shadow_commands.data(),
                                  drop_shadow_commands.size()) != NKUI_OK)
         return 5;
+    if (nkui_display_list_create(&mask_list) != NKUI_OK)
+        return 5;
+    std::vector<uint8_t> mask_commands;
+    nkui_layer_mask_command rounded_mask_layer{};
+    rounded_mask_layer.header = {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION,
+                                 sizeof(nkui_layer_mask_command)};
+    rounded_mask_layer.opacity = 1.0f;
+    rounded_mask_layer.composite_mode = NKUI_COMPOSITE_SOURCE_OVER;
+    rounded_mask_layer.x = 72.0f;
+    rounded_mask_layer.y = 82.0f;
+    rounded_mask_layer.width = 112.0f;
+    rounded_mask_layer.height = 70.0f;
+    rounded_mask_layer.flags = NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS;
+    rounded_mask_layer.mask.kind = NKUI_MASK_ROUNDED_RECT;
+    rounded_mask_layer.mask.values[0] = 10.0f;
+    append(mask_commands, rounded_mask_layer);
+    append(mask_commands,
+           nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
+                                   sizeof(nkui_draw_rect_command)},
+                                  image,
+                                  72.0f,
+                                  82.0f,
+                                  112.0f,
+                                  70.0f});
+    append(mask_commands,
+           nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
+                               sizeof(nkui_command_header)});
+    if (nkui_display_list_submit(mask_list, mask_commands.data(), mask_commands.size()) != NKUI_OK)
+        return 5;
+    if (nkui_display_list_create(&image_mask_list) != NKUI_OK)
+        return 5;
+    std::vector<uint8_t> image_mask_commands;
+    nkui_layer_mask_command image_mask_layer = rounded_mask_layer;
+    image_mask_layer.mask.kind = NKUI_MASK_IMAGE;
+    image_mask_layer.mask.image = image;
+    append(image_mask_commands, image_mask_layer);
+    append(image_mask_commands,
+           nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
+                                   sizeof(nkui_draw_rect_command)},
+                                  image,
+                                  72.0f,
+                                  82.0f,
+                                  112.0f,
+                                  70.0f});
+    append(image_mask_commands,
+           nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
+                               sizeof(nkui_command_header)});
+    if (nkui_display_list_submit(image_mask_list, image_mask_commands.data(),
+                                 image_mask_commands.size()) != NKUI_OK)
+        return 5;
     if (nkui_display_list_create(&scale_list) != NKUI_OK)
         return 5;
     std::vector<uint8_t> scale_commands;
@@ -309,6 +361,12 @@ int main(int argc, char **argv) {
                                          height / pixel_scale, width, height, pixel_scale};
         nkui_result render_result = NKUI_OK;
         if (!result && frames == 0)
+            render_result =
+                nkui_renderer_render_frame(renderer, mask_list, surface, &frame_info);
+        if (!result && render_result == NKUI_OK && frames == 0)
+            render_result =
+                nkui_renderer_render_frame(renderer, image_mask_list, surface, &frame_info);
+        if (!result && render_result == NKUI_OK && frames == 0)
             render_result =
                 nkui_renderer_render_frame(renderer, drop_shadow_list, surface, &frame_info);
         if (!result && render_result == NKUI_OK)
@@ -540,6 +598,8 @@ int main(int argc, char **argv) {
         result = 15;
     nkui_display_list_destroy(scale_list);
     nkui_display_list_destroy(drop_shadow_list);
+    nkui_display_list_destroy(mask_list);
+    nkui_display_list_destroy(image_mask_list);
     nkui_display_list_destroy(list);
     nkui_resource_destroy(text);
     nkui_resource_destroy(scale_text);

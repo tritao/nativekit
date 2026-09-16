@@ -179,6 +179,24 @@ int main() {
         pass_order[4] != 4)
         return 28;
 
+    DisplayList masked;
+    MaskDescriptor rounded_mask{};
+    rounded_mask.kind = MaskKind::RoundedRect;
+    rounded_mask.values[0] = 8.0f;
+    if (!masked.begin_layer(1.0f, bounds, rounded_mask) || !masked.draw_path(path) ||
+        !masked.end_layer() || !compositor.compile(masked, main_target, plan, &error) ||
+        plan.passes.size() != 4 || plan.dependencies.size() != 1)
+        return 29;
+    if (plan.passes[2].kind != RenderPassKind::Mask ||
+        plan.passes[2].input_target.value != plan.passes[1].target.value ||
+        plan.passes[2].mask.kind != MaskKind::RoundedRect ||
+        plan.passes[2].mask.values[0] != 8.0f || plan.passes[3].commands.size() != 1 ||
+        plan.passes[3].commands[0].resource.value != plan.passes[2].target.value)
+        return 30;
+    if (!schedule_render_plan(plan, pass_order, &schedule_error) || pass_order.size() != 4 ||
+        pass_order[0] != 0 || pass_order[1] != 1 || pass_order[2] != 2 || pass_order[3] != 3)
+        return 31;
+
     DisplayList duplicate_surface;
     const auto external = make_resource_id(ResourceKind::RenderTarget, 1, 12);
     if (!duplicate_surface.draw_render_target(external, 0.0f, 0.0f, 10.0f, 10.0f) ||

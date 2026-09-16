@@ -70,6 +70,24 @@ struct EffectDescriptor {
     std::array<float, kColorMatrixComponents> color_matrix{};
 };
 
+/** Separate source-alpha input used to mask an isolated layer. */
+enum class MaskKind : uint32_t {
+    None = 0,
+    Rectangle = 1,
+    RoundedRect = 2,
+    Circle = 3,
+    LinearGradient = 4,
+    Image = 5,
+};
+
+struct MaskDescriptor {
+    MaskKind kind = MaskKind::None;
+    ResourceId image{};
+    // RoundedRect/Circle use value 0 for radius. LinearGradient uses values
+    // 0..3 for normalized start/end coordinates and 4..5 for endpoint alpha.
+    std::array<float, 8> values{};
+};
+
 struct CommandHeader {
     CommandOpcode opcode{};
     uint16_t version = 1;
@@ -155,6 +173,20 @@ struct BeginLayerEffectCommand {
     EffectDescriptor effect;
 };
 
+/** Extended layer record carrying an effect and a separate mask input. */
+struct BeginLayerMaskCommand {
+    CommandHeader header;
+    float opacity;
+    CompositeMode mode;
+    float x;
+    float y;
+    float width;
+    float height;
+    uint32_t flags;
+    EffectDescriptor effect;
+    MaskDescriptor mask;
+};
+
 /** Legacy 16-byte layer record accepted for display-list compatibility. */
 struct LegacyBeginLayerCommand {
     CommandHeader header;
@@ -206,6 +238,12 @@ class DisplayList {
                      CompositeMode mode = CompositeMode::SourceOver);
     bool begin_layer(float opacity, const LayerBounds &bounds, const EffectDescriptor &effect,
                      CompositeMode mode = CompositeMode::SourceOver);
+    bool begin_layer(float opacity, const MaskDescriptor &mask,
+                     CompositeMode mode = CompositeMode::SourceOver);
+    bool begin_layer(float opacity, const LayerBounds &bounds, const MaskDescriptor &mask,
+                     CompositeMode mode = CompositeMode::SourceOver);
+    bool begin_layer(float opacity, const LayerBounds &bounds, const EffectDescriptor &effect,
+                     const MaskDescriptor &mask, CompositeMode mode = CompositeMode::SourceOver);
     bool end_layer();
     bool draw_render_target(ResourceId target, float x, float y, float width, float height);
 

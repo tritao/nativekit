@@ -269,6 +269,17 @@ enum NK_ENUM(nkui_effect_kind) {
     NKUI_EFFECT_DROP_SHADOW = 3
 };
 
+/** Source-alpha masks are separate composition inputs, not sequential effects. */
+typedef uint32_t nkui_mask_kind;
+enum NK_ENUM(nkui_mask_kind) {
+    NKUI_MASK_NONE = 0,
+    NKUI_MASK_RECTANGLE = 1,
+    NKUI_MASK_ROUNDED_RECT = 2,
+    NKUI_MASK_CIRCLE = 3,
+    NKUI_MASK_LINEAR_GRADIENT = 4,
+    NKUI_MASK_IMAGE = 5
+};
+
 /** Fixed header present at the start of every display-list command record. */
 typedef struct nkui_command_header {
     /** One of the NKUI_COMMAND_* opcode values. */
@@ -434,6 +445,31 @@ typedef struct nkui_layer_effect_command {
     /** Row-major 4x5 color matrix, or parameters for blur/drop-shadow effects. */
     float effect_matrix[20];
 } nkui_layer_effect_command;
+
+/** Descriptor for the source-alpha mask of an isolated layer. */
+typedef struct nkui_mask_descriptor {
+    /** Shape, gradient, or image mask kind. */
+    nkui_mask_kind kind;
+    /** Image resource used only by NKUI_MASK_IMAGE. */
+    nkui_resource image;
+    /** Kind-specific values; coordinates are normalized for gradients. */
+    float values[8];
+} nkui_mask_descriptor;
+
+/** Extended payload for NKUI_COMMAND_BEGIN_LAYER with an effect and mask. */
+typedef struct nkui_layer_mask_command {
+    nkui_command_header header;
+    float opacity;
+    nkui_composite_mode composite_mode;
+    float x;
+    float y;
+    float width;
+    float height;
+    nkui_layer_flags flags;
+    nkui_effect_kind effect_kind;
+    float effect_matrix[20];
+    nkui_mask_descriptor mask;
+} nkui_layer_mask_command;
 
 /* ------------------------------------------------------------------------- */
 /* Text and layout types                                                      */

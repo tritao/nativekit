@@ -89,6 +89,38 @@ static bool rejects_bad_streams() {
         return false;
 
     list.reset();
+    MaskDescriptor mask{};
+    mask.kind = MaskKind::RoundedRect;
+    mask.values[0] = 6.0f;
+    if (!list.begin_layer(1.0f, LayerBounds{4.0f, 8.0f, 32.0f, 24.0f}, mask) ||
+        !list.end_layer() || !validate_display_list(list.data(), list.size(), &error))
+        return false;
+
+    list.reset();
+    mask.kind = MaskKind::LinearGradient;
+    mask.values[0] = 0.0f;
+    mask.values[1] = 0.0f;
+    mask.values[2] = 1.0f;
+    mask.values[3] = 0.0f;
+    mask.values[4] = 0.0f;
+    mask.values[5] = 1.0f;
+    if (!list.begin_layer(1.0f, mask) || !list.end_layer() ||
+        !validate_display_list(list.data(), list.size(), &error))
+        return false;
+
+    list.reset();
+    mask.kind = MaskKind::Image;
+    mask.image = make_resource_id(ResourceKind::Image, 1, 2);
+    if (!list.begin_layer(1.0f, mask) || !list.end_layer() ||
+        !validate_display_list(list.data(), list.size(), &error))
+        return false;
+
+    list.reset();
+    mask.image = make_resource_id(ResourceKind::Path, 1, 2);
+    if (!list.begin_layer(1.0f, mask) || validate_display_list(list.data(), list.size(), &error))
+        return false;
+
+    list.reset();
     effect.kind = static_cast<EffectKind>(99);
     if (!list.begin_layer(1.0f, effect) || validate_display_list(list.data(), list.size(), &error))
         return false;

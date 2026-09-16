@@ -123,6 +123,7 @@ import nativekit.ui.style.HueRotateEffect;
 import nativekit.ui.style.ColorMatrixEffect;
 import nativekit.ui.style.DropShadowEffect;
 import nativekit.ui.style.InkOverflow;
+import nativekit.ui.style.Mask;
 import nativekit.ui.style.Environment;
 import nativekit.ui.style.EnvironmentColorScheme;
 import nativekit.ui.style.StyleEnvironment;
@@ -1629,6 +1630,41 @@ class FrameworkSmoke {
 		if (dropShadowList.info().commandCount != 4)
 			return 250;
 		dropShadowList.dispose();
+		effectCanvas.reset();
+		var roundedMask = Mask.roundedRect(10.0);
+		if (!roundedMask.isEqual(roundedMask.copy()))
+			return 251;
+		var maskSheet = new StyleSheet("MaskSheet");
+		maskSheet.rule(StyleSelector.widget("panel"), [StyleValue.mask(roundedMask)]);
+		var noMaskParent:Null<ComputedStyle> = null;
+		var noMaskTheme:Null<StyleSheet> = null;
+		var maskComputed = new StyleResolver().resolve(new StyleTarget("panel", "mask-key"),
+			noMaskParent, noMaskTheme, maskSheet);
+		var maskSource = maskComputed.source(StyleProperty.Mask);
+		if (maskComputed.get(StyleProperty.Mask) == null ||
+			!maskComputed.get(StyleProperty.Mask).isEqual(roundedMask) || maskSource == null ||
+			maskSource.stylesheet != "MaskSheet")
+			return 252;
+		var emptyMask = new ComputedStyle();
+		var noMask:Mask = null;
+		var noMaskSource:Null<StyleSource> = null;
+		emptyMask.set(StyleProperty.Mask, noMask, noMaskSource);
+		var changedMask = new ComputedStyle();
+		var typedMask:Mask = roundedMask;
+		changedMask.set(StyleProperty.Mask, typedMask, noMaskSource);
+		var maskDiff = StyleDiff.compare(emptyMask, changedMask);
+		if (!maskDiff.changed || maskDiff.impact != StyleImpact.Composite)
+			return 253;
+		var maskList = DisplayList.create();
+		var noMaskEffects:EffectChain = null;
+		effectCanvas.withLayer(1.0, function(canvas) {
+			canvas.fillRect(new Rect(4.0, 6.0, 24.0, 18.0), Color.rgba(0.2, 0.4, 0.8, 1.0));
+		}, CompositeMode.SourceOver, new Rect(4.0, 6.0, 24.0, 18.0),
+			noMaskEffects, roundedMask);
+		effectCanvas.update(maskList);
+		if (maskList.info().commandCount != 4)
+			return 254;
+		maskList.dispose();
 		effectCanvas.reset();
 		var responsiveSheet = new StyleSheet("ResponsiveSheet");
 		responsiveSheet.rule(StyleSelector.widget("button"),

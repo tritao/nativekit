@@ -52,6 +52,7 @@ static_assert(sizeof(nkui_rect_command) == sizeof(nkui::ClipRectCommand));
 static_assert(sizeof(nkui_draw_rect_command) == sizeof(nkui::DrawRectResourceCommand));
 static_assert(sizeof(nkui_layer_command) == sizeof(nkui::BeginLayerCommand));
 static_assert(sizeof(nkui_layer_effect_command) == sizeof(nkui::BeginLayerEffectCommand));
+static_assert(sizeof(nkui_layer_mask_command) == sizeof(nkui::BeginLayerMaskCommand));
 static_assert(sizeof(nkui_stroke_path_command) == sizeof(nkui::StrokePathCommand));
 static_assert(sizeof(nkui_layout_item) == NKUI_LAYOUT_RESOLVED_ITEM_BYTES);
 
@@ -776,6 +777,16 @@ bool scale_effect_for_device(nkui::EffectDescriptor &effect, float pixel_scale) 
         effect.color_matrix[2] = static_cast<float>(offset_x);
         effect.color_matrix[3] = static_cast<float>(offset_y);
     }
+    return true;
+}
+
+bool scale_mask_for_device(nkui::MaskDescriptor &mask, float pixel_scale) {
+    if (mask.kind != nkui::MaskKind::RoundedRect && mask.kind != nkui::MaskKind::Circle)
+        return true;
+    const double radius = static_cast<double>(mask.values[0]) * pixel_scale;
+    if (!std::isfinite(radius) || radius > std::numeric_limits<float>::max())
+        return false;
+    mask.values[0] = static_cast<float>(radius);
     return true;
 }
 
@@ -2154,6 +2165,9 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         if (pass.kind == nkui::RenderPassKind::Effect &&
             !scale_effect_for_device(pass.effect, frame_info->pixel_scale))
             return NKUI_ERROR_INVALID_ARGUMENT;
+        if (pass.kind == nkui::RenderPassKind::Mask &&
+            !scale_mask_for_device(pass.mask, frame_info->pixel_scale))
+            return NKUI_ERROR_INVALID_ARGUMENT;
     }
     ++renderer_slot->stats.display_list_count;
     renderer_slot->stats.display_list_bytes += list_slot->list->size();
@@ -2169,6 +2183,48 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     std::vector<std::pair<nkui::SkribidiAdapter *, nkui::PreparedGlyphs *>> prepared_texts;
     uint16_t prepared_slot = 1;
     bool valid = true;
+
+    // Mask images are pass metadata rather than draw commands, so prepare them
+    // before the ordinary command-resource walk below.
+    for (const auto &pass : plan.passes) {
+        if (pass.kind != nkui::RenderPassKind::Mask ||
+            pass.mask.kind != nkui::MaskKind::Image)
+            continue;
+        auto *image = resolve_retained(nkui_resource{pass.mask.image.value},
+                                        nkui::ResourceKind::Image);
+        if (!image) {
+            valid = false;
+            break;
+        }
+        auto prepared = std::make_unique<nkui::PreparedTexture>();
+        if (!prepared) {
+            valid = false;
+            break;
+        }
+        prepared->token = pass.mask.image.value;
+        prepared->type = nkui::PreparedTextureType::Rgba;
+        prepared->width = static_cast<int>(image->image_width);
+        prepared->height = static_cast<int>(image->image_height);
+        prepared->generation = 1;
+        prepared->dirty = true;
+        if (image->image_format == NKUI_IMAGE_R8) {
+            prepared->pixels.resize(image->pixels.size() * 4);
+            for (size_t index = 0; index < image->pixels.size(); ++index) {
+                prepared->pixels[index * 4 + 0] = 255;
+                prepared->pixels[index * 4 + 1] = 255;
+                prepared->pixels[index * 4 + 2] = 255;
+                prepared->pixels[index * 4 + 3] = image->pixels[index];
+            }
+        } else {
+            prepared->pixels = image->pixels;
+        }
+        auto *prepared_image = prepared.get();
+        prepared_images.push_back(std::move(prepared));
+        if (!frame_resources.bind_image(pass.mask.image, *prepared_image)) {
+            valid = false;
+            break;
+        }
+    }
 
     for (auto &pass : plan.passes) {
         for (auto &command : pass.commands) {
@@ -2459,6 +2515,43 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     uint32_t prepared_slot = 1;
     bool valid = true;
     for (auto &pass : plan.passes) {
+        if (pass.kind == nkui::RenderPassKind::Mask &&
+            pass.mask.kind == nkui::MaskKind::Image) {
+            auto *image = resolve_retained(nkui_resource{pass.mask.image.value},
+                                            nkui::ResourceKind::Image);
+            if (!image) {
+                valid = false;
+                break;
+            }
+            auto prepared = std::make_unique<nkui::PreparedTexture>();
+            if (!prepared) {
+                valid = false;
+                break;
+            }
+            prepared->token = pass.mask.image.value;
+            prepared->type = nkui::PreparedTextureType::Rgba;
+            prepared->width = static_cast<int>(image->image_width);
+            prepared->height = static_cast<int>(image->image_height);
+            prepared->generation = 1;
+            prepared->dirty = true;
+            if (image->image_format == NKUI_IMAGE_R8) {
+                prepared->pixels.resize(image->pixels.size() * 4);
+                for (size_t index = 0; index < image->pixels.size(); ++index) {
+                    prepared->pixels[index * 4 + 0] = 255;
+                    prepared->pixels[index * 4 + 1] = 255;
+                    prepared->pixels[index * 4 + 2] = 255;
+                    prepared->pixels[index * 4 + 3] = image->pixels[index];
+                }
+            } else {
+                prepared->pixels = image->pixels;
+            }
+            auto *prepared_image = prepared.get();
+            custom_images.push_back(std::move(prepared));
+            if (!frame_resources.bind_image(pass.mask.image, *prepared_image)) {
+                valid = false;
+                break;
+            }
+        }
         for (auto &command : pass.commands) {
             if (!command.custom_payload)
                 continue;

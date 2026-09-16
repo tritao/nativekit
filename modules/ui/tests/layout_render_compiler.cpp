@@ -92,6 +92,10 @@ class RecordingRenderer final : public UiRenderer {
         ++effect_count;
         return true;
     }
+    bool applyMask(ResourceId, const MaskDescriptor &, const PreparedTexture *) override {
+        ++mask_count;
+        return true;
+    }
     bool endPass() override { return true; }
     bool endFrame() override { ++commit_count; return true; }
     UiRendererStats stats() const override { return {}; }
@@ -102,6 +106,7 @@ class RecordingRenderer final : public UiRenderer {
     uint32_t path_count = 0;
     uint32_t text_count = 0;
     uint32_t effect_count = 0;
+    uint32_t mask_count = 0;
     uint32_t surface_mesh_count = 0;
     uint32_t commit_count = 0;
     bool last_scissor_enabled = false;
@@ -433,6 +438,26 @@ int main() {
                              {main_target, frame_target}, &execution_error) ||
         backend.effect_count != 1 || backend.commit_count != 2)
         return 25;
+
+    const ResourceId mask_input = make_resource_id(ResourceKind::RenderTarget, 1, 450);
+    const ResourceId mask_output = make_resource_id(ResourceKind::RenderTarget, 1, 451);
+    RenderPlan mask_plan;
+    mask_plan.passes.push_back({main_target, {}, false, {}});
+    mask_plan.passes.push_back({mask_input, {}, false, {}});
+    RenderPass mask_pass;
+    mask_pass.target = mask_output;
+    mask_pass.kind = RenderPassKind::Mask;
+    mask_pass.input_target = mask_input;
+    mask_pass.mask.kind = MaskKind::LinearGradient;
+    mask_pass.mask.values[0] = 0.0f;
+    mask_pass.mask.values[2] = 1.0f;
+    mask_pass.mask.values[4] = 0.0f;
+    mask_pass.mask.values[5] = 1.0f;
+    mask_plan.passes.push_back(mask_pass);
+    if (!execute_render_plan(backend, mask_plan, frame.resources(),
+                             {main_target, frame_target}, &execution_error) ||
+        backend.mask_count != 1 || backend.commit_count != 3)
+        return 28;
 
     LayoutSnapshot recolored = snapshot;
     for (auto &primitive : recolored.primitives) {

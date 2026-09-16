@@ -148,6 +148,16 @@ bool scale_effect_for_device(EffectDescriptor &effect, float pixel_scale) {
     return true;
 }
 
+bool scale_mask_for_device(MaskDescriptor &mask, float pixel_scale) {
+    if (mask.kind != MaskKind::RoundedRect && mask.kind != MaskKind::Circle)
+        return true;
+    const double radius = static_cast<double>(mask.values[0]) * pixel_scale;
+    if (!std::isfinite(radius) || radius > std::numeric_limits<float>::max())
+        return false;
+    mask.values[0] = static_cast<float>(radius);
+    return true;
+}
+
 LayoutRect transform_bounds(LayoutRect rect, const LayoutTransform &transform) {
     const auto x = [&](float px, float py) {
         return transform.a * px + transform.c * py + transform.tx;
@@ -316,6 +326,9 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 if (pass.kind == RenderPassKind::Effect &&
                     !scale_effect_for_device(pass.effect, pixel_scale))
                     return fail(error, primitive_index, "custom effect parameters are too large");
+                if (pass.kind == RenderPassKind::Mask &&
+                    !scale_mask_for_device(pass.mask, pixel_scale))
+                    return fail(error, primitive_index, "custom mask parameters are too large");
                 for (auto &command : pass.commands) {
                     command.resource = remap(command.resource);
                     command.transform = device_transform(command.transform, pixel_scale);

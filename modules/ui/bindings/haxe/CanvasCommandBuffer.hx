@@ -7,6 +7,8 @@ import nativekit.ui.style.BlurEffect;
 import nativekit.ui.style.DropShadowEffect;
 import nativekit.ui.style.EffectChain;
 import nativekit.ui.style.EffectKind;
+import nativekit.ui.style.Mask;
+import nativekit.ui.style.MaskKind;
 
 @:noCompletion
 class CanvasCommandBuffer {
@@ -69,9 +71,10 @@ class CanvasCommandBuffer {
 		drawRect(NativeKitUI.CommandOpcode.DrawTextLayout, layout, x, y, 0.0, 0.0);
 
 	public function beginLayer(opacity:Float, mode:CompositeMode = CompositeMode.SourceOver,
-			?bounds:Rect, ?effects:EffectChain):Void {
+			?bounds:Rect, ?effects:EffectChain, ?mask:Mask):Void {
 		var effectValue = effects == null ? EffectChain.empty() : effects;
 		var hasEffects = effects != null && effectValue.effects.length > 0;
+		var hasMask = mask != null;
 		var blurOnly = hasEffects && effectValue.effects.length == 1 &&
 			effectValue.effects[0].kind == EffectKind.Blur;
 		var dropShadowOnly = hasEffects && effectValue.effects.length == 1 &&
@@ -99,7 +102,7 @@ class CanvasCommandBuffer {
 			} else
 				matrix = effectValue.colorMatrix();
 		}
-		if (!hasEffects) {
+		if (!hasEffects && !hasMask) {
 			if (bounds == null) {
 				header(NativeKitUI.CommandOpcode.BeginLayer, 16);
 				float(opacity);
@@ -115,6 +118,48 @@ class CanvasCommandBuffer {
 			float(bounds.height);
 			// NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS.
 			word(3);
+			return;
+		}
+		if (hasMask) {
+			var maskValue:Mask = cast mask;
+			header(NativeKitUI.CommandOpcode.BeginLayer, 160);
+			float(opacity);
+			word(cast mode);
+			if (bounds == null) {
+				float(0.0); float(0.0); float(0.0); float(0.0);
+				word(1);
+			} else {
+				float(bounds.x); float(bounds.y); float(bounds.width); float(bounds.height);
+				word(3);
+			}
+			word(hasEffects ? (dropShadowOnly ? 3 : blurOnly ? 2 : 1) : 0);
+			if (hasEffects)
+				for (value in matrix)
+					float(value);
+			else
+				for (index in 0...20)
+					float(0.0);
+			word(cast(maskValue.kind, Int));
+			word(maskValue.image == null ? 0 : maskValue.image.nativeHandle().rawValue());
+			for (index in 0...8) {
+				var value = 0.0;
+				switch maskValue.kind {
+					case MaskKind.RoundedRect | MaskKind.Circle:
+						if (index == 0) value = maskValue.radius;
+					case MaskKind.LinearGradient:
+						value = switch index {
+							case 0: maskValue.x0;
+							case 1: maskValue.y0;
+							case 2: maskValue.x1;
+							case 3: maskValue.y1;
+							case 4: maskValue.alpha0;
+							case 5: maskValue.alpha1;
+							default: 0.0;
+						};
+					default:
+				}
+				float(value);
+			}
 			return;
 		}
 		header(NativeKitUI.CommandOpcode.BeginLayer, 120);

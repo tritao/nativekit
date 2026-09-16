@@ -50,6 +50,8 @@ class UiRendererImpl final : public UiRenderer {
     bool compositeImage(nk_graphics_image image, float x, float y, float width, float height,
                         const float transform[6], float opacity) override;
     bool applyEffect(ResourceId source, const EffectDescriptor &effect) override;
+    bool applyMask(ResourceId source, const MaskDescriptor &mask,
+                   const PreparedTexture *image) override;
     bool endPass() override;
     bool endFrame() override;
     UiRendererStats stats() const override;
@@ -107,6 +109,7 @@ struct UiRendererImpl::State {
     nkgpu_shader effect_shader{};
     nkgpu_shader blur_shader{};
     nkgpu_shader drop_shadow_shader{};
+    nkgpu_shader mask_shader{};
     nkgpu_shader surface_mesh_shader{};
     nkgpu_pipeline solid_pipeline{};
     nkgpu_pipeline fill_stencil_pipeline{};
@@ -122,6 +125,7 @@ struct UiRendererImpl::State {
     nkgpu_pipeline effect_pipeline{};
     nkgpu_pipeline blur_pipeline{};
     nkgpu_pipeline drop_shadow_pipeline{};
+    nkgpu_pipeline mask_pipeline{};
     nkgpu_pipeline surface_mesh_pipeline{};
     nkgpu_sampler sampler{};
     nkgpu_sampler glyph_sampler{};
@@ -178,6 +182,12 @@ struct DropShadowUniforms {
 };
 
 static_assert(sizeof(DropShadowUniforms) == sizeof(float) * 12);
+
+struct MaskUniforms {
+    std::array<float, 4> value[3];
+};
+
+static_assert(sizeof(MaskUniforms) == sizeof(float) * 12);
 
 struct SolidVertex {
     float x;
@@ -356,7 +366,8 @@ bool draw_mesh(UiRendererImpl::State &state, nkgpu_pipeline pipeline,
                const void *fragment_uniforms, size_t fragment_uniform_size, nkgpu_image image = {},
                nkgpu_sampler sampler = {}, nkgpu_buffer vertex_buffer = {},
                nk_graphics_image external_image = {}, const void *vertex_uniforms = nullptr,
-               size_t vertex_uniform_size = 0) {
+               size_t vertex_uniform_size = 0, nkgpu_image second_image = {},
+               nkgpu_sampler second_sampler = {}, nk_graphics_image second_external_image = {}) {
     if (vertices.empty() || indices.empty())
         return true;
     if (!state.in_pass || indices.size() > UINT32_MAX || vertices.size() > UINT32_MAX)
@@ -386,7 +397,12 @@ bool draw_mesh(UiRendererImpl::State &state, nkgpu_pipeline pipeline,
     if ((image.id && !gpu_result(state, nkgpu_apply_image(state.renderer, 0, image))) ||
         (!image.id && external_image.id &&
          !gpu_result(state, nkgpu_apply_graphics_image(state.renderer, 0, external_image))) ||
-        (sampler.id && !gpu_result(state, nkgpu_apply_sampler(state.renderer, 0, sampler))))
+        (sampler.id && !gpu_result(state, nkgpu_apply_sampler(state.renderer, 0, sampler))) ||
+        (second_image.id && !gpu_result(state, nkgpu_apply_image(state.renderer, 1, second_image))) ||
+        (!second_image.id && second_external_image.id &&
+         !gpu_result(state, nkgpu_apply_graphics_image(state.renderer, 1, second_external_image))) ||
+        (second_sampler.id &&
+         !gpu_result(state, nkgpu_apply_sampler(state.renderer, 1, second_sampler))))
         return false;
     ++state.stats.binding_changes;
     const std::array<float, 4> viewport = {static_cast<float>(state.width),
@@ -634,6 +650,7 @@ enum class UiShaderKind {
     Effect,
     Blur,
     DropShadow,
+    Mask,
     SurfaceMesh
 };
 
@@ -736,6 +753,15 @@ ShaderSources shader_sources(nkgpu_backend backend, UiShaderKind kind) {
         return gl(ui_shader_drop_shadow_glsl410_vertex, ui_shader_drop_shadow_glsl410_fragment,
                   ui_shader_drop_shadow_glsl300es_vertex,
                   ui_shader_drop_shadow_glsl300es_fragment);
+    case UiShaderKind::Mask:
+        if (d3d11)
+            return {ui_shader_mask_hlsl5_vertex, ui_shader_mask_hlsl5_fragment,
+                    NKGPU_SHADERLANGUAGE_HLSL5};
+        if (metal)
+            return {ui_shader_mask_metal_macos_vertex, ui_shader_mask_metal_macos_fragment,
+                    NKGPU_SHADERLANGUAGE_MSL};
+        return gl(ui_shader_mask_glsl410_vertex, ui_shader_mask_glsl410_fragment,
+                  ui_shader_mask_glsl300es_vertex, ui_shader_mask_glsl300es_fragment);
     case UiShaderKind::SurfaceMesh:
         if (d3d11)
             return {ui_shader_surface_mesh_hlsl5_vertex, ui_shader_surface_mesh_hlsl5_fragment,
@@ -774,6 +800,7 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
     case UiShaderKind::Effect:
     case UiShaderKind::Blur:
     case UiShaderKind::DropShadow:
+    case UiShaderKind::Mask:
         attributes[attribute_count++] = "position";
         attributes[attribute_count++] = "uv0";
         break;
@@ -841,6 +868,12 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
         fragment_size = sizeof(DropShadowUniforms);
         textured = true;
         break;
+    case UiShaderKind::Mask:
+        vertex_block = "mask_vs_params";
+        fragment_block = "mask_fs_params";
+        fragment_size = sizeof(MaskUniforms);
+        textured = true;
+        break;
     case UiShaderKind::SurfaceMesh:
         vertex_block = "surface_mesh_vs_params";
         vertex_size = 64;
@@ -859,10 +892,15 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
                           ? kPathShaderVec4Count
                           : kind == UiShaderKind::Effect ? 5
                           : kind == UiShaderKind::DropShadow ? 3
+                          : kind == UiShaderKind::Mask ? 3
                                                             : 1)))
         return false;
     if (textured && !gpu_result(state, nkgpu_shader_texture(builder, 0, 0,
                                                             NKGPU_SHADERSTAGE_FRAGMENT, "tex_smp")))
+        return false;
+    if (kind == UiShaderKind::Mask &&
+        !gpu_result(state, nkgpu_shader_texture(builder, 1, 1,
+                                                NKGPU_SHADERSTAGE_FRAGMENT, "mask_smp")))
         return false;
     return gpu_result(state, nkgpu_shader_end(builder, &out_shader));
 }
@@ -960,6 +998,7 @@ bool UiRendererImpl::initialize() {
         !create_shader(*state_, UiShaderKind::Effect, state_->effect_shader) ||
         !create_shader(*state_, UiShaderKind::Blur, state_->blur_shader) ||
         !create_shader(*state_, UiShaderKind::DropShadow, state_->drop_shadow_shader) ||
+        !create_shader(*state_, UiShaderKind::Mask, state_->mask_shader) ||
         !create_shader(*state_, UiShaderKind::SurfaceMesh, state_->surface_mesh_shader))
         return false;
 
@@ -1074,6 +1113,10 @@ bool UiRendererImpl::initialize() {
                          {{0, offsetof(TextureVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
                           {1, offsetof(TextureVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
                          color_options, state_->drop_shadow_pipeline) ||
+        !create_pipeline(*state_, state_->mask_shader, sizeof(TextureVertex),
+                         {{0, offsetof(TextureVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
+                          {1, offsetof(TextureVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
+                         color_options, state_->mask_pipeline) ||
         !create_pipeline(*state_, state_->surface_mesh_shader, sizeof(SurfaceMeshVertex),
                          {{0, offsetof(SurfaceMeshVertex, x), NKGPU_VERTEXFORMAT_FLOAT3},
                           {1, offsetof(SurfaceMeshVertex, red), NKGPU_VERTEXFORMAT_UBYTE4N}},
@@ -1108,7 +1151,7 @@ bool UiRendererImpl::initialize() {
         !create_stream(1024 * 1024, NKGPU_BUFFER_VERTEX, state_->surface_mesh_vertices) ||
         !create_stream(4 * 1024 * 1024, NKGPU_BUFFER_INDEX, state_->indices))
         return false;
-    state_->stats.gpu_resources = 36;
+    state_->stats.gpu_resources = 38;
     state_->initialized = true;
     return true;
 }
@@ -1568,6 +1611,57 @@ bool UiRendererImpl::applyEffect(ResourceId source, const EffectDescriptor &effe
     return draw_mesh(*state_, state_->effect_pipeline, vertices, indices, &uniforms,
                      sizeof(uniforms), {}, state_->sampler, state_->composite_vertices,
                      found->second.image);
+}
+
+bool UiRendererImpl::applyMask(ResourceId source, const MaskDescriptor &mask,
+                               const PreparedTexture *image) {
+    if (!state_->in_pass || mask.kind < MaskKind::Rectangle || mask.kind > MaskKind::Image)
+        return fail(*state_, "unsupported UI mask");
+    for (const float value : mask.values)
+        if (!std::isfinite(value))
+            return fail(*state_, "UI mask parameters are not finite");
+    if ((mask.kind == MaskKind::RoundedRect || mask.kind == MaskKind::Circle) &&
+        mask.values[0] < 0.0f)
+        return fail(*state_, "invalid UI mask radius");
+    if (mask.kind == MaskKind::LinearGradient &&
+        (mask.values[4] < 0.0f || mask.values[4] > 1.0f || mask.values[5] < 0.0f ||
+         mask.values[5] > 1.0f))
+        return fail(*state_, "invalid UI mask gradient");
+    if ((mask.kind == MaskKind::Image) != (image != nullptr))
+        return fail(*state_, "UI mask image input is invalid");
+    const auto found = state_->targets.find(source.value);
+    if (found == state_->targets.end() || !found->second.image.id)
+        return fail(*state_, "mask input target was not rendered");
+    if (!setScissor(false, 0.0f, 0.0f, 0.0f, 0.0f))
+        return false;
+
+    const float width = static_cast<float>(state_->width);
+    const float height = static_cast<float>(state_->height);
+    const std::vector<TextureVertex> vertices = {
+        {0.0f, 0.0f, 0.0f, 1.0f},
+        {width, 0.0f, 1.0f, 1.0f},
+        {width, height, 1.0f, 0.0f},
+        {0.0f, height, 0.0f, 0.0f},
+    };
+    const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
+    MaskUniforms uniforms{};
+    uniforms.value[0] = {static_cast<float>(static_cast<uint32_t>(mask.kind)),
+                         mask.values[0], mask.values[0], mask.values[1]};
+    uniforms.value[1] = {mask.values[2], mask.values[3], mask.values[4], mask.values[5]};
+    uniforms.value[2] = {width, height, 1.0f / width, 1.0f / height};
+
+    nkgpu_image mask_gpu_image = state_->white_image;
+    nkgpu_sampler mask_gpu_sampler = state_->white_sampler;
+    if (image) {
+        auto &prepared = state_->images[image->token];
+        if (!upload_texture(*state_, *image, prepared))
+            return false;
+        mask_gpu_image = prepared.image;
+        mask_gpu_sampler = prepared.sampler;
+    }
+    return draw_mesh(*state_, state_->mask_pipeline, vertices, indices, &uniforms,
+                     sizeof(uniforms), {}, state_->surface_sampler, state_->composite_vertices,
+                     found->second.image, nullptr, 0, mask_gpu_image, mask_gpu_sampler);
 }
 
 bool UiRendererImpl::compositeImage(ResourceId target_id, float x, float y, float width,

@@ -80,6 +80,9 @@ class StyleProperty<T> {
 	static function effectChainEqual(left:EffectChain, right:EffectChain):Bool
 		return left == right || (left != null && right != null && left.isEqual(right));
 
+	static function maskEqual(left:Mask, right:Mask):Bool
+		return left == right || (left != null && right != null && left.isEqual(right));
+
 	static function floatInterpolate(left:Float, right:Float, amount:Float):Float
 		return left + (right - left) * amount;
 
@@ -199,6 +202,9 @@ class StyleProperty<T> {
 	public static final BackdropEffects:StyleProperty<EffectChain> = new StyleProperty(
 		"backdropEffects", EffectChain.empty(), false, StyleImpact.Composite,
 		EffectChain.interpolate, null, null, effectChainEqual);
+	/** Source-alpha mask applied during isolated-layer composition. */
+	public static final Mask:StyleProperty<Mask> = new StyleProperty<Mask>(
+		"mask", null, false, StyleImpact.Composite, null, null, null, maskEqual);
 	/** Paint inputs used by the retained custom progress renderer. */
 	public static final ProgressTrackColor:StyleProperty<Color> = new StyleProperty(
 		"progressTrackColor", Color.rgba(0.19, 0.21, 0.25, 1.0), false,
@@ -248,6 +254,7 @@ class StyleProperty<T> {
 				dynamicProperty(OutlineColor), dynamicProperty(OutlineWidth), dynamicProperty(ShadowColor),
 				dynamicProperty(ShadowOffsetX), dynamicProperty(ShadowOffsetY), dynamicProperty(ShadowBlur),
 				dynamicProperty(Opacity), dynamicProperty(Effects), dynamicProperty(BackdropEffects),
+				dynamicProperty(StyleProperty.Mask),
 				dynamicProperty(ProgressTrackColor), dynamicProperty(ProgressFillColor),
 				dynamicProperty(SliderTrackColor), dynamicProperty(SliderFillColor),
 				dynamicProperty(SliderThumbColor)

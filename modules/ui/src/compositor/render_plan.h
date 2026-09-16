@@ -20,6 +20,7 @@ enum class RenderCommandKind : uint8_t {
 enum class RenderPassKind : uint8_t {
     Draw = 1,
     Effect,
+    Mask,
 };
 
 enum class RenderTargetFormat : uint8_t {
@@ -79,6 +80,7 @@ struct RenderPass {
     RenderPassKind kind = RenderPassKind::Draw;
     ResourceId input_target{};
     EffectDescriptor effect{};
+    MaskDescriptor mask{};
 };
 
 struct RenderDependency {

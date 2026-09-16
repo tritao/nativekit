@@ -63,6 +63,34 @@ bool valid_effect(const EffectDescriptor &effect) {
     return true;
 }
 
+bool valid_mask_kind(MaskKind kind) {
+    return kind == MaskKind::None || kind == MaskKind::Rectangle ||
+           kind == MaskKind::RoundedRect || kind == MaskKind::Circle ||
+           kind == MaskKind::LinearGradient || kind == MaskKind::Image;
+}
+
+bool valid_mask(const MaskDescriptor &mask) {
+    if (!valid_mask_kind(mask.kind))
+        return false;
+    if (mask.kind == MaskKind::None)
+        return true;
+    for (float value : mask.values)
+        if (!finite(value))
+            return false;
+    if (mask.kind != MaskKind::Image && mask.image.value != 0)
+        return false;
+    if (mask.kind == MaskKind::Image)
+        return is_resource_id(mask.image, ResourceKind::Image);
+    if ((mask.kind == MaskKind::RoundedRect || mask.kind == MaskKind::Circle) &&
+        mask.values[0] < 0.0f)
+        return false;
+    if (mask.kind == MaskKind::LinearGradient &&
+        (mask.values[4] < 0.0f || mask.values[4] > 1.0f || mask.values[5] < 0.0f ||
+         mask.values[5] > 1.0f))
+        return false;
+    return true;
+}
+
 bool valid_line_cap(uint32_t line_cap) {
     return line_cap <= 2;
 }
@@ -299,6 +327,45 @@ bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
     return append(value);
 }
 
+bool DisplayList::begin_layer(float opacity, const MaskDescriptor &mask, CompositeMode mode) {
+    auto value = command<BeginLayerMaskCommand>(CommandOpcode::BeginLayer);
+    value.opacity = opacity;
+    value.mode = mode;
+    value.flags = LayerIsolated;
+    value.mask = mask;
+    return append(value);
+}
+
+bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds, const MaskDescriptor &mask,
+                              CompositeMode mode) {
+    auto value = command<BeginLayerMaskCommand>(CommandOpcode::BeginLayer);
+    value.opacity = opacity;
+    value.mode = mode;
+    value.x = bounds.x;
+    value.y = bounds.y;
+    value.width = bounds.width;
+    value.height = bounds.height;
+    value.flags = LayerIsolated | LayerHasBounds;
+    value.mask = mask;
+    return append(value);
+}
+
+bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
+                              const EffectDescriptor &effect, const MaskDescriptor &mask,
+                              CompositeMode mode) {
+    auto value = command<BeginLayerMaskCommand>(CommandOpcode::BeginLayer);
+    value.opacity = opacity;
+    value.mode = mode;
+    value.x = bounds.x;
+    value.y = bounds.y;
+    value.width = bounds.width;
+    value.height = bounds.height;
+    value.flags = LayerIsolated | LayerHasBounds;
+    value.effect = effect;
+    value.mask = mask;
+    return append(value);
+}
+
 bool DisplayList::end_layer() {
     return append(command<ScopeCommand>(CommandOpcode::EndLayer));
 }
@@ -406,6 +473,7 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
             break;
         }
         case CommandOpcode::BeginLayer: {
+            const auto *mask_value = read_command<BeginLayerMaskCommand>(record, header.size);
             const auto *effect_value = read_command<BeginLayerEffectCommand>(record, header.size);
             const auto *legacy = read_command<LegacyBeginLayerCommand>(record, header.size);
             const auto *value = read_command<BeginLayerCommand>(record, header.size);
@@ -421,6 +489,18 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
                 valid_effect(effect_value->effect) &&
                 (effect_value->effect.kind == EffectKind::None ||
                  (effect_value->flags & LayerIsolated));
+            const bool valid_mask_record =
+                mask_value && finite(mask_value->opacity) && mask_value->opacity >= 0.0f &&
+                mask_value->opacity <= 1.0f && valid_composite(mask_value->mode) &&
+                !(mask_value->flags & ~(LayerIsolated | LayerHasBounds)) &&
+                (!(mask_value->flags & LayerHasBounds) ||
+                 ((mask_value->flags & LayerIsolated) &&
+                  valid_rect(mask_value->x, mask_value->y, mask_value->width,
+                             mask_value->height) &&
+                  mask_value->width > 0.0f && mask_value->height > 0.0f)) &&
+                valid_effect(mask_value->effect) && valid_mask(mask_value->mask) &&
+                mask_value->mask.kind != MaskKind::None &&
+                (mask_value->flags & LayerIsolated);
             const bool valid_legacy = legacy && finite(legacy->opacity) && legacy->opacity >= 0.0f &&
                                       legacy->opacity <= 1.0f && valid_composite(legacy->mode);
             const bool valid_extended = value && finite(value->opacity) && value->opacity >= 0.0f &&
@@ -430,7 +510,7 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
                                          ((value->flags & LayerIsolated) &&
                                           valid_rect(value->x, value->y, value->width, value->height) &&
                                           value->width > 0.0f && value->height > 0.0f));
-            if ((!valid_effect_record && !valid_legacy && !valid_extended) ||
+            if ((!valid_mask_record && !valid_effect_record && !valid_legacy && !valid_extended) ||
                 layer_depth == max_scope_depth)
                 return fail(error, offset, index, "invalid layer begin");
             ++layer_depth;

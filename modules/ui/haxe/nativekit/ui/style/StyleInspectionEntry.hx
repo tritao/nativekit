@@ -34,6 +34,9 @@ class StyleInspectionEntry {
 			case "effects" | "backdropEffects":
 				var effects:EffectChain = cast value;
 				effects == null ? "null" : effects.toString();
+			case "mask":
+				var mask:Mask = cast value;
+				mask == null ? "null" : mask.toString();
 			default:
 				Std.string(value);
 		};

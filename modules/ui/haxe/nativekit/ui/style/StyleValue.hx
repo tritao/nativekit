@@ -117,6 +117,9 @@ class StyleValue {
 	public static function backdropEffects(value:EffectChain):StyleValue
 		return of(StyleProperty.BackdropEffects, value);
 
+	public static function mask(value:Mask):StyleValue
+		return of(StyleProperty.Mask, value);
+
 	public static function progressTrackColor(value:Color):StyleValue
 		return of(StyleProperty.ProgressTrackColor, value);
 

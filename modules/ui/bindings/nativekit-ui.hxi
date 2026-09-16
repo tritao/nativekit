@@ -352,6 +352,17 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		NKUI_LAYOUT_WRAP_WRAP = 1;
 	}
 	/**
+	 * Source-alpha masks are separate composition inputs, not sequential effects.
+	 */
+	enum nkui_mask_kind : u32 {
+		NKUI_MASK_NONE = 0;
+		NKUI_MASK_RECTANGLE = 1;
+		NKUI_MASK_ROUNDED_RECT = 2;
+		NKUI_MASK_CIRCLE = 3;
+		NKUI_MASK_LINEAR_GRADIENT = 4;
+		NKUI_MASK_IMAGE = 5;
+	}
+	/**
 	 * End-cap style used when stroking an open path.
 	 */
 	enum nkui_path_line_cap : u32 {
@@ -993,6 +1004,22 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		effect_matrix: array<f32, 20> @offset(40);
 	}
 	/**
+	 * Extended payload for NKUI_COMMAND_BEGIN_LAYER with an effect and mask.
+	 */
+	struct nkui_layer_mask_command @layout(160, 4) {
+		header: nkui_command_header @offset(0);
+		opacity: f32 @offset(8);
+		composite_mode: nkui_composite_mode @offset(12);
+		x: f32 @offset(16);
+		y: f32 @offset(20);
+		width: f32 @offset(24);
+		height: f32 @offset(28);
+		flags: nkui_layer_flags @offset(32);
+		effect_kind: nkui_effect_kind @offset(36);
+		effect_matrix: array<f32, 20> @offset(40);
+		mask: nkui_mask_descriptor @offset(120);
+	}
+	/**
 	 * Per-submission logical viewport and layout timing.
 	 */
 	struct nkui_layout_frame_input @layout(16, 4) {
@@ -1103,6 +1130,23 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		 * Maximum number of entries retained by the cache.
 		 */
 		cache_capacity: u64 @offset(48);
+	}
+	/**
+	 * Descriptor for the source-alpha mask of an isolated layer.
+	 */
+	struct nkui_mask_descriptor @layout(40, 4) {
+		/**
+		 * Shape, gradient, or image mask kind.
+		 */
+		kind: nkui_mask_kind @offset(0);
+		/**
+		 * Image resource used only by NKUI_MASK_IMAGE.
+		 */
+		image: nkui_resource @offset(4);
+		/**
+		 * Kind-specific values; coordinates are normalized for gradients.
+		 */
+		values: array<f32, 8> @offset(8);
 	}
 	/**
 	 * Paragraph-level wrapping, alignment, and line-height inputs.

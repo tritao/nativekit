@@ -132,3 +132,54 @@ void main() {
 @end
 
 @program drop_shadow drop_shadow_vs drop_shadow_fs
+
+@vs mask_vs
+layout(binding=0) uniform mask_vs_params {
+    vec4 value;
+};
+layout(location=0) in vec2 position;
+layout(location=1) in vec2 uv0;
+layout(location=0) out vec2 uv;
+void main() {
+    uv = uv0;
+    gl_Position = vec4(((position.x / value.x) * 2.0) - 1.0,
+                       1.0 - ((position.y / value.y) * 2.0), 0.0, 1.0);
+}
+@end
+
+@fs mask_fs
+layout(binding=1) uniform mask_fs_params {
+    vec4 value[3];
+};
+layout(binding=0) uniform texture2D tex;
+layout(binding=0) uniform sampler smp;
+layout(binding=1) uniform texture2D mask_tex;
+layout(binding=1) uniform sampler mask_smp;
+layout(location=0) in vec2 uv;
+layout(location=0) out vec4 frag_color;
+void main() {
+    vec4 source = texture(sampler2D(tex, smp), uv);
+    float kind = value[0].x;
+    float mask_alpha = 1.0;
+    if (kind > 4.5) {
+        mask_alpha = texture(sampler2D(mask_tex, mask_smp), uv).a;
+    } else if (kind > 3.5) {
+        vec2 direction = value[1].xy - value[0].zw;
+        float denominator = max(dot(direction, direction), 0.000001);
+        float amount = clamp(dot(uv - value[0].zw, direction) / denominator, 0.0, 1.0);
+        mask_alpha = mix(value[1].z, value[1].w, amount);
+    } else if (kind > 2.5) {
+        vec2 position = uv * value[2].xy - value[2].xy * 0.5;
+        mask_alpha = step(length(position), value[0].y);
+    } else if (kind > 1.5) {
+        vec2 position = uv * value[2].xy - value[2].xy * 0.5;
+        vec2 extent = value[2].xy * 0.5 - vec2(value[0].y);
+        vec2 q = abs(position) - extent;
+        float distance = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - value[0].y;
+        mask_alpha = step(distance, 0.0);
+    }
+    frag_color = vec4(source.rgb * mask_alpha, source.a * mask_alpha);
+}
+@end
+
+@program mask mask_vs mask_fs

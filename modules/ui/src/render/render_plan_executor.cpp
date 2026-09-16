@@ -144,6 +144,24 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
                 return fail(error, pass_index, 0, renderer.lastError());
             continue;
         }
+        if (pass.kind == RenderPassKind::Mask) {
+            const PreparedTexture *image = nullptr;
+            if (pass.mask.kind == MaskKind::Image) {
+                const auto *bound = resources.image(pass.mask.image);
+                if (!bound || !bound->image) {
+                    renderer.endPass();
+                    return fail(error, pass_index, 0, "mask image is unavailable");
+                }
+                image = bound->image;
+            }
+            if (!renderer.applyMask(pass.input_target, pass.mask, image)) {
+                renderer.endPass();
+                return fail(error, pass_index, 0, renderer.lastError());
+            }
+            if (!renderer.endPass())
+                return fail(error, pass_index, 0, renderer.lastError());
+            continue;
+        }
         const auto fail_command = [&](uint32_t command, const char *message) {
             renderer.endPass();
             return fail(error, pass_index, command, message);

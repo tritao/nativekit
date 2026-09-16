@@ -21,6 +21,8 @@ struct Layer {
     RenderTargetDescriptor target_descriptor{};
     EffectDescriptor effect{};
     bool has_effect = false;
+    MaskDescriptor mask{};
+    bool has_mask = false;
     bool isolated = false;
 };
 
@@ -32,6 +34,8 @@ struct LayerCommandValues {
     bool has_bounds = false;
     EffectDescriptor effect{};
     bool has_effect = false;
+    MaskDescriptor mask{};
+    bool has_mask = false;
 };
 
 struct CanvasState {
@@ -98,6 +102,19 @@ void apply_state(RenderCommand &command, const CanvasState &state, float target_
 }
 
 bool read_layer(const uint8_t *record, uint32_t size, LayerCommandValues &result) {
+    if (size == sizeof(BeginLayerMaskCommand)) {
+        const auto value = read<BeginLayerMaskCommand>(record);
+        result.opacity = value.opacity;
+        result.mode = value.mode;
+        result.bounds = {value.x, value.y, value.width, value.height};
+        result.flags = value.flags;
+        result.has_bounds = (value.flags & LayerHasBounds) != 0;
+        result.effect = value.effect;
+        result.has_effect = value.effect.kind != EffectKind::None;
+        result.mask = value.mask;
+        result.has_mask = value.mask.kind != MaskKind::None;
+        return true;
+    }
     if (size == sizeof(BeginLayerEffectCommand)) {
         const auto value = read<BeginLayerEffectCommand>(record);
         result.opacity = value.opacity;
@@ -313,7 +330,8 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             }
             layers.push_back({parent_target, layer_target, value.opacity, value.mode,
                               value.bounds, value.has_bounds, parent_origin_x, parent_origin_y,
-                              layer_descriptor, value.effect, value.has_effect, isolated});
+                              layer_descriptor, value.effect, value.has_effect, value.mask,
+                              value.has_mask, isolated});
             break;
         }
         case CommandOpcode::EndLayer: {
@@ -352,6 +370,23 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                         composite_target = effect_target;
                     }
                 }
+                const auto append_mask_pass = [&](ResourceId input) {
+                    const ResourceId mask_target = allocate_transient_target();
+                    RenderPass mask_pass;
+                    mask_pass.target = mask_target;
+                    mask_pass.target_descriptor = layer.target_descriptor;
+                    mask_pass.kind = RenderPassKind::Mask;
+                    mask_pass.input_target = input;
+                    mask_pass.mask = layer.mask;
+                    plan.passes.push_back(std::move(mask_pass));
+                    return mask_target;
+                };
+                ResourceId original_target = layer.layer_target;
+                if (layer.has_mask) {
+                    composite_target = append_mask_pass(composite_target);
+                    if (layer.has_effect && layer.effect.kind == EffectKind::DropShadow)
+                        original_target = append_mask_pass(original_target);
+                }
                 pass = &continue_pass(plan, current_target);
                 const auto append_composite = [&](ResourceId target) {
                     pass->commands.push_back(
@@ -370,7 +405,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 };
                 if (layer.has_effect && layer.effect.kind == EffectKind::DropShadow) {
                     append_composite(composite_target);
-                    append_composite(layer.layer_target);
+                    append_composite(original_target);
                 } else {
                     append_composite(composite_target);
                 }
