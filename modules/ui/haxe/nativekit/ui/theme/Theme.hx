@@ -10,68 +10,56 @@ import nativekit.ui.style.StyleSelector;
 import nativekit.ui.style.StyleState;
 import nativekit.ui.style.StyleValue;
 
-/** Haxe-owned semantic typography, color, and state palette. */
+/** Theme tokens plus the stylesheet generated from those tokens. */
 class Theme {
 	static final darkButtonTextOnLight:Color = Color.rgba(0.08, 0.10, 0.14, 1.0);
+	public final tokens:ThemeTokens;
 	public final styles:StyleSheet;
 
-	public var accent:Color;
-	public var disabledText:Color;
-	public var disabledButtonText:Color;
-	public var buttonBackground:Color;
-	public var buttonHover:Color;
-	public var buttonPressed:Color;
-	public var buttonFocused:Color;
-	public var buttonSelected:Color;
-	public var buttonDisabled:Color;
-	public var controlSelected:Color;
-	public var controlUnselected:Color;
-	public var controlDisabled:Color;
 	public var textSelection:Color;
 	public var textSelectionInactive:Color;
 	public var textCaret:Color;
-	public var panelBackground:Color;
-	public var overlayBackdrop:Color;
-	public var tooltipBackground:Color;
 	public var body:TextRoleStyle;
 	public var heading:TextRoleStyle;
 	public var label:TextRoleStyle;
 	public var caption:TextRoleStyle;
 	public var button:TextRoleStyle;
+	public var accent(get, set):Color;
+	public var text(get, set):Color;
+	public var mutedText(get, set):Color;
+	public var disabledText(get, set):Color;
+	public var buttonText(get, set):Color;
+	public var disabledButtonText(get, set):Color;
+	public var buttonBackground(get, set):Color;
+	public var buttonHover(get, set):Color;
+	public var buttonPressed(get, set):Color;
+	public var buttonFocused(get, set):Color;
+	public var buttonSelected(get, set):Color;
+	public var buttonDisabled(get, set):Color;
+	public var controlSelected(get, set):Color;
+	public var controlUnselected(get, set):Color;
+	public var controlDisabled(get, set):Color;
+	public var panelBackground(get, set):Color;
+	public var overlayBackdrop(get, set):Color;
+	public var tooltipBackground(get, set):Color;
 
-	public function new() {
+	public function new(?tokens:ThemeTokens) {
+		this.tokens = tokens == null ? new ThemeTokens() : tokens;
 		styles = new StyleSheet("Theme");
-		accent = Color.rgba(0.22, 0.48, 0.86, 1.0);
-		var bodyColor = Color.rgba(0.96, 0.97, 0.99, 1.0);
-		var mutedColor = Color.rgba(0.69, 0.72, 0.77, 1.0);
-		disabledText = Color.rgba(0.53, 0.55, 0.59, 1.0);
-		disabledButtonText = disabledText;
-		buttonBackground = Color.rgba(0.16, 0.4, 0.78, 1.0);
-		buttonHover = Color.rgba(0.21, 0.46, 0.84, 1.0);
-		buttonPressed = Color.rgba(0.13, 0.34, 0.67, 1.0);
-		buttonFocused = Color.rgba(0.27, 0.52, 0.91, 1.0);
-		buttonSelected = Color.rgba(0.17, 0.37, 0.68, 1.0);
-		buttonDisabled = Color.rgba(0.22, 0.24, 0.28, 1.0);
-		controlSelected = accent;
-		controlUnselected = Color.rgba(0.16, 0.18, 0.22, 1.0);
-		controlDisabled = Color.rgba(0.20, 0.21, 0.24, 1.0);
 		textSelection = Color.rgba(0.2, 0.43, 0.82, 0.55);
 		textSelectionInactive = Color.rgba(0.2, 0.43, 0.82, 0.30);
 		textCaret = Color.rgba(0.96, 0.97, 0.99, 1.0);
-		panelBackground = Color.rgba(0.13, 0.14, 0.17, 1.0);
-		overlayBackdrop = Color.rgba(0.0, 0.0, 0.0, 0.48);
-		tooltipBackground = Color.rgba(0.08, 0.09, 0.11, 0.96);
-		body = new TextRoleStyle(new TextStyle(), new ParagraphStyle(), bodyColor);
-		heading = new TextRoleStyle(new TextStyle(24.0), new ParagraphStyle(), bodyColor);
+		body = new TextRoleStyle(new TextStyle(), new ParagraphStyle(), tokens.text);
+		heading = new TextRoleStyle(new TextStyle(24.0), new ParagraphStyle(), tokens.text);
 		label = new TextRoleStyle(new TextStyle(14.0),
-			new ParagraphStyle(TextWrap.None), bodyColor);
-		caption = new TextRoleStyle(new TextStyle(12.0), new ParagraphStyle(), mutedColor);
+			new ParagraphStyle(TextWrap.None), tokens.text);
+		caption = new TextRoleStyle(new TextStyle(12.0), new ParagraphStyle(), tokens.mutedText);
 		button = new TextRoleStyle(new TextStyle(),
-			new ParagraphStyle(TextWrap.None), bodyColor);
+			new ParagraphStyle(TextWrap.None), tokens.text);
 		refreshStyles();
 	}
 
-	/** Rebuilds the built-in rules after callers change a compatibility token. */
+	/** Rebuilds built-in rules after callers change a compatibility token. */
 	public function refreshStyles():Void {
 		styles.clear();
 		styles.rule(StyleSelector.widget("button"), [StyleValue.background(buttonBackground)]);
@@ -86,8 +74,8 @@ class Theme {
 		styles.rule(StyleSelector.widget("button").state(StyleState.Disabled),
 			[StyleValue.background(buttonDisabled)]);
 
-		var checkboxIndicator = StyleSelector.widget("checkbox-indicator");
-		styles.rule(checkboxIndicator, [StyleValue.background(controlUnselected)]);
+		styles.rule(StyleSelector.widget("checkbox-indicator"),
+			[StyleValue.background(controlUnselected)]);
 		styles.rule(StyleSelector.widget("checkbox-indicator").state(StyleState.Checked),
 			[StyleValue.background(controlSelected)]);
 		styles.rule(StyleSelector.widget("checkbox-indicator").state(StyleState.Disabled),
@@ -156,4 +144,56 @@ class Theme {
 			return controlDisabled;
 		return selected ? controlSelected : controlUnselected;
 	}
+
+	function get_accent():Color return tokens.accent;
+	function set_accent(value:Color):Color { tokens.accent = value; return value; }
+	function get_text():Color return body == null ? tokens.text : body.color;
+	function set_text(value:Color):Color {
+		tokens.text = value;
+		if (body != null)
+			body.color = value;
+		return value;
+	}
+	function get_mutedText():Color return caption == null ? tokens.mutedText : caption.color;
+	function set_mutedText(value:Color):Color {
+		tokens.mutedText = value;
+		if (caption != null)
+			caption.color = value;
+		return value;
+	}
+	function get_disabledText():Color return tokens.disabledText;
+	function set_disabledText(value:Color):Color { tokens.disabledText = value; return value; }
+	function get_buttonText():Color return button == null ? tokens.buttonText : button.color;
+	function set_buttonText(value:Color):Color {
+		tokens.buttonText = value;
+		if (button != null)
+			button.color = value;
+		return value;
+	}
+	function get_disabledButtonText():Color return tokens.disabledButtonText;
+	function set_disabledButtonText(value:Color):Color { tokens.disabledButtonText = value; return value; }
+	function get_buttonBackground():Color return tokens.buttonBackground;
+	function set_buttonBackground(value:Color):Color { tokens.buttonBackground = value; return value; }
+	function get_buttonHover():Color return tokens.buttonHover;
+	function set_buttonHover(value:Color):Color { tokens.buttonHover = value; return value; }
+	function get_buttonPressed():Color return tokens.buttonPressed;
+	function set_buttonPressed(value:Color):Color { tokens.buttonPressed = value; return value; }
+	function get_buttonFocused():Color return tokens.buttonFocused;
+	function set_buttonFocused(value:Color):Color { tokens.buttonFocused = value; return value; }
+	function get_buttonSelected():Color return tokens.buttonSelected;
+	function set_buttonSelected(value:Color):Color { tokens.buttonSelected = value; return value; }
+	function get_buttonDisabled():Color return tokens.buttonDisabled;
+	function set_buttonDisabled(value:Color):Color { tokens.buttonDisabled = value; return value; }
+	function get_controlSelected():Color return tokens.controlSelected;
+	function set_controlSelected(value:Color):Color { tokens.controlSelected = value; return value; }
+	function get_controlUnselected():Color return tokens.controlUnselected;
+	function set_controlUnselected(value:Color):Color { tokens.controlUnselected = value; return value; }
+	function get_controlDisabled():Color return tokens.controlDisabled;
+	function set_controlDisabled(value:Color):Color { tokens.controlDisabled = value; return value; }
+	function get_panelBackground():Color return tokens.panelBackground;
+	function set_panelBackground(value:Color):Color { tokens.panelBackground = value; return value; }
+	function get_overlayBackdrop():Color return tokens.overlayBackdrop;
+	function set_overlayBackdrop(value:Color):Color { tokens.overlayBackdrop = value; return value; }
+	function get_tooltipBackground():Color return tokens.tooltipBackground;
+	function set_tooltipBackground(value:Color):Color { tokens.tooltipBackground = value; return value; }
 }
