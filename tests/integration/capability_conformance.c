@@ -761,6 +761,70 @@ static nk_graphics_api selected_graphics_api(nk_capabilities capabilities) {
     return 0;
 }
 
+typedef struct frame_callback_state {
+    nk_surface surface;
+    int count;
+    int32_t width;
+    int32_t height;
+} frame_callback_state;
+
+static void NK_CALL on_frame_callback(nk_surface surface, int32_t width, int32_t height,
+                                      void *user_data) {
+    frame_callback_state *state = user_data;
+    if (!state)
+        return;
+    state->surface = surface;
+    state->width = width;
+    state->height = height;
+    ++state->count;
+}
+
+static int wait_for_frame_callback(nk_surface surface, frame_callback_state *state) {
+    for (int attempt = 0; attempt < 500; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        if (!require_ok("nk_poll_event", nk_poll_event(&event)))
+            return 0;
+        nk_event_release(&event);
+        if (state->count > 0)
+            return state->surface == surface && state->width > 0 && state->height > 0;
+        if (!require_ok("nk_wait_events_timeout", nk_wait_events_timeout(0.01)))
+            return 0;
+    }
+    fprintf(stderr, "timed out waiting for surface frame callback\n");
+    return 0;
+}
+
+static int verify_frame_callback(nk_capabilities capabilities, nk_surface surface) {
+    if (!(capabilities & NK_CAP_SURFACE_FRAME_CALLBACK))
+        return 1;
+    frame_callback_state state = {0};
+    if (!require_ok("nk_surface_set_frame_callback",
+                    nk_surface_set_frame_callback(surface, on_frame_callback, &state)) ||
+        !wait_for_frame_callback(surface, &state)) {
+        fprintf(stderr, "surface frame callback did not report a valid frame\n");
+        return 0;
+    }
+    const int count_at_stop = state.count;
+    if (!require_ok("nk_surface_set_frame_callback(stop)",
+                    nk_surface_set_frame_callback(surface, NULL, NULL)))
+        return 0;
+    for (int attempt = 0; attempt < 5; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        if (!require_ok("nk_poll_event", nk_poll_event(&event)))
+            return 0;
+        nk_event_release(&event);
+        if (!require_ok("nk_wait_events_timeout", nk_wait_events_timeout(0.01)))
+            return 0;
+    }
+    if (state.count != count_at_stop) {
+        fprintf(stderr, "surface frame callback continued after being disabled\n");
+        return 0;
+    }
+    return 1;
+}
+
 static int acquire_surface(nk_surface surface) {
     for (int attempt = 0; attempt < 100; ++attempt) {
         nk_result result = nk_surface_make_current(surface);
@@ -799,8 +863,7 @@ static int probe_graphics_and_accessibility(nk_capabilities capabilities, nk_win
         target.api != api ||
         !require_ok("nk_surface_set_bounds", nk_surface_set_bounds(*out_surface, 0, 0, 320, 240)) ||
         !require_ok("nk_surface_present", nk_surface_present(*out_surface)) ||
-        !require_ok("nk_surface_set_frame_callback",
-                    nk_surface_set_frame_callback(*out_surface, NULL, NULL)))
+        !verify_frame_callback(capabilities, *out_surface))
         return 0;
     if (api == NK_GRAPHICS_OPENGL || api == NK_GRAPHICS_OPENGL_ES) {
         nk_graphics_proc proc = NULL;
@@ -944,6 +1007,11 @@ int main(void) {
         probe_webview(capabilities, window);
     if (surface != NK_INVALID_HANDLE)
         success = require_ok("nk_surface_destroy", nk_surface_destroy(surface)) && success;
+    if (surface != NK_INVALID_HANDLE && (capabilities & NK_CAP_SURFACE_FRAME_CALLBACK))
+        success = require_result("nk_surface_set_frame_callback(stale handle)",
+                                 nk_surface_set_frame_callback(surface, NULL, NULL),
+                                 NK_ERROR_INVALID_HANDLE) &&
+                  success;
     if (window != NK_INVALID_HANDLE)
         success = require_ok("nk_window_destroy", nk_window_destroy(window)) && success;
     remove(path);
