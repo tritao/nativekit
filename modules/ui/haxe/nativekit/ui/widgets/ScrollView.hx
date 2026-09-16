@@ -14,6 +14,7 @@ import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.style.StyleTarget;
 
 /** Clipped Haxe scroll container translated from its persistent controller offset. */
 class ScrollView implements View {
@@ -39,7 +40,15 @@ class ScrollView implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(key, function() {
-			var viewport = new RenderNode(context.id("scroll"), LayoutVisualKind.Box, style.copy());
+			var viewportStyle = style.copy();
+			var id = context.id("scroll");
+			var flags = context.interactionStates.get(id);
+			var computed = context.resolveStyle(new StyleTarget("scroll-view", key.value, key.value,
+				null, ["scroll-view"], flags), viewportStyle);
+			var viewport = new RenderNode(id, LayoutVisualKind.Box, computed.toLayoutStyle());
+			viewport.setStyleIdentity("scroll-view", key.value, key.value, null, ["scroll-view"]);
+			viewport.states = flags;
+			viewport.computedStyle = computed;
 			var semantics = new Semantics(AccessibilityRole.ScrollArea);
 			semantics.actions = AccessibilityAction.ScrollForward | AccessibilityAction.ScrollBackward;
 			viewport.semantics = semantics;
@@ -60,7 +69,9 @@ class ScrollView implements View {
 				-controller.offsetY);
 			var translatedContent = new RenderNode(context.id("scroll-content"),
 				LayoutVisualKind.Box, contentStyle);
-			var content = context.withScope(new Key("content"), function() return child.build(context));
+			var content = context.withStyleParent(computed, function() {
+				return context.withScope(new Key("content"), function() return child.build(context));
+			});
 			translatedContent.add(content);
 			viewport.add(translatedContent);
 

@@ -8,6 +8,7 @@ import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.View;
+import nativekit.ui.style.StyleTarget;
 
 /** Parent-relative positioned composition with native rendering and Haxe hit testing. */
 class Stack implements View {
@@ -23,9 +24,16 @@ class Stack implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(key, function() {
-			var root = new RenderNode(context.id("stack"), LayoutVisualKind.Box, style.copy());
+			var id = context.id("stack");
+			var computed = context.resolveStyle(new StyleTarget("stack", key.value, key.value,
+				null, ["stack"], context.interactionStates.get(id)), style);
+			var root = new RenderNode(id, LayoutVisualKind.Box, computed.toLayoutStyle());
+			root.setStyleIdentity("stack", key.value, key.value, null, ["stack"]);
+			root.states = context.interactionStates.get(id);
+			root.computedStyle = computed;
 			for (layer in layers) {
-				var child = context.withScope(new Key(layer.key), function() {
+				var child = context.withStyleParent(computed, function() return
+					context.withScope(new Key(layer.key), function() {
 					var node = layer.view.build(context);
 					node.layout.style.positioning = LayoutPositioning.Absolute;
 					node.layout.style.positionX = layer.x;
@@ -37,7 +45,7 @@ class Stack implements View {
 					if (layer.height != null)
 						node.layout.style.height = cast layer.height;
 					return node;
-				});
+					}));
 				root.add(child);
 			}
 			return root;

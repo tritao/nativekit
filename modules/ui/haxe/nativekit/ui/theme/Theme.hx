@@ -73,6 +73,18 @@ class Theme {
 			[StyleValue.background(buttonPressed)]);
 		styles.rule(StyleSelector.widget("button").state(StyleState.Disabled),
 			[StyleValue.background(buttonDisabled)]);
+		styles.rule(StyleSelector.widget("text-field"), [StyleValue.textColor(text)]);
+		styles.rule(StyleSelector.widget("text-field").state(StyleState.Disabled),
+			[StyleValue.textColor(disabledText)]);
+		styles.rule(StyleSelector.widget("checkbox"), [StyleValue.textColor(text)]);
+		styles.rule(StyleSelector.widget("checkbox").state(StyleState.Disabled),
+			[StyleValue.textColor(disabledText)]);
+		styles.rule(StyleSelector.widget("toggle"), [StyleValue.textColor(text)]);
+		styles.rule(StyleSelector.widget("toggle").state(StyleState.Disabled),
+			[StyleValue.textColor(disabledText)]);
+		styles.rule(StyleSelector.widget("radio"), [StyleValue.textColor(text)]);
+		styles.rule(StyleSelector.widget("radio").state(StyleState.Disabled),
+			[StyleValue.textColor(disabledText)]);
 
 		styles.rule(StyleSelector.widget("checkbox-indicator"),
 			[StyleValue.background(controlUnselected)]);

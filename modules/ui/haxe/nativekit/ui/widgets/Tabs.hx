@@ -86,8 +86,10 @@ class Tabs implements View {
 				button.selected = item.key == active;
 				button.semanticRole = AccessibilityRole.Tab;
 				button.semanticActions = AccessibilityAction.Select;
-				var buttonNode = context.withScope(new Key(item.key),
-					function() return button.build(context));
+				var buttonNode = context.withStyleParent(rootComputed, function() {
+					return context.withScope(new Key(item.key),
+						function() return button.build(context));
+				});
 				strip.add(buttonNode);
 				buttonNodes.push(buttonNode);
 			}
@@ -124,8 +126,10 @@ class Tabs implements View {
 				var panel = context.withScope(new Key("panel:" + item.key), function() {
 					var node = new RenderNode(context.id("tab-panel"), LayoutVisualKind.Box);
 					node.semantics = new Semantics(AccessibilityRole.TabPanel, item.label);
-					node.add(context.withScope(new Key("content"),
-						function() return item.content.build(context)));
+					node.add(context.withStyleParent(rootComputed, function() {
+					return context.withScope(new Key("content"),
+						function() return item.content.build(context));
+				}));
 					return node;
 				});
 				root.add(panel);
