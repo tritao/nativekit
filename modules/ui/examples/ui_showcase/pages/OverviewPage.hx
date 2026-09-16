@@ -3,6 +3,9 @@ package pages;
 import UiExplorer;
 import components.DemoCard;
 import components.DemoGrid;
+import LayoutAxis;
+import LayoutStyle;
+import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.ProgressBar;
 import nativekit.ui.widgets.Row;
@@ -33,8 +36,7 @@ class OverviewPage {
 			explorer.keyed("quick-controls", new Row("quick-controls", [
 				explorer.keyed("toggle", new Toggle("overview-toggle", "Enable preview", explorer.state.controls.enabled,
 					function(value) { explorer.state.controls.enabled = value; })),
-				explorer.keyed("progress", new ProgressBar("overview-progress", explorer.state.controls.progress,
-					0.0, 1.0, "Preview progress"))
+				explorer.keyed("progress", progressPreview(explorer))
 			], explorer.rowStyle(18.0)))
 		])));
 		items.push(explorer.keyed("overview-pipeline", explorer.panel("pipeline", [
@@ -53,5 +55,17 @@ class OverviewPage {
 				}))
 			], explorer.rowStyle(10.0)))
 		])));
+	}
+
+	static function progressPreview(explorer:UiExplorer):Column {
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.fixed(200.0);
+		style.childGap = 6.0;
+		return new Column("preview-progress-group", [
+			explorer.keyed("label", explorer.caption(
+				'Preview readiness  ·  ${Std.int(explorer.state.controls.progress * 100)}%')),
+			explorer.keyed("bar", new ProgressBar("overview-progress",
+				explorer.state.controls.progress, 0.0, 1.0, "Preview readiness"))
+		], style);
 	}
 }

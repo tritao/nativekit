@@ -153,8 +153,8 @@ class Theme {
 			StyleValue.sliderThumbColor(disabledText)
 		]);
 		styles.rule(StyleSelector.widget("progress-bar"), [
-			StyleValue.progressTrackColor(Color.rgba(0.19, 0.21, 0.25, 1.0)),
-			StyleValue.progressFillColor(accent)
+			StyleValue.progressTrackColor(tokens.progressTrack),
+			StyleValue.progressFillColor(tokens.progressFill)
 		]);
 		styles.rule(StyleSelector.widget("popup-content"), [
 			StyleValue.padding(new Insets(8.0, 8.0, 8.0, 8.0)),

@@ -69,9 +69,9 @@ class ProgressBar implements View {
 	static function defaultStyle():LayoutStyle {
 		var result = new LayoutStyle();
 		result.width = LayoutAxis.fixed(200.0);
-		result.height = LayoutAxis.fixed(14.0);
-		result.radiusTopLeft = result.radiusTopRight = 7.0;
-		result.radiusBottomLeft = result.radiusBottomRight = 7.0;
+		result.height = LayoutAxis.fixed(8.0);
+		result.radiusTopLeft = result.radiusTopRight = 4.0;
+		result.radiusBottomLeft = result.radiusBottomRight = 4.0;
 		return result;
 	}
 

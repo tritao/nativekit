@@ -25,6 +25,8 @@ class ThemeTokens {
 	public var controlSelected:Color;
 	public var controlUnselected:Color;
 	public var controlDisabled:Color;
+	public var progressTrack:Color;
+	public var progressFill:Color;
 	public var panelBackground:Color;
 	public var overlayBackdrop:Color;
 	public var tooltipBackground:Color;
@@ -64,6 +66,8 @@ class ThemeTokens {
 		controlSelected = accent;
 		controlUnselected = Color.rgba(0.16, 0.18, 0.22, 1.0);
 		controlDisabled = Color.rgba(0.20, 0.21, 0.24, 1.0);
+		progressTrack = Color.rgba(0.20, 0.23, 0.29, 1.0);
+		progressFill = accent;
 		panelBackground = Color.rgba(0.13, 0.14, 0.17, 1.0);
 		overlayBackdrop = Color.rgba(0.0, 0.0, 0.0, 0.48);
 		tooltipBackground = Color.rgba(0.08, 0.09, 0.11, 0.96);
