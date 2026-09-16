@@ -382,7 +382,9 @@ int main(void) {
     for (;;) {
         assert(nk_poll_event(&event) == NK_OK);
         assert(event.kind == NK_EVENT_NONE || event.kind == NK_EVENT_JOYSTICK_CONNECTED ||
-               event.kind == NK_EVENT_JOYSTICK_DISCONNECTED);
+               event.kind == NK_EVENT_JOYSTICK_DISCONNECTED ||
+               event.kind == NK_EVENT_DEVICE_ORIENTATION_CHANGED ||
+               event.kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED);
         nk_event_kind kind = event.kind;
         nk_event_release(&event);
         event.struct_size = sizeof(event);
