@@ -169,7 +169,6 @@ bool set_canvas_visible(bool visible) noexcept;
 bool set_title(const char *title) noexcept;
 bool set_cursor(const char *cursor) noexcept;
 bool open_url(const char *url) noexcept;
-uint32_t appearance() noexcept;
 void configure_text_input(const TextInputConfig &config) noexcept;
 void set_accessibility_tree(nk_handle surface, int32_t width, int32_t height, bool visible,
                             nk_accessibility_node_id focus, const char *json) noexcept;

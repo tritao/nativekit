@@ -295,15 +295,6 @@ EM_JS(int, nk_web_open_url, (const char *url), {
     }
 });
 
-EM_JS(int, nk_web_appearance, (int light_scheme, int dark_scheme, int high_contrast_flag), {
-    const dark = window.matchMedia &&
-                 window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const forced = window.matchMedia &&
-                   window.matchMedia("(forced-colors: active)").matches;
-    const colorScheme = dark ? dark_scheme : light_scheme;
-    return colorScheme | (forced ? high_contrast_flag : 0);
-});
-
 EM_JS(void, nk_web_install_drop_handlers, (const char *selector), {
     const canvas = document.querySelector(UTF8ToString(selector));
     if (!canvas)
@@ -1739,13 +1730,6 @@ bool set_cursor(const char *cursor) noexcept {
 
 bool open_url(const char *url) noexcept {
     return url && nk_web_open_url(url) != 0;
-}
-
-uint32_t appearance() noexcept {
-    constexpr auto high_contrast_flag = 1u << 8;
-    return static_cast<uint32_t>(nk_web_appearance(static_cast<int>(NK_COLOR_SCHEME_LIGHT),
-                                                   static_cast<int>(NK_COLOR_SCHEME_DARK),
-                                                   static_cast<int>(high_contrast_flag)));
 }
 
 void configure_text_input(const TextInputConfig &config) noexcept {

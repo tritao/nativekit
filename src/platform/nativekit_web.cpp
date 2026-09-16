@@ -187,9 +187,6 @@ std::unordered_set<nk_request_id> pending_notifications;
 std::mutex pending_resource_writes_mutex;
 std::vector<PendingWebResourceWrite> pending_resource_writes;
 
-constexpr uint32_t web_appearance_scheme_mask = 0xffu;
-constexpr uint32_t web_appearance_high_contrast_flag = 1u << 8;
-
 nk_result invalid_argument(const char *message) {
     nk::core::clear_error();
     nk::core::set_error(message);
@@ -2003,20 +2000,6 @@ nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource) {
         return invalid_argument("web resource shell arguments are invalid");
     if (!nk::web::open_url(resource->uri))
         return unsupported("browser resource opening is unavailable");
-    return NK_OK;
-}
-
-nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
-    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-        return result;
-    if (!appearance || appearance->struct_size < sizeof(*appearance))
-        return invalid_argument("web appearance output is invalid");
-    const auto size = appearance->struct_size;
-    *appearance = {};
-    appearance->struct_size = size;
-    const auto packed = nk::web::appearance();
-    appearance->color_scheme = packed & web_appearance_scheme_mask;
-    appearance->high_contrast = (packed & web_appearance_high_contrast_flag) != 0;
     return NK_OK;
 }
 
