@@ -33,6 +33,8 @@ class UiContext {
 	public final gestures:GestureArena;
 	public final animations:AnimationScheduler;
 	public var root(default, null):Null<RenderNode>;
+	/** Called when an active animation needs another host frame. */
+	public var onAnimationFrameRequested:Null<Void->Void>;
 	var submittedStateRevision:Int;
 	var disposed:Bool;
 	var customCanvases:Map<Int, Canvas>;
@@ -56,6 +58,7 @@ class UiContext {
 		focus = new FocusManager();
 		events = new EventDispatcher(focus);
 		root = null;
+		onAnimationFrameRequested = null;
 		submittedStateRevision = -1;
 		disposed = false;
 		buildContext.setFocusRequester(function(id) { return focusWidget(id); });
@@ -63,6 +66,10 @@ class UiContext {
 		customLists = new Map();
 		accessibilityBridge = null;
 		accessibilitySurface = null;
+		animations.onFrameRequested = function() {
+			if (!disposed && onAnimationFrameRequested != null)
+				onAnimationFrameRequested();
+		};
 	}
 
 	/** Sets fonts for text-aware widgets and the native layout session. */
@@ -109,7 +116,6 @@ class UiContext {
 		var byId = new Map<Int, ResolvedLayoutItem>();
 		for (item in resolved)
 			byId.set(item.id, item);
-		var resolvedStateRevision = stateStore.revision;
 		var missing = false;
 		diagnosticStage = 7;
 		next.walk(function(node) {
@@ -122,6 +128,7 @@ class UiContext {
 			diagnosticStage = 8;
 			throw "Native layout did not return geometry for every render node";
 		}
+		stateStore.endFrame();
 		diagnosticStage = 9;
 		var previousFocus = focus.focusedId;
 		focus.rebuild(next);
@@ -133,7 +140,7 @@ class UiContext {
 		gestures.setRoot(next);
 		if (nextFocus != null && (previousFocus == null || !previousFocus.equals(nextFocus)))
 			events.focusEvent(nextFocus, UiEventKind.Focus);
-		submittedStateRevision = resolvedStateRevision;
+		submittedStateRevision = stateStore.revision;
 		if (accessibilityBridge != null)
 			accessibilityBridge.update(next, focus.focusedId);
 		diagnosticStage = 0;
@@ -214,6 +221,17 @@ class UiContext {
 		diagnosticStage = 24;
 		session.render(renderer, surface, frame);
 		diagnosticStage = 0;
+	}
+
+	/**
+	 * Advances active animations and repaints the retained tree without relayout.
+	 * Hosts should use this for animation-only frames instead of submit().
+	 */
+	public function renderAnimationFrame(renderer:Renderer, surface:Surface,
+			frame:FrameInfo, deltaSeconds:Float):Void {
+		ensureLive();
+		animations.advance(deltaSeconds);
+		render(renderer, surface, frame);
 	}
 
 	public function focusWidget(id:WidgetId):Bool {
@@ -350,7 +368,11 @@ class UiContext {
 	}
 
 	public function isDirty():Bool
-		return stateStore.revision != submittedStateRevision;
+		return stateStore.revision != submittedStateRevision || animations.activeCount > 0;
+
+	public var needsAnimationFrame(get, never):Bool;
+	inline function get_needsAnimationFrame():Bool
+		return animations.activeCount > 0;
 
 	/** Returns a deterministic headless snapshot of the most recently submitted tree. */
 	public function inspect():Array<UiNodeSnapshot> {

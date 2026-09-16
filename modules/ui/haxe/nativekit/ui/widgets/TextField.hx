@@ -411,17 +411,16 @@ class TextField implements View {
 
 	static function acquireState(context:BuildContext, id:nativekit.ui.core.WidgetId,
 			value:String, textStyle:TextStyle, multiline:Bool):State<TextEditorState> {
-		if (context.stateStore.contains(id))
-			return context.existingState(id);
 		if (context.fonts == null || context.fonts.isDisposed())
 			throw "Text fields require fonts on their build context";
-		var paragraph = new ParagraphStyle();
-		paragraph.wrap = multiline ? TextWrap.WordCharacter : TextWrap.None;
-		var editor = new TextEditorState(cast context.fonts, value, textStyle, paragraph);
-		var stored:State<TextEditorState> = cast context.state(id, editor);
-		var owned:TextEditorState = editor;
-		context.stateStore.onDispose(id, function() { owned.dispose(); });
-		return stored;
+		var fonts = context.fonts;
+		return context.resourceState(id,
+			function() {
+				var paragraph = new ParagraphStyle();
+				paragraph.wrap = multiline ? TextWrap.WordCharacter : TextWrap.None;
+				return new TextEditorState(cast fonts, value, textStyle, paragraph);
+			},
+			function(editor:TextEditorState) { editor.dispose(); });
 	}
 
 	static function copySelection(clipboard:nativekit.ui.core.ClipboardService,

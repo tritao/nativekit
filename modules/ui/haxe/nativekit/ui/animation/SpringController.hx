@@ -16,6 +16,8 @@ class SpringController implements Animation {
 	public var onUpdate:Float->Void;
 	var hasUpdate:Bool;
 	var scheduler:Null<AnimationScheduler>;
+	final animationToken:Animation;
+	var registration:Null<AnimationHandle>;
 
 	public function new(initial:Float, stiffness:Float = 180.0, damping:Float = 24.0,
 			mass:Float = 1.0, tolerance:Float = 0.001,
@@ -32,6 +34,8 @@ class SpringController implements Animation {
 		this.mass = mass;
 		this.tolerance = tolerance;
 		this.scheduler = scheduler;
+		animationToken = this;
+		registration = null;
 		this.onUpdate = onUpdate == null ? function(_) {} : onUpdate;
 		hasUpdate = onUpdate != null;
 	}
@@ -42,23 +46,24 @@ class SpringController implements Animation {
 		target = value;
 		velocity = initialVelocity;
 		active = true;
-		if (scheduler != null)
-			scheduler.track(this);
+		track();
 	}
 
 	public function attach(scheduler:AnimationScheduler):Void {
 		if (scheduler == null)
 			throw "Spring controller requires a scheduler";
+		if (registration != null)
+			registration.cancel();
+		registration = null;
 		this.scheduler = scheduler;
 		if (active)
-			scheduler.track(this);
+			track();
 	}
 
 	public function stop():Void {
 		active = false;
 		velocity = 0.0;
-		if (scheduler != null)
-			scheduler.remove(this);
+		cancelRegistration();
 	}
 
 	public function advance(deltaSeconds:Float):Bool {
@@ -79,10 +84,24 @@ class SpringController implements Animation {
 			value = target;
 			velocity = 0.0;
 			active = false;
+			cancelRegistration();
 		}
 		if (hasUpdate)
 			onUpdate(value);
 		return active;
+	}
+
+	function track():Void {
+		if (scheduler == null)
+			return;
+		if (registration == null || !registration.active)
+			registration = scheduler.track(animationToken);
+	}
+
+	function cancelRegistration():Void {
+		if (registration != null)
+			registration.cancel();
+		registration = null;
 	}
 
 	static inline function lessThanAbsolute(value:Float, threshold:Float):Bool

@@ -73,6 +73,7 @@ class BuildContext {
 	public function beginFrame():Void {
 		claimed.clear();
 		scope = new KeyScope();
+		stateStore.beginFrame();
 	}
 
 	public function id(localKey:String):WidgetId {
@@ -101,6 +102,7 @@ class BuildContext {
 
 	public function state<T>(id:WidgetId, initial:T):State<T> {
 		stateStore.initialize(id, initial);
+		stateStore.touch(id);
 		var value:State<Dynamic> = new State<Dynamic>(stateStore, id);
 		return cast value;
 	}
@@ -109,7 +111,23 @@ class BuildContext {
 	public function existingState<T>(id:WidgetId):State<T> {
 		if (!stateStore.contains(id))
 			throw 'Widget state has not been initialized for ${stateStore.describe(id)}';
+		stateStore.touch(id);
 		var value:State<Dynamic> = new State<Dynamic>(stateStore, id);
 		return cast value;
+	}
+
+	/** Lazily creates resource-backed state and releases it when its widget unmounts. */
+	public function resourceState<T>(id:WidgetId, create:Void->T,
+			dispose:T->Void):State<T> {
+		if (id == null || create == null || dispose == null)
+			throw "Resource state requires an ID, factory, and disposer";
+		if (!stateStore.contains(id)) {
+			var value = create();
+			stateStore.initialize(id, value);
+			stateStore.onUnmount(id, function() { dispose(value); });
+		} else
+			stateStore.touch(id);
+		var result:State<Dynamic> = new State<Dynamic>(stateStore, id);
+		return cast result;
 	}
 }

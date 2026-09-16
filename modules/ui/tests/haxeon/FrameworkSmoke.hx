@@ -13,6 +13,7 @@ import LayoutStyle;
 import LayoutVisualKind;
 import Rect;
 import ResolvedLayoutItem;
+import Transform2D;
 import TextLayout;
 import TextWrap;
 import NativeKit.InputAction;
@@ -66,6 +67,9 @@ import nativekit.ui.widgets.Spacer;
 import nativekit.ui.widgets.Slider;
 import nativekit.ui.widgets.Stack;
 import nativekit.ui.widgets.StackChild;
+import nativekit.ui.widgets.Spinner;
+import nativekit.ui.widgets.SpinnerPainter;
+import nativekit.ui.widgets.SpinnerKind;
 import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Utf8Text;
@@ -83,6 +87,7 @@ import nativekit.ui.widgets.Tabs;
 import nativekit.ui.widgets.TabItem;
 import nativekit.ui.animation.AnimationController;
 import nativekit.ui.animation.SpringController;
+import nativekit.ui.animation.LoopAnimation;
 import nativekit.ui.animation.Easing;
 import nativekit.ui.debug.UiInspector;
 import nativekit.ui.debug.AccessibilityAudit;
@@ -1240,6 +1245,104 @@ class FrameworkSmoke {
 			context.submit(new Text("Spring"), animationFrame);
 		if (spring.value < 0.99 || spring.active || context.animations.activeCount != 0)
 			return 91;
+		var restart:AnimationController = null;
+		var restartCompletions = 0;
+		restart = new AnimationController(context.animations, null, function() {
+			restartCompletions++;
+			if (restartCompletions == 1)
+				restart.play(0.0, 1.0, 0.1);
+		});
+		restart.play(0.0, 1.0, 0.1);
+		animationFrame.deltaSeconds = 0.1;
+		context.submit(new Text("Restart"), animationFrame);
+		if (restartCompletions != 1 || !restart.active || context.animations.activeCount != 1)
+			return 119;
+		context.submit(new Text("Restart"), animationFrame);
+		if (restartCompletions != 2 || restart.active || context.animations.activeCount != 0)
+			return 121;
+		var loop = new LoopAnimation();
+		var firstHandle = context.animations.track(loop);
+		var secondHandle = context.animations.track(loop);
+		if (firstHandle != secondHandle || context.animations.activeCount != 1)
+			return 117;
+		firstHandle.cancel();
+		if (firstHandle.active || context.animations.activeCount != 0)
+			return 118;
+
+		var spinner = new Spinner("spinner-smoke", "Loading", null, SpinnerKind.Dots,
+			Color.rgba(0.3, 0.7, 1.0, 1.0), 1.5);
+		var spinnerFrame = new LayoutFrame(256.0, 192.0);
+		var animationRequests = 0;
+		context.onAnimationFrameRequested = function() { animationRequests++; };
+		var spinnerRoot = context.submit(spinner, spinnerFrame);
+		var spinnerSemantics:Semantics = cast spinnerRoot.semantics;
+		if (spinnerRoot.resolved == null || spinnerRoot.resolved.width != 24.0 ||
+			spinnerRoot.resolved.height != 24.0 || spinnerSemantics == null ||
+			spinnerSemantics.role != AccessibilityRole.ProgressBar ||
+			spinnerSemantics.label != "Loading" ||
+			(spinnerSemantics.states & AccessibilityState.Busy) == 0 ||
+			context.animations.activeCount != 1 || animationRequests == 0 ||
+			!context.needsAnimationFrame || !context.isDirty())
+			return 109;
+		spinnerFrame.deltaSeconds = 0.25;
+		var requestsBeforeFrame = animationRequests;
+		context.submit(spinner, spinnerFrame);
+		if (context.animations.activeCount != 1 || animationRequests <= requestsBeforeFrame)
+			return 110;
+		spinner.running = false;
+		spinnerFrame.deltaSeconds = 0.0;
+		spinnerRoot = context.submit(spinner, spinnerFrame);
+		spinnerSemantics = cast spinnerRoot.semantics;
+		if (context.animations.activeCount != 0 ||
+			(spinnerSemantics.states & AccessibilityState.Busy) != 0 ||
+			spinnerSemantics.value != "Paused" || context.needsAnimationFrame || context.isDirty())
+			return 111;
+		spinner.running = true;
+		spinnerRoot = context.submit(spinner, spinnerFrame);
+		if (context.animations.activeCount != 1)
+			return 112;
+		var spinnerId = spinnerRoot.id;
+		context.onAnimationFrameRequested = null;
+		context.submit(new Text("Unmount"), spinnerFrame);
+		if (context.stateStore.contains(spinnerId) || context.animations.activeCount != 0)
+			return 112;
+
+		var spinnerGeometry = new ResolvedLayoutItem(1, 1, 0.0, 0.0, 24.0, 24.0,
+			new Rect(0.0, 0.0, 24.0, 24.0), new Rect(0.0, 0.0, 24.0, 24.0),
+			Transform2D.identity(), 0.0);
+		var spinnerPainter = new SpinnerPainter(context.animations,
+			Color.rgba(0.3, 0.7, 1.0, 1.0), 1.0);
+		var spinnerCanvas = new Canvas();
+		var spinnerList = DisplayList.create();
+		spinnerPainter.paintFrame(spinnerCanvas, spinnerGeometry);
+		spinnerCanvas.update(spinnerList);
+		if (spinnerList.info().commandCount <= 0)
+			return 113;
+		spinnerList.clear();
+		spinnerCanvas.reset();
+		spinnerPainter.configure(SpinnerKind.Dots, Color.rgba(0.3, 0.7, 1.0, 1.0), 1.0);
+		spinnerPainter.paintFrame(spinnerCanvas, spinnerGeometry);
+		spinnerCanvas.update(spinnerList);
+		if (spinnerList.info().commandCount <= 0)
+			return 114;
+		spinnerList.clear();
+		spinnerCanvas.reset();
+		spinnerPainter.configure(SpinnerKind.Bars, Color.rgba(0.3, 0.7, 1.0, 1.0), 1.0);
+		spinnerPainter.paintFrame(spinnerCanvas, spinnerGeometry);
+		spinnerCanvas.update(spinnerList);
+		if (spinnerList.info().commandCount <= 0)
+			return 115;
+		spinnerList.clear();
+		spinnerCanvas.reset();
+		spinnerPainter.configure(SpinnerKind.Pulse, Color.rgba(0.3, 0.7, 1.0, 1.0), 1.0);
+		spinnerPainter.paintFrame(spinnerCanvas, spinnerGeometry);
+		spinnerCanvas.update(spinnerList);
+		if (spinnerList.info().commandCount <= 0)
+			return 116;
+		spinnerList.clear();
+		spinnerCanvas.reset();
+		spinnerList.dispose();
+		spinnerPainter.dispose();
 		var accessibilityResult = AccessibilityContract.run(fonts);
 		if (accessibilityResult != 0)
 			return 120 + accessibilityResult;

@@ -14,12 +14,16 @@ class AnimationController implements Animation {
 	var hasUpdate:Bool;
 	var hasComplete:Bool;
 	var scheduler:Null<AnimationScheduler>;
+	final animationToken:Animation;
+	var registration:Null<AnimationHandle>;
 	var tween:Null<Tween>;
 	var elapsed:Float;
 
 	public function new(?scheduler:AnimationScheduler, ?onUpdate:Float->Void,
 			?onComplete:Void->Void) {
 		this.scheduler = scheduler;
+		animationToken = this;
+		registration = null;
 		this.onUpdate = onUpdate == null ? function(_) {} : onUpdate;
 		this.onComplete = onComplete == null ? function() {} : onComplete;
 		hasUpdate = onUpdate != null;
@@ -33,9 +37,12 @@ class AnimationController implements Animation {
 	public function attach(scheduler:AnimationScheduler):Void {
 		if (scheduler == null)
 			throw "Animation controller requires a scheduler";
+		if (registration != null)
+			registration.cancel();
+		registration = null;
 		this.scheduler = scheduler;
 		if (active)
-			scheduler.track(this);
+			track();
 	}
 
 	public function play(from:Float, to:Float, duration:Float,
@@ -46,9 +53,9 @@ class AnimationController implements Animation {
 		tween = next;
 		active = duration > 0.0;
 		if (active) {
-			if (scheduler != null)
-				scheduler.track(this);
+			track();
 		} else {
+			cancelRegistration();
 			value = to;
 			if (hasUpdate)
 				onUpdate(value);
@@ -59,8 +66,7 @@ class AnimationController implements Animation {
 
 	public function stop():Void {
 		active = false;
-		if (scheduler != null)
-			scheduler.remove(this);
+		cancelRegistration();
 	}
 
 	public function advance(deltaSeconds:Float):Bool {
@@ -73,10 +79,24 @@ class AnimationController implements Animation {
 			onUpdate(value);
 		if (completed) {
 			active = false;
+			cancelRegistration();
 			if (hasComplete)
 				onComplete();
 			return false;
 		}
 		return true;
+	}
+
+	function track():Void {
+		if (scheduler == null)
+			return;
+		if (registration == null || !registration.active)
+			registration = scheduler.track(animationToken);
+	}
+
+	function cancelRegistration():Void {
+		if (registration != null)
+			registration.cancel();
+		registration = null;
 	}
 }

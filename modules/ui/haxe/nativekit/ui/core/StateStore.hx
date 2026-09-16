@@ -5,12 +5,18 @@ class StateStore {
 	final values:Map<Int, Dynamic>;
 	final disposers:Map<Int, Void->Void>;
 	final paths:Map<Int, String>;
+	final managed:Map<Int, Bool>;
+	final frameUsed:Map<Int, Bool>;
+	var frameActive:Bool;
 	public var revision(default, null):Int;
 
 	public function new() {
 		values = new Map();
 		disposers = new Map();
 		paths = new Map();
+		managed = new Map();
+		frameUsed = new Map();
+		frameActive = false;
 		revision = 0;
 	}
 
@@ -23,8 +29,53 @@ class StateStore {
 	public function initialize(id:WidgetId, initial:Dynamic):Void {
 		if (id == null)
 			throw "State requires a widget ID";
-		if (!values.exists(id.value))
+		if (!values.exists(id.value)) {
 			values.set(id.value, initial);
+		}
+		markUsed(id);
+	}
+
+	/** Starts liveness tracking for resource-backed widget state. */
+	public function beginFrame():Void {
+		frameUsed.clear();
+		frameActive = true;
+	}
+
+	/** Marks an initialized state as used by the current render tree. */
+	public function touch(id:WidgetId):Void {
+		if (id == null || !values.exists(id.value))
+			throw "Widget state has not been initialized";
+		markUsed(id);
+	}
+
+	/** Releases resource-backed state that was absent from the completed tree. */
+	public function endFrame():Void {
+		if (!frameActive)
+			return;
+		var stale:Array<Int> = [];
+		for (id in managed.keys())
+			if (!frameUsed.exists(id))
+				stale.push(id);
+		var failure:Dynamic = null;
+		for (id in stale) {
+			var disposer = disposers.get(id);
+			try {
+				if (disposer != null)
+					disposer();
+			} catch (error:Dynamic) {
+				if (failure == null)
+					failure = error;
+			}
+			disposers.remove(id);
+			managed.remove(id);
+			values.remove(id);
+		}
+		frameUsed.clear();
+		frameActive = false;
+		if (stale.length > 0)
+			revision++;
+		if (failure != null)
+			throw failure;
 	}
 
 	@:allow(nativekit.ui.core.State)
@@ -59,6 +110,12 @@ class StateStore {
 		disposers.set(id.value, disposer);
 	}
 
+	/** Registers a resource cleanup callback and enables per-frame liveness cleanup. */
+	public function onUnmount(id:WidgetId, disposer:Void->Void):Void {
+		onDispose(id, disposer);
+		managed.set(id.value, true);
+	}
+
 	/** Releases registered widget resources and clears the store. */
 	public function dispose():Void {
 		var failure:Dynamic = null;
@@ -72,10 +129,18 @@ class StateStore {
 			}
 		}
 		disposers.clear();
+		managed.clear();
+		frameUsed.clear();
+		frameActive = false;
 		values.clear();
 		paths.clear();
 		revision++;
 		if (failure != null)
 			throw failure;
+	}
+
+	function markUsed(id:WidgetId):Void {
+		if (frameActive)
+			frameUsed.set(id.value, true);
 	}
 }
