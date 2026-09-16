@@ -626,11 +626,17 @@ if(NOT EMSCRIPTEN AND NK_LIBRARY_TYPE STREQUAL "STATIC")
     set_target_properties(harfbuzz PROPERTIES EXPORT_NAME ui_harfbuzz)
     set_target_properties(nkui_sheenbidi PROPERTIES EXPORT_NAME ui_sheenbidi)
     set_target_properties(nkui_libunibreak PROPERTIES EXPORT_NAME ui_libunibreak)
-    set_target_properties(nkui_budouxc PROPERTIES EXPORT_NAME ui_budouxc)
+    if(TARGET nkui_budouxc)
+        set_target_properties(nkui_budouxc PROPERTIES EXPORT_NAME ui_budouxc)
+    endif()
     set_target_properties(nkui_skribidi PROPERTIES EXPORT_NAME ui_skribidi)
     set_target_properties(nkui_nanovg_core PROPERTIES EXPORT_NAME ui_nanovg_core)
-    install(TARGETS harfbuzz nkui_sheenbidi nkui_libunibreak nkui_budouxc
-            nkui_skribidi nkui_nanovg_core
+    set(NKUI_INSTALL_TARGETS
+        harfbuzz nkui_sheenbidi nkui_libunibreak nkui_skribidi nkui_nanovg_core)
+    if(TARGET nkui_budouxc)
+        list(APPEND NKUI_INSTALL_TARGETS nkui_budouxc)
+    endif()
+    install(TARGETS ${NKUI_INSTALL_TARGETS}
         EXPORT NativeKitTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()

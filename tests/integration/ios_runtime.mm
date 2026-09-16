@@ -32,7 +32,10 @@ bool check_capabilities(nk_capabilities capabilities) {
                                      NK_CAP_INPUT | NK_CAP_RESOURCE_IO | NK_CAP_CLIPBOARD |
                                      NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
                                      NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP |
-                                     NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK;
+                                     NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK | NK_CAP_SYSTEM_INFO |
+                                     NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
+                                     NK_CAP_KEEP_AWAKE | NK_CAP_DEVICE_ORIENTATION |
+                                     NK_CAP_DISPLAY_ORIENTATION;
     if (capabilities == expected)
         return true;
     std::fprintf(stderr, "iOS runtime capability mask changed: expected 0x%llx, got 0x%llx\n",

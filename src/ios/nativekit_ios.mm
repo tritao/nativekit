@@ -3034,26 +3034,6 @@ nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled) {
 
 namespace {
 
-nk_result copy_output(NSString *value, char *buffer, uint32_t *inout_size) {
-    if (!value)
-        return NK_ERROR_UNSUPPORTED;
-    if (!inout_size) {
-        nk::core::set_error("iOS string size output must not be null");
-        return NK_ERROR_INVALID_ARGUMENT;
-    }
-    const char *text = value.UTF8String;
-    const auto length = text ? std::strlen(text) : 0;
-    if (length >= std::numeric_limits<uint32_t>::max())
-        return NK_ERROR_UNKNOWN;
-    const auto required = static_cast<uint32_t>(length + 1);
-    const auto capacity = *inout_size;
-    *inout_size = required;
-    if (!buffer || capacity < required)
-        return NK_ERROR_BUFFER_TOO_SMALL;
-    std::memcpy(buffer, text, required);
-    return NK_OK;
-}
-
 NSString *application_storage_path() {
     NSArray<NSURL *> *urls =
         [NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory
@@ -3198,7 +3178,7 @@ nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
         UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyleDark
             ? NK_COLOR_SCHEME_DARK
             : NK_COLOR_SCHEME_LIGHT;
-    appearance->high_contrast = UIAccessibilityIsDarkerSystemColorsEnabled();
+    appearance->high_contrast = UIAccessibilityDarkerSystemColorsEnabled() ? 1u : 0u;
     return NK_OK;
 }
 
@@ -4310,57 +4290,6 @@ nk_result NK_CALL nk_shell_open_resource(const nk_resource *resource) {
         !valid_utf8(resource->display_name))
         return ios_fail(NK_ERROR_INVALID_ARGUMENT, "resource descriptor is invalid");
     return nk_shell_open_url(resource->uri);
-}
-
-nk_result NK_CALL nk_system_directory(nk_system_directory_kind kind, char *buffer,
-                                      uint32_t *inout_size) {
-    nk::core::clear_error();
-    NSString *path = ios_system_directory_path(kind);
-    if (!path)
-        return ios_fail(NK_ERROR_UNSUPPORTED, "system directory is unavailable on iOS");
-    return copy_output(path, buffer, inout_size);
-}
-
-nk_result NK_CALL nk_system_locale(char *buffer, uint32_t *inout_size) {
-    nk::core::clear_error();
-    return copy_output(NSLocale.currentLocale.localeIdentifier, buffer, inout_size);
-}
-
-nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
-    nk::core::clear_error();
-    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
-        return thread;
-    if (!appearance || appearance->struct_size < sizeof(*appearance))
-        return ios_fail(NK_ERROR_INVALID_ARGUMENT, "appearance output is missing or too small");
-    const uint32_t size = appearance->struct_size;
-    *appearance = {};
-    appearance->struct_size = size;
-    if (@available(iOS 12.0, *)) {
-        UIUserInterfaceStyle style = UIUserInterfaceStyleUnspecified;
-        for (const auto &[handle, resource] : hosts) {
-            (void)handle;
-            if (resource->view) {
-                style = resource->view.traitCollection.userInterfaceStyle;
-                break;
-            }
-        }
-        if (style == UIUserInterfaceStyleUnspecified) {
-            if (@available(iOS 13.0, *)) {
-                for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-                    if ([scene isKindOfClass:[UIWindowScene class]]) {
-                        style = ((UIWindowScene *)scene).traitCollection.userInterfaceStyle;
-                        if (style != UIUserInterfaceStyleUnspecified)
-                            break;
-                    }
-                }
-            }
-        }
-        appearance->color_scheme = style == UIUserInterfaceStyleDark    ? NK_COLOR_SCHEME_DARK
-                                   : style == UIUserInterfaceStyleLight ? NK_COLOR_SCHEME_LIGHT
-                                                                        : NK_COLOR_SCHEME_UNKNOWN;
-    }
-    appearance->high_contrast = UIAccessibilityDarkerSystemColorsEnabled() ? 1u : 0u;
-    return NK_OK;
 }
 
 nk_result NK_CALL nk_clipboard_set_text(const char *text) {
