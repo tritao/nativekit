@@ -220,8 +220,11 @@ class ScrollView implements View {
 				return;
 			var geometry:ResolvedLayoutItem = cast track.resolved;
 			var local = geometry.viewportToLayout(event.x, event.y);
-			var page = controller.viewportHeight * 0.9;
-			controller.scrollBy(0.0, local.y < geometry.y + thumbY - inset ? -page : page);
+			var pointerY = local.y - geometry.y;
+			var requestedThumbY = Math.max(0.0,
+				Math.min(travel, pointerY - thumbHeight * 0.5));
+			controller.jumpTo(controller.offsetX, travel <= 0.0 ? 0.0 :
+				requestedThumbY / travel * controller.maxScrollY);
 			event.preventDefault();
 		});
 		track.add(thumb);

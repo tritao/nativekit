@@ -1009,6 +1009,14 @@ class FrameworkSmoke {
 				AccessibilityRequest.Decrement, null, -1, -1, 1) ||
 			scrollView.controller.offsetY >= 320.0)
 			return 243;
+		var scrollbarTrack:ResolvedLayoutItem = cast scrollRoot.children[1].resolved;
+		context.pointerDown(scrollbarTrack.x + scrollbarTrack.width * 0.5,
+			scrollbarTrack.y + 4.0, 0);
+		context.pointerUp(scrollbarTrack.x + scrollbarTrack.width * 0.5,
+			scrollbarTrack.y + 4.0, 0);
+		if (scrollView.controller.offsetY != 0.0)
+			return 246;
+		scrollView.controller.jumpTo(0.0, 160.0);
 		if (!context.focusWidget(scrollRoot.id))
 			return 244;
 		context.key(UiEventKind.KeyDown, UiKey.Home);
