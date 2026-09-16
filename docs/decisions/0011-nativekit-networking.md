@@ -1,4 +1,4 @@
-# ADR 0011: Optional NativeKit HTTP networking module
+# ADR 0011: NativeKit HTTP networking capability
 
 ## Status
 
@@ -9,9 +9,11 @@ the WASM bridge can provide non-blocking backpressure.
 
 ## Decision
 
-NativeKit owns portable HTTP semantics in an optional `NativeKit::net` module.
-The public boundary is `include/nativekit_net.h`; no platform or third-party
-networking type crosses it.
+NativeKit owns portable HTTP semantics in the main NativeKit library. The
+public boundary is `include/nativekit_net.h`; no platform or third-party
+networking type crosses it. The API is compiled for every platform, while its
+transport is optional at runtime and reports unsupported operations through the
+normal capability and result contracts.
 
 The selected transport is:
 
@@ -23,7 +25,7 @@ The selected transport is:
 | Linux | pinned libcurl, with an explicit system-libcurl option |
 | Web/WASM | Fetch host bridge |
 
-The module exposes configured `nk_http_client` sessions, asynchronous
+The API exposes configured `nk_http_client` sessions, asynchronous
 `nk_request_id` operations, event-owned `nk_http_response` views, and bounded
 pull-based `nk_http_stream` responses. HTTP status codes are response data;
 transport failures use distinct `NK_HTTP_ERROR_*` values.
@@ -50,11 +52,12 @@ disabled unless requested, and diagnostics never include credentials.
 
 `NK_CAP_HTTP_CLIENT` and `NK_CAP_HTTP_STREAMING` are reserved in the common
 capability mask. They are advertised by `nk_get_capabilities()` only when the
-optional module is built and its selected backend implements the feature;
-Fetch advertises only the client bit until streaming is non-blocking on the
-browser main thread.
+selected backend implements the feature; Fetch advertises only the client bit
+until streaming is non-blocking on the browser main thread. A missing backend,
+including an unavailable Linux libcurl installation, advertises neither bit
+and returns `NK_ERROR_UNSUPPORTED` for HTTP operations.
 
 Raw sockets, DNS APIs, server sockets, persistent background transfers,
 credential storage, retries, parsing formats, WebSockets, and WebRTC are out
 of scope. Background transfers will use a separate persistent `nk_transfer`
-API after this module stabilizes.
+API after this capability stabilizes.

@@ -13,6 +13,7 @@ fi
 
 HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-hxi.sh" --check
 HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-vulkan-hxi.sh" --check
+HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-net-hxi.sh" --check
 HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-wasm-hxi.sh" --check
 HAXEON_DIR="$haxeon_dir" "$repo_dir/modules/ui/tools/update-haxeon-wasm-hxi.sh" --check
 

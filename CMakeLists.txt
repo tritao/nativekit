@@ -26,7 +26,6 @@ option(NK_BUILD_GPU "Build the experimental GPU graphics module" OFF)
 option(NK_BUILD_GPU_BACKEND_MATRIX
     "Enable runtime GLCore/GLES3 Sokol dispatch (desktop Linux only)" OFF)
 option(NK_BUILD_UI "Build the experimental retained UI module" OFF)
-option(NK_BUILD_NET "Build the optional HTTP networking module" OFF)
 option(NK_USE_SYSTEM_CURL "Use the system libcurl for the Linux networking backend" OFF)
 set(NK_NET_BACKEND_CURL OFF)
 option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
@@ -123,6 +122,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/time.cpp
     src/core/vulkan.cpp
     src/core/window_extensions.cpp
+    src/net/net.cpp
 )
 add_library(NativeKit::nativekit ALIAS nativekit)
 
@@ -281,42 +281,35 @@ set_target_properties(nativekit PROPERTIES
     SOVERSION 0
 )
 
-if(NK_BUILD_NET)
-    target_compile_definitions(nativekit PUBLIC NK_BUILD_NET=1)
-    target_include_directories(nativekit PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/modules/net/src")
-    target_sources(nativekit PRIVATE modules/net/src/net.cpp)
-    if(EMSCRIPTEN)
-        target_sources(nativekit PRIVATE modules/net/src/net_fetch.cpp)
-        target_compile_definitions(nativekit PUBLIC NK_NET_BACKEND_FETCH=1)
-    elseif(ANDROID)
-        target_sources(nativekit PRIVATE modules/net/src/net_android.cpp)
-        target_compile_definitions(nativekit PUBLIC NK_NET_BACKEND_STREAMING=1)
-    elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR APPLE)
-        target_sources(nativekit PRIVATE modules/net/src/net_urlsession.mm)
-        target_link_libraries(nativekit PRIVATE "-framework CFNetwork")
-        target_compile_definitions(nativekit PUBLIC NK_NET_BACKEND_STREAMING=1)
-        set_target_properties(nativekit PROPERTIES
-            OBJCXX_STANDARD 17
-            OBJCXX_STANDARD_REQUIRED YES)
-    elseif(WIN32)
-        target_sources(nativekit PRIVATE modules/net/src/net_winhttp.cpp)
-        target_link_libraries(nativekit PRIVATE winhttp)
-        target_compile_definitions(nativekit PUBLIC NK_NET_BACKEND_STREAMING=1)
-    elseif(UNIX)
-        if(NK_USE_SYSTEM_CURL)
-            find_package(CURL REQUIRED)
-            target_sources(nativekit PRIVATE modules/net/src/net_curl.cpp)
-            target_link_libraries(nativekit PRIVATE CURL::libcurl)
-            target_compile_definitions(nativekit PUBLIC NK_NET_BACKEND_CURL=1 NK_NET_BACKEND_STREAMING=1)
-            set(NK_NET_BACKEND_CURL ON)
-        else()
-            message(FATAL_ERROR
-                "NK_BUILD_NET on Unix requires NK_USE_SYSTEM_CURL=ON until the pinned libcurl bundle is vendored")
-        endif()
-    else()
-        target_sources(nativekit PRIVATE modules/net/src/net_unsupported.cpp)
+if(EMSCRIPTEN)
+    target_sources(nativekit PRIVATE src/net/net_fetch.cpp)
+elseif(ANDROID)
+    target_sources(nativekit PRIVATE src/net/net_android.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR APPLE)
+    target_sources(nativekit PRIVATE src/net/net_urlsession.mm)
+    target_link_libraries(nativekit PRIVATE "-framework CFNetwork")
+    set_target_properties(nativekit PROPERTIES
+        OBJCXX_STANDARD 17
+        OBJCXX_STANDARD_REQUIRED YES)
+elseif(WIN32)
+    target_sources(nativekit PRIVATE src/net/net_winhttp.cpp)
+    target_link_libraries(nativekit PRIVATE winhttp)
+elseif(UNIX)
+    if(NK_USE_SYSTEM_CURL)
+        find_package(CURL QUIET)
     endif()
+    if(NK_USE_SYSTEM_CURL AND CURL_FOUND)
+        target_sources(nativekit PRIVATE src/net/net_curl.cpp)
+        target_link_libraries(nativekit PRIVATE CURL::libcurl)
+        set(NK_NET_BACKEND_CURL ON)
+    else()
+        target_sources(nativekit PRIVATE src/net/net_unsupported.cpp)
+        if(NK_USE_SYSTEM_CURL)
+            message(STATUS "System libcurl is unavailable; HTTP capability is disabled")
+        endif()
+    endif()
+else()
+    target_sources(nativekit PRIVATE src/net/net_unsupported.cpp)
 endif()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
@@ -411,10 +404,6 @@ endif()
 if(NK_BUILD_UI)
     add_subdirectory(modules/ui)
 endif()
-if(NK_BUILD_NET)
-    add_subdirectory(modules/net)
-endif()
-
 install(TARGETS nativekit EXPORT NativeKitTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

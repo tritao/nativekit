@@ -95,9 +95,9 @@ enum NK_FLAGS(nk_capabilities) {
     NK_CAP_DEVICE_ORIENTATION = UINT64_C(1) << 32,
     /** The backend can report application display orientation. */
     NK_CAP_DISPLAY_ORIENTATION = UINT64_C(1) << 33,
-    /** The optional networking module can perform HTTP requests. */
+    /** The selected backend can perform HTTP requests. */
     NK_CAP_HTTP_CLIENT = UINT64_C(1) << 34,
-    /** The optional networking module can stream HTTP response bodies. */
+    /** The selected backend can stream HTTP response bodies. */
     NK_CAP_HTTP_STREAMING = UINT64_C(1) << 35,
     /** The backend can schedule callbacks while a graphics surface is ready to draw. */
     NK_CAP_SURFACE_FRAME_CALLBACK = UINT64_C(1) << 36,

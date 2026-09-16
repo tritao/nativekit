@@ -693,8 +693,10 @@ activation.
 
 ## HTTP networking
 
-Include `nativekit_net.h` and enable the optional `NK_BUILD_NET` module to use
-the asynchronous HTTP API. `nk_http_client` owns copied session configuration;
+Include `nativekit_net.h` to use the asynchronous HTTP API. The API is always
+part of the NativeKit library, but its implementation is an optional runtime
+capability. Query `NK_CAP_HTTP_CLIENT` before creating a client. `nk_http_client`
+owns copied session configuration;
 each `nk_http_request()` returns a 64-bit request ID and optionally a
 generation-checked streaming handle. Requests never invoke application
 callbacks from transport threads.
@@ -712,12 +714,13 @@ connection, TLS, timeout, cancellation, protocol, proxy, redirect, and size
 failures are reported through the `NK_HTTP_ERROR_*` result values. HTTPS and
 certificate verification are enabled by default; plain HTTP and HTTPS-to-HTTP
 redirects require explicit client flags. Cookie and cache policies are
-explicit, and persistent storage is not part of this module.
+explicit, and persistent storage is not part of this API.
 
-The module is disabled by default. Platform transports are private: Android
-uses `HttpsURLConnection`, Apple uses shared `NSURLSession`, Windows uses
-WinHTTP, Linux uses libcurl, and Web/WASM uses Fetch. Query
-`NK_CAP_HTTP_CLIENT` and `NK_CAP_HTTP_STREAMING` before using optional features.
+Platform transports are private: Android uses `HttpsURLConnection`, Apple uses
+shared `NSURLSession`, Windows uses WinHTTP, Linux uses libcurl when enabled,
+and Web/WASM uses Fetch. If a transport is unavailable, HTTP calls return
+`NK_ERROR_UNSUPPORTED` and the corresponding capability bits are not reported.
+Query `NK_CAP_HTTP_STREAMING` before using streaming requests.
 
 ## URI resources and sharing
 

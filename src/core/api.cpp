@@ -4,10 +4,7 @@
 #include "core/event_queue.hpp"
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
-
-#if defined(NK_BUILD_NET)
-#include "net_backend.hpp"
-#endif
+#include "net/net_backend.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -39,11 +36,7 @@ bool valid_event_struct(const nk_event *event) {
 namespace nk::core {
 
 nk_capabilities optional_capabilities() noexcept {
-#if defined(NK_BUILD_NET)
     return nk::net::capabilities();
-#else
-    return 0;
-#endif
 }
 
 nk_result require_ui_thread() noexcept {
@@ -163,9 +156,7 @@ nk_result NK_CALL nk_init(const nk_init_options *options) {
 
 void NK_CALL nk_shutdown(void) {
     try {
-#if defined(NK_BUILD_NET)
         nk::net::shutdown();
-#endif
         /* Backend resources are still valid while system leases are released. */
         nk::core::system_shutdown();
         nk::backend::shutdown();
@@ -174,9 +165,7 @@ void NK_CALL nk_shutdown(void) {
         event_queue.reset();
         ui_thread = {};
         active_generation.store(0, std::memory_order_release);
-#if defined(NK_BUILD_NET)
         nk::net::backend_shutdown();
-#endif
         nk::core::clear_error();
     } catch (...) {
         nk::core::set_error("unexpected exception while shutting down NativeKit");

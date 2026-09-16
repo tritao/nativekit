@@ -53,17 +53,6 @@ constexpr mask k_known_capabilities =
     cap(NK_CAP_HTTP_STREAMING) | cap(NK_CAP_SURFACE_FRAME_CALLBACK) |
     cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS);
 
-#if defined(NK_BUILD_NET) && defined(NK_NET_BACKEND_STREAMING)
-constexpr mask k_net_required = cap(NK_CAP_HTTP_CLIENT) | cap(NK_CAP_HTTP_STREAMING);
-constexpr mask k_net_deferred = 0;
-#elif defined(NK_BUILD_NET) && defined(NK_NET_BACKEND_FETCH)
-constexpr mask k_net_required = cap(NK_CAP_HTTP_CLIENT);
-constexpr mask k_net_deferred = cap(NK_CAP_HTTP_STREAMING);
-#else
-constexpr mask k_net_required = 0;
-constexpr mask k_net_deferred = cap(NK_CAP_HTTP_CLIENT) | cap(NK_CAP_HTTP_STREAMING);
-#endif
-
 constexpr mask k_new_system_capabilities =
     cap(NK_CAP_SYSTEM_INFO) | cap(NK_CAP_APPLICATION_PATH) | cap(NK_CAP_APPLICATION_STORAGE) |
     cap(NK_CAP_SYSTEM_FONTS) | cap(NK_CAP_KEEP_AWAKE) | cap(NK_CAP_DEVICE_ORIENTATION) |
@@ -171,13 +160,6 @@ constexpr backend_contract platform_contract() {
             k_known_capabilities & ~(cap(NK_CAP_RESOURCE_IO) | k_new_system_capabilities), 0,
             k_new_system_capabilities};
 #endif
-}
-
-constexpr backend_contract current_contract() {
-    auto contract = platform_contract();
-    contract.required |= k_net_required;
-    contract.deferred |= k_net_deferred;
-    return contract;
 }
 
 constexpr std::array<std::string_view, 7> k_contract_backend_names = {
