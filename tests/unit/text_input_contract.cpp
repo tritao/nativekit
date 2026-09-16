@@ -1,8 +1,11 @@
 #include "core/text_edit_transaction.hpp"
 #include "core/text_offsets.hpp"
+#include "core/text_input_geometry.hpp"
 
 #include <cassert>
+#include <cstring>
 #include <string>
+#include <vector>
 
 int main() {
     using nk::core::TextEditTransaction;
@@ -61,5 +64,25 @@ int main() {
                                                           NK_TEXT_POSITION_NONE,
                                                           NK_TEXT_POSITION_NONE};
     assert(!selection_with_replacement.valid());
+
+    nk_text_input_rect selection_rect{sizeof(nk_text_input_rect), 4.0f, 8.0f, 32.0f, 18.0f};
+    std::vector<uint8_t> packed(sizeof(selection_rect));
+    std::memcpy(packed.data(), &selection_rect, sizeof(selection_rect));
+    nk::core::TextInputGeometry geometry;
+    assert(nk::core::decode_text_input_geometry(
+        1, 3, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, packed.data(), packed.size(),
+        nullptr, 0, &geometry));
+    assert(geometry.selection_rects.size() == 1);
+    assert(geometry.selection_rects.front().x == 4.0f);
+    assert(!nk::core::decode_text_input_geometry(
+        3, 1, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, packed.data(), packed.size(),
+        nullptr, 0, &geometry));
+    assert(!nk::core::decode_text_input_geometry(
+        1, 3, 2, NK_TEXT_POSITION_NONE, packed.data(), packed.size(), nullptr, 0, &geometry));
+    selection_rect.struct_size = sizeof(selection_rect) - 1;
+    std::memcpy(packed.data(), &selection_rect, sizeof(selection_rect));
+    assert(!nk::core::decode_text_input_geometry(
+        1, 3, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, packed.data(), packed.size(),
+        nullptr, 0, &geometry));
     return 0;
 }

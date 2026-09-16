@@ -19,6 +19,7 @@
 #include "core/resource_events.hpp"
 #include "web/gamepad.hpp"
 #include "web/host.h"
+#include "core/text_input_geometry.hpp"
 
 #include <algorithm>
 #include <array>
@@ -160,6 +161,8 @@ struct WebSurfaceResource final : nk::core::Resource {
     bool text_input_state_set = false;
     nk_text_input_state text_input_state{};
     std::string text_input_text;
+    std::vector<nk_text_input_rect> text_input_selection_rects;
+    std::vector<nk_text_input_rect> text_input_composition_rects;
     std::unordered_map<nk_accessibility_node_id, WebAccessibilityNode> accessibility_nodes;
     nk_accessibility_node_id accessibility_focus = NK_ACCESSIBILITY_ROOT;
 
@@ -3183,9 +3186,35 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
     surface->text_input_text = text;
     surface->text_input_state = *state;
     surface->text_input_state.text = surface->text_input_text.c_str();
+    surface->text_input_selection_rects.clear();
+    surface->text_input_composition_rects.clear();
     surface->text_input_state_set = true;
     if (surface->text_input_active)
         configure_text_input(*surface);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_text_input_geometry(
+    nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
+    nk_text_position composition_start, nk_text_position composition_end,
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
+    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    auto surface = get_surface(handle);
+    if (!surface)
+        return invalid_handle("invalid web text-input surface handle");
+    if (!surface->text_input_state_set)
+        return invalid_argument("text input state must be set first");
+    nk::core::TextInputGeometry geometry;
+    if (!nk::core::decode_text_input_geometry(
+            selection_start, selection_end, composition_start, composition_end,
+            selection_rects, selection_rect_bytes, composition_rects, composition_rect_bytes,
+            &geometry) ||
+        !nk::core::text_input_geometry_matches_state(geometry, surface->text_input_state))
+        return invalid_argument("text input geometry ranges do not match the current state");
+    surface->text_input_selection_rects = std::move(geometry.selection_rects);
+    surface->text_input_composition_rects = std::move(geometry.composition_rects);
     return NK_OK;
 }
 

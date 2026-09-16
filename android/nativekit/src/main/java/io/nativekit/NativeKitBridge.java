@@ -157,6 +157,9 @@ final class NativeKitBridge {
         private float cursorY;
         private float cursorWidth;
         private float cursorHeight;
+        // Packed as x, y, width, height in surface-local logical pixels.
+        @Nullable private float[] selectionRects;
+        @Nullable private float[] compositionRects;
         private final Map<Integer, SemanticNode> semanticNodes = new HashMap<>();
         private final SemanticProvider semanticProvider = new SemanticProvider();
         private int accessibilityFocus;
@@ -1069,6 +1072,8 @@ final class NativeKitBridge {
             cursorHeight = newCursorHeight;
             pendingCompositionStart = compositionStart;
             pendingCompositionEnd = compositionEnd;
+            selectionRects = null;
+            compositionRects = null;
             editable.replace(0, editable.length(), text);
             Selection.setSelection(editable, localSelectionStart, localSelectionEnd);
             BaseInputConnection.removeComposingSpans(editable);
@@ -1084,6 +1089,24 @@ final class NativeKitBridge {
                     Selection.getSelectionEnd(editable),
                     BaseInputConnection.getComposingSpanStart(editable),
                     BaseInputConnection.getComposingSpanEnd(editable));
+            updateCursorAnchor();
+        }
+
+        void setTextInputGeometry(int newSelectionStart, int newSelectionEnd,
+                                  int newCompositionStart, int newCompositionEnd,
+                                  @Nullable float[] newSelectionRects,
+                                  @Nullable float[] newCompositionRects) {
+            if (!structuredTextInput || newSelectionStart < textStart ||
+                newSelectionEnd < newSelectionStart || newSelectionEnd > documentLength ||
+                (newCompositionStart < 0) != (newCompositionEnd < 0) ||
+                (newCompositionStart >= 0 &&
+                 (newCompositionStart < textStart || newCompositionEnd < newCompositionStart ||
+                  newCompositionEnd > documentLength)) ||
+                (newSelectionRects != null && (newSelectionRects.length & 3) != 0) ||
+                (newCompositionRects != null && (newCompositionRects.length & 3) != 0))
+                return;
+            selectionRects = newSelectionRects == null ? null : newSelectionRects.clone();
+            compositionRects = newCompositionRects == null ? null : newCompositionRects.clone();
             updateCursorAnchor();
         }
 
@@ -1142,15 +1165,38 @@ final class NativeKitBridge {
             if (manager == null)
                 return;
             float density = getResources().getDisplayMetrics().density;
-            CursorAnchorInfo info = new CursorAnchorInfo.Builder()
+            CursorAnchorInfo.Builder builder = new CursorAnchorInfo.Builder()
                 .setMatrix(new Matrix())
                 .setSelectionRange(localCodeUnitIndex(selectionStart()),
                                    localCodeUnitIndex(selectionEnd()))
                 .setInsertionMarkerLocation(cursorX * density, cursorY * density,
                     (cursorY + cursorHeight) * density, (cursorY + cursorHeight) * density,
-                    CursorAnchorInfo.FLAG_HAS_VISIBLE_REGION)
-                .build();
+                    CursorAnchorInfo.FLAG_HAS_VISIBLE_REGION);
+            if (Build.VERSION.SDK_INT >= 33) {
+                addVisibleLineBounds(builder, selectionRects, density);
+                addVisibleLineBounds(builder, compositionRects, density);
+                if (pendingCompositionStart >= 0 && pendingCompositionEnd >= pendingCompositionStart) {
+                    int start = localCodeUnitIndex(pendingCompositionStart);
+                    int end = localCodeUnitIndex(pendingCompositionEnd);
+                    if (start >= 0 && end >= start && end <= editable.length())
+                        builder.setComposingText(start, editable.subSequence(start, end));
+                }
+            }
+            CursorAnchorInfo info = builder.build();
             manager.updateCursorAnchorInfo(this, info);
+        }
+
+        private static void addVisibleLineBounds(CursorAnchorInfo.Builder builder, float[] rects,
+                                                 float density) {
+            if (rects == null)
+                return;
+            for (int offset = 0; offset + 3 < rects.length; offset += 4) {
+                float left = rects[offset] * density;
+                float top = rects[offset + 1] * density;
+                float right = left + rects[offset + 2] * density;
+                float bottom = top + rects[offset + 3] * density;
+                builder.addVisibleLineBounds(left, top, right, bottom);
+            }
         }
 
         void setTextInputActive(boolean active) {
@@ -1168,6 +1214,8 @@ final class NativeKitBridge {
                 structuredTextInput = false;
                 pendingCompositionStart = -1;
                 pendingCompositionEnd = -1;
+                selectionRects = null;
+                compositionRects = null;
                 editable.clear();
                 Selection.setSelection(editable, 0);
             }
@@ -1329,6 +1377,13 @@ final class NativeKitBridge {
         ((NativeSurfaceView)view).setTextInputState(text, textStart, documentLength,
             selectionStart, selectionEnd, compositionStart, compositionEnd, inputType,
             inputFlags, action, cursorX, cursorY, cursorWidth, cursorHeight);
+    }
+
+    static void setSurfaceTextInputGeometry(SurfaceView view, int selectionStart, int selectionEnd,
+                                             int compositionStart, int compositionEnd,
+                                             float[] selectionRects, float[] compositionRects) {
+        ((NativeSurfaceView)view).setTextInputGeometry(selectionStart, selectionEnd,
+            compositionStart, compositionEnd, selectionRects, compositionRects);
     }
 
     static void setSurfaceTextInputActive(SurfaceView view, boolean active) {

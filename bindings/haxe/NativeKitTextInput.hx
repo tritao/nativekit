@@ -63,6 +63,15 @@ class NativeKitTextInput {
 				cursorX, cursorY, cursorWidth, cursorHeight));
 	}
 
+	/** Publishes packed surface-local selection and composition rectangles. */
+	public static function updateGeometryResult(surface:NativeKitSurface,
+			selectionStart:Int, selectionEnd:Int, compositionStart:Int, compositionEnd:Int,
+			selectionRects:haxe.io.Bytes, compositionRects:haxe.io.Bytes):Result {
+		return NativeKit.nk_surface_set_text_input_geometry(new Handle(surface.nativeHandle().rawValue()),
+			selectionStart, selectionEnd, compositionStart, compositionEnd,
+			selectionRects, compositionRects);
+	}
+
 	/** Submits IME state without throwing, for callers that handle unsupported backends. */
 	public static function updateResult(surface:NativeKitSurface, text:String, textStart:Int,
 			documentLength:Int, selectionStart:Int, selectionEnd:Int, ?compositionStart:Int,

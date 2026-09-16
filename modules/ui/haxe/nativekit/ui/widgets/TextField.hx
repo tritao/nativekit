@@ -221,12 +221,13 @@ class TextField implements View {
 					context.textInput.platformActive));
 			};
 			var syncCursor = function(geometry:ResolvedLayoutItem) {
+				var scrollDelta = multiline ? editor.scrollOffsetY - builtScrollOffset : 0.0;
+				var transform:Transform2D = cast geometry.transform;
 				var caret = editor.layout.caret(editor.focusPosition());
 				var topX = geometry.x + caret.x + caret.ascender * caret.slope;
 				var topY = geometry.y + caret.y + caret.ascender;
 				var bottomX = geometry.x + caret.x + caret.descender * caret.slope;
 				var bottomY = geometry.y + caret.y + caret.descender;
-				var transform:Transform2D = cast geometry.transform;
 				var screenTopX = transform.a * topX + transform.c * topY + transform.tx;
 				var screenTopY = transform.b * topX + transform.d * topY + transform.ty;
 				var screenBottomX = transform.a * bottomX + transform.c * bottomY + transform.tx;
@@ -234,7 +235,6 @@ class TextField implements View {
 				if (multiline) {
 					// Resolution callbacks can reveal the caret after the node's
 					// transform was built. Keep the same-frame IME anchor in sync.
-					var scrollDelta = editor.scrollOffsetY - builtScrollOffset;
 					screenTopX -= transform.c * scrollDelta;
 					screenTopY -= transform.d * scrollDelta;
 					screenBottomX -= transform.c * scrollDelta;
@@ -247,11 +247,19 @@ class TextField implements View {
 				if (!editor.focused || !context.textInput.isOwner(id) || context.platformSurface == null ||
 					context.platformSurface.isDisposed())
 					return;
+				var selectionGeometry:Array<Rect> = [];
+				if (editor.selectionStart != editor.selectionEnd)
+					for (rect in editor.layout.selectionRects(editor.anchorPosition(), editor.focusPosition()))
+						selectionGeometry.push(transformTextRect(rect, geometry, transform, scrollDelta));
+				var compositionGeometry:Array<Rect> = [];
+				if (editor.compositionStart >= 0 && editor.compositionEnd > editor.compositionStart)
+					for (rect in editor.compositionRects())
+						compositionGeometry.push(transformTextRect(rect, geometry, transform, scrollDelta));
 				context.textInput.update(editor.layoutText(), editor.documentLength(),
 					editor.selectionStart, editor.selectionEnd, editor.compositionStart,
 					editor.compositionEnd, 0,
 					multiline ? 1 : 0,
-					caretRect);
+					caretRect, selectionGeometry, compositionGeometry);
 			};
 			editorContent.onResolved(function(geometry) {
 				if (multiline) {
@@ -516,6 +524,28 @@ class TextField implements View {
 
 	static inline function absolute(value:Float):Float
 		return value < 0.0 ? -value : value;
+
+	static function transformTextRect(rect:Rect, geometry:ResolvedLayoutItem,
+			transform:Transform2D, scrollDelta:Float):Rect {
+		var left = geometry.x + rect.x;
+		var top = geometry.y + rect.y - scrollDelta;
+		var right = left + rect.width;
+		var bottom = top + rect.height;
+		var x0 = transform.a * left + transform.c * top + transform.tx;
+		var y0 = transform.b * left + transform.d * top + transform.ty;
+		var x1 = transform.a * right + transform.c * top + transform.tx;
+		var y1 = transform.b * right + transform.d * top + transform.ty;
+		var x2 = transform.a * left + transform.c * bottom + transform.tx;
+		var y2 = transform.b * left + transform.d * bottom + transform.ty;
+		var x3 = transform.a * right + transform.c * bottom + transform.tx;
+		var y3 = transform.b * right + transform.d * bottom + transform.ty;
+		var minX = Math.min(Math.min(x0, x1), Math.min(x2, x3));
+		var minY = Math.min(Math.min(y0, y1), Math.min(y2, y3));
+		var maxX = Math.max(Math.max(x0, x1), Math.max(x2, x3));
+		var maxY = Math.max(Math.max(y0, y1), Math.max(y2, y3));
+		return new Rect(minX, minY, Math.max(0.0, maxX - minX),
+			Math.max(0.0, maxY - minY));
+	}
 
 	static function defaultStyle(multiline:Bool):LayoutStyle {
 		var result = new LayoutStyle();

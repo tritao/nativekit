@@ -69,7 +69,8 @@ class TextInputBridge {
 	/** Publishes the active document, selection, composition and screen caret. */
 	public function update(text:String, documentLength:Int, selectionStart:Int,
 			selectionEnd:Int, compositionStart:Int, compositionEnd:Int,
-			inputType:Int, flags:Int, cursor:Rect):Void {
+			inputType:Int, flags:Int, cursor:Rect, selectionRects:Array<Rect>,
+			compositionRects:Array<Rect>):Void {
 		ensureLive();
 		if (surface == null || surface.isDisposed() || !requestedActive || cursor == null ||
 			(platformChecked && !platformSupported))
@@ -78,7 +79,11 @@ class TextInputBridge {
 			documentLength, selectionStart,
 			selectionEnd, compositionStart, compositionEnd, cast inputType, cast flags,
 			null, cursor.x, cursor.y, cursor.width, cursor.height);
-		checkPlatformResult(result, "text-input update");
+		if (!checkPlatformResult(result, "text-input update"))
+			return;
+		result = NativeKitTextInput.updateGeometryResult(surface, selectionStart, selectionEnd,
+			compositionStart, compositionEnd, encodeRects(selectionRects), encodeRects(compositionRects));
+		checkPlatformResult(result, "text-input geometry update");
 	}
 
 	public function dispose():Void {
@@ -125,4 +130,28 @@ class TextInputBridge {
 		if (disposed)
 			throw "Text input bridge has been disposed";
 	}
+
+	static function encodeRects(rects:Null<Array<Rect>>):haxe.io.Bytes {
+		if (rects == null || rects.length == 0)
+			return haxe.io.Bytes.alloc(0);
+		if (rects.length > Std.int(0x7fffffff / 20))
+			throw "Text input geometry contains too many rectangles";
+		var bytes = haxe.io.Bytes.alloc(rects.length * 20);
+		for (index in 0...rects.length) {
+			var rect = rects[index];
+			if (rect == null || !finite(rect.x) || !finite(rect.y) || !finite(rect.width) ||
+				!finite(rect.height) || rect.width < 0.0 || rect.height < 0.0)
+				throw "Text input geometry contains an invalid rectangle";
+			var offset = index * 20;
+			bytes.setInt32(offset, 20);
+			bytes.setFloat(offset + 4, rect.x);
+			bytes.setFloat(offset + 8, rect.y);
+			bytes.setFloat(offset + 12, rect.width);
+			bytes.setFloat(offset + 16, rect.height);
+		}
+		return bytes;
+	}
+
+	static inline function finite(value:Float):Bool
+		return value == value && value - value == 0.0;
 }

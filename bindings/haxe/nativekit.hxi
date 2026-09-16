@@ -2892,6 +2892,17 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_surface_set_text_input_active(target: nk_handle, active: nk_bool) -> nk_result;
 	/**
+	 * Publishes selection and composition geometry for the current text-input state.
+	 *
+	 * The rectangle buffers contain packed `nk_text_input_rect` records and are copied
+	 * during the call. Coordinates are surface-local logical pixels and are ordered
+	 * in visual reading order. The ranges must match the selection and composition
+	 * ranges most recently supplied to nk_surface_set_text_input_state(). Pass both
+	 * composition positions as NK_TEXT_POSITION_NONE and an empty composition buffer
+	 * when there is no active composition.
+	 */
+	extern fn nk_surface_set_text_input_geometry(target: nk_handle, selection_start: nk_text_position, selection_end: nk_text_position, composition_start: nk_text_position, composition_end: nk_text_position, selection_rects: ptr<const<u8>> @in_array("selection_rect_bytes"), selection_rect_bytes: u32, composition_rects: ptr<const<u8>> @in_array("composition_rect_bytes"), composition_rect_bytes: u32) -> nk_result;
+	/**
 	 * Synchronizes a custom editor with the platform IME using absolute code-point positions.
 	 * Linux, Android, and Web use a graphics-surface handle. Windows and macOS accept a window
 	 * handle because those backends do not yet expose graphics surfaces. Desktop backends may
@@ -4666,6 +4677,19 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * Reserved for future use; initialize to zero.
 		 */
 		reserved: u32 @offset(4);
+	}
+	/**
+	 * One surface-local logical rectangle reported to the platform IME.
+	 */
+	struct nk_text_input_rect @layout(20, 4) {
+		/**
+		 * Set to sizeof(nk_text_input_rect) in each packed record.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		x: f32 @offset(4);
+		y: f32 @offset(8);
+		width: f32 @offset(12);
+		height: f32 @offset(16);
 	}
 	/**
 	 * State published by a custom editor to synchronize the platform IME.

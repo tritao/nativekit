@@ -20,6 +20,7 @@
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "core/text_edit_transaction.hpp"
+#include "core/text_input_geometry.hpp"
 #include "android/nativekit_android_internal.hpp"
 
 #include <jni.h>
@@ -91,6 +92,10 @@ struct AndroidSurface final : nk::core::Resource {
     int32_t framebuffer_width = 0;
     int32_t framebuffer_height = 0;
     std::unordered_map<nk_accessibility_node_id, nk_accessibility_node_id> semantic_parents;
+    nk_text_input_state text_input_state{};
+    bool text_input_state_set = false;
+    std::vector<nk_text_input_rect> text_input_selection_rects;
+    std::vector<nk_text_input_rect> text_input_composition_rects;
 };
 
 struct AndroidJoystick final : nk::core::Resource {
@@ -1954,6 +1959,94 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
         resource, "setSurfaceTextInputState",
         "(Landroid/view/SurfaceView;Ljava/lang/String;IIIIIIIIIFFFF)V", arguments);
     env->DeleteLocalRef(java_text);
+    if (result == NK_OK) {
+        resource->text_input_state = *state;
+        resource->text_input_state.text = nullptr;
+        resource->text_input_state_set = true;
+        resource->text_input_selection_rects.clear();
+        resource->text_input_composition_rects.clear();
+    }
+    return result;
+}
+
+nk_result NK_CALL nk_surface_set_text_input_geometry(
+    nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
+    nk_text_position composition_start, nk_text_position composition_end,
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
+    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!resource->text_input_state_set)
+        return NK_ERROR_INVALID_ARGUMENT;
+    nk::core::TextInputGeometry geometry;
+    if (!nk::core::decode_text_input_geometry(
+            selection_start, selection_end, composition_start, composition_end,
+            selection_rects, selection_rect_bytes, composition_rects, composition_rect_bytes,
+            &geometry) ||
+        !nk::core::text_input_geometry_matches_state(geometry, resource->text_input_state)) {
+        nk::core::set_error("text input geometry ranges do not match the current state");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto *env = environment();
+    if (!env)
+        return NK_ERROR_UNKNOWN;
+    const auto make_rects = [&](const std::vector<nk_text_input_rect> &rectangles) -> jfloatArray {
+        if (rectangles.size() > static_cast<std::size_t>(INT_MAX / 4))
+            return nullptr;
+        auto result = env->NewFloatArray(static_cast<jsize>(rectangles.size() * 4));
+        if (!result)
+            return nullptr;
+        std::vector<jfloat> values;
+        try {
+            values.reserve(rectangles.size() * 4);
+            for (const auto &rect : rectangles) {
+                values.push_back(rect.x);
+                values.push_back(rect.y);
+                values.push_back(rect.width);
+                values.push_back(rect.height);
+            }
+        } catch (...) {
+            env->DeleteLocalRef(result);
+            return nullptr;
+        }
+        if (!values.empty())
+            env->SetFloatArrayRegion(result, 0, static_cast<jsize>(values.size()), values.data());
+        return result;
+    };
+    auto selection = make_rects(geometry.selection_rects);
+    auto composition = make_rects(geometry.composition_rects);
+    if (!selection || !composition) {
+        if (selection)
+            env->DeleteLocalRef(selection);
+        if (composition)
+            env->DeleteLocalRef(composition);
+        nk::core::set_error("could not allocate Android text input geometry");
+        return NK_ERROR_OUT_OF_MEMORY;
+    }
+    jvalue arguments[7]{};
+    arguments[0].l = resource->view;
+    arguments[1].i = static_cast<jint>(selection_start);
+    arguments[2].i = static_cast<jint>(selection_end);
+    arguments[3].i = composition_start == NK_TEXT_POSITION_NONE
+                         ? -1
+                         : static_cast<jint>(composition_start);
+    arguments[4].i = composition_end == NK_TEXT_POSITION_NONE
+                         ? -1
+                         : static_cast<jint>(composition_end);
+    arguments[5].l = selection;
+    arguments[6].l = composition;
+    const auto result = java_void_surface(
+        resource, "setSurfaceTextInputGeometry",
+        "(Landroid/view/SurfaceView;IIII[F[F)V", arguments);
+    env->DeleteLocalRef(selection);
+    env->DeleteLocalRef(composition);
+    if (result == NK_OK) {
+        resource->text_input_selection_rects = std::move(geometry.selection_rects);
+        resource->text_input_composition_rects = std::move(geometry.composition_rects);
+    }
     return result;
 }
 
