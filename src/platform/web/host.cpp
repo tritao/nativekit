@@ -621,15 +621,26 @@ EM_JS(void, nk_web_set_accessibility_tree,
           container._nkSurfaceHeight = height;
           container._nkActionIds = actionIds;
           container._nkFocus = focus;
-          container.replaceChildren();
+          const previousElements = container._nkElements || new Map();
           const elements = new Map();
           for (const node of tree.nodes) {
-              const element = document.createElement(node.role === "text_field"
-                                                          ? (node.multiline ? "textarea" : "input")
-                                                    : node.role === "button" ? "button" : "div");
+              const key = String(node.id);
+              const tagName = node.role === "text_field"
+                                  ? (node.multiline ? "textarea" : "input")
+                            : node.role === "button" ? "button" : "div";
+              let element = previousElements.get(key);
+              if (!element || element._nkRole !== node.role ||
+                  element.tagName.toLowerCase() !== tagName) {
+                  if (element)
+                      element.remove();
+                  element = document.createElement(tagName);
+                  element._nkRole = node.role;
+              }
               const role = roleNames[node.role];
               if (role)
                   element.setAttribute("role", role);
+              else
+                  element.removeAttribute("role");
               element.dataset.nativekitAccessibilityNode = String(node.id);
               element.dataset.nativekitAccessibilityParent = String(node.parent);
               element._nkNode = node;
@@ -645,6 +656,8 @@ EM_JS(void, nk_web_set_accessibility_tree,
               element.tabIndex = node.focusable || node.canFocus ? 0 : -1;
               if (node.label)
                   element.setAttribute("aria-label", node.label);
+              else
+                  element.removeAttribute("aria-label");
               if (node.role === "text_field") {
                   if (element.tagName === "INPUT")
                       element.type = node.password ? "password" : "text";
@@ -656,18 +669,26 @@ EM_JS(void, nk_web_set_accessibility_tree,
                       element.setSelectionRange(utf16Offset(element.value, start),
                                                 utf16Offset(element.value, end));
                   }
-              } else if (node.value) {
-                  element.textContent = node.value;
+              } else {
+                  element.textContent = node.value || "";
               }
               if (node.value && node.role !== "text_field")
                   element.setAttribute("aria-valuetext", node.value);
+              else
+                  element.removeAttribute("aria-valuetext");
               if (node.role === "slider" || node.role === "progress_bar") {
                   element.setAttribute("aria-valuenow", String(node.numericValue));
                   element.setAttribute("aria-valuemin", String(node.numericMinimum));
                   element.setAttribute("aria-valuemax", String(node.numericMaximum));
+              } else {
+                  element.removeAttribute("aria-valuenow");
+                  element.removeAttribute("aria-valuemin");
+                  element.removeAttribute("aria-valuemax");
               }
               if (node.role === "checkbox" || node.role === "radio" || node.role === "switch")
                   element.setAttribute("aria-checked", node.checked ? "true" : "false");
+              else
+                  element.removeAttribute("aria-checked");
               setBoolean(element, "aria-selected", node.selected);
               setBoolean(element, "aria-disabled", node.disabled);
               setBoolean(element, "aria-readonly", node.readOnly);
@@ -679,119 +700,160 @@ EM_JS(void, nk_web_set_accessibility_tree,
               setBoolean(element, "aria-busy", node.busy);
               if (node.hasPopup)
                   element.setAttribute("aria-haspopup", "true");
+              else
+                  element.removeAttribute("aria-haspopup");
               if (node.orientation)
                   element.setAttribute("aria-orientation", node.orientation);
+              else
+                  element.removeAttribute("aria-orientation");
               if (node.hierarchyLevel)
                   element.setAttribute("aria-level", String(node.hierarchyLevel));
+              else
+                  element.removeAttribute("aria-level");
               if (node.positionInSet)
                   element.setAttribute("aria-posinset", String(node.positionInSet));
+              else
+                  element.removeAttribute("aria-posinset");
               if (node.setSize)
                   element.setAttribute("aria-setsize", String(node.setSize));
+              else
+                  element.removeAttribute("aria-setsize");
               if (node.rowCount)
                   element.setAttribute("aria-rowcount", String(node.rowCount));
+              else
+                  element.removeAttribute("aria-rowcount");
               if (node.columnCount)
                   element.setAttribute("aria-colcount", String(node.columnCount));
+              else
+                  element.removeAttribute("aria-colcount");
               if (node.rowIndex !== null)
                   element.setAttribute("aria-rowindex", String(node.rowIndex + 1));
+              else
+                  element.removeAttribute("aria-rowindex");
               if (node.columnIndex !== null)
                   element.setAttribute("aria-colindex", String(node.columnIndex + 1));
+              else
+                  element.removeAttribute("aria-colindex");
               if (node.rowSpan)
                   element.setAttribute("aria-rowspan", String(node.rowSpan));
+              else
+                  element.removeAttribute("aria-rowspan");
               if (node.columnSpan)
                   element.setAttribute("aria-colspan", String(node.columnSpan));
+              else
+                  element.removeAttribute("aria-colspan");
               if (node.role === "status")
                   element.setAttribute("aria-live", "polite");
               else if (node.role === "alert")
                   element.setAttribute("aria-live", "assertive");
+              else
+                  element.removeAttribute("aria-live");
               if (node.textRanges && node.textRanges.length)
                   element.dataset.nativekitAccessibilityTextRanges = JSON.stringify(node.textRanges);
+              else
+                  delete element.dataset.nativekitAccessibilityTextRanges;
 
-              element.addEventListener("focus", () => {
-                  if (!element._nkSuppressFocus && can(node, "focus"))
-                      emit(node, "focus", "", -1, -1, 0);
-              });
-              element.addEventListener("click", event => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  let action = "activate";
-                  if ((node.role === "checkbox" || node.role === "switch") && can(node, "toggle"))
-                      action = "toggle";
-                  else if ((node.role === "radio" || node.role === "tab" ||
-                            node.role === "list_item" || node.role === "collection_item") &&
-                           can(node, "select"))
-                      action = "select";
-                  else if (node.role === "tree_item" && node.expanded && can(node, "collapse"))
-                      action = "collapse";
-                  else if (node.role === "tree_item" && !node.expanded && can(node, "expand"))
-                      action = "expand";
-                  if (can(node, action))
-                      emit(node, action, "", -1, -1, 0);
-              });
-              element.addEventListener("contextmenu", event => {
-                  if (!can(node, "show_context_menu"))
-                      return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  emit(node, "show_context_menu", "", -1, -1, 0);
-              });
-              element.addEventListener("keydown", event => {
-                  if (element.tagName === "BUTTON" || element.tagName === "A")
-                      return;
-                  if (event.key === "Enter" || event.key === " ") {
+              if (!element._nkListenersAttached) {
+                  element.addEventListener("focus", () => {
+                      const currentNode = element._nkNode;
+                      if (!element._nkSuppressFocus && can(currentNode, "focus"))
+                          emit(currentNode, "focus", "", -1, -1, 0);
+                  });
+                  element.addEventListener("click", event => {
+                      const currentNode = element._nkNode;
                       event.preventDefault();
                       event.stopPropagation();
                       let action = "activate";
-                      if ((node.role === "checkbox" || node.role === "switch") && can(node, "toggle"))
+                      if ((currentNode.role === "checkbox" || currentNode.role === "switch") && can(currentNode, "toggle"))
                           action = "toggle";
-                      else if (node.role === "tree_item" && !node.expanded && can(node, "expand"))
+                      else if ((currentNode.role === "radio" || currentNode.role === "tab" ||
+                                currentNode.role === "list_item" || currentNode.role === "collection_item") &&
+                               can(currentNode, "select"))
+                          action = "select";
+                      else if (currentNode.role === "tree_item" && currentNode.expanded && can(currentNode, "collapse"))
+                          action = "collapse";
+                      else if (currentNode.role === "tree_item" && !currentNode.expanded && can(currentNode, "expand"))
                           action = "expand";
-                      if (can(node, action))
-                          emit(node, action, "", -1, -1, 0);
-                  } else if (event.key === "ArrowUp" || event.key === "ArrowRight") {
+                      if (can(currentNode, action))
+                          emit(currentNode, action, "", -1, -1, 0);
+                  });
+                  element.addEventListener("contextmenu", event => {
+                      const currentNode = element._nkNode;
+                      if (!can(currentNode, "show_context_menu"))
+                          return;
                       event.preventDefault();
                       event.stopPropagation();
-                      const action = can(node, "increment") ? "increment"
-                                    : can(node, "scroll_backward") ? "scroll_backward" : null;
-                      if (action)
-                          emit(node, action, "", -1, -1, 0);
-                  } else if (event.key === "ArrowDown" || event.key === "ArrowLeft") {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      const action = can(node, "decrement") ? "decrement"
-                                    : can(node, "scroll_forward") ? "scroll_forward" : null;
-                      if (action)
-                          emit(node, action, "", -1, -1, 0);
-                  } else if (event.key === "PageDown") {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      if (can(node, "scroll_forward"))
-                          emit(node, "scroll_forward", "", -1, -1, 0);
-                  } else if (event.key === "PageUp") {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      if (can(node, "scroll_backward"))
-                          emit(node, "scroll_backward", "", -1, -1, 0);
+                      emit(currentNode, "show_context_menu", "", -1, -1, 0);
+                  });
+                  element.addEventListener("keydown", event => {
+                      const currentNode = element._nkNode;
+                      if (element.tagName === "BUTTON" || element.tagName === "A")
+                          return;
+                      if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          let action = "activate";
+                          if ((currentNode.role === "checkbox" || currentNode.role === "switch") && can(currentNode, "toggle"))
+                              action = "toggle";
+                          else if (currentNode.role === "tree_item" && !currentNode.expanded && can(currentNode, "expand"))
+                              action = "expand";
+                          if (can(currentNode, action))
+                              emit(currentNode, action, "", -1, -1, 0);
+                      } else if (event.key === "ArrowUp" || event.key === "ArrowRight") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          const action = can(currentNode, "increment") ? "increment"
+                                        : can(currentNode, "scroll_backward") ? "scroll_backward" : null;
+                          if (action)
+                              emit(currentNode, action, "", -1, -1, 0);
+                      } else if (event.key === "ArrowDown" || event.key === "ArrowLeft") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          const action = can(currentNode, "decrement") ? "decrement"
+                                        : can(currentNode, "scroll_forward") ? "scroll_forward" : null;
+                          if (action)
+                              emit(currentNode, action, "", -1, -1, 0);
+                      } else if (event.key === "PageDown") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          if (can(currentNode, "scroll_forward"))
+                              emit(currentNode, "scroll_forward", "", -1, -1, 0);
+                      } else if (event.key === "PageUp") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          if (can(currentNode, "scroll_backward"))
+                              emit(currentNode, "scroll_backward", "", -1, -1, 0);
+                      }
+                  });
+                  if (node.role === "text_field") {
+                      element.addEventListener("input", () => {
+                          const currentNode = element._nkNode;
+                          if (can(currentNode, "set_value"))
+                              emit(currentNode, "set_value", element.value, -1, -1, 0);
+                      });
+                      const emitSelection = () => {
+                          const currentNode = element._nkNode;
+                          const start = currentNode.textStart + codePointOffset(element.value, element.selectionStart);
+                          const end = currentNode.textStart + codePointOffset(element.value, element.selectionEnd);
+                          if (can(currentNode, "set_selection"))
+                              emit(currentNode, "set_selection", "", start, end, 0);
+                      };
+                      element.addEventListener("select", emitSelection);
+                      element.addEventListener("keyup", emitSelection);
                   }
-              });
-              if (node.role === "text_field") {
-                  element.addEventListener("input", () =>
-                      can(node, "set_value") && emit(node, "set_value", element.value, -1, -1, 0));
-                  const emitSelection = () => {
-                      const start = node.textStart + codePointOffset(element.value, element.selectionStart);
-                      const end = node.textStart + codePointOffset(element.value, element.selectionEnd);
-                      if (can(node, "set_selection"))
-                          emit(node, "set_selection", "", start, end, 0);
-                  };
-                  element.addEventListener("select", emitSelection);
-                  element.addEventListener("keyup", emitSelection);
+                  element._nkListenersAttached = true;
               }
-              elements.set(String(node.id), element);
+              elements.set(key, element);
           }
+          for (const [key, element] of previousElements)
+              if (!elements.has(key))
+                  element.remove();
           for (const node of tree.nodes) {
               const element = elements.get(String(node.id));
               const parent = node.parent === 0 ? container : elements.get(String(node.parent));
               (parent || container).appendChild(element);
           }
+          container._nkElements = elements;
 
           const layout = () => {
               const rect = canvas.getBoundingClientRect();
@@ -834,9 +896,14 @@ EM_JS(void, nk_web_set_accessibility_tree,
               previousFocus._nkSuppressFocus = false;
           }
           if (focusElement && document.activeElement !== focusElement) {
-              focusElement._nkSuppressFocus = true;
-              focusElement.focus({preventScroll: true});
-              focusElement._nkSuppressFocus = false;
+              const pendingFocus = focusElement;
+              queueMicrotask(() => {
+                  if (!pendingFocus.isConnected || container._nkFocusedElement !== pendingFocus)
+                      return;
+                  pendingFocus._nkSuppressFocus = true;
+                  pendingFocus.focus({preventScroll: true});
+                  pendingFocus._nkSuppressFocus = false;
+              });
           }
           container._nkFocusedElement = focusElement || null;
       });
