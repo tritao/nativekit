@@ -23,6 +23,7 @@ import nativekit.ui.semantics.AccessibilitySnapshotNode;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.widgets.Button;
+import nativekit.ui.widgets.ComboBox;
 import nativekit.ui.widgets.Dialog;
 import nativekit.ui.widgets.Menu;
 import nativekit.ui.widgets.MenuItem;
@@ -213,6 +214,8 @@ class AccessibilityContract {
 			return 30;
 		if (!checkSelectScroll(context))
 			return 31;
+		if (!checkComboBox(context))
+			return 32;
 
 		var toggles = 0;
 		var toggle = new Toggle("accessibility-switch", "Enabled", false,
@@ -444,6 +447,65 @@ class AccessibilityContract {
 		var endContent:ResolvedLayoutItem = cast content.resolved;
 		return context.focus.focusedId != null && context.focus.focusedId.equals(lastOption.id) &&
 			endContent.transform.ty < afterAccessibility.transform.ty - 0.1;
+	}
+
+	static function checkComboBox(context:UiContext):Bool {
+		var changes = 0;
+		var selected = "";
+		var combo = new ComboBox("accessibility-combo", [
+			new SelectOption("one", "One", "one"),
+			new SelectOption("two", "Two", "two"),
+			new SelectOption("blocked", "Blocked", "blocked", false)
+		], "one", function(value) {
+			changes++;
+			selected = value;
+		});
+		var frame = new LayoutFrame(256.0, 192.0);
+		var root = context.submit(combo, frame);
+		var input = root.children[0];
+		var semantics:Semantics = cast input.semantics;
+		if (root.children.length != 1 || semantics.role != AccessibilityRole.ComboBox ||
+			semantics.value != "One" || (semantics.states & AccessibilityState.HasPopup) == 0 ||
+			(semantics.actions & AccessibilityAction.SetValue) == 0 ||
+			(semantics.actions & AccessibilityAction.Expand) == 0 ||
+			!context.focusWidget(input.id))
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.Space);
+		root = context.submit(combo, frame);
+		if (root.children.length != 2)
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.Escape);
+		root = context.submit(combo, frame);
+		if (root.children.length != 1)
+			return false;
+		input = root.children[0];
+		context.key(UiEventKind.KeyDown, UiKey.Down);
+		root = context.submit(combo, frame);
+		input = root.children[0];
+		semantics = cast input.semantics;
+		var listSemantics:Semantics = cast root.children[1].semantics;
+		if (root.children.length != 2 || !root.focusTrap ||
+			(semantics.states & AccessibilityState.Expanded) == 0 ||
+			(semantics.actions & AccessibilityAction.Collapse) == 0 ||
+			listSemantics.role != AccessibilityRole.List ||
+			root.children[1].children.length != 3)
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.Down);
+		if (context.focus.focusedId == null ||
+			!context.focus.focusedId.equals(root.children[1].children[1].id))
+			return false;
+		context.key(UiEventKind.KeyDown, UiKey.Enter);
+		if (combo.value != "two" || selected != "two" || changes != 1)
+			return false;
+		root = context.submit(combo, frame);
+		input = root.children[0];
+		if (root.children.length != 1 || context.focus.focusedId == null ||
+			!context.focus.focusedId.equals(input.id) || !AccessibilityAudit.isValid(root))
+			return false;
+		if (!context.accessibilityAction(input.id.value, AccessibilityRequest.SetValue,
+			"one", -1, -1, 1) || combo.value != "one" || selected != "one" || changes != 2)
+			return false;
+		return true;
 	}
 
 	static function findSnapshot(snapshot:Array<AccessibilitySnapshotNode>,

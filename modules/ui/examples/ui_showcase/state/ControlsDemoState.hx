@@ -11,6 +11,7 @@ class ControlsDemoState {
 	public var spinnerRunning:Bool = true;
 	public var radioValue:String = "comfortable";
 	public var selectValue:String = "comfortable";
+	public var comboValue:String = "comfortable";
 	public var selectedTab:String = "preview";
 	public var menuSelection:String = "No command selected";
 }

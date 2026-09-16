@@ -7,6 +7,7 @@ import UiExplorer;
 import nativekit.ui.widgets.Align;
 import nativekit.ui.widgets.Checkbox;
 import nativekit.ui.widgets.Column;
+import nativekit.ui.widgets.ComboBox;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.ProgressBar;
 import nativekit.ui.widgets.RadioGroup;
@@ -50,6 +51,13 @@ class ControlsPage {
 					new SelectOption("disabled", "Unavailable", "disabled", false)
 				], explorer.state.controls.selectValue, function(value) {
 					explorer.state.controls.selectValue = value;
+				})),
+				explorer.keyed("combo", new ComboBox("density-combo", [
+					new SelectOption("comfortable", "Comfortable", "comfortable"),
+					new SelectOption("compact", "Compact", "compact"),
+					new SelectOption("disabled", "Unavailable", "disabled", false)
+				], explorer.state.controls.comboValue, function(value) {
+					explorer.state.controls.comboValue = value;
 				}))
 			]))
 		], explorer.rowStyle(14.0))));

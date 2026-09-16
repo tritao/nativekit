@@ -24,6 +24,7 @@ class ExplorerVisualCases {
 		state.controls.spinnerRunning = true;
 		state.controls.radioValue = "comfortable";
 		state.controls.selectValue = "comfortable";
+		state.controls.comboValue = "comfortable";
 		state.controls.selectedTab = "preview";
 		state.controls.nameValue = "NativeKit UI";
 		state.controls.notesValue = "مرحبا NativeKit — שלום — こんにちは 👋";

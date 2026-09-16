@@ -45,6 +45,10 @@ class TextField implements View {
 	public var onChange:Null<String->Void>;
 	public var onSubmit:Null<String->Void>;
 	public var onDiagnostics:Null<TextEditorDiagnostics->Void>;
+	/** Semantic role override used by composite editable controls. */
+	public var semanticRole:AccessibilityRole;
+	/** Semantic action capabilities override used by composite editable controls. */
+	public var semanticActions:Int;
 
 	public function new(key:String, value:String = "", ?onChange:String->Void,
 			?style:LayoutStyle, ?label:String, ?textStyle:TextStyle, ?textColor:Color,
@@ -63,6 +67,8 @@ class TextField implements View {
 		this.textColor = textColor;
 		enabled = true;
 		onDiagnostics = null;
+		semanticRole = AccessibilityRole.TextField;
+		semanticActions = AccessibilityAction.SetValue | AccessibilityAction.SetSelection;
 	}
 
 	public function build(context:BuildContext):RenderNode {
@@ -86,9 +92,9 @@ class TextField implements View {
 			var node = new RenderNode(id, LayoutVisualKind.Box, style);
 			node.focusable = enabled;
 			node.enabled = enabled;
-			var semantics = new Semantics(AccessibilityRole.TextField,
+			var semantics = new Semantics(semanticRole,
 				label == null ? key : label, editor.text);
-			semantics.actions = AccessibilityAction.SetValue | AccessibilityAction.SetSelection;
+			semantics.actions = semanticActions;
 			semantics.textStart = 0;
 			semantics.documentLength = Utf8Text.length(editor.text);
 			semantics.selectionStart = editor.selectionStart;

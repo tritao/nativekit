@@ -65,9 +65,9 @@ class WidgetDocsRegistry {
 				code: 'new Toggle("notifications", "Notifications", enabled, onChange)'
 			};
 			case AccessibilityRole.ComboBox: {
-				description: "A typed single-selection control with a keyboard-navigable option list.",
-				behavior: "Click or press Enter/Space to open. Arrow keys move between enabled options; long lists scroll, Enter selects, Escape or an outside click closes, and the list stays anchored to the trigger.",
-				code: 'new Select("density", options, selected, onChange)'
+				description: "A typed selection control with either a compact trigger or an editable query field and a keyboard-navigable option list.",
+				behavior: "Click or press Enter/Space to open. ComboBox text filters options; arrow keys move between enabled options; long lists scroll, Enter selects, Escape or an outside click closes, and the list stays anchored to the control.",
+				code: 'new ComboBox("density", options, selected, onChange)'
 			};
 			case AccessibilityRole.ProgressBar: {
 				description: "A non-interactive indicator of progress toward a bounded value.",
