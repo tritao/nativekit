@@ -131,7 +131,7 @@ class Theme {
 			[StyleValue.textColor(disabledText)]);
 		styles.rule(StyleSelector.widget("text-field").className("combo-trigger"), [
 			StyleValue.background(tokens.selectionField),
-			StyleValue.padding(new Insets(12.0, 8.0, 34.0, 8.0)),
+			StyleValue.padding(new Insets(34.0, 8.0, 34.0, 8.0)),
 			StyleValue.borderColor(tokens.selectionBorder), StyleValue.borderWidth(1.0)
 		]);
 		styles.rule(StyleSelector.widget("text-field").className("combo-trigger").state(StyleState.Hovered),

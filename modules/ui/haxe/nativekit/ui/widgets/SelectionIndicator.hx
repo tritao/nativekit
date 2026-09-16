@@ -11,10 +11,26 @@ import PathBuilder;
 import Rect;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.RenderNode;
+import nativekit.ui.icons.IconData;
+import nativekit.ui.icons.IconName;
 import nativekit.ui.style.StyleProperty;
 
 /** Small font-independent affordances shared by selection controls. */
 class SelectionIndicator {
+	public static function search(context:BuildContext, node:RenderNode, key:String,
+			color:Color):Void {
+		var indicator = overlay(context, key);
+		indicator.onPaint(function(canvas, geometry) {
+			canvas.withState(function(target) {
+				target.translate(11.0, geometry.height * 0.5 - 7.0);
+				target.scale(14.0 / 24.0, 14.0 / 24.0);
+				target.strokeTransient(IconData.build(IconName.Search), color, 2.0,
+					LineCap.Round, LineJoin.Round);
+			});
+		}, "selection-search");
+		node.add(indicator);
+	}
+
 	public static function fieldFrame(context:BuildContext, node:RenderNode, key:String):Void {
 		if (node.computedStyle == null)
 			return;

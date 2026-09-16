@@ -45,6 +45,7 @@ class ControlsPage {
 					new RadioOption("compact", "Compact", "compact"),
 					new RadioOption("disabled", "Unavailable", "disabled", false)
 				], explorer.state.controls.radioValue, function(value) { explorer.state.controls.radioValue = value; })),
+				explorer.keyed("select-label", explorer.caption("Density · select one option")),
 				explorer.keyed("select", new Select("density-select", [
 					new SelectOption("comfortable", "Comfortable", "comfortable"),
 					new SelectOption("compact", "Compact", "compact"),
@@ -52,6 +53,7 @@ class ControlsPage {
 				], explorer.state.controls.selectValue, function(value) {
 					explorer.state.controls.selectValue = value;
 				})),
+				explorer.keyed("combo-label", explorer.caption("Search density · type to filter")),
 				explorer.keyed("combo", new ComboBox("density-combo", [
 					new SelectOption("comfortable", "Comfortable", "comfortable"),
 					new SelectOption("compact", "Compact", "compact"),

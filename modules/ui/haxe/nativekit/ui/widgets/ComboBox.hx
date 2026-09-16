@@ -217,6 +217,8 @@ class ComboBox<T> implements View {
 			};
 			inputNode = context.withScope(new Key("input"), function() return input.build(context));
 			SelectionIndicator.fieldFrame(context, inputNode, "input-frame");
+			SelectionIndicator.search(context, inputNode, "input-search",
+				enabled ? context.theme.mutedText : context.theme.disabledText);
 			SelectionIndicator.chevron(context, inputNode, "input-indicator",
 				enabled ? context.theme.text : context.theme.disabledText, isOpen);
 			var inputSemantics:Semantics = cast inputNode.semantics;
