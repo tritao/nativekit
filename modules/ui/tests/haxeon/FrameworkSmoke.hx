@@ -1027,10 +1027,13 @@ class FrameworkSmoke {
 		var dialogLayer = dialogRoot.children[1];
 		var dialogPanelGeometry:ResolvedLayoutItem = cast dialogLayer.children[1].children[0].resolved;
 		var centeredDialogX = 128.0 - dialogPanelGeometry.width * 0.5;
+		var centeredDialogY = 96.0 - dialogPanelGeometry.height * 0.5;
 		if (dialogFocus == null || context.focus.focusedId == null ||
 			!context.focus.focusedId.equals(dialogFocus) ||
 			dialogPanelGeometry.x < centeredDialogX - 0.1 ||
-			dialogPanelGeometry.x > centeredDialogX + 0.1)
+			dialogPanelGeometry.x > centeredDialogX + 0.1 ||
+			dialogPanelGeometry.y < centeredDialogY - 0.1 ||
+			dialogPanelGeometry.y > centeredDialogY + 0.1)
 			return 70;
 		var modalSemantics = AccessibilityBridge.project(dialogRoot, dialogFocus);
 		for (semanticNode in modalSemantics)

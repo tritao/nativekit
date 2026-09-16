@@ -5,6 +5,7 @@ import Insets;
 import LayoutAlignmentX;
 import LayoutAlignmentY;
 import LayoutAxis;
+import LayoutDistribution;
 import LayoutPositioning;
 import LayoutStyle;
 import LayoutVisualKind;
@@ -80,6 +81,7 @@ class Dialog implements View {
 			centerStyle.zIndex = 1;
 			centerStyle.childAlignX = LayoutAlignmentX.Center;
 			centerStyle.childAlignY = LayoutAlignmentY.Center;
+			centerStyle.childDistribution = LayoutDistribution.Center;
 			var center = new RenderNode(context.id("dialog-center"), LayoutVisualKind.Box,
 				centerStyle);
 			var panelStyle = new LayoutStyle();

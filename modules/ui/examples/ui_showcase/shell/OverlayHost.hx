@@ -1,5 +1,7 @@
 package shell;
 
+import LayoutAxis;
+import LayoutStyle;
 import UiExplorer;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.Dialog;
@@ -14,6 +16,10 @@ class OverlayHost {
 	public static function appendLayers(explorer:UiExplorer,
 			layers:Array<StackChild>):Void {
 		if (explorer.state.overlays.dialogOpen) {
+			var contentStyle = new LayoutStyle();
+			contentStyle.width = LayoutAxis.grow();
+			contentStyle.height = LayoutAxis.fit();
+			contentStyle.childGap = 12.0;
 			var dialog = new Dialog("showcase-dialog", "NativeKit dialog",
 				new Column("dialog-content", [
 					explorer.keyed("copy", explorer.caption(
@@ -21,7 +27,7 @@ class OverlayHost {
 					explorer.keyed("close", explorer.button("Done", "dialog-done", function() {
 						explorer.state.overlays.dialogOpen = false;
 					}))
-				], explorer.columnStyle(340.0, 90.0)), function() {
+				], contentStyle), function() {
 					explorer.state.overlays.dialogOpen = false;
 				}, 390.0);
 			layers.push(new StackChild("dialog-layer", dialog, 0.0, 0.0, 30));
