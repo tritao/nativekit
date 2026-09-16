@@ -1667,6 +1667,8 @@ class FrameworkSmoke {
 		themedRoot = context.submit(themedButton, themedFrame);
 		if (!frameMetricsValid(context, true))
 			return 237;
+		if (!frameInvalidationValid(context, false, false))
+			return 238;
 		var themedLabelGeometry:ResolvedLayoutItem = cast themedRoot.children[0].resolved;
 		var themedX = themedLabelGeometry.x + themedLabelGeometry.width * 0.5;
 		var themedY = themedLabelGeometry.y + themedLabelGeometry.height * 0.5;
@@ -1676,6 +1678,8 @@ class FrameworkSmoke {
 		if (themedRoot.layout.style.background.red != 0.8 || !themedSnapshot[0].hovered ||
 			themedSnapshot[1].hovered)
 			return 82;
+		if (!frameInvalidationValid(context, true, true))
+			return 239;
 		context.pointerDown(themedX, themedY, 0);
 		themedRoot = context.submit(themedButton, themedFrame);
 		themedSnapshot = context.inspect();
@@ -2060,5 +2064,26 @@ class FrameworkSmoke {
 			metrics.styleResolutions <= 0 || metrics.submitSeconds < 0.0 || metrics.totalSeconds < 0.0)
 			return false;
 		return !requireCacheHit || (metrics.styleCacheHits > 0 && metrics.styleCacheMisses == 0);
+	}
+
+	static function frameInvalidationValid(context:UiContext, requireChanged:Bool,
+			requirePaint:Bool):Bool {
+		var metrics:Null<UiFrameMetrics> = context.frameMetrics;
+		if (metrics == null || metrics.styleChangedNodes < 0 || metrics.styleUnchangedNodes < 0 ||
+			metrics.layoutInvalidatedNodes < 0 || metrics.textLayoutInvalidatedNodes < 0 ||
+			metrics.paintInvalidatedNodes < 0 || metrics.compositeInvalidatedNodes < 0 ||
+			metrics.semanticsInvalidatedNodes < 0)
+			return false;
+		if (!requireChanged && metrics.styleChangedNodes != 0)
+			return false;
+		if (!requireChanged && metrics.styleInvalidationFlags != UiDirtyFlag.None)
+			return false;
+		if (requireChanged && metrics.styleChangedNodes <= 0)
+			return false;
+		if (requireChanged && !UiDirtyFlag.contains(metrics.styleInvalidationFlags, UiDirtyFlag.NeedsStyle))
+			return false;
+		if (requirePaint && !UiDirtyFlag.contains(metrics.styleInvalidationFlags, UiDirtyFlag.NeedsPaint))
+			return false;
+		return !requirePaint || metrics.paintInvalidatedNodes > 0;
 	}
 }

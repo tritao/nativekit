@@ -159,6 +159,10 @@ class InspectorPanel {
 					? "No completed frame metrics."
 					: 'frame ${metrics.frameNumber} · ${metrics.nodeCount} nodes\n' +
 						'style resolutions: ${metrics.styleResolutions}\n' +
+						'style changed: ${metrics.styleChangedNodes} · unchanged: ${metrics.styleUnchangedNodes}\n' +
+						'invalidation: layout ${metrics.layoutInvalidatedNodes} · text ${metrics.textLayoutInvalidatedNodes} · ' +
+						'paint ${metrics.paintInvalidatedNodes} · composite ${metrics.compositeInvalidatedNodes} · ' +
+						'semantics ${metrics.semanticsInvalidatedNodes}\n' +
 						'cache: ${metrics.styleCacheHits} hits · ${metrics.styleCacheMisses} misses · ' +
 						'${percent(metrics.cacheHitRate())} hit rate\n' +
 						'entries: ${metrics.cachedStyleCount}\n' +

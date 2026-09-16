@@ -23,6 +23,7 @@ import nativekit.ui.debug.AccessibilityIssue;
 import nativekit.ui.debug.UiFrameMetrics;
 import nativekit.ui.debug.UiInspector;
 import nativekit.ui.debug.UiNodeSnapshot;
+import nativekit.ui.debug.UiStyleInvalidationMetrics;
 
 /** Owns the frame-local render tree and the Haxe-side UI subsystems. */
 class UiContext {
@@ -139,6 +140,7 @@ class UiContext {
 		if (next == null || next.parent != null)
 			throw "A view must produce one unparented render tree root";
 		diagnosticStage = 5;
+		var styleInvalidation = UiStyleInvalidationMetrics.compare(root, next);
 		var resolved = session.submit(next.layout, frame);
 		diagnosticStage = 6;
 		var byId = new Map<Int, ResolvedLayoutItem>();
@@ -182,7 +184,12 @@ class UiContext {
 			buildContext.styleResolver.resolutions - styleResolutionsBefore,
 			buildContext.styleResolver.cacheHits - styleCacheHitsBefore,
 			buildContext.styleResolver.cacheMisses - styleCacheMissesBefore,
-			buildContext.styleResolver.cachedStyleCount, Sys.time() - submitStartedAt);
+			buildContext.styleResolver.cachedStyleCount,
+			styleInvalidation.styleChangedNodes, styleInvalidation.styleUnchangedNodes,
+			styleInvalidation.invalidationFlags, styleInvalidation.layoutInvalidatedNodes,
+			styleInvalidation.textLayoutInvalidatedNodes, styleInvalidation.paintInvalidatedNodes,
+			styleInvalidation.compositeInvalidatedNodes, styleInvalidation.semanticsInvalidatedNodes,
+			Sys.time() - submitStartedAt);
 		diagnosticStage = 0;
 		return next;
 	}

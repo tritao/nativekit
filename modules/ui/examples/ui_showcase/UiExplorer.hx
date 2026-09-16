@@ -272,6 +272,11 @@ class UiExplorer {
 		Sys.println('nativekit_ui_showcase style_frame=${metrics.frameNumber}' +
 			' nodes=${metrics.nodeCount}' +
 			' style_resolutions=${metrics.styleResolutions}' +
+			' style_changed=${metrics.styleChangedNodes}' +
+			' style_unchanged=${metrics.styleUnchangedNodes}' +
+			' invalidated=layout:${metrics.layoutInvalidatedNodes},text:${metrics.textLayoutInvalidatedNodes},' +
+			'paint:${metrics.paintInvalidatedNodes},composite:${metrics.compositeInvalidatedNodes},' +
+			'semantics:${metrics.semanticsInvalidatedNodes}' +
 			' cache_hits=${metrics.styleCacheHits}' +
 			' cache_misses=${metrics.styleCacheMisses}' +
 			' cache_entries=${metrics.cachedStyleCount}' +
