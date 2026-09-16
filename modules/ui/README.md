@@ -39,6 +39,11 @@ The painter receives local-node geometry while the helper applies the resolved
 clip and transform. `measureStats()` exposes cumulative cache hit/miss counts
 for profiling.
 
+The Haxe style resolver caches pure computed-style resolutions and returns
+detached forks to callers, so mutating a resolved style cannot modify the
+shared cache entry. `ComputedStyle.toLayoutStyle()` preserves the complete
+FIT/GROW axis policy, including `min`, `max`, and `growWeight`.
+
 GROW axes also accept a positive `growWeight`. Equal weights preserve the
 normal equal-share behavior; for example, `LayoutAxis.grow(0.0, 0.0, 4.0)`
 receives four times the unconstrained space of a sibling with weight `1.0`.
@@ -99,6 +104,13 @@ It supports `--smoke-test` for a bounded rendering run. The Haxe framework
 showcase and framework tests live under `modules/ui/examples/ui_haxeon` and
 `modules/ui/tests/haxeon`; generated bindings are checked with
 `modules/ui/tools/check-hxi.sh`.
+
+For a static or mostly static Haxe tree, `UiContext.submitCached(build, frame,
+cacheKey)` can reuse the previously submitted tree and layout. Reuse is
+invalidated by state, interaction, stylesheet/theme, animation, and gesture
+revisions; `frame.deltaSeconds` is still advanced by the animation and gesture
+systems, but ordinary frame-time jitter does not invalidate an otherwise static
+submission. The cache key must identify the caller's build inputs.
 
 ## Web / WASM
 
