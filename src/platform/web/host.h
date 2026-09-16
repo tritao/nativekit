@@ -156,22 +156,26 @@ struct WebGLContextOptions {
 };
 
 const char *canvas_selector() noexcept;
-bool canvas_size(CanvasSize *out_size) noexcept;
-bool set_canvas_framebuffer_size(const CanvasSize &size) noexcept;
-bool set_canvas_size(int32_t width, int32_t height) noexcept;
-void set_canvas_size_limits(int32_t min_width, int32_t min_height, int32_t max_width,
-                            int32_t max_height) noexcept;
-void set_canvas_aspect_ratio(int32_t numerator, int32_t denominator) noexcept;
-void set_canvas_resizable(bool enabled) noexcept;
-void set_canvas_opacity(float opacity) noexcept;
-void set_canvas_mouse_passthrough(bool enabled) noexcept;
-bool set_canvas_visible(bool visible) noexcept;
+bool create_canvas(const char *selector, bool owned, int32_t width, int32_t height) noexcept;
+void destroy_canvas(const char *selector, bool owned) noexcept;
+bool canvas_size(const char *selector, CanvasSize *out_size) noexcept;
+bool set_canvas_framebuffer_size(const char *selector, const CanvasSize &size) noexcept;
+bool set_canvas_size(const char *selector, int32_t width, int32_t height) noexcept;
+void set_canvas_size_limits(const char *selector, int32_t min_width, int32_t min_height,
+                            int32_t max_width, int32_t max_height) noexcept;
+void set_canvas_aspect_ratio(const char *selector, int32_t numerator, int32_t denominator) noexcept;
+void set_canvas_resizable(const char *selector, bool enabled) noexcept;
+void set_canvas_opacity(const char *selector, float opacity) noexcept;
+void set_canvas_mouse_passthrough(const char *selector, bool enabled) noexcept;
+bool set_canvas_visible(const char *selector, bool visible) noexcept;
 bool set_title(const char *title) noexcept;
-bool set_cursor(const char *cursor) noexcept;
+bool set_cursor(const char *selector, const char *cursor) noexcept;
 bool open_url(const char *url) noexcept;
-void configure_text_input(const TextInputConfig &config) noexcept;
-void set_accessibility_tree(nk_handle surface, int32_t width, int32_t height, bool visible,
-                            nk_accessibility_node_id focus, const char *json) noexcept;
+void configure_text_input(const char *selector, uint32_t route,
+                          const TextInputConfig &config) noexcept;
+void set_accessibility_tree(const char *selector, uint32_t route, nk_handle surface, int32_t width,
+                            int32_t height, bool visible, nk_accessibility_node_id focus,
+                            const char *json) noexcept;
 void clear_accessibility_tree(nk_handle surface) noexcept;
 void set_accessibility_visible(nk_handle surface, bool visible) noexcept;
 bool set_clipboard_text(const char *text) noexcept;
@@ -179,8 +183,9 @@ bool set_clipboard_resources(const char *uris) noexcept;
 bool read_clipboard_text(nk_request_id request) noexcept;
 bool read_clipboard_resources(nk_request_id request) noexcept;
 bool share(const char *title, const char *text, const char *uris) noexcept;
-bool pick_resources(nk_request_id request, uint32_t kind, bool multiple, const char *title,
-                    const char *accept, const char *suggested_name) noexcept;
+bool pick_resources(const char *selector, uint32_t route, nk_request_id request, uint32_t kind,
+                    bool multiple, const char *title, const char *accept,
+                    const char *suggested_name) noexcept;
 bool has_resource_handle(const char *uri) noexcept;
 bool write_resource(const char *uri, const void *data, uint32_t size) noexcept;
 bool show_notification(nk_request_id request, const char *title, const char *body, const char *icon,
@@ -189,14 +194,14 @@ bool close_notification(nk_request_id request) noexcept;
 bool poll_gamepads() noexcept;
 bool fetch_resource(const char *uri, nk_request_id request) noexcept;
 
-bool create_webgl_context(const WebGLContextOptions &options,
+bool create_webgl_context(const char *selector, const WebGLContextOptions &options,
                           EMSCRIPTEN_WEBGL_CONTEXT_HANDLE *out_context) noexcept;
 void destroy_webgl_context(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context) noexcept;
 bool make_context_current(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context) noexcept;
 
-bool request_fullscreen() noexcept;
+bool request_fullscreen(const char *selector) noexcept;
 bool exit_fullscreen() noexcept;
-bool request_pointer_lock() noexcept;
+bool request_pointer_lock(const char *selector) noexcept;
 bool exit_pointer_lock() noexcept;
 
 bool display_orientation_supported() noexcept;
@@ -209,11 +214,14 @@ bool gamepad_supported() noexcept;
 bool keep_awake_supported() noexcept;
 bool keep_awake_apply(bool enabled) noexcept;
 
-bool install_callbacks(const HostCallbacks &callbacks, void *user_data) noexcept;
+bool install_callbacks(const char *selector, uint32_t route, const HostCallbacks &callbacks,
+                       void *user_data) noexcept;
+void remove_callbacks(const char *selector, uint32_t route) noexcept;
 void remove_callbacks() noexcept;
 
 using FrameCallback = EM_BOOL (*)(double time, void *user_data);
 bool start_frame_loop(FrameCallback callback, void *user_data) noexcept;
+void stop_frame_loop(FrameCallback callback, void *user_data) noexcept;
 void stop_frame_loop() noexcept;
 
 } // namespace nk::web

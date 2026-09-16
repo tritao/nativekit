@@ -14,7 +14,11 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <memory>
+#include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #ifndef NK_WEB_CANVAS_SELECTOR
 #define NK_WEB_CANVAS_SELECTOR "#canvas"
@@ -23,21 +27,49 @@
 namespace {
 
 struct HostState {
+    std::string selector;
+    uint32_t route = 0;
     nk::web::HostCallbacks callbacks{};
     void *user_data = nullptr;
     bool installed = false;
+    int32_t requested_width = 300;
+    int32_t requested_height = 150;
 };
 
-HostState host_state;
-nk::web::FrameCallback frame_callback = nullptr;
-void *frame_user_data = nullptr;
+std::unordered_map<uint32_t, std::unique_ptr<HostState>> host_states;
+std::unordered_map<std::string, HostState *> host_states_by_selector;
+struct FrameRegistration {
+    nk::web::FrameCallback callback = nullptr;
+    void *user_data = nullptr;
+};
+std::vector<FrameRegistration> frame_registrations;
 bool frame_loop_active = false;
-int32_t requested_width = 300;
-int32_t requested_height = 150;
+bool orientation_callback_installed = false;
+bool resize_callback_installed = false;
 
 constexpr int k_appearance_supported = 1;
 constexpr int k_appearance_dark = 1 << 1;
 constexpr int k_appearance_high_contrast = 1 << 2;
+
+HostState *state_from_user_data(void *user_data) {
+    return static_cast<HostState *>(user_data);
+}
+
+HostState *state_for_route(uint32_t route) {
+    const auto found = host_states.find(route);
+    return found == host_states.end() ? nullptr : found->second.get();
+}
+
+HostState *state_for_selector(const char *selector) {
+    if (!selector)
+        return nullptr;
+    const auto found = host_states_by_selector.find(selector);
+    return found == host_states_by_selector.end() ? nullptr : found->second;
+}
+
+HostState *primary_state() {
+    return host_states.empty() ? nullptr : host_states.begin()->second.get();
+}
 
 uint32_t modifiers(const EmscriptenKeyboardEvent &event) {
     uint32_t result = 0;
@@ -91,15 +123,26 @@ uint32_t modifiers(const EmscriptenTouchEvent &event) {
     return result;
 }
 
-EM_BOOL resize_callback(int, const EmscriptenUiEvent *, void *) {
-    nk::web::CanvasSize size{};
-    if (nk::web::canvas_size(&size) && host_state.callbacks.resize)
-        host_state.callbacks.resize(size, host_state.user_data);
+EM_BOOL resize_callback(int, const EmscriptenUiEvent *, void *user_data) {
+    auto *state = state_from_user_data(user_data);
+    if (state) {
+        nk::web::CanvasSize size{};
+        if (nk::web::canvas_size(state->selector.c_str(), &size) && state->callbacks.resize)
+            state->callbacks.resize(size, state->user_data);
+        return EM_TRUE;
+    }
+    for (const auto &[route, candidate] : host_states) {
+        (void)route;
+        nk::web::CanvasSize size{};
+        if (nk::web::canvas_size(candidate->selector.c_str(), &size) && candidate->callbacks.resize)
+            candidate->callbacks.resize(size, candidate->user_data);
+    }
     return EM_TRUE;
 }
 
-EM_BOOL key_callback(int event_type, const EmscriptenKeyboardEvent *event, void *) {
-    if (!event || !host_state.callbacks.key)
+EM_BOOL key_callback(int event_type, const EmscriptenKeyboardEvent *event, void *user_data) {
+    auto *state = state_from_user_data(user_data);
+    if (!state || !event || !state->callbacks.key)
         return EM_FALSE;
     nk::web::KeyEvent key{};
     key.type = event_type == EMSCRIPTEN_EVENT_KEYPRESS ? nk::web::KeyEventType::character
@@ -110,12 +153,13 @@ EM_BOOL key_callback(int event_type, const EmscriptenKeyboardEvent *event, void 
     key.char_code = event->charCode;
     key.modifiers = modifiers(*event);
     key.repeat = event->repeat != 0;
-    host_state.callbacks.key(key, host_state.user_data);
+    state->callbacks.key(key, state->user_data);
     return EM_TRUE;
 }
 
-EM_BOOL mouse_callback(int event_type, const EmscriptenMouseEvent *event, void *) {
-    if (!event || !host_state.callbacks.pointer)
+EM_BOOL mouse_callback(int event_type, const EmscriptenMouseEvent *event, void *user_data) {
+    auto *state = state_from_user_data(user_data);
+    if (!state || !event || !state->callbacks.pointer)
         return EM_FALSE;
     nk::web::PointerEvent pointer{};
     pointer.type = event_type == EMSCRIPTEN_EVENT_MOUSEDOWN    ? nk::web::PointerEventType::down
@@ -128,12 +172,13 @@ EM_BOOL mouse_callback(int event_type, const EmscriptenMouseEvent *event, void *
     pointer.modifiers = modifiers(*event);
     pointer.x = event->targetX;
     pointer.y = event->targetY;
-    host_state.callbacks.pointer(pointer, host_state.user_data);
+    state->callbacks.pointer(pointer, state->user_data);
     return EM_TRUE;
 }
 
-EM_BOOL wheel_callback(int, const EmscriptenWheelEvent *event, void *) {
-    if (!event || !host_state.callbacks.pointer)
+EM_BOOL wheel_callback(int, const EmscriptenWheelEvent *event, void *user_data) {
+    auto *state = state_from_user_data(user_data);
+    if (!state || !event || !state->callbacks.pointer)
         return EM_FALSE;
     nk::web::PointerEvent pointer{};
     pointer.type = nk::web::PointerEventType::wheel;
@@ -147,12 +192,13 @@ EM_BOOL wheel_callback(int, const EmscriptenWheelEvent *event, void *) {
         pointer.wheel_x *= 100.0;
         pointer.wheel_y *= 100.0;
     }
-    host_state.callbacks.pointer(pointer, host_state.user_data);
+    state->callbacks.pointer(pointer, state->user_data);
     return EM_TRUE;
 }
 
-EM_BOOL touch_callback(int event_type, const EmscriptenTouchEvent *event, void *) {
-    if (!event || !host_state.callbacks.touch)
+EM_BOOL touch_callback(int event_type, const EmscriptenTouchEvent *event, void *user_data) {
+    auto *state = state_from_user_data(user_data);
+    if (!state || !event || !state->callbacks.touch)
         return EM_FALSE;
     const auto type = event_type == EMSCRIPTEN_EVENT_TOUCHSTART    ? nk::web::TouchEventType::begin
                       : event_type == EMSCRIPTEN_EVENT_TOUCHEND    ? nk::web::TouchEventType::end
@@ -168,34 +214,60 @@ EM_BOOL touch_callback(int event_type, const EmscriptenTouchEvent *event, void *
         touch.x = point.targetX;
         touch.y = point.targetY;
         touch.modifiers = modifiers(*event);
-        host_state.callbacks.touch(touch, host_state.user_data);
+        state->callbacks.touch(touch, state->user_data);
     }
     return EM_TRUE;
 }
 
-EM_BOOL focus_callback(int event_type, const EmscriptenFocusEvent *, void *) {
-    if (host_state.callbacks.focus)
-        host_state.callbacks.focus(event_type == EMSCRIPTEN_EVENT_FOCUS, host_state.user_data);
+EM_BOOL focus_callback(int event_type, const EmscriptenFocusEvent *, void *user_data) {
+    auto *state = state_from_user_data(user_data);
+    if (state && state->callbacks.focus)
+        state->callbacks.focus(event_type == EMSCRIPTEN_EVENT_FOCUS, state->user_data);
     return EM_TRUE;
 }
 
-EM_BOOL context_callback(int event_type, const void *, void *) {
-    if (host_state.callbacks.context)
-        host_state.callbacks.context(event_type == EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED,
-                                     host_state.user_data);
+EM_BOOL context_callback(int event_type, const void *, void *user_data) {
+    auto *state = state_from_user_data(user_data);
+    if (state && state->callbacks.context)
+        state->callbacks.context(event_type == EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED,
+                                 state->user_data);
     return EM_TRUE;
 }
 
-bool pointer_lock_callback(int, const EmscriptenPointerlockChangeEvent *event, void *) {
-    if (host_state.callbacks.pointer_lock)
-        host_state.callbacks.pointer_lock(event && event->isActive, host_state.user_data);
+bool pointer_lock_callback(int, const EmscriptenPointerlockChangeEvent *event, void *user_data) {
+    auto *state = state_from_user_data(user_data);
+    if (state && state->callbacks.pointer_lock)
+        state->callbacks.pointer_lock(event && event->isActive, state->user_data);
     return true;
 }
 
 EM_BOOL frame_callback_adapter(double time, void *) {
-    if (!frame_loop_active || !frame_callback)
+    if (!frame_loop_active)
         return EM_FALSE;
-    return frame_callback(time, frame_user_data);
+    for (std::size_t index = 0; index < frame_registrations.size();) {
+        const auto registration = frame_registrations[index];
+        if (!registration.callback) {
+            frame_registrations.erase(frame_registrations.begin() + index);
+            continue;
+        }
+        const bool keep = registration.callback(time, registration.user_data) == EM_TRUE;
+        const auto current = std::find_if(frame_registrations.begin(), frame_registrations.end(),
+                                          [&](const FrameRegistration &candidate) {
+                                              return candidate.callback == registration.callback &&
+                                                     candidate.user_data == registration.user_data;
+                                          });
+        if (current == frame_registrations.end())
+            continue;
+        if (!keep)
+            frame_registrations.erase(current);
+        else
+            index = static_cast<std::size_t>(current - frame_registrations.begin()) + 1;
+    }
+    if (frame_registrations.empty()) {
+        frame_loop_active = false;
+        return EM_FALSE;
+    }
+    return EM_TRUE;
 }
 
 } // namespace
@@ -208,6 +280,34 @@ EM_JS(void, nk_web_set_canvas_css_size, (const char *selector, int width, int he
         canvas.style.width = width + "px";
         canvas.style.height = height + "px";
     }
+});
+
+EM_JS(int, nk_web_create_canvas, (const char *selector, int width, int height, int owned), {
+    const value = UTF8ToString(selector);
+    let canvas = document.querySelector(value);
+    if (!canvas && value.startsWith("#")) {
+        canvas = document.createElement("canvas");
+        canvas.id = value.slice(1);
+        canvas.dataset.nativekitOwned = owned ? "1" : "0";
+        (document.body || document.documentElement).appendChild(canvas);
+    }
+    if (!canvas || canvas.tagName !== "CANVAS")
+        return 0;
+    if (width > 0)
+        canvas.style.width = width + "px";
+    if (height > 0)
+        canvas.style.height = height + "px";
+    canvas.tabIndex = 0;
+    canvas.setAttribute("aria-label", canvas.getAttribute("aria-label") || "NativeKit canvas");
+    return 1;
+});
+
+EM_JS(void, nk_web_destroy_canvas, (const char *selector, int owned), {
+    if (!owned)
+        return;
+    const canvas = document.querySelector(UTF8ToString(selector));
+    if (canvas && canvas.dataset.nativekitOwned === "1")
+        canvas.remove();
 });
 
 EM_JS(void, nk_web_set_canvas_size_limits,
@@ -231,7 +331,7 @@ EM_JS(void, nk_web_set_canvas_aspect_ratio,
                                          : "";
       });
 
-EM_JS(void, nk_web_set_canvas_resizable, (const char *selector, int enabled), {
+EM_JS(void, nk_web_set_canvas_resizable, (const char *selector, int enabled, int route), {
     const canvas = document.querySelector(UTF8ToString(selector));
     if (!canvas)
         return;
@@ -243,7 +343,7 @@ EM_JS(void, nk_web_set_canvas_resizable, (const char *selector, int enabled), {
         if (enabled) {
             const notify = () => {
                 if (Module.ccall)
-                    Module.ccall("nk_web_host_canvas_resize", null, [], []);
+                    Module.ccall("nk_web_host_canvas_resize", null, ["number"], [route]);
             };
             canvas._nkResizeObserver = new ResizeObserver(notify);
             canvas._nkResizeObserver.observe(canvas);
@@ -295,7 +395,7 @@ EM_JS(int, nk_web_open_url, (const char *url), {
     }
 });
 
-EM_JS(void, nk_web_install_drop_handlers, (const char *selector), {
+EM_JS(void, nk_web_install_drop_handlers, (const char *selector, int route), {
     const canvas = document.querySelector(UTF8ToString(selector));
     if (!canvas)
         return;
@@ -324,8 +424,8 @@ EM_JS(void, nk_web_install_drop_handlers, (const char *selector), {
         }
         const text = transfer.getData("text/plain") || "";
         Module.ccall("nk_web_host_resource_drop", null,
-                     ["number", "number", "string", "string"],
-                     [event.offsetX || 0, event.offsetY || 0,
+                     ["number", "number", "number", "string", "string"],
+                     [route, event.offsetX || 0, event.offsetY || 0,
                       uris.join(String.fromCharCode(13, 10)), text]);
     };
     canvas.addEventListener("dragover", dragover);
@@ -357,7 +457,7 @@ EM_JS(void, nk_web_remove_drop_handlers, (const char *selector), {
 });
 
 EM_JS(void, nk_web_configure_text_input,
-      (const char *selector, int active, int flags, int input_type, int action,
+      (const char *selector, int route, int active, int flags, int input_type, int action,
        const char *text, int text_start, int document_length, int selection_start,
        int selection_end, int composition_start, int composition_end, float cursor_x,
        float cursor_y, float cursor_width, float cursor_height), {
@@ -394,8 +494,8 @@ EM_JS(void, nk_web_configure_text_input,
                   if (!input._nkActive || !Module.ccall)
                       return;
                   Module.ccall("nk_web_host_text_input_event", null,
-                               ["number", "string", "number", "number"],
-                               [type, value || "", start || 0, end || 0]);
+                               ["number", "number", "string", "number", "number"],
+                               [input._nkRoute || 0, type, value || "", start || 0, end || 0]);
               };
               input.addEventListener("compositionstart", () => {
                   input._nkComposing = true;
@@ -453,6 +553,7 @@ EM_JS(void, nk_web_configure_text_input,
               canvas.parentElement.appendChild(input);
           }
 
+          input._nkRoute = route;
           input._nkActive = !!active;
           input._nkTextStart = text_start;
           input._nkDocumentLength = document_length;
@@ -490,7 +591,7 @@ EM_JS(void, nk_web_configure_text_input,
       });
 
 EM_JS(void, nk_web_set_accessibility_tree,
-      (const char *selector, double surface, int width, int height, int visible, double focus,
+      (const char *selector, int route, double surface, int width, int height, int visible, double focus,
        const char *json), {
           const canvas = document.querySelector(UTF8ToString(selector));
           if (!canvas)
@@ -590,8 +691,8 @@ EM_JS(void, nk_web_set_accessibility_tree,
                   (node.disabled && name !== "focus" && name !== "clear_focus"))
                   return;
               Module.ccall("nk_web_host_accessibility_action", null,
-                           ["number", "number", "number", "string", "number", "number", "number"],
-                           [surface, node.id, action, value || "", start, end, granularity || 0]);
+                           ["number", "number", "number", "number", "string", "number", "number", "number"],
+                           [route, surface, node.id, action, value || "", start, end, granularity || 0]);
           };
           const codePointOffset = (value, utf16Offset) =>
               Array.from(value.slice(0, utf16Offset)).length;
@@ -1008,14 +1109,14 @@ EM_JS(int, nk_web_share, (const char *title, const char *text, const char *uris)
 });
 
 EM_JS(void, nk_web_pick_resources,
-      (const char *selector, double request, int kind, int multiple, const char *title,
+      (const char *selector, int route, double request, int kind, int multiple, const char *title,
        const char *accept, const char *suggested_name, int result_ok, int result_unsupported,
        int result_unknown, int open_resource, int save_resource, int select_resource_directory), {
           const complete = (result, accepted, uris) => {
               if (Module.ccall)
                   Module.ccall("nk_web_host_resource_dialog_complete", null,
-                               ["number", "number", "number", "number", "string"],
-                               [request, kind, result, accepted ? 1 : 0, uris || ""]);
+                               ["number", "number", "number", "number", "number", "string"],
+                               [route, request, kind, result, accepted ? 1 : 0, uris || ""]);
           };
           const titleValue = title ? UTF8ToString(title) : "";
           const acceptValue = accept ? UTF8ToString(accept) : "";
@@ -1500,23 +1601,27 @@ EM_JS(int, nk_web_write_resource, (const char *uri, const void *data, uint32_t s
 
 // clang-format on
 
-extern "C" EMSCRIPTEN_KEEPALIVE void
-nk_web_host_text_input_event(int type, const char *text, int selection_start, int selection_end) {
-    if (!host_state.callbacks.text_input)
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(uint32_t route, int type,
+                                                                  const char *text,
+                                                                  int selection_start,
+                                                                  int selection_end) {
+    auto *state = state_for_route(route);
+    if (!state || !state->callbacks.text_input)
         return;
     nk::web::TextInputEvent event{};
     event.type = static_cast<nk::web::TextInputEventType>(type);
     event.text = text;
     event.selection_start = selection_start < 0 ? 0u : static_cast<uint32_t>(selection_start);
     event.selection_end = selection_end < 0 ? 0u : static_cast<uint32_t>(selection_end);
-    host_state.callbacks.text_input(event, host_state.user_data);
+    state->callbacks.text_input(event, state->user_data);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void
-nk_web_host_accessibility_action(uint32_t surface, uint32_t node, uint32_t action,
+nk_web_host_accessibility_action(uint32_t route, uint32_t surface, uint32_t node, uint32_t action,
                                  const char *value, int selection_start, int selection_end,
                                  int granularity) {
-    if (!host_state.callbacks.accessibility_action)
+    auto *state = state_for_route(route);
+    if (!state || !state->callbacks.accessibility_action)
         return;
     nk::web::AccessibilityActionEvent event{};
     event.surface = static_cast<nk_handle>(surface);
@@ -1531,33 +1636,36 @@ nk_web_host_accessibility_action(uint32_t surface, uint32_t node, uint32_t actio
                               : static_cast<nk_accessibility_text_position>(selection_end);
     event.granularity =
         static_cast<nk_accessibility_text_granularity>(granularity < 0 ? 0 : granularity);
-    host_state.callbacks.accessibility_action(event, host_state.user_data);
+    state->callbacks.accessibility_action(event, state->user_data);
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_drop(float x, float y, const char *uris,
-                                                               const char *text) {
-    if (!host_state.callbacks.drop)
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_drop(uint32_t route, float x, float y,
+                                                               const char *uris, const char *text) {
+    auto *state = state_for_route(route);
+    if (!state || !state->callbacks.drop)
         return;
     nk::web::ResourceDropEvent event{};
     event.x = x;
     event.y = y;
     event.uris = uris;
     event.text = text;
-    host_state.callbacks.drop(event, host_state.user_data);
+    state->callbacks.drop(event, state->user_data);
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_canvas_resize() {
-    if (!host_state.callbacks.resize)
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_canvas_resize(uint32_t route) {
+    auto *state = state_for_route(route);
+    if (!state || !state->callbacks.resize)
         return;
     nk::web::CanvasSize size{};
-    if (nk::web::canvas_size(&size))
-        host_state.callbacks.resize(size, host_state.user_data);
+    if (nk::web::canvas_size(state->selector.c_str(), &size))
+        state->callbacks.resize(size, state->user_data);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void
-nk_web_host_resource_dialog_complete(uint32_t request, uint32_t kind, nk_result result,
-                                     int accepted, const char *uris) {
-    if (!host_state.callbacks.resource_dialog)
+nk_web_host_resource_dialog_complete(uint32_t route, uint32_t request, uint32_t kind,
+                                     nk_result result, int accepted, const char *uris) {
+    auto *state = state_for_route(route);
+    if (!state || !state->callbacks.resource_dialog)
         return;
     nk::web::ResourceDialogEvent event{};
     event.request = static_cast<nk_request_id>(request);
@@ -1565,18 +1673,19 @@ nk_web_host_resource_dialog_complete(uint32_t request, uint32_t kind, nk_result 
     event.result = result;
     event.accepted = accepted != 0;
     event.uris = uris;
-    host_state.callbacks.resource_dialog(event, host_state.user_data);
+    state->callbacks.resource_dialog(event, state->user_data);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void
 nk_web_host_notification_event(uint32_t request, nk_event_kind kind, nk_result result) {
-    if (!host_state.callbacks.notification)
+    auto *state = primary_state();
+    if (!state || !state->callbacks.notification)
         return;
     nk::web::NotificationEvent event{};
     event.request = static_cast<nk_request_id>(request);
     event.kind = kind;
     event.result = result;
-    host_state.callbacks.notification(event, host_state.user_data);
+    state->callbacks.notification(event, state->user_data);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void
@@ -1586,7 +1695,8 @@ nk_web_host_gamepad_state(int32_t index, int connected, const char *id, int stan
                           int button5, int button6, int button7, int button8, int button9,
                           int button10, int button11, int button12, int button13, int button14,
                           int button15, int button16) {
-    if (!host_state.callbacks.gamepad)
+    auto *state = primary_state();
+    if (!state || !state->callbacks.gamepad)
         return;
     nk::web::GamepadStateEvent event{};
     event.index = index;
@@ -1603,13 +1713,16 @@ nk_web_host_gamepad_state(int32_t index, int connected, const char *id, int stan
                      static_cast<uint8_t>(button12 != 0), static_cast<uint8_t>(button13 != 0),
                      static_cast<uint8_t>(button14 != 0), static_cast<uint8_t>(button15 != 0),
                      static_cast<uint8_t>(button16 != 0)};
-    host_state.callbacks.gamepad(event, host_state.user_data);
+    state->callbacks.gamepad(event, state->user_data);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_display_orientation_changed(int orientation) {
-    if (host_state.callbacks.display_orientation)
-        host_state.callbacks.display_orientation(static_cast<nk_orientation>(orientation),
-                                                 host_state.user_data);
+    for (const auto &[route, state] : host_states) {
+        (void)route;
+        if (state->callbacks.display_orientation)
+            state->callbacks.display_orientation(static_cast<nk_orientation>(orientation),
+                                                 state->user_data);
+    }
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void
@@ -1659,16 +1772,29 @@ const char *canvas_selector() noexcept {
     return NK_WEB_CANVAS_SELECTOR;
 }
 
-bool canvas_size(CanvasSize *out_size) noexcept {
+bool create_canvas(const char *selector, bool owned, int32_t width, int32_t height) noexcept {
+    if (!selector || !*selector || width <= 0 || height <= 0)
+        return false;
+    return nk_web_create_canvas(selector, width, height, owned ? 1 : 0) != 0;
+}
+
+void destroy_canvas(const char *selector, bool owned) noexcept {
+    if (selector && *selector)
+        nk_web_destroy_canvas(selector, owned ? 1 : 0);
+}
+
+bool canvas_size(const char *selector, CanvasSize *out_size) noexcept {
     if (!out_size)
+        return false;
+    if (!selector || !*selector)
         return false;
     double width = 0.0;
     double height = 0.0;
-    if (emscripten_get_element_css_size(canvas_selector(), &width, &height) !=
-            EMSCRIPTEN_RESULT_SUCCESS ||
+    if (emscripten_get_element_css_size(selector, &width, &height) != EMSCRIPTEN_RESULT_SUCCESS ||
         width < 1.0 || height < 1.0) {
-        width = requested_width;
-        height = requested_height;
+        const auto *state = state_for_selector(selector);
+        width = state ? state->requested_width : 300;
+        height = state ? state->requested_height : 150;
     }
     const double scale = std::max(1.0, emscripten_get_device_pixel_ratio());
     out_size->width = std::max(1, static_cast<int32_t>(std::lround(width)));
@@ -1679,46 +1805,52 @@ bool canvas_size(CanvasSize *out_size) noexcept {
     return true;
 }
 
-bool set_canvas_size(int32_t width, int32_t height) noexcept {
+bool set_canvas_size(const char *selector, int32_t width, int32_t height) noexcept {
+    if (!selector || !*selector)
+        return false;
     if (width <= 0 || height <= 0)
         return false;
-    requested_width = width;
-    requested_height = height;
-    nk_web_set_canvas_css_size(canvas_selector(), width, height);
+    if (auto *state = state_for_selector(selector)) {
+        state->requested_width = width;
+        state->requested_height = height;
+    }
+    nk_web_set_canvas_css_size(selector, width, height);
     CanvasSize size{};
-    if (!canvas_size(&size))
+    if (!canvas_size(selector, &size))
         return false;
-    return set_canvas_framebuffer_size(size);
+    return set_canvas_framebuffer_size(selector, size);
 }
 
-void set_canvas_size_limits(int32_t min_width, int32_t min_height, int32_t max_width,
-                            int32_t max_height) noexcept {
-    nk_web_set_canvas_size_limits(canvas_selector(), min_width, min_height, max_width, max_height);
+void set_canvas_size_limits(const char *selector, int32_t min_width, int32_t min_height,
+                            int32_t max_width, int32_t max_height) noexcept {
+    nk_web_set_canvas_size_limits(selector, min_width, min_height, max_width, max_height);
 }
 
-void set_canvas_aspect_ratio(int32_t numerator, int32_t denominator) noexcept {
-    nk_web_set_canvas_aspect_ratio(canvas_selector(), numerator, denominator);
+void set_canvas_aspect_ratio(const char *selector, int32_t numerator,
+                             int32_t denominator) noexcept {
+    nk_web_set_canvas_aspect_ratio(selector, numerator, denominator);
 }
 
-void set_canvas_resizable(bool enabled) noexcept {
-    nk_web_set_canvas_resizable(canvas_selector(), enabled ? 1 : 0);
+void set_canvas_resizable(const char *selector, bool enabled) noexcept {
+    const auto *state = state_for_selector(selector);
+    nk_web_set_canvas_resizable(selector, enabled ? 1 : 0, state ? state->route : 0);
 }
 
-void set_canvas_opacity(float opacity) noexcept {
-    nk_web_set_canvas_opacity(canvas_selector(), opacity);
+void set_canvas_opacity(const char *selector, float opacity) noexcept {
+    nk_web_set_canvas_opacity(selector, opacity);
 }
 
-void set_canvas_mouse_passthrough(bool enabled) noexcept {
-    nk_web_set_canvas_mouse_passthrough(canvas_selector(), enabled ? 1 : 0);
+void set_canvas_mouse_passthrough(const char *selector, bool enabled) noexcept {
+    nk_web_set_canvas_mouse_passthrough(selector, enabled ? 1 : 0);
 }
 
-bool set_canvas_framebuffer_size(const CanvasSize &size) noexcept {
-    return emscripten_set_canvas_element_size(canvas_selector(), size.framebuffer_width,
+bool set_canvas_framebuffer_size(const char *selector, const CanvasSize &size) noexcept {
+    return emscripten_set_canvas_element_size(selector, size.framebuffer_width,
                                               size.framebuffer_height) == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
-bool set_canvas_visible(bool visible) noexcept {
-    nk_web_set_canvas_visible(canvas_selector(), visible ? 1 : 0);
+bool set_canvas_visible(const char *selector, bool visible) noexcept {
+    nk_web_set_canvas_visible(selector, visible ? 1 : 0);
     return true;
 }
 
@@ -1729,10 +1861,10 @@ bool set_title(const char *title) noexcept {
     return true;
 }
 
-bool set_cursor(const char *cursor) noexcept {
-    if (!cursor)
+bool set_cursor(const char *selector, const char *cursor) noexcept {
+    if (!selector || !cursor)
         return false;
-    nk_web_set_canvas_cursor(canvas_selector(), cursor);
+    nk_web_set_canvas_cursor(selector, cursor);
     return true;
 }
 
@@ -1740,9 +1872,10 @@ bool open_url(const char *url) noexcept {
     return url && nk_web_open_url(url) != 0;
 }
 
-void configure_text_input(const TextInputConfig &config) noexcept {
+void configure_text_input(const char *selector, uint32_t route,
+                          const TextInputConfig &config) noexcept {
     nk_web_configure_text_input(
-        canvas_selector(), config.active ? 1 : 0, static_cast<int>(config.flags),
+        selector, static_cast<int>(route), config.active ? 1 : 0, static_cast<int>(config.flags),
         static_cast<int>(config.input_type), static_cast<int>(config.action), config.text,
         static_cast<int>(config.text_start), static_cast<int>(config.document_length),
         static_cast<int>(config.selection_start), static_cast<int>(config.selection_end),
@@ -1754,11 +1887,13 @@ void configure_text_input(const TextInputConfig &config) noexcept {
         config.cursor_x, config.cursor_y, config.cursor_width, config.cursor_height);
 }
 
-void set_accessibility_tree(nk_handle surface, int32_t width, int32_t height, bool visible,
-                            nk_accessibility_node_id focus, const char *json) noexcept {
+void set_accessibility_tree(const char *selector, uint32_t route, nk_handle surface, int32_t width,
+                            int32_t height, bool visible, nk_accessibility_node_id focus,
+                            const char *json) noexcept {
     if (json)
-        nk_web_set_accessibility_tree(canvas_selector(), static_cast<double>(surface), width,
-                                      height, visible ? 1 : 0, static_cast<double>(focus), json);
+        nk_web_set_accessibility_tree(selector, static_cast<int>(route),
+                                      static_cast<double>(surface), width, height, visible ? 1 : 0,
+                                      static_cast<double>(focus), json);
 }
 
 void clear_accessibility_tree(nk_handle surface) noexcept {
@@ -1791,13 +1926,14 @@ bool share(const char *title, const char *text, const char *uris) noexcept {
     return title && text && uris && nk_web_share(title, text, uris) != 0;
 }
 
-bool pick_resources(nk_request_id request, uint32_t kind, bool multiple, const char *title,
-                    const char *accept, const char *suggested_name) noexcept {
+bool pick_resources(const char *selector, uint32_t route, nk_request_id request, uint32_t kind,
+                    bool multiple, const char *title, const char *accept,
+                    const char *suggested_name) noexcept {
     if (!title || !accept || !suggested_name || request == NK_INVALID_REQUEST_ID)
         return false;
-    nk_web_pick_resources(canvas_selector(), static_cast<double>(request), static_cast<int>(kind),
-                          multiple ? 1 : 0, title, accept, suggested_name, NK_OK,
-                          NK_ERROR_UNSUPPORTED, NK_ERROR_UNKNOWN, NK_DIALOG_OPEN_RESOURCE,
+    nk_web_pick_resources(selector, static_cast<int>(route), static_cast<double>(request),
+                          static_cast<int>(kind), multiple ? 1 : 0, title, accept, suggested_name,
+                          NK_OK, NK_ERROR_UNSUPPORTED, NK_ERROR_UNKNOWN, NK_DIALOG_OPEN_RESOURCE,
                           NK_DIALOG_SAVE_RESOURCE, NK_DIALOG_SELECT_RESOURCE_DIRECTORY);
     return true;
 }
@@ -1839,7 +1975,7 @@ bool write_resource(const char *uri, const void *data, uint32_t size) noexcept {
     return nk_web_write_resource(uri, data, size) != 0;
 }
 
-bool create_webgl_context(const WebGLContextOptions &options,
+bool create_webgl_context(const char *selector, const WebGLContextOptions &options,
                           EMSCRIPTEN_WEBGL_CONTEXT_HANDLE *out_context) noexcept {
     if (!out_context)
         return false;
@@ -1852,7 +1988,7 @@ bool create_webgl_context(const WebGLContextOptions &options,
     attributes.enableExtensionsByDefault = true;
     attributes.majorVersion = 2;
     attributes.minorVersion = 0;
-    const auto context = emscripten_webgl_create_context(canvas_selector(), &attributes);
+    const auto context = emscripten_webgl_create_context(selector, &attributes);
     if (context <= 0)
         return false;
     if (emscripten_webgl_make_context_current(context) != EMSCRIPTEN_RESULT_SUCCESS) {
@@ -1873,16 +2009,16 @@ bool make_context_current(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context) noexcept {
            emscripten_webgl_make_context_current(context) == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
-bool request_fullscreen() noexcept {
-    return emscripten_request_fullscreen(canvas_selector(), EM_TRUE) == EMSCRIPTEN_RESULT_SUCCESS;
+bool request_fullscreen(const char *selector) noexcept {
+    return emscripten_request_fullscreen(selector, EM_TRUE) == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
 bool exit_fullscreen() noexcept {
     return emscripten_exit_fullscreen() == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
-bool request_pointer_lock() noexcept {
-    return emscripten_request_pointerlock(canvas_selector(), EM_TRUE) == EMSCRIPTEN_RESULT_SUCCESS;
+bool request_pointer_lock(const char *selector) noexcept {
+    return emscripten_request_pointerlock(selector, EM_TRUE) == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
 bool exit_pointer_lock() noexcept {
@@ -1945,79 +2081,110 @@ bool keep_awake_apply(bool enabled) noexcept {
     return nk_web_keep_awake_apply(enabled ? 1 : 0) != 0;
 }
 
-bool install_callbacks(const HostCallbacks &callbacks, void *user_data) noexcept {
-    remove_callbacks();
-    host_state.callbacks = callbacks;
-    host_state.user_data = user_data;
-    host_state.installed = true;
-    emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE,
-                                   resize_callback);
-    emscripten_set_mousedown_callback(canvas_selector(), &host_state, EM_TRUE, mouse_callback);
-    emscripten_set_mouseup_callback(canvas_selector(), &host_state, EM_TRUE, mouse_callback);
-    emscripten_set_mousemove_callback(canvas_selector(), &host_state, EM_TRUE, mouse_callback);
-    emscripten_set_mouseenter_callback(canvas_selector(), &host_state, EM_TRUE, mouse_callback);
-    emscripten_set_mouseleave_callback(canvas_selector(), &host_state, EM_TRUE, mouse_callback);
-    emscripten_set_wheel_callback(canvas_selector(), &host_state, EM_TRUE, wheel_callback);
-    emscripten_set_touchstart_callback(canvas_selector(), &host_state, EM_TRUE, touch_callback);
-    emscripten_set_touchend_callback(canvas_selector(), &host_state, EM_TRUE, touch_callback);
-    emscripten_set_touchmove_callback(canvas_selector(), &host_state, EM_TRUE, touch_callback);
-    emscripten_set_touchcancel_callback(canvas_selector(), &host_state, EM_TRUE, touch_callback);
-    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE,
-                                    key_callback);
-    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE,
-                                  key_callback);
-    emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE,
-                                     key_callback);
-    emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE,
-                                  focus_callback);
-    emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE,
-                                 focus_callback);
-    emscripten_set_webglcontextlost_callback(canvas_selector(), &host_state, EM_TRUE,
-                                             context_callback);
-    emscripten_set_webglcontextrestored_callback(canvas_selector(), &host_state, EM_TRUE,
-                                                 context_callback);
-    emscripten_set_pointerlockchange_callback(canvas_selector(), &host_state, EM_TRUE,
-                                              pointer_lock_callback);
-    if (host_state.callbacks.display_orientation)
-        nk_web_install_display_orientation_callback(
-            NK_ORIENTATION_UNKNOWN, NK_ORIENTATION_PORTRAIT, NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN,
-            NK_ORIENTATION_LANDSCAPE_LEFT, NK_ORIENTATION_LANDSCAPE_RIGHT);
-    nk_web_install_drop_handlers(canvas_selector());
+bool install_callbacks(const char *selector, uint32_t route, const HostCallbacks &callbacks,
+                       void *user_data) noexcept {
+    if (!selector || !*selector || route == 0 || host_states.find(route) != host_states.end() ||
+        state_for_selector(selector))
+        return false;
+    auto state = std::make_unique<HostState>();
+    state->selector = selector;
+    state->route = route;
+    state->callbacks = callbacks;
+    state->user_data = user_data;
+    state->installed = true;
+    auto *state_ptr = state.get();
+    host_states.emplace(route, std::move(state));
+    host_states_by_selector.emplace(state_ptr->selector, state_ptr);
+
+    if (!resize_callback_installed) {
+        emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE,
+                                       resize_callback);
+        resize_callback_installed = true;
+    }
+    emscripten_set_mousedown_callback(selector, state_ptr, EM_TRUE, mouse_callback);
+    emscripten_set_mouseup_callback(selector, state_ptr, EM_TRUE, mouse_callback);
+    emscripten_set_mousemove_callback(selector, state_ptr, EM_TRUE, mouse_callback);
+    emscripten_set_mouseenter_callback(selector, state_ptr, EM_TRUE, mouse_callback);
+    emscripten_set_mouseleave_callback(selector, state_ptr, EM_TRUE, mouse_callback);
+    emscripten_set_wheel_callback(selector, state_ptr, EM_TRUE, wheel_callback);
+    emscripten_set_touchstart_callback(selector, state_ptr, EM_TRUE, touch_callback);
+    emscripten_set_touchend_callback(selector, state_ptr, EM_TRUE, touch_callback);
+    emscripten_set_touchmove_callback(selector, state_ptr, EM_TRUE, touch_callback);
+    emscripten_set_touchcancel_callback(selector, state_ptr, EM_TRUE, touch_callback);
+    emscripten_set_keydown_callback(selector, state_ptr, EM_TRUE, key_callback);
+    emscripten_set_keyup_callback(selector, state_ptr, EM_TRUE, key_callback);
+    emscripten_set_keypress_callback(selector, state_ptr, EM_TRUE, key_callback);
+    emscripten_set_focus_callback(selector, state_ptr, EM_TRUE, focus_callback);
+    emscripten_set_blur_callback(selector, state_ptr, EM_TRUE, focus_callback);
+    emscripten_set_webglcontextlost_callback(selector, state_ptr, EM_TRUE, context_callback);
+    emscripten_set_webglcontextrestored_callback(selector, state_ptr, EM_TRUE, context_callback);
+    emscripten_set_pointerlockchange_callback(selector, state_ptr, EM_TRUE, pointer_lock_callback);
+    if (callbacks.display_orientation && !orientation_callback_installed) {
+        orientation_callback_installed =
+            nk_web_install_display_orientation_callback(
+                NK_ORIENTATION_UNKNOWN, NK_ORIENTATION_PORTRAIT,
+                NK_ORIENTATION_PORTRAIT_UPSIDE_DOWN, NK_ORIENTATION_LANDSCAPE_LEFT,
+                NK_ORIENTATION_LANDSCAPE_RIGHT) != 0;
+    }
+    nk_web_install_drop_handlers(selector, static_cast<int>(route));
     return true;
 }
 
-void remove_callbacks() noexcept {
-    if (!host_state.installed)
+void remove_callbacks(const char *selector, uint32_t route) noexcept {
+    auto found = host_states.find(route);
+    if (found == host_states.end())
         return;
-    emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
-    emscripten_set_mousedown_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_mouseup_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_mousemove_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_mouseenter_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_mouseleave_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_wheel_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_touchstart_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_touchend_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_touchmove_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_touchcancel_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
-    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
-    emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
-    emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
-    emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &host_state, EM_TRUE, nullptr);
-    emscripten_set_webglcontextlost_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_webglcontextrestored_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    emscripten_set_pointerlockchange_callback(canvas_selector(), &host_state, EM_TRUE, nullptr);
-    nk_web_remove_display_orientation_callback();
-    nk_web_remove_drop_handlers(canvas_selector());
-    host_state = {};
+    auto *state = found->second.get();
+    const char *target = selector && *selector ? selector : state->selector.c_str();
+    emscripten_set_mousedown_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_mouseup_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_mousemove_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_mouseenter_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_mouseleave_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_wheel_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_touchstart_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_touchend_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_touchmove_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_touchcancel_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_keydown_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_keyup_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_keypress_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_focus_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_blur_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_webglcontextlost_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_webglcontextrestored_callback(target, state, EM_TRUE, nullptr);
+    emscripten_set_pointerlockchange_callback(target, state, EM_TRUE, nullptr);
+    nk_web_remove_drop_handlers(target);
+    host_states_by_selector.erase(state->selector);
+    host_states.erase(found);
+    if (host_states.empty()) {
+        if (resize_callback_installed) {
+            emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE,
+                                           nullptr);
+            resize_callback_installed = false;
+        }
+        if (orientation_callback_installed) {
+            nk_web_remove_display_orientation_callback();
+            orientation_callback_installed = false;
+        }
+    }
+}
+
+void remove_callbacks() noexcept {
+    while (!host_states.empty()) {
+        const auto route = host_states.begin()->first;
+        remove_callbacks(nullptr, route);
+    }
 }
 
 bool start_frame_loop(FrameCallback callback, void *user_data) noexcept {
     if (!callback)
         return false;
-    frame_callback = callback;
-    frame_user_data = user_data;
+    for (const auto &registration : frame_registrations) {
+        if (registration.callback == callback && registration.user_data == user_data)
+            return true;
+    }
+    frame_registrations.push_back({callback, user_data});
     if (frame_loop_active)
         return true;
     frame_loop_active = true;
@@ -2025,10 +2192,20 @@ bool start_frame_loop(FrameCallback callback, void *user_data) noexcept {
     return true;
 }
 
+void stop_frame_loop(FrameCallback callback, void *user_data) noexcept {
+    frame_registrations.erase(std::remove_if(frame_registrations.begin(), frame_registrations.end(),
+                                             [&](const FrameRegistration &registration) {
+                                                 return registration.callback == callback &&
+                                                        registration.user_data == user_data;
+                                             }),
+                              frame_registrations.end());
+    if (frame_registrations.empty())
+        frame_loop_active = false;
+}
+
 void stop_frame_loop() noexcept {
+    frame_registrations.clear();
     frame_loop_active = false;
-    frame_callback = nullptr;
-    frame_user_data = nullptr;
 }
 
 } // namespace nk::web

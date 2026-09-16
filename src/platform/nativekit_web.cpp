@@ -40,6 +40,7 @@
 namespace {
 
 struct WebSurfaceResource;
+struct WebGLContextResource;
 
 struct WebCursorResource final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
@@ -89,6 +90,15 @@ struct WebAccessibilityNode {
     std::vector<WebAccessibilityTextRange> text_ranges;
 };
 
+struct WebGLContextResource {
+    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = 0;
+
+    ~WebGLContextResource() {
+        if (context)
+            nk::web::destroy_webgl_context(context);
+    }
+};
+
 template <typename T> std::vector<std::byte> bytes_of(const T &value) {
     const auto *first = reinterpret_cast<const std::byte *>(&value);
     return {first, first + sizeof(value)};
@@ -98,6 +108,8 @@ struct WebWindowResource final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
     uint64_t generation = 0;
     std::string title;
+    std::string selector;
+    bool owned_canvas = false;
     std::vector<nk_handle> surfaces;
     std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
     std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> buttons{};
@@ -127,6 +139,7 @@ struct WebWindowResource final : nk::core::Resource {
     nk_orientation last_display_orientation = NK_ORIENTATION_UNKNOWN;
     nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
     std::shared_ptr<WebCursorResource> cursor;
+    std::shared_ptr<WebGLContextResource> graphics;
     nk_handle text_input_surface = NK_INVALID_HANDLE;
 };
 
@@ -140,7 +153,7 @@ struct WebSurfaceResource final : nk::core::Resource {
     int32_t framebuffer_height = 0;
     bool visible = true;
     bool context_lost = false;
-    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = 0;
+    std::shared_ptr<WebGLContextResource> graphics;
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
     bool text_input_active = false;
@@ -150,9 +163,8 @@ struct WebSurfaceResource final : nk::core::Resource {
     std::unordered_map<nk_accessibility_node_id, WebAccessibilityNode> accessibility_nodes;
     nk_accessibility_node_id accessibility_focus = NK_ACCESSIBILITY_ROOT;
 
-    ~WebSurfaceResource() override {
-        if (context)
-            nk::web::destroy_webgl_context(context);
+    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context() const noexcept {
+        return graphics ? graphics->context : 0;
     }
 };
 
@@ -181,9 +193,14 @@ struct PendingWebResourceWrite {
     std::vector<std::byte> data;
 };
 
-std::weak_ptr<WebWindowResource> active_window;
+std::unordered_set<nk_handle> web_windows;
 std::unordered_map<int32_t, std::shared_ptr<WebGamepadResource>> web_gamepads;
-std::unordered_map<nk_request_id, nk_dialog_operation> pending_resource_dialogs;
+struct PendingWebResourceDialog {
+    nk_dialog_operation operation = NK_DIALOG_OPEN_RESOURCE;
+    nk_handle parent = NK_INVALID_HANDLE;
+};
+
+std::unordered_map<nk_request_id, PendingWebResourceDialog> pending_resource_dialogs;
 std::unordered_set<nk_request_id> pending_notifications;
 std::mutex pending_resource_writes_mutex;
 std::vector<PendingWebResourceWrite> pending_resource_writes;
@@ -228,6 +245,14 @@ std::shared_ptr<Resource> get_resource(nk_handle handle, nk::core::ResourceType 
 std::shared_ptr<WebWindowResource> get_window(nk_handle handle) {
     return get_resource<WebWindowResource>(handle, nk::core::ResourceType::window,
                                            "invalid web window handle");
+}
+
+std::shared_ptr<WebWindowResource> first_window() {
+    for (const auto handle : web_windows) {
+        if (auto window = get_window(handle))
+            return window;
+    }
+    return {};
 }
 
 std::shared_ptr<WebSurfaceResource> get_surface(nk_handle handle) {
@@ -849,8 +874,10 @@ void refresh_web_accessibility(WebSurfaceResource &surface) {
     json += "]}";
     auto window = get_window(surface.parent);
     const bool visible = surface.visible && window && window->visible;
-    nk::web::set_accessibility_tree(surface.handle, surface.width, surface.height, visible,
-                                    surface.accessibility_focus, json.c_str());
+    if (window)
+        nk::web::set_accessibility_tree(window->selector.c_str(), window->handle, surface.handle,
+                                        surface.width, surface.height, visible,
+                                        surface.accessibility_focus, json.c_str());
 }
 
 nk_result emit_web_accessibility_action(
@@ -913,7 +940,9 @@ void configure_text_input(WebSurfaceResource &surface) {
         config.cursor_width = state.cursor_width;
         config.cursor_height = state.cursor_height;
     }
-    nk::web::configure_text_input(config);
+    auto window = get_window(surface.parent);
+    if (window)
+        nk::web::configure_text_input(window->selector.c_str(), window->handle, config);
 }
 
 void update_text_input_state(WebSurfaceResource &surface, nk_text_position replace_start,
@@ -1031,13 +1060,14 @@ std::string custom_cursor_css(const nk_cursor_image &image) {
 
 void apply_cursor(WebWindowResource &window) {
     if (window.cursor_mode != NK_CURSOR_MODE_NORMAL) {
-        nk::web::set_cursor("none");
+        nk::web::set_cursor(window.selector.c_str(), "none");
         return;
     }
     if (window.cursor && !window.cursor->css.empty())
-        nk::web::set_cursor(window.cursor->css.c_str());
+        nk::web::set_cursor(window.selector.c_str(), window.cursor->css.c_str());
     else
-        nk::web::set_cursor(window.cursor ? cursor_name(window.cursor->shape) : "default");
+        nk::web::set_cursor(window.selector.c_str(),
+                            window.cursor ? cursor_name(window.cursor->shape) : "default");
 }
 
 void queue_window_state(WebWindowResource &window) {
@@ -1149,10 +1179,10 @@ void apply_canvas_size(WebWindowResource &window, const nk::web::CanvasSize &siz
 
 void sync_canvas_size(WebWindowResource &window) {
     nk::web::CanvasSize size{};
-    if (nk::web::canvas_size(&size)) {
+    if (nk::web::canvas_size(window.selector.c_str(), &size)) {
         if (size.framebuffer_width != window.framebuffer_width ||
             size.framebuffer_height != window.framebuffer_height)
-            nk::web::set_canvas_framebuffer_size(size);
+            nk::web::set_canvas_framebuffer_size(window.selector.c_str(), size);
         apply_canvas_size(window, size);
     }
 }
@@ -1269,7 +1299,7 @@ void on_resize(const nk::web::CanvasSize &size, void *user_data) {
     nk::core::callback_boundary([&] {
         auto *window = static_cast<WebWindowResource *>(user_data);
         if (window && nk::core::is_runtime_generation(window->generation)) {
-            nk::web::set_canvas_framebuffer_size(size);
+            nk::web::set_canvas_framebuffer_size(window->selector.c_str(), size);
             apply_canvas_size(*window, size);
         }
     });
@@ -1760,13 +1790,16 @@ void on_gamepad(const nk::web::GamepadStateEvent &event, void *) {
 }
 
 EM_BOOL frame_loop(double, void *user_data) {
-    auto *surface = static_cast<WebSurfaceResource *>(user_data);
+    const auto handle = static_cast<nk_handle>(reinterpret_cast<uintptr_t>(user_data));
+    auto surface = get_surface(handle);
     if (!surface || !nk::core::is_runtime_generation(surface->generation) ||
-        !surface->frame_callback || surface->context_lost)
+        !surface->frame_callback)
+        return EM_FALSE;
+    if (surface->context_lost)
         return EM_TRUE;
     auto window = get_window(surface->parent);
-    if (!window || !nk::web::make_context_current(surface->context))
-        return EM_TRUE;
+    if (!window || !nk::web::make_context_current(surface->context()))
+        return EM_FALSE;
     sync_canvas_size(*window);
     nk::core::callback_boundary([&] {
         if (surface->frame_callback)
@@ -1774,6 +1807,15 @@ EM_BOOL frame_loop(double, void *user_data) {
                                     surface->framebuffer_height, surface->frame_user_data);
     });
     return surface->frame_callback ? EM_TRUE : EM_FALSE;
+}
+
+void update_canvas_visibility(WebWindowResource &window) {
+    const bool surface_visible =
+        std::any_of(window.surfaces.begin(), window.surfaces.end(), [](nk_handle handle) {
+            const auto surface = get_surface(handle);
+            return surface && surface->visible;
+        });
+    nk::web::set_canvas_visible(window.selector.c_str(), window.visible && surface_visible);
 }
 
 void remove_surface_from_window(WebSurfaceResource &surface) {
@@ -1792,7 +1834,7 @@ void shutdown_web() noexcept {
     nk::web_gamepad::shutdown();
     pending_resource_dialogs.clear();
     pending_notifications.clear();
-    active_window.reset();
+    web_windows.clear();
 }
 
 } // namespace
@@ -1873,8 +1915,10 @@ namespace nk::backend {
 
 void pump_events() noexcept {
     try {
-        if (auto window = active_window.lock())
-            sync_canvas_size(*window);
+        const auto windows = web_windows;
+        for (const auto handle : windows)
+            if (auto window = get_window(handle))
+                sync_canvas_size(*window);
         flush_web_resource_writes();
         nk::web_gamepad::poll();
     } catch (...) {
@@ -2074,16 +2118,17 @@ nk_result start_web_resource_dialog(nk_dialog_operation operation, nk_handle par
         return result;
     if (!out_request || !valid_resource_dialog_options(options))
         return invalid_argument("invalid web resource dialog options");
-    if (parent != NK_INVALID_HANDLE && !get_window(parent))
+    auto window = parent == NK_INVALID_HANDLE ? first_window() : get_window(parent);
+    if (!window)
         return invalid_handle("invalid web dialog parent");
     *out_request = NK_INVALID_REQUEST_ID;
     const auto request = nk::core::next_request_id();
-    pending_resource_dialogs.emplace(request, operation);
+    pending_resource_dialogs.emplace(request, PendingWebResourceDialog{operation, window->handle});
     const bool multiple =
         operation == NK_DIALOG_OPEN_RESOURCE && (options->flags & NK_DIALOG_ALLOW_MULTIPLE) != 0;
     const auto accept = resource_dialog_accept(options);
-    if (!nk::web::pick_resources(request, operation, multiple, options->title ? options->title : "",
-                                 accept.c_str(),
+    if (!nk::web::pick_resources(window->selector.c_str(), window->handle, request, operation,
+                                 multiple, options->title ? options->title : "", accept.c_str(),
                                  options->suggested_name ? options->suggested_name : "")) {
         pending_resource_dialogs.erase(request);
         return unsupported("browser resource picker is unavailable");
@@ -2117,13 +2162,12 @@ nk_result NK_CALL nk_dialog_cancel(nk_request_id request) {
         nk::core::set_error("invalid or completed web resource dialog request");
         return NK_ERROR_INVALID_REQUEST;
     }
-    const auto operation = found->second;
+    const auto dialog = found->second;
     pending_resource_dialogs.erase(found);
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_DIALOG_RESOURCES_COMPLETE;
-    const auto window = active_window.lock();
-    event.source = window ? window->handle : NK_INVALID_HANDLE;
-    event.flags = operation;
+    event.source = dialog.parent;
+    event.flags = dialog.operation;
     event.request_id = request;
     event.data = nk::platform::resource_payload(false, {});
     return nk::core::push_event(std::move(event));
@@ -2452,9 +2496,6 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
                 return invalid_argument("invalid web window options");
             if (options->owner != NK_INVALID_HANDLE || (options->flags & NK_WINDOW_MODAL))
                 return unsupported("owned and modal web windows are not supported");
-            if (!active_window.expired())
-                return NK_ERROR_ALREADY_INITIALIZED;
-
             auto window = std::make_shared<WebWindowResource>();
             window->generation = nk::core::runtime_generation();
             window->title = options->title ? options->title : "";
@@ -2465,9 +2506,15 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             if (handle == NK_INVALID_HANDLE)
                 return NK_ERROR_OUT_OF_MEMORY;
             window->handle = handle;
-            active_window = window;
-            if (!nk::web::set_canvas_size(options->width, options->height)) {
-                active_window.reset();
+            window->owned_canvas = !web_windows.empty();
+            window->selector = window->owned_canvas
+                                   ? "#nativekit-window-" + std::to_string(window->handle)
+                                   : nk::web::canvas_selector();
+            if (!nk::web::create_canvas(window->selector.c_str(), window->owned_canvas,
+                                        options->width, options->height) ||
+                !nk::web::set_canvas_size(window->selector.c_str(), options->width,
+                                          options->height)) {
+                nk::web::destroy_canvas(window->selector.c_str(), window->owned_canvas);
                 nk::core::handles().erase(handle, nk::core::ResourceType::window);
                 return NK_ERROR_UNKNOWN;
             }
@@ -2486,17 +2533,24 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             callbacks.notification = on_notification;
             callbacks.gamepad = on_gamepad;
             callbacks.accessibility_action = on_accessibility_action;
-            nk::web::install_callbacks(callbacks, window.get());
-            nk::web::set_canvas_size_limits(0, 0, 0, 0);
-            nk::web::set_canvas_aspect_ratio(0, 0);
-            nk::web::set_canvas_resizable(window->resizable);
-            nk::web::set_canvas_opacity(window->opacity);
-            nk::web::set_canvas_mouse_passthrough(window->mouse_passthrough);
-            nk::web::set_canvas_visible(window->visible);
+            if (!nk::web::install_callbacks(window->selector.c_str(), window->handle, callbacks,
+                                            window.get())) {
+                nk::web::destroy_canvas(window->selector.c_str(), window->owned_canvas);
+                nk::core::handles().erase(handle, nk::core::ResourceType::window);
+                return NK_ERROR_UNKNOWN;
+            }
+            web_windows.insert(handle);
+            nk::web::set_canvas_size_limits(window->selector.c_str(), 0, 0, 0, 0);
+            nk::web::set_canvas_aspect_ratio(window->selector.c_str(), 0, 0);
+            nk::web::set_canvas_resizable(window->selector.c_str(), window->resizable);
+            nk::web::set_canvas_opacity(window->selector.c_str(), window->opacity);
+            nk::web::set_canvas_mouse_passthrough(window->selector.c_str(),
+                                                  window->mouse_passthrough);
+            nk::web::set_canvas_visible(window->selector.c_str(), window->visible);
             if (!window->title.empty())
                 nk::web::set_title(window->title.c_str());
             nk::web::CanvasSize size{};
-            nk::web::canvas_size(&size);
+            nk::web::canvas_size(window->selector.c_str(), &size);
             apply_canvas_size(*window, size);
             queue_window_state(*window);
             *out_window = handle;
@@ -2515,7 +2569,10 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
             const auto surfaces = window->surfaces;
             for (const auto surface : surfaces)
                 nk_surface_destroy(surface);
-            if (active_window.lock() == window)
+            nk::web::remove_callbacks(window->selector.c_str(), window->handle);
+            nk::web::destroy_canvas(window->selector.c_str(), window->owned_canvas);
+            web_windows.erase(handle);
+            if (web_windows.empty())
                 shutdown_web();
             if (!nk::core::handles().erase(handle, nk::core::ResourceType::window))
                 return invalid_handle("web window was already destroyed");
@@ -2530,7 +2587,10 @@ nk_result NK_CALL nk_window_show(nk_handle handle, nk_bool visible) {
     if (!window)
         return invalid_handle("invalid web window handle");
     window->visible = visible != 0;
-    nk::web::set_canvas_visible(window->visible);
+    if (window->surfaces.empty())
+        nk::web::set_canvas_visible(window->selector.c_str(), window->visible);
+    else
+        update_canvas_visibility(*window);
     for (const auto surface_handle : window->surfaces) {
         if (auto surface = get_surface(surface_handle))
             nk::web::set_accessibility_visible(surface->handle,
@@ -2563,7 +2623,7 @@ nk_result NK_CALL nk_window_set_bounds(nk_handle handle, int32_t x, int32_t y, i
     auto window = get_window(handle);
     if (!window)
         return invalid_handle("invalid web window handle");
-    if (!nk::web::set_canvas_size(width, height))
+    if (!nk::web::set_canvas_size(window->selector.c_str(), width, height))
         return NK_ERROR_UNKNOWN;
     sync_canvas_size(*window);
     return NK_OK;
@@ -2644,7 +2704,8 @@ nk_result NK_CALL nk_window_set_fullscreen(nk_handle handle, nk_bool enabled) {
     auto window = get_window(handle);
     if (!window)
         return invalid_handle("invalid web window handle");
-    const bool success = enabled ? nk::web::request_fullscreen() : nk::web::exit_fullscreen();
+    const bool success = enabled ? nk::web::request_fullscreen(window->selector.c_str())
+                                 : nk::web::exit_fullscreen();
     if (!success)
         return unsupported("fullscreen requires a browser gesture and page permission");
     window->fullscreen = enabled != 0;
@@ -2671,8 +2732,8 @@ nk_result NK_CALL nk_window_set_size_limits(nk_handle handle, const nk_window_si
     window->min_height = limits->min_height;
     window->max_width = limits->max_width;
     window->max_height = limits->max_height;
-    nk::web::set_canvas_size_limits(window->min_width, window->min_height, window->max_width,
-                                    window->max_height);
+    nk::web::set_canvas_size_limits(window->selector.c_str(), window->min_width, window->min_height,
+                                    window->max_width, window->max_height);
     return NK_OK;
 }
 
@@ -2695,33 +2756,44 @@ nk_result NK_CALL nk_surface_create(nk_handle window_handle, const nk_surface_op
                 return invalid_argument("invalid web surface options");
             if (options->api != NK_GRAPHICS_OPENGL && options->api != NK_GRAPHICS_OPENGL_ES)
                 return unsupported("the first web backend supports WebGL2 only");
-            if (options->share_surface != NK_INVALID_HANDLE)
-                return unsupported("shared WebGL surfaces are not supported yet");
             auto window = get_window(window_handle);
             if (!window)
                 return invalid_handle("invalid web surface parent window");
-            if (!window->surfaces.empty())
-                return unsupported("a browser canvas supports one surface initially");
-            if (!nk::web::set_canvas_size(options->width, options->height))
+            if (!nk::web::set_canvas_size(window->selector.c_str(), options->width,
+                                          options->height))
                 return NK_ERROR_UNKNOWN;
-
             nk::web::WebGLContextOptions context_options{};
             context_options.alpha = (options->flags & NK_SURFACE_ALPHA) != 0;
             context_options.depth = (options->flags & NK_SURFACE_DEPTH) != 0;
             context_options.stencil = (options->flags & NK_SURFACE_STENCIL) != 0;
-            EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = 0;
-            if (!nk::web::create_webgl_context(context_options, &context)) {
-                nk::core::set_error("could not create a WebGL2 context for the NativeKit canvas");
-                return NK_ERROR_UNKNOWN;
+            std::shared_ptr<WebGLContextResource> graphics = window->graphics;
+            if (options->share_surface != NK_INVALID_HANDLE) {
+                auto shared_surface = get_surface(options->share_surface);
+                if (!shared_surface)
+                    return invalid_handle("invalid shared web surface handle");
+                if (shared_surface->parent != window_handle || !shared_surface->graphics)
+                    return invalid_argument("shared web surface belongs to another window");
+                graphics = shared_surface->graphics;
+            }
+            if (!graphics) {
+                EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = 0;
+                if (!nk::web::create_webgl_context(window->selector.c_str(), context_options,
+                                                   &context)) {
+                    nk::core::set_error(
+                        "could not create a WebGL2 context for the NativeKit canvas");
+                    return NK_ERROR_UNKNOWN;
+                }
+                graphics = std::make_shared<WebGLContextResource>();
+                graphics->context = context;
+                window->graphics = graphics;
             }
             auto surface = std::make_shared<WebSurfaceResource>();
             surface->parent = window_handle;
             surface->generation = nk::core::runtime_generation();
-            surface->context = context;
+            surface->graphics = std::move(graphics);
             const auto handle =
                 nk::core::handles().insert(nk::core::ResourceType::surface, surface);
             if (handle == NK_INVALID_HANDLE) {
-                nk::web::destroy_webgl_context(context);
                 return NK_ERROR_OUT_OF_MEMORY;
             }
             surface->handle = handle;
@@ -2732,7 +2804,7 @@ nk_result NK_CALL nk_surface_create(nk_handle window_handle, const nk_surface_op
             surface->framebuffer_width = window->framebuffer_width;
             surface->framebuffer_height = window->framebuffer_height;
             surface->visible = (options->flags & NK_SURFACE_HIDDEN) == 0;
-            nk::web::set_canvas_visible(surface->visible && window->visible);
+            update_canvas_visibility(*window);
             refresh_web_accessibility(*surface);
             nk::core::QueuedEvent event;
             event.kind = NK_EVENT_SURFACE_READY;
@@ -2760,12 +2832,16 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
             }
         }
     }
-    if (surface->frame_callback && active_window.lock())
-        nk::web::stop_frame_loop();
+    const auto frame_user_data = reinterpret_cast<void *>(static_cast<uintptr_t>(surface->handle));
+    if (surface->frame_callback)
+        nk::web::stop_frame_loop(frame_loop, frame_user_data);
     surface->frame_callback = nullptr;
     surface->frame_user_data = nullptr;
     nk::web::clear_accessibility_tree(surface->handle);
+    auto window = get_window(surface->parent);
     remove_surface_from_window(*surface);
+    if (window)
+        update_canvas_visibility(*window);
     return nk::core::handles().erase(handle, nk::core::ResourceType::surface)
                ? NK_OK
                : invalid_handle("web surface was already destroyed");
@@ -2780,7 +2856,7 @@ nk_result NK_CALL nk_surface_show(nk_handle handle, nk_bool visible) {
     surface->visible = visible != 0;
     auto window = get_window(surface->parent);
     if (window) {
-        nk::web::set_canvas_visible(surface->visible && window->visible);
+        update_canvas_visibility(*window);
         nk::web::set_accessibility_visible(surface->handle, surface->visible && window->visible);
     }
     return NK_OK;
@@ -2798,7 +2874,7 @@ nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, 
     auto window = get_window(surface->parent);
     if (!window)
         return invalid_handle("invalid web surface parent window");
-    if (!nk::web::set_canvas_size(width, height))
+    if (!nk::web::set_canvas_size(window->selector.c_str(), width, height))
         return NK_ERROR_UNKNOWN;
     sync_canvas_size(*window);
     return NK_OK;
@@ -2965,7 +3041,7 @@ nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
     auto surface = get_surface(handle);
     if (!surface)
         return invalid_handle("invalid web surface handle");
-    return nk::web::make_context_current(surface->context) ? NK_OK : NK_ERROR_UNKNOWN;
+    return nk::web::make_context_current(surface->context()) ? NK_OK : NK_ERROR_UNKNOWN;
 }
 
 nk_result NK_CALL nk_surface_present(nk_handle handle) {
@@ -2990,11 +3066,12 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
         return invalid_handle("invalid web surface handle");
     surface->frame_callback = callback;
     surface->frame_user_data = user_data;
+    const auto frame_user_data = reinterpret_cast<void *>(static_cast<uintptr_t>(surface->handle));
     if (!callback) {
-        nk::web::stop_frame_loop();
+        nk::web::stop_frame_loop(frame_loop, frame_user_data);
         return NK_OK;
     }
-    if (!nk::web::start_frame_loop(frame_loop, surface.get())) {
+    if (!nk::web::start_frame_loop(frame_loop, frame_user_data)) {
         surface->frame_callback = nullptr;
         surface->frame_user_data = nullptr;
         nk::core::set_error("could not start the browser animation-frame loop");
@@ -3233,7 +3310,7 @@ nk_result NK_CALL nk_window_set_cursor_mode(nk_handle handle, nk_cursor_mode mod
         apply_cursor(*window);
         return NK_OK;
     }
-    if (!nk::web::request_pointer_lock())
+    if (!nk::web::request_pointer_lock(window->selector.c_str()))
         return unsupported("browser pointer lock requires a user gesture and page permission");
     window->cursor_mode = mode;
     apply_cursor(*window);
@@ -3335,7 +3412,7 @@ nk_result NK_CALL nk_window_set_aspect_ratio(nk_handle handle, int32_t numerator
         return invalid_handle("invalid web window handle");
     window->aspect_numerator = numerator;
     window->aspect_denominator = denominator;
-    nk::web::set_canvas_aspect_ratio(numerator, denominator);
+    nk::web::set_canvas_aspect_ratio(window->selector.c_str(), numerator, denominator);
     return NK_OK;
 }
 
@@ -3346,7 +3423,7 @@ nk_result NK_CALL nk_window_set_resizable(nk_handle handle, nk_bool enabled) {
     if (!window)
         return invalid_handle("invalid web window handle");
     window->resizable = enabled != 0;
-    nk::web::set_canvas_resizable(window->resizable);
+    nk::web::set_canvas_resizable(window->selector.c_str(), window->resizable);
     return NK_OK;
 }
 
@@ -3365,7 +3442,7 @@ nk_result NK_CALL nk_window_set_opacity(nk_handle handle, float opacity) {
     if (!window)
         return invalid_handle("invalid web window handle");
     window->opacity = opacity;
-    nk::web::set_canvas_opacity(window->opacity);
+    nk::web::set_canvas_opacity(window->selector.c_str(), window->opacity);
     return NK_OK;
 }
 
@@ -3378,7 +3455,7 @@ nk_result NK_CALL nk_window_set_mouse_passthrough(nk_handle handle, nk_bool enab
     window->mouse_passthrough = enabled != 0;
     if (window->mouse_passthrough)
         window->hovered = false;
-    nk::web::set_canvas_mouse_passthrough(window->mouse_passthrough);
+    nk::web::set_canvas_mouse_passthrough(window->selector.c_str(), window->mouse_passthrough);
     return NK_OK;
 }
 

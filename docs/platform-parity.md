@@ -140,7 +140,11 @@ continues to own native event dispatch. Linux wrapping is intentionally limited
 to X11; Wayland wrapping remains deferred until foreign-surface lifecycle and
 event ownership can be made explicit.
 
-The Web equivalents are browser-mediated: `window.open` handles URI shell
+The Web equivalents are browser-mediated: each NativeKit window owns a canvas
+and receives its own input, resize, drop, and focus routing. Multiple surfaces
+in one window are logical NativeKit surfaces multiplexed onto that canvas's
+single browser WebGL context; explicitly shared surfaces retain that context
+through a shared lifetime object. `window.open` handles URI shell
 opening, `matchMedia` supplies appearance, the Notifications API supplies
 notifications, the File System Access API or `<input type=file>` supplies
 resource selection, and the Gamepad API supplies controller state. Save and

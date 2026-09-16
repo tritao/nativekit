@@ -43,6 +43,17 @@ int main(void) {
     nk_window window = NK_INVALID_HANDLE;
     assert(nk_window_create(&window_options, &window) == NK_OK);
 
+    nk_window second_window = NK_INVALID_HANDLE;
+    window_options.flags = NK_WINDOW_HIDDEN;
+    assert(nk_window_create(&window_options, &second_window) == NK_OK);
+    assert(nk_window_set_opacity(second_window, 0.5f) == NK_OK);
+#ifdef __EMSCRIPTEN__
+    assert(EM_ASM_INT({
+               const owned = document.querySelectorAll("canvas[data-nativekit-owned='1']");
+               return owned.length >= 1 && owned[0].style.opacity == "0.5" ? 1 : 0;
+           }) == 1);
+#endif
+
     nk_surface_options surface_options = {0};
     surface_options.struct_size = sizeof(surface_options);
     surface_options.api = NK_GRAPHICS_OPENGL_ES;
@@ -50,6 +61,10 @@ int main(void) {
     surface_options.height = 240;
     nk_surface surface = NK_INVALID_HANDLE;
     assert(nk_surface_create(window, &surface_options, &surface) == NK_OK);
+    nk_surface shared_surface = NK_INVALID_HANDLE;
+    surface_options.share_surface = surface;
+    assert(nk_surface_create(window, &surface_options, &shared_surface) == NK_OK);
+    assert(nk_surface_make_current(shared_surface) == NK_OK);
 
     nk_accessibility_node root = make_node(1, NK_ACCESSIBILITY_ROOT, NK_ACCESSIBILITY_GROUP,
                                            NK_ACCESSIBILITY_CAN_FOCUS, "Document", NULL);
@@ -101,7 +116,9 @@ int main(void) {
 #endif
 
     assert(nk_surface_accessibility_clear(surface) == NK_OK);
+    assert(nk_surface_destroy(shared_surface) == NK_OK);
     assert(nk_surface_destroy(surface) == NK_OK);
+    assert(nk_window_destroy(second_window) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);
     nk_shutdown();
     return 0;
