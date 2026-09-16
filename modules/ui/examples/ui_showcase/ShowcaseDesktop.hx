@@ -70,8 +70,8 @@ class ShowcaseDesktop {
         var staticFrame = has(args, "--static-frame");
         var printStats = has(args, "--stats");
         var graphicsMode = smoke || staticFrame;
-        var initialWidth = graphicsMode ? 900 : 1100;
-        var initialHeight = graphicsMode ? 650 : 760;
+        var initialWidth = graphicsMode ? 900 : UiExplorer.INITIAL_WIDTH;
+        var initialHeight = graphicsMode ? 650 : UiExplorer.INITIAL_HEIGHT;
         for (arg in args)
             if (arg != "--smoke-test" && arg != "--ui-smoke-test" && arg != "--ui-static-frame" &&
                     arg != "--static-frame" && arg != "--stats")

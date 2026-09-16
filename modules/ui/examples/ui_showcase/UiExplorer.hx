@@ -73,6 +73,8 @@ import pages.ListsPage;
 @:allow(shell.OverlayHost)
 class UiExplorer {
 	public static inline var TARGET_FPS:Float = 60.0;
+	public static inline var INITIAL_WIDTH:Int = 1200;
+	public static inline var INITIAL_HEIGHT:Int = 820;
 	static inline var LIST_COUNT:Int = 10000;
 	static inline var LIST_ROW_HEIGHT:Float = 32.0;
 
@@ -109,10 +111,10 @@ class UiExplorer {
 		this.staticSubmitReuse = staticSubmitReuse == true;
 		context = new UiContext(null, fonts, makeTheme(state.lightTheme));
 		renderer = Renderer.create();
-		width = 900.0;
-		height = 650.0;
-		framebufferWidth = 900;
-		framebufferHeight = 650;
+		width = INITIAL_WIDTH;
+		height = INITIAL_HEIGHT;
+		framebufferWidth = INITIAL_WIDTH;
+		framebufferHeight = INITIAL_HEIGHT;
 		pixelScale = 1.0;
 		frame = new LayoutFrame(width, height);
 		frameInfo = new FrameInfo(width, height, framebufferWidth, framebufferHeight, pixelScale);
