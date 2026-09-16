@@ -51,7 +51,7 @@ class VirtualList implements View {
 		return context.withScope(new Key(key), function() {
 			var stateId = context.id("scroll-state");
 			var stored:State<ScrollController> = context.state(stateId, controller);
-			controller = cast stored.value;
+			controller = stored.value;
 			var viewportHeight = controller.viewportHeight > 0.0 ? controller.viewportHeight :
 				(viewportStyle.height.sizing == LayoutSizing.Fixed ? viewportStyle.height.value :
 				fallbackViewportHeight);

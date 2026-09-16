@@ -48,7 +48,7 @@ class ScrollView implements View {
 			viewport.layout.style.clipVertical = viewport.layout.style.clipVertical ||
 				axis == ScrollAxis.Vertical || axis == ScrollAxis.Both;
 			var stored:State<ScrollController> = context.state(viewport.id, controller);
-			controller = cast stored.value;
+			controller = stored.value;
 			controller.bind(function(value) {
 				stored.update(value);
 			});

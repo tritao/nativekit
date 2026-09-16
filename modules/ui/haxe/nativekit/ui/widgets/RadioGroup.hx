@@ -48,10 +48,10 @@ class RadioGroup implements View {
 			var root = new RenderNode(context.id("radio-group"), LayoutVisualKind.Box, style.copy());
 			root.semantics = new Semantics(AccessibilityRole.Group, "Radio group");
 			var selected:State<String> = context.state(root.id, value);
-			var active:String = cast selected.value;
+			var active:String = selected.value;
 			if (!hasEnabledValue(active))
 				active = firstEnabledValue();
-			if (active != cast selected.value)
+			if (active != selected.value)
 				selected.update(active);
 			value = active;
 

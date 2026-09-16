@@ -6,16 +6,18 @@ class State<T> {
 	public final id:WidgetId;
 
 	@:allow(nativekit.ui.core.BuildContext)
-	private function new(store:Dynamic, id:Dynamic) {
-		this.store = cast store;
-		this.id = cast id;
+	private function new(store:StateStore, id:WidgetId) {
+		this.store = store;
+		this.id = id;
 	}
 
-	public var value(get, never):Dynamic;
-	inline function get_value():Dynamic
-		return store.getValue(id);
+	public var value(get, never):T;
+	inline function get_value():T
+		// StateStore intentionally holds heterogeneous widget values; this is the
+		// single typed boundary back into a State<T> handle.
+		return cast store.getValue(id);
 
-	public function update(value:Dynamic):Dynamic {
+	public function update(value:T):T {
 		store.setValue(id, value);
 		return value;
 	}

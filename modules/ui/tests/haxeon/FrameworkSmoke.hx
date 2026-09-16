@@ -1282,6 +1282,9 @@ class FrameworkSmoke {
 		if (context.events.cursorShape() != UiCursorShape.HorizontalResize)
 			return 236;
 		context.pointerDown(splitPointerX, splitPointerY, 0);
+		// The native showcase rebuilds its view tree between input events. The
+		// divider must retain the active drag across that frame boundary.
+		splitRoot = context.submit(split, new LayoutFrame(320.0, 192.0));
 		context.pointerMove(splitPointerX + 20.0, splitPointerY);
 		if (context.events.cursorShape() != UiCursorShape.HorizontalResize)
 			return 237;

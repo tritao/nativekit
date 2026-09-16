@@ -142,7 +142,7 @@ class SelectionPopup {
 				LayoutVisualKind.Box, viewportStyle);
 			var storedScroll:State<ScrollController> = context.state(scrollViewport.id,
 				new ScrollController());
-			scrollController = cast storedScroll.value;
+			scrollController = storedScroll.value;
 			scrollController.bind(function(value) { storedScroll.update(value); });
 			var contentStyle = new LayoutStyle();
 			contentStyle.width = LayoutAxis.grow();

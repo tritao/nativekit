@@ -60,7 +60,7 @@ class Tooltip implements View {
 			});
 			var anchorNode = root.children[0];
 			var tooltipNode = root.children[1];
-			tooltipNode.layout.style.visible = cast state.value;
+			tooltipNode.layout.style.visible = state.value;
 			anchorNode.on(UiEventKind.HoverEnter, function(_) { state.update(true); });
 			anchorNode.on(UiEventKind.HoverLeave, function(_) { state.update(false); });
 			tooltipNode.on(UiEventKind.HoverEnter, function(_) { state.update(true); });

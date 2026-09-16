@@ -73,7 +73,7 @@ class Select<T> implements View {
 				triggerHeightFallback());
 			var anchorKnownState:State<Bool> = context.state(context.id("anchor-known"), false);
 			var rememberFloat = function(state:State<Float>, value:Float) {
-				var current:Float = cast state.value;
+				var current:Float = state.value;
 				if (!finite(current) || Math.abs(current - value) > 0.001)
 					state.update(value);
 			};
@@ -84,8 +84,8 @@ class Select<T> implements View {
 				}
 			});
 
-			var selectedState:State<Dynamic> = context.state(context.id("value"), value);
-			var storedValue:Dynamic = selectedState.value;
+			var selectedState:State<T> = context.state(context.id("value"), value);
+			var storedValue:T = selectedState.value;
 			if (!sameValue(storedValue, value))
 				selectedState.update(value);
 			var selectedIndex = enabledValueIndex(value);
@@ -97,7 +97,7 @@ class Select<T> implements View {
 			}
 
 			var openState:State<Bool> = context.state(context.id("open"), false);
-			var isOpen:Bool = cast openState.value;
+			var isOpen:Bool = openState.value;
 			var firstEnabled = firstEnabledIndex();
 			if (!enabled || firstEnabled < 0) {
 				if (isOpen)
@@ -107,10 +107,10 @@ class Select<T> implements View {
 
 			var initialActive = selectedIndex >= 0 ? selectedIndex : firstEnabled;
 			var activeState:State<Int> = context.state(context.id("active"), initialActive);
-			var active:Int = cast activeState.value;
+			var active:Int = activeState.value;
 			if (!isEnabledIndex(active))
 				active = initialActive;
-			var storedActive:Int = cast activeState.value;
+			var storedActive:Int = activeState.value;
 			if (active != storedActive)
 				activeState.update(active);
 
@@ -124,7 +124,7 @@ class Select<T> implements View {
 					context.requestFocus(triggerNode.id);
 			};
 			var setActive = function(index:Int) {
-				var current:Int = cast activeState.value;
+				var current:Int = activeState.value;
 				if (isEnabledIndex(index)) {
 					if (index != current)
 						activeState.update(index);
@@ -197,7 +197,7 @@ class Select<T> implements View {
 				if (event.key != UiKey.Down && event.key != UiKey.Up &&
 					event.key != UiKey.Home && event.key != UiKey.End)
 					return;
-				var wasOpen:Bool = cast openState.value;
+				var wasOpen:Bool = openState.value;
 				if (!wasOpen)
 					openState.update(true);
 				var base = selectedIndex >= 0 ? selectedIndex : firstEnabled;
@@ -207,7 +207,7 @@ class Select<T> implements View {
 				else if (event.key == UiKey.End)
 					next = lastEnabledIndex();
 				else if (wasOpen)
-					next = nextEnabled(cast activeState.value,
+					next = nextEnabled(activeState.value,
 						event.key == UiKey.Down ? 1 : -1);
 				setActive(next);
 				if (wasOpen)
@@ -240,13 +240,13 @@ class Select<T> implements View {
 
 			root.focusTrap = isOpen;
 			if (isOpen) {
-				var anchorKnown:Bool = cast anchorKnownState.value;
-				var popupRootX:Float = cast rootXState.value;
-				var popupRootY:Float = cast rootYState.value;
-				var popupTriggerX:Float = cast triggerXState.value;
-				var popupTriggerY:Float = cast triggerYState.value;
-				var popupTriggerWidth:Float = cast triggerWidthState.value;
-				var popupTriggerHeight:Float = cast triggerHeightState.value;
+				var anchorKnown:Bool = anchorKnownState.value;
+				var popupRootX:Float = rootXState.value;
+				var popupRootY:Float = rootYState.value;
+				var popupTriggerX:Float = triggerXState.value;
+				var popupTriggerY:Float = triggerYState.value;
+				var popupTriggerWidth:Float = triggerWidthState.value;
+				var popupTriggerHeight:Float = triggerHeightState.value;
 				if (!anchorKnown) {
 					popupRootX = 0.0;
 					popupRootY = 0.0;

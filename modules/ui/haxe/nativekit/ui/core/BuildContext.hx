@@ -153,9 +153,7 @@ class BuildContext {
 
 	public function state<T>(id:WidgetId, initial:T):State<T> {
 		stateStore.initialize(id, initial);
-		stateStore.touch(id);
-		var value:State<Dynamic> = new State<Dynamic>(stateStore, id);
-		return cast value;
+		return new State<T>(stateStore, id);
 	}
 
 	/** Opens an already initialized value without supplying an unused placeholder. */
@@ -163,8 +161,7 @@ class BuildContext {
 		if (!stateStore.contains(id))
 			throw 'Widget state has not been initialized for ${stateStore.describe(id)}';
 		stateStore.touch(id);
-		var value:State<Dynamic> = new State<Dynamic>(stateStore, id);
-		return cast value;
+		return new State<T>(stateStore, id);
 	}
 
 	/** Lazily creates resource-backed state and releases it when its widget unmounts. */

@@ -46,10 +46,10 @@ class Tabs implements View {
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(key, function() {
 			var state:State<String> = context.state(context.id("selected-tab"), selectedKey);
-			var active:String = cast state.value;
+			var active:String = state.value;
 			if (!isEnabled(active))
 				active = firstEnabled();
-			if (active != cast state.value)
+			if (active != state.value)
 				state.update(active);
 			selectedKey = active;
 			var select = function(next:String) {

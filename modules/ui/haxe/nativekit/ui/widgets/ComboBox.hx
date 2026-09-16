@@ -79,7 +79,7 @@ class ComboBox<T> implements View {
 				triggerHeightFallback());
 			var anchorKnownState:State<Bool> = context.state(context.id("anchor-known"), false);
 			var rememberFloat = function(state:State<Float>, value:Float) {
-				var current:Float = cast state.value;
+				var current:Float = state.value;
 				if (!finite(current) || Math.abs(current - value) > 0.001)
 					state.update(value);
 			};
@@ -90,8 +90,8 @@ class ComboBox<T> implements View {
 				}
 			});
 
-			var selectedState:State<Dynamic> = context.state(context.id("value"), value);
-			var storedValue:Dynamic = selectedState.value;
+			var selectedState:State<T> = context.state(context.id("value"), value);
+			var storedValue:T = selectedState.value;
 			if (!sameValue(storedValue, value))
 				selectedState.update(value);
 			var selectedIndex = enabledValueIndex(value);
@@ -104,8 +104,8 @@ class ComboBox<T> implements View {
 			var selectedLabel = selectedIndex >= 0 ? options[selectedIndex].label : "";
 			var labelState:State<String> = context.state(context.id("value-label"), selectedLabel);
 			var queryState:State<String> = context.state(context.id("query"), selectedLabel);
-			var storedLabel:String = cast labelState.value;
-			var query:String = cast queryState.value;
+			var storedLabel:String = labelState.value;
+			var query:String = queryState.value;
 			if (storedLabel != selectedLabel && query == storedLabel) {
 				query = selectedLabel;
 				queryState.update(query);
@@ -122,7 +122,7 @@ class ComboBox<T> implements View {
 			}
 
 			var openState:State<Bool> = context.state(context.id("open"), false);
-			var isOpen:Bool = cast openState.value;
+			var isOpen:Bool = openState.value;
 			if (!enabled || filteredIndices.length == 0) {
 				if (isOpen)
 					openState.update(false);
@@ -132,10 +132,10 @@ class ComboBox<T> implements View {
 			if (selectedIndex >= 0 && contains(filteredIndices, selectedIndex))
 				initialActive = selectedIndex;
 			var activeState:State<Int> = context.state(context.id("active"), initialActive);
-			var active:Int = cast activeState.value;
+			var active:Int = activeState.value;
 			if (!contains(filteredIndices, active))
 				active = initialActive;
-			var storedActive:Int = cast activeState.value;
+			var storedActive:Int = activeState.value;
 			if (active != storedActive)
 				activeState.update(active);
 
@@ -150,7 +150,7 @@ class ComboBox<T> implements View {
 			};
 			var setActive = function(index:Int) {
 				if (contains(filteredIndices, index)) {
-					var current:Int = cast activeState.value;
+					var current:Int = activeState.value;
 					if (index != current)
 						activeState.update(index);
 					popupVisibility.ensure(index);
@@ -183,7 +183,7 @@ class ComboBox<T> implements View {
 				setActive(contains(filteredIndices, selectedIndex) ? selectedIndex : filteredIndices[0]);
 			};
 			var submitActive = function() {
-				var submittedIndex:Int = cast activeState.value;
+				var submittedIndex:Int = activeState.value;
 				if (contains(filteredIndices, submittedIndex))
 					selectOption(submittedIndex);
 				else
@@ -248,16 +248,16 @@ class ComboBox<T> implements View {
 					return;
 				if (filteredIndices.length == 0)
 					return;
-				var wasOpen:Bool = cast openState.value;
+				var wasOpen:Bool = openState.value;
 				if (!wasOpen)
 					open();
-				var next:Int = cast activeState.value;
+				var next:Int = activeState.value;
 				if (event.key == UiKey.Home)
 					next = firstEnabledIn(filteredIndices);
 				else if (event.key == UiKey.End)
 					next = lastEnabledIn(filteredIndices);
 				else if (wasOpen) {
-					var currentActive:Int = cast activeState.value;
+					var currentActive:Int = activeState.value;
 					next = nextEnabled(filteredIndices, currentActive,
 						event.key == UiKey.Down ? 1 : -1);
 				}
@@ -281,13 +281,13 @@ class ComboBox<T> implements View {
 
 			root.focusTrap = isOpen;
 			if (isOpen && filteredIndices.length > 0) {
-				var anchorKnown:Bool = cast anchorKnownState.value;
-				var popupRootX:Float = cast rootXState.value;
-				var popupRootY:Float = cast rootYState.value;
-				var popupTriggerX:Float = cast triggerXState.value;
-				var popupTriggerY:Float = cast triggerYState.value;
-				var popupTriggerWidth:Float = cast triggerWidthState.value;
-				var popupTriggerHeight:Float = cast triggerHeightState.value;
+				var anchorKnown:Bool = anchorKnownState.value;
+				var popupRootX:Float = rootXState.value;
+				var popupRootY:Float = rootYState.value;
+				var popupTriggerX:Float = triggerXState.value;
+				var popupTriggerY:Float = triggerYState.value;
+				var popupTriggerWidth:Float = triggerWidthState.value;
+				var popupTriggerHeight:Float = triggerHeightState.value;
 				if (!anchorKnown) {
 					popupRootX = 0.0;
 					popupRootY = 0.0;

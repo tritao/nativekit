@@ -53,7 +53,7 @@ class Button implements View {
 	function buildScoped(context:BuildContext):RenderNode {
 		var id = context.id("button");
 		var interaction:State<Int> = context.state(id, 0);
-		var flags:Int = cast interaction.value;
+		var flags:Int = interaction.value;
 		flags = InteractionState.with(flags, InteractionState.Selected, selected);
 		var resolvedStyle = context.theme.resolveButtonStyle(style, flags, enabled);
 		var node = new RenderNode(id, LayoutVisualKind.Box, resolvedStyle);
@@ -72,7 +72,7 @@ class Button implements View {
 			node.on(UiEventKind.Activate, activate);
 		}
 		var setState = function(flag:Int, value:Bool) {
-			var current:Int = cast interaction.value;
+			var current:Int = interaction.value;
 			var next = InteractionState.with(current, flag, value);
 			if (next != current)
 				interaction.update(next);

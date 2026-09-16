@@ -11,6 +11,7 @@ import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.CursorShape;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
+import nativekit.ui.core.State;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
@@ -105,7 +106,9 @@ class SplitView implements View {
 				dividerSemantics.numericMinimum = minimumExtent;
 				dividerSemantics.numericMaximum = maximumExtent;
 				divider.semantics = dividerSemantics;
-				installDividerHandlers(divider, horizontal);
+				var dragState:State<SplitDragState> = context.state(divider.id,
+					new SplitDragState());
+				installDividerHandlers(divider, horizontal, dragState);
 				root.add(divider);
 			}
 
@@ -121,25 +124,26 @@ class SplitView implements View {
 		});
 	}
 
-	function installDividerHandlers(divider:RenderNode, horizontal:Bool):Void {
-		var dragging = false;
-		var startPointer = 0.0;
-		var dragExtent = 0.0;
+	function installDividerHandlers(divider:RenderNode, horizontal:Bool,
+			dragState:State<SplitDragState>):Void {
 		divider.on(UiEventKind.PointerDown, function(event:UiEvent) {
 			if (event.button != 0)
 				return;
-			dragging = true;
-			startPointer = horizontal ? event.x : event.y;
-			dragExtent = collapsed ? minimumExtent : boundedExtent();
+			var drag = dragState.value;
+			drag.dragging = true;
+			drag.startPointer = horizontal ? event.x : event.y;
+			drag.startExtent = collapsed ? minimumExtent : boundedExtent();
+			dragState.update(drag);
 			event.preventDefault();
 		});
 		divider.on(UiEventKind.PointerMove, function(event:UiEvent) {
-			if (!dragging)
+			var drag = dragState.value;
+			if (!drag.dragging)
 				return;
 			var pointer = horizontal ? event.x : event.y;
-			var delta = pointer - startPointer;
+			var delta = pointer - drag.startPointer;
 			var direction = resizableSide == SplitSide.Leading ? 1.0 : -1.0;
-			updateExtent(dragExtent + delta * direction, true);
+			updateExtent(drag.startExtent + delta * direction, true);
 			event.preventDefault();
 		});
 		var handleKey = function(event:UiEvent) {
@@ -172,8 +176,16 @@ class SplitView implements View {
 		divider.on(UiEventKind.AccessibilityDecrement, function(event) {
 			updateExtent(extent - keyboardStep() * actionGranularity(event), true);
 		});
-		divider.on(UiEventKind.PointerUp, function(_) { dragging = false; });
-		divider.on(UiEventKind.PointerCancel, function(_) { dragging = false; });
+		divider.on(UiEventKind.PointerUp, function(_) {
+			var drag = dragState.value;
+			drag.dragging = false;
+			dragState.update(drag);
+		});
+		divider.on(UiEventKind.PointerCancel, function(_) {
+			var drag = dragState.value;
+			drag.dragging = false;
+			dragState.update(drag);
+		});
 	}
 
 	function updateExtent(next:Float, expandCollapsed:Bool):Bool {
@@ -254,4 +266,17 @@ class SplitView implements View {
 
 	static inline function finite(value:Float):Bool
 		return value == value && value - value == 0.0;
+}
+
+/** Pointer-drag state that survives the frame-local view rebuild. */
+private class SplitDragState {
+	public var dragging:Bool;
+	public var startPointer:Float;
+	public var startExtent:Float;
+
+	public function new() {
+		dragging = false;
+		startPointer = 0.0;
+		startExtent = 0.0;
+	}
 }

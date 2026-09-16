@@ -124,7 +124,7 @@ class BinaryControl implements View {
 					semantics.states |= AccessibilityState.Checked;
 				else
 					semantics.states &= ~AccessibilityState.Checked;
-				var previous:Bool = cast invalidation.value;
+				var previous:Bool = invalidation.value;
 				invalidation.update(!previous);
 				if (onChange != null)
 					onChange(checked);

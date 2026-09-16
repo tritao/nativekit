@@ -84,7 +84,7 @@ class TextField implements View {
 			paragraph.wrap = multiline ? TextWrap.WordCharacter : TextWrap.None;
 			resolved = new ResolvedTextStyle(resolved.textStyle, paragraph, resolved.textColor);
 			var stored:State<TextEditorState> = acquireState(context, id, value, resolved);
-			var editor:TextEditorState = cast stored.value;
+			var editor:TextEditorState = stored.value;
 			editor.updateStyle(resolved.textStyle, resolved.paragraphStyle);
 			if (editor.syncExternal(value))
 				editor.resetCaretBlink(context.gestures.timeSeconds());

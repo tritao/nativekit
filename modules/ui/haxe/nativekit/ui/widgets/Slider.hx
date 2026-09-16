@@ -112,7 +112,7 @@ class Slider implements View {
 				}
 			});
 			node.on(UiEventKind.PointerMove, function(event) {
-				var isDragging:Bool = cast dragging.value;
+				var isDragging:Bool = dragging.value;
 				if (isDragging)
 					valueAtPointer(event);
 			});
