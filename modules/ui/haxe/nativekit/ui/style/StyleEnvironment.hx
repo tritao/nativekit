@@ -2,6 +2,10 @@ package nativekit.ui.style;
 
 /** Runtime capabilities/preferences available to conditional style rules. */
 class StyleEnvironment {
+	static var nextIdentity:Int = 0;
+
+	/** Stable identity prevents separate environments at revision zero colliding. */
+	public final identity:Int;
 	public var width:Float;
 	public var height:Float;
 	var pixelDensityValue:Float;
@@ -24,6 +28,7 @@ class StyleEnvironment {
 	public var revision(default, null):Int;
 
 	public function new(width:Float = 0.0, height:Float = 0.0) {
+		identity = nextIdentity++;
 		this.width = width;
 		this.height = height;
 		pixelDensityValue = 1.0;

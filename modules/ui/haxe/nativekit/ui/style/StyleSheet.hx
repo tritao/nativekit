@@ -4,12 +4,17 @@ import nativekit.ui.animation.Easing;
 
 /** Ordered collection of typed style rules. */
 class StyleSheet {
+	static var nextIdentity:Int = 0;
+
+	/** Stable resolver-local identity, distinct from the human-readable name. */
+	public final identity:Int;
 	public final name:String;
 	public final rules(default, null):Array<StyleRule>;
 	public final transitions(default, null):Array<StyleTransition>;
 	public var revision(default, null):Int;
 
 	public function new(?name:String) {
+		identity = nextIdentity++;
 		this.name = name == null || name.length == 0 ? "StyleSheet" : name;
 		rules = [];
 		transitions = [];

@@ -19,19 +19,22 @@ class ComputedProperty<T> {
 
 /** Authoritative Haxe-side result of style resolution. */
 class ComputedStyle {
-	final values:Map<String, Dynamic>;
-	final sources:Map<String, StyleSource>;
-	public final matchingRules:Array<StyleSource>;
+	var values:Map<String, Dynamic>;
+	var sources:Map<String, StyleSource>;
+	public var matchingRules(default, null):Array<StyleSource>;
+	var shared:Bool;
 
 	public function new() {
 		values = new Map();
 		sources = new Map();
 		matchingRules = [];
+		shared = false;
 	}
 
 	public function set<T>(property:StyleProperty<T>, value:T, source:Null<StyleSource>):Void {
 		if (property == null)
 			throw "Computed styles require a property";
+		ensureWritable();
 		values.set(property.name, value);
 		if (source == null)
 			sources.remove(property.name);
@@ -46,7 +49,9 @@ class ComputedStyle {
 		if (property == null)
 			throw "Computed styles require a property";
 		var value = values.get(property.name);
-		return value == null && !values.exists(property.name) ? property.defaultValue : cast value;
+		if (value == null && !values.exists(property.name))
+			return property.defaultValue;
+		return shared ? cast copyValue(cast property, value) : cast value;
 	}
 
 	public function property<T>(property:StyleProperty<T>):ComputedProperty<T>
@@ -57,8 +62,10 @@ class ComputedStyle {
 
 	/** Records every matching rule, including rules whose declarations were overridden. */
 	public function recordMatch(source:StyleSource):Void {
-		if (source != null)
+		if (source != null) {
+			ensureWritable();
 			matchingRules.push(source);
+		}
 	}
 
 	/** Returns a stable copy for inspectors and external tooling. */
@@ -69,7 +76,7 @@ class ComputedStyle {
 		var result:Array<StyleInspectionEntry> = [];
 		for (property in StyleProperty.all())
 			if (values.exists(property.name))
-				result.push(new StyleInspectionEntry(property.name, values.get(property.name),
+				result.push(new StyleInspectionEntry(property.name, copyValue(property, values.get(property.name)),
 					sources.get(property.name)));
 		return result;
 	}
@@ -78,11 +85,11 @@ class ComputedStyle {
 	public function toLayoutStyle(?base:LayoutStyle):LayoutStyle {
 		var result = base == null ? new LayoutStyle() : base.copy();
 		if (values.exists(StyleProperty.Width.name)) {
-			var width:LayoutAxis = cast values.get(StyleProperty.Width.name);
+			var width:LayoutAxis = cast copyValue(cast StyleProperty.Width, values.get(StyleProperty.Width.name));
 			result.width = width;
 		}
 		if (values.exists(StyleProperty.Height.name)) {
-			var height:LayoutAxis = cast values.get(StyleProperty.Height.name);
+			var height:LayoutAxis = cast copyValue(cast StyleProperty.Height, values.get(StyleProperty.Height.name));
 			result.height = height;
 		}
 		if (values.exists(StyleProperty.Direction.name)) result.direction = cast values.get(StyleProperty.Direction.name);
@@ -94,7 +101,7 @@ class ComputedStyle {
 		if (values.exists(StyleProperty.ZIndex.name)) result.zIndex = cast values.get(StyleProperty.ZIndex.name);
 		if (values.exists(StyleProperty.ClipToParent.name)) result.clipToParent = cast values.get(StyleProperty.ClipToParent.name);
 		if (values.exists(StyleProperty.Padding.name)) {
-			var padding:Insets = cast values.get(StyleProperty.Padding.name);
+			var padding:Insets = cast copyValue(cast StyleProperty.Padding, values.get(StyleProperty.Padding.name));
 			result.padding = padding;
 		}
 		if (values.exists(StyleProperty.ChildGap.name)) result.childGap = cast values.get(StyleProperty.ChildGap.name);
@@ -110,7 +117,7 @@ class ComputedStyle {
 		if (values.exists(StyleProperty.ClipVertical.name)) result.clipVertical = cast values.get(StyleProperty.ClipVertical.name);
 		if (values.exists(StyleProperty.Visible.name)) result.visible = cast values.get(StyleProperty.Visible.name);
 		if (values.exists(StyleProperty.Transform.name)) {
-			var transform:Transform2D = cast values.get(StyleProperty.Transform.name);
+			var transform:Transform2D = cast copyValue(cast StyleProperty.Transform, values.get(StyleProperty.Transform.name));
 			result.transform = transform;
 		}
 		return result;
@@ -120,9 +127,54 @@ class ComputedStyle {
 		var result = new ComputedStyle();
 		for (property in StyleProperty.all())
 			if (values.exists(property.name))
-				result.set(property, values.get(property.name), sources.get(property.name));
+				result.set(property, copyValue(property, values.get(property.name)), sources.get(property.name));
 		for (source in matchingRules)
 			result.recordMatch(source);
 		return result;
+	}
+
+	/** Fast copy used by style caches; map storage is detached only on mutation. */
+	public function fork():ComputedStyle {
+		var result = new ComputedStyle();
+		result.values = values;
+		result.sources = sources;
+		result.matchingRules = matchingRules.copy();
+		shared = true;
+		result.shared = true;
+		return result;
+	}
+
+	function ensureWritable():Void {
+		if (!shared)
+			return;
+		var nextValues:Map<String, Dynamic> = new Map();
+		for (key in values.keys())
+			nextValues.set(key, values.get(key));
+		var nextSources:Map<String, StyleSource> = new Map();
+		for (key in sources.keys())
+			nextSources.set(key, sources.get(key));
+		values = nextValues;
+		sources = nextSources;
+		shared = false;
+	}
+
+	/** Copies the mutable value objects that can be exposed through a computed style. */
+	static function copyValue(property:StyleProperty<Dynamic>, value:Dynamic):Dynamic {
+		if (value == null)
+			return null;
+		return switch property.name {
+			case "width" | "height":
+				var axis:LayoutAxis = cast value;
+				new LayoutAxis(axis.sizing, axis.value);
+			case "padding":
+				var insets:Insets = cast value;
+				new Insets(insets.left, insets.top, insets.right, insets.bottom);
+			case "transform":
+				var transform:Transform2D = cast value;
+				new Transform2D(transform.a, transform.b, transform.c, transform.d,
+					transform.tx, transform.ty);
+			default:
+				value;
+		};
 	}
 }

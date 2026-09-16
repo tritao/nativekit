@@ -1252,6 +1252,52 @@ class FrameworkSmoke {
 			computedSourceStylesheet != "StyleApplication" ||
 			computedSourceSelector != "button:hovered")
 			return 214;
+		var cacheSheet = new StyleSheet("CacheStyles");
+		cacheSheet.rule(StyleSelector.widget("button"),
+			[StyleValue.background(Color.rgba(0.3, 0.3, 0.3, 1.0))]);
+		var cacheResolver = new StyleResolver();
+		var cacheTarget = new StyleTarget("button", "cache-key");
+		var cachedFirst = cacheResolver.resolve(cacheTarget, null, null, cacheSheet);
+		var cachedSecond = cacheResolver.resolve(cacheTarget, null, null, cacheSheet);
+		if (cacheResolver.cacheMisses != 1 || cacheResolver.cacheHits != 1 ||
+			cacheResolver.cachedStyleCount != 1 || cachedSecond.get(StyleProperty.Background).red != 0.3)
+			return 230;
+		cachedSecond.get(StyleProperty.Width).value = 123.0;
+		cachedFirst.set(StyleProperty.Background, Color.rgba(1.0, 0.0, 0.0, 1.0), null);
+		var cachedThird = cacheResolver.resolve(cacheTarget, null, null, cacheSheet);
+		if (cacheResolver.cacheHits != 2 || cachedThird.get(StyleProperty.Background).red != 0.3 ||
+			cachedThird.get(StyleProperty.Width).value != 0.0)
+			return 231;
+		cacheSheet.rule(StyleSelector.widget("button"),
+			[StyleValue.background(Color.rgba(0.6, 0.6, 0.6, 1.0))]);
+		var revised = cacheResolver.resolve(cacheTarget, null, null, cacheSheet);
+		if (cacheResolver.cacheMisses != 2 || revised.get(StyleProperty.Background).red != 0.6)
+			return 232;
+		cacheTarget = new StyleTarget("button", "cache-key", null, null, null, StyleState.Hovered);
+		var stateChanged = cacheResolver.resolve(cacheTarget, null, null, cacheSheet);
+		if (cacheResolver.cacheMisses != 3 || stateChanged.get(StyleProperty.Background).red != 0.6)
+			return 233;
+		var cacheEnvironment = new StyleEnvironment(500.0, 800.0);
+		var environmentSheet = new StyleSheet("CacheEnvironment");
+		environmentSheet.rule(StyleSelector.widget("button"),
+			[StyleValue.paddingSymmetric(12.0, 8.0)]);
+		environmentSheet.when(Environment.widthLessThan(600.0), StyleSelector.widget("button"),
+			[StyleValue.paddingSymmetric(6.0, 4.0)]);
+		var environmentResolver = new StyleResolver();
+		environmentResolver.resolve(cacheTarget, null, null, environmentSheet, null, cacheEnvironment);
+		environmentResolver.resolve(cacheTarget, null, null, environmentSheet, null, cacheEnvironment);
+		cacheEnvironment.setViewport(800.0, 500.0);
+		var environmentChanged = environmentResolver.resolve(cacheTarget, null, null,
+			environmentSheet, null, cacheEnvironment);
+		if (environmentResolver.cacheHits != 1 || environmentResolver.cacheMisses != 2 ||
+			environmentChanged.get(StyleProperty.Padding).left != 12.0)
+			return 234;
+		var replacementEnvironment = new StyleEnvironment(800.0, 500.0);
+		var replacementEnvironmentStyle = environmentResolver.resolve(cacheTarget, null, null,
+			environmentSheet, null, replacementEnvironment);
+		if (environmentResolver.cacheMisses != 3 ||
+			replacementEnvironmentStyle.get(StyleProperty.Padding).left != 12.0)
+			return 235;
 		var inherited = new ComputedStyle();
 		inherited.set(StyleProperty.TextColor, Color.rgba(0.7, 0.7, 0.7, 1.0), null);
 		var inheritedChild = new StyleResolver().resolve(new StyleTarget("label"), inherited);
@@ -1282,7 +1328,8 @@ class FrameworkSmoke {
 		transitionScheduler.advance(0.05);
 		animatedComputed = transitionResolver.resolve(transitionTarget, null, transitionSheet);
 		if (animatedComputed.get(StyleProperty.Background).red != 1.0 ||
-			transitionScheduler.activeCount != 0 || normalComputed.get(StyleProperty.Background).red != 0.0)
+			transitionScheduler.activeCount != 0 || normalComputed.get(StyleProperty.Background).red != 0.0 ||
+			transitionResolver.cacheHits != 0 || transitionResolver.cacheMisses != 0)
 			return 218;
 		var responsiveSheet = new StyleSheet("ResponsiveSheet");
 		responsiveSheet.rule(StyleSelector.widget("button"),
