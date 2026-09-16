@@ -204,6 +204,23 @@ int main(void) {
     NK_TEST_ASSERT((capabilities & NK_CAP_JOYSTICK) != 0);
     NK_TEST_ASSERT((capabilities & NK_CAP_RESOURCE_IO) != 0);
     NK_TEST_ASSERT((capabilities & NK_CAP_WINDOW_STYLING) != 0);
+    NK_TEST_ASSERT((capabilities & NK_CAP_APPLICATION_PATH) == 0);
+    NK_TEST_ASSERT((capabilities & NK_CAP_APPLICATION_STORAGE) == 0);
+    NK_TEST_ASSERT((capabilities & NK_CAP_SYSTEM_FONTS) == 0);
+    NK_TEST_ASSERT(nk_system_directory(NK_DIRECTORY_APPLICATION, NULL, NULL) ==
+                   NK_ERROR_UNSUPPORTED);
+    NK_TEST_ASSERT(nk_system_directory(NK_DIRECTORY_APPLICATION_STORAGE, NULL, NULL) ==
+                   NK_ERROR_UNSUPPORTED);
+    NK_TEST_ASSERT(nk_system_directory(NK_DIRECTORY_FONTS, NULL, NULL) == NK_ERROR_UNSUPPORTED);
+
+    nk_system_orientation orientation = {0};
+    orientation.struct_size = sizeof(orientation);
+    const nk_result orientation_result = nk_system_get_orientation(&orientation);
+    NK_TEST_ASSERT(orientation_result == NK_OK || orientation_result == NK_ERROR_UNSUPPORTED);
+    if (orientation_result == NK_OK) {
+        NK_TEST_ASSERT(orientation.device <= NK_ORIENTATION_FACE_DOWN);
+        NK_TEST_ASSERT(orientation.display <= NK_ORIENTATION_FACE_DOWN);
+    }
 
     nk_system_appearance appearance = {0};
     appearance.struct_size = sizeof(appearance);

@@ -328,6 +328,13 @@ get_orientation(nk_system_orientation &out_orientation) noexcept {
 #endif
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((weak))
+#endif
+nk_result request_device_orientation(nk_request_id) noexcept {
+    return NK_ERROR_UNSUPPORTED;
+}
+
 #if defined(NK_BACKEND_LINUX) || defined(NK_BACKEND_GTK)
 nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
     const char *path = nullptr;
@@ -473,6 +480,25 @@ nk_result NK_CALL nk_system_get_orientation(nk_system_orientation *out_orientati
                 return NK_ERROR_INVALID_ARGUMENT;
             }
             return nk::core::system_backend::get_orientation(*out_orientation);
+        });
+}
+
+nk_result NK_CALL nk_system_request_device_orientation(nk_request_id *out_request) {
+    return nk::core::result_boundary(
+        "unexpected error while requesting device orientation permission", [&]() -> nk_result {
+            if (const auto result = require_system_ui(); result != NK_OK)
+                return result;
+            if (!out_request) {
+                nk::core::set_error("device orientation request output must not be null");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            *out_request = NK_INVALID_REQUEST_ID;
+            const auto request = nk::core::next_request_id();
+            const auto result = nk::core::system_backend::request_device_orientation(request);
+            if (result != NK_OK)
+                return result;
+            *out_request = request;
+            return NK_OK;
         });
 }
 

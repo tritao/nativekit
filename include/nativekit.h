@@ -220,6 +220,8 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_DEVICE_ORIENTATION_CHANGED = 22,
     /** The application display orientation changed. */
     NK_EVENT_DISPLAY_ORIENTATION_CHANGED = 23,
+    /** A Web physical-device-orientation permission request completed. */
+    NK_EVENT_DEVICE_ORIENTATION_PERMISSION_COMPLETE = 24,
     /** A raw joystick became available. */
     NK_EVENT_JOYSTICK_CONNECTED = 30,
     /** A raw joystick was disconnected and its handle invalidated. */

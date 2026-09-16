@@ -124,6 +124,7 @@ int main(void) {
         assert(system_orientation.device <= NK_ORIENTATION_FACE_DOWN);
         assert(system_orientation.display <= NK_ORIENTATION_FACE_DOWN);
     }
+    assert(nk_system_request_device_orientation(NULL) == NK_ERROR_INVALID_ARGUMENT);
     nk_keep_awake_options keep_awake_options = {0};
     keep_awake_options.struct_size = sizeof(keep_awake_options);
     keep_awake_options.flags = NK_KEEP_AWAKE_DISPLAY;
@@ -418,7 +419,8 @@ int main(void) {
         assert(event.kind == NK_EVENT_NONE || event.kind == NK_EVENT_JOYSTICK_CONNECTED ||
                event.kind == NK_EVENT_JOYSTICK_DISCONNECTED ||
                event.kind == NK_EVENT_DEVICE_ORIENTATION_CHANGED ||
-               event.kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED);
+               event.kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED ||
+               event.kind == NK_EVENT_DEVICE_ORIENTATION_PERMISSION_COMPLETE);
         nk_event_kind kind = event.kind;
         nk_event_release(&event);
         event.struct_size = sizeof(event);

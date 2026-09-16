@@ -370,11 +370,20 @@ presentation orientation. Device and display orientation events use the same
 `nk_orientation_event` payload and suppress unchanged values; orientation
 locking is intentionally a separate future API.
 
+On Web, `nk_system_request_device_orientation()` requests the browser's
+device-sensor permission. The call returns a request ID and completes with
+`NK_EVENT_DEVICE_ORIENTATION_PERMISSION_COMPLETE`; the event result is
+`NK_OK` after the listener is installed or an error when the browser denies or
+cannot provide the sensor. The request must be made from a browser user
+activation when the browser requires one. Device orientation remains
+`NK_ORIENTATION_UNKNOWN` until a usable sensor event arrives.
+
 On Web, display orientation uses the browser Screen Orientation API and is
 reported only when `screen.orientation` is available. The Web backend does not
-claim a physical device orientation. Display-orientation changes are observed
-from the active NativeKit canvas and are delivered through the normal
-coalesced event queue.
+claim physical orientation unless the browser exposes the Device Orientation
+API; when exposed, `NK_CAP_DEVICE_ORIENTATION` is advertised as an optional
+capability. Display-orientation changes are observed from the active NativeKit
+canvas and are delivered through the normal coalesced event queue.
 
 On Web, `nk_system_locale()` uses `navigator.language` (falling back to the
 first `navigator.languages` value). `nk_system_get_appearance()` uses
