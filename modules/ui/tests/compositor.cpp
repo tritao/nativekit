@@ -139,6 +139,46 @@ int main() {
         pass_order[4] != 4)
         return 25;
 
+    DisplayList drop_shadow_effect;
+    EffectDescriptor drop_shadow{};
+    drop_shadow.kind = EffectKind::DropShadow;
+    drop_shadow.color_matrix[0] = 2.0f;
+    drop_shadow.color_matrix[2] = 0.0f;
+    drop_shadow.color_matrix[3] = 6.0f;
+    drop_shadow.color_matrix[7] = 0.35f;
+    if (!drop_shadow_effect.begin_layer(1.0f, bounds, drop_shadow) ||
+        !drop_shadow_effect.draw_path(path) || !drop_shadow_effect.end_layer() ||
+        !compositor.compile(drop_shadow_effect, main_target, plan, &error) ||
+        plan.passes.size() != 5 || plan.dependencies.size() != 2)
+        return 26;
+    const auto &drop_shadow_layer = plan.passes[1];
+    if (drop_shadow_layer.target_descriptor.logical_width != 92.0f ||
+        drop_shadow_layer.target_descriptor.logical_height != 52.0f ||
+        drop_shadow_layer.target_descriptor.origin_x != 4.0f ||
+        drop_shadow_layer.target_descriptor.origin_y != 20.0f ||
+        plan.passes[2].kind != RenderPassKind::Effect ||
+        plan.passes[2].input_target.value != drop_shadow_layer.target.value ||
+        plan.passes[2].effect.kind != EffectKind::DropShadow ||
+        plan.passes[2].effect.color_matrix[0] != 2.0f ||
+        plan.passes[2].effect.color_matrix[1] != 0.0f ||
+        plan.passes[2].effect.color_matrix[3] != 6.0f ||
+        plan.passes[2].effect.color_matrix[7] != 0.35f ||
+        plan.passes[3].kind != RenderPassKind::Effect ||
+        plan.passes[3].input_target.value != plan.passes[2].target.value ||
+        plan.passes[3].effect.color_matrix[1] != 1.0f ||
+        plan.passes[3].effect.color_matrix[3] != 6.0f ||
+        plan.passes[4].commands.size() != 2 ||
+        plan.passes[4].commands[0].resource.value != plan.passes[3].target.value ||
+        plan.passes[4].commands[1].resource.value != drop_shadow_layer.target.value ||
+        plan.passes[4].commands[0].x != 4.0f || plan.passes[4].commands[0].y != 20.0f ||
+        plan.passes[4].commands[0].width != 92.0f ||
+        plan.passes[4].commands[0].height != 52.0f)
+        return 27;
+    if (!schedule_render_plan(plan, pass_order, &schedule_error) || pass_order.size() != 5 ||
+        pass_order[0] != 0 || pass_order[1] != 1 || pass_order[2] != 2 || pass_order[3] != 3 ||
+        pass_order[4] != 4)
+        return 28;
+
     DisplayList duplicate_surface;
     const auto external = make_resource_id(ResourceKind::RenderTarget, 1, 12);
     if (!duplicate_surface.draw_render_target(external, 0.0f, 0.0f, 10.0f, 10.0f) ||

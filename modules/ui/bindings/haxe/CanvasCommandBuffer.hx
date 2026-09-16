@@ -4,6 +4,7 @@ import CompositeMode;
 import LineCap;
 import LineJoin;
 import nativekit.ui.style.BlurEffect;
+import nativekit.ui.style.DropShadowEffect;
 import nativekit.ui.style.EffectChain;
 import nativekit.ui.style.EffectKind;
 
@@ -73,6 +74,8 @@ class CanvasCommandBuffer {
 		var hasEffects = effects != null && effectValue.effects.length > 0;
 		var blurOnly = hasEffects && effectValue.effects.length == 1 &&
 			effectValue.effects[0].kind == EffectKind.Blur;
+		var dropShadowOnly = hasEffects && effectValue.effects.length == 1 &&
+			effectValue.effects[0].kind == EffectKind.DropShadow;
 		var matrix:Array<Float> = null;
 		if (hasEffects) {
 			if (blurOnly) {
@@ -81,6 +84,18 @@ class CanvasCommandBuffer {
 					matrix.push(0.0);
 				var blur:BlurEffect = cast effectValue.effects[0];
 				matrix[0] = blur.sigma;
+			} else if (dropShadowOnly) {
+				matrix = [];
+				for (index in 0...20)
+					matrix.push(0.0);
+				var shadow:DropShadowEffect = cast effectValue.effects[0];
+				matrix[0] = shadow.sigma;
+				matrix[2] = shadow.offsetX;
+				matrix[3] = shadow.offsetY;
+				matrix[4] = shadow.color.red;
+				matrix[5] = shadow.color.green;
+				matrix[6] = shadow.color.blue;
+				matrix[7] = shadow.color.alpha;
 			} else
 				matrix = effectValue.colorMatrix();
 		}
@@ -118,7 +133,7 @@ class CanvasCommandBuffer {
 			float(bounds.height);
 			word(3); // NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS.
 		}
-		word(blurOnly ? 2 : 1); // NKUI_EFFECT_BLUR or NKUI_EFFECT_COLOR_MATRIX.
+		word(dropShadowOnly ? 3 : blurOnly ? 2 : 1);
 		for (value in matrix)
 			float(value);
 	}

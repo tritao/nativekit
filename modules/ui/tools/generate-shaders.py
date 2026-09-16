@@ -21,7 +21,7 @@ FAMILIES = {
     "path": ("path",),
     "text": ("text_alpha", "text_sdf", "text_color"),
     "composite": ("composite",),
-    "effect": ("effect", "blur"),
+    "effect": ("effect", "blur", "drop_shadow"),
     "surface_mesh": ("surface_mesh",),
 }
 SLANG_EXTENSIONS = {

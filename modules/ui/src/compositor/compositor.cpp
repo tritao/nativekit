@@ -261,17 +261,32 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             LayerCommandValues value{};
             if (!read_layer(record, header.size, value))
                 return fail(error, index, "invalid layer begin");
-            if (value.has_bounds && value.has_effect && value.effect.kind == EffectKind::Blur) {
-                const float expansion = value.effect.color_matrix[0] * 3.0f;
-                if (!std::isfinite(expansion) || !std::isfinite(value.bounds.x - expansion) ||
-                    !std::isfinite(value.bounds.y - expansion) ||
-                    !std::isfinite(value.bounds.width + expansion * 2.0f) ||
-                    !std::isfinite(value.bounds.height + expansion * 2.0f))
-                    return fail(error, index, "blur bounds overflow");
-                value.bounds.x -= expansion;
-                value.bounds.y -= expansion;
-                value.bounds.width += expansion * 2.0f;
-                value.bounds.height += expansion * 2.0f;
+            if (value.has_bounds && value.has_effect &&
+                (value.effect.kind == EffectKind::Blur ||
+                 value.effect.kind == EffectKind::DropShadow)) {
+                const float sigma = value.effect.color_matrix[0];
+                const float spread = sigma * 3.0f;
+                float left = spread;
+                float top = spread;
+                float right = spread;
+                float bottom = spread;
+                if (value.effect.kind == EffectKind::DropShadow) {
+                    left = std::max(0.0f, spread - value.effect.color_matrix[2]);
+                    top = std::max(0.0f, spread - value.effect.color_matrix[3]);
+                    right = std::max(0.0f, spread + value.effect.color_matrix[2]);
+                    bottom = std::max(0.0f, spread + value.effect.color_matrix[3]);
+                }
+                if (!std::isfinite(spread) || !std::isfinite(left) || !std::isfinite(top) ||
+                    !std::isfinite(right) || !std::isfinite(bottom) ||
+                    !std::isfinite(value.bounds.x - left) ||
+                    !std::isfinite(value.bounds.y - top) ||
+                    !std::isfinite(value.bounds.width + left + right) ||
+                    !std::isfinite(value.bounds.height + top + bottom))
+                    return fail(error, index, "effect bounds overflow");
+                value.bounds.x -= left;
+                value.bounds.y -= top;
+                value.bounds.width += left + right;
+                value.bounds.height += top + bottom;
             }
             const bool isolated = value.opacity < 1.0f || (value.flags & LayerIsolated) != 0 ||
                                   value.has_effect;
@@ -320,7 +335,8 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                         effect_pass.effect = effect;
                         plan.passes.push_back(std::move(effect_pass));
                     };
-                    if (layer.effect.kind == EffectKind::Blur) {
+                    if (layer.effect.kind == EffectKind::Blur ||
+                        layer.effect.kind == EffectKind::DropShadow) {
                         const ResourceId horizontal_target = allocate_transient_target();
                         const ResourceId vertical_target = allocate_transient_target();
                         EffectDescriptor horizontal = layer.effect;
@@ -337,19 +353,27 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                     }
                 }
                 pass = &continue_pass(plan, current_target);
-                pass->commands.push_back({RenderCommandKind::CompositeTarget, composite_target,
-                                          layer.has_bounds ? layer.bounds.x - current_origin_x : 0.0f,
-                                          layer.has_bounds ? layer.bounds.y - current_origin_y : 0.0f,
-                                          layer.has_bounds ? layer.bounds.width : 0.0f,
-                                          layer.has_bounds ? layer.bounds.height : 0.0f,
-                                          layer.opacity});
-                pass->commands.back().composite = layer.mode;
-                pass->commands.back().has_scissor = state.has_scissor;
-                pass->commands.back().scissor_x = state.x - current_origin_x;
-                pass->commands.back().scissor_y = state.y - current_origin_y;
-                pass->commands.back().scissor_width = state.width;
-                pass->commands.back().scissor_height = state.height;
-                add_dependency(plan, composite_target, current_target);
+                const auto append_composite = [&](ResourceId target) {
+                    pass->commands.push_back(
+                        {RenderCommandKind::CompositeTarget, target,
+                         layer.has_bounds ? layer.bounds.x - current_origin_x : 0.0f,
+                         layer.has_bounds ? layer.bounds.y - current_origin_y : 0.0f,
+                         layer.has_bounds ? layer.bounds.width : 0.0f,
+                         layer.has_bounds ? layer.bounds.height : 0.0f, layer.opacity});
+                    pass->commands.back().composite = layer.mode;
+                    pass->commands.back().has_scissor = state.has_scissor;
+                    pass->commands.back().scissor_x = state.x - current_origin_x;
+                    pass->commands.back().scissor_y = state.y - current_origin_y;
+                    pass->commands.back().scissor_width = state.width;
+                    pass->commands.back().scissor_height = state.height;
+                    add_dependency(plan, target, current_target);
+                };
+                if (layer.has_effect && layer.effect.kind == EffectKind::DropShadow) {
+                    append_composite(composite_target);
+                    append_composite(layer.layer_target);
+                } else {
+                    append_composite(composite_target);
+                }
             }
             break;
         }

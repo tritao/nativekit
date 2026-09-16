@@ -1620,6 +1620,16 @@ class FrameworkSmoke {
 			return 249;
 		blurList.dispose();
 		effectCanvas.reset();
+		var dropShadowList = DisplayList.create();
+		effectCanvas.withLayer(1.0, function(canvas) {
+			canvas.fillRect(new Rect(4.0, 6.0, 24.0, 18.0), Color.rgba(0.2, 0.4, 0.8, 1.0));
+		}, CompositeMode.SourceOver, new Rect(4.0, 6.0, 24.0, 18.0),
+			EffectChain.of([dropShadow]));
+		effectCanvas.update(dropShadowList);
+		if (dropShadowList.info().commandCount != 4)
+			return 250;
+		dropShadowList.dispose();
+		effectCanvas.reset();
 		var responsiveSheet = new StyleSheet("ResponsiveSheet");
 		responsiveSheet.rule(StyleSelector.widget("button"),
 			[StyleValue.paddingSymmetric(12.0, 8.0)]);

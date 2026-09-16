@@ -129,12 +129,22 @@ std::array<float, 6> device_transform(const std::array<float, 6> &transform, flo
 }
 
 bool scale_effect_for_device(EffectDescriptor &effect, float pixel_scale) {
-    if (effect.kind != EffectKind::Blur)
+    if (effect.kind != EffectKind::Blur && effect.kind != EffectKind::DropShadow)
         return true;
     const double sigma = static_cast<double>(effect.color_matrix[0]) * pixel_scale;
     if (!std::isfinite(sigma) || sigma > std::numeric_limits<float>::max())
         return false;
     effect.color_matrix[0] = static_cast<float>(sigma);
+    if (effect.kind == EffectKind::DropShadow) {
+        const double offset_x = static_cast<double>(effect.color_matrix[2]) * pixel_scale;
+        const double offset_y = static_cast<double>(effect.color_matrix[3]) * pixel_scale;
+        if (!std::isfinite(offset_x) || !std::isfinite(offset_y) ||
+            std::abs(offset_x) > std::numeric_limits<float>::max() ||
+            std::abs(offset_y) > std::numeric_limits<float>::max())
+            return false;
+        effect.color_matrix[2] = static_cast<float>(offset_x);
+        effect.color_matrix[3] = static_cast<float>(offset_y);
+    }
     return true;
 }
 

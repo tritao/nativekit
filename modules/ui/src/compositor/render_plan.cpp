@@ -26,15 +26,20 @@ bool valid_descriptor(const RenderTargetDescriptor &descriptor) {
 }
 
 bool valid_effect_descriptor(const EffectDescriptor &effect) {
-    if (effect.kind != EffectKind::ColorMatrix && effect.kind != EffectKind::Blur)
+    if (effect.kind != EffectKind::ColorMatrix && effect.kind != EffectKind::Blur &&
+        effect.kind != EffectKind::DropShadow)
         return false;
     for (float value : effect.color_matrix)
         if (!std::isfinite(value))
             return false;
-    if (effect.kind == EffectKind::Blur &&
+    if ((effect.kind == EffectKind::Blur || effect.kind == EffectKind::DropShadow) &&
         (effect.color_matrix[0] < 0.0f ||
          (effect.color_matrix[1] != 0.0f && effect.color_matrix[1] != 1.0f)))
         return false;
+    if (effect.kind == EffectKind::DropShadow)
+        for (size_t index = 4; index < 8; ++index)
+            if (effect.color_matrix[index] < 0.0f || effect.color_matrix[index] > 1.0f)
+                return false;
     return true;
 }
 

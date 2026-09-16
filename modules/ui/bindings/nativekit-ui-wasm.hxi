@@ -203,6 +203,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Apply a separable Gaussian blur; effect_matrix[0] stores sigma.
 		 */
 		NKUI_EFFECT_BLUR = 2;
+		/**
+		 * Apply a subtree alpha drop shadow; values 0..7 store sigma, axis, offset X/Y, and RGBA.
+		 */
+		NKUI_EFFECT_DROP_SHADOW = 3;
 	}
 	/**
 	 * Font role used when adding a font file to a collection.
@@ -984,7 +988,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 */
 		effect_kind: nkui_effect_kind @offset(36);
 		/**
-		 * Row-major 4x5 color matrix, or blur parameters for NKUI_EFFECT_BLUR.
+		 * Row-major 4x5 color matrix, or parameters for blur/drop-shadow effects.
 		 */
 		effect_matrix: array<f32, 20> @offset(40);
 	}

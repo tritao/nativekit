@@ -264,7 +264,9 @@ enum NK_ENUM(nkui_effect_kind) {
     /** Apply the supplied row-major 4x5 color matrix. */
     NKUI_EFFECT_COLOR_MATRIX = 1,
     /** Apply a separable Gaussian blur; effect_matrix[0] stores sigma. */
-    NKUI_EFFECT_BLUR = 2
+    NKUI_EFFECT_BLUR = 2,
+    /** Apply a subtree alpha drop shadow; values 0..7 store sigma, axis, offset X/Y, and RGBA. */
+    NKUI_EFFECT_DROP_SHADOW = 3
 };
 
 /** Fixed header present at the start of every display-list command record. */
@@ -429,7 +431,7 @@ typedef struct nkui_layer_effect_command {
     nkui_layer_flags flags;
     /** Effect kind carried by this command. */
     nkui_effect_kind effect_kind;
-    /** Row-major 4x5 color matrix, or blur parameters for NKUI_EFFECT_BLUR. */
+    /** Row-major 4x5 color matrix, or parameters for blur/drop-shadow effects. */
     float effect_matrix[20];
 } nkui_layer_effect_command;
 

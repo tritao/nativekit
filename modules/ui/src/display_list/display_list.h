@@ -56,6 +56,7 @@ enum class EffectKind : uint32_t {
     None = 0,
     ColorMatrix = 1,
     Blur = 2,
+    DropShadow = 3,
 };
 
 constexpr size_t kColorMatrixComponents = 20;
@@ -64,7 +65,8 @@ constexpr size_t kColorMatrixComponents = 20;
 struct EffectDescriptor {
     EffectKind kind = EffectKind::None;
     // ColorMatrix uses all 20 values as a row-major 4x5 matrix. Blur uses
-    // value 0 for sigma and value 1 internally for the pass axis.
+    // value 0 for sigma and value 1 internally for the pass axis. DropShadow
+    // uses values 0..7 for sigma, axis, offset X/Y, and RGBA color.
     std::array<float, kColorMatrixComponents> color_matrix{};
 };
 

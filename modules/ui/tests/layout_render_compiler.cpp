@@ -381,8 +381,10 @@ int main() {
     scaled_effect_pass.target_descriptor.logical_height = 10.0f;
     scaled_effect_pass.kind = RenderPassKind::Effect;
     scaled_effect_pass.input_target = scaled_effect_input;
-    scaled_effect_pass.effect.kind = EffectKind::Blur;
+    scaled_effect_pass.effect.kind = EffectKind::DropShadow;
     scaled_effect_pass.effect.color_matrix[0] = 4.0f;
+    scaled_effect_pass.effect.color_matrix[2] = 2.0f;
+    scaled_effect_pass.effect.color_matrix[3] = -3.0f;
     scaled_effect_plan.passes.push_back(std::move(scaled_effect_pass));
     scaled_effect_plan.dependencies.push_back({scaled_effect_output, main_target});
     LayoutRenderCompiler::CustomPaintPlans scaled_effect_paints{{2, &scaled_effect_plan}};
@@ -394,7 +396,9 @@ int main() {
     const auto &scaled_effect = scaled_effect_frame.plan().passes[2];
     if (scaled_effect.target_descriptor.width != 30 ||
         scaled_effect.target_descriptor.height != 15 ||
-        scaled_effect.effect.color_matrix[0] != 6.0f)
+        scaled_effect.effect.color_matrix[0] != 6.0f ||
+        scaled_effect.effect.color_matrix[2] != 3.0f ||
+        scaled_effect.effect.color_matrix[3] != -4.5f)
         return 27;
 
     RecordingRenderer backend;

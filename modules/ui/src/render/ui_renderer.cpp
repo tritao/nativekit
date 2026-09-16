@@ -106,6 +106,7 @@ struct UiRendererImpl::State {
     nkgpu_shader composite_shader{};
     nkgpu_shader effect_shader{};
     nkgpu_shader blur_shader{};
+    nkgpu_shader drop_shadow_shader{};
     nkgpu_shader surface_mesh_shader{};
     nkgpu_pipeline solid_pipeline{};
     nkgpu_pipeline fill_stencil_pipeline{};
@@ -120,6 +121,7 @@ struct UiRendererImpl::State {
     nkgpu_pipeline composite_pipeline{};
     nkgpu_pipeline effect_pipeline{};
     nkgpu_pipeline blur_pipeline{};
+    nkgpu_pipeline drop_shadow_pipeline{};
     nkgpu_pipeline surface_mesh_pipeline{};
     nkgpu_sampler sampler{};
     nkgpu_sampler glyph_sampler{};
@@ -170,6 +172,12 @@ struct BlurUniforms {
 };
 
 static_assert(sizeof(BlurUniforms) == sizeof(float) * 4);
+
+struct DropShadowUniforms {
+    std::array<float, 12> value;
+};
+
+static_assert(sizeof(DropShadowUniforms) == sizeof(float) * 12);
 
 struct SolidVertex {
     float x;
@@ -625,6 +633,7 @@ enum class UiShaderKind {
     Composite,
     Effect,
     Blur,
+    DropShadow,
     SurfaceMesh
 };
 
@@ -717,6 +726,16 @@ ShaderSources shader_sources(nkgpu_backend backend, UiShaderKind kind) {
                     NKGPU_SHADERLANGUAGE_MSL};
         return gl(ui_shader_blur_glsl410_vertex, ui_shader_blur_glsl410_fragment,
                   ui_shader_blur_glsl300es_vertex, ui_shader_blur_glsl300es_fragment);
+    case UiShaderKind::DropShadow:
+        if (d3d11)
+            return {ui_shader_drop_shadow_hlsl5_vertex, ui_shader_drop_shadow_hlsl5_fragment,
+                    NKGPU_SHADERLANGUAGE_HLSL5};
+        if (metal)
+            return {ui_shader_drop_shadow_metal_macos_vertex,
+                    ui_shader_drop_shadow_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
+        return gl(ui_shader_drop_shadow_glsl410_vertex, ui_shader_drop_shadow_glsl410_fragment,
+                  ui_shader_drop_shadow_glsl300es_vertex,
+                  ui_shader_drop_shadow_glsl300es_fragment);
     case UiShaderKind::SurfaceMesh:
         if (d3d11)
             return {ui_shader_surface_mesh_hlsl5_vertex, ui_shader_surface_mesh_hlsl5_fragment,
@@ -754,6 +773,7 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
     case UiShaderKind::Composite:
     case UiShaderKind::Effect:
     case UiShaderKind::Blur:
+    case UiShaderKind::DropShadow:
         attributes[attribute_count++] = "position";
         attributes[attribute_count++] = "uv0";
         break;
@@ -815,6 +835,12 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
         fragment_size = sizeof(BlurUniforms);
         textured = true;
         break;
+    case UiShaderKind::DropShadow:
+        vertex_block = "drop_shadow_vs_params";
+        fragment_block = "drop_shadow_fs_params";
+        fragment_size = sizeof(DropShadowUniforms);
+        textured = true;
+        break;
     case UiShaderKind::SurfaceMesh:
         vertex_block = "surface_mesh_vs_params";
         vertex_size = 64;
@@ -831,7 +857,9 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
          !add_uniform(state, builder, 1, 0, fragment_block, NKGPU_UNIFORMTYPE_FLOAT4,
                       kind == UiShaderKind::Path
                           ? kPathShaderVec4Count
-                          : kind == UiShaderKind::Effect ? 5 : 1)))
+                          : kind == UiShaderKind::Effect ? 5
+                          : kind == UiShaderKind::DropShadow ? 3
+                                                            : 1)))
         return false;
     if (textured && !gpu_result(state, nkgpu_shader_texture(builder, 0, 0,
                                                             NKGPU_SHADERSTAGE_FRAGMENT, "tex_smp")))
@@ -931,6 +959,7 @@ bool UiRendererImpl::initialize() {
         !create_shader(*state_, UiShaderKind::Composite, state_->composite_shader) ||
         !create_shader(*state_, UiShaderKind::Effect, state_->effect_shader) ||
         !create_shader(*state_, UiShaderKind::Blur, state_->blur_shader) ||
+        !create_shader(*state_, UiShaderKind::DropShadow, state_->drop_shadow_shader) ||
         !create_shader(*state_, UiShaderKind::SurfaceMesh, state_->surface_mesh_shader))
         return false;
 
@@ -1041,6 +1070,10 @@ bool UiRendererImpl::initialize() {
                          {{0, offsetof(TextureVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
                           {1, offsetof(TextureVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
                          color_options, state_->blur_pipeline) ||
+        !create_pipeline(*state_, state_->drop_shadow_shader, sizeof(TextureVertex),
+                         {{0, offsetof(TextureVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
+                          {1, offsetof(TextureVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
+                         color_options, state_->drop_shadow_pipeline) ||
         !create_pipeline(*state_, state_->surface_mesh_shader, sizeof(SurfaceMeshVertex),
                          {{0, offsetof(SurfaceMeshVertex, x), NKGPU_VERTEXFORMAT_FLOAT3},
                           {1, offsetof(SurfaceMeshVertex, red), NKGPU_VERTEXFORMAT_UBYTE4N}},
@@ -1075,7 +1108,7 @@ bool UiRendererImpl::initialize() {
         !create_stream(1024 * 1024, NKGPU_BUFFER_VERTEX, state_->surface_mesh_vertices) ||
         !create_stream(4 * 1024 * 1024, NKGPU_BUFFER_INDEX, state_->indices))
         return false;
-    state_->stats.gpu_resources = 34;
+    state_->stats.gpu_resources = 36;
     state_->initialized = true;
     return true;
 }
@@ -1480,15 +1513,20 @@ bool draw_composite(UiRendererImpl::State &state, float x, float y, float width,
 
 bool UiRendererImpl::applyEffect(ResourceId source, const EffectDescriptor &effect) {
     if (!state_->in_pass ||
-        (effect.kind != EffectKind::ColorMatrix && effect.kind != EffectKind::Blur))
+        (effect.kind != EffectKind::ColorMatrix && effect.kind != EffectKind::Blur &&
+         effect.kind != EffectKind::DropShadow))
         return fail(*state_, "unsupported UI effect");
     for (const float value : effect.color_matrix)
         if (!std::isfinite(value))
             return fail(*state_, "UI effect parameters are not finite");
-    if (effect.kind == EffectKind::Blur &&
+    if ((effect.kind == EffectKind::Blur || effect.kind == EffectKind::DropShadow) &&
         (effect.color_matrix[0] < 0.0f ||
          (effect.color_matrix[1] != 0.0f && effect.color_matrix[1] != 1.0f)))
         return fail(*state_, "invalid blur effect parameters");
+    if (effect.kind == EffectKind::DropShadow)
+        for (size_t index = 4; index < 8; ++index)
+            if (effect.color_matrix[index] < 0.0f || effect.color_matrix[index] > 1.0f)
+                return fail(*state_, "invalid drop-shadow color");
     const auto found = state_->targets.find(source.value);
     if (found == state_->targets.end() || !found->second.image.id)
         return fail(*state_, "effect input target was not rendered");
@@ -1508,6 +1546,16 @@ bool UiRendererImpl::applyEffect(ResourceId source, const EffectDescriptor &effe
         const BlurUniforms uniforms{{effect.color_matrix[0], effect.color_matrix[1],
                                      1.0f / width, 1.0f / height}};
         return draw_mesh(*state_, state_->blur_pipeline, vertices, indices, &uniforms,
+                         sizeof(uniforms), {}, state_->surface_sampler,
+                         state_->composite_vertices, found->second.image);
+    }
+    if (effect.kind == EffectKind::DropShadow) {
+        const DropShadowUniforms uniforms{{effect.color_matrix[0], effect.color_matrix[1],
+                                           effect.color_matrix[2], effect.color_matrix[3],
+                                           effect.color_matrix[4], effect.color_matrix[5],
+                                           effect.color_matrix[6], effect.color_matrix[7],
+                                           1.0f / width, 1.0f / height, 0.0f, 0.0f}};
+        return draw_mesh(*state_, state_->drop_shadow_pipeline, vertices, indices, &uniforms,
                          sizeof(uniforms), {}, state_->surface_sampler,
                          state_->composite_vertices, found->second.image);
     }
