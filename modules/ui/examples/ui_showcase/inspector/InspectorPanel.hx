@@ -163,7 +163,7 @@ class InspectorPanel {
 						'invalidation: layout ${metrics.layoutInvalidatedNodes} · text ${metrics.textLayoutInvalidatedNodes} · ' +
 						'paint ${metrics.paintInvalidatedNodes} · composite ${metrics.compositeInvalidatedNodes} · ' +
 						'semantics ${metrics.semanticsInvalidatedNodes}\n' +
-						'paint work: ${metrics.paintedNodes} rebuilt · ${metrics.paintSkippedNodes} skipped\n' +
+						'paint work: ${metrics.paintedNodes} rebuilt · ${metrics.paintSkippedNodes} skipped · ${metrics.emptyPaintNodes} empty\n' +
 						'cache: ${metrics.styleCacheHits} hits · ${metrics.styleCacheMisses} misses · ' +
 						'${percent(metrics.cacheHitRate())} hit rate\n' +
 						'entries: ${metrics.cachedStyleCount}\n' +

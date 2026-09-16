@@ -277,10 +277,15 @@ class UiContext {
 		var painted = new Map<Int, Bool>();
 		var paintedNodes = 0;
 		var paintSkippedNodes = 0;
+		var emptyPaintNodes = 0;
 		diagnosticStage = 22;
 		root.walk(function(node) {
-			if (!node.hasPaintHandler() || node.resolved == null ||
-				node.resolved.width <= 0.0 || node.resolved.height <= 0.0 ||
+			if (!node.hasPaintHandler() || node.resolved == null)
+				return;
+			if (node.resolved.visible &&
+				(node.resolved.width <= 0.0 || node.resolved.height <= 0.0))
+				emptyPaintNodes++;
+			if (node.resolved.width <= 0.0 || node.resolved.height <= 0.0 ||
 				node.resolved.clipBounds.width <= 0.0 || node.resolved.clipBounds.height <= 0.0)
 				return;
 			var nodeId = node.id.value;
@@ -343,7 +348,8 @@ class UiContext {
 		diagnosticStage = 24;
 		session.render(renderer, surface, frame);
 		if (lastFrameMetrics != null)
-			lastFrameMetrics.completeRender(Sys.time() - renderStartedAt, paintedNodes, paintSkippedNodes);
+			lastFrameMetrics.completeRender(Sys.time() - renderStartedAt, paintedNodes,
+				paintSkippedNodes, emptyPaintNodes);
 		diagnosticStage = 0;
 	}
 

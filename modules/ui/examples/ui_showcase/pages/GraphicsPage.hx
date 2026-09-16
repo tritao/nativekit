@@ -149,7 +149,7 @@ class GraphicsPage {
 
 	static function previewStyle(explorer:UiExplorer):LayoutStyle {
 		var style = new LayoutStyle();
-		style.width = LayoutAxis.percent(1.0);
+		style.width = LayoutAxis.stretch();
 		style.height = LayoutAxis.fixed(92.0);
 		style.background = explorer.state.lightTheme
 			? UiExplorer.color(0.93, 0.95, 0.98) : UiExplorer.color(0.07, 0.10, 0.16);

@@ -30,4 +30,8 @@ class LayoutAxis {
 
 	public static function percent(value:Float):LayoutAxis
 		return new LayoutAxis(LayoutSizing.Percent, value);
+
+	/** Fills the parent's available size on this axis without consuming main-axis grow space. */
+	public static function stretch():LayoutAxis
+		return percent(1.0);
 }

@@ -19,6 +19,8 @@ class UiFrameMetrics {
 	public final submitSeconds:Float;
 	public var paintedNodes(default, null):Int;
 	public var paintSkippedNodes(default, null):Int;
+	/** Paint-capable visible nodes skipped because either resolved axis was empty. */
+	public var emptyPaintNodes(default, null):Int;
 	public var reusedSubmission(default, null):Bool;
 	public var renderSeconds(default, null):Float;
 	public var totalSeconds(default, null):Float;
@@ -47,15 +49,18 @@ class UiFrameMetrics {
 		this.submitSeconds = submitSeconds;
 		paintedNodes = 0;
 		paintSkippedNodes = 0;
+		emptyPaintNodes = 0;
 		reusedSubmission = false;
 		renderSeconds = 0.0;
 		totalSeconds = submitSeconds;
 	}
 
 	/** Completes the frame record once native paint submission has finished. */
-	public function completeRender(seconds:Float, paintedNodes:Int = 0, paintSkippedNodes:Int = 0):Void {
+	public function completeRender(seconds:Float, paintedNodes:Int = 0,
+			paintSkippedNodes:Int = 0, emptyPaintNodes:Int = 0):Void {
 		this.paintedNodes = paintedNodes < 0 ? 0 : paintedNodes;
 		this.paintSkippedNodes = paintSkippedNodes < 0 ? 0 : paintSkippedNodes;
+		this.emptyPaintNodes = emptyPaintNodes < 0 ? 0 : emptyPaintNodes;
 		renderSeconds = seconds < 0.0 ? 0.0 : seconds;
 		totalSeconds = submitSeconds + renderSeconds;
 	}

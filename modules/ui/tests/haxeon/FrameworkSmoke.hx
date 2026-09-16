@@ -689,7 +689,7 @@ class FrameworkSmoke {
 		if (canvasEvents != 1 || canvasSemantics.role != AccessibilityRole.Group)
 			return 66;
 		var responsiveCanvasStyle = new LayoutStyle();
-		responsiveCanvasStyle.width = LayoutAxis.percent(1.0);
+		responsiveCanvasStyle.width = LayoutAxis.stretch();
 		responsiveCanvasStyle.height = LayoutAxis.fixed(48.0);
 		var responsiveCanvas = new CanvasView("responsive-canvas", function(canvas, geometry) {
 			canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, geometry.height),
