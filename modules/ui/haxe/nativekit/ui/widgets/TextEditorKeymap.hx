@@ -7,12 +7,17 @@ import nativekit.ui.core.UiModifier;
 class TextEditorKeymap {
 	public static function commandForKey(key:Int, modifiers:Int, multiline:Bool,
 			macStyle:Bool):Null<TextEditorCommand> {
+		var shift = (modifiers & UiModifier.Shift) != 0;
 		var control = (modifiers & UiModifier.Control) != 0;
 		var alt = (modifiers & UiModifier.Alt) != 0;
 		var superKey = (modifiers & UiModifier.Super) != 0;
 		var commandModifier = control || superKey;
 		var wordModifier = macStyle ? (alt && !control && !superKey) : control;
 
+		if (commandModifier && key == UiKey.Z)
+			return shift ? TextEditorCommand.Redo : TextEditorCommand.Undo;
+		if (commandModifier && key == UiKey.Y)
+			return TextEditorCommand.Redo;
 		if (commandModifier && key == UiKey.A)
 			return TextEditorCommand.SelectAll;
 		if (commandModifier && key == UiKey.C)

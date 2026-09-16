@@ -52,6 +52,9 @@ class TextEditorState {
 	var compositionRestoreSelectionStart:CodepointOffset;
 	var compositionRestoreSelectionEnd:CodepointOffset;
 	var hasCompositionRestoreState:Bool;
+	var undoStack:Array<TextEditorHistoryEntry>;
+	var redoStack:Array<TextEditorHistoryEntry>;
+	var compositionHistoryBefore:Null<TextEditorSnapshot>;
 	/** Full-document map reused by every transaction and platform conversion. */
 	var documentOffsetMap:TextOffsetMap;
 	var activeParagraphOffsetMap:TextOffsetMap;
@@ -106,6 +109,9 @@ class TextEditorState {
 		compositionRestoreSelectionStart = -1;
 		compositionRestoreSelectionEnd = -1;
 		hasCompositionRestoreState = false;
+		undoStack = [];
+		redoStack = [];
+		compositionHistoryBefore = null;
 		disposed = false;
 	}
 
@@ -115,7 +121,10 @@ class TextEditorState {
 		if (next == text)
 			return false;
 		cancelPointerClick();
-		return replaceRange(0, documentLength(), next);
+		var changed = replaceRange(0, documentLength(), next);
+		if (changed)
+			clearHistory();
+		return changed;
 	}
 
 	/** Returns the cached coordinate map for the complete document. */
@@ -196,10 +205,13 @@ class TextEditorState {
 	}
 
 	/** Inserts committed text over the current selection. */
-	public function insert(value:String):Bool {
+	public function insert(value:String,
+			historyKind:TextEditorHistoryKind = TextEditorHistoryKind.Typing):Bool {
 		if (value == null || value.length == 0)
 			return false;
-		return replaceRange(selectionStart, selectionEnd, value);
+		if (historyKind == TextEditorHistoryKind.Typing && value.indexOf("\n") >= 0)
+			historyKind = TextEditorHistoryKind.Generic;
+		return replaceRange(selectionStart, selectionEnd, value, historyKind);
 	}
 
 	/**
@@ -207,7 +219,8 @@ class TextEditorState {
 	 * inserted text. This is the convenience operation for a committed edit;
 	 * all document mutation still goes through applyTransaction().
 	 */
-	public function replaceRange(start:Int, end:Int, value:Null<String>):Bool {
+	public function replaceRange(start:Int, end:Int, value:Null<String>,
+			historyKind:TextEditorHistoryKind = TextEditorHistoryKind.Generic):Bool {
 		ensureLive();
 		var count = documentLength();
 		var first = clamp(start, 0, count);
@@ -219,16 +232,37 @@ class TextEditorState {
 		}
 		cancelPointerClick();
 		var caret = first + TextOffsetMap.countCodepoints(value == null ? "" : value);
-		return applyTransaction(new EditTransaction(first, last, value, caret, caret));
+		return applyTransaction(new EditTransaction(first, last, value, caret, caret,
+			false, -1, -1, 0, null, historyKind));
 	}
 
 	/** Compatibility alias for callers using the pre-transaction name. */
-	public function replace(start:Int, end:Int, value:Null<String>):Bool
-		return replaceRange(start, end, value);
+	public function replace(start:Int, end:Int, value:Null<String>,
+			historyKind:TextEditorHistoryKind = TextEditorHistoryKind.Generic):Bool
+		return replaceRange(start, end, value, historyKind);
 
 	/** Applies one atomic editor transaction. */
 	public function applyTransaction(transaction:EditTransaction):Bool {
-		return applyTransactionInternal(transaction, true);
+		ensureLive();
+		if (transaction == null)
+			return false;
+		var before = snapshot();
+		var beforeComposition = hasActiveComposition();
+		var changed = applyTransactionInternal(transaction, true);
+		if (!changed)
+			return false;
+		var after = snapshot();
+		if (transaction.hasComposition) {
+			if (compositionHistoryBefore == null)
+				compositionHistoryBefore = before;
+		} else if (beforeComposition) {
+			var compositionBefore = compositionHistoryBefore == null ? before : compositionHistoryBefore;
+			recordHistory(compositionBefore, after, TextEditorHistoryKind.Composition);
+			compositionHistoryBefore = null;
+		} else if (before.text != after.text) {
+			recordHistory(before, after, transaction.historyKind);
+		}
+		return true;
 	}
 
 	/** Applies one transactional NativeKit composition/edit update. */
@@ -254,8 +288,8 @@ class TextEditorState {
 					selectionStart, selectionEnd, hasValidComposition(edit.compositionStart,
 						edit.compositionEnd), edit.compositionStart, edit.compositionEnd), false);
 			case TextEditAction.FinishComposition:
-				return applyTransactionInternal(new EditTransaction(selectionStart, selectionStart, "",
-					edit.selectionStart, edit.selectionEnd), false);
+				return applyTransaction(new EditTransaction(selectionStart, selectionStart, "",
+					edit.selectionStart, edit.selectionEnd));
 			case _:
 				return false;
 		}
@@ -278,8 +312,8 @@ class TextEditorState {
 
 	/** Commits the current composition while keeping its document text. */
 	public function commitComposition():Bool {
-		return applyTransactionInternal(new EditTransaction(selectionStart, selectionStart, "",
-			selectionStart, selectionEnd), false);
+		return applyTransaction(new EditTransaction(selectionStart, selectionStart, "",
+			selectionStart, selectionEnd));
 	}
 
 	/** Cancels the current composition and restores its pre-composition state when available. */
@@ -289,9 +323,11 @@ class TextEditorState {
 			return false;
 		if (!hasCompositionRestoreState)
 			return commitComposition();
-		return applyTransactionInternal(new EditTransaction(compositionStart, compositionEnd,
+		var changed = applyTransactionInternal(new EditTransaction(compositionStart, compositionEnd,
 			compositionRestoreText, compositionRestoreSelectionStart,
 			compositionRestoreSelectionEnd), false);
+		compositionHistoryBefore = null;
+		return changed;
 	}
 
 	/** Returns the active composition range, or null when no composition is active. */
@@ -304,6 +340,50 @@ class TextEditorState {
 	/** Returns a defensive copy of the active composition clause metadata. */
 	public function queryCompositionAttributes():Array<TextCompositionSpan> {
 		return compositionAttributes == null ? [] : compositionAttributes.copy();
+	}
+
+	/** Returns whether at least one document edit can be undone. */
+	public function canUndo():Bool
+		return undoStack.length > 0;
+
+	/** Returns whether an undone document edit can be reapplied. */
+	public function canRedo():Bool
+		return redoStack.length > 0;
+
+	/** Drops history after an external document replacement or application reset. */
+	public function clearHistory():Void {
+		ensureLive();
+		undoStack = [];
+		redoStack = [];
+		compositionHistoryBefore = null;
+	}
+
+	/** Undoes one editor-owned document transaction. */
+	public function undo():Bool {
+		ensureLive();
+		if (hasActiveComposition())
+			return cancelComposition();
+		if (undoStack.length == 0)
+			return false;
+		var entry = undoStack.pop();
+		var changed = restoreSnapshot(entry.before);
+		if (changed)
+			redoStack.push(entry);
+		return changed;
+	}
+
+	/** Reapplies one previously undone editor-owned transaction. */
+	public function redo():Bool {
+		ensureLive();
+		if (hasActiveComposition())
+			return cancelComposition();
+		if (redoStack.length == 0)
+			return false;
+		var entry = redoStack.pop();
+		var changed = restoreSnapshot(entry.after);
+		if (changed)
+			undoStack.push(entry);
+		return changed;
 	}
 
 	/**
@@ -530,7 +610,9 @@ class TextEditorState {
 			case TextEditorCommand.DeleteWordForward: deleteWord(1, macStyle);
 			case TextEditorCommand.SelectAll: selectAll();
 			case TextEditorCommand.CutSelection: replace(selectionStart, selectionEnd, "");
-			case TextEditorCommand.InsertNewline: insert("\n");
+			case TextEditorCommand.InsertNewline: insert("\n", TextEditorHistoryKind.Generic);
+			case TextEditorCommand.Undo: undo();
+			case TextEditorCommand.Redo: redo();
 			case TextEditorCommand.CopySelection | TextEditorCommand.Paste |
 				TextEditorCommand.Submit: false;
 		};
@@ -662,22 +744,120 @@ class TextEditorState {
 
 	public function deleteBackward():Bool {
 		if (selectionStart != selectionEnd)
-			return replace(selectionStart, selectionEnd, "");
+			return replace(selectionStart, selectionEnd, "", TextEditorHistoryKind.DeleteBackward);
 		if (selectionStart == 0)
 			return false;
 		var previous = layout.previousGrapheme(selectionStart);
-		return replace(previous, selectionStart, "");
+		return replace(previous, selectionStart, "", TextEditorHistoryKind.DeleteBackward);
 	}
 
 	public function deleteForward():Bool {
 		var length = documentLength();
 		if (selectionStart != selectionEnd)
-			return replace(selectionStart, selectionEnd, "");
+			return replace(selectionStart, selectionEnd, "", TextEditorHistoryKind.DeleteForward);
 		if (selectionEnd >= length)
 			return false;
 		var next = layout.nextGrapheme(selectionEnd);
-		return replace(selectionEnd, next, "");
+		return replace(selectionEnd, next, "", TextEditorHistoryKind.DeleteForward);
 	}
+
+	function snapshot():TextEditorSnapshot {
+		return new TextEditorSnapshot(layoutText(), selectionStart, selectionEnd,
+			selectionAnchor, selectionFocus, selectionAnchorLayoutOffset,
+			selectionFocusLayoutOffset, selectionAnchorAffinity, selectionFocusAffinity,
+			scrollOffsetY);
+	}
+
+	function recordHistory(before:TextEditorSnapshot, after:TextEditorSnapshot,
+			kind:TextEditorHistoryKind):Void {
+		if (before == null || after == null || before.text == after.text)
+			return;
+		if (undoStack.length > 0) {
+			var previous = undoStack[undoStack.length - 1];
+			if (canCoalesce(previous, before, kind)) {
+				previous.after = after;
+				redoStack = [];
+				return;
+			}
+		}
+		undoStack.push(new TextEditorHistoryEntry(before, after, kind));
+		redoStack = [];
+	}
+
+	function canCoalesce(previous:TextEditorHistoryEntry, before:TextEditorSnapshot,
+			kind:TextEditorHistoryKind):Bool {
+		if (previous == null || previous.kind != kind ||
+			(kind != TextEditorHistoryKind.Typing &&
+			kind != TextEditorHistoryKind.DeleteBackward &&
+			kind != TextEditorHistoryKind.DeleteForward) ||
+			previous.after.text != before.text ||
+			before.selectionStart != before.selectionEnd ||
+			previous.after.selectionStart != previous.after.selectionEnd)
+			return false;
+		return sameSelection(previous.after, before);
+	}
+
+	static function sameSelection(first:TextEditorSnapshot, second:TextEditorSnapshot):Bool {
+		return first.selectionStart == second.selectionStart &&
+			first.selectionEnd == second.selectionEnd &&
+			first.selectionAnchor == second.selectionAnchor &&
+			first.selectionFocus == second.selectionFocus &&
+			first.selectionAnchorLayoutOffset == second.selectionAnchorLayoutOffset &&
+			first.selectionFocusLayoutOffset == second.selectionFocusLayoutOffset &&
+			first.selectionAnchorAffinity == second.selectionAnchorAffinity &&
+			first.selectionFocusAffinity == second.selectionFocusAffinity;
+	}
+
+	function restoreSnapshot(value:TextEditorSnapshot):Bool {
+		if (value == null)
+			return false;
+		var nextText = value.text == null ? "" : value.text;
+		var count = TextOffsetMap.countCodepoints(nextText);
+		var nextSelectionStart = clamp(value.selectionStart, 0, count);
+		var nextSelectionEnd = clamp(value.selectionEnd, 0, count);
+		var nextAnchor = clamp(value.selectionAnchor, 0, count);
+		var nextFocus = clamp(value.selectionFocus, 0, count);
+		var nextAnchorLayoutOffset = clamp(value.selectionAnchorLayoutOffset, 0, count);
+		var nextFocusLayoutOffset = clamp(value.selectionFocusLayoutOffset, 0, count);
+		var changed = layoutText() != nextText || selectionStart != nextSelectionStart ||
+			selectionEnd != nextSelectionEnd || selectionAnchor != nextAnchor ||
+			selectionFocus != nextFocus || selectionAnchorLayoutOffset != nextAnchorLayoutOffset ||
+			selectionFocusLayoutOffset != nextFocusLayoutOffset ||
+			selectionAnchorAffinity != value.selectionAnchorAffinity ||
+			selectionFocusAffinity != value.selectionFocusAffinity ||
+			scrollOffsetY != value.scrollOffsetY;
+		if (!changed)
+			return false;
+		if (layoutText() != nextText) {
+			text = nextText;
+			documentOffsetMap = new TextOffsetMap(nextText);
+			activeParagraphOffsetMap = null;
+			activeParagraphStart = -1;
+			activeParagraphEnd = -1;
+			layout.setText(layoutText());
+			lastLayoutText = layoutText();
+		}
+		selectionStart = nextSelectionStart;
+		selectionEnd = nextSelectionEnd;
+		selectionAnchor = nextAnchor;
+		selectionFocus = nextFocus;
+		selectionAnchorLayoutOffset = nextAnchorLayoutOffset;
+		selectionFocusLayoutOffset = nextFocusLayoutOffset;
+		selectionAnchorAffinity = value.selectionAnchorAffinity;
+		selectionFocusAffinity = value.selectionFocusAffinity;
+		compositionStart = -1;
+		compositionEnd = -1;
+		compositionAttributes = [];
+		clearCompositionBaseline();
+		compositionHistoryBefore = null;
+		scrollOffsetY = value.scrollOffsetY;
+		resetVerticalNavigation();
+		clampScrollOffset();
+		return true;
+	}
+
+	function hasActiveComposition():Bool
+		return compositionStart >= 0 && compositionEnd >= compositionStart;
 
 	public function hitTest(x:Float, y:Float):TextPosition {
 		ensureLive();
@@ -834,6 +1014,9 @@ class TextEditorState {
 		if (disposed)
 			return;
 		layout.dispose();
+		undoStack = [];
+		redoStack = [];
+		compositionHistoryBefore = null;
 		documentOffsetMap = null;
 		activeParagraphOffsetMap = null;
 		disposed = true;

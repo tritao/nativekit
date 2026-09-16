@@ -91,6 +91,7 @@ import nativekit.ui.widgets.EditTransaction;
 import nativekit.ui.widgets.TextCompositionSpan;
 import nativekit.ui.widgets.TextEditorCommand;
 import nativekit.ui.widgets.TextEditorKeymap;
+import nativekit.ui.widgets.TextEditorHistoryKind;
 import nativekit.ui.widgets.TextArea;
 import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.TextRange;
@@ -296,6 +297,7 @@ class FrameworkSmoke {
 		blinkEditor.dispose();
 		var commandMacStyle = #if (mac || ios) true #else false #end;
 		var wordShortcut = commandMacStyle ? UiModifier.Alt : UiModifier.Control;
+		var historyShortcut = commandMacStyle ? UiModifier.Super : UiModifier.Control;
 		if (TextEditorKeymap.commandForKey(UiKey.Left, wordShortcut, false, commandMacStyle) !=
 			TextEditorCommand.MoveWordBackward ||
 			TextEditorKeymap.commandForKey(UiKey.Backspace, wordShortcut, false, commandMacStyle) !=
@@ -303,7 +305,13 @@ class FrameworkSmoke {
 			TextEditorKeymap.commandForKey(UiKey.Enter, 0, true, commandMacStyle) !=
 			TextEditorCommand.InsertNewline ||
 			TextEditorKeymap.commandForKey(UiKey.Enter, 0, false, commandMacStyle) !=
-			TextEditorCommand.Submit)
+			TextEditorCommand.Submit ||
+			TextEditorKeymap.commandForKey(UiKey.Z, historyShortcut, false, commandMacStyle) !=
+			TextEditorCommand.Undo ||
+			TextEditorKeymap.commandForKey(UiKey.Z, historyShortcut | UiModifier.Shift,
+				false, commandMacStyle) != TextEditorCommand.Redo ||
+			TextEditorKeymap.commandForKey(UiKey.Y, historyShortcut, false, commandMacStyle) !=
+			TextEditorCommand.Redo)
 			return 246;
 		if (commandMacStyle && TextEditorKeymap.commandForKey(UiKey.Left, UiModifier.Super,
 			false, true) != TextEditorCommand.MoveDocumentStart)
@@ -323,6 +331,56 @@ class FrameworkSmoke {
 			commandMacStyle) || commandEditor.selectionStart != 0 || commandEditor.selectionEnd != 4)
 			return 250;
 		commandEditor.dispose();
+		var historyEditor = new TextEditorState(fonts, "");
+		historyEditor.insert("a");
+		historyEditor.insert("b");
+		if (!historyEditor.canUndo() || !historyEditor.undo() || historyEditor.text != "" ||
+			!historyEditor.canRedo() || !historyEditor.redo() || historyEditor.text != "ab")
+			return 251;
+		historyEditor.undo();
+		historyEditor.insert("c");
+		if (historyEditor.canRedo() || historyEditor.text != "c")
+			return 252;
+		historyEditor.dispose();
+		var deleteHistoryEditor = new TextEditorState(fonts, "abc");
+		deleteHistoryEditor.placeCaret(deleteHistoryEditor.documentLength(), false);
+		if (!deleteHistoryEditor.deleteBackward() || !deleteHistoryEditor.deleteBackward() ||
+			deleteHistoryEditor.text != "a" || !deleteHistoryEditor.undo() ||
+			deleteHistoryEditor.text != "abc" || !deleteHistoryEditor.redo() ||
+			deleteHistoryEditor.text != "a")
+			return 253;
+		deleteHistoryEditor.dispose();
+		var pasteHistoryEditor = new TextEditorState(fonts, "");
+		pasteHistoryEditor.insert("paste", TextEditorHistoryKind.Paste);
+		pasteHistoryEditor.insert("x");
+		if (!pasteHistoryEditor.undo() || pasteHistoryEditor.text != "paste" ||
+			!pasteHistoryEditor.undo() || pasteHistoryEditor.text != "")
+			return 254;
+		pasteHistoryEditor.dispose();
+		var autocorrectEditor = new TextEditorState(fonts, "teh");
+		if (!autocorrectEditor.applyTransaction(new EditTransaction(0, 3, "the", 3, 3,
+			false, -1, -1, 0, null, TextEditorHistoryKind.Autocorrect)) ||
+			autocorrectEditor.text != "the" || !autocorrectEditor.undo() ||
+			autocorrectEditor.text != "teh")
+			return 255;
+		autocorrectEditor.dispose();
+		var compositionHistoryEditor = new TextEditorState(fonts, "");
+		if (!compositionHistoryEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.Compose,
+			"か", 0, 0, 1, 1, 0, 1)) || compositionHistoryEditor.canUndo() ||
+			!compositionHistoryEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.Compose,
+			"かな", 0, 1, 2, 2, 0, 2)) || compositionHistoryEditor.canUndo() ||
+			!compositionHistoryEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.Commit,
+			"かな", 0, 2, 2, 2, -1, -1)) || !compositionHistoryEditor.canUndo() ||
+			!compositionHistoryEditor.undo() || compositionHistoryEditor.text != "" ||
+			!compositionHistoryEditor.redo() || compositionHistoryEditor.text != "かな")
+			return 256;
+		compositionHistoryEditor.dispose();
+		var cancelledHistoryEditor = new TextEditorState(fonts, "");
+		if (!cancelledHistoryEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.Compose,
+			"か", 0, 0, 1, 1, 0, 1)) || !cancelledHistoryEditor.cancelComposition() ||
+			cancelledHistoryEditor.canUndo() || cancelledHistoryEditor.text != "")
+			return 257;
+		cancelledHistoryEditor.dispose();
 		var editedValue = "";
 		var submittedValue = "";
 		var emptyField = new TextField("empty-entry", "", function(_) {}, null,

@@ -20,13 +20,16 @@ class EditTransaction {
 	public final selectionAffinity:Int;
 	/** Optional generic clause metadata for the resulting composition. */
 	public final compositionAttributes:Null<Array<TextCompositionSpan>>;
+	/** History grouping policy for this transaction. */
+	public final historyKind:TextEditorHistoryKind;
 
 	public function new(replacementStart:CodepointOffset, replacementEnd:CodepointOffset,
 			replacementText:Null<String>, selectionStart:CodepointOffset,
 			selectionEnd:CodepointOffset, ?hasComposition:Bool = false,
 			?compositionStart:CodepointOffset = -1, ?compositionEnd:CodepointOffset = -1,
 			?selectionAffinity:Int = 0,
-			?compositionAttributes:Array<TextCompositionSpan> = null) {
+			?compositionAttributes:Array<TextCompositionSpan> = null,
+			?historyKind:TextEditorHistoryKind = TextEditorHistoryKind.Generic) {
 		this.replacementStart = replacementStart;
 		this.replacementEnd = replacementEnd;
 		this.replacementText = replacementText;
@@ -37,5 +40,6 @@ class EditTransaction {
 		this.compositionEnd = compositionEnd;
 		this.selectionAffinity = selectionAffinity;
 		this.compositionAttributes = compositionAttributes;
+		this.historyKind = historyKind == null ? TextEditorHistoryKind.Generic : historyKind;
 	}
 }

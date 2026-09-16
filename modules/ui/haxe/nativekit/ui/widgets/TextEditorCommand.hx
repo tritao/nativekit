@@ -24,4 +24,6 @@ enum TextEditorCommand {
 	Paste;
 	InsertNewline;
 	Submit;
+	Undo;
+	Redo;
 }

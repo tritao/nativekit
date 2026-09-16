@@ -381,7 +381,7 @@ class TextField implements View {
 						if (editor.isDisposed() || !editor.focused)
 							return;
 						var beforePaste = editor.layoutText();
-						if (editor.insert(pasted)) {
+						if (editor.insert(pasted, TextEditorHistoryKind.Paste)) {
 							editor.resetCaretBlink(context.gestures.timeSeconds());
 							publishTextChange(beforePaste);
 						}
@@ -403,7 +403,7 @@ class TextField implements View {
 
 			node.on(UiEventKind.TextInput, function(event) {
 				var previousText = editor.layoutText();
-				if (enabled && editor.insert(event.text)) {
+				if (enabled && editor.insert(event.text, TextEditorHistoryKind.Typing)) {
 					editor.resetCaretBlink(context.gestures.timeSeconds());
 					publishTextChange(previousText);
 				}
