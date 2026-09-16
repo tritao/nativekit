@@ -35,9 +35,15 @@ class TopBar {
 		];
 		if (explorer.width >= 880.0)
 			actions.push(explorer.keyed("inspect", explorer.button(
-				explorer.state.inspector.open ? "Hide inspector" : "Inspect",
+				explorer.state.inspector.picking ? "Cancel inspect" : "Inspect",
 				"inspector-toggle", function() {
-					explorer.state.inspector.open = !explorer.state.inspector.open;
+					if (explorer.state.inspector.picking) {
+						explorer.state.inspector.picking = false;
+						explorer.state.inspector.hoveredNodeId = 0;
+					} else {
+						explorer.state.inspector.open = true;
+						explorer.state.inspector.picking = true;
+					}
 			})));
 		return new Row("top-bar", [
 			explorer.keyed("brand-cluster", brand),

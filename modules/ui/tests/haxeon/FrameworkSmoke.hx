@@ -653,6 +653,7 @@ class FrameworkSmoke {
 		if (cycleRoot.find(new WidgetId(0x7fffff02)) != null)
 			return 105;
 		var clicks = 0;
+		var suppressNextClick = false;
 		var bubbled = 0;
 		var captured = 0;
 		var scrollEvents = 0;
@@ -691,6 +692,12 @@ class FrameworkSmoke {
 		root.on(UiEventKind.Click, function(_) {
 			captured++;
 		}, "capture");
+		root.on(UiEventKind.PointerDown, function(event) {
+			if (suppressNextClick) {
+				event.preventDefault();
+				event.stopPropagation();
+			}
+		}, "capture");
 		var buttonNode = root.children[0];
 		var initialId = buttonNode.id;
 		var state:State<Int> = context.buildContext.state(buttonNode.id, 0);
@@ -711,6 +718,11 @@ class FrameworkSmoke {
 		if (clicks != 1 || bubbled != 1 || captured != 1 || context.focus.focusedId == null ||
 			!context.focus.focusedId.equals(initialId))
 			return 4;
+		suppressNextClick = true;
+		context.pointerDown(4.0, 4.0, 0);
+		context.pointerUp(4.0, 4.0, 0);
+		if (clicks != 1 || bubbled != 1 || captured != 1)
+			return 254;
 		state.update(7);
 		if (!context.isDirty())
 			return 5;

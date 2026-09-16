@@ -38,9 +38,13 @@ class InspectionOverlay {
 		if (explorer.context.root == null)
 			return;
 		var root = explorer.context.root;
+		if (!explorer.state.inspector.picking) {
+			explorer.state.inspector.hoveredNodeId = 0;
+			return;
+		}
 		var hovered = explorer.context.events.hoveredId();
-		explorer.state.inspector.hoveredNodeId = hovered == null
-			? 0 : inspectionTargetId(explorer, hovered);
+		explorer.state.inspector.hoveredNodeId = hovered == null ? 0 :
+			inspectionTargetId(explorer, hovered);
 		root.on(UiEventKind.PointerMove, function(event) {
 			updateHoveredAt(explorer, event.x, event.y);
 		});
@@ -50,21 +54,18 @@ class InspectionOverlay {
 		root.on(UiEventKind.HoverLeave, function(event) {
 			updateHoveredAt(explorer, event.x, event.y);
 		});
-		root.on(UiEventKind.Focus, function(event) {
-			var focusedId = inspectionTargetId(explorer, event.target);
-			var focused = findSnapshot(explorer.context.inspect(), focusedId);
-			if (focused != null && isRecordInPreview(explorer, focused))
-				explorer.state.inspector.selectedNodeId = focusedId;
-		});
 		root.on(UiEventKind.PointerDown, function(event) {
 			if (isPreviewPoint(explorer, event.x, event.y)) {
 				var selected = inspectionTargetId(explorer, event.target);
 				if (selected != 0) {
 					explorer.state.inspector.selectedNodeId = selected;
-					explorer.state.inspector.hoveredNodeId = selected;
+					explorer.state.inspector.hoveredNodeId = 0;
+					explorer.state.inspector.picking = false;
+					event.preventDefault();
+					event.stopPropagation();
 				}
 			}
-		});
+		}, "capture");
 	}
 
 	static function updateHoveredAt(explorer:UiExplorer, x:Float, y:Float):Void {

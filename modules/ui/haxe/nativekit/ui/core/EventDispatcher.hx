@@ -11,6 +11,7 @@ class EventDispatcher {
 	final pointerLocations:Map<Int, PointerLocation>;
 	final pressedIds:Map<Int, WidgetId>;
 	final capturedIds:Map<Int, WidgetId>;
+	final suppressedClicks:Map<Int, Bool>;
 
 	public function new(focus:FocusManager) {
 		this.focus = focus;
@@ -19,6 +20,7 @@ class EventDispatcher {
 		pointerLocations = new Map();
 		pressedIds = new Map();
 		capturedIds = new Map();
+		suppressedClicks = new Map();
 	}
 
 	public function setRoot(root:Null<RenderNode>):Void {
@@ -91,6 +93,8 @@ class EventDispatcher {
 			0.0, 0.0, button, 0, modifiers, null, data, 0, pointerId,
 			timestamp < 0.0 ? NativeKit.nk_time_seconds() : timestamp);
 		dispatchPath(path, event);
+		if (event.defaultPrevented)
+			suppressedClicks.set(pointerId, true);
 		applyPointerCaptureRequest(pointerId, event);
 	}
 
@@ -122,16 +126,18 @@ class EventDispatcher {
 		var releasePath = HitTest.path(root, x, y);
 		var path = capturedPath(pointerId);
 		var pressed = pressedIds.get(pointerId);
+		var clickSuppressed = suppressedClicks.exists(pointerId);
 		if (path.length == 0)
 			path = pressedPath(pointerId);
 		capturedIds.remove(pointerId);
 		pressedIds.remove(pointerId);
+		suppressedClicks.remove(pointerId);
 		if (path.length > 0) {
 			var target = path[path.length - 1];
 			dispatchPath(path, new UiEvent(UiEventKind.PointerUp, target.id, x, y,
 				0.0, 0.0, button, 0, modifiers, null, data, 0, pointerId));
 		}
-		if (pressed != null && releasePath.length > 0 &&
+		if (!clickSuppressed && pressed != null && releasePath.length > 0 &&
 			releasePath[releasePath.length - 1].id.equals(pressed)) {
 			dispatchPath(releasePath, new UiEvent(UiEventKind.Click, pressed, x, y,
 				0.0, 0.0, button, 0, modifiers, null, data, 0, pointerId));
@@ -146,6 +152,7 @@ class EventDispatcher {
 			path = pressedPath(pointerId);
 		capturedIds.remove(pointerId);
 		pressedIds.remove(pointerId);
+		suppressedClicks.remove(pointerId);
 		if (path.length > 0)
 			dispatchPath(path, new UiEvent(UiEventKind.PointerCancel,
 				path[path.length - 1].id, x, y, 0.0, 0.0, 0, 0, modifiers,
@@ -209,6 +216,7 @@ class EventDispatcher {
 		updateHover(pointerId, [], 0.0, 0.0);
 		capturedIds.remove(pointerId);
 		pressedIds.remove(pointerId);
+		suppressedClicks.remove(pointerId);
 		pointerLocations.remove(pointerId);
 	}
 
