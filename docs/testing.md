@@ -103,7 +103,18 @@ cd android
 reviewed Linux HXI declarations into Haxe, and runs the result through HashLink.
 It covers initialization, typed event polling, UTF-8 diagnostics, window and
 monitor handles, and the two-call monitor-name output buffer. The sibling
-`../realtime-haxe` checkout is used by default; set `HAXEON_DIR` to override it.
+`../realtime-haxe` checkout is used by default. Set `HAXEON_DIR` when
+configuring to select another checkout, or set the cached `NKUI_HAXEON_DIR`
+path explicitly:
+
+```sh
+HAXEON_DIR=/path/to/haxeon cmake -S . -B build
+# or, on an existing build:
+cmake -S . -B build -DNKUI_HAXEON_DIR=/path/to/haxeon
+```
+
+The selected path is captured in the build cache and propagated to the UI
+CTest targets, so later reconfigures do not silently switch compiler branches.
 The smoke test first runs `tools/update-haxeon-hxi.sh --check`, so header and
 checked-in binding drift fails before compilation. The UI projection is composed
 with the core `NativeKit` HXI, so core declarations are projected once and the

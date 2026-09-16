@@ -325,9 +325,13 @@ if(NK_BUILD_EXAMPLES)
         endif()
     endif()
 
-    set(NKUI_HAXEON_DIR "$ENV{HAXEON_DIR}")
+    # Capture the compiler checkout in the build cache so CTest and custom
+    # targets keep using the same Haxeon branch across reconfigures.
+    set(NKUI_HAXEON_DIR "$ENV{HAXEON_DIR}" CACHE PATH
+        "Haxeon checkout used to compile the NativeKit UI sources")
     if(NOT NKUI_HAXEON_DIR)
-        set(NKUI_HAXEON_DIR "${PROJECT_SOURCE_DIR}/../realtime-haxe")
+        set(NKUI_HAXEON_DIR "${PROJECT_SOURCE_DIR}/../realtime-haxe" CACHE PATH
+            "Haxeon checkout used to compile the NativeKit UI sources" FORCE)
     endif()
     set(NKUI_HAXEON_HAXE_BIN "$ENV{NATIVEKIT_HAXE_BIN}")
     if(NOT NKUI_HAXEON_HAXE_BIN)
