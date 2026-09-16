@@ -13,6 +13,7 @@ import nativekit.ui.core.View;
 import nativekit.ui.widgets.CanvasView;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Row;
+import components.CubeView;
 
 /** The original retained graphics workload, presented as an Explorer page. */
 class GraphicsPage {
@@ -76,6 +77,28 @@ class GraphicsPage {
 			"Transparent color stops",
 			"The checkerboard remains visible where the gradient fades, demonstrating interpolated alpha rather than a blend toward white.",
 			gradientPreview(explorer, "alpha", 2))));
+	}
+
+	public static function build3d(explorer:UiExplorer, items:Array<KeyedView>):Void {
+		explorer.pageHeading(items, "3D Views",
+			"Native indexed meshes render with perspective and depth, then composite into ordinary UI layout.");
+		items.push(explorer.keyed("cube-views", explorer.panel("cube-views", [
+			explorer.keyed("heading", explorer.heading("One mesh, three camera angles")),
+			explorer.keyed("copy", explorer.caption("Each preview is a retained native surface. Resize the pane to exercise aspect-correct projection and surface reallocation.")),
+			explorer.keyed("previews", new Row("cube-preview-row", [
+				explorer.keyed("front", new CubeView("front-cube", 0.38,
+					"Perspective cube viewed near the front")),
+				explorer.keyed("corner", new CubeView("corner-cube", 0.82,
+					"Perspective cube viewed from a corner")),
+				explorer.keyed("reverse", new CubeView("reverse-cube", 2.12,
+					"Perspective cube viewed from the reverse side"))
+			], explorer.rowStyle(10.0))),
+			explorer.keyed("try", explorer.caption("Try this: inspect a viewport, resize the split pane, and compare face occlusion at each angle."))
+		])));
+		items.push(explorer.keyed("3d-pipeline", explorer.panel("3d-pipeline", [
+			explorer.keyed("heading", explorer.heading("Mesh → depth pass → sampled surface → compositor")),
+			explorer.keyed("copy", explorer.caption("The producer submits 24 colored vertices and 36 indices with a model-view-projection matrix. NativeKit renders offscreen with depth testing and samples the result in the UI display list."))
+		])));
 	}
 
 	public static function buildImages(explorer:UiExplorer, items:Array<KeyedView>):Void {
