@@ -41,6 +41,10 @@ class InspectorPanel {
 				explorer.keyed("tree", tabButton(explorer, "Tree", "tree"))
 			], explorer.rowStyle(6.0)))
 		];
+		children.push(explorer.keyed("tab-row-three", new Row("inspector-tab-row-three", [
+			explorer.keyed("layout", tabButton(explorer, "Layout", "layout")),
+			explorer.keyed("style", tabButton(explorer, "Style", "style"))
+		], explorer.rowStyle(6.0))));
 		var contentStyle = new LayoutStyle();
 		contentStyle.width = LayoutAxis.grow();
 		contentStyle.height = LayoutAxis.grow();
@@ -129,9 +133,48 @@ class InspectorPanel {
 						explorer.caption(treeNodeText(child))));
 						shown++;
 					}
-				if (shown == 0)
-					children.push(explorer.keyed("tree-leaf",
-						explorer.caption("No child render nodes.")));
+			if (shown == 0)
+				children.push(explorer.keyed("tree-leaf",
+					explorer.caption("No child render nodes.")));
+			case "layout":
+				children.push(explorer.keyed("layout-heading", explorer.text("LAYOUT", explorer.paletteText())));
+				children.push(PropertyRow.build("layout-bounds",
+					'bounds: ${WidgetDocsRegistry.rectText(record.bounds)}\ncontent: ${WidgetDocsRegistry.rectText(record.contentBounds)}',
+					explorer.paletteMuted()));
+				children.push(PropertyRow.build("layout-clip",
+					'clip: ${WidgetDocsRegistry.rectText(record.clipBounds)}\nvisible=${record.visible}  z-order=${record.zIndex}',
+					explorer.paletteMuted()));
+				children.push(PropertyRow.build("layout-identity",
+					'type=${record.styleType == null ? "(none)" : record.styleType}\nparent=${record.parentId}',
+					explorer.paletteMuted()));
+			case "style":
+				children.push(explorer.keyed("style-heading", explorer.text("COMPUTED STYLE", explorer.paletteText())));
+				children.push(PropertyRow.build("style-summary",
+					'${record.styleEntries.length} properties · ${record.matchingStyleRules.length} matching rules',
+					explorer.paletteMuted()));
+				var shownProperties = 0;
+				for (entry in record.styleEntries) {
+					if (shownProperties >= 14)
+						break;
+					var source = entry.source == null ? "framework default" : entry.source.toString();
+					children.push(PropertyRow.build('style-property-$shownProperties',
+						'${entry.name}: ${Std.string(entry.value)}\n  source: $source',
+						explorer.paletteMuted()));
+					shownProperties++;
+				}
+				children.push(explorer.keyed("style-rules-heading",
+					explorer.text("MATCHING RULES", explorer.paletteText())));
+				var shownRules = 0;
+				for (rule in record.matchingStyleRules) {
+					if (shownRules >= 8)
+						break;
+					children.push(explorer.keyed('style-rule-$shownRules',
+						explorer.text(rule.toString(), explorer.paletteMuted())));
+					shownRules++;
+				}
+			if (shownRules == 0)
+				children.push(explorer.keyed("style-no-rules",
+					explorer.text("No matching stylesheet rules.", explorer.paletteMuted())));
 			default:
 				var synopsis = WidgetDocsRegistry.describe(record.role);
 				children.push(explorer.keyed("preview-heading", explorer.label("WHAT THIS IS")));

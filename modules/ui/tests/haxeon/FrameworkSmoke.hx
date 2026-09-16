@@ -1221,6 +1221,10 @@ class FrameworkSmoke {
 			return 98;
 
 		var theme = new Theme();
+		if (theme.tokens.textPrimary != theme.text || theme.tokens.textSecondary != theme.mutedText ||
+			theme.tokens.surface != theme.panelBackground || theme.tokens.focusRing != theme.buttonFocused ||
+			theme.tokens.radiusMedium != 6.0 || theme.tokens.spacingMedium != 8.0)
+			return 225;
 		theme.body.color = Color.rgba(0.10, 0.14, 0.21, 1.0);
 		theme.button.color = Color.rgba(1.0, 1.0, 1.0, 1.0);
 		var styleTheme = new StyleSheet("StyleTheme");

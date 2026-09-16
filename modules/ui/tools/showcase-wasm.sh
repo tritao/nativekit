@@ -127,6 +127,7 @@ compiler_args=(
 	"$module_dir/examples/ui_showcase/UiExplorer.hx"
 	"$module_dir/examples/ui_showcase/ShowcaseCube.hx"
 	"$module_dir/haxe/nativekit/ui/core/"*.hx
+	"$module_dir/haxe/nativekit/ui/style/"*.hx
 	"$module_dir/haxe/nativekit/ui/widgets/"*.hx
 	"$module_dir/haxe/nativekit/ui/theme/"*.hx
 	"$module_dir/haxe/nativekit/ui/semantics/"*.hx

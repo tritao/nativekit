@@ -22,6 +22,19 @@ class ThemeTokens {
 	public var panelBackground:Color;
 	public var overlayBackdrop:Color;
 	public var tooltipBackground:Color;
+	public var radiusSmall:Float;
+	public var radiusMedium:Float;
+	public var radiusLarge:Float;
+	public var spacingSmall:Float;
+	public var spacingMedium:Float;
+	public var spacingLarge:Float;
+
+	public var surface(get, set):Color;
+	public var surfaceRaised(get, set):Color;
+	public var textPrimary(get, set):Color;
+	public var textSecondary(get, set):Color;
+	public var border(get, set):Color;
+	public var focusRing(get, set):Color;
 
 	public function new() {
 		accent = Color.rgba(0.22, 0.48, 0.86, 1.0);
@@ -42,5 +55,24 @@ class ThemeTokens {
 		panelBackground = Color.rgba(0.13, 0.14, 0.17, 1.0);
 		overlayBackdrop = Color.rgba(0.0, 0.0, 0.0, 0.48);
 		tooltipBackground = Color.rgba(0.08, 0.09, 0.11, 0.96);
+		radiusSmall = 3.0;
+		radiusMedium = 6.0;
+		radiusLarge = 10.0;
+		spacingSmall = 4.0;
+		spacingMedium = 8.0;
+		spacingLarge = 12.0;
 	}
+
+	function get_surface():Color return panelBackground;
+	function set_surface(value:Color):Color { panelBackground = value; return value; }
+	function get_surfaceRaised():Color return buttonBackground;
+	function set_surfaceRaised(value:Color):Color { buttonBackground = value; return value; }
+	function get_textPrimary():Color return text;
+	function set_textPrimary(value:Color):Color { text = value; return value; }
+	function get_textSecondary():Color return mutedText;
+	function set_textSecondary(value:Color):Color { mutedText = value; return value; }
+	function get_border():Color return controlUnselected;
+	function set_border(value:Color):Color { controlUnselected = value; return value; }
+	function get_focusRing():Color return buttonFocused;
+	function set_focusRing(value:Color):Color { buttonFocused = value; return value; }
 }

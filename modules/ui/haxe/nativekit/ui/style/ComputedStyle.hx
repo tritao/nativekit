@@ -17,19 +17,6 @@ class ComputedProperty<T> {
 	}
 }
 
-/** Inspectable entry in the resolved property map. */
-class ComputedStyleEntry {
-	public final name:String;
-	public final value:Dynamic;
-	public final source:Null<StyleSource>;
-
-	public function new(name:String, value:Dynamic, source:Null<StyleSource>) {
-		this.name = name;
-		this.value = value;
-		this.source = source;
-	}
-}
-
 /** Authoritative Haxe-side result of style resolution. */
 class ComputedStyle {
 	final values:Map<String, Dynamic>;
@@ -74,11 +61,15 @@ class ComputedStyle {
 			matchingRules.push(source);
 	}
 
-	public function entries():Array<ComputedStyleEntry> {
-		var result:Array<ComputedStyleEntry> = [];
+	/** Returns a stable copy for inspectors and external tooling. */
+	public function matchingStyleRules():Array<StyleSource>
+		return matchingRules.copy();
+
+	public function entries():Array<StyleInspectionEntry> {
+		var result:Array<StyleInspectionEntry> = [];
 		for (property in StyleProperty.all())
 			if (values.exists(property.name))
-				result.push(new ComputedStyleEntry(property.name, values.get(property.name),
+				result.push(new StyleInspectionEntry(property.name, values.get(property.name),
 					sources.get(property.name)));
 		return result;
 	}

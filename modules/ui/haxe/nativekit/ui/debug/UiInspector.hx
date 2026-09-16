@@ -5,6 +5,8 @@ import nativekit.ui.core.WidgetId;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.style.StyleState;
 import nativekit.ui.style.StyleStateUtil;
+import nativekit.ui.style.StyleSource;
+import nativekit.ui.style.StyleInspectionEntry;
 
 /** Produces deterministic, headless snapshots and readable render-tree dumps. */
 class UiInspector {
@@ -65,6 +67,12 @@ class UiInspector {
 		var clip = geometry == null ? new Rect(0.0, 0.0, 0.0, 0.0) : geometry.clipBounds;
 		var content = geometry == null ? new Rect(0.0, 0.0, 0.0, 0.0) : geometry.contentBounds;
 		var role = semantics == null ? -1 : cast semantics.role;
+		var styleEntries:Array<StyleInspectionEntry> = [];
+		var matchingStyleRules:Array<StyleSource> = [];
+		if (node.computedStyle != null) {
+			styleEntries = node.computedStyle.entries();
+			matchingStyleRules = node.computedStyle.matchingStyleRules();
+		}
 		output.push(new UiNodeSnapshot(node.id.value, parentId, depth,
 			cast node.layout.visualKind, bounds, clip, content,
 			geometry != null && geometry.visible, node.enabled, node.focusable,
@@ -77,7 +85,8 @@ class UiInspector {
 			semantics == null ? null : semantics.label,
 			semantics == null ? null : semantics.value,
 			semantics == null ? 0 : semantics.actions,
-			node.states, node.styleType, node.computedStyle));
+			node.states, node.styleType, node.computedStyle,
+			styleEntries, matchingStyleRules));
 		for (child in node.children)
 			append(child, node.id.value, depth + 1, focused, hovered, pressed, output);
 	}
