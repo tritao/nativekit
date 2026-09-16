@@ -31,9 +31,6 @@ class ExplorerCatalog {
 		new ExplorerPage("gestures", "Gestures & Motion", "components", "Gesture arbitration and animation",
 			["tap", "double tap", "long press", "drag", "tween", "spring", "animation"],
 			function(explorer, items) { GesturesPage.build(explorer, items); }),
-		new ExplorerPage("graphics", "Graphics Lab", "developer", "Retained graphics demonstrations",
-			["paths", "text shaping", "images", "cube", "renderer"],
-			function(explorer, items) { GraphicsPage.build(explorer, items); }, "Graphics overview"),
 		new ExplorerPage("graphics-paths", "Paths & Paint", "graphics", "Vector geometry, strokes and compositing",
 			["bezier", "path", "stroke", "join", "paint", "alpha", "blend"],
 			function(explorer, items) { GraphicsPage.buildPaths(explorer, items); }),
@@ -43,7 +40,7 @@ class ExplorerCatalog {
 		new ExplorerPage("graphics-images", "Images & Layers", "graphics", "Clipping, opacity and layered composition",
 			["image", "clip", "layer", "opacity", "nine slice", "composite"],
 			function(explorer, items) { GraphicsPage.buildImages(explorer, items); }),
-		new ExplorerPage("graphics-rendering", "Rendering & Performance", "graphics", "Retained rendering and frame diagnostics",
+		new ExplorerPage("graphics-rendering", "Rendering", "graphics", "Retained rendering and frame performance diagnostics",
 			["display list", "retained", "renderer", "offscreen", "surface", "cube", "performance"],
 			function(explorer, items) { GraphicsPage.buildRendering(explorer, items); })
 	];
@@ -72,8 +69,7 @@ class ExplorerCatalog {
 		return switch group {
 			case "start": "START HERE";
 			case "components": "COMPONENTS";
-			case "developer": "DEVELOPER TOOLS";
-			case "graphics": "GRAPHICS LAB";
+			case "graphics": "GRAPHICS";
 			default: group;
 		};
 	}

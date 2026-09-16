@@ -96,7 +96,7 @@ class ExplorerVisualCases {
 			case ExplorerVisualCase.TextCompact: state.selectedPage = "text";
 			case ExplorerVisualCase.OverlaysCompact: state.selectedPage = "overlays";
 			case ExplorerVisualCase.Graphics, ExplorerVisualCase.GraphicsCompact:
-				state.selectedPage = "graphics";
+				state.selectedPage = "graphics-paths";
 			case ExplorerVisualCase.GraphicsPaths: state.selectedPage = "graphics-paths";
 			case ExplorerVisualCase.GraphicsText: state.selectedPage = "graphics-text";
 			case ExplorerVisualCase.GraphicsImages: state.selectedPage = "graphics-images";

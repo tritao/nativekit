@@ -2,7 +2,14 @@ package pages;
 
 import UiExplorer;
 import Color;
+import LayoutAxis;
+import LayoutStyle;
+import LineCap;
+import LineJoin;
+import PathBuilder;
+import Rect;
 import nativekit.ui.core.View;
+import nativekit.ui.widgets.CanvasView;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Row;
 
@@ -26,13 +33,13 @@ class GraphicsPage {
 
 	public static function buildPaths(explorer:UiExplorer, items:Array<KeyedView>):Void {
 		explorer.pageHeading(items, "Paths & Paint",
-			"Inspect vector paths, stroke caps and joins, alpha layers, and clipping.");
-		items.push(explorer.keyed("path-preview", demoPanel(explorer, "Vector geometry",
-			"A cubic Bézier, a closed polygon, and round stroke geometry are encoded into a retained display list.",
-			preview(explorer, "path", ["Cubic Bézier", "Round joins", "Closed path"]))));
-		items.push(explorer.keyed("paint-preview", demoPanel(explorer, "Paint and opacity",
-			"Overlapping translucent layers make compositing order visible without leaving the UI tree.",
-			preview(explorer, "paint", ["Solid paint", "68% layer", "Source over"]))));
+			"See how path geometry becomes strokes, and how paint, opacity, and clipping change the result.");
+		items.push(explorer.keyed("path-preview", demoPanel(explorer, "Vector paths become visible strokes",
+			"The blue curve is a cubic Bézier. The green zig-zag joins line segments. The purple triangle is closed by connecting its final point back to its first.",
+			pathPreview(explorer))));
+		items.push(explorer.keyed("paint-preview", demoPanel(explorer, "Paint, opacity, and clipping",
+			"Blue is painted first. A translucent green layer blends over it. The purple shape is wider than its outlined region, but clipping hides the overflow.",
+			paintPreview(explorer))));
 	}
 
 	public static function buildText(explorer:UiExplorer, items:Array<KeyedView>):Void {
@@ -96,5 +103,59 @@ class GraphicsPage {
 			children.push(explorer.keyed(key + "-" + index,
 				explorer.colorTile(labels[index], colors[index % colors.length])));
 		return new Row(key + "-preview", children, explorer.rowStyle(8.0));
+	}
+
+	static function pathPreview(explorer:UiExplorer):View {
+		return new CanvasView("paths-canvas", function(canvas, geometry) {
+			var width = geometry.width;
+			canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, geometry.height),
+				explorer.state.lightTheme ? UiExplorer.color(0.93, 0.95, 0.98) : UiExplorer.color(0.07, 0.10, 0.16));
+			canvas.strokeTransient(new PathBuilder().moveTo(18.0, 44.0)
+				.cubicTo(width * 0.18, -4.0, width * 0.30, 88.0, width * 0.44, 38.0).build(),
+				Color.rgba(0.18, 0.48, 0.82, 1.0), 4.0, LineCap.Round, LineJoin.Round);
+			canvas.strokeTransient(new PathBuilder().moveTo(width * 0.50, 62.0)
+				.lineTo(width * 0.59, 22.0).lineTo(width * 0.68, 62.0).build(),
+				Color.rgba(0.16, 0.62, 0.44, 1.0), 6.0, LineCap.Round, LineJoin.Round);
+			canvas.strokeTransient(new PathBuilder().moveTo(width * 0.78, 64.0)
+				.lineTo(width * 0.87, 18.0).lineTo(width * 0.96, 64.0).close().build(),
+				Color.rgba(0.50, 0.28, 0.72, 1.0), 4.0, LineCap.Round, LineJoin.Round);
+		}, previewStyle(explorer),
+			"Cubic curve, joined line segments, and a closed triangular path");
+	}
+
+	static function paintPreview(explorer:UiExplorer):View {
+		return new CanvasView("paint-canvas", function(canvas, geometry) {
+			canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, geometry.height),
+				explorer.state.lightTheme ? UiExplorer.color(0.93, 0.95, 0.98) : UiExplorer.color(0.07, 0.10, 0.16));
+			var top = 18.0;
+			var height = geometry.height - 36.0;
+			canvas.fillRectIfPositive(new Rect(18.0, top, geometry.width * 0.38, height),
+				Color.rgba(0.18, 0.48, 0.82, 1.0));
+			canvas.withLayer(0.58, function(layer) {
+				layer.fillRectIfPositive(new Rect(geometry.width * 0.24, top + 10.0,
+					geometry.width * 0.34, height - 4.0), Color.rgba(0.16, 0.70, 0.46, 1.0));
+			});
+			var clip = new Rect(geometry.width * 0.68, top, geometry.width * 0.24, height);
+			var border = explorer.context.buildContext.theme.mutedText;
+			canvas.fillRectIfPositive(new Rect(clip.x - 1.0, clip.y - 1.0,
+				clip.width + 2.0, clip.height + 2.0), border);
+			canvas.withClip(clip, function(clipped) {
+				clipped.fillRectIfPositive(new Rect(clip.x - 24.0, clip.y + 10.0,
+					clip.width + 48.0, clip.height - 20.0), Color.rgba(0.50, 0.28, 0.72, 1.0));
+			});
+		}, previewStyle(explorer),
+			"Opaque paint, translucent overlap, and a shape clipped to bounds");
+	}
+
+	static function previewStyle(explorer:UiExplorer):LayoutStyle {
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.grow();
+		style.height = LayoutAxis.fixed(92.0);
+		style.background = explorer.state.lightTheme
+			? UiExplorer.color(0.93, 0.95, 0.98) : UiExplorer.color(0.07, 0.10, 0.16);
+		style.radiusTopLeft = style.radiusTopRight = 6.0;
+		style.radiusBottomLeft = style.radiusBottomRight = 6.0;
+		style.clipToParent = true;
+		return style;
 	}
 }
