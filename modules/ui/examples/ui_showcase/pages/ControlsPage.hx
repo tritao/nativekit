@@ -14,6 +14,8 @@ import nativekit.ui.widgets.RadioOption;
 import nativekit.ui.widgets.Row;
 import nativekit.ui.widgets.Spinner;
 import nativekit.ui.widgets.SpinnerKind;
+import nativekit.ui.widgets.Select;
+import nativekit.ui.widgets.SelectOption;
 import nativekit.ui.widgets.Toggle;
 
 /** Interactive primitive controls and their common input states. */
@@ -41,7 +43,14 @@ class ControlsPage {
 					new RadioOption("comfortable", "Comfortable", "comfortable"),
 					new RadioOption("compact", "Compact", "compact"),
 					new RadioOption("disabled", "Unavailable", "disabled", false)
-				], explorer.state.controls.radioValue, function(value) { explorer.state.controls.radioValue = value; }))
+				], explorer.state.controls.radioValue, function(value) { explorer.state.controls.radioValue = value; })),
+				explorer.keyed("select", new Select("density-select", [
+					new SelectOption("comfortable", "Comfortable", "comfortable"),
+					new SelectOption("compact", "Compact", "compact"),
+					new SelectOption("disabled", "Unavailable", "disabled", false)
+				], explorer.state.controls.selectValue, function(value) {
+					explorer.state.controls.selectValue = value;
+				}))
 			]))
 		], explorer.rowStyle(14.0))));
 		items.push(explorer.keyed("controls-range", explorer.panel("range-card", [

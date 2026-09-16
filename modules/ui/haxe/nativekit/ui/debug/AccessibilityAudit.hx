@@ -138,6 +138,7 @@ class AccessibilityAudit {
 			role == AccessibilityRole.Radio || role == AccessibilityRole.Link ||
 			role == AccessibilityRole.Slider || role == AccessibilityRole.TextField ||
 			role == AccessibilityRole.Switch || role == AccessibilityRole.Tab ||
+			role == AccessibilityRole.ComboBox ||
 			role == AccessibilityRole.ProgressBar;
 	}
 

@@ -10,6 +10,7 @@ class ControlsDemoState {
 	public var progress:Float = 0.72;
 	public var spinnerRunning:Bool = true;
 	public var radioValue:String = "comfortable";
+	public var selectValue:String = "comfortable";
 	public var selectedTab:String = "preview";
 	public var menuSelection:String = "No command selected";
 }

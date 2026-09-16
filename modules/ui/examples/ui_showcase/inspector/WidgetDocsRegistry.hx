@@ -64,6 +64,11 @@ class WidgetDocsRegistry {
 				behavior: "Click or press Space to toggle. Checked state is announced as a switch value.",
 				code: 'new Toggle("notifications", "Notifications", enabled, onChange)'
 			};
+			case AccessibilityRole.ComboBox: {
+				description: "A typed single-selection control with a keyboard-navigable option list.",
+				behavior: "Click or press Enter/Space to open. Arrow keys move between enabled options; Enter selects and Escape closes.",
+				code: 'new Select("density", options, selected, onChange)'
+			};
 			case AccessibilityRole.ProgressBar: {
 				description: "A non-interactive indicator of progress toward a bounded value.",
 				behavior: "The current value and accessible label are exposed to platform accessibility clients.",

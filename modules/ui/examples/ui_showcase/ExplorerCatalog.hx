@@ -14,7 +14,7 @@ class ExplorerCatalog {
 			["welcome", "native", "wasm", "runtime"],
 			function(explorer, items) { OverviewPage.build(explorer, items); }),
 		new ExplorerPage("controls", "Controls", "components", "Interactive control states",
-			["button", "checkbox", "toggle", "radio", "slider", "progress", "spinner", "loading", "indeterminate"],
+			["button", "checkbox", "toggle", "radio", "select", "slider", "progress", "spinner", "loading", "indeterminate"],
 			function(explorer, items) { ControlsPage.build(explorer, items); }),
 		new ExplorerPage("text", "Text & Input", "components", "Text editing and platform input",
 			["textfield", "textarea", "ime", "selection", "clipboard", "multilingual"],

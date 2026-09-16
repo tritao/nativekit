@@ -5,9 +5,12 @@ import LayoutFrame;
 import LayoutSession;
 import LayoutStyle;
 import LayoutVisualKind;
+import ResolvedLayoutItem;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.UiContext;
+import nativekit.ui.core.UiEventKind;
+import nativekit.ui.core.UiKey;
 import nativekit.ui.core.WidgetId;
 import nativekit.ui.debug.AccessibilityAudit;
 import nativekit.ui.debug.AccessibilityIssue;
@@ -24,6 +27,8 @@ import nativekit.ui.widgets.Dialog;
 import nativekit.ui.widgets.Menu;
 import nativekit.ui.widgets.MenuItem;
 import nativekit.ui.widgets.ProgressBar;
+import nativekit.ui.widgets.Select;
+import nativekit.ui.widgets.SelectOption;
 import nativekit.ui.widgets.TabItem;
 import nativekit.ui.widgets.Tabs;
 import nativekit.ui.widgets.Text;
@@ -125,6 +130,83 @@ class AccessibilityContract {
 			!context.accessibilityAction(menuItemId, AccessibilityRequest.Select, null, -1, -1, 1) ||
 			selectedMenu != "save" || menuDismissals != 1)
 			return 8;
+
+		var selectChanges = 0;
+		var selectedSelectValue = "";
+		var select = new Select("accessibility-select", [
+			new SelectOption("one", "One", "one"),
+			new SelectOption("blocked", "Blocked", "blocked", false),
+			new SelectOption("two", "Two", "two")
+		], "blocked", function(next) {
+			selectChanges++;
+			selectedSelectValue = next;
+		});
+		var selectRoot = context.submit(select, frame);
+		var selectTrigger = selectRoot.children[0];
+		var selectSemantics:Semantics = cast selectTrigger.semantics;
+		if (selectRoot.children.length != 1 || selectSemantics.role != AccessibilityRole.ComboBox ||
+			selectSemantics.value != "One" ||
+			(selectSemantics.states & AccessibilityState.HasPopup) == 0 ||
+			(selectSemantics.actions & AccessibilityAction.SetValue) == 0 ||
+			(selectSemantics.actions & AccessibilityAction.Expand) == 0 ||
+			!context.focusWidget(selectTrigger.id))
+			return 19;
+		context.key(UiEventKind.KeyDown, UiKey.Down);
+		selectRoot = context.submit(select, frame);
+		var openSelectSemantics:Semantics = cast selectRoot.children[0].semantics;
+		var optionListSemantics:Semantics = cast selectRoot.children[1].semantics;
+		var selectedOptionSemantics:Semantics = cast selectRoot.children[1].children[0].semantics;
+		if (selectRoot.children.length != 2 || !selectRoot.focusTrap ||
+			select.value != "one" || (openSelectSemantics.states & AccessibilityState.Expanded) == 0 ||
+			(openSelectSemantics.actions & AccessibilityAction.Collapse) == 0 ||
+			optionListSemantics.role != AccessibilityRole.List ||
+			optionListSemantics.orientation != AccessibilityOrientation.Vertical ||
+			selectedOptionSemantics.setSize != 3 || selectedOptionSemantics.positionInSet != 1 ||
+			(selectedOptionSemantics.states & AccessibilityState.Selected) == 0 ||
+			selectRoot.children[1].children[1].enabled ||
+			context.focus.focusedId == null || !context.focus.focusedId.equals(selectRoot.children[0].id))
+			return 20;
+		context.key(UiEventKind.KeyDown, UiKey.Down);
+		if (context.focus.focusedId == null ||
+			!context.focus.focusedId.equals(selectRoot.children[1].children[2].id) ||
+			select.value != "one")
+			return 21;
+		context.key(UiEventKind.KeyDown, UiKey.Enter);
+		if (select.value != "two" || selectedSelectValue != "two" || selectChanges != 1 ||
+			context.focus.focusedId == null || !context.focus.focusedId.equals(selectRoot.children[0].id))
+			return 22;
+		selectRoot = context.submit(select, frame);
+		if (selectRoot.children.length != 1 ||
+			(cast(selectRoot.children[0].semantics, Semantics).value != "Two") ||
+			!AccessibilityAudit.isValid(selectRoot))
+			return 23;
+		context.key(UiEventKind.KeyDown, UiKey.Enter);
+		selectRoot = context.submit(select, frame);
+		if (selectRoot.children.length != 2)
+			return 24;
+		var optionGeometry:ResolvedLayoutItem = cast selectRoot.children[1].children[0].resolved;
+		var optionX = optionGeometry.x + optionGeometry.width * 0.5;
+		var optionY = optionGeometry.y + optionGeometry.height * 0.5;
+		context.pointerDown(optionX, optionY, 0);
+		context.pointerUp(optionX, optionY, 0);
+		selectRoot = context.submit(select, frame);
+		if (select.value != "one" || selectedSelectValue != "one" || selectChanges != 2 ||
+			selectRoot.children.length != 1 || context.focus.focusedId == null ||
+			!context.focus.focusedId.equals(selectRoot.children[0].id))
+			return 25;
+		context.key(UiEventKind.KeyDown, UiKey.Enter);
+		selectRoot = context.submit(select, frame);
+		if (selectRoot.children.length != 2)
+			return 27;
+		context.key(UiEventKind.KeyDown, UiKey.Escape);
+		selectRoot = context.submit(select, frame);
+		if (selectRoot.children.length != 1 || context.focus.focusedId == null ||
+			!context.focus.focusedId.equals(selectRoot.children[0].id))
+			return 28;
+		if (!context.accessibilityAction(selectRoot.children[0].id.value, AccessibilityRequest.SetValue,
+			"two", -1, -1, 1) || select.value != "two" || selectedSelectValue != "two" ||
+			selectChanges != 3)
+			return 29;
 
 		var toggles = 0;
 		var toggle = new Toggle("accessibility-switch", "Enabled", false,
