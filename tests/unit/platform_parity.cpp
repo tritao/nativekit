@@ -139,7 +139,8 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_INPUT) | cap(NK_CAP_RESOURCE_IO) | cap(NK_CAP_CLIPBOARD) |
                 cap(NK_CAP_SHELL) | cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_NOTIFICATION) |
                 k_ios_system_capabilities | cap(NK_CAP_ACCESSIBILITY) | cap(NK_CAP_DRAG_DROP) |
-                cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_JOYSTICK),
+                cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_JOYSTICK) |
+                cap(NK_CAP_SURFACE_FRAME_CALLBACK),
             cap(NK_CAP_SYSTEM_FONTS),
             cap(NK_CAP_WINDOW) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) | cap(NK_CAP_WRAP_NATIVE_WINDOW) |
                 cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |

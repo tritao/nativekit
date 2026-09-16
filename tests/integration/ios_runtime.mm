@@ -28,13 +28,14 @@ bool check_result(const char *operation, nk_result result) {
 }
 
 bool check_capabilities(nk_capabilities capabilities) {
-    const nk_capabilities expected =
-        NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_METAL_SURFACE | NK_CAP_INPUT |
-        NK_CAP_RESOURCE_IO | NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
-        NK_CAP_NOTIFICATION | NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP | NK_CAP_RESOURCE_SHARING |
-        NK_CAP_JOYSTICK | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
-        NK_CAP_APPLICATION_STORAGE | NK_CAP_KEEP_AWAKE | NK_CAP_DEVICE_ORIENTATION |
-        NK_CAP_DISPLAY_ORIENTATION;
+    const nk_capabilities expected = NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_METAL_SURFACE |
+                                     NK_CAP_INPUT | NK_CAP_RESOURCE_IO | NK_CAP_CLIPBOARD |
+                                     NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
+                                     NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP |
+                                     NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK | NK_CAP_SYSTEM_INFO |
+                                     NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
+                                     NK_CAP_KEEP_AWAKE | NK_CAP_DEVICE_ORIENTATION |
+                                     NK_CAP_DISPLAY_ORIENTATION | NK_CAP_SURFACE_FRAME_CALLBACK;
     if (capabilities == expected)
         return true;
     std::fprintf(stderr, "iOS runtime capability mask changed: expected 0x%llx, got 0x%llx\n",
@@ -43,16 +44,28 @@ bool check_capabilities(nk_capabilities capabilities) {
     return false;
 }
 
+struct NKIOSFrameState {
+    nk_surface surface = NK_INVALID_HANDLE;
+    int count = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+};
+
 void NK_CALL on_frame(nk_surface surface, int32_t width, int32_t height, void *user_data) {
-    (void)surface;
-    if (width > 0 && height > 0)
-        ++*static_cast<int *>(user_data);
+    auto *state = static_cast<NKIOSFrameState *>(user_data);
+    if (!state)
+        return;
+    state->surface = surface;
+    state->width = width;
+    state->height = height;
+    ++state->count;
 }
 
 } // namespace
 
 enum class NKRuntimeStage {
     wait_frame,
+    verify_frame_stop,
     wait_html_navigation,
     wait_url_navigation,
     wait_evaluation,
@@ -69,7 +82,9 @@ enum class NKRuntimeStage {
     nk_request_id _evaluation;
     nk_request_id _clipboardRequest;
     NKRuntimeStage _stage;
-    int _frameCount;
+    NKIOSFrameState _frameState;
+    int _frameCountAtStop;
+    int _frameStopTicks;
     int _shareTicks;
     bool _initialized;
     bool _finished;
@@ -91,7 +106,9 @@ enum class NKRuntimeStage {
         _evaluation = NK_INVALID_REQUEST_ID;
         _clipboardRequest = NK_INVALID_REQUEST_ID;
         _stage = NKRuntimeStage::wait_frame;
-        _frameCount = 0;
+        _frameState = {};
+        _frameCountAtStop = 0;
+        _frameStopTicks = 0;
         _shareTicks = 0;
         _initialized = false;
         _finished = false;
@@ -201,7 +218,31 @@ enum class NKRuntimeStage {
     if (_finished)
         return;
     if (_stage == NKRuntimeStage::wait_frame) {
-        if (_frameCount == 0)
+        if (_frameState.count == 0)
+            return;
+        if (_frameState.surface != _surface || _frameState.width <= 0 ||
+            _frameState.height <= 0) {
+            std::fprintf(stderr, "iOS frame callback returned an invalid frame\n");
+            [self fail];
+            return;
+        }
+        if (!check_result("nk_surface_set_frame_callback(stop)",
+                          nk_surface_set_frame_callback(_surface, nullptr, nullptr))) {
+            [self fail];
+            return;
+        }
+        _frameCountAtStop = _frameState.count;
+        _frameStopTicks = 0;
+        _stage = NKRuntimeStage::verify_frame_stop;
+        return;
+    }
+    if (_stage == NKRuntimeStage::verify_frame_stop) {
+        if (_frameState.count != _frameCountAtStop) {
+            std::fprintf(stderr, "iOS frame callback continued after being disabled\n");
+            [self fail];
+            return;
+        }
+        if (++_frameStopTicks < 5)
             return;
         [self beginWebView];
         return;
@@ -346,7 +387,7 @@ enum class NKRuntimeStage {
         target.native_context == 0 || target.native_present_target == 0 ||
         !check_result("nk_surface_present", nk_surface_present(_surface)) ||
         !check_result("nk_surface_set_frame_callback",
-                      nk_surface_set_frame_callback(_surface, on_frame, &_frameCount))) {
+                      nk_surface_set_frame_callback(_surface, on_frame, &_frameState))) {
         [self fail];
         return;
     }
