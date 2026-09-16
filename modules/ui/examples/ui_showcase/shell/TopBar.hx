@@ -22,7 +22,8 @@ class TopBar {
 		style.padding = new Insets(22.0, 0.0, 22.0, 0.0);
 		style.background = explorer.paletteSidebar();
 		var brand = new Row("top-brand", [
-			explorer.keyed("brand-mark", explorer.text("NK", UiExplorer.color(0.31, 0.91, 0.72))),
+			explorer.keyed("brand-mark", explorer.text("NK",
+				explorer.context.buildContext.theme.accent)),
 			explorer.keyed("brand", explorer.heading("NativeKit UI Explorer"))
 		], clusterStyle(12.0));
 		var actions:Array<KeyedView> = [
