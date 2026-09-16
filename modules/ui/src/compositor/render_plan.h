@@ -17,6 +17,11 @@ enum class RenderCommandKind : uint8_t {
     StrokePath,
 };
 
+enum class RenderPassKind : uint8_t {
+    Draw = 1,
+    Effect,
+};
+
 enum class RenderTargetFormat : uint8_t {
     Rgba8 = 1,
 };
@@ -71,6 +76,9 @@ struct RenderPass {
     RenderTargetDescriptor target_descriptor{};
     bool load_existing = false;
     std::vector<RenderCommand> commands;
+    RenderPassKind kind = RenderPassKind::Draw;
+    ResourceId input_target{};
+    EffectDescriptor effect{};
 };
 
 struct RenderDependency {

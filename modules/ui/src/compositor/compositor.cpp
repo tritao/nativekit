@@ -18,6 +18,9 @@ struct Layer {
     bool has_bounds = false;
     float parent_origin_x = 0.0f;
     float parent_origin_y = 0.0f;
+    RenderTargetDescriptor target_descriptor{};
+    EffectDescriptor effect{};
+    bool has_effect = false;
     bool isolated = false;
 };
 
@@ -27,6 +30,8 @@ struct LayerCommandValues {
     LayerBounds bounds{};
     uint32_t flags = 0;
     bool has_bounds = false;
+    EffectDescriptor effect{};
+    bool has_effect = false;
 };
 
 struct CanvasState {
@@ -93,6 +98,17 @@ void apply_state(RenderCommand &command, const CanvasState &state, float target_
 }
 
 bool read_layer(const uint8_t *record, uint32_t size, LayerCommandValues &result) {
+    if (size == sizeof(BeginLayerEffectCommand)) {
+        const auto value = read<BeginLayerEffectCommand>(record);
+        result.opacity = value.opacity;
+        result.mode = value.mode;
+        result.bounds = {value.x, value.y, value.width, value.height};
+        result.flags = value.flags;
+        result.has_bounds = (value.flags & LayerHasBounds) != 0;
+        result.effect = value.effect;
+        result.has_effect = value.effect.kind != EffectKind::None;
+        return true;
+    }
     if (size == sizeof(BeginLayerCommand)) {
         const auto value = read<BeginLayerCommand>(record);
         result.opacity = value.opacity;
@@ -245,31 +261,32 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             LayerCommandValues value{};
             if (!read_layer(record, header.size, value))
                 return fail(error, index, "invalid layer begin");
-            const bool isolated = value.opacity < 1.0f || (value.flags & LayerIsolated) != 0;
+            const bool isolated = value.opacity < 1.0f || (value.flags & LayerIsolated) != 0 ||
+                                  value.has_effect;
             const ResourceId parent_target = current_target;
             ResourceId layer_target = current_target;
             const float parent_origin_x = current_origin_x;
             const float parent_origin_y = current_origin_y;
+            RenderTargetDescriptor layer_descriptor{};
             if (isolated) {
                 layer_target = allocate_transient_target();
                 current_target = layer_target;
-                RenderTargetDescriptor descriptor{};
                 if (value.has_bounds) {
-                    descriptor.logical_width = value.bounds.width;
-                    descriptor.logical_height = value.bounds.height;
-                    descriptor.origin_x = value.bounds.x;
-                    descriptor.origin_y = value.bounds.y;
+                    layer_descriptor.logical_width = value.bounds.width;
+                    layer_descriptor.logical_height = value.bounds.height;
+                    layer_descriptor.origin_x = value.bounds.x;
+                    layer_descriptor.origin_y = value.bounds.y;
                     current_origin_x = value.bounds.x;
                     current_origin_y = value.bounds.y;
                 } else {
                     current_origin_x = 0.0f;
                     current_origin_y = 0.0f;
                 }
-                pass = &continue_pass(plan, current_target, descriptor);
+                pass = &continue_pass(plan, current_target, layer_descriptor);
             }
             layers.push_back({parent_target, layer_target, value.opacity, value.mode,
                               value.bounds, value.has_bounds, parent_origin_x, parent_origin_y,
-                              isolated});
+                              layer_descriptor, value.effect, value.has_effect, isolated});
             break;
         }
         case CommandOpcode::EndLayer: {
@@ -279,8 +296,20 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 current_target = layer.parent_target;
                 current_origin_x = layer.parent_origin_x;
                 current_origin_y = layer.parent_origin_y;
+                ResourceId composite_target = layer.layer_target;
+                if (layer.has_effect) {
+                    const ResourceId effect_target = allocate_transient_target();
+                    RenderPass effect_pass;
+                    effect_pass.target = effect_target;
+                    effect_pass.target_descriptor = layer.target_descriptor;
+                    effect_pass.kind = RenderPassKind::Effect;
+                    effect_pass.input_target = layer.layer_target;
+                    effect_pass.effect = layer.effect;
+                    plan.passes.push_back(std::move(effect_pass));
+                    composite_target = effect_target;
+                }
                 pass = &continue_pass(plan, current_target);
-                pass->commands.push_back({RenderCommandKind::CompositeTarget, layer.layer_target,
+                pass->commands.push_back({RenderCommandKind::CompositeTarget, composite_target,
                                           layer.has_bounds ? layer.bounds.x - current_origin_x : 0.0f,
                                           layer.has_bounds ? layer.bounds.y - current_origin_y : 0.0f,
                                           layer.has_bounds ? layer.bounds.width : 0.0f,
@@ -292,7 +321,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 pass->commands.back().scissor_y = state.y - current_origin_y;
                 pass->commands.back().scissor_width = state.width;
                 pass->commands.back().scissor_height = state.height;
-                add_dependency(plan, layer.layer_target, current_target);
+                add_dependency(plan, composite_target, current_target);
             }
             break;
         }

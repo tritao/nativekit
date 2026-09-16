@@ -1,6 +1,7 @@
 import Color;
 import Canvas;
 import DisplayList;
+import CompositeMode;
 import FontCollection;
 import GradientStop;
 import Image;
@@ -1587,8 +1588,28 @@ class FrameworkSmoke {
 				effectDescription = entry.describe();
 		if (!effectsDiff.changed || effectsDiff.impact != StyleImpact.Composite ||
 			effectComputed.entries().length < StyleProperty.all().length ||
-			effectDescription.indexOf("blur(12") != 0)
+			effectDescription.indexOf("[blur(12") != 0)
 			return 244;
+		var colorAdjustments = EffectChain.of([
+			new BrightnessEffect(2.0), new ContrastEffect(0.5)
+		]);
+		var colorMatrix = colorAdjustments.colorMatrix();
+		if (colorMatrix.length != ColorMatrixEffect.ComponentCount ||
+			colorMatrix[0] != 1.0 || colorMatrix[6] != 1.0 ||
+			colorMatrix[12] != 1.0 || colorMatrix[18] != 1.0 ||
+			colorMatrix[4] != 0.25 || colorMatrix[9] != 0.25 ||
+			colorMatrix[14] != 0.25)
+			return 247;
+		var effectCanvas = new Canvas();
+		var effectList = DisplayList.create();
+		effectCanvas.withLayer(1.0, function(canvas) {
+			canvas.fillRect(new Rect(4.0, 6.0, 24.0, 18.0), Color.rgba(0.2, 0.4, 0.8, 1.0));
+		}, CompositeMode.SourceOver, new Rect(4.0, 6.0, 24.0, 18.0), colorAdjustments);
+		effectCanvas.update(effectList);
+		if (effectList.info().commandCount != 4)
+			return 248;
+		effectList.dispose();
+		effectCanvas.reset();
 		var responsiveSheet = new StyleSheet("ResponsiveSheet");
 		responsiveSheet.rule(StyleSelector.widget("button"),
 			[StyleValue.paddingSymmetric(12.0, 8.0)]);

@@ -78,6 +78,28 @@ static bool rejects_bad_streams() {
         return false;
 
     list.reset();
+    EffectDescriptor effect{};
+    effect.kind = EffectKind::ColorMatrix;
+    effect.color_matrix[0] = 1.0f;
+    effect.color_matrix[6] = 1.0f;
+    effect.color_matrix[12] = 1.0f;
+    effect.color_matrix[18] = 1.0f;
+    if (!list.begin_layer(1.0f, LayerBounds{4.0f, 8.0f, 32.0f, 24.0f}, effect) ||
+        !list.end_layer() || !validate_display_list(list.data(), list.size(), &error))
+        return false;
+
+    list.reset();
+    effect.kind = static_cast<EffectKind>(99);
+    if (!list.begin_layer(1.0f, effect) || validate_display_list(list.data(), list.size(), &error))
+        return false;
+
+    list.reset();
+    effect.kind = EffectKind::ColorMatrix;
+    effect.color_matrix[0] = NAN;
+    if (!list.begin_layer(1.0f, effect) || validate_display_list(list.data(), list.size(), &error))
+        return false;
+
+    list.reset();
     if (!list.begin_layer(1.0f, LayerBounds{4.0f, 8.0f, 0.0f, 24.0f}) ||
         validate_display_list(list.data(), list.size(), &error))
         return false;

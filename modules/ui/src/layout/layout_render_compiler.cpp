@@ -270,6 +270,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 }
                 RenderPass pass = source_pass;
                 pass.target = remap(pass.target);
+                pass.input_target = remap(pass.input_target);
                 if (pass.target_descriptor.logical_width > 0.0f ||
                     pass.target_descriptor.logical_height > 0.0f) {
                     if (!std::isfinite(pass.target_descriptor.logical_width) ||

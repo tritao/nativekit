@@ -1,6 +1,7 @@
 #ifndef NATIVEKIT_UI_DISPLAY_LIST_H
 #define NATIVEKIT_UI_DISPLAY_LIST_H
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -48,6 +49,20 @@ enum class CompositeMode : uint32_t {
 enum LayerFlags : uint32_t {
     LayerIsolated = 1u << 0,
     LayerHasBounds = 1u << 1,
+};
+
+/** Effect kinds that can be carried by a display-list layer. */
+enum class EffectKind : uint32_t {
+    None = 0,
+    ColorMatrix = 1,
+};
+
+constexpr size_t kColorMatrixComponents = 20;
+
+/** Backend-neutral effect data used by the render-plan compiler. */
+struct EffectDescriptor {
+    EffectKind kind = EffectKind::None;
+    std::array<float, kColorMatrixComponents> color_matrix{};
 };
 
 struct CommandHeader {
@@ -122,6 +137,19 @@ struct BeginLayerCommand {
     uint32_t flags;
 };
 
+/** Extended layer record carrying one color-matrix effect descriptor. */
+struct BeginLayerEffectCommand {
+    CommandHeader header;
+    float opacity;
+    CompositeMode mode;
+    float x;
+    float y;
+    float width;
+    float height;
+    uint32_t flags;
+    EffectDescriptor effect;
+};
+
 /** Legacy 16-byte layer record accepted for display-list compatibility. */
 struct LegacyBeginLayerCommand {
     CommandHeader header;
@@ -168,6 +196,10 @@ class DisplayList {
     bool draw_text_layout(ResourceId layout, float x, float y);
     bool begin_layer(float opacity, CompositeMode mode = CompositeMode::SourceOver);
     bool begin_layer(float opacity, const LayerBounds &bounds,
+                     CompositeMode mode = CompositeMode::SourceOver);
+    bool begin_layer(float opacity, const EffectDescriptor &effect,
+                     CompositeMode mode = CompositeMode::SourceOver);
+    bool begin_layer(float opacity, const LayerBounds &bounds, const EffectDescriptor &effect,
                      CompositeMode mode = CompositeMode::SourceOver);
     bool end_layer();
     bool draw_render_target(ResourceId target, float x, float y, float width, float height);

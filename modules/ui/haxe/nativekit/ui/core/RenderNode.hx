@@ -4,6 +4,7 @@ import LayoutNode;
 import LayoutStyle;
 import LayoutVisualKind;
 import Canvas;
+import CompositeMode;
 import ResolvedLayoutItem;
 import nativekit.ui.style.ComputedStyle;
 import nativekit.ui.style.Decoration;
@@ -222,8 +223,11 @@ class RenderNode {
 				handler(target, resolved);
 		};
 		var opacity = style.get(StyleProperty.Opacity);
-		if (opacity < 1.0)
-			canvas.withLayer(opacity, paintContent);
+		var effects = style.get(StyleProperty.Effects);
+		var hasEffects = effects != null && effects.effects.length > 0;
+		if (opacity < 1.0 || hasEffects)
+			canvas.withLayer(opacity, paintContent, CompositeMode.SourceOver, null,
+				hasEffects ? effects : null);
 		else
 			paintContent(canvas);
 		return true;

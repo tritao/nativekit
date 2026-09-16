@@ -88,6 +88,10 @@ class RecordingRenderer final : public UiRenderer {
     }
     bool compositeImage(nk_graphics_image, float, float, float, float, const float[6],
                         float) override { return true; }
+    bool applyEffect(ResourceId, const EffectDescriptor &) override {
+        ++effect_count;
+        return true;
+    }
     bool endPass() override { return true; }
     bool endFrame() override { ++commit_count; return true; }
     UiRendererStats stats() const override { return {}; }
@@ -97,6 +101,7 @@ class RecordingRenderer final : public UiRenderer {
     uint32_t pass_count = 0;
     uint32_t path_count = 0;
     uint32_t text_count = 0;
+    uint32_t effect_count = 0;
     uint32_t surface_mesh_count = 0;
     uint32_t commit_count = 0;
     bool last_scissor_enabled = false;
@@ -372,6 +377,26 @@ int main() {
         backend.pass_count != 1 || backend.path_count != path_commands ||
         backend.text_count != text_commands || backend.commit_count != 1)
         return 12;
+
+    const ResourceId effect_input = make_resource_id(ResourceKind::RenderTarget, 1, 446);
+    const ResourceId effect_output = make_resource_id(ResourceKind::RenderTarget, 1, 447);
+    RenderPlan effect_plan;
+    effect_plan.passes.push_back({main_target, {}, false, {}});
+    effect_plan.passes.push_back({effect_input, {}, false, {}});
+    RenderPass effect_pass;
+    effect_pass.target = effect_output;
+    effect_pass.kind = RenderPassKind::Effect;
+    effect_pass.input_target = effect_input;
+    effect_pass.effect.kind = EffectKind::ColorMatrix;
+    effect_pass.effect.color_matrix[0] = 1.0f;
+    effect_pass.effect.color_matrix[6] = 1.0f;
+    effect_pass.effect.color_matrix[12] = 1.0f;
+    effect_pass.effect.color_matrix[18] = 1.0f;
+    effect_plan.passes.push_back(effect_pass);
+    if (!execute_render_plan(backend, effect_plan, frame.resources(),
+                             {main_target, frame_target}, &execution_error) ||
+        backend.effect_count != 1 || backend.commit_count != 2)
+        return 25;
 
     LayoutSnapshot recolored = snapshot;
     for (auto &primitive : recolored.primitives) {

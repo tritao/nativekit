@@ -3,6 +3,7 @@ import NativeKitUI;
 import CompositeMode;
 import LineCap;
 import LineJoin;
+import nativekit.ui.style.EffectChain;
 
 @:noCompletion
 class CanvasCommandBuffer {
@@ -65,22 +66,48 @@ class CanvasCommandBuffer {
 		drawRect(NativeKitUI.CommandOpcode.DrawTextLayout, layout, x, y, 0.0, 0.0);
 
 	public function beginLayer(opacity:Float, mode:CompositeMode = CompositeMode.SourceOver,
-			?bounds:Rect):Void {
-		if (bounds == null) {
-			header(NativeKitUI.CommandOpcode.BeginLayer, 16);
+			?bounds:Rect, ?effects:EffectChain):Void {
+		var hasEffects = effects != null && effects.effects.length > 0;
+		var matrix:Array<Float> = null;
+		if (hasEffects)
+			matrix = effects.colorMatrix();
+		if (!hasEffects) {
+			if (bounds == null) {
+				header(NativeKitUI.CommandOpcode.BeginLayer, 16);
+				float(opacity);
+				word(cast mode);
+				return;
+			}
+			header(NativeKitUI.CommandOpcode.BeginLayer, 36);
 			float(opacity);
 			word(cast mode);
+			float(bounds.x);
+			float(bounds.y);
+			float(bounds.width);
+			float(bounds.height);
+			// NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS.
+			word(3);
 			return;
 		}
-		header(NativeKitUI.CommandOpcode.BeginLayer, 36);
+		header(NativeKitUI.CommandOpcode.BeginLayer, 120);
 		float(opacity);
 		word(cast mode);
-		float(bounds.x);
-		float(bounds.y);
-		float(bounds.width);
-		float(bounds.height);
-		// NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS.
-		word(3);
+		if (bounds == null) {
+			float(0.0);
+			float(0.0);
+			float(0.0);
+			float(0.0);
+			word(1); // NKUI_LAYER_ISOLATED.
+		} else {
+			float(bounds.x);
+			float(bounds.y);
+			float(bounds.width);
+			float(bounds.height);
+			word(3); // NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS.
+		}
+		word(1); // NKUI_EFFECT_COLOR_MATRIX.
+		for (value in matrix)
+			float(value);
 	}
 
 	public function endLayer():Void

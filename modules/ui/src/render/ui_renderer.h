@@ -121,6 +121,8 @@ class UiRenderer {
                                 const float transform[6], float opacity) = 0;
     virtual bool compositeImage(nk_graphics_image image, float x, float y, float width,
                                 float height, const float transform[6], float opacity) = 0;
+    /** Applies one backend-neutral effect to the currently active target. */
+    virtual bool applyEffect(ResourceId source, const EffectDescriptor &effect) = 0;
     virtual bool endPass() = 0;
     virtual bool endFrame() = 0;
     virtual UiRendererStats stats() const = 0;

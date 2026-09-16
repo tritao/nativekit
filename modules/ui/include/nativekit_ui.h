@@ -256,6 +256,15 @@ enum NK_ENUM(nkui_layer_flags) {
     NKUI_LAYER_HAS_BOUNDS = 1u << 1
 };
 
+/** Effect descriptors currently supported by a layer command. */
+typedef uint32_t nkui_effect_kind;
+enum NK_ENUM(nkui_effect_kind) {
+    /** The layer has no sampled effect. */
+    NKUI_EFFECT_NONE = 0,
+    /** Apply the supplied row-major 4x5 color matrix. */
+    NKUI_EFFECT_COLOR_MATRIX = 1
+};
+
 /** Fixed header present at the start of every display-list command record. */
 typedef struct nkui_command_header {
     /** One of the NKUI_COMMAND_* opcode values. */
@@ -397,6 +406,30 @@ typedef struct nkui_layer_command {
     /** Combination of nkui_layer_flags. */
     nkui_layer_flags flags;
 } nkui_layer_command;
+
+/** Extended payload for NKUI_COMMAND_BEGIN_LAYER with one color-matrix effect. */
+typedef struct nkui_layer_effect_command {
+    /** Command record header. */
+    nkui_command_header header;
+    /** Layer opacity in the inclusive range 0..1. */
+    float opacity;
+    /** Compositing mode used when the layer is applied. */
+    nkui_composite_mode composite_mode;
+    /** Left edge of the optional bounded target in logical coordinates. */
+    float x;
+    /** Top edge of the optional bounded target in logical coordinates. */
+    float y;
+    /** Width of the optional bounded target; must be positive when present. */
+    float width;
+    /** Height of the optional bounded target; must be positive when present. */
+    float height;
+    /** Combination of nkui_layer_flags. */
+    nkui_layer_flags flags;
+    /** Effect kind carried by this command. */
+    nkui_effect_kind effect_kind;
+    /** Row-major 4x5 color matrix, used by NKUI_EFFECT_COLOR_MATRIX. */
+    float effect_matrix[20];
+} nkui_layer_effect_command;
 
 /* ------------------------------------------------------------------------- */
 /* Text and layout types                                                      */

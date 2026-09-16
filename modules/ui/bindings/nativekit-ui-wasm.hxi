@@ -188,6 +188,19 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		NKUI_COMPOSITE_SOURCE_OVER = 1;
 	}
 	/**
+	 * Effect descriptors currently supported by a layer command.
+	 */
+	enum nkui_effect_kind : u32 {
+		/**
+		 * The layer has no sampled effect.
+		 */
+		NKUI_EFFECT_NONE = 0;
+		/**
+		 * Apply the supplied row-major 4x5 color matrix.
+		 */
+		NKUI_EFFECT_COLOR_MATRIX = 1;
+	}
+	/**
 	 * Font role used when adding a font file to a collection.
 	 */
 	enum nkui_font_family : u32 {
@@ -925,6 +938,51 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Combination of nkui_layer_flags.
 		 */
 		flags: nkui_layer_flags @offset(32);
+	}
+	/**
+	 * Extended payload for NKUI_COMMAND_BEGIN_LAYER with one color-matrix effect.
+	 */
+	struct nkui_layer_effect_command @layout(120, 4) {
+		/**
+		 * Command record header.
+		 */
+		header: nkui_command_header @offset(0);
+		/**
+		 * Layer opacity in the inclusive range 0..1.
+		 */
+		opacity: f32 @offset(8);
+		/**
+		 * Compositing mode used when the layer is applied.
+		 */
+		composite_mode: nkui_composite_mode @offset(12);
+		/**
+		 * Left edge of the optional bounded target in logical coordinates.
+		 */
+		x: f32 @offset(16);
+		/**
+		 * Top edge of the optional bounded target in logical coordinates.
+		 */
+		y: f32 @offset(20);
+		/**
+		 * Width of the optional bounded target; must be positive when present.
+		 */
+		width: f32 @offset(24);
+		/**
+		 * Height of the optional bounded target; must be positive when present.
+		 */
+		height: f32 @offset(28);
+		/**
+		 * Combination of nkui_layer_flags.
+		 */
+		flags: nkui_layer_flags @offset(32);
+		/**
+		 * Effect kind carried by this command.
+		 */
+		effect_kind: nkui_effect_kind @offset(36);
+		/**
+		 * Row-major 4x5 color matrix, used by NKUI_EFFECT_COLOR_MATRIX.
+		 */
+		effect_matrix: array<f32, 20> @offset(40);
 	}
 	/**
 	 * Per-submission logical viewport and layout timing.

@@ -135,6 +135,15 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
                           : renderer.beginTargetPass(pass.target, pass_width, pass_height,
                                                      pass.load_existing)))
             return fail(error, pass_index, 0, renderer.lastError());
+        if (pass.kind == RenderPassKind::Effect) {
+            if (!renderer.applyEffect(pass.input_target, pass.effect)) {
+                renderer.endPass();
+                return fail(error, pass_index, 0, renderer.lastError());
+            }
+            if (!renderer.endPass())
+                return fail(error, pass_index, 0, renderer.lastError());
+            continue;
+        }
         const auto fail_command = [&](uint32_t command, const char *message) {
             renderer.endPass();
             return fail(error, pass_index, command, message);

@@ -84,6 +84,29 @@ int main() {
         bounded_composite.composite != CompositeMode::SourceOver)
         return 19;
 
+    DisplayList color_effect;
+    EffectDescriptor effect{};
+    effect.kind = EffectKind::ColorMatrix;
+    effect.color_matrix[0] = 1.0f;
+    effect.color_matrix[6] = 1.0f;
+    effect.color_matrix[12] = 1.0f;
+    effect.color_matrix[18] = 1.0f;
+    effect.color_matrix[4] = 0.25f;
+    if (!color_effect.begin_layer(1.0f, bounds, effect) || !color_effect.draw_path(path) ||
+        !color_effect.end_layer() || !compositor.compile(color_effect, main_target, plan, &error) ||
+        plan.passes.size() != 4 || plan.dependencies.size() != 1)
+        return 20;
+    if (plan.passes[2].kind != RenderPassKind::Effect ||
+        plan.passes[2].input_target.value != plan.passes[1].target.value ||
+        plan.passes[2].effect.kind != EffectKind::ColorMatrix ||
+        plan.passes[2].effect.color_matrix[4] != 0.25f ||
+        plan.passes[3].commands.size() != 1 ||
+        plan.passes[3].commands[0].resource.value != plan.passes[2].target.value)
+        return 21;
+    if (!schedule_render_plan(plan, pass_order, &schedule_error) || pass_order.size() != 4 ||
+        pass_order[0] != 0 || pass_order[1] != 1 || pass_order[2] != 2 || pass_order[3] != 3)
+        return 22;
+
     DisplayList duplicate_surface;
     const auto external = make_resource_id(ResourceKind::RenderTarget, 1, 12);
     if (!duplicate_surface.draw_render_target(external, 0.0f, 0.0f, 10.0f, 10.0f) ||

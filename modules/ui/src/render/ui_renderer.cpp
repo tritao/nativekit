@@ -49,6 +49,7 @@ class UiRendererImpl final : public UiRenderer {
                         const float transform[6], float opacity) override;
     bool compositeImage(nk_graphics_image image, float x, float y, float width, float height,
                         const float transform[6], float opacity) override;
+    bool applyEffect(ResourceId source, const EffectDescriptor &effect) override;
     bool endPass() override;
     bool endFrame() override;
     UiRendererStats stats() const override;
@@ -103,6 +104,7 @@ struct UiRendererImpl::State {
     nkgpu_shader sdf_glyph_shader{};
     nkgpu_shader color_glyph_shader{};
     nkgpu_shader composite_shader{};
+    nkgpu_shader effect_shader{};
     nkgpu_shader surface_mesh_shader{};
     nkgpu_pipeline solid_pipeline{};
     nkgpu_pipeline fill_stencil_pipeline{};
@@ -115,6 +117,7 @@ struct UiRendererImpl::State {
     nkgpu_pipeline sdf_glyph_pipeline{};
     nkgpu_pipeline color_glyph_pipeline{};
     nkgpu_pipeline composite_pipeline{};
+    nkgpu_pipeline effect_pipeline{};
     nkgpu_pipeline surface_mesh_pipeline{};
     nkgpu_sampler sampler{};
     nkgpu_sampler glyph_sampler{};
@@ -153,6 +156,12 @@ struct TextureVertex {
     float u;
     float v;
 };
+
+struct ColorMatrixUniforms {
+    std::array<float, 4> rows[5];
+};
+
+static_assert(sizeof(ColorMatrixUniforms) == sizeof(float) * kColorMatrixComponents);
 
 struct SolidVertex {
     float x;
@@ -599,7 +608,16 @@ PathMesh make_paint_mesh(const PreparedPathData &path, const PreparedPathOperati
 
 namespace {
 
-enum class UiShaderKind { Solid, Path, AlphaGlyph, SdfGlyph, ColorGlyph, Composite, SurfaceMesh };
+enum class UiShaderKind {
+    Solid,
+    Path,
+    AlphaGlyph,
+    SdfGlyph,
+    ColorGlyph,
+    Composite,
+    Effect,
+    SurfaceMesh
+};
 
 struct ShaderSources {
     const char *vertex;
@@ -672,6 +690,15 @@ ShaderSources shader_sources(nkgpu_backend backend, UiShaderKind kind) {
                     ui_shader_composite_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
         return gl(ui_shader_composite_glsl410_vertex, ui_shader_composite_glsl410_fragment,
                   ui_shader_composite_glsl300es_vertex, ui_shader_composite_glsl300es_fragment);
+    case UiShaderKind::Effect:
+        if (d3d11)
+            return {ui_shader_effect_hlsl5_vertex, ui_shader_effect_hlsl5_fragment,
+                    NKGPU_SHADERLANGUAGE_HLSL5};
+        if (metal)
+            return {ui_shader_effect_metal_macos_vertex, ui_shader_effect_metal_macos_fragment,
+                    NKGPU_SHADERLANGUAGE_MSL};
+        return gl(ui_shader_effect_glsl410_vertex, ui_shader_effect_glsl410_fragment,
+                  ui_shader_effect_glsl300es_vertex, ui_shader_effect_glsl300es_fragment);
     case UiShaderKind::SurfaceMesh:
         if (d3d11)
             return {ui_shader_surface_mesh_hlsl5_vertex, ui_shader_surface_mesh_hlsl5_fragment,
@@ -707,6 +734,7 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
         break;
     case UiShaderKind::Path:
     case UiShaderKind::Composite:
+    case UiShaderKind::Effect:
         attributes[attribute_count++] = "position";
         attributes[attribute_count++] = "uv0";
         break;
@@ -756,6 +784,12 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
         fragment_size = 16;
         textured = true;
         break;
+    case UiShaderKind::Effect:
+        vertex_block = "effect_vs_params";
+        fragment_block = "effect_fs_params";
+        fragment_size = sizeof(ColorMatrixUniforms);
+        textured = true;
+        break;
     case UiShaderKind::SurfaceMesh:
         vertex_block = "surface_mesh_vs_params";
         vertex_size = 64;
@@ -770,7 +804,9 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
         (!gpu_result(state, nkgpu_shader_uniform_block(builder, 1, NKGPU_SHADERSTAGE_FRAGMENT,
                                                        fragment_size)) ||
          !add_uniform(state, builder, 1, 0, fragment_block, NKGPU_UNIFORMTYPE_FLOAT4,
-                      kind == UiShaderKind::Path ? kPathShaderVec4Count : 1)))
+                      kind == UiShaderKind::Path
+                          ? kPathShaderVec4Count
+                          : kind == UiShaderKind::Effect ? 5 : 1)))
         return false;
     if (textured && !gpu_result(state, nkgpu_shader_texture(builder, 0, 0,
                                                             NKGPU_SHADERSTAGE_FRAGMENT, "tex_smp")))
@@ -868,6 +904,7 @@ bool UiRendererImpl::initialize() {
         !create_shader(*state_, UiShaderKind::SdfGlyph, state_->sdf_glyph_shader) ||
         !create_shader(*state_, UiShaderKind::ColorGlyph, state_->color_glyph_shader) ||
         !create_shader(*state_, UiShaderKind::Composite, state_->composite_shader) ||
+        !create_shader(*state_, UiShaderKind::Effect, state_->effect_shader) ||
         !create_shader(*state_, UiShaderKind::SurfaceMesh, state_->surface_mesh_shader))
         return false;
 
@@ -970,6 +1007,10 @@ bool UiRendererImpl::initialize() {
                          {{0, offsetof(TextureVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
                           {1, offsetof(TextureVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
                          color_options, state_->composite_pipeline) ||
+        !create_pipeline(*state_, state_->effect_shader, sizeof(TextureVertex),
+                         {{0, offsetof(TextureVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
+                          {1, offsetof(TextureVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
+                         color_options, state_->effect_pipeline) ||
         !create_pipeline(*state_, state_->surface_mesh_shader, sizeof(SurfaceMeshVertex),
                          {{0, offsetof(SurfaceMeshVertex, x), NKGPU_VERTEXFORMAT_FLOAT3},
                           {1, offsetof(SurfaceMeshVertex, red), NKGPU_VERTEXFORMAT_UBYTE4N}},
@@ -1004,7 +1045,7 @@ bool UiRendererImpl::initialize() {
         !create_stream(1024 * 1024, NKGPU_BUFFER_VERTEX, state_->surface_mesh_vertices) ||
         !create_stream(4 * 1024 * 1024, NKGPU_BUFFER_INDEX, state_->indices))
         return false;
-    state_->stats.gpu_resources = 30;
+    state_->stats.gpu_resources = 32;
     state_->initialized = true;
     return true;
 }
@@ -1406,6 +1447,38 @@ bool draw_composite(UiRendererImpl::State &state, float x, float y, float width,
 }
 
 } // namespace
+
+bool UiRendererImpl::applyEffect(ResourceId source, const EffectDescriptor &effect) {
+    if (!state_->in_pass || effect.kind != EffectKind::ColorMatrix)
+        return fail(*state_, "unsupported UI effect");
+    for (const float value : effect.color_matrix)
+        if (!std::isfinite(value))
+            return fail(*state_, "UI effect parameters are not finite");
+    const auto found = state_->targets.find(source.value);
+    if (found == state_->targets.end() || !found->second.image.id)
+        return fail(*state_, "effect input target was not rendered");
+    if (!setScissor(false, 0.0f, 0.0f, 0.0f, 0.0f))
+        return false;
+
+    const float width = static_cast<float>(state_->width);
+    const float height = static_cast<float>(state_->height);
+    const std::vector<TextureVertex> vertices = {
+        {0.0f, 0.0f, 0.0f, 1.0f},
+        {width, 0.0f, 1.0f, 1.0f},
+        {width, height, 1.0f, 0.0f},
+        {0.0f, height, 0.0f, 0.0f},
+    };
+    const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
+    ColorMatrixUniforms uniforms{};
+    for (uint32_t row = 0; row < 4; ++row) {
+        for (uint32_t column = 0; column < 4; ++column)
+            uniforms.rows[row][column] = effect.color_matrix[row * 5 + column];
+        uniforms.rows[4][row] = effect.color_matrix[row * 5 + 4];
+    }
+    return draw_mesh(*state_, state_->effect_pipeline, vertices, indices, &uniforms,
+                     sizeof(uniforms), {}, state_->sampler, state_->composite_vertices,
+                     found->second.image);
+}
 
 bool UiRendererImpl::compositeImage(ResourceId target_id, float x, float y, float width,
                                     float height, const float transform[6], float opacity) {

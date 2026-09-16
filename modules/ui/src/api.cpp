@@ -51,6 +51,7 @@ static_assert(sizeof(nkui_composite_command) == sizeof(nkui::SetCompositeModeCom
 static_assert(sizeof(nkui_rect_command) == sizeof(nkui::ClipRectCommand));
 static_assert(sizeof(nkui_draw_rect_command) == sizeof(nkui::DrawRectResourceCommand));
 static_assert(sizeof(nkui_layer_command) == sizeof(nkui::BeginLayerCommand));
+static_assert(sizeof(nkui_layer_effect_command) == sizeof(nkui::BeginLayerEffectCommand));
 static_assert(sizeof(nkui_stroke_path_command) == sizeof(nkui::StrokePathCommand));
 static_assert(sizeof(nkui_layout_item) == NKUI_LAYOUT_RESOLVED_ITEM_BYTES);
 

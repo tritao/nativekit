@@ -35,6 +35,21 @@ bool valid_composite(CompositeMode mode) {
     return mode == CompositeMode::SourceOver;
 }
 
+bool valid_effect_kind(EffectKind kind) {
+    return kind == EffectKind::None || kind == EffectKind::ColorMatrix;
+}
+
+bool valid_effect(const EffectDescriptor &effect) {
+    if (!valid_effect_kind(effect.kind))
+        return false;
+    if (effect.kind == EffectKind::None)
+        return true;
+    for (float value : effect.color_matrix)
+        if (!finite(value))
+            return false;
+    return true;
+}
+
 bool valid_line_cap(uint32_t line_cap) {
     return line_cap <= 2;
 }
@@ -248,6 +263,29 @@ bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds, Composit
     return append(value);
 }
 
+bool DisplayList::begin_layer(float opacity, const EffectDescriptor &effect, CompositeMode mode) {
+    auto value = command<BeginLayerEffectCommand>(CommandOpcode::BeginLayer);
+    value.opacity = opacity;
+    value.mode = mode;
+    value.flags = LayerIsolated;
+    value.effect = effect;
+    return append(value);
+}
+
+bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
+                              const EffectDescriptor &effect, CompositeMode mode) {
+    auto value = command<BeginLayerEffectCommand>(CommandOpcode::BeginLayer);
+    value.opacity = opacity;
+    value.mode = mode;
+    value.x = bounds.x;
+    value.y = bounds.y;
+    value.width = bounds.width;
+    value.height = bounds.height;
+    value.flags = LayerIsolated | LayerHasBounds;
+    value.effect = effect;
+    return append(value);
+}
+
 bool DisplayList::end_layer() {
     return append(command<ScopeCommand>(CommandOpcode::EndLayer));
 }
@@ -355,8 +393,21 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
             break;
         }
         case CommandOpcode::BeginLayer: {
+            const auto *effect_value = read_command<BeginLayerEffectCommand>(record, header.size);
             const auto *legacy = read_command<LegacyBeginLayerCommand>(record, header.size);
             const auto *value = read_command<BeginLayerCommand>(record, header.size);
+            const bool valid_effect_record =
+                effect_value && finite(effect_value->opacity) && effect_value->opacity >= 0.0f &&
+                effect_value->opacity <= 1.0f && valid_composite(effect_value->mode) &&
+                !(effect_value->flags & ~(LayerIsolated | LayerHasBounds)) &&
+                (!(effect_value->flags & LayerHasBounds) ||
+                 ((effect_value->flags & LayerIsolated) &&
+                  valid_rect(effect_value->x, effect_value->y, effect_value->width,
+                             effect_value->height) &&
+                  effect_value->width > 0.0f && effect_value->height > 0.0f)) &&
+                valid_effect(effect_value->effect) &&
+                (effect_value->effect.kind == EffectKind::None ||
+                 (effect_value->flags & LayerIsolated));
             const bool valid_legacy = legacy && finite(legacy->opacity) && legacy->opacity >= 0.0f &&
                                       legacy->opacity <= 1.0f && valid_composite(legacy->mode);
             const bool valid_extended = value && finite(value->opacity) && value->opacity >= 0.0f &&
@@ -366,7 +417,8 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
                                          ((value->flags & LayerIsolated) &&
                                           valid_rect(value->x, value->y, value->width, value->height) &&
                                           value->width > 0.0f && value->height > 0.0f));
-            if ((!valid_legacy && !valid_extended) || layer_depth == max_scope_depth)
+            if ((!valid_effect_record && !valid_legacy && !valid_extended) ||
+                layer_depth == max_scope_depth)
                 return fail(error, offset, index, "invalid layer begin");
             ++layer_depth;
             break;
