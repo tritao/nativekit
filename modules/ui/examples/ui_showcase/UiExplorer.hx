@@ -45,6 +45,7 @@ import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TextArea;
 import nativekit.ui.widgets.TextEditorDiagnostics;
 import nativekit.ui.widgets.TextField;
+import nativekit.ui.widgets.SizedBox;
 import nativekit.ui.core.TextStyleOverride;
 import TextWrap;
 import nativekit.ui.widgets.VirtualList;
