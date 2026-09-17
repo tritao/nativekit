@@ -44,6 +44,20 @@ bool check_capabilities(nk_capabilities capabilities) {
     return false;
 }
 
+bool check_directory(nk_system_directory_kind kind, const char *name) {
+    uint32_t size = 0;
+    if (nk_system_directory(kind, nullptr, &size) != NK_ERROR_BUFFER_TOO_SMALL || size <= 1) {
+        std::fprintf(stderr, "%s did not provide a path size\n", name);
+        return false;
+    }
+    std::vector<char> path(size);
+    if (nk_system_directory(kind, path.data(), &size) != NK_OK || path[0] == '\0') {
+        std::fprintf(stderr, "%s did not provide a path\n", name);
+        return false;
+    }
+    return true;
+}
+
 struct NKIOSFrameState {
     nk_surface surface = NK_INVALID_HANDLE;
     int count = 0;
@@ -168,6 +182,17 @@ enum class NKRuntimeStage {
 }
 
 - (void)beginServices {
+    if (!check_directory(NK_DIRECTORY_APPLICATION, "iOS application directory") ||
+        !check_directory(NK_DIRECTORY_APPLICATION_STORAGE, "iOS application storage")) {
+        [self fail];
+        return;
+    }
+    uint32_t font_size = 0;
+    if (nk_system_directory(NK_DIRECTORY_FONTS, nullptr, &font_size) != NK_ERROR_UNSUPPORTED) {
+        std::fprintf(stderr, "iOS system font directory should be unavailable\n");
+        [self fail];
+        return;
+    }
     nk_system_appearance appearance = {};
     appearance.struct_size = sizeof(appearance);
     if (!check_result("nk_system_get_appearance", nk_system_get_appearance(&appearance)) ||

@@ -96,6 +96,11 @@ if(NK_BACKEND_GTK_AVAILABLE)
         set_target_properties(nativekit_gtk_integration PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_create_destroy
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_integration>)
+        add_executable(nativekit_gtk_native_window integration/gtk_native_window.c)
+        target_link_libraries(nativekit_gtk_native_window PRIVATE NativeKit::nativekit)
+        set_target_properties(nativekit_gtk_native_window PROPERTIES LINKER_LANGUAGE CXX)
+        add_test(NAME gtk_native_window
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_native_window>)
         add_executable(nativekit_gtk_surface_frame integration/gtk_surface_frame.c)
         target_link_libraries(nativekit_gtk_surface_frame PRIVATE NativeKit::nativekit)
         set_target_properties(nativekit_gtk_surface_frame PROPERTIES LINKER_LANGUAGE CXX)
