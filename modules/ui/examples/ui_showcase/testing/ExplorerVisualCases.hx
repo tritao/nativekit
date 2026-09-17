@@ -103,6 +103,7 @@ class ExplorerVisualCases {
 			case ExplorerVisualCase.GraphicsRendering: state.selectedPage = "graphics-rendering";
 			case ExplorerVisualCase.GraphicsGradients: state.selectedPage = "graphics-gradients";
 			case ExplorerVisualCase.Graphics3d: state.selectedPage = "graphics-3d";
+			case ExplorerVisualCase.GraphicsDecorations: state.selectedPage = "graphics-decorations";
 			default: return false;
 		}
 		return true;

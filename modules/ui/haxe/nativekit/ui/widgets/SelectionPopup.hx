@@ -17,7 +17,10 @@ import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityOrientation;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.style.DecorationChain;
 import nativekit.ui.style.ShadowDecoration;
+import nativekit.ui.style.StyleProperty;
+import nativekit.ui.style.StyleSource;
 import nativekit.ui.style.StyleTarget;
 
 /** Mutable bridge for active-option visibility across rebuilt render trees. */
@@ -135,7 +138,14 @@ class SelectionPopup {
 		dropdown.setStyleIdentity("selection-popup", "options", "options", null, ["selection-popup"]);
 		dropdown.states = context.interactionStates.get(dropdownId);
 		dropdown.computedStyle = dropdownComputed;
-		dropdown.addDecoration(new ShadowDecoration(), "selection-popup-shadow");
+		var popupDecorations = dropdownComputed.get(StyleProperty.Decorations);
+		var popupDecorationSource = dropdownComputed.source(StyleProperty.Decorations);
+		if ((popupDecorations == null || popupDecorations.decorations.length == 0) &&
+			popupDecorationSource != null && popupDecorationSource.stylesheet == "framework" &&
+			popupDecorationSource.selector == "default")
+			dropdownComputed.set(StyleProperty.Decorations, DecorationChain.of([
+				new ShadowDecoration()
+			]), new StyleSource("framework", "selection-popup", -1, "default"));
 		dropdown.onPaint(function(canvas, geometry) {
 			canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, geometry.height),
 				context.theme.panelBackground);
