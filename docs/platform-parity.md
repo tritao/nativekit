@@ -132,7 +132,7 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 
 | Backend | Required or equivalent today | Deferred today |
 |---|---|---|
-| Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick, native export, X11 native wrapping, accessibility, surface frame callbacks | Wayland native wrapping |
+| Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick, native export, X11 and Wayland native wrapping, accessibility, surface frame callbacks | — |
 | Windows | Windows, WebView when WebView2 is available, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick, native export, Win32 native wrapping, surface frame callbacks | — |
 | macOS | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping, surface frame callbacks | — |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility, surface frame callbacks, APK installation path, system fonts | — |
@@ -169,9 +169,11 @@ equivalents and must not be silently treated as complete parity.
 Desktop native-window wrapping is an ownership-safe interoperation primitive.
 Win32, Cocoa, and X11 wrappers retain or reference the caller's native object,
 but destruction of the NativeKit handle only detaches that reference. The host
-continues to own native event dispatch. Linux wrapping is intentionally limited
-to X11; Wayland wrapping remains deferred until foreign-surface lifecycle and
-event ownership can be made explicit.
+continues to own native event dispatch. GTK Wayland wrappers retain the borrowed
+display/surface descriptor without attempting to make GTK own or destroy the
+`wl_surface`; because GTK3 cannot represent a foreign Wayland surface as a
+`GdkWindow`, those wrappers intentionally support descriptor access and
+destruction only.
 
 The Web equivalents are browser-mediated: each NativeKit window owns a canvas
 and receives its own input, resize, drop, and focus routing. Multiple surfaces
