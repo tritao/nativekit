@@ -47,6 +47,7 @@ import nativekit.ui.core.TextStyleOverride;
 import TextWrap;
 import nativekit.ui.widgets.VirtualList;
 import ExplorerCatalog;
+import pages.EffectsPage;
 import shell.ExplorerShell;
 import shell.OverlayHost;
 import inspector.InspectionOverlay;
@@ -62,6 +63,7 @@ import pages.ListsPage;
 /** Interactive showcase for the Haxeon UI framework. */
 @:allow(pages.GraphicsPage)
 @:allow(pages.ControlsPage)
+@:allow(pages.EffectsPage)
 @:allow(pages.GesturesPage)
 @:allow(pages.LayoutPage)
 @:allow(pages.ListsPage)
@@ -133,6 +135,7 @@ class UiExplorer {
 		this.onOpenGraphics = onOpenGraphics == null ? function() {} : onOpenGraphics;
 		this.staticSubmitReuse = staticSubmitReuse == true;
 		context = new UiContext(null, fonts, makeTheme(state.lightTheme));
+		EffectsPage.installStyles(this);
 		renderer = Renderer.create();
 		width = INITIAL_WIDTH;
 		height = INITIAL_HEIGHT;

@@ -12,6 +12,7 @@ import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
+import nativekit.ui.style.StyleTarget;
 
 /** Custom Haxe-painted region with ordinary Haxe-routed input handlers. */
 class CanvasView implements View {
@@ -48,7 +49,13 @@ class CanvasView implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
-			var node = new RenderNode(context.id("canvas"), LayoutVisualKind.Custom, style);
+			var nodeId = context.id("canvas");
+			var computed = context.resolveStyle(new StyleTarget("canvas", key, key,
+				null, ["canvas"], context.interactionStates.get(nodeId)), style);
+			var node = new RenderNode(nodeId, LayoutVisualKind.Custom, computed.toLayoutStyle());
+			node.setStyleIdentity("canvas", key, key, null, ["canvas"]);
+			node.states = context.interactionStates.get(nodeId);
+			node.computedStyle = computed;
 			node.hitTestSelf = hitTestSelf;
 			if (label != null)
 				node.semantics = new Semantics(AccessibilityRole.Group, label);

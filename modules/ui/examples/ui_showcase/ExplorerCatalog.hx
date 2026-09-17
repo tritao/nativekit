@@ -1,4 +1,5 @@
 import pages.ControlsPage;
+import pages.EffectsPage;
 import pages.GesturesPage;
 import pages.GraphicsPage;
 import pages.LayoutPage;
@@ -41,6 +42,9 @@ class ExplorerCatalog {
 		new ExplorerPage("graphics-gradients", "Gradients", "graphics", "Linear gradients, color stops and transparency",
 			["gradient", "linear", "color stops", "alpha", "interpolation"],
 			function(explorer, items) { GraphicsPage.buildGradients(explorer, items); }),
+		new ExplorerPage("graphics-effects", "Effects", "graphics", "Blur, color effects, masks and backdrop composition",
+			["effects", "blur", "brightness", "contrast", "saturate", "hue", "shadow", "mask", "backdrop"],
+			function(explorer, items) { EffectsPage.build(explorer, items); }),
 		new ExplorerPage("graphics-3d", "3D Views", "graphics", "Perspective meshes and composited native surfaces",
 			["3d", "mesh", "cube", "perspective", "depth", "surface", "offscreen"],
 			function(explorer, items) { GraphicsPage.build3d(explorer, items); }),

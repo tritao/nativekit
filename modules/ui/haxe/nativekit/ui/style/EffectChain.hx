@@ -1,5 +1,7 @@
 package nativekit.ui.style;
 
+import nativekit.ui.style.ColorMatrixEffect;
+
 /** Ordered, value-semantic collection of post-layout visual effects. */
 class EffectChain {
 	public final effects:Array<Effect>;
