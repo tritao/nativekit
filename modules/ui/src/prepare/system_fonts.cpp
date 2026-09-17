@@ -176,7 +176,11 @@ void append_core_text_match(std::vector<SystemFontFallback> &fonts, const char *
     CFStringRef text = CFStringCreateWithCString(nullptr, sample, kCFStringEncodingUTF8);
     if (!text)
         return;
-    CTFontRef font = CTFontCreateForString(nullptr, text, CFRangeMake(0, CFStringGetLength(text)));
+    // A null current font asks Core Text to choose the best system fallback. The
+    // SDK annotates this parameter as nonnull even though the API accepts null.
+    CTFontRef current_font = nullptr;
+    CTFontRef font =
+        CTFontCreateForString(current_font, text, CFRangeMake(0, CFStringGetLength(text)));
     if (font) {
         CFTypeRef value = CTFontCopyAttribute(font, kCTFontURLAttribute);
         if (value && CFGetTypeID(value) == CFURLGetTypeID()) {

@@ -380,7 +380,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
         !read_u32(bytes, size, 12, string_offset) || version != NKUI_LAYOUT_TRANSACTION_VERSION ||
         !node_count || encoded_record_bytes != record_bytes)
         return false;
-    if (node_count > (std::numeric_limits<size_t>::max() - header_bytes) / record_bytes)
+    if (static_cast<size_t>(node_count) >
+        (std::numeric_limits<size_t>::max() - header_bytes) / record_bytes)
         return false;
     const size_t records_end = header_bytes + static_cast<size_t>(node_count) * record_bytes;
     if (string_offset < records_end || string_offset > size)

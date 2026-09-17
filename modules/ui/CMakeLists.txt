@@ -242,7 +242,7 @@ if(NK_BUILD_TESTS)
         target_compile_definitions(nativekit_ui_public_renderer_smoke_test PRIVATE
             NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
         target_link_libraries(nativekit_ui_public_renderer_smoke_test PRIVATE
-            NativeKit::ui NativeKit::nativekit NativeKit::gpu)
+            NativeKit::ui)
         if(NOT EMSCRIPTEN AND NOT ANDROID)
             find_package(OpenGL QUIET)
             if(TARGET OpenGL::GL)

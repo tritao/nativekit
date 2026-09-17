@@ -283,6 +283,7 @@ keep_awake_apply(bool enabled) noexcept {
     }
     return NK_OK;
 #else
+    (void)enabled;
     return NK_ERROR_UNSUPPORTED;
 #endif
 }
