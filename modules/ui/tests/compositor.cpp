@@ -54,22 +54,23 @@ int main() {
     DisplayList nested;
     if (!nested.begin_layer(0.8f) || !nested.draw_path(path) || !nested.begin_layer(0.4f) ||
         !nested.draw_path(path) || !nested.end_layer() || !nested.draw_path(path) ||
-        !nested.end_layer() || !nested.draw_path(path) ||
-        !compositor.compile(nested, main_target, plan, &error))
+        !nested.end_layer() || !nested.draw_path(path) || !compositor.compile(nested, main_target,
+                                                                                 plan, &error))
         return 8;
     if (plan.passes.size() != 5 || plan.dependencies.size() != 2 ||
         plan.passes[0].target.value != main_target.value ||
         plan.passes[1].target.value == plan.passes[2].target.value ||
-        plan.passes[1].commands.size() != 1 || plan.passes[2].commands.size() != 1 ||
+        plan.passes[1].commands.size() != 1 ||
+        plan.passes[2].commands.size() != 1 ||
         plan.passes[3].commands.size() != 2 || plan.passes[4].commands.size() != 2 ||
         !plan.passes[3].load_existing || !plan.passes[4].load_existing)
         return 9;
 
     DisplayList bounded;
     const LayerBounds bounds{10.0f, 20.0f, 80.0f, 40.0f};
-    if (!bounded.begin_layer(1.0f, bounds) || !bounded.draw_path(path) || !bounded.end_layer() ||
-        !compositor.compile(bounded, main_target, plan, &error) || plan.passes.size() != 3 ||
-        plan.dependencies.size() != 1 ||
+    if (!bounded.begin_layer(1.0f, bounds) || !bounded.draw_path(path) ||
+        !bounded.end_layer() || !compositor.compile(bounded, main_target, plan, &error) ||
+        plan.passes.size() != 3 || plan.dependencies.size() != 1 ||
         plan.passes[1].target_descriptor.logical_width != bounds.width ||
         plan.passes[1].target_descriptor.logical_height != bounds.height ||
         plan.passes[1].target_descriptor.origin_x != bounds.x ||
@@ -95,14 +96,15 @@ int main() {
     embedded_descriptor.origin_x = 10.0f;
     embedded_descriptor.origin_y = 20.0f;
     embedded_source.passes.push_back({embedded_target, embedded_descriptor, false, {}});
-    embedded_source.passes.back().commands.push_back({RenderCommandKind::Path, path});
+    embedded_source.passes.back().commands.push_back(
+        {RenderCommandKind::Path, path});
     embedded_source.passes.front().commands.push_back(
         {RenderCommandKind::CompositeTarget, embedded_target, 10.0f, 20.0f, 80.0f, 40.0f});
     embedded_source.dependencies.push_back({embedded_target, main_target});
     RenderPlan embedded_destination;
     embedded_destination.passes.push_back({main_target, {}, false, {}});
-    const std::unordered_map<uint32_t, ResourceId> embedded_remap{
-        {embedded_target.value, embedded_remapped_target}};
+    const std::unordered_map<uint32_t, ResourceId> embedded_remap{{embedded_target.value,
+                                                                     embedded_remapped_target}};
     RenderPlanEmbedOptions embed_options;
     embed_options.source_main_target = main_target;
     embed_options.destination_main_target = main_target;
@@ -142,7 +144,8 @@ int main() {
     if (plan.passes[2].kind != RenderPassKind::Effect ||
         plan.passes[2].input_target.value != plan.passes[1].target.value ||
         plan.passes[2].effect.kind != EffectKind::ColorMatrix ||
-        plan.passes[2].effect.color_matrix[4] != 0.25f || plan.passes[3].commands.size() != 1 ||
+        plan.passes[2].effect.color_matrix[4] != 0.25f ||
+        plan.passes[3].commands.size() != 1 ||
         plan.passes[3].commands[0].resource.value != plan.passes[2].target.value)
         return 21;
     const uint64_t color_effect_cache_key = plan.passes[2].cache_key;
@@ -172,8 +175,8 @@ int main() {
     custom.parameters[1] = 0.75f;
     if (!custom_effect.begin_layer(1.0f, bounds, custom) || !custom_effect.draw_path(path) ||
         !custom_effect.end_layer() ||
-        !compositor.compile(custom_effect, main_target, plan, &error) || plan.passes.size() != 4 ||
-        plan.dependencies.size() != 1)
+        !compositor.compile(custom_effect, main_target, plan, &error) ||
+        plan.passes.size() != 4 || plan.dependencies.size() != 1)
         return 35;
     if (plan.passes[1].target_descriptor.logical_width != 90.0f ||
         plan.passes[1].target_descriptor.logical_height != 54.0f ||
@@ -184,8 +187,9 @@ int main() {
         plan.passes[2].custom_effect.registration_id != 42 ||
         plan.passes[2].custom_effect.parameter_count != 2 ||
         plan.passes[2].custom_effect.parameters[1] != 0.75f ||
-        plan.passes[3].commands.size() != 1 || plan.passes[3].commands[0].x != 7.0f ||
-        plan.passes[3].commands[0].y != 15.0f || plan.passes[3].commands[0].width != 90.0f ||
+        plan.passes[3].commands.size() != 1 ||
+        plan.passes[3].commands[0].x != 7.0f || plan.passes[3].commands[0].y != 15.0f ||
+        plan.passes[3].commands[0].width != 90.0f ||
         plan.passes[3].commands[0].height != 54.0f ||
         !schedule_render_plan(plan, pass_order, &schedule_error) || pass_order.size() != 4)
         return 36;
@@ -210,10 +214,12 @@ int main() {
         plan.passes[2].effect.color_matrix[1] != 0.0f ||
         plan.passes[3].kind != RenderPassKind::Effect ||
         plan.passes[3].input_target.value != plan.passes[2].target.value ||
-        plan.passes[3].effect.color_matrix[1] != 1.0f || plan.passes[4].commands.size() != 1 ||
+        plan.passes[3].effect.color_matrix[1] != 1.0f ||
+        plan.passes[4].commands.size() != 1 ||
         plan.passes[4].commands[0].resource.value != plan.passes[3].target.value ||
         plan.passes[4].commands[0].x != 4.0f || plan.passes[4].commands[0].y != 14.0f ||
-        plan.passes[4].commands[0].width != 92.0f || plan.passes[4].commands[0].height != 52.0f)
+        plan.passes[4].commands[0].width != 92.0f ||
+        plan.passes[4].commands[0].height != 52.0f)
         return 24;
     if (!schedule_render_plan(plan, pass_order, &schedule_error) || pass_order.size() != 5 ||
         pass_order[0] != 0 || pass_order[1] != 1 || pass_order[2] != 2 || pass_order[3] != 3 ||
@@ -227,10 +233,10 @@ int main() {
     drop_shadow.color_matrix[2] = 0.0f;
     drop_shadow.color_matrix[3] = 6.0f;
     drop_shadow.color_matrix[7] = 0.35f;
-    if (!drop_shadow_effect.begin_layer(1.0f, bounds, drop_shadow) ||
+    if (!drop_shadow_effect.begin_layer(0.5f, bounds, drop_shadow) ||
         !drop_shadow_effect.draw_path(path) || !drop_shadow_effect.end_layer() ||
         !compositor.compile(drop_shadow_effect, main_target, plan, &error) ||
-        plan.passes.size() != 5 || plan.dependencies.size() != 2)
+        plan.passes.size() != 6 || plan.dependencies.size() != 3)
         return 26;
     const auto &drop_shadow_layer = plan.passes[1];
     if (drop_shadow_layer.target_descriptor.logical_width != 92.0f ||
@@ -247,15 +253,23 @@ int main() {
         plan.passes[3].kind != RenderPassKind::Effect ||
         plan.passes[3].input_target.value != plan.passes[2].target.value ||
         plan.passes[3].effect.color_matrix[1] != 1.0f ||
-        plan.passes[3].effect.color_matrix[3] != 6.0f || plan.passes[4].commands.size() != 2 ||
+        plan.passes[3].effect.color_matrix[3] != 6.0f ||
+        plan.passes[4].target.value == plan.passes[3].target.value ||
+        plan.passes[4].commands.size() != 2 ||
         plan.passes[4].commands[0].resource.value != plan.passes[3].target.value ||
         plan.passes[4].commands[1].resource.value != drop_shadow_layer.target.value ||
-        plan.passes[4].commands[0].x != 4.0f || plan.passes[4].commands[0].y != 20.0f ||
-        plan.passes[4].commands[0].width != 92.0f || plan.passes[4].commands[0].height != 52.0f)
+        plan.passes[4].commands[0].opacity != 1.0f ||
+        plan.passes[4].commands[1].opacity != 1.0f ||
+        plan.passes[4].commands[0].x != 0.0f || plan.passes[4].commands[0].y != 0.0f ||
+        plan.passes[4].commands[0].width != 92.0f ||
+        plan.passes[4].commands[0].height != 52.0f ||
+        plan.passes[5].commands.size() != 1 ||
+        plan.passes[5].commands[0].resource.value != plan.passes[4].target.value ||
+        plan.passes[5].commands[0].opacity != 0.5f)
         return 27;
-    if (!schedule_render_plan(plan, pass_order, &schedule_error) || pass_order.size() != 5 ||
+    if (!schedule_render_plan(plan, pass_order, &schedule_error) || pass_order.size() != 6 ||
         pass_order[0] != 0 || pass_order[1] != 1 || pass_order[2] != 2 || pass_order[3] != 3 ||
-        pass_order[4] != 4)
+        pass_order[4] != 4 || pass_order[5] != 5)
         return 28;
 
     DisplayList masked;
@@ -286,25 +300,96 @@ int main() {
     backdrop_effect.color_matrix[4] = 0.5f;
     if (!backdrop.begin_layer(1.0f, bounds, EffectDescriptor{}, MaskDescriptor{},
                               backdrop_effect) ||
-        !backdrop.draw_path(path) || !backdrop.end_layer() || !backdrop.has_backdrop_effects() ||
+        !backdrop.draw_path(path) || !backdrop.end_layer() ||
+        !backdrop.has_backdrop_effects() ||
         !compositor.compile(backdrop, main_target, plan, &error) || plan.passes.size() != 5 ||
-        plan.dependencies.size() != 2)
+        plan.dependencies.size() != 3)
         return 32;
     if (plan.passes[1].kind != RenderPassKind::Effect ||
-        plan.passes[1].input_target.value != main_target.value || !plan.passes[1].has_input_rect ||
-        plan.passes[1].input_rect[0] != bounds.x || plan.passes[1].input_rect[1] != bounds.y ||
-        plan.passes[1].input_rect[2] != bounds.width ||
+        plan.passes[1].input_target.value != main_target.value ||
+        !plan.passes[1].has_input_rect || plan.passes[1].input_rect[0] != bounds.x ||
+        plan.passes[1].input_rect[1] != bounds.y || plan.passes[1].input_rect[2] != bounds.width ||
         plan.passes[1].input_rect[3] != bounds.height ||
-        plan.passes[2].target.value != main_target.value || plan.passes[2].commands.size() != 1 ||
-        plan.passes[2].commands[0].x != bounds.x ||
-        plan.passes[2].commands[0].width != bounds.width ||
-        plan.passes[3].target.value == main_target.value || plan.passes[4].commands.size() != 1 ||
+        plan.passes[2].target.value == main_target.value ||
+        plan.passes[2].commands.size() != 1 ||
+        plan.passes[3].commands.size() != 2 ||
+        plan.passes[3].commands[0].resource.value != plan.passes[1].target.value ||
+        plan.passes[3].commands[1].resource.value != plan.passes[2].target.value ||
+        plan.passes[3].commands[0].x != 0.0f || plan.passes[3].commands[0].y != 0.0f ||
+        plan.passes[3].commands[0].width != bounds.width ||
+        plan.passes[3].commands[0].height != bounds.height ||
+        plan.passes[4].commands.size() != 1 ||
         plan.passes[4].commands[0].resource.value != plan.passes[3].target.value)
         return 33;
     if (!schedule_render_plan(plan, pass_order, &schedule_error) || pass_order.size() != 5 ||
         pass_order[0] != 0 || pass_order[1] != 1 || pass_order[2] != 2 || pass_order[3] != 3 ||
         pass_order[4] != 4)
         return 34;
+
+    DisplayList drop_shadow_mask;
+    if (!drop_shadow_mask.begin_layer(0.75f, bounds, drop_shadow, rounded_mask) ||
+        !drop_shadow_mask.draw_path(path) || !drop_shadow_mask.end_layer() ||
+        !compositor.compile(drop_shadow_mask, main_target, plan, &error) ||
+        plan.passes.size() != 7 || plan.dependencies.size() != 3)
+        return 41;
+    if (plan.passes[4].commands.size() != 2 || plan.passes[4].commands[0].opacity != 1.0f ||
+        plan.passes[4].commands[1].opacity != 1.0f || plan.passes[5].kind != RenderPassKind::Mask ||
+        plan.passes[5].input_target.value != plan.passes[4].target.value ||
+        plan.passes[5].mask.kind != MaskKind::RoundedRect || plan.passes[6].commands.size() != 1 ||
+        plan.passes[6].commands[0].resource.value != plan.passes[5].target.value ||
+        plan.passes[6].commands[0].opacity != 0.75f)
+        return 42;
+
+    DisplayList backdrop_mask;
+    EffectDescriptor backdrop_blur{};
+    backdrop_blur.kind = EffectKind::Blur;
+    backdrop_blur.color_matrix[0] = 3.0f;
+    if (!backdrop_mask.begin_layer(1.0f, bounds, EffectDescriptor{}, rounded_mask,
+                                   backdrop_blur) ||
+        !backdrop_mask.draw_path(path) || !backdrop_mask.end_layer() ||
+        !compositor.compile(backdrop_mask, main_target, plan, &error) ||
+        plan.passes.size() != 7 || plan.dependencies.size() != 3)
+        return 43;
+    if (plan.passes[1].kind != RenderPassKind::Effect ||
+        plan.passes[2].kind != RenderPassKind::Effect ||
+        plan.passes[3].commands.size() != 1 || plan.passes[4].commands.size() != 2 ||
+        plan.passes[4].commands[0].resource.value != plan.passes[2].target.value ||
+        plan.passes[4].commands[1].resource.value != plan.passes[3].target.value ||
+        plan.passes[5].kind != RenderPassKind::Mask ||
+        plan.passes[5].input_target.value != plan.passes[4].target.value ||
+        plan.passes[5].mask.kind != MaskKind::RoundedRect || plan.passes[6].commands.size() != 1 ||
+        plan.passes[6].commands[0].resource.value != plan.passes[5].target.value)
+        return 44;
+
+    EffectOpCommand matrix_before{};
+    matrix_before.kind = EffectKind::ColorMatrix;
+    matrix_before.color_matrix[0] = 1.0f;
+    matrix_before.color_matrix[6] = 1.0f;
+    matrix_before.color_matrix[12] = 1.0f;
+    matrix_before.color_matrix[18] = 1.0f;
+    matrix_before.color_matrix[4] = 0.25f;
+    EffectOpCommand chained_blur{};
+    chained_blur.kind = EffectKind::Blur;
+    chained_blur.color_matrix[0] = 2.0f;
+    EffectOpCommand matrix_after = matrix_before;
+    matrix_after.color_matrix[4] = 0.75f;
+    DisplayList chained_effects;
+    if (!chained_effects.begin_layer(0.6f, bounds,
+                                     {matrix_before, chained_blur, matrix_after}, rounded_mask) ||
+        !chained_effects.draw_path(path) || !chained_effects.end_layer() ||
+        !compositor.compile(chained_effects, main_target, plan, &error) ||
+        plan.passes.size() != 8 || plan.dependencies.size() != 1)
+        return 45;
+    if (plan.passes[2].kind != RenderPassKind::Effect ||
+        plan.passes[2].effect.kind != EffectKind::ColorMatrix ||
+        plan.passes[3].effect.kind != EffectKind::Blur ||
+        plan.passes[4].effect.kind != EffectKind::Blur ||
+        plan.passes[5].effect.kind != EffectKind::ColorMatrix ||
+        plan.passes[6].kind != RenderPassKind::Mask ||
+        plan.passes[7].commands.size() != 1 ||
+        plan.passes[7].commands[0].resource.value != plan.passes[6].target.value ||
+        plan.passes[7].commands[0].opacity != 0.6f)
+        return 46;
 
     DisplayList duplicate_surface;
     const auto external = make_resource_id(ResourceKind::RenderTarget, 1, 12);
@@ -333,8 +418,8 @@ int main() {
         outer.transform[3] != 3.0f || outer.transform[4] != 5.0f || outer.transform[5] != 7.0f)
         return 12;
     DisplayList overflow;
-    const float overflowing_transform[6] = {
-        std::numeric_limits<float>::max(), 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    const float overflowing_transform[6] = {std::numeric_limits<float>::max(), 0.0f,
+                                            0.0f, 1.0f, 0.0f, 0.0f};
     if (!overflow.set_transform(overflowing_transform) ||
         !overflow.clip_rect(2.0f, 0.0f, 4.0f, 4.0f) ||
         compositor.compile(overflow, main_target, plan, &error) || error.command_index != 1)
@@ -356,7 +441,8 @@ int main() {
     cyclic.passes = {{target_a, {}, false, {{RenderCommandKind::CompositeTarget, target_b}}},
                      {target_b, {}, false, {{RenderCommandKind::CompositeTarget, target_a}}}};
     cyclic.dependencies = {{target_b, target_a}, {target_a, target_b}};
-    if (schedule_render_plan(cyclic, pass_order, &schedule_error) || !schedule_error.message ||
+    if (schedule_render_plan(cyclic, pass_order, &schedule_error) ||
+        !schedule_error.message ||
         std::string(schedule_error.message) != "render-plan dependency cycle")
         return 17;
     return 0;

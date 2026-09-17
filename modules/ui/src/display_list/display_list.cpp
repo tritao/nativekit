@@ -1,5 +1,6 @@
 #include "display_list.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -41,8 +42,9 @@ bool valid_effect_kind(EffectKind kind) {
 }
 
 bool valid_custom_effect_descriptor_impl(const CustomEffectDescriptor &effect) {
-    if (!effect.registration_id || effect.parameter_count > kCustomEffectParameterComponents ||
-        !effect.pass_count || effect.sampling_inputs == 0 || (effect.sampling_inputs & ~3u) != 0)
+    if (!effect.registration_id ||
+        effect.parameter_count > kCustomEffectParameterComponents || effect.pass_count != 1 ||
+        effect.sampling_inputs != 1)
         return false;
     for (const float value : effect.ink_overflow)
         if (!finite(value) || value < 0.0f)
@@ -76,9 +78,32 @@ bool valid_effect(const EffectDescriptor &effect) {
     return true;
 }
 
+bool valid_effect_op(const EffectOpCommand &operation) {
+    if (operation.kind == EffectKind::Custom) {
+        return valid_custom_effect_descriptor_impl(operation.custom);
+    }
+    if (operation.kind != EffectKind::ColorMatrix && operation.kind != EffectKind::Blur &&
+        operation.kind != EffectKind::DropShadow)
+        return false;
+    EffectDescriptor descriptor;
+    descriptor.kind = operation.kind;
+    descriptor.color_matrix = operation.color_matrix;
+    return valid_effect(descriptor);
+}
+
+bool valid_effect_program(const EffectOpCommand *operations, uint32_t count) {
+    if (count > kEffectProgramMaxOps)
+        return false;
+    for (uint32_t index = 0; index < count; ++index)
+        if (!valid_effect_op(operations[index]))
+            return false;
+    return true;
+}
+
 bool valid_mask_kind(MaskKind kind) {
-    return kind == MaskKind::None || kind == MaskKind::Rectangle || kind == MaskKind::RoundedRect ||
-           kind == MaskKind::Circle || kind == MaskKind::LinearGradient || kind == MaskKind::Image;
+    return kind == MaskKind::None || kind == MaskKind::Rectangle ||
+           kind == MaskKind::RoundedRect || kind == MaskKind::Circle ||
+           kind == MaskKind::LinearGradient || kind == MaskKind::Image;
 }
 
 bool valid_mask(const MaskDescriptor &mask) {
@@ -96,8 +121,9 @@ bool valid_mask(const MaskDescriptor &mask) {
     if ((mask.kind == MaskKind::RoundedRect || mask.kind == MaskKind::Circle) &&
         mask.values[0] < 0.0f)
         return false;
-    if (mask.kind == MaskKind::LinearGradient && (mask.values[4] < 0.0f || mask.values[4] > 1.0f ||
-                                                  mask.values[5] < 0.0f || mask.values[5] > 1.0f))
+    if (mask.kind == MaskKind::LinearGradient &&
+        (mask.values[4] < 0.0f || mask.values[4] > 1.0f || mask.values[5] < 0.0f ||
+         mask.values[5] > 1.0f))
         return false;
     return true;
 }
@@ -124,6 +150,34 @@ template <class T> const T *read_command(const uint8_t *record, size_t record_si
 
 bool valid_custom_effect_descriptor(const CustomEffectDescriptor &effect) {
     return valid_custom_effect_descriptor_impl(effect);
+}
+
+bool decode_effect_op(const EffectOpCommand &command, EffectOp &operation) {
+    if (!valid_effect_op(command))
+        return false;
+    operation = {};
+    operation.kind = command.kind;
+    switch (command.kind) {
+    case EffectKind::ColorMatrix:
+        operation.color_matrix = command.color_matrix;
+        break;
+    case EffectKind::Blur:
+        operation.blur_sigma = command.color_matrix[0];
+        break;
+    case EffectKind::DropShadow:
+        operation.drop_shadow.sigma = command.color_matrix[0];
+        operation.drop_shadow.offset_x = command.color_matrix[2];
+        operation.drop_shadow.offset_y = command.color_matrix[3];
+        std::copy_n(command.color_matrix.begin() + 4, operation.drop_shadow.color.size(),
+                    operation.drop_shadow.color.begin());
+        break;
+    case EffectKind::Custom:
+        operation.custom = command.custom;
+        break;
+    default:
+        return false;
+    }
+    return true;
 }
 
 ResourceId make_resource_id(ResourceKind kind, uint16_t generation, uint16_t slot) {
@@ -172,9 +226,14 @@ bool DisplayList::has_backdrop_effects() const {
     while (offset < size_) {
         CommandHeader header{};
         std::memcpy(&header, bytes_.data() + offset, sizeof(header));
-        if (header.opcode == CommandOpcode::BeginLayer &&
-            header.size == sizeof(BeginLayerBackdropCommand))
-            return true;
+        if (header.opcode == CommandOpcode::BeginLayer) {
+            if (header.version == 1 && header.size == sizeof(BeginLayerCommand)) {
+                BeginLayerCommand value{};
+                std::memcpy(&value, bytes_.data() + offset, sizeof(value));
+                if (value.backdrop_count)
+                    return true;
+            }
+        }
         if (header.size < sizeof(CommandHeader) || header.size > size_ - offset)
             return false;
         offset += header.size;
@@ -316,7 +375,7 @@ bool DisplayList::draw_text_layout(ResourceId layout, float x, float y) {
 }
 
 bool DisplayList::begin_layer(float opacity, CompositeMode mode) {
-    auto value = command<LegacyBeginLayerCommand>(CommandOpcode::BeginLayer);
+    auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
     value.opacity = opacity;
     value.mode = mode;
     return append(value);
@@ -335,17 +394,19 @@ bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds, Composit
 }
 
 bool DisplayList::begin_layer(float opacity, const EffectDescriptor &effect, CompositeMode mode) {
-    auto value = command<BeginLayerEffectCommand>(CommandOpcode::BeginLayer);
+    auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
     value.opacity = opacity;
     value.mode = mode;
     value.flags = LayerIsolated;
-    value.effect = effect;
+    value.foreground_count = effect.kind == EffectKind::None ? 0 : 1;
+    value.foreground[0].kind = effect.kind;
+    value.foreground[0].color_matrix = effect.color_matrix;
     return append(value);
 }
 
 bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
                               const EffectDescriptor &effect, CompositeMode mode) {
-    auto value = command<BeginLayerEffectCommand>(CommandOpcode::BeginLayer);
+    auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
     value.opacity = opacity;
     value.mode = mode;
     value.x = bounds.x;
@@ -353,12 +414,14 @@ bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
     value.width = bounds.width;
     value.height = bounds.height;
     value.flags = LayerIsolated | LayerHasBounds;
-    value.effect = effect;
+    value.foreground_count = effect.kind == EffectKind::None ? 0 : 1;
+    value.foreground[0].kind = effect.kind;
+    value.foreground[0].color_matrix = effect.color_matrix;
     return append(value);
 }
 
 bool DisplayList::begin_layer(float opacity, const MaskDescriptor &mask, CompositeMode mode) {
-    auto value = command<BeginLayerMaskCommand>(CommandOpcode::BeginLayer);
+    auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
     value.opacity = opacity;
     value.mode = mode;
     value.flags = LayerIsolated;
@@ -368,7 +431,7 @@ bool DisplayList::begin_layer(float opacity, const MaskDescriptor &mask, Composi
 
 bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds, const MaskDescriptor &mask,
                               CompositeMode mode) {
-    auto value = command<BeginLayerMaskCommand>(CommandOpcode::BeginLayer);
+    auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
     value.opacity = opacity;
     value.mode = mode;
     value.x = bounds.x;
@@ -383,7 +446,7 @@ bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds, const Ma
 bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
                               const EffectDescriptor &effect, const MaskDescriptor &mask,
                               CompositeMode mode) {
-    auto value = command<BeginLayerMaskCommand>(CommandOpcode::BeginLayer);
+    auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
     value.opacity = opacity;
     value.mode = mode;
     value.x = bounds.x;
@@ -391,7 +454,9 @@ bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
     value.width = bounds.width;
     value.height = bounds.height;
     value.flags = LayerIsolated | LayerHasBounds;
-    value.effect = effect;
+    value.foreground_count = effect.kind == EffectKind::None ? 0 : 1;
+    value.foreground[0].kind = effect.kind;
+    value.foreground[0].color_matrix = effect.color_matrix;
     value.mask = mask;
     return append(value);
 }
@@ -399,7 +464,7 @@ bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
 bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
                               const EffectDescriptor &effect, const MaskDescriptor &mask,
                               const EffectDescriptor &backdrop_effect, CompositeMode mode) {
-    auto value = command<BeginLayerBackdropCommand>(CommandOpcode::BeginLayer);
+    auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
     value.opacity = opacity;
     value.mode = mode;
     value.x = bounds.x;
@@ -407,38 +472,71 @@ bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
     value.width = bounds.width;
     value.height = bounds.height;
     value.flags = LayerIsolated | LayerHasBounds;
-    value.effect = effect;
+    value.foreground_count = effect.kind == EffectKind::None ? 0 : 1;
+    value.foreground[0].kind = effect.kind;
+    value.foreground[0].color_matrix = effect.color_matrix;
     value.mask = mask;
-    value.backdrop_effect = backdrop_effect;
+    value.backdrop_count = backdrop_effect.kind == EffectKind::None ? 0 : 1;
+    value.backdrop[0].kind = backdrop_effect.kind;
+    value.backdrop[0].color_matrix = backdrop_effect.color_matrix;
     return append(value);
 }
 
 bool DisplayList::begin_layer(float opacity, const EffectDescriptor &effect,
-                              const MaskDescriptor &mask, const EffectDescriptor &backdrop_effect,
-                              CompositeMode mode) {
-    auto value = command<BeginLayerBackdropCommand>(CommandOpcode::BeginLayer);
+                              const MaskDescriptor &mask,
+                              const EffectDescriptor &backdrop_effect, CompositeMode mode) {
+    auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
     value.opacity = opacity;
     value.mode = mode;
     value.flags = LayerIsolated;
-    value.effect = effect;
+    value.foreground_count = effect.kind == EffectKind::None ? 0 : 1;
+    value.foreground[0].kind = effect.kind;
+    value.foreground[0].color_matrix = effect.color_matrix;
     value.mask = mask;
-    value.backdrop_effect = backdrop_effect;
+    value.backdrop_count = backdrop_effect.kind == EffectKind::None ? 0 : 1;
+    value.backdrop[0].kind = backdrop_effect.kind;
+    value.backdrop[0].color_matrix = backdrop_effect.color_matrix;
+    return append(value);
+}
+
+bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
+                              const std::vector<EffectOpCommand> &foreground,
+                              const MaskDescriptor &mask,
+                              const std::vector<EffectOpCommand> &backdrop,
+                              CompositeMode mode) {
+    if (foreground.size() > kEffectProgramMaxOps || backdrop.size() > kEffectProgramMaxOps)
+        return false;
+    auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
+    value.opacity = opacity;
+    value.mode = mode;
+    value.x = bounds.x;
+    value.y = bounds.y;
+    value.width = bounds.width;
+    value.height = bounds.height;
+    value.flags = LayerIsolated | LayerHasBounds;
+    value.foreground_count = static_cast<uint32_t>(foreground.size());
+    value.backdrop_count = static_cast<uint32_t>(backdrop.size());
+    value.mask = mask;
+    std::copy(foreground.begin(), foreground.end(), value.foreground);
+    std::copy(backdrop.begin(), backdrop.end(), value.backdrop);
     return append(value);
 }
 
 bool DisplayList::begin_layer(float opacity, const CustomEffectDescriptor &effect,
                               CompositeMode mode) {
-    auto value = command<BeginLayerCustomEffectCommand>(CommandOpcode::BeginLayer);
+    auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
     value.opacity = opacity;
     value.mode = mode;
     value.flags = LayerIsolated;
-    value.effect = effect;
+    value.foreground_count = 1;
+    value.foreground[0].kind = EffectKind::Custom;
+    value.foreground[0].custom = effect;
     return append(value);
 }
 
 bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
                               const CustomEffectDescriptor &effect, CompositeMode mode) {
-    auto value = command<BeginLayerCustomEffectCommand>(CommandOpcode::BeginLayer);
+    auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
     value.opacity = opacity;
     value.mode = mode;
     value.x = bounds.x;
@@ -446,7 +544,9 @@ bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
     value.width = bounds.width;
     value.height = bounds.height;
     value.flags = LayerIsolated | LayerHasBounds;
-    value.effect = effect;
+    value.foreground_count = 1;
+    value.foreground[0].kind = EffectKind::Custom;
+    value.foreground[0].custom = effect;
     return append(value);
 }
 
@@ -557,74 +657,26 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
             break;
         }
         case CommandOpcode::BeginLayer: {
-            const auto *backdrop_value =
-                read_command<BeginLayerBackdropCommand>(record, header.size);
-            const auto *custom_value =
-                read_command<BeginLayerCustomEffectCommand>(record, header.size);
-            const auto *mask_value = read_command<BeginLayerMaskCommand>(record, header.size);
-            const auto *effect_value = read_command<BeginLayerEffectCommand>(record, header.size);
-            const auto *legacy = read_command<LegacyBeginLayerCommand>(record, header.size);
             const auto *value = read_command<BeginLayerCommand>(record, header.size);
-            const bool valid_effect_record =
-                effect_value && finite(effect_value->opacity) && effect_value->opacity >= 0.0f &&
-                effect_value->opacity <= 1.0f && valid_composite(effect_value->mode) &&
-                !(effect_value->flags & ~(LayerIsolated | LayerHasBounds)) &&
-                (!(effect_value->flags & LayerHasBounds) ||
-                 ((effect_value->flags & LayerIsolated) &&
-                  valid_rect(effect_value->x, effect_value->y, effect_value->width,
-                             effect_value->height) &&
-                  effect_value->width > 0.0f && effect_value->height > 0.0f)) &&
-                valid_effect(effect_value->effect) &&
-                (effect_value->effect.kind == EffectKind::None ||
-                 (effect_value->flags & LayerIsolated));
-            const bool valid_mask_record =
-                mask_value && finite(mask_value->opacity) && mask_value->opacity >= 0.0f &&
-                mask_value->opacity <= 1.0f && valid_composite(mask_value->mode) &&
-                !(mask_value->flags & ~(LayerIsolated | LayerHasBounds)) &&
-                (!(mask_value->flags & LayerHasBounds) ||
-                 ((mask_value->flags & LayerIsolated) &&
-                  valid_rect(mask_value->x, mask_value->y, mask_value->width, mask_value->height) &&
-                  mask_value->width > 0.0f && mask_value->height > 0.0f)) &&
-                valid_effect(mask_value->effect) && valid_mask(mask_value->mask) &&
-                mask_value->mask.kind != MaskKind::None && (mask_value->flags & LayerIsolated);
-            const bool valid_backdrop_record =
-                backdrop_value && finite(backdrop_value->opacity) &&
-                backdrop_value->opacity >= 0.0f && backdrop_value->opacity <= 1.0f &&
-                valid_composite(backdrop_value->mode) &&
-                !(backdrop_value->flags & ~(LayerIsolated | LayerHasBounds)) &&
-                (!(backdrop_value->flags & LayerHasBounds) ||
-                 ((backdrop_value->flags & LayerIsolated) &&
-                  valid_rect(backdrop_value->x, backdrop_value->y, backdrop_value->width,
-                             backdrop_value->height) &&
-                  backdrop_value->width > 0.0f && backdrop_value->height > 0.0f)) &&
-                valid_effect(backdrop_value->effect) && valid_mask(backdrop_value->mask) &&
-                valid_effect(backdrop_value->backdrop_effect) &&
-                backdrop_value->backdrop_effect.kind != EffectKind::None &&
-                (backdrop_value->flags & LayerIsolated);
-            const bool valid_custom_record =
-                custom_value && finite(custom_value->opacity) && custom_value->opacity >= 0.0f &&
-                custom_value->opacity <= 1.0f && valid_composite(custom_value->mode) &&
-                !(custom_value->flags & ~(LayerIsolated | LayerHasBounds)) &&
-                (!(custom_value->flags & LayerHasBounds) ||
-                 ((custom_value->flags & LayerIsolated) &&
-                  valid_rect(custom_value->x, custom_value->y, custom_value->width,
-                             custom_value->height) &&
-                  custom_value->width > 0.0f && custom_value->height > 0.0f)) &&
-                (custom_value->flags & LayerIsolated) &&
-                valid_custom_effect_descriptor_impl(custom_value->effect);
-            const bool valid_legacy = legacy && finite(legacy->opacity) &&
-                                      legacy->opacity >= 0.0f && legacy->opacity <= 1.0f &&
-                                      valid_composite(legacy->mode);
-            const bool valid_extended =
-                value && finite(value->opacity) && value->opacity >= 0.0f &&
-                value->opacity <= 1.0f && valid_composite(value->mode) &&
-                !(value->flags & ~(LayerIsolated | LayerHasBounds)) &&
-                (!(value->flags & LayerHasBounds) ||
-                 ((value->flags & LayerIsolated) &&
-                  valid_rect(value->x, value->y, value->width, value->height) &&
-                  value->width > 0.0f && value->height > 0.0f));
-            if ((!valid_backdrop_record && !valid_custom_record && !valid_mask_record &&
-                 !valid_effect_record && !valid_legacy && !valid_extended) ||
+            const bool valid_extended = value && finite(value->opacity) && value->opacity >= 0.0f &&
+                                        value->opacity <= 1.0f && valid_composite(value->mode) &&
+                                        !(value->flags & ~(LayerIsolated | LayerHasBounds)) &&
+                                        (!(value->flags & LayerHasBounds) ||
+                                         ((value->flags & LayerIsolated) &&
+                                          valid_rect(value->x, value->y, value->width, value->height) &&
+                                          value->width > 0.0f && value->height > 0.0f)) &&
+                                        value->foreground_count <= kEffectProgramMaxOps &&
+                                        value->backdrop_count <= kEffectProgramMaxOps &&
+                                        valid_mask(value->mask) &&
+                                        valid_effect_program(value->foreground,
+                                                              value->foreground_count) &&
+                                        valid_effect_program(value->backdrop,
+                                                              value->backdrop_count) &&
+                                        (value->foreground_count == 0 ||
+                                         (value->flags & LayerIsolated)) &&
+                                        (value->backdrop_count == 0 ||
+                                         (value->flags & LayerIsolated));
+            if (!valid_extended ||
                 layer_depth == max_scope_depth)
                 return fail(error, offset, index, "invalid layer begin");
             ++layer_depth;

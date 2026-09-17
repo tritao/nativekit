@@ -29,10 +29,8 @@ class CustomEffectDefinition {
 			throw "Custom effect registrations require a name";
 		if (parameterTypes == null)
 			throw "Custom effect registrations require parameter types";
-		if (passCount <= 0)
-			throw "Custom effect registrations require at least one pass";
-		if (samplingInputs <= 0)
-			throw "Custom effect registrations require a sampling input";
+		if (passCount != 1 || samplingInputs != SourceInput)
+			throw "Custom effects currently require one source-sampling pass";
 		var components = 0;
 		for (type in parameterTypes) {
 			if (type == null || EffectParameterTypeUtil.componentCount(type) <= 0)

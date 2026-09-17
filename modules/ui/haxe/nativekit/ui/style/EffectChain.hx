@@ -71,9 +71,33 @@ class EffectChain {
 	}
 
 	/**
-	 * Collapses color-adjustment effects into one row-major 4x5 matrix.
-	 * Geometry-changing effects are intentionally rejected by this PR; their
-	 * descriptors will be added when the corresponding native passes land.
+	 * Produces the native semantic program for this chain. Adjacent color
+	 * adjustments are folded into one matrix while every geometry-changing or
+	 * renderer-owned operation remains in its original position.
+	 */
+	public function normalized():EffectChain {
+		var result:Array<Effect> = [];
+		var matrix:Array<Float> = null;
+		for (effect in effects) {
+			if (isMatrixEffect(effect)) {
+				var next = matrixFor(effect);
+				matrix = matrix == null ? next : multiply(next, matrix);
+				continue;
+			}
+			if (matrix != null) {
+				result.push(new ColorMatrixEffect(matrix));
+				matrix = null;
+			}
+			result.push(effect.copy());
+		}
+		if (matrix != null)
+			result.push(new ColorMatrixEffect(matrix));
+		return new EffectChain(result);
+	}
+
+	/**
+	 * Collapses a matrix-only chain into one row-major 4x5 matrix. Use
+	 * normalized() when the chain also contains ordered non-matrix operations.
 	 */
 	public function colorMatrix():Array<Float> {
 		var result = identityMatrix();
@@ -102,6 +126,35 @@ class EffectChain {
 			result = multiply(next, result);
 		}
 		return result;
+	}
+
+	static function isMatrixEffect(effect:Effect):Bool
+		return switch effect.kind {
+			case EffectKind.Brightness | EffectKind.Contrast | EffectKind.Saturate |
+				EffectKind.HueRotate | EffectKind.ColorMatrix: true;
+			default: false;
+		};
+
+	static function matrixFor(effect:Effect):Array<Float> {
+		switch effect.kind {
+			case EffectKind.Brightness:
+				var value:BrightnessEffect = cast effect;
+				return brightnessMatrix(value.factor);
+			case EffectKind.Contrast:
+				var value:ContrastEffect = cast effect;
+				return contrastMatrix(value.factor);
+			case EffectKind.Saturate:
+				var value:SaturateEffect = cast effect;
+				return saturateMatrix(value.factor);
+			case EffectKind.HueRotate:
+				var value:HueRotateEffect = cast effect;
+				return hueRotateMatrix(value.degrees);
+			case EffectKind.ColorMatrix:
+				var value:ColorMatrixEffect = cast effect;
+				return value.matrix.copy();
+			default:
+				throw "Effect is not a color-matrix operation";
+		}
 	}
 
 	static function identityMatrix():Array<Float> {

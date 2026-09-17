@@ -61,13 +61,14 @@ enum class EffectKind : uint32_t {
 };
 
 constexpr size_t kColorMatrixComponents = 20;
+/** Maximum number of semantic operations carried by one layer side. */
+constexpr size_t kEffectProgramMaxOps = 8;
 
-/** Backend-neutral effect data used by the render-plan compiler. */
+/** Concrete shader descriptor used by a render-plan effect pass. */
 struct EffectDescriptor {
     EffectKind kind = EffectKind::None;
-    // ColorMatrix uses all 20 values as a row-major 4x5 matrix. Blur uses
-    // value 0 for sigma and value 1 internally for the pass axis. DropShadow
-    // uses values 0..7 for sigma, axis, offset X/Y, and RGBA color.
+    // The render backend uses color_matrix for matrix values and the compact
+    // parameters required by its separable effect shaders.
     std::array<float, kColorMatrixComponents> color_matrix{};
 };
 
@@ -84,6 +85,32 @@ struct CustomEffectDescriptor {
 };
 
 bool valid_custom_effect_descriptor(const CustomEffectDescriptor &effect);
+
+/** Fixed-width wire operation used by the versioned layer command. */
+struct EffectOpCommand {
+    EffectKind kind = EffectKind::None;
+    std::array<float, kColorMatrixComponents> color_matrix{};
+    CustomEffectDescriptor custom{};
+};
+
+/** Named native representation of one semantic effect operation. */
+struct EffectOp {
+    struct DropShadowParameters {
+        float sigma = 0.0f;
+        float offset_x = 0.0f;
+        float offset_y = 0.0f;
+        std::array<float, 4> color{};
+    };
+
+    EffectKind kind = EffectKind::None;
+    std::array<float, kColorMatrixComponents> color_matrix{};
+    float blur_sigma = 0.0f;
+    DropShadowParameters drop_shadow{};
+    CustomEffectDescriptor custom{};
+};
+
+/** Decode one validated wire operation into native semantic parameters. */
+bool decode_effect_op(const EffectOpCommand &command, EffectOp &operation);
 
 /** Separate source-alpha input used to mask an isolated layer. */
 enum class MaskKind : uint32_t {
@@ -173,68 +200,11 @@ struct BeginLayerCommand {
     float width;
     float height;
     uint32_t flags;
-};
-
-/** Extended layer record carrying one sampled effect descriptor. */
-struct BeginLayerEffectCommand {
-    CommandHeader header;
-    float opacity;
-    CompositeMode mode;
-    float x;
-    float y;
-    float width;
-    float height;
-    uint32_t flags;
-    EffectDescriptor effect;
-};
-
-/** Extended layer record carrying an effect and a separate mask input. */
-struct BeginLayerMaskCommand {
-    CommandHeader header;
-    float opacity;
-    CompositeMode mode;
-    float x;
-    float y;
-    float width;
-    float height;
-    uint32_t flags;
-    EffectDescriptor effect;
+    uint32_t foreground_count;
+    uint32_t backdrop_count;
     MaskDescriptor mask;
-};
-
-/** Extended layer record carrying an effect, mask, and backdrop effect. */
-struct BeginLayerBackdropCommand {
-    CommandHeader header;
-    float opacity;
-    CompositeMode mode;
-    float x;
-    float y;
-    float width;
-    float height;
-    uint32_t flags;
-    EffectDescriptor effect;
-    MaskDescriptor mask;
-    EffectDescriptor backdrop_effect;
-};
-
-/** Versioned layer record carrying one renderer-owned custom effect. */
-struct BeginLayerCustomEffectCommand {
-    CommandHeader header;
-    float opacity;
-    CompositeMode mode;
-    float x;
-    float y;
-    float width;
-    float height;
-    uint32_t flags;
-    CustomEffectDescriptor effect;
-};
-
-/** Legacy 16-byte layer record accepted for display-list compatibility. */
-struct LegacyBeginLayerCommand {
-    CommandHeader header;
-    float opacity;
-    CompositeMode mode;
+    EffectOpCommand foreground[kEffectProgramMaxOps];
+    EffectOpCommand backdrop[kEffectProgramMaxOps];
 };
 
 struct LayerBounds {
@@ -289,6 +259,11 @@ class DisplayList {
                      const MaskDescriptor &mask, CompositeMode mode = CompositeMode::SourceOver);
     bool begin_layer(float opacity, const LayerBounds &bounds, const EffectDescriptor &effect,
                      const MaskDescriptor &mask, const EffectDescriptor &backdrop_effect,
+                     CompositeMode mode = CompositeMode::SourceOver);
+    bool begin_layer(float opacity, const LayerBounds &bounds,
+                     const std::vector<EffectOpCommand> &foreground,
+                     const MaskDescriptor &mask = {},
+                     const std::vector<EffectOpCommand> &backdrop = {},
                      CompositeMode mode = CompositeMode::SourceOver);
     bool begin_layer(float opacity, const EffectDescriptor &effect, const MaskDescriptor &mask,
                      const EffectDescriptor &backdrop_effect,

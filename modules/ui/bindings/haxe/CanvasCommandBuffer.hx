@@ -4,8 +4,10 @@ import CompositeMode;
 import LineCap;
 import LineJoin;
 import nativekit.ui.style.BlurEffect;
+import nativekit.ui.style.ColorMatrixEffect;
 import nativekit.ui.style.CustomEffect;
 import nativekit.ui.style.DropShadowEffect;
+import nativekit.ui.style.Effect;
 import nativekit.ui.style.EffectChain;
 import nativekit.ui.style.EffectKind;
 import nativekit.ui.style.Mask;
@@ -73,164 +75,108 @@ class CanvasCommandBuffer {
 
 	public function beginLayer(opacity:Float, mode:CompositeMode = CompositeMode.SourceOver,
 			?bounds:Rect, ?effects:EffectChain, ?mask:Mask, ?backdropEffects:EffectChain):Void {
-		var effectValue = effects == null ? EffectChain.empty() : effects;
-		var hasEffects = effects != null && effectValue.effects.length > 0;
+		var foreground = effects == null ? [] : effects.normalized().effects;
+		var backdrop = backdropEffects == null ? [] : backdropEffects.normalized().effects;
+		if (foreground.length > NativeKitUIConstants.NKUI_EFFECT_PROGRAM_MAX_OPS ||
+			backdrop.length > NativeKitUIConstants.NKUI_EFFECT_PROGRAM_MAX_OPS)
+			throw "Effect chains exceed the native operation limit";
 		var hasMask = mask != null;
-		var backdropValue = backdropEffects == null ? EffectChain.empty() : backdropEffects;
-		var hasBackdrop = backdropEffects != null && backdropValue.effects.length > 0;
-		var customOnly = hasEffects && effectValue.effects.length == 1 &&
-			effectValue.effects[0].kind == EffectKind.Custom;
-		if (customOnly) {
-			if (hasMask || hasBackdrop)
-				throw "Custom effects cannot currently be combined with masks or backdrop effects";
-			var custom:CustomEffect = cast effectValue.effects[0];
-			writeCustomLayer(opacity, mode, bounds, custom);
-			return;
-		}
-		var blurOnly = hasEffects && effectValue.effects.length == 1 &&
-			effectValue.effects[0].kind == EffectKind.Blur;
-		var dropShadowOnly = hasEffects && effectValue.effects.length == 1 &&
-			effectValue.effects[0].kind == EffectKind.DropShadow;
-		var matrix:Array<Float> = hasEffects ? encodeEffect(effectValue) : null;
-		var backdropMatrix:Array<Float> = hasBackdrop ? encodeEffect(backdropValue) : null;
-		var backdropBlurOnly = hasBackdrop && backdropValue.effects.length == 1 &&
-			backdropValue.effects[0].kind == EffectKind.Blur;
-		var backdropDropShadowOnly = hasBackdrop && backdropValue.effects.length == 1 &&
-			backdropValue.effects[0].kind == EffectKind.DropShadow;
-		if (!hasEffects && !hasMask && !hasBackdrop) {
-			if (bounds == null) {
-				header(NativeKitUI.CommandOpcode.BeginLayer, 16);
-				float(opacity);
-				word(cast mode);
-				return;
-			}
-			header(NativeKitUI.CommandOpcode.BeginLayer, 36);
-			float(opacity);
-			word(cast mode);
-			float(bounds.x);
-			float(bounds.y);
-			float(bounds.width);
-			float(bounds.height);
-			// NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS.
-			word(3);
-			return;
-		}
-		if (hasBackdrop) {
-			var maskValue:Mask = cast mask;
-			header(NativeKitUI.CommandOpcode.BeginLayer, 244);
-			float(opacity);
-			word(cast mode);
-			if (bounds == null) {
-				float(0.0); float(0.0); float(0.0); float(0.0);
-				word(1);
-			} else {
-				float(bounds.x); float(bounds.y); float(bounds.width); float(bounds.height);
-				word(3);
-			}
-			word(hasEffects ? (dropShadowOnly ? 3 : blurOnly ? 2 : 1) : 0);
-			if (hasEffects)
-				for (value in matrix)
-					float(value);
-			else
-				for (index in 0...20)
-					float(0.0);
-			writeMask(maskValue);
-			word(backdropDropShadowOnly ? 3 : backdropBlurOnly ? 2 : 1);
-			for (value in backdropMatrix)
-				float(value);
-			return;
-		}
-		if (hasMask) {
-			var maskValue:Mask = cast mask;
-			header(NativeKitUI.CommandOpcode.BeginLayer, 160);
-			float(opacity);
-			word(cast mode);
-			if (bounds == null) {
-				float(0.0); float(0.0); float(0.0); float(0.0);
-				word(1);
-			} else {
-				float(bounds.x); float(bounds.y); float(bounds.width); float(bounds.height);
-				word(3);
-			}
-			word(hasEffects ? (dropShadowOnly ? 3 : blurOnly ? 2 : 1) : 0);
-			if (hasEffects)
-				for (value in matrix)
-					float(value);
-			else
-				for (index in 0...20)
-					float(0.0);
-			writeMask(maskValue);
-			return;
-		}
-		header(NativeKitUI.CommandOpcode.BeginLayer, 120);
-		float(opacity);
-		word(cast mode);
-		if (bounds == null) {
-			float(0.0);
-			float(0.0);
-			float(0.0);
-			float(0.0);
-			word(1); // NKUI_LAYER_ISOLATED.
-		} else {
-			float(bounds.x);
-			float(bounds.y);
-			float(bounds.width);
-			float(bounds.height);
-			word(3); // NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS.
-		}
-		word(dropShadowOnly ? 3 : blurOnly ? 2 : 1);
-		for (value in matrix)
-			float(value);
-	}
-
-	function writeCustomLayer(opacity:Float, mode:CompositeMode, bounds:Null<Rect>,
-		value:CustomEffect):Void {
-		if (value.definition.passCount != 1 || value.definition.samplingInputs != 1)
-			throw "The current custom effect runtime supports one source-sampling pass";
-		header(NativeKitUI.CommandOpcode.BeginLayer, 148);
+		var isolated = opacity < 1.0 || foreground.length > 0 || backdrop.length > 0 || hasMask;
+		var flags = isolated ? 1 : 0;
+		if (bounds != null)
+			flags |= 2;
+		// header + layer fields + mask + two fixed operation arrays.
+		var operationBytes = 4 + 20 * 4 + 4 * 4 + 4 * 4 + 20 * 4;
+		var commandSize = 8 + 4 + 4 + 16 + 4 + 4 + 4 + 40 +
+			NativeKitUIConstants.NKUI_EFFECT_PROGRAM_MAX_OPS * operationBytes * 2;
+		header(NativeKitUI.CommandOpcode.BeginLayer, commandSize);
 		float(opacity);
 		word(cast mode);
 		if (bounds == null) {
 			float(0.0); float(0.0); float(0.0); float(0.0);
-			word(1); // NKUI_LAYER_ISOLATED.
 		} else {
 			float(bounds.x); float(bounds.y); float(bounds.width); float(bounds.height);
-			word(3); // NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS.
 		}
-		word(value.definition.id);
-		word(value.components.length);
-		word(value.definition.passCount);
-		word(value.definition.samplingInputs);
-		float(value.definition.overflow.left);
-		float(value.definition.overflow.top);
-		float(value.definition.overflow.right);
-		float(value.definition.overflow.bottom);
-		for (index in 0...NativeKitUIConstants.NKUI_CUSTOM_EFFECT_PARAMETER_COMPONENTS)
-			float(index < value.components.length ? value.components[index] : 0.0);
+		word(flags);
+		word(foreground.length);
+		word(backdrop.length);
+		writeMask(mask);
+		for (effect in foreground)
+			writeEffect(effect);
+		for (index in foreground.length...NativeKitUIConstants.NKUI_EFFECT_PROGRAM_MAX_OPS)
+			writeEmptyEffect();
+		for (effect in backdrop)
+			writeEffect(effect);
+		for (index in backdrop.length...NativeKitUIConstants.NKUI_EFFECT_PROGRAM_MAX_OPS)
+			writeEmptyEffect();
 	}
 
-	function encodeEffect(value:EffectChain):Array<Float> {
-		var result:Array<Float> = [];
+	function writeEffect(value:Effect):Void {
+		var matrix:Array<Float> = [];
 		for (index in 0...20)
-			result.push(0.0);
-		var blurOnly = value.effects.length == 1 && value.effects[0].kind == EffectKind.Blur;
-		var dropShadowOnly = value.effects.length == 1 &&
-			value.effects[0].kind == EffectKind.DropShadow;
-		if (blurOnly) {
-			var blur:BlurEffect = cast value.effects[0];
-			result[0] = blur.sigma;
-		} else if (dropShadowOnly) {
-			var shadow:DropShadowEffect = cast value.effects[0];
-			result[0] = shadow.sigma;
-			result[2] = shadow.offsetX;
-			result[3] = shadow.offsetY;
-			result[4] = shadow.color.red;
-			result[5] = shadow.color.green;
-			result[6] = shadow.color.blue;
-			result[7] = shadow.color.alpha;
+			matrix.push(0.0);
+		var kind = 0;
+		switch value.kind {
+			case EffectKind.Blur:
+				kind = 2;
+				var blur:BlurEffect = cast value;
+				matrix[0] = blur.sigma;
+			case EffectKind.DropShadow:
+				var shadow:DropShadowEffect = cast value;
+				kind = 3;
+				matrix[0] = shadow.sigma;
+				matrix[2] = shadow.offsetX;
+				matrix[3] = shadow.offsetY;
+				matrix[4] = shadow.color.red;
+				matrix[5] = shadow.color.green;
+				matrix[6] = shadow.color.blue;
+				matrix[7] = shadow.color.alpha;
+			case EffectKind.Custom:
+				kind = 4;
+			case EffectKind.ColorMatrix:
+				kind = 1;
+				var colorMatrix:ColorMatrixEffect = cast value;
+				matrix = colorMatrix.matrix.copy();
+			default:
+				throw "Effect chain normalization left an unsupported operation";
+		}
+		word(kind);
+		for (component in matrix)
+			float(component);
+		if (kind == 4) {
+			var custom:CustomEffect = cast value;
+			word(custom.definition.id);
+			word(custom.components.length);
+			word(custom.definition.passCount);
+			word(custom.definition.samplingInputs);
+			float(custom.definition.overflow.left);
+			float(custom.definition.overflow.top);
+			float(custom.definition.overflow.right);
+			float(custom.definition.overflow.bottom);
+			for (index in 0...NativeKitUIConstants.NKUI_CUSTOM_EFFECT_PARAMETER_COMPONENTS)
+				float(index < custom.components.length ? custom.components[index] : 0.0);
 		} else
-			result = value.colorMatrix();
-		return result;
+			writeEmptyCustom();
+	}
+
+	function writeEffectEmptyMatrix():Void {
+		for (index in 0...20)
+			float(0.0);
+	}
+
+	function writeEmptyEffect():Void {
+		word(0);
+		writeEffectEmptyMatrix();
+		writeEmptyCustom();
+	}
+
+	function writeEmptyCustom():Void {
+		for (index in 0...4)
+			word(0);
+		for (index in 0...4)
+			float(0.0);
+		for (index in 0...NativeKitUIConstants.NKUI_CUSTOM_EFFECT_PARAMETER_COMPONENTS)
+			float(0.0);
 	}
 
 	function writeMask(value:Mask):Void {
