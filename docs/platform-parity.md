@@ -14,8 +14,9 @@ This contract covers the core NativeKit platform ABI and its capability bits.
 The optional `NativeKit::gpu` and `NativeKit::ui` modules are not capability
 families in this table: their rendering, layout, style, and framework behavior
 are documented and tested by their respective module suites. The optional
-`NativeKit::net` capability bits are the exception and are included below when
-that module is enabled.
+HTTP capability bits are the exception and are included below. They remain
+runtime-optional and are advertised only when the selected transport supports
+them.
 
 ## Contract states
 
