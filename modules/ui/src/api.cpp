@@ -51,7 +51,8 @@ static_assert(sizeof(nkui_composite_command) == sizeof(nkui::SetCompositeModeCom
 static_assert(sizeof(nkui_rect_command) == sizeof(nkui::ClipRectCommand));
 static_assert(sizeof(nkui_draw_rect_command) == sizeof(nkui::DrawRectResourceCommand));
 static_assert(sizeof(nkui_layer_command) == sizeof(nkui::BeginLayerCommand));
-static_assert(sizeof(nkui_layer_v1_unbounded_command) == sizeof(nkui::BeginLayerUnboundedV1Command));
+static_assert(sizeof(nkui_layer_v1_unbounded_command) ==
+              sizeof(nkui::BeginLayerUnboundedV1Command));
 static_assert(sizeof(nkui_layer_v1_command) == sizeof(nkui::BeginLayerV1Command));
 static_assert(sizeof(nkui_layer_v1_effect_command) == sizeof(nkui::BeginLayerEffectV1Command));
 static_assert(sizeof(nkui_layer_v1_mask_command) == sizeof(nkui::BeginLayerMaskV1Command));
@@ -155,12 +156,16 @@ struct CustomEffectRegistrationStorage {
     std::array<float, 4> ink_overflow{};
 
     nkui::CustomEffectRegistration native() const {
-        return {registration_id, name.c_str(),
+        return {registration_id,
+                name.c_str(),
                 glsl410_fragment.empty() ? nullptr : glsl410_fragment.c_str(),
                 glsl300es_fragment.empty() ? nullptr : glsl300es_fragment.c_str(),
                 hlsl5_fragment.empty() ? nullptr : hlsl5_fragment.c_str(),
                 metal_macos_fragment.empty() ? nullptr : metal_macos_fragment.c_str(),
-                parameter_components, pass_count, sampling_inputs, ink_overflow};
+                parameter_components,
+                pass_count,
+                sampling_inputs,
+                ink_overflow};
     }
 };
 
@@ -824,8 +829,7 @@ std::array<float, 6> device_transform(const std::array<float, 6> &transform, flo
 constexpr uint16_t kBackdropRootTargetSlot = 0x8000;
 
 nkui::ResourceId backdrop_root_target() {
-    return nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1,
-                                  kBackdropRootTargetSlot);
+    return nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, kBackdropRootTargetSlot);
 }
 
 void append_backdrop_window_composite(nkui::RenderPlan &plan, nkui::ResourceId root_target,
@@ -833,8 +837,7 @@ void append_backdrop_window_composite(nkui::RenderPlan &plan, nkui::ResourceId r
     nkui::RenderPass window_pass;
     window_pass.target = window_target;
     window_pass.load_existing = load_existing;
-    window_pass.commands.push_back(
-        {nkui::RenderCommandKind::CompositeTarget, root_target});
+    window_pass.commands.push_back({nkui::RenderCommandKind::CompositeTarget, root_target});
     plan.passes.push_back(std::move(window_pass));
     plan.dependencies.push_back({root_target, window_target});
 }
@@ -2118,8 +2121,9 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_renderer_register_custom_effect(
-    nkui_renderer renderer, const nkui_custom_effect_registration *registration) {
+extern "C" nkui_result
+nkui_renderer_register_custom_effect(nkui_renderer renderer,
+                                     const nkui_custom_effect_registration *registration) {
     if (!registration || registration->struct_size < sizeof(*registration) ||
         !registration->registration_id || !registration->name || !registration->name[0] ||
         registration->parameter_components > NKUI_CUSTOM_EFFECT_PARAMETER_COMPONENTS ||
@@ -2282,8 +2286,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     // where the device pixel ratio is known.
     for (auto &pass : plan.passes) {
         if (pass.target_descriptor.logical_width > 0.0f) {
-            const double width = static_cast<double>(pass.target_descriptor.logical_width) *
-                                 frame_info->pixel_scale;
+            const double width =
+                static_cast<double>(pass.target_descriptor.logical_width) * frame_info->pixel_scale;
             const double height = static_cast<double>(pass.target_descriptor.logical_height) *
                                   frame_info->pixel_scale;
             if (!std::isfinite(width) || !std::isfinite(height) || width > INT32_MAX ||
@@ -2314,11 +2318,10 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     // Mask images are pass metadata rather than draw commands, so prepare them
     // before the ordinary command-resource walk below.
     for (const auto &pass : plan.passes) {
-        if (pass.kind != nkui::RenderPassKind::Mask ||
-            pass.mask.kind != nkui::MaskKind::Image)
+        if (pass.kind != nkui::RenderPassKind::Mask || pass.mask.kind != nkui::MaskKind::Image)
             continue;
-        auto *image = resolve_retained(nkui_resource{pass.mask.image.value},
-                                        nkui::ResourceKind::Image);
+        auto *image =
+            resolve_retained(nkui_resource{pass.mask.image.value}, nkui::ResourceKind::Image);
         if (!image) {
             valid = false;
             break;
@@ -2483,10 +2486,10 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                     prepared_texts.push_back({layout->text.get(), glyphs});
                 const nkui::ResourceId prepared_id =
                     nkui::make_resource_id(nkui::ResourceKind::TextLayout, 0x0FFE, prepared_slot++);
-                valid = frame_resources.bind_text(
-                    prepared_id, *glyphs,
-                    (static_cast<uint64_t>(source_resource) << 32) ^
-                        layout->text->layout_generation() ^ layout->text->font_collection_generation());
+                valid = frame_resources.bind_text(prepared_id, *glyphs,
+                                                  (static_cast<uint64_t>(source_resource) << 32) ^
+                                                      layout->text->layout_generation() ^
+                                                      layout->text->font_collection_generation());
                 command.resource = prepared_id;
                 // Skribidi's pixel scale changes atlas raster density while
                 // preserving layout geometry. Keep the draw origin in layout
@@ -2515,11 +2518,10 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                             command.resource, surface_slot->graphics_image,
                             static_cast<uint64_t>(surface_slot->graphics_image.id));
                     } else {
-                        valid =
-                            surface_slot->surface &&
-                            frame_resources.bind_surface(
-                                command.resource, *surface_slot->surface,
-                                static_cast<uint64_t>(surface_slot->surface->generation()));
+                        valid = surface_slot->surface &&
+                                frame_resources.bind_surface(
+                                    command.resource, *surface_slot->surface,
+                                    static_cast<uint64_t>(surface_slot->surface->generation()));
                     }
                     if (!valid)
                         break;
@@ -2671,10 +2673,9 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     uint32_t prepared_slot = 1;
     bool valid = true;
     for (auto &pass : plan.passes) {
-        if (pass.kind == nkui::RenderPassKind::Mask &&
-            pass.mask.kind == nkui::MaskKind::Image) {
-            auto *image = resolve_retained(nkui_resource{pass.mask.image.value},
-                                            nkui::ResourceKind::Image);
+        if (pass.kind == nkui::RenderPassKind::Mask && pass.mask.kind == nkui::MaskKind::Image) {
+            auto *image =
+                resolve_retained(nkui_resource{pass.mask.image.value}, nkui::ResourceKind::Image);
             if (!image) {
                 valid = false;
                 break;
@@ -2703,9 +2704,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
             }
             auto *prepared_image = prepared.get();
             custom_images.push_back(std::move(prepared));
-            if (!frame_resources.bind_image(
-                    pass.mask.image, *prepared_image,
-                    static_cast<uint64_t>(pass.mask.image.value))) {
+            if (!frame_resources.bind_image(pass.mask.image, *prepared_image,
+                                            static_cast<uint64_t>(pass.mask.image.value))) {
                 valid = false;
                 break;
             }
@@ -2830,10 +2830,10 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 prepared_texts.push_back({layout->text.get(), glyphs});
                 const auto prepared_id = nkui::make_resource_id(
                     nkui::ResourceKind::TextLayout, 0x0FFD, static_cast<uint16_t>(prepared_slot++));
-                valid = frame_resources.bind_text(
-                    prepared_id, *glyphs,
-                    (static_cast<uint64_t>(source_resource) << 32) ^
-                        layout->text->layout_generation() ^ layout->text->font_collection_generation());
+                valid = frame_resources.bind_text(prepared_id, *glyphs,
+                                                  (static_cast<uint64_t>(source_resource) << 32) ^
+                                                      layout->text->layout_generation() ^
+                                                      layout->text->font_collection_generation());
                 command.resource = prepared_id;
                 if (std::find(text_adapters.begin(), text_adapters.end(), layout->text.get()) ==
                     text_adapters.end())

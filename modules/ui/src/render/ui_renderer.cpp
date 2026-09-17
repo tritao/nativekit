@@ -991,8 +991,7 @@ ShaderSources shader_sources(nkgpu_backend backend, UiShaderKind kind) {
             return {ui_shader_box_shadow_metal_macos_vertex,
                     ui_shader_box_shadow_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
         return gl(ui_shader_box_shadow_glsl410_vertex, ui_shader_box_shadow_glsl410_fragment,
-                  ui_shader_box_shadow_glsl300es_vertex,
-                  ui_shader_box_shadow_glsl300es_fragment);
+                  ui_shader_box_shadow_glsl300es_vertex, ui_shader_box_shadow_glsl300es_fragment);
     case UiShaderKind::Mask:
         if (d3d11)
             return {ui_shader_mask_hlsl5_vertex, ui_shader_mask_hlsl5_fragment,
@@ -1807,15 +1806,15 @@ bool UiRendererImpl::drawBoxShadow(float x, float y, float width, float height,
         return TextureVertex{px * transform[0] + py * transform[2] + transform[4],
                              px * transform[1] + py * transform[3] + transform[5], px, py};
     };
-    const std::vector<TextureVertex> vertices = {
-        point(left, top), point(right, top), point(right, bottom), point(left, bottom)};
+    const std::vector<TextureVertex> vertices = {point(left, top), point(right, top),
+                                                 point(right, bottom), point(left, bottom)};
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     BoxShadowUniforms uniforms{};
     uniforms.value[0] = {x, y, width, height};
     uniforms.value[1] = {shadow.offset_x, shadow.offset_y, shadow.blur_sigma, shadow.spread};
     uniforms.value[2] = shadow.radii;
     uniforms.value[3] = {shadow.color[0], shadow.color[1], shadow.color[2],
-                          shadow.color[3] * opacity};
+                         shadow.color[3] * opacity};
     return draw_mesh(*state_, state_->box_shadow_pipeline, vertices, indices, &uniforms,
                      sizeof(uniforms), {}, {}, state_->composite_vertices);
 }

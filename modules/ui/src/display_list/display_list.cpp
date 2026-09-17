@@ -56,9 +56,8 @@ bool valid_effect_kind(EffectKind kind) {
 }
 
 bool valid_custom_effect_descriptor_impl(const CustomEffectDescriptor &effect) {
-    if (!effect.registration_id ||
-        effect.parameter_count > kCustomEffectParameterComponents || effect.pass_count != 1 ||
-        effect.sampling_inputs != 1)
+    if (!effect.registration_id || effect.parameter_count > kCustomEffectParameterComponents ||
+        effect.pass_count != 1 || effect.sampling_inputs != 1)
         return false;
     for (const float value : effect.ink_overflow)
         if (!finite(value) || value < 0.0f)
@@ -117,8 +116,8 @@ bool valid_layer_base(float opacity, CompositeMode mode, float x, float y, float
 }
 
 bool valid_layer_v1(const BeginLayerV1Command &value) {
-    return valid_layer_base(value.opacity, value.mode, value.x, value.y, value.width,
-                            value.height, value.flags);
+    return valid_layer_base(value.opacity, value.mode, value.x, value.y, value.width, value.height,
+                            value.flags);
 }
 
 bool valid_layer_unbounded_v1(const BeginLayerUnboundedV1Command &value) {
@@ -160,10 +159,10 @@ bool valid_layer_v2(const uint8_t *record, uint32_t size) {
         !valid_mask(value.mask) || value.foreground_count > kEffectProgramMaxOps ||
         value.backdrop_count > kEffectProgramMaxOps)
         return false;
-    const size_t operation_count = static_cast<size_t>(value.foreground_count) +
-                                   static_cast<size_t>(value.backdrop_count);
-    const size_t expected_size = sizeof(BeginLayerCommand) +
-                                 operation_count * sizeof(EffectOpCommand);
+    const size_t operation_count =
+        static_cast<size_t>(value.foreground_count) + static_cast<size_t>(value.backdrop_count);
+    const size_t expected_size =
+        sizeof(BeginLayerCommand) + operation_count * sizeof(EffectOpCommand);
     if (expected_size != size ||
         ((value.foreground_count || value.backdrop_count) && !(value.flags & LayerIsolated)))
         return false;
@@ -178,9 +177,8 @@ bool valid_layer_v2(const uint8_t *record, uint32_t size) {
 }
 
 bool valid_mask_kind(MaskKind kind) {
-    return kind == MaskKind::None || kind == MaskKind::Rectangle ||
-           kind == MaskKind::RoundedRect || kind == MaskKind::Circle ||
-           kind == MaskKind::LinearGradient || kind == MaskKind::Image;
+    return kind == MaskKind::None || kind == MaskKind::Rectangle || kind == MaskKind::RoundedRect ||
+           kind == MaskKind::Circle || kind == MaskKind::LinearGradient || kind == MaskKind::Image;
 }
 
 bool valid_mask(const MaskDescriptor &mask) {
@@ -198,9 +196,8 @@ bool valid_mask(const MaskDescriptor &mask) {
     if ((mask.kind == MaskKind::RoundedRect || mask.kind == MaskKind::Circle) &&
         mask.values[0] < 0.0f)
         return false;
-    if (mask.kind == MaskKind::LinearGradient &&
-        (mask.values[4] < 0.0f || mask.values[4] > 1.0f || mask.values[5] < 0.0f ||
-         mask.values[5] > 1.0f))
+    if (mask.kind == MaskKind::LinearGradient && (mask.values[4] < 0.0f || mask.values[4] > 1.0f ||
+                                                  mask.values[5] < 0.0f || mask.values[5] > 1.0f))
         return false;
     return true;
 }
@@ -316,8 +313,7 @@ bool DisplayList::has_backdrop_effects() const {
                 std::memcpy(&value, bytes_.data() + offset, sizeof(value));
                 if (value.backdrop_count)
                     return true;
-            } else if (header.version == 1 &&
-                       header.size == sizeof(BeginLayerBackdropV1Command))
+            } else if (header.version == 1 && header.size == sizeof(BeginLayerBackdropV1Command))
                 return read<BeginLayerBackdropV1Command>(bytes_.data() + offset)
                            .backdrop_effect.kind != EffectKind::None;
         }
@@ -391,8 +387,8 @@ bool DisplayList::append_layer(BeginLayerCommand value,
     if (foreground.size() > kEffectProgramMaxOps || backdrop.size() > kEffectProgramMaxOps)
         return false;
     const size_t operation_count = foreground.size() + backdrop.size();
-    if (operation_count > (std::numeric_limits<uint32_t>::max() - sizeof(value)) /
-                              sizeof(EffectOpCommand))
+    if (operation_count >
+        (std::numeric_limits<uint32_t>::max() - sizeof(value)) / sizeof(EffectOpCommand))
         return false;
     const size_t record_size = sizeof(value) + operation_count * sizeof(EffectOpCommand);
     value.header.version = kLayerCommandVersion;
@@ -606,7 +602,7 @@ bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
     const auto backdrop_operation = effect_operation(backdrop_effect);
     const std::vector<EffectOpCommand> foreground =
         effect.kind == EffectKind::None ? std::vector<EffectOpCommand>{}
-                                       : std::vector<EffectOpCommand>{foreground_operation};
+                                        : std::vector<EffectOpCommand>{foreground_operation};
     const std::vector<EffectOpCommand> backdrop =
         backdrop_effect.kind == EffectKind::None ? std::vector<EffectOpCommand>{}
                                                  : std::vector<EffectOpCommand>{backdrop_operation};
@@ -614,8 +610,8 @@ bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
 }
 
 bool DisplayList::begin_layer(float opacity, const EffectDescriptor &effect,
-                              const MaskDescriptor &mask,
-                              const EffectDescriptor &backdrop_effect, CompositeMode mode) {
+                              const MaskDescriptor &mask, const EffectDescriptor &backdrop_effect,
+                              CompositeMode mode) {
     auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
     value.opacity = opacity;
     value.mode = mode;
@@ -625,7 +621,7 @@ bool DisplayList::begin_layer(float opacity, const EffectDescriptor &effect,
     const auto backdrop_operation = effect_operation(backdrop_effect);
     const std::vector<EffectOpCommand> foreground =
         effect.kind == EffectKind::None ? std::vector<EffectOpCommand>{}
-                                       : std::vector<EffectOpCommand>{foreground_operation};
+                                        : std::vector<EffectOpCommand>{foreground_operation};
     const std::vector<EffectOpCommand> backdrop =
         backdrop_effect.kind == EffectKind::None ? std::vector<EffectOpCommand>{}
                                                  : std::vector<EffectOpCommand>{backdrop_operation};
@@ -635,8 +631,7 @@ bool DisplayList::begin_layer(float opacity, const EffectDescriptor &effect,
 bool DisplayList::begin_layer(float opacity, const LayerBounds &bounds,
                               const std::vector<EffectOpCommand> &foreground,
                               const MaskDescriptor &mask,
-                              const std::vector<EffectOpCommand> &backdrop,
-                              CompositeMode mode) {
+                              const std::vector<EffectOpCommand> &backdrop, CompositeMode mode) {
     if (foreground.size() > kEffectProgramMaxOps || backdrop.size() > kEffectProgramMaxOps)
         return false;
     auto value = command<BeginLayerCommand>(CommandOpcode::BeginLayer);
@@ -719,8 +714,8 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
             return fail(error, offset, index, "truncated command header");
         CommandHeader header{};
         std::memcpy(&header, data + offset, sizeof(header));
-        const bool is_layer_v2 = header.opcode == CommandOpcode::BeginLayer &&
-                                 header.version == kLayerCommandVersion;
+        const bool is_layer_v2 =
+            header.opcode == CommandOpcode::BeginLayer && header.version == kLayerCommandVersion;
         if (header.version != 1 && !is_layer_v2)
             return fail(error, offset, index, "unsupported command version");
         if (header.size < sizeof(CommandHeader) || header.size > size - offset ||
@@ -811,8 +806,7 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
             if (header.version == kLayerCommandVersion) {
                 valid_layer = valid_layer_v2(record, header.size);
             } else if (header.size == sizeof(BeginLayerUnboundedV1Command)) {
-                valid_layer =
-                    valid_layer_unbounded_v1(read<BeginLayerUnboundedV1Command>(record));
+                valid_layer = valid_layer_unbounded_v1(read<BeginLayerUnboundedV1Command>(record));
             } else if (header.size == sizeof(BeginLayerV1Command)) {
                 valid_layer = valid_layer_v1(read<BeginLayerV1Command>(record));
             } else if (header.size == sizeof(BeginLayerEffectV1Command)) {

@@ -343,14 +343,13 @@ class DisplayList {
     bool end_layer();
     bool draw_render_target(ResourceId target, float x, float y, float width, float height);
     bool draw_box_shadow(float x, float y, float width, float height, float offset_x,
-                         float offset_y, float blur_sigma, float spread,
-                         const float radii[4], const float color[4]);
+                         float offset_y, float blur_sigma, float spread, const float radii[4],
+                         const float color[4]);
     /** Returns whether the validated command stream contains a backdrop layer. */
     bool has_backdrop_effects() const;
 
   private:
-    bool append_layer(BeginLayerCommand value,
-                      const std::vector<EffectOpCommand> &foreground,
+    bool append_layer(BeginLayerCommand value, const std::vector<EffectOpCommand> &foreground,
                       const std::vector<EffectOpCommand> &backdrop);
     template <class T> bool append(const T &command);
     bool reserve_record(size_t size);

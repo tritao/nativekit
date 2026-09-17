@@ -52,10 +52,9 @@ void hash_runtime_target(uint64_t &hash, const FrameResources &resources,
     hash_runtime_resource(hash, resources, target);
 }
 
-void hash_runtime_command_source(
-    uint64_t &hash, const FrameResources &resources,
-    const std::unordered_map<uint32_t, uint64_t> &target_hashes,
-    const RenderCommand &command) {
+void hash_runtime_command_source(uint64_t &hash, const FrameResources &resources,
+                                 const std::unordered_map<uint32_t, uint64_t> &target_hashes,
+                                 const RenderCommand &command) {
     hash_runtime_u32(hash, static_cast<uint32_t>(command.kind));
     if (command.kind == RenderCommandKind::CompositeTarget) {
         hash_runtime_target(hash, resources, target_hashes, command.resource);
@@ -221,19 +220,19 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
                               ? static_cast<int>(std::ceil(pass.target_descriptor.logical_height))
                               : window.frame_target.height;
         const bool window_pass = pass.target.value == window.id.value;
-        const uint64_t runtime_hash = runtime_pass_hash(pass, resources, target_runtime_hashes,
-                                                        execution_serial);
+        const uint64_t runtime_hash =
+            runtime_pass_hash(pass, resources, target_runtime_hashes, execution_serial);
         target_runtime_hashes[pass.target.value] = runtime_hash;
         bool effect_cache_hit = false;
         const bool began =
             pass.kind == RenderPassKind::Effect
                 ? renderer.beginEffectPass(
-                      pass.target,
-                      frame_effect_cache_key(runtime_hash, window.frame_target),
+                      pass.target, frame_effect_cache_key(runtime_hash, window.frame_target),
                       pass_width, pass_height, effect_cache_hit)
-                : (window_pass ? renderer.beginWindowPass(pass_width, pass_height, !pass.load_existing)
-                               : renderer.beginTargetPass(pass.target, pass_width, pass_height,
-                                                          pass.load_existing));
+                : (window_pass
+                       ? renderer.beginWindowPass(pass_width, pass_height, !pass.load_existing)
+                       : renderer.beginTargetPass(pass.target, pass_width, pass_height,
+                                                  pass.load_existing));
         if (!began)
             return fail(error, pass_index, 0, renderer.lastError());
         if (pass.kind == RenderPassKind::Effect) {

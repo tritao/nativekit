@@ -64,10 +64,10 @@ bool valid_mask_descriptor(const MaskDescriptor &mask) {
 }
 
 bool valid_box_shadow_descriptor(const RenderCommand &command) {
-    if (command.width <= 0.0f || command.height <= 0.0f ||
-        !std::isfinite(command.x) || !std::isfinite(command.y) ||
-        !std::isfinite(command.width) || !std::isfinite(command.height) ||
-        !std::isfinite(command.opacity) || command.opacity < 0.0f || command.opacity > 1.0f)
+    if (command.width <= 0.0f || command.height <= 0.0f || !std::isfinite(command.x) ||
+        !std::isfinite(command.y) || !std::isfinite(command.width) ||
+        !std::isfinite(command.height) || !std::isfinite(command.opacity) ||
+        command.opacity < 0.0f || command.opacity > 1.0f)
         return false;
     const auto &shadow = command.box_shadow;
     if (!std::isfinite(shadow.offset_x) || !std::isfinite(shadow.offset_y) ||

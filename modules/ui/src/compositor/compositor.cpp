@@ -280,8 +280,8 @@ bool read_layer(const uint8_t *record, uint32_t size, LayerCommandValues &result
     if (size >= sizeof(BeginLayerCommand) &&
         read<CommandHeader>(record).version == kLayerCommandVersion) {
         const auto value = read<BeginLayerCommand>(record);
-        const size_t operation_count = static_cast<size_t>(value.foreground_count) +
-                                       static_cast<size_t>(value.backdrop_count);
+        const size_t operation_count =
+            static_cast<size_t>(value.foreground_count) + static_cast<size_t>(value.backdrop_count);
         if (size != sizeof(BeginLayerCommand) + operation_count * sizeof(EffectOpCommand))
             return false;
         set_base(value.opacity, value.mode, value.x, value.y, value.width, value.height,
@@ -290,16 +290,17 @@ bool read_layer(const uint8_t *record, uint32_t size, LayerCommandValues &result
         result.has_mask = value.mask.kind != MaskKind::None;
         const auto *operations = record + sizeof(BeginLayerCommand);
         for (uint32_t index = 0; index < value.foreground_count; ++index) {
-            const auto operation = read<EffectOpCommand>(
-                operations + static_cast<size_t>(index) * sizeof(EffectOpCommand));
+            const auto operation = read<EffectOpCommand>(operations + static_cast<size_t>(index) *
+                                                                          sizeof(EffectOpCommand));
             if (!add_operation(operation))
                 return false;
         }
-        const auto backdrop_offset = static_cast<size_t>(value.foreground_count) *
-                                     sizeof(EffectOpCommand);
+        const auto backdrop_offset =
+            static_cast<size_t>(value.foreground_count) * sizeof(EffectOpCommand);
         for (uint32_t index = 0; index < value.backdrop_count; ++index) {
-            const auto operation = read<EffectOpCommand>(
-                operations + backdrop_offset + static_cast<size_t>(index) * sizeof(EffectOpCommand));
+            const auto operation =
+                read<EffectOpCommand>(operations + backdrop_offset +
+                                      static_cast<size_t>(index) * sizeof(EffectOpCommand));
             if (!add_backdrop_operation(operation))
                 return false;
         }
@@ -331,7 +332,8 @@ bool read_layer(const uint8_t *record, uint32_t size, LayerCommandValues &result
                  value.base.height, value.base.flags);
         result.mask = value.mask;
         result.has_mask = value.mask.kind != MaskKind::None;
-        return (value.effect.kind == EffectKind::None || add_operation(wire_operation(value.effect)));
+        return (value.effect.kind == EffectKind::None ||
+                add_operation(wire_operation(value.effect)));
     }
     if (size == sizeof(BeginLayerBackdropV1Command)) {
         const auto value = read<BeginLayerBackdropV1Command>(record);
@@ -392,11 +394,9 @@ bool expand_effect_bounds(LayerBounds &bounds, const std::vector<EffectOp> &oper
             top = operation.custom.ink_overflow[1];
             right = operation.custom.ink_overflow[2];
             bottom = operation.custom.ink_overflow[3];
-        } else if (operation.kind == EffectKind::Blur ||
-                   operation.kind == EffectKind::DropShadow) {
-            const float sigma = operation.kind == EffectKind::Blur
-                                    ? operation.blur_sigma
-                                    : operation.drop_shadow.sigma;
+        } else if (operation.kind == EffectKind::Blur || operation.kind == EffectKind::DropShadow) {
+            const float sigma = operation.kind == EffectKind::Blur ? operation.blur_sigma
+                                                                   : operation.drop_shadow.sigma;
             const float spread = sigma * 3.0f;
             left = top = right = bottom = spread;
             if (operation.kind == EffectKind::DropShadow) {
@@ -408,8 +408,7 @@ bool expand_effect_bounds(LayerBounds &bounds, const std::vector<EffectOp> &oper
         }
         if (!std::isfinite(left) || !std::isfinite(top) || !std::isfinite(right) ||
             !std::isfinite(bottom) || !std::isfinite(bounds.x - left) ||
-            !std::isfinite(bounds.y - top) ||
-            !std::isfinite(bounds.width + left + right) ||
+            !std::isfinite(bounds.y - top) || !std::isfinite(bounds.width + left + right) ||
             !std::isfinite(bounds.height + top + bottom))
             return false;
         bounds.x -= left;
@@ -535,8 +534,8 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
         }
         case CommandOpcode::DrawBoxShadow: {
             const auto value = read<DrawBoxShadowCommand>(record);
-            pass->commands.push_back({RenderCommandKind::BoxShadow, {}, value.x, value.y,
-                                      value.width, value.height});
+            pass->commands.push_back(
+                {RenderCommandKind::BoxShadow, {}, value.x, value.y, value.width, value.height});
             auto &command = pass->commands.back();
             command.box_shadow.offset_x = value.offset_x;
             command.box_shadow.offset_y = value.offset_y;
@@ -574,8 +573,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             // Capture the backdrop with the full program's ink margin. The expanded result is
             // placed behind the visible layer bounds and clipped by the isolated group, so a
             // blur at the panel edge can still sample the background outside the panel.
-            if (value.has_bounds &&
-                !expand_effect_bounds(backdrop_bounds, value.backdrop_effects))
+            if (value.has_bounds && !expand_effect_bounds(backdrop_bounds, value.backdrop_effects))
                 return fail(error, index, "backdrop effect bounds overflow");
             if (value.has_bounds && !expand_effect_bounds(value.bounds, value.effects))
                 return fail(error, index, "effect bounds overflow");
@@ -622,8 +620,8 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                     plan.passes.push_back(std::move(effect_pass));
                 };
                 ResourceId backdrop_input = parent_target;
-                for (size_t operation_index = 0;
-                     operation_index < value.backdrop_effects.size(); ++operation_index) {
+                for (size_t operation_index = 0; operation_index < value.backdrop_effects.size();
+                     ++operation_index) {
                     const auto &operation = value.backdrop_effects[operation_index];
                     const ResourceId source_target = backdrop_input;
                     const bool source_region = operation_index == 0 && value.has_bounds;
@@ -643,10 +641,9 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                             const float width = value.has_bounds ? backdrop_bounds.width : 0.0f;
                             const float height = value.has_bounds ? backdrop_bounds.height : 0.0f;
                             group.commands.push_back({RenderCommandKind::CompositeTarget,
-                                                       backdrop_input, 0.0f, 0.0f, width, height});
+                                                      backdrop_input, 0.0f, 0.0f, width, height});
                             group.commands.push_back({RenderCommandKind::CompositeTarget,
-                                                       source_target,
-                                                       0.0f, 0.0f, width, height});
+                                                      source_target, 0.0f, 0.0f, width, height});
                             add_dependency(plan, backdrop_input, shadow_group);
                             add_dependency(plan, source_target, shadow_group);
                             backdrop_input = shadow_group;
@@ -654,7 +651,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                     } else {
                         const ResourceId target = allocate_transient_target();
                         append_backdrop_effect(target, backdrop_input, operation, 0.0f,
-                                                source_region);
+                                               source_region);
                         backdrop_input = target;
                     }
                 }
@@ -677,11 +674,10 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 }
                 pass = &continue_pass(plan, current_target, layer_descriptor);
             }
-            layers.push_back({parent_target, layer_target, value.opacity, value.mode,
-                              value.bounds, value.has_bounds, parent_origin_x, parent_origin_y,
-                              layer_descriptor, std::move(value.effects),
-                              value.mask, value.has_mask,
-                              backdrop_bounds, backdrop_target, has_backdrop_target, isolated});
+            layers.push_back({parent_target, layer_target, value.opacity, value.mode, value.bounds,
+                              value.has_bounds, parent_origin_x, parent_origin_y, layer_descriptor,
+                              std::move(value.effects), value.mask, value.has_mask, backdrop_bounds,
+                              backdrop_target, has_backdrop_target, isolated});
             break;
         }
         case CommandOpcode::EndLayer: {
@@ -694,7 +690,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 ResourceId composite_target = layer.layer_target;
                 if (!layer.effects.empty()) {
                     const auto append_effect_pass = [&](ResourceId target, ResourceId input,
-                                                         const EffectOp &operation, float axis) {
+                                                        const EffectOp &operation, float axis) {
                         RenderPass effect_pass;
                         effect_pass.target = target;
                         effect_pass.target_descriptor = layer.target_descriptor;
@@ -720,10 +716,11 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                                 const float width = layer.has_bounds ? layer.bounds.width : 0.0f;
                                 const float height = layer.has_bounds ? layer.bounds.height : 0.0f;
                                 group.commands.push_back({RenderCommandKind::CompositeTarget,
-                                                           composite_target, 0.0f, 0.0f, width,
-                                                           height});
+                                                          composite_target, 0.0f, 0.0f, width,
+                                                          height});
                                 group.commands.push_back({RenderCommandKind::CompositeTarget,
-                                                           source_target, 0.0f, 0.0f, width, height});
+                                                          source_target, 0.0f, 0.0f, width,
+                                                          height});
                                 add_dependency(plan, composite_target, shadow_group);
                                 add_dependency(plan, source_target, shadow_group);
                                 composite_target = shadow_group;
@@ -754,8 +751,8 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                     pass = &continue_pass(plan, group_target, layer.target_descriptor);
                     const auto append_group_composite = [&](ResourceId target, float x, float y,
                                                             float width, float height) {
-                        pass->commands.push_back({RenderCommandKind::CompositeTarget, target, x, y,
-                                                  width, height});
+                        pass->commands.push_back(
+                            {RenderCommandKind::CompositeTarget, target, x, y, width, height});
                         add_dependency(plan, target, group_target);
                     };
                     if (layer.has_backdrop_target) {
@@ -766,10 +763,9 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                             layer.has_bounds ? layer.backdrop_bounds.width : 0.0f,
                             layer.has_bounds ? layer.backdrop_bounds.height : 0.0f);
                     }
-                    append_group_composite(
-                        composite_target, 0.0f, 0.0f,
-                        layer.has_bounds ? layer.bounds.width : 0.0f,
-                        layer.has_bounds ? layer.bounds.height : 0.0f);
+                    append_group_composite(composite_target, 0.0f, 0.0f,
+                                           layer.has_bounds ? layer.bounds.width : 0.0f,
+                                           layer.has_bounds ? layer.bounds.height : 0.0f);
                     if (layer.has_mask)
                         group_target = append_mask_pass(group_target);
                 } else if (layer.has_mask) {

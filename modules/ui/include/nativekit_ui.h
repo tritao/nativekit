@@ -373,7 +373,8 @@ enum NK_ENUM(nkui_mask_kind) {
 typedef struct nkui_command_header {
     /** One of the NKUI_COMMAND_* opcode values. */
     nkui_command_opcode opcode;
-    /** Must match the opcode: NKUI_COMMAND_VERSION, or NKUI_LAYER_COMMAND_VERSION for BeginLayer. */
+    /** Must match the opcode: NKUI_COMMAND_VERSION, or NKUI_LAYER_COMMAND_VERSION for BeginLayer.
+     */
     uint16_t version;
     /** Total record size in bytes, including this header; must be 4-byte aligned. */
     uint32_t size;
