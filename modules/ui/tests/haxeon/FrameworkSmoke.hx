@@ -121,6 +121,7 @@ import nativekit.ui.style.StyleStateUtil;
 import nativekit.ui.style.StyleTarget;
 import nativekit.ui.style.StyleValue;
 import nativekit.ui.style.EffectChain;
+import nativekit.ui.style.EffectKind;
 import nativekit.ui.style.BlurEffect;
 import nativekit.ui.style.BrightnessEffect;
 import nativekit.ui.style.ContrastEffect;
@@ -1536,9 +1537,28 @@ class FrameworkSmoke {
 			effectOverflow.top != 36.0 || effectOverflow.right != 36.0 ||
 			effectOverflow.bottom != 36.0 || !effectChain.isEqual(effectChain.copy()))
 			return 240;
+		var normalizedEffects = EffectChain.of([
+			new BrightnessEffect(1.2), new ContrastEffect(0.8), BlurEffect.withSigma(3.0),
+			new SaturateEffect(1.1)
+		]).normalized();
+		if (normalizedEffects.effects.length != 3 ||
+			normalizedEffects.effects[0].kind != EffectKind.ColorMatrix ||
+			normalizedEffects.effects[1].kind != EffectKind.Blur ||
+			normalizedEffects.effects[2].kind != EffectKind.ColorMatrix)
+			return 242;
+		var rejectedCustomDefinition = false;
+		try {
+			new CustomEffectDefinition(7, "wave", [
+				EffectParameterType.Float, EffectParameterType.Color
+			], new InkOverflow(2.0, 3.0, 4.0, 5.0), 2);
+		} catch (_:Dynamic) {
+			rejectedCustomDefinition = true;
+		}
+		if (!rejectedCustomDefinition)
+			return 250;
 		var customDefinition = new CustomEffectDefinition(7, "wave", [
 			EffectParameterType.Float, EffectParameterType.Color
-		], new InkOverflow(2.0, 3.0, 4.0, 5.0), 2);
+		], new InkOverflow(2.0, 3.0, 4.0, 5.0));
 		var custom = new CustomEffect(customDefinition, [
 			EffectParameter.scalar(0.25),
 			EffectParameter.color(Color.rgba(0.1, 0.2, 0.3, 0.4))
@@ -1551,7 +1571,7 @@ class FrameworkSmoke {
 		if (custom.components.length != 5 || custom.components[0] != 0.25 ||
 			custom.components[4] != 0.4 || !custom.isEqual(customCopy) ||
 			custom.inkOverflow().right != 4.0 || Math.abs(customMid.components[0] - 0.5) > 0.00001 ||
-			Math.abs(customMid.components[1] - 0.3) > 0.00001 || customDefinition.passCount != 2)
+			Math.abs(customMid.components[1] - 0.3) > 0.00001 || customDefinition.passCount != 1)
 			return 250;
 		var customRuntime = new CustomEffect(new CustomEffectDefinition(8, "multiply", [
 			EffectParameterType.Float

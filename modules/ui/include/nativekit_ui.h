@@ -289,9 +289,9 @@ enum NK_ENUM(nkui_effect_kind) {
     NKUI_EFFECT_NONE = 0,
     /** Apply the supplied row-major 4x5 color matrix. */
     NKUI_EFFECT_COLOR_MATRIX = 1,
-    /** Apply a separable Gaussian blur; effect_matrix[0] stores sigma. */
+    /** Apply a separable Gaussian blur; the compact operation stores sigma in slot 0. */
     NKUI_EFFECT_BLUR = 2,
-    /** Apply a subtree alpha drop shadow; values 0..7 store sigma, axis, offset X/Y, and RGBA. */
+    /** Apply a subtree alpha drop shadow; the compact operation stores sigma, offset, and RGBA. */
     NKUI_EFFECT_DROP_SHADOW = 3,
     /** Apply a renderer-registered custom effect. */
     NKUI_EFFECT_CUSTOM = 4
@@ -299,6 +299,8 @@ enum NK_ENUM(nkui_effect_kind) {
 
 /** Maximum number of float components carried by one custom effect. */
 enum { NKUI_CUSTOM_EFFECT_PARAMETER_COMPONENTS = 20 };
+/** Maximum number of ordered operations in either layer effect program. */
+enum { NKUI_EFFECT_PROGRAM_MAX_OPS = 8 };
 
 /** Backend-neutral descriptor for a renderer-owned custom effect. */
 typedef struct nkui_custom_effect_descriptor {
@@ -315,6 +317,16 @@ typedef struct nkui_custom_effect_descriptor {
     /** Typed parameters flattened according to the native registration schema. */
     float parameters[NKUI_CUSTOM_EFFECT_PARAMETER_COMPONENTS];
 } nkui_custom_effect_descriptor;
+
+/** One compact wire operation in a foreground or backdrop effect program. */
+typedef struct nkui_effect_op_command {
+    /** Operation kind; custom operations use the descriptor below. */
+    nkui_effect_kind kind;
+    /** Matrix values, or compact scalar/color parameters decoded by the native compositor. */
+    float color_matrix[20];
+    /** Renderer-owned custom operation data; ignored for non-custom kinds. */
+    nkui_custom_effect_descriptor custom;
+} nkui_effect_op_command;
 
 /** Native shader implementation registered for a custom effect ID. */
 typedef struct nkui_custom_effect_registration {
@@ -475,6 +487,16 @@ typedef struct nkui_draw_rect_command {
     float height;
 } nkui_draw_rect_command;
 
+/** Descriptor for the source-alpha mask of an isolated layer. */
+typedef struct nkui_mask_descriptor {
+    /** Shape, gradient, or image mask kind. */
+    nkui_mask_kind kind;
+    /** Image resource used only by NKUI_MASK_IMAGE. */
+    nkui_resource image;
+    /** Kind-specific values; coordinates are normalized for gradients. */
+    float values[8];
+} nkui_mask_descriptor;
+
 /** Payload for NKUI_COMMAND_BEGIN_LAYER. */
 typedef struct nkui_layer_command {
     /** Command record header. */
@@ -493,86 +515,17 @@ typedef struct nkui_layer_command {
     float height;
     /** Combination of nkui_layer_flags. */
     nkui_layer_flags flags;
+    /** Number of active foreground operations in foreground[]. */
+    uint32_t foreground_count;
+    /** Number of active backdrop operations in backdrop[]. */
+    uint32_t backdrop_count;
+    /** Source-alpha mask; use NKUI_MASK_NONE when no mask is present. */
+    nkui_mask_descriptor mask;
+    /** Ordered foreground operations, applied from first to last. */
+    nkui_effect_op_command foreground[NKUI_EFFECT_PROGRAM_MAX_OPS];
+    /** Ordered backdrop operations, applied from first to last. */
+    nkui_effect_op_command backdrop[NKUI_EFFECT_PROGRAM_MAX_OPS];
 } nkui_layer_command;
-
-/** Extended payload for NKUI_COMMAND_BEGIN_LAYER with one sampled effect. */
-typedef struct nkui_layer_effect_command {
-    /** Command record header. */
-    nkui_command_header header;
-    /** Layer opacity in the inclusive range 0..1. */
-    float opacity;
-    /** Compositing mode used when the layer is applied. */
-    nkui_composite_mode composite_mode;
-    /** Left edge of the optional bounded target in logical coordinates. */
-    float x;
-    /** Top edge of the optional bounded target in logical coordinates. */
-    float y;
-    /** Width of the optional bounded target; must be positive when present. */
-    float width;
-    /** Height of the optional bounded target; must be positive when present. */
-    float height;
-    /** Combination of nkui_layer_flags. */
-    nkui_layer_flags flags;
-    /** Effect kind carried by this command. */
-    nkui_effect_kind effect_kind;
-    /** Row-major 4x5 color matrix, or parameters for blur/drop-shadow effects. */
-    float effect_matrix[20];
-} nkui_layer_effect_command;
-
-/** Descriptor for the source-alpha mask of an isolated layer. */
-typedef struct nkui_mask_descriptor {
-    /** Shape, gradient, or image mask kind. */
-    nkui_mask_kind kind;
-    /** Image resource used only by NKUI_MASK_IMAGE. */
-    nkui_resource image;
-    /** Kind-specific values; coordinates are normalized for gradients. */
-    float values[8];
-} nkui_mask_descriptor;
-
-/** Extended payload for NKUI_COMMAND_BEGIN_LAYER with an effect and mask. */
-typedef struct nkui_layer_mask_command {
-    nkui_command_header header;
-    float opacity;
-    nkui_composite_mode composite_mode;
-    float x;
-    float y;
-    float width;
-    float height;
-    nkui_layer_flags flags;
-    nkui_effect_kind effect_kind;
-    float effect_matrix[20];
-    nkui_mask_descriptor mask;
-} nkui_layer_mask_command;
-
-/** Extended payload for NKUI_COMMAND_BEGIN_LAYER with effects, a mask, and a backdrop effect. */
-typedef struct nkui_layer_backdrop_command {
-    nkui_command_header header;
-    float opacity;
-    nkui_composite_mode composite_mode;
-    float x;
-    float y;
-    float width;
-    float height;
-    nkui_layer_flags flags;
-    nkui_effect_kind effect_kind;
-    float effect_matrix[20];
-    nkui_mask_descriptor mask;
-    nkui_effect_kind backdrop_effect_kind;
-    float backdrop_effect_matrix[20];
-} nkui_layer_backdrop_command;
-
-/** Versioned payload for NKUI_COMMAND_BEGIN_LAYER with one custom effect. */
-typedef struct nkui_layer_custom_effect_command {
-    nkui_command_header header;
-    float opacity;
-    nkui_composite_mode composite_mode;
-    float x;
-    float y;
-    float width;
-    float height;
-    nkui_layer_flags flags;
-    nkui_custom_effect_descriptor effect;
-} nkui_layer_custom_effect_command;
 
 /* ------------------------------------------------------------------------- */
 /* Text and layout types                                                      */

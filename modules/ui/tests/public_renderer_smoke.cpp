@@ -42,6 +42,21 @@ template <class T> void append(std::vector<uint8_t> &bytes, const T &value) {
     std::memcpy(bytes.data() + offset, &value, sizeof(value));
 }
 
+nkui_layer_command make_layer(float opacity, float x = 0.0f, float y = 0.0f,
+                               float width = 0.0f, float height = 0.0f,
+                               nkui_layer_flags flags = 0) {
+    nkui_layer_command layer{};
+    layer.header = {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION, sizeof(layer)};
+    layer.opacity = opacity;
+    layer.composite_mode = NKUI_COMPOSITE_SOURCE_OVER;
+    layer.x = x;
+    layer.y = y;
+    layer.width = width;
+    layer.height = height;
+    layer.flags = flags;
+    return layer;
+}
+
 struct PixelBounds {
     int min_x = 0;
     int min_y = 0;
@@ -168,32 +183,27 @@ int main(int argc, char **argv) {
     }
     if (custom_effect_registered) {
         std::vector<uint8_t> custom_commands;
-        nkui_layer_custom_effect_command custom_layer{};
-        custom_layer.header = {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION,
-                               sizeof(custom_layer)};
-        custom_layer.opacity = 1.0f;
-        custom_layer.composite_mode = NKUI_COMPOSITE_SOURCE_OVER;
-        custom_layer.x = 72.0f;
-        custom_layer.y = 82.0f;
-        custom_layer.width = 112.0f;
-        custom_layer.height = 70.0f;
-        custom_layer.flags = NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS;
-        custom_layer.effect.registration_id = 77;
-        custom_layer.effect.parameter_count = 1;
-        custom_layer.effect.pass_count = 1;
-        custom_layer.effect.sampling_inputs = 1;
-        custom_layer.effect.parameters[0] = 1.0f;
+        auto custom_layer = make_layer(1.0f, 72.0f, 82.0f, 112.0f, 70.0f,
+                                       NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS);
+        custom_layer.foreground_count = 1;
+        custom_layer.foreground[0].kind = NKUI_EFFECT_CUSTOM;
+        custom_layer.foreground[0].custom.registration_id = 77;
+        custom_layer.foreground[0].custom.parameter_count = 1;
+        custom_layer.foreground[0].custom.pass_count = 1;
+        custom_layer.foreground[0].custom.sampling_inputs = 1;
+        custom_layer.foreground[0].custom.parameters[0] = 1.0f;
         append(custom_commands, custom_layer);
         append(custom_commands,
-               nkui_draw_rect_command{
-                   {NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION, sizeof(nkui_draw_rect_command)},
-                   image,
-                   72.0f,
-                   82.0f,
-                   112.0f,
-                   70.0f});
-        append(custom_commands, nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
-                                                    sizeof(nkui_command_header)});
+               nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
+                                       sizeof(nkui_draw_rect_command)},
+                                      image,
+                                      72.0f,
+                                      82.0f,
+                                      112.0f,
+                                      70.0f});
+        append(custom_commands,
+               nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
+                                   sizeof(nkui_command_header)});
         if (nkui_display_list_submit(custom_effect_list, custom_commands.data(),
                                      custom_commands.size()) != NKUI_OK)
             return 5;
@@ -247,10 +257,7 @@ int main(int argc, char **argv) {
                                             140.0f,
                                             0.0f,
                                             0.0f});
-    append(commands, nkui_layer_command{{NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION,
-                                         sizeof(nkui_layer_command)},
-                                        0.65f,
-                                        NKUI_COMPOSITE_SOURCE_OVER});
+    append(commands, make_layer(0.65f));
     append(commands, nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
                                              sizeof(nkui_draw_rect_command)},
                                             image,
@@ -260,18 +267,11 @@ int main(int argc, char **argv) {
                                             70.0f});
     append(commands, nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
                                          sizeof(nkui_command_header)});
-    nkui_layer_effect_command blur_layer{};
-    blur_layer.header = {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION,
-                         sizeof(nkui_layer_effect_command)};
-    blur_layer.opacity = 1.0f;
-    blur_layer.composite_mode = NKUI_COMPOSITE_SOURCE_OVER;
-    blur_layer.x = 72.0f;
-    blur_layer.y = 82.0f;
-    blur_layer.width = 112.0f;
-    blur_layer.height = 70.0f;
-    blur_layer.flags = NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS;
-    blur_layer.effect_kind = NKUI_EFFECT_BLUR;
-    blur_layer.effect_matrix[0] = 2.0f;
+    auto blur_layer = make_layer(1.0f, 72.0f, 82.0f, 112.0f, 70.0f,
+                                 NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS);
+    blur_layer.foreground_count = 1;
+    blur_layer.foreground[0].kind = NKUI_EFFECT_BLUR;
+    blur_layer.foreground[0].color_matrix[0] = 2.0f;
     append(commands, blur_layer);
     append(commands, nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
                                              sizeof(nkui_draw_rect_command)},
@@ -287,115 +287,100 @@ int main(int argc, char **argv) {
     if (nkui_display_list_create(&drop_shadow_list) != NKUI_OK)
         return 5;
     std::vector<uint8_t> drop_shadow_commands;
-    nkui_layer_effect_command drop_shadow_layer{};
-    drop_shadow_layer.header = {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION,
-                                sizeof(nkui_layer_effect_command)};
-    drop_shadow_layer.opacity = 1.0f;
-    drop_shadow_layer.composite_mode = NKUI_COMPOSITE_SOURCE_OVER;
-    drop_shadow_layer.x = 72.0f;
-    drop_shadow_layer.y = 82.0f;
-    drop_shadow_layer.width = 112.0f;
-    drop_shadow_layer.height = 70.0f;
-    drop_shadow_layer.flags = NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS;
-    drop_shadow_layer.effect_kind = NKUI_EFFECT_DROP_SHADOW;
-    drop_shadow_layer.effect_matrix[0] = 2.0f;
-    drop_shadow_layer.effect_matrix[3] = 6.0f;
-    drop_shadow_layer.effect_matrix[7] = 0.35f;
+    auto drop_shadow_layer = make_layer(1.0f, 72.0f, 82.0f, 112.0f, 70.0f,
+                                        NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS);
+    drop_shadow_layer.foreground_count = 1;
+    drop_shadow_layer.foreground[0].kind = NKUI_EFFECT_DROP_SHADOW;
+    drop_shadow_layer.foreground[0].color_matrix[0] = 2.0f;
+    drop_shadow_layer.foreground[0].color_matrix[3] = 6.0f;
+    drop_shadow_layer.foreground[0].color_matrix[7] = 0.35f;
     append(drop_shadow_commands, drop_shadow_layer);
     append(drop_shadow_commands,
-           nkui_draw_rect_command{
-               {NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION, sizeof(nkui_draw_rect_command)},
-               image,
-               72.0f,
-               82.0f,
-               112.0f,
-               70.0f});
-    append(drop_shadow_commands, nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
-                                                     sizeof(nkui_command_header)});
+           nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
+                                   sizeof(nkui_draw_rect_command)},
+                                  image,
+                                  72.0f,
+                                  82.0f,
+                                  112.0f,
+                                  70.0f});
+    append(drop_shadow_commands,
+           nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
+                               sizeof(nkui_command_header)});
     if (nkui_display_list_submit(drop_shadow_list, drop_shadow_commands.data(),
                                  drop_shadow_commands.size()) != NKUI_OK)
         return 5;
     if (nkui_display_list_create(&mask_list) != NKUI_OK)
         return 5;
     std::vector<uint8_t> mask_commands;
-    nkui_layer_mask_command rounded_mask_layer{};
-    rounded_mask_layer.header = {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION,
-                                 sizeof(nkui_layer_mask_command)};
-    rounded_mask_layer.opacity = 1.0f;
-    rounded_mask_layer.composite_mode = NKUI_COMPOSITE_SOURCE_OVER;
-    rounded_mask_layer.x = 72.0f;
-    rounded_mask_layer.y = 82.0f;
-    rounded_mask_layer.width = 112.0f;
-    rounded_mask_layer.height = 70.0f;
-    rounded_mask_layer.flags = NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS;
+    auto rounded_mask_layer = make_layer(1.0f, 72.0f, 82.0f, 112.0f, 70.0f,
+                                         NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS);
     rounded_mask_layer.mask.kind = NKUI_MASK_ROUNDED_RECT;
     rounded_mask_layer.mask.values[0] = 10.0f;
     append(mask_commands, rounded_mask_layer);
-    append(mask_commands, nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
-                                                  sizeof(nkui_draw_rect_command)},
-                                                 image,
-                                                 72.0f,
-                                                 82.0f,
-                                                 112.0f,
-                                                 70.0f});
-    append(mask_commands, nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
-                                              sizeof(nkui_command_header)});
+    append(mask_commands,
+           nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
+                                   sizeof(nkui_draw_rect_command)},
+                                  image,
+                                  72.0f,
+                                  82.0f,
+                                  112.0f,
+                                  70.0f});
+    append(mask_commands,
+           nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
+                               sizeof(nkui_command_header)});
     if (nkui_display_list_submit(mask_list, mask_commands.data(), mask_commands.size()) != NKUI_OK)
         return 5;
     if (nkui_display_list_create(&image_mask_list) != NKUI_OK)
         return 5;
     std::vector<uint8_t> image_mask_commands;
-    nkui_layer_mask_command image_mask_layer = rounded_mask_layer;
+    nkui_layer_command image_mask_layer = rounded_mask_layer;
     image_mask_layer.mask.kind = NKUI_MASK_IMAGE;
     image_mask_layer.mask.image = image;
     append(image_mask_commands, image_mask_layer);
     append(image_mask_commands,
-           nkui_draw_rect_command{
-               {NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION, sizeof(nkui_draw_rect_command)},
-               image,
-               72.0f,
-               82.0f,
-               112.0f,
-               70.0f});
-    append(image_mask_commands, nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
-                                                    sizeof(nkui_command_header)});
+           nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
+                                   sizeof(nkui_draw_rect_command)},
+                                  image,
+                                  72.0f,
+                                  82.0f,
+                                  112.0f,
+                                  70.0f});
+    append(image_mask_commands,
+           nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
+                               sizeof(nkui_command_header)});
     if (nkui_display_list_submit(image_mask_list, image_mask_commands.data(),
                                  image_mask_commands.size()) != NKUI_OK)
         return 5;
     std::vector<uint8_t> backdrop_commands;
-    append(backdrop_commands, nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
-                                                      sizeof(nkui_draw_rect_command)},
-                                                     image,
-                                                     72.0f,
-                                                     82.0f,
-                                                     112.0f,
-                                                     70.0f});
-    nkui_layer_backdrop_command backdrop_layer{};
-    backdrop_layer.header = {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION,
-                             sizeof(nkui_layer_backdrop_command)};
-    backdrop_layer.opacity = 1.0f;
-    backdrop_layer.composite_mode = NKUI_COMPOSITE_SOURCE_OVER;
-    backdrop_layer.x = 72.0f;
-    backdrop_layer.y = 82.0f;
-    backdrop_layer.width = 112.0f;
-    backdrop_layer.height = 70.0f;
-    backdrop_layer.flags = NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS;
-    backdrop_layer.backdrop_effect_kind = NKUI_EFFECT_COLOR_MATRIX;
-    backdrop_layer.backdrop_effect_matrix[0] = 1.0f;
-    backdrop_layer.backdrop_effect_matrix[6] = 1.0f;
-    backdrop_layer.backdrop_effect_matrix[12] = 1.0f;
-    backdrop_layer.backdrop_effect_matrix[18] = 1.0f;
-    backdrop_layer.backdrop_effect_matrix[4] = 0.1f;
+    append(backdrop_commands,
+           nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
+                                   sizeof(nkui_draw_rect_command)},
+                                  image,
+                                  72.0f,
+                                  82.0f,
+                                  112.0f,
+                                  70.0f});
+    auto backdrop_layer = make_layer(1.0f, 72.0f, 82.0f, 112.0f, 70.0f,
+                                     NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS);
+    backdrop_layer.backdrop_count = 1;
+    backdrop_layer.backdrop[0].kind = NKUI_EFFECT_COLOR_MATRIX;
+    backdrop_layer.backdrop[0].color_matrix[0] = 1.0f;
+    backdrop_layer.backdrop[0].color_matrix[6] = 1.0f;
+    backdrop_layer.backdrop[0].color_matrix[12] = 1.0f;
+    backdrop_layer.backdrop[0].color_matrix[18] = 1.0f;
+    backdrop_layer.backdrop[0].color_matrix[4] = 0.1f;
     append(backdrop_commands, backdrop_layer);
-    append(backdrop_commands, nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
-                                                      sizeof(nkui_draw_rect_command)},
-                                                     image,
-                                                     72.0f,
-                                                     82.0f,
-                                                     112.0f,
-                                                     70.0f});
-    append(backdrop_commands, nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
-                                                  sizeof(nkui_command_header)});
+    append(backdrop_commands,
+           nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
+                                   sizeof(nkui_draw_rect_command)},
+                                  image,
+                                  72.0f,
+                                  82.0f,
+                                  112.0f,
+                                  70.0f});
+    append(backdrop_commands,
+           nkui_command_header{NKUI_COMMAND_END_LAYER, NKUI_COMMAND_VERSION,
+                               sizeof(nkui_command_header)});
     if (nkui_display_list_submit(backdrop_list, backdrop_commands.data(),
                                  backdrop_commands.size()) != NKUI_OK)
         return 5;
@@ -414,8 +399,8 @@ int main(int argc, char **argv) {
         NKUI_OK)
         return 5;
     if (nkui_resource_destroy(image) != NKUI_OK || nkui_resource_destroy(stroke_paint) != NKUI_OK ||
-        nkui_resource_destroy(gradient_paint) != NKUI_OK ||
-        nkui_resource_destroy(paint) != NKUI_OK || nkui_resource_destroy(path) != NKUI_OK)
+        nkui_resource_destroy(gradient_paint) != NKUI_OK || nkui_resource_destroy(paint) != NKUI_OK ||
+        nkui_resource_destroy(path) != NKUI_OK)
         return 5;
 
     nkui_text_metrics stable_metrics{};
@@ -428,8 +413,8 @@ int main(int argc, char **argv) {
         nkui_text_layout_hit_test(scale_text, 70.0f, 8.0f, &stable_end) != NKUI_OK ||
         nkui_text_layout_caret(scale_text, stable_start, &stable_caret) != NKUI_OK ||
         nkui_text_layout_get_selection_rects(scale_text, stable_start, stable_end,
-                                             stable_selection.data(),
-                                             &stable_selection_bytes) != NKUI_OK)
+                                             stable_selection.data(), &stable_selection_bytes) !=
+            NKUI_OK)
         return 5;
 
     int result = 0;
@@ -465,12 +450,12 @@ int main(int argc, char **argv) {
         }
         if (result)
             break;
-        const nkui_frame_info frame_info{
-            sizeof(frame_info), width / pixel_scale, height / pixel_scale, width, height,
-            pixel_scale};
+        const nkui_frame_info frame_info{sizeof(frame_info), width / pixel_scale,
+                                         height / pixel_scale, width, height, pixel_scale};
         nkui_result render_result = NKUI_OK;
         if (!result && frames == 0)
-            render_result = nkui_renderer_render_frame(renderer, mask_list, surface, &frame_info);
+            render_result =
+                nkui_renderer_render_frame(renderer, mask_list, surface, &frame_info);
         if (!result && render_result == NKUI_OK && frames == 0 && custom_effect_registered)
             render_result =
                 nkui_renderer_render_frame(renderer, custom_effect_list, surface, &frame_info);
@@ -490,7 +475,8 @@ int main(int argc, char **argv) {
                          nkgpu_last_error());
             result = 7;
         } else if (frames == 0) {
-            if (nkui_renderer_render_frame_overlay(renderer, list, surface, &frame_info) != NKUI_OK)
+            if (nkui_renderer_render_frame_overlay(renderer, list, surface, &frame_info) !=
+                NKUI_OK)
                 result = 18;
             uint8_t gradient_left[4]{};
             uint8_t gradient_right[4]{};
@@ -498,8 +484,8 @@ int main(int argc, char **argv) {
             glReadPixels(24, height - 24, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gradient_left);
             glReadPixels(230, height - 24, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gradient_right);
             glReadPixels(120, height - 110, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, image_sample);
-            if (gradient_left[0] <= gradient_left[2] || gradient_right[2] <= gradient_right[0] ||
-                image_sample[2] <= image_sample[1])
+            if (gradient_left[0] <= gradient_left[2] ||
+                gradient_right[2] <= gradient_right[0] || image_sample[2] <= image_sample[1])
                 result = 11;
         }
         if (!result) {
@@ -507,7 +493,8 @@ int main(int argc, char **argv) {
             nkui_text_position current_position{};
             nkui_text_caret current_caret{};
             std::array<uint8_t, sizeof(nkui_text_rect) * 8> current_selection{};
-            uint32_t current_selection_bytes = static_cast<uint32_t>(current_selection.size());
+            uint32_t current_selection_bytes =
+                static_cast<uint32_t>(current_selection.size());
             if (nkui_text_layout_measure(scale_text, &current_metrics) != NKUI_OK ||
                 nkui_text_layout_hit_test(scale_text, 5.0f, 8.0f, &current_position) != NKUI_OK ||
                 nkui_text_layout_caret(scale_text, current_position, &current_caret) != NKUI_OK ||
@@ -542,8 +529,8 @@ int main(int argc, char **argv) {
                 cycle_ok = nkgpu_render_target_create(gpu_renderer, size, size, frames & 1u,
                                                       &target) == NKGPU_OK;
             if (cycle_ok)
-                cycle_ok =
-                    nkgpu_render_target_get_image(gpu_renderer, target, &sampled) == NKGPU_OK;
+                cycle_ok = nkgpu_render_target_get_image(gpu_renderer, target, &sampled) ==
+                           NKGPU_OK;
             if (cycle_ok) {
                 cycle_ok = nk_graphics_image_retain(sampled) == NK_OK;
                 retained = cycle_ok;
@@ -593,14 +580,14 @@ int main(int argc, char **argv) {
                     std::max<uint64_t>(resource_highwater[0], snapshot.buffers_live);
                 resource_highwater[1] =
                     std::max<uint64_t>(resource_highwater[1], snapshot.images_live);
-                resource_highwater[2] =
-                    std::max<uint64_t>(resource_highwater[2], snapshot.render_targets_live);
+                resource_highwater[2] = std::max<uint64_t>(resource_highwater[2],
+                                                            snapshot.render_targets_live);
                 resource_highwater[3] =
                     std::max<uint64_t>(resource_highwater[3], snapshot.buffer_bytes);
                 resource_highwater[4] =
                     std::max<uint64_t>(resource_highwater[4], snapshot.image_bytes);
-                resource_highwater[5] =
-                    std::max<uint64_t>(resource_highwater[5], snapshot.render_target_bytes);
+                resource_highwater[5] = std::max<uint64_t>(resource_highwater[5],
+                                                            snapshot.render_target_bytes);
             }
         }
         ++frames;
@@ -632,8 +619,8 @@ int main(int argc, char **argv) {
         };
         auto render_scale_frame = [&](float pixel_scale, PixelBounds &bounds) {
             const nkui_frame_info frame_info{
-                sizeof(frame_info), width / pixel_scale, height / pixel_scale, width, height,
-                pixel_scale};
+                sizeof(frame_info), width / pixel_scale, height / pixel_scale,
+                width, height, pixel_scale};
             if (nkui_renderer_render_frame(renderer, scale_list, surface, &frame_info) != NKUI_OK)
                 return false;
             bounds = read_text_bounds();
@@ -641,47 +628,53 @@ int main(int argc, char **argv) {
         };
         PixelBounds native_bounds;
         PixelBounds scaled_bounds;
-        if (!render_scale_frame(1.0f, native_bounds) || !render_scale_frame(2.0f, scaled_bounds) ||
-            native_bounds.width() < 10 || native_bounds.height() < 5 ||
-            scaled_bounds.width() < native_bounds.width() * 1.5f ||
+        if (!render_scale_frame(1.0f, native_bounds) ||
+            !render_scale_frame(2.0f, scaled_bounds) || native_bounds.width() < 10 ||
+            native_bounds.height() < 5 || scaled_bounds.width() < native_bounds.width() * 1.5f ||
             scaled_bounds.height() < native_bounds.height() * 1.5f)
             result = 17;
     }
     nkui_renderer_stats stats{};
-    if (!result &&
-        (nkui_renderer_get_stats(renderer, &stats) != NKUI_OK ||
-         stats.struct_size != sizeof(stats) || stats.path_preparations < 8 ||
-         stats.path_preparations != stats.path_cache_misses || stats.path_cache_hits == 0 ||
-         stats.path_vertices_generated == 0 || stats.path_geometry_bytes_allocated == 0 ||
-         stats.path_geometry_bytes_retained == 0 || stats.path_tessellation_nanoseconds == 0 ||
-         stats.gpu_frames < frames || stats.device_losses == 0 || stats.atlas_pages == 0 ||
-         stats.atlas_pages > 32 || stats.atlas_bytes == 0 ||
-         stats.atlas_bytes > 64u * 1024u * 1024u || stats.atlas_scale_generation < 4 ||
-         stats.glyph_uploads == 0 || stats.glyphs_rasterized == 0 || stats.atlas_rebuilds == 0 ||
-         stats.atlas_dirty_upload_bytes == 0 || stats.display_list_count < frames ||
-         stats.display_list_bytes == 0 || stats.render_plan_commands == 0 ||
-         stats.effect_passes == 0 || stats.mask_passes == 0 || stats.backdrop_passes == 0 ||
-         stats.isolated_layers == 0 || stats.bounded_layers == 0 ||
-         stats.text_layout_cache_misses == 0 || stats.transient_target_pool_hits == 0 ||
-         stats.transient_target_pool_misses == 0 || stats.transient_target_pool_count > 4 ||
-         stats.transient_target_pool_bytes > 64u * 1024u * 1024u || stats.effect_cache_hits == 0 ||
-         stats.effect_cache_misses == 0 || stats.effect_cache_entries > 16 ||
-         stats.effect_cache_bytes > 64u * 1024u * 1024u ||
-         (stress_mode &&
-          (stats.gpu_frames < 120 || stats.buffers_live > 16 || stats.images_live > 64 ||
-           stats.render_targets_live > 24 || stats.buffer_bytes > 64u * 1024u * 1024u ||
-           resource_highwater[0] > 16 || resource_highwater[1] > 64 || resource_highwater[2] > 24 ||
-           resource_highwater[3] > 64u * 1024u * 1024u ||
-           resource_highwater[4] > 64u * 1024u * 1024u ||
-           resource_highwater[5] > 64u * 1024u * 1024u))))
+    if (!result && (nkui_renderer_get_stats(renderer, &stats) != NKUI_OK ||
+                    stats.struct_size != sizeof(stats) || stats.path_preparations < 8 ||
+                    stats.path_preparations != stats.path_cache_misses ||
+                    stats.path_cache_hits == 0 || stats.path_vertices_generated == 0 ||
+                    stats.path_geometry_bytes_allocated == 0 ||
+                    stats.path_geometry_bytes_retained == 0 ||
+                    stats.path_tessellation_nanoseconds == 0 || stats.gpu_frames < frames ||
+                    stats.device_losses == 0 || stats.atlas_pages == 0 ||
+                    stats.atlas_pages > 32 || stats.atlas_bytes == 0 ||
+                    stats.atlas_bytes > 64u * 1024u * 1024u ||
+                    stats.atlas_scale_generation < 4 || stats.glyph_uploads == 0 ||
+                    stats.glyphs_rasterized == 0 || stats.atlas_rebuilds == 0 ||
+                    stats.atlas_dirty_upload_bytes == 0 ||
+                    stats.display_list_count < frames || stats.display_list_bytes == 0 ||
+                    stats.render_plan_commands == 0 || stats.effect_passes == 0 ||
+                    stats.mask_passes == 0 || stats.backdrop_passes == 0 ||
+                    stats.isolated_layers == 0 || stats.bounded_layers == 0 ||
+                    stats.text_layout_cache_misses == 0 ||
+                    stats.transient_target_pool_hits == 0 ||
+                    stats.transient_target_pool_misses == 0 ||
+                    stats.transient_target_pool_count > 4 ||
+                    stats.transient_target_pool_bytes > 64u * 1024u * 1024u ||
+                    stats.effect_cache_hits == 0 || stats.effect_cache_misses == 0 ||
+                    stats.effect_cache_entries > 16 ||
+                    stats.effect_cache_bytes > 64u * 1024u * 1024u ||
+                    (stress_mode && (stats.gpu_frames < 120 || stats.buffers_live > 16 ||
+                                     stats.images_live > 64 || stats.render_targets_live > 24 ||
+                                     stats.buffer_bytes > 64u * 1024u * 1024u ||
+                                     resource_highwater[0] > 16 || resource_highwater[1] > 64 ||
+                                     resource_highwater[2] > 24 ||
+                                     resource_highwater[3] > 64u * 1024u * 1024u ||
+                                     resource_highwater[4] > 64u * 1024u * 1024u ||
+                                     resource_highwater[5] > 64u * 1024u * 1024u))))
         result = 16;
     if (result == 16)
-        std::fprintf(stderr,
-                     "stats: paths=%llu misses=%llu hits=%llu frames=%llu losses=%llu "
-                     "atlas=%llu/%llu generation=%llu glyphs=%llu/%llu rebuilds=%llu "
-                     "dirty=%llu lists=%llu bytes=%llu plans=%llu layouts=%llu "
-                     "buffers=%llu images=%llu targets=%llu pool=%llu/%llu/%llu "
-                     "effects=%llu/%llu/%llu/%llu\n",
+        std::fprintf(stderr, "stats: paths=%llu misses=%llu hits=%llu frames=%llu losses=%llu "
+                             "atlas=%llu/%llu generation=%llu glyphs=%llu/%llu rebuilds=%llu "
+                             "dirty=%llu lists=%llu bytes=%llu plans=%llu layouts=%llu "
+                             "buffers=%llu images=%llu targets=%llu pool=%llu/%llu/%llu "
+                             "effects=%llu/%llu/%llu/%llu\n",
                      static_cast<unsigned long long>(stats.path_preparations),
                      static_cast<unsigned long long>(stats.path_cache_misses),
                      static_cast<unsigned long long>(stats.path_cache_hits),
