@@ -32,8 +32,17 @@ class ShadowDecoration implements Decoration {
 			var spread = radius * progress;
 			var alpha = shadowColor.alpha * (1.0 - progress) / bands;
 			var bandColor = Color.rgba(shadowColor.red, shadowColor.green, shadowColor.blue, alpha);
-			canvas.fillRectIfPositive(new Rect(x - spread, y - spread,
-				geometry.width + 2.0 * spread, geometry.height + 2.0 * spread), bandColor);
+			var topLeft = style.get(StyleProperty.RadiusTopLeft);
+			var topRight = style.get(StyleProperty.RadiusTopRight);
+			var bottomRight = style.get(StyleProperty.RadiusBottomRight);
+			var bottomLeft = style.get(StyleProperty.RadiusBottomLeft);
+			var uniformRadius = topLeft == topRight && topRight == bottomRight && bottomRight == bottomLeft;
+			var shadowRect = new Rect(x - spread, y - spread,
+				geometry.width + 2.0 * spread, geometry.height + 2.0 * spread);
+			if (uniformRadius)
+				canvas.fillRoundedRect(shadowRect, Math.max(0.0, topLeft + spread), bandColor);
+			else
+				canvas.fillRectIfPositive(shadowRect, bandColor);
 		}
 	}
 }

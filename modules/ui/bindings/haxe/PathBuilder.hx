@@ -24,6 +24,32 @@ class PathBuilder {
 		return this;
 	}
 
+	/** Adds a clockwise rounded rectangle with a radius clamped to its bounds. */
+	public function roundRect(x:Float, y:Float, width:Float, height:Float,
+		radius:Float):PathBuilder {
+		if (width <= 0.0 || height <= 0.0)
+			throw "Rounded rectangle requires positive bounds";
+		var value = Math.max(0.0, Math.min(radius, Math.min(width, height) * 0.5));
+		if (value <= 0.0)
+			return moveTo(x, y).lineTo(x + width, y).lineTo(x + width, y + height)
+				.lineTo(x, y + height).close();
+		var k = 0.5522848;
+		var control = value * k;
+		moveTo(x + value, y).lineTo(x + width - value, y)
+			.cubicTo(x + width - value + control, y, x + width, y + value - control,
+				x + width, y + value)
+			.lineTo(x + width, y + height - value)
+			.cubicTo(x + width, y + height - value + control, x + width - value + control,
+				y + height, x + width - value, y + height)
+			.lineTo(x + value, y + height)
+			.cubicTo(x + value - control, y + height, x, y + height - value + control,
+				x, y + height - value)
+			.lineTo(x, y + value)
+			.cubicTo(x, y + value - control, x + value - control, y, x + value, y)
+			.close();
+		return this;
+	}
+
 	public function quadraticTo(controlX:Float, controlY:Float, x:Float, y:Float):PathBuilder {
 		append(UiPathVerb.QuadraticTo, [controlX, controlY, x, y]);
 		return this;

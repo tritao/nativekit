@@ -121,7 +121,7 @@ class EffectsPage {
 		return new CanvasView(key, function(canvas:Canvas, geometry) {
 			var background = explorer.state.lightTheme
 				? UiExplorer.color(0.91, 0.94, 0.99) : UiExplorer.color(0.07, 0.10, 0.16);
-			canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, geometry.height), background);
+			canvas.fillRoundedRect(new Rect(0.0, 0.0, geometry.width, geometry.height), 10.0, background);
 			var inset = 18.0;
 			var width = Math.max(32.0, geometry.width - inset * 2.0);
 			var height = Math.max(28.0, geometry.height - inset * 2.0);

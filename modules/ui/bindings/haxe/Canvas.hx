@@ -194,6 +194,28 @@ class Canvas {
 		return true;
 	}
 
+	/** Adds a rounded solid rectangle and retains its temporary path and paint. */
+	public function fillRoundedRect(rect:Rect, radius:Float, color:Color):Void {
+		if (rect == null || color == null || rect.width <= 0.0 || rect.height <= 0.0 ||
+			!Math.isFinite(radius) || radius < 0.0)
+			throw "Rounded rectangle requires positive bounds, a finite radius, and a color";
+		var path = new PathBuilder().roundRect(rect.x, rect.y, rect.width, rect.height, radius).build();
+		try {
+			var paint = SolidPaint.create(color);
+			try {
+				fill(path, paint);
+				transientResources.push(path);
+				transientResources.push(paint);
+			} catch (error:Dynamic) {
+				paint.dispose();
+				throw error;
+			}
+		} catch (error:Dynamic) {
+			path.dispose();
+			throw error;
+		}
+	}
+
 	/**
 	 * Adds one gradient-filled rectangle and retains its temporary resources through update.
 	 * Gradient endpoints use the same user coordinate space as `rect`.
