@@ -291,6 +291,9 @@ class StyleResolver {
 			case "effects" | "backdropEffects":
 				var effects:EffectChain = cast value;
 				effects == null ? "null" : effects.key();
+			case "decorations":
+				var decorations:DecorationChain = cast value;
+				decorations == null ? "null" : decorations.key();
 			case "mask":
 				var mask:Mask = cast value;
 				mask == null ? "null" : mask.describe();

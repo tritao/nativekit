@@ -2623,7 +2623,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         for (const auto &[node_id, list_handle] : session_state->custom_paints) {
             const auto *item = session_state->snapshot.find(node_id);
             auto *list_slot = resolve(list_handle);
-            if (!item || item->visual_kind != nkui::LayoutVisualKind::Custom || !list_slot)
+            if (!item || !list_slot)
                 return NKUI_ERROR_INVALID_HANDLE;
             nkui::RenderPlan custom_plan;
             nkui::Compositor custom_compositor;

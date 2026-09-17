@@ -6,7 +6,7 @@ import Rect;
 import ResolvedLayoutItem;
 
 /** Draws an image as nine independently clipped, stretched slices. */
-class NineSliceDecoration implements Decoration {
+class NineSliceDecoration extends Decoration {
 	public final image:Image;
 	public final left:Float;
 	public final top:Float;
@@ -14,6 +14,7 @@ class NineSliceDecoration implements Decoration {
 	public final bottom:Float;
 
 	public function new(image:Image, left:Float, top:Float, right:Float, bottom:Float) {
+		super(DecorationKind.NineSlice);
 		if (image == null || image.isDisposed() || left < 0.0 || top < 0.0 ||
 			right < 0.0 || bottom < 0.0)
 			throw "Nine-slice decorations require a live image and non-negative insets";
@@ -24,7 +25,7 @@ class NineSliceDecoration implements Decoration {
 		this.bottom = bottom;
 	}
 
-	public function paint(canvas:Canvas, geometry:ResolvedLayoutItem, style:ComputedStyle):Void {
+	override public function paint(canvas:Canvas, geometry:ResolvedLayoutItem, style:ComputedStyle):Void {
 		if (geometry.width <= 0.0 || geometry.height <= 0.0)
 			return;
 		var sourceLeft = Math.min(left, image.width);
@@ -72,4 +73,29 @@ class NineSliceDecoration implements Decoration {
 				});
 			}
 	}
+
+	override public function copy():Decoration
+		return new NineSliceDecoration(image, left, top, right, bottom);
+
+	override public function isEqual(other:Decoration):Bool {
+		if (other == null || other.kind != kind)
+			return false;
+		var value:NineSliceDecoration = cast other;
+		return image == value.image && left == value.left && top == value.top &&
+			right == value.right && bottom == value.bottom;
+	}
+
+	override public function interpolate(other:Decoration, amount:Float):Decoration {
+		if (other == null || other.kind != kind)
+			return Decoration.discrete(this, other, amount);
+		var value:NineSliceDecoration = cast other;
+		if (image != value.image)
+			return amount < 0.5 ? copy() : value.copy();
+		return new NineSliceDecoration(image, left + (value.left - left) * amount,
+			top + (value.top - top) * amount, right + (value.right - right) * amount,
+			bottom + (value.bottom - bottom) * amount);
+	}
+
+	override public function describe():String
+		return 'nine-slice(${Std.string(image)},$left,$top,$right,$bottom)';
 }

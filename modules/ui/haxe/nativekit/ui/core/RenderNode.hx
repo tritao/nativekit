@@ -216,7 +216,7 @@ class RenderNode {
 
 	@:allow(nativekit.ui.core.UiContext)
 	function hasPaintHandler():Bool
-		return paintHandlers.length > 0 || decorations.length > 0;
+		return paintHandlers.length > 0 || decorations.length > 0 || hasStyleDecorations();
 
 	/** Returns the complete opt-in fingerprint for safe retained paint reuse. */
 	@:allow(nativekit.ui.core.UiContext)
@@ -224,6 +224,9 @@ class RenderNode {
 		if (!hasPaintHandler())
 			return null;
 		var result = "paint";
+		var style = computedStyle == null ? null : computedStyle.get(StyleProperty.Decorations);
+		if (style != null && style.decorations.length > 0)
+			result += "|style-decorations:" + style.key();
 		for (index in 0...paintHandlers.length) {
 			var key = paintCacheKeys[index];
 			if (key == null)
@@ -249,11 +252,14 @@ class RenderNode {
 
 	@:allow(nativekit.ui.core.UiContext)
 	function paint(canvas:Canvas):Bool {
-		if (resolved == null || !resolved.visible ||
-			(paintHandlers.length == 0 && decorations.length == 0))
+		if (resolved == null || !resolved.visible || !hasPaintHandler())
 			return false;
 		var style = computedStyle == null ? new ComputedStyle() : computedStyle;
+		var styleDecorations = style.get(StyleProperty.Decorations);
 		var paintContent:Canvas->Void = function(target:Canvas) {
+			if (styleDecorations != null)
+				for (decoration in styleDecorations.decorations)
+					decoration.paint(target, resolved, style);
 			for (decoration in decorations)
 				decoration.paint(target, resolved, style);
 			for (handler in paintHandlers)
@@ -271,6 +277,13 @@ class RenderNode {
 		else
 			paintContent(canvas);
 		return true;
+	}
+
+	function hasStyleDecorations():Bool {
+		if (computedStyle == null)
+			return false;
+		var value = computedStyle.get(StyleProperty.Decorations);
+		return value != null && value.decorations.length > 0;
 	}
 
 	@:allow(nativekit.ui.core.EventDispatcher)
