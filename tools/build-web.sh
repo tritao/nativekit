@@ -30,19 +30,37 @@ emcmake cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
     -DNKUI_HAXEON_BUNDLE_FONTS="$bundle_fonts" \
     -DNKUI_HAXEON_SUBSET_FONTS="$subset_fonts" \
     -DNK_SOKOL_BACKEND=gles3
-cmake --build "$build_dir" --target nativekit_ui_c_api nativekit_ui_haxeon \
-    nativekit_platform_parity nativekit_web_accessibility nativekit_web_system_equivalents
+
+web_targets=(
+    nativekit_ui_c_api
+    nativekit_platform_parity
+    nativekit_web_accessibility
+    nativekit_web_system_equivalents
+)
+haxeon_available=0
+target_help=$(cmake --build "$build_dir" --target help)
+if grep -Eq '(^|[[:space:]])nativekit_ui_haxeon(:|[[:space:]]|$)' <<<"$target_help"; then
+    web_targets+=(nativekit_ui_haxeon)
+    haxeon_available=1
+else
+    echo "Haxeon UI target is unavailable; skipping the optional Haxeon Web artifact." >&2
+fi
+cmake --build "$build_dir" --target "${web_targets[@]}"
 
 artifact_dir="$build_dir/modules/ui"
 echo
 echo "Web build complete:"
 echo "  $artifact_dir/nativekit_ui_c_api.html"
-echo "  $artifact_dir/nativekit_ui_haxeon.html"
+if [[ "$haxeon_available" == 1 ]]; then
+    echo "  $artifact_dir/nativekit_ui_haxeon.html"
+else
+    echo "  Haxeon UI artifact: skipped"
+fi
 echo "  $build_dir/tests/nativekit_platform_parity.html"
 echo "  $build_dir/tests/nativekit_web_accessibility.html"
 echo "  $build_dir/tests/nativekit_web_system_equivalents.html"
 echo
-if [[ "$bundle_fonts" == "ON" || "$bundle_fonts" == "1" ]]; then
+if [[ "$haxeon_available" == 1 && ("$bundle_fonts" == "ON" || "$bundle_fonts" == "1") ]]; then
     echo "Serve it over HTTP (fonts are bundled in nativekit_ui_haxeon.data; browser tests use the build root):"
 else
     echo "Serve it over HTTP (required for the external font assets and browser tests):"
