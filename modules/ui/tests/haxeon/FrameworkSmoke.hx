@@ -86,6 +86,7 @@ import nativekit.ui.widgets.SizedBox;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.core.TextStyleOverride;
 import nativekit.ui.widgets.TextEditorState;
+import nativekit.ui.widgets.TextEditorLayout;
 import nativekit.ui.widgets.TextEditorDiagnostics;
 import nativekit.ui.widgets.EditTransaction;
 import nativekit.ui.widgets.TextCompositionSpan;
@@ -189,6 +190,8 @@ class FrameworkSmoke {
 			return 240;
 		if (!unicodeEditorMatrixSmoke(fonts))
 			return 261;
+		if (!retainedEditorIntrinsicMetricsSmoke(fonts))
+			return 262;
 		var mappedEditor = new TextEditorState(fonts, "one\ntwo");
 		if (mappedEditor.layout.paragraphCount != 2 ||
 			mappedEditor.layout.nextGrapheme(3) != 4 ||
@@ -3170,6 +3173,51 @@ class FrameworkSmoke {
 		}
 		wrapped.dispose();
 		return true;
+	}
+
+	static function retainedEditorIntrinsicMetricsSmoke(fonts:FontCollection):Bool {
+		var style = new TextStyle(16.0);
+		var paragraphStyle = new ParagraphStyle(TextWrap.Word, TextAlignment.Start);
+		var single = new TextEditorLayout(fonts, "alpha beta", 240.0, style, paragraphStyle);
+		var singleMetrics = single.intrinsicMetrics();
+		var valid = single.paragraphCount == 1 && singleMetrics.minContentWidth > 0.0 &&
+			singleMetrics.maxContentWidth >= singleMetrics.minContentWidth &&
+			singleMetrics.naturalHeight > 0.0 && singleMetrics.hasBaseline &&
+			singleMetrics.firstBaseline >= 0.0;
+
+		var multi = new TextEditorLayout(fonts, "alpha\nbeta", 240.0, style, paragraphStyle);
+		var multiMetrics = multi.intrinsicMetrics();
+		valid = valid && multi.paragraphCount == 2 && multiMetrics.minContentWidth > 0.0 &&
+			multiMetrics.maxContentWidth >= multiMetrics.minContentWidth &&
+			multiMetrics.naturalHeight > singleMetrics.naturalHeight &&
+			multiMetrics.hasBaseline && multiMetrics.firstBaseline >= 0.0;
+
+		var beforeUpdate = single.intrinsicMetrics();
+		single.update("supercalifragilisticexpialidocious", 240.0, style, paragraphStyle);
+		var afterUpdate = single.intrinsicMetrics();
+		valid = valid && single.text == "supercalifragilisticexpialidocious" &&
+			afterUpdate.minContentWidth > beforeUpdate.minContentWidth &&
+			afterUpdate.maxContentWidth > beforeUpdate.maxContentWidth;
+
+		var hardBreaks = new TextEditorLayout(fonts, "\n", 240.0, style, paragraphStyle);
+		var hardBreakMetrics = hardBreaks.intrinsicMetrics();
+		var hardBreakMeasure = hardBreaks.measure();
+		var empty = new TextEditorLayout(fonts, "", 240.0, style, paragraphStyle);
+		var emptyMetrics = empty.intrinsicMetrics();
+		var emptyMeasure = empty.measure();
+		valid = valid && hardBreaks.paragraphCount == 2 && hardBreakMeasure.height > 0.0 &&
+			hardBreakMetrics.minContentWidth == 0.0 &&
+			hardBreakMetrics.maxContentWidth == 0.0 && hardBreakMetrics.hasBaseline;
+		valid = valid && empty.paragraphCount == 1 && emptyMeasure.height > 0.0 &&
+			emptyMetrics.minContentWidth == 0.0 && emptyMetrics.maxContentWidth == 0.0 &&
+			emptyMetrics.naturalHeight > 0.0 && emptyMetrics.hasBaseline &&
+			emptyMetrics.firstBaseline >= 0.0;
+
+		single.dispose();
+		multi.dispose();
+		hardBreaks.dispose();
+		empty.dispose();
+		return valid;
 	}
 
 	static function checkOffsetMap(map:TextOffsetMap, expectedCodepoints:Int,
