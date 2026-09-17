@@ -1862,8 +1862,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_display_orientation_changed(int
     }
 }
 
-extern "C" EMSCRIPTEN_KEEPALIVE void
-nk_web_host_device_orientation_changed(int orientation) {
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_device_orientation_changed(int orientation) {
     for (const auto &[route, state] : host_states) {
         (void)route;
         if (state->callbacks.device_orientation)

@@ -1074,8 +1074,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_RESOURCE_IO | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_VULKAN_SURFACE | NK_CAP_INPUT |
            NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
            NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE |
-           NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION |
-           NK_CAP_SURFACE_FRAME_CALLBACK |
+           NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_SURFACE_FRAME_CALLBACK |
            nk::core::optional_capabilities();
 }
 
@@ -3060,8 +3059,8 @@ Java_io_nativekit_NativeKitBridge_nativeOnSurfaceDestroyed(JNIEnv *, jclass, jlo
         release_surface_window(*resource);
 }
 
-JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceFrame(
-    JNIEnv *, jclass, jlong handle_value) {
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceFrame(JNIEnv *, jclass,
+                                                                              jlong handle_value) {
     nk::core::callback_boundary([&] {
         const auto handle = static_cast<nk_handle>(handle_value);
         auto resource = surface(handle);

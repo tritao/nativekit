@@ -2338,8 +2338,9 @@ bool begin_decoration_drag(GtkWindowResource &resource, GdkEventButton &event) {
 
 nk_result require_gdk_wrapper(const GtkWindowResource &resource) {
     if (resource.wrapped && !resource.foreign_window)
-        return fail(NK_ERROR_UNSUPPORTED,
-                    "Wayland native wrappers only support native descriptor access and destruction");
+        return fail(
+            NK_ERROR_UNSUPPORTED,
+            "Wayland native wrappers only support native descriptor access and destruction");
     return NK_OK;
 }
 
