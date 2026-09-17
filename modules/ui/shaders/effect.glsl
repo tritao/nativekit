@@ -1,4 +1,4 @@
-// Canonical NativeKit UI color-matrix effect shader.
+// Canonical NativeKit UI effect shaders.
 
 @vs effect_vs
 layout(binding=0) uniform effect_vs_params {
@@ -63,13 +63,19 @@ void main() {
         return;
     }
     vec2 direction = value.y > 0.5 ? vec2(0.0, value.w) : vec2(value.z, 0.0);
-    float sample_step = max(1.0, sigma * 0.75);
+    // Use paired bilinear samples at half-step positions. The previous
+    // kernel sampled at 0.75 * sigma, 1.5 * sigma, ... which left large
+    // unsampled gaps and produced visibly stepped halos for normal UI
+    // radii. Six pairs give a smooth 13-tap effective kernel while keeping
+    // the pass separable and bounded on every backend.
+    float sample_step = max(1.0, sigma * 0.5);
     vec4 result = source;
     float weight_sum = 1.0;
-    for (int index = 1; index <= 4; index++) {
-        float normalized = float(index) * 0.75;
+    for (int index = 1; index <= 6; index++) {
+        float offset_in_texels = (float(index) - 0.5) * sample_step;
+        float normalized = offset_in_texels / sigma;
         float weight = exp(-0.5 * normalized * normalized);
-        vec2 offset = direction * sample_step * float(index);
+        vec2 offset = direction * offset_in_texels;
         result += (texture(sampler2D(tex, smp), uv + offset) +
                    texture(sampler2D(tex, smp), uv - offset)) * weight;
         weight_sum += 2.0 * weight;
@@ -112,12 +118,13 @@ void main() {
     float alpha = texture(sampler2D(tex, smp), center).a;
     float weight_sum = 1.0;
     if (parameters.x > 0.0001) {
-        float sample_step = max(1.0, parameters.x * 0.75);
+        float sample_step = max(1.0, parameters.x * 0.5);
         vec2 direction = parameters.y > 0.5 ? vec2(0.0, texel.y) : vec2(texel.x, 0.0);
-        for (int index = 1; index <= 4; index++) {
-            float normalized = float(index) * 0.75;
+        for (int index = 1; index <= 6; index++) {
+            float offset_in_texels = (float(index) - 0.5) * sample_step;
+            float normalized = offset_in_texels / parameters.x;
             float weight = exp(-0.5 * normalized * normalized);
-            vec2 offset = direction * sample_step * float(index);
+            vec2 offset = direction * offset_in_texels;
             alpha += (texture(sampler2D(tex, smp), center + offset).a +
                       texture(sampler2D(tex, smp), center - offset).a) * weight;
             weight_sum += 2.0 * weight;
