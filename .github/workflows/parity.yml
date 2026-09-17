@@ -27,3 +27,52 @@ jobs:
         run: >-
           ctest --test-dir build --output-on-failure --timeout 120
           -R '^(platform_parity|capability_conformance)$'
+
+  linux-wayland-native-window:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install GTK and Wayland test dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libgtk-3-dev libwebkit2gtk-4.1-dev weston xvfb ninja-build
+      - name: Configure
+        run: >-
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug
+          -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=OFF -DNK_BUILD_TESTS=ON
+          -DNK_BUILD_GPU=OFF -DNK_BUILD_UI=OFF
+      - name: Build Wayland native-window test
+        run: cmake --build build --target nativekit_gtk_native_window
+      - name: Run Wayland native-window test
+        run: |
+          runtime_dir=$(mktemp -d)
+          chmod 700 "$runtime_dir"
+          export XDG_RUNTIME_DIR="$runtime_dir"
+          export WAYLAND_DISPLAY=nativekit-wayland
+          weston --backend=headless-backend.so --socket="$WAYLAND_DISPLAY" \
+            --idle-time=0 >weston.log 2>&1 &
+          weston_pid=$!
+          cleanup() {
+            kill "$weston_pid" 2>/dev/null || true
+            wait "$weston_pid" 2>/dev/null || true
+            rm -rf "$runtime_dir"
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 100); do
+            if [[ -S "$runtime_dir/$WAYLAND_DISPLAY" ]]; then
+              break
+            fi
+            if ! kill -0 "$weston_pid" 2>/dev/null; then
+              cat weston.log >&2
+              exit 1
+            fi
+            sleep 0.1
+          done
+          if [[ ! -S "$runtime_dir/$WAYLAND_DISPLAY" ]]; then
+            cat weston.log >&2
+            exit 1
+          fi
+          GDK_BACKEND=wayland ./build/tests/nativekit_gtk_native_window
