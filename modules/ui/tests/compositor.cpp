@@ -110,6 +110,9 @@ int main() {
         plan.passes[1].commands[0].transform[4] != -bounds.x ||
         plan.passes[1].commands[0].transform[5] != -bounds.y)
         return 18;
+    for (const auto &pass : plan.passes)
+        if (!pass.cache_key)
+            return 49;
     const auto &bounded_composite = plan.passes[2].commands[0];
     if (bounded_composite.x != bounds.x || bounded_composite.y != bounds.y ||
         bounded_composite.width != bounds.width || bounded_composite.height != bounds.height ||

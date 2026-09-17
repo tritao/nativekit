@@ -203,13 +203,14 @@ void assign_effect_cache_keys(RenderPlan &plan) {
         if (pass.kind == RenderPassKind::Draw) {
             uint64_t hash = kCacheHashOffset;
             hash_u32(hash, static_cast<uint32_t>(pass.kind));
+            hash_u32(hash, pass.load_existing ? 1u : 0u);
             hash_descriptor(hash, pass.target_descriptor);
             for (const auto &command : pass.commands)
                 hash_command(hash, command);
             const auto previous = target_hashes.find(pass.target.value);
             if (previous != target_hashes.end())
                 hash_u64(hash, previous->second);
-            target_hashes[pass.target.value] = hash;
+            target_hashes[pass.target.value] = pass.cache_key = hash ? hash : 1;
             continue;
         }
         if (pass.kind == RenderPassKind::Effect) {
@@ -218,6 +219,7 @@ void assign_effect_cache_keys(RenderPlan &plan) {
             hash_u64(hash, target_content_hash(target_hashes, pass.input_target));
             hash_effect(hash, pass);
             hash_descriptor(hash, pass.target_descriptor);
+            hash_u32(hash, pass.load_existing ? 1u : 0u);
             target_hashes[pass.target.value] = pass.cache_key = hash ? hash : 1;
             continue;
         }
@@ -226,7 +228,8 @@ void assign_effect_cache_keys(RenderPlan &plan) {
         hash_u64(hash, target_content_hash(target_hashes, pass.input_target));
         hash_mask(hash, pass.mask);
         hash_descriptor(hash, pass.target_descriptor);
-        target_hashes[pass.target.value] = hash;
+        hash_u32(hash, pass.load_existing ? 1u : 0u);
+        target_hashes[pass.target.value] = pass.cache_key = hash ? hash : 1;
     }
 }
 
