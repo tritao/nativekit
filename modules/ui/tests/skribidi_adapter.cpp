@@ -1,6 +1,7 @@
 #include "prepare/skribidi_adapter.h"
 
 #include <cmath>
+#include <initializer_list>
 #include <vector>
 
 #ifndef NKUI_TEST_FONT_PATH
@@ -11,6 +12,83 @@
 #endif
 
 using namespace nkui;
+
+namespace {
+
+bool check_grapheme_boundaries(SkribidiAdapter &adapter, const char *text,
+                               std::initializer_list<int32_t> expected) {
+    TextLayoutOptions options;
+    options.font_size = 24.0f;
+    options.wrap = TextWrapMode::None;
+    if (!adapter.layout_utf8(text, 800.0f, options))
+        return false;
+
+    const std::vector<int32_t> boundaries(expected);
+    if (boundaries.size() < 2 || boundaries.front() != 0 ||
+        boundaries.back() < boundaries.front())
+        return false;
+    for (std::size_t index = 0; index + 1 < boundaries.size(); ++index) {
+        const int32_t current = boundaries[index];
+        const int32_t next = boundaries[index + 1];
+        if (next <= current || adapter.align_grapheme(current) != current ||
+            adapter.next_grapheme(current) != next ||
+            adapter.previous_grapheme(next) != current)
+            return false;
+        for (int32_t offset = current + 1; offset < next; ++offset) {
+            const int32_t aligned = adapter.align_grapheme(offset);
+            if (aligned != current && aligned != next)
+                return false;
+            if (adapter.next_grapheme(offset) != next)
+                return false;
+        }
+    }
+    return adapter.align_grapheme(boundaries.back()) == boundaries.back() &&
+           adapter.next_grapheme(boundaries.back()) == boundaries.back() &&
+           adapter.previous_grapheme(boundaries.front()) == boundaries.front();
+}
+
+bool check_text_geometry(SkribidiAdapter &adapter, const char *text, float width,
+                         int32_t text_length, std::size_t minimum_lines) {
+    TextLayoutOptions options;
+    options.font_size = 24.0f;
+    options.wrap = TextWrapMode::WordCharacter;
+    TextLayoutResult result;
+    if (!adapter.layout_utf8(text, width, options, &result) ||
+        result.lines.size() < minimum_lines || text_length <= 0)
+        return false;
+
+    const auto finite_rect = [](const TextRect &rect) {
+        return std::isfinite(rect.x) && std::isfinite(rect.y) &&
+               std::isfinite(rect.width) && std::isfinite(rect.height) &&
+               rect.width >= 0.0f && rect.height >= 0.0f;
+    };
+    const auto selection = adapter.selection_rects({0, 0}, {text_length, 0});
+    if (selection.size() < minimum_lines)
+        return false;
+    for (const auto &rect : selection)
+        if (!finite_rect(rect) || rect.width <= 0.0f || rect.height <= 0.0f)
+            return false;
+
+    bool saw_multiple_lines = false;
+    for (std::size_t index = 1; index < selection.size(); ++index)
+        saw_multiple_lines = saw_multiple_lines ||
+                             std::abs(selection[index].y - selection[index - 1].y) > 0.01f;
+    if (minimum_lines > 1 && !saw_multiple_lines)
+        return false;
+
+    for (int32_t offset = 0; offset <= text_length; ++offset) {
+        const TextCaret caret = adapter.caret({offset, 0});
+        if (!std::isfinite(caret.x) || !std::isfinite(caret.y) ||
+            !std::isfinite(caret.ascender) || !std::isfinite(caret.descender))
+            return false;
+        const TextPosition hit = adapter.hit_test(caret.x, caret.y);
+        if (hit.offset < 0 || hit.offset > text_length)
+            return false;
+    }
+    return true;
+}
+
+} // namespace
 
 int main() {
     auto shared_fonts = std::make_shared<SkribidiFontCollection>();
@@ -308,5 +386,27 @@ int main() {
     adapter.prune_layout_cache(kept_layouts, 1);
     if (adapter.has_layout(retained_first.id) || !adapter.has_layout(retained_second.id))
         return 47;
+
+    if (!check_grapheme_boundaries(adapter, "é", {0, 2}))
+        return 55;
+    if (!check_grapheme_boundaries(adapter, "👩‍🚀", {0, 3}))
+        return 57;
+    if (!check_grapheme_boundaries(adapter, "👨‍👩‍👧‍👦", {0, 7}))
+        return 58;
+    if (!check_grapheme_boundaries(adapter, "🇺🇸🇯🇵", {0, 2, 4}))
+        return 59;
+    if (!check_grapheme_boundaries(adapter, "👍🏽", {0, 2}))
+        return 60;
+    if (!check_grapheme_boundaries(adapter, "क्‍ष", {0, 4}))
+        return 61;
+    if (!check_grapheme_boundaries(adapter, "\r\nb", {0, 2, 3}))
+        return 62;
+    if (!check_grapheme_boundaries(adapter, "각", {0, 3}))
+        return 63;
+    if (!check_text_geometry(adapter, "مرحبا NativeKit — שלום — こんにちは", 110.0f,
+                             30, 2))
+        return 64;
+    if (!check_text_geometry(adapter, "one\ntwo\nthree", 180.0f, 13, 3))
+        return 65;
     return glyphs.vertices.size() % 4 == 0 && glyphs.indices.size() % 6 == 0 ? 0 : 41;
 }

@@ -187,6 +187,8 @@ class FrameworkSmoke {
 			return 30;
 		if (!offsetMapSmoke())
 			return 240;
+		if (!unicodeEditorMatrixSmoke(fonts))
+			return 261;
 		var mappedEditor = new TextEditorState(fonts, "one\ntwo");
 		if (mappedEditor.layout.paragraphCount != 2 ||
 			mappedEditor.layout.nextGrapheme(3) != 4 ||
@@ -2988,7 +2990,13 @@ class FrameworkSmoke {
 			!checkOffsetMap(new TextOffsetMap("שלום"), 4, 8, 4, 4) ||
 			!checkOffsetMap(new TextOffsetMap("नमस्ते"), 6, 18, 6, 3) ||
 			!checkOffsetMap(new TextOffsetMap("今日は"), 3, 9, 3, 3) ||
-			!checkOffsetMap(new TextOffsetMap("Aשלום🙂"), 6, 13, 7, 6))
+			!checkOffsetMap(new TextOffsetMap("Aשלום🙂"), 6, 13, 7, 6) ||
+			!checkGraphemeBoundaries(new TextOffsetMap("\r\n"), [0, 2]) ||
+			!checkGraphemeBoundaries(new TextOffsetMap("👩‍🚀"), [0, 3]) ||
+			!checkGraphemeBoundaries(new TextOffsetMap("🇺🇸🇯🇵"), [0, 2, 4]) ||
+			!checkGraphemeBoundaries(new TextOffsetMap("#️⃣"), [0, 3]) ||
+			!checkGraphemeBoundaries(new TextOffsetMap("각"), [0, 3]) ||
+			!checkGraphemeBoundaries(new TextOffsetMap("क्‍ष"), [0, 4]))
 			return false;
 
 		var family = new TextOffsetMap("👨‍👩‍👧‍👦");
@@ -3008,6 +3016,109 @@ class FrameworkSmoke {
 		var nextBoundary:Int = customBoundaries.nextGraphemeBoundary(codepointZero);
 		return customBoundaries.graphemeCount() == 1 &&
 			!customBoundaries.isGraphemeBoundary(codepointOne) && nextBoundary == 2;
+	}
+
+	static function checkGraphemeBoundaries(map:TextOffsetMap, expected:Array<Int>):Bool {
+		if (expected == null || expected.length < 2 || map.graphemeBoundaryCount() != expected.length)
+			return false;
+		for (index in 0...expected.length) {
+			var boundary:CodepointOffset = expected[index];
+			if (map.graphemeBoundaryAt(index) != boundary || !map.isGraphemeBoundary(boundary))
+				return false;
+			if (index + 1 < expected.length) {
+				var nextBoundary:CodepointOffset = expected[index + 1];
+				if (nextBoundary <= boundary || map.nextGraphemeBoundary(boundary) != nextBoundary)
+					return false;
+				for (offset in boundary + 1...nextBoundary) {
+					var interior:CodepointOffset = offset;
+					if (map.isGraphemeBoundary(interior) ||
+						map.previousGraphemeBoundary(interior) != boundary ||
+						map.nextGraphemeBoundary(interior) != nextBoundary)
+						return false;
+				}
+			}
+		}
+		var start:CodepointOffset = expected[0];
+		var end:CodepointOffset = expected[expected.length - 1];
+		return start == 0 && end == map.codepointCount &&
+			map.previousGraphemeBoundary(start) == start &&
+			map.nextGraphemeBoundary(end) == end;
+	}
+
+	static function unicodeEditorMatrixSmoke(fonts:FontCollection):Bool {
+		var editor = new TextEditorState(fonts, "A👨‍👩‍👧‍👦\nمرحبا");
+		var map = editor.documentOffsets();
+		if (map.codepointCount != 14 || map.utf8ByteLength != 37 || map.utf16Length != 18 ||
+			map.paragraphCount() != 2 || map.paragraphRangeAtIndex(0).start != 0 ||
+			map.paragraphRangeAtIndex(0).end != 8 || map.paragraphRangeAtIndex(1).start != 9 ||
+			map.paragraphRangeAtIndex(1).end != 14) {
+			editor.dispose();
+			return false;
+		}
+		if (!editor.setSelection(1, 8) || !editor.replaceRange(1, 8, "👍🏽") ||
+			editor.text != "A👍🏽\nمرحبا" || editor.selectionStart != 3 ||
+			editor.selectionEnd != 3) {
+			editor.dispose();
+			return false;
+		}
+		if (!editor.insert("貼り付け", TextEditorHistoryKind.Paste) ||
+			editor.text != "A👍🏽貼り付け\nمرحبا" || editor.selectionFocus != 7 ||
+			!editor.deleteBackward() || editor.text != "A👍🏽貼り付\nمرحبا" ||
+			editor.selectionFocus != 6 || !editor.setSelection(3, 3) ||
+			!editor.deleteForward() || editor.text != "A👍🏽り付\nمرحبا" ||
+			editor.selectionFocus != 3) {
+			editor.dispose();
+			return false;
+		}
+		var composition = new EditTransaction(3, 5, "かな", 5, 5, true, 3, 5,
+			0, [new TextCompositionSpan(3, 5, false, true)]);
+		if (!editor.applyTransaction(composition) || editor.text != "A👍🏽かな\nمرحبا" ||
+			editor.queryComposition() == null || editor.compositionRects().length == 0 ||
+			editor.compositionAttributes.length != 1 ||
+			!editor.compositionAttributes[0].target || !editor.setSelection(4, 4) ||
+			editor.queryComposition() == null || !editor.cancelComposition() ||
+			editor.text != "A👍🏽り付\nمرحبا" || editor.selectionStart != 3 ||
+			editor.selectionEnd != 3 || editor.queryComposition() != null) {
+			editor.dispose();
+			return false;
+		}
+		if (!editor.applyTransaction(new EditTransaction(3, 5, "かな", 5, 5, true, 3, 5)) ||
+			!editor.applyTransaction(new EditTransaction(3, 5, "漢字", 5, 5, true, 3, 5)) ||
+			!editor.commitComposition() || editor.queryComposition() != null ||
+			editor.text != "A👍🏽漢字\nمرحبا" || !editor.canUndo() || !editor.undo() ||
+			editor.text != "A👍🏽り付\nمرحبا" || !editor.redo() ||
+			editor.text != "A👍🏽漢字\nمرحبا") {
+			editor.dispose();
+			return false;
+		}
+		if (!editor.setSelection(6, 11) ||
+			!editor.applyTransaction(new EditTransaction(6, 11, "سلام", 10, 10, false, -1, -1,
+				0, null, TextEditorHistoryKind.Autocorrect)) || editor.text != "A👍🏽漢字\nسلام" ||
+			!editor.undo() || editor.text != "A👍🏽漢字\nمرحبا") {
+			editor.dispose();
+			return false;
+		}
+		if (!editor.applyTransaction(new EditTransaction(3, 5, "かな", 5, 5, true, 3, 5)) ||
+			!editor.replaceRange(0, 1, "B") || editor.queryComposition() != null ||
+			editor.text != "B👍🏽かな\nمرحبا" || !editor.undo() ||
+			editor.text != "A👍🏽漢字\nمرحبا") {
+			editor.dispose();
+			return false;
+		}
+		editor.dispose();
+
+		var wrapped = new TextEditorState(fonts, "one two three four five six");
+		wrapped.updateLayout(72.0);
+		var wrappedSpan = new TextCompositionSpan(4, 18, true, false);
+		if (!wrapped.applyTransaction(new EditTransaction(4, 4, "かな文字を入力", 11, 11, true, 4, 11,
+			0, [wrappedSpan])) || wrapped.compositionRectsFor(wrappedSpan).length < 2 ||
+			wrapped.compositionRects().length < 2 || wrapped.layout.selectionRects(
+				new TextPosition(0, 0), new TextPosition(wrapped.documentLength(), 0)).length < 2) {
+			wrapped.dispose();
+			return false;
+		}
+		wrapped.dispose();
+		return true;
 	}
 
 	static function checkOffsetMap(map:TextOffsetMap, expectedCodepoints:Int,

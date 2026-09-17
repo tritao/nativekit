@@ -603,9 +603,13 @@ class TextOffsetMap {
 	static function isHangulNoBreak(previous:Int, current:Int):Bool {
 		var previousType = hangulType(previous);
 		var currentType = hangulType(current);
-		return previousType == 1 && (currentType == 1 || currentType == 2 || currentType == 3) ||
-			previousType == 2 && (currentType == 2 || currentType == 4) ||
-			(previousType == 3 || previousType == 4) && currentType == 4;
+		// UAX #29 GB6-GB8: L × (L|V|LV|LVT),
+		// V|LV × (V|T), and T|LVT × T. `hangulType()` uses
+		// 3 for both T and LVT, and 4 for LV.
+		return previousType == 1 &&
+			(currentType == 1 || currentType == 2 || currentType == 3 || currentType == 4) ||
+			(previousType == 2 || previousType == 4) && (currentType == 2 || currentType == 3) ||
+			previousType == 3 && currentType == 3;
 	}
 
 	static function hangulType(value:Int):Int {
