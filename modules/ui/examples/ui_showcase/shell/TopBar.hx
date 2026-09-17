@@ -7,6 +7,8 @@ import LayoutDirection;
 import LayoutStyle;
 import Insets;
 import UiExplorer;
+import nativekit.ui.icons.IconName;
+import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.KeyedView;
 import nativekit.ui.widgets.Row;
 
@@ -26,16 +28,23 @@ class TopBar {
 				explorer.context.buildContext.theme.accent)),
 			explorer.keyed("brand", explorer.heading("Haxeon UI Explorer"))
 		], clusterStyle(12.0));
-		var actions:Array<KeyedView> = [
-			explorer.keyed("platform", explorer.caption(explorer.platformLabel)),
-			explorer.keyed("theme", explorer.button(explorer.state.lightTheme ? "Light theme" : "Dark theme",
-				"theme-toggle", function() {
-					explorer.state.lightTheme = !explorer.state.lightTheme;
-					explorer.context.setTheme(UiExplorer.makeTheme(explorer.state.lightTheme));
-				}))
-		];
+		var themeButton = explorer.button(explorer.state.lightTheme ? "Dark mode" : "Light mode",
+			"theme-toggle", function() {
+				explorer.state.lightTheme = !explorer.state.lightTheme;
+				explorer.context.setTheme(UiExplorer.makeTheme(explorer.state.lightTheme));
+			});
+		themeButton.leadingIcon = explorer.state.lightTheme ? IconName.Moon : IconName.Sun;
+		var actions:Array<KeyedView> = [explorer.keyed("theme", themeButton)];
 		if (explorer.width >= 880.0)
-			actions.push(explorer.keyed("inspect", explorer.button(
+			actions.push(explorer.keyed("inspect", inspectButton(explorer)));
+		return new Row("top-bar", [
+			explorer.keyed("brand-cluster", brand),
+			explorer.keyed("action-cluster", new Row("top-actions", actions, clusterStyle(8.0)))
+		], style);
+	}
+
+	static function inspectButton(explorer:UiExplorer):Button {
+		var button = explorer.button(
 				explorer.state.inspector.picking ? "Cancel inspect" : "Inspect",
 				"inspector-toggle", function() {
 					if (explorer.state.inspector.picking) {
@@ -45,11 +54,9 @@ class TopBar {
 						explorer.state.inspector.open = true;
 						explorer.state.inspector.picking = true;
 					}
-			})));
-		return new Row("top-bar", [
-			explorer.keyed("brand-cluster", brand),
-			explorer.keyed("action-cluster", new Row("top-actions", actions, clusterStyle(12.0)))
-		], style);
+				}, explorer.state.inspector.open || explorer.state.inspector.picking);
+		button.leadingIcon = IconName.Inspect;
+		return button;
 	}
 
 	static function clusterStyle(gap:Float):LayoutStyle {
