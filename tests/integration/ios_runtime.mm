@@ -27,6 +27,34 @@ void report_stage(const char *stage) {
     os_log(OS_LOG_DEFAULT, "NATIVEKIT_IOS_RUNTIME_STAGE=%{public}s", stage);
 }
 
+NSString *runtime_result_path() {
+    return [NSHomeDirectory()
+        stringByAppendingPathComponent:@"Documents/nativekit-ios-runtime-result.txt"];
+}
+
+bool write_runtime_result(bool success) {
+    NSError *error = nil;
+    NSString *result = success ? @"PASS\n" : @"FAIL\n";
+    if ([result writeToFile:runtime_result_path()
+                 atomically:YES
+                   encoding:NSUTF8StringEncoding
+                      error:&error]) {
+        return true;
+    }
+    std::fprintf(stderr, "Could not write iOS runtime result: %s\n",
+                 error.localizedDescription.UTF8String);
+    return false;
+}
+
+void clear_runtime_result() {
+    NSError *error = nil;
+    if (![[NSFileManager defaultManager] removeItemAtPath:runtime_result_path() error:&error] &&
+        error.code != NSFileNoSuchFileError) {
+        std::fprintf(stderr, "Could not clear iOS runtime result: %s\n",
+                     error.localizedDescription.UTF8String);
+    }
+}
+
 bool check_result(const char *operation, nk_result result) {
     if (result == NK_OK)
         return true;
@@ -121,6 +149,7 @@ enum class NKRuntimeStage {
         success = check_result("nk_mobile_host_destroy", nk_mobile_host_destroy(_host)) && success;
     if (_initialized)
         nk_shutdown();
+    success = write_runtime_result(success) && success;
     report_stage(success ? "finish.pass" : "finish.fail");
     std::fprintf(stdout, "NATIVEKIT_IOS_RUNTIME_RESULT=%s\n", success ? "PASS" : "FAIL");
     std::fflush(stdout);
@@ -431,7 +460,7 @@ enum class NKRuntimeStage {
     _timer = [NSTimer scheduledTimerWithTimeInterval:0.01
                                               target:self
                                             selector:@selector(poll:)
-                                             userInfo:nil
+                                            userInfo:nil
                                              repeats:YES];
     report_stage("runner.polling");
 }
@@ -475,6 +504,7 @@ enum class NKRuntimeStage {
 
 int main(int argc, char *argv[]) {
     @autoreleasepool {
+        clear_runtime_result();
         report_stage("main");
         return UIApplicationMain(argc, argv, nil, NSStringFromClass([NKRuntimeAppDelegate class]));
     }

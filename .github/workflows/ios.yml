@@ -56,20 +56,29 @@ jobs:
         run: |
           xcrun simctl install "$IOS_SIMULATOR_ID" \
             "build-iphonesimulator/tests/Debug-iphonesimulator/nativekit_ios_runtime_tests.app"
+          # simctl --console can lose the app's final stdout as the process exits.
+          ios_runtime_result_file="$(xcrun simctl get_app_container \
+            "$IOS_SIMULATOR_ID" org.nativekit.tests.ios-runtime data)/Documents/nativekit-ios-runtime-result.txt"
+          echo "iOS runtime result file: $ios_runtime_result_file"
           : > ios-runtime.log
           : > ios-simulator-diagnostics.log
           for attempt in 1 2 3; do
             echo "Running iOS simulator runtime test (attempt $attempt/3)"
             xcrun simctl terminate "$IOS_SIMULATOR_ID" \
               org.nativekit.tests.ios-runtime >/dev/null 2>&1 || true
+            rm -f "$ios_runtime_result_file"
             set +e
             xcrun simctl launch --console "$IOS_SIMULATOR_ID" \
               org.nativekit.tests.ios-runtime 2>&1 | tee -a ios-runtime.log
             launch_status=${PIPESTATUS[0]}
             set -e
             echo "simctl launch status: $launch_status"
-            if [[ "$launch_status" -eq 0 ]] &&
-               grep -q 'NATIVEKIT_IOS_RUNTIME_RESULT=PASS' ios-runtime.log; then
+            runtime_result=""
+            if [[ -f "$ios_runtime_result_file" ]]; then
+              runtime_result=$(tr -d '\r\n' < "$ios_runtime_result_file")
+            fi
+            echo "durable iOS runtime result: ${runtime_result:-missing}"
+            if [[ "$launch_status" -eq 0 ]] && [[ "$runtime_result" == "PASS" ]]; then
               exit 0
             fi
             if [[ "$attempt" -lt 3 ]]; then
