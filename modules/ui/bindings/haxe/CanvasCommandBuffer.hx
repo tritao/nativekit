@@ -1,6 +1,7 @@
 import haxe.io.Bytes;
 import NativeKitUI;
 import CompositeMode;
+import Color;
 import LineCap;
 import LineJoin;
 import nativekit.ui.style.BlurEffect;
@@ -69,6 +70,18 @@ class CanvasCommandBuffer {
 	public function drawSurface(surface:GraphicsSurface, x:Float, y:Float, width:Float,
 		height:Float):Void
 		drawRect(NativeKitUI.CommandOpcode.DrawRenderTarget, surface, x, y, width, height);
+
+	public function drawBoxShadow(x:Float, y:Float, width:Float, height:Float, offsetX:Float,
+		 offsetY:Float, blurRadius:Float, spread:Float, radii:Array<Float>, color:Color):Void {
+		if (radii == null || radii.length != 4 || color == null)
+			throw "Box shadow requires four corner radii and a color";
+		header(NativeKitUI.CommandOpcode.DrawBoxShadow, 72);
+		float(x); float(y); float(width); float(height);
+		float(offsetX); float(offsetY); float(blurRadius); float(spread);
+		for (radius in radii)
+			float(radius);
+		float(color.red); float(color.green); float(color.blue); float(color.alpha);
+	}
 
 	public function drawText(layout:TextLayout, x:Float, y:Float):Void
 		drawRect(NativeKitUI.CommandOpcode.DrawTextLayout, layout, x, y, 0.0, 0.0);

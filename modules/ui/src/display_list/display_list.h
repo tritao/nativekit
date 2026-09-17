@@ -39,6 +39,7 @@ enum class CommandOpcode : uint16_t {
     EndLayer,
     DrawRenderTarget,
     StrokePath,
+    DrawBoxShadow,
 };
 
 enum class CompositeMode : uint32_t {
@@ -184,6 +185,20 @@ struct StrokePathCommand {
     float miter_limit;
 };
 
+struct DrawBoxShadowCommand {
+    CommandHeader header;
+    float x;
+    float y;
+    float width;
+    float height;
+    float offset_x;
+    float offset_y;
+    float blur_radius;
+    float spread;
+    float radii[4];
+    float color[4];
+};
+
 struct DrawRectResourceCommand {
     CommandHeader header;
     ResourceId resource;
@@ -316,6 +331,9 @@ class DisplayList {
                      CompositeMode mode = CompositeMode::SourceOver);
     bool end_layer();
     bool draw_render_target(ResourceId target, float x, float y, float width, float height);
+    bool draw_box_shadow(float x, float y, float width, float height, float offset_x,
+                         float offset_y, float blur_radius, float spread,
+                         const float radii[4], const float color[4]);
     /** Returns whether the validated command stream contains a backdrop layer. */
     bool has_backdrop_effects() const;
 

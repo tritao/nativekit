@@ -202,6 +202,20 @@ static bool rejects_bad_streams() {
     if (!list.begin_layer(1.0f, LayerBounds{4.0f, 8.0f, 0.0f, 24.0f}) ||
         validate_display_list(list.data(), list.size(), &error))
         return false;
+
+    list.reset();
+    const float shadow_radii[] = {4.0f, 8.0f, 12.0f, 16.0f};
+    const float shadow_color[] = {0.1f, 0.2f, 0.3f, 0.4f};
+    if (!list.draw_box_shadow(2.0f, 3.0f, 40.0f, 24.0f, 1.0f, 2.0f, 6.0f, 0.0f,
+                             shadow_radii, shadow_color) ||
+        !validate_display_list(list.data(), list.size(), &error))
+        return false;
+    list.reset();
+    const float invalid_shadow_radii[] = {-1.0f, 8.0f, 12.0f, 16.0f};
+    if (list.draw_box_shadow(2.0f, 3.0f, 40.0f, 24.0f, 1.0f, 2.0f, 6.0f, 0.0f,
+                            invalid_shadow_radii, shadow_color) ||
+        list.size() != 0 || !validate_display_list(list.data(), list.size(), &error))
+        return false;
     return true;
 }
 

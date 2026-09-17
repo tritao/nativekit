@@ -148,6 +148,14 @@ void hash_command(uint64_t &hash, const RenderCommand &command) {
     hash_float(hash, command.miter_limit);
     hash_u32(hash, command.custom_payload ? 1u : 0u);
     hash_u64(hash, command.content_generation);
+    hash_float(hash, command.box_shadow.offset_x);
+    hash_float(hash, command.box_shadow.offset_y);
+    hash_float(hash, command.box_shadow.blur_radius);
+    hash_float(hash, command.box_shadow.spread);
+    for (const float value : command.box_shadow.radii)
+        hash_float(hash, value);
+    for (const float value : command.box_shadow.color)
+        hash_float(hash, value);
 }
 
 void hash_descriptor(uint64_t &hash, const RenderTargetDescriptor &descriptor) {
@@ -523,6 +531,22 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             pass->commands.push_back({RenderCommandKind::Image, value.resource, value.x, value.y,
                                       value.width, value.height});
             apply_state(pass->commands.back(), state, current_origin_x, current_origin_y);
+            break;
+        }
+        case CommandOpcode::DrawBoxShadow: {
+            const auto value = read<DrawBoxShadowCommand>(record);
+            pass->commands.push_back({RenderCommandKind::BoxShadow, {}, value.x, value.y,
+                                      value.width, value.height});
+            auto &command = pass->commands.back();
+            command.box_shadow.offset_x = value.offset_x;
+            command.box_shadow.offset_y = value.offset_y;
+            command.box_shadow.blur_radius = value.blur_radius;
+            command.box_shadow.spread = value.spread;
+            std::copy(std::begin(value.radii), std::end(value.radii),
+                      command.box_shadow.radii.begin());
+            std::copy(std::begin(value.color), std::end(value.color),
+                      command.box_shadow.color.begin());
+            apply_state(command, state, current_origin_x, current_origin_y);
             break;
         }
         case CommandOpcode::DrawTextLayout: {

@@ -82,6 +82,11 @@ class RecordingRenderer final : public UiRenderer {
                    float) override {
         return true;
     }
+    bool drawBoxShadow(float, float, float, float, const float[6], float,
+                       const BoxShadowDescriptor &) override {
+        ++box_shadow_count;
+        return true;
+    }
     bool uploadAtlases(SkribidiAdapter &, bool) override { return true; }
     bool drawGlyphs(const PreparedGlyphs &, float) override {
         ++text_count;
@@ -123,6 +128,7 @@ class RecordingRenderer final : public UiRenderer {
     uint32_t effect_count = 0;
     uint32_t mask_count = 0;
     uint32_t surface_mesh_count = 0;
+    uint32_t box_shadow_count = 0;
     uint32_t commit_count = 0;
     uint32_t effect_cache_hits = 0;
     std::unordered_set<uint64_t> effect_cache_keys;
@@ -517,6 +523,22 @@ int main() {
                              &execution_error) ||
         backend.mask_count != 1 || backend.commit_count != 3)
         return 28;
+
+    RenderPlan box_shadow_plan;
+    box_shadow_plan.passes.push_back({main_target, {}, false, {}});
+    RenderCommand box_shadow_command;
+    box_shadow_command.kind = RenderCommandKind::BoxShadow;
+    box_shadow_command.x = 12.0f;
+    box_shadow_command.y = 14.0f;
+    box_shadow_command.width = 80.0f;
+    box_shadow_command.height = 40.0f;
+    box_shadow_command.box_shadow.blur_radius = 8.0f;
+    box_shadow_command.box_shadow.color = {0.1f, 0.2f, 0.3f, 0.5f};
+    box_shadow_plan.passes.front().commands.push_back(box_shadow_command);
+    if (!execute_render_plan(backend, box_shadow_plan, frame.resources(),
+                             {main_target, frame_target}, &execution_error) ||
+        backend.box_shadow_count != 1 || backend.commit_count != 4)
+        return 29;
 
     // Effect cache identity follows only the targets that feed an effect. An
     // unrelated external surface in the final composition must not evict the

@@ -5,18 +5,20 @@ import Color;
 import Rect;
 import ResolvedLayoutItem;
 
-/** Lightweight rectangular shadow; blur is represented by concentric alpha bands. */
+/** Geometry-based rounded-rectangle shadow; distinct from subtree DropShadowEffect. */
 class ShadowDecoration implements Decoration {
 	public final color:Null<Color>;
 	public final offsetX:Null<Float>;
 	public final offsetY:Null<Float>;
 	public final blur:Null<Float>;
+	public final spread:Null<Float>;
 
-	public function new(?color:Color, ?offsetX:Float, ?offsetY:Float, ?blur:Float) {
+	public function new(?color:Color, ?offsetX:Float, ?offsetY:Float, ?blur:Float, ?spread:Float) {
 		this.color = color;
 		this.offsetX = offsetX;
 		this.offsetY = offsetY;
 		this.blur = blur;
+		this.spread = spread;
 	}
 
 	public function paint(canvas:Canvas, geometry:ResolvedLayoutItem, style:ComputedStyle):Void {
@@ -26,23 +28,12 @@ class ShadowDecoration implements Decoration {
 		var radius = blur == null ? style.get(StyleProperty.ShadowBlur) : blur;
 		if (shadowColor == null || shadowColor.alpha <= 0.0)
 			return;
-		var bands = radius <= 0.0 ? 1 : 4;
-		for (band in 0...bands) {
-			var progress = (band + 1) / bands;
-			var spread = radius * progress;
-			var alpha = shadowColor.alpha * (1.0 - progress) / bands;
-			var bandColor = Color.rgba(shadowColor.red, shadowColor.green, shadowColor.blue, alpha);
-			var topLeft = style.get(StyleProperty.RadiusTopLeft);
-			var topRight = style.get(StyleProperty.RadiusTopRight);
-			var bottomRight = style.get(StyleProperty.RadiusBottomRight);
-			var bottomLeft = style.get(StyleProperty.RadiusBottomLeft);
-			var uniformRadius = topLeft == topRight && topRight == bottomRight && bottomRight == bottomLeft;
-			var shadowRect = new Rect(x - spread, y - spread,
-				geometry.width + 2.0 * spread, geometry.height + 2.0 * spread);
-			if (uniformRadius)
-				canvas.fillRoundedRect(shadowRect, Math.max(0.0, topLeft + spread), bandColor);
-			else
-				canvas.fillRectIfPositive(shadowRect, bandColor);
-		}
+		var topLeft = style.get(StyleProperty.RadiusTopLeft);
+		var topRight = style.get(StyleProperty.RadiusTopRight);
+		var bottomRight = style.get(StyleProperty.RadiusBottomRight);
+		var bottomLeft = style.get(StyleProperty.RadiusBottomLeft);
+		var resolvedSpread = spread == null ? 0.0 : spread;
+		canvas.drawBoxShadow(new Rect(0.0, 0.0, geometry.width, geometry.height), x, y, radius,
+			resolvedSpread, [topLeft, topRight, bottomRight, bottomLeft], shadowColor);
 	}
 }

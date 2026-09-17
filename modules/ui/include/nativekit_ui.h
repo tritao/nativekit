@@ -260,7 +260,9 @@ enum NK_ENUM(nkui_command_opcode) {
     /** Composite a render-target resource into a logical-space rectangle. */
     NKUI_COMMAND_DRAW_RENDER_TARGET = 13,
     /** Stroke a path using the current paint and the command's stroke style. */
-    NKUI_COMMAND_STROKE_PATH = 14
+    NKUI_COMMAND_STROKE_PATH = 14,
+    /** Paint a geometry-based rounded-rectangle shadow. */
+    NKUI_COMMAND_DRAW_BOX_SHADOW = 15
 };
 
 /** Version value required in every command header. */
@@ -442,6 +444,21 @@ typedef struct nkui_stroke_path_command {
     /** Positive miter limit used by NKUI_PATH_LINE_JOIN_MITER. */
     float miter_limit;
 } nkui_stroke_path_command;
+
+/** Payload for NKUI_COMMAND_DRAW_BOX_SHADOW. */
+typedef struct nkui_draw_box_shadow_command {
+    nkui_command_header header;
+    float x;
+    float y;
+    float width;
+    float height;
+    float offset_x;
+    float offset_y;
+    float blur_radius;
+    float spread;
+    float radii[4];
+    float color[4];
+} nkui_draw_box_shadow_command;
 
 /** Payload for NKUI_COMMAND_SET_GLOBAL_ALPHA. */
 typedef struct nkui_scalar_command {

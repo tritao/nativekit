@@ -16,6 +16,7 @@ enum class RenderCommandKind : uint8_t {
     GlyphBatch,
     CompositeTarget,
     StrokePath,
+    BoxShadow,
 };
 
 enum class RenderPassKind : uint8_t {
@@ -49,6 +50,16 @@ struct RenderTargetDescriptor {
     uint32_t generation = 0;
 };
 
+/** Geometry-aware decoration shadow; unlike DropShadow it does not filter a subtree. */
+struct BoxShadowDescriptor {
+    float offset_x = 0.0f;
+    float offset_y = 0.0f;
+    float blur_radius = 0.0f;
+    float spread = 0.0f;
+    std::array<float, 4> radii{};
+    std::array<float, 4> color{};
+};
+
 struct RenderCommand {
     RenderCommandKind kind{};
     ResourceId resource{};
@@ -73,6 +84,7 @@ struct RenderCommand {
     bool custom_payload = false;
     /** Optional source revision for layout-produced prepared resources. */
     uint64_t content_generation = 0;
+    BoxShadowDescriptor box_shadow{};
 };
 
 struct RenderPass {

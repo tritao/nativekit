@@ -43,6 +43,8 @@ class UiRendererImpl final : public UiRenderer {
                   float opacity) override;
     bool drawImage(const PreparedTexture &image, float x, float y, float width, float height,
                    const float transform[6], float opacity) override;
+    bool drawBoxShadow(float x, float y, float width, float height, const float transform[6],
+                       float opacity, const BoxShadowDescriptor &shadow) override;
     bool uploadAtlases(SkribidiAdapter &adapter, bool include_clean) override;
     bool drawGlyphs(const PreparedGlyphs &glyphs, float opacity) override;
     bool drawGlyphs(const PreparedGlyphs &glyphs, const float transform[6], float origin_x,
@@ -149,6 +151,7 @@ struct UiRendererImpl::State {
     nkgpu_shader effect_shader{};
     nkgpu_shader blur_shader{};
     nkgpu_shader drop_shadow_shader{};
+    nkgpu_shader box_shadow_shader{};
     nkgpu_shader mask_shader{};
     nkgpu_shader surface_mesh_shader{};
     nkgpu_pipeline solid_pipeline{};
@@ -165,6 +168,7 @@ struct UiRendererImpl::State {
     nkgpu_pipeline effect_pipeline{};
     nkgpu_pipeline blur_pipeline{};
     nkgpu_pipeline drop_shadow_pipeline{};
+    nkgpu_pipeline box_shadow_pipeline{};
     nkgpu_pipeline mask_pipeline{};
     nkgpu_pipeline surface_mesh_pipeline{};
     nkgpu_sampler sampler{};
@@ -231,6 +235,12 @@ struct DropShadowUniforms {
 };
 
 static_assert(sizeof(DropShadowUniforms) == sizeof(float) * 12);
+
+struct BoxShadowUniforms {
+    std::array<float, 4> value[4];
+};
+
+static_assert(sizeof(BoxShadowUniforms) == sizeof(float) * 16);
 
 struct MaskUniforms {
     std::array<float, 4> value[3];
@@ -870,6 +880,7 @@ enum class UiShaderKind {
     Effect,
     Blur,
     DropShadow,
+    BoxShadow,
     Mask,
     SurfaceMesh
 };
@@ -972,6 +983,16 @@ ShaderSources shader_sources(nkgpu_backend backend, UiShaderKind kind) {
                     ui_shader_drop_shadow_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
         return gl(ui_shader_drop_shadow_glsl410_vertex, ui_shader_drop_shadow_glsl410_fragment,
                   ui_shader_drop_shadow_glsl300es_vertex, ui_shader_drop_shadow_glsl300es_fragment);
+    case UiShaderKind::BoxShadow:
+        if (d3d11)
+            return {ui_shader_box_shadow_hlsl5_vertex, ui_shader_box_shadow_hlsl5_fragment,
+                    NKGPU_SHADERLANGUAGE_HLSL5};
+        if (metal)
+            return {ui_shader_box_shadow_metal_macos_vertex,
+                    ui_shader_box_shadow_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
+        return gl(ui_shader_box_shadow_glsl410_vertex, ui_shader_box_shadow_glsl410_fragment,
+                  ui_shader_box_shadow_glsl300es_vertex,
+                  ui_shader_box_shadow_glsl300es_fragment);
     case UiShaderKind::Mask:
         if (d3d11)
             return {ui_shader_mask_hlsl5_vertex, ui_shader_mask_hlsl5_fragment,
@@ -1019,6 +1040,7 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
     case UiShaderKind::Effect:
     case UiShaderKind::Blur:
     case UiShaderKind::DropShadow:
+    case UiShaderKind::BoxShadow:
     case UiShaderKind::Mask:
         attributes[attribute_count++] = "position";
         attributes[attribute_count++] = "uv0";
@@ -1087,6 +1109,11 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
         fragment_size = sizeof(DropShadowUniforms);
         textured = true;
         break;
+    case UiShaderKind::BoxShadow:
+        vertex_block = "box_shadow_vs_params";
+        fragment_block = "box_shadow_fs_params";
+        fragment_size = sizeof(BoxShadowUniforms);
+        break;
     case UiShaderKind::Mask:
         vertex_block = "mask_vs_params";
         fragment_block = "mask_fs_params";
@@ -1110,6 +1137,7 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
                       kind == UiShaderKind::Path         ? kPathShaderVec4Count
                       : kind == UiShaderKind::Effect     ? 5
                       : kind == UiShaderKind::DropShadow ? 3
+                      : kind == UiShaderKind::BoxShadow  ? 4
                       : kind == UiShaderKind::Mask       ? 3
                                                          : 1)))
         return false;
@@ -1265,6 +1293,7 @@ bool UiRendererImpl::initialize() {
         !create_shader(*state_, UiShaderKind::Effect, state_->effect_shader) ||
         !create_shader(*state_, UiShaderKind::Blur, state_->blur_shader) ||
         !create_shader(*state_, UiShaderKind::DropShadow, state_->drop_shadow_shader) ||
+        !create_shader(*state_, UiShaderKind::BoxShadow, state_->box_shadow_shader) ||
         !create_shader(*state_, UiShaderKind::Mask, state_->mask_shader) ||
         !create_shader(*state_, UiShaderKind::SurfaceMesh, state_->surface_mesh_shader))
         return false;
@@ -1380,6 +1409,10 @@ bool UiRendererImpl::initialize() {
                          {{0, offsetof(TextureVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
                           {1, offsetof(TextureVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
                          color_options, state_->drop_shadow_pipeline) ||
+        !create_pipeline(*state_, state_->box_shadow_shader, sizeof(TextureVertex),
+                         {{0, offsetof(TextureVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
+                          {1, offsetof(TextureVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
+                         color_options, state_->box_shadow_pipeline) ||
         !create_pipeline(*state_, state_->mask_shader, sizeof(TextureVertex),
                          {{0, offsetof(TextureVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
                           {1, offsetof(TextureVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
@@ -1728,6 +1761,63 @@ bool UiRendererImpl::drawImage(const PreparedTexture &image, float x, float y, f
     const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
     return draw_mesh(*state_, state_->composite_pipeline, vertices, indices, tint.data(),
                      sizeof(tint), gpu_image.image, gpu_image.sampler, state_->composite_vertices);
+}
+
+bool UiRendererImpl::drawBoxShadow(float x, float y, float width, float height,
+                                   const float transform[6], float opacity,
+                                   const BoxShadowDescriptor &shadow) {
+    if (!state_->in_pass || !transform || !std::isfinite(opacity) || opacity < 0.0f ||
+        opacity > 1.0f || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) ||
+        !std::isfinite(height) || width <= 0.0f || height <= 0.0f)
+        return fail(*state_, "invalid box-shadow geometry");
+    for (const float value : shadow.radii)
+        if (!std::isfinite(value) || value < 0.0f)
+            return fail(*state_, "invalid box-shadow radii");
+    for (const float value : shadow.color)
+        if (!std::isfinite(value) || value < 0.0f || value > 1.0f)
+            return fail(*state_, "invalid box-shadow color");
+    if (!std::isfinite(shadow.offset_x) || !std::isfinite(shadow.offset_y) ||
+        !std::isfinite(shadow.blur_radius) || shadow.blur_radius < 0.0f ||
+        !std::isfinite(shadow.spread))
+        return fail(*state_, "invalid box-shadow parameters");
+    for (int index = 0; index < 6; ++index)
+        if (!std::isfinite(transform[index]))
+            return fail(*state_, "box-shadow transform is not finite");
+
+    const float shape_x = x + shadow.offset_x - shadow.spread;
+    const float shape_y = y + shadow.offset_y - shadow.spread;
+    const float shape_width = width + 2.0f * shadow.spread;
+    const float shape_height = height + 2.0f * shadow.spread;
+    if (!std::isfinite(shape_x) || !std::isfinite(shape_y) || !std::isfinite(shape_width) ||
+        !std::isfinite(shape_height))
+        return fail(*state_, "box-shadow geometry overflow");
+    if (shape_width <= 0.0f || shape_height <= 0.0f)
+        return true;
+    const float blur_extent = shadow.blur_radius * 3.0f;
+    if (!std::isfinite(blur_extent))
+        return fail(*state_, "box-shadow blur is too large");
+    const float left = shape_x - blur_extent;
+    const float top = shape_y - blur_extent;
+    const float right = shape_x + shape_width + blur_extent;
+    const float bottom = shape_y + shape_height + blur_extent;
+    if (!std::isfinite(left) || !std::isfinite(top) || !std::isfinite(right) ||
+        !std::isfinite(bottom))
+        return fail(*state_, "box-shadow bounds overflow");
+    const auto point = [transform](float px, float py) {
+        return TextureVertex{px * transform[0] + py * transform[2] + transform[4],
+                             px * transform[1] + py * transform[3] + transform[5], px, py};
+    };
+    const std::vector<TextureVertex> vertices = {
+        point(left, top), point(right, top), point(right, bottom), point(left, bottom)};
+    const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
+    BoxShadowUniforms uniforms{};
+    uniforms.value[0] = {x, y, width, height};
+    uniforms.value[1] = {shadow.offset_x, shadow.offset_y, shadow.blur_radius, shadow.spread};
+    uniforms.value[2] = shadow.radii;
+    uniforms.value[3] = {shadow.color[0], shadow.color[1], shadow.color[2],
+                          shadow.color[3] * opacity};
+    return draw_mesh(*state_, state_->box_shadow_pipeline, vertices, indices, &uniforms,
+                     sizeof(uniforms), {}, {}, state_->composite_vertices);
 }
 
 bool UiRendererImpl::uploadAtlases(SkribidiAdapter &adapter, bool include_clean) {

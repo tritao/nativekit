@@ -180,6 +180,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Stroke a path using the current paint and the command's stroke style.
 		 */
 		NKUI_COMMAND_STROKE_PATH = 14;
+		/**
+		 * Paint a geometry-based rounded-rectangle shadow.
+		 */
+		NKUI_COMMAND_DRAW_BOX_SHADOW = 15;
 	}
 	/**
 	 * Alpha compositing mode supported by the current UI renderer.
@@ -944,6 +948,22 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Logical ink expansion: left, top, right, bottom.
 		 */
 		ink_overflow: array<f32, 4> @offset(40);
+	}
+	/**
+	 * Payload for NKUI_COMMAND_DRAW_BOX_SHADOW.
+	 */
+	struct nkui_draw_box_shadow_command @layout(72, 4) {
+		header: nkui_command_header @offset(0);
+		x: f32 @offset(8);
+		y: f32 @offset(12);
+		width: f32 @offset(16);
+		height: f32 @offset(20);
+		offset_x: f32 @offset(24);
+		offset_y: f32 @offset(28);
+		blur_radius: f32 @offset(32);
+		spread: f32 @offset(36);
+		radii: array<f32, 4> @offset(40);
+		color: array<f32, 4> @offset(56);
 	}
 	/**
 	 * Payload for image, text-layout, and render-target draw commands.

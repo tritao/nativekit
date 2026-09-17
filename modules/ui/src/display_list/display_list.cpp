@@ -32,6 +32,20 @@ bool valid_rect(float x, float y, float width, float height) {
            height >= 0.0f;
 }
 
+bool valid_box_shadow(const DrawBoxShadowCommand &value) {
+    if (!valid_rect(value.x, value.y, value.width, value.height) || value.width <= 0.0f ||
+        value.height <= 0.0f || !finite(value.offset_x) || !finite(value.offset_y) ||
+        !finite(value.blur_radius) || value.blur_radius < 0.0f || !finite(value.spread))
+        return false;
+    for (const float radius : value.radii)
+        if (!finite(radius) || radius < 0.0f)
+            return false;
+    for (const float component : value.color)
+        if (!finite(component) || component < 0.0f || component > 1.0f)
+            return false;
+    return true;
+}
+
 bool valid_composite(CompositeMode mode) {
     return mode == CompositeMode::SourceOver;
 }
@@ -674,6 +688,25 @@ bool DisplayList::draw_render_target(ResourceId target, float x, float y, float 
     return append(value);
 }
 
+bool DisplayList::draw_box_shadow(float x, float y, float width, float height, float offset_x,
+                                  float offset_y, float blur_radius, float spread,
+                                  const float radii[4], const float color[4]) {
+    if (!radii || !color)
+        return false;
+    auto value = command<DrawBoxShadowCommand>(CommandOpcode::DrawBoxShadow);
+    value.x = x;
+    value.y = y;
+    value.width = width;
+    value.height = height;
+    value.offset_x = offset_x;
+    value.offset_y = offset_y;
+    value.blur_radius = blur_radius;
+    value.spread = spread;
+    std::copy_n(radii, 4, value.radii);
+    std::copy_n(color, 4, value.color);
+    return valid_box_shadow(value) && append(value);
+}
+
 bool validate_display_list(const uint8_t *data, size_t size, ValidationError *error) {
     if ((!data && size) || size > UINT32_MAX)
         return fail(error, 0, 0, "invalid display-list storage");
@@ -751,6 +784,12 @@ bool validate_display_list(const uint8_t *data, size_t size, ValidationError *er
                 !valid_line_join(value->line_join) || !finite(value->miter_limit) ||
                 value->miter_limit <= 0.0f)
                 return fail(error, offset, index, "invalid stroke path command");
+            break;
+        }
+        case CommandOpcode::DrawBoxShadow: {
+            const auto *value = read_command<DrawBoxShadowCommand>(record, header.size);
+            if (!value || !valid_box_shadow(*value))
+                return fail(error, offset, index, "invalid box-shadow command");
             break;
         }
         case CommandOpcode::DrawImage:

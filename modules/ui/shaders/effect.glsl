@@ -139,6 +139,64 @@ void main() {
 
 @program drop_shadow drop_shadow_vs drop_shadow_fs
 
+@vs box_shadow_vs
+layout(binding=0) uniform box_shadow_vs_params {
+    vec4 value;
+};
+layout(location=0) in vec2 position;
+layout(location=1) in vec2 uv0;
+layout(location=0) out vec2 uv;
+void main() {
+    uv = uv0;
+    gl_Position = vec4(((position.x / value.x) * 2.0) - 1.0,
+                       1.0 - ((position.y / value.y) * 2.0), 0.0, 1.0);
+}
+@end
+
+@fs box_shadow_fs
+layout(binding=1) uniform box_shadow_fs_params {
+    vec4 value[4];
+};
+layout(location=0) in vec2 uv;
+layout(location=0) out vec4 frag_color;
+
+float rounded_rect_distance(vec2 point, vec4 rect, vec4 radii) {
+    vec2 center = rect.xy + rect.zw * 0.5;
+    vec2 local = point - center;
+    float radius = local.x < 0.0
+                       ? (local.y < 0.0 ? radii.x : radii.w)
+                       : (local.y < 0.0 ? radii.y : radii.z);
+    radius = max(0.0, min(radius, min(rect.z, rect.w) * 0.5));
+    vec2 half_extent = rect.zw * 0.5;
+    vec2 q = abs(local) - (half_extent - vec2(radius));
+    return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+}
+
+void main() {
+    vec4 base = value[0];
+    vec4 params = value[1];
+    vec4 radii = value[2];
+    vec4 color = value[3];
+    vec4 shape = vec4(base.x + params.x - params.w,
+                      base.y + params.y - params.w,
+                      base.z + 2.0 * params.w,
+                      base.w + 2.0 * params.w);
+    float distance = rounded_rect_distance(uv, shape, radii + vec4(params.w));
+    float alpha = 1.0;
+    if (distance > 0.0) {
+        if (params.z <= 0.0001)
+            alpha = 0.0;
+        else {
+            float normalized = distance / params.z;
+            alpha = exp(-0.5 * normalized * normalized);
+        }
+    }
+    frag_color = vec4(color.rgb * color.a * alpha, color.a * alpha);
+}
+@end
+
+@program box_shadow box_shadow_vs box_shadow_fs
+
 @vs mask_vs
 layout(binding=0) uniform mask_vs_params {
     vec4 value;
